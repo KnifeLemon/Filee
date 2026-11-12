@@ -5,7 +5,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
@@ -330,9 +330,7 @@ in it also builds the package (artifact `windows-arm64-package`).
   (`IImageTransformer`). There is no lossless JPEG rotation: a turned JPEG is re-encoded, at its own estimated quality
   when that is lower than the preset's, so a phone photo saved at 75 doesn't come back bigger at 95.
 - **Layered files.** PSD/PSB convert from Photoshop's composite (ImageMagick merges the layers when a file was saved
-  without "maximize compatibility"). GIMP XCF layers are composited at their offsets with their blend modes; hidden
-  layers are left out. ImageMagick reads 8-bit XCF without zlib tile compression (GIMP 2.10+ "better but slower
-  compression" files give a clear error).
+  without "maximize compatibility"). GIMP's XCF and Paint.NET's PDN are read by Filee itself (below).
 - **LIVP** (an iPhone Live Photo as iCloud downloads it: a ZIP of the photo, HEIC or JPEG, and its MOV) is read as its
   photo, taken out of the package in memory (`LivePhotoSource.ReadStill`, at most 64 MB); its video is FFmpeg's (see
   Live / Motion Photos there).
@@ -360,6 +358,28 @@ in it also builds the package (artifact `windows-arm64-package`).
   named Background, and a **PSD / PSB** keeps its pixel layers, each at its place on the canvas, with its Unicode name,
   opacity, visibility and the blend modes Paint.NET shares. PDN → PSD → PDN gives back the same layers, pixel for
   pixel. A PDN is a target only where the Design & print field is on.
+- **XCF** (GIMP's own file) is read by Filee itself (`Xcf`), for every version GIMP writes (0 to the latest of GIMP 3):
+  64-bit pointers from XCF 11, tiles uncompressed, RLE or zlib, 8, 16 and 32-bit integer, half, float and double
+  precision, RGB, grayscale and indexed, layer groups and layer masks. ImageMagick reads only 8-bit files without
+  zlib and merges them its own way. For PNG, JPG and every other target the layers are merged as GIMP 2.10 and 3 draw
+  them (`XcfBlend`): every layer mode, legacy ones included, each in its blend and composite space (linear RGB,
+  perceptual RGB or CIE Lab) with its composite mode, the opacity, masks, groups and pass-through groups (with GIMP's
+  shortcut of drawing some as ordinary groups), and GIMP's rule that a layer over nothing yet is drawn as it is. On
+  260 random pictures GIMP 2.10 made (every mode, opacity, offset, mask and group), 246 come out pixel for pixel as
+  GIMP shows them and the others within one level. Pixels are kept at 8 bits, so a picture of a higher precision is
+  merged from 8-bit values: of 120 such random pictures, 105 come within one level of GIMP, the rest within a few,
+  more only where a mode blows small differences up (Dodge or Burn close to white or black). Non-destructive filters
+  of GIMP 3 aren't applied. To **PSD / PSB** and **PDN** the layers are kept:
+  names (Unicode), opacity, visibility, the place on the canvas and the blend modes the target shares (others become
+  Normal), with GIMP's merged picture first in a PSD. Neither has layer groups: a group whose layers look the same
+  without it (pass-through at full opacity, or Normal holding only Normal layers, without a mask) gives its layers,
+  named "Group / Layer"; any other becomes one layer of its merged result. Masks are applied to the layers' alpha.
+  Filee also **writes** XCF (`XcfWriter`): 8-bit RGB with alpha, RLE tiles, no groups, at the lowest version that
+  holds the layers as GIMP itself chooses it (version 0 for most, 2, 9 or 10 for later modes), with 32-bit pointers,
+  which GIMP 2.10 and 3 open. Any picture becomes one layer named Background; PDN and PSD / PSB keep their layers,
+  each cut to its pixels at its place, in GIMP's legacy modes, which mix in perceptual RGB as Paint.NET and Photoshop
+  do. XCF → PDN → XCF gives back the same layers pixel for pixel; through PSD, ImageMagick rounds the alpha of layers
+  below full opacity. An XCF is a target only where the Design & print field is on.
 - **EXE / DLL** (a Windows program or library, #1188) is read as its icon, the one Explorer shows: the first icon group
   of its resources, put back together as an `.ico` in memory (`ProgramIcon`, Filee's own reader for 32 and 64-bit PE
   files; only the headers and the icon are read, at most 64 MB, and the file is never loaded or run). To ICO it is
