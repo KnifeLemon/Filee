@@ -534,17 +534,20 @@ public class MergeOrderTests
     [Fact]
     public void Songs_added_to_a_merge_of_videos_join_the_list_and_their_loop_is_written_into_the_merge()
     {
+        // Folder separators of the machine running the test, so names sort the same everywhere.
+        static string V(string name) => Path.Combine("v", name);
+        static string M(string name) => Path.Combine("m", name);
         var media = new Filee.Core.Presets.MediaOptions { JoinIntoOne = true, LoopMusic = true };
-        var vm = new MergeOrderViewModel([@"C:\v\b.mp4", @"C:\v\a.mp4"], videos: media);
+        var vm = new MergeOrderViewModel([V("b.mp4"), V("a.mp4")], videos: media);
         Assert.True(vm.MergesVideos);
         Assert.False(vm.MergesImages);
         Assert.True(vm.LoopMusic);
         Assert.False(vm.HasMusic);
 
         // Only sound files, each once; sorted by name with the rest while the list is sorted.
-        vm.AddMusic([@"C:\m\c song.mp3", @"C:\m\notes.txt", @"C:\m\clip.mov", @"C:\m\C SONG.MP3", @"C:\m\0 start.flac"]);
-        Assert.Equal([@"C:\m\0 start.flac", @"C:\v\a.mp4", @"C:\v\b.mp4", @"C:\m\c song.mp3"], vm.OrderedFiles);
-        Assert.Equal(@"C:\m\c song.mp3", vm.SelectedFile!.Path);
+        vm.AddMusic([M("c song.mp3"), M("notes.txt"), M("clip.mov"), M("C SONG.MP3"), M("0 start.flac")]);
+        Assert.Equal([M("0 start.flac"), V("a.mp4"), V("b.mp4"), M("c song.mp3")], vm.OrderedFiles);
+        Assert.Equal(M("c song.mp3"), vm.SelectedFile!.Path);
         Assert.True(vm.HasMusic);
         Assert.Equal([1, 2, 3, 4], vm.Files.Select(f => f.Position));
         Assert.Contains("*.mp3", MergeOrderViewModel.MusicPatterns);
@@ -552,17 +555,17 @@ public class MergeOrderTests
 
         // In a custom order a song goes to the end.
         vm.SortIndex = MergeOrderViewModel.CustomSortIndex;
-        vm.AddMusic([@"C:\m\b song.wav"]);
-        Assert.Equal(@"C:\m\b song.wav", vm.OrderedFiles[^1]);
+        vm.AddMusic([M("b song.wav")]);
+        Assert.Equal(M("b song.wav"), vm.OrderedFiles[^1]);
 
         vm.LoopMusic = false;
         vm.ApplyTo(media);
         Assert.False(media.LoopMusic);
 
         // Songs alone are no video: nothing to merge them under.
-        var songs = new MergeOrderViewModel([@"C:\m\a.mp3", @"C:\m\b.mp3"], videos: new());
+        var songs = new MergeOrderViewModel([M("a.mp3"), M("b.mp3")], videos: new());
         Assert.False(songs.CanMerge);
-        Assert.True(new MergeOrderViewModel([@"C:\m\a.mp3", @"C:\m\b.mp3"]).CanMerge); // other merges as before
+        Assert.True(new MergeOrderViewModel([M("a.mp3"), M("b.mp3")]).CanMerge); // other merges as before
         Assert.False(new MergeOrderViewModel(["a.pdf", "b.pdf"]).MergesVideos);
     }
 
