@@ -2,6 +2,7 @@
   The donut on screen at its real size while Settings → Donut toolbar adjusts it (Edit Donut Size) or edits a group:
   borderless and transparent, as the live donut is (RadialWindow), drawn by the same control with the same settings. It
   can be tried (a group opens under the pointer, it flips), but nothing converts from it.
+
   ShowActivated=False: the sliders keep the keyboard. Not Topmost, unlike the live donut: a click on the main window
   brings that in front of it, so Done is never stuck under it.
 -->

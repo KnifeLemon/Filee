@@ -1432,6 +1432,88 @@ public class DonutEditorTests
     }
 
     [AvaloniaFact]
+    public void The_donut_on_screen_follows_mixed_selection_and_the_name_of_a_donut_for_any_file()
+    {
+        var (window, page, vm) = Open();
+        var store = AppHost.Get<UserDataStore>();
+        var order = store.Profiles.ToList();
+        var images = store.Profiles.Single(p => p.Id == "images");
+        var anything = store.Profiles.First(p => RadialViewModel.PreviewFormats(p).Count == 0);
+        var name = anything.Name;
+        try
+        {
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile == images);
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            var donut = page.Preview!.DonutControl;
+            var before = donut.CenterTitle;
+            // Mixed selection on: judged for two different files, as the donut opens for a mixed profile.
+            vm.IsMixed = true;
+            RenderTests.Pump();
+            Assert.True(images.IsFallback);
+            Assert.NotEqual(before, page.Preview!.DonutControl.CenterTitle);
+            Assert.Equal(AppHost.Get<ILocalizer>().Format("donut.files_mixed", 2), page.Preview.DonutControl.CenterTitle);
+            vm.IsMixed = false;
+            RenderTests.Pump();
+            Assert.Equal(before, page.Preview!.DonutControl.CenterTitle);
+
+            // A donut for any file has its name in the centre: renamed, the centre follows.
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile == anything);
+            RenderTests.Pump();
+            vm.ProfileName = "Anything at all";
+            RenderTests.Pump();
+            Assert.Equal("Anything at all", page.Preview!.DonutControl.CenterTitle);
+        }
+        finally
+        {
+            anything.Name = name;
+            images.IsFallback = false;
+            store.Profiles.Clear();
+            store.Profiles.AddRange(order);
+            store.SaveLibrary();
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_profile_search_that_hides_the_donut_edited_leaves_the_window_where_it_made_room()
+    {
+        var (window, page, vm) = Open();
+        var motion = Motion.Enabled;
+        Motion.Set(false);
+        var start = window.Position;
+        try
+        {
+            var images = vm.Profiles.Single(p => p.Profile.Id == "images");
+            vm.SelectedProfile = images;
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            var landed = window.Position;
+            Assert.NotEqual(start, landed);
+            vm.ProfileSearch = "pdf";
+            RenderTests.Pump();
+            Assert.Null(vm.SelectedProfile);
+            Assert.True(vm.IsAdjustingLook);
+            Assert.False(page.Preview?.IsVisible ?? false);
+            Assert.Equal(landed, window.Position); // not back and over again
+            vm.ProfileSearch = "";
+            vm.SelectedProfile = images;
+            RenderTests.Pump();
+            Assert.True(page.Preview!.IsVisible);
+            Assert.Equal(landed, window.Position);
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.Equal(start, window.Position);
+        }
+        finally
+        {
+            vm.ProfileSearch = "";
+            Motion.Set(motion);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void A_size_the_user_gives_the_window_meanwhile_is_kept_on_done()
     {
         var (window, page, vm) = Open();

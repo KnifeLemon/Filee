@@ -603,6 +603,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         SaveOwnLibrary();
         item.Refresh(_loc);
         RebuildProfileEditor();
+        Rebuild(); // judged for other files now: one format, or two for a mixed profile
     }
 
     /// <summary>Normal profiles first, then the mixed ones; a profile that switches kind moves to the border.</summary>

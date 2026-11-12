@@ -147,6 +147,8 @@ public partial class ToolbarPage : UserControl
                 EndDrag();
                 break;
         }
+        if (e.PropertyName == nameof(ToolbarPageViewModel.ProfileName))
+            RenamePreview();
         if (e.PropertyName is nameof(ToolbarPageViewModel.OpenGroup) or nameof(ToolbarPageViewModel.IsAdjustingLook))
             Avalonia.Threading.Dispatcher.UIThread.Post(KeepFocus, Avalonia.Threading.DispatcherPriority.Loaded);
         // Not while the profile moves in the list: its selection is gone for a moment, the profile the same.
@@ -180,10 +182,17 @@ public partial class ToolbarPage : UserControl
     /// </summary>
     private void UpdatePreview(bool reload)
     {
-        if (Vm is not { } vm || vm.SelectedProfile?.Profile is not { } profile || !(vm.IsAdjustingLook || vm.IsEditingGroup))
+        if (Vm is not { } vm || !(vm.IsAdjustingLook || vm.IsEditingGroup))
         {
             HidePreview();
             SlideBack(animate: true);
+            return;
+        }
+        // No profile for now (a search in the profile list hid it): the donut goes until one is picked, the window
+        // stays where it made room.
+        if (vm.SelectedProfile?.Profile is not { } profile)
+        {
+            HidePreview();
             return;
         }
         // Hidden or minimized: the donut goes with it, and comes back with it. The window stays where it slid to
@@ -247,6 +256,15 @@ public partial class ToolbarPage : UserControl
             string.Join(',', AppHost.Get<UserDataStore>().Settings.TurnedOffFields));
 
     private static ILocalizer Loc => AppHost.Get<ILocalizer>();
+
+    // Renamed: a donut filled for no file at all (the mixed profile that takes anything) has its name in the centre,
+    // which changes with it. Not filled again for every key typed.
+    private void RenamePreview()
+    {
+        if (_preview is { IsVisible: true } && _previewModel is { } model && Vm is { } vm && vm.SelectedProfile?.Profile is { } profile
+            && RadialViewModel.PreviewFormats(profile).Count == 0 && HeldGroup(vm, out _) != RadialViewModel.ExampleGroupId)
+            model.CenterTitle = Loc.DisplayName(profile);
+    }
 
     /// <summary>
     /// The group the donut on screen holds open, and the face it is on (<paramref name="back"/>): the one open in the
