@@ -5,7 +5,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB) and the icon of a Windows program or library (EXE, DLL) read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
@@ -107,6 +107,12 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   SHA-256 before the first one is unpacked, so a missing or wrong file leaves the package as it was. Only the
   downloads are taken, never an installed engine folder: an unpacked and trimmed folder has nothing pinned to check
   it against. The other computer needs the same Filee version (the same engines.json).
+- Downloads (engines, OCR languages, update checks, links dragged from a browser) go through the proxy in
+  Settings → *General* → *Network* when one is set (`AppSettings.Proxy`, `ProxySetting`): `http`, `https`, `socks4`,
+  `socks4a` or `socks5` with a host and port (`http://127.0.0.1:7890`), optionally with `user:password@`. It is for
+  Filee alone (#879), so the system can stay without a proxy, and the CLI reads the same setting. Empty: the system
+  proxy and `HTTPS_PROXY` / `NO_PROXY`, as before. Addresses on this computer and the local network (Ollama, an
+  intranet) never go through it, and logs show only its scheme, host and port.
 - Engines go to `%LOCALAPPDATA%\Filee\engines`: outside the app folder, so updates keep them, and inside Filee's
   install root, so uninstalling removes them.
 - LibreOffice and calibre come as MSIs and are unpacked with an administrative install (`msiexec /a`): files only,
@@ -263,7 +269,10 @@ in it also builds the package (artifact `windows-arm64-package`).
 - **More raster formats** through ImageMagick's own coders, each checked against `MagickNET.SupportedFormats` and
   converted there and back in `ImageFormatTests`: QOI, MNG (animated), DDS (DXT block compression, which is lossy; of
   a texture with mipmaps the largest image is read; uncompressed 32-bit pixels stored R, G, B, A, which ImageMagick
-  reads with red and blue swapped, are swapped back when converting and in the crop tool), PCX, CUR (at most 256 × 256, larger pictures are scaled down), XPM,
+  reads with red and blue swapped, are swapped back when converting and in the crop tool), PCX, CUR (at most 256 × 256, larger pictures are scaled down; ImageMagick writes it as an icon, type 1, whose
+  directory holds colour planes and bits per pixel where Windows reads the hotspot, so `CursorFile` makes every .cur a
+  real cursor, type 2, clicking at the top left corner, or, from a CUR or ANI, where the source's hotspot is once the
+  picture is resized, turned or mirrored), XPM,
   XBM and WBMP (1-bit), PAM, PFM, SGI (`.sgi`, `.rgb`, `.rgba`, `.bw`, always read as SGI; ImageMagick would take
   `.rgb` for headerless pixels), Sun Raster (`.ras`, `.sun`) and MIFF. XBM, WBMP, PFM, PCX and Sun Raster are written
   without transparency (flattened onto the preset's background): PFM has none, and the alpha planes ImageMagick can
@@ -358,6 +367,16 @@ in it also builds the package (artifact `windows-arm64-package`).
   sizes; then, as for every other target, the largest size is converted. A file without an icon of its own, or a
   16-bit or damaged one, gives a clear error. Programs are converted only when dropped or named: watch folders and
   folders given to the command line skip them, and Recent conversions never opens one.
+- **ANI** (a Windows animated cursor, #1365) is read by Filee itself (`Ani`): a RIFF file whose frames are whole .cur or
+  .ico files, each decoded by ImageMagick at its largest size. To GIF, APNG, WebP and the other animated targets every
+  step plays in the order of its `seq ` chunk (frames can come back), for the time its `rate` chunk or the header gives
+  (jiffies of 1/60 s, rounded to hundredths), looping forever; other targets get the first step. To **CUR** the first
+  frame is written as stored, every size and its hotspot; a preset that changes the picture converts it, and the
+  hotspot follows it when it is resized, turned or mirrored (trimmed or set on a background, it goes to the top left
+  corner; see CUR above). Files are read in memory with their sizes checked (at most 64 MB, 1,024 frames, 4,096
+  steps, 32 sizes a frame, 1,024 px a side, and a pixel budget for all sizes and steps together, checked before
+  ImageMagick decodes anything); frames stored as raw bitmaps (no `AF_ICON` flag, which Windows' own loaders hardly use) and
+  damaged files give a clear error.
 - **Live / Motion Photos from a video** (JPG and HEIC targets) are FFmpeg's: the clip and the photo's frame come from
   it, ImageMagick or the HEIC writer only encode that frame (see *Making Live / Motion Photos* there).
 - **Camera RAW** (DNG, CR2, CR3, NEF, ARW, …, and `.raw`) is decoded by LibRaw with the camera's white balance,
@@ -946,6 +965,11 @@ in the preset library only). Video and audio need FFmpeg.
   into one M4A, so no encoder padding or gap is left between files. Both are in `Media/MediaJoining.cs`.
   As a special case, a pair of self-contained `.m4s` files, one with only video and one with only audio, is muxed
   together into one MP4 without re-encoding (in either order). Both codecs and the preset's settings must allow copying.
+  Other files without pictures dropped with the videos (#1402) are music: in their order, one after another, cut where
+  the videos end (fading out over 1 s when still playing), at 60 % under the videos' own sound or as recorded when they
+  have none. The pictures are still copied when they can be; only the sound is encoded. With "Loop music"
+  (`MediaOptions.LoopMusic`, chosen in the merge order window) songs shorter than the videos are first decoded into one
+  FLAC in the work folder, which then repeats with `-stream_loop -1`.
 - **Video from images**: each picture is fitted into 1920 × 1080 as a JPEG, then shown for the preset's seconds with
   crossfades (`xfade`) of 1 s, at most half a picture's time, or cuts. At most `MediaOptions.MaxSlides` (300)
   pictures, not counting downloads that failed; the queue refuses more before any is converted. A filter graph too
@@ -1559,6 +1583,13 @@ it suggests ranking calibre above the HWPX writer for e-books). The other engine
 minutes, Ghostscript 5, Pandoc 2 and calibre 10 (it made the 640-page novel's PDF in a minute).
 
 ## Archives
+
+Folders can be packed directly as ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2 or TAR.XZ. The Folders donut offers the existing
+ZIP preset (one archive per folder) and One ZIP (one archive containing all selected files/folders), alongside ISO.
+Other container formats can be added from the palette; single-file GZ/BZ2/XZ are not offered for folders.
+Folder contents are stored under the selected folder's name, retaining Unicode names and empty directories.
+7Z stages directory inputs through the same link-skipping copy used for renamed items, so nested symbolic links
+and junctions cannot add files outside the selected tree. Custom folder donut layouts are preserved on upgrade.
 
 The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) uses Filee's own copy of the 7-Zip console program
 (`7z.exe` + `7z.dll`, taken from the official x64 MSI with `msiexec /a` by `build/fetch-engines.ps1 -Only 7zip` and

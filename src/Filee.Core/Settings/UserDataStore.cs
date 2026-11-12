@@ -1121,9 +1121,18 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 83)
             changed |= LearnExtensions(profiles, out _, ["mpg4"]);
-        // v84: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put. (Schema 84 may be renumbered if
-        //      another change takes it first.)
-        if (from < 84)
+        // v84: restore folder compression (#1345) on the unchanged ISO-only default, preserving custom layouts.
+        if (from < 84 && profiles.FirstOrDefault(p => p.Id == "folders") is { } folders
+            && folders.PresetIds.SequenceEqual(new[] { "to-iso" }) && (folders.BackPresetIds?.Count ?? 0) == 0)
+        {
+            foreach (var id in new[] { "to-zip", "zip-all" })
+                if (presets.Any(p => p.Id == id)) { folders.PresetIds.Add(id); changed = true; }
+        }
+        // v85: Windows animated cursors (.ani, #1365) learn the images donut; custom claims stay put.
+        if (from < 85)
+            changed |= LearnExtensions(profiles, out _, ["ani"]);
+        // v86: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put.
+        if (from < 86)
             changed |= LearnExtensions(profiles, out _, ["pdn"]);
         return changed;
     }

@@ -31,19 +31,19 @@ public class PaintNetFormatTests
     }
 
     [Fact]
-    public void Version_83_libraries_learn_pdn_without_taking_custom_claims()
+    public void Version_85_libraries_learn_pdn_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var images = profiles.Single(p => p.Id == "images");
         images.Extensions.Remove("pdn");
-        Assert.True(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(85, presets, profiles));
         Assert.Contains("pdn", images.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(85, presets, profiles));
 
         images.Extensions.Remove("pdn");
         profiles.Insert(0, new ToolbarProfile { Id = "my-paint", Extensions = ["PDN"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(85, presets, profiles));
         Assert.DoesNotContain("pdn", images.Extensions); // the user's own donut has it
         Assert.Equal("my-paint", ProfileSelector.Select(profiles, ["drawing.pdn"])?.Id);
     }

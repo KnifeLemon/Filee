@@ -184,14 +184,16 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
 
     /// <summary>
     /// Reviews the order of a merge (<paramref name="preset"/>, when given, names the button). For "Merge images" the
-    /// layout is chosen too and written into <paramref name="preset"/>. Closing or cancelling starts no conversion.
+    /// layout is chosen too, for "Merge videos" the music, and written into <paramref name="preset"/>. Closing or
+    /// cancelling starts no conversion.
     /// <paramref name="keepOrder"/>: the files start in the order given (see <see cref="MergeOrderViewModel"/>).
     /// </summary>
     public async Task<IReadOnlyList<string>?> ChooseMergeOrderAsync(IReadOnlyList<string> files, Preset? preset = null, bool keepOrder = false)
     {
         _mergeOrder?.Close();
         var images = preset is { JoinsImages: true };
-        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder, loc);
+        var videos = preset is { JoinsIntoOneMedia: true, TargetFormat: "mp4", Media.Slideshow: false };
+        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder, loc, videos ? preset!.Media : null);
         var dialog = new MergeOrderWindow { DataContext = vm };
         if (preset is not null)
             dialog.StartMerge.Content = loc.DisplayName(preset);
@@ -200,6 +202,12 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             // Room for the layout below the list.
             dialog.Height = 690;
             dialog.MinHeight = 590;
+        }
+        else if (videos)
+        {
+            // Room for the music below the list.
+            dialog.Height = 640;
+            dialog.MinHeight = 580;
         }
         PrepareWindow(dialog);
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -214,6 +222,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         await closed.Task;
         if (dialog.Result is not null && images)
             vm.ApplyTo(preset!.Image);
+        if (dialog.Result is not null && videos)
+            vm.ApplyTo(preset!.Media);
         vm.Dispose();
         return dialog.Result;
     }
@@ -245,6 +255,54 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         dialog.Show();
         dialog.Activate();
         await closed.Task;
+        return dialog.Result;
+    }
+
+    private AskCompressionWindow? _askCompression;
+
+    internal AskCompressionWindow? AskCompression => _askCompression;
+
+    /// <summary>
+    /// "Choose the compression" (#1353) for the files dropped on <paramref name="preset"/>: the setting of each kind
+    /// among them and the size they will roughly come to, read from the files while the window is open. Null when
+    /// cancelled.
+    /// </summary>
+    public async Task<CompressionAnswer?> AskCompressionAsync(IReadOnlyList<string> files, Preset preset)
+    {
+        _askCompression?.Close();
+        var asked = files.Where(f => AskedCompression.KindOf(preset, f) is not null).ToList();
+        var sourceBytes = asked.Sum(f => File.Exists(f) ? new FileInfo(f).Length : 0);
+        var logger = services.GetService<ILogger<WindowService>>();
+        using var closing = new CancellationTokenSource();
+        var reading = Filee.Engines.CompressionEstimator.ReadAsync(asked, preset, logger, closing.Token);
+        using var vm = new AskCompressionViewModel(preset, asked, sourceBytes,
+            async (choice, ct) => await (await reading).EstimateAsync(choice, ct), loc);
+        var dialog = new AskCompressionWindow { DataContext = vm };
+        dialog.StartCompression.Content = loc.DisplayName(preset);
+        PrepareWindow(dialog);
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialog.Closed += (_, _) =>
+        {
+            if (_askCompression == dialog) _askCompression = null;
+            closed.TrySetResult();
+        };
+        _askCompression = dialog;
+        dialog.Show();
+        dialog.Activate();
+        await closed.Task;
+        // The pictures read for the estimate are let go once it is no longer shown, after the estimate under way ends.
+        vm.Dispose();
+        await closing.CancelAsync();
+        try
+        {
+            var estimator = await reading;
+            await Task.Run(estimator.Dispose);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (ex is not OperationCanceledException)
+                logger?.LogInformation(ex, "Reading the files for the compression estimate failed");
+        }
         return dialog.Result;
     }
 

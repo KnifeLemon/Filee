@@ -66,7 +66,8 @@
    named destinations and page-backed AcroForm fields. Fields with colliding names get a file-position prefix.
    "Compress into one archive" packs the dropped files, unconverted, with the archive engine (`IFileCombiner`).
    "Merge videos", "Merge audio" and "Video from images" join the files, in the order picked in the merge order
-   window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first. Like the
+   window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first, and audio
+   files dropped with videos are music under them (added in the same window, which also offers "Loop music"). Like the
    other one-file jobs, the output follows "subfolder only for several files", and a join that fails or is cancelled
    is undone by the job's allocator, which deletes only paths that were the job's own.
    "Merge images" puts the pictures, in the order picked in the same window (with their layout: one under another or
@@ -122,7 +123,10 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   private, carrier-grade NAT, link-local, unique local, multicast, `localhost` and `.local` names, IPv4 inside IPv6)
   is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
   `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
-  nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
+  nowhere. A connection to the user's proxy isn't checked, including the CONNECT tunnel the handler opens to an
+  https site through a proxy on this computer (`127.0.0.1:7890`); the names and numbers in the address still are.
+  The proxy is Settings → General → Network (`ProxySetting`, which never sends local addresses through it) or the
+  system's.
   "Allow links to this computer and the local network" (Settings → General, `BrowserDropSettings.AllowLocalNetwork`,
   off by default, read for each drop) lifts this for an intranet or a NAS. Those downloads go through an `HttpClient`
   of their own, so a pooled connection to a local address never serves a drop that may not go there.

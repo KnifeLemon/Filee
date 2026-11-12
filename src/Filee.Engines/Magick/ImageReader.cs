@@ -27,6 +27,8 @@ internal static class ImageReader
     {
         if (formatId == "apng")
             return Apng.Read(path);
+        if (formatId == "ani")
+            return Ani.Read(path);
         if (formatId == "dcm" && Dicom.TryRead(path) is { } scan)
             return scan;
         if (formatId == "livp")

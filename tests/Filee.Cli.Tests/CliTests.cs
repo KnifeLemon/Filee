@@ -20,6 +20,21 @@ namespace Filee.Cli.Tests;
 public sealed class CliTests : IDisposable
 {
     [Fact]
+    public async Task Folder_to_zip_keeps_the_folder_tree_instead_of_converting_its_individual_files()
+    {
+        Assert.SkipUnless(new Filee.Engines.Archives.ArchiveConverter().GetStatus().IsAvailable, "Bundled 7-Zip is required.");
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "photos.jpg")).FullName;
+        Directory.CreateDirectory(Path.Combine(folder, "empty"));
+        await File.WriteAllTextAsync(Path.Combine(folder, "input.txt"), "folder contents", TestContext.Current.CancellationToken);
+        var result = await Run("convert", folder, "--to", "zip", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        using var archive = System.IO.Compression.ZipFile.OpenRead(folder + ".zip");
+        Assert.NotNull(archive.GetEntry("photos.jpg/empty/"));
+        using var reader = new StreamReader(archive.GetEntry("photos.jpg/input.txt")!.Open());
+        Assert.Equal("folder contents", reader.ReadToEnd());
+    }
+
+    [Fact]
     public async Task Folder_to_iso_uses_the_folder_itself_and_preserves_a_dotted_name()
     {
         var folder = Directory.CreateDirectory(Path.Combine(_folder, "photos.jpg")).FullName;

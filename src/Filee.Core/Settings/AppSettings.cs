@@ -170,7 +170,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 84;
+    public const int CurrentSchemaVersion = 86;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -183,6 +183,13 @@ public sealed class AppSettings
     public bool ContextMenuEnabled { get; set; } = true;
 
     public bool CheckForUpdates { get; set; } = true;
+
+    /// <summary>
+    /// The proxy Filee's downloads go through (Settings → General → Network), such as <c>http://127.0.0.1:7890</c> or
+    /// <c>socks5://host:1080</c>; see <see cref="Web.ProxySetting"/>. Null or empty: the system proxy and HTTPS_PROXY.
+    /// Missing in older settings, which reads as empty, so it needs no schema step.
+    /// </summary>
+    public string? Proxy { get; set; }
 
     /// <summary>What closing the main window does. A value from a newer Filee reads as <see cref="CloseAction.Ask"/>.</summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<CloseAction>))]

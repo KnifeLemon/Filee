@@ -105,8 +105,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private static readonly HashSet<string> LosslessAudioTargets = ["wav", "flac", "aiff", "wv", "tta", "w64"];
 
     private static readonly int[] MaxHeightSteps = [0, 2160, 1440, 1080, 720, 480];
-    // 32-64 kbit/s: speech (Opus is still clear at 32 kbit/s mono), small files.
-    private static readonly int[] BitrateSteps = [0, 32, 48, 64, 96, 128, 192, 256, 320];
+    /// <summary>
+    /// The audio bitrates offered, 0 for the one the quality picks (also in the compression window, #1353). 32-64 kbit/s:
+    /// speech (Opus is still clear at 32 kbit/s mono), small files.
+    /// </summary>
+    internal static readonly int[] BitrateSteps = [0, 32, 48, 64, 96, 128, 192, 256, 320];
     private static readonly int[] SampleRateSteps = [0, 8000, 16000, 22050, 44100, 48000];
 
     private readonly Preset _original;
@@ -372,6 +375,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _renderDpi = _edit.Pdf.RenderDpi;
         _pageRange = _edit.Pdf.PageRange;
         _askPageRange = _edit.Pdf.AskPageRange;
+        _askCompression = _edit.AskCompression;
         _pageOutput = PageOutputChoices.First(c => c.Value == PageOutputs.Of(_edit.Pdf));
         _groupKind = GroupKinds.First(k => k.Value == PageOutputs.KindOf(_edit.Pdf));
         _groupSize = PageOutputs.SizeOf(_edit.Pdf);
@@ -525,7 +529,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
         nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
-        nameof(ShowAskPages), nameof(ShowAskPagesHint),
+        nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowAskCompressionImage), nameof(ShowAskCompressionMedia), nameof(ShowAskCompressionPdf),
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowVideoSplit), nameof(ShowVideoParts),
@@ -804,7 +808,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _webpLossless;
     [ObservableProperty] private bool _multiPageTiff;
     [ObservableProperty] private string _icoSizes;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowSourceBookmarks))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowSourceBookmarks), nameof(ShowAskCompressionPdf))]
     private bool _merge;
     [ObservableProperty] private bool _sourceBookmarks;
     [ObservableProperty] private double _marginMm;
@@ -1154,6 +1158,22 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowAskPages => ShowPdf && !(TargetId == "pdf" && Merge);
     public bool ShowAskPagesHint => ShowAskPages && AskPageRange;
 
+    /// <summary>
+    /// "Ask every time" for the compression (Preset.AskCompression, #1353), under the setting it asks for: the picture
+    /// quality, the video quality and audio bitrate, or the PDF level. Not for a merge (AskedCompression.Asks).
+    /// </summary>
+    [ObservableProperty]
+    private bool _askCompression;
+
+    /// <summary>
+    /// Only for the targets the window can estimate (AskedCompression.LossyImageTargets) or the source's own format:
+    /// a HEIC target keeps its quality slider, but would never open the window.
+    /// </summary>
+    public bool ShowAskCompressionImage => ShowImage && ShowQuality && !_original.JoinsImages
+        && (TargetId == BuiltInData.SameAsSource || AskedCompression.LossyImageTargets.Contains(TargetId));
+    public bool ShowAskCompressionMedia => !IsTool && ShowMediaQuality && !_original.JoinsIntoOneMedia;
+    public bool ShowAskCompressionPdf => ShowPdfCompression && !Merge;
+
     /// <summary>Compression is for PDF → PDF; Ghostscript and metadata only matter while it is on.</summary>
     public bool ShowPdfCompression => TargetId == "pdf" && !Recognizes;
 
@@ -1344,6 +1364,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         pdf.RenderDpi = Math.Clamp(RenderDpi, 36, 1200);
         pdf.PageRange = PageRange.Trim();
         pdf.AskPageRange = ShowAskPages && AskPageRange;
+        _original.AskCompression = AskCompression && (ShowAskCompressionImage || ShowAskCompressionMedia || ShowAskCompressionPdf);
         var (split, every, parts) = PageOutputs.Settings(PageOutput.Value, GroupKind.Value, GroupSize);
         pdf.SplitPages = split;
         // One PDF keeps the numbers of a split, as the pages window does, for when it is chosen again.

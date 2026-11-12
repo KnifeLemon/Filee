@@ -82,7 +82,7 @@ public static class FormatFields
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "zxp", "mcpack", "mcaddon",
             "mcworld", "mctemplate", "mrpack", "cab",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
-            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it"
+            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani"
         ]),
         (FormatGrade.Legacy,
         [
@@ -105,7 +105,7 @@ public static class FormatFields
         // Software work: raw image formats of graphics tools, app icons and cursors, config and data files, flat XML
         // ODF for version control, man pages, streaming segments, packages and compressed archives.
         ([
-            "ppm", "icns", "qoi", "cur", "xpm", "xbm", "pam", "pfm", "miff", "fodg", "fodt", "fods", "fodp", "man",
+            "ppm", "icns", "qoi", "cur", "ani", "xpm", "xbm", "pam", "pfm", "miff", "fodg", "fodt", "fods", "fodp", "man",
             "jsonl", "yaml", "toml", "har", "plist", "m4s", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz",
             "lz", "lzma", "jar", "zxp", "cab", "cpio", "deb", "rpm"
         ], ["developer"]),

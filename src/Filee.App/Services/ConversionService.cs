@@ -29,6 +29,9 @@ public sealed class ConversionService
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
     private readonly WebDownloader _downloader;
+    private readonly ToastLifetime<JobViewModel> _toastLifetime;
+    private readonly HashSet<JobViewModel> _visibleToasts = [];
+    private readonly HashSet<JobViewModel> _feedbackAfterDismiss = [];
     private readonly ILogger<ConversionService>? _log;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, JobViewModel> _byId = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<ConversionJob>> _waiting = new();
@@ -48,6 +51,7 @@ public sealed class ConversionService
         _loc = loc;
         _platform = platform;
         _downloader = downloader;
+        _toastLifetime = new ToastLifetime<JobViewModel>(Remove, (action, delay) => ScheduleToastDismissal(action, delay));
         _queue.JobUpdated += OnJobUpdated;
         _queue.JobFinished += OnJobFinished;
     }
@@ -55,8 +59,11 @@ public sealed class ConversionService
     /// <summary>All jobs that are running or finished recently, newest first. UI thread only.</summary>
     public ObservableCollection<JobViewModel> Jobs { get; } = [];
 
-    /// <summary>The subset shown in the toast window. UI thread only.</summary>
+    /// <summary>Requested toast cards, including those waiting for screen space. UI thread only.</summary>
     public ObservableCollection<JobViewModel> ToastJobs { get; } = [];
+
+    internal Func<Action, TimeSpan, IDisposable> ScheduleToastDismissal { get; set; } =
+        (action, delay) => DispatcherTimer.RunOnce(action, delay);
 
     /// <summary>
     /// Raised once (UI thread) when the user has had a few successful conversions and the toast has gone: time to
@@ -246,7 +253,19 @@ public sealed class ConversionService
     public void ShowInToast(JobViewModel vm)
     {
         if (Jobs.Contains(vm) && !ToastJobs.Contains(vm))
+        {
+            // A completed donut-ring job may already have a cleanup timer; queueing it pauses that timer.
+            _toastLifetime.SetVisible(vm, false);
             ToastJobs.Insert(0, vm);
+        }
+    }
+
+    /// <summary>The toast reports real layout visibility; waiting and hidden cards spend no dismissal time.</summary>
+    internal void SetToastVisible(JobViewModel vm, bool visible)
+    {
+        if (visible) _visibleToasts.Add(vm);
+        else _visibleToasts.Remove(vm);
+        _toastLifetime.SetVisible(vm, visible);
     }
 
     private void OnJobUpdated(object? sender, ConversionJob job)
@@ -274,9 +293,9 @@ public sealed class ConversionService
                 return;
             vm.Refresh();
             var keep = vm.HasErrors ? KeepErrors : KeepSuccess;
-            DispatcherTimer.RunOnce(() => Remove(vm), keep);
+            _toastLifetime.Finished(vm, keep, _visibleToasts.Contains(vm) || !ToastJobs.Contains(vm));
             if (!vm.HasErrors && CountSuccess(job))
-                DispatcherTimer.RunOnce(() => FeedbackDue?.Invoke(this, EventArgs.Empty), keep + TimeSpan.FromSeconds(1));
+                _feedbackAfterDismiss.Add(vm);
         });
     }
 
@@ -317,10 +336,14 @@ public sealed class ConversionService
 
     private void Remove(JobViewModel vm)
     {
+        _toastLifetime.Forget(vm);
+        _visibleToasts.Remove(vm);
         Jobs.Remove(vm);
         ToastJobs.Remove(vm);
         _byId.TryRemove(vm.Job.Id, out _);
         _watchJobs.TryRemove(vm.Job.Id, out _);
         _clipboardJobs.TryRemove(vm.Job.Id, out _);
+        if (_feedbackAfterDismiss.Remove(vm))
+            DispatcherTimer.RunOnce(() => FeedbackDue?.Invoke(this, EventArgs.Empty), TimeSpan.FromSeconds(1));
     }
 }

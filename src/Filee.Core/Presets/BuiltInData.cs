@@ -18,7 +18,7 @@ public static class BuiltInData
     public const string PdfAId = "pdf-a";
 
     /// <summary>Whether a conversion target accepts a folder directly.</summary>
-    public static bool SupportsFolderTarget(string target) => target == "iso";
+    public static bool SupportsFolderTarget(string target) => target is "iso" or "zip" or "7z" or "tar" or "tgz" or "tbz2" or "txz";
 
     /// <summary>Whether a preset accepts folders without converting their individual files.</summary>
     public static bool AcceptsFolders(Preset preset) => !preset.IsGroup
@@ -400,15 +400,17 @@ public static class BuiltInData
     [
         new()
         {
-            // Quality 75 like most photo apps' "smaller"; a JPEG saved below it stays at its own quality.
-            Id = "compress-image", NameKey = "preset.compress_image", TargetFormat = SameAsSource,
+            // Quality 75 like most photo apps' "smaller"; a JPEG saved below it stays at its own quality. The four
+            // "Compress" presets ask for the level on each drop (#1353): in a new install only, an existing library
+            // keeps them as they are.
+            Id = "compress-image", NameKey = "preset.compress_image", TargetFormat = SameAsSource, AskCompression = true,
             Image = { Quality = 75, MaxCompression = true, TiffCompression = TiffCompression.Zip },
             Output = { FileNamePattern = "{name}_compressed", OnlyIfSmaller = true },
         },
         new()
         {
             // H.264 at the Small quality, at most 1080p: plays everywhere, a fraction of a phone video's size.
-            Id = "compress-video", NameKey = "preset.compress_video", TargetFormat = "mp4",
+            Id = "compress-video", NameKey = "preset.compress_video", TargetFormat = "mp4", AskCompression = true,
             Media = { Quality = MediaQuality.Small, MaxHeight = 1080 }, Output = { FileNamePattern = "{name}_compressed", OnlyIfSmaller = true },
         },
         new()
@@ -429,7 +431,7 @@ public static class BuiltInData
         new()
         {
             // AAC at the Small quality: 128 kbit/s for stereo.
-            Id = "compress-audio", NameKey = "preset.compress_audio", TargetFormat = "m4a",
+            Id = "compress-audio", NameKey = "preset.compress_audio", TargetFormat = "m4a", AskCompression = true,
             Media = { Quality = MediaQuality.Small }, Output = { FileNamePattern = "{name}_compressed", OnlyIfSmaller = true },
         },
         new()
@@ -469,7 +471,7 @@ public static class BuiltInData
     [
         new()
         {
-            Id = "compress-pdf", NameKey = "preset.compress_pdf", TargetFormat = "pdf",
+            Id = "compress-pdf", NameKey = "preset.compress_pdf", TargetFormat = "pdf", AskCompression = true,
             Pdf = { Compression = PdfCompression.Ebook }, Output = { FileNamePattern = "{name}_compressed" },
         },
     ];
@@ -794,7 +796,7 @@ public static class BuiltInData
             Id = "folders",
             NameKey = "profile.folders",
             Extensions = [],
-            PresetIds = ["to-iso"],
+            PresetIds = ["to-iso", "to-zip", "zip-all"],
             BackPresetIds = [],
         };
         profiles.Insert(profiles.FindIndex(p => p.Id == "archives") + 1, folders);
