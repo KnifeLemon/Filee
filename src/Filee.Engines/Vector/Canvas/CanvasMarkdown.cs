@@ -76,15 +76,15 @@ internal static partial class CanvasMarkdown
             case CanvasNodeKind.Link:
                 return $"<{card.Content.Trim().Replace(">", "%3E", StringComparison.Ordinal)}>";
             default:
-            {
-                var name = Path.GetFileName(card.Content.Replace('\\', '/'));
-                var shown = Escape(CanvasFiles.IsNote(name) ? name[..^3] : name);
-                if (CanvasFiles.IsPicture(name) && files.Find(card.Content) is { } local && pictures?.Add(local) is { } link)
-                    return $"![{shown}]({link})";
-                var target = string.Join('/', card.Content.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString))
-                    + (card.Subpath ?? "");
-                return $"[{shown}]({target})";
-            }
+                {
+                    var name = Path.GetFileName(card.Content.Replace('\\', '/'));
+                    var shown = Escape(CanvasFiles.IsNote(name) ? name[..^3] : name);
+                    if (CanvasFiles.IsPicture(name) && files.Find(card.Content) is { } local && pictures?.Add(local) is { } link)
+                        return $"![{shown}]({link})";
+                    var target = string.Join('/', card.Content.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString))
+                        + (card.Subpath ?? "");
+                    return $"[{shown}]({target})";
+                }
         }
     }
 

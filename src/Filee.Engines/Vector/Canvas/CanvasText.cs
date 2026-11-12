@@ -108,11 +108,11 @@ internal sealed partial class CanvasText
         switch (block)
         {
             case HeadingBlock heading:
-            {
-                var size = _size * HeadingSizes[Math.Clamp(heading.Level, 1, 6) - 1];
-                Inlines(heading.Inline, left, width, new Style(Bold: true, Size: size, Color: _color));
-                break;
-            }
+                {
+                    var size = _size * HeadingSizes[Math.Clamp(heading.Level, 1, 6) - 1];
+                    Inlines(heading.Inline, left, width, new Style(Bold: true, Size: size, Color: _color));
+                    break;
+                }
             case ParagraphBlock paragraph:
                 Inlines(paragraph.Inline, left, width, new Style(Size: _size, Color: _color));
                 break;
@@ -120,12 +120,12 @@ internal sealed partial class CanvasText
                 List(list, left, width, depth);
                 break;
             case QuoteBlock quote when depth < MaxDepth:
-            {
-                var top = _y;
-                Blocks(quote, left + _size, width - _size, depth + 1);
-                _svg.Rect(left + 1, top, 2, Math.Min(_y, _bottom) - top, 0, CanvasColors.Accent);
-                break;
-            }
+                {
+                    var top = _y;
+                    Blocks(quote, left + _size, width - _size, depth + 1);
+                    _svg.Rect(left + 1, top, 2, Math.Min(_y, _bottom) - top, 0, CanvasColors.Accent);
+                    break;
+                }
             case CodeBlock code:
                 Code(code, left, width);
                 break;

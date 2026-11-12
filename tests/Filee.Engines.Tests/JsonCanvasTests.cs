@@ -296,7 +296,7 @@ public class JsonCanvasTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("""{"nodes":[1]}""")]
     public void A_damaged_canvas_gives_a_clear_error(string content)
     {
-        var error = Assert.Throws<InvalidDataException>(() => JsonCanvas.Parse(Encoding.UTF8.GetBytes(content)));
+        var error = Assert.Throws<InvalidDataException>(() => JsonCanvas.Parse(Encoding.UTF8.GetBytes(content), TestContext.Current.CancellationToken));
         Assert.StartsWith("The canvas file is damaged", error.Message);
     }
 
@@ -312,7 +312,7 @@ public class JsonCanvasTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void Budgets_are_checked_before_anything_is_laid_out()
     {
         static ConversionRefusedException Refused(string json) =>
-            Assert.Throws<ConversionRefusedException>(() => JsonCanvas.Parse(Encoding.UTF8.GetBytes(json)));
+            Assert.Throws<ConversionRefusedException>(() => JsonCanvas.Parse(Encoding.UTF8.GetBytes(json), TestContext.Current.CancellationToken));
 
         var many = string.Join(',', Enumerable.Range(0, JsonCanvas.MaxNodes + 1)
             .Select(i => $$"""{"id":"n{{i}}","type":"text","x":0,"y":0,"width":10,"height":10,"text":""}"""));
@@ -328,14 +328,14 @@ public class JsonCanvasTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Refused("""{"nodes":[{"id":"a","type":"group","x":0,"y":0,"width":99999,"height":99999},{"id":"b","type":"group","x":900000,"y":0,"width":10,"height":10}]}""").ErrorKey);
 
         Assert.Equal("error.canvas_too_large", Assert.Throws<ConversionRefusedException>(() =>
-            JsonCanvas.Parse(new byte[JsonCanvas.MaxFileBytes + 1])).ErrorKey);
+            JsonCanvas.Parse(new byte[JsonCanvas.MaxFileBytes + 1], TestContext.Current.CancellationToken)).ErrorKey);
     }
 
     [Fact]
     public void Deeply_nested_json_is_refused_without_a_stack_overflow()
     {
         var deep = """{"nodes":[],"x":""" + new string('[', 10_000) + new string(']', 10_000) + "}";
-        Assert.Throws<InvalidDataException>(() => JsonCanvas.Parse(Encoding.UTF8.GetBytes(deep)));
+        Assert.Throws<InvalidDataException>(() => JsonCanvas.Parse(Encoding.UTF8.GetBytes(deep), TestContext.Current.CancellationToken));
     }
 
     [Fact]
