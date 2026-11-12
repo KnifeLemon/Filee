@@ -44,6 +44,9 @@ public sealed class DonutItem
     /// <summary>Tooltip shown for disabled slices.</summary>
     public string? DisabledReason { get; init; }
 
+    /// <summary>A runnable slice's operation differs from its name, shown in the hub, not as an error.</summary>
+    public string? OrdinaryConversionNotice { get; init; }
+
     /// <summary>
     /// A group slice: converts nothing itself; hovering it fans these out in a small ring outside the donut, where they
     /// are clicked or dropped on like ordinary slices.
@@ -89,6 +92,8 @@ public sealed partial class DonutMenu : Control
         AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterTitle));
     public static readonly StyledProperty<string?> CenterSubtitleProperty =
         AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterSubtitle));
+    public static readonly StyledProperty<string?> CenterNoticeProperty =
+        AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterNotice));
     public static readonly StyledProperty<bool> IsEditModeProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(IsEditMode));
     public static readonly StyledProperty<bool> AllowContextEditProperty =
@@ -172,7 +177,7 @@ public sealed partial class DonutMenu : Control
     static DonutMenu()
     {
         AffectsMeasure<DonutMenu>(OuterRadiusProperty, ReserveSubRingProperty, GroupRingSizeProperty);
-        AffectsRender<DonutMenu>(HoleRatioProperty, SliceOpacityProperty, CenterTitleProperty, CenterSubtitleProperty,
+        AffectsRender<DonutMenu>(HoleRatioProperty, SliceOpacityProperty, CenterTitleProperty, CenterSubtitleProperty, CenterNoticeProperty,
             IsEditModeProperty, SliceBrushProperty, SliceBorderBrushProperty, CenterBrushProperty, AccentBrushProperty,
             OnAccentBrushProperty, ForegroundProperty, SecondaryForegroundProperty, SuccessBrushProperty, CornerRadiusProperty,
             CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty,
@@ -201,6 +206,7 @@ public sealed partial class DonutMenu : Control
     public double SliceOpacity { get => GetValue(SliceOpacityProperty); set => SetValue(SliceOpacityProperty, value); }
     public string? CenterTitle { get => GetValue(CenterTitleProperty); set => SetValue(CenterTitleProperty, value); }
     public string? CenterSubtitle { get => GetValue(CenterSubtitleProperty); set => SetValue(CenterSubtitleProperty, value); }
+    public string? CenterNotice { get => GetValue(CenterNoticeProperty); set => SetValue(CenterNoticeProperty, value); }
 
     /// <summary>Settings editor mode: shows ✎ on hover, raises drag and edit events instead of invoking slices.</summary>
     public bool IsEditMode { get => GetValue(IsEditModeProperty); set => SetValue(IsEditModeProperty, value); }
@@ -1072,12 +1078,21 @@ public sealed partial class DonutMenu : Control
         using var scaled = context.PushTransform(Matrix.CreateTranslation(-center.X, -center.Y) * Matrix.CreateScale(scale, scale) *
                                                  Matrix.CreateTranslation(center.X, center.Y));
         var maxWidth = radius * 1.6 / scale;
-        var title = CachedText(CenterTitle ?? "", bold, 14, Foreground, maxWidth, maxLines: 2);
-        var subtitle = CachedText(CenterSubtitle ?? "", regular, 11.5, cancelHot ? DangerBrush : SecondaryForeground, maxWidth, maxLines: 2);
+        var notice = !string.IsNullOrEmpty(CenterNotice);
+        var title = notice
+            ? CachedText(CenterNotice!, regular, 11.5, Foreground, maxWidth, maxLines: int.MaxValue)
+            : CachedText(CenterTitle ?? "", bold, 14, Foreground, maxWidth, maxLines: 2);
+        var subtitle = CachedText(CenterSubtitle ?? "", regular, 11.5, cancelHot ? DangerBrush : SecondaryForeground,
+            maxWidth, maxLines: notice ? int.MaxValue : 2);
         // "⟳ Tab back": small, under the rest, a little narrower (the hub is round), with room for its icons.
         var hintIcons = FlipArrowSize + (CenterHintWheel ? MouseWidth + MouseGap : 0) + IconGap;
         var hint = string.IsNullOrEmpty(CenterHint) ? null : CachedText(CenterHint, regular, 10.5, SecondaryForeground, maxWidth * 0.85 - hintIcons);
         var total = title.Height + (string.IsNullOrEmpty(CenterSubtitle) ? 0 : subtitle.Height + 2) + (hint is null ? 0 : hint.Height + 5);
+        // The notice replaces the file count. Keep both it and the action hint complete, including in a small hub.
+        var width = Math.Max(Math.Max(title.Width, subtitle.Width), hint is null ? 0 : hint.Width + hintIcons);
+        var fitScale = notice ? Math.Min(1, radius * 1.9 / scale / Math.Sqrt(width * width + total * total)) : 1;
+        using var fit = context.PushTransform(Matrix.CreateTranslation(-center.X, -center.Y)
+            * Matrix.CreateScale(fitScale, fitScale) * Matrix.CreateTranslation(center.X, center.Y));
         var y = center.Y - total / 2;
         DrawCentered(context, title, center.X, y);
         y += title.Height;

@@ -436,6 +436,48 @@ public class JobQueueTests
         Assert.Equal(("error.too_many_frames", "216,000 > 100,000"), (file.ErrorKey, file.ErrorDetail));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task A_mixed_drop_selects_extraction_per_source_and_does_not_retry_a_refused_motion_photo(bool motion, bool refused)
+    {
+        using var dir = new TempDir();
+        var from = motion ? "jpg" : "mp4";
+        var target = motion ? "mp4" : "jpg";
+        var named = dir.File("named." + from);
+        var plain = dir.File("plain.png");
+        var special = new FakeConverter("extraction", new ConversionEdge(from, target, FrameSequence: !motion, MotionPhoto: motion))
+        {
+            Failure = refused ? new ConversionRefusedException("error.no_motion_photo") : null,
+        };
+        var ordinary = new FakeConverter("ordinary", new ConversionEdge(from, target), new ConversionEdge("png", target));
+        await using var queue = new JobQueue(new ConverterCatalog([special, ordinary]));
+        var preset = new Preset { TargetFormat = target, Media = { SaveEveryFrame = !motion, ExtractMotionPhoto = motion } };
+
+        var job = await Run(queue, [named, plain], preset);
+
+        Assert.Equal([named], special.OriginalSources);
+        Assert.Equal([plain], ordinary.OriginalSources);
+        var namedResult = job.Files.Single(f => f.SourcePath == named);
+        var plainResult = job.Files.Single(f => f.SourcePath == plain);
+        Assert.Equal(FileState.Done, plainResult.State);
+        Assert.EndsWith("by ordinary", File.ReadAllText(Assert.Single(plainResult.Outputs)));
+        if (refused)
+        {
+            Assert.Equal(JobState.CompletedWithErrors, job.State);
+            Assert.Equal(FileState.Failed, namedResult.State);
+            Assert.Equal("error.no_motion_photo", namedResult.ErrorKey);
+            Assert.Empty(namedResult.Outputs);
+        }
+        else
+        {
+            Assert.Equal(JobState.Completed, job.State);
+            Assert.Equal(FileState.Done, namedResult.State);
+            Assert.EndsWith("by extraction", File.ReadAllText(Assert.Single(namedResult.Outputs)));
+        }
+    }
+
     [Fact]
     public async Task Multi_step_route_keeps_intermediates_out_of_the_output_folder()
     {
