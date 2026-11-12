@@ -1403,6 +1403,26 @@ public class DonutEditorTests
             RenderTests.Pump();
             Assert.Equal((start, width), (window.Position, window.ClientSize.Width));
 
+            // Narrowed, maximized, and the page left meanwhile: a normal window again, it gets its own width back, and
+            // closing remembers that width.
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.True(window.ClientSize.Width < width - 1);
+            window.WindowState = WindowState.Maximized;
+            RenderTests.Pump();
+            ((MainWindowViewModel)window.DataContext!).Navigate("general");
+            RenderTests.Pump();
+            Assert.Null(main.RestPlace);
+            window.WindowState = WindowState.Normal;
+            RenderTests.Pump();
+            Assert.Equal(width, window.ClientSize.Width);
+            Assert.Equal(width, WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null).Size!.Value.Width);
+            window.Position = start;
+            ((MainWindowViewModel)window.DataContext!).Navigate("toolbar");
+            RenderTests.Pump();
+            page = window.GetVisualDescendants().OfType<ToolbarPage>().Single();
+            vm = (ToolbarPageViewModel)page.DataContext!;
+
             // Narrowed to a width a device pixel short (Windows truncates to whole pixels: up to 0.8 short at 125 %,
             // one here at 100 %), and placed where an X11 window manager reports it only later (its landing read as
             // where it was): still its own width and place back on Done, and on close meanwhile.

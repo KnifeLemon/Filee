@@ -21,6 +21,19 @@ public partial class MainWindow : Window
         InitializeComponent();
         Motion.Track(this);
         UiZoom.Track(this);
+        PropertyChanged += (_, e) =>
+        {
+            // Once its normal size is in (some systems report the state first).
+            if (e.Property == WindowStateProperty && WindowState == WindowState.Normal && WidthOwed is not null)
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (WindowState == WindowState.Normal && WidthOwed is { } width)
+                    {
+                        WidthOwed = null;
+                        Width = width;
+                    }
+                }, DispatcherPriority.Background);
+        };
     }
 
     private async void OnOpenGitHub(object? sender, RoutedEventArgs e)
@@ -108,6 +121,12 @@ public partial class MainWindow : Window
     /// and closing remembers that rather than <see cref="RestPlace"/>'s place.
     /// </summary>
     internal PixelPoint? Landed { get; set; }
+
+    /// <summary>
+    /// Its own width, while it is maximized or minimized after Settings → Donut toolbar made it narrower and was left
+    /// meanwhile: it gets it back once it is a normal window again, and closing remembers it.
+    /// </summary>
+    internal double? WidthOwed { get; set; }
 
     /// <summary>Where it was sent, moving over (null on its way back).</summary>
     internal PixelPoint? SlidTo { get; set; }

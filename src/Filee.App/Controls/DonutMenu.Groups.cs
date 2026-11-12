@@ -233,9 +233,10 @@ public sealed partial class DonutMenu
 
     /// <summary>
     /// Keyboard (click mode): arrows move around the donut, Enter converts or opens a group; in a group's ring the
-    /// arrows move between its slices, Enter converts and Esc / Backspace go back to the donut. The flip key
-    /// (<see cref="FlipKey"/>, Tab by default; with Shift or any other modifier too) flips the donut to its other face
-    /// (<see cref="Flip"/>). Returns false for keys left to the window (Esc on the donut closes it).
+    /// arrows move between its slices, Enter converts and Esc / Backspace go back to the donut (not from a ring held
+    /// open, <see cref="HeldGroupId"/>: they are left to the window). The flip key (<see cref="FlipKey"/>, Tab by
+    /// default; with Shift or any other modifier too) flips the donut to its other face (<see cref="Flip"/>). Returns
+    /// false for keys left to the window (Esc on the donut closes it).
     /// </summary>
     public bool HandleKey(Key key, KeyModifiers modifiers = KeyModifiers.None)
     {

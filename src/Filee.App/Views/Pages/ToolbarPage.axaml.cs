@@ -348,8 +348,8 @@ public partial class ToolbarPage : UserControl
     private static List<PreviewScreen> ScreensOf(Window window) =>
         window.Screens.All.Select(s => new PreviewScreen(s.WorkingArea, ScalingOf(s))).ToList();
 
-    private static PixelRect FrameOf(Window window) =>
-        new(window.Position, PixelSize.FromSize(window.FrameSize ?? window.Bounds.Size, ScalingOf(window.Screens.ScreenFromWindow(window))));
+    private static PixelRect FrameOf(Window window) => new(window.Position,
+        PixelSize.FromSize(window.FrameSize ?? window.Bounds.Size, ScalingOf(window.Screens.ScreenFromWindow(window) ?? window.Screens.Primary)));
 
     /// <summary>
     /// Puts the donut on screen where <see cref="DonutPreviewPlacement"/> says, moving this window over first when it
@@ -373,8 +373,8 @@ public partial class ToolbarPage : UserControl
             ? (int)Math.Ceiling((main.MinWidth + frame.Width - main.ClientSize.Width) * scaling)
             : null;
         // With nothing else left, it goes over the navigation and the profile list, which neither Edit Donut Size nor
-        // an open group uses, and which are wider than Available presets: the panel's Done and its values stay clear.
-        // They are on the right in Arabic.
+        // an open group needs while the donut is tried out, and which are wider than Available presets: the panel's
+        // Done and its values stay clear. They are on the right in Arabic.
         var overRight = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft;
         var place = DonutPreviewPlacement.Place(window, screens, index, current, dragged, minWidth, overRight);
         if (place.MovedWindow is { } moved)
@@ -639,8 +639,11 @@ public partial class ToolbarPage : UserControl
         if (_topLevel is MainWindow { RestPlace: not null } away)
         {
             // Maximized or minimized meanwhile: nothing is left to put it back once it is a normal window again, so
-            // where it moved to is where it is, and where closing remembers.
+            // where it moved to is where it is, and where closing remembers; made narrower, it gets its own width back
+            // then all the same (MainWindow.WidthOwed).
             StopSlide();
+            if (_narrowedTo is not null)
+                away.WidthOwed = away.RestPlace.Value.ClientSize.Width;
             away.RestPlace = null;
             SlidTo = LandedAt = null;
             _narrowedTo = null;
