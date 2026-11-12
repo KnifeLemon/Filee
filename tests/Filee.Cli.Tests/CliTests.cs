@@ -10,6 +10,9 @@ using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Tests;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.Advanced;
+using PdfSharp.Pdf.IO;
 
 namespace Filee.Cli.Tests;
 
@@ -103,6 +106,99 @@ public sealed class CliTests : IDisposable
         return path;
     }
 
+    [Fact]
+    public async Task Source_bookmarks_saved_presets_control_real_merged_outlines()
+    {
+        var day = new DateTime(2024, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+        var a = SizedPdf("A.pdf", 200, day);
+        var b = SizedPdf("B.pdf", 300, day);
+        AddChapter(a, "A chapter", addPage: true);
+        AddChapter(b, "B chapter", addPage: false);
+        AddPresets(
+            new Preset { Id = "bookmarks-on", TargetFormat = "pdf", Pdf = { MergeIntoSingle = true, SourceBookmarks = true } },
+            new Preset { Id = "bookmarks-off", TargetFormat = "pdf", Pdf = { MergeIntoSingle = true } });
+        var presetsPath = Path.Combine(_settings, "presets.json");
+        var saved = File.ReadAllBytes(presetsPath);
+
+        foreach (var enabled in new[] { true, false })
+        {
+            var mode = enabled ? "on" : "off";
+            var output = Path.Combine(_folder, mode);
+            var result = await Run("convert", a, b, "--preset", $"bookmarks-{mode}", "-o", output);
+            Assert.True(result.Code == 0, result.Errors + result.Output);
+            Assert.Equal(saved, File.ReadAllBytes(presetsPath));
+            using var merged = PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfDocumentOpenMode.Import);
+            Assert.Equal(3, merged.PageCount);
+            var outlines = Dictionary(merged.Internals.Catalog.Elements["/Outlines"]);
+            var first = Dictionary(outlines.Elements["/First"]);
+            var second = Dictionary(first.Elements["/Next"]);
+            Assert.Null(second.Elements["/Next"]);
+            if (enabled)
+            {
+                Assert.Equal("A.pdf", first.Elements.GetString("/Title"));
+                Assert.Equal("B.pdf", second.Elements.GetString("/Title"));
+                PointsAt(first, merged, 0);
+                PointsAt(second, merged, 2);
+                var aChapter = Dictionary(first.Elements["/First"]);
+                var bChapter = Dictionary(second.Elements["/First"]);
+                Assert.Equal("A chapter", aChapter.Elements.GetString("/Title"));
+                Assert.Equal("B chapter", bChapter.Elements.GetString("/Title"));
+                PointsAt(aChapter, merged, 1);
+                PointsAt(bChapter, merged, 2);
+                Assert.Null(aChapter.Elements["/Next"]);
+                Assert.Null(bChapter.Elements["/Next"]);
+            }
+            else
+            {
+                Assert.Equal("A chapter", first.Elements.GetString("/Title"));
+                Assert.Equal("B chapter", second.Elements.GetString("/Title"));
+                PointsAt(first, merged, 1);
+                PointsAt(second, merged, 2);
+                Assert.Null(first.Elements["/First"]);
+                Assert.Null(second.Elements["/First"]);
+            }
+        }
+
+        var store = new UserDataStore(_settings);
+        store.Load();
+        Assert.True(store.Presets.Single(preset => preset.Id == "bookmarks-on").Pdf.SourceBookmarks);
+        Assert.False(store.Presets.Single(preset => preset.Id == "bookmarks-off").Pdf.SourceBookmarks);
+
+        static PdfDictionary Dictionary(PdfItem? item) =>
+            Assert.IsAssignableFrom<PdfDictionary>(item is PdfReference reference ? reference.Value : item);
+
+        static void PointsAt(PdfDictionary outline, PdfDocument document, int page)
+        {
+            var destination = Assert.IsType<PdfArray>(outline.Elements["/Dest"]);
+            Assert.Equal(2, destination.Elements.Count);
+            Assert.Equal(document.Pages[page].Reference!.ObjectID, Assert.IsType<PdfReference>(destination.Elements[0]).ObjectID);
+            Assert.Equal("/Fit", Assert.IsType<PdfName>(destination.Elements[1]).Value);
+        }
+
+        static void AddChapter(string path, string title, bool addPage)
+        {
+            using var document = PdfReader.Open(path, PdfDocumentOpenMode.Modify);
+            if (addPage)
+                document.AddPage();
+            var root = new PdfDictionary(document);
+            var chapter = new PdfDictionary(document);
+            document.Internals.AddObject(root);
+            document.Internals.AddObject(chapter);
+            var destination = new PdfArray(document);
+            destination.Elements.Add(document.Pages[addPage ? 1 : 0].Reference!);
+            destination.Elements.Add(new PdfName("/Fit"));
+            chapter.Elements["/Title"] = new PdfString(title);
+            chapter.Elements["/Dest"] = destination;
+            chapter.Elements["/Parent"] = root.Reference;
+            root.Elements["/Type"] = new PdfName("/Outlines");
+            root.Elements["/First"] = chapter.Reference;
+            root.Elements["/Last"] = chapter.Reference;
+            root.Elements["/Count"] = new PdfInteger(1);
+            document.Internals.Catalog.Elements["/Outlines"] = root.Reference;
+            document.Save(path);
+        }
+    }
+
     [Theory]
     [InlineData("name", new[] { 200d, 300d, 400d })]
     [InlineData("name-desc", new[] { 400d, 300d, 200d })]
@@ -153,6 +249,34 @@ public sealed class CliTests : IDisposable
         string[] args = value is null ? ["convert", "a.pdf", "--to", "pdf", option] : ["convert", "a.pdf", "--to", "pdf", option, value];
         Assert.StartsWith(error, CliOptions.Parse(args).Error);
     }
+
+    /// <summary>--split-every with a length (#1259): parts of a video; a plain number stays pages of a PDF.</summary>
+    [Theory]
+    [InlineData("50", 50, null)]
+    [InlineData("90s", null, 90)]
+    [InlineData("10m", null, 600)]
+    [InlineData("10min", null, 600)]
+    [InlineData("2.5m", null, 150)]
+    [InlineData("1h30m", null, 5400)]
+    [InlineData("1H", null, 3600)]
+    [InlineData("10:00", null, 600)]
+    [InlineData("1:30:00", null, 5400)]
+    public void Split_every_takes_pages_or_a_length_of_video(string value, int? pages, int? seconds)
+    {
+        var options = CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", value]);
+        Assert.Null(options.Error);
+        Assert.Equal((pages, seconds), (options.SplitEvery, options.SplitEverySeconds));
+    }
+
+    [Theory]
+    [InlineData("10x")]
+    [InlineData("m")]
+    [InlineData("1:2:3:4")]
+    [InlineData("0s")]
+    [InlineData("25h")]
+    [InlineData("-5m")]
+    public void Split_every_refuses_what_is_neither_pages_nor_a_length(string value) =>
+        Assert.StartsWith("--split-every must be", CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", value]).Error);
 
     [Fact]
     public void Sort_is_refused_by_watch_rather_than_ignored() =>
@@ -421,6 +545,12 @@ public sealed class CliTests : IDisposable
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "0" }, "--split-every")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-parts", "1" }, "--split-parts")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "5", "--split-parts", "2" }, "either --split-every or --split-parts")]
+    [InlineData(new[] { "convert", "a.png", "--to", "mp4", "--split-every", "10m", "--split-parts", "2" }, "either --split-every or --split-parts")]
+    // Pages for a video, or a length for a PDF, would split nothing (#1259).
+    [InlineData(new[] { "convert", "a.png", "--to", "mp4", "--split-every", "10" }, "Give a length, e.g. 10s or 10m")]
+    [InlineData(new[] { "convert", "a.png", "--to", "mkv", "--split-every", "3" }, "--split-every 3 is a number of pages, but this makes videos")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "10m" }, "--split-every 10m is a length of video, but this makes PDFs")]
+    [InlineData(new[] { "convert", "a.png", "--preset", "pdf-split", "--split-every", "1:30" }, "Give a number of pages")]
     [InlineData(new[] { "frobnicate" }, "Unknown command")]
     public async Task Wrong_arguments_explain_themselves_with_exit_code_2(string[] args, string message)
     {
@@ -1474,7 +1604,7 @@ public sealed class CliTests : IDisposable
 
     private sealed class UnexpectedMerger : IPdfMerger, ITiffMerger, IMediaJoiner
     {
-        public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken) =>
+        public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Unexpected PDF merge");
         public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, ImageOptions options, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Unexpected TIFF merge");

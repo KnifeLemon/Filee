@@ -62,6 +62,7 @@ public sealed class ArchiveIsoTests : IDisposable
     [InlineData("alz")]
     [InlineData("egg")]
     [InlineData("jar")]
+    [InlineData("zxp")]
     public async Task Archives_become_iso_with_nested_unicode_files_and_empty_directories(string format)
     {
         Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
@@ -76,7 +77,7 @@ public sealed class ArchiveIsoTests : IDisposable
             Directory.CreateDirectory(Path.Combine(tree, "nested"));
             Directory.CreateDirectory(Path.Combine(tree, "empty"));
             File.WriteAllText(Path.Combine(tree, "nested", "한글.txt"), "contents");
-            await new ArchiveConverter().CombineAsync(Directory.GetFileSystemEntries(tree), input, format == "jar" ? "zip" : format,
+            await new ArchiveConverter().CombineAsync(Directory.GetFileSystemEntries(tree), input, format is "jar" or "zxp" ? "zip" : format,
                 new Preset(), _root, null, TestContext.Current.CancellationToken);
         }
         var original = File.ReadAllBytes(input);

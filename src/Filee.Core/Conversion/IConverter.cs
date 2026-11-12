@@ -242,10 +242,15 @@ public interface IEnvelopeOpener
     string InnerFormat(string path, string format);
 }
 
+/// <summary>A PDF to merge and the name of its original source file.</summary>
+/// <param name="PdfPath">The PDF path, possibly produced by conversion or OCR.</param>
+/// <param name="SourceName">The original source's basename, including its extension, without directories.</param>
+public sealed record PdfMergeInput(string PdfPath, string SourceName);
+
 /// <summary>Merges several PDF files into one. Implemented by the PDF engine.</summary>
 public interface IPdfMerger
 {
-    Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken);
+    Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -257,6 +262,21 @@ public interface IPdfFinisher
 {
     /// <summary>Rewrites <paramref name="path"/> in place.</summary>
     Task FinishAsync(string path, Presets.PdfOptions options, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Makes a finished PDF a PDF/A (<see cref="Presets.DocumentOptions.PdfA"/>). Implemented by the Ghostscript engine;
+/// <see cref="JobQueue"/> runs it after the finishing on every PDF a job writes, whichever engine made it, and on a
+/// merged PDF once, so the box means the same for every route.
+/// </summary>
+public interface IPdfArchiver
+{
+    /// <summary>
+    /// Rewrites <paramref name="path"/> in place as PDF/A, unless it already is one and <paramref name="changed"/> is
+    /// false (LibreOffice and Skia write PDF/A themselves; a watermark added since breaks it).
+    /// </summary>
+    /// <returns>False when it can't (Ghostscript isn't installed): the PDF is left as it is.</returns>
+    Task<bool> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken);
 }
 
 /// <summary>

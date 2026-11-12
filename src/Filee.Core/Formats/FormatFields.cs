@@ -79,17 +79,17 @@ public static class FormatFields
             "fodt", "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
             "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
-            "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "mcpack", "mcaddon",
+            "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "zxp", "mcpack", "mcaddon",
             "mcworld", "mctemplate", "mrpack", "cab",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
-            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm"
+            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it"
         ]),
         (FormatGrade.Legacy,
         [
             "mng", "pcx", "wbmp", "sgi", "ras", "pcd", "wmf", "dot", "wpd", "lwp", "sdw", "cwk", "mcw", "602", "psw",
             "xlt", "sdc", "sda", "mobi", "azw", "azw4", "prc", "lit", "lrf", "pdb", "pml", "rb", "snb", "tcr", "oeb",
             "flv", "3gp", "3g2", "vob", "mod", "rm", "swf", "wtv", "flc", "amr", "au", "voc", "mpc", "spx", "tz", "z",
-            "lha", "arj", "eot", "fon", "sub"
+            "lha", "arj", "eot", "fon", "sub", "s3m"
         ]),
     ]);
 
@@ -107,7 +107,7 @@ public static class FormatFields
         ([
             "ppm", "icns", "qoi", "cur", "xpm", "xbm", "pam", "pfm", "miff", "fodg", "fodt", "fods", "fodp", "man",
             "jsonl", "yaml", "toml", "har", "plist", "m4s", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz",
-            "lz", "lzma", "jar", "cab", "cpio", "deb", "rpm"
+            "lz", "lzma", "jar", "zxp", "cab", "cpio", "deb", "rpm"
         ], ["developer"]),
         // Markup sources, papers and outlines, maintenance-doc drawings (CGM), Calibre's ebook formats.
         (["cgm", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "textile", "htmlz", "txtz"], ["writing"]),
@@ -139,8 +139,10 @@ public static class FormatFields
         (["pcd"], ["legacy", "design"]),
         // FLIC: Autodesk Animator's animations, also the cutscenes of DOS games.
         (["flc"], ["legacy", "game"]),
-        // Musepack.
-        (["mpc"], ["legacy", "audio-pro"]),
+        // Musepack, and Scream Tracker 3 modules, which Impulse Tracker's IT replaced.
+        (["mpc", "s3m"], ["legacy", "audio-pro"]),
+        // Tracker modules: made in trackers (MilkyTracker, OpenMPT) by musicians, also for game soundtracks.
+        (["xm", "it"], ["audio-pro", "game"]),
         // EOT gave way to WOFF, FON to TrueType.
         (["eot", "fon"], ["legacy", "font"]),
         // Alpha-channel image sequences in video and motion graphics, as well as game textures.

@@ -48,21 +48,26 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     public Task FinishAsync(string path, PdfOptions options, CancellationToken cancellationToken) =>
         Task.Run(() => PdfFinishing.Finish(path, options, cancellationToken), cancellationToken);
 
-    public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken) =>
-        Task.Run(() => Merge(inputPaths, outputPath, cancellationToken), cancellationToken);
+    public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken) =>
+        Task.Run(() => Merge(inputs, outputPath, sourceBookmarks, cancellationToken), cancellationToken);
 
-    internal static void Merge(IReadOnlyList<string> inputs, string outputPath, CancellationToken ct, PdfMergeStructure.Limits? limits = null)
+    internal static void Merge(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken ct, PdfMergeStructure.Limits? limits = null)
     {
         using var output = new PdfDocument();
         var structure = new PdfMergeStructure(output, limits ?? new());
         foreach (var input in inputs)
         {
             ct.ThrowIfCancellationRequested();
-            using var source = Open(input, PdfDocumentOpenMode.Import, ct);
+            using var source = Open(input.PdfPath, PdfDocumentOpenMode.Import, ct);
             var pages = new Dictionary<PdfObjectID, PdfPage>();
+            PdfPage? firstPage = null;
             foreach (var page in source.Pages)
-                pages[page.Reference!.ObjectID] = output.AddPage(page);
-            structure.Carry(source, pages, ct);
+            {
+                var imported = output.AddPage(page);
+                firstPage ??= imported;
+                pages[page.Reference!.ObjectID] = imported;
+            }
+            structure.Carry(source, pages, ct, sourceBookmarks ? input.SourceName : null, firstPage);
         }
         structure.Write(ct);
         output.Save(outputPath);

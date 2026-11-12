@@ -261,10 +261,29 @@ public sealed partial class JobQueue : IAsyncDisposable
             await finisher.FinishAsync(pdf, preset.Pdf, ct);
     }
 
+    /// <summary>
+    /// Makes the PDFs among <paramref name="outputs"/> PDF/A when the preset asks for it (<see cref="DocumentOptions.PdfA"/>),
+    /// after the finishing, which would undo it. Without Ghostscript they stay as they are and the file says so, rather
+    /// than pass for PDF/A.
+    /// </summary>
+    /// <param name="changed">Rewritten since the engine wrote it: a PDF/A from LibreOffice no longer is one.</param>
+    private async Task ArchivePdfsAsync(Preset preset, IReadOnlyList<string> outputs, FileResult file, string workDir, bool changed,
+        CancellationToken ct)
+    {
+        if (!preset.Document.PdfA)
+            return;
+        var archiver = _catalog.All.OfType<IPdfArchiver>().FirstOrDefault();
+        foreach (var pdf in outputs.Where(o => FormatRegistry.Detect(o)?.Id == "pdf"))
+        {
+            if (archiver is null || !await archiver.ArchiveAsync(pdf, changed, workDir, ct))
+                file.NoticeKey = "notice.pdfa_needs_ghostscript";
+        }
+    }
+
     /// <summary>Converts every file to PDF in the work directory, then merges them into one output.</summary>
     private async Task RunMergedAsync(ConversionJob job, RoutePlanner planner, string workDir)
     {
-        var parts = new string?[job.Files.Count];
+        var parts = new PdfMergeInput?[job.Files.Count];
         await Parallel.ForEachAsync(Enumerable.Range(0, job.Files.Count),
             new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
             async (i, _) =>
@@ -280,14 +299,15 @@ public sealed partial class JobQueue : IAsyncDisposable
                     if (job.Preset.Image.ReworksPixels)
                         FailUnturned(job, file, "pdf → pdf");
                     else
-                        parts[i] = file.SourcePath;
+                        parts[i] = new(file.SourcePath, Path.GetFileName(file.SourcePath));
                     return;
                 }
                 var produced = await RunFileAsync(job, file, i + 1, planner, workDir, finalOutput: false);
-                parts[i] = produced.FirstOrDefault();
+                if (produced.FirstOrDefault() is { } pdfPath)
+                    parts[i] = new(pdfPath, Path.GetFileName(file.SourcePath));
             });
 
-        var inputs = parts.OfType<string>().ToList();
+        var inputs = parts.OfType<PdfMergeInput>().ToList();
         if (inputs.Count == 0 || job.CancellationToken.IsCancellationRequested)
             return;
 
@@ -302,9 +322,10 @@ public sealed partial class JobQueue : IAsyncDisposable
 
         try
         {
-            await _pdfMerger!.MergeAsync(inputs, output, job.CancellationToken);
-            // Once for the merged PDF, so its pages are numbered through.
+            await _pdfMerger!.MergeAsync(inputs, output, job.Preset.Pdf.SourceBookmarks, job.CancellationToken);
+            // Once for the merged PDF, so its pages are numbered through. PDFsharp wrote it, so it is no PDF/A yet.
             await FinishPdfsAsync(job.Preset, [output], job.CancellationToken);
+            await ArchivePdfsAsync(job.Preset, [output], first, workDir, changed: true, job.CancellationToken);
         }
         catch
         {
@@ -940,9 +961,12 @@ public sealed partial class JobQueue : IAsyncDisposable
                 && CopyIfNotSmaller(file.SourcePath, inputs[0]);
             if (copiedSource)
                 file.NoticeKey = "notice.pdf_not_smaller";
-            // Watermark, page numbers, password: on every PDF this file became, from whichever engine.
+            // Watermark, page numbers, password, then PDF/A: on every PDF this file became, from whichever engine.
             if (finalOutput && runWith.TargetFormat == "pdf")
+            {
                 await FinishPdfsAsync(runWith, inputs, ct);
+                await ArchivePdfsAsync(runWith, inputs, file, workDir, changed: runWith.Pdf.FinishesPdf, ct);
+            }
             // The size limit (#553): a result the engine couldn't fit (HEIC, a render, an animation) isn't handed over.
             if (finalOutput)
                 SizeLimit.Check(runWith, inputs, file.SourcePath);

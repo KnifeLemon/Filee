@@ -283,6 +283,16 @@ public sealed class PresetAvailability
                 : new(PresetUse.Unusable, _loc["error.no_route"]);
         }
 
+        // PDF/A of PDFs is Ghostscript's (the job queue's IPdfArchiver): without it they would only be copied. Other files
+        // may get it from LibreOffice, or are converted with a notice that the PDF isn't PDF/A.
+        static bool Archives(RoutePlanner planner) => planner.Includes("ghostscript");
+        if (preset.TargetFormat == "pdf" && preset.Document.PdfA && formats.All(f => f.Id == "pdf") && !Archives(installedPlanner()))
+        {
+            return packageEnabling(Archives) is { } archiver
+                ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", archiver.Name))
+                : new(PresetUse.Unusable, _loc["error.no_route"]);
+        }
+
         var merge = preset.Pdf.MergeIntoSingle && preset.TargetFormat == "pdf";
         var turns = preset.Image.TurnsOrMirrors;
         string TargetFor(FileFormat f) => preset.TargetFormat != BuiltInData.SameAsSource ? preset.TargetFormat

@@ -59,17 +59,22 @@ public sealed class TranslatorConverter : IConverter
         .Concat(SubtitleFormats.Select(from => new ConversionEdge(from, from, 10, Translate: true)))
         .ToList();
 
+    // The very first GetStatus call waits for its answer, so that one check stays short. Every other check runs
+    // off the caller's thread and gives a busy or just-starting Ollama time to answer before it counts as missing.
+    private static readonly TimeSpan FirstCheckLimit = TimeSpan.FromMilliseconds(250);
+    internal static readonly TimeSpan CheckLimit = TimeSpan.FromSeconds(2);
+
     private static readonly HttpClient SharedStatusClient = new(new SocketsHttpHandler
     {
         UseProxy = false,
         AllowAutoRedirect = false,
-        ConnectTimeout = TimeSpan.FromMilliseconds(200)
+        ConnectTimeout = TimeSpan.FromSeconds(1)
     })
     {
-        Timeout = TimeSpan.FromMilliseconds(250)
+        Timeout = CheckLimit
     };
 
-    private static volatile EngineStatus _cachedStatus = EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
+    private static volatile EngineStatus _cachedStatus = StatusFor(false);
     private static int _checkInProgress;
     private static long _lastCheckedTicks;
 
@@ -83,7 +88,7 @@ public sealed class TranslatorConverter : IConverter
         var last = Interlocked.Read(ref _lastCheckedTicks);
         if (last == 0)
         {
-            PerformCheck();
+            Check(FirstCheckLimit);
             return _cachedStatus;
         }
 
@@ -96,38 +101,20 @@ public sealed class TranslatorConverter : IConverter
         return _cachedStatus;
     }
 
-    public static void PerformCheck()
+    /// <summary>Asks Ollama now and updates the cached status. Callers run it off the UI thread.</summary>
+    public static void PerformCheck() => Check(CheckLimit);
+
+    private static void Check(TimeSpan limit)
     {
         try
         {
             Interlocked.Exchange(ref _lastCheckedTicks, Environment.TickCount64);
-            var isAvailable = CheckOllamaStatus();
-            var newStatus = isAvailable
-                ? EngineStatus.Available("http://127.0.0.1:11434", "Ollama (Local Offline)")
-                : EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
-
-            var oldStatus = _cachedStatus;
-            _cachedStatus = newStatus;
-            if (oldStatus.IsAvailable != newStatus.IsAvailable)
-                StatusChanged?.Invoke();
+            var isAvailable = IsOllamaAnsweringAsync(OllamaEndpoint.Base, limit, CancellationToken.None).GetAwaiter().GetResult();
+            Publish(StatusFor(isAvailable));
         }
         catch
         {
-            _cachedStatus = EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
-        }
-    }
-
-    private static bool CheckOllamaStatus()
-    {
-        try
-        {
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
-            using var res = SharedStatusClient.GetAsync("http://127.0.0.1:11434/api/tags", cts.Token).GetAwaiter().GetResult();
-            return res.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
+            _cachedStatus = StatusFor(false);
         }
     }
 
@@ -140,19 +127,12 @@ public sealed class TranslatorConverter : IConverter
                 try
                 {
                     Interlocked.Exchange(ref _lastCheckedTicks, Environment.TickCount64);
-                    var isAvailable = await CheckOllamaStatusAsync();
-                    var newStatus = isAvailable
-                        ? EngineStatus.Available("http://127.0.0.1:11434", "Ollama (Local Offline)")
-                        : EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
-
-                    var oldStatus = _cachedStatus;
-                    _cachedStatus = newStatus;
-                    if (oldStatus.IsAvailable != newStatus.IsAvailable)
-                        StatusChanged?.Invoke();
+                    var isAvailable = await IsOllamaAnsweringAsync(OllamaEndpoint.Base, CheckLimit, CancellationToken.None);
+                    Publish(StatusFor(isAvailable));
                 }
                 catch
                 {
-                    _cachedStatus = EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
+                    _cachedStatus = StatusFor(false);
                 }
                 finally
                 {
@@ -162,12 +142,26 @@ public sealed class TranslatorConverter : IConverter
         }
     }
 
-    private static async Task<bool> CheckOllamaStatusAsync()
+    private static void Publish(EngineStatus newStatus)
+    {
+        var oldStatus = _cachedStatus;
+        _cachedStatus = newStatus;
+        if (oldStatus.IsAvailable != newStatus.IsAvailable)
+            StatusChanged?.Invoke();
+    }
+
+    private static EngineStatus StatusFor(bool isAvailable) => isAvailable
+        ? EngineStatus.Available(OllamaEndpoint.Address, "Ollama (Local Offline)")
+        : EngineStatus.Unavailable("engine.reason.download_translator", detail: OllamaEndpoint.Address);
+
+    /// <summary>True when the Ollama server at <paramref name="baseUri"/> lists its models within <paramref name="limit"/>.</summary>
+    internal static async Task<bool> IsOllamaAnsweringAsync(Uri baseUri, TimeSpan limit, CancellationToken cancellationToken)
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
-            using var res = await SharedStatusClient.GetAsync("http://127.0.0.1:11434/api/tags", cts.Token);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(limit);
+            using var res = await SharedStatusClient.GetAsync(new Uri(baseUri, "/api/tags"), cts.Token).ConfigureAwait(false);
             return res.IsSuccessStatusCode;
         }
         catch
@@ -178,9 +172,13 @@ public sealed class TranslatorConverter : IConverter
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
+        if (_translationService is null && OllamaEndpoint.IgnoredValue is { } ignored)
+            _logger?.LogWarning("Ignored {Variable}={Value}: Filee only uses an Ollama on this computer, so it uses {Address}",
+                OllamaEndpoint.Variable, ignored, OllamaEndpoint.Address);
+
         var isAvailable = _translationService is not null || await TranslationService.IsLocalOllamaAvailableAsync(cancellationToken);
         if (!isAvailable)
-            throw new ConversionRefusedException("error.translation_needs_engine");
+            throw new ConversionRefusedException("error.translation_needs_engine", OllamaEndpoint.Address);
 
         progress?.Report(0.05);
         var work = EbookFiles.NewFolder(step.WorkDirectory, "translate");

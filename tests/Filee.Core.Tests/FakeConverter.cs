@@ -139,9 +139,14 @@ internal sealed class FakeRecorder(string id, params ConversionEdge[] edges) : I
 internal sealed class FakeMerger : IPdfMerger
 {
     public List<string> Inputs { get; } = [];
+    public List<PdfMergeInput> MergeInputs { get; } = [];
+    public bool? SourceBookmarks { get; private set; }
 
-    public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken)
+    public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken)
     {
+        MergeInputs.AddRange(inputs);
+        SourceBookmarks = sourceBookmarks;
+        var inputPaths = inputs.Select(input => input.PdfPath).ToList();
         Inputs.AddRange(inputPaths);
         File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
         return Task.CompletedTask;

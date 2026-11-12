@@ -35,10 +35,10 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
-| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
+| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
-| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, copies without metadata (see "Media tools") |
+| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR; e-books → PDF (ranked above the HWPX writer, see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
@@ -991,6 +991,24 @@ wrote it (PDFsharp, rhwp, LibreOffice, Ghostscript …), and once on a merged PD
   longer has one. The editor takes at most 127 UTF-8 bytes, all that AES-256 readers use, and turns the box off while
   PDF/A is ticked, since PDF/A forbids encryption.
 
+## PDF/A
+
+A preset with *PDF/A (archival)* ticked (`DocumentOptions.PdfA`; the built-in "PDF/A" preset, #1367) makes every PDF
+it writes a PDF/A-2b, PDF → PDF too. `JobQueue` runs `IPdfArchiver` (Ghostscript) after the finishing, on each PDF a
+file became and once on a merged PDF, so the box means the same whichever engine wrote the PDF.
+
+- **Already PDF/A**: LibreOffice (`SelectPdfVersion` 2) and SVG → PDF (Skia) write PDF/A themselves. A PDF whose
+  catalog XMP has `pdfaid:part` is kept as it is, unless a watermark or page numbers were added since: then it is
+  rewritten like any other.
+- **Ghostscript** (`GhostscriptConverter.ConvertToPdfAAsync`): `pdfwrite` with `-dPDFA=2 -dPDFACompatibilityPolicy=1
+  -sColorConversionStrategy=RGB`, after a small PostScript prelude (as Ghostscript's `PDFA_def.ps`) that adds the sRGB
+  output intent; the profile is Magick.NET's sRGB, written into the prelude as a hex string so safe mode needn't read
+  a file. Colours become RGB, fonts are embedded, what PDF/A forbids is left out (policy 1), and a tagged PDF loses its
+  tags (part B doesn't need them).
+- **Without Ghostscript**: a preset whose files are all PDFs is greyed out with the usual engine reason. Other files
+  are converted and the PDF is left as it is, with `notice.pdfa_needs_ghostscript` in the result, unless LibreOffice
+  made it PDF/A.
+
 ## Office Open XML variants
 
 `Office/OoxmlConverter.cs` converts between the variants of a family (Word, Excel, PowerPoint) by copying the
@@ -1548,7 +1566,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 
 | Format | Read | Write |
 |---|---|---|
-| ZIP, JAR, WBPZ | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
+| ZIP, JAR, WBPZ, ZXP | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
 | Minecraft MCPACK, MCADDON, MCWORLD, MCTEMPLATE; Modrinth MRPACK | 7-Zip (they are ZIPs) | ZIP in-process, with the marker file at the top (see below) |
 | 7Z | 7-Zip | 7-Zip |
 | TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
@@ -1575,6 +1593,10 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   an archive or a folder whose only top folder holds the marker gets that folder's content, not the folder
   (`GamePacks.Root`); an add-on (MCADDON, several packs side by side) is packed as it is. The presets (MCPACK …
   MRPACK) are in the palette only.
+- **Adobe extension packages** (`.zxp`, #1382, read only like JAR): the panels and plug-ins of After Effects, Premiere
+  Pro, Photoshop and the other Creative Cloud apps are signed ZIPs (`mimetype`, the extension's files and
+  `META-INF/signatures.xml`). They extract and convert to every archive target with the signature file inside.
+  Nothing writes `.zxp`: Adobe's apps install only packages signed with the developer's certificate (ZXPSignCmd).
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
   file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.
@@ -1802,6 +1824,14 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   Apple Voice Memos recordings (`.qta`, read only, #646) are QuickTime audio: FFmpeg's mov demuxer reads them and
   they go to every audio target, from the first audio track FFmpeg can decode, like any other source
   (iOS 26 memos also carry a spatial APAC track FFmpeg has no decoder for).
+  Tracker modules (FastTracker 2 `.xm`, Impulse Tracker `.it`, Scream Tracker 3 `.s3m`; read only, #1376) are songs
+  stored as note patterns and samples. FFmpeg renders them through its `libopenmpt` demuxer (or the older
+  `libmodplug`), which exists only in builds linked with that library: the gyan.dev full build (its README lists
+  libopenmpt) and BtbN's Linux GPL builds for x64 and ARM64 (`scripts.d/50-openmpt.sh`) have it, Homebrew's `ffmpeg`
+  on macOS has neither. Filee reads `ffmpeg -demuxers` (cached per executable) and, without either demuxer, stops
+  the file with "This FFmpeg can't read tracker modules" instead of FFmpeg's "Invalid data found". Amiga `.mod` files
+  are not among them: that extension is the camcorder MOD video above. Settings schema 81 adds the three extensions to
+  existing audio donuts.
 
 - **Rewrapping instead of re-encoding.** When the target container takes the source's codecs as they are
   (`MediaEncoding.Remuxable`: H.264/HEVC + AAC, ALAC, AC-3, E-AC-3 or MP3 for MP4/M4V/MOV, also ProRes and PCM for
@@ -2086,9 +2116,21 @@ Transcription runs entirely locally and offline on your computer; no audio or da
 
 ## Document & Book Translator (Offline AI)
 
-Filee translates documents, books, and text files locally using a local Ollama instance over loopback (`http://127.0.0.1:11434`). Translation runs entirely on the user's computer: no text or document data is ever uploaded or sent to third-party web services.
+Filee translates documents, books, and text files locally using a local Ollama instance over loopback (`http://127.0.0.1:11434` by default). Translation runs entirely on the user's computer: no text or document data is ever uploaded or sent to third-party web services.
 
-- **Offline privacy**: Adheres strictly to Filee's offline promise: "Filee converts files on your own computer and never uploads them." Translation exclusively uses local Ollama over loopback (`127.0.0.1:11434`). Cloud-forwarded models (`*-cloud` or models reporting remote endpoints) are refused with a security block to ensure privacy. No external web services or network calls outside loopback are ever made.
+- **Offline privacy**: Adheres strictly to Filee's offline promise: "Filee converts files on your own computer and never uploads them." Translation exclusively uses local Ollama over loopback (`127.0.0.1:11434` unless `OLLAMA_HOST` moves it, see below). Cloud-forwarded models (`*-cloud` or models reporting remote endpoints) are refused with a security block to ensure privacy. No external web services or network calls outside loopback are ever made.
+- **Address (`OLLAMA_HOST`)**: Filee reads Ollama's own `OLLAMA_HOST` variable, so an Ollama started on another port is
+  found too. The forms Ollama accepts work: `:8080`, `127.0.0.1:8080`, `localhost:8080`, `[::1]:8080` and
+  `http://127.0.0.1:8080` (no port and no scheme means port 11434). Filee follows the variable only when it names this
+  computer: `localhost`, a loopback address (`127.x.x.x`, `::1`), or `0.0.0.0` / `::` / an empty host, which mean Ollama
+  listens everywhere, so Filee connects through loopback on that port. Any other host (a LAN address, a server name) is
+  ignored and Filee uses `http://127.0.0.1:11434`, with a warning in the log. The reason is privacy: the translator sends
+  the whole text of the document to Ollama, and a remote host would carry it off the computer. When Filee starts the
+  Ollama server itself (**Manage Ollama** → **Start Ollama Server**) while such a host is set, it starts it on
+  `127.0.0.1:11434` so both sides meet. The variable is read once when Filee starts.
+- **Status check**: To show whether the translator is available, Filee asks Ollama for its model list. Only the first check, which
+  the caller waits for, gives up after 250 ms; later checks run in the background and allow 1 s to connect and 2 s in
+  total, so a busy or just-starting Ollama isn't reported as missing. A conversion checks again (2 s) before it starts.
 - **Where it lives**:
   - Available as the **Translate** preset in Settings → *Presets*, where the target language (e.g. English, Spanish, Hindi, French, German, Chinese, Japanese, etc.) is configured as the single source of truth.
   - Sits cleanly on the back face (`BackPresetIds`) of document and text profiles for fresh installs, keeping front faces clean and untouched (#806 compliance).

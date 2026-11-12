@@ -58,10 +58,21 @@ public class DonutGeometryTests
         // A donut of just the group: 1.5 turns would put slices on top of each other; it goes round once at most.
         Assert.Equal(2 * Math.PI, DonutGeometry.SubSpan(DonutGeometry.Span(1), 3, 190) * 3, 6);
         Assert.Equal(2 * Math.PI, DonutGeometry.SubSpan(DonutGeometry.Span(1), 2) * 2, 6);
-        // A crowded donut (12 slices, a group of 6): each ring slice stays wide enough for its label.
-        Assert.Equal(DonutGeometry.MinSubWidth, DonutGeometry.SubSpan(DonutGeometry.Span(12), 6, 190) * 190, 6);
+        // A crowded donut (20 slices): each ring slice stays wide enough for its label.
+        Assert.Equal(DonutGeometry.MinSubWidth, DonutGeometry.SubSpan(DonutGeometry.Span(20), 3, 190) * 190, 6);
         // Roomy enough already: unchanged.
         Assert.Equal(DonutGeometry.Span(4) * 1.5 / 3, DonutGeometry.SubSpan(DonutGeometry.Span(4), 3, 190), 6);
+    }
+
+    [Fact]
+    public void Every_groups_ring_slices_are_as_wide_whatever_its_size()
+    {
+        // A group of six fans out twice as far as a group of three: its slices aren't squeezed into the same fan.
+        var span = DonutGeometry.Span(10);
+        Assert.Equal(DonutGeometry.SubSpan(span, 3, 270, 2.1), DonutGeometry.SubSpan(span, 6, 270, 2.1), 9);
+        Assert.Equal(DonutGeometry.SubSpan(span, 3, 270), DonutGeometry.SubSpan(span, 2, 270), 9);
+        // Until it would go round more than once.
+        Assert.Equal(2 * Math.PI / 6, DonutGeometry.SubSpan(DonutGeometry.Span(4), 6, 270, 3), 9);
     }
 
     [Fact]
