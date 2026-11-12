@@ -467,6 +467,21 @@ hidden rows and manual breaks, then see the PDF that those settings will produce
 
 ## Settings and data
 
+`PortableMode.Initialize` runs in both entry points before logging, settings or engine discovery. A
+`filee.portable` marker selects the adjacent `data` directory through `FILEE_DATA_DIR`; an explicit override
+keeps precedence. macOS stores the marker/data outside `.app` to preserve the signed bundle. Startup validates
+write/delete access and reports failure without loading the normal user profile. Portable settings turn off
+login and file-manager integration; the existing separate-data guard prevents registration and unregistration.
+The General page explains this and disables those controls.
+
+Conversion work folders, temporary files and engine caches keep their existing behavior and locations.
+Portable mode does not change the environment passed to external engines.
+Portable release archives include the marker by default. Installer payloads keep normal profile storage;
+the desktop app offers a one-time copy of an existing profile into unused portable data before loading settings.
+Import stages copies first and preserves the source. Integration cleanup checks the executable target on all three
+platforms, asks independently of import and remembers declined cleanup. Shared macOS Finder service preferences stay
+unchanged. See [portable mode](PORTABLE.md) for migration and quarantine details.
+
 `UserDataStore` owns `settings.json`, `presets.json`, `profiles.json` and `history.json`
 (System.Text.Json source generation, atomic writes, broken files are kept as `*.broken`).
 Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` when the format changes.

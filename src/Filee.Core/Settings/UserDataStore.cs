@@ -84,6 +84,8 @@ public sealed class UserDataStore
 
         var schema = Settings.SchemaVersion;
         SettingsMigrations.Apply(Settings);
+        if (PortableMode.IsEnabled)
+            PortableMode.DisableIntegration(Settings);
         var libraryChanged = File.Exists(ProfilesPath) && SettingsMigrations.ApplyToLibrary(schema, Presets, Profiles);
         EnsureConsistency();
 
@@ -99,6 +101,8 @@ public sealed class UserDataStore
 
     public void SaveSettings()
     {
+        if (PortableMode.IsEnabled)
+            PortableMode.DisableIntegration(Settings);
         Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
