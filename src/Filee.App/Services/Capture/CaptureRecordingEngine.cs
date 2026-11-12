@@ -24,6 +24,7 @@ public sealed class CaptureRecordingEngine : IDisposable
 
     public bool IsRecording => _isRecording;
     public bool IsPaused => _isPaused;
+    public string? LastErrorMessage { get; private set; }
     public TimeSpan ElapsedTime => _accumulatedTime + (_isRecording && !_isPaused ? _stopwatch.Elapsed : TimeSpan.Zero);
 
     public event Action<TimeSpan>? ElapsedTimeTicked;
@@ -171,12 +172,16 @@ public sealed class CaptureRecordingEngine : IDisposable
         }
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
+
     private async Task<bool> StartSegmentAsync()
     {
         var ffmpegExe = FindFfmpeg();
         if (string.IsNullOrWhiteSpace(ffmpegExe))
         {
-            ErrorOccurred?.Invoke("FFmpeg executable could not be found.");
+            LastErrorMessage = "FFmpeg executable could not be found.";
+            ErrorOccurred?.Invoke(LastErrorMessage);
             return false;
         }
 
@@ -193,10 +198,18 @@ public sealed class CaptureRecordingEngine : IDisposable
         try
         {
             var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            var stderrBuilder = new StringBuilder();
             proc.ErrorDataReceived += (_, e) =>
             {
                 if (!string.IsNullOrWhiteSpace(e.Data))
+                {
                     _log?.LogDebug("[FFmpeg Record] {Data}", e.Data);
+                    lock (stderrBuilder)
+                    {
+                        if (stderrBuilder.Length < 3000)
+                            stderrBuilder.AppendLine(e.Data);
+                    }
+                }
             };
 
             proc.Start();
@@ -208,10 +221,15 @@ public sealed class CaptureRecordingEngine : IDisposable
             }
 
             // Wait brief moment to confirm process didn't crash immediately
-            await Task.Delay(250).ConfigureAwait(false);
+            await Task.Delay(350).ConfigureAwait(false);
             if (proc.HasExited && proc.ExitCode != 0)
             {
-                ErrorOccurred?.Invoke($"Screen recorder exited prematurely with code {proc.ExitCode}");
+                var errDetail = stderrBuilder.ToString().Trim();
+                LastErrorMessage = !string.IsNullOrWhiteSpace(errDetail)
+                    ? errDetail
+                    : $"Screen recorder exited prematurely with code {proc.ExitCode}";
+                _log?.LogError("FFmpeg failed to start: {Error}", LastErrorMessage);
+                ErrorOccurred?.Invoke(LastErrorMessage);
                 return false;
             }
 
@@ -219,6 +237,7 @@ public sealed class CaptureRecordingEngine : IDisposable
         }
         catch (Exception ex)
         {
+            LastErrorMessage = ex.Message;
             _log?.LogError(ex, "Failed to launch FFmpeg recording process");
             ErrorOccurred?.Invoke($"Could not start screen capture: {ex.Message}");
             return false;
@@ -280,25 +299,74 @@ public sealed class CaptureRecordingEngine : IDisposable
             StandardInputEncoding = Encoding.UTF8,
         };
 
-        GetTargetOffsetAndSize(config, out var offsetX, out var offsetY, out var width, out var height);
-
-        // Ensure even dimensions for yuv420p
-        width = Math.Max(2, (width / 2) * 2);
-        height = Math.Max(2, (height / 2) * 2);
-
         psi.ArgumentList.Add("-y");
-        psi.ArgumentList.Add("-f");
-        psi.ArgumentList.Add(OperatingSystem.IsWindows() ? "gdigrab" : "x11grab");
-        psi.ArgumentList.Add("-framerate");
-        psi.ArgumentList.Add(config.Framerate.ToString(CultureInfo.InvariantCulture));
-        psi.ArgumentList.Add("-offset_x");
-        psi.ArgumentList.Add(offsetX.ToString(CultureInfo.InvariantCulture));
-        psi.ArgumentList.Add("-offset_y");
-        psi.ArgumentList.Add(offsetY.ToString(CultureInfo.InvariantCulture));
-        psi.ArgumentList.Add("-video_size");
-        psi.ArgumentList.Add($"{width}x{height}");
-        psi.ArgumentList.Add("-i");
-        psi.ArgumentList.Add(OperatingSystem.IsWindows() ? "desktop" : ":0.0");
+
+        if (OperatingSystem.IsWindows())
+        {
+            psi.ArgumentList.Add("-f");
+            psi.ArgumentList.Add("gdigrab");
+            psi.ArgumentList.Add("-framerate");
+            psi.ArgumentList.Add(config.Framerate.ToString(CultureInfo.InvariantCulture));
+
+            if (config.SourceType == CaptureSourceType.FullScreen)
+            {
+                // Fullscreen capture natively grabs entire desktop
+                psi.ArgumentList.Add("-i");
+                psi.ArgumentList.Add("desktop");
+            }
+            else
+            {
+                GetTargetOffsetAndSize(config, out var offsetX, out var offsetY, out var width, out var height);
+
+                int screenW = GetSystemMetrics(0); // SM_CXSCREEN
+                int screenH = GetSystemMetrics(1); // SM_CYSCREEN
+                if (screenW <= 0) screenW = 1920;
+                if (screenH <= 0) screenH = 1080;
+
+                offsetX = Math.Clamp(offsetX, 0, Math.Max(0, screenW - 64));
+                offsetY = Math.Clamp(offsetY, 0, Math.Max(0, screenH - 64));
+                width = Math.Clamp(width, 64, screenW - offsetX);
+                height = Math.Clamp(height, 64, screenH - offsetY);
+
+                width = Math.Max(2, (width / 2) * 2);
+                height = Math.Max(2, (height / 2) * 2);
+
+                psi.ArgumentList.Add("-offset_x");
+                psi.ArgumentList.Add(offsetX.ToString(CultureInfo.InvariantCulture));
+                psi.ArgumentList.Add("-offset_y");
+                psi.ArgumentList.Add(offsetY.ToString(CultureInfo.InvariantCulture));
+                psi.ArgumentList.Add("-video_size");
+                psi.ArgumentList.Add($"{width}x{height}");
+                psi.ArgumentList.Add("-i");
+                psi.ArgumentList.Add("desktop");
+            }
+
+            // Microphone audio track if enabled and valid device selected
+            if (config.EnableMicrophone && !string.IsNullOrWhiteSpace(config.MicrophoneDevice) && config.MicrophoneDevice != "Default Microphone")
+            {
+                psi.ArgumentList.Add("-f");
+                psi.ArgumentList.Add("dshow");
+                psi.ArgumentList.Add("-i");
+                psi.ArgumentList.Add($"audio={config.MicrophoneDevice}");
+            }
+        }
+        else
+        {
+            psi.ArgumentList.Add("-f");
+            psi.ArgumentList.Add("x11grab");
+            psi.ArgumentList.Add("-framerate");
+            psi.ArgumentList.Add(config.Framerate.ToString(CultureInfo.InvariantCulture));
+            psi.ArgumentList.Add("-i");
+            psi.ArgumentList.Add(":0.0");
+        }
+
+        // Output scaling filter if target preset requested
+        if (config.Resolution != CaptureResolutionPreset.Native)
+        {
+            GetTargetDimensions(config, out var targetW, out var targetH);
+            psi.ArgumentList.Add("-vf");
+            psi.ArgumentList.Add($"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease,pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2");
+        }
 
         // Codecs and encoding
         psi.ArgumentList.Add("-c:v");
@@ -311,6 +379,12 @@ public sealed class CaptureRecordingEngine : IDisposable
         psi.ArgumentList.Add("yuv420p");
         psi.ArgumentList.Add("-movflags");
         psi.ArgumentList.Add("+faststart");
+
+        if (config.EnableMicrophone && !string.IsNullOrWhiteSpace(config.MicrophoneDevice) && config.MicrophoneDevice != "Default Microphone")
+        {
+            psi.ArgumentList.Add("-c:a");
+            psi.ArgumentList.Add("aac");
+        }
 
         psi.ArgumentList.Add(outputPath);
         return psi;
@@ -417,10 +491,44 @@ public sealed class CaptureRecordingEngine : IDisposable
 
     public static string? FindFfmpeg()
     {
-        return EngineEnvironment.OwnProgram("ffmpeg", "ffmpeg.exe")
+        // 1. Check user local appdata Filee engines
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var ownFfmpeg = Path.Combine(localAppData, "Filee", "engines", "ffmpeg", "bin", "ffmpeg.exe");
+        if (File.Exists(ownFfmpeg))
+            return ownFfmpeg;
+
+        // 2. Check installed Program Files Filee engines
+        var progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var installedFfmpeg = Path.Combine(progFiles, "Filee", "engines", "ffmpeg", "bin", "ffmpeg.exe");
+        if (File.Exists(installedFfmpeg))
+            return installedFfmpeg;
+
+        // 3. Check AppContext.BaseDirectory engines
+        var localEnginesFfmpeg = Path.Combine(AppContext.BaseDirectory, "engines", "ffmpeg", "bin", "ffmpeg.exe");
+        if (File.Exists(localEnginesFfmpeg))
+            return localEnginesFfmpeg;
+
+        // 4. Filee EngineEnvironment
+        var fromEnv = EngineEnvironment.OwnProgram("ffmpeg", "ffmpeg.exe")
             ?? EngineEnvironment.BundledProgram("ffmpeg", "ffmpeg.exe")
-            ?? EngineEnvironment.SystemProgram("ffmpeg", "ffmpeg.exe")
-            ?? "ffmpeg";
+            ?? EngineEnvironment.SystemProgram("ffmpeg", "ffmpeg.exe");
+        if (!string.IsNullOrWhiteSpace(fromEnv) && File.Exists(fromEnv))
+            return fromEnv;
+
+        // 5. Check PATH directly
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (!string.IsNullOrWhiteSpace(pathEnv))
+        {
+            var exeName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+            foreach (var part in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var candidate = Path.Combine(part.Trim(), exeName);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        return "ffmpeg";
     }
 
     public void Dispose()

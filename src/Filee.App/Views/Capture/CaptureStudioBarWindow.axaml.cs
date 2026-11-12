@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -8,11 +7,6 @@ namespace Filee.App.Views.Capture;
 
 public partial class CaptureStudioBarWindow : Window
 {
-    private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowDisplayAffinity(nint hWnd, uint dwAffinity);
-
     public event Action<bool>? HoverChanged;
     public event Action<Rect>? BoundsChangedNotification;
 
@@ -27,20 +21,6 @@ public partial class CaptureStudioBarWindow : Window
     public CaptureStudioBarWindow(CaptureStudioBarViewModel vm) : this()
     {
         DataContext = vm;
-    }
-
-    protected override void OnOpened(EventArgs e)
-    {
-        base.OnOpened(e);
-
-        if (OperatingSystem.IsWindows())
-        {
-            var handle = TryGetPlatformHandle()?.Handle ?? 0;
-            if (handle != 0)
-            {
-                SetWindowDisplayAffinity(handle, WDA_EXCLUDEFROMCAPTURE);
-            }
-        }
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

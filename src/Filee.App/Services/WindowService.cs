@@ -200,7 +200,11 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             var started = await studioService.StartRecordingAsync(config);
             if (!started)
             {
-                await MessageAsync(null, loc["capture_studio.error_start"] ?? "Could not start screen capture engine. Please ensure FFmpeg is available.");
+                var err = studioService.RecordingEngine.LastErrorMessage;
+                var msg = !string.IsNullOrWhiteSpace(err)
+                    ? $"Screen recording could not start:\n{err}"
+                    : (loc["capture_studio.error_start"] ?? "Could not start screen capture engine. Please ensure FFmpeg is available.");
+                await MessageAsync(null, msg);
                 return;
             }
 

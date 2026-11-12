@@ -293,8 +293,44 @@ public sealed class WindowTargetService
 
     public IReadOnlyList<string> GetAudioInputDevices()
     {
-        // Default device option + common fallbacks
-        return ["Default Microphone"];
+        var devices = new List<string>();
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var ffmpeg = CaptureRecordingEngine.FindFfmpeg();
+                if (!string.IsNullOrWhiteSpace(ffmpeg) && File.Exists(ffmpeg))
+                {
+                    var psi = new ProcessStartInfo(ffmpeg, ["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"])
+                    {
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardError = true
+                    };
+                    using var proc = Process.Start(psi);
+                    if (proc != null)
+                    {
+                        var stderr = proc.StandardError.ReadToEnd();
+                        proc.WaitForExit();
+                        var matches = System.Text.RegularExpressions.Regex.Matches(stderr, "\"([^\"]+)\"\\s+\\(audio\\)");
+                        foreach (System.Text.RegularExpressions.Match m in matches)
+                        {
+                            var name = m.Groups[1].Value;
+                            if (!devices.Contains(name))
+                                devices.Add(name);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        if (devices.Count == 0)
+            devices.Add("Default Microphone");
+
+        return devices;
     }
 
     private static string GetWindowTitle(nint hwnd)
