@@ -881,14 +881,20 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             TargetFormat = Preset.CopyTarget,
             Output = new OutputRule { Location = OutputLocation.CustomFolder }
         };
-        if (!await _windows.EditPresetAsync(preset, _windows.Main))
-            return;
+        if (await _windows.EditPresetAsync(preset, _windows.Main))
+            AddFolderCopy(preset);
+    }
+
+    /// <summary>A new Copy to folder, saved in its editor, goes into the library and onto the back face.</summary>
+    internal void AddFolderCopy(Preset preset)
+    {
         _store.Presets.Add(preset);
-        EditingBack = true;
-        if (Slices is { } slices && slices.Count < Capacity)
-            slices.Add(preset.Id);
-        else
-            _newPresetToSelect = preset.Id;
+        EditingBack = true; // a back face only: a group open on the front face closes with it
+        // Through Insert, whose rules hold: not into an open group that is also on a front face. Not added, it waits in
+        // the palette, picked.
+        if (Slices is { } slices && slices.Count < Capacity && Insert(preset.Id, slices.Count))
+            return;
+        _newPresetToSelect = preset.Id;
         Commit();
     }
 

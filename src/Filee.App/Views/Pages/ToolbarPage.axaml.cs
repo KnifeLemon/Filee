@@ -12,8 +12,8 @@
 // It follows every change made here, and holds a group open (DonutMenu.HeldGroupId): the one open in the editor, or,
 // once a ring setting changes, the one picked (Group shown, or clicked on it; the first until then), or an example ring
 // on a donut with none. Where it goes: where it was last dragged (against this window), else beside this window, else
-// on another screen; with no room anywhere, this window slides over to make room and back when the donut goes. Never
-// over this window.
+// on another screen; with no room, this window slides over to make room and back when the donut goes; with none at
+// all (maximized, or a screen too small for both), over the start side of this window, above it.
 //
 // Chip tooltips: an available chip's tip lists the formats it takes (PresetFormatTip), as a card. Holding either Shift
 // shows the whole list while it is open; Tab or the arrow keys open a chip's tip as hover does, and pressing or
@@ -297,6 +297,7 @@ public partial class ToolbarPage : UserControl
     private void CheckDrop()
     {
         _dropCheck?.Stop();
+        _preview?.DragEnded(); // it rested: a move from now on is the window manager's, until its middle is pressed again
         if (_preview is not { IsVisible: true } preview || _topLevel is not Window main || !preview.Box.Intersects(FrameOf(main)))
             return;
         var store = AppHost.Get<UserDataStore>();
@@ -405,6 +406,9 @@ public partial class ToolbarPage : UserControl
 
     private Avalonia.Threading.DispatcherTimer? _slide;
 
+    /// <summary>How long this window takes to slide over or back (tests make it longer, to catch it midway).</summary>
+    internal static TimeSpan SlideTime { get; set; } = TimeSpan.FromSeconds(0.25);
+
     private void StopSlide()
     {
         _slide?.Stop();
@@ -423,10 +427,11 @@ public partial class ToolbarPage : UserControl
             return;
         }
         var started = DateTime.UtcNow;
+        var duration = SlideTime.TotalSeconds;
         _sliding = true;
         _slide = new Avalonia.Threading.DispatcherTimer(TimeSpan.FromMilliseconds(16), Avalonia.Threading.DispatcherPriority.Render, (_, _) =>
         {
-            var t = Math.Min(1, (DateTime.UtcNow - started).TotalSeconds / 0.25);
+            var t = Math.Min(1, (DateTime.UtcNow - started).TotalSeconds / duration);
             var eased = 1 - Math.Pow(1 - t, 3);
             main.Position = new PixelPoint((int)Math.Round(from.X + (to.X - from.X) * eased), (int)Math.Round(from.Y + (to.Y - from.Y) * eased));
             if (t < 1)
@@ -525,6 +530,15 @@ public partial class ToolbarPage : UserControl
         // Another page: the editor's modes end with the page, the donut on screen goes, and this window goes back.
         _dropCheck?.Stop();
         SlideBack(animate: false);
+        if (_topLevel is MainWindow { RestPlace: not null } away)
+        {
+            // Maximized or minimized meanwhile: nothing is left to put it back once it is a normal window again, so
+            // where it moved to is where it is, and where closing remembers.
+            StopSlide();
+            away.RestPlace = null;
+            _slidTo = _landed = null;
+            _narrowedTo = null;
+        }
         _topLevel = null;
         Vm?.DoneAdjustingLookCommand.Execute(null);
         Vm?.CloseGroupCommand.Execute(null);

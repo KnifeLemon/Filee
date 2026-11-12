@@ -355,8 +355,8 @@
             </StackPanel>
           </Border>
           <!-- Edit Donut Size: the donut is on screen at its real size meanwhile (ToolbarPage.axaml.cs), so it can be
-               judged over the desktop and tried out (a group opens on it, it flips) while these change. Names in a shared
-               first column; the value of each slider in the last. -->
+               judged over the desktop and tried out (a group opens on it, it flips) while these change. Names in a
+               shared first column; the value of each slider in the last. -->
           <Border x:Name="LookCard" Classes="card" IsVisible="{Binding IsAdjustingLook}">
             <StackPanel Spacing="8" Grid.IsSharedSizeScope="True">
               <DockPanel>

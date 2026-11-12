@@ -1005,13 +1005,16 @@ public class DonutEditorTests
             Assert.Equal(new PixelPoint(40, 60), window.Position);
             Assert.Null(main.RestPlace);
 
-            // Done while it is still sliding over: back where it was all the same.
+            // Done while it is still sliding over: back where it was all the same (slowed down, to be caught on its way
+            // on a busy machine).
             Motion.Configure(false, () => false);
+            ToolbarPage.SlideTime = TimeSpan.FromSeconds(3);
             window.Position = start;
             vm.AdjustLookCommand.Execute(null);
             RunUntil(() => window.Position != start);
             Assert.NotEqual(start, window.Position); // on its way
             Assert.True(IsSliding(page));
+            ToolbarPage.SlideTime = TimeSpan.FromSeconds(0.25); // the way back at its own pace
             vm.DoneAdjustingLookCommand.Execute(null);
             RunUntil(() => main.RestPlace is null);
             Assert.Equal(start, window.Position);
@@ -1019,6 +1022,7 @@ public class DonutEditorTests
         }
         finally
         {
+            ToolbarPage.SlideTime = TimeSpan.FromSeconds(0.25);
             Motion.Set(motion);
             (vm.OuterRadius, vm.GroupRingSize) = saved;
             window.Close();
@@ -1035,7 +1039,8 @@ public class DonutEditorTests
         try
         {
             vm.AdjustLookCommand.Execute(null);
-            RenderTests.Pump();
+            RunUntil(() => window.Position != start);
+            Assert.NotEqual(start, window.Position); // on its way over, or there
             ((MainWindowViewModel)window.DataContext!).Navigate("general");
             Assert.Equal(start, window.Position);
             Assert.Null(((MainWindow)window).RestPlace);
@@ -1156,6 +1161,13 @@ public class DonutEditorTests
             Output = new OutputRule { Location = OutputLocation.CustomFolder, CustomFolder = Path.GetTempPath() },
         };
         store.Presets.Add(copy);
+        var made = new Preset
+        {
+            Name = "Copy made here",
+            Kind = PresetKind.CopyToFolder,
+            TargetFormat = Preset.CopyTarget,
+            Output = new OutputRule { Location = OutputLocation.CustomFolder, CustomFolder = Path.GetTempPath() },
+        };
         try
         {
             // Rotate is on the images donut's back face; on another donut's front face too.
@@ -1167,6 +1179,12 @@ public class DonutEditorTests
             Assert.False(vm.Insert(copy.Id, 0));
             Assert.Equal(loc["group.copy_front"], vm.Message);
             Assert.Equal(members, rotate.SubPresetIds);
+            // A new Copy to folder made while it is open: not into it either, but in the palette.
+            vm.Message = null;
+            vm.AddFolderCopy(made);
+            Assert.Equal(members, rotate.SubPresetIds);
+            Assert.Equal(loc["group.copy_front"], vm.Message);
+            Assert.Same(made, store.FindPreset(made.Id));
             // On no front face: it may.
             pdf.PresetIds[^1] = front[^1];
             store.SaveLibrary();
@@ -1175,6 +1193,7 @@ public class DonutEditorTests
         finally
         {
             store.Presets.Remove(copy);
+            store.Presets.Remove(made);
             rotate.SubPresetIds.Clear();
             rotate.SubPresetIds.AddRange(members);
             pdf.PresetIds.Clear();
@@ -1284,6 +1303,38 @@ public class DonutEditorTests
     }
 
     [AvaloniaFact]
+    public void Another_page_while_maximized_leaves_no_old_place_behind()
+    {
+        var (window, page, vm) = Open();
+        var motion = Motion.Enabled;
+        Motion.Set(false);
+        var main = (MainWindow)window;
+        var start = window.Position;
+        try
+        {
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.NotEqual(start, window.Position);
+            window.WindowState = WindowState.Maximized;
+            RenderTests.Pump();
+            ((MainWindowViewModel)window.DataContext!).Navigate("general");
+            RenderTests.Pump();
+            // Nothing is left to put it back: where it is when it is a normal window again is where closing remembers.
+            Assert.Null(main.RestPlace);
+            window.WindowState = WindowState.Normal;
+            window.Position = new PixelPoint(60, 80);
+            RenderTests.Pump();
+            var closing = WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null);
+            Assert.Equal(new PixelPoint(60, 80), closing.Position);
+        }
+        finally
+        {
+            Motion.Set(motion);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void A_size_the_user_gives_the_window_meanwhile_is_kept_on_done()
     {
         var (window, page, vm) = Open();
@@ -1344,6 +1395,30 @@ public class DonutEditorTests
             RunUntil(() => store.Settings.DonutPreviewPlace is null, ToolbarPage.DropDelay * 5);
             Assert.Null(store.Settings.DonutPreviewPlace);
             AssertNotUnder(preview, window);
+
+            // Dragged clear of it: kept there. Once it rests, a move it didn't make (the release lost in the system's
+            // move loop) isn't kept.
+            preview.MouseDown(middle, MouseButton.Left);
+            // Where it was put back, a little lower or higher: still beside the window.
+            var back = preview.Box;
+            var clear = window.Screens.All.Any(s => s.WorkingArea.Contains(back.Translate(new PixelVector(0, 30))))
+                ? back.Position + new PixelVector(0, 30) : back.Position - new PixelVector(0, 30);
+            Assert.False(new PixelRect(clear, back.Size).Intersects(FrameOf(window)));
+            preview.Position = clear;
+            Assert.NotNull(store.Settings.DonutPreviewPlace);
+            var kept = store.Settings.DonutPreviewPlace!;
+            RunUntil(() => false, ToolbarPage.DropDelay * 2);
+            preview.Position = new PixelPoint(clear.X, clear.Y + 50);
+            RenderTests.Pump();
+            Assert.Same(kept, store.Settings.DonutPreviewPlace);
+            // And once the button is up, at once.
+            preview.MouseDown(middle, MouseButton.Left);
+            preview.Position = clear;
+            kept = store.Settings.DonutPreviewPlace!;
+            preview.MouseUp(middle, MouseButton.Left);
+            preview.Position = new PixelPoint(clear.X, clear.Y + 50);
+            RenderTests.Pump();
+            Assert.Same(kept, store.Settings.DonutPreviewPlace);
         }
         finally
         {

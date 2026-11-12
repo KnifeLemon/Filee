@@ -33,6 +33,10 @@ public partial class DonutPreviewWindow : Window
         // The middle is the handle: pressed there, the window moves with the pointer (before the donut takes the
         // press).
         AddHandler(PointerPressedEvent, OnPressed, RoutingStrategies.Tunnel);
+        // The drag is over once the button is up (where the system's move loop lets that through; else the page ends it
+        // once the donut rests, DragEnded).
+        AddHandler(PointerReleasedEvent, (_, _) => DragEnded(), RoutingStrategies.Tunnel, handledEventsToo: true);
+        AddHandler(PointerCaptureLostEvent, (_, _) => DragEnded(), RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerMovedEvent, (_, e) => Cursor = OnHandle(e) ? MoveCursor : null, RoutingStrategies.Tunnel, handledEventsToo: true);
         PositionChanged += (_, _) => OnMoved();
     }
@@ -98,6 +102,9 @@ public partial class DonutPreviewWindow : Window
         }
         KeepPlace(); // again, in case showing changed the scale
     }
+
+    /// <summary>A drag of its middle is over: a move from now on is not the user's.</summary>
+    internal void DragEnded() => _dragging = false;
 
     private void KeepPlace()
     {
