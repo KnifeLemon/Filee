@@ -204,6 +204,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// </summary>
     public void Load(IReadOnlyList<string> files, bool clickMode, bool backFace = false)
     {
+        _example = null;
         IsClickMode = clickMode;
         IsConnectMode = false;
         Files = files;
@@ -265,6 +266,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// </summary>
     public void LoadPreview(ToolbarProfile profile, bool backFace)
     {
+        _example = null;
         IsClickMode = false;
         IsConnectMode = false;
         Files = [];
@@ -336,6 +338,15 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// </summary>
     public void ShowExampleGroup(string title, string subtitle)
     {
+        _example = (title, subtitle);
+        ShowExample(title, subtitle);
+    }
+
+    // The example ring shown (flipped, the other face shows it too), until the donut is filled again.
+    private (string Title, string Subtitle)? _example;
+
+    private void ShowExample(string title, string subtitle)
+    {
         if (Items.Count == 0)
             return;
         var top = Items[0];
@@ -379,6 +390,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             return false;
         ShowFace(!IsBackFace);
         CenterSubtitle = IsClickMode ? loc["donut.close_hint"] : null;
+        if (_example is { } example)
+            ShowExample(example.Title, example.Subtitle);
         return true;
     }
 

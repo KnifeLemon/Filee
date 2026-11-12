@@ -4,9 +4,10 @@
 //
 // In order: where it was last dragged, against the main window, if all of it is on a screen there and clear of the
 // window; beside the window, right then left; on another screen with room for it; else the window moves over to make
-// room, narrower down to its minimum width if it must; else, on a screen too small for both, over the edge of the
-// window's column not in use, above the window (Over: the donut is owned by it). Beside the window, the donut's edge
-// facing it stays put as a slider grows it; grown off its screen or onto the window, it is placed again.
+// room, narrower down to its minimum width if it must; else (a screen too small for both, or a window that must not
+// move) at the screen's edge on the window's start side, over the window and above it (Over: the donut is owned by
+// it). Beside the window, the donut's edge facing it stays put as a slider grows it; grown off its screen or onto the
+// window, it is placed again.
 
 using Avalonia;
 
@@ -68,9 +69,9 @@ internal static class DonutPreviewPlacement
     /// Where the donut goes. <paramref name="window"/>: the main window's frame; <paramref name="main"/>: the index of
     /// its screen in <paramref name="screens"/>; <paramref name="size"/>: the donut's side in device-independent
     /// pixels; <paramref name="dragged"/>: where it was last dragged, its centre against the window's top-left corner;
-    /// <paramref name="minWidth"/>: the window's narrowest frame in pixels, or null when it can't be moved (maximized,
-    /// full screen, or the user is moving a slider); <paramref name="overRight"/>: which edge of the window the donut
-    /// may go over when nothing else is left.
+    /// <paramref name="minWidth"/>: the window's narrowest frame in pixels, or null when it must not move (it isn't a
+    /// normal window, or the donut is already shown and placed again); <paramref name="overRight"/>: which edge of the
+    /// screen the donut goes to, over the window, when nothing else is left.
     /// </summary>
     public static PreviewPlace Place(PixelRect window, IReadOnlyList<PreviewScreen> screens, int main, double size,
         PixelPoint? dragged, int? minWidth, bool overRight)

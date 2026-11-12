@@ -884,6 +884,17 @@ public class DonutEditorTests
             RenderTests.Pump();
             Assert.Equal(0, donut.OpenedGroup);
             Assert.Equal(2.5, donut.GroupRingSpread, 3);
+            // Flipped (Tab on it), and back: each face shows it, under its title.
+            var model = (RadialViewModel)preview.DataContext!;
+            Assert.NotEmpty(images.BackPresetIds ?? []);
+            foreach (var face in new[] { true, false })
+            {
+                Assert.True(model.ToggleFace());
+                RenderTests.Pump();
+                Assert.Equal(face, model.IsBackFace);
+                Assert.Equal(RadialViewModel.ExampleGroupId, donut.Items![0].Id);
+                Assert.Equal(("Example group", "This donut has no groups"), (donut.CenterTitle, donut.CenterSubtitle));
+            }
 
             vm.DoneAdjustingLookCommand.Execute(null);
             vm.AdjustLookCommand.Execute(null);
@@ -906,6 +917,9 @@ public class DonutEditorTests
     }
 
     private static PixelRect FrameOf(Window window) => new(window.Position, PixelSize.FromSize(window.FrameSize ?? window.Bounds.Size, 1));
+
+    private static bool IsDragging(DonutPreviewWindow preview) =>
+        (bool)typeof(DonutPreviewWindow).GetField("_dragging", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(preview)!;
 
     private static bool IsSliding(ToolbarPage page) =>
         (bool)typeof(ToolbarPage).GetField("_sliding", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(page)!;
@@ -1371,6 +1385,9 @@ public class DonutEditorTests
         var store = AppHost.Get<UserDataStore>();
         var motion = Motion.Enabled;
         Motion.Set(false);
+        // As on macOS and Linux: the system's move returns at once, and the drag is over once the donut rests.
+        var loop = DonutPreviewWindow.MoveLoopReturnsAtEnd;
+        DonutPreviewWindow.MoveLoopReturnsAtEnd = false;
         try
         {
             vm.AdjustLookCommand.Execute(null);
@@ -1407,7 +1424,8 @@ public class DonutEditorTests
             preview.Position = clear;
             Assert.NotNull(store.Settings.DonutPreviewPlace);
             var kept = store.Settings.DonutPreviewPlace!;
-            RunUntil(() => false, ToolbarPage.DropDelay * 2);
+            RunUntil(() => !IsDragging(preview), ToolbarPage.DropDelay * 10);
+            Assert.False(IsDragging(preview));
             preview.Position = new PixelPoint(clear.X, clear.Y + 50);
             RenderTests.Pump();
             Assert.Same(kept, store.Settings.DonutPreviewPlace);
@@ -1422,6 +1440,66 @@ public class DonutEditorTests
         }
         finally
         {
+            DonutPreviewWindow.MoveLoopReturnsAtEnd = loop;
+            Motion.Set(motion);
+            store.Settings.DonutPreviewPlace = null;
+            DonutLookSave.Flush();
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void On_windows_the_drag_is_over_when_the_systems_move_loop_returns_however_long_it_paused()
+    {
+        var (window, page, vm) = Open();
+        var store = AppHost.Get<UserDataStore>();
+        var motion = Motion.Enabled;
+        Motion.Set(false);
+        var (loop, drag) = (DonutPreviewWindow.MoveLoopReturnsAtEnd, DonutPreviewWindow.MoveDrag);
+        DonutPreviewWindow.MoveLoopReturnsAtEnd = true;
+        try
+        {
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            var preview = page.Preview!;
+            var frame = FrameOf(window);
+            var middle = new Point(preview.Bounds.Width / 2, preview.Bounds.Height / 2);
+            // The loop moves it over the window, pauses there longer than the donut takes to rest, and lets go there.
+            DonutPreviewWindow.MoveDrag = (moved, _) =>
+            {
+                moved.Position = new PixelPoint(frame.X + 100, frame.Y + 100);
+                RunUntil(() => false, ToolbarPage.DropDelay * 2);
+                Assert.True(((DonutPreviewWindow)moved).Box.Intersects(FrameOf(window)), "moved off the window while still dragged");
+                Assert.True(IsDragging((DonutPreviewWindow)moved));
+                moved.Position = new PixelPoint(frame.X + 150, frame.Y + 120);
+            };
+            preview.MouseDown(middle, MouseButton.Left);
+            // Let go over the window: off it at once, and not remembered there.
+            Assert.False(IsDragging(preview));
+            Assert.Null(store.Settings.DonutPreviewPlace);
+            AssertNotUnder(preview, window);
+
+            // Let go clear of it: remembered there, as it was when let go; a move after that isn't.
+            var back = preview.Box;
+            var clear = window.Screens.All.Any(s => s.WorkingArea.Contains(back.Translate(new PixelVector(0, 30))))
+                ? back.Position + new PixelVector(0, 30) : back.Position - new PixelVector(0, 30);
+            DonutPreviewWindow.MoveDrag = (moved, _) =>
+            {
+                moved.Position = clear - new PixelVector(0, 10);
+                RunUntil(() => false, ToolbarPage.DropDelay * 2);
+                moved.Position = clear;
+            };
+            preview.MouseDown(middle, MouseButton.Left);
+            var kept = store.Settings.DonutPreviewPlace!;
+            Assert.Equal(new PixelPoint(preview.Box.Center.X - window.Position.X, preview.Box.Center.Y - window.Position.Y),
+                new PixelPoint(kept.X!.Value, kept.Y!.Value));
+            preview.Position = clear + new PixelVector(0, 20);
+            RenderTests.Pump();
+            Assert.Same(kept, store.Settings.DonutPreviewPlace);
+        }
+        finally
+        {
+            (DonutPreviewWindow.MoveLoopReturnsAtEnd, DonutPreviewWindow.MoveDrag) = (loop, drag);
             Motion.Set(motion);
             store.Settings.DonutPreviewPlace = null;
             DonutLookSave.Flush();
