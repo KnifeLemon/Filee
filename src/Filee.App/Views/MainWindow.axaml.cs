@@ -109,10 +109,19 @@ public partial class MainWindow : Window
     /// </summary>
     internal PixelPoint? Landed { get; set; }
 
+    /// <summary>Where it was sent, moving over (null on its way back).</summary>
+    internal PixelPoint? SlidTo { get; set; }
+
+    /// <summary>
+    /// Still where it moved over to: where it landed, or where it was sent (an X11 window reports its new place only
+    /// once the window manager has moved it).
+    /// </summary>
+    internal bool StillWhereItSlid => Landed is { } at && IsNear(Position, at) || SlidTo is { } to && IsNear(Position, to);
+
     /// <summary>
     /// The place closing remembers: where it was before it moved over, unless the user moved it since.
     /// </summary>
-    internal PixelPoint PlaceToRemember => RestPlace is { } rest && (Landed is not { } at || IsNear(Position, at)) ? rest.Position : Position;
+    internal PixelPoint PlaceToRemember => RestPlace is { } rest && (Landed is null || StillWhereItSlid) ? rest.Position : Position;
 
     /// <summary>Within 2 pixels (a window manager may nudge a window it moved).</summary>
     internal static bool IsNear(PixelPoint a, PixelPoint b) => Math.Abs(a.X - b.X) <= 2 && Math.Abs(a.Y - b.Y) <= 2;

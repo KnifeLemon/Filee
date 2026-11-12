@@ -1172,6 +1172,16 @@ public class DonutEditorTests
             vm.PaletteSearch = "pn";
             RenderTests.Pump();
             Assert.Same(items, page.Preview.DonutControl.Items);
+            // Nor after a look saved with the library (Label scale): restyled, not filled.
+            var scale = vm.LabelScale;
+            vm.LabelScale = scale + 10;
+            RenderTests.Pump();
+            vm.PaletteSearch = "p";
+            RenderTests.Pump();
+            Assert.Same(items, page.Preview.DonutControl.Items);
+            vm.LabelScale = scale;
+            RenderTests.Pump();
+            items = page.Preview.DonutControl.Items;
             // An edit of the group does.
             Assert.True(vm.Insert("to-png", 0));
             RenderTests.Pump();
@@ -1359,14 +1369,38 @@ public class DonutEditorTests
             // Maximized and restored meanwhile, as Windows reports it: the new size first, then the new state. Not the
             // user's size: Done still gives it its width back.
             var narrowed = window.ClientSize.Width;
-            window.Width = 1920;
+            void SizeFirst(double to)
+            {
+                window.Width = to;
+                window.UpdateLayout();
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs(Avalonia.Threading.DispatcherPriority.Send); // the size lands
+            }
+            SizeFirst(1920);
+            Assert.Equal(1920, window.ClientSize.Width);
             window.WindowState = WindowState.Maximized;
             RenderTests.Pump();
-            window.Width = narrowed;
+            SizeFirst(narrowed);
             window.WindowState = WindowState.Normal;
             RenderTests.Pump();
             closing = WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null);
             Assert.Equal(width, closing.Size!.Value.Width);
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.Equal((start, width), (window.Position, window.ClientSize.Width));
+
+            // Narrowed to a width a device pixel short (Windows truncates to whole pixels: up to 0.8 short at 125 %,
+            // one here at 100 %), and placed where an X11 window manager reports it only later (its landing read as
+            // where it was): still its own width and place back on Done, and on close meanwhile.
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            var asked = window.ClientSize.Width;
+            window.Width = asked - 1;
+            RenderTests.Pump();
+            Assert.Equal(asked - 1, window.ClientSize.Width);
+            RenderTests.Pump();
+            main.Landed = start;
+            closing = WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null);
+            Assert.Equal((start, width), (closing.Position!.Value, closing.Size!.Value.Width));
             vm.DoneAdjustingLookCommand.Execute(null);
             RenderTests.Pump();
             Assert.Equal((start, width), (window.Position, window.ClientSize.Width));

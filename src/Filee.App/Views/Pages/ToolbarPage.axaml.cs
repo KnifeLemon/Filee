@@ -241,7 +241,10 @@ public partial class ToolbarPage : UserControl
             _previewContent = content;
         }
         else
+        {
             _previewModel.ApplyLook(profile);
+            _previewContent = content; // a look saved with the library (Label scale) isn't new content
+        }
         _preview.DonutControl.HeldGroupId = held;
         if (!shown)
         {
@@ -250,7 +253,7 @@ public partial class ToolbarPage : UserControl
             if (_sliding)
             {
                 StopSlide();
-                _slidTo = LandedAt = main.Position;
+                SlidTo = LandedAt = main.Position;
             }
             PlacePreview(main, moveWindow: true);
         }
@@ -378,9 +381,21 @@ public partial class ToolbarPage : UserControl
     // under way, and the width it was made narrower to (it goes back to its own unless the user resized it since).
     // Where it actually landed (a window manager may keep it off the menu bar) is the window's own, for closing to
     // judge by too (MainWindow.Landed): null while it is on its way, over or back.
-    private PixelPoint? _slidTo;
     private bool _sliding;
     private double? _narrowedTo;
+
+    private PixelPoint? SlidTo
+    {
+        get => (_topLevel as MainWindow)?.SlidTo;
+        set
+        {
+            if (_topLevel is MainWindow main)
+                main.SlidTo = value;
+        }
+    }
+
+    // Two widths a window was given and reports: the same to a device pixel (Windows truncates to whole pixels).
+    private static bool SameWidth(Window window, double a, double b) => Math.Abs(a - b) <= 1 / window.RenderScaling + 0.01;
 
     private PixelPoint? LandedAt
     {
@@ -401,9 +416,9 @@ public partial class ToolbarPage : UserControl
         {
             // Moved by the user since it last moved over (while the donut was put away): there is where it goes back,
             // as wide as it was unless the user resized it too.
-            if (mw.RestPlace is { } rest && !_sliding && (LandedAt ?? _slidTo) is { } at && !MainWindow.IsNear(main.Position, at))
+            if (mw.RestPlace is { } rest && !_sliding && (LandedAt ?? SlidTo) is not null && !mw.StillWhereItSlid)
             {
-                var narrowed = _narrowedTo is { } width && Math.Abs(main.ClientSize.Width - width) <= 0.5;
+                var narrowed = _narrowedTo is { } width && SameWidth(main, main.ClientSize.Width, width);
                 mw.RestPlace = (main.Position, narrowed ? rest.ClientSize.WithHeight(main.ClientSize.Height) : main.ClientSize);
                 if (!narrowed)
                     _narrowedTo = null;
@@ -417,7 +432,7 @@ public partial class ToolbarPage : UserControl
             _narrowedTo = Math.Max(main.MinWidth, main.ClientSize.Width - narrower / scaling);
             main.Width = _narrowedTo.Value;
         }
-        _slidTo = to.Position;
+        SlidTo = to.Position;
         LandedAt = null;
         Slide(main, to.Position, () => LandedAt = main.Position);
     }
@@ -431,10 +446,10 @@ public partial class ToolbarPage : UserControl
         // Maximized meanwhile: it goes back once it is a normal window again (see OnWindowPropertyChanged).
         if (_topLevel is not MainWindow { WindowState: WindowState.Normal } main || main.RestPlace is not { } rest)
             return;
-        var stillThere = _sliding || (LandedAt ?? _slidTo) is { } there && MainWindow.IsNear(main.Position, there);
+        var stillThere = _sliding || main.StillWhereItSlid;
         // Its own width back, unless the user resized it since it was made narrower (or it never was).
-        var narrowed = _narrowedTo is { } width && Math.Abs(main.ClientSize.Width - width) <= 0.5;
-        _slidTo = LandedAt = null;
+        var narrowed = _narrowedTo is { } width && SameWidth(main, main.ClientSize.Width, width);
+        SlidTo = LandedAt = null;
         _narrowedTo = null;
         if (narrowed)
             main.Width = rest.ClientSize.Width;
@@ -550,7 +565,7 @@ public partial class ToolbarPage : UserControl
                 return;
             // Its width the user's unless it is the one it was made narrower to; its height always.
             var width = rest.ClientSize.Width;
-            if (Math.Abs(main.ClientSize.Width - (_narrowedTo ?? width)) > 0.5 && Math.Abs(main.ClientSize.Width - width) > 0.5)
+            if (!SameWidth(main, main.ClientSize.Width, _narrowedTo ?? width) && !SameWidth(main, main.ClientSize.Width, width))
             {
                 _narrowedTo = null;
                 width = main.ClientSize.Width;
@@ -607,7 +622,7 @@ public partial class ToolbarPage : UserControl
             // where it moved to is where it is, and where closing remembers.
             StopSlide();
             away.RestPlace = null;
-            _slidTo = LandedAt = null;
+            SlidTo = LandedAt = null;
             _narrowedTo = null;
         }
         _topLevel = null;
