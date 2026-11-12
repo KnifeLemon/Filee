@@ -6,8 +6,11 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Filee.App.Services.Capture;
 using Filee.App.ViewModels;
+using Filee.App.ViewModels.Capture;
 using Filee.App.Views;
+using Filee.App.Views.Capture;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
@@ -34,8 +37,16 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     private FileeConnectQrWindow? _connectQrWindow;
     private FileeConnectWindow? _connectWindow;
 
+    private CaptureStudioConfigWindow? _captureConfigWindow;
+    private CaptureStudioBarWindow? _captureBarWindow;
+    private CaptureOverlayWindow? _captureOverlayWindow;
+    private MobileMirrorWindow? _mobileMirrorWindow;
+    private CaptureStudioEditorWindow? _captureEditorWindow;
+
     internal FileeConnectQrWindow? ConnectQrWindow => _connectQrWindow;
     internal FileeConnectWindow? ConnectWindow => _connectWindow;
+    internal CaptureStudioBarWindow? CaptureBarWindow => _captureBarWindow;
+    internal CaptureStudioEditorWindow? CaptureEditorWindow => _captureEditorWindow;
 
     internal FormatRequestNoticeWindow? FormatRequestNotice => _formatRequestNotice;
     private bool _isOpeningConnect;
@@ -153,6 +164,128 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
 
         connectWindow.Show();
         connectWindow.Activate();
+    }
+
+    public void ShowCaptureStudio(int triggerX = 0, int triggerY = 0)
+    {
+        if (_captureConfigWindow is { IsVisible: true })
+        {
+            _captureConfigWindow.Activate();
+            return;
+        }
+
+        if (_captureBarWindow is { IsVisible: true })
+        {
+            _captureBarWindow.Activate();
+            return;
+        }
+
+        var studioService = services.GetRequiredService<CaptureStudioService>();
+        var configVm = new CaptureStudioConfigViewModel(studioService.TargetService, loc, triggerX, triggerY);
+
+        var configWindow = new CaptureStudioConfigWindow(configVm);
+        PrepareWindow(configWindow);
+        _captureConfigWindow = configWindow;
+
+        configVm.RecordingRequested += async config =>
+        {
+            configWindow.Close();
+            _captureConfigWindow = null;
+
+            if (config.CountdownBeforeRecording)
+            {
+                await Task.Delay(1000);
+            }
+
+            var started = await studioService.StartRecordingAsync(config);
+            if (!started)
+            {
+                await MessageAsync(null, loc["capture_studio.error_start"] ?? "Could not start screen capture engine. Please ensure FFmpeg is available.");
+                return;
+            }
+
+            var barVm = new CaptureStudioBarViewModel(studioService, config);
+            var barWindow = new CaptureStudioBarWindow(barVm);
+            _captureBarWindow = barWindow;
+
+            var overlayWindow = new CaptureOverlayWindow();
+            _captureOverlayWindow = overlayWindow;
+
+            barVm.ToolSelected += tool => overlayWindow.UpdateTool(tool);
+            barVm.ClearAnnotationsRequested += () => overlayWindow.ClearAnnotations();
+            barVm.CursorHighlightToggled += active => overlayWindow.UpdateCursorHighlight(active);
+            barVm.SpotlightToggled += active => overlayWindow.UpdateSpotlight(active, barVm.SpotlightRadius);
+
+            barVm.MobileMirrorToggled += () =>
+            {
+                if (_mobileMirrorWindow is { IsVisible: true })
+                {
+                    _mobileMirrorWindow.Close();
+                    _mobileMirrorWindow = null;
+                }
+                else
+                {
+                    _mobileMirrorWindow = new MobileMirrorWindow(studioService.MirrorService);
+                    _mobileMirrorWindow.Show();
+                }
+            };
+
+            barVm.StopRequested += async () =>
+            {
+                barWindow.Close();
+                overlayWindow.Close();
+                _captureBarWindow = null;
+                _captureOverlayWindow = null;
+
+                if (_mobileMirrorWindow != null)
+                {
+                    _mobileMirrorWindow.Close();
+                    _mobileMirrorWindow = null;
+                }
+
+                var meta = await studioService.StopRecordingAsync();
+                if (meta != null && File.Exists(meta.VideoPath))
+                {
+                    ShowCaptureStudioEditor(meta, studioService);
+                }
+            };
+
+            overlayWindow.Show();
+            barWindow.Show();
+
+            var screen = barWindow.Screens.ScreenFromWindow(barWindow) ?? barWindow.Screens.Primary;
+            if (screen != null)
+            {
+                var wa = screen.WorkingArea;
+                barWindow.Position = new PixelPoint(wa.X + (wa.Width - 620) / 2, wa.Y + 20);
+            }
+        };
+
+        configWindow.Closed += (_, _) =>
+        {
+            if (_captureConfigWindow == configWindow)
+                _captureConfigWindow = null;
+        };
+
+        configWindow.Show();
+        configWindow.Activate();
+    }
+
+    private void ShowCaptureStudioEditor(RecordedVideoMetadata metadata, CaptureStudioService studioService)
+    {
+        var editorVm = new CaptureStudioEditorViewModel(studioService, loc, metadata);
+        var editorWindow = new CaptureStudioEditorWindow(editorVm);
+        PrepareWindow(editorWindow);
+        _captureEditorWindow = editorWindow;
+
+        editorWindow.Closed += (_, _) =>
+        {
+            if (_captureEditorWindow == editorWindow)
+                _captureEditorWindow = null;
+        };
+
+        editorWindow.Show();
+        editorWindow.Activate();
     }
 
     private CropOverlayWindow? _cropOverlay;

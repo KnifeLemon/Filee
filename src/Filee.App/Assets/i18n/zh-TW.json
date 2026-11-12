@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "拖一拖，放一放，轉換完成。",
 
@@ -1819,5 +1819,10 @@
   "connect.pin_label": "PIN 碼：",
   "connect.firewall_hint_generic": "注意：如果您的手機無法連線，請在系統防火牆中允許 Filee。",
   "connect.no_network_message": "無法啟動 Filee Connect。請確認此裝置已連線至本機 Wi-Fi 或乙太網路。",
-  "connect.save_as": "另存為…"
+  "connect.save_as": "另存為…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Screen Recording",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "donut.tools": "Filee Tools"
 }

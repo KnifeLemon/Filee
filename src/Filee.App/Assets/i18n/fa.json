@@ -1,4 +1,4 @@
-{
+﻿{
   "portable.import_existing": "وارد کردن داده‌های موجود",
   "portable.start_fresh": "شروع تازه",
   "portable.import_summary": "تنظیمات، پیش‌تنظیم‌ها، تاریخچه و موتورهای دانلودشده را در این پوشه پرتابل کپی کنید. فایل‌های اصلی تغییر نمی‌کنند و حذف نمی‌شوند.",
@@ -1795,5 +1795,10 @@
   "connect.pin_label": "پین:",
   "connect.firewall_hint_generic": "توجه: اگر تلفن شما متصل نمی‌شود، به Filee در فایروال سیستم اجازه دسترسی دهید.",
   "connect.no_network_message": "Filee Connect راه‌اندازی نشد. لطفاً مطمئن شوید این دستگاه به شبکه Wi-Fi یا اترنت محلی متصل است.",
-  "connect.save_as": "ذخیره به عنوان…"
+  "connect.save_as": "ذخیره به عنوان…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Screen Recording",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "donut.tools": "Filee Tools"
 }

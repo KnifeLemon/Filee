@@ -1,0 +1,141 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels.Capture"
+        x:Class="Filee.App.Views.Capture.CaptureStudioConfigWindow"
+        x:DataType="vm:CaptureStudioConfigViewModel"
+        Title="Capture Studio - Filee"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="520"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen">
+  <Border Background="{DynamicResource WindowBackgroundBrush}" Padding="24">
+    <StackPanel Spacing="18">
+
+      <!-- Header -->
+      <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <Image Source="avares://Filee/Assets/Icons/filee.png" Width="26" Height="26" VerticalAlignment="Center" />
+          <TextBlock FontSize="18" FontWeight="Bold" VerticalAlignment="Center">
+            <Run Text="Capture" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <Run Text="Studio" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" />
+          </TextBlock>
+        </StackPanel>
+        <Border Grid.Column="2" Background="{DynamicResource AccentSubtleBrush}" CornerRadius="12" Padding="10,4">
+          <TextBlock Text="Screen Recording" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+        </Border>
+      </Grid>
+
+      <!-- Recording Source Selection Card -->
+      <Border Background="{DynamicResource SurfaceBrush}" BorderThickness="1"
+              BorderBrush="{DynamicResource SubtleBorderBrush}" CornerRadius="10" Padding="16">
+        <StackPanel Spacing="12">
+          <TextBlock Text="Recording Source" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+          <!-- Source Type Tabs -->
+          <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,4">
+            <RadioButton Grid.Column="0" Content="App Window" GroupName="SourceTypeGroup"
+                         IsChecked="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}" />
+            <RadioButton Grid.Column="1" Content="Full Screen" GroupName="SourceTypeGroup"
+                         IsChecked="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=1}" />
+            <RadioButton Grid.Column="2" Content="Custom Region" GroupName="SourceTypeGroup"
+                         IsChecked="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=2}" />
+          </Grid>
+
+          <!-- App Window Selector -->
+          <StackPanel Spacing="6" IsVisible="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}">
+            <TextBlock Text="Select Application Window:" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding OpenWindows}" SelectedItem="{Binding SelectedWindow}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+
+          <!-- Full Screen Selector -->
+          <StackPanel Spacing="6" IsVisible="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=1}">
+            <TextBlock Text="Select Display / Monitor:" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Screens}" SelectedItem="{Binding SelectedScreen}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+
+          <!-- Custom Region Info -->
+          <Border Background="{DynamicResource AccentSubtleBrush}" CornerRadius="6" Padding="10"
+                  IsVisible="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=2}">
+            <TextBlock Text="Interactive crosshair will let you select any rectangular screen area upon starting."
+                       FontSize="11" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" />
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <!-- Video & Audio Settings Card -->
+      <Border Background="{DynamicResource SurfaceBrush}" BorderThickness="1"
+              BorderBrush="{DynamicResource SubtleBorderBrush}" CornerRadius="10" Padding="16">
+        <StackPanel Spacing="14">
+          <TextBlock Text="Capture Quality &amp; Audio" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+          <!-- Resolution & Framerate Grid -->
+          <Grid ColumnDefinitions="*,16,*" Margin="0,2">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <TextBlock Text="Resolution" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+              <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Resolutions}" SelectedItem="{Binding SelectedResolution}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Spacing="4">
+              <TextBlock Text="Frame Rate" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+              <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Framerates}" SelectedItem="{Binding SelectedFramerate}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding, StringFormat='{}{0} FPS'}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+          </Grid>
+
+          <!-- Audio Toggles -->
+          <Grid ColumnDefinitions="*,*" Margin="0,4,0,0">
+            <ToggleSwitch Grid.Column="0" Content="Microphone" IsChecked="{Binding EnableMicrophone}" />
+            <ToggleSwitch Grid.Column="1" Content="System Audio" IsChecked="{Binding EnableSystemAudio}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- Effects & Controls Card -->
+      <Border Background="{DynamicResource SurfaceBrush}" BorderThickness="1"
+              BorderBrush="{DynamicResource SubtleBorderBrush}" CornerRadius="10" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Visual Effects &amp; Timing" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
+          <Grid ColumnDefinitions="*,*">
+            <ToggleSwitch Grid.Column="0" Content="Cursor Highlight" IsChecked="{Binding HighlightCursor}" />
+            <ToggleSwitch Grid.Column="1" Content="Spotlight Mode" IsChecked="{Binding SpotlightMode}" />
+          </Grid>
+          <ToggleSwitch Content="3-Second Countdown before starting" IsChecked="{Binding CountdownBeforeRecording}" />
+        </StackPanel>
+      </Border>
+
+      <!-- Action Buttons -->
+      <Grid ColumnDefinitions="*,12,Auto">
+        <Button Grid.Column="0" Command="{Binding CancelCommand}"
+                Content="Cancel" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                Height="40" Background="Transparent" BorderBrush="{DynamicResource SubtleBorderBrush}" />
+
+        <Button Grid.Column="2" Command="{Binding StartRecordingCommand}"
+                Classes="accent" MinWidth="180" Height="40"
+                HorizontalContentAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Ellipse Width="10" Height="10" Fill="Red" VerticalAlignment="Center" />
+            <TextBlock Text="Start Recording" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+      </Grid>
+
+    </StackPanel>
+  </Border>
+</Window>

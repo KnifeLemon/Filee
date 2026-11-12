@@ -1,0 +1,145 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels.Capture"
+        x:Class="Filee.App.Views.Capture.CaptureStudioBarWindow"
+        x:DataType="vm:CaptureStudioBarViewModel"
+        Title="Recording Toolbar"
+        SystemDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SizeToContent="WidthAndHeight">
+
+  <Border Background="{DynamicResource SurfaceBrush}"
+          BorderBrush="{DynamicResource SubtleBorderBrush}"
+          BorderThickness="1"
+          CornerRadius="24"
+          Padding="14,8"
+          BoxShadow="0 8 24 #33000000">
+
+    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+
+      <!-- Drag Handle & Recording Pulse -->
+      <Border Cursor="SizeAll" PointerPressed="OnDragHandlePointerPressed"
+              Background="Transparent" Padding="4,0" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Ellipse Width="10" Height="10" Fill="#FF3B30" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding ElapsedTimeText}" FontWeight="Bold" FontSize="14"
+                     Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+
+      <!-- Pause / Resume -->
+      <Button Command="{Binding TogglePauseCommand}" Background="Transparent"
+              CornerRadius="16" Width="32" Height="32" Padding="0" ToolTip.Tip="Pause / Resume">
+        <TextBlock Text="{Binding IsPaused, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='▶', FallbackValue='⏸'}"
+                   FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+      </Button>
+
+      <!-- Stop Recording (Primary red) -->
+      <Button Command="{Binding StopRecordingCommand}" Background="#FF3B30" Foreground="White"
+              CornerRadius="14" Height="28" Padding="10,0" ToolTip.Tip="Stop Recording &amp; Open Studio">
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Rectangle Width="9" Height="9" Fill="White" RadiusX="2" RadiusY="2" VerticalAlignment="Center" />
+          <TextBlock Text="Stop" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+
+      <Border Width="1" Height="20" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
+
+      <!-- Annotation Tools Group -->
+      <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <!-- Pointer -->
+        <Button Command="{Binding SelectToolCommand}" CommandParameter="pointer"
+                Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Select / Pointer">
+          <TextBlock Text="↖" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+
+        <!-- Pen / Marker -->
+        <Button Command="{Binding SelectToolCommand}" CommandParameter="pen"
+                Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Pen / Freehand">
+          <TextBlock Text="✎" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+
+        <!-- Arrow -->
+        <Button Command="{Binding SelectToolCommand}" CommandParameter="arrow"
+                Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Arrow">
+          <TextBlock Text="➔" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+
+        <!-- Rectangle -->
+        <Button Command="{Binding SelectToolCommand}" CommandParameter="rect"
+                Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Rectangle">
+          <TextBlock Text="▭" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+
+        <!-- Circle -->
+        <Button Command="{Binding SelectToolCommand}" CommandParameter="circle"
+                Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Circle">
+          <TextBlock Text="◯" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+
+        <!-- Blur / Mask Tool -->
+        <Button Command="{Binding SelectToolCommand}" CommandParameter="blur"
+                Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Blur Sensitive Area">
+          <TextBlock Text="░" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+
+        <!-- Text Callout Tool -->
+        <Button Command="{Binding SelectToolCommand}" CommandParameter="text"
+                Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Stylish Text Callout">
+          <TextBlock Text="T" FontWeight="Bold" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+
+        <!-- Clear -->
+        <Button Command="{Binding ClearAnnotationsCommand}"
+                Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Clear All Annotations">
+          <TextBlock Text="🗑" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Button>
+      </StackPanel>
+
+      <Border Width="1" Height="20" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
+
+      <!-- Visual FX: Cursor Highlight & Spotlight -->
+      <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <!-- Highlight Cursor -->
+        <ToggleButton IsChecked="{Binding IsCursorHighlightActive}" Command="{Binding ToggleCursorHighlightCommand}"
+                      Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Cursor Halo Highlight">
+          <TextBlock Text="🟡" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </ToggleButton>
+
+        <!-- Spotlight Mode ("Dim light with circle around mouse") -->
+        <ToggleButton IsChecked="{Binding IsSpotlightActive}" Command="{Binding ToggleSpotlightCommand}"
+                      Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Spotlight Mode (Dim screen around mouse)">
+          <TextBlock Text="🔦" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </ToggleButton>
+      </StackPanel>
+
+      <Border Width="1" Height="20" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
+
+      <!-- Audio Mute Toggles -->
+      <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <ToggleButton IsChecked="{Binding IsMicMuted}" Command="{Binding ToggleMicCommand}"
+                      Background="Transparent" CornerRadius="14" Width="30" Height="30" Padding="0" ToolTip.Tip="Microphone Mute">
+          <TextBlock Text="{Binding IsMicMuted, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='🎤', FallbackValue='🎙'}"
+                     FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </ToggleButton>
+      </StackPanel>
+
+      <Border Width="1" Height="20" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
+
+      <!-- Mobile Mirroring Button -->
+      <Button Command="{Binding ToggleMobileMirrorCommand}"
+              Background="{DynamicResource AccentSubtleBrush}" Foreground="{DynamicResource AccentBrush}"
+              CornerRadius="14" Height="28" Padding="10,0" ToolTip.Tip="Mirror Mobile Phone Screen (Side-by-Side)">
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <TextBlock Text="📱" FontSize="13" VerticalAlignment="Center" />
+          <TextBlock Text="Mobile Mirror" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+
+    </StackPanel>
+  </Border>
+</Window>

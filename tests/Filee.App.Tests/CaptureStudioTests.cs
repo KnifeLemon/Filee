@@ -1,0 +1,149 @@
+using Avalonia;
+using Filee.App.Services.Capture;
+using Filee.App.ViewModels.Capture;
+using Filee.Core.Localization;
+using Xunit;
+
+namespace Filee.App.Tests;
+
+public sealed class CaptureStudioTests
+{
+    private sealed class DummyLocalizer : ILocalizer
+    {
+        public string Language => "en";
+        public string this[string key] => key;
+        public string Format(string key, params object[] args) => string.Format(key, args);
+        public event EventHandler? LanguageChanged { add { } remove { } }
+    }
+
+    [Fact]
+    public void WindowTargetService_returns_screens_and_audio_devices()
+    {
+        var service = new WindowTargetService();
+        var screens = service.GetScreens();
+        Assert.NotEmpty(screens);
+
+        var devices = service.GetAudioInputDevices();
+        Assert.NotEmpty(devices);
+    }
+
+    [Fact]
+    public void CaptureStudioConfigViewModel_builds_expected_config()
+    {
+        var targetService = new WindowTargetService();
+        var loc = new DummyLocalizer();
+        var vm = new CaptureStudioConfigViewModel(targetService, loc);
+
+        vm.SelectedSourceIndex = 1; // Full Screen
+        vm.SelectedResolution = "1080p (Full HD)";
+        vm.SelectedFramerate = 60;
+        vm.EnableMicrophone = true;
+        vm.EnableSystemAudio = false;
+        vm.HighlightCursor = true;
+        vm.SpotlightMode = true;
+
+        var config = vm.BuildConfig();
+        Assert.Equal(CaptureSourceType.FullScreen, config.SourceType);
+        Assert.Equal(CaptureResolutionPreset.Res1080p, config.Resolution);
+        Assert.Equal(60, config.Framerate);
+        Assert.True(config.EnableMicrophone);
+        Assert.False(config.EnableSystemAudio);
+        Assert.True(config.HighlightCursor);
+        Assert.True(config.SpotlightMode);
+    }
+
+    [Fact]
+    public void CaptureStudioBarViewModel_toggles_and_emits_tool_events()
+    {
+        var targetService = new WindowTargetService();
+        var mirrorService = new MobileMirrorService();
+        var engine = new CaptureRecordingEngine();
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+
+        var config = new CaptureConfig { HighlightCursor = true, SpotlightMode = false };
+        var vm = new CaptureStudioBarViewModel(studio, config);
+
+        AnnotationTool? chosen = null;
+        vm.ToolSelected += t => chosen = t;
+
+        vm.SelectToolCommand.Execute("pen");
+        Assert.Equal(AnnotationTool.Pen, vm.SelectedTool);
+        Assert.Equal(AnnotationTool.Pen, chosen);
+
+        vm.SelectToolCommand.Execute("blur");
+        Assert.Equal(AnnotationTool.Blur, vm.SelectedTool);
+
+        bool spotlightNotified = false;
+        vm.SpotlightToggled += val => spotlightNotified = val;
+        vm.ToggleSpotlightCommand.Execute(null);
+        Assert.True(vm.IsSpotlightActive);
+        Assert.True(spotlightNotified);
+    }
+
+    [Fact]
+    public void MobileMirrorService_handles_streaming_state_and_frames()
+    {
+        var service = new MobileMirrorService();
+        Assert.False(service.IsStreaming);
+        Assert.Equal(0, service.FrameCount);
+
+        bool stateNotified = false;
+        service.StateChanged += s => stateNotified = s;
+
+        service.OnConnected();
+        Assert.True(service.IsStreaming);
+        Assert.True(stateNotified);
+
+        byte[]? received = null;
+        service.FrameReceived += bytes => received = bytes;
+
+        var sampleFrame = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10 };
+        service.OnFrame(sampleFrame);
+
+        Assert.Equal(1, service.FrameCount);
+        Assert.Equal(sampleFrame, service.LastJpegFrame);
+        Assert.NotNull(received);
+
+        service.OnDisconnected();
+        Assert.False(service.IsStreaming);
+    }
+
+    [Fact]
+    public void CaptureStudioEditorViewModel_subtitles_and_trim_operations()
+    {
+        var targetService = new WindowTargetService();
+        var mirrorService = new MobileMirrorService();
+        var engine = new CaptureRecordingEngine();
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+        var loc = new DummyLocalizer();
+
+        var meta = new RecordedVideoMetadata(
+            "dummy_path.mp4",
+            TimeSpan.FromSeconds(60),
+            1920,
+            1080,
+            30,
+            true);
+
+        var vm = new CaptureStudioEditorViewModel(studio, loc, meta);
+        Assert.Equal(60, vm.VideoDuration.TotalSeconds);
+        Assert.Equal(0, vm.TrimStart);
+        Assert.Equal(60, vm.TrimEnd);
+
+        // Add subtitle
+        vm.CurrentPosition = 10;
+        vm.AddSubtitleCommand.Execute(null);
+        Assert.Single(vm.Subtitles);
+        Assert.Equal(TimeSpan.FromSeconds(10), vm.Subtitles[0].Start);
+
+        // Split at playhead
+        vm.CurrentPosition = 35;
+        vm.SplitAtPlayheadCommand.Execute(null);
+        Assert.Equal(35, vm.TrimEnd);
+
+        // Delete subtitle
+        vm.SelectedSubtitle = vm.Subtitles[0];
+        vm.DeleteSubtitleCommand.Execute(null);
+        Assert.Empty(vm.Subtitles);
+    }
+}

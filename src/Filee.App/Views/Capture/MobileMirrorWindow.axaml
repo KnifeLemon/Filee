@@ -1,0 +1,66 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Filee.App.Views.Capture.MobileMirrorWindow"
+        Title="Mobile Screen Mirror"
+        SystemDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        Width="320"
+        Height="640"
+        CanResize="True"
+        ShowInTaskbar="False">
+
+  <Border Background="#1C1C1E" CornerRadius="36" BorderThickness="4" BorderBrush="#3A3A3C"
+          BoxShadow="0 12 32 #55000000" Padding="10">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+      <!-- Phone Bezel Header (Draggable) -->
+      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="10,4,10,8"
+            PointerPressed="OnHeaderPointerPressed" Background="Transparent" Cursor="SizeAll">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Border Width="6" Height="6" CornerRadius="3" Background="#30D158" />
+          <TextBlock Text="Mobile Mirror" FontSize="11" FontWeight="SemiBold" Foreground="#8E8E93" />
+        </StackPanel>
+
+        <!-- Speaker Notch / Island -->
+        <Border Grid.Column="1" HorizontalAlignment="Center" Width="60" Height="6"
+                Background="#2C2C2E" CornerRadius="3" />
+
+        <!-- Close / Dock Buttons -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+          <Button Click="OnDockRightClick" Background="Transparent" Padding="0" Width="20" Height="20" ToolTip.Tip="Dock to Right">
+            <TextBlock Text="⇥" FontSize="11" Foreground="#8E8E93" HorizontalAlignment="Center" />
+          </Button>
+          <Button Click="OnCloseClick" Background="Transparent" Padding="0" Width="20" Height="20" ToolTip.Tip="Close">
+            <TextBlock Text="✕" FontSize="11" Foreground="#8E8E93" HorizontalAlignment="Center" />
+          </Button>
+        </StackPanel>
+      </Grid>
+
+      <!-- Screen Display Area -->
+      <Border Grid.Row="1" Background="#000000" CornerRadius="24" ClipToBounds="True">
+        <Panel>
+          <!-- Live Stream Frame Image -->
+          <Image Name="FrameImage" Stretch="Uniform" />
+
+          <!-- Waiting for Connection Overlay -->
+          <StackPanel Name="WaitingPanel" VerticalAlignment="Center" HorizontalAlignment="Center"
+                      Spacing="14" Margin="24">
+            <Border Background="#2C2C2E" CornerRadius="30" Width="60" Height="60" HorizontalAlignment="Center">
+              <TextBlock Text="📱" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="Waiting for Mobile Stream…" FontSize="13" FontWeight="SemiBold"
+                       Foreground="#FFFFFF" HorizontalAlignment="Center" />
+            <TextBlock Text="Open Filee Connect on your iPhone or Android and tap 'Screen Mirror' to broadcast."
+                       FontSize="11" Foreground="#8E8E93" TextAlignment="Center" TextWrapping="Wrap" />
+          </StackPanel>
+        </Panel>
+      </Border>
+
+      <!-- Footer Bar -->
+      <Border Grid.Row="2" Height="14" HorizontalAlignment="Center" Width="80"
+              Margin="0,6,0,2" Background="#3A3A3C" CornerRadius="2" />
+    </Grid>
+  </Border>
+</Window>

@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "اسحب، أفلت، وحوّل.",
   "fields.title": "المجالات",
@@ -1798,5 +1798,10 @@
   "connect.pin_label": "رمز PIN:",
   "connect.firewall_hint_generic": "ملاحظة: إذا لم يتمكن هاتفك من الاتصال، اسمح لـ Filee في جدار الحماية الخاص بالنظام.",
   "connect.no_network_message": "تعذر بدء Filee Connect. يرجى التأكد من اتصال هذا الجهاز بشبكة Wi-Fi أو شبكة إيثرنت محلية.",
-  "connect.save_as": "حفظ باسم…"
+  "connect.save_as": "حفظ باسم…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Screen Recording",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "donut.tools": "Filee Tools"
 }

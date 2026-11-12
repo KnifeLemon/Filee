@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "Kéo, thả, xong.",
 
@@ -1819,5 +1819,10 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Lưu ý: Nếu điện thoại không thể kết nối, hãy cho phép Filee trong tường lửa hệ thống.",
   "connect.no_network_message": "Không thể khởi động Filee Connect. Vui lòng đảm bảo thiết bị này được kết nối với mạng Wi-Fi hoặc Ethernet cục bộ.",
-  "connect.save_as": "Lưu dưới dạng…"
+  "connect.save_as": "Lưu dưới dạng…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Screen Recording",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "donut.tools": "Filee Tools"
 }

@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "Sürükle, bırak, dönüştür.",
   "fields.title": "Alanlar",
@@ -1797,5 +1797,10 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Not: Telefonunuz bağlanamıyorsa, sistem güvenlik duvarında Filee'ye izin verin.",
   "connect.no_network_message": "Filee Connect başlatılamadı. Lütfen bu cihazın yerel bir Wi-Fi veya Ethernet ağına bağlı olduğundan emin olun.",
-  "connect.save_as": "Farklı kaydet…"
+  "connect.save_as": "Farklı kaydet…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Screen Recording",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "donut.tools": "Filee Tools"
 }

@@ -1,0 +1,16 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Filee.App.Views.Capture.CaptureOverlayWindow"
+        Title="Capture Overlay"
+        SystemDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        WindowState="Maximized"
+        ShowInTaskbar="False">
+
+  <Canvas Name="OverlayCanvas" Background="Transparent"
+          PointerPressed="OnCanvasPointerPressed"
+          PointerMoved="OnCanvasPointerMoved"
+          PointerReleased="OnCanvasPointerReleased" />
+</Window>

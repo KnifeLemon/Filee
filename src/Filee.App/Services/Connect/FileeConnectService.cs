@@ -606,6 +606,53 @@ public sealed class FileeConnectService : IAsyncDisposable
             await HandleWebSocketClientAsync(client);
             return Results.Empty;
         });
+
+        // Mobile Screen Mirroring WebSocket endpoint: GET /ws/mirror
+        app.MapGet("/ws/mirror", async (HttpContext context) =>
+        {
+            if (!context.WebSockets.IsWebSocketRequest)
+                return Results.BadRequest();
+
+            if (!TryValidateDeviceToken(context, out _))
+                return Results.Unauthorized();
+
+            using var socket = await context.WebSockets.AcceptWebSocketAsync();
+            var mirrorService = AppHost.Get<Filee.App.Services.Capture.MobileMirrorService>();
+            mirrorService?.OnConnected();
+
+            var buffer = new byte[1024 * 512];
+            try
+            {
+                while (socket.State == System.Net.WebSockets.WebSocketState.Open)
+                {
+                    using var ms = new MemoryStream();
+                    System.Net.WebSockets.WebSocketReceiveResult result;
+                    do
+                    {
+                        result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                        if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                            break;
+                        ms.Write(buffer, 0, result.Count);
+                    } while (!result.EndOfMessage);
+
+                    if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                        break;
+
+                    if (ms.Length > 0 && mirrorService != null)
+                    {
+                        mirrorService.OnFrame(ms.ToArray());
+                    }
+                }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                mirrorService?.OnDisconnected();
+            }
+            return Results.Empty;
+        });
     }
 
     private PairedDevice PairNewDevice(string userAgent)

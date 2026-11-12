@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "Przeciągnij, upuść, gotowe.",
 
@@ -1819,5 +1819,10 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Uwaga: jeśli telefon nie może się połączyć, zezwól na Filee w zaporze systemowej.",
   "connect.no_network_message": "Nie można uruchomić Filee Connect. Upewnij się, że to urządzenie jest połączone z lokalną siecią Wi-Fi lub Ethernet.",
-  "connect.save_as": "Zapisz jako…"
+  "connect.save_as": "Zapisz jako…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Screen Recording",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "donut.tools": "Filee Tools"
 }

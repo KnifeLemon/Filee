@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "Arrasta, larga, convertido.",
 
@@ -1819,5 +1819,10 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Nota: se o seu telemóvel não conseguir ligar-se, permita o Filee na firewall do sistema.",
   "connect.no_network_message": "Não foi possível iniciar o Filee Connect. Certifique-se de que este dispositivo está ligado a uma rede Wi-Fi ou Ethernet local.",
-  "connect.save_as": "Guardar como…"
+  "connect.save_as": "Guardar como…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Screen Recording",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "donut.tools": "Filee Tools"
 }

@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "तान्नुहोस्, छाड्नुहोस्, रूपान्तरण भयो।",
   "fields.title": "क्षेत्रहरू",
@@ -1799,5 +1799,10 @@
   "connect.pin_label": "पिन:",
   "connect.firewall_hint_generic": "नोट: यदि तपाईंको फोन जडान हुन सकेन भने, प्रणाली फायरवालमा Filee लाई अनुमति दिनुहोस्।",
   "connect.no_network_message": "Filee Connect सुरु गर्न सकिएन। कृपया यो यन्त्र स्थानीय Wi-Fi वा इथरनेट नेटवर्कमा जडान भएको निश्चित गर्नुहोस्।",
-  "connect.save_as": "यस रूपमा बचत गर्नुहोस्…"
+  "connect.save_as": "यस रूपमा बचत गर्नुहोस्…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Screen Recording",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "donut.tools": "Filee Tools"
 }
