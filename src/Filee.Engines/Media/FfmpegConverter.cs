@@ -366,16 +366,39 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                     throw new InvalidOperationException($"{Path.GetFileName(silent)} has no sound.");
                 args = MediaJoining.EncodeAudio(clips, outputPath, media, scratch);
             }
-            else if (MediaJoining.CanCopyVideos([.. clips.Select(c => c.Info)], media))
-            {
-                var list = Path.Combine(scratch, "clips.txt");
-                await File.WriteAllTextAsync(list, MediaJoining.ConcatList(clips.Select(c => c.Path)), cancellationToken);
-                args = MediaJoining.CopyVideos(list, outputPath, clips[0].Info);
-            }
             else
             {
-                var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, await EncodersOfAsync(ffmpeg));
-                args = MediaJoining.EncodeVideos(clips, outputPath, media, encoder, scratch);
+                // Files without pictures are the music (#1402), in their order, under the videos in theirs.
+                var songs = clips.Where(c => c.Info.Video is null).ToList();
+                var videos = clips.Where(c => c.Info.Video is not null).ToList();
+                if (videos.Count == 0)
+                    throw new InvalidOperationException("There is no video to put the music under.");
+                JoinMusic? music = null;
+                if (songs.Count > 0)
+                {
+                    if (videos.FirstOrDefault(c => c.Info.Duration is not { TotalSeconds: > 0 }) is { Path: { } unknown })
+                        throw new InvalidOperationException($"FFmpeg can't tell how long {Path.GetFileName(unknown)} is, so the music can't be fitted to it.");
+                    var seconds = videos.Sum(c => c.Info.Duration!.Value.TotalSeconds);
+                    duration = TimeSpan.FromSeconds(seconds);
+                    (music, var prepare) = MediaJoining.PlanMusic(songs, seconds, media.LoopMusic, Path.Combine(scratch, "music.flac"));
+                    if (prepare is not null)
+                    {
+                        // Songs that repeat become one file first: a few percent, decoding sound is quick.
+                        await RunJoinPassAsync(ffmpeg, prepare, duration, progress, start, start + 0.05, cancellationToken);
+                        start += 0.05;
+                    }
+                }
+                if (MediaJoining.CanCopyVideos([.. videos.Select(c => c.Info)], media))
+                {
+                    var list = Path.Combine(scratch, "clips.txt");
+                    await File.WriteAllTextAsync(list, MediaJoining.ConcatList(videos.Select(c => c.Path)), cancellationToken);
+                    args = MediaJoining.CopyVideos(list, outputPath, videos[0].Info, music, media, scratch);
+                }
+                else
+                {
+                    var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, await EncodersOfAsync(ffmpeg));
+                    args = MediaJoining.EncodeVideos(videos, outputPath, media, encoder, scratch, music);
+                }
             }
         }
 

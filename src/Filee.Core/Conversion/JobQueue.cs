@@ -420,6 +420,9 @@ public sealed partial class JobQueue : IAsyncDisposable
                 FailFile(job, f, "error.too_many_pictures", $"{pictures} > {MediaOptions.MaxSlides}");
             return;
         }
+        // Songs go under videos only: on their own they would make a video of nothing.
+        var withVideo = !slideshow && target.Category == FormatCategory.Video
+            && job.Files.Any(f => !Stopped(f) && FormatRegistry.Detect(f.SourcePath)?.Category == FormatCategory.Video);
         var parts = new IReadOnlyList<string>?[job.Files.Count];
         await Parallel.ForEachAsync(Enumerable.Range(0, job.Files.Count),
             new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
@@ -447,9 +450,10 @@ public sealed partial class JobQueue : IAsyncDisposable
                             ceiling: PicturesReadyShare);
                     return;
                 }
-                // A video's sound can join an audio file; a picture or a document joins nothing.
+                // A video's sound can join an audio file, and an audio file plays as music under videos (#1402); a
+                // picture or a document joins nothing.
                 var joins = source.Category == FormatCategory.Video
-                    || source.Category == FormatCategory.Audio && target.Category == FormatCategory.Audio;
+                    || source.Category == FormatCategory.Audio && (target.Category == FormatCategory.Audio || withVideo);
                 if (!joins)
                 {
                     FailFile(job, file, "error.no_route", $"{source.Id} → {target.Id}");
@@ -460,6 +464,13 @@ public sealed partial class JobQueue : IAsyncDisposable
 
         var joined = job.Files.Where((f, i) => parts[i] is { Count: > 0 } && f.State != FileState.Failed).ToList();
         var inputs = parts.Where(p => p is not null).SelectMany(p => p!).ToList();
+        // The merged video is named after its first video, also when a song comes before it in the order.
+        if (withVideo && joined.FindIndex(f => FormatRegistry.Detect(f.SourcePath)?.Category == FormatCategory.Video) is > 0 and var video)
+        {
+            var named = joined[video];
+            joined.RemoveAt(video);
+            joined.Insert(0, named);
+        }
         if (inputs.Count == 0 || job.CancellationToken.IsCancellationRequested)
         {
             Notify(job);

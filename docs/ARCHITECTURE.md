@@ -66,7 +66,8 @@
    named destinations and page-backed AcroForm fields. Fields with colliding names get a file-position prefix.
    "Compress into one archive" packs the dropped files, unconverted, with the archive engine (`IFileCombiner`).
    "Merge videos", "Merge audio" and "Video from images" join the files, in the order picked in the merge order
-   window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first. Like the
+   window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first, and audio
+   files dropped with videos are music under them (added in the same window, which also offers "Loop music"). Like the
    other one-file jobs, the output follows "subfolder only for several files", and a join that fails or is cancelled
    is undone by the job's allocator, which deletes only paths that were the job's own.
    "Merge images" puts the pictures, in the order picked in the same window (with their layout: one under another or

@@ -932,6 +932,11 @@ in the preset library only). Video and audio need FFmpeg.
   into one M4A, so no encoder padding or gap is left between files. Both are in `Media/MediaJoining.cs`.
   As a special case, a pair of self-contained `.m4s` files, one with only video and one with only audio, is muxed
   together into one MP4 without re-encoding (in either order). Both codecs and the preset's settings must allow copying.
+  Other files without pictures dropped with the videos (#1402) are music: in their order, one after another, cut where
+  the videos end (fading out over 1 s when still playing), at 60 % under the videos' own sound or as recorded when they
+  have none. The pictures are still copied when they can be; only the sound is encoded. With "Loop music"
+  (`MediaOptions.LoopMusic`, chosen in the merge order window) songs shorter than the videos are first decoded into one
+  FLAC in the work folder, which then repeats with `-stream_loop -1`.
 - **Video from images**: each picture is fitted into 1920 × 1080 as a JPEG, then shown for the preset's seconds with
   crossfades (`xfade`) of 1 s, at most half a picture's time, or cuts. At most `MediaOptions.MaxSlides` (300)
   pictures, not counting downloads that failed; the queue refuses more before any is converted. A filter graph too

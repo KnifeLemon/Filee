@@ -184,14 +184,16 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
 
     /// <summary>
     /// Reviews the order of a merge (<paramref name="preset"/>, when given, names the button). For "Merge images" the
-    /// layout is chosen too and written into <paramref name="preset"/>. Closing or cancelling starts no conversion.
+    /// layout is chosen too, for "Merge videos" the music, and written into <paramref name="preset"/>. Closing or
+    /// cancelling starts no conversion.
     /// <paramref name="keepOrder"/>: the files start in the order given (see <see cref="MergeOrderViewModel"/>).
     /// </summary>
     public async Task<IReadOnlyList<string>?> ChooseMergeOrderAsync(IReadOnlyList<string> files, Preset? preset = null, bool keepOrder = false)
     {
         _mergeOrder?.Close();
         var images = preset is { JoinsImages: true };
-        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder, loc);
+        var videos = preset is { JoinsIntoOneMedia: true, TargetFormat: "mp4", Media.Slideshow: false };
+        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder, loc, videos ? preset!.Media : null);
         var dialog = new MergeOrderWindow { DataContext = vm };
         if (preset is not null)
             dialog.StartMerge.Content = loc.DisplayName(preset);
@@ -200,6 +202,12 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             // Room for the layout below the list.
             dialog.Height = 690;
             dialog.MinHeight = 590;
+        }
+        else if (videos)
+        {
+            // Room for the music below the list.
+            dialog.Height = 640;
+            dialog.MinHeight = 580;
         }
         PrepareWindow(dialog);
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -214,6 +222,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         await closed.Task;
         if (dialog.Result is not null && images)
             vm.ApplyTo(preset!.Image);
+        if (dialog.Result is not null && videos)
+            vm.ApplyTo(preset!.Media);
         vm.Dispose();
         return dialog.Result;
     }

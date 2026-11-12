@@ -168,19 +168,60 @@ public class MediaToolTests
     }
 
     [Fact]
-    public async Task A_file_that_is_no_video_fails_and_the_other_clips_still_join()
+    public async Task A_file_that_is_no_video_or_sound_fails_and_the_other_clips_still_join()
     {
         using var dir = new TempDir();
         var clip = dir.File("a.mp4");
-        var song = dir.File("b.mp3");
+        var photo = dir.File("b.jpg");
         var joiner = new FakeJoiner();
         await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
 
-        var job = await Run(queue, [clip, song], BuiltIn("merge-videos"));
+        var job = await Run(queue, [clip, photo], BuiltIn("merge-videos"));
 
         Assert.Equal(JobState.CompletedWithErrors, job.State);
         Assert.Equal([clip], joiner.Inputs);
         Assert.Equal("error.no_route", job.Files[1].ErrorKey);
+    }
+
+    [Fact]
+    public async Task Songs_dropped_with_videos_go_to_the_join_in_order_and_the_video_names_the_file()
+    {
+        using var dir = new TempDir();
+        var intro = dir.File("1 intro.mp3");
+        var clip = dir.File("2 clip.mp4");
+        var outro = dir.File("3 outro.flac");
+        var joiner = new FakeJoiner();
+        await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
+
+        var job = await Run(queue, [intro, clip, outro], BuiltIn("merge-videos"));
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal([intro, clip, outro], joiner.Inputs); // the joiner tells the music from the pictures
+        Assert.Equal(Path.Combine(dir.Path, "2 clip_merged.mp4"), job.Outputs.Single());
+        Assert.All(job.Files, f => Assert.Equal(FileState.Done, f.State));
+    }
+
+    [Fact]
+    public async Task Songs_without_a_video_make_no_merged_video()
+    {
+        using var dir = new TempDir();
+        var joiner = new FakeJoiner();
+        await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
+
+        var job = await Run(queue, [dir.File("a.mp3"), dir.File("b.wav")], BuiltIn("merge-videos"));
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.All(job.Files, f => Assert.Equal("error.no_route", f.ErrorKey));
+        Assert.Empty(joiner.Inputs);
+    }
+
+    [Fact]
+    public void Merge_videos_plays_its_music_once_until_told_to_loop()
+    {
+        var media = BuiltIn("merge-videos").Media;
+        Assert.False(media.LoopMusic);
+        media.LoopMusic = true;
+        Assert.True(media.Clone().LoopMusic);
     }
 
     [Fact]

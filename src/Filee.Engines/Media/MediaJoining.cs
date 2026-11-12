@@ -1,12 +1,20 @@
-// Several files into one with FFmpeg: video clips or audio files back to back ("Merge videos", "Merge audio") and
-// pictures shown one after the other, with crossfades if the preset asks ("Video from images"). Pure apart from the
-// filter graph file of a long graph, like MediaEncoding: the command lines are unit tested without FFmpeg.
-// FfmpegConverter runs them.
+// Several files into one with FFmpeg: video clips or audio files back to back ("Merge videos", "Merge audio"), songs
+// played one after another under the videos (#1402), and pictures shown one after the other, with crossfades if the
+// preset asks ("Video from images"). Pure apart from the filter graph file of a long graph, like MediaEncoding: the
+// command lines are unit tested without FFmpeg. FfmpegConverter runs them.
 
 using System.Globalization;
 using Filee.Core.Presets;
 
 namespace Filee.Engines.Media;
+
+/// <summary>
+/// Music under joined videos (<see cref="MediaJoining.PlanMusic"/>): the files in the order they play, each with its
+/// audio track number, and how long the videos are. <paramref name="Repeat"/>: the one file (the songs prepared as one,
+/// <see cref="MediaJoining.PrepareMusic"/>) plays again and again. <paramref name="Cut"/>: the music is still playing when
+/// the videos end, so it fades out there.
+/// </summary>
+internal sealed record JoinMusic(IReadOnlyList<(string Path, int Track)> Files, double Seconds, bool Repeat, bool Cut);
 
 /// <summary>Command lines that join files.</summary>
 internal static class MediaJoining
@@ -75,13 +83,32 @@ internal static class MediaJoining
     public static string ConcatList(IEnumerable<string> paths) =>
         string.Concat(paths.Select(path => "file '" + Path.GetFullPath(path).Replace("'", @"'\''", StringComparison.Ordinal) + "'\n"));
 
-    /// <summary>Clips that share codecs and size, copied one after the other into one MP4 (<see cref="CanCopyVideos"/>).</summary>
-    public static List<string> CopyVideos(string listFile, string output, MediaInfo first)
+    /// <summary>
+    /// Clips that share codecs and size, copied one after the other into one MP4 (<see cref="CanCopyVideos"/>). With
+    /// <paramref name="music"/>, the pictures are still copied; the sound is mixed with the music and encoded.
+    /// </summary>
+    /// <param name="workDirectory">Where a long filter graph is written (<see cref="MaxInlineGraph"/>).</param>
+    public static List<string> CopyVideos(string listFile, string output, MediaInfo first, JoinMusic? music = null,
+        MediaOptions? options = null, string workDirectory = "")
     {
-        List<string> args = [.. MediaEncoding.Common, "-f", "concat", "-safe", "0", "-i", listFile, "-map", "0:V:0"];
-        if (first.Audio is { } sound)
-            args.AddRange(["-map", $"0:a:{sound.Ordinal}"]);
-        args.AddRange(["-c", "copy"]);
+        List<string> args = [.. MediaEncoding.Common, "-f", "concat", "-safe", "0", "-i", listFile];
+        if (music is not null)
+        {
+            var graph = new List<string>();
+            if (first.Audio is { } own)
+                graph.Add($"[0:a:{own.Ordinal}]{Resample("stereo")}[va]");
+            graph.AddRange(MusicGraph(music, 1, first.Audio is null ? null : "va"));
+            args.AddRange(MusicInputs(music));
+            args.AddRange(GraphArguments(string.Join(';', graph), workDirectory));
+            args.AddRange(["-map", "0:V:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", Text(AacKbps(options ?? new(), 2)) + "k"]);
+        }
+        else
+        {
+            args.AddRange(["-map", "0:V:0"]);
+            if (first.Audio is { } sound)
+                args.AddRange(["-map", $"0:a:{sound.Ordinal}"]);
+            args.AddRange(["-c", "copy"]);
+        }
         if (first.Video?.Codec == "hevc")
             args.AddRange(["-tag:v", "hvc1"]);
         args.AddRange(MediaEncoding.MetadataArguments());
@@ -109,9 +136,10 @@ internal static class MediaJoining
     /// </summary>
     /// <param name="encoder">The video encoder (<see cref="MediaEncoding.VideoEncoder"/>).</param>
     /// <param name="workDirectory">Where a long filter graph is written (<see cref="MaxInlineGraph"/>).</param>
+    /// <param name="music">Songs played under the clips, or null.</param>
     /// <exception cref="InvalidOperationException">A clip has no video, or FFmpeg can't tell how long a silent one is.</exception>
     public static List<string> EncodeVideos(IReadOnlyList<(string Path, MediaInfo Info)> clips, string output, MediaOptions options,
-        string encoder, string workDirectory)
+        string encoder, string workDirectory, JoinMusic? music = null)
     {
         var first = clips[0].Info.Video ?? throw new InvalidOperationException($"{Path.GetFileName(clips[0].Path)} has no video stream.");
         var (width, height) = JoinFrame(first, options.MaxHeight);
@@ -131,15 +159,21 @@ internal static class MediaJoining
             graph.Add(info.Audio is { } sound ? $"[{i}:a:{sound.Ordinal}]{Resample("stereo")}[a{i}]" : $"{Silence(path, info, "stereo")}[a{i}]");
             segments += $"[a{i}]";
         }
-        graph.Add($"{segments}concat=n={clips.Count}:v=1:a={(withSound ? 1 : 0)}[v]{(withSound ? "[a]" : "")}");
+        // With music, the clips' own sound is mixed with it into [a].
+        var ownSound = music is null ? "[a]" : "[va]";
+        graph.Add($"{segments}concat=n={clips.Count}:v=1:a={(withSound ? 1 : 0)}[v]{(withSound ? ownSound : "")}");
+        if (music is not null)
+            graph.AddRange(MusicGraph(music, clips.Count, withSound ? "va" : null));
 
         List<string> args = [.. MediaEncoding.Common];
         foreach (var (path, _) in clips)
             args.AddRange(["-i", path]);
+        if (music is not null)
+            args.AddRange(MusicInputs(music));
         args.AddRange(GraphArguments(string.Join(';', graph), workDirectory));
         args.AddRange(["-map", "[v]"]);
         args.AddRange(MediaEncoding.VideoCodecArguments("mp4", encoder, options.Quality, first, pal: false));
-        if (withSound)
+        if (withSound || music is not null)
             args.AddRange(["-map", "[a]", "-c:a", "aac", "-b:a", Text(AacKbps(options, 2)) + "k"]);
         else
             args.Add("-an");
@@ -147,6 +181,86 @@ internal static class MediaJoining
         args.AddRange(MediaEncoding.ContainerArguments("mp4"));
         args.AddRange(["-max_muxing_queue_size", "4096", "-f", "mp4", "-progress", "pipe:1", output]);
         return args;
+    }
+
+    // ───────────────────────── Music under videos ─────────────────────────
+
+    /// <summary>
+    /// How the <paramref name="songs"/> play under videos of <paramref name="videoSeconds"/>: one after another, cut
+    /// where the videos end. With <paramref name="loop"/>, songs shorter together than the videos (or of a length FFmpeg
+    /// can't tell) are first prepared as one file at <paramref name="prepared"/>, which then repeats: the second element
+    /// is the command line that prepares it, null when nothing needs preparing.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">A song has no sound.</exception>
+    public static (JoinMusic Music, List<string>? Prepare) PlanMusic(IReadOnlyList<(string Path, MediaInfo Info)> songs,
+        double videoSeconds, bool loop, string prepared)
+    {
+        if (songs.FirstOrDefault(s => s.Info.Audio is null) is { Path: { } silent })
+            throw new InvalidOperationException($"{Path.GetFileName(silent)} has no sound.");
+        var known = songs.All(s => s.Info.Duration is { TotalSeconds: > 0 });
+        var length = songs.Sum(s => s.Info.Duration?.TotalSeconds ?? 0);
+        // Songs as long as the videos (to within a frame) play once and are cut at the end, loop or not.
+        if (loop && (!known || length < videoSeconds - 0.04))
+            return (new JoinMusic([(prepared, 0)], videoSeconds, Repeat: true, Cut: true), PrepareMusic(songs, prepared, videoSeconds));
+        return (new JoinMusic([.. songs.Select(s => (s.Path, s.Info.Audio!.Ordinal))], videoSeconds, Repeat: false,
+            Cut: !known || length > videoSeconds), null);
+    }
+
+    /// <summary>
+    /// The songs one after another as one FLAC in the work folder (lossless, and half the size of WAV), no longer than
+    /// <paramref name="maxSeconds"/>, for music that repeats: FFmpeg can read one file over and over
+    /// (<c>-stream_loop</c>), not a list of them.
+    /// </summary>
+    public static List<string> PrepareMusic(IReadOnlyList<(string Path, MediaInfo Info)> songs, string output, double maxSeconds)
+    {
+        var music = new JoinMusic([.. songs.Select(s => (s.Path, s.Info.Audio!.Ordinal))], maxSeconds, Repeat: false, Cut: false);
+        return [.. MediaEncoding.Common, .. MusicInputs(music), "-filter_complex", string.Join(';', MusicGraph(music, 0, null)),
+            "-map", "[a]", "-vn", "-c:a", "flac", "-f", "flac", output];
+    }
+
+    /// <summary>The music's inputs; the prepared file is read again and again when it repeats.</summary>
+    private static List<string> MusicInputs(JoinMusic music)
+    {
+        var inputs = new List<string>();
+        foreach (var (path, _) in music.Files)
+        {
+            if (music.Repeat)
+                inputs.AddRange(["-stream_loop", "-1"]);
+            inputs.AddRange(["-i", path]);
+        }
+        return inputs;
+    }
+
+    /// <summary>
+    /// The music's chains, its files being the inputs from <paramref name="firstInput"/> on: the songs one after
+    /// another, no longer than the videos, faded out when the videos end first, and mixed under
+    /// <paramref name="sound"/> (the label of the videos' own sound, which keeps its level) into <c>[a]</c>. Under a
+    /// sound the music is quieter (<see cref="ClipMusic.DefaultVolume"/>, as "Cut a clip" starts it); with no sound to
+    /// go under, it plays as recorded.
+    /// </summary>
+    private static List<string> MusicGraph(JoinMusic music, int firstInput, string? sound)
+    {
+        var graph = new List<string>();
+        for (var j = 0; j < music.Files.Count; j++)
+            graph.Add($"[{firstInput + j}:a:{music.Files[j].Track}]{Resample("stereo")}[m{j}]");
+        var songs = string.Concat(Enumerable.Range(0, music.Files.Count).Select(j => $"[m{j}]"));
+        var chain = (music.Files.Count == 1 ? "[m0]" : $"{songs}concat=n={music.Files.Count}:v=0:a=1,")
+            + $"atrim=duration={Seconds(music.Seconds)},asetpts=PTS-STARTPTS";
+        if (sound is not null)
+            chain += $",volume={Seconds(ClipMusic.DefaultVolume)}";
+        if (music.Cut)
+        {
+            var fade = Math.Min(ClipMusic.FadeSeconds, music.Seconds / 2);
+            chain += $",afade=t=out:st={Seconds(music.Seconds - fade)}:d={Seconds(fade)}";
+        }
+        if (sound is null)
+        {
+            graph.Add(chain + "[a]");
+            return graph;
+        }
+        graph.Add(chain + "[m]");
+        graph.Add($"[{sound}][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]");
+        return graph;
     }
 
     // ───────────────────────── Audio ─────────────────────────
