@@ -205,9 +205,10 @@ internal static partial class LinkedContent
 
     /// <summary>
     /// The data: URI of a picture inside the page's folder (or the original document's, for a page made from it), by
-    /// <see cref="DocumentFiles"/>. SVG stays out: a drawing can link to further files, and LibreOffice would load them.
+    /// <see cref="DocumentFiles"/>. SVG stays out unless <paramref name="svg"/>: a drawing can link to further files, and
+    /// LibreOffice would load them (WeasyPrint, run with only data: allowed, doesn't).
     /// </summary>
-    private static Func<string, string?> PagePictures(string page, string? originalSource)
+    internal static Func<string, string?> PagePictures(string page, string? originalSource, bool svg = false)
     {
         var folder = Path.GetDirectoryName(Path.GetFullPath(page))!;
         string[] roots = originalSource is null ? [folder] : [folder, Path.GetDirectoryName(Path.GetFullPath(originalSource))!];
@@ -216,13 +217,15 @@ internal static partial class LinkedContent
         {
             if (DocumentFiles.Find(address, folder, roots) is not { } file
                 || Path.GetExtension(file).TrimStart('.').ToLowerInvariant() is var extension
-                && extension is not ("png" or "jpg" or "jpeg" or "gif" or "bmp" or "webp" or "tif" or "tiff"))
+                && extension is not ("png" or "jpg" or "jpeg" or "gif" or "bmp" or "webp" or "tif" or "tiff")
+                && !(svg && extension == "svg"))
                 return null;
             var length = new FileInfo(file).Length;
             if (length > left)
                 return null;
             left -= length;
-            return $"data:image/{extension};base64,{Convert.ToBase64String(File.ReadAllBytes(file))}";
+            var type = extension switch { "svg" => "svg+xml", "jpg" => "jpeg", "tif" => "tiff", _ => extension };
+            return $"data:image/{type};base64,{Convert.ToBase64String(File.ReadAllBytes(file))}";
         };
     }
 
