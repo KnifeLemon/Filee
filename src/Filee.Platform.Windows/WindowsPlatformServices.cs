@@ -41,6 +41,7 @@ public sealed class WindowsPlatformServices : IPlatformServices
         "Q-Dir",
         "FreeCommander",
         "FPilot",         // File Pilot (#633)
+        "xplorer2_64",    // xplorer² (#1424)
     };
 
     public void RaiseTopmost(nint windowHandle)
