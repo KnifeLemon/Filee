@@ -345,11 +345,43 @@ internal sealed partial class DocxReader
         return (para, run);
     }
 
-    /// <summary>Properties of a paragraph: defaults → style chain → list level → direct formatting.</summary>
+    /// <summary>
+    /// The w:pPr and w:rPr of the table style around the cell being read (and of its conditional formatting that
+    /// reaches the cell), or null outside tables, in text boxes and in notes.
+    /// </summary>
+    private (List<XElement> PPr, List<XElement> RPr)? _tableStyleLayer;
+
+    /// <summary>
+    /// Merged properties of a paragraph style. In a table cell the table style comes between the document defaults and
+    /// the paragraph style, as in Word: Table Grid's "no space after, single line" replaces the defaults' 8 pt and 1.08
+    /// lines, but a style that sets its own spacing (Normal included) keeps it.
+    /// </summary>
+    private (ParaProps Para, RunProps Run) ParagraphStyle(string? styleId)
+    {
+        if (_tableStyleLayer is not { } layer)
+            return ResolveStyle(styleId);
+        var para = _defaultPara.Clone();
+        var run = _defaultRun.Clone();
+        foreach (var pPr in layer.PPr)
+            para.Apply(pPr);
+        foreach (var rPr in layer.RPr)
+            run.Apply(rPr);
+        if (styleId is not null && _styles.TryGetValue(styleId, out var style))
+        {
+            foreach (var current in StyleChain(style))
+            {
+                para.Apply(current.PPr);
+                run.Apply(current.RPr);
+            }
+        }
+        return (para, run);
+    }
+
+    /// <summary>Properties of a paragraph: defaults → (table style →) style chain → list level → direct formatting.</summary>
     private (ParaProps Para, RunProps Mark) ParagraphProperties(XElement? pPr)
     {
         var styleId = Val(pPr?.Element(W + "pStyle")) ?? _defaultParagraphStyle;
-        var (para, run) = ResolveStyle(styleId);
+        var (para, run) = ParagraphStyle(styleId);
 
         var direct = new ParaProps();
         direct.Apply(pPr);

@@ -3,6 +3,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
+        xmlns:v="using:Filee.App.Views"
         x:Class="Filee.App.Views.GroupEditorWindow"
         x:DataType="vm:GroupEditorViewModel"
         Title="{DynamicResource group.editor_title}"
@@ -49,6 +50,7 @@
           <TextBlock Classes="caption danger" Text="{Binding NameError}" Margin="2,4,0,0"
                      IsVisible="{Binding NameError, Converter={x:Static ObjectConverters.IsNotNull}}" />
         </StackPanel>
+        <v:SliceLabelFieldsView DataContext="{Binding Labels}" />
 
         <Border Classes="card" Padding="14">
           <StackPanel Spacing="10">

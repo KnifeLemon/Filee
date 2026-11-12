@@ -154,6 +154,32 @@ public sealed class Preset
     /// </summary>
     public bool AskCompression { get; set; }
 
+    /// <summary>
+    /// The icon its donut slice shows: the key of one of the app's slice icons, <see cref="NoIcon"/> for none, or null
+    /// for the default (a built-in preset's own icon; none for plain format conversions and the user's presets).
+    /// </summary>
+    public string? Icon { get; set; }
+
+    /// <summary><see cref="Icon"/> meaning "no icon", even where there would be a default.</summary>
+    public const string NoIcon = "none";
+
+    /// <summary>
+    /// A shorter name shown on its donut slice instead of the usual one. Null or blank: the usual name.
+    /// </summary>
+    public string? ShortName { get; set; }
+
+    /// <summary>
+    /// What its donut slice shows. Null: whatever its donut says (<see cref="Profiles.ToolbarProfile.LabelShow"/>).
+    /// </summary>
+    [JsonConverter(typeof(LabelShowJsonConverter))]
+    public LabelShow? Show { get; set; }
+
+    /// <summary>
+    /// Which way its donut slice's name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).
+    /// </summary>
+    [JsonConverter(typeof(LabelDirectionJsonConverter))]
+    public LabelDirection? Direction { get; set; }
+
     /// <summary>A conversion or a group. A kind this version doesn't know (from a newer Filee) is read as a group.</summary>
     [JsonConverter(typeof(PresetKindJsonConverter))]
     public PresetKind Kind { get; set; } = PresetKind.Convert;
@@ -359,6 +385,16 @@ public sealed class Preset
     public bool CutsClipOf(string sourceFormat) =>
         Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
+    /// <summary>
+    /// True if converting a <paramref name="sourceFormat"/> file splits it into parts by stream copy
+    /// (<see cref="MediaOptions.SplitEverySeconds"/>, <see cref="MediaOptions.SplitParts"/>): the file is a video and the
+    /// target a video format. A clip, a crop, a join or a photo of a video does what it does instead.
+    /// </summary>
+    public bool SplitsVideoOf(string sourceFormat) =>
+        Media.Splits && !CutsClipOf(sourceFormat) && !CropsVideo && !JoinsIntoOneMedia
+        && Formats.FormatRegistry.FindById(TargetFormat)?.Category == Formats.FormatCategory.Video
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+
     /// <summary>True for "Crop video" (<see cref="MediaOptions.CropFrame"/>): it works on videos only.</summary>
     [JsonIgnore]
     public bool CropsVideo => VideoCrop.Crops(Media.CropFrame);
@@ -412,6 +448,10 @@ public sealed class Preset
         Upscale = Upscale.Clone(),
         Metadata = Metadata?.Clone(),
         Output = Output.Clone(),
+        Icon = Icon,
+        ShortName = ShortName,
+        Show = Show,
+        Direction = Direction,
         AskCompression = AskCompression,
         Kind = Kind,
         Tool = Tool,
@@ -1200,6 +1240,9 @@ public sealed class PdfOptions
     /// <summary>Combine all dropped files into one PDF instead of one PDF per file.</summary>
     public bool MergeIntoSingle { get; set; }
 
+    /// <summary>Add a bookmark for each original source file when merging several files into one PDF.</summary>
+    public bool SourceBookmarks { get; set; }
+
     public PdfPageSize PageSize { get; set; } = PdfPageSize.FitImage;
 
     /// <summary>Page margin in millimetres (ignored for <see cref="PdfPageSize.FitImage"/>).</summary>
@@ -1549,6 +1592,29 @@ public sealed class MediaOptions
     /// takes a moment and loses nothing, but the clip starts at the key frame before the chosen start.
     /// </summary>
     public bool ExactCut { get; set; }
+
+    /// <summary>
+    /// Video → video: a part for every this many seconds of the video (#1259), copied as it is (<see cref="Preset.SplitsVideoOf"/>).
+    /// A copy can only break at a key frame, so each part ends at the first one from there on. 0 is off, so presets
+    /// saved before it read unchanged.
+    /// </summary>
+    public int SplitEverySeconds { get; set; }
+
+    /// <summary>
+    /// Video → video: the video in this many parts of about the same length (halves, thirds, #1259), copied as it is.
+    /// Over <see cref="SplitEverySeconds"/>; 0 or 1 is off.
+    /// </summary>
+    public int SplitParts { get; set; }
+
+    /// <summary>
+    /// Most parts one video is split into (<see cref="SplitEverySeconds"/>, <see cref="SplitParts"/>): a two-hour film
+    /// every 10 seconds, already more files than anyone wants in a folder.
+    /// </summary>
+    public const int MaxSplitParts = 1000;
+
+    /// <summary>True when <see cref="SplitEverySeconds"/> or <see cref="SplitParts"/> asks for parts.</summary>
+    [JsonIgnore]
+    public bool Splits => SplitParts > 1 || SplitEverySeconds > 0;
 
     /// <summary>
     /// A clip of a video (<see cref="Preset.CutsClipOf"/>): its parts, their volume and speed, and its fades. Set by the

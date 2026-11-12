@@ -52,7 +52,7 @@
    writing, but only at a path that was its alone: nothing was there before and no other conversion was handed the
    same name ("Overwrite"). It frees its names and removes an output folder it made if that is left empty.
    A PDF target's finishing (watermark, page numbers, password; `IPdfFinisher`) runs after the last step, on every
-   PDF a file became, and once on a merged PDF.
+   PDF a file became, and once on a merged PDF; PDF/A (`IPdfArchiver`, Ghostscript) follows it there.
    *Replace the original* (`OutputRule.ReplaceOriginal`, off by default) comes after that, for a finished result of
    the source's own format and extension, or another spelling of it (`.jpeg` / `.jpg`; TXT also covers scripts and
    logs, PPT also `.pps` and `.pot`, so those need the same extension). The result is first
@@ -287,6 +287,82 @@ without touching the file's content.
 - PDFs: ExifTool appends its changes as an update, so earlier values stay recoverable inside the file; the window says
   so.
 
+A group's ring scales with the donut: its gap, depth and narrowest slice (`DonutMenu.SubGap`, `SubBand`,
+`DonutGeometry.MinSubWidth`) and the window's room for it (`SubRingSpaceFor`) are multiplied by the ring scale,
+radius ÷ 150 × *Group ring size* (`DonutSettings.GroupRingSize`, 75–150 %), never below the default ring of the
+smallest donut (`MinRingScale`). *Group ring spread* (`GroupRingSpread`, 100–300 %) widens each ring slice after the
+narrowest-slice rule, up to one turn round the donut. Pointer tolerances (`BackdropMargin`, `LeaveEdge`) stay in
+pixels. At the defaults and radius 150 the ring is the same as before these settings.
+
+### Slice labels
+
+`Controls/SliceLabelLayout.cs` decides what each slice shows and where, without drawing; `DonutMenu.DrawSliceLabel`
+draws the result. Every label stays inside the slice's *safe zone*: the slice inset by a margin of `max(2·s,
+0.025·depth)` from all four edges (plus half the 3 px gap on the sides), and as far from a group's chevron: the mark
+itself, not a band across the slice, so a group slice's label is centred as any other's. The margin is kept from the
+letters, measured from their outlines (`LabelText.InkBox`) with each line at its own width (`StackInside`), not from the
+lines' boxes, which hold room above and below the letters: it leaves about the room today's donut leaves round its
+names. A box's edges are checked against the inner edge too, since it curves inward. `s = OuterRadius / 150` is the
+donut scale; names start at `max(10, 13 × LabelScale × s)` px, captions 80 % of that, icons 20·k beside a name or
+16–28·k alone (k = LabelScale · s).
+
+What a slice shows is its preset's `Show` (`LabelShow`: Auto, IconAndText, TextOnly, IconOnly), else its donut's
+`ToolbarProfile.LabelShow`, else Auto. `PlanRing` lays out a whole ring at once: one name size, one way for its names
+and one icon size, and for each slice the best its Show allows there. The ring's size runs from the starting one down,
+0.5 px at a time, to `max(10, 10 × s)` (`SizesFor`; the icon beside a name shrinks with it, to 16·k), and the ring takes
+the size and way with the fewest slices it can't label, then the fewest needed captions lost, then the fewest names cut
+so far they no longer read (under four letters or 40 % of them) or by only a letter or two, then the earlier way, then
+the largest size: on the face a name that doesn't fit is shortened rather than the ring made smaller (a group's ring, of
+short words, steps down before it shortens), and optional captions never make the names smaller. Icon & text keeps its
+icons: where an icon and its name, whole or shortened to `MinKept`, don't fit (the eight-slice back faces), the ring
+steps down rather than cut the name to a word ("Merge…"), which says less. A block goes on the slice's middle first, its
+letters centred there and moved sideways until it has as much room left of it as right of it (`Balanced`: a slice that
+runs aslant has more on one side); there it drops a caption it doesn't need before it moves. Upright lines wrap at the
+slice's width at its middle less 10 px (`ComfortableWidth`, as today's donut wraps its names), and run longer only where
+no wrapping fits. Only a block that fits nowhere on the middle is tried along the middle line and round from it
+(`Positions`): a three-slice face's slices run aslant. Auto: icon and whole name where every Auto slice of the ring has
+room for both and loses nothing for it (the caption it shows without its icon, and its place on the middle), else the
+whole name alone, else shortened to no less than 60 % of its letters and never dropping a word (`MinKept`), else
+shorter, else its icon alone. Icon & text: icon and whole name, else (a slice that needs its caption) the name and
+caption alone, else icon and name shortened to `MinKept` (wrapped as a name alone is: "Remove / metad…"), else the icon
+alone. Text only: the whole name, else shortened to `MinKept`, else as far as it takes. Slices of one name look alike:
+where one shows its name alone, the others do too. Captions show per slice, under a name where they fit, with Show
+output format on. A caption the slice needs (`NeedsCaption`: "Copy to folder" or "Move to folder" under a folder's name,
+or the format under a name another slice of the ring has too) shows with it off as well, and under the name beside an
+icon; an icon otherwise stands in for the caption. A slice without an icon (a format conversion) shows its name and
+doesn't decide the others' style. Icon and name: on a deep slice the icon above the name, both upright, else (where that
+can't show the name whole, or for Out from the centre) the icon before a name running out from the centre; on a wide
+slice the upright icon above a name bent along the ring, above it as read (the outer of the two on the top half, the
+inner on the bottom), else (a group ring's chip, too shallow for one above the other at most sizes) before it, side by
+side. The icon never turns. A ring takes one placement for all its icons (above their names where every one fits so, the
+face stepping down for it; else before them) and names, the one of its way (`ways` in `PlanRing`): straight under an
+upright icon, out from the centre after the icon, or bent beside it; a format's name beside them runs that way too, and
+a ring bends only if every name of it can (else all run level with it). Names wrap at word boundaries (CJK by character,
+Korean by word) and run one way for the whole ring, each way through the sizes, except a slice whose preset says its own
+(`Preset.Direction`: Straight, OutFromCentre, AlongRing; `SliceLabelLayout.Tries`). The donut's face keeps its names
+upright, and so does a group's ring of Chinese, Japanese or Korean names (turned, their characters read sideways). A
+group's ring, deeper than it is wide, tries straight or out from the centre, then bent; one wider than deep (`IsWide`,
+so the ring's size, its spread and the name size decide) bent along the ring, then straight, then out from the centre. A
+bent name (`LabelText.Curved`) puts each line on its own circle and each letter on it, upright, clockwise on the top
+half and anticlockwise on the bottom (`CurvedGlyphs`); it fits when its lines stay between the zone's circles and their
+ends clear the side edges at their inner edge (`CurvedFits`). Scripts whose letters join or reorder (Arabic, Hebrew, the
+Indic scripts, Thai, Lao, Myanmar) aren't bent but drawn level with the ring. A shortened name runs in the direction
+that keeps the most of it. `DonutMenu.LabelPlan` caches each ring's plan by its inputs (items, geometry, scale,
+settings), so labels are laid out once per change, not per frame; the open, pop and flip animations move them with
+transforms. Every group's ring slices are equally wide, whatever the group's size (`DonutGeometry.SubSpan`: a share of
+the group's slice and a quarter of each neighbour, as if three slices shared it, times Group ring spread), so a group of
+six fans out twice as far as a group of three and the spread looks the same on every group; it never goes round more
+than once. A group's ring labels follow the ring's scale instead of the donut's, and the Label scale as far as the
+ring's slices have room: `PlanRingToFit` steps the Label scale down 5 % at a time, not below 100 %, until every slice
+shows its whole name or its icon.
+
+The icons are a curated set of Material Design Icons (`SliceIcons.Data.cs`, generated; Apache-2.0, see
+THIRD-PARTY-NOTICES.md), keyed by their MDI names and grouped for the picker. `Preset.Icon` is a key, `"none"`, or
+unset for the default: a built-in preset's own (by id), else its tool's; plain format conversions have none.
+`Preset.ShortName` replaces the name on the donut and its rings (`DonutName` / `RingName`); the centre hint always
+names the slice in full (`DonutItem.FullName`). The preset and group editors share `SliceLabelFields` (Icon with
+`IconPickerFlyout`, Short name, Show); the Toolbar page sets each donut's Slice labels and Label scale.
+
 ## Crop overlay and PDF page editor
 
 The image Crop tool (`tool-crop`) and PDF Crop (`tool-pdf-crop`) open `Views/CropOverlayWindow` instead of running a job:
@@ -381,13 +457,30 @@ hidden rows and manual breaks, then see the PDF that those settings will produce
   named range so cross-sheet formulas remain valid, hides the sheets not being rendered, and changes only the chosen
   sheet's print settings. A new print area is written only after the user explicitly changes or accepts the range.
 - `SpreadsheetPrintService` runs LibreOffice once for each region. Preview and export use the same disposable-workbook
-  path; export then joins the region PDFs in the chosen order with PDFsharp. The ordinary XLSX → PDF donut conversion
+  path; export then joins the region PDFs in the chosen order with PDFsharp, or, with **One PDF per sheet**, writes
+  each region as `<chosen name>_<sheet>.pdf` (`PerSheetPaths` cleans the names, adds `_2` for repeats, and applies the tool preset's conflict policy to files
+  already there). The ordinary XLSX → PDF donut conversion
   can still differ because route planning may select Filee's built-in spreadsheet reader instead of LibreOffice.
 - `PdfPreviewDocument` caches a PDF's bytes and page geometry. The studio asks PDFium/PDFtoImage for small thumbnails
   and only one large selected page, all decoded away from the UI thread; exporting never performs preview rendering.
   Cancellation closes LibreOffice and the temporary job folder is removed on success, error or window close.
 
 ## Settings and data
+
+`PortableMode.Initialize` runs in both entry points before logging, settings or engine discovery. A
+`filee.portable` marker selects the adjacent `data` directory through `FILEE_DATA_DIR`; an explicit override
+keeps precedence. macOS stores the marker/data outside `.app` to preserve the signed bundle. Startup validates
+write/delete access and reports failure without loading the normal user profile. Portable settings turn off
+login and file-manager integration; the existing separate-data guard prevents registration and unregistration.
+The General page explains this and disables those controls.
+
+Conversion work folders, temporary files and engine caches keep their existing behavior and locations.
+Portable mode does not change the environment passed to external engines.
+Portable release archives include the marker by default. Installer payloads keep normal profile storage;
+the desktop app offers a one-time copy of an existing profile into unused portable data before loading settings.
+Import stages copies first and preserves the source. Integration cleanup checks the executable target on all three
+platforms, asks independently of import and remembers declined cleanup. Shared macOS Finder service preferences stay
+unchanged. See [portable mode](PORTABLE.md) for migration and quarantine details.
 
 `UserDataStore` owns `settings.json`, `presets.json`, `profiles.json` and `history.json`
 (System.Text.Json source generation, atomic writes, broken files are kept as `*.broken`).
@@ -675,3 +768,12 @@ and standalone shell scripts (`install.sh`, `uninstall.sh`).
   (`~/.local/share/Filee/engines`) and user settings (`~/.config/Filee`) remain untouched.
 - **Uninstallation**: `uninstall.sh` removes the application directory, desktop launcher, and `~/.local/bin/filee` symlink
   after verifying the `.filee-package` marker. User settings and converted files are kept.
+
+## Filee Connect
+
+Filee Connect (`Filee.App.Services.Connect`) is an embedded local Wi-Fi server providing instant device-to-device file transfers and quick note exchanges between desktop and mobile devices. See [FILEE-CONNECT.md](FILEE-CONNECT.md) for full details.
+
+- **Embedded Server**: Powered by Microsoft ASP.NET Core Kestrel with HTTP REST endpoints and WebSockets for real-time bi-directional messaging and presence detection.
+- **Security & Scope**: Runs locally without cloud dependencies. Secured with cryptographically random pairing tokens, LAN-only binding, and strict relative-path normalization preventing directory traversal.
+- **Shared Folder Manager**: Enforces a 2 GB total quota in `UserDataStore.Directory / ConnectShared` (fully supporting Portable mode) with instant ZIP streaming on folder download. Files outside the safe allowlist are stored as `{id}.bin` to prevent Explorer NTLM leak attacks.
+- **Workflow**: A global trigger gesture (`Ctrl + Alt + Left Click` on Windows/Linux, `⌥ Option + ⇧ Shift + Left Click` on macOS, or custom configuration for new installs) opens the Donut with the Filee Connect slice. Selecting it presents a QR code modal (`FileeConnectQrWindow`), and scanning it from any phone browser automatically transitions to the desktop Filee Connect application window (`FileeConnectWindow`) and mobile light-mode web client.

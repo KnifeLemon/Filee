@@ -3,8 +3,17 @@
 
 using System.Text;
 using Filee.Cli;
+using Filee.Core.Settings;
 
 Console.OutputEncoding = Encoding.UTF8;
+IDisposable? portable;
+try { portable = PortableMode.Initialize(); }
+catch (PortableStorageException ex)
+{
+    Console.Error.WriteLine(new EnglishTexts().Format("startup.portable_unwritable", ex.DataDirectory));
+    return 1;
+}
+using var portableScope = portable;
 using var cancel = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {

@@ -6,6 +6,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels"
              xmlns:upscale="using:Filee.Engines.Upscale"
+             xmlns:v="using:Filee.App.Views"
              x:Class="Filee.App.Views.PresetEditorView"
              x:DataType="vm:PresetEditorViewModel">
   <UserControl.Styles>
@@ -64,6 +65,9 @@
         <TextBlock Classes="caption" Text="{Binding HiddenTargetNote}" TextWrapping="Wrap" IsVisible="{Binding HiddenTargetNote, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
     </Grid>
+
+    <!-- The slice on the donut: icon, short name, what it shows -->
+    <v:SliceLabelFieldsView DataContext="{Binding Labels}" />
 
     <!-- Live / Motion Photo of a video (JPG, HEIC): the kind on a row of its own, so its names are never cut off -->
     <Border x:Name="LivePhotoCard" Classes="card" IsVisible="{Binding ShowLivePhotoChoice}" Padding="14">
@@ -357,6 +361,23 @@
           <TextBlock Classes="label" Text="{DynamicResource presets.crop_frame}" />
           <ComboBox ItemsSource="{Binding CropFrames}" SelectedItem="{Binding CropFrame}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.crop_frame}" />
         </StackPanel>
+        <!-- Video → video: one video, or parts every so many seconds or minutes, or equal parts, copied as they are (#1259) -->
+        <StackPanel x:Name="VideoOutputPanel" Spacing="8" IsVisible="{Binding ShowVideoSplit}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.video_output}" />
+            <ComboBox x:Name="VideoOutput" ItemsSource="{Binding VideoOutputChoices}" SelectedItem="{Binding VideoOutput}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource presets.video_output}" />
+          </StackPanel>
+          <StackPanel Spacing="2" IsVisible="{Binding ShowVideoParts}">
+            <Grid ColumnDefinitions="*,12,*">
+              <NumericUpDown x:Name="VideoSplitSize" Value="{Binding VideoSplitSize}" Minimum="1" Maximum="86400" Increment="1" FormatString="0"
+                             AutomationProperties.Name="{DynamicResource presets.video_parts}" />
+              <ComboBox x:Name="VideoSplitKind" Grid.Column="2" ItemsSource="{Binding VideoSplitKinds}" SelectedItem="{Binding VideoSplitKind}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="{DynamicResource presets.video_parts}" />
+            </Grid>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.video_parts_hint}" />
+          </StackPanel>
+        </StackPanel>
         <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowMediaQuality}">
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.media_quality}" />
@@ -519,6 +540,9 @@
       <StackPanel Spacing="10">
         <TextBlock Classes="h2" Text="{DynamicResource presets.group.pdf}" />
         <CheckBox Content="{DynamicResource presets.merge}" IsChecked="{Binding Merge}" IsVisible="{Binding ShowPdfBuild}" />
+        <CheckBox x:Name="SourceBookmarks" IsChecked="{Binding SourceBookmarks}" IsVisible="{Binding ShowSourceBookmarks}">
+          <TextBlock Text="{DynamicResource presets.source_bookmarks}" TextWrapping="Wrap" />
+        </CheckBox>
         <!-- PDF → PDF: one PDF, one file per page, or several pages per file (#1259) -->
         <StackPanel x:Name="PageOutputPanel" Spacing="8" IsVisible="{Binding ShowPdfSplit}">
           <StackPanel>

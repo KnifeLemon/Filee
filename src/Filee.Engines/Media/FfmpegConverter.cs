@@ -7,7 +7,7 @@
 // Live / Motion Photos (Android, iPhone) give their video when a preset asks for it (LivePhotoSource, MotionPhoto), and
 // a clip of a video becomes one (LivePhotoWriter). Clips and pictures are joined into one file by IMediaJoiner
 // (MediaJoining), and "Remove metadata" copies a file's streams without its tags. "Cut a clip" copies or encodes a part
-// of a video (CutClipAsync).
+// of a video (CutClipAsync), and a video is split into parts by stream copy (SplitAsync).
 
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
@@ -121,6 +121,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var (ffmpeg, ffprobe) = _tools ?? Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        await RequireTrackerDemuxerAsync(ffmpeg, step.From);
         if (step.MotionPhoto)
             return await ExtractMotionAsync(step, progress, cancellationToken);
         if (step.LivePhoto)
@@ -136,6 +137,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             return await FrameSequenceWriter.ConvertAsync(ffmpeg, step, input, info, progress, cancellationToken);
         if (step.Preset.CutsClipOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
             return await CutClipAsync(ffmpeg, ffprobe, step, input, info, progress, cancellationToken);
+        if (step.Preset.SplitsVideoOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
+            return await SplitAsync(ffmpeg, step, input, info, progress, cancellationToken);
 
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)
@@ -343,6 +346,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             for (var i = 0; i < inputPaths.Count; i++)
             {
                 var path = Path.GetFullPath(inputPaths[i]);
+                await RequireTrackerDemuxerAsync(ffmpeg, FormatRegistry.Detect(path)?.Id);
                 clips.Add((path, await MediaInfo.ProbeAsync(ffprobe, path, cancellationToken)));
                 progress?.Report(0.05 * (i + 1) / inputPaths.Count);
             }
@@ -494,6 +498,50 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         progress?.Report(1);
         return [output];
     }
+
+    /// <summary>
+    /// A video in parts (#1259), every so many seconds or in equal parts, copied as it is (<see cref="MediaEncoding.SplitCopy"/>).
+    /// FFmpeg writes the parts into the work directory, and only once all are written do they move to their places as
+    /// <c>name_part1</c>, <c>name_part2</c>, …: a failed or cancelled split leaves nothing half-done next to the video,
+    /// and the number of parts (a key frame decides where each ends) is known before any name is taken.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> SplitAsync(string ffmpeg, ConversionStep step, string input, MediaInfo info,
+        IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        // A file split into its own format holds its streams already.
+        if (step.From != step.To && !MediaEncoding.SplitTakes(step.To, info, step.Preset.Media))
+            throw new ConversionRefusedException("error.split_needs_copy", $"{info.Video?.Codec}/{info.Audio?.Codec} → {step.To}");
+        var extension = FormatRegistry.Get(step.To).PrimaryExtension.TrimStart('.');
+        // In the job's work directory, which the queue deletes afterwards, after a failure too.
+        var scratch = Directory.CreateDirectory(Path.Combine(step.WorkDirectory, "split-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+        // The segment muxer reads % in the name as the part number: a % in the folder stays a %.
+        var pattern = Path.Combine(scratch.Replace("%", "%%"), "part%04d." + extension);
+        var pass = new FfmpegPass(MediaEncoding.SplitCopy(input, pattern, step.To, step.Preset.Media, info), 1);
+        await RunPassAsync(ffmpeg, pass, info.Duration, progress, 0, cancellationToken);
+        var parts = Directory.GetFiles(scratch, "part*." + extension).Order(StringComparer.Ordinal).ToList();
+        if (parts.Count == 0 || parts.Any(part => new FileInfo(part).Length == 0))
+            throw new InvalidOperationException("FFmpeg did not write any output.");
+
+        var written = new List<string>();
+        var digits = parts.Count.ToString(System.Globalization.CultureInfo.InvariantCulture).Length;
+        for (var i = 0; i < parts.Count; i++)
+        {
+            var output = step.Output.Allocate(extension, PartSuffix(i + 1, digits));
+            if (output is null)
+                continue;
+            File.Move(parts[i], output, overwrite: true);
+            written.Add(output);
+        }
+        progress?.Report(1);
+        return written;
+    }
+
+    /// <summary>
+    /// The name suffix of part <paramref name="number"/>: <c>_part1</c>, or <c>_part01</c> when there are ten or more, so
+    /// the parts sort in order everywhere.
+    /// </summary>
+    internal static string PartSuffix(int number, int digits) =>
+        "_part" + number.ToString(new string('0', Math.Max(1, digits)), System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
     /// The video of a Live / Motion Photo as <see cref="ConversionStep.To"/>: copied out of the photo (or from next to
@@ -699,6 +747,34 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     internal static Task<IReadOnlySet<string>?> DecodableCodecsOfAsync(string ffmpeg, TimeSpan? timeout = null) =>
         QueryOnceAsync(Decoders, ffmpeg, "-codecs", timeout, ParseDecodableCodecs);
 
+    private static readonly ConcurrentDictionary<string, Lazy<Task<IReadOnlySet<string>?>>> Demuxers = new();
+
+    /// <summary>
+    /// The demuxer names of this ffmpeg (<c>ffmpeg -demuxers</c>), cached per executable. Null when the list can't be
+    /// read. Queried once at a time and kept when read; asked again after a failure.
+    /// </summary>
+    internal static Task<IReadOnlySet<string>?> DemuxersOfAsync(string ffmpeg, TimeSpan? timeout = null) =>
+        QueryOnceAsync(Demuxers, ffmpeg, "-demuxers", timeout, ParseDemuxers);
+
+    /// <summary>Tracker modules (#1376): FFmpeg has no demuxer of its own for them, only the external libraries'.</summary>
+    internal static readonly IReadOnlySet<string> TrackerModules = new HashSet<string>(["xm", "it", "s3m"], StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether an FFmpeg with these demuxers reads tracker modules: libopenmpt (Filee's Windows and Linux downloads have
+    /// it) or the older libmodplug. Homebrew's FFmpeg has neither. Assumed when the list couldn't be read (null).
+    /// </summary>
+    internal static bool ReadsTrackerModules(IReadOnlySet<string>? demuxers) =>
+        demuxers is null || demuxers.Contains("libopenmpt") || demuxers.Contains("libmodplug");
+
+    /// <summary>
+    /// Refuses a tracker module with Filee's message before FFmpeg reports "Invalid data found when processing input".
+    /// </summary>
+    private static async Task RequireTrackerDemuxerAsync(string ffmpeg, string? format)
+    {
+        if (format is not null && TrackerModules.Contains(format) && !ReadsTrackerModules(await DemuxersOfAsync(ffmpeg)))
+            throw new ConversionRefusedException("error.tracker_needs_openmpt");
+    }
+
     private static async Task<IReadOnlySet<string>?> QueryOnceAsync(
         ConcurrentDictionary<string, Lazy<Task<IReadOnlySet<string>?>>> cache, string ffmpeg, string option,
         TimeSpan? timeout, Func<string, IReadOnlySet<string>> parse)
@@ -760,6 +836,19 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                             && parts[2].Contains("->", StringComparison.Ordinal))
             .Select(parts => parts[1])
             .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>The demuxer names in <c>ffmpeg -demuxers</c> output, each name of a shared line on its own.</summary>
+    internal static IReadOnlySet<string> ParseDemuxers(string list) =>
+        // " D   libopenmpt      Tracker formats (libopenmpt)", " D   mov,mp4,m4a,3gp,3g2,mj2 QuickTime / MOV",
+        // " D d dshow           DirectShow capture"; the legend above them (" D.. = Demuxing supported") has no name.
+        list.Split('\n')
+            .Select(line => DemuxerLine().Match(line))
+            .Where(match => match.Success)
+            .SelectMany(match => match.Groups["names"].Value.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            .ToHashSet(StringComparer.Ordinal);
+
+    [GeneratedRegex(@"^ D[E. ]?[d. ]? +(?<names>[a-z0-9_][\w,.-]*)")]
+    private static partial Regex DemuxerLine();
 
     /// <summary>The encoder names in <c>ffmpeg -encoders</c> output.</summary>
     internal static IReadOnlySet<string> ParseEncoders(string list) =>

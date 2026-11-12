@@ -31,6 +31,7 @@ public sealed partial class GroupEditorViewModel : ObservableObject
         _folderInput = folderInput;
         IsNew = isNew;
         _name = loc.DisplayName(group);
+        Labels = new SliceLabelFields(group, loc);
         foreach (var id in group.SubPresetIds)
         {
             if (store.FindPreset(id) is { IsGroup: false } preset)
@@ -47,6 +48,11 @@ public sealed partial class GroupEditorViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsValid), nameof(NameError))]
     private string _name;
+
+    partial void OnNameChanged(string value) => Labels.NameChanged(value);
+
+    /// <summary>The group slice's icon, short name and what it shows.</summary>
+    public SliceLabelFields Labels { get; }
 
     /// <summary>The presets the group fans out, in order.</summary>
     public ObservableCollection<GroupMember> Members { get; } = [];
@@ -125,6 +131,7 @@ public sealed partial class GroupEditorViewModel : ObservableObject
         _group.Kind = PresetKind.Group;
         _group.TargetFormat = Preset.GroupTarget;
         _group.SubPresetIds = Members.Select(m => m.PresetId).ToList();
+        Labels.Apply(_group);
         return true;
     }
 

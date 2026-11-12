@@ -5,6 +5,12 @@
              x:DataType="vm:GeneralPageViewModel">
   <StackPanel Spacing="18">
     <TextBlock Classes="h1" Text="{DynamicResource general.title}" />
+    <Border Classes="card" IsVisible="{Binding IsPortable}">
+      <StackPanel Spacing="8">
+        <TextBlock Text="{DynamicResource general.portable_mode}" TextWrapping="Wrap" />
+        <SelectableTextBlock Classes="caption" Text="{Binding PortableDataDirectory}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
 
     <Border Classes="card">
       <StackPanel Spacing="14">
@@ -12,7 +18,7 @@
           <TextBlock Classes="label" Text="{DynamicResource general.language}" />
           <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" MinWidth="240" AutomationProperties.Name="{DynamicResource general.language}" />
         </StackPanel>
-        <ToggleSwitch Content="{DynamicResource general.start_with_system}" IsChecked="{Binding StartWithSystem}" />
+        <ToggleSwitch Content="{DynamicResource general.start_with_system}" IsChecked="{Binding StartWithSystem}" IsEnabled="{Binding CanChangeSystemIntegration}" />
         <ToggleSwitch x:Name="ShowInDockSwitch" Content="{DynamicResource general.show_in_dock}"
                       IsChecked="{Binding ShowInDock}" IsVisible="{Binding SupportsDockVisibility}" />
         <ToggleSwitch x:Name="ShowMenuBarIconSwitch" Content="{DynamicResource general.show_menu_bar_icon}"
@@ -25,7 +31,7 @@
           <TextBlock Classes="label" Text="{DynamicResource general.close_action}" />
           <ComboBox ItemsSource="{Binding CloseChoices}" SelectedItem="{Binding CloseChoice}" MinWidth="240" AutomationProperties.Name="{DynamicResource general.close_action}" />
         </StackPanel>
-        <ToggleSwitch Content="{Binding ContextMenuText}" IsChecked="{Binding ContextMenu}" IsVisible="{Binding HasSystemIntegration}" />
+        <ToggleSwitch Content="{Binding ContextMenuText}" IsChecked="{Binding ContextMenu}" IsVisible="{Binding HasSystemIntegration}" IsEnabled="{Binding CanChangeSystemIntegration}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding IntegrationMessage}"
                    IsVisible="{Binding IntegrationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <!-- Windows 11: optional top-level entry (needs one administrator prompt), see ExplorerMenuRegistration. -->

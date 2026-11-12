@@ -256,8 +256,380 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         var folder = fx.NewFolder();
         var inputs = new[] { Make(folder, "a", 0), Make(folder, "b", 1, true, collision) };
         var path = Path.Combine(folder, "merged.pdf");
-        PdfSharpConverter.Merge(inputs, path, TestContext.Current.CancellationToken, limits);
+        MergeFiles(inputs, path, TestContext.Current.CancellationToken, limits);
         return path;
+    }
+
+    private static void MergeFiles(IReadOnlyList<string> inputs, string output, CancellationToken ct,
+        PdfMergeStructure.Limits? limits = null) =>
+        PdfSharpConverter.Merge(inputs.Select(path => new PdfMergeInput(path, Path.GetFileName(path))).ToArray(),
+            output, false, ct, limits);
+
+    private string MergeSources(IReadOnlyList<PdfMergeInput> inputs, bool enabled = true, PdfMergeStructure.Limits? limits = null)
+    {
+        var output = Path.Combine(fx.NewFolder(), "merged.pdf");
+        PdfSharpConverter.Merge(inputs, output, enabled, TestContext.Current.CancellationToken, limits);
+        return output;
+    }
+
+    private static List<PdfDictionary> Siblings(PdfDictionary parent)
+    {
+        var children = new List<PdfDictionary>();
+        var visited = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance);
+        var next = parent.Elements["/First"];
+        while (next is not null)
+        {
+            var child = D(next);
+            Assert.True(visited.Add(child));
+            Assert.Same(parent, D(child.Elements["/Parent"]));
+            if (children.Count == 0)
+                Assert.False(child.Elements.ContainsKey("/Prev"));
+            else
+                Assert.Same(children[^1], D(child.Elements["/Prev"]));
+            children.Add(child);
+            next = child.Elements["/Next"];
+        }
+        if (children.Count > 0)
+            Assert.Same(children[^1], D(parent.Elements["/Last"]));
+        return children;
+    }
+
+    private static void AssertSourceTree(PdfDocument document, string secondName = "b.pdf")
+    {
+        var root = D(document.Internals.Catalog.Elements["/Outlines"]);
+        var parents = Siblings(root);
+        Assert.Equal(new[] { "a.pdf", secondName }, parents.Select(p => S(p.Elements["/Title"])));
+        // Source 0 is open, source 1 is closed; both file parents are open.
+        Assert.Equal(5, Assert.IsType<PdfInteger>(root.Elements["/Count"]).Value);
+        for (var i = 0; i < 2; i++)
+        {
+            var parent = parents[i];
+            View(document, A(parent.Elements["/Dest"]), i * 2, "/Fit");
+            Assert.Equal(i == 0 ? 2 : 1, Assert.IsType<PdfInteger>(parent.Elements["/Count"]).Value);
+            var top = Assert.Single(Siblings(parent));
+            var child = Assert.Single(Siblings(top));
+            Assert.Empty(Siblings(child));
+            Assert.Equal($"source-{i}", S(top.Elements["/Title"]));
+            Assert.Equal($"child-{i}", S(child.Elements["/Title"]));
+            Assert.Equal(i == 0 ? 1 : -1, Assert.IsType<PdfInteger>(top.Elements["/Count"]).Value);
+            Assert.False(child.Elements.ContainsKey("/Count"));
+            Assert.Equal(new[] { "0.2", "0", "1" }, A(top.Elements["/C"]).Elements.Select(v => v.ToString()));
+            Assert.Equal(3, Assert.IsType<PdfInteger>(top.Elements["/F"]).Value);
+            View(document, A(top.Elements["/Dest"]), i * 2 + 1, "/XYZ", "10", "null", "1.5");
+            View(document, A(child.Elements["/Dest"]), i * 2 + 1, "/FitH", "123");
+        }
+        Assert.Equal(6, OutlineItems(document).Count);
+    }
+
+    private string ClosedSource(string folder)
+    {
+        var source = Make(folder, "b", 1, true);
+        using var document = PdfReader.Open(source, PdfDocumentOpenMode.Modify);
+        D(D(document.Internals.Catalog.Elements["/Outlines"]).Elements["/First"]).Elements["/Count"] = new PdfInteger(-1);
+        var path = Path.Combine(folder, "closed.pdf");
+        document.Save(path);
+        return path;
+    }
+
+    [Fact]
+    public void Source_bookmarks_wrap_each_sources_outline_and_keep_its_view_and_style()
+    {
+        var folder = fx.NewFolder();
+        using var result = PdfReader.Open(MergeSources(
+            [new(Make(folder, "a"), "a.pdf"), new(ClosedSource(folder), "b.pdf")]), PdfDocumentOpenMode.Import);
+        Assert.Equal(4, result.PageCount);
+        AssertSourceTree(result);
+        AssertLinks(result);
+        AssertForms(result);
+    }
+
+    [Fact]
+    public void Source_bookmarks_keep_duplicate_names_as_separate_entries()
+    {
+        var first = Make(fx.NewFolder(), "report");
+        var second = Make(fx.NewFolder(), "report", 1);
+        using var result = PdfReader.Open(MergeSources(
+            [new(first, Path.GetFileName(first)), new(second, Path.GetFileName(second)), new(first, Path.GetFileName(first))]),
+            PdfDocumentOpenMode.Import);
+        var parents = Siblings(D(result.Internals.Catalog.Elements["/Outlines"]));
+        Assert.Equal(new[] { "report.pdf", "report.pdf", "report.pdf" }, parents.Select(p => S(p.Elements["/Title"])));
+        Assert.Equal(6, result.PageCount);
+        for (var i = 0; i < parents.Count; i++)
+            View(result, A(parents[i].Elements["/Dest"]), i * 2, "/Fit");
+    }
+
+    [Fact]
+    public void Source_bookmarks_point_at_the_first_imported_page_occurrence()
+    {
+        var source = Source(pdf =>
+        {
+            var pages = D(pdf.Internals.Catalog.Elements["/Pages"]);
+            var kids = A(pages.Elements["/Kids"]);
+            kids.Elements[1] = kids.Elements[0];
+        });
+        using (var input = PdfReader.Open(source, PdfDocumentOpenMode.Import))
+            Assert.Equal(input.Pages[0].Reference!.ObjectID, input.Pages[1].Reference!.ObjectID);
+        using var result = PdfReader.Open(MergeSources([new(source, "repeat.pdf")]), PdfDocumentOpenMode.Import);
+        Assert.Equal(2, result.PageCount);
+        Assert.NotEqual(result.Pages[0].Reference!.ObjectID, result.Pages[1].Reference!.ObjectID);
+        View(result, A(Assert.Single(OutlineItems(result)).Elements["/Dest"]), 0, "/Fit");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Source_bookmarks_create_leaf_entries_for_sources_without_outlines(int count)
+    {
+        var inputs = Enumerable.Range(0, count).Select(i => new PdfMergeInput(Source(_ => { }), $"plain-{i}.pdf")).ToArray();
+        using var result = PdfReader.Open(MergeSources(inputs), PdfDocumentOpenMode.Import);
+        Assert.Equal(count * 2, result.PageCount);
+        var parents = Siblings(D(result.Internals.Catalog.Elements["/Outlines"]));
+        Assert.Equal(inputs.Select(i => i.SourceName), parents.Select(p => S(p.Elements["/Title"])));
+        for (var i = 0; i < count; i++)
+        {
+            Assert.Empty(Siblings(parents[i]));
+            Assert.False(parents[i].Elements.ContainsKey("/Count"));
+            View(result, A(parents[i].Elements["/Dest"]), i * 2, "/Fit");
+        }
+    }
+
+    [Fact]
+    public void Source_bookmarks_off_keeps_the_existing_flat_structure()
+    {
+        var folder = fx.NewFolder();
+        using (var result = PdfReader.Open(MergeSources(
+            [new(Make(folder, "a"), "a.pdf"), new(Make(folder, "b", 1), "b.pdf")], false), PdfDocumentOpenMode.Import))
+            AssertBookmarks(result);
+        using var plain = PdfReader.Open(MergeSources([new(Source(_ => { }), "plain.pdf")], false), PdfDocumentOpenMode.Import);
+        Assert.Equal(2, plain.PageCount);
+        Assert.False(plain.Internals.Catalog.Elements.ContainsKey("/Outlines"));
+    }
+
+    [Fact]
+    public void Source_bookmarks_skip_zero_page_sources_without_losing_their_neighbor()
+    {
+        var empty = EmptyPdf(fx.NewFolder());
+        using (var input = PdfReader.Open(empty, PdfDocumentOpenMode.Import))
+            Assert.Equal(0, input.PageCount);
+        using var result = PdfReader.Open(MergeSources(
+            [new(empty, "empty.pdf"), new(Source(pdf => Children(OutlineRoot(pdf), Bookmark(pdf, "healthy", Dest(pdf, 1)))), "healthy.pdf")]),
+            PdfDocumentOpenMode.Import);
+        Assert.Equal(2, result.PageCount);
+        var parent = Assert.Single(Siblings(D(result.Internals.Catalog.Elements["/Outlines"])));
+        Assert.Equal("healthy.pdf", S(parent.Elements["/Title"]));
+        View(result, A(parent.Elements["/Dest"]), 0, "/Fit");
+        View(result, A(Assert.Single(Siblings(parent)).Elements["/Dest"]), 1, "/Fit");
+    }
+
+    [Fact]
+    public void Source_bookmarks_titles_keep_unicode_and_replace_display_controls()
+    {
+        const string kept = "보고서 e\u0301 👩\u200D💻 (final) \\";
+        const string controls = "\0\t\r\n\u007F\u0085\u061C\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069";
+        var source = Source(_ => { });
+        var name = kept + controls + "\uD800x\uDC00.pdf";
+        using var result = PdfReader.Open(MergeSources([new(source, name)]), PdfDocumentOpenMode.Import);
+        var title = Assert.Single(OutlineItems(result)).Elements["/Title"];
+        Assert.Equal(kept + new string(' ', controls.Length) + "\uFFFDx\uFFFD.pdf", S(title));
+        Assert.DoesNotContain(Path.GetDirectoryName(source)!, S(title), StringComparison.Ordinal);
+        Assert.Equal(PdfStringEncoding.Unicode, Assert.IsType<PdfString>(V(title)).Encoding);
+    }
+
+    [Theory]
+    [InlineData(1023, false)]
+    [InlineData(1024, false)]
+    [InlineData(1025, false)]
+    [InlineData(1023, true)]
+    [InlineData(1024, true)]
+    [InlineData(1025, true)]
+    public void Source_bookmarks_titles_stop_at_the_utf16_limit_without_splitting_a_pair(int length, bool pair)
+    {
+        var name = pair ? new string('a', Math.Min(length - 2, 1022)) + "📄" + new string('z', Math.Max(0, length - 1024)) : new string('a', length);
+        Assert.Equal(length, name.Length);
+        var expected = name.Length <= 1024 ? name : new string('a', pair ? 1022 : 1023) + "\u2026";
+        using var result = PdfReader.Open(MergeSources([new(Source(_ => { }), name)]), PdfDocumentOpenMode.Import);
+        var title = S(Assert.Single(OutlineItems(result)).Elements["/Title"]);
+        Assert.Equal(expected, title);
+        Assert.InRange(title.Length, 1, 1024);
+        Assert.DoesNotContain('\uFFFD', title);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(3, false)]
+    [InlineData(4, false)]
+    [InlineData(0, true)]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    [InlineData(4, true)]
+    public void Source_bookmarks_count_the_parent_in_item_and_depth_limits(int limit, bool depth)
+    {
+        var source = Source(pdf =>
+        {
+            var top = Bookmark(pdf, "top", Dest(pdf, 0));
+            var child = Bookmark(pdf, "child", Dest(pdf, 1));
+            Children(OutlineRoot(pdf), top);
+            Children(top, child);
+        });
+        using var result = PdfReader.Open(MergeSources([new(source, "a.pdf"), new(source, "b.pdf")], limits:
+            depth ? new() { OutlineDepth = limit } : new() { OutlineItems = limit }), PdfDocumentOpenMode.Import);
+        var items = OutlineItems(result);
+        Assert.Equal(Math.Min(limit, 3) * 2, items.Count);
+        Assert.Equal(4, result.PageCount);
+        if (limit == 0)
+            Assert.False(result.Internals.Catalog.Elements.ContainsKey("/Outlines"));
+        else
+        {
+            var parents = Siblings(D(result.Internals.Catalog.Elements["/Outlines"]));
+            Assert.Equal(new[] { "a.pdf", "b.pdf" }, parents.Select(p => S(p.Elements["/Title"])));
+            for (var i = 0; i < 2; i++)
+            {
+                View(result, A(parents[i].Elements["/Dest"]), i * 2, "/Fit");
+                var branch = parents[i];
+                for (var level = 1; level < Math.Min(limit, 3); level++)
+                    branch = Assert.Single(Siblings(branch));
+                Assert.Empty(Siblings(branch));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    public void Source_bookmarks_reserve_unicode_title_bytes_before_destination_names(int bytes)
+    {
+        var source = Source(pdf =>
+        {
+            NameTree(pdf).Elements["/Names"] = Items(pdf, new PdfString("n"), Dest(pdf, 1));
+            Children(OutlineRoot(pdf), Bookmark(pdf, "x", Dest(pdf, 0)));
+        });
+        using var result = PdfReader.Open(MergeSources([new(source, "p"), new(source, "q")],
+            limits: new() { StringBytes = bytes }), PdfDocumentOpenMode.Import);
+        var items = OutlineItems(result);
+        Assert.Equal(bytes switch { 3 => 0, 4 => 2, 5 => 3, 6 => 4, _ => 3 }, items.Count);
+        var names = result.Internals.Catalog.Elements.ContainsKey("/Names") ? Destinations(result) : new Dictionary<string, PdfArray>();
+        Assert.Equal(bytes < 4 ? new[] { "n", "n-2" } : bytes == 4 ? [] : bytes < 7 ? ["n"] : ["n", "n-2"], names.Keys);
+        if (bytes >= 4)
+        {
+            var parents = Siblings(D(result.Internals.Catalog.Elements["/Outlines"]));
+            Assert.Equal(new[] { "p", "q" }, parents.Select(p => S(p.Elements["/Title"])));
+            View(result, A(parents[1].Elements["/Dest"]), 2, "/Fit");
+        }
+    }
+
+    [Theory]
+    [InlineData("items")]
+    [InlineData("depth")]
+    [InlineData("strings")]
+    public void Source_bookmarks_do_not_fall_back_to_flat_outlines_when_parent_reservation_fails(string kind)
+    {
+        var source = Source(pdf =>
+        {
+            Children(OutlineRoot(pdf), Bookmark(pdf, "x", Dest(pdf, 0)));
+            Link(pdf, 0, Dest(pdf, 1));
+            Field(pdf, Form(pdf), "f", "v");
+        });
+        var limits = kind switch
+        {
+            "items" => new PdfMergeStructure.Limits { OutlineItems = 0 },
+            "depth" => new PdfMergeStructure.Limits { OutlineDepth = 0 },
+            _ => new PdfMergeStructure.Limits { StringBytes = 16 },
+        };
+        using var result = PdfReader.Open(MergeSources(
+            [new(source, "parent-too-long.pdf"), new(source, "another-long-parent.pdf")], limits: limits), PdfDocumentOpenMode.Import);
+        Assert.Equal(4, result.PageCount);
+        Assert.False(result.Internals.Catalog.Elements.ContainsKey("/Outlines"));
+        for (var i = 0; i < 2; i++)
+            View(result, A(Assert.Single(Links(result, i * 2)).Elements["/Dest"]), i * 2 + 1, "/Fit");
+        var fields = Fields(result);
+        Assert.Equal(new[] { "f", "2", "2.f" }, fields.Keys);
+        Assert.Equal("v", S(fields["f"].Elements["/V"]));
+        Assert.Equal("v", S(fields["2.f"].Elements["/V"]));
+        Assert.Same(fields["2"], D(fields["2.f"].Elements["/Parent"]));
+    }
+
+    [Fact]
+    public void Source_bookmarks_bound_cyclic_and_deep_outlines_with_a_healthy_neighbor()
+    {
+        var deep = Source(pdf =>
+        {
+            var parent = OutlineRoot(pdf);
+            for (var i = 0; i < 70; i++)
+            {
+                var child = Bookmark(pdf, $"deep-{i}", Dest(pdf, 0));
+                Children(parent, child);
+                parent = child;
+            }
+        });
+        var cyclic = Source(pdf =>
+        {
+            var root = OutlineRoot(pdf);
+            var entries = Enumerable.Range(0, 256).Select(i => Bookmark(pdf, $"sibling-{i}", Dest(pdf, 1))).ToArray();
+            entries[1].Elements["/Dest"] = Items(pdf, new PdfInteger(-1), new PdfName("/Fit"));
+            Children(root, entries);
+            entries[^1].Elements["/Next"] = entries[0].Reference;
+        });
+        var clock = Stopwatch.StartNew();
+        var output = MergeSources([new(deep, "deep.pdf"), new(cyclic, "cyclic.pdf")]);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), clock.Elapsed.ToString());
+        using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        Assert.Equal(4, result.PageCount);
+        Assert.Equal(321, OutlineItems(result).Count);
+        var parents = Siblings(D(result.Internals.Catalog.Elements["/Outlines"]));
+        Assert.Equal(new[] { "deep.pdf", "cyclic.pdf" }, parents.Select(p => S(p.Elements["/Title"])));
+        View(result, A(parents[0].Elements["/Dest"]), 0, "/Fit");
+        View(result, A(parents[1].Elements["/Dest"]), 2, "/Fit");
+        var branch = parents[0];
+        for (var depth = 1; depth < 64; depth++)
+            branch = Assert.Single(Siblings(branch));
+        Assert.Empty(Siblings(branch));
+        var siblings = Siblings(parents[1]);
+        Assert.Equal(256, siblings.Count);
+        Assert.False(siblings[1].Elements.ContainsKey("/Dest"));
+        View(result, A(siblings[^1].Elements["/Dest"]), 3, "/Fit");
+    }
+
+    [Fact]
+    public void Source_bookmarks_observe_cancellation_before_carrying_structure()
+    {
+        var folder = fx.NewFolder();
+        var source = Make(folder, "a");
+        var output = Path.Combine(folder, "cancelled.pdf");
+        using var cts = new CancellationTokenSource();
+        TimeSpan? cancelled = null;
+        var clock = Stopwatch.StartNew();
+        Assert.Throws<OperationCanceledException>(() => PdfSharpConverter.Merge([new(source, "a.pdf")], output, true,
+            cts.Token, new() { BeforeCarry = () => { cancelled = clock.Elapsed; cts.Cancel(); } }));
+        Assert.NotNull(cancelled);
+        Assert.True(clock.Elapsed - cancelled.Value < TimeSpan.FromSeconds(1));
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
+    public async Task Source_bookmarks_survive_pdf_finishing_with_links_and_forms()
+    {
+        var folder = fx.NewFolder();
+        var job = await fx.ConvertAsync([Make(folder, "a"), ClosedSource(folder)], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { MergeIntoSingle = true, SourceBookmarks = true, Watermark = "DRAFT", PageNumbers = true, Password = "source-test" },
+        });
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var path = Assert.Single(job.Outputs);
+        using (var result = PdfReader.Open(path, "source-test", PdfDocumentOpenMode.Import))
+        {
+            AssertSourceTree(result, "closed.pdf");
+            AssertLinks(result);
+            AssertForms(result);
+            AssertDefaults(result);
+        }
+        ChangeIndependently(path, "source-test");
     }
 
     private static List<PdfDictionary> OutlineItems(PdfDocument document)
@@ -498,7 +870,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         using (var second = PdfReader.Open(inputs[1], PdfDocumentOpenMode.Import))
             Assert.IsType<PdfDictionary>(second.Internals.Catalog.Elements["/AcroForm"]);
         var output = Path.Combine(folder, "merged.pdf");
-        PdfSharpConverter.Merge(inputs, output, TestContext.Current.CancellationToken);
+        MergeFiles(inputs, output, TestContext.Current.CancellationToken);
         using var document = PdfReader.Open(output, PdfDocumentOpenMode.Import);
         AssertForms(document);
     }
@@ -537,7 +909,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
             }
             old.Save(baseline);
         }
-        PdfSharpConverter.Merge(inputs, path, TestContext.Current.CancellationToken);
+        MergeFiles(inputs, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         using var original = PdfReader.Open(baseline, PdfDocumentOpenMode.Import);
         Assert.Equal(original.PageCount, result.PageCount);
@@ -584,7 +956,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         }
         var output = Path.Combine(folder, "out.pdf");
         var second = Source(document => document.Pages[0].Rotate = 90);
-        PdfSharpConverter.Merge([source, second], output, TestContext.Current.CancellationToken);
+        MergeFiles([source, second], output, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
         Assert.Equal(3, result.PageCount);
         Assert.Equal(90, result.Pages[1].Rotate);
@@ -606,8 +978,37 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
     private static string MergeOne(string source, PdfMergeStructure.Limits? limits = null)
     {
         var path = Path.Combine(Path.GetDirectoryName(source)!, "out.pdf");
-        PdfSharpConverter.Merge([source], path, TestContext.Current.CancellationToken, limits);
+        MergeFiles([source], path, TestContext.Current.CancellationToken, limits);
         return path;
+    }
+
+    private static string EmptyPdf(string folder)
+    {
+        // PDFsharp cannot save a document without pages; write the empty page tree explicitly.
+        var empty = Path.Combine(folder, "empty.pdf");
+        var objects = new[]
+        {
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R /Outlines 5 0 R >>",
+            "<< /Type /Pages /Kids [] /Count 0 >>",
+            "<< /Fields [4 0 R] >>",
+            "<< /FT /Tx /T (broken) /V (bad) >>",
+            "<< /Type /Outlines /First 6 0 R /Last 6 0 R >>",
+            "<< /Title (empty bookmark) /Parent 5 0 R >>",
+        };
+        var pdf = new StringBuilder("%PDF-1.7\n");
+        var offsets = new List<int>();
+        for (var i = 0; i < objects.Length; i++)
+        {
+            offsets.Add(pdf.Length);
+            pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
+        }
+        var xref = pdf.Length;
+        pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
+        foreach (var offset in offsets)
+            pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
+        pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+        File.WriteAllText(empty, pdf.ToString(), Encoding.ASCII);
+        return empty;
     }
 
     [Theory]
@@ -700,32 +1101,11 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         var output = Path.Combine(Path.GetDirectoryName(source)!, "out.pdf");
         if (kind == "no-pages")
         {
-            // PDFsharp cannot save a document without pages; write the empty page tree explicitly.
-            var empty = Path.Combine(Path.GetDirectoryName(source)!, "empty.pdf");
-            var objects = new[]
-            {
-                "<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>",
-                "<< /Type /Pages /Kids [] /Count 0 >>",
-                "<< /Fields [4 0 R] >>",
-                "<< /FT /Tx /T (broken) /V (bad) >>",
-            };
-            var pdf = new StringBuilder("%PDF-1.7\n");
-            var offsets = new List<int>();
-            for (var i = 0; i < objects.Length; i++)
-            {
-                offsets.Add(pdf.Length);
-                pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
-            }
-            var xref = pdf.Length;
-            pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
-            foreach (var offset in offsets)
-                pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
-            pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
-            File.WriteAllText(empty, pdf.ToString(), Encoding.ASCII);
-            PdfSharpConverter.Merge([empty, source], output, TestContext.Current.CancellationToken);
+            var empty = EmptyPdf(Path.GetDirectoryName(source)!);
+            MergeFiles([empty, source], output, TestContext.Current.CancellationToken);
         }
         else
-            PdfSharpConverter.Merge([source], output, TestContext.Current.CancellationToken);
+            MergeFiles([source], output, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
         Assert.Equal(2, result.PageCount);
         var fields = Fields(result);
@@ -1037,7 +1417,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
     {
         var prefix = Source(_ => { });
         var path = Path.Combine(Path.GetDirectoryName(source)!, "prefixed.pdf");
-        PdfSharpConverter.Merge([prefix, source], path, TestContext.Current.CancellationToken, limits);
+        MergeFiles([prefix, source], path, TestContext.Current.CancellationToken, limits);
         return path;
     }
 
@@ -1120,7 +1500,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var first = Make();
         var path = Path.Combine(Path.GetDirectoryName(first)!, "collision.pdf");
-        PdfSharpConverter.Merge([first, Make()], path, TestContext.Current.CancellationToken);
+        MergeFiles([first, Make()], path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         Assert.Equal(4, result.PageCount);
         Assert.Equal(new[] { name, name + "-2" }, Destinations(result).Keys);
@@ -1451,7 +1831,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var first = Make(false);
         var path = Path.Combine(Path.GetDirectoryName(first)!, "suffix-budget.pdf");
-        PdfSharpConverter.Merge([first, Make(true)], path, TestContext.Current.CancellationToken, new() { StringBytes = length + 1 });
+        MergeFiles([first, Make(true)], path, TestContext.Current.CancellationToken, new() { StringBytes = length + 1 });
         using var suffixed = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         Assert.Equal(new[] { name, "y", "z" }, Destinations(suffixed).Keys);
         View(suffixed, Resolved(suffixed, Links(suffixed, 0)[0].Elements["/Dest"]), 1, "/Fit");
@@ -1498,7 +1878,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var first = Make(false);
         var path = Path.Combine(Path.GetDirectoryName(first)!, "default-budget.pdf");
-        PdfSharpConverter.Merge([first, Make(true)], path, TestContext.Current.CancellationToken);
+        MergeFiles([first, Make(true)], path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         Assert.Equal(4, result.PageCount);
         var names = Destinations(result);
@@ -1594,7 +1974,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var first = Make(false);
         var path = Path.Combine(Path.GetDirectoryName(first)!, "repeated-suffix.pdf");
-        PdfSharpConverter.Merge([first, Make(true)], path, TestContext.Current.CancellationToken, new() { StringBytes = 257 });
+        MergeFiles([first, Make(true)], path, TestContext.Current.CancellationToken, new() { StringBytes = 257 });
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var names = Destinations(result);
         Assert.Equal(new[] { "a", name, "z" }, names.Keys);
@@ -1886,7 +2266,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         pagesOnly = GC.GetAllocatedBytesForCurrentThread() - pagesOnly;
         var allocated = GC.GetAllocatedBytesForCurrentThread();
         var timer = Stopwatch.StartNew();
-        PdfSharpConverter.Merge([source], output, TestContext.Current.CancellationToken);
+        MergeFiles([source], output, TestContext.Current.CancellationToken);
         timer.Stop();
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
         TestContext.Current.TestOutputHelper?.WriteLine($"{kind}: {timer.Elapsed.TotalSeconds:F3} s, {allocated:N0} bytes, pages only {pagesOnly:N0} bytes");
@@ -1999,7 +2379,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
                 Field(document, form, "not-inherited", "ok");
             });
             var path = Path.Combine(Path.GetDirectoryName(seed)!, "length.pdf");
-            PdfSharpConverter.Merge([seed, boundary, beyond], path, TestContext.Current.CancellationToken);
+            MergeFiles([seed, boundary, beyond], path, TestContext.Current.CancellationToken);
             using var opened = PdfReader.Open(path, PdfDocumentOpenMode.Import);
             var fields = Fields(opened);
             Assert.StartsWith("/F1_2 10 Tf ", S(fields["before"].Elements["/DA"]), StringComparison.Ordinal);
@@ -2136,7 +2516,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
             form.Elements["/DR"] = resources;
         });
         var path = Path.Combine(Path.GetDirectoryName(seed)!, "reserved.pdf");
-        PdfSharpConverter.Merge([seed, second], path, TestContext.Current.CancellationToken);
+        MergeFiles([seed, second], path, TestContext.Current.CancellationToken);
         using var reserved = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var fields = Fields(reserved);
         var fonts = D(D(D(reserved.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]).Elements["/Font"]);
@@ -2172,7 +2552,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var first = Make("Helvetica");
         var path = Path.Combine(Path.GetDirectoryName(first)!, "own-resources.pdf");
-        PdfSharpConverter.Merge([first, Make("Courier", ownOther: "Times-Roman")], path, TestContext.Current.CancellationToken);
+        MergeFiles([first, Make("Courier", ownOther: "Times-Roman")], path, TestContext.Current.CancellationToken);
         using var merged = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var fields = Fields(merged);
         var formFonts = D(D(D(merged.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]).Elements["/Font"]);
@@ -2251,7 +2631,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var sources = new[] { Make("intro", "f0"), Make("intro", "f1"), Make("intro-3", "f2"), Make("intro", "f0") };
         var path = Path.Combine(Path.GetDirectoryName(sources[0])!, "names.pdf");
-        PdfSharpConverter.Merge(sources, path, TestContext.Current.CancellationToken);
+        MergeFiles(sources, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         Assert.Equal(new[] { "intro", "intro-2", "intro-3", "intro-4" }, Destinations(result).Keys.OrderBy(k => k, StringComparer.Ordinal));
         var fonts = D(D(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]).Elements["/Font"]);
@@ -2290,7 +2670,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         // The third source's 256 fields fit the 1 MiB appearance budget exactly when its font becomes /F1_2.
         var sources = new[] { Make("Helvetica", 1), Make("Courier", 1, ownNames: 8), Make("Symbol", 256, appearance: "/F1 10 Tf " + new string(' ', 4094 - 10)) };
         var path = Path.Combine(Path.GetDirectoryName(sources[0])!, "reserved.pdf");
-        PdfSharpConverter.Merge(sources, path, TestContext.Current.CancellationToken);
+        MergeFiles(sources, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var fonts = D(D(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]).Elements["/Font"]);
         Assert.Equal("/Courier", S(D(fonts.Elements["/F1_10"]).Elements["/BaseFont"]));
@@ -2376,7 +2756,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var sources = new[] { Make("a", 0.1, false), Make("b", 0.4, true) };
         var path = Path.Combine(Path.GetDirectoryName(sources[0])!, "kinds.pdf");
-        PdfSharpConverter.Merge(sources, path, TestContext.Current.CancellationToken);
+        MergeFiles(sources, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var field = Fields(result)["b"];
         Assert.Equal("0 g /R1_3 gs", S(field.Elements["/DA"]));
@@ -2400,7 +2780,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var sources = new[] { Make("a", "/DeviceRGB cs 0 1 0 sc"), Make("b", "/DeviceRGB cs 1 0 0 sc /DeviceRGB CS") };
         var path = Path.Combine(Path.GetDirectoryName(sources[0])!, "colour.pdf");
-        PdfSharpConverter.Merge(sources, path, TestContext.Current.CancellationToken);
+        MergeFiles(sources, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         Assert.Equal("/DeviceRGB cs 1 0 0 sc /DeviceRGB CS", S(Fields(result)["b"].Elements["/DA"]));
     }
@@ -2464,7 +2844,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var sources = new[] { Make("Helvetica", false), Make("Courier", true) };
         var path = Path.Combine(Path.GetDirectoryName(sources[0])!, "inherit.pdf");
-        PdfSharpConverter.Merge(sources, path, TestContext.Current.CancellationToken);
+        MergeFiles(sources, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var fields = Fields(result);
         Assert.Equal("/He_2 8 Tf 0 g", S(fields["group"].Elements["/DA"]));
@@ -2540,7 +2920,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var sources = new[] { Make("a", 1.8), Make("b", 2.2), Make("c", null) };
         var path = Path.Combine(Path.GetDirectoryName(sources[0])!, "defaults.pdf");
-        PdfSharpConverter.Merge(sources, path, TestContext.Current.CancellationToken);
+        MergeFiles(sources, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var spaces = D(D(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]).Elements["/ColorSpace"]);
         // No default space is left to recolour the device colours of another source's fields.
@@ -2581,7 +2961,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var sources = new[] { Make("a", true), Make("b", false) };
         var path = Path.Combine(Path.GetDirectoryName(sources[0])!, "aliases.pdf");
-        PdfSharpConverter.Merge(sources, path, TestContext.Current.CancellationToken);
+        MergeFiles(sources, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var spaces = D(D(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]).Elements["/ColorSpace"]);
         bool IsDefault(PdfItem? item) => V(item) is PdfArray array && S(array.Elements[0]) == "/CalRGB";
@@ -2629,7 +3009,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var sources = new[] { Make("a", true), Make("b", false) };
         var path = Path.Combine(Path.GetDirectoryName(sources[0])!, "indexed-pattern.pdf");
-        PdfSharpConverter.Merge(sources, path, TestContext.Current.CancellationToken);
+        MergeFiles(sources, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var spaces = D(D(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]).Elements["/ColorSpace"]);
         PdfItem? Base(string name) => A(A(spaces.Elements[name]).Elements[1]).Elements[1];
@@ -2818,7 +3198,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
         var sources = new[] { Make("a", true), Make("b", false) };
         var path = Path.Combine(Path.GetDirectoryName(sources[0])!, "shading.pdf");
-        PdfSharpConverter.Merge(sources, path, TestContext.Current.CancellationToken);
+        MergeFiles(sources, path, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         var patterns = D(D(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]).Elements["/Pattern"]);
         Assert.True(IsCalRgb(D(D(patterns.Elements["/P1"]).Elements["/Shading"]).Elements["/ColorSpace"]));
@@ -2874,7 +3254,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
     {
         var folder = fx.NewFolder();
         var output = Path.Combine(folder, "merged.pdf");
-        PdfSharpConverter.Merge([Make(folder, "a", 0, first), Make(folder, "b", 1, second)], output, TestContext.Current.CancellationToken);
+        MergeFiles([Make(folder, "a", 0, first), Make(folder, "b", 1, second)], output, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
         Assert.Equal(expected, V(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/NeedAppearances"]) is PdfBoolean { Value: true });
     }
@@ -2886,7 +3266,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         var source = Make(folder, "a");
         var output = Path.Combine(folder, "cancelled.pdf");
         using var cts = new CancellationTokenSource();
-        Assert.Throws<OperationCanceledException>(() => PdfSharpConverter.Merge([source], output, cts.Token, new() { BeforeCarry = cts.Cancel }));
+        Assert.Throws<OperationCanceledException>(() => MergeFiles([source], output, cts.Token, new() { BeforeCarry = cts.Cancel }));
         Assert.False(File.Exists(output));
     }
 }

@@ -103,6 +103,8 @@ winget install KnifeLemon.Filee
   - Drag gestures need X11.
     On Wayland, use the drop zone and the file manager's right-click menu.
 
+Portable releases keep their data beside the app; see [portable mode](docs/PORTABLE.md).
+
 Filee shows new releases in its menu and updates itself, keeping your settings and engines.
 After an update, a few slides show what's new.
 

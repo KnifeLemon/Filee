@@ -13,6 +13,10 @@ namespace Filee.App.ViewModels.Pages;
 
 public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
 {
+    /// <summary>Portable copies leave installed startup and file-manager entries alone.</summary>
+    public bool IsPortable => PortableMode.IsEnabled;
+    public bool CanChangeSystemIntegration => !IsPortable;
+    public string PortableDataDirectory => PortableMode.DataDirectory ?? "";
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
@@ -168,9 +172,9 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private string? _modernMenuStatus;
 
-    public bool ShowModernMenu => ContextMenu && ModernMenuState != ModernContextMenuState.Unsupported;
-    public bool CanAddModernMenu => !ModernMenuBusy && ModernMenuState is ModernContextMenuState.Off or ModernContextMenuState.Outdated;
-    public bool CanRemoveModernMenu => !ModernMenuBusy && ModernMenuState is ModernContextMenuState.On or ModernContextMenuState.Outdated;
+    public bool ShowModernMenu => CanChangeSystemIntegration && ContextMenu && ModernMenuState != ModernContextMenuState.Unsupported;
+    public bool CanAddModernMenu => CanChangeSystemIntegration && !ModernMenuBusy && ModernMenuState is ModernContextMenuState.Off or ModernContextMenuState.Outdated;
+    public bool CanRemoveModernMenu => CanChangeSystemIntegration && !ModernMenuBusy && ModernMenuState is ModernContextMenuState.On or ModernContextMenuState.Outdated;
 
     partial void OnLanguageChanged(Choice<string>? oldValue, Choice<string> newValue)
     {
@@ -226,7 +230,7 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
 
     private async Task ChangeModernMenu(bool enabled)
     {
-        if (Environment.ProcessPath is not { } exe)
+        if (!CanChangeSystemIntegration || Environment.ProcessPath is not { } exe)
             return;
         ModernMenuBusy = true;
         ModernMenuStatus = _loc["general.modern_menu_busy"];

@@ -216,6 +216,10 @@ public sealed class RoutePlanner
         bool metadata = false, bool upscale = false) =>
         Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, metadata: metadata, upscale: upscale) is not null;
 
+    /// <summary>The engine <paramref name="converterId"/> is among those planned over, for work it does outside a route (PDF/A).</summary>
+    public bool Includes(string converterId) =>
+        _edgesFrom.Values.Any(edges => edges.Any(e => e.Converter.Id == converterId));
+
     /// <summary>
     /// The route for an envelope (<see cref="IEnvelopeOpener"/>): the cheapest edge from <paramref name="from"/> to the
     /// format inside it, <paramref name="through"/>, then the route from there to <paramref name="to"/> as

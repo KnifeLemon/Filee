@@ -31,8 +31,129 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     private FeedbackNoticeWindow? _feedbackNotice;
     private FormatRequestNoticeWindow? _formatRequestNotice;
     private WhatsNewWindow? _whatsNew;
+    private FileeConnectQrWindow? _connectQrWindow;
+    private FileeConnectWindow? _connectWindow;
+
+    internal FileeConnectQrWindow? ConnectQrWindow => _connectQrWindow;
+    internal FileeConnectWindow? ConnectWindow => _connectWindow;
 
     internal FormatRequestNoticeWindow? FormatRequestNotice => _formatRequestNotice;
+    private bool _isOpeningConnect;
+
+    public async void ShowFileeConnect()
+    {
+        if (_isOpeningConnect) return;
+        _isOpeningConnect = true;
+
+        try
+        {
+            if (_connectWindow is not null && _connectWindow.IsVisible)
+            {
+                _connectWindow.Activate();
+                return;
+            }
+
+            if (_connectQrWindow is not null && _connectQrWindow.IsVisible)
+            {
+                _connectQrWindow.Activate();
+                return;
+            }
+
+            var connect = services.GetRequiredService<Filee.App.Services.Connect.FileeConnectService>();
+            var platform = services.GetRequiredService<Filee.Core.Platform.IPlatformServices>();
+
+            if (!connect.IsRunning)
+            {
+                await connect.StartSessionAsync();
+            }
+
+            var topWindow = MainWindowOrNull();
+            var clipboard = topWindow?.Clipboard;
+
+            var vm = new FileeConnectViewModel(connect, platform, loc, clipboard);
+
+            if (connect.IsMobileConnected)
+            {
+                ShowFileeConnectMainWindow(vm, connect);
+                return;
+            }
+
+            var qrWindow = new FileeConnectQrWindow { DataContext = vm };
+            vm.SetClipboard(qrWindow.Clipboard);
+            PrepareWindow(qrWindow);
+            _connectQrWindow = qrWindow;
+
+            bool deviceConnected = false;
+
+            Action<string>? onMobileConnected = null;
+            onMobileConnected = (deviceName) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    deviceConnected = true;
+                    if (_connectQrWindow == qrWindow)
+                    {
+                        _connectQrWindow = null;
+                        qrWindow.Close();
+                    }
+
+                    ShowFileeConnectMainWindow(vm, connect);
+                });
+            };
+
+            connect.MobileConnected += onMobileConnected;
+
+            qrWindow.Closed += (_, _) =>
+            {
+                connect.MobileConnected -= onMobileConnected;
+                if (_connectQrWindow == qrWindow)
+                    _connectQrWindow = null;
+
+                if (!deviceConnected && (_connectWindow is null || !_connectWindow.IsVisible))
+                {
+                    _ = connect.StopSessionAsync();
+                    vm.Dispose();
+                }
+            };
+
+            qrWindow.Show();
+            qrWindow.Activate();
+        }
+        catch (Exception ex)
+        {
+            services.GetService<ILogger<WindowService>>()?.LogError(ex, "Could not start Filee Connect session");
+            await MessageAsync(null, loc["connect.no_network_message"] ?? "Could not start Filee Connect. Please ensure this device is connected to a local Wi-Fi or Ethernet network.");
+        }
+        finally
+        {
+            _isOpeningConnect = false;
+        }
+    }
+
+    private void ShowFileeConnectMainWindow(FileeConnectViewModel vm, Filee.App.Services.Connect.FileeConnectService connect)
+    {
+        if (_connectWindow is not null && _connectWindow.IsVisible)
+        {
+            _connectWindow.Activate();
+            return;
+        }
+
+        var connectWindow = new FileeConnectWindow { DataContext = vm };
+        vm.SetClipboard(connectWindow.Clipboard);
+        PrepareWindow(connectWindow);
+        _connectWindow = connectWindow;
+
+        connectWindow.Closed += (_, _) =>
+        {
+            if (_connectWindow == connectWindow)
+                _connectWindow = null;
+            _ = connect.StopSessionAsync();
+            vm.Dispose();
+        };
+
+        connectWindow.Show();
+        connectWindow.Activate();
+    }
 
     private CropOverlayWindow? _cropOverlay;
     private ClipWindow? _clipWindow;
