@@ -8,6 +8,8 @@ are disabled, leaving an installed copy's entries untouched. The data folder mus
 an error instead of falling back to the user profile.
 
 Conversion work folders, temporary files and engine caches keep their existing behavior and locations.
+A proxy set in Settings → General → Network is kept in `data/settings.json` as well, so the copy downloads engines
+and updates through it on any computer without touching that computer's proxy settings.
 An explicit `FILEE_DATA_DIR` still takes precedence.
 Installer packages keep using the normal user profile.
 Update a marked copy by replacing its application files while keeping `filee.portable` and `data`.

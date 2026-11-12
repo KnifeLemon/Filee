@@ -107,6 +107,12 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   SHA-256 before the first one is unpacked, so a missing or wrong file leaves the package as it was. Only the
   downloads are taken, never an installed engine folder: an unpacked and trimmed folder has nothing pinned to check
   it against. The other computer needs the same Filee version (the same engines.json).
+- Downloads (engines, OCR languages, update checks, links dragged from a browser) go through the proxy in
+  Settings → *General* → *Network* when one is set (`AppSettings.Proxy`, `ProxySetting`): `http`, `https`, `socks4`,
+  `socks4a` or `socks5` with a host and port (`http://127.0.0.1:7890`), optionally with `user:password@`. It is for
+  Filee alone (#879), so the system can stay without a proxy, and the CLI reads the same setting. Empty: the system
+  proxy and `HTTPS_PROXY` / `NO_PROXY`, as before. Addresses on this computer and the local network (Ollama, an
+  intranet) never go through it, and logs show only its scheme, host and port.
 - Engines go to `%LOCALAPPDATA%\Filee\engines`: outside the app folder, so updates keep them, and inside Filee's
   install root, so uninstalling removes them.
 - LibreOffice and calibre come as MSIs and are unpacked with an administrative install (`msiexec /a`): files only,

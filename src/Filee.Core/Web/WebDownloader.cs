@@ -32,16 +32,23 @@ public sealed class WebDownloader : IDisposable
     /// </param>
     /// <param name="userAgent">"Filee/1.13.0"; some servers refuse requests without one.</param>
     public WebDownloader(HttpMessageHandler? handler = null, string? userAgent = null)
+        : this(handler, userAgent, proxy: null)
     {
-        _http = Client(handler ?? Handler(publicOnly: true), userAgent);
-        _localHttp = handler is null ? Client(Handler(publicOnly: false), userAgent) : _http;
     }
 
-    private SocketsHttpHandler Handler(bool publicOnly) => new()
+    /// <param name="proxy">For tests; by default the one every download uses (Settings → General, else the system's).</param>
+    internal WebDownloader(HttpMessageHandler? handler, string? userAgent, IWebProxy? proxy)
+    {
+        _http = Client(handler ?? Handler(publicOnly: true, proxy), userAgent);
+        _localHttp = handler is null ? Client(Handler(publicOnly: false, proxy), userAgent) : _http;
+    }
+
+    private SocketsHttpHandler Handler(bool publicOnly, IWebProxy? proxy) => new()
     {
         AllowAutoRedirect = false,
         UseCookies = false,
         UseProxy = true,
+        Proxy = proxy,
         Credentials = null,
         PreAuthenticate = false,
         AutomaticDecompression = DecompressionMethods.All,
@@ -255,7 +262,10 @@ public sealed class WebDownloader : IDisposable
     /// <summary>
     /// Opens the connection to an address the name resolved to that isn't local. The check is made on the very
     /// addresses connected to, so a name that resolves to a public address once and a local one the next time (DNS
-    /// rebinding) gets nowhere. A connection to the user's proxy is left alone: the proxy is their own choice.
+    /// rebinding) gets nowhere. A connection to the user's proxy is left alone: the proxy is their own choice. That is
+    /// one to another address than the link's, or the handler's own CONNECT, which opens a tunnel to an https site
+    /// through an http proxy: it names the proxy as its address, and a proxy on this computer (127.0.0.1:7890) would
+    /// otherwise be refused. Downloads only ever send GET, so a CONNECT can only come from the proxy settings.
     /// </summary>
     private async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
     {
@@ -263,8 +273,9 @@ public sealed class WebDownloader : IDisposable
         var host = endpoint.Host.Trim('[', ']');
         var addresses = IPAddress.TryParse(host, out var literal) ? [literal] : await ResolveAsync(host, cancellationToken);
         var target = context.InitialRequestMessage.RequestUri;
-        var direct = target is null
-                     || (string.Equals(target.IdnHost.Trim('[', ']'), host, StringComparison.OrdinalIgnoreCase) && target.Port == endpoint.Port);
+        var direct = context.InitialRequestMessage.Method != HttpMethod.Connect
+                     && (target is null
+                         || (string.Equals(target.IdnHost.Trim('[', ']'), host, StringComparison.OrdinalIgnoreCase) && target.Port == endpoint.Port));
         if (direct)
         {
             addresses = [.. addresses.Where(address => !IsRefused(address))];

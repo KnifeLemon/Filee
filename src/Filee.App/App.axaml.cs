@@ -12,6 +12,7 @@ using Filee.Core.Conversion;
 using Filee.Core.Localization;
 using Filee.Core.Platform;
 using Filee.Core.Settings;
+using Filee.Core.Web;
 using Filee.Engines.Infrastructure;
 using Microsoft.Extensions.Logging;
 
@@ -74,6 +75,15 @@ public partial class App : Application
         var store = AppHost.Get<UserDataStore>();
         if (Program.PreloadedStore is null)
             store.Load();
+        // Before anything downloads: the proxy from Settings, read for each request so a change there applies at once.
+        ProxySetting.Use(() => store.Settings.Proxy);
+        if (!string.IsNullOrWhiteSpace(store.Settings.Proxy))
+        {
+            if (ProxySetting.TryParse(store.Settings.Proxy, out var proxy) && proxy is not null)
+                log.LogInformation("Downloads go through the proxy {Proxy}", ProxySetting.Describe(proxy));
+            else
+                log.LogWarning("The proxy in the settings isn't a proxy address; downloads use the system's");
+        }
 
         var loc = AppHost.Get<LocalizationService>();
         loc.Attach(this);
