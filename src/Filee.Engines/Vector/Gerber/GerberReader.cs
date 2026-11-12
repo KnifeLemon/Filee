@@ -203,18 +203,18 @@ internal sealed partial class GerberReader
         switch (w[..2])
         {
             case "FS":
-            {
-                var digits = FormatDigits().Match(w);
-                if (!digits.Success)
-                    throw new InvalidDataException($"The Gerber file has a malformed format statement \"{w}\".");
-                _integers = digits.Groups[1].Value[0] - '0';
-                _decimals = digits.Groups[2].Value[0] - '0';
-                var flags = w[2..digits.Index];
-                _trailingZeros = flags.Contains('T');
-                _incremental = flags.Contains('I');
-                _sawGerber = true;
-                break;
-            }
+                {
+                    var digits = FormatDigits().Match(w);
+                    if (!digits.Success)
+                        throw new InvalidDataException($"The Gerber file has a malformed format statement \"{w}\".");
+                    _integers = digits.Groups[1].Value[0] - '0';
+                    _decimals = digits.Groups[2].Value[0] - '0';
+                    var flags = w[2..digits.Index];
+                    _trailingZeros = flags.Contains('T');
+                    _incremental = flags.Contains('I');
+                    _sawGerber = true;
+                    break;
+                }
             case "MO":
                 if (w == "MOMM")
                     _unit = 1;
@@ -302,38 +302,38 @@ internal sealed partial class GerberReader
                 break;
             case "R":
             case "O":
-            {
-                double width = Math.Max(0, P(0) * u), height = Math.Max(0, P(1) * u);
-                (hole, holeHeight) = (P(2) * u, P(3) * u);
-                outline = new SKPath();
-                var rect = new SKRect((float)(-width / 2), (float)(-height / 2), (float)(width / 2), (float)(height / 2));
-                var radius = template == "O" ? Math.Min(width, height) / 2 : 0;
-                if (width > 0 && height > 0)
                 {
-                    if (radius > 0)
-                        outline.AddRoundRect(rect, (float)radius, (float)radius);
-                    else
-                        outline.AddRect(rect);
+                    double width = Math.Max(0, P(0) * u), height = Math.Max(0, P(1) * u);
+                    (hole, holeHeight) = (P(2) * u, P(3) * u);
+                    outline = new SKPath();
+                    var rect = new SKRect((float)(-width / 2), (float)(-height / 2), (float)(width / 2), (float)(height / 2));
+                    var radius = template == "O" ? Math.Min(width, height) / 2 : 0;
+                    if (width > 0 && height > 0)
+                    {
+                        if (radius > 0)
+                            outline.AddRoundRect(rect, (float)radius, (float)radius);
+                        else
+                            outline.AddRect(rect);
+                    }
+                    svg = $"<rect id=\"{id}\" x=\"{Svg.N(-width / 2)}\" y=\"{Svg.N(-height / 2)}\" width=\"{Svg.N(width)}\" height=\"{Svg.N(height)}\""
+                          + (radius > 0 ? $" rx=\"{Svg.N(radius)}\"" : "") + " stroke=\"none\"/>";
+                    convex = template == "R"
+                        ? [(-width / 2, -height / 2), (width / 2, -height / 2), (width / 2, height / 2), (-width / 2, height / 2)]
+                        : Obround(width, height);
+                    break;
                 }
-                svg = $"<rect id=\"{id}\" x=\"{Svg.N(-width / 2)}\" y=\"{Svg.N(-height / 2)}\" width=\"{Svg.N(width)}\" height=\"{Svg.N(height)}\""
-                      + (radius > 0 ? $" rx=\"{Svg.N(radius)}\"" : "") + " stroke=\"none\"/>";
-                convex = template == "R"
-                    ? [(-width / 2, -height / 2), (width / 2, -height / 2), (width / 2, height / 2), (-width / 2, height / 2)]
-                    : Obround(width, height);
-                break;
-            }
             case "P":
-            {
-                var diameter = Math.Max(0, P(0) * u);
-                var vertices = (int)P(1);
-                if (vertices is < 3 or > 12)
-                    throw new InvalidDataException($"The Gerber polygon aperture D{code} has {vertices} vertices (3 to 12 are allowed).");
-                (hole, holeHeight) = (P(3) * u, P(4) * u);
-                convex = GerberMacro.RegularPolygon(0, 0, diameter, vertices, P(2));
-                outline = diameter > 0 ? GerberMacro.Polygon(convex) : new SKPath();
-                svg = "";
-                break;
-            }
+                {
+                    var diameter = Math.Max(0, P(0) * u);
+                    var vertices = (int)P(1);
+                    if (vertices is < 3 or > 12)
+                        throw new InvalidDataException($"The Gerber polygon aperture D{code} has {vertices} vertices (3 to 12 are allowed).");
+                    (hole, holeHeight) = (P(3) * u, P(4) * u);
+                    convex = GerberMacro.RegularPolygon(0, 0, diameter, vertices, P(2));
+                    outline = diameter > 0 ? GerberMacro.Polygon(convex) : new SKPath();
+                    svg = "";
+                    break;
+                }
             default:
                 if (!_macros.TryGetValue(template, out var macro))
                     throw new InvalidDataException($"The Gerber aperture D{code} uses an undefined aperture macro \"{template}\".");

@@ -327,7 +327,7 @@ public class GerberTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var brush = new byte[64];
         brush[3] = 28;
         "GIMP"u8.CopyTo(brush.AsSpan(20));
-        var e = Assert.Throws<InvalidDataException>(() => GerberReader.Read(brush));
+        var e = Assert.Throws<InvalidDataException>(() => GerberReader.Read(brush, TestContext.Current.CancellationToken));
         Assert.Contains("GIMP", e.Message);
     }
 

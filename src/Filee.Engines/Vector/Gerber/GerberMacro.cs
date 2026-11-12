@@ -120,17 +120,17 @@ internal sealed class GerberMacro
                 rotation = At(5);
                 break;
             case 2 or 20: // vector line: exposure, width, start x, y, end x, y, rotation
-            {
-                double width = At(2), sx = At(3), sy = At(4), ex = At(5), ey = At(6);
-                var length = Math.Sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
-                if (width <= 0 || length <= 0)
-                    return null;
-                // The line's width perpendicular to it, with square (butt) ends at both points.
-                double nx = -(ey - sy) / length * width / 2, ny = (ex - sx) / length * width / 2;
-                path = Polygon([(sx + nx, sy + ny), (ex + nx, ey + ny), (ex - nx, ey - ny), (sx - nx, sy - ny)]);
-                rotation = At(7);
-                break;
-            }
+                {
+                    double width = At(2), sx = At(3), sy = At(4), ex = At(5), ey = At(6);
+                    var length = Math.Sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
+                    if (width <= 0 || length <= 0)
+                        return null;
+                    // The line's width perpendicular to it, with square (butt) ends at both points.
+                    double nx = -(ey - sy) / length * width / 2, ny = (ex - sx) / length * width / 2;
+                    path = Polygon([(sx + nx, sy + ny), (ex + nx, ey + ny), (ex - nx, ey - ny), (sx - nx, sy - ny)]);
+                    rotation = At(7);
+                    break;
+                }
             case 21: // centre line: exposure, width, height, centre x, y, rotation
                 if (At(2) <= 0 || At(3) <= 0)
                     return null;
@@ -144,29 +144,29 @@ internal sealed class GerberMacro
                 rotation = At(6);
                 break;
             case 4: // outline: exposure, n, x0, y0, …, xn, yn, rotation
-            {
-                var count = At(2);
-                if (count < 1 || count > MaxOutlinePoints || (points += (int)count + 1) > MaxOutlinePoints)
-                    throw new InvalidDataException($"The Gerber aperture macro {Name} has an outline with too many points.");
-                var n = (int)count;
-                if (v.Length < 5 + 2 * n)
-                    throw new InvalidDataException($"The Gerber aperture macro {Name} has a malformed outline primitive.");
-                var vertices = new List<(double, double)>(n + 1);
-                for (var i = 0; i <= n; i++)
-                    vertices.Add((v[3 + 2 * i], v[4 + 2 * i]));
-                path = Polygon(vertices);
-                rotation = At(5 + 2 * n);
-                break;
-            }
+                {
+                    var count = At(2);
+                    if (count < 1 || count > MaxOutlinePoints || (points += (int)count + 1) > MaxOutlinePoints)
+                        throw new InvalidDataException($"The Gerber aperture macro {Name} has an outline with too many points.");
+                    var n = (int)count;
+                    if (v.Length < 5 + 2 * n)
+                        throw new InvalidDataException($"The Gerber aperture macro {Name} has a malformed outline primitive.");
+                    var vertices = new List<(double, double)>(n + 1);
+                    for (var i = 0; i <= n; i++)
+                        vertices.Add((v[3 + 2 * i], v[4 + 2 * i]));
+                    path = Polygon(vertices);
+                    rotation = At(5 + 2 * n);
+                    break;
+                }
             case 5: // polygon: exposure, vertices, centre x, y, diameter, rotation
-            {
-                var count = Math.Clamp((int)At(2), 3, 12);
-                if (At(5) <= 0)
-                    return null;
-                path = Polygon(RegularPolygon(At(3), At(4), At(5), count, 0));
-                rotation = At(6);
-                break;
-            }
+                {
+                    var count = Math.Clamp((int)At(2), 3, 12);
+                    if (At(5) <= 0)
+                        return null;
+                    path = Polygon(RegularPolygon(At(3), At(4), At(5), count, 0));
+                    rotation = At(6);
+                    break;
+                }
             case 6: // moiré: centre x, y, outer diameter, ring thickness, gap, rings, cross thickness, cross length, rotation
                 path = Moire(At(1), At(2), At(3), At(4), At(5), (int)Math.Min(At(6), MaxMoireRings), At(7), At(8));
                 rotation = At(9);
