@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
         xmlns:s="using:Filee.App.Services"
+        xmlns:c="using:Filee.App.Controls"
         x:Class="Filee.App.Views.ToastWindow"
         x:DataType="s:ConversionService"
         Title="Filee"
@@ -72,12 +73,13 @@
     </Style>
   </Window.Styles>
 
-  <!-- Until queued cards are introduced, overflow scrolls instead of hiding cards above the screen. -->
+  <Grid RowDefinitions="*,Auto">
+  <!-- A single unusually tall card can still scroll; ordinary overflow waits in the queue. -->
   <ScrollViewer x:Name="StackScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-  <ItemsControl x:Name="Jobs" ItemsSource="{Binding ToastJobs}" Margin="12">
+  <ItemsControl x:Name="Jobs" Margin="12">
     <ItemsControl.ItemsPanel>
       <ItemsPanelTemplate>
-        <StackPanel Spacing="8" />
+        <c:ToastStackPanel />
       </ItemsPanelTemplate>
     </ItemsControl.ItemsPanel>
     <ItemsControl.ItemTemplate>
@@ -145,4 +147,9 @@
     </ItemsControl.ItemTemplate>
   </ItemsControl>
   </ScrollViewer>
+  <Border x:Name="QueueFooter" Grid.Row="1" Classes="card" Margin="12,0,12,12" Padding="10,4"
+          BorderThickness="0" IsVisible="False">
+    <TextBlock x:Name="QueueCount" Classes="caption" LineHeight="16" TextTrimming="CharacterEllipsis" />
+  </Border>
+  </Grid>
 </Window>

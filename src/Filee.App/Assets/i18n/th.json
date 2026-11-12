@@ -95,6 +95,7 @@
   "toast.cancel": "ยกเลิก",
   "toast.copy": "คัดลอกรายละเอียด",
   "toast.copied": "คัดลอกแล้ว",
+  "toast.more": "อีก {0} รายการ",
   "toast.missing_fonts": "ไม่พบฟอนต์ที่เอกสารใช้: {0}",
   "toast.get_fonts": "หาฟอนต์",
   "download.badge": "{0}/วินาที · {1}",

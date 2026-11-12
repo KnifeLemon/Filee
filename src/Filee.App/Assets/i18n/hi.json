@@ -95,6 +95,7 @@
   "toast.cancel": "रद्द करें",
   "toast.copy": "विवरण कॉपी करें",
   "toast.copied": "कॉपी हो गया",
+  "toast.more": "{0} और",
   "toast.missing_fonts": "दस्तावेज़ के गायब फ़ॉन्ट: {0}",
   "toast.get_fonts": "फ़ॉन्ट प्राप्त करें",
   "download.badge": "{0}/s · {1}",

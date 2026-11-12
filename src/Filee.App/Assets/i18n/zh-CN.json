@@ -100,6 +100,7 @@
   "toast.cancel": "取消",
   "toast.copy": "复制详细信息",
   "toast.copied": "已复制",
+  "toast.more": "还有 {0} 条",
   "toast.missing_fonts": "文档缺少字体：{0}",
   "toast.get_fonts": "获取字体",
   "download.badge": "{0}/s · {1}",

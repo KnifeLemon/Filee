@@ -10,6 +10,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.App.ViewModels;
 using Filee.App.Views;
@@ -74,14 +75,59 @@ public sealed class ToastNotificationTests
         Assert.InRange(fixture.Window.Position.Y, area.Y, area.Bottom);
         Assert.True(fixture.Window.Position.Y + fixture.Window.ClientSize.Height * scaling <= area.Bottom + 1);
         var stack = fixture.Window.FindControl<ScrollViewer>("StackScroller")!;
-        Assert.True(stack.Extent.Height > stack.Viewport.Height);
-        stack.ScrollToEnd();
-        Pump();
-        var lastCopy = fixture.Window.GetVisualDescendants().OfType<Button>().Last(b => b.Name == "CopyNotification");
+        Assert.True(stack.Extent.Height <= stack.Viewport.Height + 1);
+        var panel = Assert.IsType<ToastStackPanel>(fixture.Window.FindControl<ItemsControl>("Jobs")!.ItemsPanelRoot);
+        Assert.InRange(panel.VisibleCount, 1, 7);
+        Assert.Equal(8 - panel.VisibleCount, panel.PendingCount);
+        Assert.Equal($"{panel.PendingCount} more", fixture.Window.FindControl<TextBlock>("QueueCount")!.Text);
+        var lastCopy = panel.Children[panel.VisibleCount - 1].GetVisualDescendants().OfType<Button>().Single(b => b.Name == "CopyNotification");
         var point = lastCopy.TranslatePoint(new Point(0, lastCopy.Bounds.Height), fixture.Window)!.Value;
         Assert.InRange(point.Y, 0, fixture.Window.ClientSize.Height);
         Assert.Equal(8, fixture.Window.FindControl<ItemsControl>("Jobs")!.ItemCount);
         RenderTests.Save(fixture.Window, $"toast-stack-{x}-{y}-{scaling}.png");
+    }
+
+    [AvaloniaFact]
+    public void Waiting_cards_advance_in_arrival_order_and_a_larger_screen_promotes_them()
+    {
+        using var fixture = new ToastFixture("en");
+        for (var i = 0; i < 5; i++) fixture.AddFailure();
+        fixture.Window.FitTo(new PixelRect(0, 0, 800, 300), 1);
+        Pump();
+        var jobs = fixture.Window.FindControl<ItemsControl>("Jobs")!;
+        var panel = Assert.IsType<ToastStackPanel>(jobs.ItemsPanelRoot);
+        Assert.Equal(1, panel.VisibleCount);
+        Assert.Equal(fixture.Jobs[0], jobs.Items[0]);
+        fixture.Jobs[0].DismissCommand.Execute(null);
+        Pump();
+        Assert.Equal(fixture.Jobs[1], jobs.Items[0]);
+        Assert.Equal(3, panel.PendingCount);
+        fixture.Window.FitTo(new PixelRect(0, 0, 1920, 1400), 1);
+        Pump();
+        Assert.Equal(4, panel.VisibleCount);
+        Assert.Equal(0, panel.PendingCount);
+        Assert.False(fixture.Window.FindControl<Border>("QueueFooter")!.IsVisible);
+        Assert.Equal(fixture.Jobs.Skip(1).ToArray(), jobs.Items.Cast<JobViewModel>().ToArray());
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ar")]
+    [InlineData("ja")]
+    public void Waiting_count_is_localized_and_keeps_its_own_space(string language)
+    {
+        using var fixture = new ToastFixture(language);
+        for (var i = 0; i < 6; i++) fixture.AddFailure();
+        fixture.Window.FitTo(new PixelRect(0, 0, 800, 480), 1);
+        Pump();
+        var panel = Assert.IsType<ToastStackPanel>(fixture.Window.FindControl<ItemsControl>("Jobs")!.ItemsPanelRoot);
+        var footer = fixture.Window.FindControl<Border>("QueueFooter")!;
+        Assert.True(footer.IsVisible);
+        Assert.True(panel.PendingCount > 0);
+        Assert.Equal(AppHost.Get<ILocalizer>().Format("toast.more", panel.PendingCount), fixture.Window.FindControl<TextBlock>("QueueCount")!.Text);
+        var point = footer.TranslatePoint(new Point(0, footer.Bounds.Height), fixture.Window)!.Value;
+        Assert.InRange(point.Y, 0, fixture.Window.ClientSize.Height);
+        RenderTests.Save(fixture.Window, $"toast-queue-{language}.png");
     }
 
     [AvaloniaFact]
@@ -171,7 +217,8 @@ public sealed class ToastNotificationTests
             conversion.Files[0].State = FileState.Failed;
             conversion.Files[0].ErrorKey = "error.conversion_failed";
             conversion.Files[0].ErrorDetail = string.Concat(Enumerable.Repeat("Long diagnostic /folder/" + new string('a', 80) + ".txt\n", 20)) + "END OF ERROR";
-            var job = new JobViewModel(conversion, AppHost.Get<ILocalizer>(), AppHost.Get<IPlatformServices>(), _ => { }, _ => { });
+            var job = new JobViewModel(conversion, AppHost.Get<ILocalizer>(), AppHost.Get<IPlatformServices>(),
+                dismissed => { _service.ToastJobs.Remove(dismissed); _service.Jobs.Remove(dismissed); }, _ => { });
             Jobs.Add(job);
             _service.Jobs.Insert(0, job);
             _service.ShowInToast(job);

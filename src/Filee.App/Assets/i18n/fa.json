@@ -109,6 +109,7 @@
   "toast.cancel": "لغو",
   "toast.copy": "کپی جزئیات",
   "toast.copied": "کپی شد",
+  "toast.more": "{0} مورد دیگر",
   "toast.missing_fonts": "فونت‌های ناموجود سند: {0}",
   "toast.get_fonts": "دریافت فونت‌ها",
   "download.badge": "{0}/ثانیه · {1}",

@@ -95,6 +95,7 @@
   "toast.cancel": "Cancelar",
   "toast.copy": "Copiar detalles",
   "toast.copied": "Copiado",
+  "toast.more": "{0} más",
   "toast.missing_fonts": "Fuentes ausentes del documento: {0}",
   "toast.get_fonts": "Obtener fuentes",
   "download.badge": "{0}/s · {1}",
