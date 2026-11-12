@@ -1134,6 +1134,10 @@ internal static class SettingsMigrations
         // v86: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put.
         if (from < 86)
             changed |= LearnExtensions(profiles, out _, ["pdn"]);
+        // v87: Arduino and Processing sketches (.ino, .pde) learn the text donut; custom claims stay put. (Schema 87 may
+        //      be renumbered if another change takes it first.)
+        if (from < 87)
+            changed |= LearnExtensions(profiles, out _, ["ino", "pde"]);
         return changed;
     }
 
