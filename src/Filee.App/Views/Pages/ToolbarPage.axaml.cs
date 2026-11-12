@@ -11,9 +11,10 @@
 // real size next to this window (DonutPreviewWindow), filled and styled as it opens for the selected profile's files.
 // It follows every change made here, and holds a group open (DonutMenu.HeldGroupId): the one open in the editor, or,
 // once a ring setting changes, the one picked (Group shown, or clicked on it; the first until then), or an example ring
-// on a donut with none. Where it goes: where it was last dragged (against this window), else beside this window, else
-// on another screen; with no room, this window slides over to make room and back when the donut goes; with none at all
-// (maximized, or a screen too small for both), over the start side of this window, above it.
+// on a donut with none. Where it goes: where it was last dragged (against this window), else beside this window (on a
+// screen as tall as the donut), else on another screen; with no room, this window slides over to make room and back
+// when the donut goes; with none at all (maximized, or a screen too small for both), over the start side of this
+// window, above it.
 //
 // Chip tooltips: an available chip's tip lists the formats it takes (PresetFormatTip), as a card. Holding either Shift
 // shows the whole list while it is open; Tab or the arrow keys open a chip's tip as hover does, and pressing or
@@ -255,8 +256,10 @@ public partial class ToolbarPage : UserControl
                 var at = SlidingAt(main);
                 StopSlide();
                 SlidTo = LandedAt = at;
+                _stopped = true; // not moved by the user: where X11 reports it may lag behind
             }
             PlacePreview(main, moveWindow: true);
+            _stopped = false;
         }
     }
 
@@ -386,6 +389,9 @@ public partial class ToolbarPage : UserControl
     private bool _sliding;
     private double? _narrowedTo;
 
+    // A slide was just stopped midway, the donut back on screen.
+    private bool _stopped;
+
     private PixelPoint? SlidTo
     {
         get => (_topLevel as MainWindow)?.SlidTo;
@@ -418,7 +424,7 @@ public partial class ToolbarPage : UserControl
         {
             // Moved by the user since it last moved over (while the donut was put away): there is where it goes back,
             // as wide as it was unless the user resized it too.
-            if (mw.RestPlace is { } rest && !_sliding && (LandedAt ?? SlidTo) is not null && !mw.StillWhereItSlid)
+            if (mw.RestPlace is { } rest && !_sliding && !_stopped && (LandedAt ?? SlidTo) is not null && !mw.StillWhereItSlid)
             {
                 var narrowed = _narrowedTo is { } width && SameWidth(main, main.ClientSize.Width, width);
                 mw.RestPlace = (main.Position, narrowed ? rest.ClientSize.WithHeight(main.ClientSize.Height) : main.ClientSize);
@@ -550,10 +556,14 @@ public partial class ToolbarPage : UserControl
             KeepClearOfWindow();
         if (e.Property == TopLevel.ClientSizeProperty)
             NoteUserResize();
-        // A normal window again after Done (it was maximized meanwhile): it goes back now.
-        if (e.Property == Window.WindowStateProperty && _preview is not { IsVisible: true }
-            && _topLevel is MainWindow { WindowState: WindowState.Normal, RestPlace: not null })
-            SlideBack(animate: false);
+        // A normal window again after Done (it was maximized meanwhile): it goes back, once its normal size and place
+        // are in (some systems report the state first).
+        if (e.Property == Window.WindowStateProperty)
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (_preview is not { IsVisible: true } && _topLevel is MainWindow { WindowState: WindowState.Normal, RestPlace: not null })
+                    SlideBack(animate: false);
+            }, Avalonia.Threading.DispatcherPriority.Background);
     }
 
     private bool _userResizePosted;

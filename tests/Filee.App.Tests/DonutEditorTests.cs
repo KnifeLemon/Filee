@@ -1172,6 +1172,7 @@ public class DonutEditorTests
     public void A_search_in_the_palette_does_not_fill_the_donut_on_screen_again()
     {
         var (window, page, vm) = Open();
+        double? scale = null;
         try
         {
             vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "images");
@@ -1184,13 +1185,14 @@ public class DonutEditorTests
             RenderTests.Pump();
             Assert.Same(items, page.Preview.DonutControl.Items);
             // Nor after a look saved with the library (Label scale): restyled, not filled.
-            var scale = vm.LabelScale;
-            vm.LabelScale = scale + 10;
+            scale = vm.LabelScale;
+            vm.LabelScale = scale.Value + 10;
             RenderTests.Pump();
             vm.PaletteSearch = "p";
             RenderTests.Pump();
             Assert.Same(items, page.Preview.DonutControl.Items);
-            vm.LabelScale = scale;
+            vm.LabelScale = scale.Value;
+            scale = null;
             RenderTests.Pump();
             items = page.Preview.DonutControl.Items;
             // An edit of the group does.
@@ -1200,6 +1202,8 @@ public class DonutEditorTests
         }
         finally
         {
+            if (scale is { } back)
+                vm.LabelScale = back;
             var rotate = AppHost.Get<UserDataStore>().FindPreset("rotate")!;
             rotate.SubPresetIds.Remove("to-png");
             AppHost.Get<UserDataStore>().SaveLibrary();
@@ -1748,7 +1752,9 @@ public class DonutEditorTests
         var motion = Motion.Enabled;
         Motion.Set(false);
         // The system's move returns at once (headless, it doesn't move the window): the drag is over once the button is
-        // seen up.
+        // seen up, also by a leave, as on macOS and X11.
+        var leave = DonutPreviewWindow.LeaveTellsTheButton;
+        DonutPreviewWindow.LeaveTellsTheButton = true;
         try
         {
             vm.AdjustLookCommand.Execute(null);
@@ -1838,6 +1844,7 @@ public class DonutEditorTests
         {
             Motion.Set(motion);
             store.Settings.DonutPreviewPlace = null;
+            DonutPreviewWindow.LeaveTellsTheButton = leave;
             DonutLookSave.Flush();
             window.Close();
         }

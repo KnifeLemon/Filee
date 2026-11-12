@@ -894,7 +894,10 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             AddFolderCopy(preset);
     }
 
-    /// <summary>A new Copy to folder, saved in its editor, goes into the library and onto the back face.</summary>
+    /// <summary>
+    /// A new Copy to folder, saved in its editor, goes into the library and onto the back face, or into the group open
+    /// there.
+    /// </summary>
     internal void AddFolderCopy(Preset preset)
     {
         _store.Presets.Add(preset);
