@@ -98,6 +98,8 @@
   "toast.skipped": "Пропущено (файл уже есть)",
   "toast.open_folder": "Показать",
   "toast.cancel": "Отмена",
+  "toast.copy": "Копировать подробности",
+  "toast.copied": "Скопировано",
   "toast.missing_fonts": "Отсутствуют шрифты документа: {0}",
   "toast.get_fonts": "Получить шрифты",
   "download.badge": "{0}/с · {1}",

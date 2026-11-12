@@ -93,6 +93,8 @@
   "toast.skipped": "Dilewati (file sudah ada)",
   "toast.open_folder": "Tampilkan",
   "toast.cancel": "Batal",
+  "toast.copy": "Salin rincian",
+  "toast.copied": "Disalin",
   "toast.missing_fonts": "Font dokumen tidak ditemukan: {0}",
   "toast.get_fonts": "Dapatkan font",
   "download.badge": "{0}/d · {1}",

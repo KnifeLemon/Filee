@@ -93,6 +93,8 @@
   "toast.skipped": "Omitido (el archivo ya existe)",
   "toast.open_folder": "Mostrar",
   "toast.cancel": "Cancelar",
+  "toast.copy": "Copiar detalles",
+  "toast.copied": "Copiado",
   "toast.missing_fonts": "Fuentes ausentes del documento: {0}",
   "toast.get_fonts": "Obtener fuentes",
   "download.badge": "{0}/s · {1}",

@@ -93,6 +93,8 @@
   "toast.skipped": "ข้ามแล้ว (ไฟล์มีอยู่แล้ว)",
   "toast.open_folder": "แสดงไฟล์",
   "toast.cancel": "ยกเลิก",
+  "toast.copy": "คัดลอกรายละเอียด",
+  "toast.copied": "คัดลอกแล้ว",
   "toast.missing_fonts": "ไม่พบฟอนต์ที่เอกสารใช้: {0}",
   "toast.get_fonts": "หาฟอนต์",
   "download.badge": "{0}/วินาที · {1}",
