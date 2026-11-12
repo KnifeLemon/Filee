@@ -7,7 +7,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 |---|---|---|
 | ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
-| Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
+| Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there), **Obsidian boards (JSON Canvas `.canvas`) → SVG** (→ PDF, PNG, … from there) **and Markdown** (→ DOCX, HTML, TXT, … from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
@@ -388,6 +388,23 @@ in it also builds the package (artifact `windows-arm64-package`).
   every font whole (13 MB for one line of Korean). SVG → images is rendered at its final size: the preset's DPI, at
   least 1024 px on the long edge, or exactly the preset's resize target. External files next to the SVG are
   loaded; nothing is fetched from the network and scripts don't run.
+- **Obsidian Canvas** (`.canvas`, JSON Canvas 1.0, read only; `Vector/Canvas/`) is read by Filee itself and drawn as
+  SVG in the look of Obsidian's light theme: groups as tinted frames with their label above, lines as curves from
+  side to side with their arrow heads and labels, then the cards in the file's z-order. Text cards show their
+  Markdown simply (headings, bold, italic, strikethrough, highlights, code, lists and task lists, quotes, tables,
+  links and `[[internal links]]`), laid out with the typefaces the CAD text uses (a CJK font for the letters the
+  sans-serif one lacks) and clipped to the card. File cards show a note (`.md`) or a picture (PNG, JPEG, GIF, BMP,
+  WebP, AVIF, SVG) only when it is in the canvas's folder or below (vault paths from above it are looked for there
+  without their first folders; `..`, absolute paths, other computers and URLs are never looked at), otherwise their
+  name; link cards show their address and nothing is fetched. Pictures are checked before decoding (50 MB, 100
+  megapixels), decoded by the reader of their extension, shrunk to at most 2048 px and embedded (at most 200 a
+  board). Presets 1–6 are Obsidian's light-theme colours, `#RRGGBB` is taken as it is. → **Markdown** lists the
+  cards group by group, top to bottom, the cards' headings moved below their group's, pictures copied beside it
+  (`_files`), and the lines at the end (`A → B: label`); it costs 15, so PDF and pictures are the drawing. Files are
+  checked before layout (32 MB, 10,000 cards, 20,000 lines, coordinates within ±1,000,000, a board at most 200,000
+  px a side, 100,000 characters a card, an SVG of at most 96 MB): a `.canvas` without a `nodes` or `edges` array is
+  refused as not a canvas, one without cards as empty, a damaged one with a clear error. Cards of an unknown type and
+  lines to a missing card are left out, as Obsidian does.
 - **ICNS** files are written with every size iconutil makes (16–1024 px, PNG), the picture centred on a transparent
   square; reading takes the largest image (PNG, JPEG 2000 or the old RLE + mask entries).
 - **Illustrator** files saved with "Create PDF compatible file" (the default since Illustrator 9) are PDFs and need

@@ -64,7 +64,7 @@ public static class FormatFields
         ]),
         (FormatGrade.General,
         [
-            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "exe", "svg", "svgz", "emf", "vsd", "odg",
+            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "exe", "svg", "svgz", "emf", "vsd", "odg", "canvas",
             "docm", "dotx", "dotm", "doc", "odt", "ott", "rtf", "wps", "ofd", "abw", "pages", "pub", "eml", "msg",
             "p7m", "xlsm", "xltx", "xls", "ods", "ots", "tsv", "et", "numbers", "pptm", "potx", "potm", "ppsx", "ppt",
             "odp", "otp", "key", "dps", "md", "html", "mhtml", "opml", "json", "xml", "vcf", "ics", "epub", "kepub",

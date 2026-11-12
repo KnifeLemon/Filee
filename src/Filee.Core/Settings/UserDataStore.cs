@@ -1134,6 +1134,10 @@ internal static class SettingsMigrations
         // v86: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put.
         if (from < 86)
             changed |= LearnExtensions(profiles, out _, ["pdn"]);
+        // v87: Obsidian's boards (.canvas, JSON Canvas) learn the vector donut; custom claims stay put. (Schema 87 may be
+        //      renumbered if another change takes it first.)
+        if (from < 87)
+            changed |= LearnExtensions(profiles, out _, ["canvas"]);
         return changed;
     }
 
