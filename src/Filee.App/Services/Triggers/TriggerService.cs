@@ -63,6 +63,7 @@ public sealed class TriggerService : IDisposable
         _detector.DragEnded += (x, y) => Post(() => DragEnded?.Invoke(this, new GestureEventArgs(null, x, y)));
         _detector.HoldTriggered += (g, x, y) => Post(() => SelectionGesture?.Invoke(this, new GestureEventArgs(g, x, y)));
         _detector.KeyChordTriggered += (g, x, y) => Post(() => SelectionGesture?.Invoke(this, new GestureEventArgs(g, x, y)));
+        _detector.ClickTriggered += (g, x, y) => Post(() => ClickTriggered?.Invoke(this, new GestureEventArgs(g, x, y)));
         _detector.HoldTimerRequested += (token, ms) =>
             _ = Task.Delay(ms).ContinueWith(_ => _detector.HoldElapsed(token), TaskScheduler.Default);
     }
@@ -75,6 +76,9 @@ public sealed class TriggerService : IDisposable
 
     /// <summary>A hold or keyboard gesture: open the donut for the file manager's current selection.</summary>
     public event EventHandler<GestureEventArgs>? SelectionGesture;
+
+    /// <summary>A click gesture: open the donut for Filee Connect or files.</summary>
+    public event EventHandler<GestureEventArgs>? ClickTriggered;
 
     /// <summary>The flip key went down while <see cref="WatchFlipKey"/> was on: flip the donut.</summary>
     public event EventHandler? FlipKeyPressed;
@@ -146,7 +150,7 @@ public sealed class TriggerService : IDisposable
     {
         if (Trace)
             _log.LogInformation("Trace: gestures set again ({Count})", settings.Triggers.Count(g => g.Enabled));
-        _detector.Configure(settings.Triggers.Where(g => _platform.SupportsSelectionShortcut || g.Kind == TriggerKind.Drag).ToList());
+        _detector.Configure(settings.Triggers.Where(g => _platform.SupportsSelectionShortcut || g.Kind is TriggerKind.Drag or TriggerKind.Click).ToList());
         _detector.Paused = settings.Paused;
         _flipKey = settings.Donut.EffectiveFlipKey(settings.Triggers);
         _flipWheel = settings.Donut.FlipWithWheel;

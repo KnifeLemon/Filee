@@ -126,6 +126,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _edit = preset.Clone();
         _loc = loc;
         FolderInput = folderInput || preset.TargetFormat == "iso";
+        Labels = new SliceLabelFields(preset, loc);
 
         // ~150 formats in registry order, which groups them by category; the category is shown next to each name
         // and typing the first letters of a name jumps to it.
@@ -290,15 +291,19 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             new Choice<string>("ja", "日本語"),
             new Choice<string>("ko", "한국어"),
             new Choice<string>("ru", "Русский"),
+            new Choice<string>("uk", "Українська"),
             new Choice<string>("pt", "Português"),
             new Choice<string>("ar", "العربية"),
+            new Choice<string>("fa", "فارسی"),
             new Choice<string>("it", "Italiano"),
             new Choice<string>("nl", "Nederlands"),
             new Choice<string>("pl", "Polski"),
             new Choice<string>("tr", "Türkçe"),
             new Choice<string>("ne", "नेपाली"),
             new Choice<string>("th", "ไทย"),
-            new Choice<string>("id", "Bahasa Indonesia")
+            new Choice<string>("id", "Bahasa Indonesia"),
+            new Choice<string>("vi", "Tiếng Việt"),
+            new Choice<string>("bn", "বাংলা")
         ];
         _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
             ?? TranslationLanguageChoices[0];
@@ -362,6 +367,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _multiPageTiff = _edit.Image.MultiPageTiff;
         _icoSizes = string.Join(", ", _edit.Image.IcoSizes);
         _merge = _edit.Pdf.MergeIntoSingle;
+        _sourceBookmarks = _edit.Pdf.SourceBookmarks;
         _marginMm = _edit.Pdf.MarginMm;
         _renderDpi = _edit.Pdf.RenderDpi;
         _pageRange = _edit.Pdf.PageRange;
@@ -510,10 +516,15 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NameError), nameof(IsValid))]
     private string _name;
 
+    partial void OnNameChanged(string value) => Labels.NameChanged(value);
+
+    /// <summary>The slice's icon, short name and what it shows.</summary>
+    public SliceLabelFields Labels { get; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
-        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
+        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
         nameof(ShowAskPages), nameof(ShowAskPagesHint),
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
@@ -793,8 +804,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _webpLossless;
     [ObservableProperty] private bool _multiPageTiff;
     [ObservableProperty] private string _icoSizes;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowSourceBookmarks))]
     private bool _merge;
+    [ObservableProperty] private bool _sourceBookmarks;
     [ObservableProperty] private double _marginMm;
     [ObservableProperty] private int _renderDpi;
     [ObservableProperty] private string _pageRange;
@@ -1128,6 +1140,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>"Save as ZIP" is offered for geospatial targets, whose results are several files (a Shapefile) or travel zipped.</summary>
     public bool ShowZipResult => TargetCategory == FormatCategory.Geo;
     public bool ShowPdfBuild => TargetId == "pdf";
+    public bool ShowSourceBookmarks => ShowPdfBuild && Merge;
 
     /// <summary>Page size and margin of a PDF built from pictures; not with text recognition (<see cref="Recognizes"/>).</summary>
     public bool ShowPageSize => ShowPdfBuild && !Recognizes;
@@ -1256,6 +1269,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // Keep a built-in preset's translatable name unless the user actually renamed it.
         if (_original.NameKey is null || Name.Trim() != _loc.DisplayName(_original))
             _original.Name = Name.Trim();
+        Labels.Apply(_original);
 
         _original.TargetFormat = TargetId;
         var image = _original.Image;
@@ -1324,6 +1338,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
         var pdf = _original.Pdf;
         pdf.MergeIntoSingle = Merge;
+        pdf.SourceBookmarks = SourceBookmarks;
         pdf.PageSize = PageSize.Value;
         pdf.MarginMm = Math.Clamp(MarginMm, 0, 100);
         pdf.RenderDpi = Math.Clamp(RenderDpi, 36, 1200);

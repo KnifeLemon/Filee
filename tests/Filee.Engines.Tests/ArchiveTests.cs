@@ -38,6 +38,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Theory]
     [InlineData("zip")]
     [InlineData("jar")]
+    [InlineData("zxp")]
     [InlineData("7z")]
     [InlineData("rar")]
     [InlineData("tgz")]
@@ -828,5 +829,47 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var job = await fx.ConvertAsync([input], new Preset { TargetFormat = "zip" });
         Assert.Equal(JobState.Failed, job.State);
         Assert.Empty(job.Outputs);
+    }
+
+    // ───────────────────────── Adobe extension packages (issue #1382) ─────────────────────────
+
+    [Fact]
+    public void A_zxp_is_read_but_never_written()
+    {
+        var planner = fx.Catalog.CreatePlanner(["archive"]);
+        Assert.Null(planner.Plan("zip", "zxp"));
+        Assert.Null(planner.Plan("7z", "zxp"));
+    }
+
+    [Fact]
+    public async Task An_adobe_zxp_extracts_and_converts_to_zip_with_its_signature_file()
+    {
+        SkipWithout7Zip();
+        var input = Path.Combine(fx.NewFolder(), "panel.zxp");
+        // The layout ZXPSignCmd writes: the mimetype first, the extension's files, the signature in META-INF.
+        var expected = new Dictionary<string, byte[]>
+        {
+            ["mimetype"] = Encoding.ASCII.GetBytes("application/vnd.adobe.air-ucf-package+zip"),
+            ["CSXS/manifest.xml"] = Encoding.UTF8.GetBytes("<ExtensionManifest ExtensionBundleId=\"com.example.panel\"/>"),
+            ["client/index.html"] = Encoding.UTF8.GetBytes("<!doctype html><title>패널</title>"),
+            ["META-INF/signatures.xml"] = Encoding.UTF8.GetBytes("<signatures/>"),
+        };
+        using (var archive = ZipFile.Open(input, ZipArchiveMode.Create))
+            foreach (var (name, bytes) in expected)
+            {
+                using var entry = archive.CreateEntry(name, name == "mimetype" ? CompressionLevel.NoCompression : CompressionLevel.Optimal).Open();
+                entry.Write(bytes);
+            }
+        var original = await File.ReadAllBytesAsync(input, Ct);
+
+        var folder = (await ConvertOkAsync(input, Extract)).Outputs.Single();
+        foreach (var (name, bytes) in expected)
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(folder, name), Ct));
+
+        var zip = (await ConvertOkAsync(input, new Preset { TargetFormat = "zip" })).Outputs.Single();
+        Assert.EndsWith("panel.zip", zip);
+        using var output = ZipFile.OpenRead(zip);
+        Assert.Equal(expected.Keys.Order(), output.Entries.Where(e => !e.FullName.EndsWith('/')).Select(e => e.FullName).Order());
+        Assert.Equal(original, await File.ReadAllBytesAsync(input, Ct));
     }
 }

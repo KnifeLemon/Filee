@@ -116,7 +116,9 @@ public class PdfRepairTests
         try
         {
             await File.WriteAllBytesAsync(damaged, DamagedPdf(), TestContext.Current.CancellationToken);
-            await new PdfSharpConverter().MergeAsync([damaged, damaged], output, TestContext.Current.CancellationToken);
+            await new PdfSharpConverter().MergeAsync(
+                [new(damaged, Path.GetFileName(damaged)), new(damaged, Path.GetFileName(damaged))],
+                output, false, TestContext.Current.CancellationToken);
 
             using var merged = PdfReader.Open(output, PdfDocumentOpenMode.Import);
             Assert.Equal(2, merged.PageCount);

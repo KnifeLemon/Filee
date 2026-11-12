@@ -27,9 +27,9 @@ public sealed class FolderArchives1345Tests
         var folders = profiles.Single(p => p.Id == "folders");
         Assert.Equal(["to-iso", "to-zip", "zip-all"], folders.PresetIds);
         folders.PresetIds = ["to-iso"];
-        Assert.True(SettingsMigrations.ApplyToLibrary(80, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
         Assert.Equal(["to-iso", "to-zip", "zip-all"], folders.PresetIds);
-        Assert.False(SettingsMigrations.ApplyToLibrary(80, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
         Assert.Single(presets, p => p.Id == "to-zip");
     }
 
@@ -40,10 +40,10 @@ public sealed class FolderArchives1345Tests
         var profiles = BuiltInData.CreateProfiles();
         var folders = profiles.Single(p => p.Id == "folders");
         folders.PresetIds = ["zip-all", "to-iso"];
-        Assert.False(SettingsMigrations.ApplyToLibrary(80, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
         Assert.Equal(["zip-all", "to-iso"], folders.PresetIds);
         profiles.Remove(folders);
-        Assert.False(SettingsMigrations.ApplyToLibrary(80, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
         Assert.DoesNotContain(profiles, p => p.Id == "folders");
     }
 }

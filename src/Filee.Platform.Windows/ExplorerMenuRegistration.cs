@@ -153,6 +153,17 @@ public static class ExplorerMenuRegistration
             : result;
     }
 
+    /// <summary>Removes only the registered package whose external location is this portable folder.</summary>
+    public static async Task<ModernContextMenuResult> RemoveOwnedAsync(string folder)
+    {
+        var package = Find();
+        if (package?.ExternalLocation is null || !SamePath(package.ExternalLocation, folder))
+            return new ModernContextMenuResult(true);
+        // Name a single package, rather than removing every Filee version registered for this account.
+        return await RunPowerShellAsync(error => WrapScript(
+            $"Remove-AppxPackage -Package {Quote(package.FullName)}", error), elevated: false);
+    }
+
     /// <summary>PowerShell that registers the package and writes the error message to <paramref name="errorFile"/>.</summary>
     public static string BuildAddScript(string packagePath, string externalLocation, string errorFile) =>
         WrapScript(

@@ -47,18 +47,63 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     private int _stringBytes;
     private bool _needAppearances;
 
-    internal void Carry(PdfDocument source, IReadOnlyDictionary<PdfObjectID, PdfPage> pages, CancellationToken ct)
+    internal void Carry(PdfDocument source, IReadOnlyDictionary<PdfObjectID, PdfPage> pages, CancellationToken ct,
+        string? sourceName = null, PdfPage? firstPage = null)
     {
         if (++_filePosition == 1)
             limits.BeforeCarry?.Invoke();
         ct.ThrowIfCancellationRequested();
         _stringBytes = 0;
+        Outline? parent = null;
+        if (sourceName is not null && firstPage is not null && limits.OutlineItems >= 1 && limits.OutlineDepth >= 1)
+        {
+            var title = new PdfString(SourceTitle(sourceName), PdfStringEncoding.Unicode);
+            if (SpendStrings(ByteCount(title)))
+            {
+                var dictionary = new PdfDictionary(output);
+                dictionary.Elements["/Title"] = title;
+                var destination = new PdfArray(output);
+                destination.Elements.Add(firstPage.Reference!);
+                destination.Elements.Add(new PdfName("/Fit"));
+                dictionary.Elements["/Dest"] = destination;
+                parent = new Outline(dictionary, true);
+                _outlines.Add(parent);
+            }
+        }
         _lookups.Clear();
         var catalog = source.Internals.Catalog;
         var names = ReadDestinations(catalog, pages, ct);
-        CarryOutlines(catalog, pages, names, ct);
+        if (sourceName is null)
+            CarryOutlines(catalog, pages, names, _outlines, 1, 0, ct);
+        else if (parent is not null)
+            CarryOutlines(catalog, pages, names, parent.Children, 2, 1, ct);
         CarryLinks(source, pages, names, ct);
         CarryFields(catalog, ct);
+    }
+
+    private static string SourceTitle(string sourceName)
+    {
+        var truncated = sourceName.Length > 1024;
+        var length = truncated ? 1023 : sourceName.Length;
+        if (truncated && char.IsHighSurrogate(sourceName[length - 1]) && char.IsLowSurrogate(sourceName[length]))
+            length--;
+        var title = new StringBuilder(1024);
+        for (var i = 0; i < length; i++)
+        {
+            var c = sourceName[i];
+            if (char.IsHighSurrogate(c) && i + 1 < length && char.IsLowSurrogate(sourceName[i + 1]))
+            {
+                title.Append(c).Append(sourceName[++i]);
+                continue;
+            }
+            title.Append(char.IsSurrogate(c) ? '\uFFFD'
+                : char.GetUnicodeCategory(c) == UnicodeCategory.Control ||
+                  c is '\u061C' or '\u200E' or '\u200F' or >= '\u202A' and <= '\u202E' or >= '\u2066' and <= '\u2069'
+                    ? ' ' : c);
+        }
+        if (truncated)
+            title.Append('\u2026');
+        return title.ToString();
     }
 
     private static PdfItem? Value(PdfItem? item) => item is PdfReference reference ? ValueObject(reference.Value) : ValueObject(item);
@@ -319,15 +364,14 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     }
 
     private void CarryOutlines(PdfDictionary catalog, IReadOnlyDictionary<PdfObjectID, PdfPage> pages,
-        Dictionary<(bool Legacy, string Bytes), string> names, CancellationToken ct)
+        Dictionary<(bool Legacy, string Bytes), string> names, List<Outline> into, int depth, int count, CancellationToken ct)
     {
         if (Dictionary(catalog.Elements["/Outlines"]) is not { } root)
             return;
         var stack = new Stack<(PdfDictionary Source, List<Outline> Into, int Depth)>();
         if (Dictionary(root.Elements["/First"]) is { } first)
-            stack.Push((first, _outlines, 1));
+            stack.Push((first, into, depth));
         var visited = new HashSet<(PdfObjectID Id, PdfObject? Direct)>();
-        var count = 0;
         while (stack.TryPop(out var entry))
         {
             ct.ThrowIfCancellationRequested();

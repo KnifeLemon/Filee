@@ -94,14 +94,15 @@ public sealed partial class UpdateService : ObservableObject
     /// <summary>The website: one big download button, friendlier than the GitHub release page.</summary>
     public const string WebsiteUrl = "https://filee.sh/";
 
-    /// <summary>
-    /// True when this copy was installed by Setup on Windows (uninstall.exe; the Inno Setup installer of 1.x put unins000.exe there)
-    /// or by install.sh on Linux (.filee-package marker containing com.filee.app).
-    /// Only then can the new installer update it in place; the portable zip and a copy run from source have no uninstaller.
-    /// </summary>
-    public static bool IsInstalled { get; } =
+    private static readonly bool InstalledCopy =
         OperatingSystem.IsWindows() && IsInstalledIn(AppContext.BaseDirectory)
         || OperatingSystem.IsLinux() && IsLinuxInstalled(AppContext.BaseDirectory);
+
+    /// <summary>
+    /// Installed by Windows Setup or Linux install.sh, and not marked portable. A marked copy is updated manually
+    /// so an installer cannot register it or replace the user's installed copy.
+    /// </summary>
+    public static bool IsInstalled => !PortableMode.IsEnabled && InstalledCopy;
 
     internal static bool IsInstalledIn(string folder) =>
         File.Exists(Path.Combine(folder, "uninstall.exe")) || File.Exists(Path.Combine(folder, "unins000.exe"));

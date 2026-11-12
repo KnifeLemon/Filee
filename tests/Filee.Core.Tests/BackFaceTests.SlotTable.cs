@@ -6,11 +6,12 @@ namespace Filee.Core.Tests;
 public partial class BackFaceTests
 {
     // Slot table of #806, with Translate from #836 first on the document, text and e-book backs, and Crop video (#830)
-    // after Cut a clip. This is a new-install/reset contract, not migration input.
+    // after Cut a clip, and XLSX (#1343) after Word on the PDF front. This is a new-install/reset contract, not
+    // migration input.
     internal static readonly Dictionary<string, (string[] Front, string[] Back)> ExpectedFaces = new()
     {
         ["images"] = (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg"], ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
-        ["pdf"] = (["to-png", "to-jpg", "to-docx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"], ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
+        ["pdf"] = (["to-png", "to-jpg", "to-docx", "to-xlsx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"], ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
         ["office"] = (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-txt", "to-png", "merge-pdf"], ["translate", "to-md", "pdf-long-image", "zip-all"]),
         ["spreadsheets"] = (["to-pdf", "to-xlsx", "to-csv", "to-hwpx", "to-hwp", "merge-pdf"], ["tool-sheet-studio", "to-docx", "to-vcf", "to-ics", "zip-all"]),
         ["presentations"] = (["to-pdf", "to-png", "to-jpg", "to-pptx", "to-hwpx", "to-hwp", "merge-pdf"], ["to-odp", "pdf-long-image", "to-docx", "zip-all"]),

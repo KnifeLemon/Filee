@@ -765,7 +765,7 @@ public class DonutGroupTests
 
         // The ring a group fans out (labels included) is inside the window, and the window inside the screen.
         var center = new PixelPoint(position.X + side / 2, position.Y + side / 2);
-        var ringReach = radius + 7 + DonutMenu.SubRingSpace;
+        var ringReach = radius + 7 + DonutMenu.SubRingSpaceFor(radius, 1);
         Assert.True(ringReach <= side / 2.0);
         Assert.True(center.X - ringReach >= area.X && center.X + ringReach <= area.Right, $"x {center.X}");
         Assert.True(center.Y - ringReach >= area.Y && center.Y + ringReach <= area.Bottom, $"y {center.Y}");
