@@ -12,8 +12,8 @@
 // It follows every change made here, and holds a group open (DonutMenu.HeldGroupId): the one open in the editor, or,
 // once a ring setting changes, the one picked (Group shown, or clicked on it; the first until then), or an example ring
 // on a donut with none. Where it goes: where it was last dragged (against this window), else beside this window, else
-// on another screen; with no room, this window slides over to make room and back when the donut goes; with none at
-// all (maximized, or a screen too small for both), over the start side of this window, above it.
+// on another screen; with no room, this window slides over to make room and back when the donut goes; with none at all
+// (maximized, or a screen too small for both), over the start side of this window, above it.
 //
 // Chip tooltips: an available chip's tip lists the formats it takes (PresetFormatTip), as a card. Holding either Shift
 // shows the whole list while it is open; Tab or the arrow keys open a chip's tip as hover does, and pressing or

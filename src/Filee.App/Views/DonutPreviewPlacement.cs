@@ -5,8 +5,8 @@
 // In order: where it was last dragged, against the main window, if all of it is on a screen there and clear of the
 // window; beside the window, right then left; on another screen with room for it; else the window moves over to make
 // room, narrower down to its minimum width if it must; else (a screen too small for both, or a window that must not
-// move) at the screen's edge on the window's start side, over the window and above it (Over: the donut is owned by
-// it). Beside the window, the donut's edge facing it stays put as a slider grows it; grown off its screen or onto the
+// move) at the screen's edge on the window's start side, over the window and above it (Over: the donut is owned by it).
+// Beside the window, the donut's edge facing it stays put as a slider grows it; grown off its screen or onto the
 // window, it is placed again.
 
 using Avalonia;

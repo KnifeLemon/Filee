@@ -343,9 +343,9 @@ public sealed class AppSettings
 
     /// <summary>
     /// Where the Donut toolbar page's donut on screen was dragged to: its centre against the main window's top-left
-    /// corner, in screen pixels (<see cref="WindowBounds.X"/>, <see cref="WindowBounds.Y"/>), so it opens there beside
-    /// the window again. Null until it has been dragged. A Filee from before it skips the property, so it needs no
-    /// schema step.
+    /// corner, in screen pixels (points on macOS) (<see cref="WindowBounds.X"/>, <see cref="WindowBounds.Y"/>), so it
+    /// opens there beside the window again. Null until it has been dragged. A Filee from before it skips the property,
+    /// so it needs no schema step.
     /// </summary>
     public WindowBounds? DonutPreviewPlace { get; set; }
 

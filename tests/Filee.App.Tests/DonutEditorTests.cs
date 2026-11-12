@@ -1,8 +1,8 @@
 // Settings → Donut toolbar as an editor (#873): the sliders save the donut's look without applying every setting again;
 // the donut in the page is drawn as it opens, only smaller when its column is narrower; a group clicked in the editor
-// opens like a folder to edit what it fans out; and Edit Donut Size shows the donut on screen at its real size while
-// it is adjusted or a group is edited, beside the window, never over it, holding a group open (or an example ring) once
-// a ring setting changes.
+// opens like a folder to edit what it fans out; and Edit Donut Size shows the donut on screen at its real size while it
+// is adjusted or a group is edited, beside the window (over it only when there is no room anywhere), holding a group
+// open (or an example ring) once a ring setting changes.
 
 using Avalonia;
 using Avalonia.Controls;
@@ -58,8 +58,8 @@ public class DonutEditorTests
             vm.SliceOpacity = 70;
             vm.GroupRingSize = 125;
             RenderTests.Pump();
-            // In the settings at once, without the theme, triggers and integration that a settings change applies
-            // again (that is what made the sliders stick); written once the slider rests.
+            // In the settings at once, without the theme, triggers and integration that a settings change applies again
+            // (that is what made the sliders stick); written once the slider rests.
             Assert.Equal(189, store.Settings.Donut.OuterRadius);
             Assert.Equal(0, applied);
             Assert.True(DonutLookSave.IsPending);
@@ -1406,7 +1406,7 @@ public class DonutEditorTests
             preview.MouseDown(middle, MouseButton.Left);
             var frame = FrameOf(window);
             preview.Position = new PixelPoint(frame.X + 100, frame.Y + 100);
-            preview.MouseMove(middle, Avalonia.Input.RawInputModifiers.LeftMouseButton); // the button still down
+            preview.MouseMove(middle, RawInputModifiers.LeftMouseButton); // the button still down
             RunUntil(() => false, TimeSpan.FromSeconds(1));
             Assert.True(IsDragging(preview));
             Assert.True(preview.Box.Intersects(FrameOf(window)));
@@ -1432,12 +1432,24 @@ public class DonutEditorTests
                 new PixelPoint(kept.X!.Value, kept.Y!.Value));
             // The release lost in a window manager's move: the pointer seen with the button up ends the drag all the
             // same, and a move after that isn't kept.
-            preview.MouseMove(middle, Avalonia.Input.RawInputModifiers.None);
+            preview.MouseMove(middle, RawInputModifiers.None);
             Assert.False(IsDragging(preview));
             preview.Position = clear + new PixelVector(0, 20);
             RenderTests.Pump();
             Assert.Same(kept, store.Settings.DonutPreviewPlace);
             Assert.Equal(clear, preview.Position - new PixelVector(0, 20));
+
+            // Dropped onto the window with the release lost, and the pointer only seen leaving the donut, the button
+            // up: the drag is over all the same, and it moves off the window.
+            preview.MouseDown(middle, MouseButton.Left);
+            preview.Position = new PixelPoint(frame.X + 100, frame.Y + 100);
+            Assert.True(IsDragging(preview));
+            var mouse = new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, true);
+            preview.RaiseEvent(new PointerEventArgs(InputElement.PointerExitedEvent, preview, mouse, preview, new Point(-5, -5), 0,
+                new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.Other), KeyModifiers.None));
+            Assert.False(IsDragging(preview));
+            Assert.Null(store.Settings.DonutPreviewPlace);
+            AssertNotUnder(preview, window);
         }
         finally
         {

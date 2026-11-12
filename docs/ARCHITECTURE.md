@@ -181,11 +181,11 @@ turn it over from there. Thunar's shortcut on Linux goes through the context-men
 
 The editor's donut is laid out at its real size and drawn smaller (a `Viewbox` that only shrinks) when its column is
 narrower, so names wrap and icons show as on the donut itself. Clicking a group slice opens it in the editor
-(`ToolbarPageViewModel.OpenGroup`): the donut then shows and edits the group's members with the same drag and drop,
-the palette offers what the group doesn't hold and no groups (`Placed`, shared with the search and the judging), and
-the ✎ still opens each preset's own editor. *Edit Donut Size* (`IsAdjustingLook`) swaps the editor for the size, look
-and label settings. While either is open, `DonutPreviewWindow` shows the donut on screen beside the main window at its
-real size, filled by a `RadialViewModel` of its own as the donut opens for the profile's files (`LoadPreview`, with the
+(`ToolbarPageViewModel.OpenGroup`): the donut then shows and edits the group's members with the same drag and drop, the
+palette offers what the group doesn't hold and no groups (`Placed`, shared with the search and the judging), and the ✎
+still opens each preset's own editor. *Edit Donut Size* (`IsAdjustingLook`) swaps the editor for the size, look and
+label settings. While either is open, `DonutPreviewWindow` shows the donut on screen beside the main window at its real
+size, filled by a `RadialViewModel` of its own as the donut opens for the profile's files (`LoadPreview`, with the
 turned-off fields left out); it follows every change and converts nothing. It holds a group open
 (`DonutMenu.HeldGroupId`, by preset id, so a flip or a reload keeps it): the one open in the editor, or, once a ring
 setting changes, the one picked under the ring sliders (*Group shown*, offered with two or more) or clicked on it, the
@@ -195,11 +195,14 @@ it goes is `DonutPreviewPlacement` (pure, in screen pixels at each screen's own 
 beside the main window; on another screen; else the main window moves over, narrower down to its minimum width if it
 must, and back when the donut goes (`MainWindow.RestPlace` keeps where it was, so closing meanwhile remembers that).
 Beside the window its facing edge stays put as a slider grows it, and it is placed again when it no longer fits, when
-the window is resized, moved or maximized. On a screen too small for both it goes over the column not in use, owned by
-the main window so it stays above it; otherwise it isn't Topmost or owned, unlike the live donut: a click on the main
-window brings that in front of it. The look sliders change the settings at once and write them once the slider rests
-(`DonutLookSave`, as `UiZoom` does), with `UserDataStore.SaveDonutLook`, which doesn't raise `SettingsChanged`:
-re-applying the theme for every pixel a slider moved made them stick.
+the window is resized, moved or maximized. With no room at all (a screen too small for both, or a window that can't
+move: maximized) it goes over the start side of the main window (its navigation and profile list), never over Done,
+owned by the main window so it stays above it; otherwise it isn't Topmost or owned, unlike the live donut: a click on
+the main window brings that in front of it. Dragged by its middle, it is the user's until the button is up (on Windows,
+when the system's move loop returns); dropped onto the main window, it moves back off it. The look sliders change the
+settings at once and write them once the slider rests (`DonutLookSave`, as `UiZoom` does), with
+`UserDataStore.SaveDonutLook`, which doesn't raise `SettingsChanged`: re-applying the theme for every pixel a slider
+moved made them stick.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group

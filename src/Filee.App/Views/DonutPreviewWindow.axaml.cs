@@ -36,19 +36,19 @@ public partial class DonutPreviewWindow : Window
         // The drag is over once the button is up: its release, or the pointer seen on the donut with the button up (a
         // window manager's move keeps the release; macOS and X11 move the window on their own).
         AddHandler(PointerReleasedEvent, (_, _) => EndDrag(), RoutingStrategies.Tunnel, handledEventsToo: true);
-        foreach (var routed in new RoutedEvent<PointerEventArgs>[] { PointerMovedEvent, PointerEnteredEvent, PointerExitedEvent })
-            AddHandler(routed, (_, e) =>
-            {
-                if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-                    EndDrag();
-            }, RoutingStrategies.Tunnel, handledEventsToo: true);
+        AddHandler(PointerMovedEvent, EndIfButtonUp, RoutingStrategies.Tunnel, handledEventsToo: true);
+        // Entered and left are raised on this window only (direct).
+        AddHandler(PointerEnteredEvent, EndIfButtonUp, RoutingStrategies.Direct, handledEventsToo: true);
+        AddHandler(PointerExitedEvent, EndIfButtonUp, RoutingStrategies.Direct, handledEventsToo: true);
         AddHandler(PointerMovedEvent, (_, e) => Cursor = OnHandle(e) ? MoveCursor : null, RoutingStrategies.Tunnel, handledEventsToo: true);
         PositionChanged += (_, _) => OnMoved();
     }
 
     public DonutMenu DonutControl => Donut;
 
-    /// <summary>The user moved the donut (dragged its middle): its new centre, in screen pixels.</summary>
+    /// <summary>
+    /// The user moved the donut (dragged its middle): its new centre, in screen pixels (points on macOS).
+    /// </summary>
     public event Action<PixelPoint>? Moved;
 
     /// <summary>A drag of its middle is over (where the system says so, <see cref="MoveLoopReturnsAtEnd"/>).</summary>
@@ -60,7 +60,7 @@ public partial class DonutPreviewWindow : Window
     /// <summary>Where it was put, or last moved to (null before it is first shown).</summary>
     internal PreviewPlace? Place => _place;
 
-    /// <summary>The square it takes on screen, in pixels.</summary>
+    /// <summary>The square it takes on screen, in pixels (points on macOS).</summary>
     internal PixelRect Box => new(Position, PixelSize.FromSize(Bounds.Size, Scaling));
 
     private bool OnHandle(PointerEventArgs e) => Donut.HitTest(e.GetPosition(Donut)).Kind == DonutHitKind.Center;
@@ -122,6 +122,12 @@ public partial class DonutPreviewWindow : Window
                 Show();
         }
         KeepPlace(); // again, in case showing changed the scale
+    }
+
+    private void EndIfButtonUp(object? sender, PointerEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            EndDrag();
     }
 
     /// <summary>A drag of its middle is over: a move from now on is not the user's.</summary>
