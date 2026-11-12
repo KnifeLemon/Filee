@@ -1385,9 +1385,8 @@ public class DonutEditorTests
         var store = AppHost.Get<UserDataStore>();
         var motion = Motion.Enabled;
         Motion.Set(false);
-        // As on macOS and Linux: the system's move returns at once, and the drag is over once the button is seen up.
-        var loop = DonutPreviewWindow.MoveLoopReturnsAtEnd;
-        DonutPreviewWindow.MoveLoopReturnsAtEnd = false;
+        // The system's move returns at once (headless, it doesn't move the window): the drag is over once the button is
+        // seen up.
         try
         {
             vm.AdjustLookCommand.Execute(null);
@@ -1453,7 +1452,6 @@ public class DonutEditorTests
         }
         finally
         {
-            DonutPreviewWindow.MoveLoopReturnsAtEnd = loop;
             Motion.Set(motion);
             store.Settings.DonutPreviewPlace = null;
             DonutLookSave.Flush();
@@ -1462,14 +1460,13 @@ public class DonutEditorTests
     }
 
     [AvaloniaFact]
-    public void On_windows_the_drag_is_over_when_the_systems_move_loop_returns_however_long_it_paused()
+    public void On_windows_the_drag_goes_on_after_the_press_until_the_button_up_that_ends_the_systems_move()
     {
         var (window, page, vm) = Open();
         var store = AppHost.Get<UserDataStore>();
         var motion = Motion.Enabled;
         Motion.Set(false);
-        var (loop, drag) = (DonutPreviewWindow.MoveLoopReturnsAtEnd, DonutPreviewWindow.MoveDrag);
-        DonutPreviewWindow.MoveLoopReturnsAtEnd = true;
+        var drag = DonutPreviewWindow.MoveDrag;
         try
         {
             vm.AdjustLookCommand.Execute(null);
@@ -1477,19 +1474,33 @@ public class DonutEditorTests
             var preview = page.Preview!;
             var frame = FrameOf(window);
             var middle = new Point(preview.Bounds.Width / 2, preview.Bounds.Height / 2);
-            // The loop moves it over the window, pauses there longer than the donut takes to rest, and lets go there.
-            // Avalonia gives the pointer's capture up first, as on Windows.
+            // As Avalonia does on Windows (Win32 WindowImpl.BeginMoveDrag): the capture is given up, the system's move
+            // is posted and the call returns at once; the move ends with a button-up sent to the window.
+            var over = false;
+            void Posted(Window moved, Action loop) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                Assert.True(IsDragging((DonutPreviewWindow)moved), "the press ended it"); // returned, still the drag
+                loop();
+                ((DonutPreviewWindow)moved).MouseUp(default, MouseButton.Left);
+                over = true;
+            }, Avalonia.Threading.DispatcherPriority.Send);
+
+            // Moved over the window, paused there, let go there.
             DonutPreviewWindow.MoveDrag = (moved, e) =>
             {
                 e.Pointer.Capture(null);
-                moved.Position = new PixelPoint(frame.X + 100, frame.Y + 100);
-                RunUntil(() => false, TimeSpan.FromSeconds(1));
-                Assert.True(((DonutPreviewWindow)moved).Box.Intersects(FrameOf(window)), "moved off the window while still dragged");
-                Assert.True(IsDragging((DonutPreviewWindow)moved));
-                moved.Position = new PixelPoint(frame.X + 150, frame.Y + 120);
+                Posted(moved, () =>
+                {
+                    moved.Position = new PixelPoint(frame.X + 100, frame.Y + 100);
+                    RunUntil(() => false, TimeSpan.FromSeconds(1));
+                    Assert.True(((DonutPreviewWindow)moved).Box.Intersects(FrameOf(window)), "moved off the window while still dragged");
+                    moved.Position = new PixelPoint(frame.X + 150, frame.Y + 120);
+                });
             };
             preview.MouseDown(middle, MouseButton.Left);
-            // Let go over the window: off it at once, and not remembered there.
+            RunUntil(() => over);
+            Assert.True(over);
+            // Off the window at once, and not remembered there.
             Assert.False(IsDragging(preview));
             Assert.Null(store.Settings.DonutPreviewPlace);
             AssertNotUnder(preview, window);
@@ -1498,14 +1509,19 @@ public class DonutEditorTests
             var back = preview.Box;
             var clear = window.Screens.All.Any(s => s.WorkingArea.Contains(back.Translate(new PixelVector(0, 30))))
                 ? back.Position + new PixelVector(0, 30) : back.Position - new PixelVector(0, 30);
+            over = false;
             DonutPreviewWindow.MoveDrag = (moved, e) =>
             {
                 e.Pointer.Capture(null);
-                moved.Position = clear - new PixelVector(0, 10);
-                RunUntil(() => false, TimeSpan.FromSeconds(1));
-                moved.Position = clear;
+                Posted(moved, () =>
+                {
+                    moved.Position = clear - new PixelVector(0, 10);
+                    RunUntil(() => false, TimeSpan.FromSeconds(1));
+                    moved.Position = clear;
+                });
             };
             preview.MouseDown(middle, MouseButton.Left);
+            RunUntil(() => over);
             var kept = store.Settings.DonutPreviewPlace!;
             Assert.Equal(new PixelPoint(preview.Box.Center.X - window.Position.X, preview.Box.Center.Y - window.Position.Y),
                 new PixelPoint(kept.X!.Value, kept.Y!.Value));
@@ -1515,7 +1531,7 @@ public class DonutEditorTests
         }
         finally
         {
-            (DonutPreviewWindow.MoveLoopReturnsAtEnd, DonutPreviewWindow.MoveDrag) = (loop, drag);
+            DonutPreviewWindow.MoveDrag = drag;
             Motion.Set(motion);
             store.Settings.DonutPreviewPlace = null;
             DonutLookSave.Flush();

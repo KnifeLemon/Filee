@@ -198,9 +198,9 @@ Beside the window its facing edge stays put as a slider grows it, and it is plac
 the window is resized, moved or maximized. With no room at all (a screen too small for both, or a window that can't
 move: maximized) it goes over the start side of the main window (its navigation and profile list), never over Done,
 owned by the main window so it stays above it; otherwise it isn't Topmost or owned, unlike the live donut: a click on
-the main window brings that in front of it. Dragged by its middle, it is the user's until the button is up (on Windows,
-when the system's move loop returns); dropped onto the main window, it moves back off it. The look sliders change the
-settings at once and write them once the slider rests (`DonutLookSave`, as `UiZoom` does), with
+the main window brings that in front of it. Dragged by its middle, it is the user's until the button is up (released, or
+seen up since: a window manager's move may keep the release); dropped onto the main window, it moves back off it. The
+look sliders change the settings at once and write them once the slider rests (`DonutLookSave`, as `UiZoom` does), with
 `UserDataStore.SaveDonutLook`, which doesn't raise `SettingsChanged`: re-applying the theme for every pixel a slider
 moved made them stick.
 

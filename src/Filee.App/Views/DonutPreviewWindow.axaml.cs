@@ -51,7 +51,7 @@ public partial class DonutPreviewWindow : Window
     /// </summary>
     public event Action<PixelPoint>? Moved;
 
-    /// <summary>A drag of its middle is over (where the system says so, <see cref="MoveLoopReturnsAtEnd"/>).</summary>
+    /// <summary>A drag of its middle is over: let go, or the button seen up since.</summary>
     public event Action? DragFinished;
 
     /// <summary>Escape was pressed on it (with no ring of its own to fold): the page puts it away.</summary>
@@ -71,18 +71,10 @@ public partial class DonutPreviewWindow : Window
             return;
         e.Handled = true;
         _dragging = true;
-        MoveDrag(this, e);
-        if (MoveLoopReturnsAtEnd)
-            EndDrag(); // back from the system's move loop: the drag is over, wherever the button went up
+        MoveDrag(this, e); // returns at once everywhere: on Windows the move is posted, and ends with a button-up
     }
 
-    /// <summary>
-    /// Whether the system's move loop runs inside <see cref="Window.BeginMoveDrag"/>, so that it returns once the drag
-    /// is over (Windows). Elsewhere it returns at once, and the drag is over once the button is seen up.
-    /// </summary>
-    internal static bool MoveLoopReturnsAtEnd { get; set; } = OperatingSystem.IsWindows();
-
-    /// <summary>Starts the system's move of the window (tests stand in for the system's move loop).</summary>
+    /// <summary>Starts the system's move of the window (tests stand in for the system's move).</summary>
     internal static Action<Window, PointerPressedEventArgs> MoveDrag { get; set; } = (window, e) => window.BeginMoveDrag(e);
 
     // macOS reports window positions in points, the others in device pixels.
