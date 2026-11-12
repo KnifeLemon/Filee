@@ -1134,6 +1134,9 @@ internal static class SettingsMigrations
         // v86: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put.
         if (from < 86)
             changed |= LearnExtensions(profiles, out _, ["pdn"]);
+        // v87: Gerber PCB layers learn the CAD donut; custom claims stay put.
+        if (from < 87)
+            changed |= LearnExtensions(profiles, out _, ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1", "gml"]);
         return changed;
     }
 
