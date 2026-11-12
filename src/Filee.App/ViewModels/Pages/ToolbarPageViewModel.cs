@@ -173,7 +173,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     }
 
     private void OnCatalogChanged(object? sender, EventArgs e) =>
-        Dispatcher.UIThread.Post(() => { if (_disposed) return; ForgetJudgements(); Rebuild(); });
+        Dispatcher.UIThread.Post(() => { if (_disposed) return; LibraryVersion++; ForgetJudgements(); Rebuild(); });
 
     private void OnLibraryChanged(object? sender, EventArgs e)
     {
@@ -192,6 +192,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     {
         if (_disposed)
             return;
+        LibraryVersion++;
         _pendingTabRestore ??= SelectedTab is { Id: not PaletteTab.All } tab ? tab.Id : null;
         ForgetJudgements();
         Rebuild();
@@ -201,6 +202,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     {
         var previous = _savingOwnLibrary;
         _savingOwnLibrary = true;
+        LibraryVersion++;
         try
         {
             DuringOwnSave?.Invoke();
@@ -371,25 +373,28 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// <summary>The groups on the selected donut (<see cref="RingGroups"/>), kept when they haven't changed.</summary>
     private void RefreshRingGroups()
     {
-        var groups = Profile is not { } profile ? []
-            : Groups(profile.PresetIds, false).Concat(Groups(profile.BackPresetIds ?? [], true)).ToList();
+        var groups = Profile is not { } profile ? [] : RingGroupsOf(profile);
         if (!groups.SequenceEqual(RingGroups))
             RingGroups = groups;
         if (ShownGroup is { } shown && !groups.Contains(shown))
             ShownGroup = null;
         if (ShowsRing)
             ShownGroup ??= groups.FirstOrDefault();
+    }
 
-        // A group with nothing to fan out (its presets deleted, or all of a turned-off field) has no ring to show.
-        IEnumerable<RingGroupChoice> Groups(IEnumerable<string> ids, bool back)
-        {
-            var shown = ShownPresets().Select(p => p.Id).ToHashSet();
-            return ids
-                .Select(_store.FindPreset)
-                .OfType<Preset>()
-                .Where(p => p.IsGroup && p.SubPresetIds.Any(shown.Contains))
-                .Select(p => new RingGroupChoice(p.Id, back ? $"{_loc.DisplayName(p)} · {_loc["toolbar.face_back"]}" : _loc.DisplayName(p), back));
-        }
+    // The groups of both faces with a ring to fan out, judged as the donut on screen fills them (its own field stays,
+    // RadialViewModel.LoadPreview): not one whose presets are deleted, or all of a turned-off field.
+    private List<RingGroupChoice> RingGroupsOf(ToolbarProfile profile)
+    {
+        var off = RadialViewModel.TurnedOffBesides(_store.Settings.TurnedOffFields, RadialViewModel.PreviewFormats(profile));
+        var fans = _store.Presets.Where(p => FormatFields.IsShown(p.TargetFormat, off)).Select(p => p.Id).ToHashSet();
+        return Groups(profile.PresetIds, false).Concat(Groups(profile.BackPresetIds ?? [], true)).ToList();
+
+        IEnumerable<RingGroupChoice> Groups(IEnumerable<string> ids, bool back) => ids
+            .Select(_store.FindPreset)
+            .OfType<Preset>()
+            .Where(p => p.IsGroup && p.SubPresetIds.Any(fans.Contains))
+            .Select(p => new RingGroupChoice(p.Id, back ? $"{_loc.DisplayName(p)} · {_loc["toolbar.face_back"]}" : _loc.DisplayName(p), back));
     }
 
     /// <summary>The donut whose labels the panel's lower part adjusts: "This donut: Images".</summary>
@@ -976,6 +981,13 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         ForgetJudgements(item.Profile.Id);
         Rebuild();
     }
+
+    /// <summary>
+    /// Counts the changes to what the donuts hold (each save of the library, from here or elsewhere, and the converters
+    /// available), but not to how the palette is searched or sorted: the donut on screen fills again only when it
+    /// changed.
+    /// </summary>
+    internal int LibraryVersion { get; private set; }
 
     private void Commit()
     {

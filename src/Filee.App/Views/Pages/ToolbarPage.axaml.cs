@@ -184,10 +184,12 @@ public partial class ToolbarPage : UserControl
             SlideBack(animate: true);
             return;
         }
+        // Hidden or minimized: the donut goes with it, and comes back with it. The window stays where it slid to
+        // meanwhile (a minimized window reports no position to compare), and closing it remembers where the user had
+        // it.
         if (_topLevel is not Window { IsVisible: true, WindowState: not WindowState.Minimized } main)
         {
             HidePreview();
-            SlideBack(animate: false); // out of sight: back where it was when it comes back
             return;
         }
         if (_preview is null || _previewModel is null)
@@ -200,11 +202,12 @@ public partial class ToolbarPage : UserControl
                 Vm?.CloseGroupCommand.Execute(null);
             };
             _preview.Moved += OnPreviewMoved;
-            // Grown off its screen or onto this window (Size or Group ring size moved up): placed again.
+            // Grown off its screen or onto this window (Size or Group ring size moved up): placed again; over the
+            // window for want of room, it goes back beside it once it is small enough again.
             _preview.SizeChanged += (_, _) =>
             {
                 if (_preview is { IsVisible: true, Place: { } place } preview && _topLevel is Window window && !_sliding
-                    && !place.Fits(preview.Box.Width, FrameOf(window), ScreensOf(window)))
+                    && (place.Over || !place.Fits(preview.Box.Width, FrameOf(window), ScreensOf(window))))
                     PlacePreview(window, moveWindow: false);
             };
             // A group clicked on it is the one held open from then on.
@@ -217,7 +220,7 @@ public partial class ToolbarPage : UserControl
         }
         var held = HeldGroup(vm, out var back);
         var shown = _preview.IsVisible;
-        var content = ContentOf(profile, held, back);
+        var content = ContentOf(vm, profile, held, back);
         if (!shown || reload && content != _previewContent)
         {
             _previewModel.LoadPreview(profile, back);
@@ -232,33 +235,13 @@ public partial class ToolbarPage : UserControl
             PlacePreview(main, moveWindow: true);
     }
 
-    // What the donut on screen shows, so a rebuild of the editor that changed none of it doesn't fill it again.
+    // What the donut on screen shows, so a rebuild of the editor that changed none of it (a palette search) doesn't
+    // fill it again.
     private string? _previewContent;
 
-    private string ContentOf(Filee.Core.Profiles.ToolbarProfile profile, string? held, bool back)
-    {
-        var store = AppHost.Get<UserDataStore>();
-        var text = new System.Text.StringBuilder().Append(profile.Id).Append('|').Append(held).Append('|').Append(back);
-        foreach (var id in profile.PresetIds.Append("|").Concat(profile.BackPresetIds ?? []))
-        {
-            text.Append('|').Append(id);
-            if (store.FindPreset(id) is not { } preset)
-                continue;
-            AppendPreset(preset);
-            foreach (var member in preset.SubPresetIds)
-                if (store.FindPreset(member) is { } child)
-                {
-                    text.Append(',').Append(member);
-                    AppendPreset(child);
-                }
-        }
-        text.Append('|').Append(string.Join(',', store.Settings.TurnedOffFields));
-        return text.ToString();
-
-        void AppendPreset(Filee.Core.Presets.Preset p) => text.Append(':').Append(Loc.DisplayName(p)).Append(':').Append(p.ShortName)
-            .Append(':').Append(p.Icon).Append(':').Append(p.Show).Append(':').Append(p.Direction).Append(':').Append(p.TargetFormat)
-            .Append(':').Append(p.Output.MoveInsteadOfCopy);
-    }
+    private string ContentOf(ToolbarPageViewModel vm, Filee.Core.Profiles.ToolbarProfile profile, string? held, bool back) =>
+        string.Join('|', profile.Id, held, back, vm.LibraryVersion, Loc.Language,
+            string.Join(',', AppHost.Get<UserDataStore>().Settings.TurnedOffFields));
 
     private static ILocalizer Loc => AppHost.Get<ILocalizer>();
 
@@ -291,7 +274,8 @@ public partial class ToolbarPage : UserControl
     }
 
     /// <summary>
-    /// The donut was dragged: it opens there, against this window, from now on (written once it rests).
+    /// The donut was dragged: it opens there, against this window, from now on (written once it rests). Dropped onto
+    /// this window, where a click would bury it, it goes back beside it once the drag rests.
     /// </summary>
     private void OnPreviewMoved(PixelPoint center)
     {
@@ -300,6 +284,25 @@ public partial class ToolbarPage : UserControl
         var store = AppHost.Get<UserDataStore>();
         store.Settings.DonutPreviewPlace = new WindowBounds { X = center.X - main.Position.X, Y = center.Y - main.Position.Y };
         DonutLookSave.Schedule(store);
+        _dropCheck ??= new Avalonia.Threading.DispatcherTimer(DropDelay, Avalonia.Threading.DispatcherPriority.Background, (_, _) => CheckDrop());
+        _dropCheck.Stop();
+        _dropCheck.Start();
+    }
+
+    /// <summary>How long a dragged donut rests before it is checked for having landed on this window.</summary>
+    internal static readonly TimeSpan DropDelay = TimeSpan.FromMilliseconds(400);
+
+    private Avalonia.Threading.DispatcherTimer? _dropCheck;
+
+    private void CheckDrop()
+    {
+        _dropCheck?.Stop();
+        if (_preview is not { IsVisible: true } preview || _topLevel is not Window main || !preview.Box.Intersects(FrameOf(main)))
+            return;
+        var store = AppHost.Get<UserDataStore>();
+        store.Settings.DonutPreviewPlace = null;
+        DonutLookSave.Schedule(store);
+        PlacePreview(main, moveWindow: false);
     }
 
     // macOS reports window positions and screens in points, the others in device pixels.
@@ -317,7 +320,7 @@ public partial class ToolbarPage : UserControl
     /// </summary>
     private void PlacePreview(Window main, bool moveWindow)
     {
-        if (_preview is not { } preview || _previewModel is not { } donut || Vm is not { } vm)
+        if (_preview is not { } preview || _previewModel is not { } donut)
             return;
         var all = main.Screens.All.ToList();
         var home = main.Screens.ScreenFromWindow(main) ?? main.Screens.Primary;
@@ -331,9 +334,10 @@ public partial class ToolbarPage : UserControl
         int? minWidth = moveWindow && main.WindowState == WindowState.Normal
             ? (int)Math.Ceiling((main.MinWidth + frame.Width - main.ClientSize.Width) * scaling)
             : null;
-        // With nothing else left, it goes over the column not in use: the profile list while a group is open (its
-        // presets come from Available presets), else Available presets; the profile list is on the right in Arabic.
-        var overRight = !vm.IsEditingGroup ^ FlowDirection == Avalonia.Media.FlowDirection.RightToLeft;
+        // With nothing else left, it goes over the navigation and the profile list, which neither Edit Donut Size nor
+        // an open group uses, and which are wider than Available presets: the panel's Done and its values stay clear.
+        // They are on the right in Arabic.
+        var overRight = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft;
         var place = DonutPreviewPlacement.Place(window, screens, index, current, dragged, minWidth, overRight);
         if (place.MovedWindow is { } moved)
             MoveMain(main, moved, scaling);
@@ -341,10 +345,12 @@ public partial class ToolbarPage : UserControl
     }
 
     // This window moved over to make room for the donut: where it went (it goes back unless moved since), the slide
-    // under way, and where it actually landed (a window manager may keep it off the menu bar).
+    // under way, where it actually landed (a window manager may keep it off the menu bar), and the width it was made
+    // narrower to (it goes back to its own unless the user resized it since).
     private PixelPoint? _slidTo;
     private PixelPoint? _landed;
     private bool _sliding;
+    private double? _narrowedTo;
 
     /// <summary>
     /// Moves this window to <paramref name="to"/> (narrower if it must be), remembering where it was.
@@ -355,7 +361,10 @@ public partial class ToolbarPage : UserControl
             mw.RestPlace ??= (main.Position, main.ClientSize);
         var narrower = (main.FrameSize?.Width ?? main.Bounds.Width) * scaling - to.Width;
         if (narrower > 0)
-            main.Width = Math.Max(main.MinWidth, main.ClientSize.Width - narrower / scaling);
+        {
+            _narrowedTo = Math.Max(main.MinWidth, main.ClientSize.Width - narrower / scaling); // first: resizing reports it
+            main.Width = _narrowedTo.Value;
+        }
         _slidTo = to.Position;
         _landed = null;
         Slide(main, to.Position, () => _landed = main.Position);
@@ -367,19 +376,23 @@ public partial class ToolbarPage : UserControl
     /// </summary>
     private void SlideBack(bool animate)
     {
-        if (_topLevel is not MainWindow main || main.RestPlace is not { } rest)
+        // Maximized meanwhile: it goes back once it is a normal window again (see OnWindowPropertyChanged).
+        if (_topLevel is not MainWindow { WindowState: WindowState.Normal } main || main.RestPlace is not { } rest)
             return;
         var stillThere = _sliding || main.Position is var at && (_landed ?? _slidTo) is { } there
             && Math.Abs(at.X - there.X) <= 2 && Math.Abs(at.Y - there.Y) <= 2;
+        // Its own width back, unless the user resized it since it was made narrower (or it never was).
+        var narrowed = _narrowedTo is { } width && Math.Abs(main.ClientSize.Width - width) <= 0.5;
         _slidTo = _landed = null;
+        _narrowedTo = null;
+        if (narrowed)
+            main.Width = rest.ClientSize.Width;
         if (!stillThere)
         {
             StopSlide();
             main.RestPlace = null; // moved by the user: where it is now is theirs
             return;
         }
-        if (Math.Abs(main.ClientSize.Width - rest.ClientSize.Width) > 0.5)
-            main.Width = rest.ClientSize.Width;
         if (animate)
             Slide(main, rest.Position, () => main.RestPlace = null);
         else
@@ -455,6 +468,20 @@ public partial class ToolbarPage : UserControl
             UpdatePreview(reload: true);
         if (e.Property == Window.WindowStateProperty || e.Property == TopLevel.ClientSizeProperty)
             KeepClearOfWindow();
+        if (_topLevel is MainWindow { WindowState: WindowState.Normal, RestPlace: { } rest } main)
+        {
+            // Resized by the user while it made room: that size is theirs, kept on Done and remembered on close.
+            if (e.Property == TopLevel.ClientSizeProperty
+                && Math.Abs(main.ClientSize.Width - (_narrowedTo ?? rest.ClientSize.Width)) > 0.5
+                && Math.Abs(main.ClientSize.Width - rest.ClientSize.Width) > 0.5)
+            {
+                _narrowedTo = null;
+                main.RestPlace = (rest.Position, main.ClientSize);
+            }
+            // A normal window again after Done (it was maximized meanwhile): it goes back now.
+            if (e.Property == Window.WindowStateProperty && _preview is not { IsVisible: true })
+                SlideBack(animate: false);
+        }
     }
 
     /// <summary>
@@ -496,6 +523,7 @@ public partial class ToolbarPage : UserControl
             }
         }
         // Another page: the editor's modes end with the page, the donut on screen goes, and this window goes back.
+        _dropCheck?.Stop();
         SlideBack(animate: false);
         _topLevel = null;
         Vm?.DoneAdjustingLookCommand.Execute(null);

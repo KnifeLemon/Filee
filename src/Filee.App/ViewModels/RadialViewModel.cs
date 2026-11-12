@@ -271,22 +271,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         DonutOpacity = 1;
         HitBackground = "Transparent";
         ApplyLook(profile);
-        // One file of the donut's first format; two different ones for a mixed profile (its first two extensions may
-        // share one). A profile with none (the mixed profile that takes anything) is judged against no file at all.
-        var formats = new List<FileFormat>();
-        if (profile.Id == "folders")
-            formats.Add(FormatRegistry.FindById(FormatRegistry.Folder)!);
-        else
-            foreach (var extension in profile.Extensions)
-            {
-                if (formats.Count == (profile.IsFallback ? 2 : 1))
-                    break;
-                if (ProfileSelector.DetectFormats(["preview." + extension]).FirstOrDefault() is { } format && !formats.Contains(format))
-                    formats.Add(format);
-            }
-        var off = store.Settings.TurnedOffFields
-            .Except(formats.SelectMany(FormatFields.Of).Select(field => field.Id), StringComparer.OrdinalIgnoreCase)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var formats = PreviewFormats(profile);
+        var off = TurnedOffBesides(store.Settings.TurnedOffFields, formats);
         _checked = formats.Count > 0;
         _front = BuildFace(profile.PresetIds, formats, off);
         (_back, _backIds, _formats, _off) = (null, [.. profile.BackPresetIds ?? []], formats, off);
@@ -311,6 +297,35 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             : formats.Count > 1 ? loc.Format("donut.files_mixed", formats.Count) : loc.DisplayName(profile);
         CenterSubtitle = null;
     }
+
+    /// <summary>
+    /// The files <see cref="LoadPreview"/> fills a profile's donut for: one of its first format; two different ones for
+    /// a mixed profile (its first two extensions may share one); a folder for Folders. A profile with none (the mixed
+    /// profile that takes anything) has none.
+    /// </summary>
+    internal static List<FileFormat> PreviewFormats(ToolbarProfile profile)
+    {
+        var formats = new List<FileFormat>();
+        if (profile.Id == "folders")
+            formats.Add(FormatRegistry.FindById(FormatRegistry.Folder)!);
+        else
+            foreach (var extension in profile.Extensions)
+            {
+                if (formats.Count == (profile.IsFallback ? 2 : 1))
+                    break;
+                if (ProfileSelector.DetectFormats(["preview." + extension]).FirstOrDefault() is { } format && !formats.Contains(format))
+                    formats.Add(format);
+            }
+        return formats;
+    }
+
+    /// <summary>
+    /// The fields left out for files of <paramref name="formats"/>: those turned off, except the files' own (a font
+    /// file offers font conversions with Fonts off, FORMAT-RULES rule 4).
+    /// </summary>
+    internal static HashSet<string> TurnedOffBesides(IEnumerable<string> turnedOff, IEnumerable<FileFormat> formats) =>
+        turnedOff.Except(formats.SelectMany(FormatFields.Of).Select(field => field.Id), StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The id of the example group <see cref="ShowExampleGroup"/> hangs off the top slice.</summary>
     public const string ExampleGroupId = "filee-example-group";

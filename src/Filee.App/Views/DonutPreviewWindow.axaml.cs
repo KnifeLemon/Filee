@@ -16,9 +16,12 @@ public partial class DonutPreviewWindow : Window
 {
     private static readonly Cursor MoveCursor = new(StandardCursorType.SizeAll);
 
-    // Where it was put (its anchored edge stays there while the sliders change its size), and whether a move is ours.
+    // Where it was put (its anchored edge stays there while the sliders change its size), whether a move is ours, and
+    // whether its middle was pressed to drag it since (only then is a move the user's: a window manager moving it on
+    // its own, a DPI change or its owner moving it is not).
     private PreviewPlace? _place;
     private bool _placing;
+    private bool _dragging;
 
     public DonutPreviewWindow()
     {
@@ -55,6 +58,7 @@ public partial class DonutPreviewWindow : Window
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || !OnHandle(e))
             return;
         e.Handled = true;
+        _dragging = true;
         BeginMoveDrag(e);
     }
 
@@ -63,10 +67,10 @@ public partial class DonutPreviewWindow : Window
 
     private int Side => (int)Math.Ceiling(Math.Max(Bounds.Width, Bounds.Height) * Scaling);
 
-    // A move this window didn't make is the user's: dragged by its middle. It stays centred there from then on.
+    // Dragged by its middle: it stays centred there from then on.
     private void OnMoved()
     {
-        if (_placing || !IsVisible || _place is null)
+        if (_placing || !_dragging || !IsVisible || _place is null)
             return;
         var box = Box;
         _place = new PreviewPlace(box.Center, PreviewAnchor.Centre);
@@ -104,6 +108,7 @@ public partial class DonutPreviewWindow : Window
     private void Move(PixelPoint to)
     {
         _placing = true;
+        _dragging = false; // placed by the page: any drag is over
         try
         {
             Position = to;

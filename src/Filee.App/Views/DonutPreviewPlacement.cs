@@ -97,8 +97,10 @@ internal static class DonutPreviewPlacement
             if (screens[i] == home)
                 continue;
             var there = Pixels(size, screens[i]);
-            if (screens[i].Area.Width >= there && screens[i].Area.Height >= there)
-                return new PreviewPlace(screens[i].Area.Center, PreviewAnchor.Centre);
+            var middle = new PreviewPlace(screens[i].Area.Center, PreviewAnchor.Centre);
+            // Not under a window that reaches onto that screen too.
+            if (screens[i].Area.Width >= there && screens[i].Area.Height >= there && !middle.BoxFor(there).Intersects(window))
+                return middle;
         }
         if (minWidth is { } min)
         {
