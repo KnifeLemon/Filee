@@ -948,6 +948,7 @@
   "presets.ico_sizes": "Kích thước biểu tượng",
   "presets.group.pdf": "PDF",
   "presets.merge": "Ghép mọi tệp thành một PDF",
+  "presets.source_bookmarks": "Thêm dấu trang cho mỗi tệp gốc",
   "presets.page_size": "Khổ trang",
   "presets.page_size.FitImage": "Vừa với ảnh",
   "presets.page_size.A4": "A4",

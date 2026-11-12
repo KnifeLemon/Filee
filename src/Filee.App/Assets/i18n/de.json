@@ -933,6 +933,7 @@
   "presets.ico_sizes": "Symbolgrößen",
   "presets.group.pdf": "PDF",
   "presets.merge": "Alle Dateien in einer PDF zusammenführen",
+  "presets.source_bookmarks": "Für jede ursprüngliche Datei ein Lesezeichen hinzufügen",
   "presets.page_size": "Seitengröße",
   "presets.page_size.FitImage": "An Bild anpassen",
   "presets.page_size.A4": "A4",

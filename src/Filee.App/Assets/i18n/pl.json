@@ -948,6 +948,7 @@
   "presets.ico_sizes": "Rozmiary ikon",
   "presets.group.pdf": "PDF",
   "presets.merge": "Połącz wszystkie pliki w jeden PDF",
+  "presets.source_bookmarks": "Dodaj zakładkę dla każdego pliku źródłowego",
   "presets.page_size": "Rozmiar strony",
   "presets.page_size.FitImage": "Dopasuj do obrazu",
   "presets.page_size.A4": "A4",

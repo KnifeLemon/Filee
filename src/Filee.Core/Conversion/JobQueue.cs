@@ -283,7 +283,7 @@ public sealed partial class JobQueue : IAsyncDisposable
     /// <summary>Converts every file to PDF in the work directory, then merges them into one output.</summary>
     private async Task RunMergedAsync(ConversionJob job, RoutePlanner planner, string workDir)
     {
-        var parts = new string?[job.Files.Count];
+        var parts = new PdfMergeInput?[job.Files.Count];
         await Parallel.ForEachAsync(Enumerable.Range(0, job.Files.Count),
             new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
             async (i, _) =>
@@ -299,14 +299,15 @@ public sealed partial class JobQueue : IAsyncDisposable
                     if (job.Preset.Image.ReworksPixels)
                         FailUnturned(job, file, "pdf → pdf");
                     else
-                        parts[i] = file.SourcePath;
+                        parts[i] = new(file.SourcePath, Path.GetFileName(file.SourcePath));
                     return;
                 }
                 var produced = await RunFileAsync(job, file, i + 1, planner, workDir, finalOutput: false);
-                parts[i] = produced.FirstOrDefault();
+                if (produced.FirstOrDefault() is { } pdfPath)
+                    parts[i] = new(pdfPath, Path.GetFileName(file.SourcePath));
             });
 
-        var inputs = parts.OfType<string>().ToList();
+        var inputs = parts.OfType<PdfMergeInput>().ToList();
         if (inputs.Count == 0 || job.CancellationToken.IsCancellationRequested)
             return;
 
@@ -321,7 +322,7 @@ public sealed partial class JobQueue : IAsyncDisposable
 
         try
         {
-            await _pdfMerger!.MergeAsync(inputs, output, job.CancellationToken);
+            await _pdfMerger!.MergeAsync(inputs, output, job.Preset.Pdf.SourceBookmarks, job.CancellationToken);
             // Once for the merged PDF, so its pages are numbered through. PDFsharp wrote it, so it is no PDF/A yet.
             await FinishPdfsAsync(job.Preset, [output], job.CancellationToken);
             await ArchivePdfsAsync(job.Preset, [output], first, workDir, changed: true, job.CancellationToken);

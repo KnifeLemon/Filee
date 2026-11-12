@@ -933,6 +933,7 @@
   "presets.ico_sizes": "ขนาดไอคอน",
   "presets.group.pdf": "PDF",
   "presets.merge": "รวมทุกไฟล์เป็น PDF เดียว",
+  "presets.source_bookmarks": "เพิ่มบุ๊กมาร์กสำหรับไฟล์ต้นฉบับแต่ละไฟล์",
   "presets.page_size": "ขนาดหน้ากระดาษ",
   "presets.page_size.FitImage": "พอดีกับรูปภาพ",
   "presets.page_size.A4": "A4",

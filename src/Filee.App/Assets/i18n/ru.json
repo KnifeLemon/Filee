@@ -948,6 +948,7 @@
   "presets.ico_sizes": "Размеры значка",
   "presets.group.pdf": "PDF",
   "presets.merge": "Объединить все файлы в один PDF",
+  "presets.source_bookmarks": "Добавлять закладку для каждого исходного файла",
   "presets.page_size": "Размер страницы",
   "presets.page_size.FitImage": "По размеру картинки",
   "presets.page_size.A4": "A4",

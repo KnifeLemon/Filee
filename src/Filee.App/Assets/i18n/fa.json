@@ -932,6 +932,7 @@
   "presets.ico_sizes": "اندازه‌های آیکون",
   "presets.group.pdf": "PDF",
   "presets.merge": "ادغام همه فایل‌ها در یک PDF",
+  "presets.source_bookmarks": "افزودن نشانک برای هر فایل اصلی",
   "presets.page_size": "اندازه صفحه",
   "presets.page_size.FitImage": "هم‌اندازه تصویر",
   "presets.page_size.A4": "A4",

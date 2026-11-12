@@ -933,6 +933,7 @@
   "presets.ico_sizes": "アイコンサイズ",
   "presets.group.pdf": "PDF",
   "presets.merge": "すべてのファイルを1つのPDFに結合",
+  "presets.source_bookmarks": "元ファイルごとにしおりを追加",
   "presets.page_size": "用紙サイズ",
   "presets.page_size.FitImage": "画像に合わせる",
   "presets.page_size.A4": "A4",

@@ -948,6 +948,7 @@
   "presets.ico_sizes": "아이콘 크기",
   "presets.group.pdf": "PDF",
   "presets.merge": "모든 파일을 하나의 PDF로 합치기",
+  "presets.source_bookmarks": "원본 파일마다 책갈피 추가",
   "presets.page_size": "페이지 크기",
   "presets.page_size.FitImage": "이미지에 맞춤",
   "presets.page_size.A4": "A4",

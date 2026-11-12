@@ -948,6 +948,7 @@
   "presets.ico_sizes": "图标尺寸",
   "presets.group.pdf": "PDF",
   "presets.merge": "将所有文件合并为一个 PDF",
+  "presets.source_bookmarks": "为每个原始文件添加书签",
   "presets.page_size": "页面大小",
   "presets.page_size.FitImage": "适应图片",
   "presets.page_size.A4": "A4",

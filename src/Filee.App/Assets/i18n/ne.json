@@ -933,6 +933,7 @@
   "presets.ico_sizes": "आइकन आकारहरू (px)",
   "presets.group.pdf": "PDF",
   "presets.merge": "सबै फाइलहरू एउटै PDF मा मर्ज गर्नुहोस्",
+  "presets.source_bookmarks": "प्रत्येक मूल फाइलका लागि एउटा बुकमार्क थप्नुहोस्",
   "presets.page_size": "पृष्ठ आकार",
   "presets.page_size.FitImage": "छवि अनुसार मिलाउनुहोस्",
   "presets.page_size.A4": "A4",

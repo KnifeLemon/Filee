@@ -85,8 +85,8 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
             }
             else
             {
-                await _pdfMerger!.MergeAsync(rendered.Select(item => item.PdfPath).ToArray(), temporaryOutputs[0],
-                    cancellationToken);
+                await _pdfMerger!.MergeAsync(rendered.Select(item => new PdfMergeInput(item.PdfPath, Path.GetFileName(item.PdfPath))).ToArray(),
+                    temporaryOutputs[0], sourceBookmarks: false, cancellationToken);
             }
             // Without Overwrite, a file that appeared there since the names were chosen is never replaced.
             for (var index = 0; index < targets.Count; index++)

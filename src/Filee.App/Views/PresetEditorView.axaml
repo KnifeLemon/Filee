@@ -530,6 +530,9 @@
       <StackPanel Spacing="10">
         <TextBlock Classes="h2" Text="{DynamicResource presets.group.pdf}" />
         <CheckBox Content="{DynamicResource presets.merge}" IsChecked="{Binding Merge}" IsVisible="{Binding ShowPdfBuild}" />
+        <CheckBox x:Name="SourceBookmarks" IsChecked="{Binding SourceBookmarks}" IsVisible="{Binding ShowSourceBookmarks}">
+          <TextBlock Text="{DynamicResource presets.source_bookmarks}" TextWrapping="Wrap" />
+        </CheckBox>
         <!-- PDF → PDF: one PDF, one file per page, or several pages per file (#1259) -->
         <StackPanel x:Name="PageOutputPanel" Spacing="8" IsVisible="{Binding ShowPdfSplit}">
           <StackPanel>

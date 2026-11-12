@@ -100,6 +100,35 @@ public class OcrRouteTests
     }
 
     [Fact]
+    public async Task Source_bookmarks_keep_original_names_after_ocr()
+    {
+        using var dir = new TempDir();
+        var pdf = dir.File("scan.pdf");
+        var image = dir.File("photo.jpg");
+        var tesseract = new FakeRecorder("tesseract", OcrEdges);
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([tesseract]), merger);
+        var job = new ConversionJob([pdf, image], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { Ocr = true, MergeIntoSingle = true, SourceBookmarks = true },
+            Output = { FileNamePattern = "{name}_merged" }
+        }, "Test");
+
+        await queue.RunAsync(job);
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal([("jpg", "pdf", false), ("pdf", "pdf", false)], tesseract.Steps.OrderBy(step => step.From));
+        Assert.True(merger.SourceBookmarks);
+        Assert.Equal(["scan.pdf", "photo.jpg"], merger.MergeInputs.Select(input => input.SourceName));
+        Assert.Equal(["scan.pdf", "photo.pdf"], merger.MergeInputs.Select(input => Path.GetFileName(input.PdfPath)));
+        Assert.NotEqual(pdf, merger.MergeInputs[0].PdfPath);
+        Assert.NotEqual(image, merger.MergeInputs[1].PdfPath);
+        Assert.All(merger.MergeInputs, input =>
+            Assert.StartsWith(JobQueue.DefaultWorkRoot + Path.DirectorySeparatorChar, input.PdfPath));
+    }
+
+    [Fact]
     public void A_version_39_library_gets_searchable_pdf_after_compress_pdf()
     {
         var presets = BuiltInData.CreatePresets();

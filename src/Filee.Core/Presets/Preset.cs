@@ -1231,6 +1231,9 @@ public sealed class PdfOptions
     /// <summary>Combine all dropped files into one PDF instead of one PDF per file.</summary>
     public bool MergeIntoSingle { get; set; }
 
+    /// <summary>Add a bookmark for each original source file when merging several files into one PDF.</summary>
+    public bool SourceBookmarks { get; set; }
+
     public PdfPageSize PageSize { get; set; } = PdfPageSize.FitImage;
 
     /// <summary>Page margin in millimetres (ignored for <see cref="PdfPageSize.FitImage"/>).</summary>
