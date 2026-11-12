@@ -1109,6 +1109,10 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 81)
             changed |= LearnExtensions(profiles, out _, ["xm", "it", "s3m"]);
+        // v82: Adobe extension packages (.zxp, #1382) learn the archives donut; custom claims stay put. (Schema 82 may be
+        //      renumbered if another change takes it first.)
+        if (from < 82)
+            changed |= LearnExtensions(profiles, out _, ["zxp"]);
         return changed;
     }
 
