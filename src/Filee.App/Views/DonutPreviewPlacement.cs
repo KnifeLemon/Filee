@@ -47,8 +47,8 @@ internal sealed record PreviewPlace(PixelPoint Point, PreviewAnchor Anchor, Pixe
     };
 
     /// <summary>
-    /// Whether a donut <paramref name="side"/> pixels across, at <paramref name="place"/>, still fits: all of it on one
-    /// of <paramref name="screens"/> and, unless it was put over it, clear of <paramref name="window"/>.
+    /// Whether a donut <paramref name="side"/> pixels across, at this place, still fits: all of it on one of
+    /// <paramref name="screens"/> and, unless it was put over it, clear of <paramref name="window"/>.
     /// </summary>
     public bool Fits(int side, PixelRect window, IEnumerable<PreviewScreen> screens) =>
         BoxFor(side) is var box && screens.Any(s => s.Area.Contains(box)) && (Over || !box.Intersects(window));

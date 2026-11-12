@@ -1,5 +1,5 @@
-// The output format under the slices' names: switched off under Donut toolbar → Appearance, the names stand alone in
-// their slices, a group drops "Group of N" and keeps its chevron, and both page previews and the donut when it opens
+// The output format under the slices' names: switched off under Donut toolbar → Edit Donut Size, the names stand alone
+// in their slices, a group drops "Group of N" and keeps its chevron, and both page previews and the donut when it opens
 // follow it.
 
 using Avalonia;

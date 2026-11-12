@@ -275,9 +275,7 @@ public partial class ToolbarPage : UserControl
     }
 
     /// <summary>
-    /// The donut was dragged: it opens there, against this window, from now on (written once it rests). Dropped onto
-    /// this window, where a click would bury it, it goes back beside it once the drag is over: when the system's move
-    /// loop returns (Windows), else once the donut rests.
+    /// The donut was dragged: it opens there, against this window, from now on (written once it rests).
     /// </summary>
     private void OnPreviewMoved(PixelPoint center)
     {
@@ -286,22 +284,14 @@ public partial class ToolbarPage : UserControl
         var store = AppHost.Get<UserDataStore>();
         store.Settings.DonutPreviewPlace = new WindowBounds { X = center.X - main.Position.X, Y = center.Y - main.Position.Y };
         DonutLookSave.Schedule(store);
-        if (DonutPreviewWindow.MoveLoopReturnsAtEnd)
-            return; // not while the loop still moves it: DragFinished
-        _dropCheck ??= new Avalonia.Threading.DispatcherTimer(DropDelay, Avalonia.Threading.DispatcherPriority.Background, (_, _) => CheckDrop());
-        _dropCheck.Stop();
-        _dropCheck.Start();
     }
 
-    /// <summary>How long a dragged donut rests before it is checked for having landed on this window.</summary>
-    internal static readonly TimeSpan DropDelay = TimeSpan.FromMilliseconds(400);
-
-    private Avalonia.Threading.DispatcherTimer? _dropCheck;
-
+    /// <summary>
+    /// The drag is over: dropped onto this window, where a click would bury it, the donut goes back beside it, and the
+    /// place isn't kept.
+    /// </summary>
     private void CheckDrop()
     {
-        _dropCheck?.Stop();
-        _preview?.DragEnded(); // over: a move from now on is the window manager's, until its middle is pressed again
         if (_preview is not { IsVisible: true } preview || _topLevel is not Window main || !preview.Box.Intersects(FrameOf(main)))
             return;
         var store = AppHost.Get<UserDataStore>();
@@ -532,7 +522,6 @@ public partial class ToolbarPage : UserControl
             }
         }
         // Another page: the editor's modes end with the page, the donut on screen goes, and this window goes back.
-        _dropCheck?.Stop();
         SlideBack(animate: false);
         if (_topLevel is MainWindow { RestPlace: not null } away)
         {

@@ -1385,7 +1385,7 @@ public class DonutEditorTests
         var store = AppHost.Get<UserDataStore>();
         var motion = Motion.Enabled;
         Motion.Set(false);
-        // As on macOS and Linux: the system's move returns at once, and the drag is over once the donut rests.
+        // As on macOS and Linux: the system's move returns at once, and the drag is over once the button is seen up.
         var loop = DonutPreviewWindow.MoveLoopReturnsAtEnd;
         DonutPreviewWindow.MoveLoopReturnsAtEnd = false;
         try
@@ -1401,42 +1401,43 @@ public class DonutEditorTests
             Assert.Null(store.Settings.DonutPreviewPlace);
             Assert.Same(placed, preview.Place);
 
-            // Pressed by its middle and dropped onto the window: once it rests there, it moves off it, and the place
-            // isn't kept.
+            // Pressed by its middle and held over the window, however long: still the user's drag, left where it is.
             var middle = new Point(preview.Bounds.Width / 2, preview.Bounds.Height / 2);
             preview.MouseDown(middle, MouseButton.Left);
             var frame = FrameOf(window);
             preview.Position = new PixelPoint(frame.X + 100, frame.Y + 100);
-            preview.MouseUp(middle, MouseButton.Left);
+            preview.MouseMove(middle, Avalonia.Input.RawInputModifiers.LeftMouseButton); // the button still down
+            RunUntil(() => false, TimeSpan.FromSeconds(1));
+            Assert.True(IsDragging(preview));
+            Assert.True(preview.Box.Intersects(FrameOf(window)));
+            preview.Position = new PixelPoint(frame.X + 140, frame.Y + 120);
             Assert.NotNull(store.Settings.DonutPreviewPlace);
-            RunUntil(() => store.Settings.DonutPreviewPlace is null, ToolbarPage.DropDelay * 5);
+            // Let go there: off it at once, and the place isn't kept.
+            preview.MouseUp(middle, MouseButton.Left);
+            Assert.False(IsDragging(preview));
             Assert.Null(store.Settings.DonutPreviewPlace);
             AssertNotUnder(preview, window);
 
-            // Dragged clear of it: kept there. Once it rests, a move it didn't make (the release lost in the system's
-            // move loop) isn't kept.
-            preview.MouseDown(middle, MouseButton.Left);
-            // Where it was put back, a little lower or higher: still beside the window.
+            // Dragged clear of it, pausing on the way: kept where it was let go.
             var back = preview.Box;
             var clear = window.Screens.All.Any(s => s.WorkingArea.Contains(back.Translate(new PixelVector(0, 30))))
                 ? back.Position + new PixelVector(0, 30) : back.Position - new PixelVector(0, 30);
             Assert.False(new PixelRect(clear, back.Size).Intersects(FrameOf(window)));
-            preview.Position = clear;
-            Assert.NotNull(store.Settings.DonutPreviewPlace);
-            var kept = store.Settings.DonutPreviewPlace!;
-            RunUntil(() => !IsDragging(preview), ToolbarPage.DropDelay * 10);
-            Assert.False(IsDragging(preview));
-            preview.Position = new PixelPoint(clear.X, clear.Y + 50);
-            RenderTests.Pump();
-            Assert.Same(kept, store.Settings.DonutPreviewPlace);
-            // And once the button is up, at once.
             preview.MouseDown(middle, MouseButton.Left);
+            preview.Position = clear - new PixelVector(0, 10);
+            RunUntil(() => false, TimeSpan.FromSeconds(1));
             preview.Position = clear;
-            kept = store.Settings.DonutPreviewPlace!;
-            preview.MouseUp(middle, MouseButton.Left);
-            preview.Position = new PixelPoint(clear.X, clear.Y + 50);
+            var kept = store.Settings.DonutPreviewPlace!;
+            Assert.Equal(new PixelPoint(preview.Box.Center.X - window.Position.X, preview.Box.Center.Y - window.Position.Y),
+                new PixelPoint(kept.X!.Value, kept.Y!.Value));
+            // The release lost in a window manager's move: the pointer seen with the button up ends the drag all the
+            // same, and a move after that isn't kept.
+            preview.MouseMove(middle, Avalonia.Input.RawInputModifiers.None);
+            Assert.False(IsDragging(preview));
+            preview.Position = clear + new PixelVector(0, 20);
             RenderTests.Pump();
             Assert.Same(kept, store.Settings.DonutPreviewPlace);
+            Assert.Equal(clear, preview.Position - new PixelVector(0, 20));
         }
         finally
         {
@@ -1465,10 +1466,12 @@ public class DonutEditorTests
             var frame = FrameOf(window);
             var middle = new Point(preview.Bounds.Width / 2, preview.Bounds.Height / 2);
             // The loop moves it over the window, pauses there longer than the donut takes to rest, and lets go there.
-            DonutPreviewWindow.MoveDrag = (moved, _) =>
+            // Avalonia gives the pointer's capture up first, as on Windows.
+            DonutPreviewWindow.MoveDrag = (moved, e) =>
             {
+                e.Pointer.Capture(null);
                 moved.Position = new PixelPoint(frame.X + 100, frame.Y + 100);
-                RunUntil(() => false, ToolbarPage.DropDelay * 2);
+                RunUntil(() => false, TimeSpan.FromSeconds(1));
                 Assert.True(((DonutPreviewWindow)moved).Box.Intersects(FrameOf(window)), "moved off the window while still dragged");
                 Assert.True(IsDragging((DonutPreviewWindow)moved));
                 moved.Position = new PixelPoint(frame.X + 150, frame.Y + 120);
@@ -1483,10 +1486,11 @@ public class DonutEditorTests
             var back = preview.Box;
             var clear = window.Screens.All.Any(s => s.WorkingArea.Contains(back.Translate(new PixelVector(0, 30))))
                 ? back.Position + new PixelVector(0, 30) : back.Position - new PixelVector(0, 30);
-            DonutPreviewWindow.MoveDrag = (moved, _) =>
+            DonutPreviewWindow.MoveDrag = (moved, e) =>
             {
+                e.Pointer.Capture(null);
                 moved.Position = clear - new PixelVector(0, 10);
-                RunUntil(() => false, ToolbarPage.DropDelay * 2);
+                RunUntil(() => false, TimeSpan.FromSeconds(1));
                 moved.Position = clear;
             };
             preview.MouseDown(middle, MouseButton.Left);

@@ -33,10 +33,15 @@ public partial class DonutPreviewWindow : Window
         // The middle is the handle: pressed there, the window moves with the pointer (before the donut takes the
         // press).
         AddHandler(PointerPressedEvent, OnPressed, RoutingStrategies.Tunnel);
-        // The drag is over once the button is up (where the system's move loop lets that through; else the page ends it
-        // once the donut rests, DragEnded).
-        AddHandler(PointerReleasedEvent, (_, _) => DragEnded(), RoutingStrategies.Tunnel, handledEventsToo: true);
-        AddHandler(PointerCaptureLostEvent, (_, _) => DragEnded(), RoutingStrategies.Tunnel, handledEventsToo: true);
+        // The drag is over once the button is up: its release, or the pointer seen on the donut with the button up (a
+        // window manager's move keeps the release; macOS and X11 move the window on their own).
+        AddHandler(PointerReleasedEvent, (_, _) => EndDrag(), RoutingStrategies.Tunnel, handledEventsToo: true);
+        foreach (var routed in new RoutedEvent<PointerEventArgs>[] { PointerMovedEvent, PointerEnteredEvent, PointerExitedEvent })
+            AddHandler(routed, (_, e) =>
+            {
+                if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+                    EndDrag();
+            }, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerMovedEvent, (_, e) => Cursor = OnHandle(e) ? MoveCursor : null, RoutingStrategies.Tunnel, handledEventsToo: true);
         PositionChanged += (_, _) => OnMoved();
     }
@@ -68,16 +73,12 @@ public partial class DonutPreviewWindow : Window
         _dragging = true;
         MoveDrag(this, e);
         if (MoveLoopReturnsAtEnd)
-        {
-            // Back from the system's move loop: the drag is over, wherever the button went up.
-            DragEnded();
-            DragFinished?.Invoke();
-        }
+            EndDrag(); // back from the system's move loop: the drag is over, wherever the button went up
     }
 
     /// <summary>
     /// Whether the system's move loop runs inside <see cref="Window.BeginMoveDrag"/>, so that it returns once the drag
-    /// is over (Windows). Elsewhere it returns at once, and the page takes the drag as over once the donut rests.
+    /// is over (Windows). Elsewhere it returns at once, and the drag is over once the button is seen up.
     /// </summary>
     internal static bool MoveLoopReturnsAtEnd { get; set; } = OperatingSystem.IsWindows();
 
@@ -107,7 +108,9 @@ public partial class DonutPreviewWindow : Window
     internal void ShowAt(PreviewPlace place, int side, Window? owner)
     {
         _place = place;
-        var wantOwner = place.Over ? owner : null;
+        // Not on native Wayland, where hiding a window to give it an owner destroys it (see RadialController), and the
+        // compositor places it anyway.
+        var wantOwner = place.Over && !Filee.Platform.Linux.WaylandSupport.NativeWaylandRequested ? owner : null;
         if (IsVisible && !ReferenceEquals(Owner, wantOwner))
             Hide(); // the owner is set by Show only
         Move(place.TopLeftFor(IsVisible ? Side : side));
@@ -122,7 +125,13 @@ public partial class DonutPreviewWindow : Window
     }
 
     /// <summary>A drag of its middle is over: a move from now on is not the user's.</summary>
-    internal void DragEnded() => _dragging = false;
+    private void EndDrag()
+    {
+        if (!_dragging)
+            return;
+        _dragging = false;
+        DragFinished?.Invoke();
+    }
 
     private void KeepPlace()
     {
