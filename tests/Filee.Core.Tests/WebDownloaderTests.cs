@@ -537,9 +537,10 @@ public sealed class WebDownloaderTests : IDisposable
             {
                 await Request;
             }
-            catch (Exception ex) when (ex is OperationCanceledException or SocketException or IOException or ObjectDisposedException)
+            catch (Exception ex) when (ex is OperationCanceledException or SocketException or IOException or ObjectDisposedException
+                                           or InvalidOperationException)
             {
-                // Never connected to, or the client hung up.
+                // Never connected to, or the client hung up; or stopped before the accept even began.
             }
             _stop.Dispose();
         }
