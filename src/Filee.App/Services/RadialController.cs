@@ -639,12 +639,23 @@ public sealed class RadialController(
             }
             if (answer.Remember)
                 RememberCompression(preset, answer.Choice, files);
-            log.LogInformation("Converting {Count} file(s) with preset {Preset} at the compression chosen", files.Count, preset.Id);
-            foreach (var (runFiles, runPreset) in AskedCompression.Runs(preset, answer.Choice, files))
+            var runs = AskedCompression.Runs(preset, answer.Choice, files);
+            if (preset.Output.AskEveryTime)
             {
-                if (runPreset.Output.AskEveryTime)
-                    await AskThenConvertAsync(runFiles, runPreset, toClipboard, null, onJob);
-                else if (conversions.Start(runFiles, runPreset, toClipboard: toClipboard) is { } job)
+                // "Ask every time" (#521): one save dialog for the whole drop, its place for every run, so a JPG and a
+                // PNG dropped together aren't asked about twice nor saved apart.
+                var running = store.Settings.WithDefaultOutput(preset);
+                if (await windows.AskSaveLocationAsync(files, running, AskedLocation.MakesOneResult(running, files.Count)) is not { } located)
+                {
+                    log.LogInformation("Choosing where to save for {Preset} was cancelled; nothing converts", preset.Id);
+                    return;
+                }
+                runs = AskedCompression.Runs(preset, answer.Choice, files, located.Output);
+            }
+            log.LogInformation("Converting {Count} file(s) with preset {Preset} at the compression chosen", files.Count, preset.Id);
+            foreach (var (runFiles, runPreset) in runs)
+            {
+                if (conversions.Start(runFiles, runPreset, toClipboard: toClipboard) is { } job)
                     onJob?.Invoke(job.Job);
             }
         }

@@ -371,6 +371,27 @@ public class AskCompressionTests
         Assert.True(preset.AskCompression);
     }
 
+    /// <summary>
+    /// A HEIC target keeps its quality slider but has no "Ask every time": the window can't estimate HEIC and would
+    /// never open (AskedCompression.LossyImageTargets). JPG and "same as source" have it.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_heic_target_has_the_quality_but_no_asking()
+    {
+        TestServices.EnsureInitialized();
+        var loc = AppHost.Get<ILocalizer>();
+        var heic = new Preset { Id = "test-heic", Name = "HEIC", TargetFormat = "heic", AskCompression = true };
+        var vm = new PresetEditorViewModel(heic, loc);
+
+        Assert.True(vm.ShowQuality);
+        Assert.False(vm.ShowAskCompressionImage);
+        Assert.True(vm.Apply());
+        Assert.False(heic.AskCompression);
+
+        Assert.True(new PresetEditorViewModel(new Preset { TargetFormat = "jpg" }, loc).ShowAskCompressionImage);
+        Assert.True(new PresetEditorViewModel(BuiltInData.CreatePresets().Single(p => p.Id == "compress-image"), loc).ShowAskCompressionImage);
+    }
+
     [AvaloniaFact]
     public void A_merge_has_no_asking_in_the_editor()
     {

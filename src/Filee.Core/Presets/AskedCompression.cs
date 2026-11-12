@@ -91,8 +91,12 @@ public static class AskedCompression
     /// <paramref name="choice"/>, the others (a PNG or a HEIC on "Compress image") with the preset as it is, so a level
     /// chosen for the JPGs never reaches them. One run when every file is of one sort.
     /// </summary>
+    /// <param name="output">
+    /// Where every run saves, when the save dialog was asked once for the whole drop ("Ask every time", #521): the
+    /// runs then go to the same place and none asks again. Null keeps the preset's own output.
+    /// </param>
     public static IReadOnlyList<(IReadOnlyList<string> Files, Preset Preset)> Runs(Preset preset, CompressionChoice choice,
-        IReadOnlyList<string> files)
+        IReadOnlyList<string> files, OutputRule? output = null)
     {
         var asked = files.Where(f => KindOf(preset, f) is not null).ToList();
         var others = files.Where(f => KindOf(preset, f) is null).ToList();
@@ -100,7 +104,12 @@ public static class AskedCompression
         if (asked.Count > 0)
             runs.Add((asked, Apply(preset, choice)));
         if (others.Count > 0)
-            runs.Add((others, preset));
+            runs.Add((others, output is null ? preset : preset.Clone()));
+        if (output is not null)
+        {
+            foreach (var (_, run) in runs)
+                run.Output = output.Clone();
+        }
         return runs;
     }
 

@@ -79,6 +79,33 @@ public class AskedCompressionTests
         Assert.Single(AskedCompression.Runs(preset, choice, ["a.jpg"]));
     }
 
+    /// <summary>
+    /// "Ask every time" for the place (#521): asked once for the whole drop, that place goes to every run, so a JPG and a
+    /// PNG dropped together are saved side by side and neither run asks again.
+    /// </summary>
+    [Fact]
+    public void One_save_location_goes_to_every_run()
+    {
+        var preset = BuiltIn("compress-image");
+        preset.Output.AskEveryTime = true;
+        var located = AskedLocation.ForFolder(preset, Path.Combine(Path.GetTempPath(), "picked"));
+
+        var runs = AskedCompression.Runs(preset, CompressionChoice.Of(preset) with { ImageQuality = 40 }, ["a.jpg", "screen.png"], located.Output);
+
+        Assert.Equal(2, runs.Count);
+        Assert.All(runs, run =>
+        {
+            Assert.Equal((OutputLocation.CustomFolder, located.Output.CustomFolder, false),
+                (run.Preset.Output.Location, run.Preset.Output.CustomFolder, run.Preset.Output.AskEveryTime));
+            Assert.NotSame(located.Output, run.Preset.Output);
+        });
+        Assert.Equal((40, 75), (runs[0].Preset.Image.Quality, runs[1].Preset.Image.Quality));
+        // The preset itself still asks, and its own place is untouched.
+        Assert.NotSame(preset, runs[1].Preset);
+        Assert.True(preset.Output.AskEveryTime);
+        Assert.NotEqual(OutputLocation.CustomFolder, preset.Output.Location);
+    }
+
     [Fact]
     public void The_choice_is_applied_to_a_copy_that_asks_no_more()
     {

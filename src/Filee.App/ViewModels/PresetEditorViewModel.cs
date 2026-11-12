@@ -1103,7 +1103,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty]
     private bool _askCompression;
 
-    public bool ShowAskCompressionImage => ShowImage && ShowQuality && !_original.JoinsImages;
+    /// <summary>
+    /// Only for the targets the window can estimate (AskedCompression.LossyImageTargets) or the source's own format:
+    /// a HEIC target keeps its quality slider, but would never open the window.
+    /// </summary>
+    public bool ShowAskCompressionImage => ShowImage && ShowQuality && !_original.JoinsImages
+        && (TargetId == BuiltInData.SameAsSource || AskedCompression.LossyImageTargets.Contains(TargetId));
     public bool ShowAskCompressionMedia => !IsTool && ShowMediaQuality && !_original.JoinsIntoOneMedia;
     public bool ShowAskCompressionPdf => ShowPdfCompression && !Merge;
 
