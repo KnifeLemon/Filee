@@ -28,6 +28,9 @@ internal sealed class PalmDatabase
 
     public int Count => _offsets.Length;
 
+    /// <summary>Size of the whole file in bytes.</summary>
+    public int Length => _data.Length;
+
     public static PalmDatabase Open(byte[] data)
     {
         if (data.Length < 78)
