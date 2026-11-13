@@ -3,13 +3,16 @@
 
 namespace Filee.Engines.Media;
 
-/// <summary>A video as the clip window shows it.</summary>
+/// <summary>A video, or a sound (no picture: <see cref="HasPicture"/> is false), as the clip window shows it.</summary>
 /// <param name="Duration">Playing time in seconds, 0 when the file doesn't say.</param>
-/// <param name="Width">Width of the picture as shown (pixel aspect and rotation applied).</param>
-/// <param name="Height">Height of the picture as shown.</param>
+/// <param name="Width">Width of the picture as shown (pixel aspect and rotation applied); 0 for a sound.</param>
+/// <param name="Height">Height of the picture as shown; 0 for a sound.</param>
 /// <param name="FrameRate">Frames per second, 0 when unknown.</param>
 public sealed record VideoSummary(double Duration, int Width, int Height, double FrameRate)
 {
+    /// <summary>The file has pictures to show; a sound (an MP3, a recording) has none, only its waveform.</summary>
+    public bool HasPicture => Width > 0 && Height > 0;
+
     /// <summary>One frame's length in seconds (a 30 fps one when the rate is unknown).</summary>
     public double FrameLength => FrameRate is > 1 and < 1000 ? 1 / FrameRate : 1 / 30.0;
 
@@ -29,13 +32,20 @@ public static class VideoFrames
     /// <summary>True when FFmpeg is installed (Settings › Engines).</summary>
     public static bool IsAvailable => FfmpegConverter.Locate() is { } tools && File.Exists(tools.Ffmpeg) && File.Exists(tools.Ffprobe);
 
-    /// <summary>The length and size of the video at <paramref name="path"/>.</summary>
-    /// <exception cref="InvalidOperationException">FFmpeg is missing, the file can't be read or has no video.</exception>
+    /// <summary>
+    /// The length and size of the video at <paramref name="path"/>; a file with sound and no picture gives its length and
+    /// no size (<see cref="VideoSummary.HasPicture"/> false).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">FFmpeg is missing, the file can't be read or has no video or sound.</exception>
     public static async Task<VideoSummary> ProbeAsync(string path, CancellationToken cancellationToken)
     {
         var (_, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
         var info = await MediaInfo.ProbeAsync(ffprobe, Path.GetFullPath(path), cancellationToken);
-        var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
+        if (info.Video is null)
+            return info.Audio is not null
+                ? new VideoSummary(info.Duration?.TotalSeconds ?? 0, 0, 0, 0)
+                : throw new InvalidOperationException("The file has no video or sound stream.");
+        var video = info.Video;
         var height = video.IsRotated ? video.Width : video.Height;
         return new VideoSummary(info.Duration?.TotalSeconds ?? 0, (int)Math.Round(height * video.DisplayAspect), height, video.FrameRate);
     }

@@ -436,6 +436,7 @@
             <NumericUpDown Value="{Binding RingtoneLength}" Minimum="1" Maximum="40" Increment="1" FormatString="0.##" AutomationProperties.Name="{DynamicResource presets.ringtone_length}" />
           </StackPanel>
         </UniformGrid>
+        <CheckBox Content="{DynamicResource presets.ask_ringtone}" IsChecked="{Binding AskRingtonePart}" IsVisible="{Binding ShowRingtone}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_hint}" IsVisible="{Binding ShowRingtone}" />
         <!-- #1353: a small window asks for the quality or bitrate of the files dropped on the donut. -->
         <StackPanel Spacing="2" IsVisible="{Binding ShowAskCompressionMedia}">

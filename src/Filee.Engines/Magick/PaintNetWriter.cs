@@ -49,25 +49,8 @@ internal static class PaintNetWriter
     public static IReadOnlyList<string> SaveLayered(Core.Conversion.ConversionStep step, IProgress<double>? progress,
         CancellationToken ct)
     {
-        using var psd = new MagickImageCollection();
-        var settings = new MagickReadSettings { Format = step.From == "psb" ? MagickFormat.Psb : MagickFormat.Psd };
-        psd.Read(step.InputPath, settings);
-        var width = (int)psd[0].Width;
-        var height = (int)psd[0].Height;
-        // The names as written (ImageMagick damages any that is not ASCII), when every record became a layer here.
-        List<PsdLayerRecords.Record>? records;
-        using (var file = File.OpenRead(step.InputPath))
-            records = PsdLayerRecords.Read(file, step.From == "psb");
-        if (records?.Count != psd.Count - 1)
-            records = null;
-        var layers = new List<Layer>();
-        for (var i = 1; i < psd.Count; i++)
-        {
-            ct.ThrowIfCancellationRequested();
-            layers.Add(FromPsdLayer(psd[i], width, height, records?[i - 1].Name));
-        }
-        if (layers.Count == 0)
-            layers.Add(new Layer("Background", ToBgra(psd[0])));
+        var (width, height, psdLayers) = ReadPsdLayers(step, ct);
+        var layers = psdLayers.Select(l => new Layer(l.Name, l.Bgra, l.Visible, l.Opacity, BlendOf(l.Compose))).ToList();
         progress?.Report(0.6);
 
         var path = step.Output.Allocate("pdn");
@@ -79,10 +62,39 @@ internal static class PaintNetWriter
     }
 
     /// <summary>
+    /// The pixel layers of a PSD (or PSB), bottom first, each on a canvas of its own: name (Unicode when the file has it),
+    /// pixels, visibility, opacity and Photoshop blend mode. A PSD without layers gives its picture as one layer.
+    /// </summary>
+    internal static (int Width, int Height, List<PaintNet.PsdLayer> Layers) ReadPsdLayers(Core.Conversion.ConversionStep step,
+        CancellationToken ct)
+    {
+        using var psd = new MagickImageCollection();
+        var settings = new MagickReadSettings { Format = step.From == "psb" ? MagickFormat.Psb : MagickFormat.Psd };
+        psd.Read(step.InputPath, settings);
+        var width = (int)psd[0].Width;
+        var height = (int)psd[0].Height;
+        // The names as written (ImageMagick damages any that is not ASCII), when every record became a layer here.
+        List<PsdLayerRecords.Record>? records;
+        using (var file = File.OpenRead(step.InputPath))
+            records = PsdLayerRecords.Read(file, step.From == "psb");
+        if (records?.Count != psd.Count - 1)
+            records = null;
+        var layers = new List<PaintNet.PsdLayer>();
+        for (var i = 1; i < psd.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            layers.Add(FromPsdLayer(psd[i], width, height, records?[i - 1].Name));
+        }
+        if (layers.Count == 0)
+            layers.Add(new PaintNet.PsdLayer("Background", ToBgra(psd[0]), true, 255, CompositeOperator.Over));
+        return (width, height, layers);
+    }
+
+    /// <summary>
     /// One layer ImageMagick read from a PSD, on a canvas of its own: its alpha back without the layer's opacity (the
     /// reader multiplies it in), the opacity, visibility (hidden layers come back composed as "No") and blend mode.
     /// </summary>
-    private static Layer FromPsdLayer(IMagickImage<byte> image, int width, int height, string? name)
+    private static PaintNet.PsdLayer FromPsdLayer(IMagickImage<byte> image, int width, int height, string? name)
     {
         var opacity = byte.TryParse(image.GetArtifact("psd:layer.opacity"), out var value) ? value : (byte)255;
         var pixels = ToBgra(image);
@@ -104,21 +116,25 @@ internal static class PaintNetWriter
                 Array.Copy(pixels, (y * layerWidth + from) * 4, canvas, ((top + y) * width + left + from) * 4, (to - from) * 4);
         }
 
-        var blend = image.Compose switch
-        {
-            CompositeOperator.Multiply => PaintNet.BlendMode.Multiply,
-            CompositeOperator.LinearDodge => PaintNet.BlendMode.Additive,
-            CompositeOperator.ColorBurn => PaintNet.BlendMode.ColorBurn,
-            CompositeOperator.ColorDodge => PaintNet.BlendMode.ColorDodge,
-            CompositeOperator.Overlay => PaintNet.BlendMode.Overlay,
-            CompositeOperator.Difference => PaintNet.BlendMode.Difference,
-            CompositeOperator.Lighten => PaintNet.BlendMode.Lighten,
-            CompositeOperator.Darken => PaintNet.BlendMode.Darken,
-            CompositeOperator.Screen => PaintNet.BlendMode.Screen,
-            _ => PaintNet.BlendMode.Normal,
-        };
-        return new Layer(name ?? PsdLayerName(image), canvas, image.Compose != CompositeOperator.No, opacity, blend);
+        var visible = image.Compose != CompositeOperator.No;
+        return new PaintNet.PsdLayer(name ?? PsdLayerName(image), canvas, visible, opacity,
+            visible ? image.Compose : CompositeOperator.Over);
     }
+
+    /// <summary>The Paint.NET blend mode of a Photoshop one (as ImageMagick names it); Normal where Paint.NET has none.</summary>
+    private static PaintNet.BlendMode BlendOf(CompositeOperator compose) => compose switch
+    {
+        CompositeOperator.Multiply => PaintNet.BlendMode.Multiply,
+        CompositeOperator.LinearDodge => PaintNet.BlendMode.Additive,
+        CompositeOperator.ColorBurn => PaintNet.BlendMode.ColorBurn,
+        CompositeOperator.ColorDodge => PaintNet.BlendMode.ColorDodge,
+        CompositeOperator.Overlay => PaintNet.BlendMode.Overlay,
+        CompositeOperator.Difference => PaintNet.BlendMode.Difference,
+        CompositeOperator.Lighten => PaintNet.BlendMode.Lighten,
+        CompositeOperator.Darken => PaintNet.BlendMode.Darken,
+        CompositeOperator.Screen => PaintNet.BlendMode.Screen,
+        _ => PaintNet.BlendMode.Normal,
+    };
 
     /// <summary>
     /// The layer's name when the file's own records could not be matched to the layers: its Unicode name ("luni" in the

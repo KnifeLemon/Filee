@@ -380,10 +380,11 @@ public sealed class Preset
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
-    /// set by the clip window on the conversion it starts): the file is a video. Other files convert as usual.
+    /// set by the clip window on the conversion it starts): the file is a video or a sound. Other files convert as usual.
     /// </summary>
     public bool CutsClipOf(string sourceFormat) =>
-        Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+        Media.Clip is { Parts.Count: > 0 }
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file splits it into parts by stream copy
@@ -1565,6 +1566,12 @@ public sealed class MediaOptions
     /// <see cref="MaxRingtoneLength"/>), shorter when the sound ends sooner.
     /// </summary>
     public double RingtoneLength { get; set; } = DefaultRingtoneLength;
+
+    /// <summary>
+    /// M4R (iPhone ringtone): ask for the part of each sound every time, in the "Cut a clip" window (#1291), instead
+    /// of using <see cref="RingtoneStart"/> and <see cref="RingtoneLength"/>.
+    /// </summary>
+    public bool AskRingtonePart { get; set; }
 
     /// <summary>
     /// The part of a sound of <paramref name="sourceSeconds"/> (null when unknown) that becomes the ringtone: where it
