@@ -373,6 +373,10 @@ public static class FormatRegistry
         // also use .gbr; the reader tells them apart and says so.
         new("gerber", "Gerber", FormatCategory.Cad,
             ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"], Writable: false),
+        // Toolpaths of 3D printers (slicers) and CNC machines, read only and drawn as a picture. ".nc" stays out (also
+        // NetCDF, #562, #244), and so do ".tap" (also cassette images) and ".g" (also ANTLR and GAP; RepRapFirmware's
+        // macros seldom have a toolpath).
+        new("gcode", "G-code", FormatCategory.Cad, ["gcode", "gco", "ngc"], Writable: false),
 
         // Fonts
         new("ttf", "TTF", FormatCategory.Font, ["ttf"]),

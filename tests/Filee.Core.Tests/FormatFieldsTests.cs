@@ -28,7 +28,7 @@ public class FormatFieldsTests
         "3g2", "3gp", "3mf", "602", "aab", "ac3", "adoc", "ai", "amr", "ani", "ape", "apks", "arj", "ass", "au", "azw",
         "azw4", "bik", "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
         "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
-        "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "geojson", "gerber", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
+        "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "gcode", "geojson", "gerber", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
         "hdr", "htmlz", "icns", "ipynb", "it", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
         "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mediawiki", "miff", "mng", "mobi",
         "mod", "mp2", "mpc", "mrpack", "mxf", "nov", "nupkg", "obj", "oeb",
@@ -68,8 +68,8 @@ public class FormatFieldsTests
 
     public static TheoryData<string, string[]> FieldMembers => new()
     {
-        { "cad", ["3mf", "dwg", "dxf", "gerber", "obj", "stl"] },
-        { "model3d", ["3mf", "fbx", "glb", "gltf", "obj", "ply", "stl"] },
+        { "cad", ["3mf", "dwg", "dxf", "gcode", "gerber", "obj", "stl"] },
+        { "model3d", ["3mf", "fbx", "gcode", "glb", "gltf", "obj", "ply", "stl"] },
         { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
         { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
         { "game", ["bik", "dds", "flc", "it", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm", "xm"] },
@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 99,
-                [FormatGrade.Specialist] = 125,
+                [FormatGrade.Specialist] = 126,
                 [FormatGrade.Legacy] = 52,
             },
             counts);

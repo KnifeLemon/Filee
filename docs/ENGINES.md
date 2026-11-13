@@ -27,6 +27,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
+| G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
@@ -1344,6 +1345,41 @@ CAD donut (PDF, PNG, SVG, DXF, DWG) and in the CAD field.
   and gerbv's example boards (Eagle, OrCAD, Mentor, Protel, KiCad) render like gerbv's, apart from anti-aliasing
   along thin lines; where the shapes differ, the specification and tracespace agree with Filee (single-quadrant arcs, rotated macro circles, `x` in macro expressions,
   LS on draws, polarity inside step and repeat).
+
+## G-code (3D printers, CNC)
+
+`Filee.Engines/Gcode` reads the G-code a slicer (PrusaSlicer, Cura, OrcaSlicer, Bambu Studio, SuperSlicer …) writes for
+a 3D printer, or a CAM program for a CNC machine, and draws its toolpath. Extensions: `.gcode`, `.gco` and `.ngc`
+(LinuxCNC). Left out: `.nc`, also NetCDF ([#562](https://github.com/KnifeLemon/Filee/issues/562)); `.tap`, also a
+cassette image of old home computers; `.g`, also ANTLR grammars and GAP (RepRapFirmware's macros seldom have a toolpath
+to draw). G-code is a read-only CAD format (fields: 3D models and CAD).
+
+- **Read**: G0 / G1, G2 / G3 arcs (I J K or R, in the G17 / G18 / G19 plane; helical when the third axis moves), G20 /
+  G21, G90 / G91, M82 / M83 (after either, G90 / G91 no longer change the extruder's mode: Klipper's don't, Marlin's do,
+  and a slicer that writes M83 never relies on G90 to undo it), G92, G28, modal moves (a line of coordinates goes on with the last move, as CAM programs
+  write it), N line numbers, `*` checksums, `;` and `( )` comments. Klipper and RepRapFirmware commands (`SET_…`,
+  `EXCLUDE_OBJECT_…`, `if`, expressions in braces) are skipped. Cutter compensation (G41 / G42), tool length (G43)
+  and work offsets (G54 …) aren't applied: the programmed path is drawn. A line with any other G code (dwell, G10,
+  bed levelling G29, probing G30 / G38.x, G53, canned cycles G81 …) is not a move, whatever coordinates it carries.
+- **Printer or CNC**: a file that extrudes (E grows on a move) is a printer's: its extruding moves are drawn wide, every
+  other move as thin blue travel. A file that never extrudes is a CNC machine's: G1 / G2 / G3 are cuts, G0 rapids are
+  thin red lines. In a print with layer comments (`;LAYER_CHANGE`, `;LAYER:n`), the start G-code before the first
+  layer (the purge line at the edge of the bed) and the moves after the last extrusion (parking) are not drawn.
+- **Drawing**: at its real size in millimetres, framed on the extrusion or cuts, coloured by height from dark violet
+  (low) to orange (high) in 24 bands, drawn from the lowest band up so higher layers cover the travel under them. The
+  line is the nozzle's width (`; nozzle_diameter` of PrusaSlicer and OrcaSlicer, else 0.4 mm, × 1.1). The preset's
+  **G-code view** (`GcodeOptions.View`) draws it from above or isometric (from the front left, above the bed). SVG is
+  written as text; PDF and pictures are drawn with SkiaSharp directly, which is several times faster than reading a
+  large SVG back. Segments that a later one covers exactly are left out (a straight wall seen from above).
+- **Slicer's preview**: with the view set to it, a picture is the largest preview the slicer saved in the file
+  (`; thumbnail begin WxH LENGTH` … `; thumbnail end`, also `thumbnail_JPG` and `thumbnail_QOI`; the format is told by
+  the data, since Cura plug-ins write JPG under the PNG header). A file without one gets the toolpath from above, with
+  a notice. SVG and PDF always show the toolpath.
+- **Limits**: files up to 1 GB; 12 million points after points closer than 0.02 mm are merged (a 300 MB print keeps
+  about 6 million); lines are read up to 4096 characters (the rest of a longer comment is skipped); arcs in 5° segments (72 for a full circle)
+  segments; a coordinate past 1 km fails as damaged. A thumbnail is read up to 4096 × 4096 pixels and 32 MB of base64,
+  its header checked before it is decoded. Binary G-code (`.bgcode`) renamed `.gcode` fails with a message saying so.
+  A 35 MB PrusaSlicer file (1.3 million lines) takes about 9 s to PNG with 320 MB of memory.
 
 ## 3D models
 
