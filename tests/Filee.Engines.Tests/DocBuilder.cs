@@ -204,10 +204,12 @@ internal sealed class DocBuilder
     }
 
     /// <summary>A run with an inline PNG picture (PICF, OfficeArt shape and BLIP in the Data stream).</summary>
-    public Run Picture(byte[] png, short widthTwips, short heightTwips)
+    public Run Picture(byte[] png, short widthTwips, short heightTwips) => PictureOf(Blip(png), widthTwips, heightTwips);
+
+    /// <summary>A run with an inline picture whose BLIP record is <paramref name="blip"/> (as <see cref="EmfBlip"/> makes).</summary>
+    public Run PictureOf(byte[] blip, short widthTwips, short heightTwips)
     {
         var at = (int)_data.Position;
-        var blip = Blip(png);
         var fbse = Fbse(blip);
         var shape = Record(0xF, 0, 0xF004, [.. Record(2, 75, 0xF00A, HwpBuilder.Bytes(1025, 0xA00)), .. Record(3, 1, 0xF00B, HwpBuilder.Bytes((ushort)0x4104, 1))]);
         var picf = new byte[68];
@@ -734,6 +736,19 @@ internal sealed class DocBuilder
 
     private static byte[] Record(int version, int instance, int type, byte[] data) =>
         [.. BitConverter.GetBytes((ushort)(version | instance << 4)), .. BitConverter.GetBytes((ushort)type), .. BitConverter.GetBytes(data.Length), .. data];
+
+    /// <summary>
+    /// An EMF BLIP as Word stores one: one UID, the metafile header (its size, bounds, size in EMU, the packed size,
+    /// deflate, no filter) and <paramref name="emf"/> packed with zlib.
+    /// </summary>
+    public static byte[] EmfBlip(byte[] emf)
+    {
+        var packed = new MemoryStream();
+        using (var zlib = new System.IO.Compression.ZLibStream(packed, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+            zlib.Write(emf);
+        var header = HwpBuilder.Bytes(emf.Length, 0, 0, 1000, 1000, 914400, 914400, (int)packed.Length, (byte)0, (byte)0xFE);
+        return Record(0, 0x3D4, 0xF01A, [.. new byte[16], .. header, .. packed.ToArray()]);
+    }
 
     /// <summary>A PNG BLIP: one UID, the tag byte, the picture.</summary>
     private static byte[] Blip(byte[] png) => Record(0, 0x6E0, 0xF01E, [.. new byte[16], 0xFF, .. png]);

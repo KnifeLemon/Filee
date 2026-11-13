@@ -34,6 +34,9 @@
 //   document. 한글 sets each note as high as its text, without the spacing below its last line, the last ending at the
 //   body's bottom; that is measured against 한글's own PDFs. Footnotes go across the page's text width, also in
 //   columns (한글 puts them under each column).
+// - Limits (LayoutGuard): the time budget and cancellation are checked before every block, every paragraph in a cell,
+//   header, footer or text box, every page a table goes on to and every few hundred lines; the pages count as they are
+//   finished. A line finds its notes, objects and the objects in its way without looking through the whole paragraph.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
@@ -141,7 +144,7 @@ internal sealed class PageComposer
         private float ColumnLeft(int column) => _geometry.Left + column * (ColumnWidth + Gap);
 
         /// <summary>Where the body ends on this page: above the footnotes.</summary>
-        private float Bottom => _geometry.BodyBottom - FootnotesHeight([]);
+        private float Bottom => _geometry.BodyBottom - FootnotesHeight();
 
         private float ColumnHeight => _geometry.BodyBottom - _regionTop;
 
@@ -339,9 +342,16 @@ internal sealed class PageComposer
 
         private TableLayout CreateTables()
         {
-            var tables = new TableLayout((p, width) => Layout(composer.Resolve(p), width), composer._styles is not null, () => Frame(_y));
+            // Paragraphs in cells, headers, footers and text boxes check the time and cancellation as the body's do: a
+            // single table can hold most of a document.
+            var tables = new TableLayout((p, width) =>
+            {
+                _guard.Paragraph();
+                return Layout(composer.Resolve(p), width);
+            }, composer._styles is not null, () => Frame(_y));
             // Text boxes laid out like characters stack their content as cells do.
             composer._layouter.Stack = tables.Stack;
+            composer._layouter.Guard = _guard;
             return tables;
         }
 
@@ -494,6 +504,7 @@ internal sealed class PageComposer
                 var repeat = first >= header.Count;
                 while (true)
                 {
+                    _guard.Paragraph();
                     var room = Bottom - _y;
                     if (rows.Sum(r => r.Height) <= room + Epsilon)
                     {
@@ -542,9 +553,13 @@ internal sealed class PageComposer
             {
                 _y += (holder.Format.After ?? 0) / 100f;
             }
-            // Notes referenced inside the table's cells go to the foot of the page the table ends on.
-            foreach (var note in _numbered.Where(n => !_notesPlaced.Contains(n)).ToList())
-                AddNote(note);
+            // Notes referenced inside the table's cells go to the foot of the page the table ends on. All notes numbered
+            // before stay placed, so only those numbered since the last table are looked at.
+            for (; _numberedChecked < _numbered.Count; _numberedChecked++)
+            {
+                if (!_notesPlaced.Contains(_numbered[_numberedChecked]))
+                    AddNote(_numbered[_numberedChecked]);
+            }
         }
 
         private ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<float, float, (float, float)>? wrap = null)
@@ -576,24 +591,35 @@ internal sealed class PageComposer
             }
             for (var i = 0; i < lines.Count;)
             {
+                _guard.Paragraph();
                 var stored = box.StoredLines && _inStep;
                 if (stored && lines[i].StoredPageStart && !_empty)
                     HangulPage();
                 else if (stored && lines[i].StoredColumnStart && !_columnEmpty && _columns.Count > 1)
                     NextColumn();
-                // How many of the remaining lines fit in this column, with the footnotes they bring.
+                // How many of the remaining lines fit in this column, with the footnotes they bring (their heights summed
+                // on as they come, after the page's own).
                 var fit = 0;
                 var y = _y;
-                var notes = new List<HNote>();
+                double? noteSum = null;
+                var noteCount = 0;
                 for (var j = i; j < lines.Count; j++)
                 {
+                    if (((j - i) & 1023) == 1023)
+                        _guard.Paragraph();
                     if (j > i && stored && (lines[j].StoredPageStart || lines[j].StoredColumnStart && _columns.Count > 1))
                         break;
                     // 한글's line on both sides of an object is two stored lines at one place: the second goes beside the first.
                     var top = box.StoredLines && j > i && SameRow(lines, j) ? y - lines[j - 1].Height
                         : stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _regionTop + storedTop) : stored ? y : Clear(y, lines[j].Height);
-                    notes.AddRange(NewNotes(lines[j]));
-                    if (top + lines[j].Height > _geometry.BodyBottom - FootnotesHeight(notes) + Epsilon)
+                    var fresh = NewNotes(lines[j]).ToList();
+                    noteSum ??= FootnotesSum();
+                    foreach (var note in fresh)
+                    {
+                        noteSum += NoteLayout(note).Height;
+                        noteCount++;
+                    }
+                    if (top + lines[j].Height > _geometry.BodyBottom - FootnotesHeight(noteSum.Value, noteCount) + Epsilon)
                         break;
                     y = top + lines[j].Height;
                     fit++;
@@ -670,7 +696,7 @@ internal sealed class PageComposer
             if (first && !_anchored.Remove(paragraph))
                 Anchor(paragraph, _y, (item, anchor) => !OnPage(anchor) || !box.FloatingAt.TryGetValue(item, out var at) || at < line.End || box.Lines.Count == 1);
             else if (!first)
-                Anchor(paragraph, _y, (item, anchor) => OnPage(anchor) && box.FloatingAt.TryGetValue(item, out var at) && at >= line.Start && (at < line.End || line == box.Lines[^1]));
+                Anchor(paragraph, _y, objects: LineObjects(paragraph, box, line));
             if (first && paragraph.PageHiding is { } hiding)
                 Current.Hiding = hiding;
             // A new page number in the middle of a section: this page has it, the next ones count on from it.
@@ -705,13 +731,17 @@ internal sealed class PageComposer
         /// <summary>Where a line laid out anew from <paramref name="top"/> goes: below the objects text goes above and below.</summary>
         private float Clear(float top, float height)
         {
-            var moved = true;
+            // From the top down, so one pass moves the line below all of them; the next only confirms it.
+            var objects = InTheWay("TOP_AND_BOTTOM").OrderBy(o => o.Area.Top).ToList();
+            var moved = objects.Count > 0;
             while (moved)
             {
                 moved = false;
-                foreach (var item in InTheWay("TOP_AND_BOTTOM"))
+                foreach (var item in objects)
                 {
-                    if (item.Area.Top < top + height - Epsilon && item.Area.Bottom > top + Epsilon)
+                    if (item.Area.Top >= top + height - Epsilon)
+                        break;
+                    if (item.Area.Bottom > top + Epsilon)
                     {
                         top = item.Area.Bottom;
                         moved = true;
@@ -775,11 +805,13 @@ internal sealed class PageComposer
         /// Places the floating objects of a paragraph whose first line starts at <paramref name="top"/> (those
         /// <paramref name="include"/> takes, else all), each once.
         /// </summary>
-        private List<PlacedObject> Anchor(HParagraph paragraph, float top, Func<HInline, HAnchor, bool>? include = null)
+        /// <param name="objects">The paragraph's objects to look at; null for all of them.</param>
+        private List<PlacedObject> Anchor(HParagraph paragraph, float top, Func<HInline, HAnchor, bool>? include = null,
+            IEnumerable<(HInline Object, HAnchor Anchor)>? objects = null)
         {
             var frame = Frame(top, paragraph);
             var placed = new List<PlacedObject>();
-            foreach (var (item, anchor) in FloatingObjects.Of(paragraph))
+            foreach (var (item, anchor) in objects ?? FloatingObjects.Of(paragraph))
             {
                 if (_floated.Contains(item) || include?.Invoke(item, anchor) == false)
                     continue;
@@ -790,6 +822,43 @@ internal sealed class PageComposer
             }
             Current.Objects.AddRange(placed);
             return placed;
+        }
+
+        /// <summary>The objects placed against the paper or the page held in a paragraph box's text, by their position.</summary>
+        private (HParagraph? Paragraph, ParagraphBox? Box, List<(int At, HInline Object, HAnchor Anchor)> Objects) _lineObjects = (null, null, []);
+
+        /// <summary>
+        /// The objects a line after the first places: those against the paper or the page held in its text (the last
+        /// line also those after it). Found by position, so a paragraph of many lines isn't looked through for each.
+        /// </summary>
+        private List<(HInline, HAnchor)> LineObjects(HParagraph paragraph, ParagraphBox box, LineBox line)
+        {
+            if (!ReferenceEquals(_lineObjects.Paragraph, paragraph) || !ReferenceEquals(_lineObjects.Box, box))
+            {
+                var held = new List<(int At, HInline Object, HAnchor Anchor)>();
+                foreach (var (item, anchor) in FloatingObjects.Of(paragraph))
+                {
+                    if (OnPage(anchor) && box.FloatingAt.TryGetValue(item, out var at))
+                        held.Add((at, item, anchor));
+                }
+                // Objects come in text order, so this keeps their order.
+                _lineObjects = (paragraph, box, [.. held.OrderBy(o => o.At)]);
+            }
+            var objects = _lineObjects.Objects;
+            var (low, high) = (0, objects.Count);
+            while (low < high)
+            {
+                var middle = (low + high) / 2;
+                if (objects[middle].At < line.Start)
+                    low = middle + 1;
+                else
+                    high = middle;
+            }
+            var last = line == box.Lines[^1];
+            var result = new List<(HInline, HAnchor)>();
+            for (var k = low; k < objects.Count && (objects[k].At < line.End || last); k++)
+                result.Add((objects[k].Object, objects[k].Anchor));
+            return result;
         }
 
         /// <summary>Draws a page's floating objects, behind or in front of its text, lower z-order first.</summary>
@@ -809,9 +878,16 @@ internal sealed class PageComposer
 
         private readonly Dictionary<HNote, string> _noteNumbers = new(ReferenceEqualityComparer.Instance);
         private readonly List<HNote> _numbered = [];
+
+        /// <summary>The notes of <see cref="_numbered"/> before this index are all placed.</summary>
+        private int _numberedChecked;
         private readonly HashSet<HNote> _notesPlaced = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<HNote, (List<Piece> Lines, float Height)> _noteLayouts = new(ReferenceEqualityComparer.Instance);
         private readonly List<HNote> _footnotes = [];
+
+        /// <summary>The heights of the page's first <see cref="_footnotesSummed"/> footnotes, summed in double as LINQ sums floats.</summary>
+        private double _footnotesSum;
+        private int _footnotesSummed;
         private readonly List<HNote> _endnotes = [];
         private int _footnoteCount;
         private int _endnoteCount;
@@ -867,14 +943,28 @@ internal sealed class PageComposer
             return _noteLayouts[note] = (pieces, height);
         }
 
-        /// <summary>The height the footnotes of this page take with <paramref name="more"/> added: space and line above included.</summary>
-        private float FootnotesHeight(IReadOnlyCollection<HNote> more)
+        /// <summary>The heights of this page's footnotes summed (each laid out on first use, in order).</summary>
+        private double FootnotesSum()
         {
-            var count = _footnotes.Count + more.Count;
+            for (; _footnotesSummed < _footnotes.Count; _footnotesSummed++)
+                _footnotesSum += NoteLayout(_footnotes[_footnotesSummed]).Height;
+            return _footnotesSum;
+        }
+
+        /// <summary>The height this page's footnotes take: space and line above included.</summary>
+        private float FootnotesHeight() => FootnotesHeight(FootnotesSum(), 0);
+
+        /// <summary>
+        /// The height the footnotes take with <paramref name="more"/> more: <paramref name="sum"/> is their heights,
+        /// the more ones' added on to <see cref="FootnotesSum"/>.
+        /// </summary>
+        private float FootnotesHeight(double sum, int more)
+        {
+            var count = _footnotes.Count + more;
             if (count == 0)
                 return 0;
             var shape = _section!.Footnotes;
-            return _footnotes.Concat(more).Sum(n => NoteLayout(n).Height) + (count - 1) * shape.Between / 100f + (shape.Above + shape.Below) / 100f;
+            return (float)sum + (count - 1) * shape.Between / 100f + (shape.Above + shape.Below) / 100f;
         }
 
         /// <summary>The footnotes a line brings that this page doesn't hold yet.</summary>
@@ -897,7 +987,7 @@ internal sealed class PageComposer
                 return;
             var page = Current.Content;
             var shape = _section!.Footnotes;
-            var top = _geometry.BodyBottom - FootnotesHeight([]) + shape.Above / 100f;
+            var top = _geometry.BodyBottom - FootnotesHeight() + shape.Above / 100f;
             SeparatorLine(page, shape, _geometry.Left, top);
             top += shape.Below / 100f;
             foreach (var note in _footnotes)
@@ -908,6 +998,7 @@ internal sealed class PageComposer
                 top += height + shape.Between / 100f;
             }
             _footnotes.Clear();
+            (_footnotesSum, _footnotesSummed) = (0, 0);
         }
 
         private void SeparatorLine(PageContent page, HNoteShape shape, float left, float y)
@@ -1015,7 +1106,7 @@ internal sealed class PageComposer
                         using var drawing = Metafile.TryLoad(path);
                         drawing?.Draw(canvas, area);
                     }
-                    else if (SKImage.FromEncodedData(path) is { } image)
+                    else if (FloatingObjects.Image(path) is { } image)
                     {
                         using (image)
                             canvas.DrawImage(image, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));

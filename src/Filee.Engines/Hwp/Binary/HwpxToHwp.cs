@@ -49,6 +49,12 @@ internal sealed partial class HwpxToHwp
     /// <summary>Manifest item id → index into <see cref="_bins"/> + 1 (0 when it can't be written).</summary>
     private readonly Dictionary<string, int> _binIds = new(StringComparer.Ordinal);
 
+    /// <summary>Package entry → its BIN_DATA id: items naming one entry share its stream, which is read once.</summary>
+    private readonly Dictionary<string, int> _binEntries = new(StringComparer.Ordinal);
+
+    /// <summary>BinData entries by file name without extension (한글's naming), the first of each name; built on first use.</summary>
+    private Dictionary<string, string>? _binDataByName;
+
     /// <summary>An embedded binary: the package entry, the stream's extension and whether it is an OLE storage.</summary>
     private sealed record BinItem(string Entry, string Extension, bool Ole);
 
@@ -64,17 +70,7 @@ internal sealed partial class HwpxToHwp
         using var package = DocumentPackage.Open(hwpx, limits ?? DocumentLimits.Default, () => NotAPackage(hwpx));
         var writer = new HwpxToHwp(package);
         var file = writer.Build();
-        var temp = output + ".tmp";
-        try
-        {
-            using (var stream = File.Create(temp))
-                file.Write(stream);
-            File.Move(temp, output, overwrite: true);
-        }
-        finally
-        {
-            File.Delete(temp);
-        }
+        OutputFile.Write(output, file.Write);
     }
 
     private static InvalidDataException NotAPackage(string path)
@@ -210,17 +206,33 @@ internal sealed partial class HwpxToHwp
             return known;
         var entry = _items.TryGetValue(itemId, out var path) && _package.GetEntry(path) is not null
             ? path
-            : _package.Entries.FirstOrDefault(e => e.FullName.StartsWith("BinData/", StringComparison.OrdinalIgnoreCase) &&
-                                                  string.Equals(Path.GetFileNameWithoutExtension(e.Name), itemId, StringComparison.OrdinalIgnoreCase))?.FullName;
+            : BinDataByName().GetValueOrDefault(itemId);
         var id = 0;
-        if (entry is not null && _bins.Count < 0xFFFF)
+        if (entry is not null && _binEntries.TryGetValue(entry, out var shared))
+            id = shared;
+        else if (entry is not null && _bins.Count < 0xFFFF)
         {
             var extension = new string(Path.GetExtension(entry).TrimStart('.').Where(char.IsAsciiLetterOrDigit).Take(8).ToArray());
             var ole = extension.Equals("ole", StringComparison.OrdinalIgnoreCase);
             _bins.Add(new BinItem(entry, extension.Length > 0 ? extension : "bin", ole));
             id = _bins.Count;
+            _binEntries[entry] = id;
         }
         return _binIds[itemId] = id;
+    }
+
+    private Dictionary<string, string> BinDataByName()
+    {
+        if (_binDataByName is null)
+        {
+            _binDataByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in _package.Entries)
+            {
+                if (e.FullName.StartsWith("BinData/", StringComparison.OrdinalIgnoreCase))
+                    _binDataByName.TryAdd(Path.GetFileNameWithoutExtension(e.Name), e.FullName);
+            }
+        }
+        return _binDataByName;
     }
 
     // ───────────────────────── Fixed streams ─────────────────────────

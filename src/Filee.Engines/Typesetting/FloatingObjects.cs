@@ -22,7 +22,11 @@
 //
 // Text wrap: lines on 한글's stored layout already leave the room 한글 left for the objects beside or above them.
 // Wrapping text that is laid out anew around objects is not done yet.
+//
+// Pictures are decoded only when their codec reports at most DocumentLimits.MaxPicturePixels (Image), also those whose
+// header PictureSize can't read (an ICO or other container holding a larger picture).
 
+using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Metafiles;
 using Filee.Engines.Rendering;
@@ -254,6 +258,26 @@ internal static class FloatingObjects
         canvas.Restore();
     }
 
+    /// <summary>
+    /// The picture in the file at <paramref name="path"/>, decoded when it is drawn; null when there is no such file, no
+    /// codec reads it, or the codec reports more than <see cref="DocumentLimits.MaxPicturePixels"/> (read from the
+    /// codec before anything is decoded, so a container whose header PictureSize can't read is held to it too).
+    /// </summary>
+    internal static SKImage? Image(string path)
+    {
+        if (!File.Exists(path))
+            return null;
+        using var data = SKData.Create(path);
+        if (data is null)
+            return null;
+        using (var codec = SKCodec.Create(data))
+        {
+            if (codec is null || (long)codec.Info.Width * codec.Info.Height > DocumentLimits.Default.MaxPicturePixels)
+                return null;
+        }
+        return SKImage.FromEncodedData(data);
+    }
+
     private static void Picture(SKCanvas canvas, HImage picture, SKRect area)
     {
         if (!File.Exists(picture.Path))
@@ -266,7 +290,7 @@ internal static class FloatingObjects
             drawing?.Draw(canvas, area, (crop.Left, crop.Top, crop.Right, crop.Bottom));
             return;
         }
-        using var image = SKImage.FromEncodedData(picture.Path);
+        using var image = Image(picture.Path);
         if (image is null)
             return;
         var source = new SKRect(

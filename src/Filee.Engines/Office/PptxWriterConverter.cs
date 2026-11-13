@@ -67,7 +67,7 @@ public sealed class PptxWriterConverter : IConverter, ICapabilityCheck
         var output = step.Output.Allocate("pptx");
         if (output is null)
             return [];
-        await Task.Run(() => PptxWriter.Write(document, output), cancellationToken);
+        await Task.Run(() => PptxWriter.Write(document, output, cancellationToken), cancellationToken);
         progress?.Report(1);
         return [output];
     }

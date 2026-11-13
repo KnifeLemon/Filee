@@ -10,6 +10,7 @@
 // their scale.
 
 using System.Text;
+using Filee.Engines.Documents;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -38,8 +39,24 @@ internal sealed partial class RtfReader
         public int Height { get; set; }
         public bool Header { get; set; }
         public HAlign Align { get; set; } = HAlign.Left;
-        public List<CellDef> Cells { get; } = [];
+
+        /// <summary>The cells, shared with the rows before that kept this definition; copied when it changes.</summary>
+        public List<CellDef> Cells { get; private set; } = [];
+        private bool _shared;
         public CellDef Pending { get; set; } = new();
+
+        public void Add(CellDef cell)
+        {
+            if (_shared)
+            {
+                Cells = [.. Cells];
+                _shared = false;
+            }
+            Cells.Add(cell);
+        }
+
+        /// <summary>The definition of the next row when it doesn't give its own: this one's, sharing its cells.</summary>
+        public RowDef Next() => new() { Left = Left, Height = Height, Align = Align, Cells = Cells, _shared = true };
     }
 
     private sealed class TableBuilder
@@ -120,9 +137,9 @@ internal sealed partial class RtfReader
             case "cellx":
                 var table = TableOf(story);
                 if (table.Def.Cells.Count >= _budget.Limits.MaxTableColumns)
-                    throw Documents.DocumentLimits.Exceeded($"A table row has more than {_budget.Limits.MaxTableColumns} cells.");
+                    throw DocumentLimits.Exceeded($"A table row has more than {_budget.Limits.MaxTableColumns} cells.");
                 table.Def.Pending.Right = value;
-                table.Def.Cells.Add(table.Def.Pending);
+                table.Def.Add(table.Def.Pending);
                 table.Def.Pending = new CellDef();
                 return true;
             case "cell" or "nestcell":
@@ -134,29 +151,47 @@ internal sealed partial class RtfReader
                 var current = TableOf(story);
                 _g.Para = _g.Para with { InTable = true };
                 EndParagraph(story, force: false);
+                TableCells(1);
                 current.Cells.Add(current.Cell);
                 current.Cell = [];
                 return true;
             case "row":
                 var finished = TableOf(story);
+                EndRun(story.Inlines);
                 if (story.Inlines.Count > 0)
                 {
                     _g.Para = _g.Para with { InTable = true };
                     EndParagraph(story, force: false);
                 }
-                if (finished.Cells.Count > 0)
-                    finished.Rows.Add((finished.Def, [.. finished.Cells]));
-                finished.Cells.Clear();
+                EndRow(finished);
                 finished.Cell = [];
                 // The next row repeats its definition, or keeps this one when it doesn't.
-                var next = new RowDef { Left = finished.Def.Left, Height = finished.Def.Height, Align = finished.Def.Align };
-                next.Cells.AddRange(finished.Def.Cells);
-                finished.Def = next;
+                finished.Def = finished.Def.Next();
                 return true;
             case "nestrow" or "nesttableprops" or "itap":
                 return true;
         }
         return false;
+    }
+
+    /// <summary>Table cells read so far, in every table of the document; cells a row defines without content count too.</summary>
+    private long _tableCells;
+
+    private void TableCells(int count)
+    {
+        _tableCells += count;
+        if (_tableCells > _budget.Limits.MaxParagraphs)
+            throw DocumentLimits.Exceeded($"The tables of the document have more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} cells.");
+    }
+
+    /// <summary>Ends the row of <paramref name="builder"/>, if it has cells (counted at \cell; its other defined cells here).</summary>
+    private void EndRow(TableBuilder builder)
+    {
+        if (builder.Cells.Count == 0)
+            return;
+        TableCells(Math.Max(0, builder.Def.Cells.Count - builder.Cells.Count));
+        builder.Rows.Add((builder.Def, [.. builder.Cells]));
+        builder.Cells.Clear();
     }
 
     /// <summary>Adds the open table of <paramref name="story"/> to its blocks.</summary>
@@ -165,8 +200,7 @@ internal sealed partial class RtfReader
         if (story.Table is not { } builder)
             return;
         story.Table = null;
-        if (builder.Cells.Count > 0)
-            builder.Rows.Add((builder.Def, [.. builder.Cells]));
+        EndRow(builder);
         if (builder.Cell.Count > 0 && builder.Rows.Count == 0)
         {
             // Paragraphs marked \intbl without any row: plain paragraphs.
@@ -177,14 +211,19 @@ internal sealed partial class RtfReader
             return;
         _budget.Object();
 
-        // The grid: every cell edge of every row.
+        // The grid: every cell edge of every row (rows that share their cells add them once).
         var edges = new SortedSet<int>();
-        foreach (var (def, cells) in builder.Rows)
+        var seen = new HashSet<List<CellDef>>(ReferenceEqualityComparer.Instance);
+        foreach (var (def, _) in builder.Rows)
         {
             edges.Add(def.Left);
-            foreach (var cell in def.Cells.Take(Math.Max(cells.Count, def.Cells.Count)))
+            if (!seen.Add(def.Cells))
+                continue;
+            foreach (var cell in def.Cells)
                 edges.Add(cell.Right);
         }
+        if (edges.Count - 1 > _budget.Limits.MaxTableColumns)
+            throw DocumentLimits.Exceeded($"A table has more than {DocumentLimits.Count(_budget.Limits.MaxTableColumns)} columns.");
         var grid = edges.ToList();
         var table = new HTable
         {
@@ -261,7 +300,14 @@ internal sealed partial class RtfReader
         public string Text { get; set; } = "";
     }
 
+    /// <summary>Levels a list keeps (the model's numberings have nine); the words of further levels are read and dropped.</summary>
+    private const int MaxListLevels = 9;
+
     private readonly List<ListDef> _lists = [];
+
+    /// <summary>The first list with each \listid.</summary>
+    private readonly Dictionary<int, ListDef> _listsById = [];
+    private LevelDef? _level;
     private readonly Dictionary<int, int> _overrides = [];
     private int _overrideList;
 
@@ -273,18 +319,28 @@ internal sealed partial class RtfReader
             switch (word)
             {
                 case "list":
-                    _lists.Add(new ListDef());
+                    Definitions(_lists.Count, "lists");
+                    var list = new ListDef();
+                    _lists.Add(list);
+                    _listsById.TryAdd(list.Id, list);
+                    _level = null;
                     return true;
                 case "listlevel" when _lists.Count > 0:
-                    _lists[^1].Levels.Add(new LevelDef());
+                    _level = new LevelDef();
+                    if (_lists[^1].Levels.Count < MaxListLevels)
+                        _lists[^1].Levels.Add(_level);
                     return true;
                 case "listid" when _lists.Count > 0:
-                    _lists[^1].Id = value;
+                    var identified = _lists[^1];
+                    if (_listsById.TryGetValue(identified.Id, out var known) && known == identified)
+                        _listsById.Remove(identified.Id);
+                    identified.Id = value;
+                    _listsById.TryAdd(value, identified);
                     return true;
-                case "levelnfc" or "levelnfcn" when _lists is [.., { Levels: [.., var level] }]:
+                case "levelnfc" or "levelnfcn" when _level is { } level:
                     level.Format = value;
                     return true;
-                case "levelstartat" when _lists is [.., { Levels: [.., var level] }]:
+                case "levelstartat" when _level is { } level:
                     level.Start = value;
                     return true;
             }
@@ -298,6 +354,8 @@ internal sealed partial class RtfReader
                     _overrideList = value;
                     return true;
                 case "ls":
+                    if (!_overrides.ContainsKey(value))
+                        Definitions(_overrides.Count, "list overrides");
                     _overrides[value] = _overrideList;
                     return true;
             }
@@ -312,7 +370,7 @@ internal sealed partial class RtfReader
     /// </summary>
     private void EndLevelText()
     {
-        if (_lists is not [.., { Levels: [.., var level] }])
+        if (_level is not { } level)
             return;
         var raw = _collected.ToString();
         _collected.Clear();
@@ -332,7 +390,7 @@ internal sealed partial class RtfReader
 
     private HListRef? ListOf(ParaProps p)
     {
-        if (p.ListOverride <= 0 || !_overrides.TryGetValue(p.ListOverride, out var id) || _lists.FirstOrDefault(l => l.Id == id) is not { } list)
+        if (p.ListOverride <= 0 || !_overrides.TryGetValue(p.ListOverride, out var id) || !_listsById.TryGetValue(id, out var list))
             return null;
         list.Numbering ??= Numbering(list);
         return list.Numbering.Levels.Count == 0 ? null : new HListRef(list.Numbering, Math.Min(p.ListLevel, list.Numbering.Levels.Count - 1), Numbered: true);
@@ -447,7 +505,7 @@ internal sealed partial class RtfReader
         if (_picture is not { } picture)
             return;
         if (picture.Data.Length >= _budget.Limits.MaxPartBytes)
-            throw Documents.DocumentLimits.Exceeded($"A picture in the RTF file is larger than {_budget.Limits.MaxPartBytes / (1024 * 1024)} MB.");
+            throw DocumentLimits.Exceeded($"A picture in the RTF file is larger than {_budget.Limits.MaxPartBytes / (1024 * 1024)} MB.");
         picture.Data.WriteByte(value);
     }
 
@@ -461,10 +519,14 @@ internal sealed partial class RtfReader
     {
         if (picture.Extension is not { } extension || picture.Data.Length == 0)
             return;
+        // One whose header claims more pixels than any picture should have is left out before anything decodes it.
+        picture.Data.Position = 0;
+        if (PictureSize.Read(picture.Data) is { } size && (long)size.Width * size.Height > _budget.Limits.MaxPicturePixels)
+            return;
         _budget.Object();
         Directory.CreateDirectory(_mediaFolder);
         var path = Path.Combine(_mediaFolder, $"rtf-{Guid.NewGuid():N}{extension}");
-        File.WriteAllBytes(path, picture.Data.ToArray());
+        File.WriteAllBytes(path, picture.Data.GetBuffer().AsSpan(0, (int)picture.Data.Length));
         // \picwgoal is in twips; \picw is in pixels for bitmaps and 0.01 mm for metafiles.
         var width = picture.GoalWidth > 0 ? picture.GoalWidth : 0;
         var height = picture.GoalHeight > 0 ? picture.GoalHeight : 0;

@@ -6,6 +6,9 @@
 // scale, page order, centring, grid and headings, headers and footers with their fields), print ranges, repeated
 // rows and columns, manual page breaks, rotation, indent and shrink to fit. Charts, images, comments and
 // conditional formats are not read.
+//
+// A small file can stand for a huge sheet (repeats of rows, cells and spaces): the cells the repeats expand to, the
+// characters of all cells as repeated, and the merged areas are counted, and a file past a limit is refused.
 
 using System.Globalization;
 using System.Text;
@@ -52,7 +55,24 @@ internal sealed class OdsReader
     /// <summary>Cells the repeats of all tables expand to at most.</summary>
     private const long MaxCells = 20_000_000;
 
+    /// <summary>Merged areas of all tables (each repeat of a merged cell is one).</summary>
+    private const int MaxMerges = 1_000_000;
+
+    /// <summary>Spaces one text:s stands for at most (Calc writes runs of spaces this way, never millions).</summary>
+    private const int MaxSpaces = 1024;
+
+    /// <summary>Characters of a header or footer region (Excel keeps 255).</summary>
+    private const int MaxHeaderCharacters = 8192;
+
+    /// <summary>Characters of all cells as repeated: as many as one part of the package may hold.</summary>
+    private static readonly long MaxCharacters = DocumentLimits.Default.MaxPartBytes;
+
     private long _cells;
+    private long _characters;
+    private long _merges;
+
+    /// <summary>Characters of the cell being read that are counted already (counted as its text grows).</summary>
+    private int _counted;
     private readonly Dictionary<string, XElement> _pageLayouts = [];
     private XElement? _defaultCellStyle;
 
@@ -279,12 +299,14 @@ internal sealed class OdsReader
             return null;
         var sb = new StringBuilder();
         var paragraphs = region.Elements(Text + "p").ToList();
-        for (var i = 0; i < paragraphs.Count; i++)
+        for (var i = 0; i < paragraphs.Count && sb.Length < MaxHeaderCharacters; i++)
         {
             if (i > 0)
                 sb.Append('\n');
             HeaderInline(paragraphs[i], sb);
         }
+        if (sb.Length > MaxHeaderCharacters)
+            sb.Length = MaxHeaderCharacters;
         return sb.ToString();
     }
 
@@ -292,6 +314,8 @@ internal sealed class OdsReader
     {
         foreach (var node in element.Nodes())
         {
+            if (sb.Length >= MaxHeaderCharacters)
+                return;
             if (node is XText text)
                 sb.Append(text.Value.Replace("&", "&&", StringComparison.Ordinal));
             else if (node is XElement child)
@@ -305,7 +329,7 @@ internal sealed class OdsReader
                     "title" => "&F",
                     "date" => "&D",
                     "time" => "&T",
-                    "s" => new string(' ', Repeat(child, Text + "c")),
+                    "s" => new string(' ', Math.Min(Repeat(child, Text + "c"), MaxSpaces)),
                     "line-break" => "\n",
                     _ => null,
                 };
@@ -592,6 +616,12 @@ internal sealed class OdsReader
             _cells += (long)copies * cells.Sum(run => (long)run.Count);
             if (_cells > MaxCells)
                 throw DocumentLimits.Exceeded($"The spreadsheet repeats its cells more than {DocumentLimits.Count(MaxCells)} times.");
+            // Every copy of a cell's text is printed (reading it counted one), and every copy of a merged cell is a
+            // merged area.
+            Characters(cells.Sum(run => ((long)copies * run.Count - 1) * (run.Cell?.Text.Length ?? 0)));
+            _merges += (long)copies * cells.Where(run => run.ColumnSpan > 1 || run.RowSpan > 1).Sum(run => (long)run.Count);
+            if (_merges > MaxMerges)
+                throw DocumentLimits.Exceeded($"The spreadsheet has more than {DocumentLimits.Count(MaxMerges)} merged cells.");
             for (var copy = 0; copy < copies; copy++)
             {
                 foreach (var run in cells)
@@ -601,7 +631,10 @@ internal sealed class OdsReader
                         if (run.Cell is not null)
                             sheet.Set(r + copy, run.Column + i, run.Cell);
                         if (run.ColumnSpan > 1 || run.RowSpan > 1)
-                            sheet.Merges.Add(new CellRange(r + copy, run.Column + i, r + copy + run.RowSpan - 1, run.Column + i + run.ColumnSpan - 1));
+                        {
+                            sheet.Merges.Add(new CellRange(r + copy, run.Column + i, Math.Min(r + copy + run.RowSpan - 1, MaxRows - 1),
+                                Math.Min(run.Column + i + run.ColumnSpan - 1, MaxColumns - 1)));
+                        }
                     }
                 }
             }
@@ -689,18 +722,42 @@ internal sealed class OdsReader
             var count = Math.Min(Repeat(element, "number-columns-repeated"), MaxColumns - c);
             if (!covered)
             {
-                var styleName = (string?)element.Attribute(Table + "style-name") ?? rowDefault ?? columns.FirstOrDefault(s => s.Start <= c && c < s.Start + s.Count)?.DefaultStyle;
+                var styleName = (string?)element.Attribute(Table + "style-name") ?? rowDefault ?? ColumnAt(columns, c)?.DefaultStyle;
                 var cell = Cell(element, styleName);
                 if (cell is { HasContent: false } || cell is { Text.Length: 0 } && count > MaxStyledRepeat)
                     cell = null;
-                var columnSpan = Repeat(element, "number-columns-spanned");
-                var rowSpan = Repeat(element, "number-rows-spanned");
+                // Spans past the sheet's edge end there.
+                var columnSpan = Math.Min(Repeat(element, "number-columns-spanned"), MaxColumns);
+                var rowSpan = Math.Min(Repeat(element, "number-rows-spanned"), MaxRows);
                 if (cell is not null || columnSpan > 1 || rowSpan > 1)
                     runs.Add(new CellRun(c, count, cell, columnSpan, rowSpan));
             }
             c += count;
         }
         return runs;
+    }
+
+    /// <summary>The column span holding column <paramref name="column"/> (the spans ascend side by side), or null.</summary>
+    private static Span? ColumnAt(List<Span> columns, int column)
+    {
+        int low = 0, high = columns.Count;
+        while (low < high)
+        {
+            var mid = (low + high) >>> 1;
+            if (columns[mid].Start + columns[mid].Count <= column)
+                low = mid + 1;
+            else
+                high = mid;
+        }
+        return low < columns.Count && columns[low].Start <= column ? columns[low] : null;
+    }
+
+    /// <summary>Counts characters of cell text against the budget.</summary>
+    private void Characters(long count)
+    {
+        _characters += Math.Max(0, count);
+        if (_characters > MaxCharacters)
+            throw DocumentLimits.Exceeded($"The spreadsheet's cells hold more than {DocumentLimits.Count(MaxCharacters)} characters.");
     }
 
     private SheetCell Cell(XElement element, string? styleName)
@@ -749,11 +806,12 @@ internal sealed class OdsReader
     }
 
     /// <summary>The text of a cell: its paragraphs joined by line breaks; null when it has none.</summary>
-    private static string? Paragraphs(XElement cell)
+    private string? Paragraphs(XElement cell)
     {
         var paragraphs = cell.Elements().Where(e => e.Name == Text + "p" || e.Name == Text + "h").ToList();
         if (paragraphs.Count == 0)
             return null;
+        _counted = 0;
         var sb = new StringBuilder();
         for (var i = 0; i < paragraphs.Count; i++)
         {
@@ -761,13 +819,19 @@ internal sealed class OdsReader
                 sb.Append('\n');
             Inline(paragraphs[i], sb);
         }
+        Characters(sb.Length - _counted);
         return sb.ToString();
     }
 
-    private static void Inline(XElement element, StringBuilder sb)
+    private void Inline(XElement element, StringBuilder sb)
     {
         foreach (var node in element.Nodes())
         {
+            if (sb.Length - _counted > 65_536)
+            {
+                Characters(sb.Length - _counted);
+                _counted = sb.Length;
+            }
             if (node is XText text)
             {
                 // ODF collapses white space in text; extra spaces are text:s elements.
@@ -781,7 +845,7 @@ internal sealed class OdsReader
             else if (node is XElement child)
             {
                 if (child.Name == Text + "s")
-                    sb.Append(' ', Repeat(child, Text + "c"));
+                    sb.Append(' ', Math.Min(Repeat(child, Text + "c"), MaxSpaces));
                 else if (child.Name == Text + "tab")
                     sb.Append('\t');
                 else if (child.Name == Text + "line-break")

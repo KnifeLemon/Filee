@@ -124,6 +124,7 @@ internal sealed partial class OdtWriter
         var lists = new ListWriter(this, sb);
         foreach (var block in blocks)
         {
+            _token.ThrowIfCancellationRequested();
             switch (block)
             {
                 case HParagraph { List: { } } item:
@@ -580,27 +581,15 @@ internal sealed partial class OdtWriter
             sb.Append($"<table:table-column table:style-name=\"{columnStyle}\"/>");
         }
 
-        // Positions inside a spanning cell (other than its first) are covered cells.
-        var covered = new HashSet<(int Row, int Column)>();
-        for (var r = 0; r < placed.Count; r++)
-        {
-            foreach (var (cell, column) in placed[r])
-            {
-                for (var dr = 0; dr < Math.Max(1, cell.RowSpan); dr++)
-                {
-                    for (var dc = 0; dc < Math.Max(1, cell.ColSpan); dc++)
-                    {
-                        if (dr > 0 || dc > 0)
-                            covered.Add((r + dr, column + dc));
-                    }
-                }
-            }
-        }
+        // Positions inside a spanning cell (other than its first) are covered cells. Per column: the row a cell
+        // written so far covers it to (exclusive), so a span costs its columns, not its rows × columns.
+        var coveredTo = new int[columnCount];
 
         var headerRows = table.Rows.TakeWhile(r => r.Header).Count();
         var outerWidth = _width;
         for (var r = 0; r < table.Rows.Count; r++)
         {
+            _token.ThrowIfCancellationRequested();
             if (r == 0 && headerRows > 0)
                 sb.Append("<table:table-header-rows>");
             var row = table.Rows[r];
@@ -614,12 +603,26 @@ internal sealed partial class OdtWriter
                 : $"<table:table-row table:style-name=\"{_styles.Add("table-row", "Row", "", $"<style:table-row-properties{rowProps}/>")}\">");
 
             var starts = r < placed.Count ? placed[r].GroupBy(p => p.Column).ToDictionary(g => g.Key, g => g.First().Cell) : [];
+            // Positions without a cell of their own, gathered into runs written once with number-columns-repeated.
+            var (runCovered, runLength) = (false, 0);
+            void Flush()
+            {
+                if (runLength > 0)
+                {
+                    sb.Append(runCovered ? "<table:covered-table-cell" : "<table:table-cell")
+                      .Append(runLength > 1 ? $" table:number-columns-repeated=\"{Number(runLength)}\"/>" : "/>");
+                }
+                runLength = 0;
+            }
             for (var column = 0; column < columnCount; column++)
             {
                 if (starts.TryGetValue(column, out var cell))
                 {
+                    Flush();
                     var span = Math.Clamp(cell.ColSpan, 1, columnCount - column);
                     var rowSpan = Math.Clamp(cell.RowSpan, 1, table.Rows.Count - r);
+                    for (var c = column; c < column + span; c++)
+                        coveredTo[c] = Math.Max(coveredTo[c], r + rowSpan);
                     var margin = cell.CellMargin ?? table.CellMargin ?? DefaultCellMargin;
                     var width = widths.Skip(column).Take(span).Sum();
                     var content = Nested(Math.Max(1000, width - margin.Left - margin.Right), () => Blocks(cell.Blocks, "Standard", context));
@@ -631,9 +634,14 @@ internal sealed partial class OdtWriter
                 else
                 {
                     // Inside a spanning cell, or a gap in a ragged row (an empty cell keeps the grid rectangular).
-                    sb.Append(covered.Contains((r, column)) ? "<table:covered-table-cell/>" : "<table:table-cell/>");
+                    var isCovered = coveredTo[column] > r;
+                    if (runLength > 0 && isCovered != runCovered)
+                        Flush();
+                    runCovered = isCovered;
+                    runLength++;
                 }
             }
+            Flush();
             sb.Append("</table:table-row>");
             if (r == headerRows - 1)
                 sb.Append("</table:table-header-rows>");

@@ -8,6 +8,7 @@ using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Documents;
 using Filee.Engines.Office.Sheets;
+using Filee.Engines.Rendering;
 using SkiaSharp;
 using UglyToad.PdfPig;
 using static Filee.Engines.Tests.XlsxBuilder;
@@ -770,6 +771,202 @@ public sealed class SheetPrintTests(EngineFixture fx) : IClassFixture<EngineFixt
         columns.Sheet("Data", Row(1, columns.Text("A1", "x")),
             before: "<cols>" + string.Concat(Enumerable.Repeat("<col min=\"1\" max=\"16384\" width=\"5\"/>", 300)) + "</cols>");
         var refused = Assert.Throws<ConversionRefusedException>(() => XlsxReader.Read(Save(columns)));
+        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+    }
+
+    /// <summary>Draw calls (lines, rectangles) on a printed page; glyph runs are left out.</summary>
+    private static int DrawOperations(PageContent page)
+    {
+        using var recorder = new SKPictureRecorder();
+        var canvas = recorder.BeginRecording(new SKRect(0, 0, page.Width, page.Height));
+        foreach (var item in page.Items.OfType<DrawingItem>())
+        {
+            canvas.Save();
+            item.Drawing(canvas);
+            canvas.Restore();
+        }
+        using var picture = recorder.EndRecording();
+        return picture.ApproximateOperationCount;
+    }
+
+    [Fact]
+    public void Gridlines_are_one_line_per_boundary_broken_only_around_merges()
+    {
+        // A 200 in page at 10 %: about 2,990 columns × 9,500 rows on each page. Lines per cell would be tens of millions.
+        var book = new Workbook();
+        var sheet = new Worksheet("Data")
+        {
+            PageSetup = new SheetPageSetup { PaperWidth = 14_400, PaperHeight = 14_400, Scale = 10, PrintGridLines = true },
+        };
+        sheet.Set(0, 0, new SheetCell("first", CellStyle.Default));
+        sheet.Set(19_999, 1_999, new SheetCell("last", CellStyle.Default));
+        sheet.Merges.Add(new CellRange(1, 1, 3, 3));
+        book.Sheets.Add(sheet);
+
+        using var printed = Printed(book);
+
+        Assert.Equal(3, printed.Pages.Count);
+        var operations = printed.Pages.Select(DrawOperations).ToList();
+        // One line per column and row boundary (2,001 + rows + 1), and the two lines inside the merge in two pieces each.
+        Assert.All(operations, count => Assert.InRange(count, 2_000, 15_000));
+    }
+
+    [Fact]
+    public void Rows_and_columns_print_at_least_one_pixel_wide()
+    {
+        var book = new Workbook();
+        var sheet = new Worksheet("Data") { DefaultRowHeight = 0.01, WidthsInPoints = true, DefaultColumnWidth = 0.0001 };
+        sheet.Set(0, 0, new SheetCell("first", CellStyle.Default));
+        sheet.Set(99_999, 999, new SheetCell("last", CellStyle.Default));
+        sheet.RowHeights[5] = 0.001;
+        book.Sheets.Add(sheet);
+        using var fonts = new SheetFonts();
+
+        var plan = SheetPagination.Plan(book, sheet, new SheetIndex(sheet), fonts, DocumentLimits.Default, 0, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0.75, plan.Grid.Height(5));
+        Assert.Equal(0.75, plan.Grid.Width(500));
+        Assert.All(plan.Pages, p => Assert.True(p.Bottom - p.Top < 1_000 && p.Right - p.Left < 700));
+    }
+
+    [Fact]
+    public void Fill_alignment_repeats_no_more_text_than_a_cell_holds()
+    {
+        // A letter with 20,000 combining marks is as wide as the letter: "fill" would repeat all of it 8 times.
+        var book = new Workbook();
+        var sheet = new Worksheet("Data");
+        sheet.Set(0, 0, new SheetCell("a" + new string('́', 20_000), CellStyle.Default with { SpecialAlign = CellSpecialAlign.Fill }));
+        sheet.Set(0, 1, new SheetCell("x", CellStyle.Default with { SpecialAlign = CellSpecialAlign.Fill }));
+        book.Sheets.Add(sheet);
+
+        using var printed = Printed(book);
+
+        var runs = printed.Pages.SelectMany(p => p.Items.OfType<GlyphItem>()).Select(g => g.Run.Text).ToList();
+        Assert.True(runs.Sum(r => r.Length) <= 32_767 + 1_000);
+        // Short text still fills its cell.
+        Assert.Contains(runs, r => r.Length > 3 && r.All(ch => ch == 'x'));
+    }
+
+    [Fact]
+    public void A_merged_cell_split_by_a_page_break_prints_on_both_pages()
+    {
+        // Left-aligned text in A1:D1 with a page break after B: the page with C and D shows none of the text.
+        var book = new Workbook();
+        var sheet = new Worksheet("Data");
+        sheet.Set(0, 0, new SheetCell("Hi", CellStyle.Default));
+        sheet.Set(0, 5, new SheetCell("right", CellStyle.Default));
+        sheet.Merges.Add(new CellRange(0, 0, 0, 3));
+        sheet.ColumnBreaks.Add(2);
+        book.Sheets.Add(sheet);
+
+        var pages = Print(book, "split-merge.pdf");
+
+        Assert.Equal(2, pages.Count);
+        Assert.Equal("Hi", pages[0]);
+        Assert.Equal("right", pages[1]);
+    }
+
+    [Fact]
+    public void Merges_are_found_in_two_binary_searches_however_many_there_are()
+    {
+        // 200,000 merges in the first 256 rows, plus damage: duplicates and a merge over all of them.
+        var sheet = new Worksheet("Data");
+        for (var r = 0; r < 100; r++)
+        {
+            for (var c = 0; c < 4_000; c += 2)
+                sheet.Merges.Add(new CellRange(r, c, r, c + 1));
+        }
+        sheet.Merges.Add(new CellRange(0, 0, 0, 1));
+        sheet.Merges.Add(new CellRange(50, 10_000, 1_048_575, 10_001));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        var index = new SheetIndex(sheet);
+        var found = 0;
+        for (var r = 0; r < 256; r++)
+        {
+            for (var c = 0; c < 4_100; c++)
+            {
+                if (index.Merge(r, c) is { } merge)
+                {
+                    Assert.True(merge.Contains(r, c));
+                    found++;
+                }
+            }
+        }
+
+        Assert.Equal(400_000, found);
+        Assert.Equal(new CellRange(7, 10, 7, 11), index.Merge(7, 11));
+        Assert.Null(index.Merge(100, 0));
+        Assert.Equal(new CellRange(50, 10_000, 1_048_575, 10_001), index.Merge(900_000, 10_001));
+        Assert.Equal(6, index.Merges(10, 11, 3, 7).Count);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(20), started.Elapsed.ToString());
+    }
+
+    [Fact]
+    public void Conditional_formats_look_only_at_the_cells_their_ranges_hold()
+    {
+        // 100,000 ranges each over the rest of column A, on a sheet whose 20,000 cells are in column B.
+        var sheet = new Worksheet("Data");
+        for (var r = 0; r < 20_000; r++)
+            sheet.Set(r, 1, new SheetCell("1", CellStyle.Default, IsNumber: true) { Value = 1 });
+        sheet.Set(3, 0, new SheetCell("5", CellStyle.Default, IsNumber: true) { Value = 5 });
+        var ranges = Enumerable.Range(0, 100_000).Select(i => new CellRange(i, 0, 1_048_575, 0)).ToList();
+        sheet.ConditionalFormats.Add(new ConditionalFormat([new CellRange(0, 0, 9, 0), new CellRange(0, 0, 9, 0)], "cellIs", 1)
+        {
+            Operator = "greaterThan",
+            Formulas = ["2"],
+            Style = new DifferentialStyle { Fill = "#FF0000" },
+        });
+        sheet.ConditionalFormats.Add(new ConditionalFormat(ranges, "cellIs", 2)
+        {
+            Operator = "greaterThan",
+            Formulas = ["0"],
+            Style = new DifferentialStyle { Color = "#0000FF" },
+        });
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        var styles = ConditionalFormatting.Apply(sheet, new CellRange(0, 0, 1_048_575, 1));
+
+        // The first rule is evaluated; the second passes over too many rows and keeps the cells' own look.
+        Assert.Equal("#FF0000", Assert.Single(styles).Value.Fill);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(20), started.Elapsed.ToString());
+    }
+
+    [Fact]
+    public void Ods_repeats_of_spaces_text_and_merges_are_bounded()
+    {
+        var folder = fx.NewFolder();
+        const string huge = "<text:s text:c=\"1000000000\"/>";
+        // Five cells of a billion spaces each, a header of a billion spaces, and spans past the sheet's edge.
+        var spaces = OdsBuilder.Save(Path.Combine(folder, "spaces.ods"),
+            "<style:style style:name=\"ta1\" style:family=\"table\" style:master-page-name=\"Default\"/>",
+            "<table:table table:name=\"Data\" table:style-name=\"ta1\"><table:table-row>" +
+            string.Concat(Enumerable.Repeat($"<table:table-cell><text:p>a{huge}b</text:p></table:table-cell>", 5)) +
+            "<table:table-cell table:number-columns-spanned=\"2147483647\" table:number-rows-spanned=\"2147483647\"><text:p>span</text:p></table:table-cell>" +
+            "</table:table-row></table:table>",
+            pageStyles: "<style:page-layout style:name=\"pm1\"/>",
+            masterStyles: $"<style:master-page style:name=\"Default\" style:page-layout-name=\"pm1\"><style:header><text:p>{huge}{huge}</text:p></style:header></style:master-page>");
+
+        var sheet = OdsReader.Read(spaces).Sheets.Single();
+
+        Assert.Equal(1026, sheet.Get(0, 0)!.Text.Length);
+        Assert.True(sheet.PageSetup.HeaderFooter.OddHeader!.Length <= 8_300);
+        Assert.Equal(new CellRange(0, 5, 1_048_575, 16_383), Assert.Single(sheet.Merges));
+
+        // 200 cells of 1,024 spaces repeated over 1,000 rows: 200,000 cells, but 200 million characters.
+        var repeated = OdsBuilder.Save(Path.Combine(folder, "repeated.ods"), "",
+            "<table:table table:name=\"Data\"><table:table-row table:number-rows-repeated=\"1000\">" +
+            "<table:table-cell table:number-columns-repeated=\"200\"><text:p><text:s text:c=\"1024\"/>x</text:p></table:table-cell>" +
+            "</table:table-row></table:table>");
+        var refused = Assert.Throws<ConversionRefusedException>(() => OdsReader.Read(repeated));
+        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+
+        // A merged cell repeated over a million rows.
+        var merges = OdsBuilder.Save(Path.Combine(folder, "merges.ods"), "",
+            "<table:table table:name=\"Data\"><table:table-row table:number-rows-repeated=\"1048576\">" +
+            "<table:table-cell table:number-columns-spanned=\"2\"/><table:covered-table-cell/>" +
+            "</table:table-row></table:table>");
+        refused = Assert.Throws<ConversionRefusedException>(() => OdsReader.Read(merges));
         Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
     }
 

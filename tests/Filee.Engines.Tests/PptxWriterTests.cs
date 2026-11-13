@@ -539,7 +539,7 @@ public class PptxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         section.Blocks.Add(holder);
         document.Sections.Add(section);
         var pptx = Path.Combine(folder, "hostile.pptx");
-        PptxWriter.Write(document, pptx);
+        PptxWriter.Write(document, pptx, TestContext.Current.CancellationToken);
         Valid(pptx);
         Assert.Contains("depth 29", string.Concat(Read(pptx).Select(s => s.Xml.InnerText)));
 
@@ -557,7 +557,7 @@ public class PptxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
         many.Sections.Add(blocks);
         var refused = Path.Combine(folder, "many.pptx");
-        var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(many, refused));
+        var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(many, refused, TestContext.Current.CancellationToken));
         Assert.Equal(DocumentLimits.ErrorKey, error.ErrorKey);
         Assert.False(File.Exists(refused));
     }

@@ -53,13 +53,19 @@ internal sealed partial class DocToDocx
     /// <summary>Open fields of the story being written: true while in the instruction, false in the result.</summary>
     private readonly List<bool> _fields = [];
 
-    /// <summary>Section start CPs of the main text after the first (a paragraph ending before one ends its section).</summary>
-    private readonly List<int> _sectionEnds = [];
+    /// <summary>
+    /// Section start CPs of the main text after the first (a paragraph ending before one ends its section), each with
+    /// the index of the section it ends.
+    /// </summary>
+    private readonly Dictionary<int, int> _sectionEnds = [];
 
     private sealed class Part(string path)
     {
         public string Path { get; } = path;
         public List<(string Id, string Type, string Target, bool External)> Relationships { get; } = [];
+
+        /// <summary>The relationship of each picture in word/media the part shows (one per picture, however often).</summary>
+        public Dictionary<string, string> Media { get; } = [];
 
         public string Add(string type, string target, bool external = false)
         {
@@ -78,12 +84,27 @@ internal sealed partial class DocToDocx
         _parts.Add(_part);
     }
 
-    /// <summary>Writes the package of <paramref name="doc"/> to <paramref name="output"/>.</summary>
+    /// <summary>Writes the package of <paramref name="doc"/> to <paramref name="output"/>; a package left unfinished is deleted.</summary>
     public static void Write(DocFile doc, string output)
     {
-        using var stream = File.Create(output);
-        using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
-        new DocToDocx(doc, zip).WritePackage();
+        try
+        {
+            using var stream = File.Create(output);
+            using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
+            new DocToDocx(doc, zip).WritePackage();
+        }
+        catch
+        {
+            try
+            {
+                File.Delete(output);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The refusal or damage is what the user needs to hear about.
+            }
+            throw;
+        }
     }
 
     private void WritePackage()
@@ -97,8 +118,8 @@ internal sealed partial class DocToDocx
 
         var body = new XElement(W + "body");
         var sections = Sections();
-        foreach (var section in sections.Skip(1))
-            _sectionEnds.Add(section.Start);
+        for (var i = 1; i < sections.Count; i++)
+            _sectionEnds.TryAdd(sections[i].Start, i - 1);
         var paragraphs = Paragraphs(0, _doc.CcpText, main: true);
         var blocks = new List<XElement>();
         var index = 0;
@@ -195,14 +216,29 @@ internal sealed partial class DocToDocx
         WriteXml("[Content_Types].xml", types);
     }
 
-    /// <summary>A picture in word/media, related from the part being written; returns the relationship id.</summary>
+    /// <summary>
+    /// A picture written to word/media; returns its name there. Its bytes count against the document's total (what a
+    /// metafile inflated to was counted while it inflated).
+    /// </summary>
     private string AddMedia(byte[] bytes, string extension)
     {
+        _doc.Count(Math.Max(0, bytes.Length - _inflated));
+        _inflated = 0;
         var name = $"media/image{++_mediaCount}.{extension}";
-        var entry = _zip.CreateEntry("word/" + name, CompressionLevel.NoCompression);
+        // JPEG and PNG are compressed already; metafiles, bitmaps and TIFF usually pack well.
+        var level = extension is "jpg" or "png" ? CompressionLevel.NoCompression : CompressionLevel.Fastest;
+        var entry = _zip.CreateEntry("word/" + name, level);
         using (var stream = entry.Open())
             stream.Write(bytes);
-        return _part.Add(RelationshipBase + "image", name);
+        return name;
+    }
+
+    /// <summary>The relationship id of the picture <paramref name="name"/> in word/media from the part being written.</summary>
+    private string MediaRelationship(string name)
+    {
+        if (!_part.Media.TryGetValue(name, out var id))
+            _part.Media[name] = id = _part.Add(RelationshipBase + "image", name);
+        return id;
     }
 
     private XElement SettingsXml()
@@ -245,7 +281,7 @@ internal sealed partial class DocToDocx
         for (var i = 0; i < text.Length; i++)
         {
             var c = text[i];
-            var mark = c is '\r' or '\a' || (c == '\f' && main && _sectionEnds.Contains(start + i + 1));
+            var mark = c is '\r' or '\a' || (c == '\f' && main && _sectionEnds.ContainsKey(start + i + 1));
             if (!mark && i < text.Length - 1)
                 continue;
             if (!mark)
@@ -325,7 +361,7 @@ internal sealed partial class DocToDocx
                 return;
             index++;
             var p = ParagraphXml(para);
-            if (sections is not null && _sectionEnds.IndexOf(para.End + 1) is >= 0 and var ended)
+            if (sections is not null && _sectionEnds.TryGetValue(para.End + 1, out var ended))
                 PPr(p).Add(SectionProperties(sections[ended]));
             output.Add(p);
         }
@@ -451,7 +487,7 @@ internal sealed partial class DocToDocx
             else if (DocFile.RunAfter(_doc.CharacterRuns, fc) is { } next)
                 segmentEnd = Math.Min(segmentEnd, cp + Math.Max(1, (next - fc + _doc.Pieces[piece].Width - 1) / _doc.Pieces[piece].Width));
             // Bookmarks start between runs.
-            if (_bookmarkStarts.Count > 0)
+            if (_bookmarkCps.Length > 0)
             {
                 foreach (var name in BookmarksAt(cp))
                     p.Add(new XElement(W + "bookmarkStart", new XAttribute(W + "id", _bookmarkId++), new XAttribute(W + "name", name)));
@@ -573,7 +609,17 @@ internal sealed partial class DocToDocx
 
     // ───────────────────────── Bookmarks ─────────────────────────
 
-    private readonly SortedDictionary<int, List<string>> _bookmarkStarts = [];
+    /// <summary>The CPs where bookmarks start, in order, and the names starting at each.</summary>
+    private int[] _bookmarkCps = [];
+    private List<string>[] _bookmarkNames = [];
+
+    /// <summary>
+    /// For each index of <see cref="_bookmarkCps"/> (and one past the last), a link towards the first index at or after
+    /// it whose bookmarks are not written yet: a written index points past itself, and lookups shorten the paths they
+    /// walk, so finding the next bookmark doesn't rescan the written ones.
+    /// </summary>
+    private int[] _bookmarkNext = [];
+
     private int _bookmarkId;
 
     /// <summary>Bookmark names (SttbfBkmk) and where each starts (PlcfBkf). Only starts are written; DocxReader reads no ends.</summary>
@@ -582,33 +628,49 @@ internal sealed partial class DocToDocx
         var names = Sttb(_doc.Blob(DocFile.FibIndex.SttbfBkmk));
         var plc = _doc.Blob(DocFile.FibIndex.PlcfBkf);
         var count = Plc.Count(plc.Length, 4);
+        var starts = new SortedDictionary<int, List<string>>();
         for (var i = 0; i < count && i < names.Count; i++)
         {
             var cp = Plc.Cp(plc, i);
             if (names[i].Length == 0)
                 continue;
-            if (!_bookmarkStarts.TryGetValue(cp, out var list))
-                _bookmarkStarts[cp] = list = [];
+            if (!starts.TryGetValue(cp, out var list))
+                starts[cp] = list = [];
             list.Add(names[i]);
         }
+        _bookmarkCps = [.. starts.Keys];
+        _bookmarkNames = [.. starts.Values];
+        _bookmarkNext = new int[_bookmarkCps.Length + 1];
+        for (var i = 0; i < _bookmarkNext.Length; i++)
+            _bookmarkNext[i] = i;
+    }
+
+    /// <summary>The first index at or after <paramref name="index"/> whose bookmarks are not written yet (the count when none is left).</summary>
+    private int UnwrittenBookmark(int index)
+    {
+        var root = index;
+        while (_bookmarkNext[root] != root)
+            root = _bookmarkNext[root];
+        while (_bookmarkNext[index] != root)
+            (index, _bookmarkNext[index]) = (_bookmarkNext[index], root);
+        return root;
     }
 
     private IEnumerable<string> BookmarksAt(int cp)
     {
-        if (!_bookmarkStarts.TryGetValue(cp, out var names))
+        var index = Array.BinarySearch(_bookmarkCps, cp);
+        if (index < 0 || _bookmarkNext[index] != index)
             return [];
-        _bookmarkStarts.Remove(cp); // written once
-        return names;
+        _bookmarkNext[index] = index + 1; // written once
+        return _bookmarkNames[index];
     }
 
+    /// <summary>The first CP after <paramref name="cp"/> where bookmarks not written yet start.</summary>
     private int? NextBookmark(int cp)
     {
-        foreach (var key in _bookmarkStarts.Keys)
-        {
-            if (key > cp)
-                return key;
-        }
-        return null;
+        var index = Array.BinarySearch(_bookmarkCps, cp);
+        index = UnwrittenBookmark(index < 0 ? ~index : index + 1);
+        return index < _bookmarkCps.Length ? _bookmarkCps[index] : null;
     }
 
     /// <summary>

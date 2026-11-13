@@ -13,7 +13,7 @@
 // ellipse; they are turned into the ellipse's parameter (t = atan2(wR·sin a, hR·cos a)) before drawing.
 //
 // Damage stays contained: unknown names count as 0, a division by zero gives 0, results are clamped, and the counts of
-// guides and path commands are limited.
+// guides and path commands (each path counting as one, so empty paths are counted too) are limited.
 
 using System.Globalization;
 using SkiaSharp;
@@ -49,7 +49,7 @@ internal static class ShapeGeometry
     /// <summary>Guides of one shape at most.</summary>
     public const int MaxGuides = 4096;
 
-    /// <summary>Path commands of one shape at most.</summary>
+    /// <summary>Path commands of one shape at most, each path counting as one more.</summary>
     public const int MaxCommands = 100_000;
 
     private const double Limit = 1e12;
@@ -73,7 +73,8 @@ internal static class ShapeGeometry
         var commands = 0;
         foreach (var path in definition.Paths)
         {
-            if ((commands += path.Commands.Count) > MaxCommands)
+            // Each path counts as one command more: every one is a native path, empty or not.
+            if ((commands += path.Commands.Count + 1) > MaxCommands)
                 break;
             var sx = path.Width > 0 ? width / path.Width : 1;
             var sy = path.Height > 0 ? height / path.Height : 1;

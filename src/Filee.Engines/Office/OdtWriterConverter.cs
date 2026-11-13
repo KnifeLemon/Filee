@@ -40,7 +40,7 @@ public sealed class OdtWriterConverter : IConverter, ICapabilityCheck
         var output = step.Output.Allocate("odt");
         if (output is null)
             return [];
-        await Task.Run(() => OdtWriter.Write(document, output), cancellationToken);
+        await Task.Run(() => OdtWriter.Write(document, output, cancellationToken), cancellationToken);
         progress?.Report(1);
         return [output];
     }

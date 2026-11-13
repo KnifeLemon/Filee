@@ -99,20 +99,23 @@ internal static partial class MobiReader
     /// <summary>The decompressed text of the book whose header is at record <paramref name="start"/>.</summary>
     private static byte[] Text(PalmDatabase database, MobiHeader header, int start)
     {
-        Func<ReadOnlySpan<byte>, byte[]> decompress = header.Compression switch
+        // The second argument: the bytes the text may still grow by (HUFF/CDIC can grow without bound).
+        Func<ReadOnlySpan<byte>, long, byte[]> decompress = header.Compression switch
         {
-            1 => data => data.ToArray(),
-            2 => PalmDocCompression.Decompress,
+            1 => (data, _) => data.ToArray(),
+            2 => (data, _) => PalmDocCompression.Decompress(data),
             17480 => HuffCdicReader(database, header, start).Decompress,
             var other => throw new InvalidDataException($"The book uses an unknown compression ({other})."),
         };
+        var limit = Documents.DocumentLimits.Default.MaxPartBytes;
         using var text = new MemoryStream();
         for (var i = 1; i <= header.TextRecords; i++)
         {
             var record = database.Record(start + i);
             var size = record.Length - TrailingSize(record, header.ExtraFlags);
-            text.Write(decompress(record[..Math.Max(0, size)]));
+            text.Write(decompress(record[..Math.Max(0, size)], limit - text.Length));
             CheckTextSize(text.Length);
+            CheckTextRatio(text.Length, database.Length);
         }
         var bytes = text.ToArray();
         return header.TextLength > 0 && header.TextLength < bytes.Length ? bytes[..(int)header.TextLength] : bytes;
@@ -174,6 +177,17 @@ internal static partial class MobiReader
         var limit = Documents.DocumentLimits.Default.MaxPartBytes;
         if (length > limit)
             throw Documents.DocumentLimits.Exceeded($"The book's text is larger than {Documents.DocumentLimits.Megabytes(limit)}.");
+    }
+
+    /// <summary>
+    /// Refuses a book whose text unpacks to more than <see cref="Documents.DocumentLimits.MaxInflateRatio"/> times the
+    /// size of the file (once past the floor): real books compress a few times at most.
+    /// </summary>
+    internal static void CheckTextRatio(long length, long fileLength)
+    {
+        var limits = Documents.DocumentLimits.Default;
+        if (length > limits.InflateRatioFloor && length / Math.Max(1, fileLength) > limits.MaxInflateRatio)
+            throw Documents.DocumentLimits.Exceeded($"The book's text unpacks to more than {limits.MaxInflateRatio} times its size.");
     }
 
     /// <summary>A PalmDOC (TEXtREAd) book as text; its title is the database name.</summary>

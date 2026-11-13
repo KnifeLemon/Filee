@@ -1,7 +1,10 @@
 // Tables, frames (pictures and text boxes), drawing shapes and formulas of an ODT.
 //
 // Tables: every grid position is a table:table-cell or a table:covered-table-cell (the part of a spanning cell), so
-// cells take the column of their position; repeated columns, rows and cells are cut to DocumentLimits. Frames and
+// cells take the column of their position; repeated columns, rows and cells are cut to DocumentLimits, and rows and
+// cells count against MaxParagraphs (a repeated cell is read once per copy, its text counted each time). Empty rows
+// at the end of a table, and empty cells at the end of a row past the declared columns, are kept once however often
+// they repeat (spreadsheet-like tables fill the grid out to a million rows that way). Frames and
 // shapes anchored as characters stay in the text, the others float (HAnchor from the graphic style's position, its
 // relation and wrap). Formulas (embedded Math objects) become their text.
 
@@ -18,6 +21,15 @@ internal sealed partial class OdtReader
     private const int MaxRowRepeat = 1000;
 
     private readonly Dictionary<string, string?> _media = [];
+
+    /// <summary>Pictures stored in the XML (office:binary-data), by element: a repeated cell reads its picture again.</summary>
+    private readonly Dictionary<XElement, string?> _inlinePictures = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Formulas by their object's folder.</summary>
+    private readonly Dictionary<string, string?> _formulas = [];
+
+    /// <summary>Bytes decoded from office:binary-data (each element once) and written to the media folder.</summary>
+    private long _inlineBytes;
 
     // ───────────────────────── Tables ─────────────────────────
 
@@ -63,11 +75,14 @@ internal sealed partial class OdtReader
             }
         }
 
-        foreach (var (row, header) in TableRows(element, false))
+        var rows = TableRows(element, false).ToList();
+        var lastFilled = rows.FindLastIndex(r => !IsEmptyRow(r.Row));
+        for (var index = 0; index < rows.Count; index++)
         {
-            var repeat = Math.Clamp(Int(Attr(row, Table + "number-rows-repeated")) ?? 1, 1, MaxRowRepeat);
+            var (row, header) = rows[index];
+            var repeat = index > lastFilled ? 1 : Math.Clamp(Int(Attr(row, Table + "number-rows-repeated")) ?? 1, 1, MaxRowRepeat);
             for (var i = 0; i < repeat; i++)
-                table.Rows.Add(ReadRow(row, header, maxColumns));
+                table.Rows.Add(ReadRow(row, header, maxColumns, widths.Count));
         }
 
         // A cell spans no further than the last row and column.
@@ -127,8 +142,16 @@ internal sealed partial class OdtReader
         }
     }
 
-    private HRow ReadRow(XElement element, bool header, int maxColumns)
+    /// <summary>A cell with nothing in it (its style may still give it a fill or borders).</summary>
+    private static bool IsEmptyCell(XElement cell) => !cell.HasElements;
+
+    private static bool IsEmptyRow(XElement row) => row.Elements().All(IsEmptyCell);
+
+    /// <param name="declaredColumns">The columns the table declares (table:table-column), which empty cells at the end of a row still fill.</param>
+    private HRow ReadRow(XElement element, bool header, int maxColumns, int declaredColumns)
     {
+        if (++_rows > _budget.Limits.MaxParagraphs)
+            throw DocumentLimits.Exceeded($"The document has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} table rows.");
         var props = Chain("table-row", Attr(element, Table + "style-name"), withDefault: false).Select(s => s.Element(Style + "table-row-properties")).ToList();
         var row = new HRow
         {
@@ -137,12 +160,16 @@ internal sealed partial class OdtReader
             CantSplit = Inherited(props, Fo + "keep-together") == "always",
         };
         var column = 0;
-        foreach (var cell in element.Elements())
+        var cells = element.Elements().Where(c => c.Name == Table + "table-cell" || c.Name == Table + "covered-table-cell").ToList();
+        var lastFilled = cells.FindLastIndex(c => !IsEmptyCell(c));
+        for (var index = 0; index < cells.Count; index++)
         {
+            var cell = cells[index];
             var covered = cell.Name == Table + "covered-table-cell";
-            if (!covered && cell.Name != Table + "table-cell")
-                continue;
             var repeat = Math.Clamp(Int(Attr(cell, Table + "number-columns-repeated")) ?? 1, 1, Math.Max(1, maxColumns - column));
+            // Empty cells that end the row fill it out to the declared columns, and past them stand once.
+            if (index > lastFilled && repeat > 1)
+                repeat = Math.Max(1, Math.Min(repeat, declaredColumns - column));
             if (covered)
             {
                 column = Math.Min(maxColumns, column + repeat);
@@ -561,7 +588,13 @@ internal sealed partial class OdtReader
     private string? Picture(XElement image)
     {
         if (Attr(image, XLink + "href") is not { } href)
-            return image.Element(Office + "binary-data") is { } data ? InlinePicture(data.Value) : null;
+        {
+            if (image.Element(Office + "binary-data") is not { } data)
+                return null;
+            if (!_inlinePictures.TryGetValue(data, out var inline))
+                _inlinePictures[data] = inline = InlinePicture(data.Value);
+            return inline;
+        }
         if (InternalPath(href) is not { } path || _package.GetEntry(path) is not { } entry)
             return null;
         if (_media.TryGetValue(path, out var known))
@@ -592,6 +625,10 @@ internal sealed partial class OdtReader
         {
             return null;
         }
+        // Decoded pictures count with the parts unpacked from the package against what one document may unpack to.
+        _inlineBytes += bytes.Length;
+        if (_package.BytesRead + _inlineBytes > _budget.Limits.MaxPackageBytes)
+            throw DocumentLimits.Exceeded($"The document and the pictures stored in its XML unpack to more than {DocumentLimits.Megabytes(_budget.Limits.MaxPackageBytes)}.");
         Directory.CreateDirectory(_mediaFolder);
         var file = Path.Combine(_mediaFolder, $"odt-media-{_media.Count + 1}");
         _media[$"\0inline-{_media.Count}"] = file;
@@ -625,6 +662,13 @@ internal sealed partial class OdtReader
     {
         if (Attr(embedded, XLink + "href") is not { } href || InternalPath(href) is not { } folder)
             return null;
+        if (!_formulas.TryGetValue(folder, out var formula))
+            _formulas[folder] = formula = ReadFormula(folder);
+        return formula;
+    }
+
+    private string? ReadFormula(string folder)
+    {
         var math = Load(folder.TrimEnd('/') + "/content.xml")?.Root;
         if (math?.Name != MathMl + "math")
             return null;

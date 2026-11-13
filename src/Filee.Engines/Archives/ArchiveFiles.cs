@@ -28,24 +28,8 @@ internal static class ArchiveFiles
         return total;
     }
 
-    /// <summary>
-    /// <paramref name="path"/> if it is free, else "name_1.ext", "name_2.ext" … (as 7-Zip names clashing entries), so
-    /// entries that differ only in case both survive on Windows.
-    /// </summary>
-    public static string UniquePath(string path)
-    {
-        if (!File.Exists(path) && !Directory.Exists(path))
-            return path;
-        var dir = Path.GetDirectoryName(path)!;
-        var stem = Path.GetFileNameWithoutExtension(path);
-        var ext = Path.GetExtension(path);
-        for (var n = 1; ; n++)
-        {
-            var candidate = Path.Combine(dir, $"{stem}_{n}{ext}");
-            if (!File.Exists(candidate) && !Directory.Exists(candidate))
-                return candidate;
-        }
-    }
+    /// <summary>True when nothing is at <paramref name="path"/>.</summary>
+    internal static bool IsFree(string path) => !File.Exists(path) && !Directory.Exists(path);
 
     /// <summary>
     /// The folder whose content forms the result of "Extract": the unpacked folder itself, or its only entry when that
@@ -147,6 +131,35 @@ internal static class ArchiveFiles
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+    }
+}
+
+/// <summary>
+/// Free names for the files of one extraction: the path itself if it is free, else "name_1.ext", "name_2.ext" … (as
+/// 7-Zip names clashing entries), so entries that differ only in case both survive on Windows. The next number to try
+/// is kept per path, so a hundred thousand entries of one name cost a hundred thousand probes, not five billion.
+/// </summary>
+internal sealed class UniquePaths
+{
+    /// <summary>Path → the next number to try for it.</summary>
+    private readonly Dictionary<string, int> _next = new(StringComparer.OrdinalIgnoreCase);
+
+    public string Get(string path)
+    {
+        if (ArchiveFiles.IsFree(path))
+            return path;
+        var dir = Path.GetDirectoryName(path)!;
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var ext = Path.GetExtension(path);
+        for (var n = _next.GetValueOrDefault(path, 1); ; n++)
+        {
+            var candidate = Path.Combine(dir, $"{stem}_{n}{ext}");
+            if (ArchiveFiles.IsFree(candidate))
+            {
+                _next[path] = n + 1;
+                return candidate;
+            }
+        }
     }
 }
 

@@ -18,7 +18,11 @@
 // Shadows, glow, reflection, 3D and WordArt warps are left out; the capability check (SlideCapabilities) names them.
 //
 // Hostile input: parts through DocumentPackage (sizes, inflate ratio, XML depth and elements), DocumentBudget for
-// paragraphs, objects and group nesting, and a limit on path commands for the whole deck.
+// paragraphs, objects and group nesting, and limits for the whole deck on path commands (each path counts as one more,
+// every time a shape uses the geometry) and on shape tree elements visited (a master or layout counts again for every
+// slide on it). Work that would repeat is done once: a slide listed twice is read once, mc:AlternateContent is unwrapped
+// in a loop, custom geometry is read once per element, a layout's or master's placeholders and a theme's colours and
+// fonts once per part, and a SmartArt drawing already being drawn is not drawn inside itself.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -37,21 +41,51 @@ internal sealed partial class PptxSlideReader
     /// <summary>EMU per point.</summary>
     private const double EmuPerPoint = 12700;
 
-    /// <summary>Path commands of custom geometry in one deck at most.</summary>
+    /// <summary>Path commands of custom geometry in one deck at most, each path counting as one more.</summary>
     private const int MaxDeckCommands = 2_000_000;
+
+    /// <summary>Points of a path command that are read (a cubic Bézier has three).</summary>
+    private const int MaxCommandPoints = 3;
+
+    /// <summary>Stops of a gradient that are read (PowerPoint makes at most ten).</summary>
+    private const int MaxGradientStops = 1024;
+
+    /// <summary>
+    /// Shape tree elements visited per XML element the package may hold: a master's and a layout's shapes are visited
+    /// again for every slide on them, so this bounds slides × template shapes.
+    /// </summary>
+    private const int VisitsPerElement = 4;
 
     private readonly SlidePackage _package;
     private readonly DocumentBudget _budget;
     private readonly CancellationToken _cancellationToken;
     private XElement? _defaultTextStyle;
     private XElement? _tableStyles;
-    private int _commands;
+    private long _commands;
+    private long _visits;
+    private readonly long _maxVisits;
+
+    /// <summary>Custom geometry (a:custGeom) read, with what one use of it costs against <see cref="MaxDeckCommands"/>.</summary>
+    private readonly Dictionary<XElement, (GeometryDefinition Definition, int Cost)> _customGeometry = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>The placeholders of a layout or master, by index and by kind.</summary>
+    private readonly Dictionary<XElement, Placeholders> _placeholders = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>A theme part's colours, fonts and format scheme ("" = no theme).</summary>
+    private readonly Dictionary<string, (DrawingColors Colors, ThemeFonts Fonts, XElement? FormatScheme)> _themes = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A theme's colours under a colour map.</summary>
+    private readonly Dictionary<(string Theme, XElement? Map), DrawingColors> _mappedColors = [];
+
+    /// <summary>The SmartArt drawings being drawn, from the outermost in.</summary>
+    private readonly HashSet<string> _drawings = new(StringComparer.OrdinalIgnoreCase);
 
     private PptxSlideReader(SlidePackage package, CancellationToken cancellationToken)
     {
         _package = package;
         _budget = new DocumentBudget(package.Limits);
         _cancellationToken = cancellationToken;
+        _maxVisits = (long)VisitsPerElement * package.Limits.MaxXmlElements;
     }
 
     /// <summary>Reads the deck at <paramref name="path"/>.</summary>
@@ -92,11 +126,13 @@ internal sealed partial class PptxSlideReader
         var deck = new SlideDeck { Width = Points(width), Height = Points(height) };
 
         var number = 0;
+        // A slide listed again (a damaged or hostile list) is read once.
+        var listed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var id in presentation.Element(P + "sldIdLst")?.Elements(P + "sldId") ?? [])
         {
             _cancellationToken.ThrowIfCancellationRequested();
             var slidePart = _package.Target(presentationPart, (string?)id.Attribute(R + "id"));
-            if (_package.Part(slidePart) is not { } slide || slide.Name != P + "sld")
+            if (slidePart is null || !listed.Add(slidePart) || _package.Part(slidePart) is not { } slide || slide.Name != P + "sld")
                 continue;
             number++;
             if (!Flag(slide.Attribute("show"), true))
@@ -127,9 +163,12 @@ internal sealed partial class PptxSlideReader
         var layout = _package.Part(layoutPart);
         var masterPart = layoutPart is null ? null : _package.TargetOfType(layoutPart, "/slideMaster");
         var master = _package.Part(masterPart);
-        var theme = masterPart is null ? null : _package.Part(_package.TargetOfType(masterPart, "/theme"));
+        var themePart = (masterPart is null ? null : _package.TargetOfType(masterPart, "/theme")) ?? "";
+        var theme = Theme(themePart);
         // The master's colour map, unless the layout or the slide overrides it.
         var map = Override(slide) ?? Override(layout) ?? master?.Element(P + "clrMap");
+        if (!_mappedColors.TryGetValue((themePart, map), out var colors))
+            _mappedColors[(themePart, map)] = colors = theme.Colors.WithMap(map);
         var context = new SlideContext
         {
             SlidePart = slidePart,
@@ -138,9 +177,9 @@ internal sealed partial class PptxSlideReader
             Layout = layout,
             MasterPart = masterPart,
             Master = master,
-            Colors = DrawingColors.FromTheme(theme).WithMap(map),
-            Fonts = ThemeFonts.From(theme),
-            FormatScheme = theme?.Descendants(A + "fmtScheme").FirstOrDefault(),
+            Colors = colors,
+            Fonts = theme.Fonts,
+            FormatScheme = theme.FormatScheme,
             Number = number,
         };
 
@@ -152,6 +191,15 @@ internal sealed partial class PptxSlideReader
             Elements(context, layoutPart!, Tree(layout), result.Elements, templates: true, null);
         Elements(context, slidePart, Tree(slide), result.Elements, templates: false, null);
         return result;
+    }
+
+    /// <summary>The colours, fonts and format scheme of theme part <paramref name="name"/> ("" = none), read once.</summary>
+    private (DrawingColors Colors, ThemeFonts Fonts, XElement? FormatScheme) Theme(string name)
+    {
+        if (_themes.TryGetValue(name, out var cached))
+            return cached;
+        var theme = name.Length == 0 ? null : _package.Part(name);
+        return _themes[name] = (DrawingColors.FromTheme(theme), ThemeFonts.From(theme), theme?.Descendants(A + "fmtScheme").FirstOrDefault());
     }
 
     private static XElement? Override(XElement? part) => part?.Element(P + "clrMapOvr")?.Element(A + "overrideClrMapping");
@@ -180,19 +228,12 @@ internal sealed partial class PptxSlideReader
     /// <param name="groupFill">The fill of the group the elements are in (a:grpFill).</param>
     private void Elements(SlideContext context, string part, XElement? tree, List<SlideElement> output, bool templates, SlideFill? groupFill)
     {
-        foreach (var element in tree?.Elements() ?? [])
+        foreach (var item in Unwrapped(tree))
         {
             _cancellationToken.ThrowIfCancellationRequested();
-            var item = element;
-            // Newer kinds of content come with a fallback older readers understand; Filee reads the fallback.
-            if (element.Name.LocalName == "AlternateContent")
-            {
-                var chosen = element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback")
-                             ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
-                if (chosen is not null)
-                    Elements(context, part, chosen, output, templates, groupFill);
-                continue;
-            }
+            if (++_visits > _maxVisits)
+                throw DocumentLimits.Exceeded(
+                    $"The slides hold more than {DocumentLimits.Count(_maxVisits)} shapes, counting their layouts' and masters' shapes on every slide.");
             if (templates && Placeholder(item) is not null)
                 continue;
             var read = item.Name.LocalName switch
@@ -208,6 +249,39 @@ internal sealed partial class PptxSlideReader
                 _budget.Object();
                 output.Add(read);
             }
+        }
+    }
+
+    /// <summary>
+    /// The children of a shape tree or group, each mc:AlternateContent replaced by the content of its fallback (newer
+    /// kinds of content come with one older readers understand), else of its choice. Unwrapped in a loop, so fallbacks
+    /// nested to the XML depth limit take no stack.
+    /// </summary>
+    private static IEnumerable<XElement> Unwrapped(XElement? tree)
+    {
+        if (tree is null)
+            yield break;
+        var open = new Stack<IEnumerator<XElement>>();
+        open.Push(tree.Elements().GetEnumerator());
+        while (open.Count > 0)
+        {
+            var children = open.Peek();
+            if (!children.MoveNext())
+            {
+                children.Dispose();
+                open.Pop();
+                continue;
+            }
+            var element = children.Current;
+            if (element.Name.LocalName != "AlternateContent")
+            {
+                yield return element;
+                continue;
+            }
+            var chosen = element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback")
+                         ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+            if (chosen is not null)
+                open.Push(chosen.Elements().GetEnumerator());
         }
     }
 
@@ -249,24 +323,51 @@ internal sealed partial class PptxSlideReader
     /// The layout's and master's versions of a slide placeholder: by index, else by type (ctrTitle ↔ title, subTitle,
     /// obj and untyped ↔ body); the layout's own placeholder finds the master's by type.
     /// </summary>
-    private static (XElement? Layout, XElement? Master) Inherited(SlideContext context, string part, XElement? ph)
+    private (XElement? Layout, XElement? Master) Inherited(SlideContext context, string part, XElement? ph)
     {
         if (ph is null || part == context.MasterPart)
             return (null, null);
         var type = Kind((string?)ph.Attribute("type"));
         var index = (string?)ph.Attribute("idx");
 
-        static XElement? Find(XElement? owner, string type, string? index, bool byIndex)
+        XElement? Find(XElement? owner, string type, string? index, bool byIndex)
         {
-            var candidates = (owner is null ? null : Tree(owner))?.Elements().Where(e => e.Name.LocalName is "sp" or "pic" or "graphicFrame" && Placeholder(e) is not null).ToList() ?? [];
-            if (byIndex && index is not null && candidates.FirstOrDefault(c => (string?)Placeholder(c)!.Attribute("idx") == index) is { } byIdx)
+            if (owner is null)
+                return null;
+            var placeholders = PlaceholdersOf(owner);
+            if (byIndex && index is not null && placeholders.ByIndex.TryGetValue(index, out var byIdx))
                 return byIdx;
-            return candidates.FirstOrDefault(c => Kind((string?)Placeholder(c)!.Attribute("type")) == type);
+            return placeholders.ByKind.GetValueOrDefault(type);
         }
 
         var layout = part == context.SlidePart ? Find(context.Layout, type, index, byIndex: true) : null;
         var masterType = layout is not null && Placeholder(layout) is { } layoutPh ? Kind((string?)layoutPh.Attribute("type")) : type;
         return (layout, Find(context.Master, masterType, null, byIndex: false));
+    }
+
+    /// <summary>The first placeholder of each index and of each kind in a layout's or master's shape tree.</summary>
+    private sealed class Placeholders
+    {
+        public Dictionary<string, XElement> ByIndex { get; } = new(StringComparer.Ordinal);
+
+        public Dictionary<string, XElement> ByKind { get; } = new(StringComparer.Ordinal);
+    }
+
+    /// <summary>The placeholders of <paramref name="owner"/> (a layout or master), gathered once.</summary>
+    private Placeholders PlaceholdersOf(XElement owner)
+    {
+        if (_placeholders.TryGetValue(owner, out var cached))
+            return cached;
+        var result = new Placeholders();
+        foreach (var candidate in Tree(owner)?.Elements() ?? [])
+        {
+            if (candidate.Name.LocalName is not ("sp" or "pic" or "graphicFrame") || Placeholder(candidate) is not { } ph)
+                continue;
+            if ((string?)ph.Attribute("idx") is { } index)
+                result.ByIndex.TryAdd(index, candidate);
+            result.ByKind.TryAdd(Kind((string?)ph.Attribute("type")), candidate);
+        }
+        return _placeholders[owner] = result;
     }
 
     /// <summary>A placeholder type as the master's text styles group them.</summary>
@@ -392,16 +493,23 @@ internal sealed partial class PptxSlideReader
     /// </summary>
     private SlideGroup? SmartArt(SlideContext context, string part, XElement data, XElement xfrm)
     {
-        var dataPart = _package.Target(part, (string?)data.Descendants().FirstOrDefault(e => e.Name.LocalName == "relIds")?.Attribute(R + "dm"));
-        var drawingId = (string?)_package.Part(dataPart)?.Descendants().FirstOrDefault(e => e.Name.LocalName == "dataModelExt")?.Attribute("relId");
-        var drawingPart = _package.Target(part, drawingId);
-        if (_package.Part(drawingPart)?.Element(Dsp + "spTree") is not { } tree)
+        var drawingPart = _package.DiagramDrawing(part, data);
+        // A drawing that holds a frame of itself (or of a drawing that holds it) is drawn once, not inside itself.
+        if (drawingPart is null || _drawings.Contains(drawingPart) || _package.Part(drawingPart)?.Element(Dsp + "spTree") is not { } tree)
             return null;
         using var level = _budget.Enter();
         var group = new SlideGroup();
         Place(group, xfrm);
         group.ChildBounds = SKRect.Create(0, 0, group.Bounds.Width, group.Bounds.Height);
-        Elements(context, drawingPart!, tree, group.Children, templates: false, null);
+        _drawings.Add(drawingPart);
+        try
+        {
+            Elements(context, drawingPart, tree, group.Children, templates: false, null);
+        }
+        finally
+        {
+            _drawings.Remove(drawingPart);
+        }
         return group;
     }
 
@@ -420,7 +528,12 @@ internal sealed partial class PptxSlideReader
                 return ShapeGeometry.Evaluate(definition, width, height, Adjust(preset.Element(A + "avLst")), 1 / EmuPerPoint);
             }
             if (owner.Element(A + "custGeom") is { } custom)
-                return ShapeGeometry.Evaluate(Custom(custom), width, height, null, 1 / EmuPerPoint);
+            {
+                // Read once, but counted at every use: a layout's geometry is drawn again for each shape inheriting it.
+                var (definition, cost) = Custom(custom);
+                Charge(cost);
+                return ShapeGeometry.Evaluate(definition, width, height, null, 1 / EmuPerPoint);
+            }
         }
         return ShapeGeometry.Evaluate(PresetShapes.Find("rect")!, width, height, null, 1 / EmuPerPoint);
     }
@@ -438,10 +551,23 @@ internal sealed partial class PptxSlideReader
         return result;
     }
 
-    /// <summary>Custom geometry (a:custGeom) as a definition.</summary>
-    private GeometryDefinition Custom(XElement custom)
+    /// <summary>Counts <paramref name="cost"/> path commands against <see cref="MaxDeckCommands"/>.</summary>
+    private void Charge(long cost)
     {
+        if ((_commands += cost) > MaxDeckCommands)
+            throw DocumentLimits.Exceeded($"The presentation's drawings have more than {DocumentLimits.Count(MaxDeckCommands)} path commands.");
+    }
+
+    /// <summary>
+    /// Custom geometry (a:custGeom) as a definition, read once per element, with what one use of it costs: its path
+    /// commands and one more per path. Paths without commands draw nothing and are left out.
+    /// </summary>
+    private (GeometryDefinition Definition, int Cost) Custom(XElement custom)
+    {
+        if (_customGeometry.TryGetValue(custom, out var cached))
+            return cached;
         var definition = new GeometryDefinition();
+        var cost = 0;
         foreach (var (list, target) in new[] { ("avLst", definition.Adjust), ("gdLst", definition.Guides) })
         {
             foreach (var guide in custom.Element(A + list)?.Elements(A + "gd").Take(ShapeGeometry.MaxGuides) ?? [])
@@ -454,9 +580,10 @@ internal sealed partial class PptxSlideReader
             var commands = new List<GeometryCommand>();
             foreach (var command in path.Elements())
             {
-                if (++_commands > MaxDeckCommands)
-                    throw DocumentLimits.Exceeded($"The presentation's drawings have more than {DocumentLimits.Count(MaxDeckCommands)} path commands.");
-                var points = command.Elements(A + "pt").SelectMany(p => new[] { (string?)p.Attribute("x") ?? "0", (string?)p.Attribute("y") ?? "0" }).ToArray();
+                // One use would already pass the deck's limit: refused before more is read.
+                if (_commands + cost + commands.Count >= MaxDeckCommands)
+                    Charge(MaxDeckCommands + 1L);
+                var points = command.Elements(A + "pt").Take(MaxCommandPoints).SelectMany(p => new[] { (string?)p.Attribute("x") ?? "0", (string?)p.Attribute("y") ?? "0" }).ToArray();
                 switch (command.Name.LocalName)
                 {
                     case "moveTo":
@@ -480,10 +607,13 @@ internal sealed partial class PptxSlideReader
                         break;
                 }
             }
+            if (commands.Count == 0)
+                continue;
+            cost += commands.Count + 1;
             definition.Paths.Add(new GeometryPathDefinition(Number(path.Attribute("w")), Number(path.Attribute("h")),
                 ShapeGeometry.FillMode((string?)path.Attribute("fill")), Flag(path.Attribute("stroke"), true), commands));
         }
-        return definition;
+        return _customGeometry[custom] = (definition, cost);
     }
 
     // ───────────────────────── Fills ─────────────────────────
@@ -495,34 +625,51 @@ internal sealed partial class PptxSlideReader
     /// <param name="placeholder">The colour of a theme style reference (phClr).</param>
     private SlideFill? Fill(SlideContext context, string part, XElement? owner, SKColor? placeholder, SlideFill? groupFill, out bool specified)
     {
-        specified = true;
         foreach (var element in owner?.Elements() ?? [])
         {
-            switch (element.Name.LocalName)
+            if (FillOf(context, part, element, placeholder, groupFill, out var fill))
             {
-                case "noFill":
-                    return null;
-                case "solidFill":
-                    return context.Colors.Color(element, placeholder) is { } color ? new SolidFill(color) : null;
-                case "gradFill":
-                    return Gradient(context, element, placeholder);
-                case "blipFill":
-                    return PictureFill(context, part, element);
-                case "pattFill":
-                    return new PatternFill((string?)element.Attribute("prst") ?? "pct5",
-                        context.Colors.Color(element.Element(A + "fgClr"), placeholder) ?? SKColors.Black,
-                        context.Colors.Color(element.Element(A + "bgClr"), placeholder) ?? SKColors.White);
-                case "grpFill":
-                    return groupFill;
+                specified = true;
+                return fill;
             }
         }
         specified = false;
         return null;
     }
 
+    /// <summary>The fill <paramref name="element"/> gives (null for noFill); false when it is no fill element.</summary>
+    private bool FillOf(SlideContext context, string part, XElement element, SKColor? placeholder, SlideFill? groupFill, out SlideFill? fill)
+    {
+        fill = null;
+        switch (element.Name.LocalName)
+        {
+            case "noFill":
+                return true;
+            case "solidFill":
+                fill = context.Colors.Color(element, placeholder) is { } color ? new SolidFill(color) : null;
+                return true;
+            case "gradFill":
+                fill = Gradient(context, element, placeholder);
+                return true;
+            case "blipFill":
+                fill = PictureFill(context, part, element);
+                return true;
+            case "pattFill":
+                fill = new PatternFill((string?)element.Attribute("prst") ?? "pct5",
+                    context.Colors.Color(element.Element(A + "fgClr"), placeholder) ?? SKColors.Black,
+                    context.Colors.Color(element.Element(A + "bgClr"), placeholder) ?? SKColors.White);
+                return true;
+            case "grpFill":
+                fill = groupFill;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private static GradientFill? Gradient(SlideContext context, XElement gradient, SKColor? placeholder)
     {
-        var stops = gradient.Element(A + "gsLst")?.Elements(A + "gs")
+        var stops = gradient.Element(A + "gsLst")?.Elements(A + "gs").Take(MaxGradientStops)
             .Select(gs => new GradientStop((float)Math.Clamp(Number(gs.Attribute("pos")) / 100000, 0, 1), context.Colors.Color(gs, placeholder) ?? SKColors.Black))
             .OrderBy(s => s.Position)
             .ToList() ?? [];
@@ -599,7 +746,9 @@ internal sealed partial class PptxSlideReader
         var style = context.FormatScheme?.Element(A + list)?.Elements().ElementAtOrDefault(position);
         if (style is null)
             return color is { } c ? new SolidFill(c) : null;
-        return Fill(context, part, new XElement("fill", style), color, null, out _);
+        // The style itself, not a copy of it: one theme style serves every shape that refers to it.
+        FillOf(context, part, style, color, null, out var fill);
+        return fill;
     }
 
     // ───────────────────────── Lines ─────────────────────────

@@ -190,9 +190,10 @@ internal static class SnbReader
             {
                 text.Write(block.Span[..Math.Min(block.Length, (int)Math.Max(0, textSize - text.Length))]);
             }
+            // After every block, not only at the end: the header's text size alone allows a gigabyte.
+            if (text.Length > limits.InflateRatioFloor && text.Length / Math.Max(1, data.Length) > limits.MaxInflateRatio)
+                throw DocumentLimits.Exceeded($"The SNB file's text unpacks to more than {limits.MaxInflateRatio} times its size.");
         }
-        if (text.Length > limits.InflateRatioFloor && text.Length / Math.Max(1, data.Length) > limits.MaxInflateRatio)
-            throw DocumentLimits.Exceeded($"The SNB file's text unpacks to more than {limits.MaxInflateRatio} times its size.");
 
         var files = new List<(string, byte[])>();
         var binaryStart = 44L + tablePacked;

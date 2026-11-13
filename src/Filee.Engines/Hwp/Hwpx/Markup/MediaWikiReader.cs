@@ -24,23 +24,27 @@ internal sealed partial class MediaWikiReader
 
     private readonly string _baseFolder;
     private readonly DocumentBudget _budget;
+    private readonly CancellationToken _cancellationToken;
     private readonly Dictionary<string, HNote> _namedReferences = new(StringComparer.Ordinal);
 
-    private MediaWikiReader(string baseFolder, DocumentLimits limits)
+    private MediaWikiReader(string baseFolder, DocumentLimits limits, CancellationToken cancellationToken)
     {
         _baseFolder = baseFolder;
         _budget = new DocumentBudget(limits);
+        _cancellationToken = cancellationToken;
     }
 
     public static HDocument Read(string path, string media) =>
         Read(MarkupBlocks.ReadText(path, DocumentLimits.Default, "MediaWiki"), Path.GetDirectoryName(Path.GetFullPath(path))!, DocumentLimits.Default);
 
-    internal static HDocument Read(string text, string baseFolder, DocumentLimits limits)
+    internal static HDocument Read(string text, string baseFolder, DocumentLimits limits, CancellationToken cancellationToken = default)
     {
-        var reader = new MediaWikiReader(baseFolder, limits);
+        var reader = new MediaWikiReader(baseFolder, limits, cancellationToken);
         text = Clean(MarkupBlocks.Lines(text));
         var section = new HSection();
         reader.Blocks(text.Split('\n'), section.Blocks, 0);
+        // A named <ref> used again shares the note's blocks; MarkupNotes bounds what the writers make of them.
+        MarkupNotes.Check(section.Blocks, limits, cancellationToken);
         var document = new HDocument();
         document.Sections.Add(section);
         return document;
@@ -88,6 +92,7 @@ internal sealed partial class MediaWikiReader
     {
         for (var i = 0; i < lines.Length;)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var line = lines[i];
             var trimmed = line.TrimStart();
             if (line.Trim().Length == 0)
@@ -182,6 +187,7 @@ internal sealed partial class MediaWikiReader
 
     private HParagraph Paragraph(string text, int indent)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         _budget.Paragraph();
         var paragraph = new HParagraph { Format = indent > 0 ? new HParaFormat(Left: indent) : default };
         var sink = new InlineSink(paragraph.Inlines);
@@ -350,6 +356,8 @@ internal sealed partial class MediaWikiReader
         var cellLines = new List<string>();
         var headers = new HashSet<HCell>(ReferenceEqualityComparer.Instance);
         var limit = _budget.Limits.MaxTableColumns;
+        // Columns the current row's cells take so far (a running total, not a sum per cell).
+        var width = 0;
 
         void FinishCell()
         {
@@ -372,8 +380,9 @@ internal sealed partial class MediaWikiReader
             {
                 row = new HRow();
                 table.Rows.Add(row);
+                width = 0;
             }
-            if (row.Cells.Sum(c => c.ColSpan) >= limit)
+            if (width >= limit)
                 return;
             cell = new HCell();
             var content = segment;
@@ -393,6 +402,8 @@ internal sealed partial class MediaWikiReader
             row.Header = header && (row.Cells.Count == 0 || row.Header);
             if (header)
                 headers.Add(cell);
+            cell.ColSpan = Math.Min(cell.ColSpan, limit - width);
+            width += cell.ColSpan;
             row.Cells.Add(cell);
             cellLines.Add(content.Trim());
         }
@@ -400,6 +411,7 @@ internal sealed partial class MediaWikiReader
         i++;
         while (i < lines.Length)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var line = lines[i].TrimStart();
             if (line.StartsWith("|}", StringComparison.Ordinal))
             {
@@ -432,6 +444,7 @@ internal sealed partial class MediaWikiReader
                 FinishCell();
                 row = new HRow();
                 table.Rows.Add(row);
+                width = 0;
                 i++;
                 continue;
             }
@@ -439,7 +452,8 @@ internal sealed partial class MediaWikiReader
             {
                 var header = line[0] == '!';
                 var body = line[1..];
-                foreach (var segment in CellSegments(body, header))
+                // Cells past the column limit are left out before they are cut from the line.
+                foreach (var segment in CellSegments(body, header, Math.Max(1, limit - width)))
                     AddCell(segment, header);
                 i++;
                 continue;
@@ -452,19 +466,26 @@ internal sealed partial class MediaWikiReader
         FinishCell();
         table.Rows.RemoveAll(r => r.Cells.Count == 0);
         table.ColumnCount = Math.Max(1, table.Rows.Count == 0 ? 1 : table.Rows.Max(r => r.Cells.Sum(c => c.ColSpan)));
+        MarkupBlocks.TableArea(table.Rows.Count, table.ColumnCount, _budget.Limits);
+        MarkupBlocks.ClampRowSpans(table);
         if (table.Rows.Count == 0)
             table.Rows.Add(new HRow { Cells = { new HCell { Blocks = { new HParagraph() } } } });
         return table;
     }
 
-    /// <summary>The cells of one line: "||" separates them, and "!!" too on a header line (outside links and templates).</summary>
-    private static List<string> CellSegments(string line, bool header)
+    /// <summary>
+    /// The cells of one line: "||" separates them, and "!!" too on a header line (outside links and templates); at most
+    /// <paramref name="limit"/> of them.
+    /// </summary>
+    private static List<string> CellSegments(string line, bool header, int limit)
     {
         var segments = new List<string>();
         var start = 0;
         var depth = 0;
         for (var i = 0; i < line.Length - 1; i++)
         {
+            if (segments.Count >= limit)
+                return segments;
             var ch = line[i];
             if ((ch == '[' && line[i + 1] == '[') || (ch == '{' && line[i + 1] == '{'))
             {
@@ -713,7 +734,8 @@ internal sealed partial class MediaWikiReader
         return i + match.Length;
     }
 
-    [GeneratedRegex(@"\G<(/?)([A-Za-z][A-Za-z0-9]{0,15})((?:\s[^<>]{0,2000})?)\s*(/?)>")]
+    // The attributes stop before a closing "/": a greedy run would take it, and <ref name="a" /> would open a note.
+    [GeneratedRegex(@"\G<(/?)([A-Za-z][A-Za-z0-9]{0,15})((?:\s[^<>]{0,2000}?)?)\s*(/?)>")]
     private static partial Regex TagPattern();
 
     /// <summary>An HTML tag at <paramref name="i"/>: formatting, a line break, &lt;nowiki&gt; or &lt;ref&gt;.</summary>
@@ -741,7 +763,9 @@ internal sealed partial class MediaWikiReader
                 }
             case "ref" when !closing && depth < MaxInlineDepth:
                 {
-                    var refName = RefName().Match(tag.Groups[3].Value) is { Success: true } named ? named.Groups[1].Value : null;
+                    var refName = RefName().Match(tag.Groups[3].Value) is { Success: true } named
+                        ? named.Groups[1].Success ? named.Groups[1].Value : named.Groups[2].Success ? named.Groups[2].Value : named.Groups[3].Value
+                        : null;
                     if (selfClosing)
                     {
                         if (refName is not null && _namedReferences.TryGetValue(refName, out var known))
@@ -785,17 +809,15 @@ internal sealed partial class MediaWikiReader
         return true;
     }
 
-    /// <summary>A note again ("&lt;ref name=x /&gt;" uses one written before).</summary>
+    /// <summary>
+    /// A note again ("&lt;ref name=x /&gt;" uses one written before): a reference to the same paragraphs, so a long
+    /// note used many times is built once; MarkupNotes counts it at every reference.
+    /// </summary>
     private HNote Copy(HNote note)
     {
         _budget.Paragraph();
         var copy = new HNote(endnote: false);
-        foreach (var paragraph in note.Blocks.OfType<HParagraph>())
-        {
-            var again = new HParagraph();
-            again.Inlines.AddRange(paragraph.Inlines);
-            copy.Blocks.Add(again);
-        }
+        copy.Blocks.AddRange(note.Blocks.OfType<HParagraph>());
         return copy;
     }
 

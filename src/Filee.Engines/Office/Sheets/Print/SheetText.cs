@@ -119,8 +119,9 @@ internal sealed class StyledText
 
     private LineBreak[]? _breaks;
 
-    /// <summary>A piece drawn with one font in one style.</summary>
-    private sealed record Piece(int Start, int Length, TextStyle Style, ResolvedFont Font, float Size, float Ascent, float Descent, float LineHeight)
+    /// <summary>A piece drawn with one font in one style; a right-to-left piece's glyphs run from its end to its start.</summary>
+    private sealed record Piece(int Start, int Length, TextStyle Style, ResolvedFont Font, float Size, float Ascent, float Descent, float LineHeight,
+        bool RightToLeft)
     {
         public int End => Start + Length;
     }
@@ -142,9 +143,9 @@ internal sealed class StyledText
             var runs = SafeFallback(fonts, text, start, length, primary, style);
             foreach (var run in runs)
             {
-                var piece = new Piece(run.Start, run.Length, style, run.Font, size, pixels.Ascent * 0.75f, pixels.Descent * 0.75f, pixels.LineHeight * 0.75f);
-                _pieces.Add(piece);
                 var shaped = fonts.Shaper.Shape(run.Font.Font, text, run.Start, run.Length);
+                _pieces.Add(new Piece(run.Start, run.Length, style, run.Font, size, pixels.Ascent * 0.75f, pixels.Descent * 0.75f, pixels.LineHeight * 0.75f,
+                    shaped.Direction == TextDirection.RightToLeft));
                 var scale = size / shaped.UnitsPerEm;
                 for (var g = 0; g < shaped.Glyphs.Length; g++)
                 {
@@ -176,23 +177,86 @@ internal sealed class StyledText
 
     /// <summary>
     /// The characters of <c>Text[start..end]</c> drawn from <paramref name="x"/> that reach into
-    /// <paramref name="left"/>..<paramref name="right"/>, and where the first of them starts (from <paramref name="x"/>).
+    /// <paramref name="left"/>..<paramref name="right"/>, as pieces to draw each from <paramref name="x"/> + its offset.
+    /// Left-to-right text is one piece. In a right-to-left piece the glyphs run from its logical end to its start, so
+    /// what overflows on the right is the start of the text, and what shows on the left its end.
     /// </summary>
-    public (int Start, int End, float Offset) Visible(int start, int end, float x, float scale, float spaceExtra, float left, float right)
+    public List<(int Start, int End, float Offset)> Visible(int start, int end, float x, float scale, float spaceExtra, float left, float right)
+    {
+        var shown = new List<(int, int, float)>();
+        start = Math.Max(0, start);
+        end = Math.Min(end, Text.Length);
+        if (start >= end)
+            return shown;
+        if (!_pieces.Any(p => p.RightToLeft && p.Start < end && p.End > start))
+        {
+            var (from, to, offset) = VisibleForward(start, end, x, scale, spaceExtra, left, right);
+            if (from < to)
+                shown.Add((from, to, offset - x));
+            return shown;
+        }
+        // Piece by piece, in the order Draw places them.
+        var position = x;
+        foreach (var piece in _pieces.OrderBy(p => p.Start))
+        {
+            var from = Math.Max(start, piece.Start);
+            var to = Math.Min(end, piece.End);
+            if (from >= to)
+                continue;
+            var width = 0f;
+            for (var i = from; i < to; i++)
+                width += Advance(i, scale, spaceExtra);
+            if (position < right && position + width > left)
+            {
+                var (a, b, at) = piece.RightToLeft
+                    ? VisibleBackward(from, to, position, scale, spaceExtra, left, right)
+                    : VisibleForward(from, to, position, scale, spaceExtra, left, right);
+                if (a < b)
+                    shown.Add((a, b, at - x));
+            }
+            position += width;
+        }
+        return shown;
+    }
+
+    /// <summary>Left-to-right characters from <paramref name="x"/>: what shows, and where the first of it starts.</summary>
+    private (int Start, int End, float At) VisibleForward(int start, int end, float x, float scale, float spaceExtra, float left, float right)
     {
         var from = start;
         var position = x;
         while (from < end && position + Advance(from, scale, spaceExtra) <= left)
             position += Advance(from++, scale, spaceExtra);
-        while (from > start && char.IsLowSurrogate(Text[from]))
+        // A merged cell split by a page break may have all its text on the page before: nothing is left here.
+        while (from > start && from < end && char.IsLowSurrogate(Text[from]))
             position -= Advance(--from, scale, spaceExtra);
-        var offset = position - x;
+        var at = position;
         var to = from;
         while (to < end && position < right)
             position += Advance(to++, scale, spaceExtra);
         while (to < end && (char.IsLowSurrogate(Text[to]) || _advances[to] == 0))
             to++;
-        return (from, to, offset);
+        return (from, to, at);
+    }
+
+    /// <summary>
+    /// Right-to-left characters drawn from <paramref name="x"/> (the last one leftmost): what shows, and where the
+    /// leftmost of it starts. A cluster's advance is on its first index, so its other indexes go with it.
+    /// </summary>
+    private (int Start, int End, float At) VisibleBackward(int start, int end, float x, float scale, float spaceExtra, float left, float right)
+    {
+        var to = end;
+        var position = x;
+        while (to > start && position + Advance(to - 1, scale, spaceExtra) <= left)
+            position += Advance(--to, scale, spaceExtra);
+        if (to == start)
+            return (start, start, position);
+        while (to < end && (char.IsLowSurrogate(Text[to]) || _advances[to] == 0))
+            to++;
+        var at = position;
+        var from = to;
+        while (from > start && position < right)
+            position += Advance(--from, scale, spaceExtra);
+        return (from, to, at);
     }
 
     private float Advance(int index, float scale, float spaceExtra) => _advances[index] * scale + (Text[index] == ' ' ? spaceExtra : 0);

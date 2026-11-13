@@ -3,6 +3,9 @@
 // picture of it there for programs that can't run it (MS-OLEDS 2.3.4, OLEPresentationStream "\x02OlePres000"): a
 // Windows metafile (CF_METAFILEPICT) or a device-independent bitmap (CF_DIB). An object without one may still be a
 // Paint bitmap whose native data ("\x01Ole10Native") is the BMP file itself. Nothing else of the object is read.
+//
+// A document's objects share one budget (Budget): what all their compound files give out counts against the
+// document's MaxPackageBytes together, and an object named again gives the picture it gave before without a new read.
 
 using System.Buffers.Binary;
 using Filee.Engines.Documents;
@@ -18,20 +21,28 @@ internal static class OlePreview
     /// Writes the picture of the OLE object in <paramref name="ole"/> next to <paramref name="target"/> (its extension
     /// replaced by .wmf or .bmp) and returns that file; null when the object holds no picture Filee can draw.
     /// </summary>
-    public static string? Extract(string ole, string target, DocumentLimits? limits = null)
+    public static string? Extract(string ole, string target, DocumentLimits? limits = null) => Extract(ole, target, limits, null);
+
+    /// <param name="counted">Receives the bytes read: the object's file and each stream of it.</param>
+    private static string? Extract(string ole, string target, DocumentLimits? limits, Action<long>? counted)
     {
         try
         {
+            if (new FileInfo(ole).Length > (limits ?? DocumentLimits.Default).MaxPartBytes)
+                return null; // larger than any part may be
             var bytes = File.ReadAllBytes(ole);
+            counted?.Invoke(bytes.Length);
             // 한글 keeps the object's length before the compound file.
             var start = HasSignature(bytes, 0) ? 0 : HasSignature(bytes, 4) ? 4 : -1;
             if (start < 0)
                 return null;
             using var stream = new MemoryStream(bytes, start, bytes.Length - start, writable: false);
             using var file = CompoundFile.Open(stream, limits);
-            if (Presentation(file) is var (data, wmf))
+            if (Presentation(file, counted) is var (data, wmf))
                 return Write(target, wmf ? ".wmf" : ".bmp", data);
-            if (file.Read("\u0001Ole10Native") is { Length: > 6 } native && native.AsSpan(4, 2).SequenceEqual("BM"u8))
+            var native = file.Read("\u0001Ole10Native");
+            counted?.Invoke(native?.Length ?? 0);
+            if (native is { Length: > 6 } && native.AsSpan(4, 2).SequenceEqual("BM"u8))
                 return Write(target, ".bmp", native.AsSpan(4).ToArray());
             return null;
         }
@@ -45,11 +56,12 @@ internal static class OlePreview
         bytes.Length >= at + 8 && bytes.AsSpan(at, 8).SequenceEqual((ReadOnlySpan<byte>)[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
 
     /// <summary>The first presentation stream's picture: a metafile (WMF records) or a BMP file made of its DIB.</summary>
-    private static (byte[] Data, bool Wmf)? Presentation(CompoundFile file)
+    private static (byte[] Data, bool Wmf)? Presentation(CompoundFile file, Action<long>? counted)
     {
         foreach (var name in file.Streams.Where(s => s.StartsWith("\u0002OlePres", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
         {
             var data = file.Read(name);
+            counted?.Invoke(data?.Length ?? 0);
             if (data is null || data.Length < 8)
                 continue;
             var span = data.AsSpan();
@@ -112,5 +124,36 @@ internal static class OlePreview
         var path = Path.ChangeExtension(target, extension);
         File.WriteAllBytes(path, data);
         return path;
+    }
+
+    /// <summary>
+    /// The previews of one document: every object's compound file may give out only what is left of the document's
+    /// <see cref="DocumentLimits.MaxPackageBytes"/>, and each object is read once. Once the budget is spent the other
+    /// objects have no picture, like an object whose picture can't be read.
+    /// </summary>
+    internal sealed class Budget(DocumentLimits limits)
+    {
+        private readonly Dictionary<string, string?> _done = new(StringComparer.Ordinal);
+        private long _left = limits.MaxPackageBytes;
+
+        /// <summary>Bytes the previews may still read.</summary>
+        public long Left => _left;
+
+        /// <summary>The picture of the object in <paramref name="ole"/>, as <see cref="OlePreview.Extract(string, string, DocumentLimits?)"/> gives it.</summary>
+        public string? Extract(string ole, string target)
+        {
+            if (_done.TryGetValue(ole, out var known))
+                return known;
+            string? preview = null;
+            if (_left > 0)
+            {
+                var read = 0L;
+                preview = OlePreview.Extract(ole, target, limits with { MaxPackageBytes = _left }, bytes => read += bytes);
+                // An object refused part way still spent what it read.
+                _left = read >= _left ? 0 : _left - read;
+            }
+            _done[ole] = preview;
+            return preview;
+        }
     }
 }

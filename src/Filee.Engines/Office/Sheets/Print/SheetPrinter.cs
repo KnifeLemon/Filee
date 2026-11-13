@@ -74,7 +74,7 @@ internal static class SheetPrinter
             var number = 1;
             foreach (var (sheet, index, plan) in sheets)
             {
-                var conditional = plan.Pages.Count > 0 ? ConditionalFormatting.Apply(sheet, Bounds(plan.Pages)) : [];
+                var conditional = plan.Pages.Count > 0 ? ConditionalFormatting.Apply(sheet, Bounds(plan.Pages), index) : [];
                 var pictures = Pictures(sheet, printed.Images);
                 var headerPictures = HeaderPictures(sheet, printed.Images);
                 var renderer = new SheetPageRenderer(book, plan, index, fonts, conditional, pictures);
