@@ -31,7 +31,7 @@
     },
     "libreoffice": {
       "version": "26.2.6",
-      "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.6/win/x86_64/LibreOffice_26.2.6_Win_x86-64.msi",
+      "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/win/x86_64/LibreOffice_26.2.6.3_Win_x86-64.msi",
       "sha256": "F9877032FD908BEB9C0DDF06DF4AF5C2E85F419C42E14876C4CCE5AAE5FB2660",
       "size": 373252096,
       "kind": "msi"
@@ -247,7 +247,7 @@
         },
         "libreoffice": {
           "version": "26.2.6",
-          "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.6/mac/x86_64/LibreOffice_26.2.6_MacOS_x86-64.dmg",
+          "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/mac/x86_64/LibreOffice_26.2.6.3_MacOS_x86-64.dmg",
           "sha256": "135B8A95B8133396D54BF8E726DBC0066145EFA0D785963FC3D4592ACBFCFE5B",
           "size": 308308875,
           "kind": "dmg"
@@ -301,7 +301,7 @@
         },
         "libreoffice": {
           "version": "26.2.6",
-          "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.6/mac/aarch64/LibreOffice_26.2.6_MacOS_aarch64.dmg",
+          "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/mac/aarch64/LibreOffice_26.2.6.3_MacOS_aarch64.dmg",
           "sha256": "94BB3248DF074C225490A8A6D1D9DC87C7D6783DBB7A8E9F0D0C3D94348552AF",
           "size": 297798926,
           "kind": "dmg"

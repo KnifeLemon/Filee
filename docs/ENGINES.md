@@ -144,9 +144,11 @@ table, e.g. `dumpbin /dependents`) and look for `MSVCP140*.dll`, `VCRUNTIME140*.
 To bump a version, change `url`, `sha256` and `size` in engines.json together, run
 `pwsh build/fetch-engines.ps1`, test, and update `THIRD-PARTY-NOTICES.md`. For rhwp, also update `RHWP_VERSION`,
 `RHWP_COMMIT` and `RUST_TOOLCHAIN` in `build/build-native.py` (see below); CI fails until they match. The Windows
-ARM64 builds of rhwp and Unhwp need a new build and pin too (see [Windows on ARM64](#windows-on-arm64)). When the
-LibreOffice team retires a version from `download.documentfoundation.org/libreoffice/stable/`, its URL stops working:
-keep the pinned version current.
+ARM64 builds of rhwp and Unhwp need a new build and pin too (see [Windows on ARM64](#windows-on-arm64)).
+LibreOffice is pinned to its permanent archive, `downloadarchive.documentfoundation.org/libreoffice/old/<build>/`, where
+`<build>` is the full build number (26.2.6.3): `download.documentfoundation.org/libreoffice/stable/` drops a version as
+soon as the next one comes out, and a URL there stops working in released copies of Filee (#1474). The file in the
+archive is the same one, so its `sha256` and `size` stay; check them against the archive's `.sha256` file.
 
 ## Linux builds for older glibc
 
