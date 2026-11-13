@@ -108,6 +108,7 @@ internal sealed partial class PptxSlideReader
         var first = true;
         foreach (var p in body.Elements(A + "p"))
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             _budget.Paragraph();
             var paragraph = Paragraph(context, part, p, ph, bodies, fontRef, fontScale, spacingReduction, counters, numbered, first);
             frame.Paragraphs.Add(paragraph);

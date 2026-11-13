@@ -14,11 +14,13 @@ internal readonly record struct PartRelationship(string Type, string Target, boo
 internal sealed class SlidePackage : IDisposable
 {
     private static readonly XNamespace PackageRelationships = "http://schemas.openxmlformats.org/package/2006/relationships";
+    private static readonly XNamespace OfficeRelationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
     private readonly DocumentPackage _package;
     private readonly Dictionary<string, XElement?> _parts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, PartRelationship>> _relationships = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]?> _binaries = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string?> _diagramDrawings = new(StringComparer.OrdinalIgnoreCase);
 
     private SlidePackage(DocumentPackage package) => _package = package;
 
@@ -97,6 +99,25 @@ internal sealed class SlidePackage : IDisposable
     /// <summary>The first target of a relationship type, matched on the end of the type (e.g. "/slideLayout").</summary>
     public string? TargetOfType(string part, string typeSuffix) =>
         Relationships(part).Values.FirstOrDefault(r => !r.External && r.Type.EndsWith(typeSuffix, StringComparison.Ordinal)).Target;
+
+    /// <summary>
+    /// The drawing PowerPoint stores with a SmartArt frame of <paramref name="part"/> (a:graphicData): the data part
+    /// (relIds r:dm) names it in its dsp:dataModelExt, by a relationship of <paramref name="part"/>. Null when there is none.
+    /// </summary>
+    public string? DiagramDrawing(string part, XElement graphicData)
+    {
+        var relIds = graphicData.Descendants().FirstOrDefault(e => e.Name.LocalName == "relIds");
+        var dataPart = Target(part, (string?)relIds?.Attribute(OfficeRelationships + "dm"));
+        if (dataPart is null)
+            return null;
+        // Many frames can share one data part: it is searched once.
+        if (!_diagramDrawings.TryGetValue(dataPart, out var drawingId))
+        {
+            drawingId = (string?)Part(dataPart)?.Descendants().FirstOrDefault(e => e.Name.LocalName == "dataModelExt")?.Attribute("relId");
+            _diagramDrawings[dataPart] = drawingId;
+        }
+        return Target(part, drawingId);
+    }
 
     private static string Resolve(string folder, string target)
     {
