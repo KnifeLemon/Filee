@@ -250,7 +250,7 @@ internal sealed class StyledText
             position += Advance(--to, scale, spaceExtra);
         if (to == start)
             return (start, start, position);
-        while (to < end &&(char.IsLowSurrogate(Text[to]) || _advances[to] == 0))
+        while (to < end && (char.IsLowSurrogate(Text[to]) || _advances[to] == 0))
             to++;
         var at = position;
         var from = to;
