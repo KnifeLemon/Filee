@@ -6,7 +6,7 @@ namespace Filee.Engines.Tests;
 
 public class HikvisionStreamTests
 {
-    private static bool NeedsHeader(byte[] data) => HikvisionStream.NeedsHeader(new MemoryStream(data));
+    private static bool NeedsHeader(byte[] data) => HikvisionStream.NeedsHeader(data);
 
     private static byte[] Stream(params (byte Type, byte Id)[] types) =>
         [.. HikvisionRecording.PackHeader(90_000), .. HikvisionRecording.StreamMap(types)];

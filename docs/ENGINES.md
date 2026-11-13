@@ -1819,12 +1819,12 @@ extension; FFmpeg's mpeg demuxer reads them by their content, so they go to ever
 format (usually MP4) is read. Exports from iVMS-4200 and the NVR (`.mp4`, sometimes `.264`) start with a 40-byte
 `IMKH` header, which makes FFmpeg read the stream map's type 0x91 as G.711 mu-law. The recordings on a camera's SD
 card or a NAS (`hiv00000.mp4`, indexed by `index00.bin`) are the same stream without the header: FFmpeg then takes
-mu-law sound for MP2 and fails. When a video file starts with a pack header and a stream map in its first 256 KB
-lists mu-law sound (`Media/HikvisionStream.cs`), Filee gives FFmpeg `concat:<header>|<file>`, a 40-byte `IMKH`
-header written to the job's work folder (to Filee's folder in the temp folder for the Cut a clip editor) followed by
-the recording, which is not copied. Sound files and pictures aren't looked into. A damaged stream map leaves the file
-to FFmpeg as it is. Old `4HKH` `.264` files (Hikvision's own frame format) and recordings made with stream encryption
-on can't be read and fail with FFmpeg's error.
+mu-law sound for MP2 and fails. When a video file starts with a pack header and a stream map in its first 256 KB lists
+mu-law sound (`Media/HikvisionStream.cs`, which reads only four bytes of any other file), Filee gives FFmpeg
+`concat:<header>|<file>`, a 40-byte `IMKH` header written to the job's work folder (to Filee's folder in the temp
+folder for the Cut a clip editor) followed by the recording, which is not copied. Sound files and pictures aren't
+looked into. A damaged stream map leaves the file to FFmpeg as it is. Old `4HKH` `.264` files (Hikvision's own frame
+format) and recordings made with stream encryption on can't be read and fail with FFmpeg's error.
 Wisenet WAVE / Nx Witness exports (`.nov`, read only) are layout files written by Network Optix's client: named
 streams (a NUL-terminated name, then the data) and an index of where each starts, after them with a 20-byte footer
 (version 2) or before them (version 1), as `nx_open`'s `layout_file_info.h` (MPL-2.0) describes. Each camera's
