@@ -337,23 +337,65 @@ public sealed class CaptureStudioTests
         var loc = new DummyLocalizer();
         var vm = new CaptureStudioConfigViewModel(targetService, loc);
 
+        // Default should be 30 FPS at index 2
         Assert.Equal(30, vm.SelectedFramerate);
+        Assert.Equal(2, vm.SelectedFramerateIndex);
 
-        // Test instant 24 FPS snap
+        // Test discrete indices: 0 -> 15, 1 -> 24, 2 -> 30, 3 -> 60, 4 -> 120
+        vm.SelectedFramerateIndex = 0;
+        Assert.Equal(15, vm.SelectedFramerate);
+
+        vm.SelectedFramerateIndex = 1;
+        Assert.Equal(24, vm.SelectedFramerate);
+
+        vm.SelectedFramerateIndex = 3;
+        Assert.Equal(60, vm.SelectedFramerate);
+
+        vm.SelectedFramerateIndex = 4;
+        Assert.Equal(120, vm.SelectedFramerate);
+
+        // Test instant 24 FPS snap command
         vm.SetFramerateCommand.Execute(24);
         Assert.Equal(24, vm.SelectedFramerate);
+        Assert.Equal(1, vm.SelectedFramerateIndex);
 
         var config24 = vm.BuildConfig();
         Assert.Equal(24, config24.Framerate);
 
-        // Test custom 48 FPS
-        vm.SelectedFramerate = 48;
-        var config48 = vm.BuildConfig();
-        Assert.Equal(48, config48.Framerate);
-
-        // Test 120 FPS
+        // Test 120 FPS snap command
         vm.SetFramerateCommand.Execute(120);
         Assert.Equal(120, vm.SelectedFramerate);
+        Assert.Equal(4, vm.SelectedFramerateIndex);
+    }
+
+    [Fact]
+    public void CaptureRecordingEngine_BuildFfmpegProcessStartInfo_generates_valid_arguments()
+    {
+        var engine = new CaptureRecordingEngine();
+        var config = new CaptureConfig
+        {
+            SourceType = CaptureSourceType.FullScreen,
+            Framerate = 60,
+            EnableMicrophone = false
+        };
+
+        var psiGfx = engine.BuildFfmpegProcessStartInfo("ffmpeg.exe", "output.mp4", config, useGfxCapture: true);
+        Assert.Contains("-hide_banner", psiGfx.ArgumentList);
+        Assert.Contains("-y", psiGfx.ArgumentList);
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Contains("lavfi", psiGfx.ArgumentList);
+            Assert.Contains(psiGfx.ArgumentList, a => a.Contains("gfxcapture="));
+            Assert.Contains(psiGfx.ArgumentList, a => a.Contains("hwdownload,format=bgra"));
+        }
+
+        var psiGdi = engine.BuildFfmpegProcessStartInfo("ffmpeg.exe", "output.mp4", config, useGfxCapture: false);
+        Assert.Contains("-hide_banner", psiGdi.ArgumentList);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Contains("gdigrab", psiGdi.ArgumentList);
+        }
     }
 
     [Fact]

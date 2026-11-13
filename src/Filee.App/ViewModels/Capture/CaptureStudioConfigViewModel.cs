@@ -89,11 +89,37 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
     [ObservableProperty]
     private ScreenTargetInfo? _selectedScreen;
 
+    public static readonly int[] AvailableFramerates = [15, 24, 30, 60, 120];
+
     [ObservableProperty]
     private string _selectedResolution = "1080p (Full HD)";
 
     [ObservableProperty]
+    private int _selectedFramerateIndex = 2; // Default to 30 FPS (index 2)
+
+    [ObservableProperty]
     private int _selectedFramerate = 30;
+
+    partial void OnSelectedFramerateIndexChanged(int value)
+    {
+        var clamped = Math.Clamp(value, 0, AvailableFramerates.Length - 1);
+        var target = AvailableFramerates[clamped];
+        if (_selectedFramerate != target)
+        {
+            _selectedFramerate = target;
+            OnPropertyChanged(nameof(SelectedFramerate));
+        }
+    }
+
+    partial void OnSelectedFramerateChanged(int value)
+    {
+        var idx = Array.IndexOf(AvailableFramerates, value);
+        if (idx >= 0 && _selectedFramerateIndex != idx)
+        {
+            _selectedFramerateIndex = idx;
+            OnPropertyChanged(nameof(SelectedFramerateIndex));
+        }
+    }
 
     [ObservableProperty]
     private bool _enableMicrophone = true;
@@ -196,13 +222,35 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
     [RelayCommand]
     private void SetFramerate(object? param)
     {
+        int fps = 30;
         if (param is int i)
         {
-            SelectedFramerate = Math.Clamp(i, 12, 120);
+            fps = i;
         }
         else if (param != null && int.TryParse(param.ToString(), out var parsed))
         {
-            SelectedFramerate = Math.Clamp(parsed, 12, 120);
+            fps = parsed;
+        }
+
+        var idx = Array.IndexOf(AvailableFramerates, fps);
+        if (idx >= 0)
+        {
+            SelectedFramerateIndex = idx;
+        }
+        else
+        {
+            int closest = 0;
+            int minDiff = int.MaxValue;
+            for (int k = 0; k < AvailableFramerates.Length; k++)
+            {
+                int diff = Math.Abs(AvailableFramerates[k] - fps);
+                if (diff < minDiff)
+                {
+                    minDiff = diff;
+                    closest = k;
+                }
+            }
+            SelectedFramerateIndex = closest;
         }
     }
 

@@ -194,20 +194,41 @@ public sealed class CaptureRecordingEngine : IDisposable
             _segmentFiles.Add(segmentPath);
         }
 
-        var psi = BuildFfmpegProcessStartInfo(ffmpegExe, segmentPath, config);
+        // On Windows 10/11, try modern Windows.Graphics.Capture API (gfxcapture) first.
+        // It provides smooth D3D11 frame grabbing and avoids GDI BitBlt access limitations (error 5).
+        bool success = await TryLaunchRecordingProcessAsync(ffmpegExe, segmentPath, config, useGfxCapture: OperatingSystem.IsWindows()).ConfigureAwait(false);
+        if (!success && OperatingSystem.IsWindows())
+        {
+            _log?.LogWarning("Primary gfxcapture engine failed, falling back to gdigrab");
+            success = await TryLaunchRecordingProcessAsync(ffmpegExe, segmentPath, config, useGfxCapture: false).ConfigureAwait(false);
+        }
+
+        if (!success)
+        {
+            ErrorOccurred?.Invoke(LastErrorMessage ?? "Screen recording failed to start.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task<bool> TryLaunchRecordingProcessAsync(string ffmpegExe, string segmentPath, CaptureConfig config, bool useGfxCapture)
+    {
+        var psi = BuildFfmpegProcessStartInfo(ffmpegExe, segmentPath, config, useGfxCapture);
         try
         {
             var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            var stderrBuilder = new StringBuilder();
+            var stderrLines = new Queue<string>();
             proc.ErrorDataReceived += (_, e) =>
             {
                 if (!string.IsNullOrWhiteSpace(e.Data))
                 {
                     _log?.LogDebug("[FFmpeg Record] {Data}", e.Data);
-                    lock (stderrBuilder)
+                    lock (stderrLines)
                     {
-                        if (stderrBuilder.Length < 3000)
-                            stderrBuilder.AppendLine(e.Data);
+                        if (stderrLines.Count >= 40)
+                            stderrLines.Dequeue();
+                        stderrLines.Enqueue(e.Data);
                     }
                 }
             };
@@ -220,16 +241,26 @@ public sealed class CaptureRecordingEngine : IDisposable
                 _currentProcess = proc;
             }
 
-            // Wait brief moment to confirm process didn't crash immediately
-            await Task.Delay(350).ConfigureAwait(false);
+            // Wait brief moment to confirm process didn't exit prematurely
+            await Task.Delay(400).ConfigureAwait(false);
             if (proc.HasExited && proc.ExitCode != 0)
             {
-                var errDetail = stderrBuilder.ToString().Trim();
+                string errDetail;
+                lock (stderrLines)
+                {
+                    errDetail = string.Join(Environment.NewLine, stderrLines).Trim();
+                }
+
                 LastErrorMessage = !string.IsNullOrWhiteSpace(errDetail)
                     ? errDetail
                     : $"Screen recorder exited prematurely with code {proc.ExitCode}";
-                _log?.LogError("FFmpeg failed to start: {Error}", LastErrorMessage);
-                ErrorOccurred?.Invoke(LastErrorMessage);
+                _log?.LogError("FFmpeg failed to start (useGfxCapture={UseGfx}): {Error}", useGfxCapture, LastErrorMessage);
+
+                lock (_lock)
+                {
+                    _currentProcess = null;
+                }
+                try { proc.Dispose(); } catch { }
                 return false;
             }
 
@@ -238,8 +269,7 @@ public sealed class CaptureRecordingEngine : IDisposable
         catch (Exception ex)
         {
             LastErrorMessage = ex.Message;
-            _log?.LogError(ex, "Failed to launch FFmpeg recording process");
-            ErrorOccurred?.Invoke($"Could not start screen capture: {ex.Message}");
+            _log?.LogError(ex, "Failed to launch FFmpeg recording process (useGfxCapture={UseGfx})", useGfxCapture);
             return false;
         }
     }
@@ -287,7 +317,7 @@ public sealed class CaptureRecordingEngine : IDisposable
         }
     }
 
-    private ProcessStartInfo BuildFfmpegProcessStartInfo(string ffmpegExe, string outputPath, CaptureConfig config)
+    internal ProcessStartInfo BuildFfmpegProcessStartInfo(string ffmpegExe, string outputPath, CaptureConfig config, bool useGfxCapture = true)
     {
         var psi = new ProcessStartInfo(ffmpegExe)
         {
@@ -299,46 +329,75 @@ public sealed class CaptureRecordingEngine : IDisposable
             StandardInputEncoding = Encoding.UTF8,
         };
 
+        psi.ArgumentList.Add("-hide_banner");
         psi.ArgumentList.Add("-y");
 
         if (OperatingSystem.IsWindows())
         {
-            psi.ArgumentList.Add("-f");
-            psi.ArgumentList.Add("gdigrab");
-            psi.ArgumentList.Add("-framerate");
-            psi.ArgumentList.Add(config.Framerate.ToString(CultureInfo.InvariantCulture));
-
-            if (config.SourceType == CaptureSourceType.FullScreen)
+            if (useGfxCapture)
             {
-                // Fullscreen capture natively grabs entire desktop
+                string lavfi;
+                if (config.SourceType == CaptureSourceType.Window && config.TargetWindow != null && config.TargetWindow.Handle != 0)
+                {
+                    lavfi = $"gfxcapture=hwnd=0x{config.TargetWindow.Handle.ToInt64():X}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
+                }
+                else if (config.SourceType == CaptureSourceType.CustomRegion)
+                {
+                    GetTargetOffsetAndSize(config, out var offsetX, out var offsetY, out var width, out var height);
+                    width = Math.Max(2, (width / 2) * 2);
+                    height = Math.Max(2, (height / 2) * 2);
+                    lavfi = $"gfxcapture=monitor_idx=0:crop_left={offsetX}:crop_top={offsetY}:width={width}:height={height}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
+                }
+                else
+                {
+                    int monitorIdx = config.TargetScreen != null ? Math.Max(0, config.TargetScreen.Index - 1) : 0;
+                    lavfi = $"gfxcapture=monitor_idx={monitorIdx}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
+                }
+
+                psi.ArgumentList.Add("-f");
+                psi.ArgumentList.Add("lavfi");
                 psi.ArgumentList.Add("-i");
-                psi.ArgumentList.Add("desktop");
+                psi.ArgumentList.Add(lavfi);
             }
             else
             {
-                GetTargetOffsetAndSize(config, out var offsetX, out var offsetY, out var width, out var height);
+                psi.ArgumentList.Add("-f");
+                psi.ArgumentList.Add("gdigrab");
+                psi.ArgumentList.Add("-framerate");
+                psi.ArgumentList.Add(config.Framerate.ToString(CultureInfo.InvariantCulture));
 
-                int screenW = GetSystemMetrics(0); // SM_CXSCREEN
-                int screenH = GetSystemMetrics(1); // SM_CYSCREEN
-                if (screenW <= 0) screenW = 1920;
-                if (screenH <= 0) screenH = 1080;
+                if (config.SourceType == CaptureSourceType.FullScreen)
+                {
+                    // Fullscreen capture natively grabs entire desktop
+                    psi.ArgumentList.Add("-i");
+                    psi.ArgumentList.Add("desktop");
+                }
+                else
+                {
+                    GetTargetOffsetAndSize(config, out var offsetX, out var offsetY, out var width, out var height);
 
-                offsetX = Math.Clamp(offsetX, 0, Math.Max(0, screenW - 64));
-                offsetY = Math.Clamp(offsetY, 0, Math.Max(0, screenH - 64));
-                width = Math.Clamp(width, 64, screenW - offsetX);
-                height = Math.Clamp(height, 64, screenH - offsetY);
+                    int screenW = GetSystemMetrics(0); // SM_CXSCREEN
+                    int screenH = GetSystemMetrics(1); // SM_CYSCREEN
+                    if (screenW <= 0) screenW = 1920;
+                    if (screenH <= 0) screenH = 1080;
 
-                width = Math.Max(2, (width / 2) * 2);
-                height = Math.Max(2, (height / 2) * 2);
+                    offsetX = Math.Clamp(offsetX, 0, Math.Max(0, screenW - 64));
+                    offsetY = Math.Clamp(offsetY, 0, Math.Max(0, screenH - 64));
+                    width = Math.Clamp(width, 64, screenW - offsetX);
+                    height = Math.Clamp(height, 64, screenH - offsetY);
 
-                psi.ArgumentList.Add("-offset_x");
-                psi.ArgumentList.Add(offsetX.ToString(CultureInfo.InvariantCulture));
-                psi.ArgumentList.Add("-offset_y");
-                psi.ArgumentList.Add(offsetY.ToString(CultureInfo.InvariantCulture));
-                psi.ArgumentList.Add("-video_size");
-                psi.ArgumentList.Add($"{width}x{height}");
-                psi.ArgumentList.Add("-i");
-                psi.ArgumentList.Add("desktop");
+                    width = Math.Max(2, (width / 2) * 2);
+                    height = Math.Max(2, (height / 2) * 2);
+
+                    psi.ArgumentList.Add("-offset_x");
+                    psi.ArgumentList.Add(offsetX.ToString(CultureInfo.InvariantCulture));
+                    psi.ArgumentList.Add("-offset_y");
+                    psi.ArgumentList.Add(offsetY.ToString(CultureInfo.InvariantCulture));
+                    psi.ArgumentList.Add("-video_size");
+                    psi.ArgumentList.Add($"{width}x{height}");
+                    psi.ArgumentList.Add("-i");
+                    psi.ArgumentList.Add("desktop");
+                }
             }
 
             // Microphone audio track if enabled and valid device selected
@@ -348,6 +407,15 @@ public sealed class CaptureRecordingEngine : IDisposable
                 psi.ArgumentList.Add("dshow");
                 psi.ArgumentList.Add("-i");
                 psi.ArgumentList.Add($"audio={config.MicrophoneDevice}");
+            }
+
+            psi.ArgumentList.Add("-map");
+            psi.ArgumentList.Add("0:v");
+
+            if (config.EnableMicrophone && !string.IsNullOrWhiteSpace(config.MicrophoneDevice) && config.MicrophoneDevice != "Default Microphone")
+            {
+                psi.ArgumentList.Add("-map");
+                psi.ArgumentList.Add("1:a?");
             }
         }
         else
