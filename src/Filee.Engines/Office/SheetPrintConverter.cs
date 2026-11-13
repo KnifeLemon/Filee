@@ -51,7 +51,7 @@ public sealed class SheetPrintConverter : IConverter
         {
             foreach (var printer in converters.OfType<SheetPrintConverter>())
                 printer.Fallback = (step, progress, cancellationToken) =>
-                    libreOffice.Installed ? libreOffice.ConvertAsync(step, progress, cancellationToken) : null;
+                    libreOffice.Found ? libreOffice.ConvertAsync(step, progress, cancellationToken) : null;
         }
         return converters;
     }
