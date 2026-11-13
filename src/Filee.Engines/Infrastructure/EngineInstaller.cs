@@ -13,6 +13,7 @@
 using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using Filee.Core.Conversion;
 using Microsoft.Extensions.Logging;
@@ -79,13 +80,16 @@ public sealed class EngineInstaller
     private readonly IReadOnlyDictionary<string, EngineComponent> _components;
     private readonly ILogger _logger;
     private readonly IReadOnlyList<EnginePackage> _packages;
+    private readonly Func<EngineComponent, Uri?> _mirror;
 
     /// <param name="root">Folder that receives one sub folder per engine (default: EngineEnvironment.DownloadRoot).</param>
     /// <param name="components">Download list; engines.json when null (tests pass their own).</param>
     /// <param name="packages">Known packages (tests pass their own); EngineDownloads.Packages when null.</param>
-    public EngineInstaller(HttpClient http, string? root = null, IReadOnlyDictionary<string, EngineComponent>? components = null, ILogger? logger = null, IReadOnlyList<EnginePackage>? packages = null)
+    public EngineInstaller(HttpClient http, string? root = null, IReadOnlyDictionary<string, EngineComponent>? components = null, ILogger? logger = null,
+        IReadOnlyList<EnginePackage>? packages = null, Func<EngineComponent, Uri?>? mirror = null)
     {
         _http = http;
+        _mirror = mirror ?? EngineDownloads.MirrorUrl;
         _root = root ?? EngineEnvironment.DownloadRoot;
         _components = components ?? EngineDownloads.Components;
         _logger = logger ?? NullLogger.Instance;
@@ -336,9 +340,35 @@ public sealed class EngineInstaller
         var downloads = Path.Combine(_root, ".downloads");
         Directory.CreateDirectory(downloads);
         var file = Path.Combine(downloads, $"{component.Id}-{component.Version}{Path.GetExtension(new Uri(component.Url).AbsolutePath)}");
+        try
+        {
+            return await DownloadAsync(component, new Uri(component.Url), file, reportBytes, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException && !cancellationToken.IsCancellationRequested
+                                   && _mirror(component) is { } mirror)
+        {
+            // The pinned URL is gone or broken (a retired version, a moved release, a cut or timed-out connection, a file
+            // that was replaced): Filee's own copy, checked against the same SHA-256. The first error is the one to report.
+            _logger.LogWarning(ex, "Downloading {Component} from {Url} failed; trying {Mirror}", component.Id, component.Url, mirror);
+            try
+            {
+                return await DownloadAsync(component, mirror, file, reportBytes, cancellationToken);
+            }
+            catch (Exception mirrorError) when (mirrorError is HttpRequestException or IOException or InvalidDataException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(mirrorError, "Downloading {Component} from {Mirror} failed too", component.Id, mirror);
+                ExceptionDispatchInfo.Throw(ex);
+                throw;
+            }
+        }
+    }
+
+    /// <summary>One attempt: <paramref name="url"/> to <paramref name="file"/>, kept only with the pinned SHA-256.</summary>
+    private async Task<string> DownloadAsync(EngineComponent component, Uri url, string file, Action<long> reportBytes, CancellationToken cancellationToken)
+    {
         var partial = file + ".part";
 
-        using var response = await GetFollowingRedirectsAsync(new Uri(component.Url), cancellationToken);
+        using var response = await GetFollowingRedirectsAsync(url, cancellationToken);
         response.EnsureSuccessStatusCode();
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         try

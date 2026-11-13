@@ -145,15 +145,26 @@ function Get-Engine([string]$name, [switch]$X64) {
         Write-Host "ok   $name (cached)"
         return $file
     }
-    Write-Host "get  $name  $($info.Url)"
-    # GitHub's release downloads answer 504 for minutes at a time, which stopped whole CI runs: try again a few times.
-    Invoke-WebRequest -Uri $info.Url -OutFile $file -UseBasicParsing -UserAgent 'Filee-build' -MaximumRetryCount 5 -RetryIntervalSec 20
-    $hash = (Get-FileHash $file -Algorithm SHA256).Hash
-    if ($hash -ne $info.Sha256) {
+    # Filee's own copy (EngineDownloads.MirrorUrl), for when the pinned URL is gone, e.g. a retired LibreOffice (#1474).
+    $mirror = 'https://dl.filee.sh/engines/' + $info.Sha256.ToLowerInvariant() + '/' + [Uri]::EscapeDataString([Uri]::UnescapeDataString(($info.Url -split '/')[-1]))
+    foreach ($url in @($info.Url, $mirror)) {
+        Write-Host "get  $name  $url"
+        try {
+            # GitHub's release downloads answer 504 for minutes at a time, which stopped whole CI runs: try again a few times.
+            Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing -UserAgent 'Filee-build' -MaximumRetryCount 5 -RetryIntervalSec 20
+        }
+        catch {
+            Write-Warning "$name could not be downloaded from $url ($($_.Exception.Message))"
+            continue
+        }
+        $hash = (Get-FileHash $file -Algorithm SHA256).Hash
+        if ($hash -eq $info.Sha256) {
+            return $file
+        }
         Remove-Item $file
-        throw "Checksum mismatch for $name. Expected $($info.Sha256), got $hash."
+        Write-Warning "Checksum mismatch for $name from $url. Expected $($info.Sha256), got $hash."
     }
-    return $file
+    throw "$name could not be downloaded with its pinned SHA-256 ($($info.Sha256)) from $($info.Url) or $mirror."
 }
 
 function Reset-Folder([string]$path) {

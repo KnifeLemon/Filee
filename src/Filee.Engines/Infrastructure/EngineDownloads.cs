@@ -65,6 +65,30 @@ public static class EngineDownloads
 
     public static bool CanDownload(EnginePackage package) => package.Components.Count > 0 && package.Components.All(Components.ContainsKey);
 
+    /// <summary>
+    /// The name a browser saves the download under ("LibreOffice_26.2.6_Win_x86-64.msi"), which Filee also saves it
+    /// under for another computer (#447); "&lt;id&gt;-&lt;version&gt;" when the URL doesn't end in a usable file name.
+    /// </summary>
+    public static string FileName(EngineComponent component)
+    {
+        var name = Path.GetFileName(Uri.UnescapeDataString(new Uri(component.Url).AbsolutePath).Replace('\\', '/'));
+        return name.Length == 0 || name is "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            ? $"{component.Id}-{component.Version}"
+            : name;
+    }
+
+    /// <summary>
+    /// Filee's own copy of every pinned download (Cloudflare R2 behind dl.filee.sh), filed under its SHA-256. A download
+    /// site drops old versions (LibreOffice's "stable" folder lost 26.2.6 when 26.2.7 came out, #1474), and a released
+    /// Filee can't change its pinned URL, so when the URL fails the installer takes the file from here. The pinned
+    /// SHA-256 is checked either way, so a copy here can't be anything but the pinned file.
+    /// </summary>
+    public const string MirrorRoot = "https://dl.filee.sh/engines/";
+
+    /// <summary>Where Filee's copy of <paramref name="component"/> is: <see cref="MirrorRoot"/>/&lt;sha256&gt;/&lt;file name&gt;.</summary>
+    public static Uri MirrorUrl(EngineComponent component) =>
+        new(MirrorRoot + component.Sha256.ToLowerInvariant() + "/" + Uri.EscapeDataString(FileName(component)));
+
     public static string? UnavailableReason(EnginePackage package)
     {
         if (CanDownload(package))
