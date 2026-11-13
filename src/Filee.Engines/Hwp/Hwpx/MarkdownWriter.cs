@@ -11,15 +11,24 @@ internal sealed class MarkdownWriter
     private readonly Func<string, string?> _imageTarget;
     private readonly List<string> _notes = [];
     private readonly ListNumbers _numbers = new();
+    private readonly Markup.MarkupWriteBudget _budget;
 
-    private MarkdownWriter(Func<string, string?> imageTarget) => _imageTarget = imageTarget;
+    private MarkdownWriter(Func<string, string?> imageTarget, Markup.MarkupWriteBudget? budget)
+    {
+        _imageTarget = imageTarget;
+        _budget = budget ?? new(Documents.DocumentLimits.Default);
+    }
 
     /// <summary>The Markdown text of a document.</summary>
     /// <param name="imageTarget">Maps a picture file to the path written into the Markdown, or null to leave it out.</param>
-    public static string Write(HDocument document, Func<string, string?> imageTarget)
+    /// <param name="budget">
+    /// The caps of the document this text is part of (a notebook's or outline's pieces count together), or null for a
+    /// document of its own.
+    /// </param>
+    public static string Write(HDocument document, Func<string, string?> imageTarget, Markup.MarkupWriteBudget? budget = null)
     {
         Nesting.Limit(document);
-        var writer = new MarkdownWriter(imageTarget);
+        var writer = new MarkdownWriter(imageTarget, budget);
         var sb = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(document.Title))
             sb.Append("---\ntitle: \"").Append(document.Title.Replace("\"", "\\\"", StringComparison.Ordinal)).Append("\"\n---\n\n");
@@ -113,18 +122,19 @@ internal sealed class MarkdownWriter
     {
         if (table.Rows.Count == 0)
             return;
-        var columns = Math.Max(table.ColumnCount, table.Rows.Max(r => r.Cells.Sum(c => c.ColSpan)));
-        var grid = new List<string[]>();
-        var covered = new Dictionary<(int Row, int Column), bool>();
+        // The grid is counted before it is made, and spans are placed arithmetically (a column remembers the row it is
+        // free again from), so spans that are huge or overlap cost no more than the grid.
+        var columns = _budget.Columns(table);
+        _budget.Table(table.Rows.Count, columns);
+        var grid = new List<string[]>(table.Rows.Count);
+        var cursor = new Markup.SpanCursor(table.Rows.Count, columns);
         for (var r = 0; r < table.Rows.Count; r++)
         {
             var cells = new string[columns];
-            var column = 0;
+            cursor.NextRow();
             foreach (var cell in table.Rows[r].Cells)
             {
-                while (column < columns && covered.ContainsKey((r, column)))
-                    column++;
-                if (column >= columns)
+                if (!cursor.Place(cell.RowSpan, cell.ColSpan, table.Rows.Count, out var column, out _, out _))
                     break;
                 // Header cells are bold by nature: no ** inside them.
                 var header = table.Rows[r].Header;
@@ -132,10 +142,6 @@ internal sealed class MarkdownWriter
                         .Select(p => header ? p.Inlines.Select(i => i is HText t ? new HText(t.Text, t.Format with { Bold = null }) : i).ToList() : p.Inlines)
                         .Select(inlines => Inlines(inlines).Replace("\\\n", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal)))
                     .Replace("|", "\\|", StringComparison.Ordinal);
-                for (var rr = r; rr < r + cell.RowSpan; rr++)
-                    for (var cc = column; cc < Math.Min(columns, column + cell.ColSpan); cc++)
-                        covered[(rr, cc)] = true;
-                column += cell.ColSpan;
             }
             grid.Add(cells);
         }

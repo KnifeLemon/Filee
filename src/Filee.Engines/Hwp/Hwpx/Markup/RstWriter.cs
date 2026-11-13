@@ -151,8 +151,17 @@ internal sealed partial class RstWriter(Func<string, string?> pictures) : Markup
             }
         }
 
-        // Which cell covers each position.
+        // Every line of the grid is as wide as all columns: counted before the first is made, as one long cell in a
+        // table of many rows would make every line that long.
+        var lineWidth = widths.Sum(w => (long)w) + columns + 1;
+        Budget.Characters(sb.Length + (2L * rows + 1) * (lineWidth + 1));
+
+        // Which cell covers each position (cells never overlap: MarkupTextWriter placed them so). A position no cell
+        // covers (a row with fewer cells) is a blank cell of its own.
         var owner = new (int Row, int Column)[rows, columns];
+        for (var r = 0; r < rows; r++)
+            for (var c = 0; c < columns; c++)
+                owner[r, c] = (r, c);
         for (var r = 0; r < rows; r++)
             for (var c = 0; c < columns; c++)
                 if (table.Rows[r][c] is { } cell)
@@ -193,8 +202,7 @@ internal sealed partial class RstWriter(Func<string, string?> pictures) : Markup
             for (var c = 0; c < columns;)
             {
                 var (or, oc) = owner[r, c];
-                var cell = table.Rows[or][oc]!;
-                var span = Math.Min(cell.ColSpan, columns - c);
+                var span = Math.Min(table.Rows[or][oc]?.ColSpan ?? 1, columns - c);
                 var width = Enumerable.Range(c, span).Sum(x => widths[x]) + span - 1;
                 // A cell's text stands in its first row; the rows it spans below are blank.
                 var text = or == r ? texts[or, oc] ?? "" : "";

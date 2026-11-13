@@ -18,23 +18,33 @@ internal sealed class DocBookWriter
     private const string XLink = "http://www.w3.org/1999/xlink";
 
     private readonly XmlWriter _xml;
+    private readonly StringBuilder _text;
     private readonly Func<string, string?> _pictures;
     private readonly ListNumbers _numbers = new();
+    private readonly MarkupWriteBudget _budget;
 
-    private DocBookWriter(XmlWriter xml, Func<string, string?> pictures)
+    /// <summary>Characters of each footnote's text, for a note the model refers to more than once.</summary>
+    private readonly Dictionary<HNote, long> _noteLengths = new(ReferenceEqualityComparer.Instance);
+
+    private DocBookWriter(XmlWriter xml, StringBuilder text, Func<string, string?> pictures, Documents.DocumentLimits limits)
     {
         _xml = xml;
+        _text = text;
         _pictures = pictures;
+        _budget = new(limits);
     }
 
     /// <param name="pictures">Maps a picture file to the link written into the document, or null to leave it out.</param>
-    public static string Write(HDocument document, Func<string, string?> pictures)
+    /// <param name="limits">The limits the writer's caps come from (DocumentLimits.Default when null).</param>
+    public static string Write(HDocument document, Func<string, string?> pictures, Documents.DocumentLimits? limits = null)
     {
+        // The writer recurses per table, link, note and text box level: deeper content is opened up into paragraphs.
+        Nesting.Limit(document);
         var sb = new StringBuilder();
         var settings = new XmlWriterSettings { Indent = true, IndentChars = "  ", Encoding = new UTF8Encoding(false), NewLineHandling = NewLineHandling.Replace };
         using (var xml = XmlWriter.Create(sb, settings))
         {
-            var writer = new DocBookWriter(xml, pictures);
+            var writer = new DocBookWriter(xml, sb, pictures, limits ?? Documents.DocumentLimits.Default);
             xml.WriteStartElement("article", DocBook);
             xml.WriteAttributeString("xmlns", "xlink", null, XLink);
             xml.WriteAttributeString("version", "5.0");
@@ -89,6 +99,8 @@ internal sealed class DocBookWriter
     {
         for (var i = 0; i < blocks.Count;)
         {
+            // What the XmlWriter has passed on so far (it holds back a few kilobytes at most).
+            _budget.Characters(_text.Length);
             var block = blocks[i];
             if (MarkupBlocks.IsCode(block))
             {
@@ -228,8 +240,8 @@ internal sealed class DocBookWriter
 
     private void Table(HTable table)
     {
-        var columns = Math.Max(1, Math.Max(table.ColumnCount, table.Rows.Max(r => r.Cells.Sum(c => Math.Max(1, c.ColSpan)))));
-        columns = Math.Min(columns, Documents.DocumentLimits.Default.MaxTableColumns);
+        var columns = _budget.Columns(table);
+        _budget.Table(table.Rows.Count, columns);
         _xml.WriteStartElement("informaltable", DocBook);
         _xml.WriteStartElement("tgroup", DocBook);
         _xml.WriteAttributeString("cols", columns.ToString(CultureInfo.InvariantCulture));
@@ -244,7 +256,8 @@ internal sealed class DocBookWriter
             header++;
         if (header == table.Rows.Count)
             header = 0;
-        var covered = new HashSet<(int Row, int Column)>();
+        // Spans placed arithmetically: a column remembers the row it is free again from.
+        var cursor = new SpanCursor(table.Rows.Count, columns);
         for (var part = 0; part < 2; part++)
         {
             var from = part == 0 ? 0 : header;
@@ -255,34 +268,27 @@ internal sealed class DocBookWriter
             for (var r = from; r < to; r++)
             {
                 _xml.WriteStartElement("row", DocBook);
-                var column = 0;
+                cursor.NextRow();
                 foreach (var cell in table.Rows[r].Cells)
                 {
-                    while (column < columns && covered.Contains((r, column)))
-                        column++;
-                    if (column >= columns)
-                        break;
-                    var colSpan = Math.Clamp(cell.ColSpan, 1, columns - column);
                     // Spans stay in their part (thead or tbody).
-                    var rowSpan = Math.Clamp(cell.RowSpan, 1, to - r);
+                    if (!cursor.Place(cell.RowSpan, cell.ColSpan, to, out var column, out var rowSpan, out var colSpan))
+                        break;
                     _xml.WriteStartElement("entry", DocBook);
                     if (colSpan > 1)
                     {
                         _xml.WriteAttributeString("namest", $"c{column + 1}");
                         _xml.WriteAttributeString("nameend", $"c{column + colSpan}");
                     }
-                    else if (column > 0 && covered.Contains((r, column - 1)))
+                    else if (column > 0)
                     {
+                        // Every position left of the cell is taken (by a span from above or a cell before it).
                         _xml.WriteAttributeString("colname", $"c{column + 1}");
                     }
                     if (rowSpan > 1)
                         _xml.WriteAttributeString("morerows", (rowSpan - 1).ToString(CultureInfo.InvariantCulture));
                     Cell(cell, r < header);
                     _xml.WriteEndElement();
-                    for (var rr = r; rr < r + rowSpan; rr++)
-                        for (var cc = column; cc < column + colSpan; cc++)
-                            covered.Add((rr, cc));
-                    column += colSpan;
                 }
                 _xml.WriteEndElement();
             }
@@ -355,6 +361,8 @@ internal sealed class DocBookWriter
                         MediaObject("inlinemediaobject", picture);
                     break;
                 case HNote note:
+                    // A note the model shares is written out at each reference: counted before it is.
+                    _budget.Characters(_text.Length + NoteLength(note));
                     _xml.WriteStartElement("footnote", DocBook);
                     var any = false;
                     foreach (var paragraph in note.Blocks.OfType<HParagraph>().Where(p => !MarkupBlocks.IsEmpty(p)))
@@ -374,6 +382,14 @@ internal sealed class DocBookWriter
                     break;
             }
         }
+    }
+
+    /// <summary>The characters of a note's text (its own notes left out), counted once per note.</summary>
+    private long NoteLength(HNote note)
+    {
+        if (!_noteLengths.TryGetValue(note, out var length))
+            _noteLengths[note] = length = note.Blocks.OfType<HParagraph>().Sum(p => (long)HDocumentWalker.Text(p.Inlines).Length);
+        return length;
     }
 
     /// <summary>A run: emphasis, code, superscript and subscript elements around its text.</summary>
