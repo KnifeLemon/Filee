@@ -71,8 +71,13 @@ internal static class FontSubstitution
     /// <param name="slots">The fonts a document names, with the slot (language) each is used for.</param>
     /// <param name="text">The document's text.</param>
     /// <param name="lookup">An installed font by name, or null when it is not installed.</param>
+    /// <param name="measuredLatin">
+    /// Latin fonts the consumer measures itself (rhwp's width tables): a Korean font in the LATIN slot of a Chinese or
+    /// Japanese text becomes the first installed one of them in its style before the language font (issue #1207).
+    /// </param>
     public static Dictionary<(string Slot, string Face), string> Plan(
-        IReadOnlyList<(string Slot, string Face)> slots, string text, Func<string, FontCoverage?> lookup)
+        IReadOnlyList<(string Slot, string Face)> slots, string text, Func<string, FontCoverage?> lookup,
+        IReadOnlySet<string>? measuredLatin = null)
     {
         var characters = Characters(text);
         var language = Language(text);
@@ -86,10 +91,14 @@ internal static class FontSubstitution
             var current = lookup(face);
 
             // Korean fonts in a Chinese or Japanese text; a font that can't be used.
-            if (language is not ("ko" or "") && Script(face) == "ko" || current is { Usable: false })
+            var korean = language is not ("ko" or "") && Script(face) == "ko";
+            if (korean || current is { Usable: false })
             {
                 var script = current is { Usable: false } && Script(face) is { Length: > 0 } own ? own : language;
-                if (Preferred(script, serif).FirstOrDefault(name => lookup(name) is { Usable: true }) is { } replacement)
+                var latin = korean && slot == "LATIN" && measuredLatin is not null
+                    ? (serif ? Candidates[""].Serif : Candidates[""].Sans).Where(measuredLatin.Contains)
+                    : [];
+                if (latin.Concat(Preferred(script, serif)).FirstOrDefault(name => lookup(name) is { Usable: true }) is { } replacement)
                     chosen = replacement;
             }
 

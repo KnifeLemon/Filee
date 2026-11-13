@@ -6,6 +6,11 @@
 // drawn into the window's redirection surface; software rendering when Direct3D 11 can't start. Every one of these
 // keeps per-pixel transparency (a redirection surface through DwmEnableBlurBehindWindow with an empty region), so
 // Filee keeps the defaults and only changes them when the variable asks.
+//
+// On ARM64, Avalonia's Adreno blocklist moves Qualcomm GPUs to the Microsoft Basic Render Driver, which draws on the CPU
+// (issue #236). "gpu", "vulkan" and "wgl" are for trying the GPU there again, one way each. On a Snapdragon X Elite
+// (Adreno X1-85) "gpu" scrolled smoothest and kept transparency, "vulkan" put the donut on black and "wgl" didn't
+// start, so an unset variable on ARM64 means "gpu"; "auto" still asks for Avalonia's own choice.
 
 using System.Runtime.InteropServices;
 using Avalonia;
@@ -17,8 +22,8 @@ internal static class WindowsRendering
 {
     public const string Variable = "FILEE_RENDERING";
 
-    /// <summary>FILEE_RENDERING's values besides "auto" (or unset): Avalonia's defaults.</summary>
-    public static readonly IReadOnlyList<string> Choices = ["dcomp", "redirection", "software"];
+    /// <summary>FILEE_RENDERING's values besides "auto": Avalonia's defaults, as unset is on x64.</summary>
+    public static readonly IReadOnlyList<string> Choices = ["dcomp", "redirection", "software", "gpu", "vulkan", "wgl"];
 
     /// <summary>The variable's value in lower case, or null for unset, empty and "auto".</summary>
     public static string? Normalize(string? value)
@@ -28,11 +33,20 @@ internal static class WindowsRendering
     }
 
     /// <summary>
+    /// The choice for the variable's <paramref name="value"/> on Windows: as <see cref="Normalize"/>, except that an
+    /// unset (or empty) variable on ARM64 means "gpu".
+    /// </summary>
+    public static string? Choose(string? value, Architecture architecture) =>
+        string.IsNullOrWhiteSpace(value) && architecture == Architecture.Arm64 ? "gpu" : Normalize(value);
+
+    /// <summary>
     /// Avalonia's Windows options for <paramref name="choice"/> (from <see cref="Normalize"/>): "dcomp" skips WinUI
-    /// composition, "redirection" draws with Direct3D into the redirection surface, "software" without the GPU. Unknown
-    /// values keep the defaults. <paramref name="adapters"/> hears which graphics adapters Direct3D found and which one
-    /// it uses (the first, as without the callback). Not on ARM64: there the callback would turn off Avalonia's own
-    /// choice of adapter.
+    /// composition, "redirection" draws with Direct3D into the redirection surface, "software" without the GPU. "gpu"
+    /// keeps Direct3D but picks the first adapter that isn't the Basic Render Driver, past Avalonia's Adreno blocklist;
+    /// "vulkan" and "wgl" draw with Vulkan or OpenGL, in software when that can't start. Unknown values keep the defaults.
+    /// <paramref name="adapters"/> hears which graphics adapters Direct3D found and which one it uses (the first, as
+    /// without the callback). Not on ARM64 unless "gpu" is asked for: there the callback turns off Avalonia's own choice
+    /// of adapter.
     /// </summary>
     public static Win32PlatformOptions Options(string? choice, Action<string>? adapters)
     {
@@ -48,14 +62,32 @@ internal static class WindowsRendering
             case "software":
                 options.RenderingMode = [Win32RenderingMode.Software];
                 break;
+            case "vulkan":
+                options.RenderingMode = [Win32RenderingMode.Vulkan, Win32RenderingMode.Software];
+                break;
+            case "wgl":
+                options.RenderingMode = [Win32RenderingMode.Wgl, Win32RenderingMode.Software];
+                break;
         }
-        if (adapters is not null && RuntimeInformation.ProcessArchitecture != Architecture.Arm64)
+        var gpu = choice == "gpu";
+        if (gpu || adapters is not null && RuntimeInformation.ProcessArchitecture != Architecture.Arm64)
             options.GraphicsAdapterSelectionCallback = list =>
             {
-                adapters(DescribeAdapters(list.Select(a => a.Description).ToList(), 0));
-                return 0;
+                var names = list.Select(a => a.Description).ToList();
+                var used = gpu ? Hardware(names) : 0;
+                adapters?.Invoke(DescribeAdapters(names, used));
+                return used;
             };
         return options;
+    }
+
+    /// <summary>The first adapter that isn't Windows' software one (the Basic Render Driver), else the first.</summary>
+    public static int Hardware(IReadOnlyList<string?> names)
+    {
+        for (var i = 0; i < names.Count; i++)
+            if (names[i] is { } name && !name.Contains("basic render", StringComparison.OrdinalIgnoreCase))
+                return i;
+        return 0;
     }
 
     /// <summary>"[0] intel(r) uhd graphics (used), [1] nvidia geforce rtx 4060 laptop gpu".</summary>
@@ -67,21 +99,26 @@ internal static class WindowsRendering
     /// <summary>
     /// "Rendering: AngleEgl with WinUIComposition (FILEE_RENDERING not set)", from what Avalonia registered at start.
     /// </summary>
-    public static string Describe(string? variable)
+    public static string Describe(string? variable) => Describe(variable, RuntimeInformation.ProcessArchitecture);
+
+    public static string Describe(string? variable, Architecture architecture)
     {
+        var asked = Asked(variable, architecture);
         var locate = Locator();
         if (locate is null)
-            return $"Rendering: unknown, Avalonia's services can't be read ({Asked(variable)})";
+            return $"Rendering: unknown, Avalonia's services can't be read ({asked})";
         var graphics = locate(typeof(IPlatformGraphics));
         var factoryType = Type.GetType("Avalonia.Win32.IWindowsSurfaceFactory, Avalonia.Win32", throwOnError: false);
         var factory = factoryType is null ? null : locate(factoryType);
         return $"Rendering: {RenderingName(graphics?.GetType().Name)} with " +
-               $"{CompositionName(graphics is null ? null : factory?.GetType().Name, factoryType is not null)} ({Asked(variable)})";
+               $"{CompositionName(graphics is null ? null : factory?.GetType().Name, factoryType is not null)} ({asked})";
     }
 
-    private static string Asked(string? variable) => Normalize(variable) switch
+    private static string Asked(string? variable, Architecture architecture) => Normalize(variable) switch
     {
-        null => $"{Variable} not set",
+        null when string.IsNullOrWhiteSpace(variable) =>
+            $"{Variable} not set{(Choose(variable, architecture) is { } choice ? $", {choice} on ARM64" : "")}",
+        null => $"{Variable}=auto",
         var choice when Choices.Contains(choice) => $"{Variable}={choice}",
         var choice => $"{Variable}={choice} is unknown and ignored",
     };

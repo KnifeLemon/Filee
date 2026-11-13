@@ -141,12 +141,15 @@ public partial class SetupWindow : Window
     private T? Find<T>(string name) where T : Control =>
         State?.GetLogicalDescendants().OfType<T>().FirstOrDefault(c => c.Name == name);
 
-    /// <summary>The "What's new" slides on the progress card, fading in at each change.</summary>
+    /// <summary>
+    /// The "What's new" slides on the progress card, fading in at each change. Each shows its poster frame, not the
+    /// animation: an install is shorter than the clips, which were cut off midway. The app plays them in full.
+    /// </summary>
     private void ShowSlides()
     {
         if (!_model.ShowShowcase || _model.Deck is not { } deck || Find<SlideShow>("Slides") is not { } slides)
             return;
-        slides.PlayAnimations = SetupMotion.Enabled;
+        slides.PlayAnimations = false;
         if (SetupMotion.Enabled)
         {
             slides.Media.Transitions = [new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(450) }];

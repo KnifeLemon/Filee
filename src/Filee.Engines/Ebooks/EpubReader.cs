@@ -5,6 +5,7 @@
 using System.IO.Compression;
 using System.Xml.Linq;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -79,8 +80,7 @@ internal static class EpubReader
         XDocument encryption;
         try
         {
-            using var stream = entry.Open();
-            encryption = XDocument.Load(stream);
+            encryption = BoundedXml.Part(entry);
         }
         catch (System.Xml.XmlException)
         {

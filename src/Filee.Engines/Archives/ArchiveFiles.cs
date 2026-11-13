@@ -8,8 +8,9 @@ internal static class ArchiveFiles
 {
     /// <summary>Copies a stream, failing when it holds more than <paramref name="maxBytes"/> (a lying or damaged header).</summary>
     /// <param name="budget">Counts the bytes towards the extraction's bomb and free-space checks.</param>
+    /// <param name="tooLarge">The error for more than <paramref name="maxBytes"/>, when it isn't a lying header.</param>
     public static long CopyLimited(Stream from, Stream to, long maxBytes, CancellationToken cancellationToken,
-        Action<long>? progress = null, UnpackBudget? budget = null)
+        Action<long>? progress = null, UnpackBudget? budget = null, Func<Exception>? tooLarge = null)
     {
         var buffer = new byte[1 << 16];
         long total = 0;
@@ -19,7 +20,7 @@ internal static class ArchiveFiles
             cancellationToken.ThrowIfCancellationRequested();
             total += read;
             if (total > maxBytes)
-                throw new InvalidDataException("the data unpacks to more than the archive declares");
+                throw tooLarge?.Invoke() ?? new InvalidDataException("the data unpacks to more than the archive declares");
             budget?.Add(read);
             to.Write(buffer, 0, read);
             progress?.Invoke(read);
@@ -58,7 +59,8 @@ internal static class ArchiveFiles
 
     /// <summary>
     /// Moves the folder <paramref name="source"/> to <paramref name="target"/>. An existing target (the preset
-    /// overwrites) receives the files, replacing those with the same names.
+    /// overwrites) receives the files, replacing those with the same names; it is refused, before anything moves, when
+    /// it or any folder in it the files would go into is a link or junction.
     /// </summary>
     public static void MoveFolder(string source, string target)
     {
@@ -76,14 +78,35 @@ internal static class ArchiveFiles
                 // Different drives: fall through to copying file by file.
             }
         }
+        RefuseLinks(source, target);
         MergeInto(source, target);
+    }
+
+    /// <summary>
+    /// Throws when <paramref name="target"/>, or a folder below it that a folder of <paramref name="source"/> merges
+    /// into, is a link: the files would land wherever it points, outside the folder the user chose.
+    /// </summary>
+    private static void RefuseLinks(string source, string target)
+    {
+        RefuseLink(target);
+        foreach (var dir in Directory.EnumerateDirectories(source))
+        {
+            var destination = Path.Combine(target, Path.GetFileName(dir));
+            if (Directory.Exists(destination))
+                RefuseLinks(dir, destination);
+        }
+    }
+
+    private static void RefuseLink(string folder)
+    {
+        var info = new DirectoryInfo(folder);
+        if (info.Exists && info.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            throw new IOException($"{folder} is a link; Filee does not extract into links.");
     }
 
     private static void MergeInto(string source, string target)
     {
-        var info = new DirectoryInfo(target);
-        if (info.Exists && info.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            throw new IOException($"{target} is a link; Filee does not extract into links.");
+        RefuseLink(target); // again, in case one appeared since RefuseLinks
         Directory.CreateDirectory(target);
         foreach (var file in Directory.EnumerateFiles(source))
             File.Move(file, Path.Combine(target, Path.GetFileName(file)), overwrite: true);

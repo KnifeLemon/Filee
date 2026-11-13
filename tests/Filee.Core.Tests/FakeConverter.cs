@@ -139,9 +139,14 @@ internal sealed class FakeRecorder(string id, params ConversionEdge[] edges) : I
 internal sealed class FakeMerger : IPdfMerger
 {
     public List<string> Inputs { get; } = [];
+    public List<PdfMergeInput> MergeInputs { get; } = [];
+    public bool? SourceBookmarks { get; private set; }
 
-    public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken)
+    public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken)
     {
+        MergeInputs.AddRange(inputs);
+        SourceBookmarks = sourceBookmarks;
+        var inputPaths = inputs.Select(input => input.PdfPath).ToList();
         Inputs.AddRange(inputPaths);
         File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
         return Task.CompletedTask;
@@ -192,6 +197,8 @@ internal sealed class FakeJoiner : IMediaJoiner
     /// <summary>Called when the join starts, before anything is written.</summary>
     public Action? Joining { get; set; }
 
+    public int? OutputLength { get; set; }
+
     public Task JoinAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Filee.Core.Presets.Preset preset,
         string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken)
     {
@@ -199,7 +206,10 @@ internal sealed class FakeJoiner : IMediaJoiner
         if (Throw)
             throw new InvalidOperationException("boom");
         Inputs.AddRange(inputPaths);
-        File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
+        if (OutputLength is { } length)
+            File.WriteAllBytes(outputPath, new byte[length]);
+        else
+            File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
         return Task.CompletedTask;
     }
 }

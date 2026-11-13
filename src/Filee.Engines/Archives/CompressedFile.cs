@@ -23,20 +23,27 @@ internal static class CompressedFile
     internal const uint MaxLzmaDictionary = 1u << 30;
 
     /// <summary>
-    /// Decompresses <paramref name="archive"/> into <paramref name="outputFile"/> (which must not exist).
+    /// Decompresses <paramref name="archive"/> into <paramref name="outputFile"/> (which must not exist), stopping and
+    /// deleting it past <paramref name="streamLimit"/> bytes (<see cref="ArchiveSafety.StreamLimit"/>).
     /// </summary>
-    public static void Decompress(string archive, string format, string outputFile, CancellationToken cancellationToken)
+    public static void Decompress(string archive, string format, string outputFile, CancellationToken cancellationToken,
+        long streamLimit = long.MaxValue)
     {
         var name = Path.GetFileName(archive);
         using var input = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
-        var budget = new UnpackBudget(name, input.Length, Path.GetDirectoryName(Path.GetFullPath(outputFile))!);
+        var directory = Path.GetDirectoryName(Path.GetFullPath(outputFile))!;
+        var budget = new UnpackBudget(name, input.Length, directory);
         try
         {
             long declared = -1;
             using (var decoder = Open(format, input, name, ref declared))
             using (var output = new FileStream(outputFile, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16))
             {
-                var written = ArchiveFiles.CopyLimited(decoder, output, declared >= 0 ? declared : long.MaxValue, cancellationToken, budget: budget);
+                // Past the room on the drive is "too large"; past a header's size (within that room) is damage.
+                var limited = declared < 0 || declared > streamLimit;
+                var tooLarge = limited ? ArchiveSafety.TooLarge(name, streamLimit, directory) : null;
+                var written = ArchiveFiles.CopyLimited(decoder, output, limited ? streamLimit : declared, cancellationToken, budget: budget,
+                    tooLarge: tooLarge is null ? null : () => tooLarge);
                 if (declared >= 0 && written != declared)
                     throw ArchiveSafety.Damaged(name, "the data is shorter than its header says");
             }

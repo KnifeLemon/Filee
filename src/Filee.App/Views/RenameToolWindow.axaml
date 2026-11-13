@@ -113,7 +113,7 @@
                 <DataTemplate x:DataType="vm:RenameStepViewModel">
                   <StackPanel Spacing="2">
                     <DockPanel>
-                      <Button DockPanel.Dock="Right" Classes="icon" Margin="2,0,0,0" Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource watch.remove_step}" AutomationProperties.Name="{DynamicResource watch.remove_step}">
+                      <Button DockPanel.Dock="Right" Classes="icon danger" Margin="2,0,0,0" Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource watch.remove_step}" AutomationProperties.Name="{DynamicResource watch.remove_step}">
                         <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
                       </Button>
                       <Button DockPanel.Dock="Right" Classes="icon" Margin="6,0,0,0" Command="{Binding MoveUpCommand}" ToolTip.Tip="{DynamicResource watch.step_up}" AutomationProperties.Name="{DynamicResource watch.step_up}">

@@ -15,6 +15,10 @@ public static class FontSources
             ["Cambria"] = "cambria",
             ["Cambria Math"] = "cambria-math",
             ["Courier New"] = "courier-new",
+            ["DengXian"] = "dengxian",
+            ["DengXian Light"] = "dengxian",
+            ["等线"] = "dengxian",
+            ["等线 Light"] = "dengxian",
             ["Tahoma"] = "tahoma",
             ["Times New Roman"] = "times-new-roman",
         };
@@ -33,7 +37,15 @@ public static class FontSources
         "Wingdings", "Wingdings 2", "Wingdings 3", "Webdings", "Symbol", "OpenSymbol",
     };
 
+    // Office's default font since 2023. Office fetches it from its cloud font service for itself, so other programs don't
+    // see it until it is installed from this download (Windows and macOS).
+    private const string AptosDownload = "https://www.microsoft.com/en-us/download/details.aspx?id=106087";
+
+    private static bool IsAptos(string family) => family.Equals("Aptos", StringComparison.OrdinalIgnoreCase)
+        || family.StartsWith("Aptos ", StringComparison.OrdinalIgnoreCase);
+
     public static Uri? Url(string family) => NoPublicFontPage.Contains(family) ? null
+        : IsAptos(family) ? new Uri(AptosDownload)
         : Microsoft.TryGetValue(family, out var page)
         ? new Uri("https://learn.microsoft.com/en-us/typography/font-list/" + page)
         : OtherOfficial.TryGetValue(family, out var official) ? new Uri(official)

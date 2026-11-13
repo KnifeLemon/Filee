@@ -1,0 +1,355 @@
+// Topmost windows use a panel while shown, then restore their original class/style when hidden or before close (#805).
+// Objective-C test doubles exercise the real interop calls without creating AppKit UI on xUnit's worker thread.
+
+using System.Runtime.InteropServices;
+using Filee.Platform.MacOS;
+
+namespace Filee.Platform.Tests;
+
+public sealed class MacOSWindowTests
+{
+    [Fact]
+    public void Raising_and_restoring_a_window_repeatedly_restores_its_native_class_and_style()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Requires the macOS Objective-C runtime.");
+            return;
+        }
+
+        _ = NativeLibrary.Load("/System/Library/Frameworks/Foundation.framework/Foundation");
+        // Production checks these exact Avalonia class names. This test runs in the platform-only test process,
+        // which does not load Avalonia.Native; never replace a real class if another host has loaded it.
+        if (GetClass("AvnWindow") != 0 || GetClass("AvnPanel") != 0)
+        {
+            Assert.Skip("Requires a process without Avalonia.Native window classes.");
+            return;
+        }
+
+        nint behavior = (1 << 1) | (1 << 6) | (1 << 7) | (1 << 9) | (1 << 16) | (1 << 17) | (1 << 18);
+        const nint nonactivatingPanel = 1 << 7;
+        const nint unrelatedStyle = (1 << 2) | (1 << 11);
+        nint style = unrelatedStyle;
+        nint level = 0;
+        var orders = 0;
+        var hidesOnDeactivate = true;
+        var styleChanges = 0;
+        var hidesOnDeactivateChanges = 0;
+        GetInteger getBehavior = (_, _) => behavior;
+        GetInteger getStyle = (_, _) => style;
+        SetInteger setBehavior = (_, _, value) => behavior = value;
+        SetInteger setLevel = (_, _, value) => level = value;
+        SetInteger setStyle = (_, _, value) =>
+        {
+            style = value;
+            styleChanges++;
+        };
+        SetInteger setHidesOnDeactivate = (_, _, value) =>
+        {
+            hidesOnDeactivate = value != 0;
+            hidesOnDeactivateChanges++;
+        };
+        SendAction orderFront = (_, _) => orders++;
+        Delegate[] callbacks = [getBehavior, getStyle, setBehavior, setLevel, setStyle, setHidesOnDeactivate, orderFront];
+
+        var baseClass = AllocateClass(GetClass("NSObject"), "FileeRaiseTopmostTestWindow", 0);
+        Assert.NotEqual(0, baseClass);
+        nint windowClass = 0, panelClass = 0, window = 0, foreign = 0;
+        try
+        {
+            AddMethod(baseClass, "collectionBehavior", getBehavior, "q@:");
+            AddMethod(baseClass, "styleMask", getStyle, "q@:");
+            AddMethod(baseClass, "setCollectionBehavior:", setBehavior, "v@:q");
+            AddMethod(baseClass, "setLevel:", setLevel, "v@:q");
+            AddMethod(baseClass, "setStyleMask:", setStyle, "v@:q");
+            AddMethod(baseClass, "setHidesOnDeactivate:", setHidesOnDeactivate, "v@:q");
+            AddMethod(baseClass, "orderFrontRegardless", orderFront, "v@:");
+            RegisterClass(baseClass);
+
+            var platform = new MacOSPlatformServices();
+            platform.RaiseTopmost(0);
+            platform.RestoreWindow(0);
+            foreign = Send(Send(baseClass, Selector("alloc")), Selector("init"));
+            Assert.NotEqual(0, foreign);
+            platform.RaiseTopmost(foreign);
+            platform.RestoreWindow(foreign);
+            Assert.Equal(baseClass, ObjectClass(foreign));
+            Assert.Equal(unrelatedStyle, style);
+            Assert.True(hidesOnDeactivate);
+            Assert.Equal(0, styleChanges);
+            Assert.Equal(0, hidesOnDeactivateChanges);
+            orders = 0;
+
+            windowClass = RegisterSubclass(baseClass, "AvnWindow");
+            panelClass = RegisterSubclass(baseClass, "AvnPanel");
+            window = Send(Send(windowClass, Selector("alloc")), Selector("init"));
+            Assert.NotEqual(0, window);
+
+            for (var i = 1; i <= 3; i++)
+            {
+                platform.RaiseTopmost(window);
+                Assert.Equal(panelClass, ObjectClass(window));
+                Assert.Equal((nint)(1 | (1 << 4) | (1 << 6) | (1 << 8)), behavior);
+                Assert.Equal(unrelatedStyle | nonactivatingPanel, style);
+                Assert.False(hidesOnDeactivate);
+                Assert.Equal((nint)3, level);
+                Assert.Equal(2 * i - 1, orders);
+                Assert.Equal(2 * i - 1, styleChanges);
+                Assert.Equal(i, hidesOnDeactivateChanges);
+
+                platform.RaiseTopmost(window);
+                Assert.Equal(panelClass, ObjectClass(window));
+                Assert.Equal(unrelatedStyle | nonactivatingPanel, style);
+                Assert.False(hidesOnDeactivate);
+                Assert.Equal(2 * i, orders);
+                Assert.Equal(2 * i - 1, styleChanges);
+                Assert.Equal(i, hidesOnDeactivateChanges);
+
+                platform.RestoreWindow(window);
+                Assert.Equal(windowClass, ObjectClass(window));
+                Assert.Equal(unrelatedStyle, style);
+                Assert.False(hidesOnDeactivate);
+                Assert.Equal(2 * i, styleChanges);
+
+                platform.RestoreWindow(window);
+                Assert.Equal(windowClass, ObjectClass(window));
+                Assert.Equal(unrelatedStyle, style);
+                Assert.Equal(2 * i, styleChanges);
+            }
+
+            var styleChangesBeforeForeignRestore = styleChanges;
+            var hidesOnDeactivateChangesBeforeForeignRestore = hidesOnDeactivateChanges;
+            platform.RaiseTopmost(foreign);
+            platform.RestoreWindow(foreign);
+            Assert.Equal(baseClass, ObjectClass(foreign));
+            Assert.Equal(unrelatedStyle, style);
+            Assert.Equal(styleChangesBeforeForeignRestore, styleChanges);
+            Assert.Equal(hidesOnDeactivateChangesBeforeForeignRestore, hidesOnDeactivateChanges);
+        }
+        finally
+        {
+            if (window != 0)
+                Send(window, Selector("release"));
+            if (foreign != 0)
+                Send(foreign, Selector("release"));
+            if (panelClass != 0)
+                DisposeClass(panelClass);
+            if (windowClass != 0)
+                DisposeClass(windowClass);
+            DisposeClass(baseClass);
+            GC.KeepAlive(callbacks);
+        }
+    }
+
+    [Fact]
+    public void TakeKeyWindow_and_ReleaseKeyWindow_manage_key_window_state()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Requires macOS.");
+            return;
+        }
+
+        var isKey = false;
+        var isVisible = false;
+        var makeKeyCalls = 0;
+        var orderOutCalls = 0;
+        var orderFrontCalls = 0;
+        var resignKeyCalls = 0;
+
+        SendActionWithArg makeKey = (_, _, _) => { isKey = true; isVisible = true; makeKeyCalls++; };
+        SendActionWithArg orderOut = (_, _, _) => { isKey = false; isVisible = false; orderOutCalls++; };
+        SendAction orderFront = (_, _) => { isVisible = true; orderFrontCalls++; };
+        SendAction resignKey = (_, _) => resignKeyCalls++;
+        GetBool isKeyWindow = (_, _) => isKey;
+        GetBool getIsVisible = (_, _) => isVisible;
+        Delegate[] callbacks = [makeKey, orderOut, orderFront, resignKey, isKeyWindow, getIsVisible];
+
+        var testClass = AllocateClass(GetClass("NSObject"), "FileeKeyWindowTestWindow", 0);
+        Assert.NotEqual(0, testClass);
+        nint window = 0;
+        try
+        {
+            AddMethod(testClass, "makeKeyAndOrderFront:", makeKey, "v@:@");
+            AddMethod(testClass, "orderOut:", orderOut, "v@:@");
+            AddMethod(testClass, "orderFrontRegardless", orderFront, "v@:");
+            AddMethod(testClass, "resignKeyWindow", resignKey, "v@:");
+            AddMethod(testClass, "isKeyWindow", isKeyWindow, "B@:");
+            AddMethod(testClass, "isVisible", getIsVisible, "B@:");
+            RegisterClass(testClass);
+
+            window = Send(Send(testClass, Selector("alloc")), Selector("init"));
+            Assert.NotEqual(0, window);
+
+            var platform = new MacOSPlatformServices();
+            Assert.False(isKey);
+            Assert.False(NativeMethods.IsKeyWindow(window));
+
+            // 1. TakeKeyWindow sends makeKeyAndOrderFront:
+            platform.TakeKeyWindow(window);
+            Assert.True(isKey);
+            Assert.True(isVisible);
+            Assert.True(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(1, makeKeyCalls);
+            Assert.Equal(0, orderOutCalls);
+            Assert.Equal(0, resignKeyCalls);
+
+            // 2. ReleaseKeyWindow ends key status via orderOut: and restores visibility via orderFrontRegardless
+            platform.ReleaseKeyWindow(window);
+            Assert.False(isKey);
+            Assert.True(isVisible);
+            Assert.False(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(1, makeKeyCalls);
+            Assert.Equal(1, orderOutCalls);
+            Assert.Equal(1, orderFrontCalls);
+            Assert.Equal(0, resignKeyCalls); // resignKeyWindow is never invoked directly per Apple guidelines
+
+            // 3. ReturnFocus releases key window if TakeKeyWindow was called
+            platform.TakeKeyWindow(window);
+            Assert.True(isKey);
+            Assert.True(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(2, makeKeyCalls);
+
+            platform.ReturnFocus();
+            Assert.False(isKey);
+            Assert.True(isVisible);
+            Assert.False(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(2, orderOutCalls);
+            Assert.Equal(2, orderFrontCalls);
+            Assert.Equal(0, resignKeyCalls);
+
+            // 4. RestoreWindow releases key window if still tracked
+            platform.TakeKeyWindow(window);
+            Assert.True(isKey);
+            Assert.True(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(3, makeKeyCalls);
+
+            platform.RestoreWindow(window);
+            Assert.False(isKey);
+            Assert.False(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(3, orderOutCalls);
+            Assert.Equal(0, resignKeyCalls);
+
+            // 5. Handles zero safely
+            platform.TakeKeyWindow(0);
+            platform.ReleaseKeyWindow(0);
+            platform.RestoreWindow(0);
+            platform.ReturnFocus();
+        }
+        finally
+        {
+            if (window != 0)
+                Send(window, Selector("release"));
+            if (testClass != 0)
+                DisposeClass(testClass);
+            GC.KeepAlive(callbacks);
+        }
+    }
+
+    [Fact]
+    public void MoveToActiveSpace_sets_full_screen_auxiliary_and_move_to_active_space_behavior()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Requires macOS.");
+            return;
+        }
+
+        nint behavior = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 7) | (1 << 9) | (1 << 16) | (1 << 17) | (1 << 18);
+
+        GetInteger getBehavior = (_, _) => behavior;
+        SetInteger setBehavior = (_, _, value) => behavior = value;
+        Delegate[] callbacks = [getBehavior, setBehavior];
+
+        var testClass = AllocateClass(GetClass("NSObject"), "FileeMoveToActiveSpaceTestWindow", 0);
+        Assert.NotEqual(0, testClass);
+        nint window = 0;
+        try
+        {
+            AddMethod(testClass, "collectionBehavior", getBehavior, "q@:");
+            AddMethod(testClass, "setCollectionBehavior:", setBehavior, "v@:q");
+            RegisterClass(testClass);
+
+            window = Send(Send(testClass, Selector("alloc")), Selector("init"));
+            Assert.NotEqual(0, window);
+
+            var platform = new MacOSPlatformServices();
+
+            // 1. Calling with 0 handle is safe
+            platform.MoveToActiveSpace(0);
+
+            // 2. Calling with window updates collection behavior
+            platform.MoveToActiveSpace(window);
+            const nint moveToActiveSpace = 1 << 1;
+            const nint fullScreenAuxiliary = 1 << 8;
+            const nint ignoresCycle = 1 << 6;
+            Assert.Equal(moveToActiveSpace | ignoresCycle | fullScreenAuxiliary, behavior);
+        }
+        finally
+        {
+            if (window != 0)
+                Send(window, Selector("release"));
+            if (testClass != 0)
+                DisposeClass(testClass);
+            GC.KeepAlive(callbacks);
+        }
+    }
+
+    private static nint RegisterSubclass(nint superclass, string name)
+    {
+        var result = AllocateClass(superclass, name, 0);
+        Assert.NotEqual(0, result);
+        RegisterClass(result);
+        return result;
+    }
+
+    private static void AddMethod(nint cls, string name, Delegate callback, string signature) =>
+        Assert.True(AddNativeMethod(cls, Selector(name), Marshal.GetFunctionPointerForDelegate(callback), signature));
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate nint GetInteger(nint receiver, nint selector);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void SetInteger(nint receiver, nint selector, nint value);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void SendAction(nint receiver, nint selector);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void SendActionWithArg(nint receiver, nint selector, nint arg);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    private delegate bool GetBool(nint receiver, nint selector);
+
+    private const string ObjC = "/usr/lib/libobjc.A.dylib";
+
+    [DllImport(ObjC, EntryPoint = "objc_getClass")]
+    private static extern nint GetClass([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+    [DllImport(ObjC, EntryPoint = "objc_allocateClassPair")]
+    private static extern nint AllocateClass(nint superclass, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, nuint extraBytes);
+
+    [DllImport(ObjC, EntryPoint = "objc_registerClassPair")]
+    private static extern void RegisterClass(nint cls);
+
+    [DllImport(ObjC, EntryPoint = "objc_disposeClassPair")]
+    private static extern void DisposeClass(nint cls);
+
+    [DllImport(ObjC, EntryPoint = "object_getClass")]
+    private static extern nint ObjectClass(nint instance);
+
+    [DllImport(ObjC, EntryPoint = "class_addMethod")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    private static extern bool AddNativeMethod(nint cls, nint selector, nint implementation,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string signature);
+
+    [DllImport(ObjC, EntryPoint = "sel_registerName")]
+    private static extern nint Selector([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+    [DllImport(ObjC, EntryPoint = "objc_msgSend")]
+    private static extern nint Send(nint receiver, nint selector);
+
+    [DllImport(ObjC, EntryPoint = "objc_msgSend")]
+    private static extern nint Send(nint receiver, nint selector, nint arg);
+}

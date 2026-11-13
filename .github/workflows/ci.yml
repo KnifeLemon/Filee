@@ -143,6 +143,7 @@ jobs:
           key: zig-0.16.0-x86_64-windows
 
       - name: Build Explorer menu extension
+        timeout-minutes: 30
         shell: pwsh
         run: ./build/build-explorer-menu.ps1
 
@@ -153,18 +154,21 @@ jobs:
           path: build/.cache/zig-x86_64-windows-0.16.0
           key: zig-0.16.0-x86_64-windows
 
-      # rhwp, Pandoc and 7-Zip are small; with them the HWP/HWPX and archive engine tests run too (LibreOffice is
-      # skipped to save time).
-      - name: Fetch rhwp, Pandoc and 7-Zip for engine tests
+      # rhwp, Pandoc, 7-Zip and ExifTool are small; with them the HWP/HWPX, archive and metadata engine tests run too
+      # (LibreOffice is skipped to save time).
+      - name: Fetch rhwp, Pandoc, 7-Zip and ExifTool for engine tests
         shell: pwsh
-        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc,7zip
+        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc,7zip,exiftool
 
       # The UI tests on their own first, as the release runs them (there they crashed with 0xC0000005): a crash
       # names the test that was running and leaves a dump in TestResults.
       - name: Test UI on its own
         run: dotnet test tests/Filee.App.Tests --no-build -c Release --blame-crash --blame-hang-timeout 5m --logger "console;verbosity=normal" --results-directory TestResults/app
 
+      # FILEE_TEST_EXIFTOOL: the metadata tests write real files, and fail rather than skip if it isn't there.
       - name: Test
+        env:
+          FILEE_TEST_EXIFTOOL: ${{ github.workspace }}\engines\exiftool\exiftool.exe
         run: dotnet test Filee.slnx --no-build -c Release --filter "FullyQualifiedName!~Filee.App.Tests" --logger "trx" --results-directory TestResults
 
       # Builds Setup (src/Filee.Setup) around a stub app and runs it in a sandbox: install, update and uninstall into a
@@ -190,6 +194,40 @@ jobs:
             tests/Filee.App.Tests/bin/Release/net10.0/screenshots/
             tests/Filee.Setup.Tests/bin/Release/net10.0/screenshots/
           if-no-files-found: ignore
+
+  # The metadata writer on Linux, with the Perl ExifTool pinned in engines.json (the build above is its Windows side).
+  metadata-linux:
+    name: metadata (linux-x64)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: FFmpeg for the video test
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Fetch ExifTool
+        run: |
+          set -euo pipefail
+          read -r url sha256 < <(jq -r '.platforms."linux-x64".components.exiftool | "\(.url) \(.sha256)"' src/Filee.Engines/Infrastructure/engines.json)
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/exiftool.tar.gz" "$url"
+          echo "$sha256  $RUNNER_TEMP/exiftool.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/exiftool"
+          tar -xzf "$RUNNER_TEMP/exiftool.tar.gz" -C "$RUNNER_TEMP/exiftool" --strip-components=1
+          echo "FILEE_TEST_EXIFTOOL=$RUNNER_TEMP/exiftool/exiftool" >> "$GITHUB_ENV"
+          # On the PATH too: the conversion test goes through Filee's own search and the Perl check.
+          echo "$RUNNER_TEMP/exiftool" >> "$GITHUB_PATH"
+
+      - name: Test
+        run: dotnet test tests/Filee.Engines.Tests -c Release --filter "FullyQualifiedName~MetadataTests"
 
   # Windows on ARM64 (#236), built and tested natively: the Explorer menu DLL, Setup, 7-Zip and rhwp are ARM64 builds,
   # the downloaded engines (Pandoc here) x64 ones under emulation. rhwp comes from a pinned build of
@@ -244,6 +282,7 @@ jobs:
           key: zig-0.16.0-x86_64-windows
 
       - name: Build Explorer menu extension
+        timeout-minutes: 30
         run: ./build/build-explorer-menu.ps1 -Architecture arm64
 
       - name: Test UI on its own

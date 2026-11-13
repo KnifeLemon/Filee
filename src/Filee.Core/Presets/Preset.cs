@@ -22,6 +22,9 @@ public enum PresetKind
     /// <see cref="Preset.Tool"/>). Like a group, never offered where a conversion is picked.
     /// </summary>
     Tool,
+
+    /// <summary>Copies files and folders byte for byte to a chosen destination.</summary>
+    CopyToFolder,
 }
 
 /// <summary>
@@ -52,6 +55,14 @@ public class LenientEnumJsonConverter<TEnum> : JsonConverter<TEnum> where TEnum 
 
     public override void Write(Utf8JsonWriter writer, TEnum value, JsonSerializerOptions options) =>
         writer.WriteStringValue(value.ToString());
+}
+
+/// <summary>
+/// An unknown mark kind (a newer Filee's) is read as <see cref="AnnotationKind.Unknown"/>: never drawn.
+/// </summary>
+public sealed class AnnotationKindJsonConverter : LenientEnumJsonConverter<AnnotationKind>
+{
+    protected override AnnotationKind Unknown => AnnotationKind.Unknown;
 }
 
 /// <summary>An unknown kind is read as a group: never run as a conversion.</summary>
@@ -115,8 +126,59 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
+    /// <summary>Options used for offline AI translation.</summary>
+    public TranslateOptions Translate { get; set; } = new();
+
+    /// <summary>Options used for local AI image upscaling.</summary>
+    public UpscaleOptions Upscale { get; set; } = new();
+
+    /// <summary>
+    /// "Metadata": the fields its window changes, on the conversion it starts (<see cref="MetadataTool"/>); null for
+    /// every other preset. Only an engine that writes metadata and nothing else applies it
+    /// (<see cref="Conversion.ConversionEdge.Metadata"/>).
+    /// </summary>
+    public MetadataEdits? Metadata { get; set; }
+
+    /// <summary>The conversion changes the file's metadata (<see cref="Metadata"/>).</summary>
+    [JsonIgnore]
+    public bool EditsMetadata => Metadata is { IsEmpty: false };
+
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
+
+    /// <summary>
+    /// "Ask every time" for the compression (#1353): files dropped on the donut open a small window first, where the
+    /// picture quality, the video quality, the audio bitrate or the PDF level is chosen with the size it will roughly
+    /// come to (<see cref="AskedCompression"/>). Off by default; watch folders and the command line use the preset's
+    /// own values.
+    /// </summary>
+    public bool AskCompression { get; set; }
+
+    /// <summary>
+    /// The icon its donut slice shows: the key of one of the app's slice icons, <see cref="NoIcon"/> for none, or null
+    /// for the default (a built-in preset's own icon; none for plain format conversions and the user's presets).
+    /// </summary>
+    public string? Icon { get; set; }
+
+    /// <summary><see cref="Icon"/> meaning "no icon", even where there would be a default.</summary>
+    public const string NoIcon = "none";
+
+    /// <summary>
+    /// A shorter name shown on its donut slice instead of the usual one. Null or blank: the usual name.
+    /// </summary>
+    public string? ShortName { get; set; }
+
+    /// <summary>
+    /// What its donut slice shows. Null: whatever its donut says (<see cref="Profiles.ToolbarProfile.LabelShow"/>).
+    /// </summary>
+    [JsonConverter(typeof(LabelShowJsonConverter))]
+    public LabelShow? Show { get; set; }
+
+    /// <summary>
+    /// Which way its donut slice's name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).
+    /// </summary>
+    [JsonConverter(typeof(LabelDirectionJsonConverter))]
+    public LabelDirection? Direction { get; set; }
 
     /// <summary>A conversion or a group. A kind this version doesn't know (from a newer Filee) is read as a group.</summary>
     [JsonConverter(typeof(PresetKindJsonConverter))]
@@ -147,7 +209,17 @@ public sealed class Preset
     public bool PacksIntoOneArchive =>
         Archive.CombineIntoOne
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
-        && archive.Id != Formats.FormatRegistry.Folder;
+        && archive.Id != Formats.FormatRegistry.Folder && archive.Id != "iso";
+
+    /// <summary>Formats the translator can directly read from (documents, e-books, text and SRT / WebVTT subtitles).</summary>
+    public static readonly string[] TranslatorSourceFormats =
+    [
+        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html", "srt", "vtt"
+    ];
+
+    /// <summary>True if converting a document, e-book, text file or subtitle using local AI translation.</summary>
+    public bool TranslatesDocument(string sourceFormat) =>
+        Translate.Enabled && TranslatorSourceFormats.Contains(sourceFormat.ToLowerInvariant());
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file saves every frame as a picture
@@ -182,10 +254,12 @@ public sealed class Preset
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file transcribes speech into captions
-    /// (<see cref="MediaOptions.Caption"/>): the file is a video or audio.
+    /// (<see cref="MediaOptions.Caption"/>): the file is a video or audio and the target one of
+    /// <see cref="MediaOptions.CaptionTargets"/>.
     /// </summary>
     public bool CaptionsVideo(string sourceFormat) =>
-        Media.Caption && TargetFormat == "srt" && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
+        Media.Caption && MediaOptions.CaptionTargets.Contains(TargetFormat)
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
 
 
 
@@ -218,7 +292,12 @@ public sealed class Preset
 
     /// <summary>True for a <see cref="PresetKind.Tool"/>.</summary>
     [JsonIgnore]
-    public bool IsTool => Kind == PresetKind.Tool;
+    public bool IsTool => Kind is PresetKind.Tool or PresetKind.CopyToFolder;
+
+    [JsonIgnore]
+    public bool IsCopyToFolder => Kind == PresetKind.CopyToFolder;
+
+    public const string CopyTarget = "copy-to-folder";
 
     /// <summary><see cref="Tool"/> of the interactive crop (also a tool saved without one, from before clips).</summary>
     public const string CropTool = "crop";
@@ -238,15 +317,39 @@ public sealed class Preset
     public const string HideTool = "hide";
 
     /// <summary>
-    /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there were
-    /// other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/> or <see cref="HideTool"/>. A tool this version
-    /// doesn't know (from a newer Filee) opens nothing. Ignored for other kinds.
+    /// <see cref="Tool"/> of "Annotate" (settings schema 60): pen, arrows, boxes, highlights, text and numbers drawn on
+    /// a picture (<see cref="ImageOptions.Annotations"/>).
+    /// </summary>
+    public const string AnnotateTool = "annotate";
+
+    /// <summary>
+    /// <see cref="Tool"/> of "Add background" (settings schema 64): a picture on a gradient, a colour or a picture of
+    /// one's own, with padding, rounded corners and a shadow (<see cref="ImageOptions.Backdrop"/>).
+    /// </summary>
+    public const string BackgroundTool = "background";
+
+    /// <summary>
+    /// <see cref="Tool"/> of "Metadata" (settings schema 72): every metadata field of a file shown, edited or removed
+    /// with ExifTool, the picture or document itself untouched.
+    /// </summary>
+    public const string MetadataTool = "metadata";
+
+    /// <summary>
+    /// <see cref="Tool"/> of "Upscale" (settings schema 73): enhance image quality and resolution using local AI models.
+    /// </summary>
+    public const string UpscaleTool = "upscale";
+
+    /// <summary>
+    /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there
+    /// were other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/>, <see cref="HideTool"/>,
+    /// <see cref="AnnotateTool"/>, <see cref="BackgroundTool"/>, <see cref="MetadataTool"/> or <see cref="UpscaleTool"/>.
+    /// A tool this version doesn't know (from a newer Filee) opens nothing. Ignored for other kinds.
     /// </summary>
     public string? Tool { get; set; }
 
     /// <summary>True for the interactive crop.</summary>
     [JsonIgnore]
-    public bool IsCropTool => IsTool && Tool is null or CropTool;
+    public bool IsCropTool => Kind == PresetKind.Tool && Tool is null or CropTool;
 
     /// <summary>True for "Cut a clip".</summary>
     [JsonIgnore]
@@ -260,12 +363,41 @@ public sealed class Preset
     [JsonIgnore]
     public bool IsHideTool => IsTool && Tool == HideTool;
 
+    /// <summary>True for "Annotate".</summary>
+    [JsonIgnore]
+    public bool IsAnnotateTool => IsTool && Tool == AnnotateTool;
+    /// <summary>True for "Add background".</summary>
+    [JsonIgnore]
+    public bool IsBackgroundTool => IsTool && Tool == BackgroundTool;
+
+    /// <summary>True for "Metadata".</summary>
+    [JsonIgnore]
+    public bool IsMetadataTool => IsTool && Tool == MetadataTool;
+
+    /// <summary>True for "Upscale".</summary>
+    [JsonIgnore]
+    public bool IsUpscaleTool => IsTool && Tool == UpscaleTool;
+
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
     /// set by the clip window on the conversion it starts): the file is a video. Other files convert as usual.
     /// </summary>
     public bool CutsClipOf(string sourceFormat) =>
         Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+
+    /// <summary>
+    /// True if converting a <paramref name="sourceFormat"/> file splits it into parts by stream copy
+    /// (<see cref="MediaOptions.SplitEverySeconds"/>, <see cref="MediaOptions.SplitParts"/>): the file is a video and the
+    /// target a video format. A clip, a crop, a join or a photo of a video does what it does instead.
+    /// </summary>
+    public bool SplitsVideoOf(string sourceFormat) =>
+        Media.Splits && !CutsClipOf(sourceFormat) && !CropsVideo && !JoinsIntoOneMedia
+        && Formats.FormatRegistry.FindById(TargetFormat)?.Category == Formats.FormatCategory.Video
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+
+    /// <summary>True for "Crop video" (<see cref="MediaOptions.CropFrame"/>): it works on videos only.</summary>
+    [JsonIgnore]
+    public bool CropsVideo => VideoCrop.Crops(Media.CropFrame);
 
     /// <summary>Creates a new random preset id.</summary>
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
@@ -285,6 +417,20 @@ public sealed class Preset
         return copy;
     }
 
+    /// <summary>
+    /// A copy fit to leave this computer (an exported bundle): no PDF password and no path to a file of one's own
+    /// (Add background's picture, which would tell where one's files are).
+    /// </summary>
+    public Preset ForSharing()
+    {
+        var copy = WithoutPassword(mark: false);
+        if (copy.Image.Backdrop?.Picture is null && copy.Image.BackdropLook?.Picture is null)
+            return copy;
+        copy = ReferenceEquals(copy, this) ? Clone() : copy;
+        copy.Image.ForgetBackdropPictures();
+        return copy;
+    }
+
     public Preset Clone() => new()
     {
         Id = Id,
@@ -298,7 +444,15 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
+        Translate = Translate.Clone(),
+        Upscale = Upscale.Clone(),
+        Metadata = Metadata?.Clone(),
         Output = Output.Clone(),
+        Icon = Icon,
+        ShortName = ShortName,
+        Show = Show,
+        Direction = Direction,
+        AskCompression = AskCompression,
         Kind = Kind,
         Tool = Tool,
         SubPresetIds = [.. SubPresetIds],
@@ -394,6 +548,10 @@ public enum HideStyle
     Pixelate,
     /// <summary>A strong blur.</summary>
     Blur,
+    /// <summary>
+    /// Solid, opaque black: nothing of what was there is left. An older Filee reads it as <see cref="Pixelate"/>.
+    /// </summary>
+    Box,
 }
 
 /// <summary>
@@ -407,7 +565,193 @@ public sealed class HiddenArea
     public double Width { get; set; }
     public double Height { get; set; }
 
+    /// <summary>How this part is covered; null for the preset's <see cref="ImageOptions.HideStyle"/>.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
+    public HideStyle? Style { get; set; }
+
     public HiddenArea Clone() => (HiddenArea)MemberwiseClone();
+}
+
+/// <summary>What an "Annotate" mark is (<see cref="Annotation.Kind"/>).</summary>
+public enum AnnotationKind
+{
+    /// <summary>A kind from a newer Filee: not drawn, rather than drawn as something it isn't.</summary>
+    Unknown = -1,
+    /// <summary>A freehand line through <see cref="Annotation.Points"/>.</summary>
+    Pen,
+    /// <summary>An arrow from its first point (the tail) to its second (the tip).</summary>
+    Arrow,
+    /// <summary>A frame from one corner to the other.</summary>
+    Box,
+    /// <summary>A see-through marker from one corner to the other.</summary>
+    Highlight,
+    /// <summary><see cref="Annotation.Text"/> on a tag in the colour, at its point.</summary>
+    Text,
+    /// <summary><see cref="Annotation.Number"/> in a circle in the colour, at its point.</summary>
+    Number,
+}
+
+/// <summary>How thick a mark is drawn: lines, text and numbers alike.</summary>
+public enum AnnotationWidth
+{
+    Thin,
+    Medium,
+    Thick,
+}
+
+/// <summary>A point on the picture as it is seen, in parts of it: 0 to 1 from its left and top edges.</summary>
+public sealed class AnnotationPoint
+{
+    public double X { get; set; }
+    public double Y { get; set; }
+
+    public AnnotationPoint Clone() => (AnnotationPoint)MemberwiseClone();
+}
+
+/// <summary>
+/// A mark "Annotate" draws on a picture. Its points are parts of the picture, and its sizes parts of the picture's
+/// shorter side, so a mark looks the same at any size.
+/// </summary>
+public sealed class Annotation
+{
+    [JsonConverter(typeof(AnnotationKindJsonConverter))]
+    public AnnotationKind Kind { get; set; }
+
+    /// <summary>"#RRGGBB".</summary>
+    public string Color { get; set; } = "#E5484D";
+
+    [JsonConverter(typeof(LenientEnumJsonConverter<AnnotationWidth>))]
+    public AnnotationWidth Width { get; set; } = AnnotationWidth.Medium;
+
+    /// <summary>
+    /// The pen's line; the two corners of a box or highlight; an arrow's tail and tip; a text's or number's place.
+    /// </summary>
+    public List<AnnotationPoint> Points
+    {
+        get => _points;
+        // Read leniently: no list, or empty places in it, are no points.
+        set => _points = value is null ? [] : [.. value.Where(point => point is not null)];
+    }
+
+    private List<AnnotationPoint> _points = [];
+
+    /// <summary>What a <see cref="AnnotationKind.Text"/> says.</summary>
+    public string? Text { get; set; }
+
+    /// <summary>The number a <see cref="AnnotationKind.Number"/> shows.</summary>
+    public int Number { get; set; }
+
+    public Annotation Clone()
+    {
+        var copy = (Annotation)MemberwiseClone();
+        copy.Points = [.. Points.Select(p => p.Clone())];
+        return copy;
+    }
+}
+
+/// <summary>What "Add background" sets a picture on (<see cref="BackdropOptions.Kind"/>).</summary>
+public enum BackdropKind
+{
+    /// <summary>
+    /// A diagonal gradient from <see cref="BackdropOptions.From"/> to <see cref="BackdropOptions.To"/>.
+    /// </summary>
+    Gradient,
+    /// <summary>One colour, <see cref="BackdropOptions.Color"/>.</summary>
+    Color,
+    /// <summary>A picture of one's own (<see cref="BackdropOptions.Picture"/>), covering the canvas.</summary>
+    Picture,
+}
+
+/// <summary>The shape of the canvas "Add background" makes (<see cref="BackdropOptions.Canvas"/>).</summary>
+public enum BackdropCanvas
+{
+    /// <summary>The picture and its padding, nothing more.</summary>
+    Auto,
+    Square,
+    /// <summary>16:9, wider than tall.</summary>
+    Landscape,
+    /// <summary>4:5, taller than wide.</summary>
+    Portrait,
+}
+
+/// <summary>
+/// How "Add background" sets a picture on a background: what is behind it, the space around it, its corners and its
+/// shadow, and the canvas's shape. Sizes are parts of the picture, so a look suits a screenshot and a photo alike.
+/// </summary>
+public sealed class BackdropOptions
+{
+    public const int MaxPadding = 40, MaxCorners = 20, MaxShadow = 100;
+
+    [JsonConverter(typeof(LenientEnumJsonConverter<BackdropKind>))]
+    public BackdropKind Kind { get; set; }
+
+    /// <summary>The gradient's first colour (top left), "#RRGGBB".</summary>
+    public string From { get; set; } = "#8EC5FC";
+
+    /// <summary>The gradient's last colour (bottom right).</summary>
+    public string To { get; set; } = "#E0C3FC";
+
+    public string Color { get; set; } = "#FFFFFF";
+
+    /// <summary>
+    /// The picture behind, for <see cref="BackdropKind.Picture"/>. While it is missing or can't be read, the window
+    /// shows the gradient and won't save, and a conversion is refused.
+    /// </summary>
+    public string? Picture { get; set; }
+
+    /// <summary>
+    /// When <see cref="Picture"/>'s file was last written, as the window showed it (on the conversion it starts only):
+    /// a file changed since (by its time or length, before it is read and after) is refused rather than written with a
+    /// picture behind the window didn't show.
+    /// </summary>
+    public DateTime? PictureWritten { get; set; }
+
+    /// <summary>
+    /// How long <see cref="Picture"/>'s file was, as the window showed it (with <see cref="PictureWritten"/>).
+    /// </summary>
+    public long? PictureLength { get; set; }
+
+    /// <summary>Space round the picture, in percent of its longer side (0–<see cref="MaxPadding"/>).</summary>
+    public int Padding { get; set; } = 12;
+
+    /// <summary>Corner radius, in percent of the picture's shorter side (0–<see cref="MaxCorners"/>).</summary>
+    public int Corners { get; set; } = 3;
+
+    /// <summary>How strong the shadow is, 0 (none) to <see cref="MaxShadow"/>.</summary>
+    public int Shadow { get; set; } = 45;
+
+    [JsonConverter(typeof(LenientEnumJsonConverter<BackdropCanvas>))]
+    public BackdropCanvas Canvas { get; set; }
+
+    public BackdropOptions Clone() => (BackdropOptions)MemberwiseClone();
+
+    /// <summary>
+    /// Every number within its range and every colour "#RRGGBB", the default's where it isn't one (a hand-edited file
+    /// can hold anything, a colour left out included).
+    /// </summary>
+    public BackdropOptions Clamped()
+    {
+        var copy = Clone();
+        var defaults = new BackdropOptions();
+        copy.From = HexOr(From, defaults.From);
+        copy.To = HexOr(To, defaults.To);
+        copy.Color = HexOr(Color, defaults.Color);
+        copy.Padding = Math.Clamp(Padding, 0, MaxPadding);
+        copy.Corners = Math.Clamp(Corners, 0, MaxCorners);
+        copy.Shadow = Math.Clamp(Shadow, 0, MaxShadow);
+        return copy;
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> as "#RRGGBB" when it is a colour that way (or "#RGB"), else <paramref name="fallback"/>.
+    /// </summary>
+    private static string HexOr(string? text, string fallback)
+    {
+        var hex = text?.Trim().TrimStart('#') ?? "";
+        if (hex.Length == 3)
+            hex = string.Concat(hex.Select(c => new string(c, 2)));
+        return hex.Length == 6 && hex.All(Uri.IsHexDigit) ? "#" + hex.ToUpperInvariant() : fallback;
+    }
 }
 
 /// <summary>Raster image encoding options.</summary>
@@ -418,9 +762,17 @@ public sealed class ImageOptions
 
     /// <summary>
     /// Keep each picture under this many MB of 1,000,000 bytes; 0 = no limit. A larger one is saved again at a lower
-    /// quality, then smaller (down to a long edge of 640 px), until it fits (#553).
+    /// quality, then smaller (down to a long edge of 640 px), until it fits (#553); with
+    /// <see cref="MaxSizeKeepsPixels"/> only at a lower quality.
     /// </summary>
     public double MaxSizeMb { get; set; }
+
+    /// <summary>
+    /// With <see cref="MaxSizeMb"/>: the picture keeps the size it has after resizing, and only the quality goes down,
+    /// further than it otherwise would; one that still doesn't fit is refused instead of made smaller (#1270). A field
+    /// of its own, so an older version skips it and fits the picture as it always did.
+    /// </summary>
+    public bool MaxSizeKeepsPixels { get; set; }
 
     /// <summary>
     /// Keep each picture at least this many MB of 1,000,000 bytes; 0 = no minimum. A smaller one in a lossy format is
@@ -450,11 +802,62 @@ public sealed class ImageOptions
     public bool TurnsOrMirrors => Rotation != ImageRotation.None || Flip != ImageFlip.None;
 
     /// <summary>
-    /// Turns, mirrors or covers parts of the image (<see cref="HidesAreas"/>): done once, in the first step of a route whose
-    /// engine applies image options (<see cref="Conversion.IImageTransformer"/>); a file is never passed on as it is.
+    /// Turns, mirrors, covers parts of, draws on or sets the image on a background: done once, in the first step of a
+    /// route whose engine applies image options (<see cref="Conversion.IImageTransformer"/>); a file is never passed on
+    /// as it is.
     /// </summary>
     [JsonIgnore]
-    public bool ReworksPixels => TurnsOrMirrors || HidesAreas;
+    public bool ReworksPixels => TurnsOrMirrors || HidesAreas || HasAnnotations || AddsBackdrop;
+
+    /// <summary>"Annotate": the marks drawn on the picture as it is seen; null for every other preset.</summary>
+    public List<Annotation>? Annotations
+    {
+        get => _annotations;
+        // Read leniently: an empty place in the list (a preset edited by hand) is no mark.
+        set => _annotations = value?.Where(mark => mark is not null).ToList();
+    }
+
+    private List<Annotation>? _annotations;
+
+    /// <summary>The picture gets marks drawn on it (<see cref="Annotations"/>).</summary>
+    [JsonIgnore]
+    public bool HasAnnotations => Annotations is { Count: > 0 };
+
+    /// <summary>"Annotate": the colour picked last, "#RRGGBB", kept in the tool for the next time.</summary>
+    public string? AnnotationColor { get; set; }
+
+    /// <summary>"Annotate": the width picked last, kept in the tool for the next time.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<AnnotationWidth>))]
+    public AnnotationWidth AnnotationWidth { get; set; } = AnnotationWidth.Medium;
+
+    /// <summary>
+    /// "Add background": the picture set on a background (<see cref="BackdropOptions"/>), on the conversion the window
+    /// starts; null for every other preset.
+    /// </summary>
+    public BackdropOptions? Backdrop { get; set; }
+
+    /// <summary>The picture is set on a background (<see cref="Backdrop"/>).</summary>
+    [JsonIgnore]
+    public bool AddsBackdrop => Backdrop is not null;
+
+    /// <summary>"Add background": the look used last, kept in the tool for the next time.</summary>
+    public BackdropOptions? BackdropLook { get; set; }
+
+    /// <summary>
+    /// Leaves out the pictures of one's own that <see cref="Backdrop"/> and <see cref="BackdropLook"/> name: their
+    /// paths tell where one's files are, and a path from another computer is not one of ours to open.
+    /// </summary>
+    public void ForgetBackdropPictures()
+    {
+        foreach (var look in new[] { Backdrop, BackdropLook })
+        {
+            if (look is null)
+                continue;
+            look.Picture = null;
+            look.PictureWritten = null;
+            look.PictureLength = null;
+        }
+    }
 
     /// <summary>Whether the preset edits picture content, size, or playback speed.</summary>
     [JsonIgnore]
@@ -471,7 +874,8 @@ public sealed class ImageOptions
 
     /// <summary>
     /// Free width x height resizing (issue #576): stretched to exactly that size, or with
-    /// <see cref="CustomImageSize.LockAspect"/> scaled (up or down) to the largest size that fits inside. When set it
+    /// <see cref="CustomImageSize.LockAspect"/> scaled (up or down, or with <see cref="CustomImageSize.ShrinkOnly"/> only
+    /// down) to the largest size that fits inside. When set it
     /// wins over <see cref="Resize"/>; null leaves <see cref="Resize"/> in charge. Stored as one object so a
     /// presets.json written by this version never carries a resize name an older version rejects: older versions skip
     /// the unknown property and simply do not resize.
@@ -608,8 +1012,9 @@ public sealed class ImageOptions
     public List<int> IcoSizes { get; set; } = [256, 128, 64, 48, 32, 16];
 
     /// <summary>
-    /// "Pixelate / blur": how <see cref="HiddenAreas"/> are covered. Kept in the tool, so its window opens with the last
-    /// one. A field of its own (not a value added to another option), read leniently: an older Filee skips it.
+    /// "Pixelate / blur": how <see cref="HiddenAreas"/> without a <see cref="HiddenArea.Style"/> of their own are
+    /// covered. Kept in the tool as the last style picked, so its window opens with it. A field of its own (not a value
+    /// added to another option), read leniently: an older Filee skips it.
     /// </summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
     public HideStyle HideStyle { get; set; }
@@ -635,7 +1040,7 @@ public sealed class ImageOptions
     public static readonly double[] AnimationSpeeds = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 
     /// <summary>
-    /// Plays an animation (GIF, WebP, APNG, MNG; video → GIF or APNG) this many times as fast: 2 halves every frame
+    /// Plays an animation (GIF, WebP, APNG, MNG, AVIF; video → GIF or APNG) this many times as fast: 2 halves every frame
     /// delay, 0.5 doubles it. 1 (the default, also for presets saved before the option) leaves the timing as it is.
     /// </summary>
     public double AnimationSpeed { get; set; } = 1;
@@ -656,8 +1061,11 @@ public sealed class ImageOptions
         var copy = (ImageOptions)MemberwiseClone();
         copy.IcoSizes = [.. IcoSizes];
         copy.HiddenAreas = HiddenAreas?.Select(area => area.Clone()).ToList();
+        copy.Annotations = Annotations?.Select(mark => mark.Clone()).ToList();
+        copy.Backdrop = Backdrop?.Clone();
+        copy.BackdropLook = BackdropLook?.Clone();
         copy.CustomSize = CustomSize is { } size
-            ? new CustomImageSize { Width = size.Width, Height = size.Height, LockAspect = size.LockAspect, Unit = size.Unit, Dpi = size.Dpi }
+            ? new CustomImageSize { Width = size.Width, Height = size.Height, LockAspect = size.LockAspect, ShrinkOnly = size.ShrinkOnly, Unit = size.Unit, Dpi = size.Dpi }
             : null;
         return copy;
     }
@@ -686,6 +1094,31 @@ public sealed class CustomImageSize
     /// stretching it to exactly that size.
     /// </summary>
     public bool LockAspect { get; set; }
+
+    /// <summary>
+    /// With <see cref="LockAspect"/>: the box is a maximum (#1270). A picture larger than it is scaled down to fit, one
+    /// that already fits stays as it is. Without the lock the picture is stretched to the exact size, so this has no
+    /// effect there. An older version skips the field and scales smaller pictures up, as it always did.
+    /// </summary>
+    public bool ShrinkOnly { get; set; }
+
+    /// <summary>
+    /// The side the editors store for a width or height left empty with <see cref="LockAspect"/> (#1270): the largest
+    /// one, so the other side is what limits the picture (the free side still never goes past the largest side the
+    /// editors offer). Stored as a real size rather than 0: an older version ignores a box with a side of 0, and its
+    /// editors show and save that side as the smallest one, which would shrink every picture to a sliver.
+    /// </summary>
+    public const int FreeSide = MaxSide;
+
+    /// <summary>
+    /// The one scale that fits a width x height picture inside the box with <see cref="LockAspect"/>: up or down, and
+    /// with <see cref="ShrinkOnly"/> never above 1.
+    /// </summary>
+    public double FitScale(double width, double height)
+    {
+        var scale = Math.Min(ClampedWidth / width, ClampedHeight / height);
+        return ShrinkOnly ? Math.Min(1, scale) : scale;
+    }
 
     /// <summary>
     /// The unit the Edit pictures window shows the size in (#725). <see cref="Width"/> and <see cref="Height"/> stay in
@@ -773,11 +1206,42 @@ public enum PdfRotation
     Rotate180,
 }
 
+/// <summary>The paper "Pages per sheet" puts the pages on (<see cref="PdfOptions.PagesPerSheet"/>).</summary>
+public enum PdfSheetPaper
+{
+    A4,
+    Letter,
+    A3,
+    /// <summary>The size of the first page.</summary>
+    SameAsFirstPage,
+}
+
+/// <summary>Which way a sheet of "Pages per sheet" stands.</summary>
+public enum PdfSheetOrientation
+{
+    /// <summary>Whichever fits the first page larger.</summary>
+    Auto,
+    Portrait,
+    Landscape,
+}
+
+/// <summary>The order the pages fill a sheet of "Pages per sheet" in.</summary>
+public enum PdfSheetOrder
+{
+    /// <summary>Left to right, then the next row.</summary>
+    AcrossFirst,
+    /// <summary>Top to bottom, then the next column.</summary>
+    DownFirst,
+}
+
 /// <summary>PDF related options.</summary>
 public sealed class PdfOptions
 {
     /// <summary>Combine all dropped files into one PDF instead of one PDF per file.</summary>
     public bool MergeIntoSingle { get; set; }
+
+    /// <summary>Add a bookmark for each original source file when merging several files into one PDF.</summary>
+    public bool SourceBookmarks { get; set; }
 
     public PdfPageSize PageSize { get; set; } = PdfPageSize.FitImage;
 
@@ -790,12 +1254,70 @@ public sealed class PdfOptions
     /// <summary>Pages to process, e.g. <c>"1-3,5"</c>. Empty means all pages.</summary>
     public string PageRange { get; set; } = "";
 
-    /// <summary>For PDF → PDF: write every page as its own file.</summary>
+    /// <summary>
+    /// "Ask every time" for the pages (#981): a PDF dropped on the donut opens a small window that shows its page
+    /// count and takes the range, and for a PDF target whether it becomes one PDF or one file per page
+    /// (<see cref="AskedPages"/>). <see cref="PageRange"/> is what the window starts with, and what applies where
+    /// nothing can ask (watch folders, the command line). Off by default, so a preset saved before it reads unchanged
+    /// and a Filee from before it ignores it; on for "Split PDF" in a new install.
+    /// </summary>
+    public bool AskPageRange { get; set; }
+
+    /// <summary>
+    /// For PDF → PDF: write the pages into several files, every page as its own file unless <see cref="SplitEvery"/>
+    /// or <see cref="SplitParts"/> groups them (<see cref="Conversion.PageGroups"/>).
+    /// </summary>
     public bool SplitPages { get; set; }
+
+    /// <summary>
+    /// With <see cref="SplitPages"/>: this many pages to a file, the last file taking what is left (#1259). 0 or 1 is
+    /// one page per file, so a preset saved before it reads unchanged; a Filee from before it makes one file per page.
+    /// </summary>
+    public int SplitEvery { get; set; }
+
+    /// <summary>
+    /// With <see cref="SplitPages"/>: the pages in this many files of the same length, give or take a page (halves,
+    /// thirds, #1259). Over <see cref="SplitEvery"/>; 0 or 1 is off.
+    /// </summary>
+    public int SplitParts { get; set; }
 
     /// <summary>For PDF → PDF: rotate every selected page without rendering it.</summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<PdfRotation>))]
     public PdfRotation Rotation { get; set; }
+
+    /// <summary>
+    /// For PDF → PDF: put this many pages on each sheet ("Pages per sheet", N-up, #737), one of
+    /// <see cref="SheetLayouts"/>; 0 keeps one page per sheet.
+    /// </summary>
+    public int PagesPerSheet { get; set; }
+
+    /// <summary>The numbers of pages per sheet offered.</summary>
+    public static readonly IReadOnlyList<int> SheetLayouts = [2, 4, 6, 8, 9];
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the paper.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetPaper>))]
+    public PdfSheetPaper SheetPaper { get; set; }
+
+    /// <summary>With <see cref="PagesPerSheet"/>: which way the sheet stands.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetOrientation>))]
+    public PdfSheetOrientation SheetOrientation { get; set; }
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the order the pages fill a sheet in.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetOrder>))]
+    public PdfSheetOrder SheetOrder { get; set; }
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the space around the edge of each sheet, in millimetres.</summary>
+    public double SheetMarginMm { get; set; } = 10;
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the space between the pages, in millimetres.</summary>
+    public double SheetGapMm { get; set; } = 5;
+
+    /// <summary>With <see cref="PagesPerSheet"/>: a thin line around each page.</summary>
+    public bool SheetBorders { get; set; }
+
+    /// <summary>True when PDF pages are put several to a sheet (<see cref="PagesPerSheet"/>).</summary>
+    [JsonIgnore]
+    public bool MakesSheets => PagesPerSheet > 1;
 
     /// <summary>For PDF → image: stack the pages into one tall image instead of one image per page.</summary>
     public bool CombinePages { get; set; }
@@ -863,7 +1385,10 @@ public sealed class PdfOptions
     /// </summary>
     public bool Ocr { get; set; }
 
-    /// <summary>With <see cref="Ocr"/>: the language of the text, as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>).</summary>
+    /// <summary>
+    /// With <see cref="Ocr"/>: the language of the text as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>); text
+    /// that mixes languages has several, the main one first, joined with <c>+</c> as Tesseract takes them (<c>chi_sim+eng</c>).
+    /// </summary>
     public string OcrLanguage { get; set; } = "eng";
 
     public PdfOptions Clone() => (PdfOptions)MemberwiseClone();
@@ -908,11 +1433,23 @@ public sealed class MediaOptions
     /// </summary>
     public double MaxSizeMb { get; set; }
 
+    /// <summary>
+    /// Keep each video under this percentage (1–99) of the original file's size (#680); 0 = off. One of
+    /// <see cref="MaxSizeMb"/> and this is in use at a time.
+    /// </summary>
+    public int MaxSizePercent { get; set; }
+
     /// <summary>Audio bitrate in kbit/s for lossy audio; 0 uses a good default for the format.</summary>
     public int AudioBitrateKbps { get; set; }
 
     /// <summary>Drop the audio track of a video.</summary>
     public bool RemoveAudio { get; set; }
+
+    /// <summary>
+    /// "Crop video" (#830): the frame cut to a "width:height" ratio, centred, or to <see cref="VideoCrop.Auto"/> (the
+    /// picture inside black bars); empty keeps the whole frame. The video is encoded again, the sound copied.
+    /// </summary>
+    public string CropFrame { get; set; } = "";
 
     /// <summary>Audio channels of an audio file: 0 keeps the source's, 1 mono, 2 stereo.</summary>
     public int AudioChannels { get; set; }
@@ -966,8 +1503,12 @@ public sealed class MediaOptions
     /// </summary>
     public bool ExtractMotionPhoto { get; set; }
 
+    /// <summary>Formats speech can be transcribed into (<see cref="Caption"/>): SRT subtitles, or the text alone (#1274).</summary>
+    public static readonly IReadOnlyList<string> CaptionTargets = ["srt", "txt"];
+
     /// <summary>
-    /// Transcribes speech using Whisper AI to an SRT subtitle file.
+    /// Transcribes speech using Whisper AI to an SRT subtitle file, or to plain text without times for TXT. Only for a
+    /// target in <see cref="CaptionTargets"/> (<see cref="Preset.CaptionsVideo"/>).
     /// </summary>
     public bool Caption { get; set; }
 
@@ -1013,12 +1554,67 @@ public sealed class MediaOptions
     /// <summary>With <see cref="SaveEveryFrame"/>: extract every Nth frame (1 = every frame).</summary>
     public int FrameInterval { get; set; } = 1;
 
+    /// <summary>Shortest, usual and longest iPhone ringtone, in seconds: iOS only takes a ringtone of at most 40 s (#1291).</summary>
+    public const double MinRingtoneLength = 1, DefaultRingtoneLength = 30, MaxRingtoneLength = 40;
+
+    /// <summary>M4R (iPhone ringtone): where the ringtone starts in the sound, in seconds.</summary>
+    public double RingtoneStart { get; set; }
+
+    /// <summary>
+    /// M4R (iPhone ringtone): how long the ringtone is, in seconds (<see cref="MinRingtoneLength"/> to
+    /// <see cref="MaxRingtoneLength"/>), shorter when the sound ends sooner.
+    /// </summary>
+    public double RingtoneLength { get; set; } = DefaultRingtoneLength;
+
+    /// <summary>
+    /// The part of a sound of <paramref name="sourceSeconds"/> (null when unknown) that becomes the ringtone: where it
+    /// starts and how long it is. A hand-edited preset file may hold anything, so both are brought within their limits:
+    /// the length to 1–40 s and, when the sound's length is known, the window to the sound: a start past its end moves
+    /// back so that the ringtone keeps the length asked for and ends where the sound ends, and a length that goes past
+    /// the end is cut there.
+    /// </summary>
+    public (double Start, double Length) RingtoneWindow(double? sourceSeconds)
+    {
+        var length = double.IsFinite(RingtoneLength) ? Math.Clamp(RingtoneLength, MinRingtoneLength, MaxRingtoneLength) : DefaultRingtoneLength;
+        var start = double.IsFinite(RingtoneStart) ? Math.Max(0, RingtoneStart) : 0;
+        if (sourceSeconds is { } total && total > 0)
+        {
+            if (start >= total)
+                start = Math.Max(0, total - length);
+            length = Math.Min(length, total - start);
+        }
+        return (start, length);
+    }
+
     /// <summary>
     /// "Cut a clip": cut exactly at the chosen frames by encoding the clip again (with <see cref="Quality"/>,
     /// <see cref="MaxHeight"/>, <see cref="VideoCodec"/>, …). Off by default: the streams are copied as they are, which
     /// takes a moment and loses nothing, but the clip starts at the key frame before the chosen start.
     /// </summary>
     public bool ExactCut { get; set; }
+
+    /// <summary>
+    /// Video → video: a part for every this many seconds of the video (#1259), copied as it is (<see cref="Preset.SplitsVideoOf"/>).
+    /// A copy can only break at a key frame, so each part ends at the first one from there on. 0 is off, so presets
+    /// saved before it read unchanged.
+    /// </summary>
+    public int SplitEverySeconds { get; set; }
+
+    /// <summary>
+    /// Video → video: the video in this many parts of about the same length (halves, thirds, #1259), copied as it is.
+    /// Over <see cref="SplitEverySeconds"/>; 0 or 1 is off.
+    /// </summary>
+    public int SplitParts { get; set; }
+
+    /// <summary>
+    /// Most parts one video is split into (<see cref="SplitEverySeconds"/>, <see cref="SplitParts"/>): a two-hour film
+    /// every 10 seconds, already more files than anyone wants in a folder.
+    /// </summary>
+    public const int MaxSplitParts = 1000;
+
+    /// <summary>True when <see cref="SplitEverySeconds"/> or <see cref="SplitParts"/> asks for parts.</summary>
+    [JsonIgnore]
+    public bool Splits => SplitParts > 1 || SplitEverySeconds > 0;
 
     /// <summary>
     /// A clip of a video (<see cref="Preset.CutsClipOf"/>): its parts, their volume and speed, and its fades. Set by the
@@ -1037,9 +1633,17 @@ public sealed class MediaOptions
 
     /// <summary>
     /// MP4 or M4A: every dropped video (or audio file) goes, in order and without gaps, into one file named after the
-    /// first. Clips that share codecs and picture size are copied; others are encoded to match the first.
+    /// first. Clips that share codecs and picture size are copied; others are encoded to match the first. Audio files
+    /// dropped with videos into MP4 become music under them (<see cref="LoopMusic"/>).
     /// </summary>
     public bool JoinIntoOne { get; set; }
+
+    /// <summary>
+    /// With <see cref="JoinIntoOne"/> into MP4 (#1402): the audio files among the videos are music, played one after
+    /// another under them; this repeats that music from the start until the videos end, where it fades out. Off: the
+    /// music stops when the last song ends. The music never plays past the videos either way.
+    /// </summary>
+    public bool LoopMusic { get; set; }
 
     /// <summary>
     /// MP4: the dropped pictures become one 1080p video, each shown for <see cref="SlideSeconds"/>, fitted in with
@@ -1271,3 +1875,23 @@ public sealed class CadOptions
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
 }
 
+/// <summary>Options for offline AI document translation.</summary>
+public sealed class TranslateOptions
+{
+    public bool Enabled { get; set; }
+    public string TargetLanguage { get; set; } = "en";
+    public string SourceLanguage { get; set; } = "auto";
+    public string? Model { get; set; }
+
+    public TranslateOptions Clone() => (TranslateOptions)MemberwiseClone();
+}
+
+/// <summary>Options for local AI image upscaling (Real-ESRGAN / NCNN).</summary>
+public sealed class UpscaleOptions
+{
+    public bool Enabled { get; set; }
+    public string? Model { get; set; }
+    public int Scale { get; set; } = 4;
+
+    public UpscaleOptions Clone() => (UpscaleOptions)MemberwiseClone();
+}

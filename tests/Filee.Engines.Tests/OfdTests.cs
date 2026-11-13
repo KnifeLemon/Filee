@@ -3,6 +3,7 @@
 // with the frame and labels, values on the page, QR code and seal pictures), a WPS document (page size only in
 // Document.xml, decimal colours, wrapped body text over two pages), and hostile packages.
 
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Xml.Linq;
@@ -65,10 +66,10 @@ public class OfdTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var template = new StringBuilder();
         void Label(string text, double x, double y, double size = 3)
         {
-            template.Append($"""<ofd:TextObject ID="1" Boundary="{x} {y - size} 60 {size + 1}" Font="3" Size="{size}"><ofd:TextCode X="0" Y="{size}">{text}</ofd:TextCode></ofd:TextObject>""");
+            template.Append(string.Create(CultureInfo.InvariantCulture, $"""<ofd:TextObject ID="1" Boundary="{x} {y - size} 60 {size + 1}" Font="3" Size="{size}"><ofd:TextCode X="0" Y="{size}">{text}</ofd:TextCode></ofd:TextObject>"""));
         }
         void Rule(double x0, double y0, double x1, double y1) =>
-            template.Append($"""<ofd:PathObject ID="1" Boundary="{x0} {y0} {Math.Max(1, x1 - x0)} {Math.Max(1, y1 - y0)}"><ofd:AbbreviatedData>M 0 0 L {x1 - x0} {y1 - y0}</ofd:AbbreviatedData></ofd:PathObject>""");
+            template.Append(string.Create(CultureInfo.InvariantCulture, $"""<ofd:PathObject ID="1" Boundary="{x0} {y0} {Math.Max(1, x1 - x0)} {Math.Max(1, y1 - y0)}"><ofd:AbbreviatedData>M 0 0 L {x1 - x0} {y1 - y0}</ofd:AbbreviatedData></ofd:PathObject>"""));
         Label("电子发票（普通发票）", 75, 12, 6);
         Label("发票号码：", 140, 18);
         Label("开票日期：", 140, 24);
@@ -112,7 +113,7 @@ public class OfdTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var page = new StringBuilder();
         void Value(string text, double x, double y, int font = 4, double size = 3.5, string extra = "") =>
-            page.Append($"""<ofd:TextObject ID="1" Boundary="{x} {y - size} 80 {size + 1}" Font="{font}" Size="{size}"><ofd:FillColor Value="0 0 0"/><ofd:TextCode X="0" Y="{size}"{extra}>{text}</ofd:TextCode></ofd:TextObject>""");
+            page.Append(string.Create(CultureInfo.InvariantCulture, $"""<ofd:TextObject ID="1" Boundary="{x} {y - size} 80 {size + 1}" Font="{font}" Size="{size}"><ofd:FillColor Value="0 0 0"/><ofd:TextCode X="0" Y="{size}"{extra}>{text}</ofd:TextCode></ofd:TextObject>"""));
         page.Append("""<ofd:ImageObject ID="1" ResourceID="7" Boundary="8 6 20 20" CTM="20 0 0 20 0 0"/>""");
         Value("25442000000123456789", 155.5, 18, 5, extra: " DeltaX=\"g 19 2.1\"");
         Value("2025年03月18日", 155.5, 24);
@@ -260,7 +261,7 @@ public class OfdTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Text(zip, "Doc_0/Res.xml", $"""<?xml version="1.0" encoding="utf-8"?><ofd:Res {Ns}><ofd:Fonts><ofd:Font ID="3" FontName="仿宋_GB2312"/><ofd:Font ID="4" FontName="黑体"/></ofd:Fonts></ofd:Res>""");
 
         string Line(string text, double x, double y, int font = 3, double size = 5.6, string extra = "") =>
-            $"""<ofd:TextObject ID="1" Font="{font}" Size="{size}" Boundary="{x} {y - size} 160 {size * 1.3}"{extra}><ofd:FillColor Value="5 7 59"/><ofd:TextCode X="0" Y="{size}">{text}</ofd:TextCode></ofd:TextObject>""";
+            string.Create(CultureInfo.InvariantCulture, $"""<ofd:TextObject ID="1" Font="{font}" Size="{size}" Boundary="{x} {y - size} 160 {size * 1.3}"{extra}><ofd:FillColor Value="5 7 59"/><ofd:TextCode X="0" Y="{size}">{text}</ofd:TextCode></ofd:TextObject>""");
         var first = new StringBuilder();
         first.Append(Line("医院信息化建设方案", 67.15, 40, 4, 8.5, " Weight=\"700\""));
         // A paragraph of three lines on a 156.8 mm measure (28 characters): the first indented by two characters.
@@ -334,7 +335,7 @@ public class OfdTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     private static string TextObject(string text, double x, double y, double size = 3.175, int font = 3, string code = "", double width = 60) =>
-        $"""<ofd:TextObject ID="1" Boundary="{x} {y - size} {width} {size + 1}" Font="{font}" Size="{size}"><ofd:TextCode X="0" Y="{size}"{code}>{text}</ofd:TextCode></ofd:TextObject>""";
+        string.Create(CultureInfo.InvariantCulture, $"""<ofd:TextObject ID="1" Boundary="{x} {y - size} {width} {size + 1}" Font="{font}" Size="{size}"><ofd:TextCode X="0" Y="{size}"{code}>{text}</ofd:TextCode></ofd:TextObject>""");
 
     [Fact]
     public void A_block_drawn_by_one_text_code_keeps_its_lines_and_a_short_delta_list_goes_on()
@@ -509,7 +510,7 @@ public class OfdTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var template = new StringBuilder();
         void Rule(double x0, double y0, double x1, double y1) =>
-            template.Append($"""<ofd:PathObject ID="1" Boundary="{x0} {y0} {Math.Max(1, x1 - x0)} {Math.Max(1, y1 - y0)}"><ofd:AbbreviatedData>M 0 0 L {x1 - x0} {y1 - y0}</ofd:AbbreviatedData></ofd:PathObject>""");
+            template.Append(string.Create(CultureInfo.InvariantCulture, $"""<ofd:PathObject ID="1" Boundary="{x0} {y0} {Math.Max(1, x1 - x0)} {Math.Max(1, y1 - y0)}"><ofd:AbbreviatedData>M 0 0 L {x1 - x0} {y1 - y0}</ofd:AbbreviatedData></ofd:PathObject>"""));
         Rule(5, 30, 205, 30);
         Rule(5, 37, 205, 37);
         Rule(5, 110, 205, 110);

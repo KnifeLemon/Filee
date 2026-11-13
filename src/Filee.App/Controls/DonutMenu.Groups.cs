@@ -19,17 +19,36 @@ namespace Filee.App.Controls;
 
 public sealed partial class DonutMenu
 {
-    /// <summary>Gap between a popped-out slice and the ring a group fans out.</summary>
+    /// <summary>Gap between a popped-out slice and the ring a group fans out, on a ring of scale 1.</summary>
     private const double SubGap = 6;
 
-    /// <summary>Thickness of the ring a group fans out.</summary>
+    /// <summary>Thickness of the ring a group fans out, on a ring of scale 1.</summary>
     private const double SubBand = 46;
 
-    /// <summary>Extra room around the donut for the ring a group fans out (and its labels, which reach past it).</summary>
-    public const double SubRingSpace = SubGap + SubBand + 10;
+    /// <summary>
+    /// How large a group's ring is against the default: it follows the donut's size (radius ÷ 150) times the Group ring
+    /// size setting, but is never smaller than the default ring on the smallest donut (<see cref="MinRingScale"/>):
+    /// smaller, a 10 px name (the floor) no longer fits its slices. Its depth, gap, narrowest slice and labels scale
+    /// with it.
+    /// </summary>
+    public static double RingScaleFor(double outerRadius, double ringSize) =>
+        Math.Max(MinRingScale, outerRadius / SliceLabelLayout.DefaultRadius * ringSize);
 
-    /// <summary>Width and height of a donut of <paramref name="outerRadius"/>, with room for group rings when asked.</summary>
-    public static double SideFor(double outerRadius, bool subRing) => 2 * (outerRadius + PopOut + 14 + (subRing ? SubRingSpace : 0));
+    /// <summary>The smallest ring scale: the default ring on a donut of radius 100.</summary>
+    internal const double MinRingScale = 100 / SliceLabelLayout.DefaultRadius;
+
+    /// <summary>
+    /// Extra room around a donut of <paramref name="outerRadius"/> for the ring a group fans out (and its labels, which
+    /// reach past it).
+    /// </summary>
+    public static double SubRingSpaceFor(double outerRadius, double ringSize) =>
+        (SubGap + SubBand + 10) * RingScaleFor(outerRadius, ringSize);
+
+    /// <summary>
+    /// Width and height of a donut of <paramref name="outerRadius"/>, with room for group rings when asked.
+    /// </summary>
+    public static double SideFor(double outerRadius, bool subRing, double ringSize = 1) =>
+        2 * (outerRadius + PopOut + 14 + (subRing ? SubRingSpaceFor(outerRadius, ringSize) : 0));
 
     // Group slices: the one fanned out (-1 none), the one still drawn while its ring folds away, and the hovered
     // slice of the ring.
@@ -63,7 +82,14 @@ public sealed partial class DonutMenu
     private IReadOnlyList<DonutItem>? ExpandedChildren =>
         !IsEditMode && _expanded >= 0 && _expanded < Count ? Items![_expanded].Children : null;
 
-    private (double Inner, double Outer) SubRadii => (OuterRadius + PopOut + SubGap, OuterRadius + PopOut + SubGap + SubBand);
+    /// <summary>
+    /// This donut's ring scale (<see cref="RingScaleFor"/>). Its labels follow it, and the Label scale as far as the
+    /// ring's slices have room (<see cref="SliceLabelLayout.PlanRingToFit"/>).
+    /// </summary>
+    private double RingScale => RingScaleFor(OuterRadius, GroupRingSize);
+
+    internal (double Inner, double Outer) SubRadii =>
+        (OuterRadius + PopOut + SubGap * RingScale, OuterRadius + PopOut + (SubGap + SubBand) * RingScale);
 
     /// <summary>How far past an open ring (and the gap before it) the pointer still counts as on its way to it.</summary>
     private const double BackdropMargin = 8;
@@ -85,7 +111,8 @@ public sealed partial class DonutMenu
 
     /// <summary>Width of each slice of a ring of <paramref name="count"/>.</summary>
     private double SubSpanOf(int count) =>
-        DonutGeometry.SubSpan(DonutGeometry.Span(Count), count, (SubRadii.Inner + SubRadii.Outer) / 2);
+        DonutGeometry.SubSpan(DonutGeometry.Span(Count), count, (SubRadii.Inner + SubRadii.Outer) / 2, GroupRingSpread,
+            DonutGeometry.MinSubWidth * RingScale);
 
     /// <summary>The middle of slice <paramref name="sub"/> of group <paramref name="group"/>'s ring (tests).</summary>
     internal Point SubSliceCenter(int group, int sub)
@@ -419,6 +446,9 @@ public sealed partial class DonutMenu
         var transform = Matrix.CreateTranslation(-anchor.X, -anchor.Y) * Matrix.CreateScale(scale, scale) *
                         Matrix.CreateTranslation(anchor.X, anchor.Y) * SliceFlipTransform(oldFace, group);
 
+        // The ring's labels scale with the ring (RingScale), not the donut: they scale with the shape they sit in.
+        var labels = LabelPlan(children, center, inner, outer,
+            k => (DonutGeometry.SubMidAngle(parentMid, k, children.Count, subSpan), subSpan), RingScale, bold, regular, fitScale: true);
         using (context.PushTransform(transform))
         using (context.PushOpacity(Math.Clamp(t, 0, 1) * opening))
         {
@@ -431,8 +461,7 @@ public sealed partial class DonutMenu
                 var hot = k == subHover && expanded && item.IsEnabled;
                 if (hot)
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82), null, wedge);
-                DrawLabel(context, item, center, (inner + outer) / 2, mid, subSpan * (inner + outer) / 2 - 8,
-                    SubBand - 8, bold, regular, hot);
+                DrawSliceLabel(context, labels[k], item.IsEnabled, hot);
             }
         }
     }

@@ -60,6 +60,7 @@ internal sealed partial class OdtWriter
     /// <summary>Writes <paramref name="document"/> as an .odt file (replaced atomically).</summary>
     public static void Write(HDocument document, string outputPath)
     {
+        Nesting.Limit(document); // the writer recurses per table, text box and note level
         var writer = new OdtWriter();
         var body = writer.Body(document);
         writer.WritePackage(document, body, outputPath);

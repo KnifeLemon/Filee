@@ -15,6 +15,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -59,7 +60,7 @@ internal static partial class PmlReader
         if (file.Length == 0)
             return null;
         foreach (var candidate in folders.Select(f => EbookFiles.SafePath(f, file)))
-            if (candidate is not null && File.Exists(candidate) && HtmlReader.InsideFolder(candidate, root))
+            if (candidate is not null && File.Exists(candidate) && DocumentFiles.Inside(candidate, root))
                 return Path.GetRelativePath(root, candidate).Replace('\\', '/');
         return null;
     }

@@ -34,21 +34,24 @@
 
 <p align="center">
   <b>English</b> ·
-  <a href="README.es.md">Español</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ko.md">한국어</a> ·
-  <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="README.zh-TW.md">繁體中文</a> ·
-  <a href="README.pl.md">Polski</a> ·
-  <a href="README.hi.md">हिन्दी</a> ·
-  <a href="README.ru.md">Русский</a> ·
-  <a href="README.ar.md">العربية</a> ·
-  <a href="README.pt-BR.md">Português (Brasil)</a> ·
-  <a href="README.pt-PT.md">Português (Portugal)</a> ·
-  <a href="README.fr.md">Français</a> ·
-  <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a> ·
-  <a href="README.id.md">Bahasa Indonesia</a>
+  <a href="docs/readme/README.es.md">Español</a> ·
+  <a href="docs/readme/README.ja.md">日本語</a> ·
+  <a href="docs/readme/README.ko.md">한국어</a> ·
+  <a href="docs/readme/README.zh-CN.md">简体中文</a> ·
+  <a href="docs/readme/README.zh-TW.md">繁體中文</a> ·
+  <a href="docs/readme/README.pl.md">Polski</a> ·
+  <a href="docs/readme/README.hi.md">हिन्दी</a> ·
+  <a href="docs/readme/README.ru.md">Русский</a> ·
+  <a href="docs/readme/README.ar.md">العربية</a> ·
+  <a href="docs/readme/README.fa.md">فارسی</a> ·
+  <a href="docs/readme/README.pt-BR.md">Português (Brasil)</a> ·
+  <a href="docs/readme/README.pt-PT.md">Português (Portugal)</a> ·
+  <a href="docs/readme/README.fr.md">Français</a> ·
+  <a href="docs/readme/README.th.md">ไทย</a> ·
+  <a href="docs/readme/README.tr.md">Türkçe</a> ·
+  <a href="docs/readme/README.id.md">Bahasa Indonesia</a> ·
+  <a href="docs/readme/README.it.md">Italiano</a> ·
+  <a href="docs/readme/README.bn-BD.md">বাংলা</a>
 </p>
 
 <table>
@@ -83,6 +86,12 @@ Download from [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+Or with WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: run `Filee-<version>-win-Setup.exe`, or unzip the `win-Portable.zip` and run `Filee.exe`.
   - Setup is Filee's own installer, in Filee's languages, and needs nothing else on the PC.
   - It can add the Explorer menu, start at sign-in, the `filee` command and optional engines.
@@ -93,6 +102,8 @@ Download from [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
 - **Linux x64/ARM64** (Ubuntu 22.04+): unpack the package and run `./install.sh` (no root, needs Python 3).
   - Drag gestures need X11.
     On Wayland, use the drop zone and the file manager's right-click menu.
+
+Portable releases keep their data beside the app; see [portable mode](docs/PORTABLE.md).
 
 Filee shows new releases in its menu and updates itself, keeping your settings and engines.
 After an update, a few slides show what's new.
@@ -132,8 +143,11 @@ To undo it, remove the entries in Windows Security → App & browser control →
   Routes with several steps (HWP → HWPX → DOCX) are found automatically.
 - **Watch folders** convert every file that lands in them.
 - **Recent conversions** on Home, each with a thumbnail: open the result, or open it with another app.
+- **A file list on Home**: turn on *Collect dropped files in a list* in General settings, and files dropped on Home (including those dragged from a browser) wait in a list instead of opening the donut.
+  Drag the cards or use Alt+↑ / Alt+↓ to set the order, Delete to remove one, and *Choose action* to open the donut for the list in that order.
+  The list empties when that conversion completes.
 - **Other ways in**: the right-click menu, a keyboard shortcut, the drop zone and the [`filee` command](#command-line).
-- Light and dark themes with your own accent colour and donut opacity, in English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (right to left), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano and Bahasa Indonesia.
+- Light and dark themes with your own accent colour and donut opacity, in English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (right to left), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia and Tiếng Việt.
 
 ## Screenshots
 
@@ -152,7 +166,7 @@ To undo it, remove the entries in Windows Security → App & browser control →
 
 | From | To |
 |---|---|
-| **Images**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR, …;<br>GIMP XCF, camera RAW (CR2, CR3, NEF, ARW, DNG, …), DICOM, OpenEXR, HDR, FITS, JPEG XR (Windows), iPhone Live Photo (LIVP) read | any of these (HEIC⁵), PDF, SVG (traced), resized, grayscale;<br>Live/Motion Photos (iPhone, Android) → their video (MP4, MOV⁵), and a video → Live Photo (iPhone) or Motion Photo (Android)⁵, experimental |
+| **Images**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR, …;<br>GIMP XCF, camera RAW (CR2, CR3, NEF, ARW, DNG, …), DICOM, OpenEXR, HDR, FITS, JPEG XR (Windows), iPhone Live Photo (LIVP), Paint.NET PDN (↔ PSD with its layers), animated cursor (ANI) read | any of these (HEIC⁵), Paint.NET PDN, PDF, SVG (traced), resized, grayscale;<br>Live/Motion Photos (iPhone, Android) → their video (MP4, MOV⁵), and a video → Live Photo (iPhone) or Motion Photo (Android)⁵, experimental |
 | **Vector**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (vector), PNG and other images,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX (a picture of each page), SVG²;<br>merge (in an order you choose first), split, page ranges, compress (smaller PDFs) |
 | **Documents**: DOCX, DOCM, DOTX, DOC, DOT, ODT, EML, Outlook MSG;<br>OFD (Chinese e-invoices, official documents) read<br>FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, ODT, HWPX, EPUB, TXT, HTML, PPTX slides;<br>MSG → EML<br>FODT, OTT² |
@@ -169,7 +183,7 @@ To undo it, remove the entries in Windows Security → App & browser control →
 | **Fonts**: TTF, OTF, WOFF, WOFF2, EOT;<br>FON (Windows bitmap fonts) read | each other;<br>FON → one font per size |
 | **Data**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | each other, CSV and XLSX (tables);<br>vCard, iCalendar ↔ CSV |
 | **3D models**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY;<br>FBX read | each other, PNG preview |
-| **Geospatial vectors**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV with coordinates; Garmin FIT read | each other and CSV / XLSX / JSON;<br>projected data (UTM, Web Mercator, Lambert, Albers) comes out as WGS 84 longitude / latitude |
+| **Geospatial vectors**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV with coordinates; Garmin FIT, OpenStreetMap (.osm) read | each other and CSV / XLSX / JSON;<br>projected data (UTM, Web Mercator, Lambert, Albers) comes out as WGS 84 longitude / latitude |
 
 Unmarked formats work out of the box, without Office, Hancom Office or LibreOffice.
 Marked ones need an optional engine, downloaded only when needed: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([details](docs/ENGINES.md)).

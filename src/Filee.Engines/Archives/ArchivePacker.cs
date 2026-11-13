@@ -1,6 +1,7 @@
-// Writes archives. ZIP, TAR, TAR.GZ and single-file GZ are written in-process (System.IO.Compression /
-// System.Formats.Tar), so file names are exactly what Filee chooses: UTF-8 in ZIP (with the language encoding flag),
-// PAX headers in TAR. 7Z, the bzip2 / xz TAR variants and single-file BZ2 / XZ are written by the bundled 7-Zip.
+// Writes archives. ZIP (and the game packs that are ZIPs, see GamePacks), TAR, TAR.GZ and single-file GZ are written
+// in-process (System.IO.Compression / System.Formats.Tar), so file names are exactly what Filee chooses: UTF-8 in ZIP
+// (with the language encoding flag), PAX headers in TAR. 7Z, the bzip2 / xz TAR variants and single-file BZ2 / XZ are
+// written by the bundled 7-Zip.
 
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -17,7 +18,8 @@ internal sealed record PackItem(string SourcePath, string EntryName);
 internal sealed class ArchivePacker(SevenZip? sevenZip)
 {
     /// <summary>Formats written without 7-Zip.</summary>
-    public static readonly IReadOnlySet<string> BuiltInFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "zip", "tar", "tgz", "gz" };
+    public static readonly IReadOnlySet<string> BuiltInFormats =
+        new HashSet<string>(["zip", "tar", "tgz", "gz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Formats that hold exactly one file, without name or folders.</summary>
     public static readonly IReadOnlySet<string> SingleFileFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "gz", "bz2", "xz" };
@@ -37,7 +39,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         {
             switch (format)
             {
-                case "zip":
+                case "zip" or "mcpack" or "mcaddon" or "mcworld" or "mctemplate" or "mrpack":
                     await Task.Run(() => WriteZip(items, temp, level, progress, cancellationToken), cancellationToken);
                     break;
                 case "tar":
@@ -109,7 +111,8 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         var paths = new List<string>();
         foreach (var item in items)
         {
-            if (string.Equals(Path.GetFileName(item.SourcePath), item.EntryName, StringComparison.Ordinal))
+            // 7-Zip follows junctions inside directories. Always stage folders through the link-skipping copy.
+            if (!Directory.Exists(item.SourcePath) && string.Equals(Path.GetFileName(item.SourcePath), item.EntryName, StringComparison.Ordinal))
             {
                 paths.Add(item.SourcePath);
                 continue;
@@ -137,9 +140,13 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
     /// <summary>Copies a folder tree without following links.</summary>
     private static async Task CopyFolderAsync(DirectoryInfo source, string target, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (source.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            throw new IOException($"Cannot pack a linked folder: {source.FullName}");
         Directory.CreateDirectory(target);
         foreach (var info in source.EnumerateFileSystemInfos())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (info.Attributes.HasFlag(FileAttributes.ReparsePoint))
                 continue;
             var destination = Path.Combine(target, info.Name);

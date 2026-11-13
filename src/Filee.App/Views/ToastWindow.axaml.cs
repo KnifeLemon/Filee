@@ -1,10 +1,18 @@
+// Readable, copyable progress cards, bounded by their display's working area.
+
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.App.ViewModels;
+using Filee.Core.Localization;
 
 namespace Filee.App.Views;
 
@@ -12,15 +20,51 @@ namespace Filee.App.Views;
 public partial class ToastWindow : Window
 {
     private const int ScreenMargin = 12;
+    private PixelRect? _area;
+    private double _scaling = 1;
+    private readonly ObservableCollection<JobViewModel> _orderedJobs = [];
+    private readonly HashSet<JobViewModel> _presented = [];
 
     public ToastWindow()
     {
         InitializeComponent();
+        Jobs.ItemsSource = _orderedJobs;
         Motion.Track(this);
-        SizeChanged += (_, _) => PlaceBottomRight();
+        SizeChanged += (_, _) => AnchorBottomRight();
+        Opened += (_, _) => PlaceBottomRight();
+        ScalingChanged += (_, _) => PlaceBottomRight();
+        Screens.Changed += OnScreensChanged;
+        LayoutUpdated += OnLayoutUpdated;
     }
 
     private ConversionService? _service;
+
+    private void OnScreensChanged(object? sender, EventArgs e) => PlaceBottomRight();
+
+    private async void OnCopyNotification(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: JobViewModel job } button || Clipboard is not { } clipboard) return;
+        var original = button.Content;
+        button.IsEnabled = false;
+        try
+        {
+            await clipboard.SetTextAsync(job.NotificationText);
+            var copied = AppHost.Get<ILocalizer>()["toast.copied"];
+            button.Content = new TextBlock { Text = copied };
+            AutomationProperties.SetName(button, copied);
+            await Task.Delay(1500);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Trace.TraceWarning($"Copying a notification failed: {ex.Message}");
+        }
+        finally
+        {
+            button.Content = original;
+            AutomationProperties.SetName(button, AppHost.Get<ILocalizer>()["toast.copy"]);
+            button.IsEnabled = true;
+        }
+    }
 
     private async void OnRequestFormat(object? sender, RoutedEventArgs e)
     {
@@ -41,18 +85,38 @@ public partial class ToastWindow : Window
     {
         base.OnDataContextChanged(e);
         if (_service is not null)
+        {
+            foreach (var job in _presented) _service.SetToastVisible(job, false);
             _service.ToastJobs.CollectionChanged -= OnJobsChanged;
+        }
+        _presented.Clear();
+        _orderedJobs.Clear();
         _service = DataContext as ConversionService;
         if (_service is not null)
             _service.ToastJobs.CollectionChanged += OnJobsChanged;
+        Dispatcher.UIThread.Post(UpdateVisibility);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         _closed = true;
+        Screens.Changed -= OnScreensChanged;
         if (_service is not null)
+        {
+            foreach (var job in _presented) _service.SetToastVisible(job, false);
             _service.ToastJobs.CollectionChanged -= OnJobsChanged;
+        }
         base.OnClosed(e);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == IsVisibleProperty && !IsVisible && _service is { } service)
+        {
+            foreach (var job in _presented) service.SetToastVisible(job, false);
+            _presented.Clear();
+        }
     }
 
     // After the change: showing the window inside CollectionChanged built the list with the new job already in it, and
@@ -64,6 +128,9 @@ public partial class ToastWindow : Window
     {
         if (_closed || _service is not { } service)
             return;
+        foreach (var job in _orderedJobs.Where(job => !service.ToastJobs.Contains(job)).ToList()) _orderedJobs.Remove(job);
+        foreach (var job in service.ToastJobs.Reverse())
+            if (!_orderedJobs.Contains(job)) _orderedJobs.Add(job);
         if (service.ToastJobs.Count > 0 && !IsVisible)
         {
             Show();
@@ -72,18 +139,50 @@ public partial class ToastWindow : Window
         else if (service.ToastJobs.Count == 0 && IsVisible)
         {
             Hide();
+            OnLayoutUpdated(this, EventArgs.Empty);
         }
+    }
+
+    private void OnLayoutUpdated(object? sender, EventArgs e)
+    {
+        if (_closed || _service is not { } service || Jobs.ItemsPanelRoot is not ToastStackPanel panel) return;
+        var height = Math.Max(1, MaxHeight - Jobs.Margin.Top - Jobs.Margin.Bottom);
+        if (panel.AvailableHeight != height) { panel.AvailableHeight = height; return; }
+        var count = panel.PendingCount;
+        QueueCount.Text = count == 0 ? "" : AppHost.Get<ILocalizer>().Format("toast.more", count);
+        QueueFooter.IsVisible = count > 0;
+        var visible = IsVisible ? _orderedJobs.Take(panel.VisibleCount).ToHashSet() : [];
+        foreach (var job in _presented.Except(visible).ToList()) { service.SetToastVisible(job, false); _presented.Remove(job); }
+        foreach (var job in visible.Except(_presented).ToList()) { service.SetToastVisible(job, true); _presented.Add(job); }
     }
 
     private void PlaceBottomRight()
     {
-        var screen = Screens.Primary;
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
         if (screen is null)
             return;
-        var area = screen.WorkingArea;
-        var scaling = screen.Scaling;
-        var width = (int)Math.Ceiling(Bounds.Width * scaling);
-        var height = (int)Math.Ceiling(Bounds.Height * scaling);
-        Position = new PixelPoint(area.Right - width - ScreenMargin, area.Bottom - height - ScreenMargin);
+        FitTo(screen.WorkingArea, screen.Scaling);
+    }
+
+    /// <summary>Caps the stack in logical pixels and anchors it inside the display, including its taskbar.</summary>
+    internal void FitTo(PixelRect area, double scaling)
+    {
+        if (scaling <= 0 || !double.IsFinite(scaling)) return;
+        _area = area;
+        _scaling = scaling;
+        MaxHeight = Math.Max(1, area.Height / scaling - 2 * ScreenMargin);
+        if (Jobs.ItemsPanelRoot is ToastStackPanel panel)
+            panel.AvailableHeight = Math.Max(1, MaxHeight - Jobs.Margin.Top - Jobs.Margin.Bottom);
+        Width = Math.Min(360, Math.Max(1, area.Width / scaling - 2 * ScreenMargin));
+        AnchorBottomRight();
+    }
+
+    private void AnchorBottomRight()
+    {
+        if (_area is not { } area) return;
+        var margin = (int)Math.Round(ScreenMargin * _scaling);
+        var width = (int)Math.Ceiling(Width * _scaling);
+        var height = (int)Math.Ceiling(Math.Min(Bounds.Height, MaxHeight) * _scaling);
+        Position = new PixelPoint(Math.Max(area.X, area.Right - width - margin), Math.Max(area.Y, area.Bottom - height - margin));
     }
 }

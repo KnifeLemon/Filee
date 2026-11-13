@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.Tests;
 
+[Collection("Motion")]
 public class EnginesPageTests
 {
     private static void Pump()
@@ -58,11 +59,32 @@ public class EnginesPageTests
     }
 
     [AvaloniaFact]
+    public void Another_Filee_installing_the_package_is_said_in_the_users_language()
+    {
+        // #963: the card showed EngineBusyException's English message.
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<LocalizationService>();
+        try
+        {
+            loc.SetLanguage("ko");
+            var text = EngineDownloadService.ErrorText(loc, new Filee.Engines.Infrastructure.EngineBusyException("libreoffice"));
+            Assert.Equal(loc["error.engine_busy"], text);
+            Assert.NotEqual("error.engine_busy", text);
+            Assert.DoesNotContain("being installed by another Filee", text);
+        }
+        finally
+        {
+            loc.SetLanguage("en");
+        }
+    }
+
+    [AvaloniaFact]
     public void Dragging_a_card_below_the_next_one_moves_it_there_and_saves_the_order()
     {
         TestServices.EnsureInitialized("en");
         var store = AppHost.Get<UserDataStore>();
         var saved = store.Settings.EnginePriority.ToList();
+        var motion = Motion.Enabled;
         var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("engines");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
@@ -70,6 +92,9 @@ public class EnginesPageTests
         Pump();
         try
         {
+            // No animation: the card is a card again as soon as the button is released (the animation runs on a timer
+            // that headless tests can't rely on). The test is in the "Motion" collection so no other test switches it back.
+            Motion.Set(false);
             var page = window.GetVisualDescendants().OfType<EnginesPage>().Single();
             var engines = ((EnginesPageViewModel)page.DataContext!).Engines;
             var (first, second, third) = (engines[0], engines[1], engines[2]);
@@ -80,12 +105,19 @@ public class EnginesPageTests
             scroller.Offset = scroller.Offset.WithY(scroller.Offset.Y + top - 150);
             Pump();
 
+            // Only the handle has a cursor of its own: not the card, and not its arrow buttons.
+            var firstCard = list.ContainerFromIndex(0)!;
+            Assert.Null(firstCard.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("engine")).Cursor);
+            Assert.All(firstCard.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("icon")), b => Assert.Null(b.Cursor));
+            Assert.Null(list.Cursor);
+
             // Grab the first card and move past the middle of the second one: it moves there while dragging.
             var from = Middle(list.ContainerFromIndex(0)!, window);
             var past = Middle(list.ContainerFromIndex(1)!, window) + new Point(0, 12);
             window.MouseDown(from, MouseButton.Left);
             window.MouseMove(from + new Point(0, 8));
             Assert.True(first.IsDragging);
+            Assert.NotNull(list.Cursor); // the move cursor stays for the whole drag, even outside the list
             window.MouseMove(past);
             Pump();
             Assert.Equal([second, first, third], engines.Take(3));
@@ -94,6 +126,7 @@ public class EnginesPageTests
             window.MouseUp(past, MouseButton.Left);
             Pump();
             Assert.False(first.IsDragging);
+            Assert.Null(list.Cursor);
             Assert.Equal(engines.Select(e => e.Converter.Id), store.Settings.EnginePriority);
 
             // A click without moving changes nothing.
@@ -107,6 +140,7 @@ public class EnginesPageTests
         finally
         {
             window.Close();
+            Motion.Set(motion);
             store.Settings.EnginePriority = saved;
             store.SaveSettings();
         }
@@ -192,6 +226,89 @@ public class EnginesPageTests
             vm.UseFileeRenderer = before;
             vm.Dispose();
         }
+    }
+
+    [AvaloniaFact]
+    public void A_card_offers_the_offline_install_and_saving_its_files_leaves_it_as_it_was()
+    {
+        // #447: without internet the same downloads come from another computer.
+        TestServices.EnsureInitialized("en");
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
+        vm.Navigate("engines");
+        var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
+        window.Show();
+        Pump();
+        try
+        {
+            var offline = window.GetVisualDescendants().OfType<Button>().Where(b => Equals(b.Content, "Offline") && b.IsVisible).ToList();
+            Assert.Equal(EngineDownloads.Packages.Count(EngineDownloads.CanDownload), offline.Count);
+            var menu = Assert.IsType<MenuFlyout>(offline[0].Flyout);
+            menu.ShowAt(offline[0]);
+            Pump();
+            Assert.Equal(["Install from downloaded files…", "Save the files for another computer…", "Copy download links"],
+                menu.Items.OfType<MenuItem>().Select(i => i.Header as string));
+            menu.Hide();
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        var downloads = new EngineDownloadService(AppHost.Get<ConverterCatalog>(), AppHost.Get<ILocalizer>(), NullLogger<EngineDownloadService>.Instance);
+        var state = downloads.Packages.First(p => p.HasOfflineMenu && p.CanInstallFromFiles && !p.Package.ConverterIds.Contains("libreoffice"));
+        var before = state.Status;
+        var seen = new List<EnginePackageStatus>();
+        state.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(EnginePackageState.Status))
+                seen.Add(state.Status);
+        };
+        string? savedTo = null;
+        downloads.SavePackageFiles = async (package, folder, progress, token) =>
+        {
+            savedTo = folder;
+            progress.Report(new EngineInstallProgress(EngineInstallStage.Downloading, package.Components[0], 0.5, 5, 10));
+            await Task.Delay(200, token); // the report reaches the card while the work still runs
+        };
+        Assert.Equal((true, (string?)null), Wait(downloads.SaveFilesAsync(state, "USB")));
+        Assert.Equal("USB", savedTo);
+        Assert.Contains(EnginePackageStatus.Downloading, seen);
+        Assert.Equal(before, state.Status);
+
+        // A failure is the caller's to show; the card stays as it was, not "Failed".
+        downloads.SavePackageFiles = (_, _, _, _) => Task.FromException(new HttpRequestException("No route to host"));
+        Assert.Equal((false, "No route to host"), Wait(downloads.SaveFilesAsync(state, "USB")));
+        Assert.Equal(before, state.Status);
+
+        // Installing from files goes through the same queue and ends installed.
+        IReadOnlyList<string>? from = null;
+        downloads.InstallPackageFromFiles = async (_, files, progress, token) =>
+        {
+            from = files;
+            progress.Report(new EngineInstallProgress(EngineInstallStage.Copying, state.Package.Components[0], 0.5, 5, 10));
+            await Task.Delay(200, token);
+        };
+        Wait(downloads.InstallAsync(state, ["tool.zip"]));
+        Assert.Equal(["tool.zip"], from);
+        Assert.Contains(EnginePackageStatus.Copying, seen);
+        Assert.Equal(EnginePackageStatus.Installed, state.Status);
+    }
+
+    private static T Wait<T>(Task<T> task)
+    {
+        Wait((Task)task);
+        return task.Result;
+    }
+
+    private static void Wait(Task task)
+    {
+        for (var i = 0; i < 500 && !task.IsCompleted; i++)
+        {
+            Thread.Sleep(10);
+            Pump();
+        }
+        Pump(); // the last progress reports
+        Assert.True(task.IsCompleted);
     }
 
     [AvaloniaFact]

@@ -239,8 +239,12 @@ public class SingleMainWindowTests
         }
         finally
         {
+            // A pending simulated click must not reopen a window while this test cleans up.
+            tracker.ClickWhileBuilding = false;
+            tracker.ClickWhileReleasing = false;
             CloseToTray(windows, tracker);
             Pump();
+            Assert.Null(windows.Main);
         }
     }
 }

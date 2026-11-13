@@ -12,6 +12,7 @@ using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Pptx;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Office.Sheets;
 using ImageMagick;
 using static Filee.Engines.Tests.DocxBuilder;
@@ -964,6 +965,104 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
             stream.Write(Png(color, 40, 20));
         }
         return path;
+    }
+
+    /// <summary>A document of the kind with a picture, and how to read it under a limit.</summary>
+    private Func<UnpackLimit, HDocument> WithPicture(string kind)
+    {
+        var dir = fx.NewFolder();
+        var media = Path.Combine(dir, "media");
+        switch (kind)
+        {
+            case "docx":
+                var docx = new DocxBuilder();
+                docx.Paragraph(P(InlinePicture(docx.Image(Png(MagickColors.Teal)), 914400, 457200)));
+                var word = docx.Save(Path.Combine(dir, "a.docx"));
+                return limit => DocxReader.Read(word, media, limit);
+            case "pptx":
+                var pptx = new PptxBuilder();
+                pptx.Slide(pptx.Picture(pptx.Image(Png(MagickColors.Teal)), 0, 0, 914400, 457200));
+                var slides = pptx.Save(Path.Combine(dir, "a.pptx"));
+                return limit => PptxReader.Read(slides, media, limit);
+            default:
+                var hwpx = HangulStylePackage(dir);
+                return limit => HwpxReader.Read(hwpx, media, limit);
+        }
+    }
+
+    [Theory]
+    [InlineData("docx")]
+    [InlineData("hwpx")]
+    [InlineData("pptx")]
+    public void Pictures_past_the_unpack_limit_refuse_the_document(string kind)
+    {
+        var read = WithPicture(kind);
+
+        Assert.NotEmpty(AllInlines(read(new UnpackLimit(10_000_000)).Sections.SelectMany(s => s.Blocks)).OfType<HImage>());
+        var error = Assert.Throws<ConversionRefusedException>(() => read(new UnpackLimit(10)));
+        Assert.Equal("error.document_too_large", error.ErrorKey);
+    }
+
+    [Fact]
+    public void The_unpack_limit_counts_all_of_a_documents_pictures()
+    {
+        var one = Png(MagickColors.Teal);
+        var two = Png(MagickColors.Coral);
+        var docx = new DocxBuilder();
+        docx.Paragraph(P(InlinePicture(docx.Image(one), 914400, 457200) + InlinePicture(docx.Image(two), 914400, 457200)));
+        var dir = fx.NewFolder();
+        var path = docx.Save(Path.Combine(dir, "a.docx"));
+
+        DocxReader.Read(path, Path.Combine(dir, "both"), new UnpackLimit(one.Length + two.Length));
+        var limit = new UnpackLimit(one.Length + two.Length - 1);
+        Assert.Throws<ConversionRefusedException>(() => DocxReader.Read(path, Path.Combine(dir, "less"), limit));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_bomb_stops_at_the_unpack_limit_whatever_its_header_says(bool lying)
+    {
+        const int Unpacked = 5_000_000;
+        const int Limit = 100_000;
+        var dir = fx.NewFolder();
+        var path = Path.Combine(dir, "bomb.zip");
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            using var stream = zip.CreateEntry("BinData/bomb.png").Open();
+            stream.Write(new byte[Unpacked]);
+        }
+        if (lying)
+        {
+            // The central directory's uncompressed size, at 24 bytes into its record, says one byte.
+            var bytes = File.ReadAllBytes(path);
+            var record = bytes.AsSpan().IndexOf("PK\u0001\u0002"u8);
+            BitConverter.TryWriteBytes(bytes.AsSpan(record + 24), 1);
+            File.WriteAllBytes(path, bytes);
+        }
+        var target = Path.Combine(dir, "bomb.png");
+        using var bomb = ZipFile.OpenRead(path);
+
+        var limit = new UnpackLimit(Limit);
+        if (lying)
+            limit.Extract(bomb.Entries[0], target); // the entry's stream ends where its header says
+        else
+            Assert.Equal("error.document_too_large", Assert.Throws<ConversionRefusedException>(() => limit.Extract(bomb.Entries[0], target)).ErrorKey);
+
+        Assert.True(!File.Exists(target) || new FileInfo(target).Length <= Limit);
+    }
+
+    [Fact]
+    public void A_document_may_unpack_to_two_gigabytes_or_twice_its_size()
+    {
+        var small = Path.Combine(fx.NewFolder(), "small.docx");
+        File.WriteAllBytes(small, new byte[10]);
+        Assert.Equal(2048L * 1024 * 1024, Filee.Engines.Office.PackageRepacker.MaxUnpacked(small));
+
+        var large = Path.Combine(fx.NewFolder(), "large.docx");
+        using (var file = File.Create(large))
+            file.SetLength(3L * 1024 * 1024 * 1024);
+        Assert.Equal(6L * 1024 * 1024 * 1024, Filee.Engines.Office.PackageRepacker.MaxUnpacked(large));
     }
 
     private sealed class FixedPath(string path) : IOutputAllocator

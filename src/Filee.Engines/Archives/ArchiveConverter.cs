@@ -1,13 +1,15 @@
 // Archives: unpack (to a folder, the "Extract" preset), convert between archive formats (ZIP, 7Z, TAR, TAR.GZ,
-// TAR.BZ2, TAR.XZ and single-file GZ / BZ2 / XZ), and "Compress into one archive" for any files (IFileCombiner).
+// TAR.BZ2, TAR.XZ, single-file GZ / BZ2 / XZ, and the Minecraft and Modrinth packs that are ZIPs, see GamePacks), and
+// "Compress into one archive" for any files (IFileCombiner).
 // Reading is in-process for the common formats (SharpCompress, .NET and Filee's own readers, see ArchiveExtractor);
 // the bundled 7-Zip (engines/7zip, LGPL, separate process) reads CAB, DMG, IMG, LHA, ARJ and UDF discs and is the
-// fallback for what the in-process readers can't. ZIP, TAR, TAR.GZ and GZ are written in-process, 7Z, BZ2 and XZ
+// fallback for what the in-process readers can't. ZIP (and the packs), TAR, TAR.GZ and GZ are written in-process, 7Z, BZ2 and XZ
 // (also inside TARs) by 7-Zip. Without 7-Zip the engine stays available with the in-process edges only.
 // See docs/ENGINES.md.
 
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 
@@ -17,7 +19,7 @@ namespace Filee.Engines.Archives;
 public sealed class ArchiveConverter : IConverter, IFileCombiner
 {
     /// <summary>Archive formats Filee writes (plus <see cref="FormatRegistry.Folder"/>).</summary>
-    private static readonly string[] ArchiveTargets = ["zip", "7z", "tar", "tgz", "tbz2", "txz"];
+    private static readonly string[] ArchiveTargets = ["zip", "7z", "tar", "tgz", "tbz2", "txz", .. GamePacks.Formats];
 
     /// <summary>Compressed single files (no names or folders inside); they convert among each other.</summary>
     private static readonly string[] SingleFileSources = ["gz", "bz2", "xz", "lzma", "z", "lz"];
@@ -56,6 +58,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
         var sources = withSevenZip ? ArchiveExtractor.ReadableFormats : ArchiveExtractor.BuiltInFormats;
         var targets = ArchiveTargets.Where(t => withSevenZip || ArchivePacker.BuiltInFormats.Contains(t)).Append(FormatRegistry.Folder).ToList();
         var singleTargets = ArchivePacker.SingleFileFormats.Where(t => withSevenZip || ArchivePacker.BuiltInFormats.Contains(t)).ToList();
+        string[] folderTargets = ["zip", "7z", "tar", "tgz", "tbz2", "txz"];
         return
         [
             .. from source in sources
@@ -64,6 +67,9 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
             .. from source in SingleFileSources
                from target in singleTargets
                select new ConversionEdge(source, target),
+            .. sources.Select(source => new ConversionEdge(source, "iso", DirectOnly: true)),
+            .. folderTargets.Where(t => withSevenZip || ArchivePacker.BuiltInFormats.Contains(t))
+                .Select(target => new ConversionEdge(FormatRegistry.Folder, target, DirectOnly: true)),
         ];
     }
 
@@ -78,6 +84,19 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
+        if (step.From == FormatRegistry.Folder)
+        {
+            var folder = new DirectoryInfo(Path.GetFullPath(Path.TrimEndingDirectorySeparator(step.InputPath)));
+            if (!folder.Exists) throw new DirectoryNotFoundException(folder.FullName);
+            if (folder.Parent is null || folder.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                throw new ConversionRefusedException("error.unsupported_source", folder.FullName);
+            var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
+            if (output is null) return [];
+            var mark = MarkOfTheWeb.ReadFirst([folder.FullName], cancellationToken: cancellationToken);
+            await CombineAsync([folder.FullName], output, step.To, step.Preset, step.WorkDirectory, progress, cancellationToken);
+            if (mark is not null) MarkOfTheWeb.TryWrite(output, mark);
+            return [output];
+        }
         var sevenZip = Tool;
         var extractor = new ArchiveExtractor(sevenZip);
         if (step.To == FormatRegistry.Folder)
@@ -91,6 +110,15 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
             string unpacked;
             using (ProgressEstimate.Start(progress, TypicalDuration(step.InputPath), 0.02, 0.45))
                 unpacked = await extractor.ExtractAsync(step.InputPath, step.From, scratch, cancellationToken);
+            if (step.To == "iso")
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return await new FolderIsoConverter().ConvertAsync(
+                    step with { InputPath = unpacked, From = FormatRegistry.Folder },
+                    Scaled(progress, 0.5, 1), cancellationToken);
+            }
+            if (GamePacks.Formats.Contains(step.To))
+                unpacked = GamePacks.Root(unpacked, step.To);
             var items = Directory.EnumerateFileSystemEntries(unpacked)
                 .Order(StringComparer.Ordinal)
                 .Select(path => new PackItem(path, Path.GetFileName(path)))
@@ -147,7 +175,12 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
         string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var sevenZip = ArchivePacker.BuiltInFormats.Contains(format) ? null : Tool;
-        await new ArchivePacker(sevenZip).PackAsync(UniqueEntries(inputPaths), outputPath, format, preset.Archive.Level,
+        // A pack made from its folder holds the folder's content, so its marker file is at the top.
+        var entries = GamePacks.Formats.Contains(format) && inputPaths is [var folder] && Directory.Exists(folder)
+            ? Directory.EnumerateFileSystemEntries(GamePacks.Root(folder, format)).Order(StringComparer.Ordinal)
+                .Select(path => new PackItem(path, Path.GetFileName(path))).ToList()
+            : UniqueEntries(inputPaths);
+        await new ArchivePacker(sevenZip).PackAsync(entries, outputPath, format, preset.Archive.Level,
             workDirectory, progress, cancellationToken);
         progress?.Report(1);
     }

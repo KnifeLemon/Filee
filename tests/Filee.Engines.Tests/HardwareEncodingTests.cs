@@ -308,7 +308,7 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
 
     // ───────────────────────── Software retry ─────────────────────────
 
-    private sealed class ListLogger : ILogger
+    internal sealed class ListLogger : ILogger
     {
         public List<(LogLevel Level, string Message)> Entries { get; } = [];
 

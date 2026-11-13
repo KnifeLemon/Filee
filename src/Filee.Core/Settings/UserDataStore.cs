@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using Filee.Core.Formats;
 using Filee.Core.History;
 using Filee.Core.Presets;
 using Filee.Core.Profiles;
@@ -70,13 +71,21 @@ public sealed class UserDataStore
     public void Load()
     {
         System.IO.Directory.CreateDirectory(Directory);
+        // A new install is told by the file missing, not by Read returning null: a settings file that can't be read is an
+        // existing user's, who keeps every field on. Only a new install gets the fields that are off by default.
+        var fresh = !File.Exists(SettingsPath);
         Settings = Read(SettingsPath, FileeJsonContext.Default.AppSettings) ?? new AppSettings();
+        Settings.TurnedOffFields ??= [];
+        if (fresh)
+            Settings.TurnedOffFields = FormatFields.All.Where(f => f.CanTurnOff && !f.OnByDefault).Select(f => f.Id).ToList();
         Presets = Read(PresetsPath, FileeJsonContext.Default.ListPreset) ?? BuiltInData.CreatePresets();
         Profiles = Read(ProfilesPath, FileeJsonContext.Default.ListToolbarProfile) ?? BuiltInData.CreateProfiles();
         History = Read(HistoryPath, FileeJsonContext.Default.ListHistoryEntry) ?? [];
 
         var schema = Settings.SchemaVersion;
         SettingsMigrations.Apply(Settings);
+        if (PortableMode.IsEnabled)
+            PortableMode.DisableIntegration(Settings);
         var libraryChanged = File.Exists(ProfilesPath) && SettingsMigrations.ApplyToLibrary(schema, Presets, Profiles);
         EnsureConsistency();
 
@@ -92,6 +101,8 @@ public sealed class UserDataStore
 
     public void SaveSettings()
     {
+        if (PortableMode.IsEnabled)
+            PortableMode.DisableIntegration(Settings);
         Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -245,9 +256,11 @@ public sealed class UserDataStore
     /// <summary>The preset <paramref name="id"/> when it converts (a group or tool doesn't), for every place that runs one.</summary>
     public Preset? FindConversion(string id) => Presets.FirstOrDefault(p => p.Id == id && !p.IsGroup && !p.IsTool);
 
-    /// <summary>Exports presets and profiles to a shareable JSON file, without PDF passwords.</summary>
+    /// <summary>
+    /// Exports presets and profiles to a shareable JSON file, without PDF passwords or paths to one's own pictures.
+    /// </summary>
     public void Export(string path) =>
-        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.WithoutPassword(mark: false))], Profiles = Profiles },
+        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.ForSharing())], Profiles = Profiles },
             FileeJsonContext.Default.PresetBundle);
 
     /// <summary>
@@ -262,6 +275,8 @@ public sealed class UserDataStore
 
         foreach (var preset in bundle.Presets)
         {
+            // A path to a picture in someone else's bundle is not one of ours to open (a network share, say).
+            preset.Image.ForgetBackdropPictures();
             Presets.RemoveAll(p => p.Id == preset.Id);
             Presets.Add(preset);
         }
@@ -281,12 +296,16 @@ public sealed class UserDataStore
     /// <summary>Removes dangling preset references and guarantees at least one mixed-selection profile.</summary>
     private void EnsureConsistency()
     {
+        Settings.Donut.GroupRingSize = DonutSettings.ClampGroupRingSize(Settings.Donut.GroupRingSize);
+        Settings.Donut.GroupRingSpread = DonutSettings.ClampGroupRingSpread(Settings.Donut.GroupRingSpread);
         var ids = Presets.Select(p => p.Id).ToHashSet();
         foreach (var profile in Profiles)
         {
             profile.PresetIds = profile.PresetIds.Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
             // No back face known by now (a donut the user made, read from an older file): it has none.
             profile.BackPresetIds = (profile.BackPresetIds ?? []).Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
+            // A hand-edited or out-of-range label size: back within the slider's range, on one of its steps.
+            profile.LabelScale = ToolbarProfile.ClampLabelScale(profile.LabelScale);
         }
         // A Filee from before groups drops "kind" (and the presets) when it saves a group, which comes back as a
         // conversion to "group": still a group, now an empty one, rather than a conversion that can never run.
@@ -445,18 +464,18 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 21)
             InsertBefore(settings.EnginePriority, "wic", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
 
-        // v58: Unhwp is gone; the built-in "hwp-text" engine (HWP / HWPX → TXT, Markdown, HTML) takes its place in the
-        //      order, so every other engine keeps its rank. (Schema 58 may be renumbered if another change takes it first.)
-        if (settings.SchemaVersion < 58)
+        // v89: Unhwp is gone; the built-in "hwp-text" engine (HWP / HWPX → TXT, Markdown, HTML) takes its place in the
+        //      order, so every other engine keeps its rank. (Built-in engines branch; was schema 58 there before main
+        //      took 58–88. May be renumbered again if another change takes it first.)
+        if (settings.SchemaVersion < 89)
             ReplaceEngine(settings.EnginePriority, "unhwp", "hwp-text");
 
-        // v59: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
-        //      around rhwp gets the other way around rhwp, Filee's renderer. (Schema 59 may be renumbered if another change
-        //      takes it first.)
-        if (settings.SchemaVersion < 59 && settings.LibreOfficeForHwp == true)
+        // v90: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
+        //      around rhwp gets the other way around rhwp, Filee's renderer. (Built-in engines branch; was schema 59 there.
+        //      May be renumbered again if another change takes it first.)
+        if (settings.SchemaVersion < 90 && settings.LibreOfficeForHwp == true)
             settings.FileeRenderer = true;
         settings.LibreOfficeForHwp = null;
-
 
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
@@ -469,11 +488,15 @@ internal static class SettingsMigrations
     public static bool ApplyToLibrary(int from, List<Preset> presets, List<ToolbarProfile> profiles)
     {
         var changed = false;
+        // The fronts as read, before the steps below add slots to them: AddBackFaces compares these with the new defaults.
+        var storedFronts = new Dictionary<string, List<string>>();
+        foreach (var profile in profiles)
+            storedFronts.TryAdd(profile.Id, [.. profile.PresetIds]);
         // v4: Markdown / TXT / HTML files get their own donut instead of the "mixed files" fallback. Skipped when
         //     the user already routes Markdown through a profile of their own.
         if (from < 4 && !profiles.Any(p => p.Id == "text" || (!p.IsFallback && p.Extensions.Contains("md", StringComparer.OrdinalIgnoreCase))))
         {
-            var text = BuiltInData.TextProfile();
+            var text = BuiltInData.ProfilesSchema58().Single(p => p.Id == "text");
             var ids = presets.Select(p => p.Id).ToHashSet();
             text.PresetIds = text.PresetIds.Where(ids.Contains).ToList();
             var fallback = profiles.FindIndex(p => p.IsFallback);
@@ -494,7 +517,7 @@ internal static class SettingsMigrations
             var office = profiles.FirstOrDefault(p => p.Id == "office");
             var insertAt = office is null ? profiles.FindIndex(p => p.IsFallback) : profiles.IndexOf(office) + 1;
             var ids = presets.Select(p => p.Id).ToHashSet();
-            foreach (var split in new[] { BuiltInData.SpreadsheetProfile(), BuiltInData.PresentationProfile() })
+            foreach (var split in BuiltInData.ProfilesSchema58().Where(p => p.Id is "spreadsheets" or "presentations"))
             {
                 if (profiles.Any(p => p.Id == split.Id))
                     continue;
@@ -764,12 +787,14 @@ internal static class SettingsMigrations
             changed |= LearnExtensions(profiles, out _, ["livp"]);
         }
         // v30: every donut gets a back face, which Tab (or the mouse wheel) flips the open donut to. A built-in donut
-        //      gets its default one (with the presets the library still has), a donut the user made none; no front
-        //      changes. Also at a later schema when a donut has no back face at all, not even an empty one: a Filee
-        //      before 30 saved the library since and dropped what it didn't know, so the built-in back faces come
-        //      back. One the user emptied is saved empty and stays so.
+        //      whose front as read is still exactly the new default front gets the new default back face (except
+        //      presentations, CAD, mixed and text, see AddBackFaces), any other built-in donut the schema 58 one (both
+        //      with the presets the library still has), a donut the user made none; no front changes. Also at a later
+        //      schema when a donut has no back face at all, not even an empty one: a Filee before 30 saved the library
+        //      since and dropped what it didn't know, so the built-in back faces come back. One the user emptied is
+        //      saved empty and stays so.
         if (from < 30 || profiles.Any(p => p.BackPresetIds is null))
-            changed |= AddBackFaces(presets, profiles);
+            changed |= AddBackFaces(presets, profiles, storedFronts);
         // v31: "Live Photo (iPhone)" and "Motion Photo (Android)" (a clip of a video as a moving photo), after "Extract
         //      Live Photo video" as in a new library, and on the back of the video donut after "Extract frames" when it
         //      has room and the user hasn't put them elsewhere on it. Present already but saved since by a Filee before
@@ -963,6 +988,246 @@ internal static class SettingsMigrations
         // v57: "Caption" preset (Whisper AI) outputs SRT directly; added to Video and Audio donut profiles
         if (from < 57)
             changed |= AddCaptionPreset(presets, profiles);
+        // v58: C, C++ and C# source files (#864, #828) learn the text donut; custom claims stay put. (Schema 58 may be
+        //      renumbered if another change takes it first.)
+        if (from < 58)
+            changed |= LearnExtensions(profiles, out _, ["c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs"]);
+        // v59: "Crop video" (#830): its group and presets join the library after "Cut a clip". No donut gets a slot (#806:
+        //      new defaults are for new installs); the user places it from the palette. (Schema 59 may be renumbered if
+        //      another change takes it first.)
+        if (from < 59)
+            changed |= AddCropVideo(presets);
+        // v60: the "Annotate" tool, in the palette only, after "Pixelate / blur" as in a new library (at the end
+        //      without it).
+        if (from < 60 && presets.All(p => p.Id != BuiltInData.AnnotateId))
+        {
+            var hide = presets.FindIndex(p => p.Id == BuiltInData.HidePresets().Single().Id);
+            presets.InsertRange(hide < 0 ? presets.Count : hide + 1, BuiltInData.AnnotatePresets());
+            changed = true;
+        }
+        // v61: Dart and HiveQL sources (#980, #997) learn the text donut, Krita files (#903) the images donut; custom
+        //      claims stay put.
+        if (from < 61)
+            changed |= LearnExtensions(profiles, out _, ["dart", "hql", "kra"]);
+        // v62: Minecraft packs and Modrinth modpacks (#824, #898): their presets join the library after "TAR" (no donut gets
+        //      a slot, #806), and the archives donut learns their extensions; custom claims stay put.
+        if (from < 62)
+        {
+            changed |= AddGamePacks(presets);
+            changed |= LearnExtensions(profiles, out _, ["mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"]);
+        }
+        // v63: "Pages per sheet" (#737): its group and presets join the library after the PDF "Edit" group (no donut gets
+        //      a slot, #806). (Schema 63 may be renumbered if another change takes it first.)
+        if (from < 63)
+            changed |= AddPdfSheets(presets);
+        // v64: the "Add background" tool, in the palette only, after "Annotate" as in a new library (at the end
+        //      without it). (Schema 64 may be renumbered if another change takes it first.)
+        if (from < 64 && presets.All(p => p.Id != BuiltInData.BackgroundId))
+        {
+            var annotate = presets.FindIndex(p => p.Id == BuiltInData.AnnotateId);
+            presets.InsertRange(annotate < 0 ? presets.Count : annotate + 1, BuiltInData.BackgroundPresets());
+            changed = true;
+        }
+        // v65: DBML database schemas (#854) learn the text donut; custom claims stay put. (Schema 65 may be renumbered if
+        //      another change takes it first.)
+        if (from < 65)
+            changed |= LearnExtensions(profiles, out _, ["dbml"]);
+        // v66: Krita's backups (.kra~, #1077) learn the images donut; custom claims stay put. (Schema 66 may be renumbered
+        //      if another change takes it first.)
+        if (from < 66)
+            changed |= LearnExtensions(profiles, out _, ["kra~"]);
+        // v67: FLIC animations (.flc, .fli, #940) learn the video donut; custom claims stay put. (Schema 67 may be
+        //      renumbered if another change takes it first.)
+        if (from < 67)
+            changed |= LearnExtensions(profiles, out _, ["flc", "fli"]);
+        // v68: signed files (.p7m, #1010) learn the documents donut; custom claims stay put. (Schema 68 may be
+        //      renumbered if another change takes it first.)
+        if (from < 68)
+            changed |= LearnExtensions(profiles, out _, ["p7m"]);
+        // v69: the Translate preset (#1160), which no step brought to libraries saved before it existed, after the
+        //      built-in preset before it as in a new library; no donut gets a slot (#806). (Schema 69 may be renumbered
+        //      if another change takes it first.)
+        if (from < 69 && presets.All(p => p.Id != "translate"))
+            changed |= AddTranslatePreset(presets);
+        // v70: JPEG .jif files (#1184) learn the images donut without taking custom claims.
+        if (from < 70)
+            changed |= LearnExtensions(profiles, out _, ["jif"]);
+        // v71: Java source files (#1176) learn the text donut; custom claims stay put.
+        if (from < 71)
+            changed |= LearnExtensions(profiles, out _, ["java"]);
+        // v72: the "Metadata" tool, in the palette only, after "Add background" as in a new library (at the end
+        //      without it). (Schema 72 may be renumbered if another change takes it first.)
+        if (from < 72 && presets.All(p => p.Id != BuiltInData.MetadataId))
+        {
+            var background = presets.FindIndex(p => p.Id == BuiltInData.BackgroundId);
+            presets.InsertRange(background < 0 ? presets.Count : background + 1, BuiltInData.MetadataPresets());
+            changed = true;
+        }
+        // v73: the "Upscale" tool, in the palette only, after "Metadata" (or "Add background") as in a new library (at
+        //      the end without either, #806).
+        if (from < 73 && presets.All(p => p.Id != BuiltInData.UpscaleId))
+        {
+            var after = presets.FindIndex(p => p.Id == BuiltInData.MetadataId);
+            if (after < 0)
+                after = presets.FindIndex(p => p.Id == BuiltInData.BackgroundId);
+            presets.InsertRange(after < 0 ? presets.Count : after + 1, BuiltInData.UpscalePresets());
+            changed = true;
+        }
+        // v74: folder inputs have their own small ISO donut; existing archive donuts remain untouched. (Schema 74 may
+        //      be renumbered if another change takes it first.)
+        if (from < 74)
+        {
+            var hadIsoPreset = presets.Any(p => p.Id == "to-iso");
+            if (presets.All(p => p.Id != "to-iso"))
+            {
+                var at = presets.FindIndex(p => p.Id == "zip-all");
+                presets.Insert(at >= 0 ? at : presets.Count, BuiltInData.CreatePresets().Single(p => p.Id == "to-iso"));
+                changed = true;
+            }
+            // A library already containing our ISO preset may have deliberately removed its Folders donut.
+            if (!hadIsoPreset && profiles.All(p => p.Id != "folders"))
+            {
+                var at = profiles.FindIndex(p => p.Id == "archives");
+                if (at >= 0) at++;
+                else { at = profiles.FindIndex(p => p.IsFallback); if (at < 0) at = profiles.Count; }
+                profiles.Insert(at, BuiltInData.CreateProfiles().Single(p => p.Id == "folders"));
+                changed = true;
+            }
+        }
+        // v75: property lists (#1256) learn the data donut; custom claims stay put.
+        if (from < 75)
+            changed |= LearnExtensions(profiles, out _, ["plist"]);
+        // v76: QuickTime movies saved as .quicktime (#1283) learn the video donut and Insta360 .insp photos (#711) the
+        //      images donut; custom claims stay put.
+        if (from < 76)
+            changed |= LearnExtensions(profiles, out _, ["quicktime", "insp"]);
+        // v77: OpenStreetMap XML (.osm, #713) learns the geospatial donut; custom claims stay put.
+        if (from < 77)
+            changed |= LearnExtensions(profiles, out _, ["osm"]);
+        // v78: Windows programs and libraries (.exe, .dll, #1188), read as their icon, learn the images donut; custom
+        //      claims stay put.
+        if (from < 78)
+            changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
+        // v79: iPhone ringtones (#1291): M4R files learn the audio donut (custom claims stay put), and the "iPhone
+        //      ringtone" preset comes to libraries saved before it existed, after the built-in preset before it as in a
+        //      new library; no donut gets a slot (#806).
+        if (from < 79)
+        {
+            changed |= LearnExtensions(profiles, out _, ["m4r"]);
+            if (presets.All(p => p.Id != BuiltInData.RingtoneId))
+                changed |= AddLikeNewLibrary(presets, BuiltInData.RingtoneId);
+        }
+        // v80: the "PDF/A" preset (#1367) comes to libraries saved before it existed, after the built-in preset before it
+        //      as in a new library; no donut gets a slot. (Schema 80 may be renumbered if another change takes it first.)
+        if (from < 80 && presets.All(p => p.Id != BuiltInData.PdfAId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.PdfAId);
+        // v81: tracker modules (.xm, .it, .s3m, #1376) learn the audio donut; custom claims stay put. (Schema 81 may be
+        //      renumbered if another change takes it first.)
+        if (from < 81)
+            changed |= LearnExtensions(profiles, out _, ["xm", "it", "s3m"]);
+        // v82: Adobe extension packages (.zxp, #1382) learn the archives donut; custom claims stay put. (Schema 82 may be
+        //      renumbered if another change takes it first.)
+        if (from < 82)
+            changed |= LearnExtensions(profiles, out _, ["zxp"]);
+        // v83: MP4 videos saved as .mpg4 (#1397) learn the video donut; custom claims stay put. (Schema 83 may be
+        //      renumbered if another change takes it first.)
+        if (from < 83)
+            changed |= LearnExtensions(profiles, out _, ["mpg4"]);
+        // v84: restore folder compression (#1345) on the unchanged ISO-only default, preserving custom layouts.
+        if (from < 84 && profiles.FirstOrDefault(p => p.Id == "folders") is { } folders
+            && folders.PresetIds.SequenceEqual(new[] { "to-iso" }) && (folders.BackPresetIds?.Count ?? 0) == 0)
+        {
+            foreach (var id in new[] { "to-zip", "zip-all" })
+                if (presets.Any(p => p.Id == id)) { folders.PresetIds.Add(id); changed = true; }
+        }
+        // v85: Windows animated cursors (.ani, #1365) learn the images donut; custom claims stay put.
+        if (from < 85)
+            changed |= LearnExtensions(profiles, out _, ["ani"]);
+        // v86: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put.
+        if (from < 86)
+            changed |= LearnExtensions(profiles, out _, ["pdn"]);
+        // v87: Arduino and Processing sketches (.ino, .pde) learn the text donut; custom claims stay put. (Schema 87 may
+        //      be renumbered if another change takes it first.)
+        if (from < 87)
+            changed |= LearnExtensions(profiles, out _, ["ino", "pde"]);
+        return changed;
+    }
+
+    private static bool AddTranslatePreset(List<Preset> presets) => AddLikeNewLibrary(presets, "translate");
+
+    /// <summary>Adds the built-in preset <paramref name="id"/> after the built-in preset before it in a new library.</summary>
+    private static bool AddLikeNewLibrary(List<Preset> presets, string id)
+    {
+        var defaults = BuiltInData.CreatePresets();
+        var at = defaults.FindIndex(p => p.Id == id);
+        var after = defaults.Take(at).Select(p => presets.FindIndex(existing => existing.Id == p.Id)).LastOrDefault(i => i >= 0, -1);
+        presets.Insert(after + 1, defaults[at]);
+        return true;
+    }
+
+    private static bool AddPdfSheets(List<Preset> presets)
+    {
+        var at = presets.FindIndex(p => p.Id == "pdf-edit");
+        at = at < 0 ? presets.Count : at + 1;
+        var changed = false;
+        foreach (var preset in BuiltInData.PdfSheetPresets())
+        {
+            if (presets.FirstOrDefault(p => p.Id == preset.Id) is { } existing)
+            {
+                // Saved since by an older Filee, which dropped the option and left a plain PDF preset.
+                if (preset.Pdf.MakesSheets && !existing.Pdf.MakesSheets && existing.TargetFormat == preset.TargetFormat)
+                {
+                    existing.Pdf.PagesPerSheet = preset.Pdf.PagesPerSheet;
+                    changed = true;
+                }
+                at = presets.IndexOf(existing) + 1;
+                continue;
+            }
+            presets.Insert(at++, preset);
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool AddGamePacks(List<Preset> presets)
+    {
+        var at = presets.FindIndex(p => p.Id == "to-tar");
+        at = at < 0 ? presets.Count : at + 1;
+        var changed = false;
+        foreach (var preset in BuiltInData.GamePackPresets())
+        {
+            if (presets.FirstOrDefault(p => p.Id == preset.Id) is { } existing)
+            {
+                at = presets.IndexOf(existing) + 1;
+                continue;
+            }
+            presets.Insert(at++, preset);
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool AddCropVideo(List<Preset> presets)
+    {
+        var at = presets.FindIndex(p => p.Id == "tool-clip");
+        at = at < 0 ? presets.Count : at + 1;
+        var changed = false;
+        foreach (var preset in BuiltInData.CropVideoPresets())
+        {
+            if (presets.FirstOrDefault(p => p.Id == preset.Id) is { } existing)
+            {
+                // Saved since by an older Filee, which dropped the option and left a plain "same format" preset.
+                if (preset.CropsVideo && !existing.CropsVideo && existing.TargetFormat == preset.TargetFormat)
+                {
+                    existing.Media.CropFrame = preset.Media.CropFrame;
+                    changed = true;
+                }
+                at = presets.IndexOf(existing) + 1;
+                continue;
+            }
+            presets.Insert(at++, preset);
+            changed = true;
+        }
         return changed;
     }
 
@@ -1094,18 +1359,31 @@ internal static class SettingsMigrations
     }
 
     /// <summary>
-    /// Gives each built-in donut without a back face (<see cref="ToolbarProfile.BackPresetIds"/> null) its default one,
-    /// with only the presets in <paramref name="presets"/>. Donuts the user made are left for
-    /// <see cref="UserDataStore"/> to give an empty one. Returns true when one was added.
+    /// Gives each built-in donut without a back face (<see cref="ToolbarProfile.BackPresetIds"/> null) one, with only the
+    /// presets in <paramref name="presets"/>: the new default back face when its front is exactly the new default front
+    /// (same ids, same order) and no existing library can have that front by default, the schema 58 one otherwise. The
+    /// front is the one in <paramref name="storedFronts"/> (as read, before migrations added slots), else the current
+    /// one. Donuts the user made are left for <see cref="UserDataStore"/> to give an empty one. Returns true when one
+    /// was added.
     /// </summary>
-    internal static bool AddBackFaces(List<Preset> presets, IEnumerable<ToolbarProfile> profiles)
+    internal static bool AddBackFaces(List<Preset> presets, IEnumerable<ToolbarProfile> profiles,
+        IReadOnlyDictionary<string, List<string>>? storedFronts = null)
     {
-        var defaults = BuiltInData.CreateProfiles().ToDictionary(p => p.Id);
+        var frozen = BuiltInData.ProfilesSchema58().ToDictionary(p => p.Id);
+        var current = BuiltInData.CreateProfiles().ToDictionary(p => p.Id);
         var ids = presets.Select(p => p.Id).ToHashSet();
         var changed = false;
-        foreach (var profile in profiles.Where(p => p.BackPresetIds is null && defaults.ContainsKey(p.Id)))
+        foreach (var profile in profiles.Where(p => p.BackPresetIds is null && frozen.ContainsKey(p.Id)))
         {
-            profile.BackPresetIds = (defaults[profile.Id].BackPresetIds ?? []).Where(ids.Contains).ToList();
+            var front = storedFronts?.GetValueOrDefault(profile.Id) ?? profile.PresetIds;
+            var fresh = current[profile.Id];
+            // Presentations, CAD and mixed have the same front in both layouts, so the front can't tell a new library
+            // from an existing one. Text: the Filee 1.0.1 front plus HWP from schema 7 is exactly the new text front.
+            // Their schema 58 back faces hold every slot of the new ones.
+            var isNew = front.SequenceEqual(fresh.PresetIds)
+                        && !fresh.PresetIds.SequenceEqual(frozen[profile.Id].PresetIds)
+                        && profile.Id != "text";
+            profile.BackPresetIds = ((isNew ? fresh : frozen[profile.Id]).BackPresetIds ?? []).Where(ids.Contains).ToList();
             changed = true;
         }
         return changed;
@@ -1240,7 +1518,7 @@ internal static class SettingsMigrations
         if (profiles.Any(p => p.Id == "geo"))
             return changed;
 
-        var geo = BuiltInData.GeoProfile();
+        var geo = BuiltInData.ProfilesSchema58().Single(p => p.Id == "geo");
         // Only the extensions no donut of the user takes yet.
         geo.Extensions = geo.Extensions.Where(claimed.Add).ToList();
         if (geo.Extensions.Count == 0)
@@ -1286,7 +1564,7 @@ internal static class SettingsMigrations
 
         if (profiles.All(p => p.Id != "data"))
         {
-            var data = BuiltInData.DataProfile();
+            var data = BuiltInData.ProfilesSchema58().Single(p => p.Id == "data");
             // Only the extensions no donut of the user takes yet.
             data.Extensions = data.Extensions.Where(claimed.Add).ToList();
             if (data.Extensions.Count > 0)
@@ -1316,7 +1594,7 @@ internal static class SettingsMigrations
 
         if (profiles.All(p => p.Id != "subtitles"))
         {
-            var subtitles = BuiltInData.SubtitleProfile();
+            var subtitles = BuiltInData.ProfilesSchema58().Single(p => p.Id == "subtitles");
             subtitles.Extensions = subtitles.Extensions.Where(claimed.Add).ToList();
             if (subtitles.Extensions.Count > 0)
             {
@@ -1368,7 +1646,7 @@ internal static class SettingsMigrations
         if (profiles.Any(p => p.Id == "models"))
             return changed;
 
-        var models = BuiltInData.ModelProfile();
+        var models = BuiltInData.ProfilesSchema58().Single(p => p.Id == "models");
         // Only the extensions no donut of the user takes yet.
         models.Extensions = models.Extensions.Where(claimed.Add).ToList();
         if (models.Extensions.Count == 0)
@@ -1397,7 +1675,8 @@ internal static class SettingsMigrations
         var text = profiles.FindIndex(p => p.Id == "text");
         var insertAt = text >= 0 ? text + 1 : profiles.FindIndex(p => p.IsFallback);
         insertAt = insertAt < 0 ? profiles.Count : insertAt;
-        foreach (var profile in BuiltInData.CatalogProfiles().Where(p => profiles.All(existing => existing.Id != p.Id)))
+        foreach (var profile in BuiltInData.ProfilesSchema58().Where(p => p.Id is "ebooks" or "video" or "audio" or "vector" or "archives" or "cad" or "fonts")
+                     .Where(p => profiles.All(existing => existing.Id != p.Id)))
         {
             // Only the extensions no donut of the user takes yet.
             profile.Extensions = profile.Extensions.Where(claimed.Add).ToList();

@@ -4,6 +4,7 @@
 using System.Globalization;
 using System.Xml.Linq;
 using Filee.Engines.Documents;
+using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx.Docx;
 
@@ -130,12 +131,16 @@ internal sealed partial class DocxReader
     {
         var blip = pic.Descendants(A + "blip").FirstOrDefault();
         var path = ExtractImage(Attr(blip, "embed", R));
-        return path is null ? null : new HImage(path)
+        // The writers get a copy with the cut edges gone; a picture that copy can't be made of (EMF) keeps the crop
+        // in the model, for the renderer.
+        var sourceRect = pic.Descendants(A + "srcRect").FirstOrDefault();
+        var cropped = path is not null && sourceRect is not null ? CroppedImage(path, sourceRect) : path;
+        return cropped is null ? null : new HImage(cropped)
         {
             Width = width > 0 ? width : null,
             Height = height > 0 ? height : null,
             Anchor = anchor,
-            Crop = Crop(pic.Descendants(A + "srcRect").FirstOrDefault()),
+            Crop = cropped == path ? Crop(sourceRect) : null,
             Transform = Transform(pic.Element(Pic + "spPr")?.Element(A + "xfrm")),
         };
     }
@@ -230,18 +235,24 @@ internal sealed partial class DocxReader
         return box;
     }
 
-    /// <summary>Text box paragraphs; Word's document grid does not apply inside text boxes.</summary>
+    /// <summary>
+    /// Text box paragraphs; Word's document grid does not apply inside text boxes, nor does the style of a table the
+    /// text box sits in.
+    /// </summary>
     private void ReadTextBoxContent(XElement content, List<HBlock> output)
     {
         using var level = _budget.Enter();
         _textBoxDepth++;
+        var tableStyleLayer = _tableStyleLayer;
+        _tableStyleLayer = null;
         try
         {
-            ReadBlocks(content.Elements(), output);
+            ReadNestedBlocks(content, output);
         }
         finally
         {
             _textBoxDepth--;
+            _tableStyleLayer = tableStyleLayer;
         }
     }
 
@@ -408,10 +419,44 @@ internal sealed partial class DocxReader
             return null;
         Directory.CreateDirectory(_mediaFolder);
         string? path = Path.Combine(_mediaFolder, $"docx-media-{_media.Count + 1}{DocumentPackage.SafeExtension(rel.Target)}");
-        if (!_package.ExtractPicture(entry, path))
+        if (!_package.ExtractPicture(entry, path, _unpack))
             path = null; // larger than any picture should be: left out
         _media[rel.Target] = path;
         return path;
+    }
+
+    /// <summary>
+    /// A copy of a picture with a:srcRect's edges cut off (each in 1/1000 percent of the picture), or the picture itself
+    /// when nothing is cut or it can't be read (EMF). Word keeps the whole picture in the file and shows the rest; a
+    /// negative edge adds space around it, which is not done here.
+    /// </summary>
+    private string CroppedImage(string path, XElement crop)
+    {
+        static double Edge(XElement rect, string name) =>
+            int.TryParse((string?)rect.Attribute(name), out var value) ? Math.Clamp(value, 0, 100_000) / 100_000.0 : 0;
+        var (left, top, right, bottom) = (Edge(crop, "l"), Edge(crop, "t"), Edge(crop, "r"), Edge(crop, "b"));
+        if (left + top + right + bottom == 0 || left + right >= 1 || top + bottom >= 1)
+            return path;
+        var key = $"{path}|{left}|{top}|{right}|{bottom}";
+        if (_media.TryGetValue(key, out var existing) && existing is not null)
+            return existing;
+        try
+        {
+            using var image = new MagickImage(path);
+            var (width, height) = ((double)image.Width, (double)image.Height);
+            image.Crop(new MagickGeometry(
+                (int)Math.Round(width * left), (int)Math.Round(height * top),
+                (uint)Math.Max(1, Math.Round(width * (1 - left - right))), (uint)Math.Max(1, Math.Round(height * (1 - top - bottom)))));
+            image.ResetPage();
+            var cropped = Path.Combine(_mediaFolder, $"docx-media-{_media.Count + 1}{Path.GetExtension(path)}");
+            image.Write(cropped);
+            _media[key] = cropped;
+            return cropped;
+        }
+        catch (MagickException)
+        {
+            return path;
+        }
     }
 
     // ───────────────────────── VML (legacy) ─────────────────────────

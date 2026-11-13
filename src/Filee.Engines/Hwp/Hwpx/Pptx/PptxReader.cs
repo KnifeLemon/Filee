@@ -8,6 +8,7 @@
 
 using System.Globalization;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Office.Ooxml;
 
 namespace Filee.Engines.Hwp.Hwpx.Pptx;
@@ -32,11 +33,14 @@ internal sealed partial class PptxReader
     }
 
     /// <summary>Reads <paramref name="path"/>; pictures are extracted into <paramref name="mediaFolder"/>.</summary>
-    public static HDocument Read(string path, string mediaFolder)
+    public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, UnpackLimit.For(path));
+
+    /// <summary><see cref="Read(string, string)"/> with another limit (for tests).</summary>
+    internal static HDocument Read(string path, string mediaFolder, UnpackLimit unpack) => Nesting.OnLargeStack(() =>
     {
-        using var package = new OpcPackage(path);
+        using var package = new OpcPackage(path, unpack);
         return new PptxReader(package, mediaFolder).ReadPresentation();
-    }
+    });
 
     /// <summary>EMU (914400 per inch) → HWPUNIT (7200 per inch).</summary>
     private static int Hwp(long emu) => (int)Math.Round(emu / 127.0);
@@ -190,41 +194,53 @@ internal sealed partial class PptxReader
             ((long)(OffsetX + x * ScaleX), (long)(OffsetY + y * ScaleY), (long)(w * ScaleX), (long)(h * ScaleY));
     }
 
+    /// <summary>
+    /// The objects of a shape tree in order, the members of groups (which become separate objects) included. Groups
+    /// can nest as deep as a crafted file likes, so they are opened with a stack of pending objects, not recursion.
+    /// </summary>
     private void Objects(SlideContext context, string partPath, XElement? tree, Transform transform, List<HInline> output, bool decorationsOnly)
     {
-        foreach (var element in tree?.Elements() ?? [])
+        var pending = new Stack<(XElement Element, Transform Transform)>();
+        void PushChildren(XElement? parent, Transform inner)
         {
+            foreach (var child in (parent?.Elements() ?? []).Reverse())
+                pending.Push((child, inner));
+        }
+
+        PushChildren(tree, transform);
+        while (pending.TryPop(out var item))
+        {
+            var (element, current) = item;
             // Placeholders of the master / layout are only templates for the slide's own placeholders.
             if (decorationsOnly && Placeholder(element) is not null)
                 continue;
             switch (element.Name.LocalName)
             {
                 case "sp":
-                    Shape(context, partPath, element, transform, output);
+                    Shape(context, partPath, element, current, output);
                     break;
                 case "cxnSp":
-                    Connector(context, element, transform, output);
+                    Connector(context, element, current, output);
                     break;
                 case "pic":
-                    Picture(context, partPath, element, transform, output);
+                    Picture(context, partPath, element, current, output);
                     break;
                 case "graphicFrame":
-                    Table(context, partPath, element, transform, output);
+                    Table(context, partPath, element, current, output);
                     break;
                 case "grpSp":
-                    Group(context, partPath, element, transform, output, decorationsOnly);
+                    PushChildren(element, GroupTransform(element, current));
                     break;
                 case "AlternateContent":
                     // Newer object kinds come with a fallback that older readers understand.
-                    var fallback = element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback");
-                    if (fallback is not null)
-                        Objects(context, partPath, fallback, transform, output, decorationsOnly);
+                    PushChildren(element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback"), current);
                     break;
             }
         }
     }
 
-    private void Group(SlideContext context, string partPath, XElement group, Transform transform, List<HInline> output, bool decorationsOnly)
+    /// <summary>Maps the child coordinates of <paramref name="group"/> to slide coordinates.</summary>
+    private static Transform GroupTransform(XElement group, Transform transform)
     {
         var xfrm = group.Element(P + "grpSpPr")?.Element(A + "xfrm");
         var inner = transform;
@@ -240,7 +256,7 @@ internal sealed partial class PptxReader
             inner = new Transform(transform.ScaleX * sx, transform.ScaleY * sy,
                 transform.OffsetX + (x - cx * sx) * transform.ScaleX, transform.OffsetY + (y - cy * sy) * transform.ScaleY);
         }
-        Objects(context, partPath, group, inner, output, decorationsOnly);
+        return inner;
     }
 
     /// <summary>The p:ph element of a shape, picture or frame, if it is a placeholder.</summary>

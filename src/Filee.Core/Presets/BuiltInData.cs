@@ -11,6 +11,19 @@ public static class BuiltInData
     /// <summary>Special target format meaning "same format as the source file" (e.g. resize only).</summary>
     public const string SameAsSource = "*";
 
+    /// <summary>The "iPhone ringtone" preset (#1291): an M4R of at most 40 seconds, from where its Start field says.</summary>
+    public const string RingtoneId = "iphone-ringtone";
+
+    /// <summary>The "PDF/A" preset (#1367): any PDF Filee writes, PDF → PDF too, made PDF/A-2b for archiving.</summary>
+    public const string PdfAId = "pdf-a";
+
+    /// <summary>Whether a conversion target accepts a folder directly.</summary>
+    public static bool SupportsFolderTarget(string target) => target is "iso" or "zip" or "7z" or "tar" or "tgz" or "tbz2" or "txz";
+
+    /// <summary>Whether a preset accepts folders without converting their individual files.</summary>
+    public static bool AcceptsFolders(Preset preset) => !preset.IsGroup
+        && (preset.IsCopyToFolder || SupportsFolderTarget(preset.TargetFormat));
+
     /// <summary>Creates the default preset list.</summary>
     public static List<Preset> CreatePresets() =>
     [
@@ -46,11 +59,23 @@ public static class BuiltInData
         .. TrimPresets(),
         new()
         {
+            Id = "translate",
+            NameKey = "preset.translate",
+            TargetFormat = SameAsSource,
+            Translate = new TranslateOptions { Enabled = true, TargetLanguage = "en" },
+            Output = { FileNamePattern = "{name}_translated" },
+        },
+        new()
+        {
             Id = "tool-crop", NameKey = "preset.crop", TargetFormat = SameAsSource,
             Kind = PresetKind.Tool, Output = { FileNamePattern = "{name}_cropped" },
         },
         .. ImageEditPresets(),
         .. HidePresets(),
+        .. AnnotatePresets(),
+        .. BackgroundPresets(),
+        .. MetadataPresets(),
+        .. UpscalePresets(),
         new()
         {
             Id = "tool-sheet-studio", NameKey = "preset.sheet_studio", TargetFormat = "pdf",
@@ -87,6 +112,7 @@ public static class BuiltInData
             Kind = PresetKind.Group,
             SubPresetIds = ["tool-pdf-crop", "pdf-rotate-left", "pdf-rotate-right", "tool-pdf-pages", "pdf-split", "tool-pdf-add"],
         },
+        .. PdfSheetPresets(),
         .. ImageToolPresets(),
         new()
         {
@@ -104,18 +130,21 @@ public static class BuiltInData
             Id = "pdf-long-image", NameKey = "preset.long_image", TargetFormat = "png",
             Pdf = { CombinePages = true }, Output = { FileNamePattern = "{name}_long" },
         },
+        // Asks for the pages on each drop (#981): in a new install only; an existing library keeps its Split PDF as it is.
         new()
         {
             Id = "pdf-split", NameKey = "preset.split_pdf", TargetFormat = "pdf",
-            Pdf = { SplitPages = true }, Output = { Location = OutputLocation.Subfolder, SubfolderName = "{name}" },
+            Pdf = { SplitPages = true, AskPageRange = true }, Output = { Location = OutputLocation.Subfolder, SubfolderName = "{name}" },
         },
         .. PdfCompressionPresets(),
         .. OcrPresets(),
+        .. PdfAPresets(),
         .. PdfSlidesPresets(),
         .. FramePresets(),
         .. MotionPhotoPresets(),
         .. LivePhotoPresets(),
         .. ClipPresets(),
+        .. CropVideoPresets(),
         .. MediaToolPresets(),
         .. MergeImagesPresets(),
         new() { Id = "to-docx", Name = "DOCX", TargetFormat = "docx" },
@@ -197,6 +226,69 @@ public static class BuiltInData
     ];
 
     /// <summary>
+    /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62): in the palette
+    /// only, after "TAR", in the Games field (off in a new install).
+    /// </summary>
+    public static List<Preset> GamePackPresets() =>
+    [
+        new() { Id = "to-mcpack", Name = "MCPACK", TargetFormat = "mcpack" },
+        new() { Id = "to-mcaddon", Name = "MCADDON", TargetFormat = "mcaddon" },
+        new() { Id = "to-mcworld", Name = "MCWORLD", TargetFormat = "mcworld" },
+        new() { Id = "to-mctemplate", Name = "MCTEMPLATE", TargetFormat = "mctemplate" },
+        new() { Id = "to-mrpack", Name = "MRPACK", TargetFormat = "mrpack" },
+    ];
+
+    /// <summary>
+    /// "Crop video" (#830, added to the library in settings schema 59): a group of the frame cut to the picture inside
+    /// its black bars or to a ratio, centred. On the back of the video donut after "Cut a clip" for new installs (in
+    /// place of "Extract audio", which stays in the library; MP3 on the front takes the sound out too).
+    /// </summary>
+    public static List<Preset> CropVideoPresets() =>
+    [
+        CropVideo("crop-video-auto", "preset.crop_video_auto", VideoCrop.Auto),
+        CropVideo("crop-video-16-9", "preset.crop_video_16_9", "16:9"),
+        CropVideo("crop-video-9-16", "preset.crop_video_9_16", "9:16"),
+        CropVideo("crop-video-4-3", "preset.crop_video_4_3", "4:3"),
+        CropVideo("crop-video-1-1", "preset.crop_video_1_1", "1:1"),
+        CropVideo("crop-video-21-9", "preset.crop_video_21_9", "21:9"),
+        new()
+        {
+            Id = "crop-video", NameKey = "preset.group_crop_video", TargetFormat = Preset.GroupTarget, Kind = PresetKind.Group,
+            SubPresetIds = ["crop-video-auto", "crop-video-16-9", "crop-video-9-16", "crop-video-4-3", "crop-video-1-1", "crop-video-21-9"],
+        },
+    ];
+
+    /// <summary>
+    /// "Pages per sheet" (#737, added in settings schema 63): 2, 4, 6, 8 or 9 PDF pages on each sheet, and their group
+    /// after "Edit". In the palette only: no donut gets a slot.
+    /// </summary>
+    public static List<Preset> PdfSheetPresets() =>
+    [
+        .. PdfOptions.SheetLayouts.Select(n => new Preset
+        {
+            Id = $"pdf-nup-{n}",
+            NameKey = $"preset.pdf_nup_{n}",
+            TargetFormat = "pdf",
+            Pdf = { PagesPerSheet = n },
+            Output = { FileNamePattern = $"{{name}}_{n}up" },
+        }),
+        new()
+        {
+            Id = "pdf-nup", NameKey = "preset.group_pdf_nup", TargetFormat = Preset.GroupTarget, Kind = PresetKind.Group,
+            SubPresetIds = [.. PdfOptions.SheetLayouts.Select(n => $"pdf-nup-{n}")],
+        },
+    ];
+
+    private static Preset CropVideo(string id, string nameKey, string frame) => new()
+    {
+        Id = id,
+        NameKey = nameKey,
+        TargetFormat = SameAsSource,
+        Media = { CropFrame = frame },
+        Output = { FileNamePattern = "{name}_cropped" },
+    };
+
+    /// <summary>
     /// "Edit pictures" (#584, added in settings schema 51): size, format, turn and colour chosen in a window each time, on
     /// the front of the images donut after "Half size".
     /// </summary>
@@ -222,6 +314,70 @@ public static class BuiltInData
         },
     ];
 
+    /// <summary>Id of the built-in "Annotate" tool (settings schema 60): in the palette, on no donut.</summary>
+    public const string AnnotateId = "tool-annotate";
+
+    /// <summary>
+    /// "Annotate" (settings schema 60): pen, arrows, boxes, highlights, text and numbers drawn on pictures, saved as
+    /// "{name} Annotated". In the palette only: the picture donuts are full.
+    /// </summary>
+    public static List<Preset> AnnotatePresets() =>
+    [
+        new()
+        {
+            Id = AnnotateId, NameKey = "preset.annotate", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.AnnotateTool, Output = { FileNamePattern = "{name} Annotated" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Add background" tool (settings schema 64): in the palette, on no donut.</summary>
+    public const string BackgroundId = "tool-background";
+
+    /// <summary>
+    /// "Add background" (settings schema 64): a picture set on a gradient, a colour or a picture of one's own, saved as
+    /// "{name} With Background.png". In the palette only: the picture donuts are full.
+    /// </summary>
+    public static List<Preset> BackgroundPresets() =>
+    [
+        new()
+        {
+            Id = BackgroundId, NameKey = "preset.background", TargetFormat = BackgroundTool.Target,
+            Kind = PresetKind.Tool, Tool = Preset.BackgroundTool, Output = { FileNamePattern = "{name} With Background" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Metadata" tool (settings schema 72): in the palette, on no donut.</summary>
+    public const string MetadataId = "tool-metadata";
+
+    /// <summary>
+    /// "Metadata" (settings schema 72): every field of a picture, PDF, video or sound file, edited or removed with
+    /// ExifTool, the file's content untouched. In the palette only: the donuts it suits are full.
+    /// </summary>
+    public static List<Preset> MetadataPresets() =>
+    [
+        new()
+        {
+            Id = MetadataId, NameKey = "preset.metadata", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.MetadataTool, Output = { FileNamePattern = "{name}_metadata" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Upscale" tool (settings schema 73): in the palette, on no donut.</summary>
+    public const string UpscaleId = "tool-upscale";
+
+    /// <summary>
+    /// "Upscale Quality" (settings schema 73): upscale images using local AI models (Real-ESRGAN / NCNN).
+    /// In the palette only: the picture donuts are full.
+    /// </summary>
+    public static List<Preset> UpscalePresets() =>
+    [
+        new()
+        {
+            Id = UpscaleId, NameKey = "preset.upscale", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.UpscaleTool, Output = { FileNamePattern = "{name}_upscaled" },
+        },
+    ];
+
     /// <summary>
     /// "Trim transparent borders" (issue #332, added in settings schema 33): a copy cropped to the visible pixels, in the
     /// same format. On the images donut's back face after "Remove background".
@@ -244,15 +400,17 @@ public static class BuiltInData
     [
         new()
         {
-            // Quality 75 like most photo apps' "smaller"; a JPEG saved below it stays at its own quality.
-            Id = "compress-image", NameKey = "preset.compress_image", TargetFormat = SameAsSource,
+            // Quality 75 like most photo apps' "smaller"; a JPEG saved below it stays at its own quality. The four
+            // "Compress" presets ask for the level on each drop (#1353): in a new install only, an existing library
+            // keeps them as they are.
+            Id = "compress-image", NameKey = "preset.compress_image", TargetFormat = SameAsSource, AskCompression = true,
             Image = { Quality = 75, MaxCompression = true, TiffCompression = TiffCompression.Zip },
             Output = { FileNamePattern = "{name}_compressed", OnlyIfSmaller = true },
         },
         new()
         {
             // H.264 at the Small quality, at most 1080p: plays everywhere, a fraction of a phone video's size.
-            Id = "compress-video", NameKey = "preset.compress_video", TargetFormat = "mp4",
+            Id = "compress-video", NameKey = "preset.compress_video", TargetFormat = "mp4", AskCompression = true,
             Media = { Quality = MediaQuality.Small, MaxHeight = 1080 }, Output = { FileNamePattern = "{name}_compressed", OnlyIfSmaller = true },
         },
         new()
@@ -273,7 +431,7 @@ public static class BuiltInData
         new()
         {
             // AAC at the Small quality: 128 kbit/s for stereo.
-            Id = "compress-audio", NameKey = "preset.compress_audio", TargetFormat = "m4a",
+            Id = "compress-audio", NameKey = "preset.compress_audio", TargetFormat = "m4a", AskCompression = true,
             Media = { Quality = MediaQuality.Small }, Output = { FileNamePattern = "{name}_compressed", OnlyIfSmaller = true },
         },
         new()
@@ -313,7 +471,7 @@ public static class BuiltInData
     [
         new()
         {
-            Id = "compress-pdf", NameKey = "preset.compress_pdf", TargetFormat = "pdf",
+            Id = "compress-pdf", NameKey = "preset.compress_pdf", TargetFormat = "pdf", AskCompression = true,
             Pdf = { Compression = PdfCompression.Ebook }, Output = { FileNamePattern = "{name}_compressed" },
         },
     ];
@@ -328,6 +486,19 @@ public static class BuiltInData
         {
             Id = "searchable-pdf", NameKey = "preset.searchable_pdf", TargetFormat = "pdf",
             Pdf = { Ocr = true }, Output = { FileNamePattern = "{name}_searchable" },
+        },
+    ];
+
+    /// <summary>
+    /// "PDF/A": a PDF, or a document converted to PDF, as PDF/A-2b (added in settings schema 80). LibreOffice writes it
+    /// itself; any other PDF is rewritten by Ghostscript. On no donut, like "Compress PDF".
+    /// </summary>
+    public static List<Preset> PdfAPresets() =>
+    [
+        new()
+        {
+            Id = PdfAId, NameKey = "preset.pdf_a", TargetFormat = "pdf",
+            Document = { PdfA = true }, Output = { FileNamePattern = "{name}_pdfa" },
         },
     ];
 
@@ -484,12 +655,19 @@ public static class BuiltInData
         new() { Id = "to-ogg", Name = "OGG", TargetFormat = "ogg" },
         new() { Id = "to-opus", Name = "OPUS", TargetFormat = "opus" },
         new() { Id = "to-aac", Name = "AAC", TargetFormat = "aac" },
+        new()
+        {
+            Id = RingtoneId, NameKey = "preset.iphone_ringtone", TargetFormat = "m4r",
+            Media = { RingtoneStart = 0, RingtoneLength = MediaOptions.DefaultRingtoneLength },
+        },
 
         // Archives
+        new() { Id = "to-iso", NameKey = "preset.iso_image", TargetFormat = "iso" },
         new() { Id = "to-zip", Name = "ZIP", TargetFormat = "zip" },
         new() { Id = "to-7z", Name = "7Z", TargetFormat = "7z" },
         new() { Id = "to-tgz", Name = "TAR.GZ", TargetFormat = "tgz" },
         new() { Id = "to-tar", Name = "TAR", TargetFormat = "tar" },
+        .. GamePackPresets(),
         new() { Id = "extract", NameKey = "preset.extract", TargetFormat = FormatRegistry.Folder },
         new()
         {
@@ -566,11 +744,70 @@ public static class BuiltInData
     ];
 
     /// <summary>
-    /// Creates the default toolbar profiles. Each has a back face (Tab or the mouse wheel flips the open donut to it, settings schema 30)
-    /// with presets for its files that aren't on its front: less common formats and tools (rotate, merge, compress
-    /// into one ZIP, ...). The fronts are as they were before back faces.
+    /// Creates the defaults for new libraries and explicit resets: conversions on the front, tools first on the
+    /// back, then less common conversions when there is room. Each face holds at most eight slices. Every donut of
+    /// <see cref="ProfilesSchema58"/> needs its layout here; a donut added later is added in this method, not to
+    /// <see cref="ProfilesSchema58"/>.
     /// </summary>
-    public static List<ToolbarProfile> CreateProfiles() =>
+    public static List<ToolbarProfile> CreateProfiles()
+    {
+        var profiles = ProfilesSchema58();
+        foreach (var profile in profiles)
+        {
+            (List<string> Front, List<string> Back) layout = profile.Id switch
+            {
+                "images" => (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "merge-pdf", "trace-svg"],
+                    ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
+                "pdf" => (["to-png", "to-jpg", "to-docx", "to-xlsx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"],
+                    ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
+                "office" => (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-txt", "to-png", "merge-pdf"],
+                    ["translate", "to-md", "pdf-long-image", "zip-all"]),
+                "spreadsheets" => (["to-pdf", "to-xlsx", "to-csv", "to-hwpx", "to-hwp", "merge-pdf"],
+                    ["tool-sheet-studio", "to-docx", "to-vcf", "to-ics", "zip-all"]),
+                "presentations" => (["to-pdf", "to-png", "to-jpg", "to-pptx", "to-hwpx", "to-hwp", "merge-pdf"],
+                    ["to-odp", "pdf-long-image", "to-docx", "zip-all"]),
+                "hwp" => (["to-pdf", "to-docx", "to-hwpx", "to-hwp", "to-png", "to-txt", "merge-pdf"],
+                    ["to-html", "to-odt", "pdf-long-image", "zip-all"]),
+                "text" => (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt"],
+                    ["translate", "to-md", "to-odt", "merge-pdf", "zip-all"]),
+                "ebooks" => (["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-kepub"], ["translate", "to-md", "zip-all"]),
+                // Every frame as pictures stays behind a flip: a missed front slice must not create thousands of files.
+                "video" => (["to-mp4", "mp4-720", "to-mov", "to-gif", "to-mp3", "caption-video"],
+                    ["tool-clip", "crop-video", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "zip-all"]),
+                "audio" => (["to-mp3", "mp3-128", "to-m4a", "to-wav", "caption-video"],
+                    ["compress-audio", "merge-audio", "remove-metadata", "to-alac", "zip-all"]),
+                "subtitles" => (["to-srt", "to-vtt"], ["zip-all"]),
+                "vector" => (["to-png", "to-pdf", "to-svg", "to-jpg", "to-webp"], ["to-tiff", "to-ico", "to-icns", "to-dxf", "zip-all"]),
+                "archives" => (["extract", "zip-all", "to-zip", "to-7z"], []),
+                "cad" => (["to-pdf", "to-png", "to-svg", "to-dxf", "to-dwg"], ["to-jpg", "merge-pdf", "zip-all"]),
+                "fonts" => (["to-woff2", "to-woff", "to-ttf", "to-otf"], ["zip-all"]),
+                "data" => (["to-json", "to-yaml", "to-xml", "to-csv", "to-xlsx"], ["to-ods", "to-html", "to-md", "zip-all"]),
+                "models" => (["to-glb", "to-stl", "to-obj", "to-3mf", "to-png"], ["zip-all"]),
+                "geo" => (["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx"], ["zip-all"]),
+                "mixed" => (["to-pdf", "merge-pdf", "zip-all", "to-png", "to-txt"], ["to-jpg", "to-docx"]),
+                _ => throw new InvalidOperationException(
+                    $"The donut \"{profile.Id}\" of ProfilesSchema58() has no new-install layout here. " +
+                    "A donut added later goes into CreateProfiles(), not into ProfilesSchema58()."),
+            };
+            (profile.PresetIds, profile.BackPresetIds) = layout;
+        }
+        var folders = new ToolbarProfile
+        {
+            Id = "folders",
+            NameKey = "profile.folders",
+            Extensions = [],
+            PresetIds = ["to-iso", "to-zip", "zip-all"],
+            BackPresetIds = [],
+        };
+        profiles.Insert(profiles.FindIndex(p => p.Id == "archives") + 1, folders);
+        return profiles;
+    }
+
+    /// <summary>
+    /// The schema 58 layout before the default-slot cleanup. Migrations and old bundles keep these faces, including
+    /// the individual profile factories below; changing new-install defaults must not change an existing library.
+    /// </summary>
+    public static List<ToolbarProfile> ProfilesSchema58() =>
     [
         new()
         {
@@ -595,7 +832,7 @@ public static class BuiltInData
             Id = "office", NameKey = "profile.office",
             Extensions = ExtensionsOf(FormatCategory.Document),
             PresetIds = ["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-odt", "to-txt", "to-html", "to-epub", "to-png", "merge-pdf"],
-            BackPresetIds = ["to-md", "to-rtf", "to-jpg", "pdf-long-image", "to-azw3", "to-kepub", "zip-all"],
+            BackPresetIds = ["translate", "to-md", "to-rtf", "to-jpg", "pdf-long-image", "to-azw3", "to-kepub", "zip-all"],
         },
         SpreadsheetProfile(),
         PresentationProfile(),
@@ -657,7 +894,7 @@ public static class BuiltInData
         NameKey = "profile.text",
         Extensions = ExtensionsOf(FormatCategory.Text),
         PresetIds = ["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt", "to-epub"],
-        BackPresetIds = ["to-md", "to-odt", "to-rtf", "to-kepub", "merge-pdf", "zip-all"],
+        BackPresetIds = ["translate", "to-md", "to-odt", "to-rtf", "to-kepub", "merge-pdf", "zip-all"],
     };
 
     /// <summary>Donuts of the categories added in settings schema 6, in the order they follow "text".</summary>
@@ -668,7 +905,7 @@ public static class BuiltInData
             Id = "ebooks", NameKey = "profile.ebooks",
             Extensions = ExtensionsOf(FormatCategory.Ebook),
             PresetIds = ["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-mobi", "to-kepub", "to-hwpx", "to-hwp", "to-html"],
-            BackPresetIds = ["to-fb2", "to-md", "to-rtf", "to-odt", "merge-pdf", "zip-all"],
+            BackPresetIds = ["translate", "to-fb2", "to-md", "to-rtf", "to-odt", "merge-pdf", "zip-all"],
         },
         new()
         {

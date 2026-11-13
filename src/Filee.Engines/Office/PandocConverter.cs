@@ -7,10 +7,17 @@
 // "<name>_files" folder next to it and linked relative to it (EMF/WMF become PNG); Markdown with "Leave out pictures"
 // gets none (a Lua filter drops them). Markdown stays free of HTML: tables come out as plain pipe tables (a Lua
 // filter splits merged cells) and pictures as ![](…).
+//
+// Pandoc runs in its sandbox, where it reads nothing but the file it is given: include directives (\input,
+// .. include::) stay unread, and so do pictures the document refers to. The document is read into Pandoc's JSON AST
+// first, its pictures are checked by Filee's own rule (DocumentFiles: only from the source's folder, never from
+// another computer), and the result is written from the AST with those pictures alone.
 
+using System.Text.Json.Nodes;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Core.Presets;
+using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using ImageMagick;
@@ -126,8 +133,10 @@ public sealed class PandocConverter : IConverter
 
         progress?.Report(0.1);
         var input = Path.GetFullPath(step.InputPath);
+        var inputFolder = Path.GetDirectoryName(input)!;
         var outputFolder = Path.GetDirectoryName(Path.GetFullPath(output))!;
-        List<string> args = [input, "-f", Readers[step.From], "-t", Writers[step.To], "-o", output];
+        var ast = Path.Combine(step.WorkDirectory, $"ast-{Guid.NewGuid():N}.json");
+        List<string> args = [ast, "-f", "json", "-t", Writers[step.To], "-o", output, "--sandbox", "--lua-filter=" + Filter(step.WorkDirectory, "pictures", LoadPictures)];
         if (Standalone.Contains(step.To))
             args.Add("--standalone");
         if (step.To == "md")
@@ -138,16 +147,23 @@ public sealed class PandocConverter : IConverter
         else if (ExtractsMedia.Contains(step.To))
         {
             // Relative to the result (Pandoc runs in its folder), so the links keep working when both are moved.
-            // Pictures the source refers to by a relative path are still looked up next to the source.
             media = Path.GetFileNameWithoutExtension(output) + "_files";
             args.Add("--extract-media=" + media);
-            args.Add("--resource-path=" + Path.GetDirectoryName(input));
         }
 
         ProcessResult result;
         using (ProgressEstimate.Start(progress, TimeSpan.FromSeconds(1.5)))
+        {
+            var stored = Path.Combine(step.WorkDirectory, $"pandoc-media-{Guid.NewGuid():N}");
+            var document = await ReadAstAsync(pandoc, input, Readers[step.From], stored, step.WorkDirectory, cancellationToken);
+            var pictures = new JsonObject();
+            CheckPictures(document, target => IsWeb(target) ? target
+                : Picture(target, inputFolder, stored) is { } file ? MediaName(file, DocumentFiles.Inside(file, stored) ? stored : inputFolder, pictures) : null);
+            document["meta"]![PicturesKey] = new JsonObject { ["t"] = "MetaMap", ["c"] = pictures };
+            await File.WriteAllTextAsync(ast, document.ToJsonString(), cancellationToken);
             result = await ProcessRunner.RunAsync(pandoc, args, Timeout, cancellationToken,
-                workingDirectory: media is null ? Path.GetDirectoryName(input) : outputFolder);
+                workingDirectory: media is null ? inputFolder : outputFolder);
+        }
         if (!File.Exists(output))
             throw new InvalidOperationException($"Pandoc failed (exit {result.ExitCode}). {result.StandardError.Trim()}");
         if (media is not null)
@@ -155,6 +171,86 @@ public sealed class PandocConverter : IConverter
         progress?.Report(1);
         return [output];
     }
+
+    /// <summary>
+    /// Reads <paramref name="input"/> into Pandoc's JSON AST in the sandbox (Pandoc reads nothing else). Pictures stored
+    /// in the file (DOCX, ODT, RTF, notebooks) are extracted into <paramref name="media"/>; the AST keeps the others as
+    /// the document names them, for <see cref="Picture"/>.
+    /// </summary>
+    internal static async Task<JsonNode> ReadAstAsync(string pandoc, string input, string reader, string media, string workDirectory,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(workDirectory);
+        var json = Path.Combine(workDirectory, $"ast-{Guid.NewGuid():N}.json");
+        var result = await ProcessRunner.RunAsync(pandoc,
+            [input, "-f", reader, "-t", "json", "--sandbox", "--extract-media=" + media, "-o", json],
+            Timeout, cancellationToken, workingDirectory: Path.GetDirectoryName(input));
+        if (!File.Exists(json))
+            throw new InvalidOperationException($"Pandoc failed (exit {result.ExitCode}). {result.StandardError.Trim()}");
+        return JsonNode.Parse(await File.ReadAllTextAsync(json, cancellationToken))
+               ?? throw new InvalidDataException("Pandoc produced an empty document.");
+    }
+
+    /// <summary>
+    /// The local file of a picture in an AST from <see cref="ReadAstAsync"/>: one Pandoc extracted into
+    /// <paramref name="media"/>, a data: URI written there, or a file in the source's folder
+    /// (<see cref="DocumentFiles"/>); null for anything else.
+    /// </summary>
+    internal static string? Picture(string target, string inputFolder, string media) =>
+        target.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+            ? HtmlReader.SaveDataUri(target.Trim(), media)
+            : DocumentFiles.Find(target, inputFolder, inputFolder, media);
+
+    /// <summary>
+    /// Points every picture of a Pandoc AST at the target <paramref name="picture"/> gives, or turns it into its
+    /// description when that is null (as Pandoc writes a picture it can't find).
+    /// </summary>
+    internal static void CheckPictures(JsonNode? node, Func<string, string?> picture)
+    {
+        if (node is JsonObject item)
+        {
+            foreach (var (_, value) in item.ToList())
+                CheckPictures(value, picture);
+            return;
+        }
+        if (node is not JsonArray array)
+            return;
+        for (var i = 0; i < array.Count; i++)
+        {
+            // {"t": "Image", "c": [attr, description inlines, [target, title]]}
+            if (array[i] is JsonObject image && (string?)image["t"] == "Image" && image["c"] is JsonArray { Count: 3 } content
+                && content[2] is JsonArray { Count: 2 } target)
+            {
+                if (picture((string?)target[0] ?? "") is not { } file)
+                {
+                    var description = content[1]?.DeepClone() ?? new JsonArray();
+                    array[i] = new JsonObject { ["t"] = "Span", ["c"] = new JsonArray(new JsonArray("", new JsonArray(), new JsonArray()), description) };
+                    continue;
+                }
+                target[0] = file;
+            }
+            CheckPictures(array[i], picture);
+        }
+    }
+
+    /// <summary>
+    /// The name a checked picture goes by in the AST, the media bag and "&lt;name&gt;_files": its path below
+    /// <paramref name="folder"/>, as Pandoc names pictures itself ("media/image1.png"), made unique. The name and the
+    /// file are added to <paramref name="pictures"/> (a MetaMap of MetaStrings for <see cref="LoadPictures"/>).
+    /// </summary>
+    private static string MediaName(string file, string folder, JsonObject pictures)
+    {
+        var relative = Path.GetRelativePath(folder, file).Replace('\\', '/');
+        var name = relative;
+        for (var n = 2; pictures[name] is { } known && (string?)known["c"] != file; n++)
+            name = $"{n}/{relative}";
+        pictures[name] = new JsonObject { ["t"] = "MetaString", ["c"] = file };
+        return name;
+    }
+
+    /// <summary>An http(s) picture: left to the writer, which can't fetch it in the sandbox (text results keep the link).</summary>
+    private static bool IsWeb(string target) =>
+        Uri.TryCreate(target, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
 
     /// <summary>
     /// Word documents often hold EMF/WMF pictures, which browsers and Markdown editors don't show: each extracted one
@@ -199,6 +295,27 @@ public sealed class PandocConverter : IConverter
         File.WriteAllText(path, code);
         return path;
     }
+
+    /// <summary>Metadata entry of the AST that lists the checked pictures: name → file.</summary>
+    private const string PicturesKey = "filee-pictures";
+
+    /// <summary>
+    /// Hands the writer the pictures <see cref="CheckPictures"/> let through: in the sandbox it takes pictures from the
+    /// media bag only. The list itself is removed, so no template writes it out.
+    /// </summary>
+    private const string LoadPictures = """
+        function Pandoc(doc)
+          for name, file in pairs(doc.meta['filee-pictures'] or {}) do
+            local handle = io.open(pandoc.utils.stringify(file), 'rb')
+            if handle then
+              pandoc.mediabag.insert(name, nil, handle:read('a'))
+              handle:close()
+            end
+          end
+          doc.meta['filee-pictures'] = nil
+          return doc
+        end
+        """;
 
     /// <summary>
     /// Drops every picture ("Leave out pictures", DocumentOptions.LeaveOutPictures); a figure keeps its caption as text.

@@ -806,7 +806,7 @@ internal static partial class MobiWriter
                 if (image.Height > 330)
                     image.Resize(0, 330);
                 image.BackgroundColor = ImageMagick.MagickColors.White;
-                image.Alpha(ImageMagick.AlphaOption.Remove);
+                image.Alpha(ImageMagick.AlphaAction.Remove);
                 image.Quality = 85;
                 var file = Path.Combine(folder, $"thumbnail-{Guid.NewGuid():N}.jpg");
                 image.Write(file, ImageMagick.MagickFormat.Jpeg);

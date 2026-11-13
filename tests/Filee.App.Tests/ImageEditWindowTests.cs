@@ -160,6 +160,48 @@ public class ImageEditWindowTests
     }
 
     [AvaloniaFact]
+    public void One_side_may_be_left_empty_while_the_shape_is_kept_and_the_box_may_never_enlarge()
+    {
+        // #1270: "at most this tall", the width free, and pictures that already fit left as they are.
+        var tool = BuiltInData.ImageEditPresets().Single();
+        WithWindow(["icon.png"], (window, vm, starts) =>
+        {
+            vm.Resize = vm.ResizeModes.Single(r => r.Value == ResizeMode.Custom);
+            vm.CustomWidth = null;
+            vm.CustomHeight = 128;
+            Pump();
+            Assert.Null(vm.CustomSizeError);
+            Assert.Equal("256 × 128", vm.SizeAfter); // 512 × 256, the height limits it
+            vm.CustomHeight = 1024;
+            Assert.Equal("2048 × 1024", vm.SizeAfter); // enlarged, as a box always did
+
+            Assert.True(window.FindControl<CheckBox>("ShrinkOnlyBox")!.IsEffectivelyVisible);
+            vm.ShrinkOnly = true;
+            Assert.Equal("512 × 256", vm.SizeAfter); // already fits: stays as it is
+
+            // A stretch needs both sides: Convert waits for the other one.
+            vm.LockAspect = false;
+            Pump();
+            Assert.False(window.FindControl<CheckBox>("ShrinkOnlyBox")!.IsEffectivelyVisible);
+            Assert.NotNull(vm.CustomSizeError);
+            Assert.True(window.FindControl<TextBlock>("CustomSizeErrorText")!.IsEffectivelyVisible);
+            Assert.False(window.FindControl<Button>("StartEdit")!.IsEnabled);
+            vm.Convert();
+            Assert.Empty(starts);
+            vm.LockAspect = true;
+            Assert.True(vm.CanConvert);
+
+            vm.Convert();
+
+            var size = Assert.Single(starts).Preset.Image.CustomSize!;
+            Assert.Equal((CustomImageSize.FreeSide, 1024, true, true), (size.Width, size.Height, size.LockAspect, size.ShrinkOnly));
+        }, tool);
+
+        // The free side comes back empty the next time.
+        WithWindow(["icon.png"], (_, vm, _) => Assert.Equal(((decimal?)null, (decimal?)1024m, true), (vm.CustomWidth, vm.CustomHeight, vm.ShrinkOnly)), tool);
+    }
+
+    [AvaloniaFact]
     public void A_printed_size_becomes_pixels_at_the_dpi_and_the_pictures_carry_it()
     {
         WithWindow(["icon.png"], (_, vm, starts) =>
@@ -325,7 +367,7 @@ public class ImageEditWindowTests
                 var exif = new ExifProfile();
                 exif.SetValue(ExifTag.Orientation, (ushort)6); // "turn right to view"
                 image.SetProfile(exif);
-                image.Orientation = OrientationType.RightTop;
+                image.Orientation = Orientation.RightTop;
                 image.Write(photo, MagickFormat.Jpg);
             }
             Assert.Equal((300, 400), WindowService.PictureSize(photo));

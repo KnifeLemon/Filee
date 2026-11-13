@@ -32,6 +32,9 @@ public sealed class FileResult
     /// until it has been saved, then where it was saved.
     /// </summary>
     public required string SourcePath { get; set; }
+
+    /// <summary>Identified once by drop/CLI input handling; format lookup itself never touches the filesystem.</summary>
+    public bool IsFolder { get; init; }
     public FileState State { get; set; } = FileState.Pending;
     public double Progress { get; set; }
     public List<string> Outputs { get; } = [];
@@ -87,7 +90,7 @@ public sealed class FileResult
 
 /// <summary>The source, target and constraints of a route planning request.</summary>
 public sealed record RouteRequest(string Source, string Target, bool Frames = false, bool Shaping = false,
-    bool MotionPhoto = false, bool LivePhoto = false, bool Ocr = false);
+    bool MotionPhoto = false, bool LivePhoto = false, bool Ocr = false, bool Translate = false, bool Metadata = false, bool Upscale = false);
 
 /// <summary>A batch of files converted with one preset.</summary>
 public sealed class ConversionJob
@@ -95,14 +98,20 @@ public sealed class ConversionJob
     private readonly CancellationTokenSource _cts = new();
 
     /// <param name="fetcher">Saves sources that aren't files yet before they are converted (files from a browser).</param>
-    public ConversionJob(IReadOnlyList<string> sources, Preset preset, string presetDisplayName, ISourceFetcher? fetcher = null)
+    public ConversionJob(IReadOnlyList<string> sources, Preset preset, string presetDisplayName, ISourceFetcher? fetcher = null,
+        IReadOnlySet<string>? folderSources = null)
     {
         // A Shapefile's .dbf, .shx, .prj, ... dropped with its .shp are part of it, not files to convert on their own.
-        sources = Formats.CompanionFiles.WithoutCompanions(sources);
+        if (!preset.IsCopyToFolder)
+        {
+            var mainFiles = Formats.CompanionFiles.WithoutCompanions(sources.Where(s => folderSources?.Contains(s) != true).ToList())
+                .ToHashSet(Platform.FileSystemPaths.Comparer);
+            sources = sources.Where(s => folderSources?.Contains(s) == true || mainFiles.Contains(s)).ToList();
+        }
         Preset = preset.Clone(); // later edits of the preset must not affect a running job
         PresetDisplayName = presetDisplayName;
         Fetcher = fetcher;
-        Files = sources.Select(s => new FileResult { SourcePath = s, NeedsFetch = fetcher?.Fetches(s) ?? false }).ToList();
+        Files = sources.Select(s => new FileResult { SourcePath = s, IsFolder = folderSources?.Contains(s) == true, NeedsFetch = fetcher?.Fetches(s) ?? false }).ToList();
     }
 
     public string Id { get; } = Guid.NewGuid().ToString("N")[..10];
