@@ -1,23 +1,34 @@
-// Filee's renderer as an engine: off (the default), every route stays as it was; on, documents → PDF take it, and a
-// file with what it doesn't draw yet keeps its usual route. The sample files are written here.
+// Filee's renderer as an engine: on (the settings' default), documents and decks → PDF take it, a file with what it
+// doesn't draw yet keeps its usual route, and LibreOffice keeps what Settings → Engines chooses it for; off, every route
+// is the HWPX writer and rhwp's again. The engine tests read no settings, so it is off here until a test turns it on.
+// The sample files are written here.
 
 using System.IO.Compression;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
+using Filee.Core.Settings;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Office;
 using Filee.Engines.Typesetting;
 using PigDocument = UglyToad.PdfPig.PdfDocument;
 
 namespace Filee.Engines.Tests;
 
-[Collection("EngineEnvironment")] // FileeRenderer is process-wide
+[Collection("EngineEnvironment")] // FileeRenderer and the LibreOffice switches are process-wide
 public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixture<EngineFixture>, IDisposable
 {
     private static readonly string[] Documents = ["hwpx", "hwp", "docx", "doc", "txt", "md", "html", "epub"];
 
+    private static readonly string[] WordProcessor = ["docx", "doc", "odt", "rtf"];
+
+    private static readonly string[] Decks = ["pptx", "pptm", "potx", "potm", "ppsx"];
+
     public void Dispose()
     {
         EngineEnvironment.FileeRenderer = false;
+        EngineEnvironment.LibreOfficeForSlides = false;
+        EngineEnvironment.LibreOfficeForDocuments = false;
+        EngineEnvironment.LibreOfficeForSheets = false;
         fx.Catalog.Refresh();
     }
 
@@ -27,15 +38,37 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
         fx.Catalog.Refresh();
     }
 
+    /// <summary>
+    /// The engines with the renderer on and a LibreOffice that is installed (or not), with the switches of Settings →
+    /// Engines → "When LibreOffice is installed", in the default engine order.
+    /// </summary>
+    private RoutePlanner WithLibreOffice(bool slides = false, bool documents = false, bool sheets = false, bool installed = true)
+    {
+        EngineEnvironment.FileeRenderer = true;
+        EngineEnvironment.LibreOfficeForSlides = slides;
+        EngineEnvironment.LibreOfficeForDocuments = documents;
+        EngineEnvironment.LibreOfficeForSheets = sheets;
+        var renderer = new FileeRendererConverter(() => installed);
+        Assert.True(renderer.GetStatus().IsAvailable);
+        var converters = fx.Converters.Where(c => c.Id != "libreoffice").Select(c => c.Id == "layout" ? renderer : c).ToList();
+        if (installed)
+            converters.Add(new InstalledLibreOffice(LibreOfficeConverter.BuildEdges(slides, documents, sheets)));
+        var priority = new AppSettings().EnginePriority;
+        return new RoutePlanner(converters, c => Math.Min(priority.IndexOf(c.Id) is >= 0 and var i ? i : priority.Count, 9));
+    }
+
+    private static string[] Engines(Route? route) => [.. route!.Steps.Select(s => s.Converter.Id)];
+
     [Fact]
-    public void Off_by_default_no_route_takes_it()
+    public void Off_no_route_takes_it()
     {
         Use(false);
         var planner = fx.Catalog.CreatePlanner();
 
         Assert.False(fx.Catalog.StatusOf(fx.Converters.Single(c => c.Id == "layout")).IsAvailable);
+        // (No route at all where rhwp isn't there, as on a PC that never fetched it.)
         foreach (var format in Documents)
-            Assert.DoesNotContain(planner.Plan(format, "pdf")!.Steps, s => s.Converter.Id == "layout");
+            Assert.DoesNotContain(planner.Plan(format, "pdf")?.Steps ?? [], s => s.Converter.Id == "layout");
     }
 
     [Fact]
@@ -51,13 +84,39 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
         Assert.DoesNotContain(planner.Plan("xlsx", "pdf")!.Steps, s => s.Converter.Id == "layout");
     }
 
-    [Fact]
-    public void On_slide_decks_go_to_pdf_and_pictures_through_it_even_with_libreoffice()
+    [Theory]
+    [InlineData("docx", "layout")]
+    [InlineData("doc", "layout")]
+    [InlineData("odt", "layout")]
+    [InlineData("rtf", "layout")]
+    [InlineData("hwpx", "layout")]
+    [InlineData("hwp", "layout")]
+    [InlineData("md", "layout")]
+    [InlineData("txt", "layout")]
+    [InlineData("html", "layout")]
+    [InlineData("epub", "layout")]
+    [InlineData("csv", "layout")] // no page setup for sheet print: one table, no longer the HWPX writer and rhwp
+    [InlineData("tsv", "layout")]
+    [InlineData("ofd", "layout")]
+    [InlineData("pptx", "layout")]
+    [InlineData("potm", "layout")]
+    [InlineData("xlsx", "sheet-print")]
+    [InlineData("xls", "sheet-print")]
+    public void On_each_kind_of_document_goes_to_pdf_in_one_step(string from, string engine)
     {
         Use(true);
-        // LibreOffice installed and chosen for presentations (the default): the slide renderer still wins.
-        var planner = fx.Catalog.CreatePlanner(["libreoffice"]);
-        foreach (var format in new[] { "pptx", "pptm", "potx", "ppsx" })
+
+        var step = Assert.Single(fx.Catalog.CreatePlanner().Plan(from, "pdf")!.Steps);
+        Assert.Equal(engine, step.Converter.Id);
+        Assert.Equal(engine == "layout", step.Checked);
+    }
+
+    [Fact]
+    public void On_slide_decks_go_to_pdf_and_pictures_through_it()
+    {
+        // LibreOffice installed but not chosen for presentations (the default): the slide renderer draws the decks.
+        var planner = WithLibreOffice();
+        foreach (var format in Decks)
         {
             foreach (var target in new[] { "pdf", "png", "jpg" })
             {
@@ -66,11 +125,58 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
                 Assert.True(step.Checked);
             }
         }
-        // Without it (a deck with a chart), LibreOffice takes the deck as before.
-        Assert.Equal("libreoffice", planner.Plan("pptx", "pdf", withoutChecked: true)!.Steps[0].Converter.Id);
+        // Without it (a deck with a chart), the deck goes another way.
+        Assert.DoesNotContain("layout", Engines(planner.Plan("pptx", "pdf", withoutChecked: true)));
 
         Use(false);
         Assert.DoesNotContain(fx.Catalog.CreatePlanner(["libreoffice"]).Plan("pptx", "pdf")!.Steps, s => s.Converter.Id == "layout");
+    }
+
+    [Fact]
+    public void Libreoffice_chosen_for_word_documents_still_takes_them()
+    {
+        // Settings → Engines → "Use LibreOffice for Word documents → PDF": on cost alone the renderer (1 + 9) would win
+        // over the choice (10 + 9), so it leaves the word processor files to LibreOffice.
+        var planner = WithLibreOffice(documents: true);
+        foreach (var format in WordProcessor)
+        {
+            Assert.Equal(["libreoffice"], Engines(planner.Plan(format, "pdf")));
+            Assert.DoesNotContain("layout", Engines(planner.Plan(format, "png")));
+        }
+        // Everything else stays with the renderer: the Word variants too, which LibreOffice takes only at its fallback
+        // cost (left out, they would go to the HWPX writer and rhwp, as they did before the renderer).
+        foreach (var format in new[] { "docm", "dotx", "dotm", "dot", "wps", "hwpx", "hwp", "md", "html", "epub", "csv", "pptx" })
+            Assert.Equal(["layout"], Engines(planner.Plan(format, "pdf")));
+
+        // The switch changes nothing without LibreOffice.
+        Assert.Equal(["layout"], Engines(WithLibreOffice(documents: true, installed: false).Plan("docx", "pdf")));
+    }
+
+    [Fact]
+    public void Libreoffice_chosen_for_presentations_still_takes_the_decks()
+    {
+        var planner = WithLibreOffice(slides: true);
+        Assert.Equal(["libreoffice"], Engines(planner.Plan("pptx", "pdf")));
+        foreach (var format in Decks)
+        {
+            Assert.Contains("libreoffice", Engines(planner.Plan(format, "pdf")));
+            Assert.DoesNotContain("layout", Engines(planner.Plan(format, "png")));
+        }
+        Assert.Equal(["layout"], Engines(planner.Plan("docx", "pdf")));
+
+        Assert.Equal(["layout"], Engines(WithLibreOffice(slides: true, installed: false).Plan("pptx", "pdf")));
+    }
+
+    [Fact]
+    public void Libreoffice_chosen_for_spreadsheets_still_takes_csv()
+    {
+        var planner = WithLibreOffice(sheets: true);
+        Assert.Equal(["libreoffice"], Engines(planner.Plan("xlsx", "pdf")));
+        Assert.Equal(["libreoffice"], Engines(planner.Plan("csv", "pdf")));
+        Assert.Equal(["layout"], Engines(planner.Plan("tsv", "pdf"))); // LibreOffice doesn't read TSV
+        Assert.Equal(["layout"], Engines(planner.Plan("docx", "pdf")));
+
+        Assert.Equal(["layout"], Engines(WithLibreOffice(sheets: true, installed: false).Plan("csv", "pdf")));
     }
 
     [Fact]
@@ -232,5 +338,97 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
         File.WriteAllText(path, "<hp:chart/> is just text here");
 
         Assert.Null(new FileeRendererConverter().FirstUnsupported(path, "txt"));
+    }
+
+    [Fact]
+    public async Task On_an_arabic_docx_is_shaped_by_it_instead_of_going_to_libreoffice()
+    {
+        // ComplexScripts sends a document to LibreOffice only when its route has rhwp's unshaped step: with the
+        // renderer on, an Arabic DOCX is laid out by it (HarfBuzz shaping, UAX #9 order), LibreOffice or not.
+        var planner = WithLibreOffice();
+        Assert.Equal(["layout"], Engines(planner.Plan("docx", "pdf", shaping: true)));
+        // LibreOffice still takes it where the user chose LibreOffice, or where the renderer can't draw the file.
+        Assert.Equal(["libreoffice"], Engines(WithLibreOffice(documents: true).Plan("docx", "pdf", shaping: true)));
+        Assert.Equal(["libreoffice"], Engines(planner.Plan("docx", "pdf", shaping: true, withoutChecked: true)));
+
+        Use(true);
+        var builder = new DocxBuilder();
+        builder.Paragraph(DocxBuilder.P(DocxBuilder.R("Report: مرحبا بالعالم"), "<w:bidi/>"));
+        var source = builder.Save(Path.Combine(fx.NewFolder(), "arabic.docx"));
+
+        // No LibreOffice here: before, the file was refused ("needs LibreOffice") rather than drawn unshaped by rhwp.
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "pdf" });
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        using var pdf = PigDocument.Open(job.Outputs.Single());
+        Assert.Contains("Filee", pdf.Information.Producer);
+        Assert.Contains("Report", pdf.GetPage(1).Text);
+    }
+
+    [Fact]
+    public async Task On_a_csv_is_laid_out_as_a_table()
+    {
+        Use(true);
+        var source = Path.Combine(fx.NewFolder(), "stock.csv");
+        await File.WriteAllLinesAsync(source, ["Item,Count,Price", .. Enumerable.Range(1, 60).Select(i => $"Part {i},{i},{i * 1000}")],
+            TestContext.Current.CancellationToken);
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "pdf" });
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        using var pdf = PigDocument.Open(job.Outputs.Single());
+        Assert.Contains("Filee", pdf.Information.Producer);
+        var text = string.Concat(pdf.GetPages().Select(p => p.Text));
+        Assert.Contains("Part 1", text);
+        Assert.Contains("60000", text);
+    }
+
+    [Fact]
+    public async Task On_an_ofd_invoice_keeps_its_text_and_pictures()
+    {
+        Use(true);
+        var source = OfdTests.MakeInvoice(fx.NewFolder());
+        Assert.Equal(["layout"], Engines(fx.Catalog.CreatePlanner().Plan("ofd", "pdf")));
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "pdf" });
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        using var pdf = PigDocument.Open(job.Outputs.Single());
+        Assert.Contains("Filee", pdf.Information.Producer);
+        // One page, as the invoice is; its numbers and its QR code on it.
+        Assert.Equal(1, pdf.NumberOfPages);
+        var page = pdf.GetPage(1);
+        Assert.Contains("25442000000123456789", page.Text);
+        Assert.Contains("325.00", page.Text);
+        Assert.NotEmpty(page.GetImages());
+    }
+
+    [Fact]
+    public async Task On_a_macro_enabled_template_deck_is_drawn_by_it()
+    {
+        Use(true);
+        var deck = new SlideDeckBuilder();
+        deck.Slide(deck.Placeholder("ctrTitle", SlideDeckBuilder.Paragraph("A template deck")), SlideDeckBuilder.Layout.Title);
+        var source = deck.Save(Path.Combine(fx.NewFolder(), "deck.potm"));
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "pdf" });
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        using var pdf = PigDocument.Open(job.Outputs.Single());
+        Assert.Equal(960, pdf.GetPage(1).Width, 1);
+        Assert.Contains("A template deck", pdf.GetPage(1).Text);
+    }
+
+    /// <summary>LibreOffice with the edges its switches give it, as if it were installed (never converts here).</summary>
+    private sealed class InstalledLibreOffice(IReadOnlyList<ConversionEdge> edges) : IConverter
+    {
+        public string Id => "libreoffice";
+        public string DisplayName => "LibreOffice";
+        public IReadOnlyList<ConversionEdge> Edges => edges;
+        public int MaxParallelism => 1;
+        public EngineStatus GetStatus() => EngineStatus.Available("test");
+
+        public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 }

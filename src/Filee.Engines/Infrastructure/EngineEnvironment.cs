@@ -64,10 +64,13 @@ public sealed class EngineEnvironment(string dataDirectory)
     public static IReadOnlyDictionary<string, string> OwnCopies { get; set; } = new Dictionary<string, string>();
 
     /// <summary>LibreOffice converts presentations to PDF (Settings → Engines). Re-check the engines after a change.</summary>
-    public static bool LibreOfficeForSlides { get; set; } = true;
+    public static bool LibreOfficeForSlides { get; set; }
 
-
-    /// <summary>Filee's own renderer lays documents out to PDF (Settings → Engines, a preview). Re-check after a change.</summary>
+    /// <summary>
+    /// Filee's own renderer lays documents out to PDF (Settings → Engines). Re-check after a change. The app and the
+    /// command line set it from the settings, where it is on by default; off here for a host that reads no settings
+    /// (the engine tests, which turn it on where they test it).
+    /// </summary>
     public static bool FileeRenderer { get; set; }
 
     /// <summary>LibreOffice converts Word documents to PDF (Settings → Engines). Re-check after a change.</summary>

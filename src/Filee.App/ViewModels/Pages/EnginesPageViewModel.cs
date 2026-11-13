@@ -73,7 +73,10 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
         Reload();
     }
 
-    /// <summary>Presentations → PDF through LibreOffice when it is installed (App.ApplySettings re-checks the engines).</summary>
+    /// <summary>
+    /// Presentations → PDF through LibreOffice instead of the slide renderer when it is installed (App.ApplySettings
+    /// re-checks the engines).
+    /// </summary>
     [ObservableProperty] private bool _libreOfficeForSlides;
 
     /// <summary>Word documents → PDF through LibreOffice instead of the built-in route.</summary>
@@ -82,7 +85,7 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     /// <summary>Spreadsheets → PDF through LibreOffice instead of the built-in route.</summary>
     [ObservableProperty] private bool _libreOfficeForSheets;
 
-    /// <summary>Filee's own renderer (a preview) lays documents out to PDF.</summary>
+    /// <summary>Filee's own renderer lays documents and decks out to PDF (on by default).</summary>
     [ObservableProperty] private bool _useFileeRenderer;
 
     partial void OnUseFileeRendererChanged(bool value)
