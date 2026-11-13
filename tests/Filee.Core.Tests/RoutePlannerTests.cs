@@ -112,6 +112,33 @@ public class RoutePlannerTests
     }
 
     [Fact]
+    public void An_arabic_docx_takes_the_renderer_and_libreoffice_only_where_the_renderer_steps_aside()
+    {
+        // JobQueue scans a file for scripts that need shaping only when its route has an unshaped step (rhwp). The
+        // renderer's edge isn't unshaped (it shapes with HarfBuzz and lays right-to-left text out by UAX #9), so an
+        // Arabic, Hebrew or Indic DOCX goes to it like any other; LibreOffice only takes such a file when the renderer
+        // named something it can't draw (the route without it would be rhwp's), or when LibreOffice is chosen.
+        var writer = new FakeConverter("hwpx-writer", new ConversionEdge("docx", "hwpx", 10));
+        var rhwp = new FakeConverter("rhwp", new ConversionEdge("hwpx", "pdf", 10, Unshaped: true));
+        var office = new FakeConverter("libreoffice", new ConversionEdge("docx", "pdf", 25));
+        var layout = new FakeConverter("layout", new ConversionEdge("docx", "pdf", 1, Checked: true));
+        static int Penalty(IConverter c) => c.Id switch { "rhwp" => 3, "hwpx-writer" => 8, _ => 9 };
+        var planner = new RoutePlanner([writer, rhwp, layout, office], Penalty);
+
+        var usual = planner.Plan("docx", "pdf")!;
+        Assert.Equal(["layout"], usual.Steps.Select(s => s.Converter.Id));
+        Assert.DoesNotContain(usual.Steps, s => s.Unshaped); // so JobQueue doesn't scan it and plan again
+        Assert.Equal(["layout"], planner.Plan("docx", "pdf", shaping: true)!.Steps.Select(s => s.Converter.Id));
+
+        // The renderer named a chart: the route without it would draw the Arabic unshaped, so LibreOffice takes it.
+        var without = planner.Plan("docx", "pdf", withoutChecked: true)!;
+        Assert.Contains(without.Steps, s => s.Unshaped);
+        Assert.Equal(["libreoffice"], planner.Plan("docx", "pdf", shaping: true, withoutChecked: true)!.Steps.Select(s => s.Converter.Id));
+        // Renderer turned off and no LibreOffice: refused rather than drawn broken (error.needs_shaping).
+        Assert.Null(new RoutePlanner([writer, rhwp], Penalty).Plan("docx", "pdf", shaping: true));
+    }
+
+    [Fact]
     public void Direct_only_edges_are_never_a_step_of_a_longer_route()
     {
         // PDF → PPTX puts pictures of the pages on slides: only for a PDF the user asked to turn into PPTX.

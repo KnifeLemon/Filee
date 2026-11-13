@@ -341,6 +341,31 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     }
 
     [Fact]
+    public async Task On_an_arabic_docx_is_shaped_by_it_instead_of_going_to_libreoffice()
+    {
+        // ComplexScripts sends a document to LibreOffice only when its route has rhwp's unshaped step: with the
+        // renderer on, an Arabic DOCX is laid out by it (HarfBuzz shaping, UAX #9 order), LibreOffice or not.
+        var planner = WithLibreOffice();
+        Assert.Equal(["layout"], Engines(planner.Plan("docx", "pdf", shaping: true)));
+        // LibreOffice still takes it where the user chose LibreOffice, or where the renderer can't draw the file.
+        Assert.Equal(["libreoffice"], Engines(WithLibreOffice(documents: true).Plan("docx", "pdf", shaping: true)));
+        Assert.Equal(["libreoffice"], Engines(planner.Plan("docx", "pdf", shaping: true, withoutChecked: true)));
+
+        Use(true);
+        var builder = new DocxBuilder();
+        builder.Paragraph(DocxBuilder.P(DocxBuilder.R("Report: مرحبا بالعالم"), "<w:bidi/>"));
+        var source = builder.Save(Path.Combine(fx.NewFolder(), "arabic.docx"));
+
+        // No LibreOffice here: before, the file was refused ("needs LibreOffice") rather than drawn unshaped by rhwp.
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "pdf" });
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        using var pdf = PigDocument.Open(job.Outputs.Single());
+        Assert.Contains("Filee", pdf.Information.Producer);
+        Assert.Contains("Report", pdf.GetPage(1).Text);
+    }
+
+    [Fact]
     public async Task On_a_csv_is_laid_out_as_a_table()
     {
         Use(true);
