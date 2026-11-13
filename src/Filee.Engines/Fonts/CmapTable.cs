@@ -1,6 +1,9 @@
 // The 'cmap' table (character → glyph): reads the font's best Unicode subtable (formats 4, 6, 10, 12, 13; a symbol
 // font's (3,0) subtable when it has no Unicode one) and writes a new table from a code point → glyph map, as format 4
 // for the BMP plus format 12 when the map reaches beyond it. Used by the font subsetter.
+//
+// Overlapping segments and groups, or many encoding records pointing at one big subtable, could make a small table
+// visit billions of codes: each read visits at most MaxCodeVisits codes and refuses the table past that.
 
 using System.Buffers.Binary;
 
@@ -11,6 +14,12 @@ internal static class CmapTable
 {
     /// <summary>Highest code point a format 4 subtable can hold.</summary>
     private const int BmpLast = 0xFFFF;
+
+    /// <summary>
+    /// Codes one read visits at most, over all subtables it reads: four times every Unicode code point, while a real
+    /// font's subtables together cover each code point a few times at most.
+    /// </summary>
+    internal const int MaxCodeVisits = 4 * 0x110000;
 
     /// <summary>
     /// The code point → glyph map of the best subtable: full Unicode (3,10 / 0,4 / 0,6) before BMP Unicode (3,1 / 0,x)
@@ -47,7 +56,8 @@ internal static class CmapTable
         if (best.Offset < 0)
             return map;
         symbol = best.Symbol;
-        ReadSubtable(cmap, best.Offset, map);
+        var visits = MaxCodeVisits;
+        ReadSubtable(cmap, best.Offset, map, ref visits);
         return map;
     }
 
@@ -61,6 +71,7 @@ internal static class CmapTable
         var r = new BigEndianReader(cmap);
         r.Skip(2); // version
         int count = r.U16();
+        var visits = MaxCodeVisits;
         for (var i = 0; i < count; i++)
         {
             int platform = r.U16();
@@ -69,13 +80,13 @@ internal static class CmapTable
             if (offset > cmap.Length - 4)
                 continue;
             var map = new Dictionary<int, int>();
-            ReadSubtable(cmap, (int)offset, map);
+            ReadSubtable(cmap, (int)offset, map, ref visits);
             result.Add((platform, encoding, map));
         }
         return result;
     }
 
-    private static void ReadSubtable(byte[] cmap, int offset, Dictionary<int, int> map)
+    private static void ReadSubtable(byte[] cmap, int offset, Dictionary<int, int> map, ref int visits)
     {
         var r = new BigEndianReader(cmap, offset);
         int format = r.U16();
@@ -84,37 +95,43 @@ internal static class CmapTable
             case 0:
                 r.Skip(4); // length, language
                 for (var code = 0; code < 256 && r.Remaining > 0; code++)
+                {
+                    Visit(ref visits);
                     Add(map, code, r.U8());
+                }
                 break;
             case 4:
-                ReadFormat4(cmap, offset, map);
+                ReadFormat4(cmap, offset, map, ref visits);
                 break;
             case 6:
                 r.Skip(4); // length, language
-                ReadTrimmed(r, r.U16(), r.U16(), map);
+                ReadTrimmed(r, r.U16(), r.U16(), map, ref visits);
                 break;
             case 10:
                 r.Skip(10); // reserved, length, language
-                ReadTrimmed(r, r.U32(), r.U32(), map);
+                ReadTrimmed(r, r.U32(), r.U32(), map, ref visits);
                 break;
             case 12 or 13:
                 r.Skip(10); // reserved, length, language
-                ReadGroups(r, sameGlyph: format == 13, map);
+                ReadGroups(r, sameGlyph: format == 13, map, ref visits);
                 break;
         }
     }
 
     /// <summary>Formats 6 and 10: a glyph for each code of one range.</summary>
-    private static void ReadTrimmed(BigEndianReader r, uint first, uint count, Dictionary<int, int> map)
+    private static void ReadTrimmed(BigEndianReader r, uint first, uint count, Dictionary<int, int> map, ref int visits)
     {
         if (count > (uint)r.Remaining / 2)
             throw new InvalidDataException("The font's character map is damaged.");
         for (uint i = 0; i < count; i++)
+        {
+            Visit(ref visits);
             Add(map, (int)Math.Min(first + i, int.MaxValue), r.U16());
+        }
     }
 
     /// <summary>Formats 12 (consecutive glyphs per group) and 13 (one glyph per group).</summary>
-    private static void ReadGroups(BigEndianReader r, bool sameGlyph, Dictionary<int, int> map)
+    private static void ReadGroups(BigEndianReader r, bool sameGlyph, Dictionary<int, int> map, ref int visits)
     {
         var groups = r.U32();
         if (groups > (uint)r.Remaining / 12)
@@ -125,11 +142,14 @@ internal static class CmapTable
             var end = Math.Min(r.U32(), 0x10FFFF);
             var glyph = r.U32();
             for (var c = start; c <= end; c++)
+            {
+                Visit(ref visits);
                 Add(map, (int)c, sameGlyph ? glyph : glyph + (c - start));
+            }
         }
     }
 
-    private static void ReadFormat4(byte[] cmap, int offset, Dictionary<int, int> map)
+    private static void ReadFormat4(byte[] cmap, int offset, Dictionary<int, int> map, ref int visits)
     {
         var r = new BigEndianReader(cmap, offset + 6);
         var segments = r.U16() / 2;
@@ -147,6 +167,7 @@ internal static class CmapTable
             int rangeOffset = BinaryPrimitives.ReadUInt16BigEndian(cmap.AsSpan(rangeOffsets + s * 2));
             for (var c = start; c <= end && c != 0xFFFF; c++)
             {
+                Visit(ref visits);
                 int glyph;
                 if (rangeOffset == 0)
                 {
@@ -164,6 +185,12 @@ internal static class CmapTable
                 Add(map, c, (uint)glyph);
             }
         }
+    }
+
+    private static void Visit(ref int visits)
+    {
+        if (--visits < 0)
+            throw new InvalidDataException("The font's character map is too complex: its subtables cover the same codes many times over.");
     }
 
     private static void Add(Dictionary<int, int> map, int code, uint glyph)
