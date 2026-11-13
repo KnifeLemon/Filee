@@ -42,6 +42,9 @@ internal sealed class DocFile : IDisposable
 
     public DocumentLimits Limits => _cfb.Limits;
 
+    /// <summary>Counts bytes unpacked from the document's streams (inflated pictures) against its total.</summary>
+    public void Count(long bytes) => _cfb.Count(bytes);
+
     /// <summary>The WordDocument stream (FIB, text, FKPs, section properties).</summary>
     public byte[] Word { get; }
 
@@ -348,6 +351,13 @@ internal sealed class DocFile : IDisposable
 
     /// <summary>The CP after the last character of every document (main text, notes, headers, ...).</summary>
     public int CpEnd => Pieces.Count > 0 ? Pieces[^1].CpEnd : 0;
+
+    /// <summary>
+    /// The CP after the last story the FIB counts (main text through header text boxes), within the piece table. Pieces
+    /// past it hold no story, and pieces may share their text, so the piece table alone can name far more characters
+    /// than the WordDocument stream holds; each Ccp is at most the stream's length.
+    /// </summary>
+    public int StoriesEnd => (int)Math.Min(CpEnd, (long)HeaderTextBoxStart + CcpHdrTxbx);
 
     /// <summary>The piece holding <paramref name="cp"/>, or -1.</summary>
     public int PieceAt(int cp)
