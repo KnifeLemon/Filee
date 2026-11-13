@@ -378,6 +378,106 @@ public class DonutCenterReadabilityTests
         }
     }
 
+    [AvaloniaTheory]
+    [InlineData("none")]
+    [InlineData("key")]
+    [InlineData("wheel")]
+    public void An_unplaceable_notice_preserves_the_no_notice_guidance_and_hint(string hint)
+    {
+        using var f = new PresetAvailabilityTests.Fixture(new OrdinaryConversionNoticeTests.Inputs());
+        TestServices.EnsureInitialized("en");
+        var donut = new DonutMenu
+        {
+            OuterRadius = 100,
+            // Simulate glyph ink too wide/tall for the hub without depending on OS font metrics.
+            HoleRatio = 0.12,
+            Items = [new() { Id = "one", Label = "" }],
+            Foreground = Brushes.Lime,
+            SecondaryForeground = Brushes.Red,
+            CenterTitle = "2 files",
+            CenterSubtitle = f.Loc.Format("donut.drop_to", f.Loc["preset.extract_frames_png"]),
+            CenterHint = hint == "none" ? null : "Tab back",
+            CenterHintWheel = hint == "wheel",
+        };
+        var window = new Window { Content = donut, SizeToContent = SizeToContent.WidthAndHeight };
+        try
+        {
+            window.Show();
+            RenderTests.Pump();
+            var original = Runs(donut, Brushes.Red, centerOnly: true);
+            var originalBounds = original.Select(run => run.Glyph.InkBounds.TransformToAABB(run.Transform)).ToArray();
+            var originalIcons = HintBounds(donut);
+            donut.CenterNotice = f.Loc["donut.ordinary_conversion.some"];
+            var current = Runs(donut, Brushes.Red, centerOnly: true);
+            Assert.Empty(Runs(donut, Brushes.Lime, centerOnly: true));
+            Assert.Equal(Glyphs(original), Glyphs(current));
+            Assert.Equal(originalBounds, current.Select(run => run.Glyph.InkBounds.TransformToAABB(run.Transform)).ToArray());
+            AssertRectsInsideOrNoFurtherOut(donut, true, originalIcons, HintBounds(donut));
+            var guidance = Layout(donut, donut.CenterSubtitle!);
+            Assert.Equal(2, guidance.MaxLineCount);
+            Assert.All(current.Where(run => run.Glyph.FontRenderingEmSize == 11.5),
+                run => Assert.Equal(100.0 / 150, run.Transform.M11, 6));
+        }
+        finally
+        {
+            window.Close();
+            TestServices.EnsureInitialized("en");
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("fa", "some", 0.40)]
+    [InlineData("hi", "all", 0.38)]
+    public void A_wide_notice_uses_the_circle_before_collapsing_text(string language, string scope, double holeRatio)
+    {
+        using var f = new PresetAvailabilityTests.Fixture(new OrdinaryConversionNoticeTests.Inputs());
+        TestServices.EnsureInitialized(language);
+        var donut = new DonutMenu
+        {
+            OuterRadius = 150,
+            // Tighten the ink budget to model larger platform metrics with real script glyphs.
+            HoleRatio = holeRatio,
+            Items = [new() { Id = "one", Label = "" }],
+            Foreground = Brushes.Lime,
+            SecondaryForeground = Brushes.Red,
+            CenterSubtitle = f.Loc.Format("donut.drop_to", f.Loc["preset.extract_frames_png"]),
+            CenterHint = "Tab back",
+            CenterHintWheel = true,
+        };
+        donut.SetValue(TextElement.FontFamilyProperty, SoftPalette.FontFamilyFor(language));
+        var window = new Window { Content = donut, SizeToContent = SizeToContent.WidthAndHeight };
+        try
+        {
+            window.Show();
+            RenderTests.Pump();
+            var original = Runs(donut, Brushes.Red, centerOnly: true)
+                .Where(run => run.Glyph.FontRenderingEmSize == 11.5).ToList();
+            Assert.NotEmpty(original);
+            donut.CenterNotice = f.Loc["donut.ordinary_conversion." + scope];
+            var lines = Lines(Layout(donut, donut.CenterNotice!));
+            Assert.NotEmpty(lines);
+            Assert.All(lines, line => Assert.False(line.HasCollapsed || line.HasOverflowed));
+            Assert.True(lines.Sum(line => line.Length) >= donut.CenterNotice.Length);
+            var notice = Runs(donut, Brushes.Lime, centerOnly: true);
+            Assert.All(notice, run => Assert.InRange(run.Glyph.FontRenderingEmSize / 11.5, 0.78 - 1e-6, 1));
+            AssertInside(donut, notice);
+            AssertInside(donut, Runs(donut, Brushes.Red, centerOnly: true));
+            AssertRectsInside(donut, HintBounds(donut));
+            var action = Runs(donut, Brushes.Red, centerOnly: true)
+                .Where(run => run.Glyph.FontRenderingEmSize == 11.5).ToList();
+            Assert.Equal(Glyphs(original), Glyphs(action));
+            var guidance = Layout(donut, donut.CenterSubtitle!);
+            Assert.Equal(2, guidance.MaxLineCount);
+            Assert.InRange(Lines(guidance).Count, 1, 2);
+            AssertNoticeGap(donut, notice, action);
+        }
+        finally
+        {
+            window.Close();
+            TestServices.EnsureInitialized("en");
+        }
+    }
+
     [AvaloniaFact]
     public void Stable_frames_reuse_the_selected_layout_and_changed_inputs_replan()
     {

@@ -1156,19 +1156,30 @@ public sealed partial class DonutMenu : Control
         // Containment and yielding apply only to the replacement notice.
         if (!notice) return new(title, subtitle, hint, titleTop, subtitleTop, hintTop, 1);
         var hintBounds = hint is null ? null : CenterHintBounds(hint);
+        var originalHintBounds = hintBounds;
         var hintScale = 1.0;
         if (complete && Place(keepPosition: true)) return Result();
 
-        // Keep the original guidance glyphs. Yield notice lines, then width/font, before omitting it if necessary.
+        // Search the circle's full diameter using actual ink. Let the secondary hint yield before
+        // truncating a complete notice; a platform's wider glyphs must not decide that priority.
         for (var lines = int.MaxValue; lines >= 1; lines = lines == int.MaxValue ? 3 : lines - 1)
-            for (var smaller = 0; smaller < 2; smaller++)
-                for (var step = 10; step >= 1; step--)
-                {
-                    title = NoticeText(11.5 * (smaller == 0 ? fitScale : 0.78), maxWidth * step / 10, lines);
-                    Stack();
-                    if (Place()) return Result();
-                }
+            for (var hintStep = 10; hintStep >= (hint is not null && lines == int.MaxValue ? 5 : 10); hintStep--)
+            {
+                hintScale = hintStep / 10.0;
+                hintBounds = originalHintBounds?.Select(b =>
+                    b.TransformToAABB(Matrix.CreateScale(hintScale, hintScale))).ToList();
+                for (var smaller = 0; smaller < 2; smaller++)
+                    for (var step = 10; step >= 1; step--)
+                    {
+                        title = NoticeText(11.5 * (smaller == 0 ? fitScale : 0.78),
+                            key.Radius * 2 / key.Scale * step / 10, lines);
+                        Stack();
+                        if (Place()) return Result();
+                    }
+            }
         title = null;
+        hintScale = 1;
+        hintBounds = originalHintBounds;
         Stack();
         CenterPlan? withoutNotice = null;
         if (Place())
@@ -1209,12 +1220,13 @@ public sealed partial class DonutMenu : Control
                     }
                     title = null;
                     Stack();
-                    Place();
-                    withoutNotice = Result();
+                    if (Place()) withoutNotice = Result();
                 }
             }
         }
-        return withoutNotice ?? Result();
+        // If even the unchanged guidance cannot fit, never return the last rejected candidate.
+        // Keep the original baseline positions and omit only the replacement notice.
+        return withoutNotice ?? PlanCenter(key with { Notice = null }) with { Title = null };
 
         CenterPlan Result() => new(title, subtitle, hint, titleTop, subtitleTop, hintTop, hintScale);
 
