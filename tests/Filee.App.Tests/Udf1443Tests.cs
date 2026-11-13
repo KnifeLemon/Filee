@@ -13,6 +13,18 @@ namespace Filee.App.Tests;
 public sealed class Udf1443Tests
 {
     [AvaloniaFact]
+    public void Every_language_suggests_udf_for_joliet_limits()
+    {
+        TestServices.EnsureInitialized("en");
+        foreach (var language in LocalizationService.Languages)
+        {
+            var strings = LocalizationService.LoadStrings(language.Code);
+            foreach (var key in new[] { "error.iso_name", "error.iso_file_size" })
+                Assert.Contains("UDF 2.01", strings[key]);
+        }
+    }
+
+    [AvaloniaFact]
     public void Filesystem_choice_round_trips_without_changing_the_default()
     {
         TestServices.EnsureInitialized("en");
