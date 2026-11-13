@@ -159,4 +159,128 @@ public class HwpTextTests(EngineFixture fx) : IClassFixture<EngineFixture>
         paragraph.Inlines.Add(new HText(text, default));
         return paragraph;
     }
+
+    // ───────────────────────── Line breaks inside a paragraph (issue #1416) ─────────────────────────
+
+    private static HParagraph Paragraph(params HInline[] inlines)
+    {
+        var paragraph = new HParagraph();
+        paragraph.Inlines.AddRange(inlines);
+        return paragraph;
+    }
+
+    /// <summary>A paragraph of the lines, a line break (hp:lineBreak in HWPX) between each two.</summary>
+    private static HParagraph Lines(params string[] lines)
+    {
+        var paragraph = Paragraph(lines[0]);
+        foreach (var line in lines.Skip(1))
+            paragraph.Inlines.AddRange([new HLineBreak(default), new HText(line, default)]);
+        return paragraph;
+    }
+
+    private static string WriteHwpx(string folder, params HBlock[] blocks)
+    {
+        var section = new HSection();
+        section.Blocks.AddRange(blocks);
+        var document = new HDocument();
+        document.Sections.Add(section);
+        var path = Path.Combine(folder, "code.hwpx");
+        HwpxWriter.Write(document, path);
+        return path;
+    }
+
+    /// <summary>The issue's code: an empty line, indentation, a line that would read as a heading in Markdown.</summary>
+    private string Code() =>
+        WriteHwpx(fx.NewFolder(), Lines("import a;", "", "class X {", "    int y; // # 1", "# not a heading", "}"), Paragraph("Second para."));
+
+    [Fact]
+    public async Task Text_keeps_the_lines_their_indentation_and_empty_lines()
+    {
+        var text = Read(await ConvertAsync(Code(), "txt"));
+
+        Assert.Equal("import a;\n\nclass X {\n    int y; // # 1\n# not a heading\n}\n\nSecond para.", text.Trim());
+    }
+
+    [Fact]
+    public async Task Markdown_has_hard_breaks_and_no_line_reads_as_markup()
+    {
+        var markdown = Read(await ConvertAsync(Code(), "md"));
+
+        Assert.Equal("import a;\\\n\\\nclass X {\\\n    int y; // # 1\\\n\\# not a heading\\\n}\n\nSecond para.", markdown.Trim());
+        // Read back, the lines are lines of one paragraph again: no heading.
+        var read = MarkdownReader.Read(markdown, fx.NewFolder()).Sections.Single().Blocks.OfType<HParagraph>().ToList();
+        Assert.Equal(2, read.Count);
+        Assert.All(read, p => Assert.Equal(0, p.HeadingLevel));
+        Assert.Equal(5, read[0].Inlines.OfType<HLineBreak>().Count());
+    }
+
+    [Fact]
+    public async Task Html_has_a_break_for_each_line_and_keeps_the_indentation()
+    {
+        var html = Read(await ConvertAsync(Code(), "html"));
+
+        Assert.Matches(@"import a;<br ?/>\n?<br ?/>\n?class X \{<br ?/>\n?(    |(&#160;|&nbsp;| ){4})int y; // # 1<br ?/>\n?# not a heading<br ?/>\n?\}</p>", html);
+        Assert.DoesNotContain("<h1", html);
+    }
+
+    [Fact]
+    public async Task Bold_lines_and_table_cells_keep_their_breaks()
+    {
+        var bold = new HCharFormat(Bold: true);
+        var table = new HTable { ColumnCount = 2 };
+        foreach (var texts in new string[][] { ["cell a", "cell b"], ["r2"] })
+        {
+            var row = new HRow();
+            foreach (var cellText in new[] { Lines(texts), Paragraph("other") })
+            {
+                var cell = new HCell();
+                cell.Blocks.Add(cellText);
+                row.Cells.Add(cell);
+            }
+            table.Rows.Add(row);
+        }
+        var hwpx = WriteHwpx(fx.NewFolder(), Paragraph(new HText("Label", bold), new HLineBreak(bold), new HText("value", default), new HLineBreak(default)), table);
+
+        var markdown = Read(await ConvertAsync(hwpx, "md"));
+        // The bold closes before the break; the break that ends the paragraph goes.
+        Assert.Contains("**Label**\\\nvalue\n", markdown);
+        Assert.Contains("| cell a<br>cell b |", markdown);
+
+        var html = Read(await ConvertAsync(hwpx, "html"));
+        // A break that ends a paragraph shows no line in a browser, so the HTML may keep it.
+        Assert.Matches(@"<(strong|b)>Label</\1><br ?/>\n?value(<br ?/>)?</p>", html);
+        Assert.Matches(@"cell a<br ?/?>\n?cell b", html);
+    }
+
+    [Theory]
+    [InlineData(new[] { "a", "b" }, "a\\\nb")]
+    [InlineData(new[] { "a", "", "    b" }, "a\\\n\\\n    b")]
+    [InlineData(new[] { "a", "# h", "- l", "+ p", "1. n", "> q", "---", "-", "<div>", ": d", "```" },
+        "a\\\n\\# h\\\n\\- l\\\n\\+ p\\\n1\\. n\\\n\\> q\\\n\\---\\\n\\-\\\n\\<div\\>\\\n\\: d\\\n\\`\\`\\`")]
+    [InlineData(new[] { "a", "-1", "x - y" }, "a\\\n-1\\\nx - y")]
+    [InlineData(new[] { "end", "", "" }, "end")]
+    public void Every_line_of_a_markdown_paragraph_stays_a_line(string[] lines, string expected)
+    {
+        var document = new HDocument();
+        document.Sections.Add(new HSection { Blocks = { Lines(lines) } });
+
+        var markdown = MarkdownWriter.Write(document, _ => null);
+
+        Assert.Equal(expected + "\n", markdown);
+        // Read back: one plain paragraph, the lines as they were.
+        var read = Assert.Single(MarkdownReader.Read(markdown, fx.NewFolder()).Sections.Single().Blocks);
+        var paragraph = Assert.IsType<HParagraph>(read);
+        Assert.Equal((0, null), (paragraph.HeadingLevel, paragraph.List));
+        var text = string.Concat(paragraph.Inlines.Select(i => i switch { HText t => t.Text, HLineBreak => "\n", _ => "" }));
+        Assert.Equal(string.Join("\n", lines.Select(l => l.TrimStart())).TrimEnd('\n'), text);
+    }
+
+    [Fact]
+    public async Task A_document_without_line_breaks_is_read_as_it_is()
+    {
+        var hwpx = WriteHwpx(fx.NewFolder(), Paragraph("One line."), Paragraph("    Indented line."));
+
+        Assert.Equal("One line.\n\n    Indented line.", Read(await ConvertAsync(hwpx, "txt")).Trim());
+        Assert.Equal("One line.\n\n    Indented line.", Read(await ConvertAsync(hwpx, "md")).Trim());
+    }
 }

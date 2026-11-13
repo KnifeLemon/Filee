@@ -400,4 +400,141 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(JobState.Completed, job.State);
         Assert.Equal("한글 메모\n", await File.ReadAllTextAsync(Assert.Single(job.Outputs), TestContext.Current.CancellationToken));
     }
+
+    // ───────────────────────── Table column alignment ──────────
+
+    /// <summary>A left, a centred, a right and a plain column; the last row is short.</summary>
+    private const string AlignedTable = "| Left | Centre | Right | Plain |\n|:-----|:------:|------:|-------|\n| a | b | c | d |\n| e | f |\n";
+
+    /// <summary>The alignment of each cell with text, row by row (empty cells are left out).</summary>
+    private static HAlign?[][] CellAlignments(HDocument document) =>
+        [.. document.Sections.SelectMany(s => s.Blocks).OfType<HTable>().Single().Rows
+            .Select(row => row.Cells.Select(c => c.Blocks.OfType<HParagraph>().FirstOrDefault(p => p.Inlines.Count > 0)).OfType<HParagraph>()
+                .Select(p => p.Format.Align).ToArray())];
+
+    [Fact]
+    public void A_pipe_tables_column_alignment_aligns_every_cell_of_the_column()
+    {
+        var alignments = CellAlignments(MarkdownReader.Read(AlignedTable, fx.NewFolder()));
+
+        Assert.Equal([HAlign.Left, HAlign.Center, HAlign.Right, null], alignments[0]); // the header row too
+        Assert.Equal([HAlign.Left, HAlign.Center, HAlign.Right, null], alignments[1]);
+        Assert.Equal([HAlign.Left, HAlign.Center], alignments[2]);
+    }
+
+    [Fact]
+    public void A_grid_tables_alignment_follows_the_cells_columns_past_a_span()
+    {
+        // A grid table's alignment is in its first line.
+        const string Grid = """
+            +:----+:---:+----:+
+            | A   | B   | C   |
+            +-----+-----+-----+
+            | wide      | r   |
+            +-----------+-----+
+            """;
+
+        var document = MarkdownReader.Read(Grid, fx.NewFolder());
+        var table = document.Sections.Single().Blocks.OfType<HTable>().Single();
+        var alignments = CellAlignments(document);
+
+        Assert.Equal([HAlign.Left, HAlign.Center, HAlign.Right], alignments[0]);
+        Assert.Equal(2, table.Rows[1].Cells[0].ColSpan);
+        Assert.Equal([HAlign.Left, HAlign.Right], alignments[1]); // the cell after the span is in the third column
+    }
+
+    [Fact]
+    public void Column_alignment_reaches_docx_hwpx_and_odt()
+    {
+        var document = MarkdownReader.Read(AlignedTable, fx.NewFolder());
+        var folder = fx.NewFolder();
+        var docx = Path.Combine(folder, "table.docx");
+        var hwpx = Path.Combine(folder, "table.hwpx");
+        var odt = Path.Combine(folder, "table.odt");
+        DocxWriter.Write(document, docx);
+        HwpxWriter.Write(document, hwpx);
+        Filee.Engines.Hwp.Hwpx.Odt.OdtWriter.Write(document, odt, TestContext.Current.CancellationToken);
+
+        var media = fx.NewFolder();
+        foreach (var (name, read) in new[]
+        {
+            ("docx", DocxReader.Read(docx, media)),
+            ("hwpx", HwpxReader.Read(hwpx, media)),
+            ("odt", Filee.Engines.Hwp.Hwpx.Odt.OdtReader.Read(odt, media)),
+        })
+        {
+            foreach (var row in CellAlignments(read))
+            {
+                Assert.True(row[0] is null or HAlign.Left or HAlign.Justify, $"{name}: {row[0]}");
+                Assert.True(row[1] == HAlign.Center, $"{name}: {row[1]}");
+                if (row.Length > 2)
+                {
+                    Assert.True(row[2] == HAlign.Right, $"{name}: {row[2]}");
+                    Assert.True(row[3] is null or HAlign.Left or HAlign.Justify, $"{name}: {row[3]}");
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void Column_alignment_moves_the_text_in_the_rendered_cells()
+    {
+        var fonts = RepositoryFonts.Load();
+        Assert.SkipUnless(fonts.Has(RepositoryFonts.Latin), "Noto Sans is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        using var shaper = new Filee.Engines.Typesetting.Shaper();
+        float X(string delimiter)
+        {
+            var document = MarkdownReader.Read($"| x | y |\n|---|{delimiter}|\n| a | b |\n", fx.NewFolder());
+            var page = new Filee.Engines.Typesetting.PageComposer(new Filee.Engines.Typesetting.FontResolver(fonts), shaper)
+                .Compose(document, TestContext.Current.CancellationToken).Pages[0];
+            return page.Items.OfType<Filee.Engines.Rendering.GlyphItem>().Single(i => i.Run.Text.Trim() == "b").Run.Positions[0].X;
+        }
+
+        var plain = X("---");
+        var centre = X(":-:");
+        var right = X("--:");
+
+        Assert.True(centre > plain + 50, $"plain {plain}, centred {centre}");
+        Assert.True(right > centre + 50, $"centred {centre}, right {right}");
+    }
+
+    [Fact]
+    public void The_markdown_writer_writes_the_column_alignment_back()
+    {
+        var markdown = MarkdownWriter.Write(MarkdownReader.Read(AlignedTable, fx.NewFolder()), _ => null);
+
+        // Left is how a column shows anyway: it stays "---".
+        Assert.Contains("| Left | Centre | Right | Plain |\n|---|:---:|---:|---|\n| a | b | c | d |\n| e | f |  |  |", markdown);
+        var again = CellAlignments(MarkdownReader.Read(markdown, fx.NewFolder()));
+        Assert.Equal([null, HAlign.Center, HAlign.Right, null], again[1]);
+    }
+
+    [Fact]
+    public void A_column_whose_cells_differ_or_span_keeps_a_plain_delimiter()
+    {
+        var table = new HTable { ColumnCount = 2 };
+        foreach (var (first, second) in new (HAlign? First, HAlign? Second)[] { (HAlign.Center, HAlign.Right), (HAlign.Right, HAlign.Right) })
+        {
+            var row = new HRow();
+            foreach (var align in new[] { first, second })
+            {
+                var cell = new HCell();
+                cell.Blocks.Add(new HParagraph { Format = new HParaFormat(Align: align), Inlines = { new HText("t", default) } });
+                row.Cells.Add(cell);
+            }
+            table.Rows.Add(row);
+        }
+        var spanning = new HCell { ColSpan = 2 };
+        spanning.Blocks.Add(new HParagraph { Format = new HParaFormat(Align: HAlign.Center), Inlines = { new HText("wide", default) } });
+        table.Rows.Add(new HRow { Cells = { spanning } });
+        var document = new HDocument();
+        document.Sections.Add(new HSection { Blocks = { table } });
+
+        Assert.Contains("|---|---:|\n", MarkdownWriter.Write(document, _ => null));
+
+        // Right to left, Left is the start side: the right edge.
+        foreach (var paragraph in table.Rows.SelectMany(r => r.Cells).SelectMany(c => c.Blocks).OfType<HParagraph>())
+            paragraph.Format = new HParaFormat(Align: HAlign.Left, RightToLeft: true);
+        Assert.Contains("|---:|---:|\n", MarkdownWriter.Write(document, _ => null));
+    }
 }

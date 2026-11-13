@@ -2,11 +2,12 @@
 //
 // Mirrors PandocAstReader: headings (with their ids as bookmarks), paragraphs, bold / italic / strike / sub- and
 // superscript / inserted / marked text, code, lists (1. / a. / i. / A. / I. with the start number, nested levels),
-// task lists, block quotes, pipe and grid tables with spans, definition lists, links, images, footnotes and math.
-// The YAML front matter's "title", "subtitle", "author" and "date" become the document's metadata. Raw HTML is
-// skipped, except <br>. For the PPTX writer, blocks keep what they were (HBlockRole): code lines, thematic breaks and
-// the content of Pandoc-style "::: notes" containers (speaker notes). A code block is one shaded box in a monospace
-// font: a borderless one-column table with a row per line, so it can break across pages.
+// task lists, block quotes, pipe and grid tables with spans and column alignment (as the cells' paragraph alignment),
+// definition lists, links, images, footnotes and math. The YAML front matter's "title", "subtitle", "author" and "date"
+// become the document's metadata. Raw HTML is skipped, except <br>. For the PPTX writer, blocks keep what they were
+// (HBlockRole): code lines, thematic breaks and the content of Pandoc-style "::: notes" containers (speaker notes). A
+// code block is one shaded box in a monospace font: a borderless one-column table with a row per line, so it can break
+// across pages.
 
 using Filee.Engines.Infrastructure;
 using Markdig;
@@ -314,6 +315,7 @@ internal sealed class MarkdownReader
         foreach (var row in rows)
         {
             var hRow = new HRow { Header = row.IsHeader };
+            var column = 0;
             foreach (var cell in row.OfType<TableCell>())
             {
                 var hCell = new HCell
@@ -324,12 +326,29 @@ internal sealed class MarkdownReader
                 Blocks(cell, hCell.Blocks, new Context());
                 if (row.IsHeader)
                     BoldHeader(hCell.Blocks);
+                // The cell's column as Markdig names it (grid tables), else counted along the row. A spanning cell takes
+                // its first column's alignment.
+                if (cell.ColumnIndex >= 0)
+                    column = cell.ColumnIndex;
+                if (column < table.ColumnDefinitions.Count && Align(table.ColumnDefinitions[column].Alignment) is { } align)
+                    foreach (var paragraph in hCell.Blocks.OfType<HParagraph>())
+                        paragraph.Format = paragraph.Format with { Align = align };
+                column += hCell.ColSpan;
                 hRow.Cells.Add(hCell);
             }
             hTable.Rows.Add(hRow);
         }
         return hTable;
     }
+
+    /// <summary>A column's ":---", ":---:" or "---:"; null (plain "---") leaves the paragraphs as they are.</summary>
+    private static HAlign? Align(TableColumnAlign? alignment) => alignment switch
+    {
+        TableColumnAlign.Left => HAlign.Left,
+        TableColumnAlign.Center => HAlign.Center,
+        TableColumnAlign.Right => HAlign.Right,
+        _ => null,
+    };
 
     /// <summary>Header cells are bold, as Markdown renderers show them.</summary>
     private static void BoldHeader(List<HBlock> blocks)
