@@ -148,7 +148,8 @@ internal sealed record HPageBorder(HPageType Pages, HBorders Borders, string? Fi
     public bool IsEmpty => Fill is null && Picture is null && Borders == HBorders.Empty;
 }
 
-internal sealed record HColumns(int Count, int Gap, bool Separator)
+/// <param name="RightToLeft">The first column is the rightmost (Word sectPr w:bidi, RTF \rtlsect). Only the layout engine uses it.</param>
+internal sealed record HColumns(int Count, int Gap, bool Separator, bool RightToLeft = false)
 {
     public static readonly HColumns Single = new(1, 0, false);
 }
@@ -307,6 +308,13 @@ internal sealed class HTable : HBlock
     public int ColumnCount { get; set; }
     public HAlign Align { get; set; } = HAlign.Left;
     public int Indent { get; set; }
+
+    /// <summary>
+    /// The columns run from the right (Word w:bidiVisual, RTF \rtlrow): the first column is the rightmost, and
+    /// <see cref="Align"/>, <see cref="Indent"/> and each cell's left and right borders and padding name the start and
+    /// the end side, as in a right-to-left paragraph. Only the layout engine uses it.
+    /// </summary>
+    public bool RightToLeft { get; set; }
 
     /// <summary>Cell padding; null = 한글 default.</summary>
     public HInsets? CellMargin { get; set; }
@@ -506,6 +514,34 @@ internal sealed class HBookmark(string name) : HInline
     public string Name { get; } = name;
 }
 
+internal enum HDirectionKind
+{
+    /// <summary>Left-to-right embedding (Word w:dir w:val="ltr").</summary>
+    LeftToRight,
+
+    /// <summary>Right-to-left embedding (Word w:dir w:val="rtl").</summary>
+    RightToLeft,
+
+    /// <summary>Left-to-right override: every character reads left to right (Word w:bdo w:val="ltr").</summary>
+    OverrideLeftToRight,
+
+    /// <summary>Right-to-left override (Word w:bdo w:val="rtl").</summary>
+    OverrideRightToLeft,
+
+    /// <summary>Ends the innermost embedding or override.</summary>
+    End,
+}
+
+/// <summary>
+/// Where an explicit text direction starts or ends inside a paragraph (Word w:dir and w:bdo). The text between the
+/// marks stays in the paragraph's inlines; the layout reads the marks as the Unicode embedding and override controls.
+/// Read for layout only; the writers leave the marks out.
+/// </summary>
+internal sealed class HDirectionMark(HDirectionKind kind) : HInline
+{
+    public HDirectionKind Kind { get; } = kind;
+}
+
 internal sealed class HNote(bool endnote) : HInline
 {
     public bool Endnote { get; } = endnote;
@@ -516,6 +552,15 @@ internal sealed class HNote(bool endnote) : HInline
 
     /// <summary>The format of the run the reference is in (its colour, size ...); null = the text's around it.</summary>
     public HCharFormat? Format { get; set; }
+}
+
+/// <summary>
+/// The number of the note this text belongs to, where the note's text has it (Word w:footnoteRef / w:endnoteRef): in
+/// "(1) text" between the brackets. Read for layout only; the writers leave it out (한글 numbers its notes itself).
+/// </summary>
+internal sealed class HNoteNumber(HCharFormat format) : HInline
+{
+    public HCharFormat Format { get; } = format;
 }
 
 internal enum HFieldKind

@@ -11,7 +11,9 @@
 // 4. Place: each line's part of every item is shaped again with its context, so a break inside an Arabic word or
 //    after an Indic cluster is shaped as it ends; tabs get their width from the stops (left, right, centre, decimal,
 //    with leaders); alignment adds the remaining width before the line (right, centre) or between its spaces
-//    (justify; between clusters where a line has no spaces) or its clusters (distribute, 한글 배분, the last line too).
+//    (justify; between clusters where a line has no spaces; in Word's paragraphs between Chinese and Japanese characters
+//    too) or its clusters (distribute, 한글 배분, the last line too). Word and 한글 put a little space between East Asian
+//    text and Latin letters or digits that touch it (auto-spacing); ParagraphLayout.EastAsian.cs has both.
 // 5. Line height: by the rule the paragraph carries. 한글's rules (percent, fixed, at least, between lines) measure
 //    from the font size, the text taking 85% of it above the baseline as 한글 lays out (its stored line segments put
 //    the baseline at 0.85 × the text height); Word's multiple, and 한글 "글꼴에 어울리는 줄 높이", measure from the
@@ -25,7 +27,9 @@
 // Lines Filee estimated are never used; otherwise the paragraph is broken again and ParagraphBox says why.
 //
 // Bidirectional text: the paragraph's levels come from the Unicode Bidirectional Algorithm (BidiAlgorithm), items
-// split where the level changes, and each line's parts are reordered by level (UAX #9 rule L2).
+// split where the level changes, and each line's parts are reordered by level (UAX #9 rule L2). Spaces and other
+// neutral characters of a right-to-left run (Word w:rtl) read right to left, as Word reads them. A right-to-left
+// paragraph starts at the right: its alignment and indents name the start and end side (HParaFormat.RightToLeft).
 // Tab positions are measured from the paragraph's left indent, as 한글 measures them; a hanging indent is a tab stop
 // on the first line (the text after a list number starts there).
 //
@@ -39,7 +43,7 @@ using SkiaSharp;
 namespace Filee.Engines.Typesetting;
 
 /// <summary>Lays out paragraphs; one per layout job, sharing its font resolver and shaper (not thread-safe).</summary>
-internal sealed class ParagraphLayouter
+internal sealed partial class ParagraphLayouter
 {
     /// <summary>Distance between the default tab stops, in points (한글's 40 pt).</summary>
     private const float DefaultTabInterval = 40;
@@ -99,11 +103,12 @@ internal sealed class ParagraphLayouter
     /// Room objects take beside the lines laid out anew (text wrap): for a line at a height below the first line's top
     /// and its height, how far in from the left and right it starts and ends. Null leaves the lines whole.
     /// </param>
+    /// <param name="noteNumber">In a note's text, the note's number, put where the text has it (HNoteNumber).</param>
     public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<HField, string>? fields = null,
-        Func<HNote, string>? notes = null, Func<float, float, (float Left, float Right)>? wrap = null)
+        Func<HNote, string>? notes = null, Func<float, float, (float Left, float Right)>? wrap = null, string? noteNumber = null)
     {
         var format = paragraph.Format;
-        var source = ParagraphText.From(paragraph, marker, fields, notes);
+        var source = ParagraphText.From(paragraph, marker, fields, notes, noteNumber);
         var text = source.Text;
         var language = FontSubstitution.Language(text);
         var rightToLeft = format.RightToLeft ?? BidiAlgorithm.IsRightToLeft(text);
@@ -115,7 +120,7 @@ internal sealed class ParagraphLayouter
             var (startInset, endInset) = rightToLeft ? (insetRight, insetLeft) : (insetLeft, insetRight);
             format = format with { Left = (format.Left ?? 0) + startInset, Right = (format.Right ?? 0) + endInset };
         }
-        var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft));
+        var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft, source.RightToLeftRuns()));
         var (advances, starts) = Measure(source, items);
 
         var breaking = format.Layout?.Breaking;
@@ -136,7 +141,9 @@ internal sealed class ParagraphLayouter
             breaking?.LineWrap ?? HLineWrap.Break,
             Math.Clamp(breaking?.Condense ?? 0, 0, 100) / 100f,
             format.Layout?.LineHeight ?? HLineHeight.From(format.LineSpacing ?? new HLineSpacing(HLineSpacingKind.Percent, 160)),
-            format.Layout?.FontLineHeight == true);
+            format.Layout?.FontLineHeight == true,
+            SpreadEastAsian: breaking?.SpreadEastAsian == true,
+            Language: language);
         // A number that indents its paragraph (한글 autoIndent): the lines after the first hang under the text after it.
         if (marker is { Length: > 0 } && paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count
             && levels[level].AutoIndent && marker.Length + 1 <= text.Length)
@@ -150,6 +157,13 @@ internal sealed class ParagraphLayouter
 
         var (stored, ignored) = _storedLines ? StoredStarts(paragraph, source, marker, items, advances) : (null, null);
         var ranges = new LineIndex(source, items);
+        // Auto-spacing on the lines laid out anew; 한글's stored lines already hold what 한글 put there.
+        if (stored is null && AutoSpace(source, items, starts, breaking) is { } autoSpace)
+        {
+            for (var i = 0; i < advances.Length; i++)
+                advances[i] += autoSpace[i];
+            paragraphLayout = paragraphLayout with { AutoSpace = autoSpace };
+        }
         if (stored is not null)
         {
             var segments = paragraph.Lines!.Segments;
@@ -179,7 +193,7 @@ internal sealed class ParagraphLayouter
                 settings = settings with { Left = settings.Left + left, Right = settings.Right + right };
             var available = width - settings.Left - settings.Right - (first ? settings.FirstLine : 0);
             var (end, forced) = settings.Wrap == HLineWrap.Break
-                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense)
+                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense, settings.AutoSpace)
                 : (text.Length, true);
             lines.Add(Place(source, ranges, start, end, forced, first, width, settings, mark));
             y += lines[^1].Height;
@@ -261,8 +275,12 @@ internal sealed class ParagraphLayouter
     }
 
     /// <summary>The paragraph settings the line steps share (lengths in points).</summary>
+    /// <param name="SpreadEastAsian">Justified lines spread their room between Chinese and Japanese characters too (Word).</param>
+    /// <param name="Language">The paragraph's East Asian language (FontSubstitution.Language): "ko" justifies Han at the spaces.</param>
+    /// <param name="AutoSpace">Per UTF-16 index, the auto-spacing after the cluster starting there; null = none.</param>
     private sealed record Settings(HAlign Align, bool RightToLeft, float Left, float Right, float FirstLine, IReadOnlyList<HTabStop> Tabs,
-        HLineWrap Wrap, float Condense, HLineHeight LineHeight, bool FontLineHeight);
+        HLineWrap Wrap, float Condense, HLineHeight LineHeight, bool FontLineHeight, bool SpreadEastAsian = false, string Language = "",
+        float[]? AutoSpace = null);
 
     // ───────────────────────── Items ─────────────────────────
 
@@ -483,8 +501,9 @@ internal sealed class ParagraphLayouter
     // ───────────────────────── Breaking ─────────────────────────
 
     /// <summary>Where the line starting at <paramref name="start"/> ends, and whether it had to (a line break, the end).</summary>
+    /// <param name="autoSpace">Auto-spacing included in <paramref name="advances"/>, which a line ending there leaves out.</param>
     private static (int End, bool Forced) Fit(string text, LineBreak[] breaks, float[] advances, bool[] starts, int start, float available,
-        Func<float, TabStop> nextStop, float condense)
+        Func<float, TabStop> nextStop, float condense, float[]? autoSpace = null)
     {
         var pen = new Pen();
         var lastBreak = -1;
@@ -511,7 +530,7 @@ internal sealed class ParagraphLayouter
                     spaces += width;
                 continue;
             }
-            var after = pen.After(width);
+            var after = pen.After(width - (autoSpace?[i] ?? 0));
             if (i > start && after > available + Epsilon && !(condense > 0 && after - spaces * condense <= available + Epsilon))
                 return (lastBreak > start ? lastBreak : i, false);
             pen.Add(width, c);
@@ -749,6 +768,22 @@ internal sealed class ParagraphLayouter
                 advances[i] += spacing[i];
             }
         }
+        if (settings.AutoSpace is { } autoSpace)
+        {
+            // Auto-spacing between characters that are both on the line.
+            var next = contentEnd;
+            for (var i = contentEnd - 1; i >= start; i--)
+            {
+                if (!starts[i - start])
+                    continue;
+                if (autoSpace[i] > 0 && next < contentEnd)
+                {
+                    spacing[i - start] += autoSpace[i];
+                    advances[i - start] += autoSpace[i];
+                }
+                next = i;
+            }
+        }
 
         // Tabs in logical order, then the natural width.
         var pen = new Pen();
@@ -809,7 +844,9 @@ internal sealed class ParagraphLayouter
         }
         else if (extra > 0 && align == HAlign.Justify)
         {
-            var stretch = spaces.Count > 0 ? spaces : clusterIndices.Take(clusterIndices.Count - 1).ToList();
+            var stretch = settings.SpreadEastAsian ? JustifyGaps(text, clusterIndices, settings.Language) : spaces;
+            if (stretch.Count == 0)
+                stretch = clusterIndices.Take(clusterIndices.Count - 1).ToList();
             foreach (var i in stretch)
                 gaps[i - start] = extra / stretch.Count;
             if (stretch.Count > 0)

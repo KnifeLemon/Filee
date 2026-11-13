@@ -301,6 +301,10 @@ internal sealed partial class DocxReader
             HeaderMovesBody = Twips(sectPr?.Element(W + "pgMar"), "top") is not < 0,
             FooterMovesBody = Twips(sectPr?.Element(W + "pgMar"), "bottom") is not < 0,
             FooterGrowsUp = true,
+            // Word numbers notes 1, 2, 3 and i, ii, iii without 한글's ")" after them; the number is in the note's text
+            // where Word has it (HNoteNumber).
+            Footnotes = HNoteShape.Footnote with { Format = new HNoteFormat("DIGIT", "", "", false) },
+            Endnotes = HNoteShape.Endnote with { Format = new HNoteFormat("ROMAN_SMALL", "", "", false) },
         };
         section.Blocks.AddRange(blocks);
 
@@ -582,7 +586,9 @@ internal sealed partial class DocxReader
         var count = int.TryParse(Attr(cols, "num"), out var n) ? n : cols?.Elements(W + "col").Count() ?? 1;
         if (count <= 1)
             return HColumns.Single;
-        return new HColumns(Math.Min(count, 255), HwpxUnits.FromTwips(Twips(cols, "space") ?? 720), Bool(cols, "sep") == true);
+        // A right-to-left section (w:bidi) fills its columns from the right.
+        return new HColumns(Math.Min(count, 255), HwpxUnits.FromTwips(Twips(cols, "space") ?? 720), Bool(cols, "sep") == true,
+            RightToLeft: sectPr is not null && Toggle(sectPr, "bidi") == true);
     }
 
     // ───────────────────────── Blocks ─────────────────────────
@@ -816,9 +822,27 @@ internal sealed partial class DocxReader
                     if (Attr(element, "name") is { Length: > 0 } bookmark && bookmark != "_GoBack")
                         builder.Add(new HBookmark(bookmark));
                     break;
-                case "ins" or "moveTo" or "smartTag" or "customXml" or "dir" or "bdo":
+                case "ins" or "moveTo" or "smartTag" or "customXml":
                     ParagraphContent(element.Elements(), builder, styleRun);
                     break;
+                case "dir" or "bdo":
+                    {
+                        // Text in an explicit direction: embedded (w:dir) or overridden (w:bdo) right to left or left
+                        // to right, between marks the layout reads as the Unicode controls.
+                        var rightToLeft = Val(element) == "rtl";
+                        HDirectionMark? mark = (name, Val(element)) switch
+                        {
+                            (_, not ("rtl" or "ltr")) => null,
+                            ("dir", _) => new HDirectionMark(rightToLeft ? HDirectionKind.RightToLeft : HDirectionKind.LeftToRight),
+                            _ => new HDirectionMark(rightToLeft ? HDirectionKind.OverrideRightToLeft : HDirectionKind.OverrideLeftToRight),
+                        };
+                        if (mark is not null)
+                            builder.Add(mark);
+                        ParagraphContent(element.Elements(), builder, styleRun);
+                        if (mark is not null)
+                            builder.Add(new HDirectionMark(HDirectionKind.End));
+                        break;
+                    }
                 case "sdt":
                     ParagraphContent(element.Element(W + "sdtContent")?.Elements() ?? [], builder, styleRun);
                     break;
@@ -927,8 +951,13 @@ internal sealed partial class DocxReader
                 if (Note(child, _endnotes, _endnotesPart, endnote: true) is { } endnote)
                     builder.Add(endnote);
                 break;
+            case "footnoteRef" or "endnoteRef":
+                // The note's own number, where its text has it: "(1)" keeps the number between its brackets.
+                if (ShowsText())
+                    builder.Add(new HNoteNumber(format));
+                break;
             default:
-                break; // footnoteRef (the number, 한글 adds its own), separator, lastRenderedPageBreak, delText ...
+                break; // separator, lastRenderedPageBreak, delText ...
         }
     }
 
@@ -1050,11 +1079,13 @@ internal sealed partial class DocxReader
                 _tableStyleLayer = tableStyleLayer;
             }
         }
-        // Word notes start with the reference mark and a space; 한글 writes its own number.
-        if (note.Blocks.FirstOrDefault() is HParagraph first && first.Inlines.FirstOrDefault() is HText { Text: var text } leading)
+        // Word notes start with the reference mark and a space; 한글 writes its own number, and so does the layout in
+        // front of the text when the mark starts it.
+        if (note.Blocks.FirstOrDefault() is HParagraph first && first.Inlines.FindIndex(i => i is not HNoteNumber) is var index and >= 0
+            && first.Inlines[index] is HText { Text: var text } leading)
         {
             var trimmed = text.TrimStart();
-            first.Inlines[0] = new HText(trimmed, leading.Format);
+            first.Inlines[index] = new HText(trimmed, leading.Format);
         }
         return note;
     }

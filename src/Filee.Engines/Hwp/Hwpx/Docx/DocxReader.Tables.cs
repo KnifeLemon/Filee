@@ -29,6 +29,10 @@ internal sealed partial class DocxReader
                 _ => HAlign.Left,
             },
             Indent = HwpxUnits.FromTwips(Twips(tblPr?.Element(W + "tblInd"), "w") ?? 0),
+            // A right-to-left table: its first grid column is the rightmost, and jc, tblInd and the cells' left / right
+            // borders and margins name the start and the end side (the layout mirrors them).
+            RightToLeft = styleChain.Select(s => s.TblPr).Append(tblPr).OfType<XElement>()
+                .Aggregate((bool?)null, (inherited, properties) => Toggle(properties, "bidiVisual") ?? inherited) == true,
         };
 
         // Borders and cell margins: table style chain, then the table's own properties.

@@ -51,21 +51,37 @@ internal sealed partial class RtfReader
         public List<HInline> Inlines { get; } = [];
         public TableBuilder? Table { get; set; }
         public bool PageBreak { get; set; }
+
+        /// <summary>The text of a footnote or endnote, where \chftn is the note's own number.</summary>
+        public bool Note { get; init; }
     }
+
+    /// <summary>A section with Word's note numbers (1, 2, 3 and i, ii, iii), without 한글's ")" after them.</summary>
+    private static HSection NewWordSection() => new()
+    {
+        Footnotes = HNoteShape.Footnote with { Format = new HNoteFormat("DIGIT", "", "", false) },
+        Endnotes = HNoteShape.Endnote with { Format = new HNoteFormat("ROMAN_SMALL", "", "", false) },
+    };
 
     private sealed class FieldContext
     {
         public StringBuilder Instruction { get; } = new();
     }
 
+    /// <param name="RightToLeft">A right-to-left run: \rtlch came after the last \ltrch.</param>
     private record struct CharProps(bool Bold, bool Italic, bool Underline, bool Strike, bool Superscript, bool Subscript,
-        int HalfPoints, int Font, int Color, int Shade, bool Hidden)
+        int HalfPoints, int Font, int Color, int Shade, bool Hidden, bool RightToLeft = false)
     {
         public static CharProps Default => new() { HalfPoints = DefaultHalfPoints, Font = -1 };
     }
 
+    /// <param name="Align">\ql, \qr ...: the left and right side, also in a right-to-left paragraph.</param>
+    /// <param name="Left">\li and \ri: the left and right side.</param>
+    /// <param name="Start">\lin and \rin: the start and end side (the right and left one in a right-to-left paragraph); they win.</param>
+    /// <param name="RightToLeft">\rtlpar.</param>
     private record struct ParaProps(HAlign? Align, int Left, int Right, int FirstLine, int Before, int After, int Line, bool Multiple,
-        bool KeepNext, bool Keep, bool PageBreakBefore, bool InTable, int Style, int ListOverride, int ListLevel, int Outline)
+        bool KeepNext, bool Keep, bool PageBreakBefore, bool InTable, int Style, int ListOverride, int ListLevel, int Outline,
+        int? Start = null, int? End = null, bool RightToLeft = false)
     {
         public static ParaProps Default => new() { Style = -1, ListOverride = -1, Outline = -1 };
     }
@@ -151,7 +167,7 @@ internal sealed partial class RtfReader
         _lexer = new Lexer(rtf);
         _mediaFolder = mediaFolder;
         _budget = new DocumentBudget(limits);
-        _section = new HSection();
+        _section = NewWordSection();
         _document.Sections.Add(_section);
         _body = new Story { Blocks = _section.Blocks };
         _g = new Group { Story = _body };
@@ -326,6 +342,8 @@ internal sealed partial class RtfReader
             case "cf": _g.Char = c with { Color = value }; return;
             case "highlight" or "cb" or "chcbpat": _g.Char = c with { Shade = value }; return;
             case "v": _g.Char = c with { Hidden = on }; return;
+            case "rtlch": _g.Char = c with { RightToLeft = true }; return;
+            case "ltrch": _g.Char = c with { RightToLeft = false }; return;
 
             // Paragraph properties
             case "pard": _g.Para = ParaProps.Default; return;
@@ -336,6 +354,10 @@ internal sealed partial class RtfReader
             case "qd": _g.Para = p with { Align = HAlign.Distribute }; return;
             case "li": _g.Para = p with { Left = value }; return;
             case "ri": _g.Para = p with { Right = value }; return;
+            case "lin": _g.Para = p with { Start = value }; return;
+            case "rin": _g.Para = p with { End = value }; return;
+            case "rtlpar": _g.Para = p with { RightToLeft = true }; return;
+            case "ltrpar": _g.Para = p with { RightToLeft = false }; return;
             case "fi": _g.Para = p with { FirstLine = value }; return;
             case "sb": _g.Para = p with { Before = value }; return;
             case "sa": _g.Para = p with { After = value }; return;
@@ -370,7 +392,12 @@ internal sealed partial class RtfReader
             case "rdblquote": Text("”"); return;
             case "enspace" or "qmspace": Text(" "); return;
             case "emspace": Text(" "); return;
-            case "chftn": return; // the note's reference mark: the note itself stands there
+            case "chftn":
+                // In the body the note itself stands there; in the note's text it is the note's own number, which stays
+                // where the text has it ("(1)" keeps it between the brackets).
+                if (_g.Story.Note)
+                    AddInline(new HNoteNumber(Format(_g.Char)));
+                return;
             case "ftnalt": _g.Endnote = true; return;
         }
 
@@ -702,13 +729,20 @@ internal sealed partial class RtfReader
             Font: font,
             EastAsianFont: eastAsian,
             Color: c.Color > 0 && c.Color < _colors.Count ? _colors[c.Color] : null,
-            Shade: c.Shade > 0 && c.Shade < _colors.Count ? _colors[c.Shade] : null);
+            Shade: c.Shade > 0 && c.Shade < _colors.Count ? _colors[c.Shade] : null,
+            Layout: c.RightToLeft ? new HCharLayout(RightToLeft: true) : null);
     }
 
+    /// <summary>
+    /// The model's paragraph format. A right-to-left paragraph's Align, Left and Right name its start (right) and end
+    /// side, so RTF's left and right ones (\ql, \qr, \li, \ri) change places there; \lin and \rin already are the start
+    /// and end.
+    /// </summary>
     private static HParaFormat Format(ParaProps p) => new(
-        Align: p.Align,
-        Left: HwpxUnits.FromTwips(p.Left),
-        Right: HwpxUnits.FromTwips(p.Right),
+        Align: p.RightToLeft ? p.Align switch { HAlign.Left => HAlign.Right, HAlign.Right => HAlign.Left, var other => other } : p.Align,
+        Left: HwpxUnits.FromTwips(p.Start ?? (p.RightToLeft ? p.Right : p.Left)),
+        Right: HwpxUnits.FromTwips(p.End ?? (p.RightToLeft ? p.Left : p.Right)),
+        RightToLeft: p.RightToLeft ? true : null,
         FirstLine: HwpxUnits.FromTwips(p.FirstLine),
         Before: HwpxUnits.FromTwips(p.Before),
         After: HwpxUnits.FromTwips(p.After),
@@ -771,7 +805,7 @@ internal sealed partial class RtfReader
     private void NewSection()
     {
         ApplyPage();
-        _section = new HSection();
+        _section = NewWordSection();
         _document.Sections.Add(_section);
         _body.Blocks = _section.Blocks;
     }
@@ -781,7 +815,7 @@ internal sealed partial class RtfReader
     private void StartNote()
     {
         var parent = _g.Sink ?? _g.Story.Inlines;
-        var story = new Story();
+        var story = new Story { Note = true };
         _g.Story = story;
         _g.Sink = null;
         _g.Para = ParaProps.Default;
@@ -869,8 +903,9 @@ internal sealed partial class RtfReader
 
     // ───────────────────────── Page setup ─────────────────────────
 
+    /// <param name="RightToLeft">\rtlsect: the columns run from the right.</param>
     private record struct PageProps(int Width, int Height, int Left, int Right, int Top, int Bottom, int HeaderFromEdge, int FooterFromEdge,
-        int Gutter, bool Landscape, int Columns, int ColumnGap, bool Set)
+        int Gutter, bool Landscape, int Columns, int ColumnGap, bool Set, bool RightToLeft = false)
     {
         public static PageProps Default => new(12240, 15840, 1800, 1800, 1440, 1440, 720, 720, 0, false, 1, 720, false);
     }
@@ -903,6 +938,8 @@ internal sealed partial class RtfReader
             case "lndscpsxn": _sectionPage = section with { Landscape = true }; break;
             case "cols": _sectionPage = section with { Columns = Math.Clamp(value, 1, 32) }; break;
             case "colsx": _sectionPage = section with { ColumnGap = value }; break;
+            case "rtlsect": _sectionPage = section with { RightToLeft = true }; break;
+            case "ltrsect": _sectionPage = section with { RightToLeft = false }; break;
             case "pgnstarts": _section.StartPageNumber = value; break;
             case "pgnrestart": _section.StartPageNumber ??= 1; break;
             default: return false;
@@ -915,7 +952,7 @@ internal sealed partial class RtfReader
     {
         var p = _sectionPage;
         if (p.Columns > 1)
-            _section.Columns = new HColumns(p.Columns, HwpxUnits.FromTwips(p.ColumnGap), false);
+            _section.Columns = new HColumns(p.Columns, HwpxUnits.FromTwips(p.ColumnGap), false, p.RightToLeft);
         if (!p.Set && !p.Landscape)
             return;
         var (width, height) = p.Landscape && p.Width < p.Height ? (p.Height, p.Width) : (p.Width, p.Height);

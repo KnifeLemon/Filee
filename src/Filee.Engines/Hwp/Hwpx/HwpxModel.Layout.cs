@@ -20,6 +20,14 @@ namespace Filee.Engines.Hwp.Hwpx;
 /// Null where the source has no such setting (the font's own width).
 /// </param>
 /// <param name="Kerning">한글 "커닝" (useKerning): the font's kerning applies; null = it does (as in Word).</param>
+/// <param name="RightToLeft">
+/// A right-to-left run (Word w:rtl, RTF \rtlch): its spaces and other neutral characters read right to left, so the
+/// words of a Latin phrase typed in it follow each other from the right, as Word shows them.
+/// </param>
+/// <param name="ComplexScript">Word w:cs: every character of the run takes the complex-script font and formatting.</param>
+/// <param name="ComplexSize">Size of complex-script characters (Word w:szCs), 1/100 pt; null = the run's size.</param>
+/// <param name="ComplexBold">Complex-script characters are bold (Word w:bCs; w:b does not reach them); null = as the run.</param>
+/// <param name="ComplexItalic">Complex-script characters are italic (Word w:iCs); null = as the run.</param>
 internal sealed record HCharLayout(
     HLanguageSlots? Slots = null,
     HWordFonts? WordFonts = null,
@@ -27,7 +35,12 @@ internal sealed record HCharLayout(
     int? LetterSpacing = null,
     int? Position = null,
     bool? FontSpace = null,
-    bool? Kerning = null)
+    bool? Kerning = null,
+    bool? RightToLeft = null,
+    bool? ComplexScript = null,
+    int? ComplexSize = null,
+    bool? ComplexBold = null,
+    bool? ComplexItalic = null)
 {
     /// <summary>This layout with the members it leaves open taken from <paramref name="baseline"/>.</summary>
     public HCharLayout Over(HCharLayout? baseline) => baseline is null ? this : new HCharLayout(
@@ -37,7 +50,12 @@ internal sealed record HCharLayout(
         LetterSpacing ?? baseline.LetterSpacing,
         Position ?? baseline.Position,
         FontSpace ?? baseline.FontSpace,
-        Kerning ?? baseline.Kerning);
+        Kerning ?? baseline.Kerning,
+        RightToLeft ?? baseline.RightToLeft,
+        ComplexScript ?? baseline.ComplexScript,
+        ComplexSize ?? baseline.ComplexSize,
+        ComplexBold ?? baseline.ComplexBold,
+        ComplexItalic ?? baseline.ComplexItalic);
 }
 
 /// <summary>한글's seven language slots (글꼴 언어): each character takes the properties of the slot its script falls into.</summary>
@@ -196,6 +214,10 @@ internal sealed record HParaBorder(HBorders Borders, string? Fill, HInsets Offse
 /// <param name="AutoSpaceLatin">Space between East Asian and Latin text (한글 autoSpacing eAsianEng, Word w:autoSpaceDE).</param>
 /// <param name="AutoSpaceDigits">Space between East Asian text and digits (한글 eAsianNum, Word w:autoSpaceDN).</param>
 /// <param name="Condense">한글 "최소 공백": how far spaces may shrink to fit a line, in percent.</param>
+/// <param name="SpreadEastAsian">
+/// Justified lines spread their room between Chinese and Japanese characters too, not only over the spaces (Word's East
+/// Asian justification); null or false: over the spaces only, as 한글 justifies.
+/// </param>
 internal sealed record HLineBreaking(
     HLatinBreak? Latin = null,
     HNonLatinBreak? NonLatin = null,
@@ -205,13 +227,15 @@ internal sealed record HLineBreaking(
     bool? CompressPunctuation = null,
     bool? AutoSpaceLatin = null,
     bool? AutoSpaceDigits = null,
-    int? Condense = null)
+    int? Condense = null,
+    bool? SpreadEastAsian = null)
 {
     /// <summary>These settings with the members they leave open taken from <paramref name="baseline"/>.</summary>
     public HLineBreaking Over(HLineBreaking? baseline) => baseline is null ? this : new HLineBreaking(
         Latin ?? baseline.Latin, NonLatin ?? baseline.NonLatin, LineWrap ?? baseline.LineWrap, Kinsoku ?? baseline.Kinsoku,
         OverflowPunctuation ?? baseline.OverflowPunctuation, CompressPunctuation ?? baseline.CompressPunctuation,
-        AutoSpaceLatin ?? baseline.AutoSpaceLatin, AutoSpaceDigits ?? baseline.AutoSpaceDigits, Condense ?? baseline.Condense);
+        AutoSpaceLatin ?? baseline.AutoSpaceLatin, AutoSpaceDigits ?? baseline.AutoSpaceDigits, Condense ?? baseline.Condense,
+        SpreadEastAsian ?? baseline.SpreadEastAsian);
 }
 
 internal enum HLatinBreak

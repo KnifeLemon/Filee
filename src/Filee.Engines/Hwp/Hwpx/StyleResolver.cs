@@ -5,8 +5,9 @@
 // the file: a paragraph starts from its style's paragraph shape (Normal, "Heading n", or the footnote style inside
 // notes), the members the model sets replace the style's, and list items get the indentation the writer gives them.
 // Character formats work the same way on the style's character shape, including links (blue and underlined unless
-// coloured) and the per-language slots the writer fills from Font / EastAsianFont / Spacing. Rendering detail the
-// source set (HParaLayout, HCharLayout) wins over the style's.
+// coloured) and the per-language slots the writer fills from Font / EastAsianFont / Spacing, and spaces as wide as the
+// font makes them (the writer turns 한글's "글꼴에 어울리는 빈칸" on). Rendering detail the source set (HParaLayout,
+// HCharLayout) wins over the style's.
 
 using System.Xml;
 using System.Xml.Linq;
@@ -32,6 +33,10 @@ internal sealed class StyleResolver
 
     private StyleResolver(XElement head)
     {
+        // As the writer writes the template's character shapes (HwpxWriter.Header): spaces as wide as the font makes
+        // them, as in Word, not 한글's half a character.
+        foreach (var shape in head.Descendants(head.Name.Namespace + "charPr"))
+            shape.SetAttributeValue("useFontSpace", 1);
         _shapes = HwpxReader.ForHeader(head);
         _styles = HwpxWriter.FindStyles(head);
     }

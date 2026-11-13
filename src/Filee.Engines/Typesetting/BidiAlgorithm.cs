@@ -6,6 +6,10 @@
 //
 // The characters X9 removes (embedding and override controls, boundary neutrals) take the level of the character before
 // them, so they stay in that character's run; they have no glyphs of their own.
+//
+// Word's right-to-left runs (w:rtl): the white space and other neutrals in them are taken as strong right-to-left
+// characters, as Word does (the words of a Latin phrase typed into such a run follow each other from the right). Numbers
+// and their separators keep their own types, so "1,234.5" stays one number.
 
 namespace Filee.Engines.Typesetting;
 
@@ -52,16 +56,22 @@ internal static class BidiAlgorithm
     /// The embedding level of each UTF-16 index of a paragraph (odd: right to left; a surrogate pair's two halves alike).
     /// </summary>
     /// <param name="rightToLeft">The paragraph's direction; null takes it from the text (P2, P3).</param>
-    public static int[] Levels(string text, bool? rightToLeft = null)
+    /// <param name="rightToLeftRuns">
+    /// Per UTF-16 index, whether the character is in a right-to-left run (Word w:rtl), whose neutrals read right to left;
+    /// null for none.
+    /// </param>
+    public static int[] Levels(string text, bool? rightToLeft = null, bool[]? rightToLeftRuns = null)
     {
+        if (rightToLeftRuns is not null && rightToLeftRuns.Length != text.Length)
+            throw new ArgumentException("One flag per UTF-16 index of the text.", nameof(rightToLeftRuns));
         // Text without anything right to left or explicit in it, in a left-to-right paragraph, is all at level 0 (most
         // paragraphs).
-        if (rightToLeft != true && LeftToRightOnly(text))
+        if (rightToLeft != true && LeftToRightOnly(text) && (rightToLeftRuns is null || !rightToLeftRuns.Contains(true)))
             return new int[text.Length];
         var (codePoints, starts) = Decode(text);
         var original = codePoints.Select(UnicodeData.GetBidiClass).ToArray();
         var paragraph = (rightToLeft ?? FirstStrong(original, 0, original.Length) == BidiClass.R) ? 1 : 0;
-        var levels = Resolve(codePoints, original, paragraph);
+        var levels = Resolve(codePoints, original, paragraph, rightToLeftRuns is null ? null : [.. starts.Select(s => rightToLeftRuns[s])]);
 
         var result = new int[text.Length];
         for (var i = 0; i < codePoints.Length; i++)
@@ -74,10 +84,21 @@ internal static class BidiAlgorithm
     }
 
     /// <summary>The levels of a paragraph's code points, by their Bidi_Class, at the paragraph's level (0 or 1).</summary>
-    internal static int[] Resolve(int[] codePoints, BidiClass[] original, int paragraph)
+    /// <param name="rightToLeftRuns">Per code point, whether it is in a right-to-left run; null for none.</param>
+    internal static int[] Resolve(int[] codePoints, BidiClass[] original, int paragraph, bool[]? rightToLeftRuns = null)
     {
         var n = original.Length;
         var types = (BidiClass[])original.Clone();
+        if (rightToLeftRuns is not null)
+        {
+            // Neutrals of a right-to-left run are right to left. L1 still resets its white space at the line's end, as
+            // it reads the original types.
+            for (var i = 0; i < n; i++)
+            {
+                if (rightToLeftRuns[i] && original[i] is BidiClass.WS or BidiClass.ON)
+                    types[i] = BidiClass.R;
+            }
+        }
         var levels = new int[n];
         var matching = MatchingPdi(original);
 
