@@ -114,7 +114,11 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     /// stored layout take their stored place while the list so far follows it, as on a page. Floating objects come
     /// first (behind the text) or last (in front of it).
     /// </summary>
-    public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width)
+    public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width) => Stack(blocks, width, out _);
+
+    /// <inheritdoc cref="Stack(IReadOnlyList{HBlock}, float)"/>
+    /// <param name="extent">How far the list goes down: its lines and tables with their spacing, without floating objects.</param>
+    public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width, out float extent)
     {
         var pieces = new List<Piece>();
         var (behind, front) = (new List<(int, Piece)>(), new List<(int, Piece)>());
@@ -238,6 +242,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         }
         pieces.InsertRange(0, behind.OrderBy(o => o.Item1).Select(o => o.Item2));
         pieces.AddRange(front.OrderBy(o => o.Item1).Select(o => o.Item2));
+        extent = y;
         return pieces;
     }
 

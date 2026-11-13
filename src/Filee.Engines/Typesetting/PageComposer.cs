@@ -10,8 +10,11 @@
 // - 한글's stored layout: lines on their stored layout (ParagraphLayouter) take 한글's page breaks and their place on
 //   the page from it, while the page so far follows it too; anything laid out by Filee in between (a paragraph broken
 //   again, a table) ends that until 한글 starts its next page.
-// - Headers and footers: the section's header and footer for both pages, odd or even pages (by page number), none on
-//   the section's first page where it hides them; laid out in the header and footer areas.
+// - Headers and footers: the section's header and footer for both pages, odd or even pages (by page number), the first
+//   page's own (Word's "different first page") or none on the section's first page where it hides them; laid out in the
+//   header and footer areas. A header or footer of a continuous section break (Word) applies from the page after the
+//   break, or from the break's page when the break starts it. Word models: the footer grows up from the bottom of its
+//   area, and a header or footer taller than its area moves the body (see Dress).
 // - Master pages (바탕쪽): drawn behind the page's body (or in front of it) from the top of the body; see MasterPages.
 // - Page borders and backgrounds (쪽 테두리/배경) under everything else; see PageBorder.
 // - Paragraph borders and backgrounds (BoxBorder): consecutive paragraphs with the same border share one box, which
@@ -88,21 +91,36 @@ internal sealed class PageComposer
     /// <summary>The page geometry of a section, in points.</summary>
     private sealed record Geometry(float Width, float Height, float Left, float TextWidth, float HeaderTop, float BodyTop, float BodyBottom, float FooterTop, float FooterBottom)
     {
-        public static Geometry Of(HPage page) => new(
-            page.Width / 100f,
-            page.Height / 100f,
-            (page.Left + page.Gutter) / 100f,
-            page.TextWidth / 100f,
-            page.Top / 100f,
-            (page.Top + page.Header) / 100f,
-            (page.Height - page.Bottom - page.Footer) / 100f,
-            (page.Height - page.Bottom - page.Footer) / 100f,
-            (page.Height - page.Bottom) / 100f);
+        /// <summary>The body's top and bottom as the margins set them, before a tall header or footer moves the body.</summary>
+        public float MarginTop { get; init; }
+        public float MarginBottom { get; init; }
+
+        public static Geometry Of(HPage page)
+        {
+            var geometry = new Geometry(
+                page.Width / 100f,
+                page.Height / 100f,
+                (page.Left + page.Gutter) / 100f,
+                page.TextWidth / 100f,
+                page.Top / 100f,
+                (page.Top + page.Header) / 100f,
+                (page.Height - page.Bottom - page.Footer) / 100f,
+                (page.Height - page.Bottom - page.Footer) / 100f,
+                (page.Height - page.Bottom) / 100f);
+            return geometry with { MarginTop = geometry.BodyTop, MarginBottom = geometry.BodyBottom };
+        }
     }
 
     /// <summary>A page and what its headers and footers need.</summary>
     private sealed record Page(PageContent Content, HSection Section, Geometry Geometry, int Number, bool FirstOfSection)
     {
+        /// <summary>The page's areas, its body moved by a tall header or footer (see Dress).</summary>
+        public Geometry Geometry { get; set; } = Geometry;
+
+        /// <summary>The header and footer drawn on the page; null for none.</summary>
+        public List<HBlock>? Header { get; set; }
+        public List<HBlock>? Footer { get; set; }
+
         /// <summary>The floating objects on the page, drawn when the page is done.</summary>
         public List<PlacedObject> Objects { get; } = [];
 
@@ -118,6 +136,9 @@ internal sealed class PageComposer
         private readonly List<Page> _pages = [];
         private readonly List<OutlineEntry> _outline = [];
         private Geometry _geometry = Geometry.Of(DefaultPage);
+
+        /// <summary>The section's areas before a header or footer moves the body.</summary>
+        private Geometry _paper = Geometry.Of(DefaultPage);
         private HSection? _section;
         private int _number;
         private float _y;
@@ -296,7 +317,13 @@ internal sealed class PageComposer
                     EndRegion(balance: false);
                 _section = section;
                 _lastStored = null;
-                _geometry = Geometry.Of(section.Page ?? DefaultPage);
+                _geometry = _paper = Geometry.Of(section.Page ?? DefaultPage);
+                _startsAt.Clear();
+                foreach (var item in section.Headers.Concat(section.Footers))
+                {
+                    if (item.StartsAt is { } paragraph)
+                        _startsAt.Add(paragraph);
+                }
                 if (section.StartPageNumber is { } start)
                     _number = start - 1;
                 HangulPage(firstOfSection: true, section.Columns);
@@ -340,7 +367,9 @@ internal sealed class PageComposer
                 _guard.PageFinished(_empty);
             }
             _number++;
-            _pages.Add(new Page(new PageContent(_geometry.Width, _geometry.Height), _section!, _geometry, _number, firstOfSection));
+            var page = new Page(new PageContent(_paper.Width, _paper.Height), _section!, _paper, _number, firstOfSection);
+            _pages.Add(page);
+            Dress(page, _pages.Count - 1);
             _y = _geometry.BodyTop;
             _empty = true;
             _inStep = true;
@@ -389,6 +418,8 @@ internal sealed class PageComposer
                 }
                 if (blocks[i] is not HParagraph source)
                     continue;
+                if (_startsAt.Contains(source))
+                    StartsHere(source);
                 // 한글 keeps a table inside a paragraph, which the model splits around it. With no text before the
                 // table (only objects floating at it), 한글's line is the table's: the part takes no line of its own,
                 // and the table takes its spacing and stored place.
@@ -841,8 +872,8 @@ internal sealed class PageComposer
             var (left, width) = (ColumnLeft(_column), ColumnWidth);
             return new AnchorFrame(
                 new SKRect(0, 0, g.Width, g.Height),
-                new SKRect(g.Left, g.BodyTop, g.Left + g.TextWidth, g.BodyBottom),
-                new SKRect(left, g.BodyTop, left + width, g.BodyBottom),
+                new SKRect(g.Left, g.MarginTop, g.Left + g.TextWidth, g.MarginBottom),
+                new SKRect(left, g.MarginTop, left + width, g.MarginBottom),
                 new SKRect(left + (paragraph?.Format.Left ?? 0) / 100f, top, left + width - (paragraph?.Format.Right ?? 0) / 100f, g.BodyBottom),
                 _number % 2 == 1);
         }
@@ -1201,16 +1232,77 @@ internal sealed class PageComposer
 
         // ───────────────────────── Headers and footers ─────────────────────────
 
+        /// <summary>Header and footer heights by blocks and width: a page's own differ only by their fields.</summary>
+        private readonly Dictionary<(List<HBlock>, float), float> _heights = [];
+
+        /// <summary>The paragraphs where a header or footer of the section starts (Word's continuous section break).</summary>
+        private readonly HashSet<HParagraph> _startsAt = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>The page (index) from which the header or footer starting at a paragraph applies.</summary>
+        private readonly Dictionary<HParagraph, int> _startPages = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>
+        /// Picks a page's header and footer and sets its areas. On Word models a header taller than the room above the
+        /// body moves the body down to below it, and a footer taller than the room below moves it up, as Word does; a
+        /// header or footer never leaves less than a quarter of the body (a damaged file).
+        /// </summary>
+        private void Dress(Page page, int index)
+        {
+            var section = page.Section;
+            var first = page.FirstOfSection;
+            page.Header = first && section.FirstPageHeader is { } firstHeader ? firstHeader
+                : first && section.HideFirstHeader ? null : Pick(section.Headers, page.Number, index)?.Blocks;
+            page.Footer = first && section.FirstPageFooter is { } firstFooter ? firstFooter
+                : first && section.HideFirstFooter ? null : Pick(section.Footers, page.Number, index)?.Blocks;
+
+            var g = _paper;
+            var least = (g.BodyBottom - g.BodyTop) / 4;
+            if (section.HeaderMovesBody && page.Header is { } header)
+                g = g with { BodyTop = Math.Min(Math.Max(g.BodyTop, g.HeaderTop + Height(header, g.TextWidth)), g.BodyBottom - least) };
+            if (section.FooterMovesBody && page.Footer is { } footer)
+                g = g with { BodyBottom = Math.Max(Math.Min(g.BodyBottom, g.FooterBottom - Height(footer, g.TextWidth)), g.BodyTop + least) };
+            page.Geometry = _geometry = g;
+        }
+
+        private float Height(List<HBlock> blocks, float width)
+        {
+            if (!_heights.TryGetValue((blocks, width), out var height))
+            {
+                Tables.Stack(blocks, width, out height);
+                _heights[(blocks, width)] = height;
+            }
+            return height;
+        }
+
+        /// <summary>
+        /// A header or footer of a continuous section break starts at <paramref name="paragraph"/>: Word shows it from the
+        /// next page, or from this one when the paragraph starts it (and the body then moves for it).
+        /// </summary>
+        private void StartsHere(HParagraph paragraph)
+        {
+            if (!_empty)
+            {
+                _startPages[paragraph] = _pages.Count;
+                return;
+            }
+            _startPages[paragraph] = _pages.Count - 1;
+            var before = _geometry.BodyTop;
+            Dress(Current, _pages.Count - 1);
+            var shift = _geometry.BodyTop - before;
+            _y += shift;
+            _regionTop += shift;
+        }
+
         private void HeadersAndFooters(Page page)
         {
             _geometry = page.Geometry;
             var section = page.Section;
             // Fields in headers and footers show the number of the page they are on.
             _number = page.Number;
-            if (!(page.FirstOfSection && section.HideFirstHeader) && page.Hiding?.Header != true && Pick(section.Headers, page.Number) is { } header)
-                Area(page, header.Blocks, page.Geometry.HeaderTop);
-            if (!(page.FirstOfSection && section.HideFirstFooter) && page.Hiding?.Footer != true && Pick(section.Footers, page.Number) is { } footer)
-                Area(page, footer.Blocks, page.Geometry.FooterTop);
+            if (page.Header is { } header && page.Hiding?.Header != true)
+                Area(page, header, page.Geometry.HeaderTop);
+            if (page.Footer is { } footer && page.Hiding?.Footer != true)
+                Area(page, footer, section.FooterGrowsUp ? null : page.Geometry.FooterTop);
             if (section.PageNumber is { } number && page.Hiding?.PageNumber != true)
                 PageNumber(page, number);
         }
@@ -1251,18 +1343,28 @@ internal sealed class PageComposer
             page.Content.Add(layer, under: true);
         }
 
-        /// <summary>The header or footer for a page: the one for odd or even pages, else the one for both.</summary>
-        private static HHeaderFooter? Pick(List<HHeaderFooter> list, int number)
+        /// <summary>
+        /// The header or footer for a page: the one for odd or even pages, else the one for both; of those that apply on
+        /// the page (<paramref name="index"/>), the last, so a continuous section break's replaces the one before.
+        /// </summary>
+        private HHeaderFooter? Pick(List<HHeaderFooter> list, int number, int index)
         {
+            bool Applies(HHeaderFooter item) =>
+                item.StartsAt is not { } paragraph || _startPages.TryGetValue(paragraph, out var from) && index >= from;
             var side = number % 2 == 0 ? HPageType.Even : HPageType.Odd;
-            return list.LastOrDefault(h => h.Pages == side) ?? list.LastOrDefault(h => h.Pages == HPageType.Both);
+            return list.LastOrDefault(h => h.Pages == side && Applies(h)) ?? list.LastOrDefault(h => h.Pages == HPageType.Both && Applies(h));
         }
 
-        /// <summary>Lays out a header's or footer's blocks from <paramref name="top"/> down.</summary>
-        private void Area(Page page, List<HBlock> blocks, float top)
+        /// <summary>
+        /// Lays out a header's or footer's blocks from <paramref name="top"/> down, or (null) up from the bottom of the
+        /// footer area.
+        /// </summary>
+        private void Area(Page page, List<HBlock> blocks, float? top)
         {
-            foreach (var piece in Tables.Stack(blocks, page.Geometry.TextWidth))
-                piece.Draw(page.Content, page.Geometry.Left, top + piece.Top);
+            var pieces = Tables.Stack(blocks, page.Geometry.TextWidth, out var height);
+            var from = top ?? page.Geometry.FooterBottom - height;
+            foreach (var piece in pieces)
+                piece.Draw(page.Content, page.Geometry.Left, from + piece.Top);
         }
 
         // ───────────────────────── Fields ─────────────────────────

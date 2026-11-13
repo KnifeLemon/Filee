@@ -46,6 +46,12 @@ internal sealed class HSection
     /// <summary>Header of the first page only, instead of <see cref="Headers"/> there (DOCX "different first page").</summary>
     public List<HBlock>? FirstPageHeader { get; set; }
 
+    /// <summary>
+    /// Footer of the first page only, instead of <see cref="Footers"/> there (DOCX "different first page"). Only the
+    /// layout engine draws it; the writers keep the other footer there.
+    /// </summary>
+    public List<HBlock>? FirstPageFooter { get; set; }
+
     /// <summary>Restart page numbering at this number; null continues from the previous section.</summary>
     public int? StartPageNumber { get; set; }
 
@@ -74,6 +80,15 @@ internal sealed class HSection
 
     /// <summary>A header taller than the room above the body moves the body down (Word, unless its top margin is negative).</summary>
     public bool HeaderMovesBody { get; set; }
+
+    /// <summary>A footer taller than the room below the body moves the body up (Word, unless its bottom margin is negative).</summary>
+    public bool FooterMovesBody { get; set; }
+
+    /// <summary>
+    /// The footer ends at the bottom of its area and grows up from there (Word measures the footer's distance from the
+    /// paper's bottom edge to its last line); otherwise it starts at the top of its area (한글).
+    /// </summary>
+    public bool FooterGrowsUp { get; set; }
 
     public List<HBlock> Blocks { get; } = [];
 }
