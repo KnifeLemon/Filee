@@ -295,7 +295,9 @@ internal sealed partial class DocxReader
 
         var section = new HSection
         {
-            Page = page, Columns = columns, Grid = Grid(sectPr),
+            Page = page,
+            Columns = columns,
+            Grid = Grid(sectPr),
             HeaderMovesBody = Twips(sectPr?.Element(W + "pgMar"), "top") is not < 0,
         };
         section.Blocks.AddRange(blocks);
