@@ -440,6 +440,11 @@ has the read-only attribute; the source's bytes and attributes are left alone.
 The Cut a clip tool (`tool-clip`, first on the back of the video donut) opens `Views/ClipWindow` instead of running a
 job. The window only chooses the clip; writing it is an ordinary conversion.
 
+It also opens on sounds (#1291): the timeline is then the waveform (`ClipTimeline.Waveform`) in place of the picture strip,
+and the picture, thumbnails and sequence pictures are skipped (`ClipWindowViewModel.HasPicture`). In *ringtone mode*
+(`ShowRingtoneWindow`, from the donut for a preset with `AskRingtonePart`) only the part is chosen: the editing tools are
+hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
+
 - `Core/Presets/ClipCutter` does every edit without the window: the parts of the clip (start, end, speed, volume,
   mute), gaps left by Delete, the blade, edge trims that take back or cut away, music on A2, fades, Remove silence and
   undo / redo (one step per drag). The result is a `ClipEdit`, unit tested on its own.

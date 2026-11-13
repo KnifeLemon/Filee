@@ -148,7 +148,7 @@ public class ClipToolTests
         Assert.Equal(LivePhotoKind.None, conversion.Media.LivePhoto);
         Assert.Equal(("tool-clip", "Highlights", "{name}_clip"), (conversion.Id, conversion.Name, conversion.Output.FileNamePattern));
         Assert.True(conversion.CutsClipOf("mp4"));
-        Assert.False(conversion.CutsClipOf("mp3")); // only videos
+        Assert.True(conversion.CutsClipOf("mp3")); // sounds cut clips too
         // The tool itself is untouched.
         Assert.True(tool.IsClipTool);
         Assert.Null(tool.Media.Clip);
@@ -167,7 +167,43 @@ public class ClipToolTests
         Assert.Equal("mp4", ClipTool.TargetFor("rm", planner)); // RealVideo can't be written
         Assert.True(ClipTool.CanCut("rm", planner));
         Assert.False(ClipTool.CanCut("mov", planner)); // no engine reads it here
-        Assert.False(ClipTool.CanCut("mp3", planner)); // not a video
+        Assert.False(ClipTool.CanCut("mp3", planner)); // no engine writes sounds here
+    }
+
+    [Fact]
+    public void A_clip_of_a_sound_keeps_its_format_where_ffmpeg_writes_it_else_mp3()
+    {
+        var ffmpeg = new FakeConverter("ffmpeg", new ConversionEdge("mp3", "mp3"), new ConversionEdge("flac", "flac"),
+            new ConversionEdge("ape", "mp3"), new ConversionEdge("wma", "mp3"));
+        // Another engine writes WMA to WMA, but it knows nothing of clips.
+        var other = new FakeConverter("other-sounds", new ConversionEdge("wma", "wma"));
+        var planner = new ConverterCatalog([ffmpeg, other]).CreatePlanner();
+
+        Assert.True(ClipTool.IsSound("mp3"));
+        Assert.False(ClipTool.IsSound("mp4"));
+        Assert.Equal("mp3", ClipTool.TargetFor("mp3", planner));
+        Assert.Equal("flac", ClipTool.TargetFor("flac", planner));
+        Assert.Equal("mp3", ClipTool.TargetFor("ape", planner)); // Monkey's Audio can't be written
+        Assert.Equal("mp3", ClipTool.TargetFor("wma", planner)); // only an engine without clips writes WMA
+        Assert.True(ClipTool.CanCut("mp3", planner));
+        Assert.True(ClipTool.CanCut("ape", planner));
+        Assert.True(ClipTool.CanCut("wma", planner));
+        Assert.False(ClipTool.CanCut("wav", planner)); // no engine reads it here
+        Assert.False(ClipTool.CanCut("png", planner)); // neither a video nor a sound
+
+        // Only another engine converts sounds: no clip.
+        var onlyOther = new ConverterCatalog([new FakeConverter("other-sounds", new ConversionEdge("wma", "wma"), new ConversionEdge("wma", "mp3"))]).CreatePlanner();
+        Assert.False(ClipTool.CanCut("wma", onlyOther));
+    }
+
+    [Fact]
+    public void A_clip_is_cut_of_a_video_or_a_sound_only()
+    {
+        var clip = new Preset { TargetFormat = "mp3", Media = { Clip = ClipEdit.Of(new ClipRange(1, 5)) } };
+
+        Assert.True(clip.CutsClipOf("mp3"));
+        Assert.True(clip.CutsClipOf("mp4"));
+        Assert.False(clip.CutsClipOf("png"));
     }
 
     [Fact]

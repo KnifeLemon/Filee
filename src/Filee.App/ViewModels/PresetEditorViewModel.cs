@@ -323,6 +323,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _livePhotoCover = _edit.Media.LivePhotoCover;
         _ringtoneStart = _edit.Media.RingtoneStart;
         _ringtoneLength = _edit.Media.RingtoneLength;
+        _askRingtonePart = _edit.Media.AskRingtonePart;
         _frameInterval = _edit.Media.FrameInterval > 0 ? _edit.Media.FrameInterval : 1;
         _isSlideshow = _edit.Media.Slideshow;
         _slideSeconds = _edit.Media.SlideDuration;
@@ -600,6 +601,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>M4R (iPhone ringtone): where the ringtone starts in the sound, and how long it is (at most 40 s).</summary>
     [ObservableProperty] private double _ringtoneStart;
     [ObservableProperty] private double _ringtoneLength;
+
+    /// <summary>"Ask every time" for the ringtone's part, in the Cut a clip window (MediaOptions.AskRingtonePart, #1291).</summary>
+    [ObservableProperty] private bool _askRingtonePart;
 
     /// <summary>The clip's video codec: H.264, or HEVC for smaller files (MediaOptions.VideoCodec).</summary>
     public IReadOnlyList<Choice<VideoCodec>> LivePhotoCodecs =>
@@ -1468,6 +1472,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.LivePhotoCover = Seconds(LivePhotoCover, 1.5, 0, MediaOptions.MaxLivePhotoLength);
         media.RingtoneStart = Seconds(RingtoneStart, 0, 0, 24 * 3600);
         media.RingtoneLength = Seconds(RingtoneLength, MediaOptions.DefaultRingtoneLength, MediaOptions.MinRingtoneLength, MediaOptions.MaxRingtoneLength);
+        media.AskRingtonePart = ShowRingtone && AskRingtonePart;
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = TargetId != "iso" && CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;
