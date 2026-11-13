@@ -99,14 +99,60 @@
               <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Resolutions}" SelectedItem="{Binding SelectedResolution}" />
             </StackPanel>
             <StackPanel Grid.Column="2" Spacing="4">
-              <TextBlock Text="Frame Rate" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-              <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Framerates}" SelectedItem="{Binding SelectedFramerate}">
-                <ComboBox.ItemTemplate>
-                  <DataTemplate>
-                    <TextBlock Text="{Binding, StringFormat='{}{0} FPS'}" />
-                  </DataTemplate>
-                </ComboBox.ItemTemplate>
-              </ComboBox>
+              <!-- Frame Rate Header with Live Badge -->
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="Frame Rate" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                <Border Grid.Column="1" Background="{DynamicResource AccentSubtleBrush}" CornerRadius="6" Padding="6,2">
+                  <TextBlock Text="{Binding SelectedFramerate, StringFormat='{}{0} FPS'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+                </Border>
+              </Grid>
+
+              <!-- Custom Frame Rate Slider (12 - 120 FPS) -->
+              <Slider Minimum="12" Maximum="120" Value="{Binding SelectedFramerate}"
+                      IsSnapToTickEnabled="True" TickFrequency="1" Margin="0,2,0,0" />
+
+              <!-- Instant Snap Dots (15, 24, 30, 60, 120) -->
+              <Grid ColumnDefinitions="*,*,*,*,*" Margin="0,-2,0,0">
+                <Button Grid.Column="0" Command="{Binding SetFramerateCommand}" CommandParameter="15"
+                        Background="Transparent" Padding="0" HorizontalAlignment="Center" Cursor="Hand" ToolTip.Tip="15 FPS">
+                  <StackPanel HorizontalAlignment="Center" Spacing="2">
+                    <Ellipse Width="5" Height="5" Fill="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="15" FontSize="9" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <Button Grid.Column="1" Command="{Binding SetFramerateCommand}" CommandParameter="24"
+                        Background="Transparent" Padding="0" HorizontalAlignment="Center" Cursor="Hand" ToolTip.Tip="24 FPS (Cinematic)">
+                  <StackPanel HorizontalAlignment="Center" Spacing="2">
+                    <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="24" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <Button Grid.Column="2" Command="{Binding SetFramerateCommand}" CommandParameter="30"
+                        Background="Transparent" Padding="0" HorizontalAlignment="Center" Cursor="Hand" ToolTip.Tip="30 FPS (Standard)">
+                  <StackPanel HorizontalAlignment="Center" Spacing="2">
+                    <Ellipse Width="5" Height="5" Fill="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="30" FontSize="9" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <Button Grid.Column="3" Command="{Binding SetFramerateCommand}" CommandParameter="60"
+                        Background="Transparent" Padding="0" HorizontalAlignment="Center" Cursor="Hand" ToolTip.Tip="60 FPS (Smooth)">
+                  <StackPanel HorizontalAlignment="Center" Spacing="2">
+                    <Ellipse Width="5" Height="5" Fill="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="60" FontSize="9" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <Button Grid.Column="4" Command="{Binding SetFramerateCommand}" CommandParameter="120"
+                        Background="Transparent" Padding="0" HorizontalAlignment="Center" Cursor="Hand" ToolTip.Tip="120 FPS (High Refresh)">
+                  <StackPanel HorizontalAlignment="Center" Spacing="2">
+                    <Ellipse Width="5" Height="5" Fill="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="120" FontSize="9" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+              </Grid>
             </StackPanel>
           </Grid>
 

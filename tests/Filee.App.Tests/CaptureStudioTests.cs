@@ -331,6 +331,32 @@ public sealed class CaptureStudioTests
     }
 
     [Fact]
+    public void CaptureConfig_framerate_slider_and_custom_fps_selection()
+    {
+        var targetService = new WindowTargetService();
+        var loc = new DummyLocalizer();
+        var vm = new CaptureStudioConfigViewModel(targetService, loc);
+
+        Assert.Equal(30, vm.SelectedFramerate);
+
+        // Test instant 24 FPS snap
+        vm.SetFramerateCommand.Execute(24);
+        Assert.Equal(24, vm.SelectedFramerate);
+
+        var config24 = vm.BuildConfig();
+        Assert.Equal(24, config24.Framerate);
+
+        // Test custom 48 FPS
+        vm.SelectedFramerate = 48;
+        var config48 = vm.BuildConfig();
+        Assert.Equal(48, config48.Framerate);
+
+        // Test 120 FPS
+        vm.SetFramerateCommand.Execute(120);
+        Assert.Equal(120, vm.SelectedFramerate);
+    }
+
+    [Fact]
     public void AirPlayMirrorEngine_initialization_and_metadata()
     {
         var mirrorService = new MobileMirrorService();

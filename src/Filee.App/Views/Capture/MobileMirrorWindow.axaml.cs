@@ -69,6 +69,25 @@ public partial class MobileMirrorWindow : Window
         UpdateAirPlayUi();
     }
 
+    private void OnOpen1PhoneMirrorClick(object? sender, RoutedEventArgs e)
+    {
+        var exe = AirPlayMirrorEngine.Find1PhoneMirrorExe();
+        if (!string.IsNullOrEmpty(exe))
+        {
+            try
+            {
+                var serverName = _airPlayEngine?.ServerName ?? $"Filee-{Environment.MachineName}";
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = exe,
+                    Arguments = $"--name \"{serverName}\"",
+                    UseShellExecute = true
+                });
+            }
+            catch { }
+        }
+    }
+
     public MobileMirrorWindow(MobileMirrorService service, Filee.App.Services.Connect.FileeConnectService? connectService)
         : this(service)
     {

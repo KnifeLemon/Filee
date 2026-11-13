@@ -16,6 +16,9 @@ public sealed class AirPlayMirrorEngine
     private TcpListener? _rtspListener;
     private CancellationTokenSource? _cts;
 
+    // 1PhoneMirror external process
+    private Process? _onePhoneProcess;
+
     // Bonjour handles via dnssd.dll
     private IntPtr _airplaySdRef = IntPtr.Zero;
     private IntPtr _raopSdRef = IntPtr.Zero;
@@ -29,8 +32,9 @@ public sealed class AirPlayMirrorEngine
 
     public const int AirPlayPort = 7000;
     public string ServerName { get; } = $"Filee-{Environment.MachineName}";
-    public bool IsListening => _cts != null && !_cts.IsCancellationRequested;
+    public bool IsListening => (_cts != null && !_cts.IsCancellationRequested) || (_onePhoneProcess != null && !_onePhoneProcess.HasExited);
     public string StatusMessage { get; private set; } = "Initializing...";
+    public bool Is1PhoneMirrorActive => _onePhoneProcess != null && !_onePhoneProcess.HasExited;
 
     public AirPlayMirrorEngine(MobileMirrorService mirrorService, ILogger? logger = null)
     {
@@ -60,6 +64,33 @@ public sealed class AirPlayMirrorEngine
     private static extern void DNSServiceRefDeallocate(IntPtr sdRef);
 
     #endregion
+
+    public static string? Find1PhoneMirrorExe()
+    {
+        string[] candidates =
+        [
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "1PhoneMirror", "1PhoneMirror.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "1PhoneMirror", "1PhoneMirror.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "1PhoneMirror", "1PhoneMirror.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "1PhoneMirror", "1PhoneMirror.exe"),
+            @"C:\Program Files\1PhoneMirror\1PhoneMirror.exe"
+        ];
+
+        foreach (var path in candidates)
+        {
+            if (File.Exists(path))
+                return path;
+        }
+
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var p = Path.Combine(dir, "1PhoneMirror.exe");
+            if (File.Exists(p)) return p;
+        }
+
+        return null;
+    }
 
     public static string GetMacAddressString()
     {
@@ -141,19 +172,63 @@ public sealed class AirPlayMirrorEngine
     {
         Stop();
 
+        // 1. Try launching 1PhoneMirror engine if present
+        var onePhone = Find1PhoneMirrorExe();
+        if (!string.IsNullOrEmpty(onePhone))
+        {
+            try
+            {
+                // Kill stale prior instance if any
+                var existing = Process.GetProcessesByName("1PhoneMirror");
+                foreach (var p in existing)
+                {
+                    try { p.Kill(); p.WaitForExit(1000); } catch { }
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = onePhone,
+                    Arguments = $"--name \"{ServerName}\"",
+                    UseShellExecute = false,
+                    WorkingDirectory = Path.GetDirectoryName(onePhone) ?? ""
+                };
+
+                _onePhoneProcess = Process.Start(psi);
+                if (_onePhoneProcess != null && !_onePhoneProcess.HasExited)
+                {
+                    StatusMessage = $"1PhoneMirror Engine Active ('{ServerName}')";
+                    _logger?.LogInformation("Started 1PhoneMirror engine with name {Name}", ServerName);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to launch 1PhoneMirror engine, falling back to built-in listener");
+            }
+        }
+
+        // 2. Fallback to built-in RTSP & Bonjour stack
         var cts = new CancellationTokenSource();
         _cts = cts;
 
         try
         {
-            // 1. Start RTSP TCP Listener on port 7000
-            _rtspListener = new TcpListener(IPAddress.Any, AirPlayPort);
-            _rtspListener.Start();
+            int boundPort = AirPlayPort;
+            try
+            {
+                _rtspListener = new TcpListener(IPAddress.Any, AirPlayPort);
+                _rtspListener.Start();
+            }
+            catch
+            {
+                // Port 7000 in use, pick dynamic port
+                boundPort = 7001;
+                _rtspListener = new TcpListener(IPAddress.Any, boundPort);
+                _rtspListener.Start();
+            }
 
-            // 2. Register mDNS / Bonjour services (_airplay._tcp and _raop._tcp)
-            StartDiscoveryServices(cts.Token);
+            StartDiscoveryServices(boundPort, cts.Token);
 
-            // 3. Listen for incoming AirPlay connections
             _ = Task.Run(async () =>
             {
                 while (!cts.IsCancellationRequested)
@@ -181,45 +256,42 @@ public sealed class AirPlayMirrorEngine
         }
     }
 
-    private void StartDiscoveryServices(CancellationToken ct)
+    private void StartDiscoveryServices(int port, CancellationToken ct)
     {
-        // Try method 1: Native dnssd.dll
-        if (TryRegisterNativeBonjour())
+        if (TryRegisterNativeBonjour(port))
         {
             StatusMessage = $"Broadcasting as '{ServerName}' (Bonjour Active)";
             return;
         }
 
-        // Try method 2: dns-sd.exe CLI
-        if (TryRegisterDnsSdCli())
+        if (TryRegisterDnsSdCli(port))
         {
             StatusMessage = $"Broadcasting as '{ServerName}' (CLI Active)";
             return;
         }
 
-        // Try method 3: Managed UDP mDNS fallback
-        StartUdpMdnsFallback(ct);
+        StartUdpMdnsFallback(port, ct);
         StatusMessage = $"Broadcasting as '{ServerName}' (UDP mDNS)";
     }
 
-    private bool TryRegisterNativeBonjour()
+    private bool TryRegisterNativeBonjour(int port)
     {
         try
         {
             var mac = GetMacAddressString();
             var macNoColons = mac.Replace(":", "").Replace("-", "").ToUpperInvariant();
-            var networkPort = unchecked((ushort)IPAddress.HostToNetworkOrder((short)AirPlayPort));
+            var networkPort = unchecked((ushort)IPAddress.HostToNetworkOrder((short)port));
 
-            // 1. _airplay._tcp
+            // 1. _airplay._tcp matching 1PhoneMirror features
             var airPlayTxt = BuildTxtRecord(
                 "model=AppleTV3,2",
                 $"deviceid={mac}",
-                "features=0x5A7FFFF7,0x1E",
+                "features=0x5A7FFEE6",
                 "srcvers=220.68",
                 "flags=0x4",
                 "vv=2",
-                "pk=b0886d8793584247810f305642444455f52431a4",
-                "pi=b0886d87-9358-4247-810f-305642444455"
+                "pk=b07727d6f6cd6e08b58ede525ec3cdeaa252ad9f683feb212ef8a205246554e7",
+                "pi=2e388006-13ba-4041-9a67-25dd4a43d536"
             );
 
             int err1 = DNSServiceRegister(
@@ -237,21 +309,28 @@ public sealed class AirPlayMirrorEngine
                 IntPtr.Zero
             );
 
-            // 2. _raop._tcp
+            // 2. _raop._tcp matching 1PhoneMirror audio metadata
             var raopName = $"{macNoColons}@{ServerName}";
             var raopTxt = BuildTxtRecord(
+                "am=AppleTV3,2",
                 "ch=2",
                 "cn=0,1,2,3",
-                "et=0,1",
+                "da=true",
+                "et=0,3,5",
+                "ft=0x5A7FFEE6",
                 "md=0,1,2",
+                "pk=b07727d6f6cd6e08b58ede525ec3cdeaa252ad9f683feb212ef8a205246554e7",
                 "pw=false",
+                "rhd=5.6.0.0",
+                "sf=0x4",
                 "sr=44100",
                 "ss=16",
+                "sv=false",
                 "tp=UDP",
+                "txtvers=1",
                 "vn=65537",
                 "vs=220.68",
-                "am=AppleTV3,2",
-                "sf=0x4"
+                "vv=2"
             );
 
             int err2 = DNSServiceRegister(
@@ -271,7 +350,7 @@ public sealed class AirPlayMirrorEngine
 
             if (err1 == 0 && err2 == 0)
             {
-                _logger?.LogInformation("Successfully registered AirPlay and RAOP via dnssd.dll");
+                _logger?.LogInformation("Successfully registered AirPlay and RAOP via dnssd.dll on port {Port}", port);
                 return true;
             }
         }
@@ -287,7 +366,7 @@ public sealed class AirPlayMirrorEngine
         return false;
     }
 
-    private bool TryRegisterDnsSdCli()
+    private bool TryRegisterDnsSdCli(int port)
     {
         try
         {
@@ -297,7 +376,7 @@ public sealed class AirPlayMirrorEngine
             var psiAirplay = new ProcessStartInfo
             {
                 FileName = "dns-sd.exe",
-                Arguments = $"-R \"{ServerName}\" _airplay._tcp local. {AirPlayPort} model=AppleTV3,2 deviceid={mac} features=0x5A7FFFF7,0x1E srcvers=220.68 flags=0x4 vv=2",
+                Arguments = $"-R \"{ServerName}\" _airplay._tcp local. {port} model=AppleTV3,2 deviceid={mac} features=0x5A7FFEE6 srcvers=220.68 flags=0x4 vv=2",
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -306,7 +385,7 @@ public sealed class AirPlayMirrorEngine
             var psiRaop = new ProcessStartInfo
             {
                 FileName = "dns-sd.exe",
-                Arguments = $"-R \"{macNoColons}@{ServerName}\" _raop._tcp local. {AirPlayPort} ch=2 cn=0,1,2,3 et=0,1 md=0,1,2 pw=false sr=44100 ss=16 tp=UDP vn=65537 vs=220.68 am=AppleTV3,2 sf=0x4",
+                Arguments = $"-R \"{macNoColons}@{ServerName}\" _raop._tcp local. {port} ch=2 cn=0,1,2,3 et=0,3,5 ft=0x5A7FFEE6 md=0,1,2 pw=false sr=44100 ss=16 tp=UDP vn=65537 vs=220.68 am=AppleTV3,2 sf=0x4",
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -322,7 +401,7 @@ public sealed class AirPlayMirrorEngine
         return false;
     }
 
-    private void StartUdpMdnsFallback(CancellationToken ct)
+    private void StartUdpMdnsFallback(int port, CancellationToken ct)
     {
         try
         {
@@ -349,7 +428,7 @@ public sealed class AirPlayMirrorEngine
                             var announcement = BuildTxtRecord(
                                 "model=AppleTV3,2",
                                 $"deviceid={mac}",
-                                "features=0x5A7FFFF7,0x1E",
+                                "features=0x5A7FFEE6",
                                 "srcvers=220.68",
                                 "flags=0x4",
                                 "vv=2"
@@ -425,7 +504,7 @@ public sealed class AirPlayMirrorEngine
                             <key>name</key>
                             <string>{ServerName}</string>
                             <key>features</key>
-                            <integer>1484824567</integer>
+                            <integer>1518337766</integer>
                             <key>statusFlags</key>
                             <integer>4</integer>
                             <key>sourceVersion</key>
@@ -433,7 +512,9 @@ public sealed class AirPlayMirrorEngine
                             <key>vv</key>
                             <integer>2</integer>
                             <key>pi</key>
-                            <string>b0886d87-9358-4247-810f-305642444455</string>
+                            <string>2e388006-13ba-4041-9a67-25dd4a43d536</string>
+                            <key>pk</key>
+                            <string>b07727d6f6cd6e08b58ede525ec3cdeaa252ad9f683feb212ef8a205246554e7</string>
                             </dict>
                             </plist>
                             """;
@@ -497,6 +578,21 @@ public sealed class AirPlayMirrorEngine
     {
         try
         {
+            // Kill 1PhoneMirror external process if launched by us
+            if (_onePhoneProcess != null)
+            {
+                try
+                {
+                    if (!_onePhoneProcess.HasExited)
+                    {
+                        _onePhoneProcess.Kill();
+                        _onePhoneProcess.WaitForExit(1000);
+                    }
+                }
+                catch { }
+                _onePhoneProcess = null;
+            }
+
             _cts?.Cancel();
             _cts = null;
 

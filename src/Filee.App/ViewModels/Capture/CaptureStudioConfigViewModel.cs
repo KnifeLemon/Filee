@@ -194,6 +194,19 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void SetFramerate(object? param)
+    {
+        if (param is int i)
+        {
+            SelectedFramerate = Math.Clamp(i, 12, 120);
+        }
+        else if (param != null && int.TryParse(param.ToString(), out var parsed))
+        {
+            SelectedFramerate = Math.Clamp(parsed, 12, 120);
+        }
+    }
+
+    [RelayCommand]
     private void StartRecording()
     {
         var config = BuildConfig();
