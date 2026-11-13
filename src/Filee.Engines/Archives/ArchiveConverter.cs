@@ -3,8 +3,9 @@
 // "Compress into one archive" for any files (IFileCombiner).
 // Reading is in-process for the common formats (SharpCompress, .NET and Filee's own readers, see ArchiveExtractor);
 // the bundled 7-Zip (engines/7zip, LGPL, separate process) reads CAB, DMG, IMG, LHA, ARJ and UDF discs and is the
-// fallback for what the in-process readers can't. ZIP (and the packs), TAR, TAR.GZ and GZ are written in-process, 7Z, BZ2 and XZ
-// (also inside TARs) by 7-Zip. Without 7-Zip the engine stays available with the in-process edges only.
+// fallback for what the in-process readers can't. ZIP (and the packs), TAR, TAR.GZ, TAR.XZ, GZ and XZ are written
+// in-process (XZ with Filee's own LZMA2 encoder, see XzWriter), 7Z and BZ2 (also inside TARs) by 7-Zip. Without
+// 7-Zip the engine stays available with the in-process edges only.
 // See docs/ENGINES.md.
 
 using Filee.Core.Conversion;
