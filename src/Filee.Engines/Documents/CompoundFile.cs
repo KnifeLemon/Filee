@@ -5,9 +5,11 @@
 //
 // Documents come from anywhere, so nothing in the file is trusted: every sector number is checked against the sectors
 // the file has, every chain is walked at most once per sector (a cycle ends the read), a chain must be as long as its
-// stream says, the directory is walked without recursion and visits each entry once, and stream sizes stay within
-// DocumentLimits (MaxPartBytes per stream, MaxPackageBytes in all). A damaged file fails with InvalidDataException,
-// one past a limit with error.document_too_complex.
+// stream says, the directory is walked without recursion and visits each entry once, storages nest at most
+// MaxStorageDepth deep, and stream sizes stay within DocumentLimits (MaxPartBytes per stream, MaxPackageBytes in all).
+// Entries keep their parent rather than their full path (in a chain of storages, each inside the last, every entry
+// would otherwise hold the names of all its ancestors), and a path is looked up one name at a time. A damaged file
+// fails with InvalidDataException, one past a limit with error.document_too_complex.
 
 using System.Buffers.Binary;
 using System.Text;
@@ -25,6 +27,11 @@ internal sealed class CompoundFile : IDisposable
     private const int HeaderDifatEntries = 109;
     private const int DirectoryEntrySize = 128;
 
+    /// <summary>Levels of storages in storages. HWP and DOC files use two or three; an OLE object is a file of its own.</summary>
+    internal const int MaxStorageDepth = 64;
+
+    private const int Unreached = -1;
+
     private readonly Stream _file;
     private readonly DocumentLimits _limits;
     private readonly int _sectorSize;
@@ -33,13 +40,17 @@ internal sealed class CompoundFile : IDisposable
     private readonly uint[] _miniFat;
     private readonly uint _miniCutoff;
     private readonly List<Entry> _entries;
+    private readonly Dictionary<(int Parent, string Name), int> _members = new(MemberComparer.Instance);
     private byte[]? _miniStream;
     private long _total;
 
-    /// <summary>A directory entry: a storage (folder) or a stream, with its full path below the root ("BodyText/Section0").</summary>
+    /// <summary>
+    /// A directory entry: a storage (folder) or a stream, with the index of the storage it is in (0 = the root;
+    /// <see cref="Unreached"/> for an entry the tree does not reach).
+    /// </summary>
     private sealed record Entry(string Name, int Type, uint Left, uint Right, uint Child, uint Start, long Size)
     {
-        public string Path { get; set; } = "";
+        public int Parent { get; set; } = Unreached;
     }
 
     private CompoundFile(Stream file, DocumentLimits limits)
@@ -96,7 +107,7 @@ internal sealed class CompoundFile : IDisposable
     public void Dispose() => _file.Dispose();
 
     /// <summary>Paths of every stream, like "BodyText/Section0".</summary>
-    public IEnumerable<string> Streams => _entries.Where(e => e.Type == 2 && e.Path.Length > 0).Select(e => e.Path);
+    public IEnumerable<string> Streams => _entries.Where(e => e.Type == 2 && e.Parent != Unreached).Select(PathOf).Where(p => p.Length > 0);
 
     /// <summary>True when there is a stream or storage at <paramref name="path"/> (names compare without case, as in CFB).</summary>
     public bool Exists(string path) => Find(path) is not null;
@@ -109,7 +120,7 @@ internal sealed class CompoundFile : IDisposable
         if (entry.Size > _limits.MaxPartBytes)
             throw DocumentLimits.Exceeded($"A part of the document is larger than {DocumentLimits.Megabytes(_limits.MaxPartBytes)}.");
         Count(entry.Size);
-        return entry.Size < _miniCutoff ? ReadMini(entry) : ReadChain(entry.Start, entry.Size, entry.Path);
+        return entry.Size < _miniCutoff ? ReadMini(entry) : ReadChain(entry.Start, entry.Size, PathOf(entry));
     }
 
     /// <summary>Counts bytes read against the document's total (also for what streams inflate to).</summary>
@@ -122,7 +133,36 @@ internal sealed class CompoundFile : IDisposable
 
     public DocumentLimits Limits => _limits;
 
-    private Entry? Find(string path) => _entries.FirstOrDefault(e => e.Path.Length > 0 && string.Equals(e.Path, path, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// The entry at <paramref name="path"/>, found one name at a time from the root (CFB names can't hold '/'). Of two
+    /// members of one storage with the same name, which the format forbids, the first in the directory wins.
+    /// </summary>
+    private Entry? Find(string path)
+    {
+        if (path.Length == 0)
+            return null;
+        var index = 0;
+        foreach (var name in path.Split('/'))
+        {
+            if (!_members.TryGetValue((index, name), out index))
+                return null;
+        }
+        return _entries[index];
+    }
+
+    /// <summary>The path of <paramref name="entry"/> below the root ("BodyText/Section0"), built from its parents.</summary>
+    private string PathOf(Entry entry)
+    {
+        var names = new List<string>();
+        for (var e = entry; ; e = _entries[e.Parent])
+        {
+            names.Add(e.Name);
+            if (e.Parent <= 0)
+                break;
+        }
+        names.Reverse();
+        return string.Join('/', names);
+    }
 
     // ───────────────────────── Allocation tables ─────────────────────────
 
@@ -191,7 +231,7 @@ internal sealed class CompoundFile : IDisposable
             ? ReadChain(_entries[0].Start, _entries[0].Size, "the mini stream")
             : [];
         const int MiniSize = 64;
-        var chain = Chain(_miniFat, entry.Start, _miniStream.Length / MiniSize, (entry.Size + MiniSize - 1) / MiniSize, entry.Path);
+        var chain = Chain(_miniFat, entry.Start, _miniStream.Length / MiniSize, (entry.Size + MiniSize - 1) / MiniSize, PathOf(entry));
         var bytes = new byte[entry.Size];
         for (var i = 0; i < chain.Count; i++)
         {
@@ -256,37 +296,60 @@ internal sealed class CompoundFile : IDisposable
     }
 
     /// <summary>
-    /// Names every entry by its path, walking the tree of storages (child) and their red-black trees of members (left,
-    /// right) with a stack; an entry reached twice means the tree loops.
+    /// Gives every entry its parent storage, walking the tree of storages (child) and their red-black trees of members
+    /// (left, right) with a stack; an entry reached twice means the tree loops. Storages nested deeper than
+    /// <see cref="MaxStorageDepth"/> are refused. Then indexes the members of each storage by name, in directory order.
     /// </summary>
     private void NamePaths()
     {
         var visited = new bool[_entries.Count];
         visited[0] = true;
-        var stack = new Stack<(uint Index, string Folder)>();
-        Push(stack, _entries[0].Child, "");
+        var stack = new Stack<(uint Index, int Parent, int Depth)>();
+        Push(stack, _entries[0].Child, 0, 1);
         while (stack.Count > 0)
         {
-            var (index, folder) = stack.Pop();
+            var (index, parent, depth) = stack.Pop();
             if (visited[index])
                 throw Damaged("its directory loops");
             visited[index] = true;
             var entry = _entries[(int)index];
-            entry.Path = folder + entry.Name;
-            Push(stack, entry.Left, folder);
-            Push(stack, entry.Right, folder);
-            if (entry.Type == 1)
-                Push(stack, entry.Child, entry.Path + "/");
+            entry.Parent = parent;
+            Push(stack, entry.Left, parent, depth);
+            Push(stack, entry.Right, parent, depth);
+            if (entry.Type == 1 && entry.Child != NoStream)
+            {
+                if (depth >= MaxStorageDepth)
+                    throw DocumentLimits.Exceeded($"The document's storages are nested more than {MaxStorageDepth} levels deep.");
+                Push(stack, entry.Child, (int)index, depth + 1);
+            }
         }
 
-        void Push(Stack<(uint, string)> pending, uint index, string folder)
+        for (var i = 1; i < _entries.Count; i++)
+        {
+            if (_entries[i].Parent != Unreached)
+                _members.TryAdd((_entries[i].Parent, _entries[i].Name), i);
+        }
+
+        void Push(Stack<(uint, int, int)> pending, uint index, int parent, int depth)
         {
             if (index == NoStream)
                 return;
             if (index >= _entries.Count)
                 throw Damaged("its directory points outside the directory");
-            pending.Push((index, folder));
+            pending.Push((index, parent, depth));
         }
+    }
+
+    /// <summary>Compares (storage, name) keys with the names without case, as CFB does.</summary>
+    private sealed class MemberComparer : IEqualityComparer<(int Parent, string Name)>
+    {
+        public static MemberComparer Instance { get; } = new();
+
+        public bool Equals((int Parent, string Name) x, (int Parent, string Name) y) =>
+            x.Parent == y.Parent && string.Equals(x.Name, y.Name, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((int Parent, string Name) key) =>
+            HashCode.Combine(key.Parent, StringComparer.OrdinalIgnoreCase.GetHashCode(key.Name));
     }
 
     // ───────────────────────── Helpers ─────────────────────────
