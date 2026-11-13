@@ -157,6 +157,37 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
+    [Theory]
+    [InlineData("ch01_20261005150000.mp4", true, false)]
+    [InlineData("ch01_20261005150000.mp4", true, true)]
+    [InlineData("hiv00000.mp4", false, false)]
+    [InlineData("hiv00000.mp4", false, true)]
+    [InlineData("ch01.264", true, true)]
+    public async Task A_hikvision_recording_converts_to_mp4_with_its_sound(string name, bool imkhHeader, bool muLaw)
+    {
+        // iVMS-4200 / NVR exports (IMKH header) and SD-card recordings (no header) are MPEG program streams with
+        // G.711 sound. Without the header, FFmpeg reads mu-law sound as MP2 and fails, unless Filee adds the header.
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var h264 = await MakeClipAsync(folder, "camera.h264", size: "160x120", audio: false,
+            extra: ["-c:v", "libx264", "-g", "25", "-bsf:v", "h264_metadata=aud=insert"]);
+        var g711 = Path.Combine(folder, "camera.g711");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi",
+            "-i", "sine=frequency=440:sample_rate=8000:duration=2", "-ac", "1", "-f", muLaw ? "mulaw" : "alaw", g711]);
+        var recording = Path.Combine(folder, name);
+        await File.WriteAllBytesAsync(recording, HikvisionRecording.Write(
+            await File.ReadAllBytesAsync(h264, TestContext.Current.CancellationToken),
+            await File.ReadAllBytesAsync(g711, TestContext.Current.CancellationToken), muLaw, imkhHeader),
+            TestContext.Current.CancellationToken);
+
+        var probed = await ProbeAsync(await ConvertAsync(recording, "mp4"));
+        var video = probed.Video;
+        Assert.NotNull(video);
+        Assert.Equal(("h264", 160, 120, 50), (video.Codec, video.Width, video.Height, video.Frames));
+        Assert.Equal("aac", probed.Audio?.Codec);
+        Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
     [Fact]
     public void Nov_exports_are_read_but_never_written()
     {
