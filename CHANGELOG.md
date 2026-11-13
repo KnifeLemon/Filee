@@ -14,6 +14,23 @@ change, a language may repeat; a language without lines shows the English ones):
 - `recommended`: bug fixes. The card shows once per version.
 - `optional`: new features only. No card, the sidebar button only.
 
+## 2.4.1
+
+<!-- update
+level: recommended
+ko: LibreOffice 엔진을 받을 때 "404 (Not Found)"로 실패하던 문제를 고쳤어요
+ko: 엔진 다운로드 주소가 사라져도 Filee 미러에서 받아요
+en: Fixed the LibreOffice engine download failing with "404 (Not Found)"
+en: Engine downloads now come from Filee's mirror when their own link stops working
+zh: 修复了下载 LibreOffice 引擎时出现 "404 (Not Found)" 的问题
+zh: 引擎的下载链接失效时，改从 Filee 的镜像下载
+-->
+
+A fix for engine downloads, on top of 2.4.0.
+
+- **LibreOffice downloads again** (#1474). LibreOffice took version 26.2.6 out of its "stable" download folder when 26.2.7 came out, so installing LibreOffice in **Settings → Engines** failed with *"Response status code does not indicate success: 404 (Not Found)"* on Windows and macOS. Filee now downloads the same 26.2.6 build from LibreOffice's permanent archive.
+- **A backup for every engine download.** When an engine's own download link stops working, times out or serves a different file, Filee now takes the same file from its own mirror (`dl.filee.sh`). Every file is still checked against the checksum Filee was built with, so the mirror can only ever hand out that exact file.
+
 ## 2.4.0
 
 <!-- update
