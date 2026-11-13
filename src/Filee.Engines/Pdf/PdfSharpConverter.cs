@@ -48,26 +48,55 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     public Task FinishAsync(string path, PdfOptions options, CancellationToken cancellationToken) =>
         Task.Run(() => PdfFinishing.Finish(path, options, cancellationToken), cancellationToken);
 
-    public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken) =>
-        Task.Run(() => Merge(inputs, outputPath, sourceBookmarks, cancellationToken), cancellationToken);
+    /// <summary>Imports PDFs and their supported structure, optionally fitting every page to one paper.</summary>
+    public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks,
+        Core.Conversion.PdfMergePaper? paper, CancellationToken cancellationToken) =>
+        Task.Run(() => Merge(inputs, outputPath, sourceBookmarks, paper, cancellationToken), cancellationToken);
 
-    internal static void Merge(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken ct, PdfMergeStructure.Limits? limits = null)
+    internal static void Merge(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks,
+        Core.Conversion.PdfMergePaper? paper, CancellationToken ct, PdfMergeStructure.Limits? limits = null)
     {
         using var output = new PdfDocument();
         var structure = new PdfMergeStructure(output, limits ?? new());
+        (double Width, double Height)? target = null;
+        var pageNumber = 0;
         foreach (var input in inputs)
         {
             ct.ThrowIfCancellationRequested();
             using var source = Open(input.PdfPath, PdfDocumentOpenMode.Import, ct);
             var pages = new Dictionary<PdfObjectID, PdfPage>();
+            var normalizer = paper is null ? null : new PdfMergePaperFitter(output, limits?.Paper ?? new(), limits?.AppearanceLength ?? 4096);
+            normalizer?.CollectAnnotations(source);
+            var transforms = normalizer is null ? null : new Dictionary<PdfObjectID, PdfMergePaperFitter.Transform>();
+            var occurrences = normalizer is null ? null : new List<(PdfPage Source, PdfPage Imported, PdfMergePaperFitter.Transform Transform)>();
             PdfPage? firstPage = null;
             foreach (var page in source.Pages)
             {
+                PdfMergePaperFitter.Transform? transform = null;
+                if (normalizer is not null)
+                {
+                    var geometry = normalizer.Snapshot(page);
+                    target ??= PdfMergePaperFitter.Target(geometry, paper!.Value);
+                    transform = PdfMergePaperFitter.Fit(geometry, target.Value);
+                    transforms![page.Reference!.ObjectID] = transform;
+                }
                 var imported = output.AddPage(page);
                 firstPage ??= imported;
                 pages[page.Reference!.ObjectID] = imported;
+                if (transform is not null)
+                    occurrences!.Add((page, imported, transform));
             }
-            structure.Carry(source, pages, ct, sourceBookmarks ? input.SourceName : null, firstPage);
+            structure.Carry(source, pages, ct, sourceBookmarks ? input.SourceName : null, firstPage, transforms);
+            if (normalizer is not null)
+            {
+                foreach (var (original, imported, transform) in occurrences!)
+                {
+                    limits?.Paper?.BeforePage?.Invoke(++pageNumber);
+                    ct.ThrowIfCancellationRequested();
+                    normalizer.Normalize(original, imported, transform);
+                    normalizer.Annotations(original, imported, transform);
+                }
+            }
         }
         structure.Write(ct);
         output.Save(outputPath);
