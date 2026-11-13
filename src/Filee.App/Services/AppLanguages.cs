@@ -9,6 +9,7 @@ internal static class AppLanguages
     public static readonly IReadOnlyList<(string Code, string NativeName)> All =
     [
         ("en", "English"),
+        ("mn", "Монгол"),
         ("de", "Deutsch"),
         ("tr", "Türkçe"),
         ("es", "Español"),

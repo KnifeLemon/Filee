@@ -108,6 +108,8 @@ public sealed class LocalizationService : ILocalizer
             return Languages.First(l => l.Code.Equals(setting, StringComparison.OrdinalIgnoreCase)).Code;
 
         var ui = osLanguage();
+        if (ui.Equals("mn", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("mn-", StringComparison.OrdinalIgnoreCase))
+            return "mn";
         if (ui.Equals("de", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("de-", StringComparison.OrdinalIgnoreCase))
             return "de";
         // "it" and every region ("it-IT", "it-CH", …), but not Itelmen "itl".
