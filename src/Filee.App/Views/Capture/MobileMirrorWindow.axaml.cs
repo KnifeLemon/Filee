@@ -188,11 +188,17 @@ public partial class MobileMirrorWindow : Window
     {
         Dispatcher.UIThread.Post(() =>
         {
-            WaitingPanel.IsVisible = !isStreaming;
             DisconnectBtn.IsVisible = isStreaming;
-            if (!isStreaming)
+            if (isStreaming)
             {
+                if (AirPlayStatusBadgeText != null)
+                    AirPlayStatusBadgeText.Text = "Connected! Receiving video stream...";
+            }
+            else
+            {
+                WaitingPanel.IsVisible = true;
                 FrameImage.Source = null;
+                UpdateAirPlayUi();
             }
         });
     }

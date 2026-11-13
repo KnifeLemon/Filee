@@ -254,7 +254,7 @@ public sealed class CaptureRecordingEngine : IDisposable
             }
 
             // Wait brief moment to confirm process didn't exit prematurely
-            await Task.Delay(400).ConfigureAwait(false);
+            await Task.Delay(600).ConfigureAwait(false);
             if (proc.HasExited && proc.ExitCode != 0)
             {
                 string errDetail;
@@ -266,11 +266,14 @@ public sealed class CaptureRecordingEngine : IDisposable
                             return !t.StartsWith("ffmpeg version", StringComparison.OrdinalIgnoreCase)
                                 && !t.StartsWith("built with", StringComparison.OrdinalIgnoreCase)
                                 && !t.StartsWith("configuration:", StringComparison.OrdinalIgnoreCase)
+                                && !t.StartsWith("--enable", StringComparison.OrdinalIgnoreCase)
+                                && !t.StartsWith("--disable", StringComparison.OrdinalIgnoreCase)
                                 && !t.StartsWith("libav", StringComparison.OrdinalIgnoreCase)
                                 && !t.StartsWith("libsw", StringComparison.OrdinalIgnoreCase);
                         })
                         .ToList();
-                    errDetail = string.Join(Environment.NewLine, nonBannerLines.Count > 0 ? nonBannerLines : stderrLines).Trim();
+                    var meaningfulLines = nonBannerLines.Count > 0 ? nonBannerLines : stderrLines.ToList();
+                    errDetail = string.Join(Environment.NewLine, meaningfulLines.TakeLast(8)).Trim();
                 }
 
                 LastErrorMessage = !string.IsNullOrWhiteSpace(errDetail)
@@ -361,20 +364,7 @@ public sealed class CaptureRecordingEngine : IDisposable
                 string lavfi;
                 if (config.SourceType == CaptureSourceType.Window && config.TargetWindow != null && config.TargetWindow.Handle != 0)
                 {
-                    GetTargetOffsetAndSize(config, out var offsetX, out var offsetY, out var width, out var height);
-                    int screenW = GetSystemMetrics(0);
-                    int screenH = GetSystemMetrics(1);
-                    if (screenW <= 0) screenW = 1920;
-                    if (screenH <= 0) screenH = 1080;
-
-                    offsetX = Math.Clamp(offsetX, 0, Math.Max(0, screenW - 64));
-                    offsetY = Math.Clamp(offsetY, 0, Math.Max(0, screenH - 64));
-                    width = Math.Clamp(width, 64, screenW - offsetX);
-                    height = Math.Clamp(height, 64, screenH - offsetY);
-
-                    width = Math.Max(2, (width / 2) * 2);
-                    height = Math.Max(2, (height / 2) * 2);
-                    lavfi = $"gfxcapture=monitor_idx=0:crop_left={offsetX}:crop_top={offsetY}:width={width}:height={height}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
+                    lavfi = $"gfxcapture=hwnd={(ulong)config.TargetWindow.Handle}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
                 }
                 else if (config.SourceType == CaptureSourceType.CustomRegion)
                 {
@@ -389,9 +379,9 @@ public sealed class CaptureRecordingEngine : IDisposable
                     width = Math.Clamp(width, 64, screenW - offsetX);
                     height = Math.Clamp(height, 64, screenH - offsetY);
 
-                    width = Math.Max(2, (width / 2) * 2);
-                    height = Math.Max(2, (height / 2) * 2);
-                    lavfi = $"gfxcapture=monitor_idx=0:crop_left={offsetX}:crop_top={offsetY}:width={width}:height={height}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
+                    int cropRight = Math.Max(0, screenW - (offsetX + width));
+                    int cropBottom = Math.Max(0, screenH - (offsetY + height));
+                    lavfi = $"gfxcapture=monitor_idx=0:crop_left={offsetX}:crop_top={offsetY}:crop_right={cropRight}:crop_bottom={cropBottom}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
                 }
                 else
                 {
