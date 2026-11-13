@@ -180,6 +180,7 @@
   "notice.under_min_size": "تم الحفظ، لكنه أصغر من الحد الأدنى لحجم الملف",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "حُذفت كائنات لا يدعمها إصدار AutoCAD المختار (أسهم توضيحية متعددة، شبكات …)",
+  "notice.sheet_objects_left_out": "حُذفت كائنات لا يستطيع Filee طباعتها بعد (مخططات، نص داخل الأشكال …): ثبّت LibreOffice من الإعدادات ← المحركات للإبقاء عليها",
   "notice.cmyk_needs_ghostscript": "هذا الملف بنظام CMYK لكنه حُفظ بنظام RGB: ثبّت Ghostscript من الإعدادات ← المحركات للإبقاء على CMYK",
   "notice.pdfa_needs_ghostscript": "هذا الملف ليس PDF/A: ثبّت Ghostscript من الإعدادات ← المحركات لإنشاء PDF/A",
   "notice.cmyk_render_failed": "هذا الملف بنظام CMYK، لكن Ghostscript لم يتمكن من رسمه، لذلك حُفظ بنظام RGB",

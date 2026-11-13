@@ -231,10 +231,10 @@ internal static class SheetPagination
     private static CellRange? Used(Worksheet sheet)
     {
         var used = sheet.UsedRange();
-        foreach (var picture in sheet.Pictures)
+        foreach (var drawing in sheet.Drawings)
         {
-            var (row, column) = (Math.Clamp(picture.Row, 0, MaxRow), Math.Clamp(picture.Column, 0, MaxColumn));
-            var (lastRow, lastColumn) = picture.To is { } to ? (Math.Clamp(to.Row, row, MaxRow), Math.Clamp(to.Column, column, MaxColumn)) : (row, column);
+            var (row, column) = (Math.Clamp(drawing.Row, 0, MaxRow), Math.Clamp(drawing.Column, 0, MaxColumn));
+            var (lastRow, lastColumn) = drawing.To is { } to ? (Math.Clamp(to.Row, row, MaxRow), Math.Clamp(to.Column, column, MaxColumn)) : (row, column);
             used = used is { } u
                 ? new CellRange(Math.Min(u.Top, row), Math.Min(u.Left, column), Math.Max(u.Bottom, lastRow), Math.Max(u.Right, lastColumn))
                 : new CellRange(row, column, lastRow, lastColumn);

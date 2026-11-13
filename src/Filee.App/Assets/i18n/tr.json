@@ -180,6 +180,7 @@
   "notice.under_min_size": "Kaydedildi, ancak en küçük dosya boyutundan küçük",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Seçilen AutoCAD sürümünün desteklemediği nesneler (çoklu kılavuzlar, ağlar…) çıkarıldı",
+  "notice.sheet_objects_left_out": "Filee'nin henüz yazdıramadığı nesneler (grafikler, şekillerdeki metin…) çıkarıldı: korumak için Ayarlar → Dönüştürme motorları'ndan LibreOffice'i yükleyin",
   "notice.cmyk_needs_ghostscript": "Bu dosya CMYK ama RGB olarak kaydedildi: CMYK'yı korumak için Ayarlar → Dönüştürme motorları'ndan Ghostscript'i yükleyin",
   "notice.pdfa_needs_ghostscript": "Bu PDF, PDF/A değil: PDF/A oluşturmak için Ayarlar → Dönüştürme motorları'ndan Ghostscript'i yükleyin",
   "notice.cmyk_render_failed": "Bu dosya CMYK ama Ghostscript onu çizemedi, bu yüzden RGB olarak kaydedildi",

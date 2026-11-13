@@ -180,6 +180,7 @@
   "notice.under_min_size": "Gespeichert, aber kleiner als die Mindestdateigröße",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objekte, die die gewählte AutoCAD-Version nicht unterstützt (Multiführungslinien, Netze …), wurden weggelassen",
+  "notice.sheet_objects_left_out": "Objekte, die Filee noch nicht drucken kann (Diagramme, Text in Formen …), wurden weggelassen: Installiere LibreOffice unter Einstellungen → Module, um sie zu behalten",
   "notice.cmyk_needs_ghostscript": "Diese Datei ist CMYK, wurde aber als RGB gespeichert: Installiere Ghostscript unter Einstellungen → Module, um CMYK zu behalten",
   "notice.pdfa_needs_ghostscript": "Diese PDF ist kein PDF/A: Installiere Ghostscript unter Einstellungen → Module, um PDF/A zu erstellen",
   "notice.cmyk_render_failed": "Diese Datei ist CMYK, aber Ghostscript konnte sie nicht zeichnen, daher wurde sie als RGB gespeichert",

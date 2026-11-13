@@ -42,7 +42,7 @@ public static class EngineRegistry
     /// its container repacked.
     /// </param>
     public static IReadOnlyList<IConverter> CreateAll(EngineEnvironment env, ILoggerFactory? loggers = null) =>
-    [
+        SheetPrintConverter.WithFallback([
         new MagickImageConverter(),
         new FolderIsoConverter(),
         new PdfSharpConverter(),
@@ -88,7 +88,7 @@ public static class EngineRegistry
         new TesseractConverter(),
         new CalibreConverter(),
         new LibreOfficeConverter(env, loggers?.CreateLogger<LibreOfficeConverter>()),
-    ];
+    ]);
 
     /// <summary>Finds the PDF merger among the converters.</summary>
     public static IPdfMerger? FindPdfMerger(IEnumerable<IConverter> converters) =>

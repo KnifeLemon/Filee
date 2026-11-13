@@ -180,6 +180,7 @@
   "notice.under_min_size": "Disimpan, tetapi lebih kecil dari ukuran file minimum",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objek yang tidak dimiliki versi AutoCAD yang dipilih (multileader, mesh …) tidak disertakan",
+  "notice.sheet_objects_left_out": "Objek yang belum bisa dicetak Filee (diagram, teks dalam bentuk …) tidak disertakan: pasang LibreOffice di Pengaturan → Engine untuk menyertakannya",
   "notice.cmyk_needs_ghostscript": "File ini CMYK, tetapi disimpan sebagai RGB: pasang Ghostscript di Pengaturan → Engine agar tetap CMYK",
   "notice.pdfa_needs_ghostscript": "PDF ini bukan PDF/A: pasang Ghostscript di Pengaturan → Engine untuk membuat PDF/A",
   "notice.cmyk_render_failed": "File ini CMYK, tetapi Ghostscript tidak bisa menggambarnya, jadi disimpan sebagai RGB",

@@ -180,6 +180,7 @@
   "notice.under_min_size": "सहेजा गया, लेकिन न्यूनतम फ़ाइल आकार से छोटा है",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "चुने गए AutoCAD संस्करण में न होने वाले ऑब्जेक्ट (मल्टीलीडर, मेश …) छोड़ दिए गए",
+  "notice.sheet_objects_left_out": "जिन ऑब्जेक्ट को Filee अभी प्रिंट नहीं कर सकता (चार्ट, आकृतियों में टेक्स्ट …), वे छोड़ दिए गए: उन्हें रखने के लिए सेटिंग्स → इंजन में LibreOffice इंस्टॉल करें",
   "notice.cmyk_needs_ghostscript": "यह फ़ाइल CMYK है, लेकिन RGB में सेव हुई: CMYK बनाए रखने के लिए सेटिंग्स → इंजन में Ghostscript इंस्टॉल करें",
   "notice.pdfa_needs_ghostscript": "यह PDF, PDF/A नहीं है: PDF/A बनाने के लिए सेटिंग्स → इंजन में Ghostscript इंस्टॉल करें",
   "notice.cmyk_render_failed": "यह फ़ाइल CMYK है, लेकिन Ghostscript इसे नहीं बना सका, इसलिए यह RGB में सेव हुई",

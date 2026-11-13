@@ -186,6 +186,7 @@
   "notice.under_min_size": "최소 파일 크기보다 작지만 저장했어요",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "선택한 AutoCAD 버전에 없는 개체(다중 지시선, 메시 …)는 빼고 저장했어요",
+  "notice.sheet_objects_left_out": "아직 인쇄할 수 없는 개체(차트, 도형 안의 글자 …)는 빼고 저장했어요. 함께 받으려면 설정 → 변환 엔진에서 LibreOffice를 설치하세요",
   "notice.cmyk_needs_ghostscript": "CMYK 파일인데 RGB로 저장했어요. CMYK로 받으려면 설정 → 변환 엔진에서 Ghostscript를 설치하세요",
   "notice.pdfa_needs_ghostscript": "이 PDF는 PDF/A가 아니에요. PDF/A로 받으려면 설정 → 변환 엔진에서 Ghostscript를 설치하세요",
   "notice.cmyk_render_failed": "CMYK 파일인데 Ghostscript가 그리지 못해서 RGB로 저장했어요",

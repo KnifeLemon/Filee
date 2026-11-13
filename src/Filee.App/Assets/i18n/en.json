@@ -186,6 +186,7 @@
   "notice.under_min_size": "Saved, but smaller than the minimum file size",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objects the chosen AutoCAD version doesn't have (multileaders, meshes …) were left out",
+  "notice.sheet_objects_left_out": "Objects Filee can't print yet (charts, text in shapes …) were left out: install LibreOffice in Settings → Engines to keep them",
   "notice.cmyk_needs_ghostscript": "This file is CMYK but was saved as RGB: install Ghostscript in Settings → Engines to keep CMYK",
   "notice.pdfa_needs_ghostscript": "This PDF isn't PDF/A: install Ghostscript in Settings → Engines to make it PDF/A",
   "notice.cmyk_render_failed": "This file is CMYK, but Ghostscript couldn't draw it, so it was saved as RGB",
