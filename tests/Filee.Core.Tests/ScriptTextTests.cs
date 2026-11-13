@@ -1,6 +1,6 @@
 // Lua, PowerShell, AutoHotkey and batch scripts, SQL and HiveQL, DBML database schemas, INI files, RouterOS exports, CSS
-// style sheets and C, C++, C#, Dart and Java source files are plain text (issues #388, #368, #442, #607, #536, #630, #661,
-// #660, #864, #828, #980, #997, #854, #1176): recognised, and learnt by existing text donuts.
+// style sheets, C, C++, C#, Dart and Java source files and Arduino / Processing sketches are plain text (issues #388, #368,
+// #442, #607, #536, #630, #661, #660, #864, #828, #980, #997, #854, #1176): recognised, and learnt by existing text donuts.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -34,6 +34,8 @@ public class ScriptTextTests
     [InlineData("shop.dbml")]
     [InlineData("HelloWorld.java")]
     [InlineData("Legacy.JAVA")]
+    [InlineData("Blink.ino")]
+    [InlineData("OldSketch.PDE")]
     public void Scripts_and_style_sheets_are_text(string name) => Assert.Equal("txt", FormatRegistry.Detect(name)?.Id);
 
     [Fact]
@@ -160,5 +162,31 @@ public class ScriptTextTests
         profiles.Insert(0, new ToolbarProfile { Id = "my-java", Name = "Java", Extensions = ["JAVA"] });
         Assert.False(SettingsMigrations.ApplyToLibrary(70, presets, profiles));
         Assert.DoesNotContain("java", text); // the user's own donut has it
+    }
+
+    [Theory]
+    [InlineData("Blink.ino")]
+    [InlineData("Bounce.pde")]
+    public void A_sketch_uses_the_text_donut(string name) =>
+        Assert.Equal("text", ProfileSelector.Select(BuiltInData.CreateProfiles(), [name])?.Id);
+
+    [Fact]
+    public void Version_86_text_donuts_learn_ino_and_pde_without_taking_custom_claims()
+    {
+        var presets = BuiltInData.CreatePresets();
+        var profiles = BuiltInData.CreateProfiles();
+        var text = profiles.Single(p => p.Id == "text").Extensions;
+        text.Remove("ino");
+        text.Remove("pde");
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.Contains("ino", text);
+        Assert.Contains("pde", text);
+        Assert.False(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+
+        text.Remove("ino");
+        profiles.Insert(0, new ToolbarProfile { Id = "my-arduino", Name = "Arduino", Extensions = ["INO"] });
+        Assert.False(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.DoesNotContain("ino", text); // the user's own donut has it
     }
 }

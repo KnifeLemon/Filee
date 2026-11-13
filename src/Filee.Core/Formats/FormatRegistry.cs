@@ -162,12 +162,12 @@ public static class FormatRegistry
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
 
         // Plain text / markup
-        // Text logs, source code, database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
+        // Text logs, source code (Arduino and Processing sketches too), database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
         // text, never executed, compiled or translated (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660,
         // #864, #828, #980, #997, #854, #1176).
         new("txt", "TXT", FormatCategory.Text,
             ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
-             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java"]),
+             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java", "ino", "pde"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
         // A web page saved with its pictures in one MIME file (Chrome, Edge, Word); read as the page it holds.
@@ -334,6 +334,12 @@ public static class FormatRegistry
         // Adobe extension packages for After Effects, Premiere Pro, Photoshop … (#1382): signed ZIPs. Never a target,
         // since installing one needs the signature its developer makes with Adobe's ZXPSignCmd.
         new("zxp", "ZXP (Adobe extension)", FormatCategory.Archive, ["zxp"], Writable: false),
+        // NuGet packages and their symbol packages (#1465), split-APK containers from bundletool, SAI, APKMirror and
+        // APKPure, and Android App Bundles (#1464): all ZIPs. Never a target, since NuGet, Android and the stores need
+        // a package signed (and laid out) by its developer's tools.
+        new("nupkg", "NUPKG (NuGet package)", FormatCategory.Archive, ["nupkg", "snupkg"], Writable: false),
+        new("apks", "APKS (Android split APKs)", FormatCategory.Archive, ["apks", "xapk", "apkm"], Writable: false),
+        new("aab", "AAB (Android App Bundle)", FormatCategory.Archive, ["aab"], Writable: false),
         // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
         // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
         // the top.

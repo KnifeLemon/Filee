@@ -30,19 +30,19 @@ public class CanvasFormatTests
     }
 
     [Fact]
-    public void Version_86_libraries_learn_canvas_without_taking_custom_claims()
+    public void Version_88_libraries_learn_canvas_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var vector = profiles.Single(p => p.Id == "vector");
         vector.Extensions.Remove("canvas");
-        Assert.True(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(88, presets, profiles));
         Assert.Contains("canvas", vector.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(88, presets, profiles));
 
         vector.Extensions.Remove("canvas");
         profiles.Insert(0, new ToolbarProfile { Id = "my-boards", Extensions = ["CANVAS"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(88, presets, profiles));
         Assert.DoesNotContain("canvas", vector.Extensions); // the user's own donut has it
         Assert.Equal("my-boards", ProfileSelector.Select(profiles, ["plan.canvas"])?.Id);
     }

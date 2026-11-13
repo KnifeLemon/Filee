@@ -297,10 +297,23 @@
         <!-- 2. Donut -->
         <StackPanel Grid.Column="2" Spacing="12">
           <TextBlock Classes="label" Text="{DynamicResource toolbar.step_arrange}" />
-          <Border Classes="card" Padding="8">
+          <!-- The editor: the donut's slices, or the presets of the group open in it. The donut is laid out at its real
+               size, so names wrap and icons show as on the donut itself, and drawn smaller only when its column is
+               narrower. -->
+          <Border x:Name="EditorCard" Classes="card" Padding="8" IsVisible="{Binding !IsAdjustingLook}">
             <StackPanel>
+              <!-- A group is open: the way back to the whole donut, named after it. -->
+              <Button x:Name="GroupBack" HorizontalAlignment="Left" Margin="4,4,0,0" Command="{Binding CloseGroupCommand}"
+                      IsVisible="{Binding IsEditingGroup}" AutomationProperties.Name="{Binding GroupBackName}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <!-- Points back along the line: left, and right in Arabic. -->
+                  <PathIcon Classes="reading" Width="12" Height="12" Data="{StaticResource Icon.ChevronRight}" RenderTransform="scaleX(-1)" />
+                  <TextBlock Text="{Binding GroupBackText}" />
+                </StackPanel>
+              </Button>
               <!-- Which face of the donut the slices below are: the front, or the back Tab flips the open donut to. -->
-              <Border x:Name="FaceSwitch" Classes="faces" HorizontalAlignment="Center" Margin="0,6,0,0">
+              <Border x:Name="FaceSwitch" Classes="faces" HorizontalAlignment="Center" Margin="0,6,0,0"
+                      IsVisible="{Binding !IsEditingGroup}">
                 <StackPanel Orientation="Horizontal">
                   <RadioButton Classes="face" IsChecked="{Binding EditingFront}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
@@ -317,7 +330,8 @@
                 </StackPanel>
               </Border>
               <TextBlock Classes="caption" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
-                         Margin="12,6,12,0" Text="{Binding FaceHint}" />
+                         Margin="12,6,12,0" Text="{Binding FaceHint}" IsVisible="{Binding !IsEditingGroup}" />
+              <Viewbox x:Name="DonutFit" StretchDirection="DownOnly" Stretch="Uniform">
               <c:DonutMenu x:Name="Donut" IsEditMode="True" HorizontalAlignment="Center"
                            Items="{Binding DonutItems}"
                            CenterTitle="{Binding CenterTitle}"
@@ -328,6 +342,123 @@
                            ShowCaptions="{Binding ShowCaptions}"
                            LabelScale="{Binding LabelScale, Converter={x:Static vm:ToolbarConverters.Percent}}"
                            DefaultShow="{Binding DefaultShow}" />
+              </Viewbox>
+              <TextBlock x:Name="GroupHint" Classes="caption" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                         Margin="12,2,12,6" Text="{DynamicResource toolbar.group_hint}" IsVisible="{Binding IsEditingGroup}" />
+              <Button x:Name="EditSize" HorizontalAlignment="Center" Margin="0,2,0,8" Command="{Binding AdjustLookCommand}"
+                      IsVisible="{Binding !IsEditingGroup}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Donut}" />
+                  <TextBlock Text="{DynamicResource toolbar.edit_size}" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Border>
+          <!-- Edit Donut Size: the donut is on screen at its real size meanwhile (ToolbarPage.axaml.cs), so it can be
+               judged over the desktop and tried out (a group opens on it, it flips) while these change. Names in a
+               shared first column; the value of each slider in the last. -->
+          <Border x:Name="LookCard" Classes="card" IsVisible="{Binding IsAdjustingLook}">
+            <StackPanel Spacing="8" Grid.IsSharedSizeScope="True">
+              <DockPanel>
+                <Button x:Name="LookDone" DockPanel.Dock="Right" Classes="accent" Command="{Binding DoneAdjustingLookCommand}"
+                        Content="{DynamicResource toolbar.look_done}" />
+                <TextBlock Classes="h2" VerticalAlignment="Center" TextWrapping="Wrap" Text="{DynamicResource toolbar.edit_size}" />
+              </DockPanel>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource toolbar.look_hint}" />
+              <TextBlock Classes="label" Margin="0,6,0,0" Text="{DynamicResource toolbar.look_all}" />
+              <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookName" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookValue" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" MinWidth="110" MaxWidth="170" TextWrapping="Wrap" Text="{DynamicResource toolbar.size}" />
+                <Slider x:Name="SizeSlider" Grid.Column="1" Minimum="110" Maximum="220" Value="{Binding OuterRadius}" AutomationProperties.Name="{DynamicResource toolbar.size}" />
+                <TextBlock Grid.Column="2" Classes="caption" MinWidth="44" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding OuterRadiusText}" />
+              </Grid>
+              <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookName" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookValue" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" MinWidth="110" MaxWidth="170" TextWrapping="Wrap" Text="{DynamicResource toolbar.hole}" />
+                <Slider x:Name="HoleSlider" Grid.Column="1" Minimum="25" Maximum="65" Value="{Binding HoleRatio}" AutomationProperties.Name="{DynamicResource toolbar.hole}" />
+                <TextBlock Grid.Column="2" Classes="caption" MinWidth="44" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding HoleRatioText}" />
+              </Grid>
+              <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookName" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookValue" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" MinWidth="110" MaxWidth="170" TextWrapping="Wrap" Text="{DynamicResource toolbar.opacity}" />
+                <Slider x:Name="OpacitySlider" Grid.Column="1" Minimum="10" Maximum="100" Value="{Binding SliceOpacity}" AutomationProperties.Name="{DynamicResource toolbar.opacity}" />
+                <TextBlock Grid.Column="2" Classes="caption" MinWidth="44" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding SliceOpacityText}" />
+              </Grid>
+              <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookName" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookValue" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" MinWidth="110" MaxWidth="170" TextWrapping="Wrap" Text="{DynamicResource toolbar.ring_size}" />
+                <Slider x:Name="RingSizeSlider" Grid.Column="1" Minimum="75" Maximum="150" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10"
+                        Value="{Binding GroupRingSize}" AutomationProperties.Name="{DynamicResource toolbar.ring_size}" />
+                <TextBlock Grid.Column="2" Classes="caption" MinWidth="44" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding GroupRingSizeText}" />
+              </Grid>
+              <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookName" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookValue" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" MinWidth="110" MaxWidth="170" TextWrapping="Wrap" Text="{DynamicResource toolbar.ring_spread}" />
+                <Slider x:Name="RingSpreadSlider" Grid.Column="1" Minimum="100" Maximum="300" TickFrequency="10" IsSnapToTickEnabled="True" SmallChange="10" LargeChange="50"
+                        Value="{Binding GroupRingSpread}" AutomationProperties.Name="{DynamicResource toolbar.ring_spread}" />
+                <TextBlock Grid.Column="2" Classes="caption" MinWidth="44" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding GroupRingSpreadText}" />
+              </Grid>
+              <!-- Which of this donut's groups the donut on screen holds open, when it has more than one. -->
+              <Grid ColumnSpacing="12" IsVisible="{Binding ShowsGroupPicker}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookName" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" MinWidth="110" MaxWidth="170" TextWrapping="Wrap" Text="{DynamicResource toolbar.group_shown}" />
+                <ComboBox x:Name="GroupShownChoice" Grid.Column="1" ItemsSource="{Binding RingGroups}" SelectedItem="{Binding ShownGroup}"
+                          HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource toolbar.group_shown}" />
+              </Grid>
+              <!-- Longer than the names above in most languages: it wraps next to a bare switch, as the mixed one does.
+                   -->
+              <DockPanel>
+                <ToggleSwitch x:Name="CaptionsToggle" DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0"
+                              Margin="12,0,0,0" VerticalAlignment="Center" IsChecked="{Binding ShowCaptions}"
+                              AutomationProperties.Name="{DynamicResource toolbar.captions}" />
+                <TextBlock Text="{DynamicResource toolbar.captions}" TextWrapping="Wrap" VerticalAlignment="Center" />
+              </DockPanel>
+              <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,4" />
+              <!-- This donut's slice labels: what they show when a preset doesn't say, and how large they are. -->
+              <TextBlock Classes="label" Text="{Binding ThisDonutText}" TextWrapping="Wrap" />
+              <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookName" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" MinWidth="110" MaxWidth="170" TextWrapping="Wrap" Text="{DynamicResource toolbar.slice_labels}" />
+                <ComboBox x:Name="SliceLabelsChoice" Grid.Column="1" ItemsSource="{Binding SliceLabelChoices}" SelectedItem="{Binding SliceLabels}"
+                          HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource toolbar.slice_labels}" />
+              </Grid>
+              <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookName" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookValue" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" MinWidth="110" MaxWidth="170" TextWrapping="Wrap" Text="{DynamicResource toolbar.label_scale}" />
+                <Slider x:Name="LabelScaleSlider" Grid.Column="1" Minimum="80" Maximum="160" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10"
+                        Value="{Binding LabelScale}" AutomationProperties.Name="{DynamicResource toolbar.label_scale}" />
+                <TextBlock Grid.Column="2" Classes="caption" MinWidth="44" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding LabelScaleText}" />
+              </Grid>
             </StackPanel>
           </Border>
           <TextBlock Classes="caption danger" Text="{Binding Message}" HorizontalAlignment="Center" />
@@ -337,21 +468,6 @@
               <StackPanel>
                 <TextBlock Classes="label" Text="{DynamicResource toolbar.name}" />
                 <TextBox Text="{Binding ProfileName}" AutomationProperties.Name="{DynamicResource toolbar.name}" />
-              </StackPanel>
-
-              <!-- This donut's slice labels: what they show when a preset doesn't say, and how large they are. -->
-              <StackPanel>
-                <TextBlock Classes="label" Text="{DynamicResource toolbar.slice_labels}" />
-                <ComboBox x:Name="SliceLabelsChoice" ItemsSource="{Binding SliceLabelChoices}" SelectedItem="{Binding SliceLabels}"
-                          HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource toolbar.slice_labels}" />
-              </StackPanel>
-              <StackPanel>
-                <DockPanel>
-                  <TextBlock DockPanel.Dock="Right" Classes="caption" VerticalAlignment="Center" Text="{Binding LabelScaleText}" />
-                  <TextBlock Classes="label" Text="{DynamicResource toolbar.label_scale}" />
-                </DockPanel>
-                <Slider x:Name="LabelScaleSlider" Minimum="80" Maximum="160" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10"
-                        Value="{Binding LabelScale}" AutomationProperties.Name="{DynamicResource toolbar.label_scale}" />
               </StackPanel>
 
               <!-- The label wraps (a ToggleSwitch header doesn't), so it sits next to a bare switch. -->
@@ -452,47 +568,6 @@
             </StackPanel>
           </Border>
 
-          <Border Classes="card">
-            <StackPanel Spacing="6">
-              <TextBlock Classes="h2" Text="{DynamicResource toolbar.appearance}" />
-              <Grid ColumnDefinitions="90,*">
-                <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.size}" />
-                <Slider Grid.Column="1" Minimum="110" Maximum="220" Value="{Binding OuterRadius}" AutomationProperties.Name="{DynamicResource toolbar.size}" />
-              </Grid>
-              <Grid ColumnDefinitions="90,*">
-                <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.hole}" />
-                <Slider Grid.Column="1" Minimum="25" Maximum="65" Value="{Binding HoleRatio}" AutomationProperties.Name="{DynamicResource toolbar.hole}" />
-              </Grid>
-              <Grid ColumnDefinitions="90,*">
-                <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.opacity}" />
-                <Slider Grid.Column="1" Minimum="10" Maximum="100" Value="{Binding SliceOpacity}" AutomationProperties.Name="{DynamicResource toolbar.opacity}" />
-              </Grid>
-              <!-- The ring a group fans out: longer labels than the ones above, so each sits over its slider. -->
-              <StackPanel>
-                <DockPanel>
-                  <TextBlock DockPanel.Dock="Right" Classes="caption" VerticalAlignment="Center" Text="{Binding GroupRingSizeText}" />
-                  <TextBlock Classes="label" Text="{DynamicResource toolbar.ring_size}" TextWrapping="Wrap" />
-                </DockPanel>
-                <Slider x:Name="RingSizeSlider" Minimum="75" Maximum="150" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10"
-                        Value="{Binding GroupRingSize}" AutomationProperties.Name="{DynamicResource toolbar.ring_size}" />
-              </StackPanel>
-              <StackPanel>
-                <DockPanel>
-                  <TextBlock DockPanel.Dock="Right" Classes="caption" VerticalAlignment="Center" Text="{Binding GroupRingSpreadText}" />
-                  <TextBlock Classes="label" Text="{DynamicResource toolbar.ring_spread}" TextWrapping="Wrap" />
-                </DockPanel>
-                <Slider x:Name="RingSpreadSlider" Minimum="100" Maximum="300" TickFrequency="10" IsSnapToTickEnabled="True" SmallChange="10" LargeChange="50"
-                        Value="{Binding GroupRingSpread}" AutomationProperties.Name="{DynamicResource toolbar.ring_spread}" />
-              </StackPanel>
-              <!-- Longer than the labels above in most languages: it wraps next to a bare switch, as the mixed one. -->
-              <DockPanel>
-                <ToggleSwitch x:Name="CaptionsToggle" DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0"
-                              Margin="12,0,0,0" VerticalAlignment="Center" IsChecked="{Binding ShowCaptions}"
-                              AutomationProperties.Name="{DynamicResource toolbar.captions}" />
-                <TextBlock Classes="label" Text="{DynamicResource toolbar.captions}" TextWrapping="Wrap" VerticalAlignment="Center" />
-              </DockPanel>
-            </StackPanel>
-          </Border>
         </StackPanel>
 
         <!-- Palette -->

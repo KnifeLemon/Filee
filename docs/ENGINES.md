@@ -12,7 +12,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
-| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -40,6 +40,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR; e-books → PDF (ranked above the HWPX writer, see below) |
+| WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
 
@@ -56,7 +57,8 @@ XLSX shared strings and sheets, HWPX sections, OFD pages and templates, EPUB cha
 RTF character references) for the Hebrew, Arabic, Syriac, Thaana, N'Ko, Indic, Sinhala, Thai, Lao, Tibetan, Myanmar,
 Khmer, Mongolian and other South / Southeast Asian blocks. For such a file `JobQueue` plans again without unshaped
 edges: DOCX, TXT, Markdown, HTML, XLSX, PPTX and HWPX → PDF (and → images through PDF) go through LibreOffice even
-when Settings → *Engines* doesn't choose it for documents. Without LibreOffice the file fails with "This script needs
+when Settings → *Engines* doesn't choose it for documents; HTML, Markdown and e-mails go through WeasyPrint instead
+when it is installed (it shapes text, see *WeasyPrint*). Without LibreOffice the file fails with "This script needs
 LibreOffice to convert correctly" and the script's name instead of becoming a broken PDF. The same scan also finds
 text rhwp has no widths for: its width tables cover only ASCII and Latin-1, general punctuation, math, the CJK forms
 and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish, Vietnamese, Greek, Cyrillic, ... — or a
@@ -145,6 +147,7 @@ the runtime next to every program that needs it and does not ship it (`Infrastru
 | Ghostscript (download) | `vcruntime` component copied next to `gswin64c.exe` (`EngineInstaller`, `fetch-engines.ps1`) |
 | LibreOffice (download) | its own copy, which the administrative install leaves in `System64`, copied into `program/` (`EngineInstaller`, `fetch-engines.ps1`; `LibreOfficeConverter` also repairs a copy installed by an earlier Filee) |
 | calibre, Java (downloads) | ship their own next to their programs (`app/bin`, `bin`) |
+| WeasyPrint (download) | ships its own (the MinGW / UCRT runtime and `VCRUNTIME140.dll` of its Python) in `_internal` |
 | 7-Zip, FFmpeg (GyanD), Tesseract (UB Mannheim, MinGW), Pandoc, PDFium, SkiaSharp / HarfBuzz, Magick.Native, the Explorer menu DLL, .NET | import neither (static runtime or MinGW / GHC builds) |
 
 The installer and the portable zip are made from the same publish folder, so both have the DLLs. Filee installed in
@@ -1574,6 +1577,43 @@ never switches engines by itself.
   (`CALIBRE_CONFIG_DIRECTORY`, ...), so a calibre the user installed is never read or changed; messages are
   English (`CALIBRE_OVERRIDE_LANG`) and progress comes from its "34% ..." lines.
 
+## WeasyPrint
+
+WeasyPrint (BSD-3-Clause, `Text/WeasyPrintConverter.cs`) is an optional download that makes PDFs of HTML the way a
+browser prints it, with Pango and HarfBuzz: headings, tables, bold, links, and Arabic, Hebrew or Indic text shaped and
+in the right order. The built-in route (HWPX writer → rhwp) keeps structure only and draws unshaped text (#1403).
+
+- **Download**: Windows only for now, WeasyPrint's own "onedir" build (`weasyprint-windows-onedir.zip`, pinned in
+  `engines.json`): `weasyprint.exe` with an `_internal` folder holding Python, Pango, HarfBuzz, Fontconfig, ... The
+  folder with `weasyprint.exe` becomes `engines/weasyprint`, with WeasyPrint's `LICENSE` moved into it. It is found
+  only as Filee's download or a copy the user picked in Settings → *Engines*, never on the PATH. Linux and macOS
+  follow in a separate change once WeasyPrint publishes a self-contained build for them; until then they keep the
+  routes below.
+- **Routes**: one edge, HTML → PDF, cost 1, used only in routes that start from HTML, Markdown, EML, MSG or MHTML
+  (`ConversionEdge.Sources`). So a page goes straight to WeasyPrint, Markdown through Markdig's page (Markdown → HTML
+  → PDF, 9 + 10 at the end of the engine order) and an e-mail or a saved web page through its page (19 + 10), all
+  cheaper than the built-in route (31) and LibreOffice (37). A Word document, an e-book or a PDF never goes through a
+  page to reach it. Without WeasyPrint installed the edge isn't planned and every route stays as it was. → PNG, JPG,
+  ... of such a file go through WeasyPrint's PDF and PDFium. A source with text that needs shaping takes it too: the
+  edge isn't `Unshaped`.
+- **Locked down**: WeasyPrint gets a copy of the page (`WeasyPrintConverter.PreparePage`, the HTML rule of
+  `LinkedContent`): pictures inside the document's own folder (or the Markdown file's or e-mail's, for a page made
+  from it; `DocumentFiles.cs`) become `data:` URIs, SVG included; every other picture, frame, object, embed, `<base>`,
+  `<link>` style sheet, `@import` and CSS `url()` address is taken out, except references to the page's own elements
+  (`#id`: an inline SVG's `<use href="#icon">`, a gradient's `xlink:href`, `fill: url(#g)`), which WeasyPrint resolves
+  within the page. It then runs with `--allowed-protocols data`,
+  so whatever the copy still names (a relative or absolute path, a `file:`, `http:` or `https:` address, an
+  attachment link, a CSS `image-set()` string the copy didn't recognise) is refused by WeasyPrint itself: no local
+  file outside the document is read and no address is contacted. Removing first and refusing second means a
+  reference the HTML rewrite misses still loads nothing, and one WeasyPrint would refuse anyway doesn't leave an error
+  per picture in its output. Tests: `WeasyPrintTests` (the page prepared without WeasyPrint, and the PDF with it).
+- **Options**: `--presentational-hints` (an e-mail's `width`, `bgcolor`, ...) and `--verbose`, whose "Step 5 -
+  Creating layout - Page 12" lines drive the progress bar and the stall watch. Page size and margins come from the
+  page's CSS, else A4 (WeasyPrint's default). Pictures embedded in one page are limited to 256 MB in all, like for
+  LibreOffice.
+- **Time**: WeasyPrint may run as long as it keeps printing lines, but is stopped after 5 minutes without one
+  (`error.engine_stalled`) and after 30 minutes in all. Cancelling stops it at once. Two run at the same time.
+
 ## HWP ↔ HWPX
 
 rhwp converts between the two 한글 formats without Hancom Office (`export-hwpx` and `convert`). Anything → HWP goes
@@ -1597,7 +1637,8 @@ per MB of unpacked `Contents/section*.xml` (an HWP counts three times its file s
 60 minutes, after which a rhwp that hangs is stopped. The progress estimate assumes 15 minutes per MB. Cancelling
 stops rhwp at once. A time-out fails with "rhwp couldn't finish this long document in time" (with calibre installed,
 it suggests ranking calibre above the HWPX writer for e-books). The other engines keep fixed limits: LibreOffice 3
-minutes, Ghostscript 5, Pandoc 2 and calibre 10 (it made the 640-page novel's PDF in a minute).
+minutes, Ghostscript 5, Pandoc 2 and calibre 10 (it made the 640-page novel's PDF in a minute); WeasyPrint 5 minutes
+without output, 30 in all.
 
 ## Archives
 
@@ -1614,7 +1655,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 
 | Format | Read | Write |
 |---|---|---|
-| ZIP, JAR, WBPZ, ZXP | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
+| ZIP, JAR, WBPZ, ZXP, NUPKG, SNUPKG, APKS, XAPK, APKM, AAB | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
 | Minecraft MCPACK, MCADDON, MCWORLD, MCTEMPLATE; Modrinth MRPACK | 7-Zip (they are ZIPs) | ZIP in-process, with the marker file at the top (see below) |
 | 7Z | 7-Zip | 7-Zip |
 | TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
@@ -1645,6 +1686,13 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   Pro, Photoshop and the other Creative Cloud apps are signed ZIPs (`mimetype`, the extension's files and
   `META-INF/signatures.xml`). They extract and convert to every archive target with the signature file inside.
   Nothing writes `.zxp`: Adobe's apps install only packages signed with the developer's certificate (ZXPSignCmd).
+- **NuGet and Android packages** (#1465, #1464, read only like JAR): NuGet packages and symbol packages (`.nupkg`,
+  `.snupkg`: the `.nuspec`, `lib/`, `[Content_Types].xml`, `_rels/`, `package/`), split-APK containers (`.apks` from
+  bundletool, `.xapk` from APKPure, `.apkm` from APKMirror: `base.apk`, the `split_config.*.apk` files, a JSON or
+  table of contents and any `.obb`) and Android App Bundles (`.aab`: `base/manifest/`, `base/dex/`,
+  `BundleConfig.pb`) are ZIPs. They extract and convert to every archive target; the APKs inside stay APK files.
+  Nothing writes these: NuGet and the Play Store take only packages their own tools build and sign, and turning a
+  bundle or splits into one installable `.apk` needs it signed again, which Filee doesn't do.
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
   file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.
@@ -1828,6 +1876,16 @@ Dahua DVR / NVR recordings (`.dav`, read only, #594) are read by FFmpeg's `dhav`
 the target and preset allow it (`CanCopyVideo`), like any other container's; G.711 sound is encoded for targets that
 can't hold it. The chunks carry the camera's wall-clock time, so FFmpeg reports the recording date as the start time;
 the output starts at zero.
+Hikvision camera and NVR recordings are MPEG program streams with H.264 / H.265 video and G.711 sound, whatever their
+extension; FFmpeg's mpeg demuxer reads them by their content, so they go to every video and audio target as their
+format (usually MP4) is read. Exports from iVMS-4200 and the NVR (`.mp4`, sometimes `.264`) start with a 40-byte
+`IMKH` header, which makes FFmpeg read the stream map's type 0x91 as G.711 mu-law. The recordings on a camera's SD
+card or a NAS (`hiv00000.mp4`, indexed by `index00.bin`) are the same stream without the header: FFmpeg then takes
+mu-law sound for MP2 and fails. When a file starts with a pack header and a stream map in its first 256 KB lists
+mu-law sound (`Media/HikvisionStream.cs`), Filee gives FFmpeg `concat:<header>|<file>`, a 40-byte `IMKH` header
+written to the job's work folder followed by the recording, which is not copied. A damaged stream map leaves the file
+to FFmpeg as it is. Old `4HKH` `.264` files (Hikvision's own frame format) and recordings made with stream encryption
+on can't be read and fail with FFmpeg's error.
 Bink videos (`.bik`, read only, #751), the cutscene format of many games, are read by FFmpeg's `bink` demuxer and
 decoder and go to every video and audio target. FFmpeg has no Bink encoder, so nothing writes `.bik`.
 FLIC animations (`.flc` and `.fli`, read only, #940), from Autodesk Animator and Animator Pro and the cutscenes of DOS
