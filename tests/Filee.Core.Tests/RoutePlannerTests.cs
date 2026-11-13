@@ -86,6 +86,32 @@ public class RoutePlannerTests
     }
 
     [Fact]
+    public void A_cheap_checked_engine_outside_the_priority_list_beats_an_engine_chosen_in_settings()
+    {
+        // The costs of the default engine order: Filee's renderer is not in the list (penalty 9 at most), LibreOffice is
+        // last, and a kind of file chosen for it in Settings → Engines costs 10. On cost alone the renderer (1 + 9) wins
+        // over the choice (10 + 9), which is why the renderer leaves a chosen kind of file out of its edges instead.
+        var writer = new FakeConverter("hwpx-writer", new ConversionEdge("docx", "hwpx", 10));
+        var rhwp = new FakeConverter("rhwp", new ConversionEdge("hwpx", "pdf", 10));
+        var office = new FakeConverter("libreoffice", new ConversionEdge("docx", "pdf", 10));
+        var layout = new FakeConverter("layout", new ConversionEdge("docx", "pdf", 1, Checked: true));
+        var withoutDocx = new FakeConverter("layout", new ConversionEdge("md", "pdf", 1, Checked: true));
+        // Their places in the default order (ConverterCatalog.CreatePlanner adds the index, 9 at most).
+        static int Penalty(IConverter c) => c.Id switch { "rhwp" => 3, "hwpx-writer" => 8, _ => 9 };
+
+        var both = new RoutePlanner([writer, rhwp, layout, office], Penalty).Plan("docx", "pdf")!;
+        Assert.Equal(["layout"], both.Steps.Select(s => s.Converter.Id));
+        Assert.Equal(10, both.Cost);
+
+        var left = new RoutePlanner([writer, rhwp, withoutDocx, office], Penalty).Plan("docx", "pdf")!;
+        Assert.Equal(["libreoffice"], left.Steps.Select(s => s.Converter.Id));
+        Assert.Equal(19, left.Cost);
+        // Not chosen (LibreOffice's fallback 25), the built-in route stays below it.
+        var fallback = new FakeConverter("libreoffice", new ConversionEdge("docx", "pdf", 25));
+        Assert.Equal(["hwpx-writer", "rhwp"], new RoutePlanner([writer, rhwp, withoutDocx, fallback], Penalty).Plan("docx", "pdf")!.Steps.Select(s => s.Converter.Id));
+    }
+
+    [Fact]
     public void Direct_only_edges_are_never_a_step_of_a_longer_route()
     {
         // PDF → PPTX puts pictures of the pages on slides: only for a PDF the user asked to turn into PPTX.

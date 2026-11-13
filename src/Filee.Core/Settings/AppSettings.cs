@@ -170,7 +170,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 90;
+    public const int CurrentSchemaVersion = 91;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -286,10 +286,11 @@ public sealed class AppSettings
     public Dictionary<string, string> EngineOwnCopies { get; set; } = [];
 
     /// <summary>
-    /// With LibreOffice installed, presentations (PPTX, PPT, ODP) → PDF go through it instead of the built-in route
-    /// (HWPX writer and rhwp): slide backgrounds and shape positions come out as in PowerPoint.
+    /// With LibreOffice installed, presentations (PPTX, PPT, ODP) → PDF go through it instead of Filee's slide renderer.
+    /// Off by default since schema 91, which turned it off once for everyone: the slide renderer keeps backgrounds and
+    /// shape positions, which the route it used to replace (HWPX writer and rhwp) lost.
     /// </summary>
-    public bool LibreOfficeForSlides { get; set; } = true;
+    public bool LibreOfficeForSlides { get; set; }
 
     /// <summary>Active local model for offline translation (e.g. "llama3.2", "qwen2.5").</summary>
     public string? PreferredOllamaModel { get; set; }
@@ -303,10 +304,11 @@ public sealed class AppSettings
     public bool? LibreOfficeForHwp { get; set; }
 
     /// <summary>
-    /// Filee's own renderer (a preview) lays HWPX and documents read into Filee's document model out to PDF, instead of
-    /// the HWPX writer and rhwp. Files with what it doesn't draw yet keep their usual route.
+    /// Filee's own renderer lays HWP, HWPX, documents read into Filee's document model and PowerPoint decks out to PDF
+    /// (on by default; schema 91 turned it on once for everyone). Off, they go through the HWPX writer and rhwp. Files
+    /// with what it doesn't draw yet keep that route either way.
     /// </summary>
-    public bool FileeRenderer { get; set; }
+    public bool FileeRenderer { get; set; } = true;
 
     /// <summary>
     /// With LibreOffice installed, Word documents (DOCX, DOC, ODT, RTF) → PDF go through it instead of the built-in

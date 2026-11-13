@@ -1599,11 +1599,12 @@ public partial class UserDataStoreTests
     }
 
     [Theory]
-    [InlineData(true, false, true)]
-    [InlineData(false, false, false)]
-    [InlineData(false, true, true)]
-    public void Version_89_settings_send_hwp_around_rhwp_through_the_filee_renderer_instead_of_libreoffice(bool libreOfficeForHwp, bool renderer, bool expected)
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public void Version_89_settings_drop_libreoffice_for_hwp_and_end_with_the_filee_renderer_on(bool libreOfficeForHwp, bool renderer)
     {
+        // v90 turned the renderer on for whoever sent HWP through LibreOffice; v91 turns it on for everyone.
         using var dir = new TempDir();
         File.WriteAllText(Path.Combine(dir.Path, "settings.json"),
             $$"""{ "schemaVersion": 89, "libreOfficeForHwp": {{(libreOfficeForHwp ? "true" : "false")}}, "fileeRenderer": {{(renderer ? "true" : "false")}} }""");
@@ -1611,10 +1612,54 @@ public partial class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(expected, store.Settings.FileeRenderer);
+        Assert.True(store.Settings.FileeRenderer);
         Assert.Null(store.Settings.LibreOfficeForHwp);
         // The old switch is not written back.
         Assert.DoesNotContain("libreOfficeForHwp", File.ReadAllText(Path.Combine(dir.Path, "settings.json")), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(88)] // main's last schema: no renderer switch in the file
+    [InlineData(90)] // built-in engines builds: the renderer a preview, off unless turned on
+    public void Settings_before_91_turn_the_filee_renderer_on_and_libreoffice_for_presentations_off_once(int schema)
+    {
+        using var dir = new TempDir();
+        var path = Path.Combine(dir.Path, "settings.json");
+        var renderer = schema >= 89 ? """, "fileeRenderer": false""" : "";
+        File.WriteAllText(path,
+            $$"""{ "schemaVersion": {{schema}}, "libreOfficeForSlides": true, "libreOfficeForDocuments": true, "libreOfficeForSheets": false{{renderer}} }""");
+
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        Assert.True(store.Settings.FileeRenderer);
+        Assert.False(store.Settings.LibreOfficeForSlides);
+        // The other LibreOffice switches are the user's own choices: kept as they were.
+        Assert.True(store.Settings.LibreOfficeForDocuments);
+        Assert.False(store.Settings.LibreOfficeForSheets);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
+
+        // Once: what the user sets afterwards stays.
+        store.Settings.LibreOfficeForSlides = true;
+        store.Settings.FileeRenderer = false;
+        store.SaveSettings();
+        var again = new UserDataStore(dir.Path);
+        again.Load();
+        Assert.True(again.Settings.LibreOfficeForSlides);
+        Assert.False(again.Settings.FileeRenderer);
+    }
+
+    [Fact]
+    public void New_settings_have_the_filee_renderer_on_and_libreoffice_for_presentations_off()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        Assert.True(store.Settings.FileeRenderer);
+        Assert.False(store.Settings.LibreOfficeForSlides);
+        Assert.False(store.Settings.LibreOfficeForDocuments);
+        Assert.False(store.Settings.LibreOfficeForSheets);
     }
 
     [Fact]

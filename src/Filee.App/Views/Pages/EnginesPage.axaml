@@ -101,7 +101,7 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <!-- Filee's own document renderer, off until the user tries it -->
+        <!-- Filee's own document renderer, on by default; off sends documents through the HWPX writer and rhwp -->
         <Border Classes="card" Padding="16,12" Margin="0,8,0,0">
           <StackPanel Spacing="2">
             <ToggleSwitch IsChecked="{Binding UseFileeRenderer}" OnContent="{DynamicResource engines.filee_renderer}" OffContent="{DynamicResource engines.filee_renderer}"

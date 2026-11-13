@@ -27,7 +27,7 @@ public class OfdTests(EngineFixture fx) : IClassFixture<EngineFixture>
     /// the page draws the values — numbers with DeltaX in the "g" shorthand, the buyer's name scaled by a CTM, an item
     /// name wrapped onto a second line — and a QR code. Signatures are present and ignored.
     /// </summary>
-    private static string MakeInvoice(string folder)
+    internal static string MakeInvoice(string folder)
     {
         var png = File.ReadAllBytes(EngineFixture.MakeImage(folder, "qr.png", MagickFormat.Png, 80, 80));
         var path = Path.Combine(folder, "invoice.ofd");
