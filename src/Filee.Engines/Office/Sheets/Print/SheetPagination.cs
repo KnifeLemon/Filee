@@ -275,9 +275,11 @@ internal static class SheetPagination
         {
             if (sheet.HiddenColumns.Contains(c))
                 continue;
-            widths[c] = sheet.ColumnWidths.TryGetValue(c, out var w)
+            var points = sheet.ColumnWidths.TryGetValue(c, out var w)
                 ? sheet.WidthsInPoints ? w * OdsReader.PointsPerCharacter : Pixels(Math.Max(0, Math.Min(w, 255))) * 0.75
                 : standard;
+            // A column that shows is at least one pixel wide (a hostile file's hair-thin columns would crowd a page).
+            widths[c] = points > 0 && double.IsFinite(points) ? Math.Max(points, SheetRowHeights.Minimum) : 0;
         }
         return widths;
     }
