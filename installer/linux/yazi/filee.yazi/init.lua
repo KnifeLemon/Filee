@@ -1,4 +1,3 @@
---- @sync entry
 --- Yazi plugin to convert selected or hovered files with Filee offline converter
 
 local get_targets = ya.sync(function()
@@ -130,29 +129,22 @@ function M:entry()
 		-- Open in Filee GUI Donut
 		local home = os.getenv("HOME") or ""
 		local xdg_data = os.getenv("XDG_DATA_HOME")
-		local default_app = (xdg_data and #xdg_data > 0 and xdg_data or (home .. "/.local/share")) .. "/filee/application/Filee"
+		local app_bin = (xdg_data and #xdg_data > 0 and xdg_data or (home .. "/.local/share")) .. "/filee/application/Filee"
 
-		local cmd = Command(default_app)
+		local cmd = Command(app_bin)
 		cmd:arg("--convert")
 		for _, target in ipairs(targets) do
 			cmd:arg(target)
 		end
-		local child, _ = cmd:spawn()
+		local child, err = cmd:spawn()
 		if not child then
-			-- Fallback to Filee on PATH
-			local path_cmd = Command("Filee"):arg("--convert")
-			for _, target in ipairs(targets) do
-				path_cmd:arg(target)
-			end
-			local fallback_child = path_cmd:spawn()
-			if not fallback_child then
-				-- Final fallback: filee CLI wrapper
-				local cli_cmd = Command("filee"):arg("--convert")
-				for _, target in ipairs(targets) do
-					cli_cmd:arg(target)
-				end
-				cli_cmd:spawn()
-			end
+			ya.notify({
+				title = "Filee Error",
+				content = "Could not launch Filee Donut (is Filee installed in " .. app_bin .. "?)",
+				level = "error",
+				timeout = 5,
+			})
+			return
 		end
 		ya.notify({
 			title = "Filee",

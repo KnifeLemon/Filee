@@ -27,7 +27,7 @@ Yazi plugin to convert selected or hovered files with [Filee](https://github.com
 2. Add a keybinding in `~/.config/yazi/keymap.toml`:
 
    ```toml
-   [[manager.prepend_keymap]]
+   [[mgr.prepend_keymap]]
    on   = [ "c", "f" ]
    run  = "plugin filee"
    desc = "Convert with Filee"
@@ -35,5 +35,6 @@ Yazi plugin to convert selected or hovered files with [Filee](https://github.com
 
 ## Requirements
 
+- Yazi 25.5 or newer (for Yazi 0.3.x or older, use `[[manager.prepend_keymap]]` instead of `[[mgr.prepend_keymap]]`).
 - `filee` CLI on `$PATH` (installed automatically to `~/.local/bin/filee` by `install.sh`).
 - Optional: `notify-send` for desktop notifications.

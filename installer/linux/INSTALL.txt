@@ -130,12 +130,13 @@ libwayland-client0 on Ubuntu). To turn it on:
 Yazi terminal file manager integration:
 The Linux package includes a Yazi plugin (filee.yazi) for converting selected or
 hovered files directly within Yazi, or opening them in the Filee Donut.
+Requires Yazi 25.5 or newer (for Yazi 0.3.x or older, use [[manager.prepend_keymap]]).
 To set up:
 1. Link or copy the plugin into your Yazi plugins directory:
      mkdir -p ~/.config/yazi/plugins
      ln -s "${XDG_DATA_HOME:-$HOME/.local/share}/filee/application/yazi/filee.yazi" ~/.config/yazi/plugins/filee.yazi
 2. Add a keybinding in ~/.config/yazi/keymap.toml:
-     [[manager.prepend_keymap]]
+     [[mgr.prepend_keymap]]
      on   = [ "c", "f" ]
      run  = "plugin filee"
      desc = "Convert with Filee"
