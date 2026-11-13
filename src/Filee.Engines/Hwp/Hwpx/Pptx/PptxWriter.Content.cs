@@ -42,6 +42,9 @@ internal sealed partial class PptxWriter
 
     private const double Emu = PresentationPackage.EmuPerPoint;
 
+    /// <summary>Cancels a long conversion between slides and table rows.</summary>
+    private CancellationToken _token;
+
     /// <summary>Text sizes (1/100 pt) of the list levels, PowerPoint's: 28, 24, 20 and 18 pt below.</summary>
     private static readonly int[] LevelSizes = [2800, 2400, 2000, 1800, 1800, 1800, 1800, 1800, 1800];
 
@@ -108,14 +111,28 @@ internal sealed partial class PptxWriter
 
     private abstract class Item;
 
+    /// <summary>
+    /// Paragraphs of a text or code item still to be placed: <see cref="Paragraphs"/> from <see cref="Start"/> on, the
+    /// first of them from line <see cref="Line"/> on. <see cref="Lines"/> are that paragraph's line starts at
+    /// <see cref="Width"/>, kept from the slide before, so a long paragraph is measured once and not again for every
+    /// slide it continues on.
+    /// </summary>
+    private sealed record ParaCursor(List<Para> Paragraphs, int Start, int Line = 0, List<Position>? Lines = null, long Width = 0);
+
     private sealed class TextItem(List<Para> paragraphs) : Item
     {
         public List<Para> Paragraphs { get; } = paragraphs;
+
+        /// <summary>For the rest of a text continued on the next slide: what of <see cref="Paragraphs"/> is left.</summary>
+        public ParaCursor? Rest { get; init; }
     }
 
     private sealed class CodeItem(List<Para> lines) : Item
     {
         public List<Para> Lines { get; } = lines;
+
+        /// <inheritdoc cref="TextItem.Rest"/>
+        public ParaCursor? Rest { get; init; }
     }
 
     private sealed class PictureItem(string path, double width, double height, string name) : Item
@@ -134,6 +151,13 @@ internal sealed partial class PptxWriter
     private sealed class TableItem(List<GridCell[]> rows, long[] columns, int headerRows, int size) : Item
     {
         public List<GridCell[]> Rows { get; } = rows;
+
+        /// <summary>
+        /// For the rest of a table continued on the next slide: the first row of <see cref="Rows"/> still to be placed
+        /// (the rows are shared with the table, not copied for every slide), and whether its header rows repeat.
+        /// </summary>
+        public int? Start { get; init; }
+        public bool RepeatHeader { get; init; } = true;
 
         /// <summary>Column widths, EMU, summing to the content width.</summary>
         public long[] Columns { get; } = columns;
@@ -423,6 +447,7 @@ internal sealed partial class PptxWriter
         var columns = Math.Clamp(table.ColumnCount, 0, MaxColumns);
         foreach (var row in table.Rows)
         {
+            _token.ThrowIfCancellationRequested();
             var cells = new List<(int, HCell)>();
             var column = 0;
             foreach (var cell in row.Cells)
@@ -446,6 +471,7 @@ internal sealed partial class PptxWriter
         }
         if (columns == 0 || placed.All(r => r.Count == 0))
             return null;
+        HwpxWriter.CheckTableSize(placed.Count, columns); // the grid below has a slot for every row × column
 
         var size = columns <= 4 ? TableSize : Math.Max(MinTableSize, TableSize - (columns - 4) * 150);
         var grid = new List<GridCell[]>();
@@ -650,32 +676,40 @@ internal sealed partial class PptxWriter
         LineStarts(paragraph, width).Count * LineEmu(paragraph) + (first ? 0 : (long)(paragraph.Before / 100.0 * Emu));
 
     /// <summary>
-    /// The first <paramref name="lines"/> lines of a paragraph and the rest, which continues the same item (no bullet
-    /// or number of its own).
+    /// Lines <paramref name="from"/> up to <paramref name="to"/> (exclusive) of a paragraph, given its line starts. A
+    /// part that doesn't start at the paragraph's beginning continues the same item (no bullet or number of its own,
+    /// no space before); white space at the cut is left out.
     /// </summary>
-    private static (Para Head, Para Tail) SplitLines(Para paragraph, long width, int lines)
+    private static Para Lines(Para paragraph, List<Position> starts, int from, int to)
     {
-        var at = LineStarts(paragraph, width)[lines];
-        var head = new List<Run>();
-        var tail = new List<Run>();
-        for (var r = 0; r < paragraph.Runs.Count; r++)
+        if (from == 0 && to >= starts.Count)
+            return paragraph;
+        var start = starts[from];
+        Position? end = to < starts.Count ? starts[to] : null;
+        var runs = new List<Run>();
+        for (var r = start.Run; r < paragraph.Runs.Count; r++)
         {
+            if (end is { } stop && (r > stop.Run || (r == stop.Run && stop.Char == 0)))
+                break;
             var run = paragraph.Runs[r];
-            if (r < at.Run)
-                head.Add(run);
-            else if (r > at.Run || at.Char == 0)
-                tail.Add(run);
-            else
-            {
-                head.Add(run with { Text = run.Text[..at.Char].TrimEnd() });
-                tail.Add(run with { Text = run.Text[at.Char..] });
-            }
+            var a = r == start.Run ? Math.Min(start.Char, run.Text.Length) : 0;
+            var b = end is { } cut && r == cut.Run ? Math.Min(cut.Char, run.Text.Length) : run.Text.Length;
+            var text = a == 0 && b == run.Text.Length ? run.Text : run.Text[a..b];
+            if (end is { } last && r == last.Run)
+                text = text.TrimEnd();
+            runs.Add(ReferenceEquals(text, run.Text) ? run : run with { Text = text });
         }
-        while (tail.Count > 0 && (tail[0].Break || tail[0].Text.TrimStart().Length == 0))
-            tail.RemoveAt(0);
-        if (tail.Count > 0)
-            tail[0] = tail[0] with { Text = tail[0].Text.TrimStart() };
-        return (paragraph with { Runs = head }, paragraph with { Runs = tail, Bullet = BulletKind.None, Before = 0 });
+        if (from > 0)
+        {
+            var skip = 0;
+            while (skip < runs.Count && (runs[skip].Break || runs[skip].Text.TrimStart().Length == 0))
+                skip++;
+            runs.RemoveRange(0, skip);
+            if (runs.Count > 0)
+                runs[0] = runs[0] with { Text = runs[0].Text.TrimStart() };
+            return paragraph with { Runs = runs, Bullet = BulletKind.None, Before = 0 };
+        }
+        return paragraph with { Runs = runs };
     }
 
     /// <summary>Height of each row of a table (EMU); a spanned cell shares its height among its rows.</summary>
@@ -683,26 +717,29 @@ internal sealed partial class PptxWriter
     {
         var heights = new long[table.Rows.Count];
         for (var r = 0; r < table.Rows.Count; r++)
-        {
-            long height = (long)(table.Size / 100.0 * LineHeight * Emu) + 2 * InsetY;
-            var row = table.Rows[r];
-            for (var c = 0; c < row.Length; c++)
-            {
-                if (row[c] is not { Paragraphs: { } paragraphs } cell)
-                    continue;
-                var width = table.Columns.Skip(c).Take(cell.ColSpan).Sum();
-                var content = 2 * InsetY + paragraphs.Select((p, i) => Height(p, width, i == 0)).Sum();
-                height = Math.Max(height, content / cell.RowSpan);
-            }
-            heights[r] = height;
-        }
+            heights[r] = RowHeight(table, r);
         return heights;
     }
 
-    /// <summary>Rows that must stay on one slide together: a row with the rows its cells span into.</summary>
-    private static List<(int Start, int Count)> RowGroups(TableItem table, int from)
+    /// <summary>Height of row <paramref name="r"/> of a table (EMU).</summary>
+    private static long RowHeight(TableItem table, int r)
     {
-        var groups = new List<(int, int)>();
+        long height = (long)(table.Size / 100.0 * LineHeight * Emu) + 2 * InsetY;
+        var row = table.Rows[r];
+        for (var c = 0; c < row.Length; c++)
+        {
+            if (row[c] is not { Paragraphs: { } paragraphs } cell)
+                continue;
+            var width = table.Columns.Skip(c).Take(cell.ColSpan).Sum();
+            var content = 2 * InsetY + paragraphs.Select((p, i) => Height(p, width, i == 0)).Sum();
+            height = Math.Max(height, content / cell.RowSpan);
+        }
+        return height;
+    }
+
+    /// <summary>Rows that must stay on one slide together: a row with the rows its cells span into (found as they are needed).</summary>
+    private static IEnumerable<(int Start, int Count)> RowGroups(TableItem table, int from)
+    {
         var r = from;
         while (r < table.Rows.Count)
         {
@@ -712,10 +749,9 @@ internal sealed partial class PptxWriter
                     if (cell.Paragraphs is not null)
                         end = Math.Max(end, rr + cell.RowSpan);
             end = Math.Min(end, table.Rows.Count);
-            groups.Add((r, end - r));
+            yield return (r, end - r);
             r = end;
         }
-        return groups;
     }
 
     // ───────────────────────── Fitting onto slides ─────────────────────────
@@ -733,6 +769,7 @@ internal sealed partial class PptxWriter
                 page.Notes.AddRange(notes);
             pages.Add(page);
             CheckSlides(pages.Count);
+            _token.ThrowIfCancellationRequested();
             return page;
         }
         var current = NewPage();
@@ -792,14 +829,14 @@ internal sealed partial class PptxWriter
         {
             case TextItem text:
                 {
-                    var (head, height, tail) = FitParagraphs(text.Paragraphs, room, BodyWidth, empty);
-                    return (head is null ? null : new TextItem(head), height, tail is null ? null : new TextItem(tail));
+                    var (head, height, tail) = FitParagraphs(text.Rest ?? new ParaCursor(text.Paragraphs, 0), room, BodyWidth, empty);
+                    return (head is null ? null : new TextItem(head), height, tail is null ? null : new TextItem(tail.Paragraphs) { Rest = tail });
                 }
             case CodeItem code:
                 {
-                    var (head, height, tail) = FitParagraphs(code.Lines, room - 2 * CodePadding + 2 * InsetY, BodyWidth - 2 * CodePadding + 2 * InsetX, empty);
+                    var (head, height, tail) = FitParagraphs(code.Rest ?? new ParaCursor(code.Lines, 0), room - 2 * CodePadding + 2 * InsetY, BodyWidth - 2 * CodePadding + 2 * InsetX, empty);
                     var extra = 2 * CodePadding - 2 * InsetY;
-                    return (head is null ? null : new CodeItem(head), height + extra, tail is null ? null : new CodeItem(tail));
+                    return (head is null ? null : new CodeItem(head), height + extra, tail is null ? null : new CodeItem(tail.Paragraphs) { Rest = tail });
                 }
             case PictureItem picture:
                 {
@@ -828,69 +865,82 @@ internal sealed partial class PptxWriter
         return (Math.Max(1, (long)(w * scale)), Math.Max(1, (long)(h * scale)));
     }
 
-    /// <summary>The paragraphs that fit into <paramref name="room"/> EMU, splitting a paragraph between lines.</summary>
-    private static (List<Para>? Head, long Height, List<Para>? Tail) FitParagraphs(List<Para> paragraphs, long room, long width, bool empty)
+    /// <summary>
+    /// The paragraphs that fit into <paramref name="room"/> EMU, splitting a paragraph between lines, and what is left
+    /// for the next slide. A paragraph split over slides keeps its line starts from the slide before: it is measured
+    /// once, and each slide copies only the lines it shows.
+    /// </summary>
+    private static (List<Para>? Head, long Height, ParaCursor? Tail) FitParagraphs(ParaCursor at, long room, long width, bool empty)
     {
         var used = 2 * InsetY;
         var head = new List<Para>();
-        for (var i = 0; i < paragraphs.Count; i++)
+        var paragraphs = at.Paragraphs;
+        for (var i = at.Start; i < paragraphs.Count; i++)
         {
             var paragraph = paragraphs[i];
-            var height = Height(paragraph, width, head.Count == 0);
+            var kept = i == at.Start && at.Lines is not null && at.Width == width;
+            var starts = kept ? at.Lines! : LineStarts(paragraph, width);
+            var from = kept ? at.Line : 0;
+            var total = starts.Count - from;
+            var lineEmu = LineEmu(paragraph);
+            // The rest of a paragraph split on the slide before continues its item: no space before it.
+            var before = head.Count == 0 || from > 0 ? 0 : (long)(paragraph.Before / 100.0 * Emu);
+            var height = total * lineEmu + before;
             if (used + height <= room)
             {
-                head.Add(paragraph);
+                head.Add(Lines(paragraph, starts, from, starts.Count));
                 used += height;
                 continue;
             }
             // Split the paragraph: as many lines as fit here, the rest on the next slide.
-            var before = head.Count == 0 ? 0 : (long)(paragraph.Before / 100.0 * Emu);
-            var lines = (int)((room - used - before) / LineEmu(paragraph));
-            var total = LineStarts(paragraph, width).Count;
+            var lines = (int)((room - used - before) / Math.Max(1, lineEmu));
             if (lines <= 0 && head.Count == 0 && empty)
                 lines = 1; // a slide always takes at least a line
             if (lines > 0 && lines < total)
             {
-                var (top, bottom) = SplitLines(paragraph, width, lines);
-                head.Add(top);
-                used += before + lines * LineEmu(paragraph);
-                var tail = new List<Para> { bottom };
-                tail.AddRange(paragraphs.Skip(i + 1));
-                return (head, used, tail);
+                head.Add(Lines(paragraph, starts, from, from + lines));
+                used += before + lines * lineEmu;
+                return (head, used, new ParaCursor(paragraphs, i, from + lines, starts, width));
             }
             if (lines >= total)
             {
-                head.Add(paragraph);
+                head.Add(Lines(paragraph, starts, from, starts.Count));
                 used += height;
                 continue;
             }
-            return head.Count == 0 ? (null, 0, null) : (head, used, paragraphs.Skip(i).ToList());
+            return head.Count == 0 ? (null, 0, null) : (head, used, new ParaCursor(paragraphs, i, from, starts, width));
         }
         return (head, used, null);
     }
 
     /// <summary>
     /// The rows of a table that fit; the header rows repeat on the slide that takes the rest (unless they fill half of
-    /// a slide themselves). Rows joined by a row span stay together; a group taller than a slide stands alone.
+    /// a slide themselves). Rows joined by a row span stay together; a group taller than a slide stands alone. Only
+    /// the rows looked at are measured, and the rest shares the table's rows.
     /// </summary>
     private static (Item? Fitted, long Height, Item? Remainder) FitTable(TableItem table, long room, bool empty)
     {
-        var heights = RowHeights(table);
-        var header = table.HeaderRows;
-        var used = heights.Take(header).Sum();
+        var header = table.RepeatHeader ? table.HeaderRows : 0;
+        var headerHeight = 0L;
+        for (var r = 0; r < header; r++)
+            headerHeight += RowHeight(table, r);
+        var used = headerHeight;
+        var first = table.Start ?? table.HeaderRows;
         var rows = new List<GridCell[]>(table.Rows.Take(header));
-        var next = header;
-        foreach (var (start, count) in RowGroups(table, header))
+        var next = first;
+        foreach (var (start, count) in RowGroups(table, first))
         {
-            var height = heights.Skip(start).Take(count).Sum();
+            var height = 0L;
+            for (var r = start; r < start + count; r++)
+                height += RowHeight(table, r);
             if (used + height > room)
             {
-                if (next > header)
+                if (next > first)
                     break;
                 if (!empty)
                     return (null, 0, null);
             }
-            rows.AddRange(table.Rows.Skip(start).Take(count));
+            rows.AddRange(table.Rows.GetRange(start, count));
             used += height;
             next = start + count;
             if (used > room)
@@ -901,9 +951,13 @@ internal sealed partial class PptxWriter
         var fitted = new TableItem(rows, table.Columns, header, table.Size) { FirstRow = table.FirstRow };
         if (next >= table.Rows.Count)
             return (fitted, used, null);
-        var repeat = header > 0 && heights.Take(header).Sum() < BodyHeight / 2;
-        var remaining = (repeat ? table.Rows.Take(header) : []).Concat(table.Rows.Skip(next)).ToList();
-        var rest = new TableItem(remaining, table.Columns, repeat ? header : 0, table.Size) { FirstRow = table.FirstRow + next - header };
+        var repeat = header > 0 && headerHeight < BodyHeight / 2;
+        var rest = new TableItem(table.Rows, table.Columns, table.HeaderRows, table.Size)
+        {
+            Start = next,
+            RepeatHeader = repeat,
+            FirstRow = table.FirstRow + next - first,
+        };
         return (fitted, used, rest);
     }
 
