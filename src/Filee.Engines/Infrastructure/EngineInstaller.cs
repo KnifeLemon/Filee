@@ -573,9 +573,10 @@ public sealed class EngineInstaller
             {
                 case "zip":
                     ZipFile.ExtractToDirectory(file, staging);
-                    RenameExifTool(component.Id, SingleRoot(staging));
-                    EnsureExecutablePrograms(component.Id, SingleRoot(staging));
-                    Replace(component.Id, SingleRoot(staging));
+                    var root = component.Id == "weasyprint" ? WeasyPrintFolder(staging) : SingleRoot(staging);
+                    RenameExifTool(component.Id, root);
+                    EnsureExecutablePrograms(component.Id, root);
+                    Replace(component.Id, root);
                     break;
                 case "tar.gz":
                 case "tar.xz":
@@ -899,6 +900,26 @@ public sealed class EngineInstaller
             foreach (var dll in dlls)
                 File.Copy(dll, Path.Combine(targetDir, Path.GetFileName(dll)), overwrite: true);
         }
+    }
+
+    /// <summary>
+    /// WeasyPrint's Windows "onedir" zip holds LICENSE and README.rst at its top and the program in
+    /// onedir/weasyprint (weasyprint.exe with its _internal folder of Python, Pango, HarfBuzz, ...): that folder is
+    /// kept, with the licence moved into it.
+    /// </summary>
+    internal static string WeasyPrintFolder(string staging)
+    {
+        var program = EngineEnvironment.ProgramName("weasyprint.exe");
+        var found = Directory.EnumerateFiles(staging, program, SearchOption.AllDirectories).FirstOrDefault()
+                    ?? throw new InvalidDataException($"{program} not found in the WeasyPrint package.");
+        var folder = Path.GetDirectoryName(found)!;
+        foreach (var name in new[] { "LICENSE", "README.rst" })
+        {
+            var top = Path.Combine(staging, name);
+            if (File.Exists(top) && !File.Exists(Path.Combine(folder, name)))
+                File.Move(top, Path.Combine(folder, name));
+        }
+        return folder;
     }
 
     /// <summary>An archive with a single top-level folder is unpacked without that extra level.</summary>

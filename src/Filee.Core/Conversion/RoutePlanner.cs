@@ -182,6 +182,7 @@ public sealed class RoutePlanner
                 if (edge.To == edge.From || edge.FrameSequence || edge.MotionPhoto || edge.LivePhoto || edge.Ocr || edge.Translate || edge.Caption || edge.Upscale
                     || (edge.ImageSourcesOnly && !imageSource) || (edge.NotForImageSources && imageSource)
                     || (edge.Unshaped && shaping)
+                    || (edge.Sources is { } sources && !sources.Contains(from))
                     || (edge.DirectOnly && (node != from || edge.To != to)))
                     continue;
                 var next = cost + edgeCost;

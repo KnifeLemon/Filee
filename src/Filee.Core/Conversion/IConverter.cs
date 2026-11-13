@@ -63,10 +63,16 @@ namespace Filee.Core.Conversion;
 /// left as it is (<see cref="Presets.Preset.Metadata"/>, ExifTool). It is never part of an ordinary route, and with
 /// <see cref="RoutePlanner.Plan"/> asking for it it is the whole route.
 /// </param>
+/// <param name="Sources">
+/// The edge is used only in routes that start from one of these formats (ids, lower case); null for every source.
+/// WeasyPrint's HTML → PDF serves pages, Markdown and e-mails, which become HTML first, but must not become a hop for
+/// a Word document or an e-book that the HTML writers could also turn into a page.
+/// </param>
 public readonly record struct ConversionEdge(
     string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false,
     bool DirectOnly = false, bool FrameSequence = false, bool Unshaped = false, bool MotionPhoto = false, bool LivePhoto = false,
-    bool Ocr = false, bool Caption = false, bool Translate = false, bool Metadata = false, bool Upscale = false);
+    bool Ocr = false, bool Caption = false, bool Translate = false, bool Metadata = false, bool Upscale = false,
+    IReadOnlyList<string>? Sources = null);
 
 /// <summary>
 /// A conversion an engine refuses with a reason the user can act on, shown in their language (the file's

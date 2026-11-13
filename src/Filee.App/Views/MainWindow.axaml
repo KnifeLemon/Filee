@@ -10,7 +10,7 @@
         WindowStartupLocation="CenterScreen">
   <Grid ColumnDefinitions="Auto,*">
     <!-- Navigation: full width with titles, or collapsed to an icon rail (tooltips instead of text). The width animates. -->
-    <Border Classes="navpane" Classes.collapsed="{Binding IsNavCollapsed}" Width="{Binding NavWidth}" ClipToBounds="True"
+    <Border Classes="navpane" Width="{Binding NavWidth}" ClipToBounds="True"
             Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="0,0,1,0">
       <DockPanel Margin="{Binding NavPadding}">
         <StackPanel DockPanel.Dock="Top" Classes="navheader" Orientation="Horizontal" Spacing="10">

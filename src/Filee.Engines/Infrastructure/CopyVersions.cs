@@ -50,6 +50,7 @@ public static partial class CopyVersions
             "ffmpeg" => FfmpegVersion().Match(text),
             "pandoc" => PandocVersion().Match(text),
             "calibre" => CalibreVersion().Match(text),
+            "weasyprint" => WeasyPrintVersion().Match(text),
             "libreoffice" => LibreOfficeVersion().Match(text),
             _ => LeadingVersion().Match(text),
         };
@@ -106,6 +107,9 @@ public static partial class CopyVersions
 
     [GeneratedRegex(@"calibre (\d+)\.(\d+)")]
     private static partial Regex CalibreVersion();
+
+    [GeneratedRegex(@"WeasyPrint version (\d+)\.(\d+)")]
+    private static partial Regex WeasyPrintVersion();
 
     [GeneratedRegex(@"(?:MsiProductVersion=|LibreOffice\s+)(\d+)\.(\d+)")]
     private static partial Regex LibreOfficeVersion();
