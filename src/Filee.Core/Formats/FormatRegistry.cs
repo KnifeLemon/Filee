@@ -378,6 +378,7 @@ public static class FormatRegistry
         new("vtt", "WebVTT", FormatCategory.Subtitle, ["vtt"]),
         new("smi", "SAMI", FormatCategory.Subtitle, ["smi", "sami"]),
         new("lrc", "LRC", FormatCategory.Subtitle, ["lrc"]),
+        new("krc", "KRC", FormatCategory.Subtitle, ["krc"], Writable: false),
         new("ttml", "TTML", FormatCategory.Subtitle, ["ttml", "dfxp"]),
         new("sub", "MicroDVD", FormatCategory.Subtitle, ["sub"]),
         new("scc", "SCC", FormatCategory.Subtitle, ["scc"], Writable: false),
