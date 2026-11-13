@@ -160,7 +160,9 @@ cannot be loaded. To check binaries after an engine update, list the DLLs each `
 table, e.g. `dumpbin /dependents`) and look for `MSVCP140*.dll`, `VCRUNTIME140*.dll` or `CONCRT140.dll`.
 
 To bump a version, change `url`, `sha256` and `size` in engines.json together, run
-`pwsh build/fetch-engines.ps1`, test, and update `THIRD-PARTY-NOTICES.md`. For rhwp, also update `RHWP_VERSION`,
+`pwsh build/fetch-engines.ps1`, test, and update `THIRD-PARTY-NOTICES.md`. Then run `pwsh build/mirror-engines.ps1` so Filee's mirror has the
+new file: when a pinned URL stops working, the app and `fetch-engines.ps1` take the file from
+`https://dl.filee.sh/engines/<sha256>/<file name>` (Cloudflare R2, bucket `filee-downloads`) and check the same SHA-256. For rhwp, also update `RHWP_VERSION`,
 `RHWP_COMMIT` and `RUST_TOOLCHAIN` in `build/build-native.py` (see below); CI fails until they match. The Windows
 ARM64 builds of rhwp and Unhwp need a new build and pin too (see [Windows on ARM64](#windows-on-arm64)). When the
 LibreOffice team retires a version from `download.documentfoundation.org/libreoffice/stable/`, its URL stops working:
