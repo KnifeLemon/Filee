@@ -26,6 +26,9 @@ jobs:
   # - macos: the macOS packages and tests. macOS runners are few and queue, so a pull request runs them only when it
   #   touches macOS files, code that branches on macOS, the projects, packages or build scripts, or carries the
   #   `macos` label (add it, then re-run the workflow). Pushes to main always run them.
+  # - full: false for a pull request into builtin-engines (Project 4), which then runs Windows x64 and Linux x64 only:
+  #   no macOS and no Windows ARM64. The engine work lands there in many waves, and the whole matrix for each would
+  #   take hours. Add the `full-ci` label (then re-run) for everything; the branch's merge into main runs it anyway.
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -36,6 +39,7 @@ jobs:
     outputs:
       code: ${{ steps.files.outputs.code }}
       macos: ${{ steps.files.outputs.macos }}
+      full: ${{ steps.files.outputs.full }}
     steps:
       - uses: actions/checkout@v7
 
@@ -44,9 +48,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.ref }}
           AFTER: ${{ github.sha }}
         run: |
-          everything() { echo "code=true" >> "$GITHUB_OUTPUT"; echo "macos=true" >> "$GITHUB_OUTPUT"; echo "$1"; exit 0; }
+          everything() { echo "code=true" >> "$GITHUB_OUTPUT"; echo "macos=true" >> "$GITHUB_OUTPUT"; echo "full=true" >> "$GITHUB_OUTPUT"; echo "$1"; exit 0; }
 
           if [ -n "$PR" ]; then
             files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename') || everything "File list unreadable"
@@ -71,11 +76,21 @@ jobs:
 
           code=false
           macos=false
+          full=true
+          labels=""
           if [ -z "$PR" ]; then
             macos=true
           else
             labels=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name') || labels=macos
             if grep -qx macos <<< "$labels"; then macos=true; echo "Labelled macos"; fi
+            if [ "$BASE" = builtin-engines ]; then
+              if grep -qx full-ci <<< "$labels"; then
+                echo "Labelled full-ci"
+              else
+                full=false
+                echo "Into builtin-engines: Windows x64 and Linux x64 only (label full-ci for everything)"
+              fi
+            fi
           fi
 
           while IFS= read -r f; do
@@ -98,7 +113,9 @@ jobs:
           done <<< "$files"
 
           echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$full" = false ] && ! grep -qx macos <<< "$labels"; then macos=false; fi
           echo "macos=$macos" >> "$GITHUB_OUTPUT"
+          echo "full=$full" >> "$GITHUB_OUTPUT"
 
   portable:
     needs: changes
@@ -236,7 +253,7 @@ jobs:
   build-arm64:
     name: build (win-arm64)
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.full != 'false' }}
     runs-on: windows-11-arm
     timeout-minutes: 120
     defaults:
