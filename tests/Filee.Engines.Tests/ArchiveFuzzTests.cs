@@ -1,10 +1,10 @@
 // Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG) and of
 // TAR (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
-// repeated, and every input must unpack or be refused with InvalidDataException, in time. Same switches as DocumentFuzzTests: a short fixed run normally,
-// FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
+// repeated, and every input must unpack or be refused with InvalidDataException, in time. The loop is FuzzHarness's: a
+// short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to
+// keep failing inputs.
 
 using System.Formats.Tar;
-using System.Globalization;
 using Filee.Engines.Archives;
 using static Filee.Engines.Tests.ArchiveBuilders;
 using static Filee.Engines.Tests.ArchiveFormatBuilders;
@@ -15,8 +15,6 @@ namespace Filee.Engines.Tests;
 public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private const int QuickIterations = 60;
-
-    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
 
     private static List<TestEntry> Seed() =>
     [
@@ -80,65 +78,21 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     private void Fuzz(string format, List<byte[]> seeds, int mutateFrom = 0)
     {
-        var seconds = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SECONDS"), out var s) && s > 0 ? s : 0;
-        var seed = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SEED"), out var fixedSeed) ? fixedSeed
-            : seconds > 0 ? Environment.TickCount : 20261101;
-        var outFolder = Environment.GetEnvironmentVariable("FILEE_FUZZ_OUT") is { Length: > 0 } o ? o : null;
-        var output = TestContext.Current.TestOutputHelper;
-        output?.WriteLine($"Seed {seed}, {(seconds > 0 ? seconds + " s" : QuickIterations + " inputs per seed")}");
-        var random = new Random(seed);
         var folder = fx.NewFolder();
-        var input = Path.Combine(outFolder ?? folder, $"running-archive.{format}");
-
-        void Unpack()
-        {
-            var scratch = Path.Combine(folder, "scratch-" + Guid.NewGuid().ToString("N")[..6]);
-            Directory.CreateDirectory(scratch);
-            try
+        new FuzzHarness(fx, QuickIterations, 20261101).Files("archive-" + format, format, seeds,
+            (seed, random) => () => Mutate(seed, random, mutateFrom), (input, _) =>
             {
-                new ArchiveExtractor(null).ExtractAsync(input, format, scratch, CancellationToken.None).GetAwaiter().GetResult();
-            }
-            finally
-            {
-                ArchiveFiles.TryDeleteFolder(scratch);
-            }
-        }
-
-        foreach (var bytes in seeds)
-        {
-            File.WriteAllBytes(input, bytes);
-            Assert.Equal(DocumentFuzzer.Outcome.Read, DocumentFuzzer.Run(Unpack, ReadTimeout));
-        }
-
-        var failures = new Dictionary<string, string>();
-        var (inputs, refused) = (0, 0);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        while (seconds > 0 ? stopwatch.Elapsed < TimeSpan.FromSeconds(seconds) : inputs < QuickIterations * seeds.Count)
-        {
-            var bytes = Mutate(seeds[inputs % seeds.Count], random, mutateFrom);
-            inputs++;
-            File.WriteAllBytes(input, bytes);
-            try
-            {
-                if (DocumentFuzzer.Run(Unpack, ReadTimeout) == DocumentFuzzer.Outcome.Refused)
-                    refused++;
-            }
-            catch (DocumentFuzzer.FuzzFailure failure)
-            {
-                var frame = failure.InnerException?.StackTrace?.Split('\n').FirstOrDefault()?.Trim() ?? "";
-                var kind = $"{failure.InnerException?.GetType().Name ?? "Timeout"} {frame}";
-                if (!failures.ContainsKey(kind))
+                var scratch = Path.Combine(folder, "scratch-" + Guid.NewGuid().ToString("N")[..6]);
+                Directory.CreateDirectory(scratch);
+                try
                 {
-                    var kept = Path.Combine(outFolder ?? folder, $"archive-{format}-{seed}-{inputs}.{format}");
-                    File.WriteAllBytes(kept, bytes);
-                    failures[kind] = $"{failure.Message} (input {kept})\n{failure.InnerException}";
+                    new ArchiveExtractor(null).ExtractAsync(input, format, scratch, CancellationToken.None).GetAwaiter().GetResult();
                 }
-                if (failure.InnerException is null)
-                    break;
-            }
-        }
-        output?.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{inputs} inputs, {refused} refused, {failures.Count} kinds of failure"));
-        Assert.True(failures.Count == 0, $"Seed {seed}: " + string.Join("\n\n", failures.Values));
+                finally
+                {
+                    ArchiveFiles.TryDeleteFolder(scratch);
+                }
+            });
     }
 
     /// <summary>One to four changes: flipped bits, overwritten runs (zeros, 0xFF, random), a cut end, a repeated slice.</summary>

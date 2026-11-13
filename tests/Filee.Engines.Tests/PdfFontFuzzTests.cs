@@ -2,11 +2,10 @@
 // (CmapTable) and page content streams (PdfFontUses, and the nesting check before PDFsharp's content parser). Seeds are
 // the test fonts and content written in code. Every input must be read, or refused the way PdfFontSubsetter expects
 // (InvalidDataException; NotSupportedException, ArgumentException and IndexOutOfRangeException, which it also catches
-// and keeps the font whole for), within the time limit and on a 1 MB stack. Same switches as DocumentFuzzTests: a short
+// and keeps the font whole for), within the time limit and on a 1 MB stack. Run by FuzzHarness: a short
 // fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep
 // failing inputs.
 
-using System.Globalization;
 using System.Text;
 using Filee.Engines.Fonts;
 using Filee.Engines.Fonts.Cff;
@@ -19,8 +18,6 @@ namespace Filee.Engines.Tests;
 public class PdfFontFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private const int QuickIterations = 60;
-
-    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
 
     private static SfntFont TestFont(string name) => SfntFont.Read(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fonts", name)));
 
@@ -90,47 +87,7 @@ public class PdfFontFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
-    private void Fuzz(string format, List<byte[]> seeds, Action<byte[]> read)
-    {
-        var seconds = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SECONDS"), out var s) && s > 0 ? s : 0;
-        var seed = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SEED"), out var fixedSeed) ? fixedSeed
-            : seconds > 0 ? Environment.TickCount : 20261114;
-        var outFolder = Environment.GetEnvironmentVariable("FILEE_FUZZ_OUT") is { Length: > 0 } o ? o : null;
-        var output = TestContext.Current.TestOutputHelper;
-        output?.WriteLine($"Seed {seed}, {(seconds > 0 ? seconds + " s" : QuickIterations + " inputs per seed")}");
-        var random = new Random(seed);
-        var fuzzers = seeds.Select(bytes => new BinaryFuzzer(bytes, random)).ToList();
-
-        foreach (var bytes in seeds)
-            DocumentFuzzer.Run(() => read(bytes), ReadTimeout);
-
-        var failures = new Dictionary<string, string>();
-        var (inputs, refused) = (0, 0);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        while (seconds > 0 ? stopwatch.Elapsed < TimeSpan.FromSeconds(seconds) : inputs < QuickIterations * seeds.Count)
-        {
-            var bytes = fuzzers[inputs % fuzzers.Count].Next();
-            inputs++;
-            try
-            {
-                if (DocumentFuzzer.Run(() => read(bytes), ReadTimeout) == DocumentFuzzer.Outcome.Refused)
-                    refused++;
-            }
-            catch (DocumentFuzzer.FuzzFailure failure)
-            {
-                var frame = failure.InnerException?.StackTrace?.Split('\n').FirstOrDefault()?.Trim() ?? "";
-                var kind = $"{failure.InnerException?.GetType().Name ?? "Timeout"} {frame}";
-                if (!failures.ContainsKey(kind))
-                {
-                    var kept = Path.Combine(outFolder ?? fx.NewFolder(), $"pdffont-{format}-{seed}-{inputs}.bin");
-                    File.WriteAllBytes(kept, bytes);
-                    failures[kind] = $"{failure.Message} (input {kept})\n{failure.InnerException}";
-                }
-                if (failure.InnerException is null)
-                    break;
-            }
-        }
-        output?.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{inputs} inputs, {refused} refused, {failures.Count} kinds of failure"));
-        Assert.True(failures.Count == 0, $"Seed {seed}: " + string.Join("\n\n", failures.Values));
-    }
+    /// <summary>Seeds may be refused (a CFF built to be too costly): each must only not fail.</summary>
+    private void Fuzz(string format, List<byte[]> seeds, Action<byte[]> read) =>
+        new FuzzHarness(fx, QuickIterations, 20261114) { SeedsMustRead = false }.Data("pdffont-" + format, "bin", seeds, FuzzHarness.Bytes, read);
 }

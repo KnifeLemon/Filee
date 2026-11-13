@@ -2,8 +2,8 @@
 // referenced many times and from each other, substitutions, drawers and templates. DocumentFuzzTests fuzzes each
 // reader from a seed of ordinary text; these seeds start from the hostile structures instead, and TextFuzzer repeats
 // their pieces. Every input must be read or refused (InvalidDataException / ConversionRefusedException) in time,
-// models included: a note left inside itself would make the walk below run forever. FILEE_FUZZ_SECONDS runs longer
-// with a new random seed, FILEE_FUZZ_SEED repeats a run.
+// models included: a note left inside itself would make the walk below run forever. Run by FuzzHarness:
+// FILEE_FUZZ_SECONDS runs longer with a new random seed, FILEE_FUZZ_SEED repeats a run.
 
 using System.Text;
 using Filee.Engines.Documents;
@@ -16,8 +16,6 @@ namespace Filee.Engines.Tests;
 public class MarkupFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private const int QuickIterations = 40;
-
-    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
 
     private const string RstSeed = """
         Title
@@ -117,34 +115,7 @@ public class MarkupFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
              "|}\n", "|-\n", "{{", "}}", "\n"]);
 
     /// <summary>Fuzzes <paramref name="read"/> from <paramref name="seed"/>; each model it reads is walked to its end.</summary>
-    private void Fuzz(string name, string seed, Func<string, HDocument> read, string[] tokens)
-    {
-        var seconds = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SECONDS"), out var s) && s > 0 ? s : 0;
-        var randomSeed = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SEED"), out var fixedSeed) ? fixedSeed
-            : seconds > 0 ? Environment.TickCount : 20261114;
-        var random = new Random(randomSeed);
-        var fuzzer = new TextFuzzer(Encoding.UTF8.GetBytes(seed), random, tokens);
-        void Run(string text) => _ = HDocumentWalker.Inlines(read(text).Sections.SelectMany(section => section.Blocks)).Count();
-
-        Assert.Equal(DocumentFuzzer.Outcome.Read, DocumentFuzzer.Run(() => Run(seed), ReadTimeout));
-        var failures = new List<string>();
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        for (var inputs = 0; seconds > 0 ? stopwatch.Elapsed < TimeSpan.FromSeconds(seconds) : inputs < QuickIterations; inputs++)
-        {
-            var text = Encoding.UTF8.GetString(fuzzer.Next());
-            try
-            {
-                DocumentFuzzer.Run(() => Run(text), ReadTimeout);
-            }
-            catch (DocumentFuzzer.FuzzFailure failure)
-            {
-                var kept = Path.Combine(fx.NewFolder(), $"{name}-{randomSeed}-{inputs}.txt");
-                File.WriteAllText(kept, text);
-                failures.Add($"{failure.Message} (input {kept})\n{failure.InnerException}");
-                if (failure.InnerException is null)
-                    break; // a read that hangs keeps running
-            }
-        }
-        Assert.True(failures.Count == 0, $"Seed {randomSeed}: " + string.Join("\n\n", failures));
-    }
+    private void Fuzz(string name, string seed, Func<string, HDocument> read, string[] tokens) =>
+        new FuzzHarness(fx, QuickIterations, 20261114).Data(name, "txt", [Encoding.UTF8.GetBytes(seed)], FuzzHarness.Text(tokens),
+            bytes => _ = HDocumentWalker.Inlines(read(Encoding.UTF8.GetString(bytes)).Sections.SelectMany(section => section.Blocks)).Count());
 }
