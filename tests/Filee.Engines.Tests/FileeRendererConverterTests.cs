@@ -184,6 +184,22 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     }
 
     [Fact]
+    public void The_check_reads_parts_through_the_document_limits()
+    {
+        // 5 MB of spaces packs to a few kilobytes, past the inflate ratio: the check stops there and leaves the file to
+        // the reader (which refuses it) rather than reading the part through to the marker at its end.
+        var path = Path.Combine(fx.NewFolder(), "packed.docx");
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            using var writer = new StreamWriter(zip.CreateEntry("word/document.xml").Open());
+            writer.Write(new string(' ', 5 * 1024 * 1024));
+            writer.Write("<w:sectPr><w:textDirection w:val=\"tbRl\"/></w:sectPr>");
+        }
+
+        Assert.Null(new FileeRendererConverter().FirstUnsupported(path, "docx"));
+    }
+
+    [Fact]
     public void An_hwp_is_checked_as_the_hwpx_package_it_becomes()
     {
         var dir = fx.NewFolder();

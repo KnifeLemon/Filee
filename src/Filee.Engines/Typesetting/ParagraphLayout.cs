@@ -31,6 +31,7 @@
 //
 // 본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
 
+using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Rendering;
 using SkiaSharp;
@@ -57,6 +58,12 @@ internal sealed class ParagraphLayouter
     /// without it such a box is drawn empty.
     /// </summary>
     public Func<IReadOnlyList<HBlock>, float, List<Piece>> Stack { get; set; } = (_, _) => [];
+
+    /// <summary>The layout job's time budget and cancellation, checked every <see cref="GuardLines"/> lines; null checks nothing.</summary>
+    public LayoutGuard? Guard { get; set; }
+
+    /// <summary>Lines laid out between checks of <see cref="Guard"/>.</summary>
+    private const int GuardLines = 256;
     private readonly string? _notAtLineStart;
     private readonly string? _notAtLineEnd;
     private readonly Dictionary<(string? Family, FontStyle Style, string Language), ResolvedFont> _resolved = [];
@@ -128,6 +135,7 @@ internal sealed class ParagraphLayouter
         var after = (format.After ?? 0) / 100f;
 
         var (stored, ignored) = _storedLines ? StoredStarts(paragraph, source, marker, items, advances) : (null, null);
+        var ranges = new LineIndex(source, items);
         if (stored is not null)
         {
             var segments = paragraph.Lines!.Segments;
@@ -135,9 +143,11 @@ internal sealed class ParagraphLayouter
             var storedLines = new List<LineBox>();
             for (var i = 0; i < stored.Count; i++)
             {
+                if (i % GuardLines == GuardLines - 1)
+                    Guard?.Paragraph();
                 var end = i + 1 < stored.Count ? stored[i + 1] : text.Length;
                 var forced = end == text.Length || text[end - 1] == ParagraphText.LineSeparator;
-                storedLines.Add(Place(source, items, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], whole)));
+                storedLines.Add(Place(source, ranges, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], whole)));
             }
             return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker, FloatingAt = source.Floating };
         }
@@ -147,6 +157,8 @@ internal sealed class ParagraphLayouter
         var y = 0f;
         do
         {
+            if (lines.Count % GuardLines == GuardLines - 1)
+                Guard?.Paragraph();
             var first = lines.Count == 0;
             var settings = paragraphLayout;
             if (wrap?.Invoke(y, lines.Count > 0 ? lines[^1].Height : mark.FontSize * 1.6f) is var (left, right) && left + right > 0)
@@ -155,14 +167,14 @@ internal sealed class ParagraphLayouter
             var (end, forced) = settings.Wrap == HLineWrap.Break
                 ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense)
                 : (text.Length, true);
-            lines.Add(Place(source, items, start, end, forced, first, width, settings, mark));
+            lines.Add(Place(source, ranges, start, end, forced, first, width, settings, mark));
             y += lines[^1].Height;
             start = end;
         }
         while (start < text.Length);
         // A line break at the end of a paragraph leaves an empty last line, as in 한글 and Word.
         if (text.Length > 0 && text[^1] == ParagraphText.LineSeparator)
-            lines.Add(Place(source, items, text.Length, text.Length, true, false, width, paragraphLayout, mark));
+            lines.Add(Place(source, ranges, text.Length, text.Length, true, false, width, paragraphLayout, mark));
 
         return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating };
     }
@@ -187,9 +199,13 @@ internal sealed class ParagraphLayouter
         // note numbers are the layout's own too.
         var shift = marker is { Length: > 0 } ? marker.Length + 1 : 0;
         var starts = new List<int> { 0 };
+        // The text inserted before each start, summed on as the starts go up (out of order, they are refused below).
+        var (inserted, before) = (0, 0);
         foreach (var position in positions.Skip(1))
         {
-            var start = source.FromModel(position, shift);
+            for (; before < source.Insertions.Count && source.Insertions[before].Position < position; before++)
+                inserted += source.Insertions[before].Length;
+            var start = position + shift + inserted;
             if (start <= starts[^1] || start > text.Length)
                 return (null, "the stored line starts are out of order");
             starts.Add(start);
@@ -588,8 +604,82 @@ internal sealed class ParagraphLayouter
         public (float Width, float Height, float Depth) Size { get; set; }
     }
 
+    /// <summary>
+    /// A paragraph's items, bookmarks and notes found by a line's range: a binary search in each instead of a look
+    /// through all of them for every line (a paragraph of many runs in a narrow column has as many lines).
+    /// </summary>
+    private sealed class LineIndex
+    {
+        private readonly List<Item> _items;
+        private readonly bool _itemsInOrder;
+        private readonly IReadOnlyList<(int Position, string Name)> _bookmarks;
+        private readonly KeyValuePair<int, HNote>[] _notes;
+
+        public LineIndex(ParagraphText source, List<Item> items)
+        {
+            _items = items;
+            // Itemize makes them in text order, one after the other; a look through all of them stays the fallback.
+            _itemsInOrder = true;
+            for (var i = 1; i < items.Count && _itemsInOrder; i++)
+                _itemsInOrder = items[i].Start >= items[i - 1].End;
+            _bookmarks = [.. source.Bookmarks.OrderBy(b => b.Position)];
+            _notes = [.. source.Notes.OrderBy(n => n.Key)];
+        }
+
+        /// <summary>The items that hold text from <paramref name="start"/> to <paramref name="end"/> (exclusive), and maybe some next to it.</summary>
+        public IEnumerable<Item> Items(int start, int end)
+        {
+            if (!_itemsInOrder)
+            {
+                foreach (var item in _items)
+                    yield return item;
+                yield break;
+            }
+            for (var i = First(_items.Count, k => _items[k].End > start); i < _items.Count && _items[i].Start < end; i++)
+                yield return _items[i];
+        }
+
+        /// <summary>The bookmarks at <paramref name="start"/> up to <paramref name="end"/>, the paragraph's end included when it is <paramref name="end"/>.</summary>
+        public List<(int Position, string Name)> Bookmarks(int start, int end, int length)
+        {
+            var result = new List<(int, string)>();
+            for (var i = First(_bookmarks.Count, k => _bookmarks[k].Position >= start); i < _bookmarks.Count; i++)
+            {
+                var position = _bookmarks[i].Position;
+                if (!(position < end || position == end && end == length))
+                    break;
+                result.Add(_bookmarks[i]);
+            }
+            return result;
+        }
+
+        /// <summary>The notes referenced from <paramref name="start"/> to <paramref name="end"/> (exclusive), in order.</summary>
+        public List<HNote> Notes(int start, int end)
+        {
+            var result = new List<HNote>();
+            for (var i = First(_notes.Length, k => _notes[k].Key >= start); i < _notes.Length && _notes[i].Key < end; i++)
+                result.Add(_notes[i].Value);
+            return result;
+        }
+
+        /// <summary>The first index of <paramref name="count"/> where <paramref name="from"/> holds (it holds from there on).</summary>
+        private static int First(int count, Func<int, bool> from)
+        {
+            var (low, high) = (0, count);
+            while (low < high)
+            {
+                var middle = (low + high) / 2;
+                if (from(middle))
+                    high = middle;
+                else
+                    low = middle + 1;
+            }
+            return low;
+        }
+    }
+
     /// <param name="stored">The stored line this line follows, with the paragraph's whole line (WholeLine), or null.</param>
-    private LineBox Place(ParagraphText source, List<Item> items, int start, int end, bool forced, bool firstLine, float width, Settings settings,
+    private LineBox Place(ParagraphText source, LineIndex ranges, int start, int end, bool forced, bool firstLine, float width, Settings settings,
         TextStyle mark, (HLineSegment Line, HLineSegment First)? stored = null)
     {
         var text = source.Text;
@@ -612,7 +702,7 @@ internal sealed class ParagraphLayouter
         var advances = new float[contentEnd - start];
         var spacing = new float[contentEnd - start];
         var starts = new bool[contentEnd - start];
-        foreach (var item in items)
+        foreach (var item in ranges.Items(start, contentEnd))
         {
             var from = Math.Max(item.Start, start);
             var to = Math.Min(item.End, contentEnd);
@@ -788,8 +878,7 @@ internal sealed class ParagraphLayouter
         var (height, baseline, textHeight) = stored is var (segment, _)
             ? ((segment.VerticalSize + segment.Spacing) / 100f, segment.Baseline / 100f, segment.TextHeight / 100f)
             : LineHeight(parts, settings, mark);
-        var bookmarks = source.Bookmarks.Where(b => b.Position >= start && (b.Position < end || b.Position == end && end == text.Length))
-            .Select(b => (lineLeft + offset, b.Name)).ToList();
+        var bookmarks = ranges.Bookmarks(start, end, text.Length).Select(b => (lineLeft + offset, b.Name)).ToList();
         return new LineBox
         {
             Start = start,
@@ -804,7 +893,7 @@ internal sealed class ParagraphLayouter
             Links = links,
             Bookmarks = bookmarks,
             Objects = pictures,
-            Notes = [.. source.Notes.Where(n => n.Key >= start && n.Key < Math.Max(end, start + 1)).OrderBy(n => n.Key).Select(n => n.Value)],
+            Notes = ranges.Notes(start, Math.Max(end, start + 1)),
             StoredTop = stored is var (top, _) ? top.VerticalPosition / 100f : null,
             Below = stored is var (spaced, _) ? spaced.Spacing / 100f : Math.Max(0, height - textHeight),
             StoredPageStart = stored is var (flagged, _) && (flagged.Flags & 1) != 0,

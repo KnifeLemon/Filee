@@ -11,10 +11,10 @@
 // SlideCapabilities (charts, effects, ...). Pictures of document pages go on from the PDF through PDFium, which applies
 // the image options; pictures of slides are drawn directly, with the image options applied here.
 
-using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 using Filee.Core.Conversion;
+using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Doc;
@@ -101,22 +101,32 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         var markers = sourceFormat == "hwpx" ? HwpxMarkers : sourceFormat == "odt" ? OdtMarkers : WordFormats.Contains(sourceFormat) ? WordMarkers : null;
         if (markers is null)
             return null;
-        using var zip = ZipFile.OpenRead(sourcePath);
-        long scanned = 0;
-        foreach (var entry in zip.Entries)
+        // Parts are read through the document limits (counted as they unpack, whatever their headers claim); a package
+        // that passes one is left to the reader, which refuses it with its reason.
+        try
         {
-            var name = entry.FullName;
-            if (!name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) || (scanned += entry.Length) > MaxScannedBytes)
-                continue;
-            using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
-            var xml = reader.ReadToEnd();
-            foreach (var (pattern, feature) in markers)
+            using var package = DocumentPackage.Open(sourcePath);
+            long scanned = 0;
+            foreach (var entry in package.Entries)
             {
-                if (pattern.IsMatch(xml))
-                    return feature;
+                var name = entry.FullName;
+                if (!name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) || (scanned += entry.Length) > MaxScannedBytes
+                    || package.BytesRead > MaxScannedBytes)
+                    continue;
+                using var reader = new StreamReader(package.Open(entry), Encoding.UTF8);
+                var xml = reader.ReadToEnd();
+                foreach (var (pattern, feature) in markers)
+                {
+                    if (pattern.IsMatch(xml))
+                        return feature;
+                }
             }
+            return null;
         }
-        return null;
+        catch (ConversionRefusedException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

@@ -3,8 +3,10 @@
 //
 // - Grid: cells take their column (or the next free one, skipping cells that span down from above), their column and
 //   row spans. Column widths are the table's absolute widths, else its relative ones (columns without one share what
-//   is left), else equal shares of the width. Tables of other formats (a spreadsheet's columns) are scaled down to the
-//   text width when wider; 한글's keep the widths 한글 gave them, as 한글 draws them.
+//   is left), else equal shares of the width. Columns and spans of a damaged or hostile model are cut at
+//   DocumentLimits.MaxTableColumns and row spans at the last row; free columns are found in a segment tree, not a grid
+//   of every spanned cell. Tables of other formats (a spreadsheet's columns) are scaled down to the text width when
+//   wider; 한글's keep the widths 한글 gave them, as 한글 draws them.
 // - Cells: their blocks are laid out at the columns' width less the padding (the cell's, else the table's, else
 //   한글's default 1.8 mm by 0.5 mm), nested tables too; a row is as high as its tallest single-row cell or its own
 //   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it.
@@ -16,6 +18,7 @@
 //   나눔), and a one-row group taller than what is left splits inside its cells where the rows may split (한글 나눔,
 //   and sources that don't say, as Word allows) unless the row must not split. Header rows repeat on every page.
 
+using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Metafiles;
 using Filee.Engines.Rendering;
@@ -235,7 +238,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     public TableBox Layout(HTable table, float width)
     {
         var placed = Place(table);
-        var columns = Math.Max(1, Math.Max(table.ColumnCount, placed.Count == 0 ? 0 : placed.Max(c => c.Column + c.Cell.ColSpan)));
+        var columns = Math.Max(1, Math.Max(Math.Min(table.ColumnCount, MaxColumns), placed.Count == 0 ? 0 : placed.Max(c => c.Column + ColumnSpan(c.Column, c.Cell))));
         var widths = ColumnWidths(table, columns, width);
         var left = new float[columns + 1];
         for (var c = 0; c < columns; c++)
@@ -248,7 +251,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             cells[r] = [];
         foreach (var (row, column, cell) in placed)
         {
-            var span = Math.Min(cell.ColSpan, columns - column);
+            var span = Math.Clamp(cell.ColSpan, 0, columns - column);
             var padding = cell.CellMargin ?? table.CellMargin ?? DefaultPadding;
             var cellWidth = left[column + span] - left[column];
             var contentWidth = Math.Max(1, cellWidth - (padding.Left + padding.Right) / 100f);
@@ -275,11 +278,19 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             var height = Math.Max((source.Height ?? 0) / 100f, cells[r].Where(c => c.RowSpan == 1).Select(c => c.Needed).DefaultIfEmpty(0).Max());
             rows.Add(new RowBox { Height = height, Cells = cells[r], Header = source.Header, CantSplit = source.CantSplit });
         }
+        // The rows' heights are summed through a Fenwick tree, so a table of many cells spanning many rows costs a
+        // logarithm per cell rather than its rows.
+        var heights = new RowSums(rows);
         foreach (var cell in cells.SelectMany(c => c).Where(c => c.RowSpan > 1).OrderBy(c => c.Row + c.RowSpan))
         {
-            var have = rows.Skip(cell.Row).Take(cell.RowSpan).Sum(r => r.Height);
+            var have = heights.Sum(cell.Row, cell.Row + cell.RowSpan);
             if (cell.Needed > have)
-                rows[cell.Row + cell.RowSpan - 1].Height += cell.Needed - have;
+            {
+                var last = rows[cell.Row + cell.RowSpan - 1];
+                var before = last.Height;
+                last.Height += cell.Needed - have;
+                heights.Add(cell.Row + cell.RowSpan - 1, (double)last.Height - before);
+            }
         }
 
         var offset = table.Align switch
@@ -292,35 +303,138 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         return new TableBox(Math.Max(0, offset), tableWidth, rows, table.PageBreak, caption);
     }
 
+    /// <summary>
+    /// Columns a table has at most (<see cref="DocumentLimits.MaxTableColumns"/>): cells of a damaged or hostile model
+    /// that start or reach further are cut there.
+    /// </summary>
+    private static int MaxColumns => DocumentLimits.Default.MaxTableColumns;
+
+    /// <summary>The columns a cell at <paramref name="column"/> spans, cut at <see cref="MaxColumns"/>.</summary>
+    private static int ColumnSpan(int column, HCell cell) => Math.Min(cell.ColSpan, MaxColumns - column);
+
     /// <summary>Each cell's row and grid column.</summary>
     private static List<(int Row, int Column, HCell Cell)> Place(HTable table)
     {
         var placed = new List<(int, int, HCell)>();
-        // Columns taken by cells spanning down from rows above, by row.
-        var taken = new Dictionary<int, HashSet<int>>();
-        HashSet<int> Taken(int row) => taken.TryGetValue(row, out var set) ? set : taken[row] = [];
-        for (var r = 0; r < table.Rows.Count; r++)
+        var rowCount = table.Rows.Count;
+        // The row up to which each column is taken (by a cell of this row or one spanning down from above). Only as
+        // many columns as the cells can reach are tracked.
+        var reach = 1L;
+        foreach (var row in table.Rows)
+        {
+            foreach (var cell in row.Cells)
+                reach += Math.Max(0, cell.Column) + Math.Max(1, (long)cell.ColSpan);
+        }
+        var taken = new TakenColumns((int)Math.Min(reach, MaxColumns));
+        for (var r = 0; r < rowCount; r++)
         {
             var next = 0;
             foreach (var cell in table.Rows[r].Cells)
             {
-                var column = cell.Column;
+                var column = Math.Min(cell.Column, MaxColumns - 1);
                 if (column < 0)
-                {
-                    column = next;
-                    while (Taken(r).Contains(column))
-                        column++;
-                }
+                    column = Math.Min(taken.FirstFree(next, r), MaxColumns - 1);
                 placed.Add((r, column, cell));
-                for (var dr = 0; dr < Math.Max(1, cell.RowSpan) && r + dr < table.Rows.Count; dr++)
-                {
-                    for (var dc = 0; dc < Math.Max(1, cell.ColSpan); dc++)
-                        Taken(r + dr).Add(column + dc);
-                }
-                next = column + Math.Max(1, cell.ColSpan);
+                var span = Math.Clamp(cell.ColSpan, 1, MaxColumns - column);
+                var end = r + Math.Clamp(cell.RowSpan, 1, rowCount - r);
+                taken.Take(column, column + span, end);
+                next = column + span;
             }
         }
         return placed;
+    }
+
+    /// <summary>
+    /// For each column the row up to which it is taken (exclusive): a segment tree that raises a range of columns and
+    /// finds the first free column from a start, each in a logarithm of the columns.
+    /// </summary>
+    private sealed class TakenColumns
+    {
+        private readonly int _size;
+        private readonly int[] _low;
+        private readonly int[] _raise;
+
+        public TakenColumns(int columns)
+        {
+            _size = 1;
+            while (_size < columns)
+                _size *= 2;
+            _low = new int[2 * _size];
+            _raise = new int[2 * _size];
+        }
+
+        /// <summary>Columns <paramref name="from"/> to <paramref name="to"/> (exclusive) are taken up to <paramref name="row"/>.</summary>
+        public void Take(int from, int to, int row) => Take(1, 0, _size, Math.Min(from, _size), Math.Min(to, _size), row);
+
+        private void Take(int node, int start, int end, int from, int to, int row)
+        {
+            if (to <= start || end <= from)
+                return;
+            if (from <= start && end <= to)
+            {
+                _low[node] = Math.Max(_low[node], row);
+                _raise[node] = Math.Max(_raise[node], row);
+                return;
+            }
+            var middle = (start + end) / 2;
+            Take(2 * node, start, middle, from, to, row);
+            Take(2 * node + 1, middle, end, from, to, row);
+            _low[node] = Math.Max(_raise[node], Math.Min(_low[2 * node], _low[2 * node + 1]));
+        }
+
+        /// <summary>
+        /// The first column from <paramref name="from"/> that row <paramref name="row"/> doesn't take; past the
+        /// tracked columns when all are taken.
+        /// </summary>
+        public int FirstFree(int from, int row)
+        {
+            if (from >= _size)
+                return from;
+            var found = FirstFree(1, 0, _size, from, row, 0);
+            return found < 0 ? _size : found;
+        }
+
+        private int FirstFree(int node, int start, int end, int from, int row, int raised)
+        {
+            raised = Math.Max(raised, _raise[node]);
+            if (end <= from || Math.Max(_low[node], raised) > row)
+                return -1;
+            if (end - start == 1)
+                return start;
+            var middle = (start + end) / 2;
+            var left = FirstFree(2 * node, start, middle, from, row, raised);
+            return left >= 0 ? left : FirstFree(2 * node + 1, middle, end, from, row, raised);
+        }
+    }
+
+    /// <summary>Sums of consecutive rows' heights while single rows grow (a Fenwick tree, in double as LINQ sums floats).</summary>
+    private sealed class RowSums
+    {
+        private readonly double[] _tree;
+
+        public RowSums(IReadOnlyList<RowBox> rows)
+        {
+            _tree = new double[rows.Count + 1];
+            for (var i = 0; i < rows.Count; i++)
+                Add(i, rows[i].Height);
+        }
+
+        public void Add(int row, double amount)
+        {
+            for (var i = row + 1; i < _tree.Length; i += i & -i)
+                _tree[i] += amount;
+        }
+
+        /// <summary>The heights of rows <paramref name="from"/> to <paramref name="to"/> (exclusive).</summary>
+        public float Sum(int from, int to) => (float)(Prefix(to) - Prefix(from));
+
+        private double Prefix(int count)
+        {
+            double sum = 0;
+            for (var i = count; i > 0; i -= i & -i)
+                sum += _tree[i];
+            return sum;
+        }
     }
 
     /// <summary>The columns' widths in points.</summary>
@@ -448,7 +562,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                         using var drawing = Metafile.TryLoad(path);
                         drawing?.Draw(canvas, area);
                     }
-                    else if (SKImage.FromEncodedData(path) is { } image)
+                    else if (FloatingObjects.Image(path) is { } image)
                     {
                         using (image)
                             canvas.DrawImage(image, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
