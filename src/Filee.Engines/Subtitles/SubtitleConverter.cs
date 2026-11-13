@@ -1,4 +1,4 @@
-// Text subtitles in managed code: SRT, ASS/SSA, WebVTT, SAMI, LRC, TTML, MicroDVD and SCC are read into one cue model
+// Text subtitles in managed code: SRT, ASS/SSA, WebVTT, SAMI, LRC, KRC, TTML, MicroDVD and SCC are read into one cue model
 // and written as SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD or plain text, always as UTF-8. Korean CP949 / EUC-KR files (most
 // SAMI files) are recognised. Subtitles inside videos are taken out by FFmpeg (video → SRT / ASS / WebVTT), see
 // docs/ENGINES.md.
@@ -24,7 +24,7 @@ public sealed class SubtitleConverter : IConverter
         [.. from source in SubtitleReader.Formats from target in SubtitleWriter.Formats
             select new ConversionEdge(source, target, DirectOnly: target == "txt")];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, SCC", EngineVersions.BuiltIn);
+    public EngineStatus GetStatus() => EngineStatus.Available("SRT, ASS, WebVTT, SAMI, LRC, KRC, TTML, MicroDVD, SCC", EngineVersions.BuiltIn);
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>

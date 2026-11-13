@@ -283,6 +283,21 @@ public class SubtitleTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_krc_offset_counts_for_every_line_as_in_lrc()
+    {
+        var document = SubtitleReader.Read("krc", PackKrc("""
+            [1500,1000]First
+            [offset:500]
+            [4000,1000]Second
+            """));
+        Assert.Equal(
+        [
+            new SubtitleCue(Ms(1000), Ms(2000), "First"),
+            new SubtitleCue(Ms(3500), Ms(4500), "Second"),
+        ], document.Cues);
+    }
+
+    [Fact]
     public void Krc_files_that_arent_packed_lyrics_fail_with_a_message()
     {
         Assert.Contains("krc1", Assert.Throws<InvalidDataException>(() => SubtitleReader.Read("krc", "[00:01.00]plain LRC"u8.ToArray())).Message);

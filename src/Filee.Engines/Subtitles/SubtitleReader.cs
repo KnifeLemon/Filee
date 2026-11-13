@@ -349,6 +349,7 @@ internal static partial class SubtitleReader
     {
         var document = new SubtitleDocument();
         var offset = TimeSpan.Zero;
+        List<(TimeSpan Start, TimeSpan Length, string Text)> lines = [];
         foreach (var raw in text.Split('\n'))
         {
             var line = raw.Trim().TrimStart('﻿');
@@ -373,8 +374,11 @@ internal static partial class SubtitleReader
                 continue;
             var start = TimeSpan.FromMilliseconds(long.Parse(match.Groups["start"].Value, CultureInfo.InvariantCulture));
             var length = TimeSpan.FromMilliseconds(long.Parse(match.Groups["length"].Value, CultureInfo.InvariantCulture));
-            document.Add(start - offset, start + length - offset, lyric);
+            lines.Add((start, length, lyric));
         }
+        // As in LRC, the last [offset:] counts for every line, wherever the tag sits.
+        foreach (var (start, length, lyric) in lines)
+            document.Add(start - offset, start + length - offset, lyric);
         return document;
     }
 
