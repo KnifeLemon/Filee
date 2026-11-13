@@ -60,13 +60,24 @@ internal sealed class PresentationPackage : IDisposable
     };
     private bool _saved;
 
-    /// <param name="path">The PPTX to write; it appears only once <see cref="Save"/> has finished.</param>
+    /// <param name="path">
+    /// The PPTX to write; it appears only once <see cref="Save"/> has finished. Until then the parts go into a new
+    /// temporary file of its own beside it, removed when the package is disposed unsaved.
+    /// </param>
     public PresentationPackage(string path)
     {
         _path = path;
-        _temp = path + ".tmp";
-        _file = File.Create(_temp);
-        _zip = new ZipArchive(_file, ZipArchiveMode.Create);
+        _file = WriterTempFile.Create(path, out _temp);
+        try
+        {
+            _zip = new ZipArchive(_file, ZipArchiveMode.Create);
+        }
+        catch
+        {
+            _file.Dispose();
+            WriterTempFile.Discard(_temp);
+            throw;
+        }
     }
 
     /// <summary>Writes an XML part; with a content type it gets an override in [Content_Types].xml.</summary>
@@ -100,7 +111,7 @@ internal sealed class PresentationPackage : IDisposable
 
         _zip.Dispose();
         _file.Dispose();
-        File.Move(_temp, _path, overwrite: true);
+        WriterTempFile.Finish(_temp, _path);
         _saved = true;
     }
 
@@ -108,9 +119,19 @@ internal sealed class PresentationPackage : IDisposable
     {
         if (_saved)
             return;
-        _zip.Dispose();
-        _file.Dispose();
-        try { File.Delete(_temp); } catch (IOException) { }
+        try
+        {
+            _zip.Dispose();
+        }
+        catch (IOException)
+        {
+            // The disk filled up or the file went away: nothing of it is kept anyway.
+        }
+        finally
+        {
+            _file.Dispose();
+            WriterTempFile.Discard(_temp);
+        }
     }
 
     // ───────────────────────── Shared parts ─────────────────────────

@@ -384,37 +384,94 @@ internal sealed partial class HwpxWriter
     }
 
     /// <summary>
+    /// Grid positions (rows × columns) a table written by the document writers may have. Far above real tables; a
+    /// small file can declare a span of thousands of columns on each of thousands of rows, which every writer that
+    /// keeps a rectangular grid (ODT, the layout) would have to fill.
+    /// </summary>
+    internal const long MaxTableCells = 10_000_000;
+
+    /// <summary>
     /// Grid position of every cell: explicit cell columns (DOCX) or the next free position (Pandoc), skipping
-    /// positions covered by cells spanning rows from above.
+    /// positions covered by cells spanning rows from above. Spans are clamped to the table (its last row, and
+    /// <see cref="Documents.DocumentLimits.MaxTableColumns"/> columns) on the cells themselves, so every writer
+    /// reading them afterwards stays inside the grid; a table of more than <see cref="MaxTableCells"/> positions is
+    /// refused. Covered positions are tracked per column (the first row a cell placed so far leaves free), so a span
+    /// costs its columns, not its rows × columns.
     /// </summary>
     internal static (List<List<(HCell Cell, int Column)>> Placed, int Columns) PlaceCells(HTable table)
     {
-        var placed = new List<List<(HCell, int)>>();
-        var occupied = new HashSet<(int Row, int Column)>();
-        var columnCount = table.ColumnCount;
-        for (var r = 0; r < table.Rows.Count; r++)
+        var maxColumns = Documents.DocumentLimits.Default.MaxTableColumns;
+        var rows = table.Rows.Count;
+        var columnCount = Math.Clamp(table.ColumnCount, 0, maxColumns);
+        CheckTableSize(rows, columnCount);
+        var placed = new List<List<(HCell, int)>>(rows);
+        var freeFrom = new List<int>(); // per column: the first row no cell placed so far covers
+        // Within the row being placed: from a taken column, where the next free one may be (valid while jumpRow is
+        // that row). Keeps a search past many taken columns from being repeated cell after cell.
+        var jump = new List<int>();
+        var jumpRow = new List<int>();
+        long positions = 0;
+        for (var r = 0; r < rows; r++)
         {
             var row = new List<(HCell, int)>();
             var column = 0;
             foreach (var cell in table.Rows[r].Cells)
             {
                 if (cell.Column >= 0)
-                    column = cell.Column;
-                while (occupied.Contains((r, column)))
-                    column++;
-                for (var dr = 0; dr < cell.RowSpan; dr++)
+                    column = Math.Min(cell.Column, maxColumns - 1);
+                column = FirstFree(column, r);
+                var rowSpan = Math.Clamp(cell.RowSpan, 1, rows - r);
+                var colSpan = Math.Clamp(cell.ColSpan, 1, Math.Max(1, maxColumns - column));
+                (cell.RowSpan, cell.ColSpan) = (rowSpan, colSpan);
+                // Only cells running over each other cover more positions than the grid has.
+                positions += colSpan;
+                if (positions > MaxTableCells)
+                    throw TableTooLarge();
+                while (freeFrom.Count < column + colSpan)
                 {
-                    for (var dc = 0; dc < cell.ColSpan; dc++)
-                        occupied.Add((r + dr, column + dc));
+                    freeFrom.Add(0);
+                    jump.Add(0);
+                    jumpRow.Add(-1);
                 }
+                for (var c = column; c < column + colSpan; c++)
+                    freeFrom[c] = Math.Max(freeFrom[c], r + rowSpan);
                 row.Add((cell, column));
-                column += cell.ColSpan;
-                columnCount = Math.Max(columnCount, column);
+                column += colSpan;
+                if (column > columnCount)
+                {
+                    columnCount = column;
+                    CheckTableSize(rows, columnCount);
+                }
             }
             placed.Add(row);
         }
         return (placed, Math.Max(1, columnCount));
+
+        // The first column from `from` on that row r has free; follows (and then shortens) the jumps of this row.
+        int FirstFree(int from, int r)
+        {
+            var c = from;
+            while (c < freeFrom.Count && freeFrom[c] > r)
+                c = jumpRow[c] == r ? jump[c] : c + 1;
+            for (var at = from; at < c;)
+            {
+                var next = jumpRow[at] == r ? jump[at] : at + 1;
+                (jump[at], jumpRow[at]) = (c, r);
+                at = next;
+            }
+            return c;
+        }
     }
+
+    /// <summary>Refuses a table of more than <see cref="MaxTableCells"/> grid positions.</summary>
+    internal static void CheckTableSize(long rows, long columns)
+    {
+        if (rows * columns > MaxTableCells)
+            throw TableTooLarge();
+    }
+
+    private static Filee.Core.Conversion.ConversionRefusedException TableTooLarge() =>
+        Documents.DocumentLimits.Exceeded($"A table has more than {Documents.DocumentLimits.Count(MaxTableCells)} cells (rows × columns).");
 
     /// <summary>Column widths that fit <paramref name="available"/>: absolute (scaled down if too wide), relative or equal.</summary>
     internal static int[] ColumnWidths(HTable table, int columns, int available)
