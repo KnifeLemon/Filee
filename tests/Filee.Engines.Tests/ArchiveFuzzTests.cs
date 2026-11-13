@@ -1,8 +1,9 @@
-// Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG):
-// seeds are built in code, bytes are flipped, overwritten, cut and repeated, and every input must unpack or be
-// refused with InvalidDataException, in time. Same switches as DocumentFuzzTests: a short fixed run normally,
+// Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG) and of
+// TAR (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
+// repeated, and every input must unpack or be refused with InvalidDataException, in time. Same switches as DocumentFuzzTests: a short fixed run normally,
 // FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
 
+using System.Formats.Tar;
 using System.Globalization;
 using Filee.Engines.Archives;
 using static Filee.Engines.Tests.ArchiveBuilders;
@@ -32,6 +33,25 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void Cpio_reader_unpacks_or_refuses_every_mutated_archive() =>
         Fuzz("cpio", [Cpio(Seed()), Cpio(Seed(), CpioLayout.Odc), Cpio(Seed(), CpioLayout.Binary), Cpio(Seed(), CpioLayout.Crc), CpioWithHardLinks(Words(100))]);
+
+    [Fact]
+    public void Tar_reader_unpacks_or_refuses_every_mutated_archive() =>
+        Fuzz("tar", [Tar(Seed()), GnuTar()]);
+
+    /// <summary>A GNU TAR: a long name and a long hard link target (GNU 'L' and 'K' headers) and a symbolic link.</summary>
+    private static byte[] GnuTar()
+    {
+        using var output = new MemoryStream();
+        using (var writer = new TarWriter(output, TarEntryFormat.Gnu, leaveOpen: true))
+        {
+            var name = "폴더/" + new string('n', 120) + ".txt";
+            writer.WriteEntry(new GnuTarEntry(TarEntryType.Directory, "폴더/"));
+            writer.WriteEntry(new GnuTarEntry(TarEntryType.RegularFile, name) { DataStream = new MemoryStream(Words(1_500)) });
+            writer.WriteEntry(new GnuTarEntry(TarEntryType.HardLink, "hard.txt") { LinkName = name });
+            writer.WriteEntry(new GnuTarEntry(TarEntryType.SymbolicLink, "soft") { LinkName = "../outside" });
+        }
+        return output.ToArray();
+    }
 
     [Fact]
     public void Rpm_reader_unpacks_or_refuses_every_mutated_package() =>

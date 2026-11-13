@@ -10,7 +10,8 @@
 //
 // The archive ends with an entry named "TRAILER!!!". The file type is in the mode (0040000 folder, 0100000 file,
 // 0120000 symbolic link); links, devices and FIFOs are left out. A newc hard link group stores its data once, with
-// the last name; the earlier names become copies of it. Written from the cpio(5) format description.
+// the last name; the earlier names become copies of it (and count at its size in the checks before unpacking).
+// Written from the cpio(5) format description.
 
 using System.Text;
 
@@ -40,7 +41,12 @@ internal static class CpioReader
         var name = Path.GetFileName(archive);
         using var stream = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
         var entries = List(stream, name);
-        ArchiveSafety.CheckListing([.. entries.Select(e => new ArchiveItem(e.Name, e.Type == 0x4000, e.Type == 0x8000 ? e.Size : 0, IsLink: e.Type is not (0x4000 or 0x8000)))],
+        // A hard link without data becomes a copy of its group's file: it counts at the largest size in the group.
+        var groups = new Dictionary<(long, long), long>();
+        foreach (var entry in entries.Where(e => e.Type == 0x8000 && e.Links > 1))
+            groups[(entry.Device, entry.Inode)] = Math.Max(groups.GetValueOrDefault((entry.Device, entry.Inode)), entry.Size);
+        long SizeOf(Entry e) => e.Type != 0x8000 ? 0 : e.Links > 1 && e.Size == 0 ? groups[(e.Device, e.Inode)] : e.Size;
+        ArchiveSafety.CheckListing([.. entries.Select(e => new ArchiveItem(e.Name, e.Type == 0x4000, SizeOf(e), IsLink: e.Type is not (0x4000 or 0x8000)))],
             name, stream.Length, folder);
 
         var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
@@ -82,6 +88,7 @@ internal static class CpioReader
     private static List<Entry> List(FileStream stream, string name)
     {
         var entries = new List<Entry>();
+        var names = new NameTally(name);
         Span<byte> magic = stackalloc byte[6];
         while (true)
         {
@@ -95,6 +102,7 @@ internal static class CpioReader
                 throw ArchiveSafety.Damaged(name, "the archive ends in the middle of an entry");
             if (entries.Count >= ArchiveSafety.EntryLimit)
                 throw ArchiveSafety.TooManyEntries(name);
+            names.Add(entry.Name);
             entries.Add(entry);
             var end = entry.DataOffset + entry.Size;
             stream.Position = layout switch

@@ -36,9 +36,12 @@ internal static class AlzReader
         var archiveName = Path.GetFileName(archive);
         using var stream = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
         var entries = ReadEntries(stream, archiveName);
-        ArchiveSafety.EnsureRoom(entries.Where(e => !e.IsFolder).Sum(e => e.Size), targetDirectory, archiveName);
+        // Names, paths, the bomb ratio and the room on the drive; each entry then stops at its stated size.
+        ArchiveSafety.CheckListing([.. entries.Select(e => new ArchiveItem(e.Name, e.IsFolder, e.IsFolder ? 0 : e.Size))],
+            archiveName, stream.Length, targetDirectory);
 
         var folders = new List<(string Path, DateTime? Modified)>();
+        var unique = new UniquePaths();
         foreach (var entry in entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -51,7 +54,7 @@ internal static class AlzReader
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            path = ArchiveFiles.UniquePath(path);
+            path = unique.Get(path);
             stream.Position = entry.DataOffset;
             var crc = new Crc32();
             using (var output = new CrcStream(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16), crc))
