@@ -1146,6 +1146,11 @@ internal static class SettingsMigrations
         //      be renumbered if another change takes it first.)
         if (from < 87)
             changed |= LearnExtensions(profiles, out _, ["ino", "pde"]);
+        // v88: NuGet packages (.nupkg, .snupkg, #1465), split-APK containers (.apks, .xapk, .apkm) and Android App
+        //      Bundles (.aab, #1464) learn the archives donut; custom claims stay put. (Schema 88 may be renumbered if
+        //      another change takes it first.)
+        if (from < 88)
+            changed |= LearnExtensions(profiles, out _, ["nupkg", "snupkg", "apks", "xapk", "apkm", "aab"]);
         return changed;
     }
 
