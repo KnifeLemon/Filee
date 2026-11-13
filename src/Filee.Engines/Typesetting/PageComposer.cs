@@ -14,6 +14,9 @@
 //   the section's first page where it hides them; laid out in the header and footer areas.
 // - Master pages (바탕쪽): drawn behind the page's body (or in front of it) from the top of the body; see MasterPages.
 // - Page borders and backgrounds (쪽 테두리/배경) under everything else; see PageBorder.
+// - Paragraph borders and backgrounds (BoxBorder): consecutive paragraphs with the same border share one box, which
+//   takes room above its first line and below its last, is drawn under the text a line at a time and stays open where a
+//   page or column break splits it.
 // - Page numbers count on from section to section unless a section restarts them (or a paragraph in it does, from its
 //   page on); a page number field shows the number of its page and a total pages field the count, which a first pass
 //   finds when the body shows it. 한글's automatic page number is drawn apart from the footer; see PageNumber.
@@ -67,7 +70,8 @@ internal sealed class PageComposer
     /// <param name="storedLines">Paragraphs follow 한글's stored line layout where it can be used.</param>
     public PageComposer(FontResolver fonts, Shaper shaper, IReadOnlyList<HKinsoku>? kinsoku = null, StyleResolver? styles = null, bool storedLines = true)
     {
-        _layouter = new ParagraphLayouter(fonts, shaper, kinsoku, storedLines);
+        // Paragraph borders of models of other formats are Word's (their lines outside the text), 한글's otherwise.
+        _layouter = new ParagraphLayouter(fonts, shaper, kinsoku, storedLines) { WordBorders = styles is not null };
         _styles = styles;
     }
 
@@ -128,7 +132,12 @@ internal sealed class PageComposer
         // ───────────────────────── Regions and columns ─────────────────────────
 
         /// <summary>Something put into a column, drawn when its region is finished (columns may be balanced first).</summary>
-        private sealed record Placed(int Column, float X, float Y, float Height, Action<PageContent, float, float> Draw);
+        /// <param name="Under">
+        /// What goes under everything in the region (a paragraph's border and background), told whether the thing is the
+        /// first in its column.
+        /// </param>
+        private sealed record Placed(int Column, float X, float Y, float Height, Action<PageContent, float, float> Draw,
+            Action<PageContent, float, float, bool>? Under = null);
 
         /// <summary>The columns of the region being filled: from <see cref="_regionTop"/> down, side by side.</summary>
         private HColumns _columns = HColumns.Single;
@@ -149,9 +158,9 @@ internal sealed class PageComposer
         private float ColumnHeight => _geometry.BodyBottom - _regionTop;
 
         /// <summary>Puts something into the current column at the current position.</summary>
-        private void Put(float x, float height, Action<PageContent, float, float> draw)
+        private void Put(float x, float height, Action<PageContent, float, float> draw, Action<PageContent, float, float, bool>? under = null)
         {
-            _placed.Add(new Placed(_column, x, _y, height, draw));
+            _placed.Add(new Placed(_column, x, _y, height, draw, under));
             _empty = false;
             _columnEmpty = false;
         }
@@ -177,6 +186,13 @@ internal sealed class PageComposer
             }
             var placed = balance && _columns.Count > 1 ? Balance(_placed) : _placed;
             var page = Current.Content;
+            // Paragraph borders and backgrounds first, under the text and tables; things come in their columns' order.
+            var started = new HashSet<int>();
+            foreach (var item in placed)
+            {
+                var columnTop = started.Add(item.Column);
+                item.Under?.Invoke(page, ColumnLeft(item.Column) + item.X, item.Y, columnTop);
+            }
             foreach (var item in placed)
                 item.Draw(page, ColumnLeft(item.Column) + item.X, item.Y);
             var bottom = placed.Max(p => p.Y + p.Height);
@@ -359,6 +375,7 @@ internal sealed class PageComposer
         {
             object? next = null;
             HParagraph? holder = null;
+            _box = null;
             for (var i = 0; i < blocks.Count; i++)
             {
                 _guard.Paragraph();
@@ -402,6 +419,20 @@ internal sealed class PageComposer
                 if (!box.StoredLines && Wrapped(paragraph, box) is { } wrapped)
                     box = wrapped;
 
+                // A border: one box with the paragraphs before and after it that have the same, room for its lines.
+                var (opens, closes) = (true, true);
+                if (box.Border is { } border)
+                {
+                    opens = !(_box is (var before, var index) && index == i - 1 && before.Joins(border));
+                    if (i + 1 < blocks.Count && blocks[i + 1] is HParagraph after && !TableLayout.HoldsTable(blocks, i + 1) && after.ColumnsChange is null)
+                    {
+                        var afterBox = Layout(composer.Resolve(after, i + 2 < blocks.Count ? blocks[i + 2] : null), ColumnWidth);
+                        next = afterBox;
+                        closes = !border.Joins(afterBox.Border);
+                    }
+                    box = border.Pad(box, opens, closes);
+                }
+
                 // Keep with next: this paragraph and the start of the next block in one column.
                 if (paragraph.Format.KeepWithNext == true && !_columnEmpty && i + 1 < blocks.Count && !(box.StoredLines && _inStep))
                 {
@@ -409,7 +440,7 @@ internal sealed class PageComposer
                     switch (blocks[i + 1])
                     {
                         case HParagraph following:
-                            var nextBox = Layout(composer.Resolve(following, i + 2 < blocks.Count ? blocks[i + 2] : null), ColumnWidth);
+                            var nextBox = next as ParagraphBox ?? Layout(composer.Resolve(following, i + 2 < blocks.Count ? blocks[i + 2] : null), ColumnWidth);
                             next = nextBox;
                             start = nextBox.SpaceBefore + (nextBox.Lines.Count > 0 ? nextBox.Lines[0].Height : 0);
                             break;
@@ -431,11 +462,18 @@ internal sealed class PageComposer
                     _y + box.Height > Bottom + Epsilon && box.Height <= ColumnHeight)
                     NextColumn();
 
-                Place(paragraph, box);
+                Place(paragraph, box, opens, closes);
+                _box = box.Border is { } drawn ? (drawn, i) : null;
                 if (!box.StoredLines)
                     _inStep = false;
             }
         }
+
+        /// <summary>The border of the last paragraph placed and its index in the blocks, while it is the last block placed.</summary>
+        private (BoxBorder Border, int Index)? _box;
+
+        /// <summary>The page, column and bottom of the last line placed that drew a border.</summary>
+        private (int Page, int Column, float Bottom)? _boxBottom;
 
         /// <summary>
         /// Puts a table's rows into columns and pages from the current position on, repeating its header rows;
@@ -569,7 +607,9 @@ internal sealed class PageComposer
         }
 
         /// <summary>Puts a paragraph's lines into columns and pages from the current position on.</summary>
-        private void Place(HParagraph paragraph, ParagraphBox box)
+        /// <param name="opens">The paragraph starts its border's box (see BoxBorder).</param>
+        /// <param name="closes">The paragraph ends its border's box.</param>
+        private void Place(HParagraph paragraph, ParagraphBox box, bool opens = true, bool closes = true)
         {
             var lines = box.Lines;
             if (lines.Count == 0)
@@ -653,7 +693,7 @@ internal sealed class PageComposer
                 {
                     if (box.StoredLines && j > i && SameRow(lines, j))
                         _y -= lines[j - 1].Height;
-                    PlaceLine(paragraph, box, lines[j], j == 0, stored);
+                    PlaceLine(paragraph, box, lines[j], j == 0, stored, j == lines.Count - 1, opens, closes);
                 }
                 i += fit;
                 if (i < lines.Count)
@@ -681,7 +721,7 @@ internal sealed class PageComposer
         /// <summary>The page and column where 한글's last column or page started.</summary>
         private (int Page, int Column) _hangulStart;
 
-        private void PlaceLine(HParagraph paragraph, ParagraphBox box, LineBox line, bool first, bool stored)
+        private void PlaceLine(HParagraph paragraph, ParagraphBox box, LineBox line, bool first, bool stored, bool last = false, bool opens = true, bool closes = true)
         {
             if (line.StoredTop is { } storedTop)
                 _lastStored = storedTop;
@@ -705,8 +745,19 @@ internal sealed class PageComposer
                 _number = number;
                 _pages[^1] = Current with { Number = number };
             }
-            Put(0, line.Height, line.Draw);
+            Action<PageContent, float, float, bool>? under = null;
+            if (box.Border is { } border)
+            {
+                // The background goes on through the spacing above a paragraph that continues the box in this column.
+                var gap = first && !opens && _boxBottom is (var page, var column, var bottom) && page == _pages.Count && column == _column ? Math.Max(0, _y - bottom) : 0;
+                var slice = border.Slice(box, first, last, opens, closes, gap);
+                var height = line.Height;
+                under = (content, x, top, columnTop) => content.Draw(canvas => slice.Draw(canvas, x, top, height, columnTop));
+            }
+            Put(0, line.Height, line.Draw, under);
             _y += line.Height;
+            if (box.Border is not null)
+                _boxBottom = (_pages.Count, _column, _y);
             foreach (var note in line.Notes)
                 AddNote(note);
         }
@@ -1291,6 +1342,9 @@ internal sealed class PageComposer
                 LineSpacing = CodeSpacing,
                 Layout = (format.Layout ?? new HParaLayout()) with { LineHeight = HLineHeight.From(CodeSpacing) },
             };
+        // The style resolver leaves out a block quote's bar and background and Word's borders as the writers write them;
+        // the paragraph keeps them to draw (BoxBorder).
+        format = format with { LeftBar = paragraph.Format.LeftBar, Fill = paragraph.Format.Fill, Borders = paragraph.Format.Borders };
         var resolved = new HParagraph
         {
             Format = format,

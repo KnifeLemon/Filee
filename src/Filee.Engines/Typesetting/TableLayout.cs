@@ -10,7 +10,8 @@
 // - Cells: their blocks are laid out at the columns' width less the padding (the cell's, else the table's, else
 //   한글's default 1.8 mm by 0.5 mm), nested tables too; a row is as high as its tallest single-row cell or its own
 //   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it.
-//   Content sits at the top, middle or bottom of the cell.
+//   Content sits at the top, middle or bottom of the cell. Paragraph borders and backgrounds in a stack (a cell, a
+//   header) are drawn as in the body (BoxBorder), each line with its part of the box.
 // - Drawing: each cell's fill (a colour, a picture; EMF / WMF as vector drawing), then its content, then its borders (the cell's, else the table's, else a thin grid);
 //   solid, dashed, dotted, dash-dot and double lines at their width.
 // - Pages: rows bound by a cell spanning them form a group that moves to a page together. A table that must not split
@@ -126,6 +127,9 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         var inStep = true;
         var skipBefore = false;
         HParagraph? holder = null;
+        // The paragraph laid out ahead (to see whether its border continues the box), and the box the last paragraph drew.
+        (int Index, ParagraphBox Box)? ahead = null;
+        (BoxBorder Border, int Index, float Bottom)? box = null;
         for (var i = 0; i < blocks.Count; i++)
         {
             switch (blocks[i])
@@ -134,24 +138,53 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                     holder = p;
                     break;
                 case HParagraph p:
-                    var box = paragraph(p, width);
-                    y += skipBefore ? 0 : box.SpaceBefore;
+                    var laid = ahead is (var at, var early) && at == i ? early : paragraph(p, width);
+                    ahead = null;
+                    y += skipBefore ? 0 : laid.SpaceBefore;
                     skipBefore = false;
-                    if (box.Lines.Count == 0)
-                        Objects(p, y);
-                    foreach (var line in box.Lines)
+                    var (opens, closes) = (true, true);
+                    if (laid.Border is { } border)
                     {
-                        if (box.StoredLines && inStep && line.StoredTop is { } top)
+                        opens = !(box is (var before, var index, _) && index == i - 1 && before.Joins(border));
+                        if (i + 1 < blocks.Count && blocks[i + 1] is HParagraph following && !HoldsTable(blocks, i + 1))
+                        {
+                            ahead = (i + 1, paragraph(following, width));
+                            closes = !border.Joins(ahead.Value.Box.Border);
+                        }
+                        laid = border.Pad(laid, opens, closes);
+                    }
+                    if (laid.Lines.Count == 0)
+                        Objects(p, y);
+                    for (var l = 0; l < laid.Lines.Count; l++)
+                    {
+                        var line = laid.Lines[l];
+                        if (laid.StoredLines && inStep && line.StoredTop is { } top)
                             y = Math.Max(y, top);
-                        if (line == box.Lines[0])
+                        if (l == 0)
                             Objects(p, y);
-                        pieces.Add(new Piece(y, line.Height, line.Draw, line.Below));
+                        if (laid.Border is { } own)
+                        {
+                            var gap = l == 0 && !opens && box is (_, _, var bottom) ? Math.Max(0, y - bottom) : 0;
+                            var slice = own.Slice(laid, l == 0, l == laid.Lines.Count - 1, opens, closes, gap);
+                            var height = line.Height;
+                            pieces.Add(new Piece(y, height, (page, left, lineTop) =>
+                            {
+                                page.Draw(canvas => slice.Draw(canvas, left, lineTop, height));
+                                line.Draw(page, left, lineTop);
+                            }, line.Below));
+                        }
+                        else
+                        {
+                            pieces.Add(new Piece(y, line.Height, line.Draw, line.Below));
+                        }
                         y += line.Height;
                     }
-                    y += box.SpaceAfter;
-                    inStep &= box.StoredLines;
+                    box = laid.Border is { } drawn ? (drawn, i, y) : null;
+                    y += laid.SpaceAfter;
+                    inStep &= laid.StoredLines;
                     break;
                 case HTable t when _depth < MaxDepth:
+                    box = null;
                     _depth++;
                     try
                     {
@@ -601,7 +634,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         Line(canvas, borders.Right, area.Right, area.Top, area.Right, area.Bottom);
     }
 
-    private static void Line(SKCanvas canvas, HBorder border, float x0, float y0, float x1, float y1)
+    /// <summary>Draws one border line; <paramref name="phase"/> starts its dashes as far into their pattern (to join up parts of one line).</summary>
+    internal static void Line(SKCanvas canvas, HBorder border, float x0, float y0, float x1, float y1, float phase = 0)
     {
         if (border.Style == HBorderStyle.None)
             return;
@@ -629,7 +663,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             HBorderStyle.DashDot => [width * 4, width * 2, width, width * 2],
             _ => null,
         };
-        using var effect = dashes is null ? null : SKPathEffect.CreateDash(dashes, 0);
+        using var effect = dashes is null ? null : SKPathEffect.CreateDash(dashes, phase % dashes.Sum());
         paint.PathEffect = effect;
         canvas.DrawLine(x0, y0, x1, y1, paint);
     }
