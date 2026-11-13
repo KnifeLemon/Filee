@@ -1164,8 +1164,7 @@ public sealed partial class DonutMenu : Control
             for (var smaller = 0; smaller < 2; smaller++)
                 for (var step = 10; step >= 1; step--)
                 {
-                    title = CachedText(key.Notice!, key.Regular, 11.5 * (smaller == 0 ? fitScale : 0.78),
-                        key.Foreground, Math.Max(10, maxWidth * step / 10), lines);
+                    title = NoticeText(11.5 * (smaller == 0 ? fitScale : 0.78), maxWidth * step / 10, lines);
                     Stack();
                     if (Place()) return Result();
                 }
@@ -1195,7 +1194,7 @@ public sealed partial class DonutMenu : Control
         if (hint is not null)
         {
             var unscaled = CenterHintBounds(hint);
-            for (var step = 9; step >= 8; step--)
+            for (var step = 9; step >= 5; step--)
             {
                 hintScale = step / 10.0;
                 hintBounds = unscaled.Select(b => b.TransformToAABB(Matrix.CreateScale(hintScale, hintScale))).ToList();
@@ -1204,8 +1203,7 @@ public sealed partial class DonutMenu : Control
                 {
                     for (var width = 10; width >= 1; width--)
                     {
-                        title = CachedText(key.Notice!, key.Regular, 11.5 * 0.78, key.Foreground,
-                            Math.Max(10, maxWidth * width / 10), 1);
+                        title = NoticeText(11.5 * 0.78, maxWidth * width / 10, 1);
                         Stack();
                         if (Place()) return Result();
                     }
@@ -1219,6 +1217,10 @@ public sealed partial class DonutMenu : Control
         return withoutNotice ?? Result();
 
         CenterPlan Result() => new(title, subtitle, hint, titleTop, subtitleTop, hintTop, hintScale);
+
+        FormattedText NoticeText(double size, double width, int lines) =>
+            CachedText(key.Notice!, key.Regular, size, key.Foreground,
+                Math.Max(Math.Ceiling(CachedText("…", key.Regular, size, key.Foreground, maxWidth).Width), width), lines);
 
         void Stack()
         {
@@ -1661,9 +1663,9 @@ public sealed partial class DonutMenu : Control
     private static FormattedText MakeText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth, int maxLines = 1) =>
         new(text, CultureInfo.CurrentUICulture, TextDirection, typeface, size, brush)
         {
-            MaxTextWidth = Math.Max(10, maxWidth),
+            MaxTextWidth = Math.Max(1, maxWidth),
             MaxLineCount = maxLines,
-            Trimming = TextTrimming.CharacterEllipsis,
+            Trimming = maxLines == int.MaxValue ? TextTrimming.None : TextTrimming.CharacterEllipsis,
             TextAlignment = TextAlignment.Center,
         };
 

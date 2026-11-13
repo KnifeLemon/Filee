@@ -14,20 +14,21 @@ namespace Filee.App.Tests;
 [Collection("Motion")]
 public class DonutCenterReadabilityTests
 {
-    public static TheoryData<string, string> DefaultCenters
+    public static TheoryData<string, string, string> DefaultCenters
     {
         get
         {
-            var data = new TheoryData<string, string>();
+            var data = new TheoryData<string, string, string>();
             foreach (var language in LocalizationService.Languages.Select(x => x.Code))
                 foreach (var scope in new[] { "single", "all", "some" })
-                    data.Add(language, scope);
+                    foreach (var hint in new[] { "none", "key", "wheel" })
+                        data.Add(language, scope, hint);
             return data;
         }
     }
 
     [AvaloniaTheory, MemberData(nameof(DefaultCenters))]
-    public void Default_size_keeps_the_whole_notice(string language, string scope)
+    public void Default_size_keeps_the_whole_notice(string language, string scope, string hint)
     {
         using var f = new PresetAvailabilityTests.Fixture(new OrdinaryConversionNoticeTests.Inputs());
         TestServices.EnsureInitialized(language);
@@ -40,7 +41,10 @@ public class DonutCenterReadabilityTests
             SecondaryForeground = Brushes.Gray,
             CenterNotice = f.Loc["donut.ordinary_conversion." + scope],
             CenterSubtitle = f.Loc.Format("donut.drop_to", f.Loc["preset.extract_frames_png"]),
+            CenterHint = hint == "none" ? null : "Tab back",
+            CenterHintWheel = hint == "wheel",
         };
+        donut.SetValue(TextElement.FontFamilyProperty, SoftPalette.FontFamilyFor(language));
         var window = new Window { Content = donut, SizeToContent = SizeToContent.WidthAndHeight };
         try
         {
@@ -49,6 +53,7 @@ public class DonutCenterReadabilityTests
             Assert.NotEmpty(Runs(donut, donut.Foreground!));
             AssertInside(donut, Runs(donut, donut.Foreground!));
             AssertInside(donut, Runs(donut, donut.SecondaryForeground!));
+            AssertRectsInside(donut, HintBounds(donut));
             AssertNoticeGap(donut, Runs(donut, donut.Foreground!), Runs(donut, donut.SecondaryForeground!));
             var lines = Lines(Layout(donut, donut.CenterNotice!));
             Assert.NotEmpty(lines);
@@ -69,7 +74,7 @@ public class DonutCenterReadabilityTests
             var data = new TheoryData<string, string, bool>();
             // Portuguese and Spanish had the longest notices in the default-size measurements.
             // Thai exercised the one-line fallback in the minimum-size measurements.
-            foreach (var language in new[] { "en", "pt-BR", "pt-PT", "es", "ja", "th" })
+            foreach (var language in new[] { "en", "pt-BR", "pt-PT", "es", "ja", "th", "ar", "fa", "bn-BD", "hi", "ne" })
                 foreach (var scope in new[] { "single", "all", "some" })
                     foreach (var click in new[] { false, true })
                         data.Add(language, scope, click);
@@ -147,7 +152,8 @@ public class DonutCenterReadabilityTests
             Assert.All(original, run => Assert.Equal(14, run.Glyph.FontRenderingEmSize));
             var originalBounds = original.Select(run => run.Glyph.InkBounds.TransformToAABB(run.Transform)).ToArray();
             donut.CenterNotice = f.Loc["donut.ordinary_conversion.some"];
-            Assert.NotEmpty(Runs(donut, Brushes.Lime, centerOnly: true));
+            Assert.DoesNotContain(Runs(donut, Brushes.Lime, centerOnly: true),
+                run => run.Glyph.FontRenderingEmSize == 14);
             donut.CenterNotice = null;
             var restored = Runs(donut, Brushes.Lime, centerOnly: true);
             Assert.Equal(Glyphs(original), Glyphs(restored));
@@ -195,19 +201,23 @@ public class DonutCenterReadabilityTests
             var guidance = Layout(donut, donut.CenterSubtitle!);
             Assert.Equal(2, guidance.MaxLineCount);
             Assert.InRange(Lines(guidance).Count, 1, 2);
+            AssertRectsInsideOrNoFurtherOut(donut, true,
+                original.Select(run => run.Glyph.InkBounds.TransformToAABB(run.Transform)),
+                action.Select(run => run.Glyph.InkBounds.TransformToAABB(run.Transform)));
             var notice = Runs(donut, Brushes.Lime);
-            Assert.NotEmpty(notice);
-            Assert.All(notice, run =>
+            if (notice.Count > 0)
             {
-                var effective = run.Glyph.FontRenderingEmSize / 11.5 * run.Transform.M11 / (100.0 / 150);
-                Assert.InRange(effective, 0.78 - 1e-6, 1 + 1e-6);
-            });
-            var layout = Layout(donut, donut.CenterNotice!);
-            Assert.InRange(layout.MaxLineCount, 1, 3);
-            Assert.InRange(Lines(layout).Count, 1, 2);
-            AssertInside(donut, notice);
-            AssertInside(donut, action);
-            AssertNoticeGap(donut, notice, action);
+                Assert.All(notice, run =>
+                {
+                    var effective = run.Glyph.FontRenderingEmSize / 11.5 * run.Transform.M11 / (100.0 / 150);
+                    Assert.InRange(effective, 0.78 - 1e-6, 1 + 1e-6);
+                });
+                var layout = Layout(donut, donut.CenterNotice!);
+                Assert.InRange(layout.MaxLineCount, 1, 3);
+                Assert.InRange(Lines(layout).Count, 1, 2);
+                AssertInside(donut, notice);
+                AssertNoticeGap(donut, notice, action);
+            }
         }
         finally
         {
@@ -253,9 +263,21 @@ public class DonutCenterReadabilityTests
             window.Show();
             RenderTests.Pump();
             var original = Runs(donut, Brushes.Red, centerOnly: true);
+            var originalIcons = HintBounds(donut);
             donut.CenterNotice = f.Loc["donut.ordinary_conversion.some"];
             var actionAndHint = Runs(donut, Brushes.Red, centerOnly: true);
-            AssertInside(donut, actionAndHint);
+            foreach (var size in new[] { 11.5, 10.5 })
+                AssertRectsInsideOrNoFurtherOut(donut, small,
+                    original.Where(run => run.Glyph.FontRenderingEmSize == size)
+                        .Select(run => run.Glyph.InkBounds.TransformToAABB(run.Transform)),
+                    actionAndHint.Where(run => run.Glyph.FontRenderingEmSize == size)
+                        .Select(run => run.Glyph.InkBounds.TransformToAABB(run.Transform)));
+            var action = actionAndHint.Where(run => run.Glyph.FontRenderingEmSize == 11.5).ToList();
+            Assert.NotEmpty(action);
+            Assert.All(action, run => Assert.Equal(11.5, run.Glyph.FontRenderingEmSize));
+            var guidance = Layout(donut, donut.CenterSubtitle!);
+            Assert.Equal(2, guidance.MaxLineCount);
+            Assert.InRange(Lines(guidance).Count, 1, 2);
             var notice = Runs(donut, Brushes.Lime, centerOnly: true);
             if (notice.Count > 0)
             {
@@ -271,9 +293,9 @@ public class DonutCenterReadabilityTests
             }
             var icons = HintBounds(donut);
             Assert.Equal(wheel ? 4 : 2, icons.Count);
-            AssertRectsInside(donut, icons);
+            AssertRectsInsideOrNoFurtherOut(donut, small, originalIcons, icons);
             Assert.Equal(Glyphs(original.Where(run => run.Glyph.FontRenderingEmSize == 11.5).ToList()),
-                Glyphs(actionAndHint.Where(run => run.Glyph.FontRenderingEmSize == 11.5).ToList()));
+                Glyphs(action));
         }
         finally
         {
@@ -318,19 +340,36 @@ public class DonutCenterReadabilityTests
         {
             window.Show();
             RenderTests.Pump();
-            var original = Runs(donut, Brushes.Red, centerOnly: true)
-                .Where(run => run.Glyph.FontRenderingEmSize == 11.5).ToList();
+            var originalSecondary = Runs(donut, Brushes.Red, centerOnly: true);
+            var original = originalSecondary.Where(run => run.Glyph.FontRenderingEmSize == 11.5).ToList();
+            var originalIcons = HintBounds(donut);
             donut.CenterNotice = f.Loc["donut.ordinary_conversion." + scope];
             var notice = Runs(donut, Brushes.Lime, centerOnly: true);
             var secondary = Runs(donut, Brushes.Red, centerOnly: true);
             var action = secondary.Where(run => run.Glyph.FontRenderingEmSize == 11.5).ToList();
             Assert.NotEmpty(action);
             Assert.Equal(Glyphs(original), Glyphs(action));
-            AssertInside(donut, notice);
-            AssertInside(donut, secondary);
-            AssertRectsInside(donut, HintBounds(donut));
-            AssertNoticeGap(donut, notice, action);
-            Assert.All(notice, run => Assert.InRange(run.Glyph.FontRenderingEmSize / 11.5, 0.78 - 1e-6, 1));
+            Assert.All(action, run => Assert.Equal(11.5, run.Glyph.FontRenderingEmSize));
+            var guidance = Layout(donut, donut.CenterSubtitle!);
+            Assert.Equal(2, guidance.MaxLineCount);
+            Assert.InRange(Lines(guidance).Count, 1, 2);
+            foreach (var size in new[] { 11.5, 10.5 })
+                AssertRectsInsideOrNoFurtherOut(donut, small,
+                    originalSecondary.Where(run => run.Glyph.FontRenderingEmSize == size)
+                        .Select(run => run.Glyph.InkBounds.TransformToAABB(run.Transform)),
+                    secondary.Where(run => run.Glyph.FontRenderingEmSize == size)
+                        .Select(run => run.Glyph.InkBounds.TransformToAABB(run.Transform)));
+            AssertRectsInsideOrNoFurtherOut(donut, small, originalIcons, HintBounds(donut));
+            if (notice.Count > 0)
+            {
+                AssertInside(donut, notice);
+                AssertNoticeGap(donut, notice, action);
+                Assert.All(notice, run => Assert.InRange(run.Glyph.FontRenderingEmSize / 11.5, 0.78 - 1e-6, 1));
+            }
+            else
+            {
+                Assert.True(small);
+            }
         }
         finally
         {
@@ -445,6 +484,49 @@ public class DonutCenterReadabilityTests
         var guidanceTop = guidance.Min(run => run.Glyph.InkBounds.TransformToAABB(run.Transform).Top);
         var gap = (guidanceTop - noticeBottom) / donut.DonutScale;
         Assert.True(gap >= 2 - 1e-6, $"Notice-to-guidance ink gap {gap:F6} is below 2 donut-coordinate pixels.");
+    }
+
+    [AvaloniaTheory]
+    [InlineData(true, 18, 18.5, true)]
+    [InlineData(true, 18, 19.2, false)]
+    [InlineData(true, 20, 20.9, true)]
+    [InlineData(true, 20, 21.01, false)]
+    [InlineData(false, 20, 20.9, false)]
+    public void Baseline_rounding_tolerance_applies_only_to_overflowing_small_hubs(
+        bool small, double baselineDistance, double distance, bool passes)
+    {
+        var donut = new DonutMenu { OuterRadius = 100, HoleRatio = 0.25 };
+        var error = Record.Exception(() => AssertRectsInsideOrNoFurtherOut(donut, small,
+            [new Rect(baselineDistance, 0, 0, 0)], [new Rect(distance, 0, 0, 0)]));
+        if (passes) Assert.Null(error);
+        else Assert.IsAssignableFrom<Xunit.Sdk.XunitException>(error);
+    }
+
+    private static void AssertRectsInsideOrNoFurtherOut(DonutMenu donut, bool small,
+        IEnumerable<Rect> original, IEnumerable<Rect> current)
+    {
+        var before = original.ToArray();
+        var after = current.ToArray();
+        if (before.Length > 0) Assert.NotEmpty(after);
+        var center = new Point(donut.Bounds.Width / 2, donut.Bounds.Height / 2);
+        var radius = donut.OuterRadius * donut.HoleRatio - 6;
+        double MaxDistance(IEnumerable<Rect> rectangles) => rectangles
+            .SelectMany(bounds => new[] { bounds.TopLeft, bounds.TopRight, bounds.BottomLeft, bounds.BottomRight })
+            .Select(point => Math.Sqrt(Math.Pow(point.X - center.X, 2) + Math.Pow(point.Y - center.Y, 2)))
+            .DefaultIfEmpty(0).Max();
+        var baselineDistance = MaxDistance(before);
+        if (small && baselineDistance > radius + 0.01)
+        {
+            // Only an already-overflowing baseline gets 1 DIP for OS glyph-bound rounding.
+            const double roundingTolerance = 1;
+            var distance = MaxDistance(after);
+            Assert.True(distance <= baselineDistance + roundingTolerance,
+                $"Drawn bounds distance {distance:F3} exceeds no-notice baseline {baselineDistance:F3} plus {roundingTolerance} DIP.");
+        }
+        else
+        {
+            AssertRectsInside(donut, after);
+        }
     }
 
     internal static void AssertRectsInside(DonutMenu donut, IEnumerable<Rect> rectangles)
