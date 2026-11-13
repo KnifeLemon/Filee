@@ -5,6 +5,7 @@
 // writes into HWPX for older readers); the hp:case branch gets the true value, the default branch the stored one.
 
 using System.Globalization;
+using Filee.Engines.Documents;
 
 namespace Filee.Engines.Hwp.Binary;
 
@@ -30,8 +31,17 @@ internal sealed partial class HwpToHwpx
                 extension = type == 2 ? "ole" : "bin";
             var compression = (attributes >> 4) & 3;
             var compressed = compression == 0 ? _file.Compressed : compression == 1;
-            // Pictures name the BinData record (1-based) they use; the stream is named by the record's own id.
-            _bins[index] = new BinItem(id, (type == 1 ? "image" : "ole") + index.ToString(CultureInfo.InvariantCulture), extension, compressed, type == 1);
+            // Pictures name the BinData record (1-based) they use; the stream is named by the record's own id, and
+            // records naming one stream (stream names compare without case) share its item.
+            var key = (id, extension.ToLowerInvariant(), compressed, type == 1);
+            if (!_binStreams.TryGetValue(key, out var item))
+            {
+                if (_binStreams.Count >= _file.Limits.MaxPackageEntries)
+                    throw DocumentLimits.Exceeded($"The document has more than {DocumentLimits.Count(_file.Limits.MaxPackageEntries)} embedded files.");
+                item = new BinItem(id, (type == 1 ? "image" : "ole") + index.ToString(CultureInfo.InvariantCulture), extension, compressed, type == 1);
+                _binStreams[key] = item;
+            }
+            _bins[index] = item;
         }
     }
 
