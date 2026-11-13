@@ -22,36 +22,47 @@ internal sealed partial class OrgReader
 
     private readonly string _baseFolder;
     private readonly DocumentBudget _budget;
+    private readonly CancellationToken _cancellationToken;
     private readonly Dictionary<string, List<HBlock>> _footnotes = new(StringComparer.Ordinal);
     private readonly List<(string Label, HNote Note)> _references = [];
-    private string? _title;
+    private readonly List<string> _title = [];
 
-    private OrgReader(string baseFolder, DocumentLimits limits)
+    // Where the last search for a drawer's ":END:" found none: (lines, end of the range, first line searched). A later
+    // search in the same lines that starts at or after it finds none either, so a file of drawers that are never
+    // closed costs one scan, not one per drawer.
+    private (string[]? Lines, int End, int From) _noDrawerEnd;
+
+    private OrgReader(string baseFolder, DocumentLimits limits, CancellationToken cancellationToken)
     {
         _baseFolder = baseFolder;
         _budget = new DocumentBudget(limits);
+        _cancellationToken = cancellationToken;
     }
 
     public static HDocument Read(string path, string media) =>
         Read(MarkupBlocks.ReadText(path, DocumentLimits.Default, "Org"), Path.GetDirectoryName(Path.GetFullPath(path))!, DocumentLimits.Default);
 
-    internal static HDocument Read(string text, string baseFolder, DocumentLimits limits)
+    internal static HDocument Read(string text, string baseFolder, DocumentLimits limits, CancellationToken cancellationToken = default)
     {
-        var reader = new OrgReader(baseFolder, limits);
+        var reader = new OrgReader(baseFolder, limits, cancellationToken);
         var lines = MarkupBlocks.Lines(text).Split('\n');
         var section = new HSection();
         reader.Blocks(lines, 0, lines.Length, section.Blocks, 0);
+        // A footnote referenced more than once is read once; MarkupNotes bounds what the writers make of it.
         foreach (var (label, note) in reader._references)
             if (reader._footnotes.TryGetValue(label, out var blocks))
                 note.Blocks.AddRange(blocks);
-        var document = new HDocument { Title = reader._title };
+        MarkupNotes.Check(section.Blocks, limits, cancellationToken);
+        var document = new HDocument { Title = reader._title.Count > 0 ? string.Join(' ', reader._title) : null };
         document.Sections.Add(section);
         return document;
     }
 
     // ───────────────────────── Blocks ─────────────────────────
 
-    [GeneratedRegex(@"^(\*+)\s+(.*?)\s*$")]
+    // The title without the white space at its end, cut off after the match (a lazy group before "\s*$" would try
+    // every position of a long run of spaces).
+    [GeneratedRegex(@"^(\*+)\s+(.*)$")]
     private static partial Regex Headline();
 
     /// <summary>A headline without its tags (":work:home:" at its end).</summary>
@@ -91,6 +102,7 @@ internal sealed partial class OrgReader
         string? caption = null;
         for (var i = start; i < end;)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var line = lines[i];
             var trimmed = line.Trim();
             if (trimmed.Length == 0)
@@ -100,7 +112,7 @@ internal sealed partial class OrgReader
             }
             if (Headline().Match(line) is { Success: true } headline && indent == 0)
             {
-                var title = WithoutTags(headline.Groups[2].Value);
+                var title = WithoutTags(headline.Groups[2].Value.TrimEnd());
                 title = Priority().Replace(title, "");
                 var paragraph = Paragraph(title, 0);
                 paragraph.HeadingLevel = Math.Min(headline.Groups[1].Length, 9);
@@ -116,7 +128,7 @@ internal sealed partial class OrgReader
                 i++;
                 continue;
             }
-            if (Drawer(trimmed) && FindLine(lines, i + 1, end, l => l.Trim().Equals(":END:", StringComparison.OrdinalIgnoreCase)) is var drawerEnd and >= 0)
+            if (Drawer(trimmed) && DrawerEnd(lines, i + 1, end) is var drawerEnd and >= 0)
             {
                 i = drawerEnd + 1;
                 continue;
@@ -130,7 +142,7 @@ internal sealed partial class OrgReader
             {
                 var name = keyword.Groups[1].Value.ToUpperInvariant();
                 if (name == "TITLE")
-                    _title = _title is null ? keyword.Groups[2].Value.Trim() : _title + " " + keyword.Groups[2].Value.Trim();
+                    _title.Add(keyword.Groups[2].Value.Trim());
                 else if (name == "CAPTION")
                     caption = keyword.Groups[2].Value.Trim();
                 i++;
@@ -201,6 +213,17 @@ internal sealed partial class OrgReader
     private static bool Drawer(string trimmed) =>
         trimmed.Length > 2 && trimmed[0] == ':' && trimmed[^1] == ':' && trimmed[1..^1].All(c => char.IsLetterOrDigit(c) || c is '-' or '_');
 
+    /// <summary>The ":END:" line of a drawer whose contents start at <paramref name="start"/>, or -1.</summary>
+    private int DrawerEnd(string[] lines, int start, int end)
+    {
+        if (ReferenceEquals(_noDrawerEnd.Lines, lines) && end <= _noDrawerEnd.End && start >= _noDrawerEnd.From)
+            return -1;
+        var found = FindLine(lines, start, end, l => l.Trim().Equals(":END:", StringComparison.OrdinalIgnoreCase));
+        if (found < 0)
+            _noDrawerEnd = (lines, end, start);
+        return found;
+    }
+
     private static int FindLine(string[] lines, int start, int end, Func<string, bool> match)
     {
         for (var i = start; i < end; i++)
@@ -256,6 +279,7 @@ internal sealed partial class OrgReader
 
     private HParagraph Paragraph(string text, int indent)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         _budget.Paragraph();
         var paragraph = new HParagraph { Format = indent > 0 ? new HParaFormat(Left: indent) : default };
         var sink = new InlineSink(paragraph.Inlines);
@@ -395,7 +419,7 @@ internal sealed partial class OrgReader
             if (line.EndsWith('|'))
                 line = line[..^1];
             var row = new HRow();
-            foreach (var part in line.Split('|').Take(limit))
+            foreach (var part in MarkupBlocks.Split(line, '|', limit))
             {
                 var cell = new HCell();
                 using (_budget.Enter())
@@ -418,6 +442,7 @@ internal sealed partial class OrgReader
             }
         }
         table.ColumnCount = Math.Max(1, columns);
+        MarkupBlocks.TableArea(table.Rows.Count, table.ColumnCount, _budget.Limits);
         if (table.Rows.Count == 0)
             table.Rows.Add(new HRow { Cells = { new HCell { Blocks = { new HParagraph() } } } });
         return table;
