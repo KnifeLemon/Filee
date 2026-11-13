@@ -7,8 +7,8 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <AvaloniaVersion>12.1.4</AvaloniaVersion>
   </PropertyGroup>
-
   <ItemGroup Label="ISO creation">
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <PackageVersion Include="DiscUtils.Iso9660" Version="0.16.13" />
   </ItemGroup>
   <ItemGroup Label="UI">
@@ -22,7 +22,6 @@
     <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
-
   <ItemGroup Label="Infrastructure">
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
@@ -30,7 +29,6 @@
     <PackageVersion Include="SharpHook" Version="8.0.1" />
     <PackageVersion Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
-
   <ItemGroup Label="Conversion engines">
     <PackageVersion Include="Magick.NET-Q8-AnyCPU" Version="15.0.0" />
     <!-- Stay on 6.2: 6.5 is AGPL-3.0-only (6.2 is MIT) and checks for a license at run time (PdfSharpLicenseException). -->
@@ -63,7 +61,6 @@
     <PackageVersion Include="MsgReader" Version="6.2.0" />
     <PackageVersion Include="SharpGLTF.Core" Version="1.0.7" />
   </ItemGroup>
-
   <ItemGroup Label="Tests">
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

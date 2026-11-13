@@ -130,15 +130,9 @@
                                  Foreground="#0A84FF" />
                     </Border>
 
-                    <Button Name="Open1PhoneMirrorBtn" Click="OnOpen1PhoneMirrorClick"
-                            Background="#2C2C2E" Foreground="#30D158" CornerRadius="8" Height="26" Padding="8,0"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,4,0,0" Cursor="Hand">
-                      <TextBlock Text="🚀 Launch 1PhoneMirror Receiver Engine" FontSize="10" FontWeight="SemiBold" />
-                    </Button>
-
                     <Button Name="RestartAirPlayBtn" Click="OnRestartAirPlayClick"
                             Background="#2C2C2E" Foreground="#8E8E93" CornerRadius="8" Height="26" Padding="8,0"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,2,0,0" Cursor="Hand">
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,4,0,0" Cursor="Hand">
                       <TextBlock Text="🔄 Re-announce / Restart Receiver" FontSize="10" FontWeight="SemiBold" />
                     </Button>
 

@@ -415,4 +415,60 @@ public sealed class CaptureStudioTests
         engine.Stop();
         Assert.False(engine.IsListening);
     }
+
+    [Fact]
+    public void BPlistWriter_and_Reader_roundtrip()
+    {
+        var w = new BPlistWriter();
+        var strKey = w.AddString("deviceName");
+        var strVal = w.AddString("FileeTest");
+        var uintKey = w.AddString("port");
+        var uintVal = w.AddUint(7100);
+        var dataKey = w.AddString("rawKey");
+        var rawBytes = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 };
+        var dataVal = w.AddData(rawBytes);
+
+        var rootDict = w.AddDict([
+            new(strKey, strVal),
+            new(uintKey, uintVal),
+            new(dataKey, dataVal)
+        ]);
+
+        var bplist = w.Build(rootDict);
+        Assert.NotNull(bplist);
+        Assert.True(bplist.Length >= 40);
+        Assert.Equal((byte)'b', bplist[0]);
+        Assert.Equal((byte)'p', bplist[1]);
+        Assert.Equal((byte)'l', bplist[2]);
+        Assert.Equal((byte)'i', bplist[3]);
+        Assert.Equal((byte)'s', bplist[4]);
+        Assert.Equal((byte)'t', bplist[5]);
+        Assert.Equal((byte)'0', bplist[6]);
+        Assert.Equal((byte)'0', bplist[7]);
+
+        var reader = new BPlistReader();
+        Assert.True(reader.Parse(bplist));
+        Assert.True(reader.HasKey("deviceName"));
+        Assert.True(reader.TryGetUint("port", out var parsedPort));
+        Assert.Equal(7100UL, parsedPort);
+        Assert.True(reader.TryGetData("rawKey", out var parsedData));
+        Assert.Equal(rawBytes, parsedData);
+    }
+
+    [Fact]
+    public void AirPlay_FairPlay_constants_and_tables_valid()
+    {
+        Assert.Equal(4, Filee.App.Services.Capture.AirPlayCrypto.FairPlayConstants.ReplyMessages.Length);
+        foreach (var msg in Filee.App.Services.Capture.AirPlayCrypto.FairPlayConstants.ReplyMessages)
+        {
+            Assert.Equal(142, msg.Length);
+            Assert.Equal(0x46, msg[0]); // 'F'
+            Assert.Equal(0x50, msg[1]); // 'P'
+            Assert.Equal(0x4C, msg[2]); // 'L'
+            Assert.Equal(0x59, msg[3]); // 'Y'
+        }
+
+        Assert.Equal(12, Filee.App.Services.Capture.AirPlayCrypto.FairPlayConstants.FpHeader.Length);
+        Assert.Equal(0x46, Filee.App.Services.Capture.AirPlayCrypto.FairPlayConstants.FpHeader[0]);
+    }
 }
