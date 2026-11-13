@@ -247,6 +247,74 @@ public class SubtitleTests(EngineFixture fx) : IClassFixture<EngineFixture>
         ], document.Cues);
     }
 
+    /// <summary>A .krc as KuGou packs it: <c>krc1</c>, then the zlib-compressed text XORed with the fixed key.</summary>
+    private static byte[] PackKrc(string text)
+    {
+        byte[] key = [0x40, 0x47, 0x61, 0x77, 0x5E, 0x32, 0x74, 0x47, 0x51, 0x36, 0x31, 0x2D, 0xCE, 0xD2, 0x6E, 0x69];
+        using var packed = new MemoryStream();
+        using (var zlib = new System.IO.Compression.ZLibStream(packed, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+            zlib.Write(new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(text)).ToArray());
+        var body = packed.ToArray();
+        for (var i = 0; i < body.Length; i++)
+            body[i] ^= key[i % key.Length];
+        return [.. "krc1"u8, .. body];
+    }
+
+    [Fact]
+    public void Krc_lines_become_cues_without_their_word_times()
+    {
+        var document = SubtitleReader.Read("krc", PackKrc("""
+            [id:$00000000]
+            [ar:歌手]
+            [ti:歌名]
+            [hash:0123456789abcdef]
+            [offset:500]
+            [language:eyJjb250ZW50IjpbXX0=]
+            [1500,2000]<0,400,0>第一<400,600,0>句<1000,1000,0> lyric
+            [4000,1500]<0,1500,0>Second line
+            [6000,0]<0,0,0>
+            """));
+        Assert.Equal("歌名", document.Title);
+        Assert.Equal(
+        [
+            new SubtitleCue(Ms(1000), Ms(3000), "第一句 lyric"),
+            new SubtitleCue(Ms(3500), Ms(5000), "Second line"),
+        ], document.Cues);
+    }
+
+    [Fact]
+    public void A_krc_offset_counts_for_every_line_as_in_lrc()
+    {
+        var document = SubtitleReader.Read("krc", PackKrc("""
+            [1500,1000]First
+            [offset:500]
+            [4000,1000]Second
+            """));
+        Assert.Equal(
+        [
+            new SubtitleCue(Ms(1000), Ms(2000), "First"),
+            new SubtitleCue(Ms(3500), Ms(4500), "Second"),
+        ], document.Cues);
+    }
+
+    [Fact]
+    public void Krc_files_that_arent_packed_lyrics_fail_with_a_message()
+    {
+        Assert.Contains("krc1", Assert.Throws<InvalidDataException>(() => SubtitleReader.Read("krc", "[00:01.00]plain LRC"u8.ToArray())).Message);
+        Assert.Contains("damaged", Assert.Throws<InvalidDataException>(() => SubtitleReader.Read("krc", [.. "krc1"u8, 1, 2, 3, 4, 5])).Message);
+        Assert.Contains("No subtitles", Assert.Throws<InvalidDataException>(() => SubtitleReader.Read("krc", PackKrc("[ti:Only tags]\n"))).Message);
+    }
+
+    [Fact]
+    public async Task A_krc_file_converts_to_lrc()
+    {
+        var krc = Path.Combine(fx.NewFolder(), "song.krc");
+        File.WriteAllBytes(krc, PackKrc("[1000,2000]<0,1000,0>Hello <1000,1000,0>world\n[3500,1000]<0,1000,0>Bye\n"));
+        var job = await fx.ConvertAsync([krc], new Preset { TargetFormat = "lrc" });
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        Assert.Equal("[00:01.00]Hello world\r\n[00:03.00]\r\n[00:03.50]Bye\r\n[00:04.50]\r\n", File.ReadAllText(job.Outputs.Single()).TrimStart('﻿'));
+    }
+
     [Fact]
     public void Ttml_times_spans_and_styles_are_read()
     {

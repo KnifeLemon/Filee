@@ -68,7 +68,8 @@ public sealed partial class EnginePackageState : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsInstalled), nameof(IsBusy), nameof(CanInstall), nameof(CanRemove),
-        nameof(UsesOwnCopy), nameof(CanUseOwnCopy), nameof(ShowsCopyFolder), nameof(CanUpdate), nameof(HasOfflineMenu), nameof(CanInstallFromFiles))]
+        nameof(UsesOwnCopy), nameof(CanUseOwnCopy), nameof(ShowsCopyFolder), nameof(CanUpdate), nameof(HasOfflineMenu), nameof(CanInstallFromFiles),
+        nameof(StatusIsOk), nameof(StatusIsDanger), nameof(StatusIsWarn), nameof(StatusIsAccent))]
     private EnginePackageStatus _status;
 
     /// <summary>
@@ -76,7 +77,8 @@ public sealed partial class EnginePackageState : ObservableObject
     /// update): <see cref="CanUpdate"/> offers the new one.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CanUpdate), nameof(CanInstallFromFiles))]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CanUpdate), nameof(CanInstallFromFiles),
+        nameof(StatusIsOk), nameof(StatusIsWarn))]
     private bool _isOutdated;
 
     /// <summary>The version Filee downloads now, e.g. "8.0" for FFmpeg (the package's main component).</summary>
@@ -137,6 +139,12 @@ public sealed partial class EnginePackageState : ObservableObject
 
     /// <summary>The files can be installed where Install or Update would download them.</summary>
     public bool CanInstallFromFiles => CanInstall || CanUpdate;
+
+    // Colour of the status tag on the Engines page (Border.status in Soft.axaml); none of them = neutral (queued, downloading...).
+    public bool StatusIsOk => Status == EnginePackageStatus.Installed && !IsOutdated;
+    public bool StatusIsWarn => Status == EnginePackageStatus.Installed && IsOutdated;
+    public bool StatusIsDanger => Status == EnginePackageStatus.Failed;
+    public bool StatusIsAccent => Status == EnginePackageStatus.OwnCopy;
 
     public string StatusText => Status switch
     {

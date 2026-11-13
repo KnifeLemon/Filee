@@ -1151,8 +1151,12 @@ internal static class SettingsMigrations
         //      another change takes it first.)
         if (from < 88)
             changed |= LearnExtensions(profiles, out _, ["nupkg", "snupkg", "apks", "xapk", "apkm", "aab"]);
-        // v89: Wisenet WAVE / Nx Witness exports (.nov) learn the video donut; custom claims stay put.
+        // v89: KuGou lyrics (.krc, #1296) learn the subtitles donut; custom claims stay put. (Schema 89 may be renumbered
+        //      if another change takes it first.)
         if (from < 89)
+            changed |= LearnExtensions(profiles, out _, ["krc"]);
+        // v90: Wisenet WAVE / Nx Witness exports (.nov) learn the video donut; custom claims stay put.
+        if (from < 90)
             changed |= LearnExtensions(profiles, out _, ["nov"]);
         return changed;
     }

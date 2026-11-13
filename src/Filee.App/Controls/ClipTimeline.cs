@@ -44,6 +44,10 @@ public sealed class ClipTimeline : Control
     public static readonly StyledProperty<IReadOnlyList<float>?> LoudnessProperty =
         AvaloniaProperty.Register<ClipTimeline, IReadOnlyList<float>?>(nameof(Loudness));
 
+    /// <summary>A sound alone: the loudness is the whole strip, drawn as a waveform in the accent colour.</summary>
+    public static readonly StyledProperty<bool> WaveformProperty =
+        AvaloniaProperty.Register<ClipTimeline, bool>(nameof(Waveform));
+
     public static readonly StyledProperty<bool> FadeInProperty =
         AvaloniaProperty.Register<ClipTimeline, bool>(nameof(FadeIn));
 
@@ -94,6 +98,7 @@ public sealed class ClipTimeline : Control
     public IReadOnlyList<ClipPiece>? Pieces { get => GetValue(PiecesProperty); set => SetValue(PiecesProperty, value); }
     public int SelectedIndex { get => GetValue(SelectedIndexProperty); set => SetValue(SelectedIndexProperty, value); }
     public IReadOnlyList<float>? Loudness { get => GetValue(LoudnessProperty); set => SetValue(LoudnessProperty, value); }
+    public bool Waveform { get => GetValue(WaveformProperty); set => SetValue(WaveformProperty, value); }
     public bool FadeIn { get => GetValue(FadeInProperty); set => SetValue(FadeInProperty, value); }
     public bool FadeOut { get => GetValue(FadeOutProperty); set => SetValue(FadeOutProperty, value); }
     public bool Snap { get => GetValue(SnapProperty); set => SetValue(SnapProperty, value); }
@@ -149,7 +154,7 @@ public sealed class ClipTimeline : Control
     static ClipTimeline()
     {
         AffectsRender<ClipTimeline>(DurationProperty, StartProperty, EndProperty, PlayheadProperty, ActiveHandleProperty, PiecesProperty,
-            SelectedIndexProperty, LoudnessProperty, FadeInProperty, FadeOutProperty, ViewStartProperty, ViewEndProperty, ThumbnailsProperty, AccentBrushProperty,
+            SelectedIndexProperty, LoudnessProperty, WaveformProperty, FadeInProperty, FadeOutProperty, ViewStartProperty, ViewEndProperty, ThumbnailsProperty, AccentBrushProperty,
             OnAccentBrushProperty, TrackBrushProperty, StageBrushProperty, ForegroundProperty);
         FocusableProperty.OverrideDefaultValue<ClipTimeline>(false);
     }
@@ -298,8 +303,8 @@ public sealed class ClipTimeline : Control
     {
         if (Loudness is not { Count: > 0 } levels || Duration <= 0)
             return;
-        var area = strip.Height * 0.45;
-        var bottom = strip.Bottom - 2;
+        var area = Waveform ? strip.Height * 0.8 : strip.Height * 0.45;
+        var bottom = Waveform ? strip.Bottom - strip.Height * 0.1 : strip.Bottom - 2;
         var width = RawX(Duration / levels.Count) - RawX(0);
         var bars = new StreamGeometry();
         using (var g = bars.Open())
@@ -318,6 +323,12 @@ public sealed class ClipTimeline : Control
                 g.LineTo(new Point(x, bottom - height));
                 g.EndFigure(true);
             }
+        }
+        if (Waveform)
+        {
+            using (context.PushOpacity(0.85))
+                context.DrawGeometry(AccentBrush ?? Brushes.MediumPurple, null, bars);
+            return;
         }
         using (context.PushOpacity(0.35))
             context.DrawGeometry(Brushes.Black, new Pen(Brushes.Black, 1.5), bars);

@@ -118,18 +118,40 @@ internal static class PaintNet
     public static IReadOnlyList<string> SaveLayered(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
         var (width, height, layers) = Open(step.InputPath);
-        using var images = new MagickImageCollection();
         var canvas = new byte[width * height * 4];
+        return WritePsd(step, width, height, PsdLayers(), () => canvas, progress);
+
+        // Each layer merged into the canvas as it is read, so only one layer's pixels are held at a time.
+        IEnumerable<PsdLayer> PsdLayers()
+        {
+            foreach (var layer in layers)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (layer.Visible)
+                    Blend(canvas, layer.Bgra, layer.Opacity, layer.Blend);
+                yield return new PsdLayer(layer.Name, layer.Bgra, layer.Visible, layer.Opacity, ComposeOf(layer.Blend));
+            }
+        }
+    }
+
+    /// <summary>A layer for a PSD: canvas-sized BGRA (not premultiplied), with its Photoshop blend mode.</summary>
+    internal sealed record PsdLayer(string Name, byte[] Bgra, bool Visible, byte Opacity, CompositeOperator Compose);
+
+    /// <summary>
+    /// Writes a layered PSD (PSB for a .psb target) of <paramref name="layers"/>, bottom first, each converted as it
+    /// comes; then <paramref name="merged"/> gives the merged picture (BGRA), which goes first in the file.
+    /// </summary>
+    internal static IReadOnlyList<string> WritePsd(ConversionStep step, int width, int height, IEnumerable<PsdLayer> layers,
+        Func<byte[]> merged, IProgress<double>? progress)
+    {
+        using var images = new MagickImageCollection();
         var visible = new List<bool>();
         foreach (var layer in layers)
         {
-            ct.ThrowIfCancellationRequested();
-            if (layer.Visible)
-                Blend(canvas, layer.Bgra, layer.Opacity, layer.Blend);
             images.Add(ToPsdLayer(layer, width, height));
             visible.Add(layer.Visible);
         }
-        images.Insert(0, FromBgra(canvas, width, height));
+        images.Insert(0, FromBgra(merged(), width, height));
         progress?.Report(0.7);
 
         var format = step.To == "psb" ? MagickFormat.Psb : MagickFormat.Psd;
@@ -403,37 +425,42 @@ internal static class PaintNet
     }
 
     /// <summary>
-    /// A Paint.NET layer as ImageMagick's PSD writer takes it: the name in "label" (ASCII, as PSD's own field holds) and
-    /// as Unicode ("luni", which Photoshop, GIMP and Krita show), the opacity in "psd:layer.opacity" with the alpha
-    /// multiplied by it (the writer divides it out again). Visibility is set afterwards, see <see cref="SetLayerFlags"/>.
+    /// A layer as ImageMagick's PSD writer takes it: the name in "label" (ASCII, as PSD's own field holds) and as Unicode
+    /// ("luni", which Photoshop, GIMP and Krita show), the opacity in "psd:layer.opacity" with the alpha multiplied by it
+    /// (the writer divides it out again). Visibility is set afterwards, see <see cref="SetLayerFlags"/>.
     /// </summary>
-    private static MagickImage ToPsdLayer(Layer layer, int width, int height)
+    private static MagickImage ToPsdLayer(PsdLayer layer, int width, int height)
     {
+        var pixels = layer.Bgra;
         if (layer.Opacity < 255)
         {
-            for (var i = 3; i < layer.Bgra.Length; i += 4)
-                layer.Bgra[i] = (byte)Scale(layer.Bgra[i], layer.Opacity);
+            pixels = (byte[])pixels.Clone();
+            for (var i = 3; i < pixels.Length; i += 4)
+                pixels[i] = (byte)Scale(pixels[i], layer.Opacity);
         }
-        var image = FromBgra(layer.Bgra, width, height);
+        var image = FromBgra(pixels, width, height);
         image.Label = AsciiName(layer.Name);
         image.SetProfile(new ImageProfile("psd:additional-info", UnicodeName(layer.Name)));
         if (layer.Opacity < 255)
             image.SetArtifact("psd:layer.opacity", layer.Opacity.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        image.Compose = layer.Blend switch
-        {
-            BlendMode.Multiply => CompositeOperator.Multiply,
-            BlendMode.Additive => CompositeOperator.LinearDodge,
-            BlendMode.ColorBurn => CompositeOperator.ColorBurn,
-            BlendMode.ColorDodge => CompositeOperator.ColorDodge,
-            BlendMode.Overlay => CompositeOperator.Overlay,
-            BlendMode.Difference => CompositeOperator.Difference,
-            BlendMode.Lighten => CompositeOperator.Lighten,
-            BlendMode.Darken => CompositeOperator.Darken,
-            BlendMode.Screen => CompositeOperator.Screen,
-            _ => CompositeOperator.Over,
-        };
+        image.Compose = layer.Compose;
         return image;
     }
+
+    /// <summary>The Photoshop blend mode of a Paint.NET one, as ImageMagick names it; Over where Photoshop has none.</summary>
+    internal static CompositeOperator ComposeOf(BlendMode blend) => blend switch
+    {
+        BlendMode.Multiply => CompositeOperator.Multiply,
+        BlendMode.Additive => CompositeOperator.LinearDodge,
+        BlendMode.ColorBurn => CompositeOperator.ColorBurn,
+        BlendMode.ColorDodge => CompositeOperator.ColorDodge,
+        BlendMode.Overlay => CompositeOperator.Overlay,
+        BlendMode.Difference => CompositeOperator.Difference,
+        BlendMode.Lighten => CompositeOperator.Lighten,
+        BlendMode.Darken => CompositeOperator.Darken,
+        BlendMode.Screen => CompositeOperator.Screen,
+        _ => CompositeOperator.Over,
+    };
 
     /// <summary>
     /// Sets each layer's flags in a PSD ImageMagick wrote: hidden where Paint.NET hides the layer, and nothing else.

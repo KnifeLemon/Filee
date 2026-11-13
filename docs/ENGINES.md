@@ -5,7 +5,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
@@ -27,7 +27,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
-| **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
+| **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
@@ -333,9 +333,7 @@ in it also builds the package (artifact `windows-arm64-package`).
   (`IImageTransformer`). There is no lossless JPEG rotation: a turned JPEG is re-encoded, at its own estimated quality
   when that is lower than the preset's, so a phone photo saved at 75 doesn't come back bigger at 95.
 - **Layered files.** PSD/PSB convert from Photoshop's composite (ImageMagick merges the layers when a file was saved
-  without "maximize compatibility"). GIMP XCF layers are composited at their offsets with their blend modes; hidden
-  layers are left out. ImageMagick reads 8-bit XCF without zlib tile compression (GIMP 2.10+ "better but slower
-  compression" files give a clear error).
+  without "maximize compatibility"). GIMP's XCF and Paint.NET's PDN are read by Filee itself (below).
 - **LIVP** (an iPhone Live Photo as iCloud downloads it: a ZIP of the photo, HEIC or JPEG, and its MOV) is read as its
   photo, taken out of the package in memory (`LivePhotoSource.ReadStill`, at most 64 MB); its video is FFmpeg's (see
   Live / Motion Photos there).
@@ -363,6 +361,34 @@ in it also builds the package (artifact `windows-arm64-package`).
   named Background, and a **PSD / PSB** keeps its pixel layers, each at its place on the canvas, with its Unicode name,
   opacity, visibility and the blend modes Paint.NET shares. PDN → PSD → PDN gives back the same layers, pixel for
   pixel. A PDN is a target only where the Design & print field is on.
+- **XCF** (GIMP's own file) is read by Filee itself (`Xcf`), for every version GIMP writes (0 to the latest of GIMP 3):
+  64-bit pointers from XCF 11, tiles uncompressed, RLE or zlib, 8, 16 and 32-bit integer, half, float and double
+  precision, RGB, grayscale and indexed, layer groups and layer masks. ImageMagick reads only 8-bit files without
+  zlib and merges them its own way. For PNG, JPG and every other target the layers are merged as GIMP 2.10 and 3 draw
+  them (`XcfBlend`): every layer mode, legacy ones included, but Dissolve (GIMP scatters its pixels at random; Filee
+  draws it as Normal, so a Dissolve layer that isn't fully opaque looks different), each in its blend and composite space (linear RGB,
+  perceptual RGB or CIE Lab) with its composite mode, the opacity, masks, groups and pass-through groups (with GIMP's
+  shortcut of drawing some as ordinary groups), and GIMP's rule that a layer over nothing yet is drawn as it is. On
+  260 random pictures GIMP 2.10 made (every mode, opacity, offset, mask and group), 246 come out pixel for pixel as
+  GIMP shows them and the others within one level. Pixels are kept at 8 bits, so a picture of a higher precision is
+  merged from 8-bit values: of 120 such random pictures, 105 come within one level of GIMP, the rest within a few,
+  more only where a mode blows small differences up (Dodge or Burn close to white or black). Non-destructive filters
+  of GIMP 3 aren't applied. Before any pixel is read, a file is refused when its layers and masks (groups' masks
+  included) claim more than the pixel budget, more tiles than the file can point at, or more merging than sixteen
+  times the budget (canvas × shown layers and groups); a pointer listed twice is damage, and names are kept to 1 KB.
+  Merging (for a picture, PSD or PDN) can be cancelled row by row. To **PSD / PSB** and **PDN** the layers are kept:
+  names (Unicode), opacity, visibility, the place on the canvas and the blend modes the target shares (others become
+  Normal), with GIMP's merged picture first in a PSD. When the layers, each on a canvas of its own, would take more
+  than Paint.NET's pixel budget (canvas × layers), the merged picture becomes the one layer instead, so the
+  conversion still works and Filee can read the result back. Neither has layer groups: a group whose layers look the same
+  without it (pass-through at full opacity, or Normal holding only Normal layers, without a mask) gives its layers,
+  named "Group / Layer"; any other becomes one layer of its merged result. Masks are applied to the layers' alpha.
+  Filee also **writes** XCF (`XcfWriter`): 8-bit RGB with alpha, RLE tiles, no groups, at the lowest version that
+  holds the layers as GIMP itself chooses it (version 0 for most, 2, 9 or 10 for later modes), with 32-bit pointers,
+  which GIMP 2.10 and 3 open. Any picture becomes one layer named Background; PDN and PSD / PSB keep their layers,
+  each cut to its pixels at its place, in GIMP's legacy modes, which mix in perceptual RGB as Paint.NET and Photoshop
+  do. XCF → PDN → XCF gives back the same layers pixel for pixel; through PSD, ImageMagick rounds the alpha of layers
+  below full opacity. An XCF is a target only where the Design & print field is on.
 - **EXE / DLL** (a Windows program or library, #1188) is read as its icon, the one Explorer shows: the first icon group
   of its resources, put back together as an `.ico` in memory (`ProgramIcon`, Filee's own reader for 32 and 64-bit PE
   files; only the headers and the icon are read, at most 64 MB, and the file is never loaded or run). To ICO it is
@@ -1814,6 +1840,7 @@ SRT or SAMI file in CP949 comes out as UTF-8).
 | WebVTT | NOTE / STYLE / REGION blocks skipped, cue settings ignored, `<i> <b> <u>`, the colour classes (`<c.yellow>`), entities; voices and timestamps dropped | UTF-8, the basic colour classes, text escaped |
 | SAMI (SMI) | hand-made HTML: unquoted attributes, unclosed `<SYNC>` / `<P>`, `&nbsp` with or without `;`; of several languages (KRCC, ENCC, …) the one with the most lines | one class from the text's language (KRCC for Korean), `&nbsp;` where the screen goes blank, UTF-8 with BOM |
 | LRC | `[mm:ss.xx]` (several per line), `[ti:]`, `[offset:]`, enhanced word times dropped; a line lasts until the next one | plain text, lines joined, an empty time line where the screen goes blank |
+| KRC (`.krc`, read only, #1296) | KuGou Music lyrics: after the `krc1` header, zlib data behind the fixed XOR layer every KuGou file shares (packing, no key or account), unpacked to at most 16 MB of text. One cue per `[start,duration]` line (milliseconds), so it lasts as long as the file says; the word times (`<offset,duration,0>`) are dropped. `[ti:]` and `[offset:]` as in LRC; other tags, and the translations in `[language:]`, are skipped. A file without the header, or whose packed text doesn't unpack, fails with a clear message | — |
 | TTML / DFXP | TTML 1 and the 2006 DFXP namespace; times relative to their parents; clock, frames (`ttp:frameRate`), ticks and offset times; spans and referenced styles | TTML 1 with a bottom region and tts: spans |
 | MicroDVD (.sub) | `{frame}{frame}text` with the rate of a `{1}{1}25` first line (else 23.976), `\|` between lines, `{y:i}` / `{c:$BBGGRR}`; VobSub `.sub` (pictures) and SubViewer fail with a clear message | 23.976 fps, first line states it, plain text, `{Y:i}` for all-italic cues |
 | SCC | CEA-608 caption channel 1: pop-on, paint-on and roll-up captions, row preambles, italics, special and extended characters, doubled control codes, drop-frame time codes | — |
@@ -1922,7 +1949,9 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   | WAV · W64 · AIFF · AU · CAF · VOC · FLAC · WV · TTA | 16-bit PCM (WAV and W64: 8/16/24/32-bit or 32-bit float; WAV switches to RF64 over 4 GB, Sony Wave64 has no limit) · FLAC · WavPack (lossless) · TTA |
   | SRT · ASS · VTT (from video) | the video's first text subtitle track, copied when it already is that format, else converted by FFmpeg |
 
-  **M4R (iPhone ringtone, #1291).** AAC in the M4A container (`-f ipod`, `+faststart`) with the `.m4r` extension, which is what iOS looks for. It is always encoded, never stream-copied, so the cut is exact. The ringtone window is the preset's `RingtoneStart` and `RingtoneLength` (the editor's *Ringtone start* and *Ringtone length*; defaults 0 s and 30 s): `-ss` before the input and `-t` after it, at most 40 s (`MediaOptions.RingtoneWindow`). A length that goes past the end of the sound is cut there, and a start past the end moves back so the ringtone keeps its length and ends where the sound ends. When the ringtone is only a part of the sound, the result carries the note `notice.ringtone_cut`. The built-in *iPhone ringtone* preset is in the palette only (no donut slot).
+  **M4R (iPhone ringtone, #1291).** AAC in the M4A container (`-f ipod`, `+faststart`) with the `.m4r` extension, which is what iOS looks for. It is always encoded, never stream-copied, so the cut is exact. The ringtone window is the preset's `RingtoneStart` and `RingtoneLength` (the editor's *Ringtone start* and *Ringtone length*; defaults 0 s and 30 s): `-ss` before the input and `-t` after it, at most 40 s (`MediaOptions.RingtoneWindow`). A length that goes past the end of the sound is cut there, and a start past the end moves back so the ringtone keeps its length and ends where the sound ends. When the ringtone is only a part of the sound, the result carries the note `notice.ringtone_cut`. The built-in *iPhone ringtone* preset is in the palette only (no donut slot). With `MediaOptions.AskRingtonePart` (on in the built-in preset; the editor's *Ask for the part every time*), dropping sounds on the preset opens the Cut a clip window in ringtone mode (`AskedRingtone`, `WindowService.ShowRingtoneWindow`): its Save starts the ordinary M4R conversion with `RingtoneStart` and `RingtoneLength` set to the chosen part (a copy of the preset; the saved one is left alone).
+
+  **Cut a clip on sounds (#1291).** The clip tool also takes sound files (`ClipTool.CanCut`: video or audio whose clip is one FFmpeg step). A sound's clip keeps its format where FFmpeg writes it, else MP3. `FfmpegConverter.CutSoundClipAsync` runs `MediaEncoding.ClipSoundArguments`: the same graph as a video clip with `video:false` (pieces, volume, speed, fades, music), always encoded, 48 kHz stereo, cover art kept for formats that carry it. `VideoFrames.ProbeAsync` reports a sound as a `VideoSummary` with no picture (`HasPicture` false), and `ClipPreview.PlayAsync` plays it with `onFrame([], 0, 0, seconds)`.
 
   Read only (FFmpeg's decoders): APE (Monkey's Audio), Musepack (MPC), TAK, DSF and DFF (DSD), DTS, Speex (SPX) and the
   formats above. No encoder for them is in the build, or (DTS) only an experimental one.

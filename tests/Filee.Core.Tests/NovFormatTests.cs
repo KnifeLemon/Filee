@@ -19,16 +19,16 @@ public class NovFormatTests
     }
 
     [Fact]
-    public void Version_88_libraries_learn_nov_once()
+    public void Version_89_libraries_learn_nov_once()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var video = profiles.Single(p => p.Id == "video");
         video.Extensions.Remove("nov");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(88, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(89, presets, profiles));
 
         Assert.Contains("nov", video.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(88, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(89, presets, profiles));
     }
 }

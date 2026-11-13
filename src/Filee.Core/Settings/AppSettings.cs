@@ -170,7 +170,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 89;
+    public const int CurrentSchemaVersion = 90;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
