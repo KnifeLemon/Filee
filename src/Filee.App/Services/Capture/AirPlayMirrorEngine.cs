@@ -52,6 +52,7 @@ public sealed class AirPlayMirrorEngine
     private byte[]? _fairplayKeyMsg;
     private byte[]? _aesKey;
     private byte[]? _aesIv;
+    private byte[]? _decryptedAesKey;
     private ulong _streamConnectionId;
 
     // Mirror stream decryption
@@ -200,12 +201,14 @@ public sealed class AirPlayMirrorEngine
             try
             {
                 _rtspListener = new TcpListener(IPAddress.Any, AirPlayPort);
+                _rtspListener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 _rtspListener.Start();
             }
             catch
             {
                 boundPort = 7001;
                 _rtspListener = new TcpListener(IPAddress.Any, boundPort);
+                _rtspListener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 _rtspListener.Start();
             }
 
@@ -213,6 +216,7 @@ public sealed class AirPlayMirrorEngine
             try
             {
                 _mirrorListener = new TcpListener(IPAddress.Any, MirrorPort);
+                _mirrorListener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 _mirrorListener.Start();
                 _ = Task.Run(() => AcceptMirrorClientsAsync(_mirrorListener, cts.Token), cts.Token);
             }
@@ -221,10 +225,11 @@ public sealed class AirPlayMirrorEngine
                 _logger?.LogWarning(ex, "Failed to start mirror stream listener on port {Port}", MirrorPort);
             }
 
-            // Start event TCP listener (dynamic port or 7002)
+            // Start event TCP listener (dynamic port)
             try
             {
                 _eventListener = new TcpListener(IPAddress.Any, 0);
+                _eventListener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 _eventListener.Start();
                 _eventPort = ((IPEndPoint)_eventListener.LocalEndpoint).Port;
                 _ = Task.Run(() => AcceptEventClientsAsync(_eventListener, cts.Token), cts.Token);
@@ -235,10 +240,12 @@ public sealed class AirPlayMirrorEngine
                 _logger?.LogWarning(ex, "Failed to start AirPlay event listener");
             }
 
-            // Start timing UDP listener (dynamic port or 7003)
+            // Start timing UDP listener (dynamic port)
             try
             {
-                _timingClient = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
+                _timingClient = new UdpClient();
+                _timingClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _timingClient.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
                 _timingPort = ((IPEndPoint)_timingClient.Client.LocalEndPoint!).Port;
                 _ = Task.Run(() => RunTimingLoopAsync(_timingClient, cts.Token), cts.Token);
                 _logger?.LogInformation("AirPlay timing (NTP) listener active on port {Port}", _timingPort);
@@ -522,10 +529,10 @@ public sealed class AirPlayMirrorEngine
                 reply[2] = buf[2];
                 reply[3] = buf[3]; // echo sequence number
 
-                var now = DateTime.UtcNow;
-                var epoch = now - new DateTime(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-                ulong ntpSec = (ulong)epoch.TotalSeconds;
-                ulong ntpFrac = (ulong)((epoch.TotalSeconds - (ulong)epoch.TotalSeconds) * 0x100000000UL);
+                var now = DateTimeOffset.UtcNow;
+                ulong ntpSec = (ulong)now.ToUnixTimeSeconds() + 2208988800UL;
+                ulong fracNs = (ulong)(now.Ticks % TimeSpan.TicksPerSecond) * 100;
+                ulong ntpFrac = (fracNs * 0x100000000UL) / 1000000000UL;
 
                 // Origin timestamp at offset 24 = echo client's transmit timestamp (bytes 24-31)
                 Buffer.BlockCopy(buf, 24, reply, 24, 8);
@@ -637,10 +644,6 @@ public sealed class AirPlayMirrorEngine
             catch (Exception ex)
             {
                 _logger?.LogDebug(ex, "AirPlay client stream closed");
-            }
-            finally
-            {
-                _mirrorService.OnDisconnected();
             }
         }
     }
@@ -789,31 +792,46 @@ public sealed class AirPlayMirrorEngine
                     var reader = new BPlistReader();
                     if (body.Length > 0 && reader.Parse(body))
                     {
+                        var w = new BPlistWriter();
+                        var root = new List<KeyValuePair<int, int>>();
+
+                        // Phase 1: Encryption setup (ekey + eiv present)
                         if (reader.TryGetData("ekey", out var ekey) && reader.TryGetData("eiv", out var eiv))
                         {
                             _aesKey = ekey;
                             _aesIv = eiv;
+
+                            if (_fairplayKeyMsg != null && ekey.Length == 72)
+                            {
+                                var omgHax = new OmgHax();
+                                var decryptedKey = new byte[16];
+                                omgHax.DecryptAesKey(_fairplayKeyMsg, ekey, decryptedKey);
+
+                                if (_ecdhSharedSecret != null && _ecdhSharedSecret.Length == 32)
+                                {
+                                    var sha = AirPlayCryptoUtils.Hash(decryptedKey, _ecdhSharedSecret);
+                                    _decryptedAesKey = AirPlayCryptoUtils.CopyOfRange(sha, 0, 16);
+                                }
+                                else
+                                {
+                                    _decryptedAesKey = decryptedKey;
+                                }
+                                _logger?.LogInformation("AirPlay FairPlay AES key decrypted successfully");
+                            }
+
+                            root.Add(new(w.AddString("eventPort"), w.AddUint((ulong)_eventPort)));
+                            root.Add(new(w.AddString("timingPort"), w.AddUint((ulong)_timingPort)));
                         }
 
+                        // Phase 2: Stream setup (streams array present)
                         if (reader.HasKey("streams"))
                         {
                             if (reader.TryGetStreamConnectionId(out var connId))
                             {
                                 _streamConnectionId = connId;
+                                InitializeMirrorCipher();
                             }
 
-                            InitializeMirrorCipher();
-                        }
-
-                        var w = new BPlistWriter();
-                        var root = new List<KeyValuePair<int, int>>
-                        {
-                            new(w.AddString("eventPort"), w.AddUint((ulong)_eventPort)),
-                            new(w.AddString("timingPort"), w.AddUint((ulong)_timingPort))
-                        };
-
-                        if (reader.HasKey("streams"))
-                        {
                             var streamDict = w.AddDict([
                                 new(w.AddString("dataPort"), w.AddUint(MirrorPort)),
                                 new(w.AddString("type"), w.AddUint(110))
@@ -838,8 +856,9 @@ public sealed class AirPlayMirrorEngine
 
             case "RECORD":
                 {
-                    var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\nSession: 1\r\nAudio-Latency: 11025\r\nAudio-Jack-Status: connected; type=digital\r\n\r\n";
+                    var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\nAudio-Latency: 11025\r\nAudio-Jack-Status: connected; type=digital\r\n\r\n";
                     await WriteStringAsync(stream, resp, ct).ConfigureAwait(false);
+                    _mirrorService.OnConnected();
                     break;
                 }
 
@@ -885,20 +904,27 @@ public sealed class AirPlayMirrorEngine
     {
         try
         {
-            if (_fairplayKeyMsg != null && _aesKey != null && _aesKey.Length == 72)
+            byte[]? finalAesKey = _decryptedAesKey;
+            if (finalAesKey == null && _fairplayKeyMsg != null && _aesKey != null && _aesKey.Length == 72)
             {
                 var omgHax = new OmgHax();
-                var decryptedAesKey = new byte[16];
-                omgHax.DecryptAesKey(_fairplayKeyMsg, _aesKey, decryptedAesKey);
+                var decryptedKey = new byte[16];
+                omgHax.DecryptAesKey(_fairplayKeyMsg, _aesKey, decryptedKey);
 
-                // Hash decrypted key with ECDH shared secret (SHA-512, first 16 bytes)
-                byte[] finalAesKey = decryptedAesKey;
                 if (_ecdhSharedSecret != null && _ecdhSharedSecret.Length == 32)
                 {
-                    var sha = AirPlayCryptoUtils.Hash(decryptedAesKey, _ecdhSharedSecret);
+                    var sha = AirPlayCryptoUtils.Hash(decryptedKey, _ecdhSharedSecret);
                     finalAesKey = AirPlayCryptoUtils.CopyOfRange(sha, 0, 16);
                 }
+                else
+                {
+                    finalAesKey = decryptedKey;
+                }
+                _decryptedAesKey = finalAesKey;
+            }
 
+            if (finalAesKey != null && _streamConnectionId != 0)
+            {
                 // Derive AES-CTR key and IV from streamConnectionId
                 var keyStr = Encoding.UTF8.GetBytes($"AirPlayStreamKey{_streamConnectionId}");
                 var ivStr = Encoding.UTF8.GetBytes($"AirPlayStreamIV{_streamConnectionId}");
@@ -1032,7 +1058,8 @@ public sealed class AirPlayMirrorEngine
                 "-hide_banner",
                 "-loglevel", "warning",
                 "-f", "h264",
-                "-probesize", "32768",
+                "-probesize", "2048",
+                "-analyzeduration", "0",
                 "-fflags", "nobuffer",
                 "-flags", "low_delay",
                 "-i", "-",

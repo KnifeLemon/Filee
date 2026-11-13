@@ -124,8 +124,8 @@
                 <Button Grid.Column="2" Command="{Binding SetFramerateCommand}" CommandParameter="24"
                         Background="Transparent" Padding="0" HorizontalAlignment="Center" Cursor="Hand" ToolTip.Tip="24 FPS (Cinematic)">
                   <StackPanel HorizontalAlignment="Center" Spacing="2">
-                    <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}" HorizontalAlignment="Center" />
-                    <TextBlock Text="24" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" />
+                    <Ellipse Width="6" Height="6" Fill="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="24" FontSize="9" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
                   </StackPanel>
                 </Button>
 

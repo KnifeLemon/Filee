@@ -248,7 +248,14 @@ public sealed class CaptureRecordingEngine : IDisposable
                 string errDetail;
                 lock (stderrLines)
                 {
-                    errDetail = string.Join(Environment.NewLine, stderrLines).Trim();
+                    var nonBannerLines = stderrLines
+                        .Where(l => !l.StartsWith("ffmpeg version", StringComparison.OrdinalIgnoreCase)
+                                 && !l.StartsWith("built with", StringComparison.OrdinalIgnoreCase)
+                                 && !l.StartsWith("configuration:", StringComparison.OrdinalIgnoreCase)
+                                 && !l.StartsWith("libav", StringComparison.OrdinalIgnoreCase)
+                                 && !l.StartsWith("libsw", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    errDetail = string.Join(Environment.NewLine, nonBannerLines.Count > 0 ? nonBannerLines : stderrLines).Trim();
                 }
 
                 LastErrorMessage = !string.IsNullOrWhiteSpace(errDetail)
@@ -339,7 +346,10 @@ public sealed class CaptureRecordingEngine : IDisposable
                 string lavfi;
                 if (config.SourceType == CaptureSourceType.Window && config.TargetWindow != null && config.TargetWindow.Handle != 0)
                 {
-                    lavfi = $"gfxcapture=hwnd=0x{config.TargetWindow.Handle.ToInt64():X}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
+                    GetTargetOffsetAndSize(config, out var offsetX, out var offsetY, out var width, out var height);
+                    width = Math.Max(2, (width / 2) * 2);
+                    height = Math.Max(2, (height / 2) * 2);
+                    lavfi = $"gfxcapture=monitor_idx=0:crop_left={offsetX}:crop_top={offsetY}:width={width}:height={height}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
                 }
                 else if (config.SourceType == CaptureSourceType.CustomRegion)
                 {
