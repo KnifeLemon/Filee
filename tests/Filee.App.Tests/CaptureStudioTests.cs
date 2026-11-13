@@ -56,8 +56,9 @@ public sealed class CaptureStudioTests
     public void CaptureStudioBarViewModel_toggles_and_emits_tool_events()
     {
         var targetService = new WindowTargetService();
+        var mirrorService = new OnePhoneMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine);
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
 
         var config = new CaptureConfig { HighlightCursor = true, SpotlightMode = false };
         var vm = new CaptureStudioBarViewModel(studio, config);
@@ -89,11 +90,24 @@ public sealed class CaptureStudioTests
     }
 
     [Fact]
+    public void OnePhoneMirrorService_handles_binary_detection_and_metadata()
+    {
+        Assert.False(string.IsNullOrWhiteSpace(OnePhoneMirrorService.DownloadUrl));
+        Assert.StartsWith("https://", OnePhoneMirrorService.DownloadUrl);
+        Assert.EndsWith(".msi", OnePhoneMirrorService.DownloadUrl);
+        Assert.Equal(64, OnePhoneMirrorService.ExpectedSha256.Length);
+        Assert.True(OnePhoneMirrorService.ExpectedSize > 0);
+        // Find1PhoneMirrorExe returns string if present, null otherwise
+        _ = OnePhoneMirrorService.Find1PhoneMirrorExe();
+    }
+
+    [Fact]
     public void CaptureStudioEditorViewModel_subtitles_and_trim_operations()
     {
         var targetService = new WindowTargetService();
+        var mirrorService = new OnePhoneMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine);
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
         var loc = new DummyLocalizer();
 
         var meta = new RecordedVideoMetadata(
@@ -130,8 +144,9 @@ public sealed class CaptureStudioTests
     public void CaptureStudioBarViewModel_mic_toggle_notifies()
     {
         var targetService = new WindowTargetService();
+        var mirrorService = new OnePhoneMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine);
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
 
         var config = new CaptureConfig { EnableMicrophone = true };
         var vm = new CaptureStudioBarViewModel(studio, config);
@@ -174,8 +189,9 @@ public sealed class CaptureStudioTests
     public void CaptureStudioEditorViewModel_active_subtitle_updates_on_position_change()
     {
         var targetService = new WindowTargetService();
+        var mirrorService = new OnePhoneMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine);
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
         var loc = new DummyLocalizer();
 
         var meta = new RecordedVideoMetadata(
@@ -209,8 +225,9 @@ public sealed class CaptureStudioTests
     public void CaptureStudioBarViewModel_icons_and_pause_toggle_state()
     {
         var targetService = new WindowTargetService();
+        var mirrorService = new OnePhoneMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine);
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
 
         var config = new CaptureConfig { EnableMicrophone = true };
         var vm = new CaptureStudioBarViewModel(studio, config);
@@ -256,8 +273,9 @@ public sealed class CaptureStudioTests
     public void CaptureStudioEditorViewModel_play_button_icon()
     {
         var targetService = new WindowTargetService();
+        var mirrorService = new OnePhoneMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine);
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
         var loc = new DummyLocalizer();
 
         var meta = new RecordedVideoMetadata(
@@ -284,6 +302,12 @@ public sealed class CaptureStudioTests
         var loc = new DummyLocalizer();
         var vm = new CaptureStudioConfigViewModel(targetService, loc);
         Assert.False(vm.HighlightCursor);
+    }
+
+    [Fact]
+    public void OnePhoneMirrorService_BinaryExists_property_accessible()
+    {
+        _ = OnePhoneMirrorService.BinaryExists;
     }
 
     [Fact]
@@ -351,6 +375,17 @@ public sealed class CaptureStudioTests
         if (OperatingSystem.IsWindows())
         {
             Assert.Contains("gdigrab", psiGdi.ArgumentList);
+        }
+    }
+
+    [Fact]
+    public void OnePhoneMirrorService_binary_detection_returns_path_or_null()
+    {
+        var exe = OnePhoneMirrorService.Find1PhoneMirrorExe();
+        if (exe != null)
+        {
+            Assert.True(File.Exists(exe));
+            Assert.Contains("1PhoneMirror.exe", exe);
         }
     }
 }

@@ -169,7 +169,21 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             IsEnabled = true,
         };
 
-        _front = new Face([connectPreset], [[]], [connectItem]);
+        var capturePreset = new Preset
+        {
+            Id = "preset.capture_studio",
+            TargetFormat = "record",
+        };
+
+        var captureItem = new DonutItem
+        {
+            Id = "preset.capture_studio",
+            Label = loc["preset.capture_studio"] ?? "Capture Studio",
+            Caption = loc["capture_studio.caption"] ?? "Screen Recording",
+            IsEnabled = true,
+        };
+
+        _front = new Face([connectPreset, capturePreset], [[], []], [connectItem, captureItem]);
         (_back, _backIds, _formats, _off) = (null, [], [], new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         Presets = _front.Presets;
         _subPresets = _front.SubPresets;

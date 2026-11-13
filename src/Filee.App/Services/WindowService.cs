@@ -277,6 +277,19 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             barWindow.HoverChanged += hovered => overlayWindow.SetToolbarHover(hovered);
             barWindow.BoundsChangedNotification += bounds => overlayWindow.UpdateToolbarBounds(bounds);
 
+            barVm.MobileMirrorToggled += async () =>
+            {
+                overlayWindow.ShowActionToast("Launching Mobile Mirror...", "📱");
+                try
+                {
+                    await studioService.OnePhoneMirror.LaunchOrFocusAsync(msg => overlayWindow.ShowActionToast(msg, "📱"));
+                }
+                catch (Exception ex)
+                {
+                    await MessageAsync(null, $"Could not open 1Phone Mobile Mirror: {ex.Message}");
+                }
+            };
+
             barVm.StopRequested += async () =>
             {
                 barWindow.Close();

@@ -102,6 +102,7 @@ Downloaded from their official release pages when the user chooses to install th
 | 4xLSDIRCompactC3 (`4xLSDIRCompactC3`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-LSDIRCompactC3 |
 | 4xNomos8kSC (`4xNomos8kSC`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-Nomos8kSC |
 | 4xHFA2k (`4xHFA2k`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-HFA2k |
+| 1PhoneMirror 0.6.2 (AirPlay & Android screen mirroring receiver) | MIT (1PhoneMirror); bundled FFmpeg LGPL-2.1+, SDL2 zlib, OpenSSL Apache-2.0 | https://github.com/MSEndpointMgr/1PhoneMirror |
 
 These programs run as separate processes. Their source code is available from the linked projects.
 

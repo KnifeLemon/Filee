@@ -77,6 +77,9 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     [ObservableProperty]
     private double _spotlightRadius = 120.0;
 
+    [ObservableProperty]
+    private bool _isMobileMirrorOpen = false;
+
     public event Action? PauseToggled;
     public event Action? StopRequested;
     public event Action<AnnotationTool>? ToolSelected;
@@ -85,6 +88,7 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     public event Action<bool>? CursorHighlightToggled;
     public event Action<bool>? SpotlightToggled;
     public event Action<bool>? MicToggled;
+    public event Action? MobileMirrorToggled;
 
     public CaptureStudioBarViewModel(CaptureStudioService service, CaptureConfig config)
     {
@@ -185,6 +189,13 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     private void ToggleSystemAudio()
     {
         IsSystemAudioMuted = !IsSystemAudioMuted;
+    }
+
+    [RelayCommand]
+    private void ToggleMobileMirror()
+    {
+        IsMobileMirrorOpen = !IsMobileMirrorOpen;
+        MobileMirrorToggled?.Invoke();
     }
 
     [RelayCommand]
