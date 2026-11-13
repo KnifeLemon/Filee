@@ -38,7 +38,11 @@ internal sealed partial class RtfReader
         public int Left { get; set; }
         public int Height { get; set; }
         public bool Header { get; set; }
-        public HAlign Align { get; set; } = HAlign.Left;
+        /// <summary>\trql, \trqc, \trqr: the left side, centre, right side; null when the row doesn't say.</summary>
+        public HAlign? Align { get; set; }
+
+        /// <summary>\rtlrow: the cells run from the right.</summary>
+        public bool RightToLeft { get; set; }
 
         /// <summary>The cells, shared with the rows before that kept this definition; copied when it changes.</summary>
         public List<CellDef> Cells { get; private set; } = [];
@@ -56,7 +60,7 @@ internal sealed partial class RtfReader
         }
 
         /// <summary>The definition of the next row when it doesn't give its own: this one's, sharing its cells.</summary>
-        public RowDef Next() => new() { Left = Left, Height = Height, Align = Align, Cells = Cells, _shared = true };
+        public RowDef Next() => new() { Left = Left, Height = Height, Align = Align, RightToLeft = RightToLeft, Cells = Cells, _shared = true };
     }
 
     private sealed class TableBuilder
@@ -92,11 +96,17 @@ internal sealed partial class RtfReader
             case "trhdr":
                 TableOf(story).Def.Header = true;
                 return true;
+            case "trql":
+                TableOf(story).Def.Align = HAlign.Left;
+                return true;
             case "trqc":
                 TableOf(story).Def.Align = HAlign.Center;
                 return true;
             case "trqr":
                 TableOf(story).Def.Align = HAlign.Right;
+                return true;
+            case "rtlrow" or "ltrrow":
+                TableOf(story).Def.RightToLeft = word == "rtlrow";
                 return true;
             case "clmgf":
                 TableOf(story).Def.Pending.Horizontal = Merge.First;
@@ -229,10 +239,15 @@ internal sealed partial class RtfReader
         {
             ColumnCount = Math.Max(1, grid.Count - 1),
             ColumnWidths = grid.Count > 1 ? [.. grid.Zip(grid.Skip(1), (a, b) => HwpxUnits.FromTwips(Math.Max(1, b - a)))] : null,
-            Align = builder.Rows[0].Def.Align,
+            Align = builder.Rows[0].Def.Align ?? HAlign.Left,
             Indent = HwpxUnits.FromTwips(Math.Max(0, builder.Rows[0].Def.Left)),
             Borders = HBorders.Empty,
+            // The cells of a right-to-left row run from the right; the model's Align then names the start side, so
+            // \trqr (the right side) is the start, and a row that doesn't say starts at the right too.
+            RightToLeft = builder.Rows[0].Def.RightToLeft,
         };
+        if (table.RightToLeft && builder.Rows[0].Def.Align is HAlign.Left or HAlign.Right)
+            table.Align = builder.Rows[0].Def.Align == HAlign.Left ? HAlign.Right : HAlign.Left;
         var openVertical = new Dictionary<int, HCell>();
         foreach (var (def, contents) in builder.Rows)
         {

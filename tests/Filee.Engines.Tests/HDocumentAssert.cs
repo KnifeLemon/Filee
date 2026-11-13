@@ -491,13 +491,16 @@ internal static class HDocumentAssert
             _ => inline.GetType().Name,
         };
 
-        /// <summary>Adjacent texts with the same format are one run in 한글; empty texts disappear.</summary>
+        /// <summary>
+        /// Adjacent texts with the same format are one run in 한글; empty texts disappear, and so do the marks only the
+        /// layout reads (a note's own number, explicit directions), which the writers leave out.
+        /// </summary>
         private static List<HInline> Normalize(List<HInline> inlines)
         {
             var result = new List<HInline>();
             foreach (var inline in inlines)
             {
-                if (inline is HText { Text.Length: 0 })
+                if (inline is HText { Text.Length: 0 } or HNoteNumber or HDirectionMark)
                     continue;
                 if (inline is HText text && result.Count > 0 && result[^1] is HText last && last.Format == text.Format)
                     result[^1] = new HText(last.Text + text.Text, text.Format);

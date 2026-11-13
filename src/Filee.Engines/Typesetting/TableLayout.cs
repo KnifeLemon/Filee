@@ -11,6 +11,8 @@
 //   한글's default 1.8 mm by 0.5 mm), nested tables too; a row is as high as its tallest single-row cell or its own
 //   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it.
 //   Content sits at the top, middle or bottom of the cell.
+// - Right to left (Word w:bidiVisual, RTF \rtlrow): the first column is the rightmost, and the table's alignment and
+//   indent and each cell's left and right borders and padding name the start and the end side, so they change places.
 // - Drawing: each cell's fill (a colour, a picture; EMF / WMF as vector drawing), then its content, then its borders (the cell's, else the table's, else a thin grid);
 //   solid, dashed, dotted, dash-dot and double lines at their width.
 // - Pages: rows bound by a cell spanning them form a group that moves to a page together. A table that must not split
@@ -249,21 +251,28 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         var cells = new List<CellBox>[rowCount];
         for (var r = 0; r < rowCount; r++)
             cells[r] = [];
+        var mirror = table.RightToLeft;
         foreach (var (row, column, cell) in placed)
         {
             var span = Math.Clamp(cell.ColSpan, 0, columns - column);
             var padding = cell.CellMargin ?? table.CellMargin ?? DefaultPadding;
+            var borders = cell.Borders ?? table.Borders ?? HBorders.Grid;
+            if (mirror)
+            {
+                padding = padding with { Left = padding.Right, Right = padding.Left };
+                borders = borders with { Left = borders.Right, Right = borders.Left };
+            }
             var cellWidth = left[column + span] - left[column];
             var contentWidth = Math.Max(1, cellWidth - (padding.Left + padding.Right) / 100f);
             cells[row].Add(new CellBox
             {
                 Row = row,
                 RowSpan = Math.Max(1, Math.Min(cell.RowSpan, rowCount - row)),
-                X = left[column],
+                X = mirror ? tableWidth - left[column + span] : left[column],
                 Width = cellWidth,
                 Padding = padding,
                 VerticalAlign = cell.VerticalAlign,
-                Borders = cell.Borders ?? table.Borders ?? HBorders.Grid,
+                Borders = borders,
                 Fill = ParagraphText.Color(cell.Fill),
                 FillPicture = cell.FillPicture,
                 Content = Stack(cell.Blocks, contentWidth),
@@ -293,10 +302,12 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             }
         }
 
-        var offset = table.Align switch
+        var offset = (table.Align, mirror) switch
         {
-            HAlign.Center => (width - tableWidth) / 2,
-            HAlign.Right => width - tableWidth,
+            (HAlign.Center, _) => (width - tableWidth) / 2,
+            (HAlign.Right, false) => width - tableWidth,
+            (HAlign.Right, true) => 0,
+            (_, true) => width - tableWidth - table.Indent / 100f,
             _ => table.Indent / 100f,
         };
         var caption = table.Caption.Count > 0 ? Stack(table.Caption, tableWidth) : [];

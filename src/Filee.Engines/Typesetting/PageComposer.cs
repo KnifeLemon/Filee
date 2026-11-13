@@ -141,7 +141,9 @@ internal sealed class PageComposer
 
         private float ColumnWidth => (_geometry.TextWidth - Gap * (_columns.Count - 1)) / Math.Max(1, _columns.Count);
 
-        private float ColumnLeft(int column) => _geometry.Left + column * (ColumnWidth + Gap);
+        /// <summary>The left edge of a column: the first is the leftmost, or the rightmost in a right-to-left section.</summary>
+        private float ColumnLeft(int column) =>
+            _geometry.Left + (_columns.RightToLeft ? _columns.Count - 1 - column : column) * (ColumnWidth + Gap);
 
         /// <summary>Where the body ends on this page: above the footnotes.</summary>
         private float Bottom => _geometry.BodyBottom - FootnotesHeight();
@@ -562,10 +564,11 @@ internal sealed class PageComposer
             }
         }
 
-        private ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<float, float, (float, float)>? wrap = null)
+        private ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<float, float, (float, float)>? wrap = null,
+            string? noteNumber = null)
         {
             marker ??= paragraph.List is { Numbered: true } list ? _numbers.Next(list) : null;
-            return composer._layouter.Layout(paragraph, width, marker, FieldText, NoteText, wrap);
+            return composer._layouter.Layout(paragraph, width, marker, FieldText, NoteText, wrap, noteNumber);
         }
 
         /// <summary>Puts a paragraph's lines into columns and pages from the current position on.</summary>
@@ -929,7 +932,11 @@ internal sealed class PageComposer
             var first = true;
             foreach (var paragraph in note.Blocks.OfType<HParagraph>())
             {
-                var box = Layout(composer.Resolve(paragraph), _geometry.TextWidth, first ? marker : null);
+                // A Word note whose number is inside its text keeps it there ("(1) text" between the brackets); one that
+                // starts with it, and 한글's notes, get it in front.
+                var own = first && paragraph.Inlines.SkipWhile(i => i is HNoteNumber)
+                    .Any(i => i is HNoteNumber || i is HLink link && link.Content.Any(c => c is HNoteNumber));
+                var box = Layout(composer.Resolve(paragraph), _geometry.TextWidth, first && !own ? marker : null, noteNumber: own ? marker : null);
                 y += box.SpaceBefore;
                 first = false;
                 foreach (var line in box.Lines)
@@ -1336,6 +1343,9 @@ internal sealed class PageComposer
                     break;
                 case HField field:
                     yield return new HField(field.Kind, Format(field.Format));
+                    break;
+                case HNoteNumber number:
+                    yield return new HNoteNumber(Format(number.Format));
                     break;
                 case HLink hyperlink:
                     var copy = new HLink(hyperlink.Target);

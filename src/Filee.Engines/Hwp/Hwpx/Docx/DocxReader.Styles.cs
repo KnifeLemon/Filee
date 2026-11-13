@@ -84,6 +84,12 @@ internal sealed partial class DocxReader
         /// <summary>East Asian typography switches (w:kinsoku, w:wordWrap, w:overflowPunct, w:topLinePunct, w:autoSpaceDE / DN).</summary>
         public bool? Kinsoku, WordWrap, OverflowPunct, TopLinePunct, AutoSpaceDE, AutoSpaceDN;
 
+        /// <summary>
+        /// w:bidi: a right-to-left paragraph. Its w:ind left / right and w:jc left / right then name the start (right) and
+        /// the end (left) side, as w:ind start / end and w:jc start / end always do.
+        /// </summary>
+        public bool? Bidi;
+
         public ParaProps Clone()
         {
             var copy = (ParaProps)MemberwiseClone();
@@ -150,6 +156,7 @@ internal sealed partial class DocxReader
             TopLinePunct = Toggle(pPr, "topLinePunct") ?? TopLinePunct;
             AutoSpaceDE = Toggle(pPr, "autoSpaceDE") ?? AutoSpaceDE;
             AutoSpaceDN = Toggle(pPr, "autoSpaceDN") ?? AutoSpaceDN;
+            Bidi = Toggle(pPr, "bidi") ?? Bidi;
             foreach (var edge in pPr.Element(W + "pBdr")?.Elements() ?? [])
             {
                 var side = edge.Name.LocalName switch
@@ -198,6 +205,13 @@ internal sealed partial class DocxReader
         /// <summary>w:w (percent) and w:position (half points).</summary>
         public int? Scale, Position;
 
+        /// <summary>w:rtl (a right-to-left run) and w:cs (complex-script formatting for every character).</summary>
+        public bool? RightToLeft, ComplexScriptRun;
+
+        /// <summary>Complex-script formatting: w:bCs, w:iCs and w:szCs (half points).</summary>
+        public bool? BoldCs, ItalicCs;
+        public int? SizeCs;
+
         public RunProps Clone() => (RunProps)MemberwiseClone();
 
         public void Apply(XElement? rPr)
@@ -220,6 +234,12 @@ internal sealed partial class DocxReader
                 Shade = ShadingColor(shd);
             if (rPr.Element(W + "sz") is { } sz && int.TryParse(Val(sz), out var halfPoints))
                 Size = halfPoints;
+            if (rPr.Element(W + "szCs") is { } szCs && int.TryParse(Val(szCs), out var complexHalfPoints))
+                SizeCs = complexHalfPoints;
+            BoldCs = Toggle(rPr, "bCs") ?? BoldCs;
+            ItalicCs = Toggle(rPr, "iCs") ?? ItalicCs;
+            RightToLeft = Toggle(rPr, "rtl") ?? RightToLeft;
+            ComplexScriptRun = Toggle(rPr, "cs") ?? ComplexScriptRun;
             if (rPr.Element(W + "spacing") is { } spacing && int.TryParse(Val(spacing), out var twips))
                 Spacing = twips;
             if (rPr.Element(W + "w") is { } scale && int.TryParse(Val(scale), out var percent))
@@ -553,6 +573,8 @@ internal sealed partial class DocxReader
             KeepWithNext: p.KeepNext ?? false,
             KeepLines: p.KeepLines ?? false,
             WidowOrphan: p.WidowControl ?? true,
+            // Left to right unless w:bidi says otherwise (null: left to the style, which is left to right).
+            RightToLeft: p.Bidi,
             Borders: ParagraphBorders(p),
             // Word measures tab stops from the left margin, 한글 from the paragraph's left indent.
             Tabs: p.Tabs.Count == 0 ? null : p.Tabs
@@ -633,7 +655,15 @@ internal sealed partial class DocxReader
                 WordFonts: WordFonts(r),
                 Scale: r.Scale ?? 100,
                 LetterSpacing: HwpxUnits.FromTwips(r.Spacing ?? 0),
-                Position: (r.Position ?? 0) * 50));
+                Position: (r.Position ?? 0) * 50,
+                RightToLeft: r.RightToLeft == true ? true : null,
+                ComplexScript: r.ComplexScriptRun == true ? true : null,
+                // Word draws complex-script characters (Arabic, Hebrew, Thai, the Indic scripts ...) with w:szCs, w:bCs
+                // and w:iCs, not w:sz, w:b and w:i; set here where they differ from the run's. A run without w:szCs
+                // keeps its w:sz.
+                ComplexSize: r.SizeCs is { } complexSize ? Math.Clamp(complexSize, 2, 8192) * 50 : null,
+                ComplexBold: (r.BoldCs ?? false) != (r.Bold ?? false) ? r.BoldCs ?? false : null,
+                ComplexItalic: (r.ItalicCs ?? false) != (r.Italic ?? false) ? r.ItalicCs ?? false : null));
     }
 
     /// <summary>Word's four run fonts, theme references resolved.</summary>

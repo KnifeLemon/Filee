@@ -25,7 +25,9 @@
 // Lines Filee estimated are never used; otherwise the paragraph is broken again and ParagraphBox says why.
 //
 // Bidirectional text: the paragraph's levels come from the Unicode Bidirectional Algorithm (BidiAlgorithm), items
-// split where the level changes, and each line's parts are reordered by level (UAX #9 rule L2).
+// split where the level changes, and each line's parts are reordered by level (UAX #9 rule L2). Spaces and other
+// neutral characters of a right-to-left run (Word w:rtl) read right to left, as Word reads them. A right-to-left
+// paragraph starts at the right: its alignment and indents name the start and end side (HParaFormat.RightToLeft).
 // Tab positions are measured from the paragraph's left indent, as 한글 measures them; a hanging indent is a tab stop
 // on the first line (the text after a list number starts there).
 //
@@ -93,15 +95,16 @@ internal sealed class ParagraphLayouter
     /// Room objects take beside the lines laid out anew (text wrap): for a line at a height below the first line's top
     /// and its height, how far in from the left and right it starts and ends. Null leaves the lines whole.
     /// </param>
+    /// <param name="noteNumber">In a note's text, the note's number, put where the text has it (HNoteNumber).</param>
     public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<HField, string>? fields = null,
-        Func<HNote, string>? notes = null, Func<float, float, (float Left, float Right)>? wrap = null)
+        Func<HNote, string>? notes = null, Func<float, float, (float Left, float Right)>? wrap = null, string? noteNumber = null)
     {
         var format = paragraph.Format;
-        var source = ParagraphText.From(paragraph, marker, fields, notes);
+        var source = ParagraphText.From(paragraph, marker, fields, notes, noteNumber);
         var text = source.Text;
         var language = FontSubstitution.Language(text);
         var rightToLeft = format.RightToLeft ?? BidiAlgorithm.IsRightToLeft(text);
-        var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft));
+        var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft, source.RightToLeftRuns()));
         var (advances, starts) = Measure(source, items);
 
         var breaking = format.Layout?.Breaking;
