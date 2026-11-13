@@ -62,6 +62,12 @@ internal sealed class ParagraphLayouter
     /// <summary>The layout job's time budget and cancellation, checked every <see cref="GuardLines"/> lines; null checks nothing.</summary>
     public LayoutGuard? Guard { get; set; }
 
+    /// <summary>
+    /// Paragraph borders are Word's (a model of another format): their lines go outside the text. Else they are 한글's,
+    /// whose box moves the text in from the margins (see BoxBorder).
+    /// </summary>
+    public bool WordBorders { get; set; }
+
     /// <summary>Lines laid out between checks of <see cref="Guard"/>.</summary>
     private const int GuardLines = 256;
     private readonly string? _notAtLineStart;
@@ -101,6 +107,14 @@ internal sealed class ParagraphLayouter
         var text = source.Text;
         var language = FontSubstitution.Language(text);
         var rightToLeft = format.RightToLeft ?? BidiAlgorithm.IsRightToLeft(text);
+        // A paragraph border: 한글's moves the text in from the margins (Left and Right name the start and end side of a
+        // right-to-left paragraph).
+        var border = BoxBorder.Of(format, WordBorders, width, rightToLeft);
+        if (border is not null && BoxBorder.TextInset(format, WordBorders) is var (insetLeft, insetRight) && insetLeft + insetRight > 0)
+        {
+            var (startInset, endInset) = rightToLeft ? (insetRight, insetLeft) : (insetLeft, insetRight);
+            format = format with { Left = (format.Left ?? 0) + startInset, Right = (format.Right ?? 0) + endInset };
+        }
         var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft));
         var (advances, starts) = Measure(source, items);
 
@@ -149,7 +163,7 @@ internal sealed class ParagraphLayouter
                 var forced = end == text.Length || text[end - 1] == ParagraphText.LineSeparator;
                 storedLines.Add(Place(source, ranges, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], whole)));
             }
-            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker, FloatingAt = source.Floating };
+            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker, FloatingAt = source.Floating, Border = border };
         }
 
         var lines = new List<LineBox>();
@@ -176,7 +190,7 @@ internal sealed class ParagraphLayouter
         if (text.Length > 0 && text[^1] == ParagraphText.LineSeparator)
             lines.Add(Place(source, ranges, text.Length, text.Length, true, false, width, paragraphLayout, mark));
 
-        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating };
+        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating, Border = border };
     }
 
     /// <summary>

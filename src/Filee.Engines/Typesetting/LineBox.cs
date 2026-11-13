@@ -22,6 +22,9 @@ internal sealed record ParagraphBox(float SpaceBefore, float SpaceAfter, IReadOn
     /// <summary>The list item's number or bullet the paragraph was laid out with, or null.</summary>
     public string? Marker { get; init; }
 
+    /// <summary>The paragraph's border and background, or null when it draws none.</summary>
+    public BoxBorder? Border { get; init; }
+
     /// <summary>The paragraph's floating objects by the text position where they are held (see LineBox.Start).</summary>
     public IReadOnlyDictionary<HInline, int> FloatingAt { get; init; } = new Dictionary<HInline, int>();
 
@@ -130,6 +133,31 @@ internal sealed class LineBox
 
     /// <summary>한글 started a column with this line (a line on its stored layout).</summary>
     public bool StoredColumnStart { get; init; }
+
+    /// <summary>
+    /// The line with room for a paragraph border above its content (<paramref name="above"/>) and below it
+    /// (<paramref name="below"/>): taller, its content moved down. With room below, nothing of it is spacing.
+    /// </summary>
+    public LineBox Padded(float above, float below) => new()
+    {
+        Start = Start,
+        End = End,
+        Height = Height + above + below,
+        Baseline = Baseline + above,
+        TextHeight = TextHeight,
+        Below = below > 0 ? 0 : Below,
+        Left = Left,
+        Width = Width,
+        Runs = Runs,
+        Decorations = Decorations,
+        Links = Links,
+        Bookmarks = Bookmarks,
+        Objects = Objects,
+        Notes = Notes,
+        StoredTop = StoredTop,
+        StoredPageStart = StoredPageStart,
+        StoredColumnStart = StoredColumnStart,
+    };
 
     /// <summary>Draws the line with its top-left corner (column edge, line top) at (<paramref name="x"/>, <paramref name="top"/>).</summary>
     public void Draw(PageContent page, float x, float top)

@@ -121,6 +121,8 @@ internal static class Nesting
             Limit(section.Blocks, 0);
             foreach (var part in section.Headers.Concat(section.Footers))
                 Limit(part.Blocks, 0);
+            foreach (var part in new[] { section.FirstPageHeader, section.FirstPageFooter }.OfType<List<HBlock>>())
+                Limit(part, 0);
         }
     }
 

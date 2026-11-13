@@ -299,6 +299,8 @@ internal sealed partial class DocxReader
             Columns = columns,
             Grid = Grid(sectPr),
             HeaderMovesBody = Twips(sectPr?.Element(W + "pgMar"), "top") is not < 0,
+            FooterMovesBody = Twips(sectPr?.Element(W + "pgMar"), "bottom") is not < 0,
+            FooterGrowsUp = true,
         };
         section.Blocks.AddRange(blocks);
 
@@ -320,13 +322,15 @@ internal sealed partial class DocxReader
         Add(footers, section.Footers);
 
         // "Different first page": 한글 can only hide the header/footer on the first page, which is what an empty
-        // (or missing) first-page header means in Word. A header with content is kept for the first page.
+        // (or missing) first-page header means in Word. A header or footer with content is kept for the first page.
         if (sectPr?.Element(W + "titlePg") is { } titlePg && Val(titlePg) is not ("0" or "false"))
         {
             section.HideFirstHeader = IsBlank(headers.GetValueOrDefault("first"));
             section.HideFirstFooter = IsBlank(footers.GetValueOrDefault("first"));
             if (!section.HideFirstHeader)
                 section.FirstPageHeader = headers["first"];
+            if (!section.HideFirstFooter)
+                section.FirstPageFooter = footers["first"];
         }
         if (int.TryParse(Attr(sectPr?.Element(W + "pgNumType"), "start"), out var start))
             section.StartPageNumber = start;
