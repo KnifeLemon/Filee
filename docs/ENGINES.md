@@ -376,7 +376,8 @@ in it also builds the package (artifact `windows-arm64-package`).
   of GIMP 3 aren't applied. Before any pixel is read, a file is refused when its layers and masks (groups' masks
   included) claim more than the pixel budget, more tiles than the file can point at, or more merging than sixteen
   times the budget (canvas × shown layers and groups); a pointer listed twice is damage, and names are kept to 1 KB.
-  Merging (for a picture, PSD or PDN) can be cancelled row by row. To **PSD / PSB** and **PDN** the layers are kept:
+  Merging can be cancelled row by row, whatever the target (every engine that reads pictures passes the job's
+  cancellation on). To **PSD / PSB** and **PDN** the layers are kept:
   names (Unicode), opacity, visibility, the place on the canvas and the blend modes the target shares (others become
   Normal), with GIMP's merged picture first in a PSD. When the layers, each on a canvas of its own, would take more
   than Paint.NET's pixel budget (canvas × layers), the merged picture becomes the one layer instead, so the
