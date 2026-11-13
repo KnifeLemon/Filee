@@ -13,6 +13,7 @@ using System.Xml;
 using System.Xml.Linq;
 using Filee.Engines.Documents;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Typesetting;
 
 namespace Filee.Engines.Hwp.Hwpx.Docx;
 
@@ -961,6 +962,9 @@ internal sealed partial class DocxReader
         }
     }
 
+    /// <summary>The installed fonts long equations are measured in for Filee's own drawing; found on first need.</summary>
+    private FontResolver? _equationFonts;
+
     /// <summary>
     /// Word math (m:oMath, or m:oMathPara with one or more lines) as equations in the size of its runs. A display
     /// equation alone in its paragraph is aligned like Word shows it (centred unless m:jc says otherwise).
@@ -1017,7 +1021,19 @@ internal sealed partial class DocxReader
                 continue;
             }
 
-            var rows = EquationScript.BreakLines(body, width, format.Size ?? 1000);
+            var size = format.Size ?? 1000;
+            IReadOnlyList<MathNode> rows;
+            if (width > 0 && EquationScript.Measure(body, size).Width > width / 2)
+            {
+                // Lines that fit Filee's own drawing too, which is wider than rhwp's estimate (#355).
+                using var shaper = new Shaper();
+                var drawn = new MathLayout(_equationFonts ??= new FontResolver(), shaper);
+                rows = EquationScript.BreakLines(body, width, size, node => drawn.ItemWidth(node, size / 100f) * 100);
+            }
+            else
+            {
+                rows = EquationScript.BreakLines(body, width, size);
+            }
             for (var i = 0; i < rows.Count; i++)
             {
                 // Paragraphs of their own: rhwp draws the first equation of a paragraph split by a page again on the next page.

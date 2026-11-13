@@ -332,7 +332,8 @@ internal static class OmmlReader
                 output.Add(Matrix(element, "matrix"));
                 break;
             case "eqArr":
-                output.Add(new MathPile(element.Elements(M + "e").Select(e => (MathNode)WithoutAlign(Content(e, roman))).ToList()));
+                // The lines keep their & marks for the renderer to line them up at; the script and linear text skip them.
+                output.Add(new MathPile(element.Elements(M + "e").Select(e => (MathNode)Content(e, roman)).ToList()));
                 break;
             case "func":
                 Add(output, Argument(element, "fName", roman: true));
@@ -481,8 +482,6 @@ internal static class OmmlReader
         return new MathCases(rows);
     }
 
-    private static MathRow WithoutAlign(MathRow row) => new(row.Items.Where(i => i is not MathAlign).ToList());
-
     /// <summary>The argument elements of a container (properties left out).</summary>
     private static List<XElement> Arguments(XElement container) =>
         container.Elements().Where(e => e.Name.Namespace == M && !e.Name.LocalName.EndsWith("Pr", StringComparison.Ordinal)).ToList();
@@ -601,10 +600,34 @@ internal static class OmmlReader
             }
         }
 
-        if (style is Style.Plain or Style.Normal or Style.Bold && items.Any(i => i is MathText))
-            output.Add(new MathStyled(style == Style.Bold ? "bold" : "rm", new MathRow(items)));
-        else
+        if (style is not (Style.Plain or Style.Normal or Style.Bold) || !items.Any(i => i is MathText))
+        {
             output.AddRange(items);
+            return;
+        }
+        // Styled pieces between the alignment marks, so that the marks stay in the line for the renderer to find.
+        var piece = new List<MathNode>();
+        void Flush()
+        {
+            if (piece.Any(i => i is MathText))
+                output.Add(new MathStyled(style == Style.Bold ? "bold" : "rm", new MathRow(piece)));
+            else
+                output.AddRange(piece);
+            piece = [];
+        }
+        foreach (var item in items)
+        {
+            if (item is MathAlign)
+            {
+                Flush();
+                output.Add(item);
+            }
+            else
+            {
+                piece.Add(item);
+            }
+        }
+        Flush();
     }
 
     /// <summary>
