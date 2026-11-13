@@ -34,6 +34,28 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void HwpxReader_for_layout_reads_or_refuses_every_mutated_package() =>
         Fuzz("hwpx-layout", "hwpx", HwpxSeeds(), (path, media) => HwpxReader.ReadForLayout(path, media));
 
+    /// <summary>한글's equation script: the parser, the walks over its tree, and the layout and its drawing.</summary>
+    [Fact]
+    public void EquationParser_reads_every_mutated_script() =>
+        Fuzz("equation", "txt", [System.Text.Encoding.UTF8.GetBytes(EquationSeed)], (path, _) =>
+        {
+            var tree = EquationParser.Parse(File.ReadAllText(path));
+            EquationScript.Script(tree);
+            EquationScript.Linear(tree);
+            EquationScript.BreakLines(tree, 20_000, 1000);
+            using var shaper = new Typesetting.Shaper();
+            var box = new Typesetting.MathLayout(new Typesetting.FontResolver(), shaper).Layout(tree, 10, SkiaSharp.SKColors.Black);
+            box.Paint(new Rendering.PageContent(200, 200), 0, 0, 1);
+        }, TextMutator(["{", "}", "{a over b}", " over ", " atop ", "sqrt ", "root 3 of ", "rm ", "it ", "bold ", "rmA", "^", "_", " sup ",
+                        " sub ", "#", "&", "~", "`", "\"x\"", "LEFT ( ", " RIGHT )", "LEFT . ", "matrix {", "pmatrix {", "cases {", "pile {",
+                        "SUM from ", " to ", "int _", "lim from ", "hat ", "vec ", "not ", "color {1 0 0} ", "binom ", "big ", "alpha",
+                        "LEQ", "<=", "->", "...", "1.5"]));
+
+    /// <summary>A script with each kind of structure the parser reads.</summary>
+    private const string EquationSeed =
+        "f(x)= {cases{x-2&(x>2)#x+3&(x LEQ2)}} + {a+b} over {sqrt {x ^{2} _{i}}} + root 3 of {rm A} + LEFT ( SUM from {i=1} to n i RIGHT ) " +
+        "+ int _0 ^1 x dx + lim from {x -> 0} pmatrix{1&0#0&1} + vec AB + hat x + \"if\" ~ x + a atop b + pile{a#b}";
+
     [Fact]
     public void DocxReader_reads_or_refuses_every_mutated_package() =>
         Fuzz("docx", "docx", DocxSeeds(), (path, media) => DocxReader.Read(path, media));
@@ -245,7 +267,21 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // DOCX read and written as HWPX: what Filee's own writer makes.
         var written = Path.Combine(folder, "written.hwpx");
         HwpxWriter.Write(DocxReader.Read(RichDocx(folder), Path.Combine(folder, "media-docx")), written);
-        return [File.ReadAllBytes(hangul), File.ReadAllBytes(written)];
+        // The 한글-style package with the equation seed in place of its "x over y".
+        var equation = Path.Combine(folder, "equation.hwpx");
+        File.Copy(hangul, equation);
+        using (var zip = System.IO.Compression.ZipFile.Open(equation, System.IO.Compression.ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            Assert.Contains("<hp:script>x over y</hp:script>", xml, StringComparison.Ordinal);
+            using var writer = new StreamWriter(entry.Open());
+            writer.BaseStream.SetLength(0);
+            writer.Write(xml.Replace("<hp:script>x over y</hp:script>", $"<hp:script>{System.Security.SecurityElement.Escape(EquationSeed)}</hp:script>", StringComparison.Ordinal));
+        }
+        return [File.ReadAllBytes(hangul), File.ReadAllBytes(written), File.ReadAllBytes(equation)];
     }
 
     private List<byte[]> DocxSeeds()

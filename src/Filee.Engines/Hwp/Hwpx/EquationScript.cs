@@ -104,6 +104,47 @@ internal static class EquationScript
     private const double MatrixRowGap = 0.3;
     private const double Axis = 0.25;
 
+    // ───────────────────────── Depth ─────────────────────────
+
+    // The walks below (and MathLayout's) recurse once per level of the tree. The readers bound how deep a tree gets:
+    // EquationParser keeps a script deeper than its MaxDepth as text, OmmlReader Word math deeper than its MaxDepth.
+
+    /// <summary>Whether <paramref name="node"/> has more than <paramref name="levels"/> levels; walks without recursion.</summary>
+    public static bool Deeper(MathNode node, int levels)
+    {
+        var pending = new Stack<(MathNode Node, int Depth)>();
+        pending.Push((node, 1));
+        while (pending.TryPop(out var item))
+        {
+            if (item.Depth > levels)
+                return true;
+            foreach (var child in Children(item.Node))
+                pending.Push((child, item.Depth + 1));
+        }
+        return false;
+    }
+
+    private static IEnumerable<MathNode> Children(MathNode node)
+    {
+        var children = node switch
+        {
+            MathRow row => (IEnumerable<MathNode?>)row.Items,
+            MathFraction fraction => [fraction.Numerator, fraction.Denominator],
+            MathRoot root => [root.Index, root.Body],
+            MathScripts scripts => [scripts.Base, scripts.Sub, scripts.Sup],
+            MathBigOperator big => [big.Lower, big.Upper],
+            MathLimit limit => [limit.Lower],
+            MathMatrix matrix => matrix.Rows.SelectMany(r => r),
+            MathCases cases => cases.Rows.SelectMany(r => r),
+            MathPile pile => pile.Rows,
+            MathBrackets brackets => [brackets.Body],
+            MathAccent accent => [accent.Body],
+            MathStyled styled => [styled.Body],
+            _ => [],
+        };
+        return children.OfType<MathNode>();
+    }
+
     // ───────────────────────── Lines ─────────────────────────
 
     /// <summary>

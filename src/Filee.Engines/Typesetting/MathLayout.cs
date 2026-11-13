@@ -52,7 +52,14 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     private static readonly HashSet<string> Binary = ["+", "-", "−", "±", "∓", "×", "÷", "·", "∘", "∪", "∩", "∧", "∨", "⊕", "⊖", "⊗", "⊙", "∗", "⋆", "⊔", "⊓", "\\", "/"];
 
+    /// <summary>
+    /// Levels laid out, above what the readers build (EquationParser.MaxDepth, OmmlReader.MaxDepth): content deeper
+    /// than this is left out rather than recursed into, as a stack overflow would end the app.
+    /// </summary>
+    private const int MaxDepth = 256;
+
     private readonly Dictionary<FontStyle, ResolvedFont?> _primary = [];
+    private int _depth;
 
     /// <summary>The style text takes: italic Latin letters unless upright (rm), bold when asked.</summary>
     private readonly record struct Style(float Size, SKColor Color, bool Upright, bool Bold)
@@ -63,7 +70,22 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     /// <summary>Lays out <paramref name="node"/> at <paramref name="size"/> points in <paramref name="color"/>.</summary>
     public EquationBox Layout(MathNode node, float size, SKColor color) => Lay(node, new Style(size, color, false, false));
 
-    private EquationBox Lay(MathNode node, Style style) => node switch
+    private EquationBox Lay(MathNode node, Style style)
+    {
+        if (_depth >= MaxDepth)
+            return EquationBox.Empty;
+        _depth++;
+        try
+        {
+            return LayNode(node, style);
+        }
+        finally
+        {
+            _depth--;
+        }
+    }
+
+    private EquationBox LayNode(MathNode node, Style style) => node switch
     {
         MathRow row => Row(row.Items, style),
         MathText text => Text(text.Text, style, italic: !style.Upright && text.Text.All(char.IsAsciiLetter)),
@@ -340,10 +362,19 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         // Centred on the math axis.
         var shift = (glyph.Ascent - glyph.Descent) / 2 - size * Axis;
         var symbol = Place(glyph.Width, glyph.Ascent - shift, glyph.Descent + shift, (0, shift, glyph));
-        var small = style.Smaller(ScriptScale);
-        var lower = big.Lower is null ? null : Lay(big.Lower, small);
-        var upper = big.Upper is null ? null : Lay(big.Upper, small);
-        var box = integral ? Scripts(symbol, big.Lower, big.Upper, style, italicBase: true) : Limits(symbol, upper, lower, size * 0.08f);
+        EquationBox box;
+        if (integral)
+        {
+            box = Scripts(symbol, big.Lower, big.Upper, style, italicBase: true);
+        }
+        else
+        {
+            // Laid out here only: an integral lays its limits out as scripts, and doing both doubled the work per level.
+            var small = style.Smaller(ScriptScale);
+            var lower = big.Lower is null ? null : Lay(big.Lower, small);
+            var upper = big.Upper is null ? null : Lay(big.Upper, small);
+            box = Limits(symbol, upper, lower, size * 0.08f);
+        }
         return Place(box.Width + size * 0.05f, box.Ascent, box.Descent, (0, 0, box));
     }
 

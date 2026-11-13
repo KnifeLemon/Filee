@@ -2,7 +2,11 @@
 // way 한글 reads it, and the tree laid out and drawn (Typesetting/MathLayout) with real fonts, on its line in the box
 // 한글 laid it out in. Read back through EquationScript.Script, the tree is checked as the script Filee writes for it.
 
+using System.Diagnostics;
+using System.Runtime.ExceptionServices;
+using System.Xml.Linq;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Rendering;
 using Filee.Engines.Typesetting;
 using SkiaSharp;
@@ -122,6 +126,140 @@ public sealed class EquationLayoutTests : IDisposable
         var seven = runs.Single(r => r.Text == "7");
         Assert.True(seven.Positions[0].Y > a.Positions[0].Y);
         Assert.True(runs.Where(r => r.Text.Contains('1')).All(r => r.ScaleX < 1));
+    }
+
+    // ───────────────────────── Hostile input ─────────────────────────
+
+    /// <summary>Stack of the thread the deep equations are read and laid out on: a third of a thread-pool thread's.</summary>
+    private const int SmallStack = 512 * 1024;
+
+    /// <summary>Scripts nested thousands of levels deep in each way the reader recurses (and "over" without braces).</summary>
+    private static string DeepScript(string kind) => kind switch
+    {
+        "braces" => new string('{', 30_000),
+        "fractions" => Repeat("{a over ", 5_000) + "a",
+        "over chain" => "a" + Repeat(" over a", 20_000),
+        "roots" => Repeat("sqrt ", 10_000) + "x",
+        "indexed roots" => Repeat("root 2 of ", 10_000) + "x",
+        "styles" => Repeat("rm ", 10_000) + "x",
+        "styles in one word" => Repeat("rm", 10_000) + "x",
+        "scripts" => Repeat("x ^{", 10_000) + "2",
+        "brackets" => Repeat("LEFT ( ", 10_000) + "x",
+        "matrices" => Repeat("matrix {", 5_000) + "1",
+        "accents" => Repeat("hat ", 10_000) + "x",
+        "colours" => Repeat("color ", 30_000) + "x",
+        "limits" => Repeat("SUM from ", 10_000) + "i",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    [Theory]
+    [InlineData("braces")]
+    [InlineData("fractions")]
+    [InlineData("over chain")]
+    [InlineData("roots")]
+    [InlineData("indexed roots")]
+    [InlineData("styles")]
+    [InlineData("styles in one word")]
+    [InlineData("scripts")]
+    [InlineData("brackets")]
+    [InlineData("matrices")]
+    [InlineData("accents")]
+    [InlineData("colours")]
+    [InlineData("limits")]
+    public void A_script_nested_past_the_limit_is_kept_as_its_text(string kind)
+    {
+        var script = DeepScript(kind);
+        var watch = Stopwatch.StartNew();
+        OnSmallStack(() =>
+        {
+            var tree = EquationParser.Parse(script);
+            Assert.Equal(script, Assert.IsType<MathQuoted>(tree).Text);
+            Assert.Equal(script, EquationScript.Linear(tree));
+            Assert.True(EquationScript.Measure(tree, 1000).Width > 0);
+        });
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"{watch.Elapsed}");
+    }
+
+    [Fact]
+    public void A_long_flat_script_and_one_nested_to_the_limit_keep_their_tree()
+    {
+        var flat = EquationParser.Parse(Repeat("a + ", 10_000) + "a");
+        Assert.Equal(20_001, Assert.IsType<MathRow>(flat).Items.Count);
+
+        // 99 groups with the letter in the innermost: 100 levels, kept; 101 groups are not.
+        var braces = EquationParser.Parse(new string('{', EquationParser.MaxDepth - 1) + "x" + new string('}', EquationParser.MaxDepth - 1));
+        Assert.IsNotType<MathQuoted>(braces);
+        Assert.False(EquationScript.Deeper(braces, EquationParser.MaxDepth));
+        var past = EquationParser.Parse(new string('{', EquationParser.MaxDepth + 1) + "x");
+        Assert.IsType<MathQuoted>(past);
+    }
+
+    /// <summary>The deepest trees each reader keeps go through every walk, and the layout and its drawing, on a small stack.</summary>
+    [Fact]
+    public void The_deepest_equations_the_readers_keep_are_walked_and_laid_out_on_a_small_stack()
+    {
+        var math = Math();
+        // Fractions in fractions to just within EquationParser.MaxDepth (a fraction and its group are two levels).
+        const int fractions = EquationParser.MaxDepth / 2 - 2;
+        var script = Repeat("{a over ", fractions) + "b" + new string('}', fractions);
+        var parsed = EquationParser.Parse(script);
+        Assert.IsNotType<MathQuoted>(parsed);
+
+        // Word math to just within OmmlReader's 200 element levels (a fraction is two: m:f, m:num).
+        const int levels = 99;
+        var omml = OmmlReader.Read(XElement.Parse($"<m:oMath {DocxBuilder.Namespaces}>" + Repeat("<m:f><m:num>", levels) + "<m:r><m:t>x</m:t></m:r>" +
+                                                  Repeat("</m:num><m:den><m:r><m:t>y</m:t></m:r></m:den></m:f>", levels) + "</m:oMath>"));
+        Assert.True(EquationScript.Deeper(omml, 2 * levels));
+
+        foreach (var tree in new[] { parsed, omml })
+        {
+            OnSmallStack(() =>
+            {
+                Assert.NotEmpty(EquationScript.Script(tree));
+                Assert.NotEmpty(EquationScript.Linear(tree));
+                Assert.True(EquationScript.Measure(tree, 1000).Height > 0);
+                Assert.NotEmpty(EquationScript.BreakLines(tree, 100, 1000));
+                var box = math.Layout(tree, 10, SKColors.Black);
+                Assert.True(box.Height > 0);
+                Paint(box);
+            });
+        }
+    }
+
+    [Fact]
+    public void Nested_integrals_lay_out_each_limit_once()
+    {
+        var math = Math();
+        // An integral laid out its limits twice: 2^40 layouts of the innermost here.
+        var script = Repeat("int _{", 40) + "x" + new string('}', 40);
+        var tree = EquationParser.Parse(script);
+        Assert.IsNotType<MathQuoted>(tree);
+        var watch = Stopwatch.StartNew();
+        Assert.True(math.Layout(tree, 10, SKColors.Black).Height > 0);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"{watch.Elapsed}");
+    }
+
+    private static string Repeat(string text, int count) => string.Concat(Enumerable.Repeat(text, count));
+
+    /// <summary>Runs <paramref name="work"/> on a thread with <see cref="SmallStack"/> and passes its exception on.</summary>
+    private static void OnSmallStack(Action work)
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                work();
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
+        }, SmallStack);
+        thread.Start();
+        thread.Join();
+        if (error is not null)
+            ExceptionDispatchInfo.Capture(error).Throw();
     }
 
     // ───────────────────────── Helpers ─────────────────────────
