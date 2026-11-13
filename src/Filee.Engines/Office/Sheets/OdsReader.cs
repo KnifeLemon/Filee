@@ -10,6 +10,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office.Sheets;
@@ -35,6 +36,21 @@ internal sealed class OdsReader
     /// </summary>
     private const int MaxStyledRepeat = 256;
 
+    /// <summary>
+    /// Most spaces one text:s stands for. It stands for a run of spaces in the text, rarely more than a line of them;
+    /// its count is the file's to choose, and a billion would be gigabytes of spaces from a few bytes.
+    /// </summary>
+    private const int MaxSpaces = 1024;
+
+    /// <summary>All cell text of a workbook together: no more characters than its content.xml may hold.</summary>
+    private const long MaxTextCharacters = BoundedXml.MaxPartBytes;
+
+    /// <summary>
+    /// Most cells (and merges) a workbook expands to. Repeated rows and columns with text are expanded one cell each;
+    /// a few bytes can repeat a cell over a whole sheet (1,048,576 × 16,384), far more than any real sheet holds.
+    /// </summary>
+    private const long MaxCells = 10_000_000;
+
     /// <summary>Points per character of column width (7 pixels of Calibri 11 at 96 dpi), as in the XLSX writer.</summary>
     internal const double PointsPerCharacter = 5.25;
 
@@ -45,6 +61,8 @@ internal sealed class OdsReader
     private readonly Dictionary<string, int> _frozenRows = [];
     private readonly NumberFormatter _formatter = new();
     private XElement? _defaultCellStyle;
+    private long _textLeft = MaxTextCharacters;
+    private long _cellsLeft = MaxCells;
 
     /// <summary>Reads every visible sheet of <paramref name="path"/>.</summary>
     public static Workbook Read(string path)
@@ -322,6 +340,9 @@ internal sealed class OdsReader
             var cells = Cells(row, columns);
             var hasText = cells.Any(run => run.Cell is { Text.Length: > 0 } || run.ColumnSpan > 1 || run.RowSpan > 1);
             var copies = hasText ? count : cells.Any(run => run.Cell is not null) && count <= MaxStyledRepeat ? count : 0;
+            _cellsLeft -= (long)copies * cells.Sum(run => (long)run.Count);
+            if (_cellsLeft < 0)
+                throw new ConversionRefusedException("error.document_too_large", $"{name}: over {MaxCells:N0} cells");
             for (var copy = 0; copy < copies; copy++)
             {
                 foreach (var run in cells)
@@ -470,7 +491,7 @@ internal sealed class OdsReader
     }
 
     /// <summary>The text of a cell: its paragraphs joined by line breaks; null when it has none.</summary>
-    private static string? Paragraphs(XElement cell)
+    private string? Paragraphs(XElement cell)
     {
         var paragraphs = cell.Elements().Where(e => e.Name == Text + "p" || e.Name == Text + "h").ToList();
         if (paragraphs.Count == 0)
@@ -485,12 +506,13 @@ internal sealed class OdsReader
         return sb.ToString();
     }
 
-    private static void Inline(XElement element, StringBuilder sb)
+    private void Inline(XElement element, StringBuilder sb)
     {
         foreach (var node in element.Nodes())
         {
             if (node is XText text)
             {
+                Spend(text.Value.Length);
                 // ODF collapses white space in text; extra spaces are text:s elements.
                 foreach (var ch in text.Value)
                 {
@@ -502,7 +524,11 @@ internal sealed class OdsReader
             else if (node is XElement child)
             {
                 if (child.Name == Text + "s")
-                    sb.Append(' ', Repeat(child, Text + "c"));
+                {
+                    var spaces = Math.Min(Repeat(child, Text + "c"), MaxSpaces);
+                    Spend(spaces);
+                    sb.Append(' ', spaces);
+                }
                 else if (child.Name == Text + "tab")
                     sb.Append('\t');
                 else if (child.Name == Text + "line-break")
@@ -515,4 +541,12 @@ internal sealed class OdsReader
 
     private static int Repeat(XElement element, XName attribute) =>
         int.TryParse((string?)element.Attribute(attribute), out var count) && count > 0 ? count : 1;
+
+    /// <summary>Counts <paramref name="characters"/> of cell text against the workbook's total.</summary>
+    private void Spend(long characters)
+    {
+        _textLeft -= characters;
+        if (_textLeft < 0)
+            throw new ConversionRefusedException("error.document_too_large", $"the cell text is over {MaxTextCharacters:N0} characters");
+    }
 }
