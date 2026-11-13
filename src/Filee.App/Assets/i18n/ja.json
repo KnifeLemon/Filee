@@ -1801,8 +1801,8 @@
   "connect.no_network_message": "Filee Connectを開始できませんでした。このデバイスがローカルのWi-Fiまたは有線LANネットワークに接続されていることを確認してください。",
   "connect.save_as": "名前を付けて保存…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "画面録画",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "画面キャプチャエンジンを開始できませんでした。FFmpegが利用可能であることを確認してください。",
   "donut.tools": "Filee Tools"
 }

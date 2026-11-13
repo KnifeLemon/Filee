@@ -1797,8 +1797,8 @@
   "connect.no_network_message": "Filee Connect راه‌اندازی نشد. لطفاً مطمئن شوید این دستگاه به شبکه Wi-Fi یا اترنت محلی متصل است.",
   "connect.save_as": "ذخیره به عنوان…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "ضبط صفحه",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "موتور تصویربرداری از صفحه نمایش راه‌اندازی نشد. لطفاً مطمئن شوید FFmpeg در دسترس است.",
   "donut.tools": "Filee Tools"
 }

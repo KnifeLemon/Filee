@@ -1821,8 +1821,8 @@
   "connect.no_network_message": "Не удалось запустить Filee Connect. Убедитесь, что это устройство подключено к локальной сети Wi-Fi или Ethernet.",
   "connect.save_as": "Сохранить как…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "Запись экрана",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "Не удалось запустить модуль захвата экрана. Убедитесь, что FFmpeg доступен.",
   "donut.tools": "Filee Tools"
 }

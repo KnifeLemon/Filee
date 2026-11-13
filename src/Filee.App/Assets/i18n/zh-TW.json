@@ -1821,8 +1821,8 @@
   "connect.no_network_message": "無法啟動 Filee Connect。請確認此裝置已連線至本機 Wi-Fi 或乙太網路。",
   "connect.save_as": "另存為…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "螢幕錄影",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "無法啟動螢幕錄製引擎。請確保 FFmpeg 可用。",
   "donut.tools": "Filee Tools"
 }

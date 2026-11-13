@@ -1801,8 +1801,8 @@
   "connect.no_network_message": "Filee Connect सुरु गर्न सकिएन। कृपया यो यन्त्र स्थानीय Wi-Fi वा इथरनेट नेटवर्कमा जडान भएको निश्चित गर्नुहोस्।",
   "connect.save_as": "यस रूपमा बचत गर्नुहोस्…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "स्क्रिन रेकर्डिङ",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "स्क्रिन क्याप्चर इन्जिन सुरु गर्न सकिएन। कृपया FFmpeg उपलब्ध छ भनी सुनिश्चित गर्नुहोस्।",
   "donut.tools": "Filee Tools"
 }

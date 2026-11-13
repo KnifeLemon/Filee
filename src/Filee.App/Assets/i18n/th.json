@@ -1801,8 +1801,8 @@
   "connect.no_network_message": "ไม่สามารถเริ่ม Filee Connect ได้ โปรดตรวจสอบให้แน่ใจว่าอุปกรณ์นี้เชื่อมต่อกับเครือข่าย Wi-Fi หรืออีเทอร์เน็ตในเครื่อง",
   "connect.save_as": "บันทึกเป็น…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "การบันทึกหน้าจอ",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "ไม่สามารถเริ่มเครื่องมือบันทึกหน้าจอได้ โปรดตรวจสอบว่ามี FFmpeg พร้อมใช้งาน",
   "donut.tools": "Filee Tools"
 }

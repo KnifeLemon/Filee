@@ -1799,8 +1799,8 @@
   "connect.no_network_message": "Filee Connect başlatılamadı. Lütfen bu cihazın yerel bir Wi-Fi veya Ethernet ağına bağlı olduğundan emin olun.",
   "connect.save_as": "Farklı kaydet…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "Ekran Kaydı",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "Ekran yakalama motoru başlatılamadı. Lütfen FFmpeg'in kullanılabilir olduğundan emin olun.",
   "donut.tools": "Filee Tools"
 }

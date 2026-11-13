@@ -1799,8 +1799,8 @@
   "connect.no_network_message": "Tidak dapat memulai Filee Connect. Pastikan perangkat ini terhubung ke jaringan Wi-Fi atau Ethernet lokal.",
   "connect.save_as": "Simpan sebagai…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "Perekaman Layar",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "Tidak dapat memulai mesin perekam layar. Pastikan FFmpeg tersedia.",
   "donut.tools": "Filee Tools"
 }

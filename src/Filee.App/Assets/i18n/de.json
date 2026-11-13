@@ -1799,8 +1799,8 @@
   "connect.no_network_message": "Filee Connect konnte nicht gestartet werden. Bitte stelle sicher, dass dieses Gerät mit einem lokalen WLAN- oder Ethernet-Netzwerk verbunden ist.",
   "connect.save_as": "Speichern unter…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "Bildschirmaufnahme",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "Der Bildschirmaufnahme-Dienst konnte nicht gestartet werden. Bitte stellen Sie sicher, dass FFmpeg verfügbar ist.",
   "donut.tools": "Filee Tools"
 }

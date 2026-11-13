@@ -1821,8 +1821,8 @@
   "connect.no_network_message": "Không thể khởi động Filee Connect. Vui lòng đảm bảo thiết bị này được kết nối với mạng Wi-Fi hoặc Ethernet cục bộ.",
   "connect.save_as": "Lưu dưới dạng…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "Ghi màn hình",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "Không thể khởi động công cụ quay màn hình. Vui lòng đảm bảo FFmpeg khả dụng.",
   "donut.tools": "Filee Tools"
 }

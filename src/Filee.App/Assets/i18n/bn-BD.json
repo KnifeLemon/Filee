@@ -1797,8 +1797,8 @@
   "connect.no_network_message": "Filee Connect শুরু করা যায়নি। অনুগ্রহ করে নিশ্চিত করুন যে এই ডিভাইসটি একটি স্থানীয় Wi-Fi বা ইথারনেট নেটওয়ার্কের সাথে সংযুক্ত রয়েছে।",
   "connect.save_as": "সংরক্ষণ করুন…",
   "preset.capture_studio": "Capture Studio",
-  "capture_studio.caption": "Screen Recording",
+  "capture_studio.caption": "স্ক্রিন রেকর্ডিং",
   "capture_studio.title": "Capture Studio",
-  "capture_studio.error_start": "Could not start screen capture engine. Please ensure FFmpeg is available.",
+  "capture_studio.error_start": "স্ক্রিন ক্যাপচার ইঞ্জিন शुरू করা যায়নি। অনুগ্রহ করে নিশ্চিত করুন FFmpeg উপলব্ধ আছে।",
   "donut.tools": "Filee Tools"
 }
