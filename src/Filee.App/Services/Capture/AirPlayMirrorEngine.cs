@@ -56,8 +56,12 @@ public sealed class AirPlayMirrorEngine
 
     // Mirror stream decryption
     private IBufferedCipher? _mirrorCipher;
-    private readonly byte[] _og = new byte[16];
-    private int _nextDecryptCount;
+
+    // Event and Timing listeners for AirPlay synchronization
+    private TcpListener? _eventListener;
+    private UdpClient? _timingClient;
+    private int _eventPort = EventPort;
+    private int _timingPort = TimingPort;
 
     // Cached SPS/PPS NAL units (Annex B format)
     private byte[]? _cachedSpsPps;
@@ -215,6 +219,33 @@ public sealed class AirPlayMirrorEngine
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "Failed to start mirror stream listener on port {Port}", MirrorPort);
+            }
+
+            // Start event TCP listener (dynamic port or 7002)
+            try
+            {
+                _eventListener = new TcpListener(IPAddress.Any, 0);
+                _eventListener.Start();
+                _eventPort = ((IPEndPoint)_eventListener.LocalEndpoint).Port;
+                _ = Task.Run(() => AcceptEventClientsAsync(_eventListener, cts.Token), cts.Token);
+                _logger?.LogInformation("AirPlay event listener active on port {Port}", _eventPort);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to start AirPlay event listener");
+            }
+
+            // Start timing UDP listener (dynamic port or 7003)
+            try
+            {
+                _timingClient = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
+                _timingPort = ((IPEndPoint)_timingClient.Client.LocalEndPoint!).Port;
+                _ = Task.Run(() => RunTimingLoopAsync(_timingClient, cts.Token), cts.Token);
+                _logger?.LogInformation("AirPlay timing (NTP) listener active on port {Port}", _timingPort);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to start AirPlay timing listener");
             }
 
             StartDiscoveryServices(boundPort, cts.Token);
@@ -444,36 +475,123 @@ public sealed class AirPlayMirrorEngine
         }
     }
 
+    private async Task AcceptEventClientsAsync(TcpListener listener, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var client = await listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
+                _logger?.LogInformation("AirPlay event channel connected from {Endpoint}", client.Client.RemoteEndPoint);
+
+                _ = Task.Run(async () =>
+                {
+                    using (client)
+                    using (var s = client.GetStream())
+                    {
+                        var buf = new byte[1024];
+                        while (!ct.IsCancellationRequested && client.Connected)
+                        {
+                            int r = await s.ReadAsync(buf, ct).ConfigureAwait(false);
+                            if (r <= 0) break;
+                        }
+                    }
+                }, ct);
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "AirPlay event accept error");
+            }
+        }
+    }
+
+    private async Task RunTimingLoopAsync(UdpClient timingClient, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var res = await timingClient.ReceiveAsync(ct).ConfigureAwait(false);
+                var buf = res.Buffer;
+                if (buf.Length < 32) continue;
+
+                var reply = new byte[32];
+                reply[0] = 0x80;
+                reply[1] = 0xd3; // timing response type
+                reply[2] = buf[2];
+                reply[3] = buf[3]; // echo sequence number
+
+                var now = DateTime.UtcNow;
+                var epoch = now - new DateTime(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                ulong ntpSec = (ulong)epoch.TotalSeconds;
+                ulong ntpFrac = (ulong)((epoch.TotalSeconds - (ulong)epoch.TotalSeconds) * 0x100000000UL);
+
+                // Origin timestamp at offset 24 = echo client's transmit timestamp (bytes 24-31)
+                Buffer.BlockCopy(buf, 24, reply, 24, 8);
+
+                // Receive timestamp at offset 8
+                WriteNtpTimestamp(reply, 8, ntpSec, ntpFrac);
+
+                // Transmit timestamp at offset 16
+                WriteNtpTimestamp(reply, 16, ntpSec, ntpFrac);
+
+                await timingClient.SendAsync(reply, 32, res.RemoteEndPoint).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "AirPlay timing loop error");
+            }
+        }
+    }
+
+    private static void WriteNtpTimestamp(byte[] buf, int offset, ulong sec, ulong frac)
+    {
+        buf[offset + 0] = (byte)(sec >> 24);
+        buf[offset + 1] = (byte)(sec >> 16);
+        buf[offset + 2] = (byte)(sec >> 8);
+        buf[offset + 3] = (byte)sec;
+        buf[offset + 4] = (byte)(frac >> 24);
+        buf[offset + 5] = (byte)(frac >> 16);
+        buf[offset + 6] = (byte)(frac >> 8);
+        buf[offset + 7] = (byte)frac;
+    }
+
     private async Task HandleAirPlayClientAsync(TcpClient client, CancellationToken ct)
     {
         using (client)
         using (var stream = client.GetStream())
         {
-            _mirrorService.OnConnected();
-            var readBuffer = new byte[65536];
+            StatusMessage = "Connecting to iOS device...";
 
             try
             {
+                var headerStream = new MemoryStream();
+                var oneByte = new byte[1];
+
                 while (!ct.IsCancellationRequested && client.Connected)
                 {
-                    // Read RTSP request header (until "\r\n\r\n")
-                    var headerBytes = new List<byte>();
-                    int b;
-                    while ((b = stream.ReadByte()) != -1)
+                    headerStream.SetLength(0);
+                    int matchState = 0;
+
+                    // Asynchronously read RTSP header until "\r\n\r\n"
+                    while (await stream.ReadAsync(oneByte.AsMemory(0, 1), ct).ConfigureAwait(false) > 0)
                     {
-                        headerBytes.Add((byte)b);
-                        int count = headerBytes.Count;
-                        if (count >= 4 &&
-                            headerBytes[count - 4] == '\r' && headerBytes[count - 3] == '\n' &&
-                            headerBytes[count - 2] == '\r' && headerBytes[count - 1] == '\n')
-                        {
-                            break;
-                        }
+                        byte b = oneByte[0];
+                        headerStream.WriteByte(b);
+
+                        if (matchState == 0 && b == '\r') matchState = 1;
+                        else if (matchState == 1 && b == '\n') matchState = 2;
+                        else if (matchState == 2 && b == '\r') matchState = 3;
+                        else if (matchState == 3 && b == '\n') { matchState = 4; break; }
+                        else matchState = (b == '\r') ? 1 : 0;
                     }
 
-                    if (headerBytes.Count == 0) break;
+                    if (headerStream.Length == 0 || matchState != 4) break;
 
-                    var headerText = Encoding.UTF8.GetString(headerBytes.ToArray());
+                    var headerBytes = headerStream.ToArray();
+                    var headerText = Encoding.UTF8.GetString(headerBytes);
                     var lines = headerText.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
                     if (lines.Length == 0) break;
 
@@ -671,57 +789,44 @@ public sealed class AirPlayMirrorEngine
                     var reader = new BPlistReader();
                     if (body.Length > 0 && reader.Parse(body))
                     {
-                        // Case 1: Initial key/timing setup
                         if (reader.TryGetData("ekey", out var ekey) && reader.TryGetData("eiv", out var eiv))
                         {
                             _aesKey = ekey;
                             _aesIv = eiv;
-
-                            var w = new BPlistWriter();
-                            var root = new List<KeyValuePair<int, int>>
-                        {
-                            new(w.AddString("eventPort"), w.AddUint(EventPort)),
-                            new(w.AddString("timingPort"), w.AddUint(TimingPort))
-                        };
-                            var bplist = w.Build(w.AddDict(root));
-
-                            var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\nContent-Type: application/x-apple-binary-plist\r\nContent-Length: {bplist.Length}\r\n\r\n";
-                            await WriteStringAsync(stream, resp, ct).ConfigureAwait(false);
-                            await stream.WriteAsync(bplist, ct).ConfigureAwait(false);
-                            await stream.FlushAsync(ct).ConfigureAwait(false);
                         }
-                        // Case 2: Stream setup (streams array)
-                        else if (reader.HasKey("streams"))
+
+                        if (reader.HasKey("streams"))
                         {
                             if (reader.TryGetStreamConnectionId(out var connId))
                             {
                                 _streamConnectionId = connId;
                             }
 
-                            // Decrypt FairPlay AES key for video stream
                             InitializeMirrorCipher();
+                        }
 
-                            var w = new BPlistWriter();
+                        var w = new BPlistWriter();
+                        var root = new List<KeyValuePair<int, int>>
+                        {
+                            new(w.AddString("eventPort"), w.AddUint((ulong)_eventPort)),
+                            new(w.AddString("timingPort"), w.AddUint((ulong)_timingPort))
+                        };
+
+                        if (reader.HasKey("streams"))
+                        {
                             var streamDict = w.AddDict([
                                 new(w.AddString("dataPort"), w.AddUint(MirrorPort)),
-                            new(w.AddString("type"), w.AddUint(110))
+                                new(w.AddString("type"), w.AddUint(110))
                             ]);
                             var streamsArr = w.AddArray([streamDict]);
-                            var rootDict = w.AddDict([
-                                new(w.AddString("streams"), streamsArr)
-                            ]);
-                            var bplist = w.Build(rootDict);
+                            root.Add(new(w.AddString("streams"), streamsArr));
+                        }
 
-                            var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\nContent-Type: application/x-apple-binary-plist\r\nContent-Length: {bplist.Length}\r\n\r\n";
-                            await WriteStringAsync(stream, resp, ct).ConfigureAwait(false);
-                            await stream.WriteAsync(bplist, ct).ConfigureAwait(false);
-                            await stream.FlushAsync(ct).ConfigureAwait(false);
-                        }
-                        else
-                        {
-                            var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\nContent-Length: 0\r\n\r\n";
-                            await WriteStringAsync(stream, resp, ct).ConfigureAwait(false);
-                        }
+                        var bplist = w.Build(w.AddDict(root));
+                        var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\nContent-Type: application/x-apple-binary-plist\r\nContent-Length: {bplist.Length}\r\n\r\n";
+                        await WriteStringAsync(stream, resp, ct).ConfigureAwait(false);
+                        await stream.WriteAsync(bplist, ct).ConfigureAwait(false);
+                        await stream.FlushAsync(ct).ConfigureAwait(false);
                     }
                     else
                     {
@@ -733,7 +838,28 @@ public sealed class AirPlayMirrorEngine
 
             case "RECORD":
                 {
-                    var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\nSession: 1\r\n\r\n";
+                    var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\nSession: 1\r\nAudio-Latency: 11025\r\nAudio-Jack-Status: connected; type=digital\r\n\r\n";
+                    await WriteStringAsync(stream, resp, ct).ConfigureAwait(false);
+                    break;
+                }
+
+            case "GET_PARAMETER":
+                {
+                    string volResp = "";
+                    string ctHeader = "";
+                    if (body.Length > 0 && Encoding.UTF8.GetString(body).Contains("volume", StringComparison.OrdinalIgnoreCase))
+                    {
+                        volResp = "volume: -30.000000\r\n";
+                        ctHeader = "Content-Type: text/parameters\r\n";
+                    }
+                    var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\n{ctHeader}Content-Length: {volResp.Length}\r\n\r\n{volResp}";
+                    await WriteStringAsync(stream, resp, ct).ConfigureAwait(false);
+                    break;
+                }
+
+            case "SET_PARAMETER":
+                {
+                    var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\nContent-Length: 0\r\n\r\n";
                     await WriteStringAsync(stream, resp, ct).ConfigureAwait(false);
                     break;
                 }
@@ -742,6 +868,7 @@ public sealed class AirPlayMirrorEngine
                 {
                     var resp = $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nServer: AirTunes/220.68\r\n\r\n";
                     await WriteStringAsync(stream, resp, ct).ConfigureAwait(false);
+                    _mirrorService.OnDisconnected();
                     break;
                 }
 
@@ -786,8 +913,6 @@ public sealed class AirPlayMirrorEngine
                 cipher.Init(false, new ParametersWithIV(new KeyParameter(decryptKey), decryptIv));
 
                 _mirrorCipher = cipher;
-                _nextDecryptCount = 0;
-                Array.Clear(_og, 0, _og.Length);
 
                 _logger?.LogInformation("AirPlay AES-CTR cipher initialized successfully for connection ID {Id}", _streamConnectionId);
             }
@@ -815,7 +940,7 @@ public sealed class AirPlayMirrorEngine
             new(w.AddString("pk"), w.AddData(_edPublicKeyBytes)),
             new(w.AddString("pi"), w.AddString("2e388006-13ba-4041-9a67-25dd4a43d536")),
             new(w.AddString("vv"), w.AddUint(2)),
-            new(w.AddString("statusFlags"), w.AddUint(4)),
+            new(w.AddString("statusFlags"), w.AddUint(68)),
             new(w.AddString("keepAliveLowPower"), w.AddUint(1)),
             new(w.AddString("keepAliveSendStatsAsBody"), w.AddBool(true)),
             new(w.AddString("initialVolume"), w.AddReal(-30.0))
@@ -903,7 +1028,19 @@ public sealed class AirPlayMirrorEngine
                 return;
             }
 
-            var ffmpegPsi = new ProcessStartInfo(ffmpeg, ["-hide_banner", "-loglevel", "error", "-f", "h264", "-i", "-", "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "5", "-"])
+            var ffmpegPsi = new ProcessStartInfo(ffmpeg, [
+                "-hide_banner",
+                "-loglevel", "warning",
+                "-f", "h264",
+                "-probesize", "32768",
+                "-fflags", "nobuffer",
+                "-flags", "low_delay",
+                "-i", "-",
+                "-f", "image2pipe",
+                "-vcodec", "mjpeg",
+                "-q:v", "3",
+                "-"
+            ])
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -915,46 +1052,74 @@ public sealed class AirPlayMirrorEngine
             using var ffmpegProc = Process.Start(ffmpegPsi);
             if (ffmpegProc == null) return;
 
-            // Background task to read MJPEG frames from FFmpeg stdout and dispatch to MobileMirrorService
             using var ffmpegCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+            // Read stderr asynchronously to monitor FFmpeg decoder state
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var reader = ffmpegProc.StandardError;
+                    while (!ffmpegCts.IsCancellationRequested)
+                    {
+                        var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                        if (line == null) break;
+                        _logger?.LogDebug("[FFmpeg AirPlay] {Line}", line);
+                    }
+                }
+                catch { }
+            }, ffmpegCts.Token);
+
+            // Read MJPEG frames from FFmpeg stdout and dispatch to MobileMirrorService
             var frameReaderTask = Task.Run(async () =>
             {
-                var frameBuffer = new byte[256 * 1024];
+                var frameBuffer = new byte[65536];
                 using var ms = new MemoryStream();
                 var ffmpegOut = ffmpegProc.StandardOutput.BaseStream;
                 int bytesRead;
 
-                while (!ffmpegCts.IsCancellationRequested && (bytesRead = await ffmpegOut.ReadAsync(frameBuffer, ffmpegCts.Token)) > 0)
+                try
                 {
-                    for (int i = 0; i < bytesRead; i++)
+                    while (!ffmpegCts.IsCancellationRequested && (bytesRead = await ffmpegOut.ReadAsync(frameBuffer, ffmpegCts.Token).ConfigureAwait(false)) > 0)
                     {
-                        ms.WriteByte(frameBuffer[i]);
-
-                        // Check for JPEG End-Of-Image marker (0xFF, 0xD9)
-                        if (ms.Length >= 2)
+                        int start = 0;
+                        for (int i = 0; i < bytesRead - 1; i++)
                         {
-                            ms.Position = ms.Length - 2;
-                            int b1 = ms.ReadByte();
-                            int b2 = ms.ReadByte();
-                            if (b1 == 0xFF && b2 == 0xD9)
+                            if (frameBuffer[i] == 0xFF && frameBuffer[i + 1] == 0xD9)
                             {
+                                int len = (i + 2) - start;
+                                ms.Write(frameBuffer, start, len);
                                 var jpeg = ms.ToArray();
-                                _mirrorService.OnFrame(jpeg);
                                 ms.SetLength(0);
+                                start = i + 2;
+                                i++; // skip marker
+
+                                _mirrorService.OnConnected();
+                                _mirrorService.OnFrame(jpeg);
                             }
                         }
+
+                        if (start < bytesRead)
+                        {
+                            ms.Write(frameBuffer, start, bytesRead - start);
+                        }
                     }
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "AirPlay frame reader loop terminated");
                 }
             }, ffmpegCts.Token);
 
             var header = new byte[128];
             byte[] nalStartCode = [0x00, 0x00, 0x00, 0x01];
+            bool prependSpsPps = false;
 
             try
             {
                 while (!ct.IsCancellationRequested && client.Connected)
                 {
-                    // Read 128-byte packet header
                     int hdrRead = 0;
                     while (hdrRead < 128)
                     {
@@ -963,14 +1128,14 @@ public sealed class AirPlayMirrorEngine
                         hdrRead += r;
                     }
 
-                    // Check if HTTP probe
+                    // Check for HTTP probe
                     if ((header[0] == 'P' && header[1] == 'O' && header[2] == 'S' && header[3] == 'T') ||
                         (header[0] == 'G' && header[1] == 'E' && header[2] == 'T'))
                     {
                         continue;
                     }
 
-                    // Parse header: payload size is Little-Endian
+                    // Payload size is Little-Endian
                     uint payloadSize = (uint)header[0] |
                                        ((uint)header[1] << 8) |
                                        ((uint)header[2] << 16) |
@@ -978,7 +1143,11 @@ public sealed class AirPlayMirrorEngine
 
                     byte packetType = header[4];
 
-                    if (payloadSize > 10 * 1024 * 1024) break;
+                    if (payloadSize > 10 * 1024 * 1024)
+                    {
+                        _logger?.LogWarning("Invalid AirPlay payload size: {Size}", payloadSize);
+                        break;
+                    }
 
                     byte[] payload = [];
                     if (payloadSize > 0)
@@ -1011,6 +1180,8 @@ public sealed class AirPlayMirrorEngine
                                     spsPpsMs.Write(nalStartCode);
                                     spsPpsMs.Write(payload, ppsOffset + 2, ppsSize);
                                     _cachedSpsPps = spsPpsMs.ToArray();
+                                    prependSpsPps = true;
+                                    _logger?.LogInformation("AirPlay SPS ({SpsSize}b) and PPS ({PpsSize}b) received", spsSize, ppsSize);
                                 }
                             }
                         }
@@ -1020,13 +1191,12 @@ public sealed class AirPlayMirrorEngine
                         // Encrypted video frame (VCL NAL)
                         byte[] decrypted = DecryptVideoPayload(payload);
 
-                        // Convert AVCC lengths to Annex B 00 00 00 01 start codes
                         using var frameMs = new MemoryStream();
 
-                        if (_cachedSpsPps != null)
+                        if (prependSpsPps && _cachedSpsPps != null)
                         {
                             frameMs.Write(_cachedSpsPps);
-                            _cachedSpsPps = null;
+                            prependSpsPps = false;
                         }
 
                         int pos = 0;
@@ -1039,6 +1209,7 @@ public sealed class AirPlayMirrorEngine
                                           decrypted[pos + 3];
 
                             if (naluLen <= 0 || pos + 4 + naluLen > total) break;
+                            if ((decrypted[pos + 4] & 0x80) != 0) break; // forbidden_zero_bit
 
                             frameMs.Write(nalStartCode);
                             frameMs.Write(decrypted, pos + 4, naluLen);
@@ -1069,39 +1240,14 @@ public sealed class AirPlayMirrorEngine
 
     private byte[] DecryptVideoPayload(byte[] videoData)
     {
-        if (_mirrorCipher == null)
+        if (_mirrorCipher == null || videoData.Length == 0)
             return videoData;
 
         try
         {
-            if (_nextDecryptCount > 0)
-            {
-                for (int i = 0; i < _nextDecryptCount; i++)
-                {
-                    videoData[i] = (byte)(videoData[i] ^ _og[(16 - _nextDecryptCount) + i]);
-                }
-            }
-
-            int encryptLen = ((videoData.Length - _nextDecryptCount) / 16) * 16;
-            if (encryptLen > 0)
-            {
-                _mirrorCipher.ProcessBytes(videoData, _nextDecryptCount, encryptLen, videoData, _nextDecryptCount);
-            }
-
-            int restLen = (videoData.Length - _nextDecryptCount) % 16;
-            int restStart = videoData.Length - restLen;
-            _nextDecryptCount = 0;
-
-            if (restLen > 0)
-            {
-                Array.Clear(_og, 0, _og.Length);
-                Array.Copy(videoData, restStart, _og, 0, restLen);
-                _mirrorCipher.ProcessBytes(_og, 0, 16, _og, 0);
-                Array.Copy(_og, 0, videoData, restStart, restLen);
-                _nextDecryptCount = 16 - restLen;
-            }
-
-            return videoData;
+            var output = new byte[videoData.Length];
+            _mirrorCipher.ProcessBytes(videoData, 0, videoData.Length, output, 0);
+            return output;
         }
         catch (Exception ex)
         {
@@ -1129,6 +1275,13 @@ public sealed class AirPlayMirrorEngine
 
             _mirrorListener?.Stop();
             _mirrorListener = null;
+
+            _eventListener?.Stop();
+            _eventListener = null;
+
+            _timingClient?.Close();
+            _timingClient?.Dispose();
+            _timingClient = null;
 
             // Deallocate native dnssd.dll handles
             if (_airplaySdRef != IntPtr.Zero)
