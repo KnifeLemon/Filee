@@ -109,7 +109,12 @@ internal static class XcfBuilder
             var mask = w.Position;
             w.Pointer(0);
             if (!tilesWritten)
+            {
+                // A mask is still pointed at (here, at the next layer's header): the reader checks the budget first.
+                if (layer.Mask is not null)
+                    w.PatchPointer(mask, w.Position);
                 continue;
+            }
 
             w.PatchPointer(hierarchy, w.Position);
             Hierarchy(w, layer.Width, layer.Height, 4, layer.Rgba, precision, compression);

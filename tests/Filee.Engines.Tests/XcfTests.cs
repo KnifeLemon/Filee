@@ -388,4 +388,94 @@ public class XcfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         for (var i = 0; i < pixels.Length; i += 4)
             Assert.Equal((pixels[i], pixels[i + 1], pixels[i + 2]), (layer.Bgra![i + 2], layer.Bgra[i + 1], layer.Bgra[i]));
     }
+
+    // ───────────────────────── Hostile files ─────────────────────────
+
+    [Fact(Timeout = 60_000)]
+    public async Task Deeply_nested_groups_flatten_quickly()
+    {
+        // 60 Normal groups one inside the other: checking whether each keeps its look must not double per level.
+        XcfBuilder.Layer layer = new("Leaf", 2, 2, XcfBuilder.Fill(2, 2, 10, 200, 30));
+        for (var i = 0; i < 60; i++)
+            layer = XcfBuilder.Group($"G{i}", [layer]);
+        var path = Path.Combine(fx.NewFolder(), "nested.xcf");
+        File.WriteAllBytes(path, XcfBuilder.Build(Width, Height,
+            [layer, new("Fond", Width, Height, XcfBuilder.Fill(Width, Height, 200, 100, 50))]));
+
+        var (_, _, read) = Magick.PaintNet.Open(await ConvertAsync(path, "pdn"));
+        var names = read.Select(l => l.Name).ToList();
+        Assert.Equal(2, names.Count);
+        Assert.EndsWith("G1 / G0 / Leaf", names[1]);
+    }
+
+    [Fact]
+    public void A_group_mask_counts_toward_the_budget()
+    {
+        // A group as wide as GIMP allows, with a mask: refused before the mask's 2 GB are asked for.
+        var group = new XcfBuilder.Layer("G", 524_288, 4_095, [], Mask: [], Children: [new("A", 1, 1, [])]);
+        var path = Path.Combine(fx.NewFolder(), "masked-group.xcf");
+        File.WriteAllBytes(path, XcfBuilder.Build(64, 64, [group], tilesWritten: false));
+        var ex = Assert.Throws<InvalidDataException>(() => Magick.Xcf.Open(path));
+        Assert.Contains("too large", ex.Message);
+    }
+
+    [Fact]
+    public void Merging_is_capped_and_groups_count()
+    {
+        // The largest canvas Filee reads, with 20 empty groups over it: little to read, hours to merge.
+        var groups = Enumerable.Range(0, 20)
+            .Select(i => new XcfBuilder.Layer($"G{i}", 16_384, 16_384, [], Children: [new("A", 1, 1, [])]))
+            .ToList();
+        var path = Path.Combine(fx.NewFolder(), "groups.xcf");
+        File.WriteAllBytes(path, XcfBuilder.Build(16_384, 16_384, groups, tilesWritten: false));
+        var ex = Assert.Throws<InvalidDataException>(() => Magick.Xcf.Open(path));
+        Assert.Contains("too large", ex.Message);
+    }
+
+    [Fact]
+    public void A_layer_listed_twice_is_damage()
+    {
+        var bytes = File.ReadAllBytes(Xcf());
+        // XCF 12: the layer pointers (8 bytes each) start after the header (30 bytes) and the image properties (17 bytes).
+        bytes.AsSpan(47, 8).CopyTo(bytes.AsSpan(55));
+        var path = Path.Combine(fx.NewFolder(), "twice.xcf");
+        File.WriteAllBytes(path, bytes);
+        Assert.Throws<InvalidDataException>(() => Magick.Xcf.Open(path));
+    }
+
+    [Fact]
+    public void Long_names_are_cut_to_a_kilobyte_on_a_whole_character()
+    {
+        var name = new string('\u00e9', 3_000); // two bytes each in UTF-8
+        var path = Path.Combine(fx.NewFolder(), "long.xcf");
+        File.WriteAllBytes(path, XcfBuilder.Build(4, 4, [new(name, 4, 4, XcfBuilder.Fill(4, 4, 1, 2, 3))]));
+        Assert.Equal(new string('\u00e9', 512), Assert.Single(Magick.Xcf.Open(path).Layers).Name);
+    }
+
+    [Fact]
+    public void Merging_can_be_cancelled()
+    {
+        var picture = Magick.Xcf.Open(Xcf());
+        Assert.Throws<OperationCanceledException>(() =>
+            Magick.Xcf.Merge(picture, picture.Layers, new CancellationToken(canceled: true)));
+    }
+
+    [Fact]
+    public async Task Too_many_layers_for_their_canvas_become_the_merged_picture()
+    {
+        // 70 one-pixel layers on 2,048 x 2,048: each on a canvas of its own would pass Paint.NET's pixel budget.
+        var layers = Enumerable.Range(0, 70)
+            .Select(i => new XcfBuilder.Layer($"L{i}", 1, 1, XcfBuilder.Fill(1, 1, 255, 0, 0), X: i, Y: i))
+            .Append(new XcfBuilder.Layer("Fond", 2_048, 2_048, XcfBuilder.Fill(2_048, 2_048, 0, 0, 255)))
+            .ToList();
+        var path = Path.Combine(fx.NewFolder(), "many.xcf");
+        File.WriteAllBytes(path, XcfBuilder.Build(2_048, 2_048, layers));
+
+        var (_, _, read) = Magick.PaintNet.Open(await ConvertAsync(path, "pdn"));
+        var layer = Assert.Single(read.ToList());
+        Assert.Equal("Background", layer.Name);
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, layer.Bgra[..4]); // the red dot at 0,0, merged over blue
+        using var psd = new MagickImageCollection(await ConvertAsync(path, "psd"));
+        Assert.Equal(2, psd.Count);
+    }
 }

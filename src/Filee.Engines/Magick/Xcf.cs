@@ -49,8 +49,17 @@ internal static class Xcf
     /// <summary>The largest canvas GIMP makes (GIMP_MAX_IMAGE_SIZE).</summary>
     public const int MaxSide = 524_288;
 
-    /// <summary>More layers than GIMP users make; a file claiming more is damaged.</summary>
-    private const int MaxLayers = 10_000;
+    /// <summary>More layers and groups than GIMP users make, as for Paint.NET; a file claiming more is damaged.</summary>
+    private const int MaxLayers = 4_096;
+
+    /// <summary>
+    /// The most merging Filee does for one picture, counted as canvas pixels × shown layers and groups (merging goes
+    /// over every canvas row for each): sixteen times the pixel budget, a 6,000 × 4,000 picture of 180 layers.
+    /// </summary>
+    internal const long MaxMergeWork = 16 * MaxPixels;
+
+    /// <summary>Bytes of a layer name Filee keeps; the rest is skipped.</summary>
+    private const int MaxNameBytes = 1_024;
 
     /// <summary>The most pixels Filee reads from an .xcf, every layer counted, as for Paint.NET: 1 GB at 8 bits.</summary>
     internal const long MaxPixels = PaintNet.MaxPixels;
@@ -171,16 +180,18 @@ internal static class Xcf
             if ((long)width * height > MaxPixels)
                 throw new InvalidDataException("This GIMP picture is too large to convert.");
 
+            // GIMP lists each layer once: a pointer listed again would have its layer read (and its name decoded) again.
             var pointers = new List<long>();
+            var seen = new HashSet<long>();
             while (Pointer() is var pointer and not 0)
             {
-                if (pointers.Count == MaxLayers)
+                if (pointers.Count == MaxLayers || !seen.Add(pointer))
                     throw Damaged;
                 pointers.Add(pointer);
             }
 
             var headers = pointers.Select(ReadLayerHeader).Where(h => h is not null).Select(h => h!).ToList();
-            CheckBudget(headers);
+            CheckBudget(headers, (long)width * height);
             var layers = BuildTree(headers);
             foreach (var header in headers)
                 ReadPixels(header);
@@ -307,19 +318,33 @@ internal static class Xcf
         }
 
         /// <summary>
-        /// Refuses a picture whose layers claim more pixels than Filee reads, or more tiles than the file has room to
-        /// point at, before any pixel is allocated: a small file can't claim a huge canvas or thousands of large layers.
+        /// Refuses a picture whose layers and masks claim more pixels than Filee reads, more tiles than the file has room
+        /// to point at, or more merging than Filee does, before any pixel is allocated: a small file can't claim a huge
+        /// canvas, thousands of large layers, a huge group mask or thousands of empty groups over a large canvas.
         /// </summary>
-        private void CheckBudget(List<Header> headers)
+        private void CheckBudget(List<Header> headers, long canvas)
         {
-            long pixels = 0, tiles = 0;
-            foreach (var header in headers.Where(h => h.Layer.Children is null))
+            long pixels = 0, tiles = 0, shown = 0;
+            foreach (var header in headers)
             {
                 var layer = header.Layer;
-                pixels += (long)layer.Width * layer.Height * (header.Mask != 0 ? 5 : 4) / 4;
-                tiles += (long)((layer.Width + Tile - 1) / Tile) * ((layer.Height + Tile - 1) / Tile);
+                var area = (long)layer.Width * layer.Height;
+                var layerTiles = (long)((layer.Width + Tile - 1) / Tile) * ((layer.Height + Tile - 1) / Tile);
+                // A layer's pixels take four bytes each, a mask's one; a group's own pixels aren't read, its mask is.
+                if (layer.Children is null)
+                {
+                    pixels += area;
+                    tiles += layerTiles;
+                }
+                if (header.Mask != 0)
+                {
+                    pixels += area / 4;
+                    tiles += layerTiles;
+                }
+                if (layer.Visible)
+                    shown++;
             }
-            if (pixels > MaxPixels)
+            if (pixels > MaxPixels || canvas * shown > MaxMergeWork)
                 throw new InvalidDataException("This GIMP picture is too large to convert.");
             if (tiles * PointerSize > file.Length)
                 throw Damaged;
@@ -380,7 +405,7 @@ internal static class Xcf
             Seek(pointer);
             if (U32() != width || U32() != height)
                 throw Damaged;
-            Text();
+            Text(keep: 0);
             while (true)
             {
                 var (property, length) = (U32(), U32());
@@ -646,26 +671,42 @@ internal static class Xcf
 
         private float F32() => BitConverter.Int32BitsToSingle(I32());
 
-        /// <summary>A string: its byte count with the closing zero, then UTF-8.</summary>
-        private string Text()
+        /// <summary>
+        /// A string: its byte count with the closing zero, then UTF-8. Only the first <paramref name="keep"/> bytes are
+        /// decoded (a whole character at the end), the rest is skipped.
+        /// </summary>
+        private string Text(int keep = MaxNameBytes)
         {
             var length = U32();
             if (length == 0)
                 return "";
-            if (length > 64 * 1024)
+            if (length > 64 * 1024 || length > file.Length - file.Position)
                 throw Damaged;
-            var bytes = Bytes((int)length);
-            return Encoding.UTF8.GetString(bytes, 0, bytes.Length - 1).TrimEnd('\0');
+            var end = file.Position + length;
+            var bytes = Bytes((int)Math.Min(length - 1, keep));
+            Seek(end);
+            var count = bytes.Length;
+            // When the name was cut, drop a last character whose bytes were not all kept (UTF-8 self-synchronises).
+            if (count > 0 && count < length - 1)
+            {
+                var lead = count - 1;
+                while (lead > 0 && (bytes[lead] & 0xC0) == 0x80)
+                    lead--;
+                var expected = bytes[lead] switch { < 0x80 => 1, < 0xE0 => 2, < 0xF0 => 3, _ => 4 };
+                if (lead + expected > count)
+                    count = lead;
+            }
+            return Encoding.UTF8.GetString(bytes, 0, count).TrimEnd('\0');
         }
     }
 
     // ───────────────────────── Merging ─────────────────────────
 
     /// <summary>The picture as GIMP shows it: every visible layer merged.</summary>
-    public static MagickImage ReadFlattened(string path)
+    public static MagickImage ReadFlattened(string path, CancellationToken ct = default)
     {
         var picture = Open(path);
-        var image = FromBgra(Merge(picture, picture.Layers), picture.Width, picture.Height);
+        var image = FromBgra(Merge(picture, picture.Layers, ct), picture.Width, picture.Height);
         if (picture.Grayscale)
             image.ColorType = ColorType.GrayscaleAlpha;
         return image;
@@ -675,7 +716,7 @@ internal static class Xcf
     /// <paramref name="layers"/> (bottom first) merged on a transparent canvas as GIMP merges a picture or a group, as
     /// BGRA.
     /// </summary>
-    internal static byte[] Merge(Picture picture, List<Layer> layers)
+    internal static byte[] Merge(Picture picture, List<Layer> layers, CancellationToken ct = default)
     {
         var width = picture.Width;
         var canvas = new byte[width * picture.Height * 4];
@@ -683,6 +724,7 @@ internal static class Xcf
         var row = new float[width * 4];
         for (var y = 0; y < picture.Height; y++)
         {
+            ct.ThrowIfCancellationRequested();
             Array.Clear(row);
             var space = XcfBlend.Space.Perceptual;
             merger.Draw(layers, y, row, ref space, depth: 0);
@@ -709,6 +751,9 @@ internal static class Xcf
 
         public bool IsEmpty => Right <= Left || Bottom <= Top;
 
+        public bool Contains(Box other) => other.IsEmpty
+            || !IsEmpty && Left <= other.Left && Top <= other.Top && Right >= other.Right && Bottom >= other.Bottom;
+
         public static Box Of(Layer layer) => new(layer.X, layer.Y, (long)layer.X + layer.Width, (long)layer.Y + layer.Height);
 
         public Box Intersect(Box other) => IsEmpty || other.IsEmpty ? None
@@ -723,7 +768,7 @@ internal static class Xcf
     /// far, and a layer over an empty box is drawn as it is, at its opacity, whatever its mode (the bottom layer, or the
     /// first one over layers that drew nothing). Nothing is drawn outside the box after a layer.
     /// </summary>
-    private readonly record struct Step(bool OverNothing, Box After);
+    private readonly record struct Step(bool OverNothing, Box After, bool Clips);
 
     /// <summary>Merges layers one canvas row at a time, a row per group being merged.</summary>
     private sealed class Merger
@@ -813,7 +858,10 @@ internal static class Xcf
                     after = after.Union(source);
                 if (withBackdrop)
                     after = after.Union(box);
-                _steps[layer] = new Step(overNothing, after);
+                // What was drawn lies in the box before and, where the layer adds to it, in the layer's box: only a box
+                // that leaves some of that out (clip to layer, intersection) has anything to clear.
+                var clips = !after.Contains(box) || withLayer && !after.Contains(source);
+                _steps[layer] = new Step(overNothing, after, clips);
                 box = after;
             }
             return box;
@@ -833,7 +881,8 @@ internal static class Xcf
                     continue;
                 var step = _steps[layer];
                 DrawLayer(layer, step.OverNothing, y, row, ref space, depth);
-                Clip(row, step.After, y);
+                if (step.Clips)
+                    Clip(row, step.After, y);
             }
         }
 
@@ -897,10 +946,11 @@ internal static class Xcf
                 // GIMP keeps a group's result at the picture's precision: at 8 bits, it is rounded to 8 bits.
                 if (_picture.GroupsAtEightBits is { } stored)
                 {
-                    XcfBlend.Convert(group, groupSpace, stored);
+                    var span = group.AsSpan(from * 4, (to - from) * 4);
+                    XcfBlend.Convert(span, groupSpace, stored);
                     groupSpace = stored;
-                    for (var i = 0; i < group.Length; i++)
-                        group[i] = ToByte(group[i]) / 255f;
+                    for (var i = 0; i < span.Length; i++)
+                        span[i] = ToByte(span[i]) / 255f;
                 }
                 XcfBlend.Draw(mode, row, ref space, group, groupSpace, layer.Opacity, mask, from, to, _scratch);
                 return;
@@ -970,7 +1020,7 @@ internal static class Xcf
     /// mask) gives its layers, named "Group / Layer"; any other group becomes one layer of its merged result, so the
     /// picture stays as GIMP shows it.
     /// </summary>
-    internal static List<FlatLayer> FlatLayers(Picture picture)
+    internal static List<FlatLayer> FlatLayers(Picture picture, CancellationToken ct = default)
     {
         var flat = new List<FlatLayer>();
         Add(picture.Layers, "", true, 1);
@@ -980,6 +1030,7 @@ internal static class Xcf
         {
             foreach (var layer in layers)
             {
+                ct.ThrowIfCancellationRequested();
                 var shown = visible && layer.Visible;
                 if (layer.Children is { } children)
                 {
@@ -988,7 +1039,7 @@ internal static class Xcf
                         Add(children, prefix + layer.Name + " / ", shown, opacity * layer.Opacity);
                         continue;
                     }
-                    var merged = Merge(picture, [Alone(layer)]);
+                    var merged = Merge(picture, [Alone(layer)], ct);
                     ApplyMask(picture, layer, merged);
                     var mode = layer.Mode.Id == XcfBlend.PassThrough ? XcfBlend.Normal : layer.Mode.Id;
                     flat.Add(new FlatLayer(prefix + layer.Name, merged, shown, opacity * layer.Opacity, mode));
@@ -1010,6 +1061,20 @@ internal static class Xcf
         };
     }
 
+    /// <summary>How many layers <see cref="FlatLayers"/> gives, counted without making them.</summary>
+    private static long FlatCount(List<Layer> layers) =>
+        layers.Sum(l => l.Children is { } children && KeepsLook(l) ? FlatCount(children) : 1L);
+
+    /// <summary>
+    /// The layers for PSD and Paint.NET, or when each on a canvas of its own would take more than Paint.NET's pixel
+    /// budget (canvas × layers, as <see cref="PaintNet"/> reads them), the merged picture as one layer named
+    /// Background: the conversion still works, and Filee can read the result back.
+    /// </summary>
+    private static List<FlatLayer> LayersOrMerged(Picture picture, Func<byte[]> merged, CancellationToken ct) =>
+        (long)picture.Width * picture.Height * Math.Max(1, FlatCount(picture.Layers)) <= PaintNet.MaxPixels
+            ? FlatLayers(picture, ct)
+            : [new FlatLayer("Background", merged(), true, 1, XcfBlend.Normal)];
+
     /// <summary>
     /// Whether a group's layers, drawn without it, give the same picture: a pass-through group at full opacity, or a
     /// Normal one whose layers are all Normal, at full opacity unless it holds one layer. Neither may have a mask.
@@ -1024,8 +1089,9 @@ internal static class Xcf
         return IsNormal(group.Mode) && AllNormal(shown) && (group.Opacity >= 1 || shown is [{ Children: null }]);
 
         // Every shown layer drawn Normal, in groups that keep their look themselves.
+        // KeepsLook already checks a Normal group's layers; a pass-through group's are checked here, each layer once.
         static bool AllNormal(IEnumerable<Layer> layers) => layers.Where(l => l.Visible).All(l =>
-            l.Children is null ? IsNormal(l.Mode) : KeepsLook(l) && AllNormal(l.Children));
+            l.Children is null ? IsNormal(l.Mode) : KeepsLook(l) && (l.Mode.Id != XcfBlend.PassThrough || AllNormal(l.Children)));
 
         static bool IsNormal(XcfBlend.Mode mode) =>
             mode.Id is XcfBlend.Normal or XcfBlend.NormalLegacy && mode.Composite == XcfBlend.Composite.Union;
@@ -1070,9 +1136,9 @@ internal static class Xcf
     public static IReadOnlyList<string> SaveLayeredPsd(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
         var picture = Open(step.InputPath);
-        var merged = Merge(picture, picture.Layers);
+        var merged = Merge(picture, picture.Layers, ct);
         progress?.Report(0.3);
-        var layers = FlatLayers(picture).Select(l =>
+        var layers = LayersOrMerged(picture, () => merged, ct).Select(l =>
         {
             ct.ThrowIfCancellationRequested();
             return new PaintNet.PsdLayer(l.Name, l.Bgra, l.Visible, OpacityByte(l.Opacity), ComposeOf(l.Mode));
@@ -1092,7 +1158,7 @@ internal static class Xcf
                 $"Paint.NET opens pictures of at most {PaintNetWriter.MaxSide:N0} pixels on a side; this one is {picture.Width:N0} × {picture.Height:N0}.");
         progress?.Report(0.3);
         var layers = new List<PaintNetWriter.Layer>();
-        foreach (var layer in FlatLayers(picture))
+        foreach (var layer in LayersOrMerged(picture, () => Merge(picture, picture.Layers, ct), ct))
         {
             ct.ThrowIfCancellationRequested();
             layers.Add(new PaintNetWriter.Layer(layer.Name, layer.Bgra, layer.Visible, OpacityByte(layer.Opacity), BlendModeOf(layer.Mode)));

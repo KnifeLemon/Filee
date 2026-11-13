@@ -122,7 +122,10 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             // Animated PNGs are often saved as .png: read them as APNG, so they stay animated as GIF or WebP. An AVIF is an
             // animation only when it is an image sequence.
             var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : AvifSequence.SourceFormat(step.From, step.InputPath);
-            using var images = ImageReader.Read(step.InputPath, from, step.Preset);
+            // GIMP's XCF is merged by Filee: give it the token, so a hostile file can be cancelled row by row.
+            using var images = step.From == "xcf"
+                ? new MagickImageCollection { Xcf.ReadFlattened(step.InputPath, cancellationToken) }
+                : ImageReader.Read(step.InputPath, from, step.Preset);
             var written = await WriteAsync(images, from, step, progress, cancellationToken, LocateFfmpeg);
             // From a cursor, the hotspot follows the picture into the new one (every CUR is already a cursor, its
             // hotspot at the top left).

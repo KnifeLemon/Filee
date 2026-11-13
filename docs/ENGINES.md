@@ -362,16 +362,22 @@ in it also builds the package (artifact `windows-arm64-package`).
   64-bit pointers from XCF 11, tiles uncompressed, RLE or zlib, 8, 16 and 32-bit integer, half, float and double
   precision, RGB, grayscale and indexed, layer groups and layer masks. ImageMagick reads only 8-bit files without
   zlib and merges them its own way. For PNG, JPG and every other target the layers are merged as GIMP 2.10 and 3 draw
-  them (`XcfBlend`): every layer mode, legacy ones included, each in its blend and composite space (linear RGB,
+  them (`XcfBlend`): every layer mode, legacy ones included, but Dissolve (GIMP scatters its pixels at random; Filee
+  draws it as Normal, so a Dissolve layer that isn't fully opaque looks different), each in its blend and composite space (linear RGB,
   perceptual RGB or CIE Lab) with its composite mode, the opacity, masks, groups and pass-through groups (with GIMP's
   shortcut of drawing some as ordinary groups), and GIMP's rule that a layer over nothing yet is drawn as it is. On
   260 random pictures GIMP 2.10 made (every mode, opacity, offset, mask and group), 246 come out pixel for pixel as
   GIMP shows them and the others within one level. Pixels are kept at 8 bits, so a picture of a higher precision is
   merged from 8-bit values: of 120 such random pictures, 105 come within one level of GIMP, the rest within a few,
   more only where a mode blows small differences up (Dodge or Burn close to white or black). Non-destructive filters
-  of GIMP 3 aren't applied. To **PSD / PSB** and **PDN** the layers are kept:
+  of GIMP 3 aren't applied. Before any pixel is read, a file is refused when its layers and masks (groups' masks
+  included) claim more than the pixel budget, more tiles than the file can point at, or more merging than sixteen
+  times the budget (canvas × shown layers and groups); a pointer listed twice is damage, and names are kept to 1 KB.
+  Merging (for a picture, PSD or PDN) can be cancelled row by row. To **PSD / PSB** and **PDN** the layers are kept:
   names (Unicode), opacity, visibility, the place on the canvas and the blend modes the target shares (others become
-  Normal), with GIMP's merged picture first in a PSD. Neither has layer groups: a group whose layers look the same
+  Normal), with GIMP's merged picture first in a PSD. When the layers, each on a canvas of its own, would take more
+  than Paint.NET's pixel budget (canvas × layers), the merged picture becomes the one layer instead, so the
+  conversion still works and Filee can read the result back. Neither has layer groups: a group whose layers look the same
   without it (pass-through at full opacity, or Normal holding only Normal layers, without a mask) gives its layers,
   named "Group / Layer"; any other becomes one layer of its merged result. Masks are applied to the layers' alpha.
   Filee also **writes** XCF (`XcfWriter`): 8-bit RGB with alpha, RLE tiles, no groups, at the lowest version that
