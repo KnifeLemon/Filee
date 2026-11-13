@@ -1,6 +1,6 @@
-// Readers of the line-based text subtitle formats: SubRip (SRT), WebVTT, ASS/SSA, LRC and MicroDVD. SAMI, TTML and
-// SCC have their own files. Readers are lenient: missing blank lines, one- or two-digit fractions, comma or dot before
-// the milliseconds and stray styling codes are accepted, because subtitle files are hand-made as often as not.
+// Readers of the line-based text subtitle formats: SubRip (SRT), WebVTT, ASS/SSA, LRC, KuGou KRC and MicroDVD. SAMI,
+// TTML and SCC have their own files. Readers are lenient: missing blank lines, one- or two-digit fractions, comma or dot
+// before the milliseconds and stray styling codes are accepted, because subtitle files are hand-made as often as not.
 
 using System.Globalization;
 using System.Text;
@@ -12,7 +12,7 @@ namespace Filee.Engines.Subtitles;
 internal static partial class SubtitleReader
 {
     /// <summary>Format ids this engine reads.</summary>
-    public static readonly string[] Formats = ["srt", "ass", "ssa", "vtt", "smi", "lrc", "ttml", "sub", "scc"];
+    public static readonly string[] Formats = ["srt", "ass", "ssa", "vtt", "smi", "lrc", "krc", "ttml", "sub", "scc"];
 
     /// <summary>Reads a file of format <paramref name="format"/> (decoding it with <see cref="SubtitleEncoding"/>).</summary>
     /// <exception cref="InvalidDataException">The file is not a subtitle file of that format or has no cues.</exception>
@@ -20,6 +20,8 @@ internal static partial class SubtitleReader
     {
         if (format == "sub" && LooksBinary(bytes))
             throw new InvalidDataException("This .sub file holds VobSub picture subtitles (from a DVD), not MicroDVD text. Picture subtitles can't be turned into text without OCR.");
+        if (format == "krc")
+            bytes = UnpackKrc(bytes);
         var text = SubtitleEncoding.Decode(bytes).Replace("\r\n", "\n").Replace('\r', '\n');
         var document = format switch
         {
@@ -27,6 +29,7 @@ internal static partial class SubtitleReader
             "vtt" => ReadVtt(text),
             "ass" or "ssa" => ReadAss(text),
             "lrc" => ReadLrc(text),
+            "krc" => ReadKrc(text),
             "sub" => ReadMicroDvd(text),
             "smi" => SamiReader.Read(text),
             "ttml" => TtmlReader.Read(text),
@@ -304,6 +307,77 @@ internal static partial class SubtitleReader
         return document;
     }
 
+    // ───────────────────────── KRC ─────────────────────────
+
+    /// <summary>The XOR layer every KuGou .krc file shares (packing, not protection: no key or account behind it).</summary>
+    private static ReadOnlySpan<byte> KrcKey => [0x40, 0x47, 0x61, 0x77, 0x5E, 0x32, 0x74, 0x47, 0x51, 0x36, 0x31, 0x2D, 0xCE, 0xD2, 0x6E, 0x69];
+
+    /// <summary>More text than this is no lyrics file; stops a small file from inflating without end.</summary>
+    private const int KrcMaxText = 16 * 1024 * 1024;
+
+    /// <summary>The lyrics text inside a KuGou .krc: <c>krc1</c>, then zlib data XORed with <see cref="KrcKey"/>.</summary>
+    internal static byte[] UnpackKrc(byte[] bytes)
+    {
+        if (bytes is not [(byte)'k', (byte)'r', (byte)'c', (byte)'1', _, ..])
+            throw new InvalidDataException("This is not a KuGou .krc lyrics file (it doesn't start with \"krc1\").");
+        var packed = bytes[4..];
+        for (var i = 0; i < packed.Length; i++)
+            packed[i] ^= KrcKey[i % KrcKey.Length];
+        using var text = new MemoryStream();
+        try
+        {
+            using var zlib = new System.IO.Compression.ZLibStream(new MemoryStream(packed), System.IO.Compression.CompressionMode.Decompress);
+            var buffer = new byte[81920];
+            for (int read; (read = zlib.Read(buffer)) > 0 && text.Length <= KrcMaxText;)
+                text.Write(buffer, 0, read);
+        }
+        catch (Exception e)
+        {
+            throw new InvalidDataException("This .krc lyrics file is damaged: its packed text can't be unpacked.", e);
+        }
+        if (text.Length > KrcMaxText)
+            throw new InvalidDataException("This .krc file unpacks to more text than a lyrics file holds.");
+        return text.ToArray();
+    }
+
+    /// <summary>
+    /// KuGou lyrics, unpacked: <c>[start,duration]</c> in milliseconds before each line, <c>&lt;offset,duration,0&gt;</c>
+    /// before each word (dropped: one cue per line), and LRC-style <c>[ti:…]</c> / <c>[offset:…]</c> tags. Other tags
+    /// (<c>[ar:]</c>, <c>[hash:]</c>, the translations in <c>[language:]</c>) are skipped.
+    /// </summary>
+    private static SubtitleDocument ReadKrc(string text)
+    {
+        var document = new SubtitleDocument();
+        var offset = TimeSpan.Zero;
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim().TrimStart('﻿');
+            if (LrcMetadata().Match(line) is { Success: true } metadata)
+            {
+                var value = metadata.Groups["value"].Value.Trim();
+                switch (metadata.Groups["key"].Value.ToLowerInvariant())
+                {
+                    case "ti" when value.Length > 0:
+                        document.Title = value;
+                        break;
+                    case "offset" when int.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var ms):
+                        offset = TimeSpan.FromMilliseconds(ms);
+                        break;
+                }
+                continue;
+            }
+            if (KrcLine().Match(line) is not { Success: true } match)
+                continue;
+            var lyric = KrcWordTime().Replace(match.Groups["text"].Value, "").Trim();
+            if (lyric.Length == 0)
+                continue;
+            var start = TimeSpan.FromMilliseconds(long.Parse(match.Groups["start"].Value, CultureInfo.InvariantCulture));
+            var length = TimeSpan.FromMilliseconds(long.Parse(match.Groups["length"].Value, CultureInfo.InvariantCulture));
+            document.Add(start - offset, start + length - offset, lyric);
+        }
+        return document;
+    }
+
     // ───────────────────────── MicroDVD ─────────────────────────
 
     /// <summary>The frame rate MicroDVD files are assumed to use when they don't say (the film rate of most rips).</summary>
@@ -400,6 +474,12 @@ internal static partial class SubtitleReader
 
     [GeneratedRegex(@"<\d+:\d{1,2}(?:[.:]\d{1,3})?>")]
     private static partial Regex LrcWordTime();
+
+    [GeneratedRegex(@"^\[(?<start>\d{1,9}),(?<length>\d{1,9})\](?<text>.*)$")]
+    private static partial Regex KrcLine();
+
+    [GeneratedRegex(@"<\d+,\d+,\d+>")]
+    private static partial Regex KrcWordTime();
 
     [GeneratedRegex(@"^\{(?<start>\d+)\}\{(?<end>\d*)\}(?<text>.*)$")]
     private static partial Regex MicroDvdLine();

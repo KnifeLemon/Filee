@@ -70,7 +70,8 @@ public static class FormatFields
             "odp", "otp", "key", "dps", "md", "html", "mhtml", "opml", "json", "xml", "vcf", "ics", "epub", "kepub",
             "azw3", "fb2", "cbz", "cbr", "cb7", "cbt", "cbc", "m4v", "mkv", "webm", "avi", "wmv", "mpg", "ts",
             "m2ts", "ogv", "m4b", "m4r", "aac", "flac", "ogg", "opus", "wma", "aiff", "weba", "mka", "qta", "7z", "rar",
-            "dmg", "iso", "img", "alz", "egg", "split", "dxf", "srt", "vtt", "smi", "lrc"
+            "dmg", "iso", "img", "alz", "egg", "split", "dxf", "srt", "vtt", "smi", "lrc",
+            "krc"
         ]),
         (FormatGrade.Specialist,
         [
