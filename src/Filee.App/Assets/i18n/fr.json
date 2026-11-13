@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "Système de fichiers ISO",
   "app.name": "Filee",
   "app.tagline": "Glissez, déposez, c'est converti.",
 
@@ -1758,8 +1759,8 @@
   "general.collect_dropped_hint": "Les fichiers déposés ou choisis attendent dans une liste sur l'accueil, et Choisir une action les convertit ensemble, dans l'ordre affiché. Désactivé : chaque dépôt ouvre le donut, comme avant.",
   "error.iso_root": "La création ISO ne prend pas en charge la racine des lecteurs ou des systèmes de fichiers. Sélectionnez un dossier à l’intérieur du lecteur.",
   "error.iso_link": "La création ISO ne suit pas les liens symboliques ni les jonctions. Sélectionnez un dossier original sans éléments liés.",
-  "error.iso_name": "Les noms Joliet sont limités à 62 caractères Unicode BMP, sans caractères de contrôle, points-virgules ni barres obliques inverses ni *, : ou ?. Les chemins relatifs sont limités à 240 caractères.",
-  "error.iso_file_size": "Pour créer une ISO, chaque fichier doit faire moins de 4 GiB.",
+  "error.iso_name": "Les noms Joliet sont limités à 62 caractères Unicode BMP, sans caractères de contrôle, points-virgules ni barres obliques inverses ni *, : ou ?. Les chemins relatifs sont limités à 240 caractères. Pour des noms plus longs ou des fichiers plus volumineux, choisissez UDF 2.01 dans l’option de système de fichiers ISO du préréglage.",
+  "error.iso_file_size": "Pour créer une ISO, chaque fichier doit faire moins de 4 GiB. Pour des noms plus longs ou des fichiers plus volumineux, choisissez UDF 2.01 dans l’option de système de fichiers ISO du préréglage.",
   "error.iso_changed": "La création ISO s’est arrêtée avant l’écriture de toutes les données. Un fichier source a peut-être changé pendant la conversion.",
   "engine.iso.name": "ISO",
   "engine.iso.description": "Crée des images ISO à partir de dossiers ou du contenu des archives, en conservant les noms Unicode et les dossiers vides.",

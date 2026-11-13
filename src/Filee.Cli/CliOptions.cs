@@ -20,6 +20,7 @@ internal sealed record CliOptions
     public FileSortOrder? Sort { get; set; }
     public int? Quality { get; set; }
     public string? Pages { get; set; }
+    public Filee.Core.Presets.IsoFileSystem? IsoFileSystem { get; set; }
 
     /// <summary>--split-every: PDF → PDF in files of this many pages (#1259).</summary>
     public int? SplitEvery { get; set; }
@@ -78,6 +79,12 @@ internal sealed record CliOptions
 
             switch (arg.ToLowerInvariant())
             {
+                case "--iso-filesystem":
+                    var filesystem = Value()?.ToLowerInvariant();
+                    if (filesystem == "joliet") options.IsoFileSystem = Filee.Core.Presets.IsoFileSystem.Joliet;
+                    else if (filesystem == "udf201") options.IsoFileSystem = Filee.Core.Presets.IsoFileSystem.Udf201;
+                    else options.Error ??= "--iso-filesystem must be joliet or udf201.";
+                    break;
                 case "-t" or "--to":
                     options.To = Value();
                     break;

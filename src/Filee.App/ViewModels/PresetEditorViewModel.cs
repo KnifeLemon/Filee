@@ -202,6 +202,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         SampleRates = Steps(SampleRateSteps, _edit.Media.AudioSampleRate,
             r => r == 0 ? loc["presets.sample_rate.source"] : $"{r / 1000.0:0.##} kHz");
         WavFormats = Enum.GetValues<WavSampleFormat>().Select(v => new Choice<WavSampleFormat>(v, loc[$"presets.wav_format.{v}"])).ToList();
+        IsoFileSystems = Enum.GetValues<IsoFileSystem>().Select(v => new Choice<IsoFileSystem>(v, v == Core.Presets.IsoFileSystem.Joliet ? "ISO 9660 + Joliet" : "UDF 2.01")).ToList();
         ArchiveLevels = Enum.GetValues<ArchiveLevel>().Select(v => new Choice<ArchiveLevel>(v, loc[$"presets.archive_level.{v}"])).ToList();
         TraceModes = Enum.GetValues<TracingMode>().Select(v => new Choice<TracingMode>(v, loc[$"presets.trace_mode.{v}"])).ToList();
         // Version names stay as AutoCAD calls them, in every language.
@@ -313,6 +314,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _upscaleScale = _edit.Upscale.Scale > 0 ? _edit.Upscale.Scale : 4;
         _selectedUpscaleModel = UpscaleModels.FirstOrDefault(m => string.Equals(m.Id, _edit.Upscale.Model, StringComparison.OrdinalIgnoreCase))
             ?? UpscaleModels.FirstOrDefault();
+        _isoFileSystem = IsoFileSystems.First(v => v.Value == _edit.Archive.IsoFileSystem);
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -506,6 +508,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<int>> AudioChannelChoices { get; }
     public IReadOnlyList<Choice<int>> SampleRates { get; }
     public IReadOnlyList<Choice<WavSampleFormat>> WavFormats { get; }
+    public IReadOnlyList<Choice<IsoFileSystem>> IsoFileSystems { get; }
     public IReadOnlyList<Choice<ArchiveLevel>> ArchiveLevels { get; }
     public IReadOnlyList<Choice<TracingMode>> TraceModes { get; }
 
@@ -536,7 +539,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowVideoSplit), nameof(ShowVideoParts),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec), nameof(ShowRingtone),
-        nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
+        nameof(ShowIso), nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
         nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
         nameof(ShowImageSize), nameof(SizeRangeError), nameof(CustomSizeError), nameof(IsValid))]
@@ -1016,6 +1019,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _caption;
     /// <summary>Language spoken in the audio for Whisper transcription (MediaOptions.SpokenLanguage).</summary>
     [ObservableProperty] private Choice<string> _spokenLanguage;
+    [ObservableProperty] private Choice<IsoFileSystem> _isoFileSystem;
+
+    partial void OnIsoFileSystemChanged(Choice<IsoFileSystem>? oldValue, Choice<IsoFileSystem> newValue) =>
+        Choices.Restore(oldValue, newValue, value => IsoFileSystem = value);
     [ObservableProperty] private Choice<ArchiveLevel> _archiveLevel;
     [ObservableProperty] private bool _combineIntoOne;
     [ObservableProperty] private bool _saveEveryFrame;
@@ -1232,6 +1239,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         && !ShowCropFrame;
     public bool ShowVideoParts => ShowVideoSplit && VideoOutput.Value;
     /// <summary>ISO creation has no archive compression settings.</summary>
+    public bool ShowIso => TargetId == "iso";
     public bool ShowArchive => TargetCategory == FormatCategory.Archive && TargetId != "iso";
     public bool ShowArchiveOptions => ShowArchive && TargetId != FormatRegistry.Folder;
     /// <summary>"Extract" has nothing to set; a line says what it does instead.</summary>
@@ -1473,6 +1481,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.RingtoneStart = Seconds(RingtoneStart, 0, 0, 24 * 3600);
         media.RingtoneLength = Seconds(RingtoneLength, MediaOptions.DefaultRingtoneLength, MediaOptions.MinRingtoneLength, MediaOptions.MaxRingtoneLength);
         media.AskRingtonePart = ShowRingtone && AskRingtonePart;
+        _original.Archive.IsoFileSystem = IsoFileSystem.Value;
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = TargetId != "iso" && CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;

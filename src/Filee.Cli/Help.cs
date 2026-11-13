@@ -38,6 +38,7 @@ internal static class Help
           filee version
 
         Examples:
+          filee convert folder --to iso --iso-filesystem udf201
           filee convert photo.heic --to jpg
           filee convert *.png --to webp --quality 80 -o converted
           filee convert D:\Scans --recursive --preset to-pdf
@@ -84,6 +85,8 @@ internal static class Help
         Options:
           -t, --to <format>      Target format, e.g. jpg, png, pdf, docx, mp4 (see 'filee formats')
           -p, --preset <preset>  A preset from the app, by id or name (see 'filee presets')
+              --iso-filesystem <joliet|udf201>
+                                 ISO filesystem; an explicit choice overrides the preset (default: Joliet).
           -o, --output <folder>  Save there instead of next to the sources
           -r, --recursive        Include sub folders
               --sort <order>     The order files merge in: name, name-desc, modified, modified-desc, created or

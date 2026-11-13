@@ -1735,15 +1735,21 @@ safely extracts them into its temporary work folder, then writes their contents 
 Password-protected archives fail with a clear message.
 
 CLI: `filee convert "path/to/folder" --to iso` or `filee convert "backup.zip" --to iso`.
-DiscUtils.Iso9660 writes ISO 9660 with Joliet in-process, preserving Unicode BMP names and empty directories.
-There are no filesystem or compression options. ISO writing needs no external program; archive reading uses
-the existing extraction engine. Images are data discs, not bootable clones. UDF is not included.
+LTRData DiscUtils writes ISO 9660 with Joliet (the default) or UDF 2.01 in-process. Choose the filesystem in the ISO
+preset, or use `--iso-filesystem udf201` with `--to iso` in the CLI (`--iso-filesystem joliet` selects the default).
+No new donut slice is added. Existing presets retain Joliet without a schema migration. Images are data discs,
+not bootable clones. Archive reading still uses the existing extraction engine.
 
-Individual names must fit 62 UTF-16 characters, leaving room for DiscUtils' version suffix; relative disc paths
+UDF supports approximately 234 GiB per file and 8 TiB per partition. The library encodes filenames in OSTA compressed
+Unicode (up to 254 bytes before the file identifier prefix); names outside its supported range are refused before replacing the
+destination. Source permissions, extended attributes and per-file timestamps are not imported into UDF images.
+UDF is revision 2.01 only; there are no revision, compression or boot options.
+
+For Joliet, individual names must fit 62 UTF-16 characters, leaving room for DiscUtils' version suffix; relative disc paths
 must fit 240 characters. Control characters, semicolons, backslashes, `*`, `:`, `?` and supplementary Unicode
 characters are rejected clearly. Individual files must be smaller than 4 GiB. Drive roots and symbolic links/junctions
-are refused. Timestamps are clamped to 1900-2155 in the image;
-source timestamps are unchanged. On Windows, a marked input file transfers Mark of the Web to the image.
+are refused for both filesystems. Joliet timestamps are clamped to 1900-2155 in the image;
+source timestamps are unchanged. On Windows, a marked input file transfers Mark of the Web to either image type.
 
 File contents are streamed, progress reports bytes written, and cancellation is checked during enumeration and
 streaming. A previous destination inside the source is excluded. A new image replaces its destination only after

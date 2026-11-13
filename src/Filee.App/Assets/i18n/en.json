@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "ISO filesystem",
   "app.name": "Filee",
   "app.tagline": "Drag, drop, converted.",
 
@@ -1758,8 +1759,8 @@
   "general.collect_dropped_hint": "Dropped and picked files wait in a list on the Home page, and Choose action converts them together in the order shown. Off: each drop opens the donut, as before.",
   "error.iso_root": "ISO creation does not support drive or filesystem roots. Select a folder inside the drive instead.",
   "error.iso_link": "ISO creation does not follow symbolic links or junctions. Select an original folder without linked entries.",
-  "error.iso_name": "Joliet names must contain at most 62 BMP Unicode characters and no control characters, semicolons or backslashes, *, : or ?. Relative paths must be at most 240 characters.",
-  "error.iso_file_size": "ISO creation requires individual files smaller than 4 GiB.",
+  "error.iso_name": "Joliet names must contain at most 62 BMP Unicode characters and no control characters, semicolons or backslashes, *, : or ?. Relative paths must be at most 240 characters. For longer names or larger files, select UDF 2.01 in the preset\u0027s ISO filesystem option.",
+  "error.iso_file_size": "Joliet requires individual files smaller than 4 GiB. For longer names or larger files, select UDF 2.01 in the preset\u0027s ISO filesystem option.",
   "error.iso_changed": "ISO creation stopped before all data was written. A source file may have changed during conversion.",
   "engine.iso.name": "ISO",
   "engine.iso.description": "Creates ISO images from folders or archive contents, preserving Unicode names and empty folders.",

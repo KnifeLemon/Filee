@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "Hệ thống tệp ISO",
   "app.name": "Filee",
   "app.tagline": "Kéo, thả, xong.",
 
@@ -1758,8 +1759,8 @@
   "general.collect_dropped_hint": "Tệp được thả hoặc chọn sẽ chờ trong một danh sách ở Trang chủ, và Chọn thao tác sẽ chuyển đổi chúng cùng lúc theo thứ tự hiển thị. Tắt: mỗi lần thả sẽ mở thanh công cụ vòng tròn như trước.",
   "error.iso_root": "Không hỗ trợ tạo ISO từ thư mục gốc của ổ đĩa hoặc hệ thống tệp. Hãy chọn một thư mục bên trong ổ đĩa.",
   "error.iso_link": "Quá trình tạo ISO không đi theo liên kết tượng trưng hoặc điểm nối. Hãy chọn thư mục gốc không chứa mục liên kết.",
-  "error.iso_name": "Tên Joliet có tối đa 62 ký tự Unicode BMP, không có ký tự điều khiển, dấu chấm phẩy hoặc dấu gạch chéo ngược, *, : hoặc ?. Đường dẫn tương đối có tối đa 240 ký tự.",
-  "error.iso_file_size": "Để tạo ISO, mỗi tệp phải nhỏ hơn 4 GiB.",
+  "error.iso_name": "Tên Joliet có tối đa 62 ký tự Unicode BMP, không có ký tự điều khiển, dấu chấm phẩy hoặc dấu gạch chéo ngược, *, : hoặc ?. Đường dẫn tương đối có tối đa 240 ký tự. Với tên dài hơn hoặc tệp lớn hơn, hãy chọn UDF 2.01 trong tùy chọn hệ thống tệp ISO của thiết lập sẵn.",
+  "error.iso_file_size": "Để tạo ISO, mỗi tệp phải nhỏ hơn 4 GiB. Với tên dài hơn hoặc tệp lớn hơn, hãy chọn UDF 2.01 trong tùy chọn hệ thống tệp ISO của thiết lập sẵn.",
   "error.iso_changed": "Quá trình tạo ISO đã dừng trước khi ghi đủ dữ liệu. Tệp nguồn có thể đã thay đổi trong khi chuyển đổi.",
   "engine.iso.name": "ISO",
   "engine.iso.description": "Tạo ảnh ISO từ thư mục hoặc nội dung tệp nén, giữ nguyên tên Unicode và thư mục trống.",
