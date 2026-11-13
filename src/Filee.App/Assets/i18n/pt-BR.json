@@ -184,6 +184,7 @@
   "error.exe_unreadable": "Não é um programa ou biblioteca do Windows que o Filee consiga ler, ou o arquivo está danificado",
   "error.exe_no_icon": "Este arquivo não tem ícone próprio (o Windows mostra um ícone padrão para ele)",
   "notice.pdf_not_smaller": "Não deu para deixar menor, então foi copiado como está",
+  "notice.nov_recordings_left_out": "Esta exportação contém várias gravações (outras câmeras ou partes separadas por interrupções): só a maior foi convertida",
   "notice.under_min_size": "Salvo, mas menor que o tamanho mínimo do arquivo",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objetos que a versão do AutoCAD escolhida não tem (multilinhas de chamada, malhas…) ficaram de fora",

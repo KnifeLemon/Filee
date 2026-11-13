@@ -56,7 +56,7 @@ public static partial class ClipPreview
         CancellationToken cancellationToken)
     {
         var (ffmpeg, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
-        var input = Path.GetFullPath(path);
+        var input = MediaInput.For(path);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken).ConfigureAwait(false);
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         ClipEdit clip;
@@ -164,7 +164,7 @@ public static partial class ClipPreview
     internal static async Task<float[]> ReadLoudnessAsync((string Ffmpeg, string Ffprobe) tools, string path, double start, double end,
         int count, string workFolder, CancellationToken cancellationToken)
     {
-        var input = Path.GetFullPath(path);
+        var input = MediaInput.For(path);
         var track = await MediaInfo.AudioTrackAsync(tools.Ffprobe, input, cancellationToken).ConfigureAwait(false);
         var samples = Path.Combine(workFolder, Guid.NewGuid().ToString("N") + ".f32");
         try
@@ -196,7 +196,7 @@ public static partial class ClipPreview
     public static async Task<double> ReadSoundLengthAsync(string path, CancellationToken cancellationToken)
     {
         var (_, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
-        var info = await MediaInfo.ProbeAsync(ffprobe, Path.GetFullPath(path), cancellationToken);
+        var info = await MediaInfo.ProbeAsync(ffprobe, MediaInput.For(path), cancellationToken);
         if (info.Audio is null)
             throw new InvalidOperationException("The file has no sound.");
         return info.Duration?.TotalSeconds is > 0 and var seconds ? seconds : throw new InvalidOperationException("The file doesn't say how long it is.");
@@ -212,7 +212,7 @@ public static partial class ClipPreview
     internal static async Task<IReadOnlyList<ClipRange>> FindSilencesAsync((string Ffmpeg, string Ffprobe) tools, string path,
         double start, double end, CancellationToken cancellationToken)
     {
-        var input = Path.GetFullPath(path);
+        var input = MediaInput.For(path);
         var track = await MediaInfo.AudioTrackAsync(tools.Ffprobe, input, cancellationToken).ConfigureAwait(false);
         var result = await ProcessRunner.RunAsync(tools.Ffmpeg, SilenceArguments(input, start, end, track), TimeSpan.FromMinutes(10), cancellationToken);
         if (result.ExitCode != 0)

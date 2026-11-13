@@ -129,10 +129,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 progress, cancellationToken);
         if (step.To == "heic")
             return await HeicWriter.ConvertAsync(ffmpeg, step, progress, cancellationToken);
-        // A Wisenet WAVE / Nx Witness export: FFmpeg reads its camera recording from inside it. A Hikvision SD-card
-        // recording is read through the concat protocol, with the header FFmpeg needs for its sound.
-        var fullPath = Path.GetFullPath(step.InputPath);
-        var input = step.From == "nov" ? NovExport.InputFor(fullPath) : HikvisionStream.InputFor(fullPath, step.WorkDirectory);
+        var input = MediaInput.For(step.InputPath, step.From, step.WorkDirectory, step.Notice);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken);
         progress?.Report(0.02);
 
@@ -348,8 +345,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             var clips = new List<(string Path, MediaInfo Info)>();
             for (var i = 0; i < inputPaths.Count; i++)
             {
-                var path = Path.GetFullPath(inputPaths[i]);
-                await RequireTrackerDemuxerAsync(ffmpeg, FormatRegistry.Detect(path)?.Id);
+                var clipFormat = FormatRegistry.Detect(inputPaths[i])?.Id;
+                await RequireTrackerDemuxerAsync(ffmpeg, clipFormat);
+                var path = MediaInput.For(inputPaths[i], clipFormat, scratch);
                 clips.Add((path, await MediaInfo.ProbeAsync(ffprobe, path, cancellationToken)));
                 progress?.Report(0.05 * (i + 1) / inputPaths.Count);
             }

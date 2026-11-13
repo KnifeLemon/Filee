@@ -178,6 +178,7 @@
   "error.exe_unreadable": "Das ist kein Windows-Programm und keine Bibliothek, die Filee lesen kann, oder die Datei ist beschädigt",
   "error.exe_no_icon": "Diese Datei hat kein eigenes Symbol (Windows zeigt für sie ein Standardsymbol)",
   "notice.pdf_not_smaller": "Die Datei ließ sich nicht verkleinern und wurde unverändert kopiert",
+  "notice.nov_recordings_left_out": "Dieser Export enthält mehrere Aufnahmen (andere Kameras oder durch Lücken getrennte Teile): nur die größte wurde umgewandelt",
   "notice.under_min_size": "Gespeichert, aber kleiner als die Mindestdateigröße",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objekte, die die gewählte AutoCAD-Version nicht unterstützt (Multiführungslinien, Netze …), wurden weggelassen",

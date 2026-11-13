@@ -178,6 +178,7 @@
   "error.exe_unreadable": "Ini bukan program atau pustaka Windows yang dapat dibaca Filee, atau file rusak",
   "error.exe_no_icon": "File ini tidak punya ikon sendiri (Windows menampilkan ikon standar untuknya)",
   "notice.pdf_not_smaller": "Ukuran tidak dapat diperkecil lagi, sehingga disalin apa adanya",
+  "notice.nov_recordings_left_out": "Ekspor ini berisi beberapa rekaman (kamera lain atau potongan yang terputus): hanya yang terbesar yang dikonversi",
   "notice.under_min_size": "Disimpan, tetapi lebih kecil dari ukuran file minimum",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objek yang tidak dimiliki versi AutoCAD yang dipilih (multileader, mesh …) tidak disertakan",

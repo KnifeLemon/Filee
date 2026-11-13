@@ -184,6 +184,7 @@
   "error.exe_unreadable": "Đây không phải chương trình hay thư viện Windows mà Filee đọc được, hoặc tệp bị hỏng",
   "error.exe_no_icon": "Tệp này không có biểu tượng riêng (Windows hiển thị biểu tượng mặc định cho nó)",
   "notice.pdf_not_smaller": "Không thể làm nhỏ hơn nên đã sao chép nguyên trạng",
+  "notice.nov_recordings_left_out": "Bản xuất này có nhiều bản ghi (camera khác hoặc các đoạn bị ngắt quãng): chỉ bản lớn nhất được chuyển đổi",
   "notice.under_min_size": "Đã lưu, nhưng nhỏ hơn kích thước tệp tối thiểu",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Các đối tượng mà phiên bản AutoCAD đã chọn không có (multileader, lưới …) đã bị bỏ qua",

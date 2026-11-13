@@ -184,6 +184,7 @@
   "error.exe_unreadable": "这不是 Filee 能读取的 Windows 程序或库，或文件已损坏",
   "error.exe_no_icon": "此文件没有自己的图标（Windows 会为它显示标准图标）",
   "notice.pdf_not_smaller": "无法再缩小，已原样复制",
+  "notice.nov_recordings_left_out": "此导出文件包含多段录像（其他摄像机或中断分开的片段）：只转换了最大的一段",
   "notice.under_min_size": "已保存，但小于最小文件大小",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "已省略所选 AutoCAD 版本没有的对象（多重引线、网格……）",

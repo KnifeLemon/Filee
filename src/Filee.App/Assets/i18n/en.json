@@ -184,6 +184,7 @@
   "error.exe_unreadable": "This isn't a Windows program or library Filee can read, or it is damaged",
   "error.exe_no_icon": "This file has no icon of its own (Windows shows a standard one for it)",
   "notice.pdf_not_smaller": "Couldn't make it smaller, so it was copied as it is",
+  "notice.nov_recordings_left_out": "This export holds several recordings (other cameras or pieces with gaps): only the largest was converted",
   "notice.under_min_size": "Saved, but smaller than the minimum file size",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objects the chosen AutoCAD version doesn't have (multileaders, meshes …) were left out",

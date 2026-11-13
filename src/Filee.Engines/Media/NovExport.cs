@@ -44,18 +44,22 @@ internal static class NovExport
     /// <summary>
     /// The input to give FFmpeg for the export at <paramref name="path"/>: its largest camera recording, through the
     /// subfile protocol. Refuses a password-protected export and one without a recording; a damaged index throws
-    /// <see cref="InvalidDataException"/>.
+    /// <see cref="InvalidDataException"/>. When the export holds other recordings (other cameras, or pieces of one with
+    /// gaps), <paramref name="notice"/> hears that they are left out.
     /// </summary>
-    public static string InputFor(string path)
+    public static string InputFor(string path, Action<string>? notice = null)
     {
         Index index;
         using (var file = File.OpenRead(path))
             index = Read(file);
         if (index.Encrypted)
             throw new ConversionRefusedException("error.nov_password");
-        var recording = index.Streams
+        var recordings = index.Streams
             .Where(s => s.Name.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase) && s.Length > 0)
-            .MaxBy(s => s.Length) ?? throw new ConversionRefusedException("error.nov_no_video");
+            .ToList();
+        var recording = recordings.MaxBy(s => s.Length) ?? throw new ConversionRefusedException("error.nov_no_video");
+        if (recordings.Count > 1)
+            notice?.Invoke("notice.nov_recordings_left_out");
         return string.Create(CultureInfo.InvariantCulture,
             $"subfile,,start,{recording.Start},end,{recording.End},,:{path}");
     }

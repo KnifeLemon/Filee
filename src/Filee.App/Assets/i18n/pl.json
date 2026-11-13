@@ -184,6 +184,7 @@
   "error.exe_unreadable": "To nie jest program ani biblioteka Windows, którą Filee potrafi odczytać, albo plik jest uszkodzony",
   "error.exe_no_icon": "Ten plik nie ma własnej ikony (Windows pokazuje dla niego ikonę standardową)",
   "notice.pdf_not_smaller": "Nie udało się zmniejszyć pliku, więc skopiowano go bez zmian",
+  "notice.nov_recordings_left_out": "Ten eksport zawiera kilka nagrań (z innych kamer lub części rozdzielonych przerwami): przekonwertowano tylko największe",
   "notice.under_min_size": "Zapisano, ale plik jest mniejszy niż minimalny rozmiar",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Pominięto obiekty, których wybrana wersja AutoCAD nie ma (multiodnośniki, siatki…)",

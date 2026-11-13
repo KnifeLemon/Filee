@@ -178,6 +178,7 @@
   "error.exe_unreadable": "No es un programa ni una biblioteca de Windows que Filee pueda leer, o el archivo está dañado",
   "error.exe_no_icon": "Este archivo no tiene icono propio (Windows le muestra uno genérico)",
   "notice.pdf_not_smaller": "No se pudo reducir su tamaño, por lo que se copió tal cual",
+  "notice.nov_recordings_left_out": "Esta exportación contiene varias grabaciones (otras cámaras o partes separadas por cortes): solo se convirtió la más grande",
   "notice.under_min_size": "Guardado, pero más pequeño que el tamaño mínimo de archivo",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Se omitieron objetos que la versión de AutoCAD elegida no tiene (directrices múltiples, mallas…)",

@@ -34,7 +34,7 @@ public static class VideoFrames
     public static async Task<VideoSummary> ProbeAsync(string path, CancellationToken cancellationToken)
     {
         var (_, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
-        var info = await MediaInfo.ProbeAsync(ffprobe, Path.GetFullPath(path), cancellationToken);
+        var info = await MediaInfo.ProbeAsync(ffprobe, MediaInput.For(path), cancellationToken);
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         var height = video.IsRotated ? video.Width : video.Height;
         return new VideoSummary(info.Duration?.TotalSeconds ?? 0, (int)Math.Round(height * video.DisplayAspect), height, video.FrameRate);
@@ -47,7 +47,7 @@ public static class VideoFrames
     public static async Task<bool> WriteFrameAsync(string path, double seconds, string output, int maxHeight, CancellationToken cancellationToken)
     {
         var (ffmpeg, _) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
-        var arguments = MediaEncoding.FrameAt(Path.GetFullPath(path), Math.Max(0, seconds), output, maxHeight, null);
+        var arguments = MediaEncoding.FrameAt(MediaInput.For(path), Math.Max(0, seconds), output, maxHeight, null);
         var result = await FfmpegRunner.RunAsync(ffmpeg, arguments, null, cancellationToken, FrameStall);
         return result.ExitCode == 0 && File.Exists(output) && new FileInfo(output).Length > 0;
     }

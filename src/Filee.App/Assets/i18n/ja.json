@@ -178,6 +178,7 @@
   "error.exe_unreadable": "Filee で読み込める Windows のプログラムやライブラリではないか、ファイルが壊れています",
   "error.exe_no_icon": "このファイルには独自のアイコンがありません（Windows では標準のアイコンが表示されます）",
   "notice.pdf_not_smaller": "サイズを小さくできなかったため、元のままコピーしました",
+  "notice.nov_recordings_left_out": "このエクスポートには複数の録画（別のカメラや途切れた部分）が含まれています。最も大きいものだけを変換しました",
   "notice.under_min_size": "保存しましたが、最小ファイルサイズより小さいです",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "選んだ AutoCAD のバージョンにないオブジェクト（マルチ引出線、メッシュ …）を省きました",

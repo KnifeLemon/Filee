@@ -178,6 +178,7 @@
   "error.exe_unreadable": "Bu, Filee'nin okuyabildiği bir Windows programı veya kitaplığı değil ya da dosya hasarlı",
   "error.exe_no_icon": "Bu dosyanın kendi simgesi yok (Windows onun için standart bir simge gösterir)",
   "notice.pdf_not_smaller": "Küçültülemediği için olduğu gibi kopyalandı",
+  "notice.nov_recordings_left_out": "Bu dışa aktarmada birden çok kayıt var (başka kameralar ya da boşluklarla ayrılmış parçalar): yalnızca en büyüğü dönüştürüldü",
   "notice.under_min_size": "Kaydedildi, ancak en küçük dosya boyutundan küçük",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Seçilen AutoCAD sürümünün desteklemediği nesneler (çoklu kılavuzlar, ağlar…) çıkarıldı",
