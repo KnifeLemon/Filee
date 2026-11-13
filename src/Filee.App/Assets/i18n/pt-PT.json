@@ -261,7 +261,7 @@
   "engine.font.description": "Converte tipos de letra entre TTF, OTF, WOFF, WOFF2 e EOT; converte tipos de letra bitmap do Windows (FON) para estes formatos.",
   "engine.cad.name": "CAD (motor integrado)",
   "engine.cad.description": "Desenhos AutoCAD: DWG ↔ DXF e ambos para PDF, SVG e PNG.",
-  "engine.gcode.name": "G-code (built-in)",
+  "engine.gcode.name": "G-code (motor integrado)",
   "engine.gcode.description": "Percursos de impressoras 3D e máquinas CNC (G-code) para PDF, SVG e imagens, ou a pré-visualização do fatiador.",
   "engine.model3d.name": "Modelos 3D (motor integrado)",
   "engine.model3d.description": "Converte modelos 3D entre GLB, glTF, STL, OBJ, 3MF e PLY, de FBX para qualquer um destes formatos e para uma pré-visualização PNG.",

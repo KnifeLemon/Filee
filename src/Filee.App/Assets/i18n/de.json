@@ -254,7 +254,7 @@
   "engine.font.description": "TTF, OTF, WOFF, WOFF2 und EOT untereinander konvertieren; Windows-Bitmap-Schriftarten (FON) in diese Formate umwandeln.",
   "engine.cad.name": "CAD (integriert)",
   "engine.cad.description": "AutoCAD-Zeichnungen: DWG ↔ DXF und beide in PDF, SVG und PNG.",
-  "engine.gcode.name": "G-code (built-in)",
+  "engine.gcode.name": "G-code (integriert)",
   "engine.gcode.description": "Werkzeugwege von 3D-Druckern und CNC-Maschinen (G-Code) als PDF, SVG und Bild, oder die Vorschau des Slicers.",
   "engine.model3d.name": "3D-Modelle (integriert)",
   "engine.model3d.description": "3D-Modelle: Konvertiert GLB, glTF, STL, OBJ, 3MF und PLY untereinander, FBX in jedes dieser Formate und erstellt eine PNG-Vorschau.",

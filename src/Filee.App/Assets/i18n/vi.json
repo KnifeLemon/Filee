@@ -261,7 +261,7 @@
   "engine.font.description": "Phông chữ: TTF, OTF, WOFF, WOFF2 và EOT chuyển đổi qua lại; phông chữ bitmap Windows (FON) sang các định dạng đó.",
   "engine.cad.name": "CAD (tích hợp)",
   "engine.cad.description": "Bản vẽ AutoCAD: DWG ↔ DXF, và cả hai sang PDF, SVG và PNG.",
-  "engine.gcode.name": "G-code (built-in)",
+  "engine.gcode.name": "G-code (tích hợp)",
   "engine.gcode.description": "Đường chạy của máy in 3D và máy CNC (G-code) sang PDF, SVG và ảnh, hoặc ảnh xem trước của slicer.",
   "engine.model3d.name": "Mô hình 3D (tích hợp)",
   "engine.model3d.description": "Mô hình 3D: GLB, glTF, STL, OBJ, 3MF và PLY chuyển đổi qua lại, FBX sang bất kỳ định dạng nào trong số đó, và ảnh xem trước PNG.",

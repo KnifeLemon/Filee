@@ -20,8 +20,9 @@ internal static class GcodeThumbnail
     internal sealed record Image(int Width, int Height, string Format, byte[] Data);
 
     /// <summary>
-    /// The largest thumbnail of a G-code file, or null when it has none. A thumbnail whose base64 is broken or longer
-    /// than it says is skipped; one past <see cref="MaxSide"/> or <see cref="MaxBase64Chars"/> is not read.
+    /// The largest thumbnail in the header of a G-code file (before its first move), or null when it has none. A
+    /// thumbnail whose base64 is broken or longer than it says is skipped; one past <see cref="MaxSide"/> or
+    /// <see cref="MaxBase64Chars"/> is not read.
     /// </summary>
     internal static Image? Largest(Stream stream, CancellationToken ct)
     {
@@ -35,6 +36,10 @@ internal static class GcodeThumbnail
             var text = line.AsSpan().TrimStart();
             if (text.Length == 0 || text[0] != ';')
             {
+                // Slicers write the previews in the header: the first move ends the search, so a large file without one
+                // isn't read to its end.
+                if (GcodeToolpath.Words(line, out _) is [('G', >= 0 and < 4), ..])
+                    break;
                 reading = null; // the comment block ended without "thumbnail end"
                 continue;
             }

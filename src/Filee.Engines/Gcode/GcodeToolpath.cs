@@ -7,8 +7,9 @@
 // relative), G92 (set position), G28 (home), modal moves (a line of coordinates goes on with the last G0-G3, as CAM
 // programs write it), line numbers (N) and checksums (*), ";" and "( )" comments. A printer file is one that extrudes
 // (E grows on a move): its extruding moves are "extrusion", every other move is travel. A file that never extrudes is
-// CNC: G1 / G2 / G3 cut, G0 is a rapid (travel). Not read: canned cycles (G81 …), tool radius offsets (G41 / G42),
-// work offsets (G54 …), macros and expressions (Klipper, RepRapFirmware meta commands): their lines are skipped.
+// CNC: G1 / G2 / G3 cut, G0 is a rapid (travel). Cutter compensation (G41 / G42), tool length (G43) and work offsets
+// (G54 …) aren't applied: the programmed path is drawn. A line with any other G code (G4, G10, G29, G30, G38.x, G53,
+// canned cycles G81 …) isn't a move, nor are macros and expressions (Klipper, RepRapFirmware meta commands).
 
 using System.Globalization;
 using System.Numerics;
@@ -33,9 +34,8 @@ internal static class GcodeToolpath
     /// <summary>Characters of a line that are read; the rest of a longer line (a long comment) is skipped.</summary>
     internal const int MaxLineChars = 4096;
 
-    /// <summary>Arcs are split in segments of at most this angle, and at most this many.</summary>
+    /// <summary>Arcs are split in segments of at most this angle: a full circle is 72 segments.</summary>
     private const double ArcStepRadians = Math.PI / 36;
-    private const int MaxArcSteps = 720;
 
     /// <summary>A coordinate past this (mm) is not a machine's: a broken or hostile number.</summary>
     private const double MaxCoordinate = 1e6;
@@ -67,11 +67,18 @@ internal static class GcodeToolpath
     /// <exception cref="InvalidDataException">The file is not text G-code, holds no moves, or is too large.</exception>
     internal static Toolpath Read(string path, CancellationToken ct)
     {
+        using var stream = Open(path);
+        return Read(stream, ct);
+    }
+
+    /// <summary>Opens a G-code file for reading, once its size is checked against <see cref="MaxFileBytes"/>.</summary>
+    /// <exception cref="InvalidDataException">The file is larger.</exception>
+    internal static FileStream Open(string path)
+    {
         var size = new FileInfo(path).Length;
         if (size > MaxFileBytes)
             throw new InvalidDataException($"The G-code file is {size / (1024 * 1024)} MB; Filee draws files up to {MaxFileBytes / (1024 * 1024)} MB.");
-        using var stream = File.OpenRead(path);
-        return Read(stream, ct);
+        return File.OpenRead(path);
     }
 
     /// <inheritdoc cref="Read(string, CancellationToken)"/>
@@ -275,6 +282,7 @@ internal static class GcodeToolpath
                 var g = (int)Math.Round(value * 10);
                 switch (g)
                 {
+                    case 0 or 10 or 20 or 30: break; // the motion itself (G0–G3), handled below
                     case 170 or 180 or 190: _plane = g / 10; break;
                     case 200: _unit = 25.4; break;
                     case 210: _unit = 1; break;
@@ -285,10 +293,14 @@ internal static class GcodeToolpath
                         break;
                     case 920: SetPosition(words); return;
                     case 280: Home(words); return;
-                    // Dwell, canned cycles and the like carry X / Y / P words that are not a move.
-                    case 40 or 100 or 110 or 530 or 800 or >= 810 and <= 890:
-                        if (g == 800)
-                            _motion = -1;
+                    case 800: _motion = -1; return;
+                    // Modes that a move may share its line with (the programmed path is drawn: compensation and
+                    // offsets aren't applied): cutter compensation, tool length, work offsets, path control, feed modes.
+                    case 400 or 410 or 420 or 430 or 490 or >= 540 and <= 599 or 610 or 611 or 640 or 930 or 940:
+                        break;
+                    // Any other G code carries X / Y / Z words that are not a move to draw: dwell, offsets, bed
+                    // levelling (G29), probing (G30, G38.x), machine coordinates (G53), canned cycles (G81 …).
+                    default:
                         return;
                 }
             }
@@ -463,7 +475,7 @@ internal static class GcodeToolpath
                 cb = sb + Number(words, ib, 0) * _unit;
             }
             var radius = Math.Sqrt((sa - ca) * (sa - ca) + (sb - cb) * (sb - cb));
-            if (radius < 1e-6 || radius > MaxCoordinate)
+            if (!(radius >= 1e-6 && radius <= MaxCoordinate)) // NaN too (R1e300 over a short chord)
             {
                 LineTo(target, raw);
                 return;
@@ -476,7 +488,7 @@ internal static class GcodeToolpath
             else if (!clockwise && sweep <= 1e-9)
                 sweep += 2 * Math.PI;
             // Same start and end: a full circle (the sweep above is then a full turn).
-            var steps = Math.Clamp((int)Math.Ceiling(Math.Abs(sweep) / ArcStepRadians), 1, MaxArcSteps);
+            var steps = Math.Max(1, (int)Math.Ceiling(Math.Abs(sweep) / ArcStepRadians));
             double sc = Get(_at, c), ec = Get(target, c);
             for (var i = 1; i <= steps; i++)
             {

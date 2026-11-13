@@ -1,4 +1,4 @@
-// G-code toolpaths (.gcode, .gco, .g, .ngc), read by Filee: they open the CAD donut, which existing libraries learn
+// G-code toolpaths (.gcode, .gco, .ngc), read by Filee: they open the CAD donut, which existing libraries learn
 // without taking a donut of the user's own; they belong to the 3D and CAD fields, and Filee never writes them.
 
 using System.Text.Json;
@@ -14,7 +14,6 @@ public class GcodeFormatTests
     [Theory]
     [InlineData("benchy.gcode")]
     [InlineData("PART.GCO")]
-    [InlineData("start.g")]
     [InlineData("pocket.ngc")]
     public void G_code_uses_the_cad_donut(string file)
     {
@@ -22,11 +21,13 @@ public class GcodeFormatTests
         Assert.Equal("cad", ProfileSelector.Select(BuiltInData.CreateProfiles(), [file])?.Id);
     }
 
-    [Fact]
-    public void Nc_is_not_taken()
+    [Theory]
+    [InlineData("file.nc")] // CNC G-code and NetCDF alike (#562): Filee doesn't guess
+    [InlineData("game.tap")] // also cassette images of old home computers
+    [InlineData("Expr.g")] // also ANTLR grammars and GAP; RepRapFirmware's macros seldom draw anything
+    public void Ambiguous_extensions_are_not_taken(string file)
     {
-        // .nc is CNC G-code and NetCDF alike (#562): Filee doesn't guess.
-        Assert.Null(FormatRegistry.Detect("file.nc"));
+        Assert.Null(FormatRegistry.Detect(file));
     }
 
     [Fact]
@@ -46,7 +47,7 @@ public class GcodeFormatTests
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var cad = profiles.Single(p => p.Id == "cad");
-        string[] extensions = ["gcode", "gco", "g", "ngc"];
+        string[] extensions = ["gcode", "gco", "ngc"];
         cad.Extensions.RemoveAll(extensions.Contains);
         Assert.True(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
         Assert.All(extensions, e => Assert.Contains(e, cad.Extensions));

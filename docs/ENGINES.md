@@ -1248,16 +1248,18 @@ and writes the files; Filee's own renderer draws them with SkiaSharp (one drawin
 ## G-code (3D printers, CNC)
 
 `Filee.Engines/Gcode` reads the G-code a slicer (PrusaSlicer, Cura, OrcaSlicer, Bambu Studio, SuperSlicer …) writes for
-a 3D printer, or a CAM program for a CNC machine, and draws its toolpath. Extensions: `.gcode`, `.gco`, `.g`
-(RepRapFirmware's macros) and `.ngc` (LinuxCNC). `.nc` is left out: it is also NetCDF ([#562](https://github.com/KnifeLemon/Filee/issues/562)),
-and `.tap` is also a cassette image of old home computers. G-code is a read-only CAD format (fields: 3D models and CAD).
+a 3D printer, or a CAM program for a CNC machine, and draws its toolpath. Extensions: `.gcode`, `.gco` and `.ngc`
+(LinuxCNC). Left out: `.nc`, also NetCDF ([#562](https://github.com/KnifeLemon/Filee/issues/562)); `.tap`, also a
+cassette image of old home computers; `.g`, also ANTLR grammars and GAP (RepRapFirmware's macros seldom have a toolpath
+to draw). G-code is a read-only CAD format (fields: 3D models and CAD).
 
 - **Read**: G0 / G1, G2 / G3 arcs (I J K or R, in the G17 / G18 / G19 plane; helical when the third axis moves), G20 /
   G21, G90 / G91, M82 / M83 (after either, G90 / G91 no longer change the extruder's mode: Klipper's don't, Marlin's do,
   and a slicer that writes M83 never relies on G90 to undo it), G92, G28, modal moves (a line of coordinates goes on with the last move, as CAM programs
   write it), N line numbers, `*` checksums, `;` and `( )` comments. Klipper and RepRapFirmware commands (`SET_…`,
-  `EXCLUDE_OBJECT_…`, `if`, expressions in braces) are skipped; canned cycles (G81 …), cutter radius offsets (G41 /
-  G42) and work offsets (G54 …) are not applied.
+  `EXCLUDE_OBJECT_…`, `if`, expressions in braces) are skipped. Cutter compensation (G41 / G42), tool length (G43)
+  and work offsets (G54 …) aren't applied: the programmed path is drawn. A line with any other G code (dwell, G10,
+  bed levelling G29, probing G30 / G38.x, G53, canned cycles G81 …) is not a move, whatever coordinates it carries.
 - **Printer or CNC**: a file that extrudes (E grows on a move) is a printer's: its extruding moves are drawn wide, every
   other move as thin blue travel. A file that never extrudes is a CNC machine's: G1 / G2 / G3 are cuts, G0 rapids are
   thin red lines. In a print with layer comments (`;LAYER_CHANGE`, `;LAYER:n`), the start G-code before the first
@@ -1273,7 +1275,7 @@ and `.tap` is also a cassette image of old home computers. G-code is a read-only
   the data, since Cura plug-ins write JPG under the PNG header). A file without one gets the toolpath from above, with
   a notice. SVG and PDF always show the toolpath.
 - **Limits**: files up to 1 GB; 12 million points after points closer than 0.02 mm are merged (a 300 MB print keeps
-  about 6 million); lines are read up to 4096 characters (the rest of a longer comment is skipped); arcs in at most 720
+  about 6 million); lines are read up to 4096 characters (the rest of a longer comment is skipped); arcs in 5° segments (72 for a full circle)
   segments; a coordinate past 1 km fails as damaged. A thumbnail is read up to 4096 × 4096 pixels and 32 MB of base64,
   its header checked before it is decoded. Binary G-code (`.bgcode`) renamed `.gcode` fails with a message saying so.
   A 35 MB PrusaSlicer file (1.3 million lines) takes about 9 s to PNG with 320 MB of memory.

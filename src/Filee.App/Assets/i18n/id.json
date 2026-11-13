@@ -254,7 +254,7 @@
   "engine.font.description": "Font: TTF, OTF, WOFF, WOFF2, dan EOT saling konversi; font bitmap Windows (FON) ke format tersebut.",
   "engine.cad.name": "CAD (bawaan)",
   "engine.cad.description": "Gambar AutoCAD: DWG ↔ DXF, dan keduanya ke PDF, SVG, serta PNG.",
-  "engine.gcode.name": "G-code (built-in)",
+  "engine.gcode.name": "G-code (bawaan)",
   "engine.gcode.description": "Jalur printer 3D dan mesin CNC (G-code) ke PDF, SVG, dan gambar, atau pratinjau dari slicer.",
   "engine.model3d.name": "Model 3D (bawaan)",
   "engine.model3d.description": "Model 3D: GLB, glTF, STL, OBJ, 3MF, dan PLY saling konversi, FBX ke format mana pun, serta pratinjau gambar PNG.",

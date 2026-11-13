@@ -167,31 +167,41 @@ internal static class GcodeDrawing
         return new Scene(width, height, strokes);
     }
 
-    /// <summary>The drawing as SVG at its real size, on white.</summary>
-    internal static string ToSvg(Scene scene)
+    /// <summary>Writes the drawing as SVG at its real size, on white, to <paramref name="writer"/>.</summary>
+    internal static void WriteSvg(Scene scene, TextWriter writer)
     {
         static string N(float v) => v.ToString("0.###", CultureInfo.InvariantCulture);
-        var svg = new StringBuilder(1 << 20);
-        svg.Append(CultureInfo.InvariantCulture,
-            $"""<svg xmlns="http://www.w3.org/2000/svg" width="{N(scene.Width)}mm" height="{N(scene.Height)}mm" viewBox="0 0 {N(scene.Width)} {N(scene.Height)}">""");
-        svg.Append(CultureInfo.InvariantCulture, $"""<rect width="{N(scene.Width)}" height="{N(scene.Height)}" fill="#FFFFFF"/>""");
+        writer.Write(string.Create(CultureInfo.InvariantCulture,
+            $"""<svg xmlns="http://www.w3.org/2000/svg" width="{N(scene.Width)}mm" height="{N(scene.Height)}mm" viewBox="0 0 {N(scene.Width)} {N(scene.Height)}">"""));
+        writer.Write(string.Create(CultureInfo.InvariantCulture, $"""<rect width="{N(scene.Width)}" height="{N(scene.Height)}" fill="#FFFFFF"/>"""));
+        var d = new StringBuilder();
         foreach (var stroke in scene.Strokes)
         {
-            svg.Append("<path d=\"");
+            // One path per stroke; its data is built in a reused buffer so the whole document is never held in memory.
+            d.Clear();
             foreach (var line in stroke.Polylines)
             {
-                svg.Append(CultureInfo.InvariantCulture, $"M{N(line[0].X)} {N(line[0].Y)}");
+                d.Append(CultureInfo.InvariantCulture, $"M{N(line[0].X)} {N(line[0].Y)}");
                 for (var i = 1; i < line.Count; i++)
-                    svg.Append(CultureInfo.InvariantCulture, $"L{N(line[i].X)} {N(line[i].Y)}");
+                    d.Append(CultureInfo.InvariantCulture, $"L{N(line[i].X)} {N(line[i].Y)}");
             }
             var color = $"#{stroke.Color.Red:X2}{stroke.Color.Green:X2}{stroke.Color.Blue:X2}";
             var opacity = stroke.Opacity < 1 ? $" stroke-opacity=\"{N(stroke.Opacity)}\"" : "";
-            svg.Append('"');
-            svg.Append(CultureInfo.InvariantCulture,
-                $""" fill="none" stroke="{color}"{opacity} stroke-width="{N(stroke.Width)}" stroke-linecap="round" stroke-linejoin="round"/>""");
+            writer.Write("<path d=\"");
+            writer.Write(d);
+            writer.Write('"');
+            writer.Write(string.Create(CultureInfo.InvariantCulture,
+                $""" fill="none" stroke="{color}"{opacity} stroke-width="{N(stroke.Width)}" stroke-linecap="round" stroke-linejoin="round"/>"""));
         }
-        svg.Append("</svg>");
-        return svg.ToString();
+        writer.Write("</svg>");
+    }
+
+    /// <summary>The drawing as an SVG string (for tests and small drawings).</summary>
+    internal static string ToSvg(Scene scene)
+    {
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        WriteSvg(scene, writer);
+        return writer.ToString();
     }
 
     /// <summary>Draws the drawing on a canvas whose unit is the millimetre, white paper first.</summary>

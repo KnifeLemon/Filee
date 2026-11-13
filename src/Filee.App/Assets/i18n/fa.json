@@ -268,7 +268,7 @@
   "engine.font.description": "تبدیل فونت‌ها: TTF، OTF، WOFF، WOFF2 و EOT به یکدیگر؛ فونت‌های بیتی ویندوز (FON) به آن‌ها.",
   "engine.cad.name": "CAD (داخلی)",
   "engine.cad.description": "نقشه‌های اتوکد: DWG ↔ DXF، و هر دو به PDF، SVG و PNG.",
-  "engine.gcode.name": "G-code (built-in)",
+  "engine.gcode.name": "G-code (داخلی)",
   "engine.gcode.description": "مسیرهای چاپگرهای سه‌بعدی و دستگاه‌های CNC (G-code) به PDF، SVG و تصویر، یا پیش‌نمایش خود اسلایسر.",
   "engine.model3d.name": "مدل‌های سه‌بعدی (داخلی)",
   "engine.model3d.description": "مدل‌های سه‌بعدی: GLB، glTF، STL، OBJ، 3MF و PLY به یکدیگر، FBX به هر یک از آن‌ها، همراه با پیش‌نمایش PNG.",

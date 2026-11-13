@@ -268,7 +268,7 @@
   "engine.font.description": "ফন্ট: TTF, OTF, WOFF, WOFF2 এবং EOT একে অপরে রূপান্তর; এগুলোতে Windows বিটম্যাপ ফন্ট (FON) এ রূপান্তর।",
   "engine.cad.name": "CAD (বিল্ট-ইন)",
   "engine.cad.description": "AutoCAD ড্রয়িং: DWG ↔ DXF, এবং দুটো থেকেই পিডিএফ, SVG ও PNG।",
-  "engine.gcode.name": "G-code (built-in)",
+  "engine.gcode.name": "G-code (বিল্ট-ইন)",
   "engine.gcode.description": "3D প্রিন্টার ও CNC মেশিনের টুলপাথ (G-code) PDF, SVG ও ছবিতে, অথবা স্লাইসারের নিজের প্রিভিউ।",
   "engine.model3d.name": "3D মডেল (বিল্ট-ইন)",
   "engine.model3d.description": "3D মডেল: GLB, glTF, STL, OBJ, 3MF এবং PLY একে অপরে রূপান্তর, যেকোনোটিতে FBX রূপান্তর এবং একটি PNG প্রিভিউ।",

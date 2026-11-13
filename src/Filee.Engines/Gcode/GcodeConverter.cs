@@ -76,7 +76,8 @@ public sealed class GcodeConverter(ILogger? logger = null) : IConverter, IImageT
     {
         if (step.Output.Allocate("svg") is not { } output)
             return [];
-        File.WriteAllText(output, GcodeDrawing.ToSvg(scene), new UTF8Encoding(false));
+        using (var writer = new StreamWriter(output, false, new UTF8Encoding(false)))
+            GcodeDrawing.WriteSvg(scene, writer);
         return [output];
     }
 
@@ -115,7 +116,7 @@ public sealed class GcodeConverter(ILogger? logger = null) : IConverter, IImageT
     private IReadOnlyList<string>? Thumbnail(ConversionStep step, CancellationToken ct)
     {
         GcodeThumbnail.Image? thumbnail;
-        using (var stream = File.OpenRead(step.InputPath))
+        using (var stream = GcodeToolpath.Open(step.InputPath))
             thumbnail = GcodeThumbnail.Largest(stream, ct);
         if (thumbnail is null)
             return null;

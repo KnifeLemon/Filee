@@ -253,7 +253,7 @@
 "engine.font.description": "Font: TTF, OTF, WOFF, WOFF2 ed EOT convertibili tra loro; font bitmap di Windows (FON) in questi formati.",
 "engine.cad.name": "CAD (integrato)",
 "engine.cad.description": "Disegni AutoCAD: DWG ↔ DXF, ed entrambi in PDF, SVG e PNG.",
-"engine.gcode.name": "G-code (built-in)",
+"engine.gcode.name": "G-code (integrato)",
 "engine.gcode.description": "Percorsi di stampanti 3D e macchine CNC (G-code) in PDF, SVG e immagini, o l'anteprima dello slicer.",
 "engine.model3d.name": "Modelli 3D (integrato)",
 "engine.model3d.description": "Modelli 3D: GLB, glTF, STL, OBJ, 3MF e PLY convertibili tra loro, FBX in uno qualsiasi di essi, e un'anteprima PNG.",

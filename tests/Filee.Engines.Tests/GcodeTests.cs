@@ -166,7 +166,7 @@ public class GcodeTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Theory]
-    [InlineData("grammar Expr;\nexpr : term ('+' term)* ;\n", "No G-code moves")] // an ANTLR grammar named .g
+    [InlineData("grammar Expr;\nexpr : term ('+' term)* ;\n", "No G-code moves")] // not G-code at all
     [InlineData("G28\nG0 X10 Y10\nG0 X20 Y20\n", "neither extrudes nor cuts")]
     [InlineData("G0 X0 Y0\nG1 X99999999 Y0\n", "damaged")]
     public void Files_that_dont_draw_fail_with_a_reason(string text, string reason)
@@ -305,7 +305,6 @@ public class GcodeTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Theory]
     [InlineData("part.gco")]
     [InlineData("pocket.ngc")]
-    [InlineData("macro.g")]
     public async Task Every_g_code_extension_converts(string name)
     {
         var job = await fx.ConvertAsync([Write(name, "G0 X0 Y0\nG1 Z-1 F100\nG1 X10\nG2 X20 Y0 R5\n")], new Preset { TargetFormat = "png" });

@@ -254,7 +254,7 @@
   "engine.font.description": "TTF, OTF, WOFF, WOFF2 ve EOT arasında dönüştürür; Windows bitmap yazı tiplerini (FON) bu biçimlere dönüştürür.",
   "engine.cad.name": "CAD (yerleşik)",
   "engine.cad.description": "AutoCAD çizimleri: DWG ↔ DXF ve her ikisinden PDF, SVG ve PNG.",
-  "engine.gcode.name": "G-code (built-in)",
+  "engine.gcode.name": "G-code (yerleşik)",
   "engine.gcode.description": "3B yazıcıların ve CNC makinelerinin takım yolları (G-code) PDF, SVG ve resme, ya da dilimleyicinin kendi önizlemesi.",
   "engine.model3d.name": "3B modeller (yerleşik)",
   "engine.model3d.description": "3B modeller: GLB, glTF, STL, OBJ, 3MF ve PLY arasında dönüştürme; FBX'ten bunların tümüne ve PNG önizlemesine dönüştürme.",
