@@ -179,7 +179,7 @@ To undo it, remove the entries in Windows Security → App & browser control →
 | **Audio**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **Subtitles**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KRC, TTML, MicroDVD, SCC | each other as UTF-8 (Korean CP949 files read correctly) |
 | **Archives**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | extract, ZIP, 7Z, TAR, TAR.GZ;<br>any files → one ZIP |
-| **CAD**: DWG, DXF | PDF, SVG, PNG, DWG ↔ DXF |
+| **CAD**: DWG, DXF<br>Gerber PCB layers (GBR, GTL, GBL, GTO, …) read | PDF, SVG, PNG, DWG ↔ DXF |
 | **Fonts**: TTF, OTF, WOFF, WOFF2, EOT;<br>FON (Windows bitmap fonts) read | each other;<br>FON → one font per size |
 | **Data**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | each other, CSV and XLSX (tables);<br>vCard, iCalendar ↔ CSV |
 | **3D models**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY;<br>FBX read | each other, PNG preview |

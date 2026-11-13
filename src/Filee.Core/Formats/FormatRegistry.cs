@@ -366,6 +366,10 @@ public static class FormatRegistry
         // CAD
         new("dwg", "DWG", FormatCategory.Cad, ["dwg"]),
         new("dxf", "DXF", FormatCategory.Cad, ["dxf"]),
+        // PCB layers (RS-274X / Gerber X2): generic, Protel-style per-layer and board-outline extensions. GIMP brushes
+        // also use .gbr; the reader tells them apart and says so.
+        new("gerber", "Gerber", FormatCategory.Cad,
+            ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"], Writable: false),
 
         // Fonts
         new("ttf", "TTF", FormatCategory.Font, ["ttf"]),

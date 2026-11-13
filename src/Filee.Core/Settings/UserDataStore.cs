@@ -1158,6 +1158,9 @@ internal static class SettingsMigrations
         // v90: Wisenet WAVE / Nx Witness exports (.nov) learn the video donut; custom claims stay put.
         if (from < 90)
             changed |= LearnExtensions(profiles, out _, ["nov"]);
+        // v91: Gerber PCB layers learn the CAD donut; custom claims stay put.
+        if (from < 91)
+            changed |= LearnExtensions(profiles, out _, ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"]);
         return changed;
     }
 
