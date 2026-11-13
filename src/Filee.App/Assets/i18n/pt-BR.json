@@ -79,7 +79,7 @@
   "donut.files_mixed": "{0} arquivos",
   "donut.drop_to": "Solte → {0}",
   "donut.ordinary_conversion.single": "Este arquivo usa uma conversão normal",
-  "donut.ordinary_conversion.all": "Todos os arquivos que podem ser convertidos usam uma conversão normal",
+  "donut.ordinary_conversion.all": "Todos os arquivos convertíveis: conversão normal",
   "donut.ordinary_conversion.some": "Alguns arquivos usam uma conversão normal",
   "donut.pick_in_group": "Mova para fora para escolher",
   "donut.group_empty": "Não restam predefinições neste grupo. Edite em Configurações → Menu circular",

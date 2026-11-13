@@ -79,7 +79,7 @@
   "donut.files_mixed": "{0} tệp",
   "donut.drop_to": "Thả → {0}",
   "donut.ordinary_conversion.single": "Tệp này dùng chuyển đổi thông thường",
-  "donut.ordinary_conversion.all": "Tất cả tệp có thể chuyển đổi đều dùng chuyển đổi thông thường",
+  "donut.ordinary_conversion.all": "Tất cả tệp chuyển đổi được: chuyển đổi thông thường",
   "donut.ordinary_conversion.some": "Một số tệp dùng chuyển đổi thông thường",
   "donut.pick_in_group": "Di chuyển ra ngoài để chọn",
   "donut.group_empty": "Nhóm này không còn cấu hình sẵn nào. Hãy chỉnh sửa trong Cài đặt → Thanh công cụ vòng tròn",

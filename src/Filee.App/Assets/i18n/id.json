@@ -75,7 +75,7 @@
   "donut.files_mixed": "{0} file",
   "donut.drop_to": "Lepas → {0}",
   "donut.ordinary_conversion.single": "File ini menjalankan konversi biasa",
-  "donut.ordinary_conversion.all": "Semua file yang dapat dikonversi menjalankan konversi biasa",
+  "donut.ordinary_conversion.all": "Semua file yang bisa dikonversi: konversi biasa",
   "donut.ordinary_conversion.some": "Sebagian file menjalankan konversi biasa",
   "donut.pick_in_group": "Arahkan keluar untuk memilih",
   "donut.group_empty": "Tidak ada preset tersisa di grup ini. Edit di Pengaturan → Toolbar donut",

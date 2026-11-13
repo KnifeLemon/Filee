@@ -79,7 +79,7 @@
   "donut.files_mixed": "Pliki: {0}",
   "donut.drop_to": "Upuść → {0}",
   "donut.ordinary_conversion.single": "Ten plik jest konwertowany zwyczajnie",
-  "donut.ordinary_conversion.all": "Wszystkie pliki możliwe do konwersji są konwertowane zwyczajnie",
+  "donut.ordinary_conversion.all": "Każdy konwertowalny plik: zwykła konwersja",
   "donut.ordinary_conversion.some": "Niektóre pliki są konwertowane zwyczajnie",
   "donut.pick_in_group": "Przesuń na zewnątrz, by wybrać",
   "donut.group_empty": "W tej grupie nie ma już ustawień. Edytuj ją w Ustawienia → Pasek-pierścień",

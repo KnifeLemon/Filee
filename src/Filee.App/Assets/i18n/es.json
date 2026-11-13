@@ -75,7 +75,7 @@
   "donut.files_mixed": "{0} archivos",
   "donut.drop_to": "Suelta → {0}",
   "donut.ordinary_conversion.single": "Este archivo usa una conversión normal",
-  "donut.ordinary_conversion.all": "Todos los archivos convertibles usan una conversión normal",
+  "donut.ordinary_conversion.all": "Todos los archivos convertibles: conversión normal",
   "donut.ordinary_conversion.some": "Algunos archivos usan una conversión normal",
   "donut.pick_in_group": "Muévete hacia fuera para elegir",
   "donut.group_empty": "No quedan ajustes preestablecidos en este grupo. Edítalo en Ajustes → Menú circular",

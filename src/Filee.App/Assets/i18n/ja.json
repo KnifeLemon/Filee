@@ -75,7 +75,7 @@
   "donut.files_mixed": "{0}ファイル",
   "donut.drop_to": "ドロップ → {0}",
   "donut.ordinary_conversion.single": "このファイルは通常の変換として実行されます",
-  "donut.ordinary_conversion.all": "変換可能なファイルはすべて通常の変換として実行されます",
+  "donut.ordinary_conversion.all": "変換可能な全ファイル：通常の変換",
   "donut.ordinary_conversion.some": "一部のファイルは通常の変換として実行されます",
   "donut.pick_in_group": "外側に動かして選択",
   "donut.group_empty": "このグループにプリセットがありません。「設定」→「ドーナツメニュー」で編集できます",
