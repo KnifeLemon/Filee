@@ -63,6 +63,7 @@ internal static class PdfBlankPages
             return false;
         try
         {
+            PdfContentNesting.Check(page);
             return !Paints(ContentReader.ReadContent(page));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

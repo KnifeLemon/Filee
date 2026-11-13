@@ -1,5 +1,10 @@
 // Runs Type 2 charstrings (Adobe Technical Note #5177) and records the outline as cubic Bézier contours. Hints are
 // parsed only as far as needed to skip them; subroutines, flex, the arithmetic operators and seac accents work.
+//
+// Subroutines nest at most ten deep (the Type 2 limit), but ten levels that each call the next many times would run
+// for ever: every glyph (its seac parts included) may run MaxGlyphSteps operands and operators and draw MaxGlyphSegments
+// segments, and one interpreter runs at most WorkBudget steps over all its glyphs. Past a budget the glyph is refused
+// with InvalidDataException, which leaves a PDF's font whole (CffSubsetter) or refuses the font (CffToTrueType).
 
 namespace Filee.Engines.Fonts.Cff;
 
@@ -28,6 +33,12 @@ internal sealed class Type2Interpreter(CffFont font)
 {
     private const int MaxSubrDepth = 10;
 
+    /// <summary>Operands and operators one glyph runs at most, subroutines included (real glyphs run a few thousand).</summary>
+    internal const int MaxGlyphSteps = 100_000;
+
+    /// <summary>Lines and curves one glyph draws at most (a TrueType glyph can't hold more points than this).</summary>
+    internal const int MaxGlyphSegments = 65_535;
+
     private readonly double[] _stack = new double[513];
     private readonly double[] _transient = new double[32];
     private readonly int _globalBias = Bias(font.GlobalSubrs.Length);
@@ -42,6 +53,9 @@ internal sealed class Type2Interpreter(CffFont font)
     private double _x;
     private double _y;
     private (double Adx, double Ady, int Base, int Accent)? _seac;
+    private int _steps;
+    private int _segments;
+    private long _workLeft = WorkBudget(font.GlyphCount);
 
     /// <summary>Called with the subroutine list (global or a font dictionary's local one) and index of each call.</summary>
     public Action<byte[][], int>? SubroutineCalled { get; set; }
@@ -50,7 +64,14 @@ internal sealed class Type2Interpreter(CffFont font)
     public Action<int>? AccentGlyphUsed { get; set; }
 
     /// <summary>Runs a glyph's charstring and returns its contours (seac accents are drawn in place).</summary>
-    public List<PathContour> Run(int glyph) => Run(glyph, allowSeac: true);
+    public List<PathContour> Run(int glyph)
+    {
+        _steps = _segments = 0;
+        return Run(glyph, allowSeac: true);
+    }
+
+    /// <summary>Steps one interpreter runs over all its glyphs: room for every glyph of a big CJK font, but not for each to use <see cref="MaxGlyphSteps"/>.</summary>
+    internal static long WorkBudget(int glyphCount) => 16_000_000 + 2_048L * Math.Max(0, glyphCount);
 
     private List<PathContour> Run(int glyph, bool allowSeac)
     {
@@ -102,6 +123,10 @@ internal sealed class Type2Interpreter(CffFont font)
         var r = new BigEndianReader(code);
         while (r.Remaining > 0 && !_ended)
         {
+            if (++_steps > MaxGlyphSteps)
+                throw new InvalidDataException("A CFF glyph runs too many charstring operators (its subroutines call each other too often).");
+            if (--_workLeft < 0)
+                throw new InvalidDataException("The CFF font's charstrings take too long to run.");
             int b0 = r.U8();
             if (b0 >= 32 || b0 == 28)
             {
@@ -447,7 +472,12 @@ internal sealed class Type2Interpreter(CffFont font)
     }
 
     /// <summary>Drawing without a moveto starts a contour at the current point (sloppy but seen in the wild).</summary>
-    private PathContour EnsureContour() => _current ??= new PathContour(new Vec2(_x, _y));
+    private PathContour EnsureContour()
+    {
+        if (++_segments > MaxGlyphSegments)
+            throw new InvalidDataException("A CFF glyph draws too many lines and curves.");
+        return _current ??= new PathContour(new Vec2(_x, _y));
+    }
 
     private void ClosePath()
     {

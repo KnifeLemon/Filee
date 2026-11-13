@@ -310,12 +310,12 @@ internal static class PdfFontSubsetter
                         var font = SfntFont.Read(original);
                         if (font["CFF "] is not { } cff)
                             return false;
-                        font.Tables["CFF "] = CffSubsetter.Subset(cff, program.Glyphs);
+                        font.Tables["CFF "] = CffSubsetter.Subset(cff, program.Glyphs, cancellationToken);
                         subset = font.Write();
                         break;
                     }
                 default:
-                    subset = CffSubsetter.Subset(CffData(program, out _), program.Glyphs);
+                    subset = CffSubsetter.Subset(CffData(program, out _), program.Glyphs, cancellationToken);
                     break;
             }
         }
