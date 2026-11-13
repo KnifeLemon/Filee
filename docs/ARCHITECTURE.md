@@ -25,6 +25,7 @@
             │   · E-mail · Signed files · Data · E-books · CAD · Fonts · Subtitles · 3D models   │
             │ Bundled: rhwp (HWP→PDF, HWP↔HWPX) · 7-Zip (archives) · Unhwp · Markdig             │
             │ Optional: FFmpeg · LibreOffice + H2Orestart · calibre · Ghostscript · Pandoc       │
+            │   · WeasyPrint                                                                     │
             └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

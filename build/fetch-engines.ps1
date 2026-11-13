@@ -22,6 +22,8 @@
                      installer with 7-Zip (never run); the language data is downloaded by the app when needed
       exiftool/      ExifTool (Perl's licence, separate program), the Windows build: exiftool(-k).exe renamed
                      exiftool.exe (the "-k" makes it wait for a key), with its exiftool_files/ beside it
+      weasyprint/    WeasyPrint (BSD-3-Clause, separate program), its Windows "onedir" build: weasyprint.exe with
+                     its _internal/ folder (Python, Pango, HarfBuzz, ...) and LICENSE, HTML -> PDF
 
   Every download is pinned to a version and verified with SHA-256 (src/Filee.Engines/Infrastructure/engines.json,
   shared with the app). Downloads are cached in build/.cache.
@@ -379,6 +381,23 @@ if ('exiftool' -in $selected) {
     Expand-Flat (Get-Engine 'exiftool') $target
     Move-Item -LiteralPath (Join-Path $target 'exiftool(-k).exe') -Destination (Join-Path $target 'exiftool.exe') -Force
     if (-not (Test-Path (Join-Path $target 'exiftool.exe'))) { throw 'exiftool.exe not found in the archive.' }
+}
+
+if ('weasyprint' -in $selected) {
+    # As EngineInstaller.WeasyPrintFolder does: the folder with weasyprint.exe (onedir/weasyprint), with the licence
+    # from the top of the zip moved into it.
+    $tmp = Join-Path $cache ('w-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    Expand-Archive -Path (Get-Engine 'weasyprint') -DestinationPath $tmp
+    $exe = Get-ChildItem $tmp -Recurse -Filter 'weasyprint.exe' | Select-Object -First 1
+    if (-not $exe) { throw 'weasyprint.exe not found in the archive.' }
+    $target = Join-Path $Destination 'weasyprint'
+    Reset-Folder $target
+    Get-ChildItem $exe.DirectoryName -Force | Move-Item -Destination $target
+    foreach ($name in 'LICENSE', 'README.rst') {
+        $file = Join-Path $tmp $name
+        if (Test-Path $file) { Move-Item -LiteralPath $file -Destination $target -Force }
+    }
+    Remove-Item $tmp -Recurse -Force
 }
 
 if ('calibre' -in $selected) {

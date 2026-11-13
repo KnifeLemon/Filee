@@ -53,6 +53,9 @@ public static class EngineDownloads
         new("ghostscript", OperatingSystem.IsWindows() ? ["ghostscript", "vcruntime"] : ["ghostscript"], 31_000_000, ["ghostscript"]),
         new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
         new("calibre", ["calibre"], 663_000_000, ["calibre"]),
+        // WeasyPrint's own Windows build (Python, Pango and HarfBuzz in one folder). Linux and macOS follow once
+        // WeasyPrint publishes a self-contained build for them (#1403); until then they keep their routes.
+        .. (OperatingSystem.IsWindows() ? [new EnginePackage("weasyprint", ["weasyprint"], 65_000_000, ["weasyprint"])] : Array.Empty<EnginePackage>()),
         new("tesseract", ["tesseract"], 168_000_000, ["tesseract"]),
         new("upscayl-bin", OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture != Architecture.Arm64 ? ["upscayl-bin", "vcruntime", "vcomp14"] : OperatingSystem.IsWindows() ? [] : ["upscayl-bin"], 8_600_000, ["upscaler"]),
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"])] : Array.Empty<EnginePackage>()),
@@ -119,10 +122,11 @@ public static class EngineDownloads
     /// Ticked by default in the installer and in the first-run choice. Large downloads are offered, not suggested:
     /// LibreOffice is only needed for older formats (DOC, XLS, PPT, OpenDocument), FFmpeg (~100 MB) only for video and
     /// audio, calibre (~230 MB) only for rare e-book formats and Kindle output. Ghostscript and Tesseract are small but
-    /// only needed for EPS / PostScript and for scans.
+    /// only needed for EPS / PostScript and for scans. WeasyPrint is small too, but changes how HTML, Markdown and
+    /// e-mails become PDFs, so it is the user's choice (#1403).
     /// </summary>
     public static bool IsSuggested(EnginePackage package) =>
-        CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id is not ("ghostscript" or "tesseract" or "upscayl-bin");
+        CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id is not ("ghostscript" or "tesseract" or "upscayl-bin" or "weasyprint");
 
     /// <param name="macOSVersion">The running macOS; downloads whose minimumMacOS is newer are left out. Null keeps all.</param>
     public static IReadOnlyDictionary<string, EngineComponent> ComponentsForRuntime(string runtimeIdentifier, Version? macOSVersion = null)
