@@ -108,7 +108,10 @@ public sealed class LocalizationService : ILocalizer
             return Languages.First(l => l.Code.Equals(setting, StringComparison.OrdinalIgnoreCase)).Code;
 
         var ui = osLanguage();
-        if (ui.Equals("mn", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("mn-", StringComparison.OrdinalIgnoreCase))
+        // Mongolian in Cyrillic ("mn", "mn-MN", "mn-Cyrl"); the traditional script ("mn-Mong", Inner Mongolia) reads
+        // differently, so it keeps the fallback.
+        if (ui.Equals("mn", StringComparison.OrdinalIgnoreCase)
+            || ui.StartsWith("mn-", StringComparison.OrdinalIgnoreCase) && !ui.Contains("Mong", StringComparison.OrdinalIgnoreCase))
             return "mn";
         if (ui.Equals("de", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("de-", StringComparison.OrdinalIgnoreCase))
             return "de";

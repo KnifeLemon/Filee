@@ -9,7 +9,6 @@ internal static class AppLanguages
     public static readonly IReadOnlyList<(string Code, string NativeName)> All =
     [
         ("en", "English"),
-        ("mn", "Монгол"),
         ("de", "Deutsch"),
         ("tr", "Türkçe"),
         ("es", "Español"),
@@ -31,6 +30,7 @@ internal static class AppLanguages
         ("id", "Bahasa Indonesia"),
         ("vi", "Tiếng Việt"),
         ("bn-BD", "বাংলা (বাংলাদেশ)"),
+        ("mn", "Монгол"),
     ];
 
     /// <summary>Shared Portuguese region policy for the app and Setup, including legacy Inno language codes.</summary>
