@@ -5,6 +5,7 @@
 // geospatial formats (KML, GPX) and the document readers (HWPX, DOCX, OFD).
 
 using System.Globalization;
+using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -61,6 +62,10 @@ internal static class SafeXml
         XContainer current = document;
         var depth = 0;
         elements = 0;
+        // Text the reader hands over in pieces (it splits text around a skipped comment or processing instruction) is
+        // gathered here until the next element, end tag or CDATA, so text in a million pieces costs no more to join
+        // than text in one.
+        var text = new StringBuilder();
         try
         {
             while (reader.Read())
@@ -68,6 +73,7 @@ internal static class SafeXml
                 switch (reader.NodeType)
                 {
                     case XmlNodeType.Element:
+                        AddText();
                         if (++depth > limits.MaxDepth)
                             throw limitExceeded($"The file nests elements more than {limits.MaxDepth} levels deep.");
                         if (++elements > limits.MaxElements - limits.ElementsBefore)
@@ -100,31 +106,37 @@ internal static class SafeXml
                             current = element;
                         break;
                     case XmlNodeType.EndElement:
+                        AddText();
                         current = current.Parent ?? (XContainer)document;
                         depth--;
                         break;
                     case XmlNodeType.CDATA:
+                        AddText();
                         if (current is XElement)
                             current.Add(new XCData(reader.Value));
                         break;
                     case XmlNodeType.Text or XmlNodeType.SignificantWhitespace or XmlNodeType.Whitespace:
                         // Text outside the root element (white space between declarations) is no content. Text next
                         // to text becomes one node, as XDocument.Load makes it.
-                        if (current is XElement parent)
-                        {
-                            if (parent.LastNode is XText last and not XCData)
-                                last.Value += reader.Value;
-                            else
-                                parent.Add(new XText(reader.Value));
-                        }
+                        if (current is XElement)
+                            text.Append(reader.Value);
                         break;
                 }
             }
+            AddText();
         }
         catch (XmlException ex) when (ex.Message.Contains("MaxCharactersInDocument", StringComparison.Ordinal))
         {
             throw limitExceeded("The file has more than " + limits.MaxCharacters.ToString("N0", CultureInfo.InvariantCulture) + " characters.");
         }
         return document;
+
+        void AddText()
+        {
+            if (text.Length == 0)
+                return;
+            current.Add(new XText(text.ToString()));
+            text.Clear();
+        }
     }
 }
