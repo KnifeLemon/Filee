@@ -21,7 +21,11 @@
           <SolidColorBrush x:Key="DangerBrush" Color="#C73A39" />
           <SolidColorBrush x:Key="DangerFaintBrush" Color="#1AC73A39" />
           <SolidColorBrush x:Key="SuccessBrush" Color="#0F7A5A" />
+          <SolidColorBrush x:Key="SuccessFaintBrush" Color="#1F0F7A5A" />
           <SolidColorBrush x:Key="WarningBrush" Color="#9A5B0C" />
+          <SolidColorBrush x:Key="WarningFaintBrush" Color="#269A5B0C" />
+          <SolidColorBrush x:Key="InfoBrush" Color="#1F6FB5" />
+          <SolidColorBrush x:Key="InfoFaintBrush" Color="#241F6FB5" />
           <BoxShadows x:Key="CardShadow">0 1 3 0 #12000000, 0 6 18 0 #0D000000</BoxShadows>
           <SolidColorBrush x:Key="AccentBrush" Color="#7F77DD" />
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#2E7F77DD" />
@@ -48,7 +52,11 @@
           <SolidColorBrush x:Key="DangerBrush" Color="#F09595" />
           <SolidColorBrush x:Key="DangerFaintBrush" Color="#26F09595" />
           <SolidColorBrush x:Key="SuccessBrush" Color="#5DCAA5" />
+          <SolidColorBrush x:Key="SuccessFaintBrush" Color="#265DCAA5" />
           <SolidColorBrush x:Key="WarningBrush" Color="#EF9F27" />
+          <SolidColorBrush x:Key="WarningFaintBrush" Color="#26EF9F27" />
+          <SolidColorBrush x:Key="InfoBrush" Color="#6DB6F2" />
+          <SolidColorBrush x:Key="InfoFaintBrush" Color="#2E6DB6F2" />
           <BoxShadows x:Key="CardShadow">0 1 3 0 #40000000, 0 8 24 0 #33000000</BoxShadows>
           <SolidColorBrush x:Key="AccentBrush" Color="#7F77DD" />
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#2E7F77DD" />
@@ -162,6 +170,43 @@
   </Style>
   <Style Selector="Border.badge.ok">
     <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+  </Style>
+
+  <!-- Status tag: a small squarer tag with a faint tint and coloured text. Engines page (installed, not installed,
+       your copy, update, ready). The tints and colours come from the theme, so light, dark and custom themes all follow. -->
+  <Style Selector="Border.status">
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+  </Style>
+  <Style Selector="Border.status > TextBlock">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.status.ok">
+    <Setter Property="Background" Value="{DynamicResource SuccessFaintBrush}" />
+  </Style>
+  <Style Selector="Border.status.ok > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+  <Style Selector="Border.status.danger">
+    <Setter Property="Background" Value="{DynamicResource DangerFaintBrush}" />
+  </Style>
+  <Style Selector="Border.status.danger > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+  </Style>
+  <Style Selector="Border.status.warn">
+    <Setter Property="Background" Value="{DynamicResource WarningFaintBrush}" />
+  </Style>
+  <Style Selector="Border.status.warn > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+  </Style>
+  <Style Selector="Border.status.accent">
+    <Setter Property="Background" Value="{DynamicResource InfoFaintBrush}" />
+  </Style>
+  <Style Selector="Border.status.accent > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource InfoBrush}" />
   </Style>
 
   <!-- ───────── Buttons: soft corners and a springy press ───────── -->
@@ -531,6 +576,10 @@
     <Setter Property="Padding" Value="14,6" />
   </Style>
   <Style Selector="Window.material-you Border.badge">
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
+    <Setter Property="Padding" Value="10,3" />
+  </Style>
+  <Style Selector="Window.material-you Border.status">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
     <Setter Property="Padding" Value="10,3" />
   </Style>

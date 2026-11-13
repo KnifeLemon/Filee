@@ -82,8 +82,9 @@
                   <StackPanel Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                       <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
-                      <Border Classes="badge">
-                        <TextBlock Classes="caption" Text="{Binding StatusText}" />
+                      <Border Classes="status" Classes.ok="{Binding StatusIsOk}" Classes.danger="{Binding StatusIsDanger}"
+                              Classes.warn="{Binding StatusIsWarn}" Classes.accent="{Binding StatusIsAccent}" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding StatusText}" />
                       </Border>
                     </StackPanel>
                     <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}" />
@@ -149,8 +150,9 @@
                     <StackPanel Spacing="3" ToolTip.Tip="{Binding Detail}">
                       <WrapPanel Orientation="Horizontal">
                         <TextBlock FontWeight="SemiBold" Text="{Binding Name}" Margin="0,0,10,0" VerticalAlignment="Center" />
-                        <Border Classes="badge" Margin="0,0,8,0">
-                          <TextBlock Classes="caption" Text="{Binding StatusText}" />
+                        <Border Classes="status" Classes.ok="{Binding StatusIsOk}" Classes.danger="{Binding StatusIsDanger}"
+                                Classes.warn="{Binding StatusIsWarn}" Margin="0,0,8,0" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding StatusText}" />
                         </Border>
                         <TextBlock Classes="caption" VerticalAlignment="Center" Margin="0,0,8,0" Text="{Binding Version}"
                                    IsVisible="{Binding Version, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

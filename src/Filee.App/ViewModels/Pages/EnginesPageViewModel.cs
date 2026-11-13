@@ -30,6 +30,13 @@ public sealed partial class EngineItemViewModel(IConverter converter, EngineStat
         }
     }
     public bool IsAvailable { get; } = status.IsAvailable;
+    // Colour of the status tag (Border.status in Soft.axaml): green when ready, red when it isn't installed or the check
+    // failed, amber for every other reason it can't run here (other platform, needs Ollama, Perl or another engine).
+    public bool StatusIsOk => IsAvailable;
+    public bool StatusIsDanger { get; } = !status.IsAvailable
+        && status.ReasonKey is null or "engine.reason.not_installed" or "engine.reason.error";
+    public bool StatusIsWarn { get; } = !status.IsAvailable
+        && status.ReasonKey is not (null or "engine.reason.not_installed" or "engine.reason.error");
     public string StatusText { get; } = status.IsAvailable ? loc["engines.available"] : loc[status.ReasonKey ?? "engines.unavailable"];
 
     /// <summary>Path of the program or other technical detail, shown as a tooltip.</summary>
