@@ -34,8 +34,11 @@ internal sealed partial class DocxReader
             var data = container.Element(A + "graphic")?.Element(A + "graphicData");
             // Stacking order of floating objects (members of a group share the group's).
             var zOrder = anchored && Long(container, "relativeHeight") is { } height32 ? (int?)Math.Min(height32, int.MaxValue) : null;
+            var distance = anchored ? WrapDistance(container) : default;
             foreach (var inline in GraphicObjects(data?.Elements() ?? [], width, height, anchor, (0, 0, 1, 1)))
             {
+                if (anchored && inline is HObject floating)
+                    floating.OuterMargin = distance;
                 switch (inline)
                 {
                     case HImage image:
@@ -443,8 +446,58 @@ internal sealed partial class DocxReader
                 "wrapTopAndBottom" => "TOP_AND_BOTTOM",
                 _ => behind ? "BEHIND_TEXT" : "IN_FRONT_OF_TEXT",
             },
-            AllowOverlap: Attr(anchor, "allowOverlap") is not ("0" or "false"));
+            AllowOverlap: Attr(anchor, "allowOverlap") is not ("0" or "false"))
+        {
+            TextFlow = WrapSide(Attr(anchor.Element(Wp + (wrap ?? "wrapNone")), "wrapText")),
+            WrapPolygon = wrap is "wrapTight" or "wrapThrough" ? WrapPolygon(anchor.Element(Wp + wrap)?.Element(Wp + "wrapPolygon")) : null,
+        };
     }
+
+    /// <summary>Word's wrapText (DrawingML) or VML w10:wrap side as the sides text goes on (HAnchor.TextFlow).</summary>
+    private static string WrapSide(string? side) => side switch
+    {
+        "left" => "LEFT_ONLY",
+        "right" => "RIGHT_ONLY",
+        "largest" => "LARGEST_ONLY",
+        _ => "BOTH_SIDES",
+    };
+
+    /// <summary>The most points of a wrap polygon read; one with more wraps at the object's box.</summary>
+    private const int MaxWrapPolygonPoints = 256;
+
+    /// <summary>
+    /// A tight or through wrap's polygon (wp:wrapPolygon) as fractions of the object's size: Word writes its points in
+    /// a 21600 × 21600 square over the object. Null when it is missing, has fewer than three points or too many.
+    /// </summary>
+    private static List<(double X, double Y)>? WrapPolygon(XElement? polygon)
+    {
+        if (polygon is null)
+            return null;
+        var points = new List<(double X, double Y)>();
+        foreach (var point in polygon.Elements())
+        {
+            if (point.Name != Wp + "start" && point.Name != Wp + "lineTo")
+                continue;
+            if (points.Count == MaxWrapPolygonPoints)
+                return null;
+            points.Add((Math.Clamp(Long(point, "x") ?? 0, -21600L * 4, 21600L * 5) / 21600.0, Math.Clamp(Long(point, "y") ?? 0, -21600L * 4, 21600L * 5) / 21600.0));
+        }
+        return points.Count >= 3 ? points : null;
+    }
+
+    /// <summary>
+    /// The distance a floating DrawingML object keeps from the text around it: its wrap element's distT / distB / distL /
+    /// distR, else the anchor's (EMU), never negative.
+    /// </summary>
+    private static HInsets WrapDistance(XElement anchor)
+    {
+        var wrap = anchor.Elements().FirstOrDefault(e => e.Name.Namespace == Wp && e.Name.LocalName.StartsWith("wrap", StringComparison.Ordinal));
+        int Distance(string name) => HwpxUnits.FromEmu(Math.Clamp(Long(wrap, name) ?? Long(anchor, name) ?? 0, 0, MaxWrapDistanceEmu));
+        return new HInsets(Distance("distL"), Distance("distR"), Distance("distT"), Distance("distB"));
+    }
+
+    /// <summary>The largest distance from text read (about 56 cm, a sheet of A2): more is a broken or hostile value.</summary>
+    private const long MaxWrapDistanceEmu = 20_000_000;
 
     private static int OffsetOf(XElement? position) =>
         long.TryParse(position?.Element(Wp + "posOffset")?.Value, out var emu) ? HwpxUnits.FromEmu(emu) : 0;
@@ -525,6 +578,7 @@ internal sealed partial class DocxReader
             var anchor = style.GetValueOrDefault("position") == "absolute" ? VmlAnchor(shape, style) : null;
             var transform = VmlTransform(style);
             int? zOrder = anchor is not null && int.TryParse(style.GetValueOrDefault("z-index"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var z) ? z : null;
+            var distance = anchor is not null ? VmlWrapDistance(style) : default;
 
             if (shape.Element(V + "imagedata") is { } imageData && ExtractImage(Attr(imageData, "id", R)) is { } path)
             {
@@ -536,6 +590,7 @@ internal sealed partial class DocxReader
                     Transform = transform,
                     ZOrder = zOrder,
                     Effects = VmlImageEffects(imageData),
+                    OuterMargin = distance,
                 };
             }
             else if (shape.Element(V + "textbox")?.Element(W + "txbxContent") is { } content)
@@ -545,7 +600,7 @@ internal sealed partial class DocxReader
                     Fill = VmlFill(shape),
                     Line = VmlLine(shape),
                 }.Build();
-                (box.Transform, box.ZOrder) = (transform, zOrder);
+                (box.Transform, box.ZOrder, box.OuterMargin) = (transform, zOrder, distance);
                 ReadTextBoxContent(content, box.Blocks);
                 yield return box;
             }
@@ -560,7 +615,7 @@ internal sealed partial class DocxReader
                     // A floating WordArt (Word's watermarks): its text drawn turned with the shape, as see-through as its
                     // fill, stretched over the box when the text path fits the shape.
                     var box = new TextBoxBuilder(width, height, anchor) { Line = HBorder.None, Padding = new HInsets(0, 0, 0, 0), VerticalAlign = HVerticalAlign.Center }.Build();
-                    (box.Transform, box.ZOrder) = (transform, zOrder);
+                    (box.Transform, box.ZOrder, box.OuterMargin) = (transform, zOrder, distance);
                     var fill = shape.Element(V + "fill");
                     box.TextArt = new HTextArt(fit, Math.Clamp(VmlFraction((string?)fill?.Attribute("opacity") ?? (string?)shape.Attribute(O + "opacity")) ?? 1, 0, 1));
                     // No paragraph spacing: the box holds the text's lines alone.
@@ -590,6 +645,7 @@ internal sealed partial class DocxReader
                     width = Math.Abs(to.X - from.X);
                     height = Math.Abs(to.Y - from.Y);
                     var lineAnchor = anchor ?? VmlAnchor(shape, style);
+                    distance = VmlWrapDistance(style);
                     anchor = lineAnchor with
                     {
                         HorizontalOffset = lineAnchor.HorizontalOffset + Math.Min(from.X, to.X),
@@ -606,6 +662,7 @@ internal sealed partial class DocxReader
                     CornerRatio = shape.Name.LocalName == "roundrect" ? 20 : 0,
                     Transform = transform,
                     ZOrder = zOrder,
+                    OuterMargin = distance,
                 };
             }
         }
@@ -788,7 +845,21 @@ internal sealed partial class DocxReader
                 "topAndBottom" => "TOP_AND_BOTTOM",
                 _ => style.TryGetValue("z-index", out var z) && z.StartsWith('-') ? "BEHIND_TEXT" : "IN_FRONT_OF_TEXT",
             },
-            AllowOverlap: true);
+            AllowOverlap: true)
+        {
+            TextFlow = WrapSide((string?)shape.Element(W10 + "wrap")?.Attribute("side")),
+        };
+    }
+
+    /// <summary>
+    /// The distance a floating VML shape keeps from the text around it: style mso-wrap-distance-left / -right / -top /
+    /// -bottom, by default 9 pt beside it and none above and below (as Word draws them).
+    /// </summary>
+    private static HInsets VmlWrapDistance(Dictionary<string, string> style)
+    {
+        int Distance(string side, int fallback) =>
+            Math.Clamp(HwpxUnits.ParseLength(style.GetValueOrDefault("mso-wrap-distance-" + side)) ?? fallback, 0, HwpxUnits.FromEmu(MaxWrapDistanceEmu));
+        return new HInsets(Distance("left", 900), Distance("right", 900), Distance("top", 0), Distance("bottom", 0));
     }
 
     /// <summary>VML colours: "#RRGGBB", "#RGB", "#RRGGBB [index]" or one of the sixteen named colours ("silver").</summary>

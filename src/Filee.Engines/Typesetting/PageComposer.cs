@@ -40,6 +40,10 @@
 //   document. 한글 sets each note as high as its text, without the spacing below its last line, the last ending at the
 //   body's bottom; that is measured against 한글's own PDFs. Footnotes go across the page's text width, also in
 //   columns (한글 puts them under each column).
+// - Floating objects (FloatingObjects): placed from where their paragraph starts (those against the paper or the page
+//   from the line that holds them) and drawn when the page is done. Lines laid out anew go around the ones text wraps
+//   around: each line gets its place and the stretches beside them at its height (Room), a row of text taking a part in
+//   each stretch on both sides of an object; a row's lines stay in one column, also when columns are balanced.
 // - Limits (LayoutGuard): the time budget and cancellation are checked before every block, every paragraph in a cell,
 //   header, footer or text box, every page a table goes on to and every few hundred lines; the pages count as they are
 //   finished. A line finds its notes, objects and the objects in its way without looking through the whole paragraph.
@@ -242,23 +246,31 @@ internal sealed class PageComposer
         /// </summary>
         private List<Placed> Balance(List<Placed> placed)
         {
-            // The space above each thing in its column (none at a column's top).
-            var units = new List<(Placed Item, float Gap)>();
-            var bottoms = new Dictionary<int, float>();
+            // The space above each thing in its column (none at a column's top). A thing that starts above the bottom of
+            // the one before it is on that one's row (lines on both sides of an object) and stays beside it.
+            var units = new List<(Placed Item, float Gap, bool Along)>();
+            var rows = new Dictionary<int, (float Top, float Bottom)>();
             foreach (var item in placed)
             {
-                var gap = bottoms.TryGetValue(item.Column, out var bottom) ? Math.Max(0, item.Y - bottom) : 0;
-                units.Add((item, gap));
-                bottoms[item.Column] = item.Y + item.Height;
+                var known = rows.TryGetValue(item.Column, out var row);
+                var along = known && item.Y < row.Bottom - Epsilon;
+                units.Add((item, along ? item.Y - row.Top : known ? Math.Max(0, item.Y - row.Bottom) : 0, along));
+                rows[item.Column] = along ? (row.Top, Math.Max(row.Bottom, item.Y + item.Height)) : (item.Y, item.Y + item.Height);
             }
-            var total = units.Sum(u => u.Gap + u.Item.Height);
+            var total = units.Where(u => !u.Along).Sum(u => u.Gap + u.Item.Height);
             var capacity = Bottom - _regionTop;
             List<Placed>? Try(float target)
             {
                 var result = new List<Placed>(units.Count);
-                var (column, y, first) = (0, _regionTop, true);
-                foreach (var (item, gap) in units)
+                var (column, y, rowTop, first) = (0, _regionTop, _regionTop, true);
+                foreach (var (item, gap, along) in units)
                 {
+                    if (along && !first)
+                    {
+                        result.Add(item with { Column = column, Y = rowTop + gap });
+                        y = Math.Max(y, rowTop + gap + item.Height);
+                        continue;
+                    }
                     var top = first ? y : y + gap;
                     if (!first && top + item.Height > _regionTop + target + Epsilon)
                     {
@@ -268,7 +280,7 @@ internal sealed class PageComposer
                         (column, top) = (column + 1, _regionTop);
                     }
                     result.Add(item with { Column = column, Y = top });
-                    y = top + item.Height;
+                    (y, rowTop) = (top + item.Height, top);
                     first = false;
                 }
                 return result;
@@ -633,7 +645,7 @@ internal sealed class PageComposer
             }
         }
 
-        private ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<float, float, (float, float)>? wrap = null)
+        private ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<float, float, LineRoom>? wrap = null)
         {
             marker ??= paragraph.List is { Numbered: true } list ? _numbers.Next(list) : null;
             return composer._layouter.Layout(paragraph, width, marker, FieldText, NoteText, wrap);
@@ -674,6 +686,7 @@ internal sealed class PageComposer
                 // on as they come, after the page's own).
                 var fit = 0;
                 var y = _y;
+                var rowTop = _y;
                 double? noteSum = null;
                 var noteCount = 0;
                 for (var j = i; j < lines.Count; j++)
@@ -683,7 +696,10 @@ internal sealed class PageComposer
                     if (j > i && stored && (lines[j].StoredPageStart || lines[j].StoredColumnStart && _columns.Count > 1))
                         break;
                     // 한글's line on both sides of an object is two stored lines at one place: the second goes beside the first.
-                    var top = box.StoredLines && j > i && SameRow(lines, j) ? y - lines[j - 1].Height
+                    // A line laid out anew beside an object goes on its row, the row as high as its highest line.
+                    var along = j > i && lines[j].Beside;
+                    var top = along ? rowTop
+                        : box.StoredLines && j > i && SameRow(lines, j) ? y - lines[j - 1].Height
                         : stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _regionTop + storedTop) : stored ? y : Clear(y, lines[j].Height);
                     var fresh = NewNotes(lines[j]).ToList();
                     noteSum ??= FootnotesSum();
@@ -694,7 +710,8 @@ internal sealed class PageComposer
                     }
                     if (top + lines[j].Height > _geometry.BodyBottom - FootnotesHeight(noteSum.Value, noteCount) + Epsilon)
                         break;
-                    y = top + lines[j].Height;
+                    y = along ? Math.Max(y, top + lines[j].Height) : top + lines[j].Height;
+                    rowTop = top;
                     fit++;
                 }
                 if (widowOrphan && !stored && fit < lines.Count - i)
@@ -705,6 +722,9 @@ internal sealed class PageComposer
                     else if (lines.Count - i - fit < MinimumLines && fit > MinimumLines - 1 + (i == 0 ? 1 : 0))
                         fit -= MinimumLines - (lines.Count - i - fit);
                 }
+                // A row of lines beside an object stays in one column.
+                while (fit > 0 && i + fit < lines.Count && lines[i + fit].Beside)
+                    fit--;
                 if (fit == 0)
                 {
                     if (!_columnEmpty)
@@ -754,11 +774,17 @@ internal sealed class PageComposer
         /// <summary>The page and column where 한글's last column or page started.</summary>
         private (int Page, int Column) _hangulStart;
 
+        /// <summary>The page, column, top and bottom of the last row of lines placed (see LineBox.Beside).</summary>
+        private (int Page, int Column, float Top, float Bottom) _row;
+
         private void PlaceLine(HParagraph paragraph, ParagraphBox box, LineBox line, bool first, bool stored, bool last = false, bool opens = true, bool closes = true)
         {
             if (line.StoredTop is { } storedTop)
                 _lastStored = storedTop;
-            if (stored && line.StoredTop is { } top)
+            var along = line.Beside && _row.Page == _pages.Count && _row.Column == _column && !_columnEmpty;
+            if (along)
+                _y = _row.Top;
+            else if (stored && line.StoredTop is { } top)
                 _y = Math.Max(_y, _regionTop + top);
             else if (!stored)
                 _y = Clear(_y, line.Height);
@@ -788,7 +814,8 @@ internal sealed class PageComposer
                 under = (content, x, top, columnTop) => content.Draw(canvas => slice.Draw(canvas, x, top, height, columnTop));
             }
             Put(0, line.Height, line.Draw, under);
-            _y += line.Height;
+            _row = along ? _row with { Bottom = Math.Max(_row.Bottom, _y + line.Height) } : (_pages.Count, _column, _y, _y + line.Height);
+            _y = _row.Bottom;
             if (box.Border is not null)
                 _boxBottom = (_pages.Count, _column, _y);
             foreach (var note in line.Notes)
@@ -805,29 +832,69 @@ internal sealed class PageComposer
         /// <summary>The column's left and right edge.</summary>
         private (float Left, float Right) ColumnEdges => (ColumnLeft(_column), ColumnLeft(_column) + ColumnWidth);
 
-        /// <summary>The objects on the page text goes around (beside or above and below) that reach into the column.</summary>
-        private IEnumerable<PlacedObject> InTheWay(string wrap)
+        /// <summary>
+        /// The objects on the page text goes around (beside them or above and below) that reach into the column, by the
+        /// top of the room they keep (see PlacedObject.Bounds).
+        /// </summary>
+        private List<PlacedObject> InTheWay()
         {
             var (left, right) = ColumnEdges;
-            return Current.Objects.Where(o => o.Wrap == wrap && o.Area.Right > left + Epsilon && o.Area.Left < right - Epsilon);
+            return [.. Current.Objects.Where(o => o.Wrap is "SQUARE" or "TOP_AND_BOTTOM" && o.Bounds.Right > left + Epsilon && o.Bounds.Left < right - Epsilon)
+                .OrderBy(o => o.Bounds.Top)];
         }
 
-        /// <summary>Where a line laid out anew from <paramref name="top"/> goes: below the objects text goes above and below.</summary>
-        private float Clear(float top, float height)
+        /// <summary>
+        /// Where a line laid out anew from <paramref name="top"/> goes: below the objects text goes above and below, and
+        /// below those beside it where they leave it no stretch wide enough (see Room).
+        /// </summary>
+        private float Clear(float top, float height) => Current.Objects.Count == 0 ? top : Room(InTheWay(), top, height).Top;
+
+        /// <summary>The narrowest stretch beside an object a line's text goes in, in points; narrower ones stay empty.</summary>
+        private const float NarrowestSpan = 18;
+
+        /// <summary>
+        /// Where a line laid out anew from <paramref name="top"/> goes and the stretches of the page across (left to right)
+        /// its text goes in there, between the column's edges and beside the objects text goes around; null stretches
+        /// for the whole column. The line goes below the objects text goes above and below, and further down past
+        /// objects beside it until a stretch is at least <see cref="NarrowestSpan"/> wide.
+        /// </summary>
+        /// <param name="objects">The objects in the way (InTheWay).</param>
+        private (float Top, List<(float Start, float End)>? Spans) Room(List<PlacedObject> objects, float top, float height)
+        {
+            if (objects.Count == 0)
+                return (top, null);
+            var (left, right) = ColumnEdges;
+            // Each round moves the line below one more object at least.
+            for (var round = 1; ; round++)
+            {
+                if (round % 64 == 0)
+                    _guard.Paragraph();
+                top = AboveAndBelow(objects, top, height);
+                var spans = FloatingObjects.Beside(objects, left, right, top, height, out var below);
+                if (spans is null)
+                    return (top, null);
+                spans.RemoveAll(s => s.End - s.Start < NarrowestSpan);
+                if (spans.Count > 0 || below <= top + Epsilon)
+                    return (top, spans.Count > 0 ? spans : null);
+                top = below;
+            }
+        }
+
+        /// <summary>Where a line from <paramref name="top"/> goes below the objects text goes above and below.</summary>
+        private static float AboveAndBelow(List<PlacedObject> objects, float top, float height)
         {
             // From the top down, so one pass moves the line below all of them; the next only confirms it.
-            var objects = InTheWay("TOP_AND_BOTTOM").OrderBy(o => o.Area.Top).ToList();
-            var moved = objects.Count > 0;
+            var moved = true;
             while (moved)
             {
                 moved = false;
                 foreach (var item in objects)
                 {
-                    if (item.Area.Top >= top + height - Epsilon)
+                    if (item.Bounds.Top >= top + height - Epsilon)
                         break;
-                    if (item.Area.Bottom > top + Epsilon)
+                    if (item.Wrap == "TOP_AND_BOTTOM" && item.Bounds.Bottom > top + Epsilon)
                     {
-                        top = item.Area.Bottom;
+                        top = item.Bounds.Bottom;
                         moved = true;
                     }
                 }
@@ -836,35 +903,25 @@ internal sealed class PageComposer
         }
 
         /// <summary>
-        /// A paragraph laid out anew again with its lines beside the objects text goes around (on each object's wider
-        /// side), its own objects placed first; null when none is beside it.
+        /// A paragraph laid out anew again with its lines beside the objects text goes around (see Room), its own
+        /// objects placed first; null when none is beside it.
         /// </summary>
         private ParagraphBox? Wrapped(HParagraph paragraph, ParagraphBox box)
         {
             var top = _y + (_columnEmpty || _skipSpaceBefore ? 0 : box.SpaceBefore);
             if (FloatingObjects.Of(paragraph).Any(o => o.Anchor.Wrap is "SQUARE" or "TOP_AND_BOTTOM"))
                 _anchored[paragraph] = Anchor(paragraph, top);
-            var (left, right) = ColumnEdges;
-            var beside = InTheWay("SQUARE").Where(o => o.Area.Bottom > top + Epsilon).ToList();
-            if (beside.Count == 0)
+            var objects = InTheWay();
+            if (!objects.Any(o => o.Wrap == "SQUARE" && o.Bounds.Bottom > top + Epsilon))
                 return null;
+            var left = ColumnEdges.Left;
             // Lines go below the objects text goes above and below first (as they will be placed), and then beside.
-            var shift = 0f;
-            (float, float) Insets(float y, float height)
+            LineRoom Beside(float y, float height)
             {
-                var at = Clear(top + y + shift, height);
-                shift = at - top - y;
-                var (inLeft, inRight) = (0f, 0f);
-                foreach (var item in beside.Where(o => o.Area.Top < at + height - Epsilon && o.Area.Bottom > at + Epsilon))
-                {
-                    if (item.Area.Left - left >= right - item.Area.Right)
-                        inRight = Math.Max(inRight, right - item.Area.Left);
-                    else
-                        inLeft = Math.Max(inLeft, item.Area.Right - left);
-                }
-                return (inLeft, inRight);
+                var (at, spans) = Room(objects, top + y, height);
+                return new LineRoom(at - top, spans?.ConvertAll(s => (s.Start - left, s.End - left)));
             }
-            return Layout(paragraph, ColumnWidth, box.Marker, Insets);
+            return Layout(paragraph, ColumnWidth, box.Marker, Beside);
         }
 
         /// <summary>The page's areas for anchors, with the current column; a paragraph at <paramref name="top"/> as wide as the column.</summary>
@@ -902,7 +959,7 @@ internal sealed class PageComposer
                 if (FloatingObjects.Size(item) is not var (w, h))
                     continue;
                 _floated.Add(item);
-                placed.Add(new PlacedObject(item, FloatingObjects.Place(anchor, w, h, frame), anchor.Wrap, FloatingObjects.ZOrder(item), _objects++));
+                placed.Add(FloatingObjects.Placed(item, anchor, FloatingObjects.Place(anchor, w, h, frame), _objects++));
             }
             Current.Objects.AddRange(placed);
             return placed;

@@ -665,7 +665,20 @@ internal sealed record HGradient(IReadOnlyList<string> Colors, int Angle);
 internal sealed record HAnchor(
     string HorizontalRelativeTo, string HorizontalAlign, int HorizontalOffset,
     string VerticalRelativeTo, string VerticalAlign, int VerticalOffset,
-    string Wrap, bool AllowOverlap);
+    string Wrap, bool AllowOverlap)
+{
+    /// <summary>
+    /// The sides of a SQUARE object text goes on: BOTH_SIDES, LEFT_ONLY, RIGHT_ONLY or LARGEST_ONLY (OWPML textFlow,
+    /// Word wrapText). Read for layout only.
+    /// </summary>
+    public string TextFlow { get; init; } = "BOTH_SIDES";
+
+    /// <summary>
+    /// The outline text goes up to beside a tightly wrapped object (Word wp:wrapPolygon), its points as fractions of
+    /// the object's width and height; null wraps at the object's box. Read for layout only.
+    /// </summary>
+    public IReadOnlyList<(double X, double Y)>? WrapPolygon { get; init; }
+}
 
 // ───────────────────────── Formats ─────────────────────────
 

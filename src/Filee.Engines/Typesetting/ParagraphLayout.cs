@@ -7,7 +7,9 @@
 // 3. Break: lines fill greedily up to the column width, breaking at the last opportunity LineBreaker allows (한글 and
 //    Word break the same way); spaces and tabs at a line end hang past it. A word wider than the line breaks between
 //    clusters. 한글's 최소 공백 (condense) lets a line keep a word that fits once its spaces shrink. With lineWrap
-//    KEEP or SQUEEZE the paragraph stays on one line, squeezed to fit with SQUEEZE.
+//    KEEP or SQUEEZE the paragraph stays on one line, squeezed to fit with SQUEEZE. Beside floating objects (text wrap)
+//    the page composer gives each line its place and the stretches of the column it has (LineRoom): the line's text
+//    fills them in reading order, a part in each, and the parts are one row (LineBox.Beside).
 // 4. Place: each line's part of every item is shaped again with its context, so a break inside an Arabic word or
 //    after an Indic cluster is shaped as it ends; tabs get their width from the stops (left, right, centre, decimal,
 //    with leaders); alignment adds the remaining width before the line (right, centre) or between its spaces
@@ -37,6 +39,28 @@ using Filee.Engines.Rendering;
 using SkiaSharp;
 
 namespace Filee.Engines.Typesetting;
+
+/// <summary>Where a line laid out anew goes and the room it has there beside floating objects (text wrap).</summary>
+/// <param name="Top">The line's top below the paragraph's first line's top, moved down past the objects in its way.</param>
+/// <param name="Spans">
+/// The stretches of the column its text goes in, from the column's left edge and left to right; null for the whole width.
+/// </param>
+internal sealed record LineRoom(float Top, IReadOnlyList<(float Start, float End)>? Spans)
+{
+    /// <summary>The same place and stretches (to a hundredth of a point).</summary>
+    public bool Same(LineRoom other)
+    {
+        static bool Near(float a, float b) => Math.Abs(a - b) < 0.01f;
+        if (!Near(Top, other.Top) || Spans?.Count != other.Spans?.Count)
+            return false;
+        for (var i = 0; i < (Spans?.Count ?? 0); i++)
+        {
+            if (!Near(Spans![i].Start, other.Spans![i].Start) || !Near(Spans[i].End, other.Spans[i].End))
+                return false;
+        }
+        return true;
+    }
+}
 
 /// <summary>Lays out paragraphs; one per layout job, sharing its font resolver and shaper (not thread-safe).</summary>
 internal sealed class ParagraphLayouter
@@ -96,11 +120,12 @@ internal sealed class ParagraphLayouter
     /// <param name="fields">The text of page number and total pages fields; null leaves them out.</param>
     /// <param name="notes">The number a note reference shows; null leaves note references out.</param>
     /// <param name="wrap">
-    /// Room objects take beside the lines laid out anew (text wrap): for a line at a height below the first line's top
-    /// and its height, how far in from the left and right it starts and ends. Null leaves the lines whole.
+    /// The room the lines laid out anew have beside floating objects (text wrap): for a line at a height below the first
+    /// line's top and its height, where it goes and the stretches of the column its text goes in. Null leaves the lines
+    /// whole.
     /// </param>
     public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<HField, string>? fields = null,
-        Func<HNote, string>? notes = null, Func<float, float, (float Left, float Right)>? wrap = null)
+        Func<HNote, string>? notes = null, Func<float, float, LineRoom>? wrap = null)
     {
         var format = paragraph.Format;
         var source = ParagraphText.From(paragraph, marker, fields, notes);
@@ -174,14 +199,24 @@ internal sealed class ParagraphLayouter
             if (lines.Count % GuardLines == GuardLines - 1)
                 Guard?.Paragraph();
             var first = lines.Count == 0;
-            var settings = paragraphLayout;
-            if (wrap?.Invoke(y, lines.Count > 0 ? lines[^1].Height : mark.FontSize * 1.6f) is var (left, right) && left + right > 0)
-                settings = settings with { Left = settings.Left + left, Right = settings.Right + right };
-            var available = width - settings.Left - settings.Right - (first ? settings.FirstLine : 0);
-            var (end, forced) = settings.Wrap == HLineWrap.Break
-                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense)
+            if (wrap is not null)
+            {
+                // The room for a line as high as the one before; once laid out, again for its own height where it is higher.
+                var estimate = lines.Count > 0 ? lines[^1].Height : mark.FontSize * 1.6f;
+                var room = wrap(y, estimate);
+                var row = Row(room, start, first);
+                if (LineBox.Stacked(row) is var high && high > estimate + Epsilon && wrap(y, high) is var again && !again.Same(room))
+                    (room, row) = (again, Row(again, start, first));
+                lines.AddRange(row);
+                y = room.Top + LineBox.Stacked(row);
+                start = row[^1].End;
+                continue;
+            }
+            var available = width - paragraphLayout.Left - paragraphLayout.Right - (first ? paragraphLayout.FirstLine : 0);
+            var (end, forced) = paragraphLayout.Wrap == HLineWrap.Break
+                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(paragraphLayout, first, x), paragraphLayout.Condense)
                 : (text.Length, true);
-            lines.Add(Place(source, ranges, start, end, forced, first, width, settings, mark));
+            lines.Add(Place(source, ranges, start, end, forced, first, width, paragraphLayout, mark));
             y += lines[^1].Height;
             start = end;
         }
@@ -191,6 +226,61 @@ internal sealed class ParagraphLayouter
             lines.Add(Place(source, ranges, text.Length, text.Length, true, false, width, paragraphLayout, mark));
 
         return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating, Border = border };
+
+        // One row of text from start in the room's stretches, in reading order: a part of the text in each, as much as
+        // fits, until a line break or the end. A stretch the next word doesn't fit in is left empty while another
+        // follows; the last takes the text anyway.
+        List<LineBox> Row(LineRoom room, int from, bool firstLine)
+        {
+            IEnumerable<(float Start, float End)> spans = room.Spans is { Count: > 0 } stretches ? stretches : [(0f, width)];
+            var order = (paragraphLayout.RightToLeft ? spans.Reverse() : spans).ToList();
+            var row = new List<LineBox>();
+            for (var k = 0; k < order.Count && (row.Count == 0 || from < text.Length); k++)
+            {
+                var opening = firstLine && row.Count == 0;
+                var settings = Within(paragraphLayout, order[k], width, opening);
+                var available = width - settings.Left - settings.Right - (opening ? settings.FirstLine : 0);
+                var lastSpan = k == order.Count - 1;
+                if (available <= Epsilon && !lastSpan)
+                    continue;
+                var (end, forced) = settings.Wrap == HLineWrap.Break
+                    ? Fit(text, breaks, advances, starts, from, available, x => NextStop(settings, opening, x), settings.Condense)
+                    : (text.Length, true);
+                // Broken inside a word because the word is wider than the stretch: it goes on in the next stretch.
+                if (!lastSpan && !forced && end < text.Length && breaks[end] != LineBreak.Allowed)
+                    continue;
+                var line = Place(source, ranges, from, end, forced, opening, width, settings, mark);
+                row.Add(row.Count == 0 ? line : line.Along());
+                from = end;
+                if (forced)
+                    break;
+            }
+            return row;
+        }
+    }
+
+    /// <summary>
+    /// The paragraph's settings for a line in the stretch of the column from <paramref name="span"/>.Start to .End: at
+    /// a side where an object ends the stretch, its indent where it reaches further in, else the object's edge (Word's
+    /// lines beside an object start at the object, not indented from it); at the column's edge the indent as it is.
+    /// </summary>
+    private static Settings Within(Settings settings, (float Start, float End) span, float width, bool firstLine)
+    {
+        var indent = firstLine ? settings.FirstLine : 0;
+        var (atLeft, atRight) = (span.Start <= Epsilon, span.End >= width - Epsilon);
+        // A right-to-left paragraph's Left and Right name its start (right) and end (left) side; the first line's indent
+        // is on the start side.
+        return settings.RightToLeft
+            ? settings with
+            {
+                Left = atRight ? settings.Left : Math.Max(settings.Left + indent, width - span.End) - indent,
+                Right = atLeft ? settings.Right : Math.Max(settings.Right, span.Start),
+            }
+            : settings with
+            {
+                Left = atLeft ? settings.Left : Math.Max(settings.Left + indent, span.Start) - indent,
+                Right = atRight ? settings.Right : Math.Max(settings.Right, width - span.End),
+            };
     }
 
     /// <summary>

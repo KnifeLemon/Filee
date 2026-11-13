@@ -29,7 +29,7 @@ internal sealed record ParagraphBox(float SpaceBefore, float SpaceAfter, IReadOn
     public IReadOnlyDictionary<HInline, int> FloatingAt { get; init; } = new Dictionary<HInline, int>();
 
     /// <summary>The paragraph's whole height with its spacing.</summary>
-    public float Height => SpaceBefore + Lines.Sum(l => l.Height) + SpaceAfter;
+    public float Height => SpaceBefore + LineBox.Stacked(Lines) + SpaceAfter;
 }
 
 /// <summary>
@@ -135,10 +135,39 @@ internal sealed class LineBox
     public bool StoredColumnStart { get; init; }
 
     /// <summary>
+    /// The line goes on the row of the line before it, further along beside an object text goes around on both sides
+    /// (a line laid out anew): both start at one height, and the row is as high as its highest line.
+    /// </summary>
+    public bool Beside { get; init; }
+
+    /// <summary>The height of <paramref name="lines"/> stacked: each row (a line and those beside it) as high as its highest line.</summary>
+    public static float Stacked(IReadOnlyList<LineBox> lines)
+    {
+        // Summed in double as LINQ sums floats.
+        var (sum, row) = (0.0, 0f);
+        foreach (var line in lines)
+        {
+            if (line.Beside)
+            {
+                row = Math.Max(row, line.Height);
+                continue;
+            }
+            sum += row;
+            row = line.Height;
+        }
+        return (float)(sum + row);
+    }
+
+    /// <summary>
     /// The line with room for a paragraph border above its content (<paramref name="above"/>) and below it
     /// (<paramref name="below"/>): taller, its content moved down. With room below, nothing of it is spacing.
     /// </summary>
-    public LineBox Padded(float above, float below) => new()
+    public LineBox Padded(float above, float below) => Copy(above, below, Beside);
+
+    /// <summary>The line on the row of the line before it (see <see cref="Beside"/>).</summary>
+    public LineBox Along() => Copy(0, 0, beside: true);
+
+    private LineBox Copy(float above, float below, bool beside) => new()
     {
         Start = Start,
         End = End,
@@ -157,6 +186,7 @@ internal sealed class LineBox
         StoredTop = StoredTop,
         StoredPageStart = StoredPageStart,
         StoredColumnStart = StoredColumnStart,
+        Beside = beside,
     };
 
     /// <summary>Draws the line with its top-left corner (column edge, line top) at (<paramref name="x"/>, <paramref name="top"/>).</summary>
