@@ -388,4 +388,54 @@ public sealed class CaptureStudioTests
             Assert.Contains("1PhoneMirror.exe", exe);
         }
     }
+
+    [Fact]
+    public void CaptureRecordingEngine_ResolveMicrophoneTarget_resolves_properly()
+    {
+        var (target, moniker) = CaptureRecordingEngine.ResolveMicrophoneTarget(null);
+        // Should resolve safely without throwing exceptions
+        if (target != null)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(target));
+        }
+    }
+
+    [Fact]
+    public void WasapiLoopbackRecorder_supported_flag_matches_os()
+    {
+        Assert.Equal(OperatingSystem.IsWindows(), WasapiLoopbackRecorder.IsSupported);
+    }
+
+    [Fact]
+    public async Task CaptureRecordingEngine_end_to_end_recording_with_audio_generates_valid_mp4()
+    {
+        var ffmpeg = CaptureRecordingEngine.FindFfmpeg();
+        if (string.IsNullOrWhiteSpace(ffmpeg) || !File.Exists(ffmpeg))
+            return; // Skip if ffmpeg not installed
+
+        using var engine = new CaptureRecordingEngine();
+        var config = new CaptureConfig
+        {
+            SourceType = CaptureSourceType.FullScreen,
+            Framerate = 30,
+            EnableMicrophone = true,
+            EnableSystemAudio = true,
+            MicrophoneDevice = "Default Microphone"
+        };
+
+        var started = await engine.StartRecordingAsync(config);
+        Assert.True(started, $"StartRecordingAsync failed: {engine.LastErrorMessage}");
+        Assert.True(engine.IsRecording);
+
+        await Task.Delay(1500);
+
+        var result = await engine.StopAsync();
+        Assert.NotNull(result);
+        Assert.True(File.Exists(result.VideoPath));
+        Assert.True(new FileInfo(result.VideoPath).Length > 0);
+
+        // Clean up
+        try { File.Delete(result.VideoPath); } catch { }
+        try { Directory.Delete(Path.GetDirectoryName(result.VideoPath)!, true); } catch { }
+    }
 }

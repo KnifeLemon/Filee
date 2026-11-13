@@ -302,6 +302,27 @@ public sealed class WindowTargetService
         return list;
     }
 
+    private static readonly Dictionary<string, string> _audioDeviceMonikers = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly List<string> _cachedAudioDevices = [];
+
+    public static string? GetAudioDeviceMoniker(string deviceName)
+    {
+        lock (_audioDeviceMonikers)
+        {
+            return _audioDeviceMonikers.TryGetValue(deviceName, out var moniker) ? moniker : null;
+        }
+    }
+
+    public static IReadOnlyList<string> GetCachedAudioInputDevices()
+    {
+        lock (_cachedAudioDevices)
+        {
+            if (_cachedAudioDevices.Count > 0)
+                return _cachedAudioDevices.ToList();
+        }
+        return ["Default Microphone"];
+    }
+
     public IReadOnlyList<string> GetAudioInputDevices()
     {
         var devices = new List<string>();
@@ -316,19 +337,44 @@ public sealed class WindowTargetService
                     {
                         UseShellExecute = false,
                         CreateNoWindow = true,
-                        RedirectStandardError = true
+                        RedirectStandardError = true,
+                        StandardErrorEncoding = System.Text.Encoding.UTF8
                     };
                     using var proc = Process.Start(psi);
                     if (proc != null)
                     {
                         var stderr = proc.StandardError.ReadToEnd();
                         proc.WaitForExit();
-                        var matches = System.Text.RegularExpressions.Regex.Matches(stderr, "\"([^\"]+)\"\\s+\\(audio\\)");
-                        foreach (System.Text.RegularExpressions.Match m in matches)
+
+                        var lines = stderr.Split('\n');
+                        for (int i = 0; i < lines.Length; i++)
                         {
-                            var name = m.Groups[1].Value;
-                            if (!devices.Contains(name))
-                                devices.Add(name);
+                            var line = lines[i].Trim();
+                            var m = System.Text.RegularExpressions.Regex.Match(line, "\"([^\"]+)\"\\s+\\(audio\\)");
+                            if (m.Success)
+                            {
+                                var name = m.Groups[1].Value.Trim();
+                                string? alt = null;
+                                if (i + 1 < lines.Length)
+                                {
+                                    var altMatch = System.Text.RegularExpressions.Regex.Match(lines[i + 1], "Alternative name\\s+\"([^\"]+)\"");
+                                    if (altMatch.Success)
+                                    {
+                                        alt = altMatch.Groups[1].Value.Trim();
+                                    }
+                                }
+
+                                if (!devices.Contains(name))
+                                    devices.Add(name);
+
+                                if (!string.IsNullOrEmpty(alt))
+                                {
+                                    lock (_audioDeviceMonikers)
+                                    {
+                                        _audioDeviceMonikers[name] = alt;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -340,6 +386,12 @@ public sealed class WindowTargetService
 
         if (devices.Count == 0)
             devices.Add("Default Microphone");
+
+        lock (_cachedAudioDevices)
+        {
+            _cachedAudioDevices.Clear();
+            _cachedAudioDevices.AddRange(devices);
+        }
 
         return devices;
     }

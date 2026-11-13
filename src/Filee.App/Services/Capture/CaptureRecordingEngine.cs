@@ -13,6 +13,10 @@ public sealed class CaptureRecordingEngine : IDisposable
     private readonly object _lock = new();
 
     private Process? _currentProcess;
+    private WasapiLoopbackRecorder? _wasapiRecorder;
+    private string? _currentRawSegmentPath;
+    private string? _currentTargetSegmentPath;
+    private string? _currentSysAudioPath;
     private CaptureConfig? _activeConfig;
     private string? _sessionFolder;
     private Stopwatch _stopwatch = new();
@@ -185,22 +189,33 @@ public sealed class CaptureRecordingEngine : IDisposable
             return false;
         }
 
-        string segmentPath;
+        string finalSegmentPath;
+        string rawSegmentPath;
+        string? sysAudioPath = null;
         CaptureConfig config;
         lock (_lock)
         {
             config = _activeConfig!;
-            segmentPath = Path.Combine(_sessionFolder!, $"segment_{_segmentFiles.Count:D4}.mp4");
-            _segmentFiles.Add(segmentPath);
+            var idx = _segmentFiles.Count;
+            finalSegmentPath = Path.Combine(_sessionFolder!, $"segment_{idx:D4}.mp4");
+            rawSegmentPath = Path.Combine(_sessionFolder!, $"segment_{idx:D4}_raw.mp4");
+            if (config.EnableSystemAudio && WasapiLoopbackRecorder.IsSupported)
+            {
+                sysAudioPath = Path.Combine(_sessionFolder!, $"sysaudio_{idx:D4}.wav");
+            }
+            _currentRawSegmentPath = rawSegmentPath;
+            _currentTargetSegmentPath = finalSegmentPath;
+            _currentSysAudioPath = sysAudioPath;
+            _segmentFiles.Add(finalSegmentPath);
         }
 
         // On Windows 10/11, try modern Windows.Graphics.Capture API (gfxcapture) first.
         // It provides smooth D3D11 frame grabbing and avoids GDI BitBlt access limitations (error 5).
-        bool success = await TryLaunchRecordingProcessAsync(ffmpegExe, segmentPath, config, useGfxCapture: OperatingSystem.IsWindows()).ConfigureAwait(false);
+        bool success = await TryLaunchRecordingProcessAsync(ffmpegExe, rawSegmentPath, config, useGfxCapture: OperatingSystem.IsWindows()).ConfigureAwait(false);
         if (!success && OperatingSystem.IsWindows())
         {
             _log?.LogWarning("Primary gfxcapture engine failed, falling back to gdigrab");
-            success = await TryLaunchRecordingProcessAsync(ffmpegExe, segmentPath, config, useGfxCapture: false).ConfigureAwait(false);
+            success = await TryLaunchRecordingProcessAsync(ffmpegExe, rawSegmentPath, config, useGfxCapture: false).ConfigureAwait(false);
         }
 
         // If recording with microphone failed, retry with video-only so screen recording always starts smoothly
@@ -208,17 +223,39 @@ public sealed class CaptureRecordingEngine : IDisposable
         {
             _log?.LogWarning("Recording with microphone failed, falling back to video-only capture");
             var fallbackConfig = CloneWithoutMicrophone(config);
-            success = await TryLaunchRecordingProcessAsync(ffmpegExe, segmentPath, fallbackConfig, useGfxCapture: OperatingSystem.IsWindows()).ConfigureAwait(false);
+            success = await TryLaunchRecordingProcessAsync(ffmpegExe, rawSegmentPath, fallbackConfig, useGfxCapture: OperatingSystem.IsWindows()).ConfigureAwait(false);
             if (!success && OperatingSystem.IsWindows())
             {
-                success = await TryLaunchRecordingProcessAsync(ffmpegExe, segmentPath, fallbackConfig, useGfxCapture: false).ConfigureAwait(false);
+                success = await TryLaunchRecordingProcessAsync(ffmpegExe, rawSegmentPath, fallbackConfig, useGfxCapture: false).ConfigureAwait(false);
             }
         }
 
         if (!success)
         {
+            lock (_lock)
+            {
+                _segmentFiles.Remove(finalSegmentPath);
+                _currentRawSegmentPath = null;
+                _currentTargetSegmentPath = null;
+                _currentSysAudioPath = null;
+            }
             ErrorOccurred?.Invoke(LastErrorMessage ?? "Screen recording failed to start.");
             return false;
+        }
+
+        // Start WASAPI system audio loopback recorder if enabled
+        if (!string.IsNullOrWhiteSpace(sysAudioPath))
+        {
+            try
+            {
+                _wasapiRecorder = new WasapiLoopbackRecorder();
+                _wasapiRecorder.Start(sysAudioPath);
+            }
+            catch (Exception ex)
+            {
+                _log?.LogWarning(ex, "Failed to start WASAPI system audio loopback recorder; continuing without system audio.");
+                _wasapiRecorder = null;
+            }
         }
 
         return true;
@@ -340,6 +377,142 @@ public sealed class CaptureRecordingEngine : IDisposable
         {
             proc.Dispose();
         }
+
+        // Stop WASAPI system audio loopback recorder
+        WasapiLoopbackRecorder? wasapi;
+        lock (_lock)
+        {
+            wasapi = _wasapiRecorder;
+            _wasapiRecorder = null;
+        }
+
+        if (wasapi != null)
+        {
+            try
+            {
+                wasapi.Stop();
+                wasapi.Dispose();
+            }
+            catch { }
+        }
+
+        string? rawSeg;
+        string? targetSeg;
+        string? sysWav;
+        lock (_lock)
+        {
+            rawSeg = _currentRawSegmentPath;
+            targetSeg = _currentTargetSegmentPath;
+            sysWav = _currentSysAudioPath;
+            _currentRawSegmentPath = null;
+            _currentTargetSegmentPath = null;
+            _currentSysAudioPath = null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(rawSeg) && !string.IsNullOrWhiteSpace(targetSeg))
+        {
+            var ffmpegExe = FindFfmpeg();
+            if (!string.IsNullOrWhiteSpace(ffmpegExe))
+            {
+                await PostProcessSegmentAudioAsync(ffmpegExe, rawSeg, targetSeg, sysWav).ConfigureAwait(false);
+            }
+            else if (File.Exists(rawSeg))
+            {
+                File.Move(rawSeg, targetSeg, overwrite: true);
+            }
+        }
+    }
+
+    private async Task PostProcessSegmentAudioAsync(string ffmpegExe, string rawSegmentPath, string targetSegmentPath, string? sysAudioPath)
+    {
+        if (string.IsNullOrWhiteSpace(sysAudioPath) || !File.Exists(sysAudioPath) || new FileInfo(sysAudioPath).Length <= 44)
+        {
+            if (File.Exists(rawSegmentPath))
+            {
+                if (File.Exists(targetSegmentPath))
+                    File.Delete(targetSegmentPath);
+                File.Move(rawSegmentPath, targetSegmentPath);
+            }
+            return;
+        }
+
+        try
+        {
+            // Try amix first (if rawSegment has mic audio stream)
+            bool mixed = await TryMixAudioAsync(ffmpegExe, rawSegmentPath, sysAudioPath, targetSegmentPath).ConfigureAwait(false);
+            if (!mixed)
+            {
+                // Fallback to simple muxing if no microphone track is in rawSegment
+                await MuxAudioAsync(ffmpegExe, rawSegmentPath, sysAudioPath, targetSegmentPath).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "Failed to post-process system audio for segment {Segment}", targetSegmentPath);
+            if (File.Exists(rawSegmentPath) && !File.Exists(targetSegmentPath))
+            {
+                File.Move(rawSegmentPath, targetSegmentPath);
+            }
+        }
+        finally
+        {
+            try { if (File.Exists(rawSegmentPath)) File.Delete(rawSegmentPath); } catch { }
+            try { if (!string.IsNullOrWhiteSpace(sysAudioPath) && File.Exists(sysAudioPath)) File.Delete(sysAudioPath); } catch { }
+        }
+    }
+
+    private static async Task<bool> TryMixAudioAsync(string ffmpegExe, string rawSegmentPath, string sysAudioPath, string targetSegmentPath)
+    {
+        var psi = new ProcessStartInfo(ffmpegExe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            ArgumentList =
+            {
+                "-y",
+                "-hide_banner",
+                "-i", rawSegmentPath,
+                "-i", sysAudioPath,
+                "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest[aout]",
+                "-map", "0:v",
+                "-map", "[aout]",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                targetSegmentPath
+            }
+        };
+        using var proc = Process.Start(psi);
+        if (proc is null) return false;
+        await proc.WaitForExitAsync().ConfigureAwait(false);
+        return proc.ExitCode == 0 && File.Exists(targetSegmentPath) && new FileInfo(targetSegmentPath).Length > 0;
+    }
+
+    private static async Task MuxAudioAsync(string ffmpegExe, string rawSegmentPath, string sysAudioPath, string targetSegmentPath)
+    {
+        var psi = new ProcessStartInfo(ffmpegExe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            ArgumentList =
+            {
+                "-y",
+                "-hide_banner",
+                "-i", rawSegmentPath,
+                "-i", sysAudioPath,
+                "-map", "0:v",
+                "-map", "1:a",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                targetSegmentPath
+            }
+        };
+        using var proc = Process.Start(psi);
+        if (proc != null)
+        {
+            await proc.WaitForExitAsync().ConfigureAwait(false);
+        }
     }
 
     internal ProcessStartInfo BuildFfmpegProcessStartInfo(string ffmpegExe, string outputPath, CaptureConfig config, bool useGfxCapture = true)
@@ -356,6 +529,8 @@ public sealed class CaptureRecordingEngine : IDisposable
 
         psi.ArgumentList.Add("-hide_banner");
         psi.ArgumentList.Add("-y");
+
+        bool hasMicrophoneInput = false;
 
         if (OperatingSystem.IsWindows())
         {
@@ -435,19 +610,32 @@ public sealed class CaptureRecordingEngine : IDisposable
                 }
             }
 
-            // Microphone audio track if enabled and valid device selected
-            if (config.EnableMicrophone && !string.IsNullOrWhiteSpace(config.MicrophoneDevice) && config.MicrophoneDevice != "Default Microphone")
+            // Microphone audio track if enabled
+            if (config.EnableMicrophone)
             {
-                psi.ArgumentList.Add("-f");
-                psi.ArgumentList.Add("dshow");
-                psi.ArgumentList.Add("-i");
-                psi.ArgumentList.Add($"audio={config.MicrophoneDevice}");
+                var (micName, moniker) = ResolveMicrophoneTarget(config.MicrophoneDevice);
+                if (!string.IsNullOrWhiteSpace(moniker))
+                {
+                    psi.ArgumentList.Add("-f");
+                    psi.ArgumentList.Add("dshow");
+                    psi.ArgumentList.Add("-i");
+                    psi.ArgumentList.Add($"audio={moniker}");
+                    hasMicrophoneInput = true;
+                }
+                else if (!string.IsNullOrWhiteSpace(micName))
+                {
+                    psi.ArgumentList.Add("-f");
+                    psi.ArgumentList.Add("dshow");
+                    psi.ArgumentList.Add("-i");
+                    psi.ArgumentList.Add($"audio={micName}");
+                    hasMicrophoneInput = true;
+                }
             }
 
             psi.ArgumentList.Add("-map");
             psi.ArgumentList.Add("0:v");
 
-            if (config.EnableMicrophone && !string.IsNullOrWhiteSpace(config.MicrophoneDevice) && config.MicrophoneDevice != "Default Microphone")
+            if (hasMicrophoneInput)
             {
                 psi.ArgumentList.Add("-map");
                 psi.ArgumentList.Add("1:a?");
@@ -461,6 +649,8 @@ public sealed class CaptureRecordingEngine : IDisposable
             psi.ArgumentList.Add(config.Framerate.ToString(CultureInfo.InvariantCulture));
             psi.ArgumentList.Add("-i");
             psi.ArgumentList.Add(":0.0");
+            psi.ArgumentList.Add("-map");
+            psi.ArgumentList.Add("0:v");
         }
 
         // Output scaling filter if target preset requested
@@ -483,7 +673,7 @@ public sealed class CaptureRecordingEngine : IDisposable
         psi.ArgumentList.Add("-movflags");
         psi.ArgumentList.Add("+faststart");
 
-        if (config.EnableMicrophone && !string.IsNullOrWhiteSpace(config.MicrophoneDevice) && config.MicrophoneDevice != "Default Microphone")
+        if (hasMicrophoneInput)
         {
             psi.ArgumentList.Add("-c:a");
             psi.ArgumentList.Add("aac");
@@ -491,6 +681,26 @@ public sealed class CaptureRecordingEngine : IDisposable
 
         psi.ArgumentList.Add(outputPath);
         return psi;
+    }
+
+    internal static (string? deviceName, string? moniker) ResolveMicrophoneTarget(string? configuredDevice)
+    {
+        var devices = WindowTargetService.GetCachedAudioInputDevices();
+        string? targetName = null;
+        if (!string.IsNullOrWhiteSpace(configuredDevice) && !configuredDevice.Equals("Default Microphone", StringComparison.OrdinalIgnoreCase))
+        {
+            targetName = configuredDevice;
+        }
+        else
+        {
+            targetName = devices.FirstOrDefault(d => !d.Equals("Default Microphone", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (string.IsNullOrWhiteSpace(targetName))
+            return (null, null);
+
+        var moniker = WindowTargetService.GetAudioDeviceMoniker(targetName);
+        return (targetName, moniker);
     }
 
     private static void GetTargetOffsetAndSize(CaptureConfig config, out int offsetX, out int offsetY, out int width, out int height)
@@ -655,10 +865,16 @@ public sealed class CaptureRecordingEngine : IDisposable
     {
         _timer?.Dispose();
         _timer = null;
+        if (_wasapiRecorder != null)
+        {
+            try { _wasapiRecorder.Dispose(); } catch { }
+            _wasapiRecorder = null;
+        }
         if (_currentProcess != null && !_currentProcess.HasExited)
         {
             try { _currentProcess.Kill(true); } catch { }
             _currentProcess.Dispose();
+            _currentProcess = null;
         }
     }
 }
