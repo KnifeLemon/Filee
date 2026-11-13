@@ -23,7 +23,7 @@ internal static class RasterTracing
     {
         int width, height, tracedWidth, tracedHeight;
         byte[] pixels;
-        using (var images = ImageReader.Read(step.InputPath, step.From, step.Preset))
+        using (var images = ImageReader.Read(step.InputPath, step.From, step.Preset, ct))
         {
             if (images.Count == 0)
                 throw new InvalidDataException("The image has no pictures to trace.");
