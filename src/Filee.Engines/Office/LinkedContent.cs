@@ -9,7 +9,8 @@
 //  * Office Open XML: relationships with TargetMode="External", except hyperlinks;
 //  * OpenDocument (packages and flat XML): xlink:href outside the package on anything but hyperlinks and event
 //    listeners (pictures, objects, section and table sources, sounds, fill images);
-//  * HTML: picture, frame, object and style sheet addresses and CSS url() other than data: URIs (hyperlinks stay).
+//  * HTML: picture, frame, object and style sheet addresses and CSS url() other than data: URIs and references to the
+//    page's own elements (#id, e.g. an inline SVG's <use href="#icon">); hyperlinks stay.
 //    Pictures the page may use by the rule every reader follows (DocumentFiles: inside the document's own folder) are
 //    put into the copy as data: URIs, because the profile keeps LibreOffice from loading even those;
 //  * RTF: INCLUDEPICTURE fields (their last result stays, as for any field LibreOffice doesn't know).
@@ -187,7 +188,7 @@ internal static partial class LinkedContent
                 var resource = key is "src" or "srcset" or "lowsrc" or "dynsrc" or "data" or "poster" or "background" or "codebase"
                                    or "xlink:href" or "longdesc"
                                || key == "href" && name is "link" or "base" or "image" or "use";
-                if (!resource || value.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                if (!resource || value.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase) || SameDocument(value))
                     return attribute.Value;
                 return name == "img" && key == "src" && picture?.Invoke(Utf8(attribute.Groups["value"].Value)) is { } uri
                     ? $"{attribute.Groups["space"].Value}src=\"{uri}\""
@@ -205,9 +206,10 @@ internal static partial class LinkedContent
 
     /// <summary>
     /// The data: URI of a picture inside the page's folder (or the original document's, for a page made from it), by
-    /// <see cref="DocumentFiles"/>. SVG stays out: a drawing can link to further files, and LibreOffice would load them.
+    /// <see cref="DocumentFiles"/>. SVG stays out unless <paramref name="svg"/>: a drawing can link to further files, and
+    /// LibreOffice would load them (WeasyPrint, run with only data: allowed, doesn't).
     /// </summary>
-    private static Func<string, string?> PagePictures(string page, string? originalSource)
+    internal static Func<string, string?> PagePictures(string page, string? originalSource, bool svg = false)
     {
         var folder = Path.GetDirectoryName(Path.GetFullPath(page))!;
         string[] roots = originalSource is null ? [folder] : [folder, Path.GetDirectoryName(Path.GetFullPath(originalSource))!];
@@ -216,20 +218,29 @@ internal static partial class LinkedContent
         {
             if (DocumentFiles.Find(address, folder, roots) is not { } file
                 || Path.GetExtension(file).TrimStart('.').ToLowerInvariant() is var extension
-                && extension is not ("png" or "jpg" or "jpeg" or "gif" or "bmp" or "webp" or "tif" or "tiff"))
+                && extension is not ("png" or "jpg" or "jpeg" or "gif" or "bmp" or "webp" or "tif" or "tiff")
+                && !(svg && extension == "svg"))
                 return null;
             var length = new FileInfo(file).Length;
             if (length > left)
                 return null;
             left -= length;
-            return $"data:image/{extension};base64,{Convert.ToBase64String(File.ReadAllBytes(file))}";
+            var type = extension switch { "svg" => "svg+xml", "jpg" => "jpeg", "tif" => "tiff", _ => extension };
+            return $"data:image/{type};base64,{Convert.ToBase64String(File.ReadAllBytes(file))}";
         };
     }
 
-    /// <summary>CSS with url() other than data: emptied and @import rules taken out.</summary>
+    /// <summary>CSS with url() other than data: and same-document references (#id) emptied and @import rules taken out.</summary>
     private static string CssUrls(string css) =>
         Import().Replace(CssUrl().Replace(css, url =>
-            url.Groups["address"].Value.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? url.Value : "url()"), "");
+            url.Groups["address"].Value.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase) || SameDocument(url.Groups["address"].Value)
+                ? url.Value : "url()"), "");
+
+    /// <summary>
+    /// A reference to an element of the page itself (an inline SVG's &lt;use href="#icon"&gt;, a gradient's
+    /// xlink:href="#base", fill:url(#g)): nothing outside the page is named, so it stays.
+    /// </summary>
+    private static bool SameDocument(string address) => address.TrimStart().StartsWith('#');
 
     /// <summary>RTF whose INCLUDEPICTURE fields are renamed to a field LibreOffice doesn't know, or null without any.</summary>
     internal static byte[]? StripRtf(byte[] rtf)

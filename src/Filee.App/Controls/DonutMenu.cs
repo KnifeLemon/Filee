@@ -105,6 +105,8 @@ public sealed partial class DonutMenu : Control
         AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSize), 1);
     public static readonly StyledProperty<double> GroupRingSpreadProperty =
         AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSpread), 1);
+    public static readonly StyledProperty<string?> HeldGroupIdProperty =
+        AvaloniaProperty.Register<DonutMenu, string?>(nameof(HeldGroupId));
 
     /// <summary>The theme's softness (Styles/Controls.axaml binds SoftRadius): rounds the corners of the slices.</summary>
     public static readonly StyledProperty<CornerRadius> CornerRadiusProperty =
@@ -176,6 +178,7 @@ public sealed partial class DonutMenu : Control
             CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty,
             GroupRingSizeProperty, GroupRingSpreadProperty);
         ItemsProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnItemsChanged());
+        HeldGroupIdProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnHeldGroupChanged());
     }
 
     public DonutMenu()
@@ -212,10 +215,10 @@ public sealed partial class DonutMenu : Control
     public bool ReserveSubRing { get => GetValue(ReserveSubRingProperty); set => SetValue(ReserveSubRingProperty, value); }
 
     /// <summary>
-    /// Draw a slice's <see cref="DonutItem.Caption"/> under its name (Settings → Donut toolbar → Appearance). Off, the
-    /// name is centred alone, a group's "Group of N" included: its chevron (<see cref="DrawGroupMark"/>) still tells
-    /// it from a preset. <see cref="DonutItem.KeepsCaption"/> stays, and so does the line of a slice that shares its
-    /// name with another on the face: nothing else would tell them apart.
+    /// Draw a slice's <see cref="DonutItem.Caption"/> under its name (Settings → Donut toolbar → Edit Donut Size). Off,
+    /// the name is centred alone, a group's "Group of N" included: its chevron (<see cref="DrawGroupMark"/>) still
+    /// tells it from a preset. <see cref="DonutItem.KeepsCaption"/> stays, and so does the line of a slice that shares
+    /// its name with another on the face: nothing else would tell them apart.
     /// </summary>
     public bool ShowCaptions { get => GetValue(ShowCaptionsProperty); set => SetValue(ShowCaptionsProperty, value); }
 
@@ -264,6 +267,12 @@ public sealed partial class DonutMenu : Control
 
     /// <summary>Right-click or ✎ on a slice.</summary>
     public event EventHandler<int>? SegmentContextRequested;
+
+    /// <summary>
+    /// A group slice was clicked (not its ✎): in the editor (<see cref="IsEditMode"/>), to open it and edit what it
+    /// fans out; on the live donut, after it opened at once.
+    /// </summary>
+    public event EventHandler<int>? GroupOpenRequested;
 
     /// <summary>Right-click on a slice of a group's ring (live toolbar, click mode): (group, slice in the group).</summary>
     public event EventHandler<(int Group, int Sub)>? SubSegmentContextRequested;
@@ -488,6 +497,7 @@ public sealed partial class DonutMenu : Control
         _expanded = _shownExpanded = _subHover = -1;
         ClearPending();
         _expand = default;
+        OpenHeldGroup();
         // New files (or none): a flip of the old ones is over. A flip's own swap keeps going (SwapFaces).
         if (!_swapping)
             CancelFlip();
@@ -631,11 +641,15 @@ public sealed partial class DonutMenu : Control
             case DonutHitKind.EditButton:
                 SegmentContextRequested?.Invoke(this, hit.Index);
                 break;
+            case DonutHitKind.Segment when IsEditMode && Items![hit.Index].IsGroup:
+                GroupOpenRequested?.Invoke(this, hit.Index);
+                break;
             case DonutHitKind.Segment when !IsEditMode && Items![hit.Index] is { IsEnabled: true, IsGroup: false }:
                 SegmentInvoked?.Invoke(this, hit.Index);
                 break;
             case DonutHitKind.Segment when !IsEditMode && Items![hit.Index].Children is { Count: > 0 }:
                 Expand(hit.Index); // no waiting when clicked; a tap has no hover to rest on at all
+                GroupOpenRequested?.Invoke(this, hit.Index);
                 break;
             case DonutHitKind.Outside when !IsEditMode && _expanded >= 0:
                 CollapseGroup(); // clicked past the ring

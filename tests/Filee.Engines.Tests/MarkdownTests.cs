@@ -39,7 +39,7 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
         """;
 
     /// <summary>Only engines that ship with the app (or run in-process): no Pandoc or LibreOffice.</summary>
-    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice"];
+    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice", "weasyprint"];
 
     private RoutePlanner BuiltInPlanner(params string[] assumeInstalled) =>
         new ConverterCatalog(fx.Converters.Where(c => !OptionalEngines.Contains(c.Id))) { Priority = fx.Catalog.Priority }
@@ -54,9 +54,9 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
         return md;
     }
 
-    private async Task<string> ConvertAsync(string input, string target)
+    private async Task<string> ConvertAsync(string input, string target, ConverterCatalog? catalog = null)
     {
-        var job = await fx.ConvertAsync([input], new Preset { TargetFormat = target });
+        var job = await fx.ConvertAsync([input], new Preset { TargetFormat = target }, catalog);
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
         return job.Outputs.Single();
     }
@@ -221,7 +221,9 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var input = Path.Combine(fx.NewFolder(), "quote.md");
         await File.WriteAllTextAsync(input, $"# Title\n\n > {QuoteLine}{QuoteLine}{QuoteLine}{QuoteLine}\n\nAfter", TestContext.Current.CancellationToken);
 
-        var png = await ConvertAsync(await ConvertAsync(input, "pdf"), "png");
+        // The built-in route's drawing: WeasyPrint, when installed, makes Markdown PDFs instead (WeasyPrintTests).
+        var builtIn = new ConverterCatalog(fx.Converters.Where(c => c.Id != "weasyprint")) { Priority = fx.Catalog.Priority };
+        var png = await ConvertAsync(await ConvertAsync(input, "pdf", builtIn), "png");
 
         using var page = new MagickImage(png);
         using var pixels = page.GetPixels();

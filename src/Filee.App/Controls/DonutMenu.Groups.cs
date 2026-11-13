@@ -4,6 +4,9 @@
 //   Pointer / drag  → resting on a group's slice (ExpandDelay), or moving outward on it, opens its ring; the ring
 //                     stays open on its way out to it (the gap, the neighbours' outer half) and folds on another slice,
 //                     the hole, or going round the outside away from it.
+//   Held            → the donut on screen of Settings → Donut toolbar keeps one group open (HeldGroupId) while it is
+//                     edited or its ring adjusted: another group opens over it while the pointer is on it, and it comes
+//                     back after.
 //   Keyboard        → arrows move, Enter opens a group or converts, Esc / Backspace fold a ring first, the flip key
 //                     (Tab unless set otherwise) flips the donut (DonutMenu.Flip.cs).
 //   See-through     → Windows and macOS let the pointer and drags through fully transparent pixels: a nearly
@@ -185,6 +188,7 @@ public sealed partial class DonutMenu
                 ClearPending();
                 break;
         }
+        OpenHeldGroup();
         SetSub(sub);
         // Redraw only when something changed: this runs on every pointer move and drag-over event.
         if ((_expanded, _pendingGroup) != before)
@@ -229,9 +233,10 @@ public sealed partial class DonutMenu
 
     /// <summary>
     /// Keyboard (click mode): arrows move around the donut, Enter converts or opens a group; in a group's ring the
-    /// arrows move between its slices, Enter converts and Esc / Backspace go back to the donut. The flip key
-    /// (<see cref="FlipKey"/>, Tab by default; with Shift or any other modifier too) flips the donut to its other face
-    /// (<see cref="Flip"/>). Returns false for keys left to the window (Esc on the donut closes it).
+    /// arrows move between its slices, Enter converts and Esc / Backspace go back to the donut (not from a ring held
+    /// open, <see cref="HeldGroupId"/>: they are left to the window). The flip key (<see cref="FlipKey"/>, Tab by
+    /// default; with Shift or any other modifier too) flips the donut to its other face (<see cref="Flip"/>). Returns
+    /// false for keys left to the window (Esc on the donut closes it).
     /// </summary>
     public bool HandleKey(Key key, KeyModifiers modifiers = KeyModifiers.None)
     {
@@ -263,8 +268,9 @@ public sealed partial class DonutMenu
             _ => 0,
         };
 
-        // Esc / Backspace fold an open ring first, however it was opened; only then does Esc close the donut.
-        if (ExpandedChildren is not null && key is Key.Escape or Key.Back)
+        // Esc / Backspace fold an open ring first, however it was opened; only then does Esc close the donut. A held
+        // ring doesn't fold: Esc goes on to the window.
+        if (ExpandedChildren is not null && _expanded != HeldIndex() && key is Key.Escape or Key.Back)
         {
             var group = _expanded;
             CollapseGroup();
@@ -337,14 +343,61 @@ public sealed partial class DonutMenu
         SetExternalHighlight(-1);
     }
 
-    /// <summary>Folds an open group away (the drag left the window, or files were dropped).</summary>
+    /// <summary>The group fanned out (-1 none).</summary>
+    internal int OpenedGroup => _expanded;
+
+    /// <summary>Opens group <paramref name="index"/> as resting on it would (for tests).</summary>
+    internal void OpenGroup(int index)
+    {
+        if (index >= 0 && index < Count && Items![index].CanExpand)
+            Expand(index);
+    }
+
+    /// <summary>Folds an open group away (the drag left the window, or files were dropped); a held one stays.</summary>
     public void CollapseGroup()
     {
         _expanded = -1;
         _ringFromKeys = false;
         ClearPending();
+        OpenHeldGroup();
         SetSub(-1);
         StartAnimation();
+    }
+
+    /// <summary>
+    /// The group kept open, by its id (<see cref="DonutItem.Id"/>), or null: the Donut toolbar page's donut on screen
+    /// holds one open while it is edited or its ring adjusted. An id not on the face shown holds nothing (a group of
+    /// the other face), and the editor (<see cref="IsEditMode"/>) never holds one.
+    /// </summary>
+    public string? HeldGroupId { get => GetValue(HeldGroupIdProperty); set => SetValue(HeldGroupIdProperty, value); }
+
+    private int HeldIndex()
+    {
+        if (HeldGroupId is not { } id || IsEditMode || Items is not { } items)
+            return -1;
+        for (var i = 0; i < items.Count; i++)
+            if (items[i].Id == id && items[i].CanExpand)
+                return i;
+        return -1;
+    }
+
+    /// <summary>With no group open, opens the held one, if any (a group about to open on rest keeps waiting).</summary>
+    private void OpenHeldGroup()
+    {
+        if (_expanded >= 0 || HeldIndex() is not (>= 0 and var held))
+            return;
+        if (_shownExpanded != held)
+            _expand = default; // grows out of its own slice, not from another ring half folded
+        _expanded = _shownExpanded = held;
+        StartAnimation();
+    }
+
+    private void OnHeldGroupChanged()
+    {
+        if (HeldIndex() is >= 0 and var held)
+            Expand(held);
+        else
+            CollapseGroup();
     }
 
     /// <summary>

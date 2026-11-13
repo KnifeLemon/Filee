@@ -252,7 +252,7 @@
           </StackPanel>
         </Border>
 
-        <!-- The donut toolbar's opacity: the same setting as Donut toolbar → Appearance → Opacity. -->
+        <!-- The donut toolbar's opacity: the same setting as Donut toolbar → Edit Donut Size → Opacity. -->
         <Border Classes="card">
           <StackPanel Spacing="8">
             <DockPanel>

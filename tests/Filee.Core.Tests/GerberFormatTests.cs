@@ -27,20 +27,20 @@ public class GerberFormatTests
         Assert.Equal(["cad"], FormatFields.Of(FormatRegistry.Get("gerber")).Select(f => f.Id));
 
     [Fact]
-    public void Version_86_cad_donuts_learn_it_without_taking_a_custom_claim()
+    public void Version_88_cad_donuts_learn_it_without_taking_a_custom_claim()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         foreach (var profile in profiles)
             profile.Extensions.RemoveAll(Extensions.Contains);
-        Assert.True(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(88, presets, profiles));
         Assert.Superset(Extensions.ToHashSet(), profiles.Single(p => p.Id == "cad").Extensions.ToHashSet());
 
         profiles = BuiltInData.CreateProfiles();
         foreach (var profile in profiles)
             profile.Extensions.RemoveAll(Extensions.Contains);
         profiles.Insert(0, new ToolbarProfile { Id = "my-brushes", Name = "GIMP brushes", Extensions = ["gbr"] });
-        SettingsMigrations.ApplyToLibrary(86, presets, profiles);
+        SettingsMigrations.ApplyToLibrary(88, presets, profiles);
         var cad = profiles.Single(p => p.Id == "cad").Extensions;
         Assert.DoesNotContain("gbr", cad);
         Assert.Contains("gtl", cad);

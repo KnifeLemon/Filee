@@ -1,5 +1,7 @@
 # Builds the Linux or macOS portable package (tar.gz + SHA256SUMS) on its own operating system. macOS also gets a
-# disk image (Filee.app next to an Applications link, to drag it there), signed and notarized as the app is.
+# disk image (the signed Filee.app next to an Applications link, to drag it there, on the background and window
+# layout of installer/macos/dmg, built with dmgbuild: python3 -m pip install dmgbuild==1.6.7). The image itself is not
+# signed, and neither it nor the app is notarized here.
 #
 # Linux packages must run on Ubuntu 22.04 (glibc 2.35). rhwp's Linux release needs a newer glibc, so CI builds it from
 # source on Ubuntu 22.04 (build/build-native.py) and passes it in:
@@ -35,6 +37,10 @@ if (-not $Runtime) {
 }
 if (($Runtime.StartsWith('osx-') -and -not $IsMacOS) -or ($Runtime.StartsWith('linux-') -and -not $IsLinux)) {
     throw "Build $Runtime on its native operating system."
+}
+if ($Runtime.StartsWith('osx-')) {
+    python3 -c 'import dmgbuild' 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'The disk image needs dmgbuild: python3 -m pip install dmgbuild==1.6.7' }
 }
 if ($RhwpOverride -and -not $Runtime.StartsWith('linux-')) {
     throw '-RhwpOverride is for Linux packages.'
@@ -185,15 +191,15 @@ Invoke-Checked 'Create tar.gz' { tar -czf $temporaryArchive -C $stage $packageNa
 Move-Item -LiteralPath $temporaryArchive -Destination $archive
 $packages = @($archive)
 if ($Runtime.StartsWith('osx-')) {
-    # The same signed Filee.app, next to a link to /Applications to drag it onto. ditto keeps the signature's
-    # extended attributes. install.sh (in the tar.gz) is still the way to get the filee command.
-    $volume = Join-Path $stage 'dmg'
-    New-Item -ItemType Directory -Path $volume | Out-Null
-    Invoke-Checked 'Copy app for the disk image' { ditto $appBundle (Join-Path $volume 'Filee.app') }
-    Invoke-Checked 'Applications link' { ln -s /Applications (Join-Path $volume 'Applications') }
-    Copy-Item -LiteralPath (Join-Path $root 'installer/macos/INSTALL.txt') -Destination $volume
+    # The same signed Filee.app, next to a link to /Applications to drag it onto, on the background and window
+    # layout of installer/macos/dmg/settings.py. dmgbuild copies the app with ditto, which keeps the signature's
+    # extended attributes; settings.py checks the copies. install.sh (in the tar.gz) is still the way to get the filee
+    # command.
     $temporaryImage = "$diskImage.$([Guid]::NewGuid().ToString('N')).partial.dmg"
-    Invoke-Checked 'Create dmg' { hdiutil create -volname Filee -srcfolder $volume -fs HFS+ -format UDZO -ov $temporaryImage | Out-Null }
+    $dmgFolder = Join-Path $root 'installer/macos/dmg'
+    Invoke-Checked 'Create dmg' {
+        python3 -m dmgbuild -s (Join-Path $dmgFolder 'settings.py') -D "app=$appBundle" -D "dir=$dmgFolder" Filee $temporaryImage | Out-Null
+    }
     Move-Item -LiteralPath $temporaryImage -Destination $diskImage
     $packages += $diskImage
 }
