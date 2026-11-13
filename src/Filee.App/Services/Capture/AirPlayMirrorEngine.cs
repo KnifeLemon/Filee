@@ -923,7 +923,7 @@ public sealed class AirPlayMirrorEngine
                 _decryptedAesKey = finalAesKey;
             }
 
-            if (finalAesKey != null && _streamConnectionId != 0)
+            if (finalAesKey != null)
             {
                 // Derive AES-CTR key and IV from streamConnectionId
                 var keyStr = Encoding.UTF8.GetBytes($"AirPlayStreamKey{_streamConnectionId}");
@@ -1056,12 +1056,8 @@ public sealed class AirPlayMirrorEngine
 
             var ffmpegPsi = new ProcessStartInfo(ffmpeg, [
                 "-hide_banner",
-                "-loglevel", "warning",
+                "-loglevel", "error",
                 "-f", "h264",
-                "-probesize", "2048",
-                "-analyzeduration", "0",
-                "-fflags", "nobuffer",
-                "-flags", "low_delay",
                 "-i", "-",
                 "-f", "image2pipe",
                 "-vcodec", "mjpeg",
@@ -1100,35 +1096,28 @@ public sealed class AirPlayMirrorEngine
             // Read MJPEG frames from FFmpeg stdout and dispatch to MobileMirrorService
             var frameReaderTask = Task.Run(async () =>
             {
-                var frameBuffer = new byte[65536];
+                var frameBuffer = new byte[256 * 1024];
                 using var ms = new MemoryStream();
                 var ffmpegOut = ffmpegProc.StandardOutput.BaseStream;
                 int bytesRead;
+                byte prev = 0;
 
                 try
                 {
                     while (!ffmpegCts.IsCancellationRequested && (bytesRead = await ffmpegOut.ReadAsync(frameBuffer, ffmpegCts.Token).ConfigureAwait(false)) > 0)
                     {
-                        int start = 0;
-                        for (int i = 0; i < bytesRead - 1; i++)
+                        for (int i = 0; i < bytesRead; i++)
                         {
-                            if (frameBuffer[i] == 0xFF && frameBuffer[i + 1] == 0xD9)
+                            byte b = frameBuffer[i];
+                            ms.WriteByte(b);
+
+                            if (prev == 0xFF && b == 0xD9)
                             {
-                                int len = (i + 2) - start;
-                                ms.Write(frameBuffer, start, len);
                                 var jpeg = ms.ToArray();
                                 ms.SetLength(0);
-                                start = i + 2;
-                                i++; // skip marker
-
-                                _mirrorService.OnConnected();
                                 _mirrorService.OnFrame(jpeg);
                             }
-                        }
-
-                        if (start < bytesRead)
-                        {
-                            ms.Write(frameBuffer, start, bytesRead - start);
+                            prev = b;
                         }
                     }
                 }
@@ -1209,6 +1198,13 @@ public sealed class AirPlayMirrorEngine
                                     _cachedSpsPps = spsPpsMs.ToArray();
                                     prependSpsPps = true;
                                     _logger?.LogInformation("AirPlay SPS ({SpsSize}b) and PPS ({PpsSize}b) received", spsSize, ppsSize);
+
+                                    try
+                                    {
+                                        await ffmpegProc.StandardInput.BaseStream.WriteAsync(_cachedSpsPps, ct).ConfigureAwait(false);
+                                        await ffmpegProc.StandardInput.BaseStream.FlushAsync(ct).ConfigureAwait(false);
+                                    }
+                                    catch { }
                                 }
                             }
                         }
@@ -1267,6 +1263,11 @@ public sealed class AirPlayMirrorEngine
 
     private byte[] DecryptVideoPayload(byte[] videoData)
     {
+        if (_mirrorCipher == null)
+        {
+            InitializeMirrorCipher();
+        }
+
         if (_mirrorCipher == null || videoData.Length == 0)
             return videoData;
 
