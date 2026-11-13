@@ -160,6 +160,15 @@ internal sealed partial class HwpxToHwp
         /// </summary>
         private readonly List<(int Source, int Length, int Output)> _shifts = [];
 
+        /// <summary>For each shift, what the shifts up to and including it add to a position after them (output − length).</summary>
+        private readonly List<long> _shiftTotals = [];
+
+        /// <summary>The package's units the shifts so far took out of the text (length − output, summed).</summary>
+        private int _shifted;
+
+        /// <summary>The shifts follow each other in the package's text without overlapping (Map can search them).</summary>
+        private bool _shiftsInOrder = true;
+
         private (int Start, uint Color)? _markpen;
         private bool _deleted;
 
@@ -297,11 +306,36 @@ internal sealed partial class HwpxToHwp
 
         private void Shift(int length, int output)
         {
-            _shifts.Add((Chars.Length + _shifts.Sum(s => s.Length - s.Output), length, output));
+            var source = Chars.Length + _shifted;
+            if (_shifts.Count > 0 && (long)_shifts[^1].Source + _shifts[^1].Length > source)
+                _shiftsInOrder = false;
+            _shifts.Add((source, length, output));
+            _shiftTotals.Add((_shiftTotals.Count > 0 ? _shiftTotals[^1] : 0) + output - length);
+            _shifted += length - output;
         }
 
         /// <summary>A position of the package's text in this text; null when it falls inside something left out.</summary>
         public int? Map(int position)
+        {
+            if (!_shiftsInOrder)
+                return MapEach(position);
+            // The shifts that end at or before the position move it; the next one may hold it.
+            var (low, high) = (0, _shifts.Count);
+            while (low < high)
+            {
+                var middle = (low + high) >>> 1;
+                if (position >= (long)_shifts[middle].Source + _shifts[middle].Length)
+                    low = middle + 1;
+                else
+                    high = middle;
+            }
+            if (low < _shifts.Count && position > _shifts[low].Source)
+                return null;
+            return (int)(position + (low > 0 ? _shiftTotals[low - 1] : 0));
+        }
+
+        /// <summary>Map for shifts out of order (not written by this class's callers; kept exact).</summary>
+        private int? MapEach(int position)
         {
             var mapped = position;
             foreach (var (source, length, output) in _shifts)

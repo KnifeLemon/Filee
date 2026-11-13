@@ -164,7 +164,7 @@ internal sealed partial class HwpxReader
     /// </summary>
     private HImage? OlePicture(XElement ole)
     {
-        if (ExtractBinary(Attr(ole, "binaryItemIDRef")) is not { } path || Binary.OlePreview.Extract(path, path + "-preview", Package.Limits) is not { } preview)
+        if (ExtractBinary(Attr(ole, "binaryItemIDRef")) is not { } path || OlePreviews.Extract(path, path + "-preview") is not { } preview)
             return null;
         _budget.Object();
         var placement = PlacementOf(ole);

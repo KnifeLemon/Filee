@@ -5,6 +5,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Metafiles;
@@ -116,6 +117,33 @@ public sealed class OlePreviewTests(EngineFixture fx) : IClassFixture<EngineFixt
         var junk = Path.Combine(folder, "junk.ole");
         File.WriteAllBytes(junk, Encoding.ASCII.GetBytes("not a compound file at all"));
         Assert.Null(OlePreview.Extract(junk, Path.Combine(folder, "c")));
+    }
+
+    [Fact]
+    public void The_objects_of_a_document_share_one_budget_and_are_read_once()
+    {
+        var ole = Ole(("\u0002OlePres000", Presentation(3, Wmf())));
+        var copy = Path.Combine(fx.NewFolder(), "copy.ole");
+        File.Copy(ole, copy);
+
+        // What one object costs: its file and the streams read from it.
+        var measure = new OlePreview.Budget(DocumentLimits.Default);
+        Assert.NotNull(measure.Extract(ole, Path.Combine(fx.NewFolder(), "measure")));
+        var cost = DocumentLimits.Default.MaxPackageBytes - measure.Left;
+        Assert.True(cost >= new FileInfo(ole).Length);
+
+        // A budget of exactly one object: the first has its picture, the next none, although each alone would fit.
+        var budget = new OlePreview.Budget(DocumentLimits.Default with { MaxPackageBytes = cost });
+        var folder = fx.NewFolder();
+        var first = budget.Extract(ole, Path.Combine(folder, "first"));
+        Assert.NotNull(first);
+        Assert.Equal(0, budget.Left);
+        Assert.Null(budget.Extract(copy, Path.Combine(folder, "second")));
+        Assert.NotNull(OlePreview.Extract(copy, Path.Combine(folder, "alone")));
+
+        // The same object named again gives the same picture without reading the object again.
+        File.Delete(ole);
+        Assert.Equal(first, budget.Extract(ole, Path.Combine(folder, "again")));
     }
 
     [Fact]
