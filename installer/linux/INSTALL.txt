@@ -127,6 +127,19 @@ libwayland-client0 on Ubuntu). To turn it on:
      windowrulev2 = noblur, title:^(Filee Donut)$
    Hyprland reloads its config when the file changes; hyprctl reload forces it.
 
+Yazi terminal file manager integration:
+The Linux package includes a Yazi plugin (filee.yazi) for converting selected or
+hovered files directly within Yazi, or opening them in the Filee Donut.
+To set up:
+1. Link or copy the plugin into your Yazi plugins directory:
+     mkdir -p ~/.config/yazi/plugins
+     ln -s "${XDG_DATA_HOME:-$HOME/.local/share}/filee/application/yazi/filee.yazi" ~/.config/yazi/plugins/filee.yazi
+2. Add a keybinding in ~/.config/yazi/keymap.toml:
+     [[manager.prepend_keymap]]
+     on   = [ "c", "f" ]
+     run  = "plugin filee"
+     desc = "Convert with Filee"
+
 Native Wayland Backend (experimental, off by default):
 By default, Filee runs through XWayland on Wayland desktops for maximum compatibility.
 To opt into the native Wayland backend (Avalonia.Wayland):
