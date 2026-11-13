@@ -236,4 +236,75 @@ public sealed class CaptureStudioTests
         vm.CurrentPosition = 20;
         Assert.Null(vm.ActiveSubtitleText);
     }
+
+    [Fact]
+    public void CaptureStudioBarViewModel_icons_and_pause_toggle_state()
+    {
+        var targetService = new WindowTargetService();
+        var mirrorService = new MobileMirrorService();
+        var engine = new CaptureRecordingEngine();
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+
+        var config = new CaptureConfig { EnableMicrophone = true };
+        var vm = new CaptureStudioBarViewModel(studio, config);
+
+        // Microphone icon toggle
+        Assert.Equal("🎙", vm.MicButtonIcon);
+        vm.ToggleMicCommand.Execute(null);
+        Assert.Equal("🔇", vm.MicButtonIcon);
+
+        // Pause / Resume icon and text toggle
+        Assert.Equal("⏸", vm.PauseButtonIcon);
+        Assert.Equal("Pause", vm.PauseButtonText);
+        vm.TogglePauseCommand.Execute(null);
+        Assert.Equal("▶", vm.PauseButtonIcon);
+        Assert.Equal("Resume", vm.PauseButtonText);
+    }
+
+    [Fact]
+    public void CaptureStudioConfigViewModel_source_radio_buttons_update_state()
+    {
+        var targetService = new WindowTargetService();
+        var loc = new DummyLocalizer();
+        var vm = new CaptureStudioConfigViewModel(targetService, loc);
+
+        vm.IsAppWindowSource = true;
+        Assert.Equal(0, vm.SelectedSourceIndex);
+        Assert.True(vm.IsAppWindowSource);
+        Assert.False(vm.IsFullScreenSource);
+        Assert.False(vm.IsCustomRegionSource);
+
+        vm.IsFullScreenSource = true;
+        Assert.Equal(1, vm.SelectedSourceIndex);
+        Assert.True(vm.IsFullScreenSource);
+        Assert.False(vm.IsAppWindowSource);
+
+        vm.IsCustomRegionSource = true;
+        Assert.Equal(2, vm.SelectedSourceIndex);
+        Assert.True(vm.IsCustomRegionSource);
+        Assert.False(vm.IsFullScreenSource);
+    }
+
+    [Fact]
+    public void CaptureStudioEditorViewModel_play_button_icon()
+    {
+        var targetService = new WindowTargetService();
+        var mirrorService = new MobileMirrorService();
+        var engine = new CaptureRecordingEngine();
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+        var loc = new DummyLocalizer();
+
+        var meta = new RecordedVideoMetadata(
+            "dummy_path.mp4",
+            TimeSpan.FromSeconds(60),
+            1920,
+            1080,
+            30,
+            true);
+
+        var vm = new CaptureStudioEditorViewModel(studio, loc, meta);
+        Assert.Equal("▶", vm.PlayButtonIcon);
+        vm.TogglePlayCommand.Execute(null);
+        Assert.Equal("⏸", vm.PlayButtonIcon);
+    }
 }

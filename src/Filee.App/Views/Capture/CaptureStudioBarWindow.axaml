@@ -131,19 +131,19 @@
 
           <!-- Visual FX & Audio: Cursor Highlight, Spotlight, Mic -->
           <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
-            <ToggleButton IsChecked="{Binding IsCursorHighlightActive}" Command="{Binding ToggleCursorHighlightCommand}"
+            <ToggleButton IsChecked="{Binding IsCursorHighlightActive}"
                           Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Cursor Halo Highlight">
               <TextBlock Text="🟡" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
             </ToggleButton>
 
-            <ToggleButton IsChecked="{Binding IsSpotlightActive}" Command="{Binding ToggleSpotlightCommand}"
+            <ToggleButton IsChecked="{Binding IsSpotlightActive}"
                           Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Spotlight Mode">
               <TextBlock Text="🔦" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
             </ToggleButton>
 
-            <ToggleButton IsChecked="{Binding IsMicMuted}" Command="{Binding ToggleMicCommand}"
+            <ToggleButton IsChecked="{Binding IsMicMuted}"
                           Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Microphone Mute / Unmute">
-              <TextBlock Text="{Binding IsMicMuted, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='🎤', FallbackValue='🎙'}"
+              <TextBlock Text="{Binding MicButtonIcon}"
                          FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
             </ToggleButton>
           </StackPanel>
@@ -180,9 +180,9 @@
                   Background="Transparent" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
                   CornerRadius="14" Height="28" Padding="10,0" ToolTip.Tip="Pause or Resume Recording">
             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-              <TextBlock Text="{Binding IsPaused, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='▶', FallbackValue='⏸'}"
+              <TextBlock Text="{Binding PauseButtonIcon}"
                          FontSize="12" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
-              <TextBlock Text="{Binding IsPaused, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='Resume', FallbackValue='Pause'}"
+              <TextBlock Text="{Binding PauseButtonText}"
                          FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
           </Button>

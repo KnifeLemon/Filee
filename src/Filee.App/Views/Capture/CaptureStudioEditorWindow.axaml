@@ -74,7 +74,7 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                   <Button Command="{Binding TogglePlayCommand}" Width="36" Height="32" Padding="0"
                           CornerRadius="6" Background="{DynamicResource AccentSubtleBrush}">
-                    <TextBlock Text="{Binding IsPlaying, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='⏸', FallbackValue='▶'}"
+                    <TextBlock Text="{Binding PlayButtonIcon}"
                                FontSize="13" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" />
                   </Button>
                 </StackPanel>
@@ -95,11 +95,11 @@
               <Grid ColumnDefinitions="*,16,*">
                 <StackPanel Grid.Column="0" Spacing="4">
                   <TextBlock Text="Trim Start (sec):" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                  <NumericUpDown Minimum="0" Maximum="{Binding TrimEnd}" Value="{Binding TrimStart}" FormatString="0.0" />
+                  <NumericUpDown Minimum="0" Maximum="{Binding VideoDuration.TotalSeconds}" Value="{Binding TrimStart}" FormatString="0.0" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Spacing="4">
                   <TextBlock Text="Trim End (sec):" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                  <NumericUpDown Minimum="{Binding TrimStart}" Maximum="{Binding VideoDuration.TotalSeconds}" Value="{Binding TrimEnd}" FormatString="0.0" />
+                  <NumericUpDown Minimum="0" Maximum="{Binding VideoDuration.TotalSeconds}" Value="{Binding TrimEnd}" FormatString="0.0" />
                 </StackPanel>
               </Grid>
             </Border>

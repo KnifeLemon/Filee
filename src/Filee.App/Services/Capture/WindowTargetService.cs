@@ -57,6 +57,10 @@ public sealed class WindowTargetService
     private delegate bool EnumWindowsProc(nint hWnd, nint lParam);
 
     [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
 
     [DllImport("user32.dll")]
@@ -75,6 +79,13 @@ public sealed class WindowTargetService
         try
         {
             var myPid = (uint)Environment.ProcessId;
+
+            // If coordinates not provided, automatically fetch live cursor point
+            if (x == 0 && y == 0 && GetCursorPos(out var pt))
+            {
+                x = pt.X;
+                y = pt.Y;
+            }
 
             // Strategy 1: If coordinates given, enumerate top-level windows in Z-order to find the topmost
             // non-Filee, non-desktop application window containing (x, y).

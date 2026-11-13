@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Filee.App.Services.Capture;
+using Filee.App.Services.Connect;
 using Filee.App.ViewModels;
 using Filee.App.ViewModels.Capture;
 using Filee.App.Views;
@@ -275,7 +276,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             barWindow.HoverChanged += hovered => overlayWindow.SetToolbarHover(hovered);
             barWindow.BoundsChangedNotification += bounds => overlayWindow.UpdateToolbarBounds(bounds);
 
-            barVm.MobileMirrorToggled += () =>
+            barVm.MobileMirrorToggled += async () =>
             {
                 if (_mobileMirrorWindow is { IsVisible: true })
                 {
@@ -284,7 +285,14 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
                 }
                 else
                 {
-                    _mobileMirrorWindow = new MobileMirrorWindow(studioService.MirrorService);
+                    var connectService = services.GetRequiredService<FileeConnectService>();
+                    connectService.MirrorService = studioService.MirrorService;
+                    if (!connectService.IsRunning)
+                    {
+                        try { await connectService.StartSessionAsync(); } catch { }
+                    }
+
+                    _mobileMirrorWindow = new MobileMirrorWindow(studioService.MirrorService, connectService);
                     _mobileMirrorWindow.Show();
                 }
             };

@@ -15,6 +15,51 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
     private int _selectedSourceIndex = 0; // 0: App Window, 1: Full Screen, 2: Custom Region
 
     [ObservableProperty]
+    private bool _isAppWindowSource = true;
+
+    [ObservableProperty]
+    private bool _isFullScreenSource = false;
+
+    [ObservableProperty]
+    private bool _isCustomRegionSource = false;
+
+    partial void OnIsAppWindowSourceChanged(bool value)
+    {
+        if (value)
+        {
+            SelectedSourceIndex = 0;
+            _isFullScreenSource = false;
+            _isCustomRegionSource = false;
+            OnPropertyChanged(nameof(IsFullScreenSource));
+            OnPropertyChanged(nameof(IsCustomRegionSource));
+        }
+    }
+
+    partial void OnIsFullScreenSourceChanged(bool value)
+    {
+        if (value)
+        {
+            SelectedSourceIndex = 1;
+            _isAppWindowSource = false;
+            _isCustomRegionSource = false;
+            OnPropertyChanged(nameof(IsAppWindowSource));
+            OnPropertyChanged(nameof(IsCustomRegionSource));
+        }
+    }
+
+    partial void OnIsCustomRegionSourceChanged(bool value)
+    {
+        if (value)
+        {
+            SelectedSourceIndex = 2;
+            _isAppWindowSource = false;
+            _isFullScreenSource = false;
+            OnPropertyChanged(nameof(IsAppWindowSource));
+            OnPropertyChanged(nameof(IsFullScreenSource));
+        }
+    }
+
+    [ObservableProperty]
     private WindowTargetInfo? _detectedWindow;
 
     [ObservableProperty]
@@ -99,7 +144,10 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
         {
             var match = OpenWindows.FirstOrDefault(w => w.Handle == DetectedWindow.Handle);
             SelectedWindow = match ?? DetectedWindow;
-            SelectedSourceIndex = 0; // Default to App Window
+            SelectedSourceIndex = 0;
+            IsAppWindowSource = true;
+            IsFullScreenSource = false;
+            IsCustomRegionSource = false;
             IsAppTargetMode = true;
             ShowAllSources = false;
             DetectedAppTitle = SelectedWindow.DisplayName;
@@ -108,7 +156,10 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
         else
         {
             SelectedWindow = OpenWindows.FirstOrDefault();
-            SelectedSourceIndex = 1; // Default to Full Screen if clicked on desktop/empty area
+            SelectedSourceIndex = 1;
+            IsAppWindowSource = false;
+            IsFullScreenSource = true;
+            IsCustomRegionSource = false;
             IsAppTargetMode = false;
             ShowAllSources = true;
         }

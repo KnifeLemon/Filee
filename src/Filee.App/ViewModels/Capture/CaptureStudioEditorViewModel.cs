@@ -42,7 +42,10 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
     private double _trimEnd = 100;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PlayButtonIcon))]
     private bool _isPlaying = false;
+
+    public string PlayButtonIcon => IsPlaying ? "⏸" : "▶";
 
     [ObservableProperty]
     private bool _isGeneratingCaptions = false;
@@ -86,6 +89,7 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
     private CancellationTokenSource? _playCts;
     private CancellationTokenSource? _scrubCts;
     private bool _isUpdatingFromPlayback;
+    private readonly DispatcherTimer _scrubDebounceTimer;
 
     public CaptureStudioEditorViewModel(CaptureStudioService service, ILocalizer loc, RecordedVideoMetadata metadata)
     {
@@ -96,6 +100,16 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
         _videoDurationText = FormatTime(metadata.Duration);
         _trimStart = 0;
         _trimEnd = metadata.Duration.TotalSeconds;
+
+        _scrubDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(75) };
+        _scrubDebounceTimer.Tick += (_, _) =>
+        {
+            _scrubDebounceTimer.Stop();
+            if (!_isPlaying && !_isUpdatingFromPlayback)
+            {
+                _ = ExtractFrameAtAsync(CurrentPosition);
+            }
+        };
 
         LoadLanguages();
 
@@ -126,7 +140,24 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
         UpdateActiveSubtitle(value);
         if (!_isPlaying && !_isUpdatingFromPlayback)
         {
-            _ = ExtractFrameAtAsync(value);
+            _scrubDebounceTimer.Stop();
+            _scrubDebounceTimer.Start();
+        }
+    }
+
+    partial void OnTrimStartChanged(double value)
+    {
+        if (value > TrimEnd)
+        {
+            TrimEnd = Math.Min(VideoDuration.TotalSeconds, value + 0.5);
+        }
+    }
+
+    partial void OnTrimEndChanged(double value)
+    {
+        if (value < TrimStart)
+        {
+            TrimStart = Math.Max(0, value - 0.5);
         }
     }
 
@@ -144,17 +175,27 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
         var cts = new CancellationTokenSource();
         _scrubCts = cts;
 
+        var targetSec = Math.Clamp(seconds, 0, VideoDuration.TotalSeconds);
         try
         {
             var temp = Path.Combine(Path.GetTempPath(), $"scrub_{Guid.NewGuid():N}.jpg");
-            var ok = await VideoFrames.WriteFrameAsync(VideoPath, Math.Max(0, seconds), temp, 480, cts.Token).ConfigureAwait(false);
-            if (ok && File.Exists(temp))
+            var ok = await VideoFrames.WriteFrameAsync(VideoPath, targetSec, temp, 480, cts.Token).ConfigureAwait(false);
+            if (ok && File.Exists(temp) && !cts.IsCancellationRequested)
             {
                 using var s = File.OpenRead(temp);
                 var bmp = new Bitmap(s);
                 Dispatcher.UIThread.Post(() =>
                 {
-                    CurrentFrameBitmap = bmp;
+                    if (!cts.IsCancellationRequested)
+                    {
+                        var old = CurrentFrameBitmap;
+                        CurrentFrameBitmap = bmp;
+                        old?.Dispose();
+                    }
+                    else
+                    {
+                        bmp.Dispose();
+                    }
                 });
                 try { File.Delete(temp); } catch { }
             }

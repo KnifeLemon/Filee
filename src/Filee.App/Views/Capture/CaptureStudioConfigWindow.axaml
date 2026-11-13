@@ -41,15 +41,15 @@
           <!-- Source Type Tabs -->
           <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,4">
             <RadioButton Grid.Column="0" Content="App Window" GroupName="SourceTypeGroup"
-                         IsChecked="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}" />
+                         IsChecked="{Binding IsAppWindowSource}" />
             <RadioButton Grid.Column="1" Content="Full Screen" GroupName="SourceTypeGroup"
-                         IsChecked="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=1}" />
+                         IsChecked="{Binding IsFullScreenSource}" />
             <RadioButton Grid.Column="2" Content="Custom Region" GroupName="SourceTypeGroup"
-                         IsChecked="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=2}" />
+                         IsChecked="{Binding IsCustomRegionSource}" />
           </Grid>
 
           <!-- App Window Selector (Shows all open windows, with detected pre-selected) -->
-          <StackPanel Spacing="6" IsVisible="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}">
+          <StackPanel Spacing="6" IsVisible="{Binding IsAppWindowSource}">
             <TextBlock Text="Choose Application Window:" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
             <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding OpenWindows}" SelectedItem="{Binding SelectedWindow}">
               <ComboBox.ItemTemplate>
@@ -66,7 +66,7 @@
           </StackPanel>
 
           <!-- Full Screen Selector -->
-          <StackPanel Spacing="6" IsVisible="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=1}">
+          <StackPanel Spacing="6" IsVisible="{Binding IsFullScreenSource}">
             <TextBlock Text="Select Display / Monitor:" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
             <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Screens}" SelectedItem="{Binding SelectedScreen}">
               <ComboBox.ItemTemplate>
@@ -79,7 +79,7 @@
 
           <!-- Custom Region Info -->
           <Border Background="{DynamicResource AccentSubtleBrush}" CornerRadius="6" Padding="10"
-                  IsVisible="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=2}">
+                  IsVisible="{Binding IsCustomRegionSource}">
             <TextBlock Text="Interactive crosshair will let you select any rectangular screen area upon starting."
                        FontSize="11" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" />
           </Border>

@@ -1,7 +1,9 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Filee.App.Services.Capture;
@@ -11,6 +13,27 @@ namespace Filee.App.Views.Capture;
 
 public partial class CaptureOverlayWindow : Window
 {
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    private const int GWL_EXSTYLE = -20;
+    private const uint WS_EX_TRANSPARENT = 0x00000020;
+    private const uint WS_EX_LAYERED = 0x00080000;
+
     private AnnotationTool _currentTool = AnnotationTool.Pointer;
     private bool _isDrawing;
     private Point _startPoint;
@@ -30,11 +53,48 @@ public partial class CaptureOverlayWindow : Window
     private bool _isToolbarHovered;
     private Rect _toolbarBounds;
     private Control? _activePreviewControl;
+    private DispatcherTimer? _toastTimer;
+    private readonly DispatcherTimer _cursorTrackerTimer;
 
     public CaptureOverlayWindow()
     {
         InitializeComponent();
         SetupOverlays();
+
+        // 60fps tracking timer: smoothly moves cursor halo and spotlight anywhere on the screen
+        _cursorTrackerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _cursorTrackerTimer.Tick += (_, _) => OnCursorTrackerTick();
+        _cursorTrackerTimer.Start();
+
+        Loaded += (_, _) =>
+        {
+            // By default, start with click-through enabled so user can freely interact with Windows 11
+            SetClickThrough(true);
+        };
+    }
+
+    private void SetClickThrough(bool transparent)
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        try
+        {
+            var hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+            if (hwnd == IntPtr.Zero)
+                return;
+
+            var style = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+            if (transparent)
+            {
+                SetWindowLongPtr(hwnd, GWL_EXSTYLE, (IntPtr)(style.ToInt64() | WS_EX_TRANSPARENT | WS_EX_LAYERED));
+            }
+            else
+            {
+                SetWindowLongPtr(hwnd, GWL_EXSTYLE, (IntPtr)(style.ToInt64() & ~WS_EX_TRANSPARENT));
+            }
+        }
+        catch { }
     }
 
     private void SetupOverlays()
@@ -62,10 +122,29 @@ public partial class CaptureOverlayWindow : Window
         OverlayCanvas.Children.Add(_cursorHighlight);
     }
 
-    private DispatcherTimer? _toastTimer;
+    private void OnCursorTrackerTick()
+    {
+        if (!OperatingSystem.IsWindows() || !GetCursorPos(out var pt))
+            return;
+
+        var p = new Point(pt.X, pt.Y);
+        _currentMousePos = p;
+
+        if (_cursorHighlight != null && _cursorHighlightActive)
+        {
+            Canvas.SetLeft(_cursorHighlight, p.X - 24);
+            Canvas.SetTop(_cursorHighlight, p.Y - 24);
+        }
+
+        if (_spotlightActive)
+        {
+            UpdateSpotlightGeometry(p);
+        }
+    }
 
     public async Task RunCountdownAsync(CancellationToken cancellationToken = default)
     {
+        SetClickThrough(true);
         CountdownContainer.IsVisible = true;
         for (int i = 3; i >= 1; i--)
         {
@@ -100,7 +179,13 @@ public partial class CaptureOverlayWindow : Window
     public void UpdateTool(AnnotationTool tool)
     {
         _currentTool = tool;
-        OverlayCanvas.IsHitTestVisible = !_isToolbarHovered && tool != AnnotationTool.Pointer;
+        var isPointer = tool == AnnotationTool.Pointer;
+
+        // When in Pointer mode, make overlay window completely transparent to mouse clicks
+        // so the user can click desktop icons, apps, and taskbar normally.
+        // When drawing with an annotation tool, enable drawing hit-test.
+        SetClickThrough(isPointer);
+        OverlayCanvas.IsHitTestVisible = !_isToolbarHovered && !isPointer;
     }
 
     public void UpdateColor(string hex)
@@ -115,7 +200,8 @@ public partial class CaptureOverlayWindow : Window
     public void SetToolbarHover(bool hovered)
     {
         _isToolbarHovered = hovered;
-        OverlayCanvas.IsHitTestVisible = !hovered && _currentTool != AnnotationTool.Pointer;
+        var isPointer = _currentTool == AnnotationTool.Pointer;
+        OverlayCanvas.IsHitTestVisible = !hovered && !isPointer;
     }
 
     public void UpdateToolbarBounds(Rect bounds)
@@ -130,7 +216,10 @@ public partial class CaptureOverlayWindow : Window
         if (_spotlightOverlay != null)
         {
             _spotlightOverlay.IsVisible = active;
-            UpdateSpotlightGeometry(_currentMousePos);
+            if (active)
+            {
+                UpdateSpotlightGeometry(_currentMousePos);
+            }
         }
     }
 
@@ -249,19 +338,6 @@ public partial class CaptureOverlayWindow : Window
         var p = e.GetPosition(OverlayCanvas);
         _currentMousePos = p;
 
-        // Update cursor highlight position
-        if (_cursorHighlight != null && _cursorHighlightActive)
-        {
-            Canvas.SetLeft(_cursorHighlight, p.X - 24);
-            Canvas.SetTop(_cursorHighlight, p.Y - 24);
-        }
-
-        // Update spotlight position
-        if (_spotlightActive)
-        {
-            UpdateSpotlightGeometry(p);
-        }
-
         if (!_isDrawing)
             return;
 
@@ -318,13 +394,11 @@ public partial class CaptureOverlayWindow : Window
         {
             if (_currentTool is AnnotationTool.Circle or AnnotationTool.Rectangle)
             {
-                // Shape is finalized in place
                 _annotationControls.Add(_activePreviewControl);
                 _activePreviewControl = null;
                 return;
             }
 
-            // Remove preview wireframe before creating composite shapes
             OverlayCanvas.Children.Remove(_activePreviewControl);
             _activePreviewControl = null;
         }
@@ -388,52 +462,122 @@ public partial class CaptureOverlayWindow : Window
 
     private void AddBlurMask(Point p1, Point p2)
     {
-        var border = new Border
+        var x = Math.Min(p1.X, p2.X);
+        var y = Math.Min(p1.Y, p2.Y);
+        var w = Math.Max(30, Math.Abs(p2.X - p1.X));
+        var h = Math.Max(24, Math.Abs(p2.Y - p1.Y));
+
+        var container = new Panel
         {
-            Width = Math.Max(10, Math.Abs(p2.X - p1.X)),
-            Height = Math.Max(10, Math.Abs(p2.Y - p1.Y)),
+            Width = w,
+            Height = h
+        };
+
+        var mask = new Border
+        {
             Background = new SolidColorBrush(Color.FromArgb(235, 30, 30, 35)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(160, 255, 255, 255)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4),
-            IsHitTestVisible = false,
+            BorderThickness = new Thickness(1.5),
+            CornerRadius = new CornerRadius(6),
             Child = new TextBlock
             {
-                Text = "░░ MASKED ░░",
+                Text = "░░ BLURRED ░░",
                 FontSize = 10,
                 FontWeight = FontWeight.Bold,
-                Foreground = Brushes.Gray,
+                Foreground = Brushes.Silver,
                 HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             }
         };
-        Canvas.SetLeft(border, Math.Min(p1.X, p2.X));
-        Canvas.SetTop(border, Math.Min(p1.Y, p2.Y));
-        OverlayCanvas.Children.Add(border);
-        _annotationControls.Add(border);
+        container.Children.Add(mask);
+
+        // Cross (✕) delete button at top-right
+        var closeBtn = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = "✕",
+                FontSize = 9,
+                FontWeight = FontWeight.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            },
+            Width = 18,
+            Height = 18,
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(9),
+            Background = new SolidColorBrush(Color.FromArgb(220, 255, 59, 48)),
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+            Margin = new Thickness(0, 2, 2, 0),
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+
+        closeBtn.Click += (_, _) =>
+        {
+            OverlayCanvas.Children.Remove(container);
+            _annotationControls.Remove(container);
+            ShowActionToast("Blur Mask Removed", "🗑");
+        };
+
+        container.Children.Add(closeBtn);
+
+        Canvas.SetLeft(container, x);
+        Canvas.SetTop(container, y);
+        OverlayCanvas.Children.Add(container);
+        _annotationControls.Add(container);
     }
 
     private void AddTextCallout(Point p)
     {
-        var border = new Border
+        var container = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(235, 255, 255, 255)),
+            Background = new SolidColorBrush(Color.FromArgb(245, 255, 255, 255)),
             BorderBrush = _activeBrush,
             BorderThickness = new Thickness(2),
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(8, 4),
-            BoxShadow = new BoxShadows(new BoxShadow { Blur = 8, Color = Color.FromArgb(80, 0, 0, 0) }),
-            Child = new TextBlock
+            Padding = new Thickness(4),
+            BoxShadow = new BoxShadows(new BoxShadow { Blur = 8, Color = Color.FromArgb(80, 0, 0, 0) })
+        };
+
+        var textBox = new TextBox
+        {
+            Text = "Caption...",
+            FontSize = 13,
+            FontWeight = FontWeight.Bold,
+            Foreground = _activeBrush,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            MinWidth = 120,
+            SelectionStart = 0,
+            SelectionEnd = 10
+        };
+
+        textBox.KeyDown += (_, keyArgs) =>
+        {
+            if (keyArgs.Key == Key.Enter)
             {
-                Text = "Note",
-                FontSize = 13,
-                FontWeight = FontWeight.Bold,
-                Foreground = _activeBrush
+                // Commit text and switch back
+                textBox.IsEnabled = false;
+                textBox.Background = Brushes.Transparent;
             }
         };
-        Canvas.SetLeft(border, p.X);
-        Canvas.SetTop(border, p.Y);
-        OverlayCanvas.Children.Add(border);
-        _annotationControls.Add(border);
+
+        container.Child = textBox;
+
+        Canvas.SetLeft(container, p.X);
+        Canvas.SetTop(container, p.Y);
+        OverlayCanvas.Children.Add(container);
+        _annotationControls.Add(container);
+
+        Dispatcher.UIThread.Post(() => textBox.Focus());
+    }
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        _cursorTrackerTimer.Stop();
+        _toastTimer?.Stop();
+        base.OnClosing(e);
     }
 }

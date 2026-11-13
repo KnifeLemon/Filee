@@ -11,6 +11,7 @@ namespace Filee.App.Views.Capture;
 public partial class MobileMirrorWindow : Window
 {
     private readonly MobileMirrorService? _service;
+    private readonly FileeConnectService? _connectService;
 
     public MobileMirrorWindow()
     {
@@ -18,9 +19,10 @@ public partial class MobileMirrorWindow : Window
         LoadQrAndNetworkInfo();
     }
 
-    public MobileMirrorWindow(MobileMirrorService service) : this()
+    public MobileMirrorWindow(MobileMirrorService service, FileeConnectService? connectService = null) : this()
     {
         _service = service;
+        _connectService = connectService;
         _service.FrameReceived += OnFrameReceived;
         _service.StateChanged += OnStateChanged;
 
@@ -28,6 +30,8 @@ public partial class MobileMirrorWindow : Window
         {
             OnFrameReceived(_service.LastJpegFrame);
         }
+
+        LoadQrAndNetworkInfo();
     }
 
     private void LoadQrAndNetworkInfo()
@@ -35,8 +39,11 @@ public partial class MobileMirrorWindow : Window
         try
         {
             var lanIp = FileeConnectService.GetLocalLanIp().ToString();
-            var port = 3000;
-            var url = $"http://{lanIp}:{port}";
+            var baseUrl = _connectService != null && _connectService.IsRunning
+                ? _connectService.ManualUrl
+                : $"http://{lanIp}:3000";
+
+            var url = baseUrl.TrimEnd('/') + "/mirror";
             LanUrlText.Text = url;
 
             using var generator = new QRCoder.QRCodeGenerator();

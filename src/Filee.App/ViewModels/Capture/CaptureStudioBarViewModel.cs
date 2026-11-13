@@ -13,7 +13,12 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     private bool _isRecording = true;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PauseButtonIcon))]
+    [NotifyPropertyChangedFor(nameof(PauseButtonText))]
     private bool _isPaused = false;
+
+    public string PauseButtonIcon => IsPaused ? "▶" : "⏸";
+    public string PauseButtonText => IsPaused ? "Resume" : "Pause";
 
     [ObservableProperty]
     private bool _isCollapsed = false;
@@ -40,7 +45,15 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     ];
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MicButtonIcon))]
     private bool _isMicMuted = false;
+
+    partial void OnIsMicMutedChanged(bool value)
+    {
+        MicToggled?.Invoke(value);
+    }
+
+    public string MicButtonIcon => IsMicMuted ? "🔇" : "🎙";
 
     [ObservableProperty]
     private bool _isSystemAudioMuted = false;
@@ -48,8 +61,18 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     [ObservableProperty]
     private bool _isCursorHighlightActive = true;
 
+    partial void OnIsCursorHighlightActiveChanged(bool value)
+    {
+        CursorHighlightToggled?.Invoke(value);
+    }
+
     [ObservableProperty]
     private bool _isSpotlightActive = false;
+
+    partial void OnIsSpotlightActiveChanged(bool value)
+    {
+        SpotlightToggled?.Invoke(value);
+    }
 
     [ObservableProperty]
     private double _spotlightRadius = 120.0;
@@ -148,21 +171,18 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     private void ToggleCursorHighlight()
     {
         IsCursorHighlightActive = !IsCursorHighlightActive;
-        CursorHighlightToggled?.Invoke(IsCursorHighlightActive);
     }
 
     [RelayCommand]
     private void ToggleSpotlight()
     {
         IsSpotlightActive = !IsSpotlightActive;
-        SpotlightToggled?.Invoke(IsSpotlightActive);
     }
 
     [RelayCommand]
     private void ToggleMic()
     {
         IsMicMuted = !IsMicMuted;
-        MicToggled?.Invoke(IsMicMuted);
     }
 
     [RelayCommand]

@@ -78,6 +78,7 @@ public sealed class FileeConnectService : IAsyncDisposable
         }
     }
     public bool IsRunning => _isRunning;
+    public Filee.App.Services.Capture.MobileMirrorService? MirrorService { get; set; }
 
     public IReadOnlyList<ConnectMessage> MessageHistory
     {
@@ -309,6 +310,54 @@ public sealed class FileeConnectService : IAsyncDisposable
         app.MapGet("/mobile", (HttpContext context) =>
         {
             return ServeMobileHtml();
+        });
+        app.MapGet("/mirror", (HttpContext context) =>
+        {
+            return Results.Content(GetScreenMirrorHtml(), "text/html; charset=utf-8");
+        });
+        app.MapGet("/ws/mirror", async (HttpContext context) =>
+        {
+            if (!context.WebSockets.IsWebSocketRequest)
+                return Results.BadRequest();
+
+            using var socket = await context.WebSockets.AcceptWebSocketAsync();
+            MirrorService?.OnConnected();
+            var buffer = new byte[256 * 1024];
+
+            try
+            {
+                while (socket.State == System.Net.WebSockets.WebSocketState.Open)
+                {
+                    using var ms = new MemoryStream();
+                    System.Net.WebSockets.WebSocketReceiveResult result;
+                    do
+                    {
+                        result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                        if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                        {
+                            await socket.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "Closed", CancellationToken.None);
+                            return Results.Ok();
+                        }
+                        if (result.Count > 0)
+                        {
+                            ms.Write(buffer, 0, result.Count);
+                        }
+                    } while (!result.EndOfMessage);
+
+                    if (ms.Length > 0)
+                    {
+                        var frameBytes = ms.ToArray();
+                        MirrorService?.OnFrame(frameBytes);
+                    }
+                }
+            }
+            catch { }
+            finally
+            {
+                MirrorService?.OnDisconnected();
+            }
+
+            return Results.Ok();
         });
         app.MapGet("/", (HttpContext context) => Results.Redirect("/mobile"));
         app.MapGet("/connect", (HttpContext context) => Results.Redirect("/mobile"));
@@ -604,53 +653,6 @@ public sealed class FileeConnectService : IAsyncDisposable
             }
 
             await HandleWebSocketClientAsync(client);
-            return Results.Empty;
-        });
-
-        // Mobile Screen Mirroring WebSocket endpoint: GET /ws/mirror
-        app.MapGet("/ws/mirror", async (HttpContext context) =>
-        {
-            if (!context.WebSockets.IsWebSocketRequest)
-                return Results.BadRequest();
-
-            if (!TryValidateDeviceToken(context, out _))
-                return Results.Unauthorized();
-
-            using var socket = await context.WebSockets.AcceptWebSocketAsync();
-            var mirrorService = AppHost.Get<Filee.App.Services.Capture.MobileMirrorService>();
-            mirrorService?.OnConnected();
-
-            var buffer = new byte[1024 * 512];
-            try
-            {
-                while (socket.State == System.Net.WebSockets.WebSocketState.Open)
-                {
-                    using var ms = new MemoryStream();
-                    System.Net.WebSockets.WebSocketReceiveResult result;
-                    do
-                    {
-                        result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-                        if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
-                            break;
-                        ms.Write(buffer, 0, result.Count);
-                    } while (!result.EndOfMessage);
-
-                    if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
-                        break;
-
-                    if (ms.Length > 0 && mirrorService != null)
-                    {
-                        mirrorService.OnFrame(ms.ToArray());
-                    }
-                }
-            }
-            catch
-            {
-            }
-            finally
-            {
-                mirrorService?.OnDisconnected();
-            }
             return Results.Empty;
         });
     }
@@ -961,6 +963,134 @@ public sealed class FileeConnectService : IAsyncDisposable
         }
         return startPort;
     }
+
+    private static string GetScreenMirrorHtml() => """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Filee Screen Mirror</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; }
+    .card { background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 24px; padding: 32px 24px; max-width: 360px; width: 100%; box-shadow: 0 12px 32px rgba(0,0,0,0.5); }
+    .icon { font-size: 54px; margin-bottom: 16px; }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    p { font-size: 14px; color: #8e8e93; margin-bottom: 24px; line-height: 1.4; }
+    .btn { background: #30d158; color: #000; font-size: 16px; font-weight: 700; border: none; border-radius: 14px; padding: 16px 24px; width: 100%; cursor: pointer; transition: transform 0.1s, opacity 0.2s; }
+    .btn:active { transform: scale(0.98); opacity: 0.9; }
+    .btn.stop { background: #ff3b30; color: #fff; margin-top: 12px; display: none; }
+    .status { margin-top: 16px; font-size: 12px; color: #636366; }
+    .live-badge { display: none; align-items: center; justify-content: center; gap: 6px; margin-bottom: 16px; font-size: 12px; font-weight: 600; color: #30d158; }
+    .live-dot { width: 8px; height: 8px; background: #30d158; border-radius: 4px; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+    video, canvas { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="live-badge" id="liveBadge">
+      <div class="live-dot"></div>
+      <span>MIRRORING LIVE TO PC</span>
+    </div>
+    <div class="icon" id="cardIcon">📱</div>
+    <h1 id="title">Mobile Screen Mirror</h1>
+    <p id="desc">Broadcast this phone's screen directly to Filee Capture Studio on your PC.</p>
+    <button class="btn" id="startBtn">Start Screen Mirror</button>
+    <button class="btn stop" id="stopBtn">Stop Mirroring</button>
+    <div class="status" id="status">Tap Start, then allow screen sharing when prompted.</div>
+  </div>
+  <video id="video" playsinline autoplay muted></video>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const status = document.getElementById('status');
+    const liveBadge = document.getElementById('liveBadge');
+    const title = document.getElementById('title');
+    const desc = document.getElementById('desc');
+    let stream = null;
+    let ws = null;
+    let timer = null;
+
+    async function startMirror() {
+      try {
+        status.innerText = "Requesting screen access…";
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: 25, width: { ideal: 720 }, height: { ideal: 1280 } },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${wsProtocol}//${location.host}/ws/mirror`);
+        ws.binaryType = "blob";
+
+        ws.onopen = () => {
+          status.innerText = "Connected & streaming!";
+          liveBadge.style.display = "flex";
+          startBtn.style.display = "none";
+          stopBtn.style.display = "block";
+          title.innerText = "Screen Connected";
+          desc.innerText = "Your phone screen is now visible in Capture Studio.";
+          startSendingFrames();
+        };
+
+        ws.onerror = (e) => {
+          status.innerText = "Connection error. Ensure Wi-Fi is reachable.";
+        };
+
+        ws.onclose = () => {
+          stopMirror();
+        };
+
+        stream.getVideoTracks()[0].onended = () => {
+          stopMirror();
+        };
+      } catch (err) {
+        status.innerText = "Screen share cancelled or not supported: " + err.message;
+      }
+    }
+
+    function startSendingFrames() {
+      const ctx = canvas.getContext('2d');
+      timer = setInterval(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN || !video.videoWidth) return;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (blob && ws && ws.readyState === WebSocket.OPEN) {
+            blob.arrayBuffer().then(buf => ws.send(buf));
+          }
+        }, 'image/jpeg', 0.65);
+      }, 40);
+    }
+
+    function stopMirror() {
+      if (timer) clearInterval(timer);
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (ws) { try { ws.close(); } catch(e){} }
+      liveBadge.style.display = "none";
+      startBtn.style.display = "block";
+      stopBtn.style.display = "none";
+      title.innerText = "Mobile Screen Mirror";
+      desc.innerText = "Broadcast this phone's screen directly to Filee Capture Studio on your PC.";
+      status.innerText = "Mirroring stopped.";
+    }
+
+    startBtn.onclick = startMirror;
+    stopBtn.onclick = stopMirror;
+  </script>
+</body>
+</html>
+""";
 
     public async ValueTask DisposeAsync()
     {
