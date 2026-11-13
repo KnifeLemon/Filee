@@ -11,7 +11,8 @@
   Wrangler and checks that it is served as is.
 
   Run it after changing a pin in engines.json (before the release that ships the pin). Files are kept under their hash,
-  so old pins stay for the Filee versions that still use them.
+  so old pins stay for the Filee versions that still use them. engines/README.txt next to them says where each file
+  comes from (they are unmodified copies; the projects' source code and licences are where their downloads are).
 
   Needs Node.js with Wrangler signed in to Filee's Cloudflare account (npx wrangler login, once).
 
@@ -98,6 +99,29 @@ foreach ($entry in $downloads.GetEnumerator()) {
         Write-Warning "$($info.Id) ($($info.Runtime)) $($info.Name): $($_.Exception.Message)"
         $failed += $info
     }
+}
+
+# Next to the files: where each one comes from. They are unmodified copies; each project's source code and licence
+# are where its download is (THIRD-PARTY-NOTICES.md names them).
+if (-not $WhatIf -and $Only.Count -eq 0) {
+    $lines = @(
+        'Filee engine mirror',
+        '',
+        'Unmodified copies of the third-party programs Filee downloads on request, kept here in case a download site',
+        'removes a version. Each file is the exact file published at the address below (Filee checks its SHA-256).',
+        'Each program is its authors'' work under its own licence; its source code and licence are available from its',
+        'project, listed in https://github.com/KnifeLemon/Filee/blob/main/THIRD-PARTY-NOTICES.md',
+        ''
+    )
+    foreach ($entry in $downloads.GetEnumerator()) {
+        $lines += "$($entry.Key)/$($entry.Value.Name)"
+        $lines += "    $($entry.Value.Id) ($($entry.Value.Runtime)), from $($entry.Value.Url)"
+    }
+    $readme = Join-Path $cache 'README.txt'
+    Set-Content -Path $readme -Value $lines -Encoding utf8NoBOM
+    Write-Host 'put  engines/README.txt'
+    npx --yes $wrangler r2 object put "$bucket/engines/README.txt" --file $readme --remote --content-type 'text/plain; charset=utf-8'
+    if ($LASTEXITCODE -ne 0) { $failed += [pscustomobject]@{ Id = 'README.txt'; Runtime = '-' } }
 }
 
 if ($failed.Count -gt 0) {
