@@ -60,6 +60,15 @@ internal sealed partial class GerberReader
     /// <summary>Most macro primitives evaluated over all aperture definitions.</summary>
     private const long MaxMacroPrimitives = 500_000;
 
+    /// <summary>
+    /// Most shapes drawn once blocks and copies are placed. Svg.Skia makes a drawable for each &lt;use&gt;, so the
+    /// count matters on its own, whatever the shapes' size.
+    /// </summary>
+    private const long MaxPlacedShapes = 3_000_000;
+
+    /// <summary>Largest aperture scale (LS): beyond, the shapes are bigger than any board.</summary>
+    private const double MaxScale = 1000;
+
     /// <summary>Largest coordinate, in millimetres (100 m): anything beyond is a damaged number, not a board.</summary>
     private const double MaxCoordinate = 100_000;
 
@@ -97,6 +106,8 @@ internal sealed partial class GerberReader
     private long _segmentCount;
     private long _drawnSegments;
     private long _macroPrimitives;
+    private long _placedShapes;
+    private int _definitions;
     private int _nextBlockId;
 
     private GerberReader(CancellationToken ct) => _ct = ct;
@@ -117,7 +128,9 @@ internal sealed partial class GerberReader
             throw new InvalidDataException("The file isn't a Gerber file (it holds binary data; GIMP brushes also use .gbr).");
 
         var reader = new GerberReader(ct);
-        reader.Run(Encoding.UTF8.GetString(data));
+        // A byte order mark would otherwise be read as the start of a word.
+        var text = Encoding.UTF8.GetString(data);
+        reader.Run(text.StartsWith('\uFEFF') ? text[1..] : text);
         return reader.Finish();
     }
 
@@ -192,8 +205,12 @@ internal sealed partial class GerberReader
             _sawGerber = true;
             return;
         }
-        foreach (var word in words)
-            ExtendedWord(word);
+        for (var i = 0; i < words.Count; i++)
+        {
+            if ((i & 0xFF) == 0xFF)
+                _ct.ThrowIfCancellationRequested();
+            ExtendedWord(words[i]);
+        }
     }
 
     private void ExtendedWord(string w)
@@ -241,7 +258,7 @@ internal sealed partial class GerberReader
                 break;
             case "LS":
                 var scale = Number(w[2..], w);
-                if (scale <= 0 || scale > 1e6)
+                if (scale <= 0 || scale > MaxScale)
                     throw new InvalidDataException($"The Gerber file has an invalid aperture scale \"{w}\".");
                 _placement = _placement with { Scale = scale };
                 _openStroke = null;
@@ -273,15 +290,16 @@ internal sealed partial class GerberReader
         var match = ApertureDefinition().Match(w);
         if (!match.Success)
             throw new InvalidDataException($"The Gerber file has a malformed aperture definition \"{w}\".");
-        if (_apertures.Count + _blockApertures.Count >= MaxApertures)
-            throw new InvalidDataException($"The Gerber file defines more than {MaxApertures} apertures.");
+        CountDefinition();
         var code = Count(match.Groups[1].Value, w);
         var template = match.Groups[2].Value;
         double[] p = match.Groups[3].Success && match.Groups[3].Value.Length > 0
             ? [.. match.Groups[3].Value.Split('X').Select(v => Number(v, w))]
             : [];
-        double P(int i) => i < p.Length ? p[i] : 0;
         var u = _unit;
+        // Sizes in millimetres, held to the coordinate range; the polygon's vertex count and rotation are not sizes.
+        double P(int i) => i < p.Length ? p[i] : 0;
+        double L(int i) => Length(P(i), w);
         var id = $"a{code}";
 
         SKPath outline;
@@ -293,8 +311,8 @@ internal sealed partial class GerberReader
         switch (template)
         {
             case "C":
-                circle = Math.Max(0, P(0) * u);
-                (hole, holeHeight) = (P(1) * u, P(2) * u);
+                circle = Math.Max(0, L(0));
+                (hole, holeHeight) = (L(1), L(2));
                 outline = new SKPath();
                 if (circle > 0)
                     outline.AddCircle(0, 0, (float)(circle / 2));
@@ -303,8 +321,8 @@ internal sealed partial class GerberReader
             case "R":
             case "O":
                 {
-                    double width = Math.Max(0, P(0) * u), height = Math.Max(0, P(1) * u);
-                    (hole, holeHeight) = (P(2) * u, P(3) * u);
+                    double width = Math.Max(0, L(0)), height = Math.Max(0, L(1));
+                    (hole, holeHeight) = (L(2), L(3));
                     outline = new SKPath();
                     var rect = new SKRect((float)(-width / 2), (float)(-height / 2), (float)(width / 2), (float)(height / 2));
                     var radius = template == "O" ? Math.Min(width, height) / 2 : 0;
@@ -324,11 +342,11 @@ internal sealed partial class GerberReader
                 }
             case "P":
                 {
-                    var diameter = Math.Max(0, P(0) * u);
-                    var vertices = (int)P(1);
+                    var diameter = Math.Max(0, L(0));
+                    var vertices = P(1) is >= 3 and <= 12 ? (int)P(1) : 0;
                     if (vertices is < 3 or > 12)
-                        throw new InvalidDataException($"The Gerber polygon aperture D{code} has {vertices} vertices (3 to 12 are allowed).");
-                    (hole, holeHeight) = (P(3) * u, P(4) * u);
+                        throw new InvalidDataException($"The Gerber polygon aperture D{code} has {P(1).ToString(CultureInfo.InvariantCulture)} vertices (3 to 12 are allowed).");
+                    (hole, holeHeight) = (L(3), L(4));
                     convex = GerberMacro.RegularPolygon(0, 0, diameter, vertices, P(2));
                     outline = diameter > 0 ? GerberMacro.Polygon(convex) : new SKPath();
                     svg = "";
@@ -340,8 +358,12 @@ internal sealed partial class GerberReader
                 _macroPrimitives += macro.StatementCount;
                 if (_macroPrimitives > MaxMacroPrimitives)
                     throw new InvalidDataException($"The Gerber file's aperture macros have more than {MaxMacroPrimitives} primitives in all.");
-                outline = macro.Evaluate(p);
+                outline = macro.Evaluate(p, _ct);
                 outline.Transform(SKMatrix.CreateScale((float)u, (float)u));
+                var extent = outline.Bounds;
+                if (!float.IsFinite(extent.Left) || !float.IsFinite(extent.Right) || !float.IsFinite(extent.Top) || !float.IsFinite(extent.Bottom)
+                    || Math.Max(Math.Max(Math.Abs(extent.Left), Math.Abs(extent.Right)), Math.Max(Math.Abs(extent.Top), Math.Abs(extent.Bottom))) > MaxCoordinate)
+                    throw new InvalidDataException($"The Gerber aperture D{code} made from macro \"{template}\" is out of range.");
                 (hole, holeHeight) = (0, 0);
                 svg = "";
                 break;
@@ -399,6 +421,7 @@ internal sealed partial class GerberReader
         var match = BlockStart().Match(w);
         if (!match.Success)
             throw new InvalidDataException($"The Gerber file has a malformed aperture block \"{w}\".");
+        CountDefinition();
         OpenFrame(new Frame(new GerberBlock(_nextBlockId++), Count(match.Groups[1].Value, w), 1, 1, 0, 0));
     }
 
@@ -418,8 +441,9 @@ internal sealed partial class GerberReader
             throw new InvalidDataException($"The Gerber step and repeat \"{w}\" makes more than {MaxRepeats} copies.");
         if (x == 1 && y == 1)
             return;
-        var stepX = match.Groups[3].Success ? Number(match.Groups[3].Value, w) * _unit : 0;
-        var stepY = match.Groups[4].Success ? Number(match.Groups[4].Value, w) * _unit : 0;
+        var stepX = match.Groups[3].Success ? Length(Number(match.Groups[3].Value, w), w) : 0;
+        var stepY = match.Groups[4].Success ? Length(Number(match.Groups[4].Value, w), w) : 0;
+        CountDefinition();
         OpenFrame(new Frame(new GerberBlock(_nextBlockId++), -1, x, y, stepX, stepY));
     }
 
@@ -740,6 +764,17 @@ internal sealed partial class GerberReader
     {
         if (++_objectCount > MaxObjects)
             throw new InvalidDataException($"The Gerber file has more than {MaxObjects} objects.");
+        if (o is GerberBlockFlash placed && _frames.Count > 0)
+        {
+            // A block flashed inside a block: references now go one level deeper.
+            var block = _frames.Peek().Block;
+            block.Depth = Math.Max(block.Depth, placed.Run.Block.Depth + 1);
+            if (block.Depth > MaxBlockDepth)
+                throw new InvalidDataException($"The Gerber file nests blocks more than {MaxBlockDepth} deep.");
+        }
+        _placedShapes += o is GerberBlockFlash flash ? flash.Run.Instances : 1;
+        if (_placedShapes > MaxPlacedShapes)
+            throw new InvalidDataException($"The Gerber file places more than {MaxPlacedShapes} shapes once its blocks and copies are placed.");
         // A placed block costs one <use> in the file, and its whole contents when drawn.
         _segmentCount += o is GerberBlockFlash ? 1 : 0;
         CountSegments(o is GerberBlockFlash ? 0 : o.Weight);
@@ -790,6 +825,22 @@ internal sealed partial class GerberReader
         double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v)
             ? v
             : throw new InvalidDataException($"The Gerber file has a malformed number in \"{word}\".");
+
+    /// <summary>Counts an aperture definition or an opened block (empty ones too) against the aperture budget.</summary>
+    private void CountDefinition()
+    {
+        if (++_definitions > MaxApertures)
+            throw new InvalidDataException($"The Gerber file defines more than {MaxApertures} apertures and blocks.");
+    }
+
+    /// <summary>A size in file units as millimetres, held to the coordinate range.</summary>
+    private double Length(double value, string word)
+    {
+        var mm = value * _unit;
+        return double.IsFinite(mm) && Math.Abs(mm) <= MaxCoordinate
+            ? mm
+            : throw new InvalidDataException($"The Gerber file has a size out of range in \"{word}\".");
+    }
 
     /// <summary>A count or aperture number; too many digits is a damaged file, not an overflow.</summary>
     private static int Count(string s, string word) =>

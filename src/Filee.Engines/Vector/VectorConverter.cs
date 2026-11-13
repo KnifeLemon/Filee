@@ -96,7 +96,9 @@ public sealed class VectorConverter : IConverter, IImageTransformer
     {
         if (new FileInfo(step.InputPath).Length > Gerber.GerberReader.MaxFileBytes)
             throw new InvalidDataException($"The Gerber file is larger than {Gerber.GerberReader.MaxFileBytes / (1024 * 1024)} MB.");
-        var svg = Gerber.GerberSvg.ToSvg(File.ReadAllBytes(step.InputPath), step.InputPath, ct);
+        // The board background is for the pictures; on the way to DXF / DWG it would become an outline around the board.
+        var background = step.Preset.TargetFormat is not ("dxf" or "dwg");
+        var svg = Gerber.GerberSvg.ToSvg(File.ReadAllBytes(step.InputPath), step.InputPath, background, ct);
         var output = step.Output.Allocate("svg");
         if (output is null)
             return [];

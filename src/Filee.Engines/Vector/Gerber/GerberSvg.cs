@@ -30,6 +30,15 @@ internal static class GerberSvg
     private const int MaxOverlaps = 1_000_000;
     private const long MaxOperationWeight = 4_000_000;
 
+    /// <summary>
+    /// Most grid entries looked at while finding the overlaps. Entries that turn out not to overlap cost time too: many
+    /// objects piled on one spot would otherwise keep the search going for hours.
+    /// </summary>
+    private const long MaxGridVisits = 20_000_000;
+
+    /// <summary>Largest drawing, in millimetres (10 m): wider than any board or panel.</summary>
+    private const double MaxExtent = 10_000;
+
     /// <summary>The layer roles, each with KiCad's default colour for it.</summary>
     internal enum Role
     {
@@ -49,12 +58,16 @@ internal static class GerberSvg
     private static readonly string[] InnerCopper = ["#7FC87F", "#CE7D2C", "#4FCBCB", "#DB628B", "#A7A7A7", "#7D7DFF"];
 
     /// <summary>Reads <paramref name="data"/> and draws it; <paramref name="fileName"/> helps tell the layer's role.</summary>
+    /// <param name="background">
+    /// Whether to fill the page with the board background. Off on the way to DXF / DWG, where the full-page rectangle
+    /// would become a closed outline around the board.
+    /// </param>
     /// <exception cref="InvalidDataException">The file isn't a readable Gerber layer.</exception>
-    public static string ToSvg(byte[] data, string fileName, CancellationToken ct = default)
+    public static string ToSvg(byte[] data, string fileName, bool background = true, CancellationToken ct = default)
     {
         var image = GerberReader.Read(data, ct);
         var (role, inner) = RoleOf(image.FileFunction, fileName);
-        return Write(image, Color(role, inner), ct);
+        return Write(image, Color(role, inner), background, ct);
     }
 
     internal static string Color(Role role, int inner) => role switch
@@ -128,14 +141,12 @@ internal static class GerberSvg
             "gbs" => (Role.MaskBottom, 0),
             "gtp" => (Role.PasteTop, 0),
             "gbp" => (Role.PasteBottom, 0),
-            "gko" or "gm1" or "gml" => (Role.Outline, 0),
-            _ when extension.Length >= 2 && extension[0] == 'g' && int.TryParse(extension.AsSpan(extension[1] == 'l' ? 2 : 1), out var n) && n is > 0 and < 100
-                => (Role.CopperInner, n), // Altium's .g1, .g2 …, Eagle's .gl2 …
+            "gko" or "gm1" => (Role.Outline, 0),
             _ => (Role.Unknown, 0),
         };
     }
 
-    internal static string Write(GerberImage image, string color, CancellationToken ct = default)
+    internal static string Write(GerberImage image, string color, bool background = true, CancellationToken ct = default)
     {
         var objects = image.Objects;
         var bounds = objects.Aggregate(GerberBounds.Empty, (b, o) => b.Union(o.Bounds));
@@ -156,6 +167,11 @@ internal static class GerberSvg
             throw new InvalidDataException("The Gerber file draws nothing dark (only clear objects).");
         objects = objects.Skip(first).ToList();
         bounds = objects.Where(o => !o.Clear).Aggregate(GerberBounds.Empty, (b, o) => b.Union(o.Bounds));
+        // Every number was range-checked, but placements add up (a far flash, a large scale, step-and-repeat): the
+        // page itself must stay a sensible size, or the raster route would ask for an enormous bitmap.
+        if (!double.IsFinite(bounds.MinX) || !double.IsFinite(bounds.MaxX) || !double.IsFinite(bounds.MinY) || !double.IsFinite(bounds.MaxY)
+            || bounds.MaxX - bounds.MinX > MaxExtent || bounds.MaxY - bounds.MinY > MaxExtent)
+            throw new InvalidDataException($"The Gerber drawing is larger than {MaxExtent / 1000} m on a side.");
 
         var resolved = objects.Any(o => o.Clear) ? Subtract(objects, ct) : objects;
 
@@ -165,7 +181,8 @@ internal static class GerberSvg
         svg.Append("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"")
             .Append(Svg.N(width)).Append("mm\" height=\"").Append(Svg.N(height)).Append("mm\" viewBox=\"0 0 ")
             .Append(Svg.N(width)).Append(' ').Append(Svg.N(height)).Append("\">");
-        svg.Append("<rect width=\"").Append(Svg.N(width)).Append("\" height=\"").Append(Svg.N(height)).Append("\" fill=\"").Append(Background).Append("\"/>");
+        if (background)
+            svg.Append("<rect width=\"").Append(Svg.N(width)).Append("\" height=\"").Append(Svg.N(height)).Append("\" fill=\"").Append(Background).Append("\"/>");
 
         svg.Append("<defs>");
         foreach (var aperture in image.Apertures.Where(a => !a.IsEmpty))
@@ -218,7 +235,8 @@ internal static class GerberSvg
         var clearGrid = new Grid(objects, clears);
         var darkGrid = new Grid(objects, darks);
 
-        // Count the work before doing any of it.
+        // Count the work before doing any of it. Looking for the overlaps costs time too (every grid entry touched,
+        // overlap or not), so that is budgeted, and cancellation is checked, before any path operation runs.
         var overlaps = new Dictionary<int, List<int>>();
         var refills = new Dictionary<int, List<int>>();
         long pairs = 0, weight = 0;
@@ -231,17 +249,19 @@ internal static class GerberSvg
                     weight += objects[k].Weight;
             return pairs > MaxOverlaps || weight > MaxOperationWeight;
         }
-        foreach (var i in darks)
+        var search = 0;
+        foreach (var (grid, from, into) in new[] { (clearGrid, darks, overlaps), (darkGrid, clears, refills) })
         {
-            var hits = clearGrid.After(i, objects[i].Bounds);
-            if (hits.Count > 0 && OverBudget(i, overlaps[i] = hits))
-                return objects;
-        }
-        foreach (var k in clears)
-        {
-            var hits = darkGrid.After(k, objects[k].Bounds);
-            if (hits.Count > 0 && OverBudget(k, refills[k] = hits))
-                return objects;
+            foreach (var i in from)
+            {
+                if ((search++ & 0x3FF) == 0)
+                    ct.ThrowIfCancellationRequested();
+                var hits = grid.After(i, objects[i].Bounds);
+                if (clearGrid.Visits + darkGrid.Visits > MaxGridVisits)
+                    return objects; // too many objects piled on one spot: paint clears in the background instead
+                if (hits.Count > 0 && OverBudget(i, into[i] = hits))
+                    return objects;
+            }
         }
 
         var outlines = new Dictionary<int, SKPath?>();
@@ -327,6 +347,9 @@ internal static class GerberSvg
         private readonly List<int>?[] _cells = new List<int>?[Size * Size];
         private readonly List<int> _large = [];
 
+        /// <summary>Grid entries looked at across every After call, overlap or not.</summary>
+        public long Visits { get; private set; }
+
         public Grid(List<GerberObject> objects, List<int> members)
         {
             _objects = objects;
@@ -360,15 +383,37 @@ internal static class GerberSvg
             for (var x = x0; x <= x1; x++)
                 for (var y = y0; y <= y1; y++)
                     if (_cells[y * Size + x] is { } cell)
-                        foreach (var k in cell)
-                            if (k > index && _objects[k].Bounds.Intersects(bounds))
-                                found.Add(k);
-            foreach (var k in _large)
-                if (k > index && _objects[k].Bounds.Intersects(bounds))
-                    found.Add(k);
+                        Scan(cell, index, bounds, found);
+            Scan(_large, index, bounds, found);
             var list = found.ToList();
             list.Sort();
             return list;
+        }
+
+        /// <summary>Adds the members of <paramref name="sorted"/> after <paramref name="index"/> that overlap. The lists
+        /// are filled in ascending order, so a binary search skips the k ≤ index without visiting them.</summary>
+        private void Scan(List<int> sorted, int index, GerberBounds bounds, HashSet<int> found)
+        {
+            var start = FirstAfter(sorted, index);
+            Visits += sorted.Count - start;
+            for (var i = start; i < sorted.Count; i++)
+                if (_objects[sorted[i]].Bounds.Intersects(bounds))
+                    found.Add(sorted[i]);
+        }
+
+        /// <summary>The first position in the ascending list whose value is greater than <paramref name="index"/>.</summary>
+        private static int FirstAfter(List<int> sorted, int index)
+        {
+            int lo = 0, hi = sorted.Count;
+            while (lo < hi)
+            {
+                var mid = (lo + hi) >> 1;
+                if (sorted[mid] <= index)
+                    lo = mid + 1;
+                else
+                    hi = mid;
+            }
+            return lo;
         }
     }
 }

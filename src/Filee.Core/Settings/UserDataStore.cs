@@ -1136,7 +1136,7 @@ internal static class SettingsMigrations
             changed |= LearnExtensions(profiles, out _, ["pdn"]);
         // v87: Gerber PCB layers learn the CAD donut; custom claims stay put.
         if (from < 87)
-            changed |= LearnExtensions(profiles, out _, ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1", "gml"]);
+            changed |= LearnExtensions(profiles, out _, ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"]);
         return changed;
     }
 

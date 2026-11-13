@@ -289,9 +289,17 @@ internal sealed class GerberBlock(int id)
     /// <summary>The block split where the polarity changes, each run defined once in the SVG and placed by reference.</summary>
     public List<Run> Runs { get; } = [];
 
+    /// <summary>
+    /// How deep references go from this block: 1, plus the depth of the deepest block it flashes. Outlines and
+    /// Svg.Skia's &lt;use&gt; elements recurse this deep, so the reader refuses blocks past its limit.
+    /// </summary>
+    public int Depth { get; set; } = 1;
+
     public sealed class Run(GerberBlock block, int index, bool clear, List<GerberObject> objects)
     {
-        public string SvgId => $"b{block.Id}r{index}";
+        public string SvgId => $"b{Block.Id}r{index}";
+
+        public GerberBlock Block { get; } = block;
 
         public bool Clear { get; } = clear;
 
@@ -300,7 +308,12 @@ internal sealed class GerberBlock(int id)
         public GerberBounds Bounds { get; } = objects.Aggregate(GerberBounds.Empty, (b, o) => b.Union(o.Bounds));
 
         /// <summary>The run's size with nested blocks counted in full, saturating instead of overflowing.</summary>
-        public long Weight { get; } = objects.Aggregate(0L, (sum, o) => sum > long.MaxValue / 4 || o.Weight > long.MaxValue / 4 ? long.MaxValue / 2 : sum + o.Weight);
+        public long Weight { get; } = objects.Aggregate(0L, (sum, o) => Saturating(sum, o.Weight));
+
+        /// <summary>Shapes drawn when the run is placed, nested blocks counted in full (Svg.Skia makes one drawable each).</summary>
+        public long Instances { get; } = objects.Aggregate(0L, (sum, o) => Saturating(sum, o is GerberBlockFlash flash ? flash.Run.Instances : 1));
+
+        private static long Saturating(long a, long b) => a > long.MaxValue / 4 || b > long.MaxValue / 4 ? long.MaxValue / 2 : a + b;
 
         private SKPath? _outline;
 

@@ -21,7 +21,7 @@ public class GerberTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static GerberImage Read(string gerber) => GerberReader.Read(Encoding.ASCII.GetBytes(gerber), TestContext.Current.CancellationToken);
 
     private static string Svg(string gerber, string name = "layer.gbr") =>
-        GerberSvg.ToSvg(Encoding.ASCII.GetBytes(gerber), name, TestContext.Current.CancellationToken);
+        GerberSvg.ToSvg(Encoding.ASCII.GetBytes(gerber), name, ct: TestContext.Current.CancellationToken);
 
     private static GerberBounds Bounds(GerberImage image) => image.Objects.Aggregate(GerberBounds.Empty, (b, o) => b.Union(o.Bounds));
 
@@ -303,7 +303,6 @@ public class GerberTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData(null, "R-2R-Dessus.gtl", "#C83434")]
     [InlineData(null, "R-2R-Sérigr_Dessous.gbo", "#E8B2A7")]
     [InlineData(null, "board.GTS", "#D864FF")]
-    [InlineData(null, "board.g3", "#4FCBCB")]
     [InlineData(null, "artwork.gbr", "#D0D2CD")]
     public void The_layer_colour_follows_its_file_function_or_name(string? function, string name, string color)
     {
@@ -356,6 +355,61 @@ public class GerberTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var gerber = "%FSLAX46Y46*%\n%MOMM*%\n" + string.Concat(Enumerable.Range(10, 12).Select(i => $"%ABD{i}*%\n"));
         Assert.Contains("deep", Assert.Throws<InvalidDataException>(() => Read(gerber)).Message);
+    }
+
+    [Fact]
+    public void A_chain_of_top_level_blocks_each_flashing_the_last_is_refused_by_depth()
+    {
+        // Two codes alternate: each new block flashes the previous one, so the reference depth grows by one every
+        // block though nothing is lexically nested. Without a depth on the block, this would recurse without end.
+        var gerber = new StringBuilder("%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,1*%\n%ABD11*%\nD10*\nX0Y0D03*\n%AB*%\n");
+        var codes = new[] { 12, 11 };
+        for (var i = 0; i < 20; i++)
+            gerber.Append($"%ABD{codes[i % 2]}*%\nD{codes[(i + 1) % 2]}*\nX0Y0D03*\n%AB*%\n");
+        Assert.Contains("deep", Assert.Throws<InvalidDataException>(() => Read(gerber.ToString())).Message);
+    }
+
+    [Fact]
+    public void Empty_opened_blocks_count_against_the_aperture_budget()
+    {
+        // 100 001 empty aperture blocks: no objects, but each is a definition.
+        var gerber = "%FSLAX46Y46*%\n%MOMM*%\n" + string.Concat(Enumerable.Range(0, 100_001).Select(i => $"%ABD{10 + i % 2}*%\n%AB*%\n"));
+        Assert.Contains("apertures and blocks", Assert.Throws<InvalidDataException>(() => Read(gerber)).Message);
+    }
+
+    [Theory]
+    [InlineData("%ADD10C,1e308*%", "size out of range")]
+    [InlineData("%AMBIG*1,1,99999999,0,0*%\n%ADD10BIG*%", "out of range")]
+    [InlineData("%ADD10C,1*%\n%LS2000*%\nD10*\nX0Y0D03*", "aperture scale")]
+    public void Oversized_aperture_and_macro_and_scale_numbers_are_refused(string body, string reason)
+    {
+        var e = Assert.Throws<InvalidDataException>(() => Read("%FSLAX46Y46*%\n%MOMM*%\n" + body + "\nM02*"));
+        Assert.Contains(reason, e.Message);
+    }
+
+    [Fact]
+    public void A_drawing_pushed_far_apart_by_step_and_repeat_is_refused_by_its_extent()
+    {
+        // Two flashes 20 km apart (the steps are in range, their total isn't a board).
+        var gerber = "%FSLAX46Y46*%\n%MOMM*%\n%ADD10C,1*%\n%SRX3Y1I6000J0*%\nD10*\nX0Y0D03*\n%SR*%\nM02*";
+        Assert.Contains("larger than", Assert.Throws<InvalidDataException>(() => Svg(gerber)).Message);
+    }
+
+    [Fact]
+    public void A_byte_order_mark_before_the_first_command_is_skipped()
+    {
+        var bytes = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(Encoding.ASCII.GetBytes(Layer("%ADD10C,1*%", "D10*", "X0Y0D03*"))).ToArray();
+        var image = GerberReader.Read(bytes, TestContext.Current.CancellationToken);
+        Assert.Single(image.Objects);
+    }
+
+    [Fact]
+    public void The_dxf_route_leaves_out_the_board_background()
+    {
+        var gerber = Layer("%ADD10C,1*%", "D10*", "X0Y0D03*");
+        Assert.Contains(GerberSvg.Background, Svg(gerber));
+        Assert.DoesNotContain("fill=\"" + GerberSvg.Background + "\"",
+            GerberSvg.ToSvg(Encoding.ASCII.GetBytes(gerber), "layer.gbr", background: false, TestContext.Current.CancellationToken));
     }
 
     [Fact]

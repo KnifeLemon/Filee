@@ -1250,7 +1250,7 @@ Built in (`Filee.Engines/Vector/Gerber`), read only. A Gerber file (RS-274X, Ger
 Format Specification" published by Ucamco) is one layer of a printed circuit board as KiCad, Eagle, Altium, EasyEDA and
 other PCB programs write it for board makers: copper, solder mask, silkscreen, paste, board outline. Extensions:
 `.gbr`, `.ger`, and the Protel-style per-layer ones (`.gtl`/`.gbl` copper, `.gto`/`.gbo` silkscreen, `.gts`/`.gbs`
-solder mask, `.gtp`/`.gbp` paste, `.gko`/`.gm1`/`.gml` outline). The layer becomes an SVG at its real size, and the
+solder mask, `.gtp`/`.gbp` paste, `.gko`/`.gm1` outline). The layer becomes an SVG at its real size, and the
 vector engine takes it to PDF (vector), PNG, JPG, … and DXF / DWG (outlines) from there. Category CAD, so it is on the
 CAD donut (PDF, PNG, SVG, DXF, DWG) and in the CAD field.
 
@@ -1272,8 +1272,8 @@ CAD donut (PDF, PNG, SVG, DXF, DWG) and in the CAD field.
   bottom copper blue, inner layers green, orange, cyan, pink …, silkscreen pale yellow (top) or pink (bottom), solder
   mask purple (top) or cyan (bottom), paste grey or teal, board outline and unknown layers light grey. The role comes
   from the file function, else from the name (KiCad's `-F_Cu`, `-B.SilkS`, `-Edge_Cuts`, `-In2_Cu` …, then the
-  Protel extension, Altium's `.g1`, `.g2` …). The dark background keeps every role legible (silkscreen and outlines
-  are pale) and is what designers see in KiCad and Gerber viewers. 2 mm margin around the drawing.
+  Protel extension). The dark background keeps every role legible (silkscreen and outlines are pale) and is what
+  designers see in KiCad and Gerber viewers. 2 mm margin around the drawing.
 - **Polarity without masks**: an SVG mask would be rasterised in a PDF by Skia, so clear objects are applied as
   geometry. Each dark object that a later clear object overlaps is replaced by its outline minus what stays clear
   (the clear object minus the dark objects drawn after it, so a hole that is filled again leaves no anti-aliasing
@@ -1281,13 +1281,16 @@ CAD donut (PDF, PNG, SVG, DXF, DWG) and in the CAD field.
   and the PDF stays vector. Past 1 000 000 overlaps or 4 000 000 outline points, or if Skia can't resolve an outline,
   clear objects are painted in the background colour instead, which looks the same. Apertures, blocks and
   step-and-repeat copies are defined once and placed with `<use>`.
-- **Limits**, checked before the memory is used: files up to 256 MB, 2 000 000 objects, 10 000 000 segments written
-  and 50 000 000 drawn once every block flash and step-and-repeat copy is counted with its contents (copies are one
-  `<use>` each in the SVG, so a panel of a large board passes, while blocks flashed inside blocks can't multiply
-  without end), 100 000 apertures, blocks nested 8 deep, 10 000 step-and-repeat copies, coordinates within 100 m;
-  500 000 macro primitives evaluated over all apertures, and per macro 10 000 primitives, 100 000 outline points,
-  100 moiré rings, expressions up to 4 096 characters nested 64 deep. Numbers too long for their field fail as
-  damaged, not as an overflow. Text that
+- **Limits**, checked before the memory is used: files up to 256 MB, 2 000 000 objects, 10 000 000 segments written,
+  3 000 000 shapes placed and 50 000 000 segments drawn once every block flash and step-and-repeat copy is counted
+  with its contents (copies are one `<use>` each in the SVG, so a panel of a large board passes, while blocks flashed
+  inside blocks can't multiply without end: a block's reference depth, not only its lexical nesting, is held to 8);
+  100 000 apertures and opened blocks, 10 000 step-and-repeat copies; every size (coordinates, aperture and macro
+  parameters, scale, step) within 100 m and the whole drawing within 10 m a side; 500 000 macro primitives over all
+  apertures, and per macro 10 000 primitives, 100 000 outline points, 100 moiré rings, expressions up to 4 096
+  characters nested 64 deep. Numbers too long for their field fail as damaged, not as an overflow. Finding the clear /
+  dark overlaps is itself budgeted (grid entries visited, cancellation checked), falling back to background painting,
+  so a file with many objects piled on one spot can't stall the reader. Text that
   holds a NUL byte (a GIMP brush, which also uses `.gbr`), a file without Gerber commands, an undefined aperture or
   macro, a malformed number or command, and a layer that draws nothing fail with an `InvalidDataException` saying so.
   A file that stops early (no `M02`) keeps what was read.

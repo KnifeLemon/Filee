@@ -9,7 +9,7 @@ namespace Filee.Core.Tests;
 
 public class GerberFormatTests
 {
-    private static readonly string[] Extensions = ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1", "gml"];
+    private static readonly string[] Extensions = ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"];
 
     [Theory]
     [InlineData("board-F_Cu.gbr")]

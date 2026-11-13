@@ -64,7 +64,8 @@ internal sealed class GerberMacro
     /// centred on the flash point. Empty when every primitive is off or degenerate.
     /// </summary>
     /// <exception cref="InvalidDataException">A primitive or expression is malformed.</exception>
-    public SKPath Evaluate(IReadOnlyList<double> parameters)
+    /// <exception cref="OperationCanceledException"><paramref name="ct"/> was cancelled.</exception>
+    public SKPath Evaluate(IReadOnlyList<double> parameters, CancellationToken ct = default)
     {
         var variables = new Dictionary<int, double>();
         for (var i = 0; i < parameters.Count; i++)
@@ -72,8 +73,11 @@ internal sealed class GerberMacro
 
         var result = new SKPath();
         var points = 0;
+        var evaluated = 0;
         foreach (var statement in _statements)
         {
+            if ((++evaluated & 0xFF) == 0)
+                ct.ThrowIfCancellationRequested();
             if (statement[0] == '$')
             {
                 var equals = statement.IndexOf('=');
