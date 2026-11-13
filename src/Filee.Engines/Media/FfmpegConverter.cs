@@ -129,7 +129,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 progress, cancellationToken);
         if (step.To == "heic")
             return await HeicWriter.ConvertAsync(ffmpeg, step, progress, cancellationToken);
-        var input = Path.GetFullPath(step.InputPath);
+        // A Hikvision SD-card recording is read through the concat protocol, with the header FFmpeg needs for its sound.
+        var input = HikvisionStream.InputFor(Path.GetFullPath(step.InputPath), step.WorkDirectory);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken);
         progress?.Report(0.02);
 
