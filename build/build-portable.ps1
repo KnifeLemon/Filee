@@ -181,6 +181,7 @@ else {
     Copy-Item -LiteralPath (Join-Path $root 'installer/linux/kwin') -Destination $package -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'installer/linux/gnome') -Destination $package -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'installer/linux/hyprland') -Destination $package -Recurse
+    Copy-Item -LiteralPath (Join-Path $root 'installer/linux/yazi') -Destination $package -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'docs/GNOME-WAYLAND.md') -Destination $package
 }
 Invoke-Checked 'Installer permissions' { chmod +x (Join-Path $package 'install.sh') (Join-Path $package 'uninstall.sh') }
