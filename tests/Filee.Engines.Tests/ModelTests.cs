@@ -868,4 +868,191 @@ public class ModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
         return (facets, min, max);
     }
+
+    // ───────────────────────── Pictures → relief (image3d) ─────────────────────────
+
+    [Fact]
+    public void A_picture_reaches_every_3d_format_in_one_step_of_the_relief_engine_and_nothing_else_moves()
+    {
+        Assert.Contains("jpg", ImageTo3DConverter.InputFormats);
+        Assert.DoesNotContain("jpeg", ImageTo3DConverter.InputFormats);
+        Assert.All(ImageTo3DConverter.InputFormats,
+            f => Assert.Equal(Filee.Core.Formats.FormatCategory.Image, Filee.Core.Formats.FormatRegistry.Get(f).Category));
+
+        var planner = fx.Catalog.CreatePlanner();
+        foreach (var from in ImageTo3DConverter.InputFormats)
+            foreach (var to in Formats)
+                Assert.Equal("image3d", Assert.Single(planner.Plan(from, to)!.Steps).Converter.Id);
+
+        // Pictures still go to pictures with ImageMagick, models to models and pictures with the 3D engine, and nothing
+        // else reaches a model through a picture.
+        Assert.Equal("magick", Assert.Single(planner.Plan("png", "jpg")!.Steps).Converter.Id);
+        Assert.Equal("magick", Assert.Single(planner.Plan("jpg", "png")!.Steps).Converter.Id);
+        Assert.Equal("model3d", Assert.Single(planner.Plan("stl", "png")!.Steps).Converter.Id);
+        Assert.Equal("model3d", Assert.Single(planner.Plan("glb", "stl")!.Steps).Converter.Id);
+        foreach (var from in new[] { "svg", "pdf", "docx", "mp4" })
+            Assert.DoesNotContain(planner.Plan(from, "stl")?.Steps ?? [], s => s.Converter.Id == "image3d");
+    }
+
+    [Fact]
+    public void A_relief_is_a_closed_solid_100_mm_long_on_a_2_mm_base()
+    {
+        // Wide and tall pictures: the longer side is 100 mm (pixel centre to pixel centre), the other in proportion.
+        foreach (var (w, h) in new[] { (64, 32), (20, 50) })
+        {
+            using var picture = Picture(w, h, (x, y) => Gray((byte)((x * 37 + y * 91) % 256)));
+            foreach (var texture in new[] { true, false })
+            {
+                var model = ImageTo3DConverter.Build(picture, texture, CancellationToken.None);
+                AssertClosed(model);
+                var (min, max) = model.Bounds();
+                var longest = Math.Max(w, h) - 1;
+                Assert.Equal(100f * (w - 1) / longest, max.X - min.X, 0.01f);
+                Assert.Equal(100f * (h - 1) / longest, max.Z - min.Z, 0.01f);
+                Assert.Equal(0f, min.Y);
+            }
+        }
+
+        // An all-black picture is just the base: a flat 2 mm slab.
+        using var black = Picture(10, 10, (_, _) => Gray(0));
+        var slab = ImageTo3DConverter.Build(black, texture: false, CancellationToken.None);
+        AssertClosed(slab);
+        Assert.Equal(2f, slab.Bounds().Max.Y, 0.001f);
+    }
+
+    [Fact]
+    public void A_white_pixel_stands_8_mm_higher_than_a_black_one()
+    {
+        // Left half black, right half white.
+        using var picture = Picture(8, 4, (x, _) => Gray(x < 4 ? (byte)0 : (byte)255));
+        var model = ImageTo3DConverter.Build(picture, texture: false, CancellationToken.None);
+        var part = Assert.Single(model.Parts);
+
+        // The top grid is the first w × h vertices, row by row.
+        var heights = Enumerable.Range(0, 8 * 4).Select(v => part.Position(v).Y).ToList();
+        for (var v = 0; v < heights.Count; v++)
+            Assert.Equal(v % 8 < 4 ? 2f : 10f, heights[v], 0.001f);
+        Assert.Equal(8f, heights.Max() - heights.Min(), 0.001f);
+
+        // The picture reads upright from above: its left column is at −X, its top row at −Z (away from the viewer).
+        Assert.True(part.Position(0).X < part.Position(7).X);
+        Assert.True(part.Position(0).Z < part.Position(3 * 8).Z);
+    }
+
+    [Fact]
+    public void Transparent_pixels_lie_at_the_base_in_light_grey()
+    {
+        // White, with a transparent (and black-filled, as many writers leave it) square in the middle.
+        using var picture = Picture(10, 10, (x, y) => x is >= 3 and < 7 && y is >= 3 and < 7 ? ((byte)0, (byte)0, (byte)0, (byte)0) : Gray(255));
+        var model = ImageTo3DConverter.Build(picture, texture: false, CancellationToken.None);
+        AssertClosed(model);
+        var part = Assert.Single(model.Parts);
+        var hole = 5 * 10 + 5;
+        Assert.Equal(2f, part.Position(hole).Y, 0.001f);
+        Assert.Equal(10f, part.Position(0).Y, 0.001f);
+        AssertClose(new Vector4(ImageTo3DConverter.Background, 1), part.Color(hole), 0.01f);
+        AssertClose(Vector4.One, part.Color(0), 0.01f);
+    }
+
+    [Fact]
+    public void A_large_picture_is_scaled_to_a_200_point_grid()
+    {
+        using var picture = Picture(1000, 500, (x, y) => Gray((byte)((x + y) % 256)));
+        var model = ImageTo3DConverter.Build(picture, texture: true, CancellationToken.None);
+        AssertClosed(model);
+        const int w = 200, h = 100;
+        Assert.Equal(2 * 2 * (w - 1) * (h - 1) + 2 * 2 * ((w - 1) + (h - 1)), model.TriangleCount);
+        var texture = Assert.Single(model.Materials).BaseColorTexture!;
+        using var image = new MagickImage(texture.Data);
+        Assert.Equal((uint)w, image.Width);
+        Assert.Equal((uint)h, image.Height);
+    }
+
+    [Theory]
+    [InlineData("png")]
+    [InlineData("jpg")]
+    [InlineData("webp")]
+    public async Task A_picture_converts_to_every_3d_format(string from)
+    {
+        var folder = fx.NewFolder();
+        // A gradient with a transparent corner (PNG and WebP keep it; JPG flattens it).
+        var source = EngineFixture.MakeImage(folder, "picture." + from, from switch
+        {
+            "jpg" => MagickFormat.Jpeg,
+            "webp" => MagickFormat.WebP,
+            _ => MagickFormat.Png,
+        });
+
+        foreach (var to in Formats)
+        {
+            var job = await RunAsync(source, to);
+            var output = job.Outputs.First(o => o.EndsWith("." + to, StringComparison.OrdinalIgnoreCase));
+            var model = ModelBuilders.Load(output, to);
+            var (min, max) = model.Bounds();
+            Assert.Equal(100f, max.X - min.X, 0.05f); // 320 × 200 pixels: wider than tall
+            Assert.InRange(max.Y - min.Y, 2f, 10.001f);
+            Assert.True(ModelBuilders.SignedVolume(model) > 0);
+            if (to is "stl" or "3mf")
+                AssertClosed(model); // vertices welded by position on reading
+
+            // The picture is a texture where the format keeps one, vertex colours elsewhere; never both.
+            var part = Assert.Single(model.Parts);
+            if (WithTextures.Contains(to))
+            {
+                Assert.NotNull(model.MaterialOf(part)?.BaseColorTexture);
+                Assert.Null(part.Colors);
+            }
+            else if (WithVertexColors.Contains(to))
+            {
+                Assert.NotNull(part.Colors);
+            }
+        }
+    }
+
+    /// <summary>A picture built from a pixel function (R, G, B, A).</summary>
+    private static MagickImage Picture(int width, int height, Func<int, int, (byte R, byte G, byte B, byte A)> pixel)
+    {
+        var rgba = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var (r, g, b, a) = pixel(x, y);
+                var o = (y * width + x) * 4;
+                (rgba[o], rgba[o + 1], rgba[o + 2], rgba[o + 3]) = (r, g, b, a);
+            }
+        }
+        var image = new MagickImage();
+        image.ReadPixels(rgba, new PixelReadSettings((uint)width, (uint)height, StorageType.Char, PixelMapping.RGBA));
+        return image;
+    }
+
+    private static (byte, byte, byte, byte) Gray(byte value) => (value, value, value, 255);
+
+    /// <summary>
+    /// Closed and consistently wound: with vertices welded by position, every edge belongs to exactly two triangles,
+    /// once in each direction.
+    /// </summary>
+    private static void AssertClosed(Model3D model)
+    {
+        var directed = new Dictionary<((int, int, int), (int, int, int)), int>();
+        foreach (var part in model.Parts)
+        {
+            for (var t = 0; t < part.TriangleCount; t++)
+            {
+                var corners = Enumerable.Range(0, 3).Select(k => ModelBuilders.Key(part.Position(part.Indices[t * 3 + k]))).ToArray();
+                for (var k = 0; k < 3; k++)
+                {
+                    var edge = (corners[k], corners[(k + 1) % 3]);
+                    directed[edge] = directed.GetValueOrDefault(edge) + 1;
+                }
+            }
+        }
+        Assert.NotEmpty(directed);
+        foreach (var ((a, b), count) in directed)
+        {
+            Assert.True(count == 1, $"edge {a} → {b} is used {count} times");
+            Assert.True(directed.ContainsKey((b, a)), $"edge {a} → {b} has no triangle on its other side");
+        }
+    }
 }

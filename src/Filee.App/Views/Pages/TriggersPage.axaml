@@ -39,23 +39,34 @@
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
         <DataTemplate x:DataType="vm:TriggerGestureViewModel">
-          <Border Classes="card">
-            <StackPanel Spacing="14">
-              <!-- Header: on/off, summary, remove -->
-              <DockPanel>
-                <Button DockPanel.Dock="Right" Classes="icon"
-                        Command="{Binding $parent[ItemsControl].((vm:TriggersPageViewModel)DataContext).RemoveCommand}"
-                        CommandParameter="{Binding}" ToolTip.Tip="{DynamicResource triggers.remove}" AutomationProperties.Name="{DynamicResource triggers.remove}">
-                  <PathIcon Width="15" Height="15" Data="{StaticResource Icon.Delete}" />
-                </Button>
-                <ToggleSwitch DockPanel.Dock="Left" IsChecked="{Binding Enabled}" OnContent="" OffContent="" Margin="0,0,8,0"
-                              AutomationProperties.Name="{Binding Summary}" />
-                <Border Classes="badge ok" VerticalAlignment="Center" HorizontalAlignment="Left">
-                  <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" />
-                </Border>
-              </DockPanel>
+          <StackPanel Spacing="8">
+            <StackPanel IsVisible="{Binding IsConnectShortcut}" Spacing="6" Margin="0,14,0,2">
+              <Separator Background="{DynamicResource SubtleBorderBrush}" Height="1" />
+              <TextBlock Text="{DynamicResource triggers.connect_section_title}" Classes="h2" FontWeight="Bold" Margin="0,4,0,0" />
+            </StackPanel>
 
-              <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,14,Auto">
+            <Border Classes="card">
+              <StackPanel Spacing="14">
+                <!-- Header: on/off, summary, remove -->
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Classes="icon danger"
+                          Command="{Binding $parent[ItemsControl].((vm:TriggersPageViewModel)DataContext).RemoveCommand}"
+                          CommandParameter="{Binding}" ToolTip.Tip="{DynamicResource triggers.remove}" AutomationProperties.Name="{DynamicResource triggers.remove}">
+                    <PathIcon Width="15" Height="15" Data="{StaticResource Icon.Delete}" />
+                  </Button>
+                  <ToggleSwitch DockPanel.Dock="Left" IsChecked="{Binding Enabled}" OnContent="" OffContent="" Margin="0,0,8,0"
+                                AutomationProperties.Name="{Binding Summary}" />
+                  <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Border Classes="badge ok" VerticalAlignment="Center" HorizontalAlignment="Left">
+                      <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" />
+                    </Border>
+                    <Border Classes="badge accent" IsVisible="{Binding IsConnectShortcut}" VerticalAlignment="Center">
+                      <TextBlock Text="Filee Connect" FontWeight="SemiBold" />
+                    </Border>
+                  </StackPanel>
+                </DockPanel>
+
+              <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,14,Auto,14,Auto">
                 <StackPanel>
                   <TextBlock Classes="label" Text="{DynamicResource triggers.kind}" />
                   <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource triggers.kind}" />
@@ -92,10 +103,18 @@
                           <TextBlock Text="{Binding RecordLabel}" />
                         </StackPanel>
                       </ToggleButton>
-                      <Button Classes="ghost" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
+                      <Button Classes="ghost danger" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
                     </StackPanel>
                   </StackPanel>
                 </StackPanel>
+
+                <!-- Which face the donut opens on: a second gesture with other modifiers opens the back (#195) -->
+                <StackPanel Grid.Row="4">
+                  <TextBlock Classes="label" Text="{DynamicResource triggers.face}" />
+                  <ComboBox ItemsSource="{Binding Faces}" SelectedItem="{Binding Face}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource triggers.face}" />
+                </StackPanel>
+                <TextBlock Grid.Row="4" Grid.Column="2" Classes="caption" TextWrapping="Wrap" VerticalAlignment="Bottom"
+                           Text="{DynamicResource triggers.face_note}" />
               </Grid>
 
               <!-- Clipboard shortcut: converts the files or the picture on the clipboard and puts the results back -->
@@ -127,6 +146,7 @@
               </StackPanel>
             </StackPanel>
           </Border>
+          </StackPanel>
         </DataTemplate>
       </ItemsControl.ItemTemplate>
     </ItemsControl>
@@ -148,7 +168,7 @@
             </StackPanel>
           </ToggleButton>
           <Button Classes="ghost" Content="{DynamicResource triggers.flip_reset}" Command="{Binding ResetKeyCommand}" />
-          <Button Classes="ghost" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
+          <Button Classes="ghost danger" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
         </StackPanel>
         <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding Error}"
                    IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

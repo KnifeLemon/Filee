@@ -57,6 +57,7 @@ public sealed class RadialController(
     private IDisposable? _handOffTimer;
     private int _dragGeneration;
     private bool _dragReachedDonut;
+    private bool _dragEndedOnDonut;   // the window was told how the drag over it ended: a drop or a leave
     private bool _fileDragsAccepted;
     private readonly ActivationGrace _grace = new();
 
@@ -66,6 +67,10 @@ public sealed class RadialController(
     private readonly HashSet<string> _formatRequestsOffered = new(StringComparer.OrdinalIgnoreCase);
     private WebDrop? _web;      // the browser drop the click-mode donut's files stand for, until a conversion takes it
     private bool _toClipboard;  // the click-mode donut's files came from the clipboard: their results go back on it
+    private bool _keepOrder;    // the click-mode donut's files come in the order given (the Home page's queue), not sorted
+    private Action<ConversionJob>? _onJob;  // told the conversion the donut starts (the Home page's list follows it)
+    private bool _forLaunches;  // the click-mode donut's files came from later launches, so more of them can join it
+    private bool _dragBackFace; // the drag gesture opens the donut on its back face, once files enter it
 
     /// <summary>
     /// How long a drag that never brought files may keep the invisible window up, in case the button release is
@@ -81,9 +86,15 @@ public sealed class RadialController(
     /// Drag gesture started at the given physical screen point. The window is placed under the cursor but stays
     /// invisible until files are dragged into it (FilesEntered); a gesture without files (text, a rubber-band
     /// selection, nothing at all) never shows anything and closes when the button is released.
+    /// <paramref name="backFace"/>: the gesture opens the donut on its back face (the front when the back has no slice
+    /// for the files).
     /// </summary>
-    public void ShowForDrag(int x, int y)
+    public void ShowForDrag(int x, int y, bool backFace = false)
     {
+        // A donut with files that nothing was dropped on yet is about to lose them (#784): a line, as it looks like a
+        // drop that did nothing.
+        if (_visible && !_dropped && !viewModel.IsClickMode && viewModel.HasFiles)
+            log.LogInformation("A new drag gesture replaced the donut's files before a drop");
         ReleaseProgressToToast();
         _grace.Cancel();
         ReplaceWeb(null);
@@ -94,6 +105,9 @@ public sealed class RadialController(
         _dropped = false;
         _dragReachedDonut = false;
         _converted = false;
+        _keepOrder = false;
+        _onJob = null;
+        _dragBackFace = backFace;
         viewModel.ResetForDrag();
         window.DonutControl.AllowContextEdit = false;
         PlaceAndShow(window, x, y, activate: false);
@@ -113,9 +127,14 @@ public sealed class RadialController(
     /// donut may lose focus once while Filee becomes the active app. <paramref name="web"/>: the files are placeholders
     /// of this browser drop (the drop zone, a picture on the clipboard), which the donut now owns.
     /// <paramref name="toClipboard"/>: the files came from the clipboard, and their results go back on it.
+    /// <paramref name="backFace"/>: open on the back face (a shortcut set to it), or the front when the back has no slice
+    /// for the files.
     /// </summary>
+    /// <param name="keepOrder">
+    /// The files are merged in the order given (the Home page's queue, which the user sorted), not sorted by name first.
+    /// </param>
     public void ShowForFiles(int x, int y, IReadOnlyList<string> files, bool forAnotherProcess = false, WebDrop? web = null,
-        bool toClipboard = false)
+        bool toClipboard = false, bool keepOrder = false, Action<ConversionJob>? onJob = null, bool backFace = false)
     {
         if (web is null)
             files = platform.ResolveShortcuts(files);
@@ -127,6 +146,9 @@ public sealed class RadialController(
         ReleaseProgressToToast();
         ReplaceWeb(web);
         _toClipboard = toClipboard;
+        _keepOrder = keepOrder;
+        _onJob = onJob;
+        _forLaunches = forAnotherProcess;
         if (forAnotherProcess && OperatingSystem.IsMacOS())
             _grace.Start();
         else
@@ -134,13 +156,43 @@ public sealed class RadialController(
         var window = EnsureWindow();
         _dropped = false;
         _converted = false;
-        viewModel.Load(files, clickMode: true);
+        viewModel.Load(files, clickMode: true, backFace);
         viewModel.FitToThisDonut();
         window.DonutControl.AllowContextEdit = true;
         // Set the initial pose before showing the reused window, avoiding a fully-open flash.
         window.DonutControl.PlayOpenAnimation();
         PlaceAndShow(window, x, y, activate: true);
         WatchFlipKey();
+    }
+
+    public void ShowForConnect(int x, int y)
+    {
+        ReleaseProgressToToast();
+        _grace.Cancel();
+        ReplaceWeb(null);
+        _toClipboard = false;
+        var window = EnsureWindow();
+        _dropped = false;
+        _converted = false;
+        viewModel.LoadForConnect();
+        viewModel.FitToThisDonut();
+        window.DonutControl.AllowContextEdit = false;
+        window.DonutControl.PlayOpenAnimation();
+        PlaceAndShow(window, x, y, activate: true);
+    }
+
+    /// <summary>
+    /// Adds files of later launches to the donut that is open for earlier ones, without opening it again. False when
+    /// there is no such donut (closed, opened for something else, or a conversion took its files): they need their own.
+    /// </summary>
+    public bool TryAddFiles(IReadOnlyList<string> files)
+    {
+        if (!_visible || !_forLaunches || _converted || !viewModel.IsClickMode)
+            return false;
+        var all = viewModel.Files.Union(platform.ResolveShortcuts(files), FileSystemPaths.Comparer).ToList();
+        if (all.Count > viewModel.Files.Count)
+            viewModel.Load(all, clickMode: true, viewModel.IsBackFace);
+        return true;
     }
 
     /// <summary>The mouse button of the drag gesture was released somewhere.</summary>
@@ -163,8 +215,12 @@ public sealed class RadialController(
         // A drop on the donut arrives around the same time as the button release; give it a moment.
         DispatcherTimer.RunOnce(() =>
         {
-            if (_visible && !_dropped && !viewModel.IsClickMode)
-                Close(animate: true);
+            if (!_visible || _dropped || viewModel.IsClickMode)
+                return;
+            // Neither a drop nor a leave: the system ended the drag without telling the window, or the drop is late (#784).
+            if (_dragReachedDonut && !_dragEndedOnDonut)
+                log.LogInformation("The donut closed 250 ms after the release, with no drop or leave from the system");
+            Close(animate: true);
         }, TimeSpan.FromMilliseconds(250));
     }
 
@@ -186,6 +242,7 @@ public sealed class RadialController(
             _window.DonutControl.LeaveProgressMode();
         }
         _visible = false;
+        ReturnKeyboard();
         WatchFlipKey();
         _grace.Cancel();
         ReplaceWeb(null);
@@ -226,6 +283,16 @@ public sealed class RadialController(
         var window = new RadialWindow { DataContext = viewModel };
         var donut = window.DonutControl;
 
+        // macOS uses a panel while the donut is shown over a full-screen app. Restore its original window class
+        // after any hide and before Avalonia releases it at quit, including a quit while it is still visible (#805).
+        void RestoreNativeWindow() => platform.RestoreWindow(window.TryGetPlatformHandle()?.Handle ?? 0);
+        window.Closing += (_, _) => RestoreNativeWindow();
+        window.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == RadialWindow.IsVisibleProperty && !change.GetNewValue<bool>())
+                RestoreNativeWindow();
+        };
+
         // On native Wayland, hiding an xdg_toplevel surface causes the compositor to destroy its surface,
         // and re-showing raises an InvalidOperationException. Track Closed to re-create on the next gesture.
         if (Filee.Platform.Linux.WaylandSupport.NativeWaylandRequested)
@@ -237,7 +304,7 @@ public sealed class RadialController(
             };
         }
 
-        window.DragEntered += () => _dragReachedDonut = true;
+        window.DragEntered += () => (_dragReachedDonut, _dragEndedOnDonut) = (true, false);
         // Tells "the drag reached the donut but brought no files" apart, with what it brought (file promises, say).
         window.DragWithoutFiles += formats =>
         {
@@ -249,8 +316,9 @@ public sealed class RadialController(
         {
             if (viewModel.IsClickMode || SameFiles(files, viewModel.Files) || SameWebFiles(files, viewModel.Files))
                 return;
-            viewModel.Load(files, clickMode: false);
+            viewModel.Load(files, clickMode: false, _dragBackFace);
             donut.PlayOpenAnimation();
+            TakeKeyboard(window);
             WatchFlipKey();
         };
         window.Dropped += (hit, dropped) =>
@@ -270,9 +338,19 @@ public sealed class RadialController(
         // One line per drag, to tell "the drag never reached the donut" from "it did but nothing lit up" when someone
         // reports a donut that doesn't react, and a drop from a drag the system ended without one (#784).
         window.DragSummary += (events, hit, lit, dropped) =>
+        {
+            _dragEndedOnDonut = true;
             log.LogInformation("Drag over the donut: {Events} move event(s), ended on {Kind} {Index}, drawn lit {Lit:0.00}{Drop}",
                 events, hit.Kind, hit.Index, lit, dropped ? "" : ", left without a drop");
+        };
         window.EscapePressed += () => Close();
+        // The flip key comes from the window while it has the keyboard, else from the hook (WatchFlipKey): followed by
+        // the value, which the Activated event may come before.
+        window.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Avalonia.Controls.WindowBase.IsActiveProperty)
+                WatchFlipKey();
+        };
         window.Deactivated += (_, _) =>
         {
             if (!viewModel.IsClickMode || _editing)
@@ -291,10 +369,11 @@ public sealed class RadialController(
         };
 
         donut.ActiveIndexChanged += (_, index) => viewModel.ShowHint(index, donut.ActiveSubIndex, donut.IsCenterHot);
-        // Drag mode: the flip key and the wheel seen by the global hook (click mode gets them in the focused window).
+        // Drag mode: the flip key and the wheel seen by the global hook (click mode gets them in the focused window, and so
+        // does a drag-mode donut that has the keyboard: see TakeKeyboard).
         triggers.FlipKeyPressed += (_, _) =>
         {
-            if (FlipsFromHook)
+            if (HookFlipsKey)
                 donut.Flip();
         };
         triggers.FlipWheelTurned += (_, _) =>
@@ -324,6 +403,13 @@ public sealed class RadialController(
     /// </summary>
     private void Convert(int index, int sub, IReadOnlyList<string> files, WebDrop? web = null)
     {
+        if (viewModel.IsConnectMode || viewModel.PresetAt(index, sub)?.Id == "preset.filee_connect")
+        {
+            KeepKeyboard();
+            Close(animate: false);
+            windows.ShowFileeConnect();
+            return;
+        }
         // Placeholders whose drop is gone (the drag listed files it didn't hand over in the end) can't be converted.
         var orphaned = web is null && files.Any(WebDrop.IsPlaceholder);
         if (viewModel.PresetAt(index, sub) is not { } preset || SourcesFor(preset, files) is not { Count: > 0 } sources || orphaned)
@@ -338,10 +424,11 @@ public sealed class RadialController(
             return;
         }
 
-        if (preset.IsTool)
+        if (preset.IsTool && !preset.IsCopyToFolder)
         {
             log.LogInformation("Opening {Preset} for {Count} file(s)", preset.Id, sources.Count);
             var near = _window?.Position;
+            KeepKeyboard(); // for the tool's window
             Close(animate: false);
             if (web is null)
                 windows.ShowTool(sources, preset, near);
@@ -353,17 +440,39 @@ public sealed class RadialController(
         // Merged PDFs, joined clips, slideshows and merged pictures follow the order the user picks.
         if ((preset.TargetFormat == "pdf" && preset.Pdf.MergeIntoSingle || preset.JoinsIntoOneMedia || preset.JoinsImages) && sources.Count > 1)
         {
+            KeepKeyboard(); // for the order window
             Close(animate: false);
-            _ = MergeInOrderAsync(sources, preset.Clone(), web, _toClipboard);
+            _ = MergeInOrderAsync(sources, preset.Clone(), web, _toClipboard, _keepOrder);
+            return;
+        }
+
+        // "Ask every time" for the pages (#981): a small window per PDF first, then the save dialog when that asks too; the
+        // toast shows the jobs, the donut has closed for the window.
+        if (AskedPages.Asks(preset) && sources.Any(AskedPages.IsPdf))
+        {
+            KeepKeyboard(); // for the pages window
+            Close(animate: false);
+            _ = AskPagesThenConvertAsync(sources, preset, web, _toClipboard, _onJob);
+            return;
+        }
+
+        // "Ask every time" for the compression (#1353): a small window for the files with a level to choose first, then
+        // the save dialog when that asks too; the toast shows the job, the donut has closed for the window.
+        if (AskedCompression.Asks(preset) && sources.Any(s => AskedCompression.KindOf(preset, s) is not null))
+        {
+            KeepKeyboard(); // for the compression window
+            Close(animate: false);
+            _ = AskCompressionThenConvertAsync(sources, preset, web, _toClipboard, _onJob);
             return;
         }
 
         // "Ask every time" (#521): the save dialog first; the toast shows the job, the donut has closed for the dialog.
         // shortcut: files from a browser aren't asked about, they save into the download folder as "next to the source".
-        if (preset.Output.AskEveryTime && web is null)
+        if (preset.Output.AskEveryTime && (web is null || preset.IsCopyToFolder))
         {
+            KeepKeyboard(); // for the save dialog
             Close(animate: false);
-            _ = AskThenConvertAsync(sources, preset, _toClipboard);
+            _ = AskThenConvertAsync(sources, preset, _toClipboard, web, _onJob);
             return;
         }
 
@@ -375,22 +484,35 @@ public sealed class RadialController(
             Close();
             return;
         }
+        _onJob?.Invoke(job.Job);
         _converted = true;
         ShowProgress(job);
+        ReturnKeyboard(); // the ring shows the conversion; nothing here needs the keyboard any more
     }
 
-    private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard)
+    private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard, bool keepOrder)
     {
+        // The donut's job callback, taken now: the window may be waiting a while, and another donut may open meanwhile.
+        var onJob = _onJob;
         try
         {
-            var ordered = await windows.ChooseMergeOrderAsync(files, preset);
+            // The queue's order is the one the user already set on the Home page: the chooser only shows for a merge that
+            // has more to pick (the layout of merged pictures, the music of merged videos).
+            var videos = preset is { JoinsIntoOneMedia: true, TargetFormat: "mp4", Media.Slideshow: false };
+            var ordered = keepOrder && !preset.JoinsImages && !videos
+                ? files
+                : await windows.ChooseMergeOrderAsync(files, preset, keepOrder);
             if (ordered is not null && preset.JoinsImages)
                 RememberMergeLayout(preset);
+            if (ordered is not null && videos)
+                RememberLoopMusic(preset);
             if (ordered is not null && preset.Output.AskEveryTime && web is null)
-                await AskThenConvertAsync(ordered, preset, toClipboard);
+                await AskThenConvertAsync(ordered, preset, toClipboard, null, onJob);
             else if (ordered is not null)
             {
-                conversions.Start(ordered, preset, web: web, toClipboard: toClipboard);
+                var job = conversions.Start(ordered, preset, web: web, toClipboard: toClipboard);
+                if (job is not null)
+                    onJob?.Invoke(job.Job);
                 web = null; // the conversion owns the browser drop now
             }
         }
@@ -430,17 +552,222 @@ public sealed class RadialController(
         }
     }
 
-    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard)
+    /// <summary>
+    /// "Merge videos": whether the music repeats, as chosen in the merge order window (<paramref name="chosen"/>, a copy
+    /// of the preset), goes into the preset as saved, as the layout of merged pictures does.
+    /// </summary>
+    private void RememberLoopMusic(Preset chosen)
+    {
+        if (store.FindPreset(chosen.Id) is not { JoinsIntoOneMedia: true } saved || saved.Media.LoopMusic == chosen.Media.LoopMusic)
+            return;
+        saved.Media.LoopMusic = chosen.Media.LoopMusic;
+        try
+        {
+            store.SaveLibrary();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning(ex, "Could not remember whether merged videos loop their music");
+        }
+    }
+
+    /// <summary>
+    /// "Choose pages" (#981): one window per PDF, in the order dropped, each with its own page count, so two PDFs can
+    /// give two different chapters. Cancelling any of them starts nothing. PDFs given the same pages convert as one
+    /// job; other files dropped with them convert as the preset says. Files from a browser are saved first, as for a
+    /// tool: the window counts the pages of the PDF itself.
+    /// </summary>
+    private async Task AskPagesThenConvertAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard,
+        Action<ConversionJob>? onJob)
     {
         try
         {
-            // Asked as it will run (a ZIP from Settings › General is a .zip), for one file or a folder as the job makes them.
-            var running = store.Settings.WithDefaultOutput(preset);
-            if (await windows.AskSaveLocationAsync(sources, running, AskedLocation.MakesOneResult(running, sources.Count)) is { } asked)
+            if (web is not null)
             {
-                log.LogInformation("Converting {Count} file(s) with preset {Preset} where the user chose", sources.Count, preset.Id);
-                conversions.Start(sources, asked, toClipboard: toClipboard);
+                var drop = web;
+                web = null; // saving it disposes it
+                files = await conversions.SaveBrowserFilesAsync(drop, (placeholder, ex) =>
+                    log.LogWarning(ex, "Saving {File} from a browser for {Preset} failed", Path.GetFileName(placeholder), preset.Id));
             }
+            var pdfs = files.Where(AskedPages.IsPdf).ToList();
+            var chosen = new List<(string File, PageChoice Choice)>();
+            var asked = preset;
+            for (var i = 0; i < pdfs.Count; i++)
+            {
+                if (await windows.AskPagesAsync(pdfs[i], asked, i, pdfs.Count) is not { } choice)
+                {
+                    log.LogInformation("Choosing the pages for {Preset} was cancelled; nothing converts", preset.Id);
+                    return;
+                }
+                chosen.Add((pdfs[i], choice));
+                // The next PDF's window starts with this one's choice of one PDF or how it is split.
+                asked = AskedPages.Apply(preset, preset.Pdf.PageRange, choice.SplitPages, choice.SplitEvery, choice.SplitParts);
+            }
+            if (chosen.Count == 0)
+                return;
+            RememberSplitChoice(preset, chosen[^1].Choice);
+
+            var runs = new List<(IReadOnlyList<string> Files, Preset Preset)>();
+            var others = files.Where(file => !AskedPages.IsPdf(file)).ToList();
+            if (others.Count > 0)
+                runs.Add((others, preset));
+            runs.AddRange(chosen.GroupBy(c => c.Choice).Select(group =>
+                ((IReadOnlyList<string>)[.. group.Select(c => c.File)], AskedPages.Apply(preset, group.Key.Range, group.Key.SplitPages, group.Key.SplitEvery, group.Key.SplitParts))));
+            log.LogInformation("Converting {Count} PDF(s) with preset {Preset} on the pages chosen", pdfs.Count, preset.Id);
+            foreach (var (runFiles, runPreset) in runs)
+            {
+                if (runPreset.Output.AskEveryTime)
+                    await AskThenConvertAsync(runFiles, runPreset, toClipboard, null, onJob);
+                else if (conversions.Start(runFiles, runPreset, toClipboard: toClipboard) is { } job)
+                    onJob?.Invoke(job.Job);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogError(ex, "Could not convert on the pages chosen");
+        }
+        finally
+        {
+            web?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// "Choose pages": one PDF, one file per page or the pages per file or parts, as chosen last
+    /// (<paramref name="chosen"/>), goes into the preset as saved, so the window starts with it next time (as "Merge
+    /// images" keeps its layout). The range is not kept; with one PDF the numbers of the last split stay.
+    /// </summary>
+    private void RememberSplitChoice(Preset preset, PageChoice chosen)
+    {
+        if (!AskedPages.OffersSplit(preset) || store.FindPreset(preset.Id) is not { } saved)
+            return;
+        var pdf = saved.Pdf;
+        if (pdf.SplitPages == chosen.SplitPages
+            && (!chosen.SplitPages || (pdf.SplitEvery, pdf.SplitParts) == (chosen.SplitEvery, chosen.SplitParts)))
+            return;
+        pdf.SplitPages = chosen.SplitPages;
+        if (chosen.SplitPages)
+            (pdf.SplitEvery, pdf.SplitParts) = (chosen.SplitEvery, chosen.SplitParts);
+        try
+        {
+            store.SaveLibrary();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning(ex, "Could not remember how the pages were split");
+        }
+    }
+
+    /// <summary>
+    /// "Choose the compression" (#1353): one window for all the files dropped, since one setting goes for every file of a
+    /// kind. Cancelling it starts nothing. The files then convert with the setting chosen, for this conversion only (as
+    /// "Choose pages"); ones without a level to choose (a PNG on "Compress image") convert as the preset says, in a job
+    /// of their own. The preset keeps the setting only with "Remember for this preset". Files from a browser are saved
+    /// first, as for a tool: the estimate reads the files themselves.
+    /// </summary>
+    private async Task AskCompressionThenConvertAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard,
+        Action<ConversionJob>? onJob)
+    {
+        try
+        {
+            if (web is not null)
+            {
+                var drop = web;
+                web = null; // saving it disposes it
+                files = await conversions.SaveBrowserFilesAsync(drop, (placeholder, ex) =>
+                    log.LogWarning(ex, "Saving {File} from a browser for {Preset} failed", Path.GetFileName(placeholder), preset.Id));
+            }
+            if (await windows.AskCompressionAsync(files, preset) is not { } answer)
+            {
+                log.LogInformation("Choosing the compression for {Preset} was cancelled; nothing converts", preset.Id);
+                return;
+            }
+            if (answer.Remember)
+                RememberCompression(preset, answer.Choice, files);
+            var runs = AskedCompression.Runs(preset, answer.Choice, files);
+            if (preset.Output.AskEveryTime)
+            {
+                // "Ask every time" (#521): one save dialog for the whole drop, its place for every run, so a JPG and a
+                // PNG dropped together aren't asked about twice nor saved apart.
+                var running = store.Settings.WithDefaultOutput(preset);
+                if (await windows.AskSaveLocationAsync(files, running, AskedLocation.MakesOneResult(running, files.Count)) is not { } located)
+                {
+                    log.LogInformation("Choosing where to save for {Preset} was cancelled; nothing converts", preset.Id);
+                    return;
+                }
+                runs = AskedCompression.Runs(preset, answer.Choice, files, located.Output);
+            }
+            log.LogInformation("Converting {Count} file(s) with preset {Preset} at the compression chosen", files.Count, preset.Id);
+            foreach (var (runFiles, runPreset) in runs)
+            {
+                if (conversions.Start(runFiles, runPreset, toClipboard: toClipboard) is { } job)
+                    onJob?.Invoke(job.Job);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogError(ex, "Could not convert at the compression chosen");
+        }
+        finally
+        {
+            web?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// "Choose the compression" with "Remember for this preset": the settings chosen for the kinds of file dropped
+    /// (<paramref name="files"/>) go into the preset as saved, so the window, watch folders and the command line use
+    /// them from now on.
+    /// </summary>
+    private void RememberCompression(Preset preset, CompressionChoice chosen, IReadOnlyList<string> files)
+    {
+        if (store.FindPreset(preset.Id) is not { } saved)
+            return;
+        var changed = false;
+        foreach (var kind in AskedCompression.KindsOf(preset, files))
+        {
+            switch (kind)
+            {
+                case CompressionKind.Image when saved.Image.Quality != chosen.ImageQuality:
+                    saved.Image.Quality = chosen.ImageQuality;
+                    changed = true;
+                    break;
+                case CompressionKind.Video when saved.Media.Quality != chosen.VideoQuality:
+                    saved.Media.Quality = chosen.VideoQuality;
+                    changed = true;
+                    break;
+                case CompressionKind.Audio when saved.Media.AudioBitrateKbps != chosen.AudioBitrateKbps:
+                    saved.Media.AudioBitrateKbps = chosen.AudioBitrateKbps;
+                    changed = true;
+                    break;
+                case CompressionKind.Pdf when saved.Pdf.Compression != chosen.Pdf:
+                    saved.Pdf.Compression = chosen.Pdf;
+                    changed = true;
+                    break;
+            }
+        }
+        if (!changed)
+            return;
+        try
+        {
+            store.SaveLibrary();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning(ex, "Could not remember the compression chosen");
+        }
+    }
+
+    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard, WebDrop? web = null,
+        Action<ConversionJob>? onJob = null)
+    {
+        try
+        {
+            // The job starts only once the user has chosen where to save: the list follows it then, as any other job.
+            var job = await conversions.AskThenStartAsync(sources, preset, web,
+                (running, one) => windows.AskSaveLocationAsync(sources, running, one), toClipboard);
+            if (job is not null)
+                onJob?.Invoke(job.Job);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -458,11 +785,10 @@ public sealed class RadialController(
     }
 
     /// <summary>
-    /// What <paramref name="preset"/> converts of <paramref name="files"/>: folders only go into "Compress into one
-    /// archive"; any other preset converts the files beside them (issue #186).
+    /// Keeps folders for direct folder actions and combined archives; other presets convert only the files beside them.
     /// </summary>
     internal static IReadOnlyList<string> SourcesFor(Preset preset, IReadOnlyList<string> files) =>
-        preset.PacksIntoOneArchive ? files : [.. files.Where(path => !Directory.Exists(path))];
+        preset.PacksIntoOneArchive || BuiltInData.AcceptsFolders(preset) ? files : [.. files.Where(path => !Directory.Exists(path))];
 
     // ───────── Progress ring ─────────
 
@@ -535,6 +861,7 @@ public sealed class RadialController(
     private void HideWindow()
     {
         _visible = false;
+        ReturnKeyboard();
         WatchFlipKey();
         _window?.DonutControl.CollapseGroup();
         _window?.Hide();
@@ -548,7 +875,8 @@ public sealed class RadialController(
         _editing = true;
         try
         {
-            if (await windows.EditPresetAsync(preset, _window))
+            if (await windows.EditPresetAsync(preset, _window,
+                folderInput: viewModel.Files.Count > 0 && viewModel.Files.All(Directory.Exists)))
             {
                 store.SaveLibrary();
                 viewModel.Load(viewModel.Files, viewModel.IsClickMode, viewModel.IsBackFace);
@@ -569,13 +897,57 @@ public sealed class RadialController(
     private void WatchFlipKey()
     {
         triggers.WatchFlipKey = FlipsFromHook;
-        // One source per press: the hook in drag mode, the window in click mode (#504).
+        // One source per press (#504): the window while it has the keyboard (click mode, or a drag-mode donut that took
+        // it), else the hook.
         if (_window is not null)
-            _window.DonutControl.FlipKeyFromHook = FlipsFromHook;
+            _window.DonutControl.FlipKeyFromHook = HookFlipsKey;
     }
 
     /// <summary>A drag-mode donut shows files and nothing was dropped yet: the hook's flip key and wheel flip it.</summary>
     private bool FlipsFromHook => _visible && !_dropped && !viewModel.IsClickMode && viewModel.HasFiles;
+
+    /// <summary>The hook's flip key flips the donut: in drag mode, while its window doesn't have the keyboard.</summary>
+    private bool HookFlipsKey => FlipsFromHook && _window?.IsActive != true;
+
+    // The donut took the keyboard during a drag (TakeKeyboard) and hasn't given it back yet.
+    private bool _tookKeyboard;
+
+    /// <summary>
+    /// macOS: once files are dragged onto the donut, it takes the keyboard without activating the entire application
+    /// (by making the non-activating panel the key window), so the flip key reaches its window as a key press while
+    /// leaving macOS "Show Desktop" (Desktop Reveal) mode uninterrupted. Watched from outside by the global hook it
+    /// may not reach: while an app holds Secure Input (Terminal with Secure Keyboard Entry, which can keep it from the
+    /// background) macOS gives no keys to a global hook, only to the key window and app in front. The drag carries on;
+    /// the keyboard goes back to the app that had it once the conversion starts or the donut closes (<see cref="ReturnKeyboard"/>),
+    /// releasing key window status so typing returns to the previous app while the conversion ring finishes, and stays
+    /// with Filee when the drop opens a window of its own: a tool, the merge order, the save dialog (<see cref="KeepKeyboard"/>).
+    /// Not on Windows, where a window taking the keyboard during a drag breaks Explorer's drag.
+    /// </summary>
+    private void TakeKeyboard(RadialWindow window)
+    {
+        if (!OperatingSystem.IsMacOS() || _tookKeyboard || window.IsActive)
+            return;
+        platform.RememberFrontApp();
+        _tookKeyboard = true;
+        var handle = window.TryGetPlatformHandle()?.Handle ?? 0;
+        platform.TakeKeyWindow(handle);
+        if (handle == 0)
+            window.Activate();
+    }
+
+    /// <summary>The drop opens a window of Filee's own: the keyboard stays with Filee for it, not given back on close.</summary>
+    private void KeepKeyboard() => _tookKeyboard = false;
+
+    /// <summary>Gives the keyboard back to the app the donut took it from, if the donut still has it.</summary>
+    private void ReturnKeyboard()
+    {
+        if (!_tookKeyboard)
+            return;
+        _tookKeyboard = false;
+        var handle = _window?.TryGetPlatformHandle()?.Handle ?? 0;
+        platform.ReleaseKeyWindow(handle);
+        platform.ReturnFocus();
+    }
 
     /// <summary>
     /// Top-left corner of a <paramref name="sidePx"/> square window centred on <paramref name="cursor"/>, moved into
@@ -599,7 +971,7 @@ public sealed class RadialController(
         var scaling = OperatingSystem.IsMacOS() ? 1 : screen?.Scaling ?? 1;
 
         // Window size follows the donut size (SizeToContent); compute it up front to centre on the cursor.
-        var side = DonutMenu.SideFor(viewModel.OuterRadius, viewModel.ReserveSubRing);
+        var side = DonutMenu.SideFor(viewModel.OuterRadius, viewModel.ReserveSubRing, viewModel.GroupRingSize);
         var sidePx = (int)Math.Ceiling(side * scaling);
         var position = WindowPosition(cursor, screen?.WorkingArea, sidePx);
 

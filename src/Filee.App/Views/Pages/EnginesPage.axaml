@@ -2,21 +2,18 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels.Pages"
              xmlns:svc="using:Filee.App.Services"
+             xmlns:c="using:Filee.App.Controls"
              x:Class="Filee.App.Views.Pages.EnginesPage"
              x:DataType="vm:EnginesPageViewModel">
   <UserControl.Styles>
-    <Style Selector="Border.card.engine">
-      <Setter Property="Transitions">
-        <Transitions>
-          <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.15" />
-        </Transitions>
-      </Setter>
-    </Style>
-    <!-- The card being dragged: lifted, with the accent outline -->
+    <!-- The card being dragged stays in the list as an empty outlined slot; a smaller copy of it follows the pointer
+         (EnginesPage.axaml.cs). -->
     <Style Selector="Border.card.engine.dragging">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-      <Setter Property="BoxShadow" Value="0 8 24 0 #33000000" />
-      <Setter Property="ZIndex" Value="1" />
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Border.card.engine.dragging > StackPanel">
+      <Setter Property="Opacity" Value="0" />
     </Style>
   </UserControl.Styles>
   <!-- Keep editor columns usable on narrow windows; the page still scrolls vertically in MainWindow. -->
@@ -25,7 +22,9 @@
       <DockPanel>
         <Button DockPanel.Dock="Right" Command="{Binding RecheckCommand}">
           <StackPanel Orientation="Horizontal" Spacing="6">
-            <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Refresh}" />
+            <!-- Turns while the recheck runs (Spin.IsActive follows RecheckCommand.IsRunning; the code is in Controls/Spin.cs). -->
+            <PathIcon c:Spin.IsActive="{Binding RecheckCommand.IsRunning}"
+                      Width="13" Height="13" Data="{StaticResource Icon.Refresh}" />
             <TextBlock Text="{DynamicResource engines.recheck}" />
           </StackPanel>
         </Button>
@@ -67,7 +66,18 @@
                     <Button Content="{DynamicResource engines.use_own}" IsVisible="{Binding CanUseOwnCopy}" Click="OnUseOwnCopy"
                             ToolTip.Tip="{DynamicResource engines.use_own_hint}" />
                     <Button Content="{DynamicResource engines.stop_own}" IsVisible="{Binding UsesOwnCopy}" Click="OnStopOwnCopy" />
-                    <Button Content="{DynamicResource engines.remove}" IsVisible="{Binding CanRemove}" Click="OnRemove" />
+                    <!-- Without internet (#447): the same downloads, brought from another computer and checked as a download is. -->
+                    <Button Content="{DynamicResource engines.offline}" IsVisible="{Binding HasOfflineMenu}"
+                            ToolTip.Tip="{DynamicResource engines.offline_hint}">
+                      <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                          <MenuItem Header="{DynamicResource engines.install_from_files}" IsEnabled="{Binding CanInstallFromFiles}" Click="OnInstallFromFiles" />
+                          <MenuItem Header="{DynamicResource engines.save_files}" Click="OnSaveFiles" />
+                          <MenuItem Header="{DynamicResource engines.copy_links}" Click="OnCopyLinks" />
+                        </MenuFlyout>
+                      </Button.Flyout>
+                    </Button>
+                    <Button Classes="danger" Content="{DynamicResource engines.remove}" IsVisible="{Binding CanRemove}" Click="OnRemove" />
                   </StackPanel>
                   <StackPanel Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="10">
@@ -106,53 +116,66 @@
       </StackPanel>
 
       <!-- Every engine in priority order: drag a card (or use the arrows) to change it -->
-      <ItemsControl x:Name="EngineList" ItemsSource="{Binding Engines}">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate>
-            <StackPanel Spacing="10" />
-          </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:EngineItemViewModel">
-            <Border Classes="card engine" Classes.dragging="{Binding IsDragging}" Padding="16,12" Cursor="SizeNorthSouth"
-                    PointerPressed="OnEnginePressed">
-              <StackPanel Spacing="10">
-                <DockPanel>
-                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
-                    <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_up}" AutomationProperties.Name="{DynamicResource engines.move_up}"
-                            Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}">
-                      <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
-                    </Button>
-                    <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_down}" AutomationProperties.Name="{DynamicResource engines.move_down}"
-                            Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}">
-                      <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
-                    </Button>
-                  </StackPanel>
-                  <PathIcon DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" Opacity="0.4" VerticalAlignment="Center"
-                            Data="{StaticResource Icon.DragVertical}" />
-                  <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="999" Margin="2,0,12,0" VerticalAlignment="Center"
-                          Background="{DynamicResource SuccessBrush}" IsVisible="{Binding IsAvailable}" />
-                  <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="999" Margin="2,0,12,0" VerticalAlignment="Center"
-                          Background="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding !IsAvailable}" />
-                  <StackPanel Spacing="3" ToolTip.Tip="{Binding Detail}">
-                    <WrapPanel Orientation="Horizontal">
-                      <TextBlock FontWeight="SemiBold" Text="{Binding Name}" Margin="0,0,10,0" VerticalAlignment="Center" />
-                      <Border Classes="badge" Margin="0,0,8,0">
-                        <TextBlock Classes="caption" Text="{Binding StatusText}" />
-                      </Border>
-                      <TextBlock Classes="caption" VerticalAlignment="Center" Margin="0,0,8,0" Text="{Binding Version}"
-                                 IsVisible="{Binding Version, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                      <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding Conversions}" />
-                    </WrapPanel>
-                    <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}"
-                               IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  </StackPanel>
-                </DockPanel>
-              </StackPanel>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+      <Panel>
+        <ItemsControl x:Name="EngineList" ItemsSource="{Binding Engines}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="10" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:EngineItemViewModel">
+              <Border Classes="card engine" Classes.dragging="{Binding IsDragging}" Padding="16,12"
+                      PointerPressed="OnEnginePressed">
+                <StackPanel Spacing="10">
+                  <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
+                      <Button Classes="accent" IsVisible="{Binding IsTranslator}" Click="OnManageOllama" Margin="0,0,6,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Settings}" />
+                          <TextBlock Text="{DynamicResource engines.ollama.manage}" />
+                        </StackPanel>
+                      </Button>
+                      <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_up}" AutomationProperties.Name="{DynamicResource engines.move_up}"
+                              Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}">
+                        <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
+                      </Button>
+                      <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_down}" AutomationProperties.Name="{DynamicResource engines.move_down}"
+                              Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}">
+                        <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
+                      </Button>
+                    </StackPanel>
+                    <!-- The grab handle: only here (not on the rest of the card or its arrows) the pointer is the move cursor. The
+                         transparent background makes the whole strip around the dots count, not just the dots. -->
+                    <Border DockPanel.Dock="Left" Background="Transparent" Cursor="SizeAll" Margin="-4,0,0,0" Padding="4,0,8,0">
+                      <PathIcon Width="16" Height="16" Opacity="0.4" VerticalAlignment="Center" Data="{StaticResource Icon.DragVertical}" />
+                    </Border>
+                    <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="999" Margin="2,0,12,0" VerticalAlignment="Center"
+                            Background="{DynamicResource SuccessBrush}" IsVisible="{Binding IsAvailable}" />
+                    <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="999" Margin="2,0,12,0" VerticalAlignment="Center"
+                            Background="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding !IsAvailable}" />
+                    <StackPanel Spacing="3" ToolTip.Tip="{Binding Detail}">
+                      <WrapPanel Orientation="Horizontal">
+                        <TextBlock FontWeight="SemiBold" Text="{Binding Name}" Margin="0,0,10,0" VerticalAlignment="Center" />
+                        <Border Classes="badge" Margin="0,0,8,0">
+                          <TextBlock Classes="caption" Text="{Binding StatusText}" />
+                        </Border>
+                        <TextBlock Classes="caption" VerticalAlignment="Center" Margin="0,0,8,0" Text="{Binding Version}"
+                                   IsVisible="{Binding Version, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding Conversions}" />
+                      </WrapPanel>
+                      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}"
+                                 IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+                  </DockPanel>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <!-- Holds the copy that follows the pointer while dragging. Not hit-testable. -->
+        <Canvas x:Name="DragLayer" IsHitTestVisible="False" FlowDirection="LeftToRight" />
+      </Panel>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

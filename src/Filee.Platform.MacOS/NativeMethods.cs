@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Filee.Core.Settings;
 
 namespace Filee.Platform.MacOS;
 
@@ -21,6 +22,18 @@ internal static class NativeMethods
 
     private static nint CoreFoundationConstant(string name) =>
         Marshal.ReadIntPtr(NativeLibrary.GetExport(NativeLibrary.Load(CoreFoundation), name));
+
+    /// <summary>The modifier keys held now (kCGEventSourceStateCombinedSessionState: every keyboard, including posted keys).</summary>
+    internal static ModifierKeys CurrentModifiers()
+    {
+        var flags = CGEventSourceFlagsState(0);
+        var keys = ModifierKeys.None;
+        if ((flags & 0x20000) != 0) keys |= ModifierKeys.Shift;   // kCGEventFlagMaskShift
+        if ((flags & 0x40000) != 0) keys |= ModifierKeys.Ctrl;    // kCGEventFlagMaskControl
+        if ((flags & 0x80000) != 0) keys |= ModifierKeys.Alt;     // kCGEventFlagMaskAlternate (Option)
+        if ((flags & 0x100000) != 0) keys |= ModifierKeys.Meta;   // kCGEventFlagMaskCommand
+        return keys;
+    }
 
     /// <summary>Process names of the app windows on screen (layer 0), front to back.</summary>
     internal static IEnumerable<string> WindowOwnerNames()
@@ -113,6 +126,24 @@ internal static class NativeMethods
         return Marshal.PtrToStringUTF8(Send(bundle, sel_registerName("UTF8String"))) == "com.apple.finder";
     }
 
+    /// <summary>The process id of the app in front (NSWorkspace.frontmostApplication), 0 if none.</summary>
+    internal static int FrontmostProcessId()
+    {
+        using var pool = new AutoreleasePool();
+        var workspace = Send(objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
+        var application = Send(workspace, sel_registerName("frontmostApplication"));
+        return application == 0 ? 0 : (int)Send(application, sel_registerName("processIdentifier"));
+    }
+
+    /// <summary>Brings the app with process id <paramref name="pid"/> to the front, if it still runs.</summary>
+    internal static void ActivateProcess(int pid)
+    {
+        using var pool = new AutoreleasePool();
+        var application = Send(objc_getClass("NSRunningApplication"), sel_registerName("runningApplicationWithProcessIdentifier:"), pid);
+        if (application != 0)
+            SendBool(application, sel_registerName("activateWithOptions:"), 0);
+    }
+
     internal static bool PrefersReducedMotion()
     {
         using var pool = new AutoreleasePool();
@@ -122,18 +153,17 @@ internal static class NativeMethods
 
     internal static void RaiseTopmost(nint window)
     {
-        const nint canJoinAllSpaces = 1, moveToActiveSpace = 1 << 1;
+        const nint canJoinAllSpaces = 1, moveToActiveSpace = 1 << 1, stationary = 1 << 4;
         const nint fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8, fullScreenNone = 1 << 9;
         var behavior = Send(window, sel_registerName("collectionBehavior"));
-        behavior = (behavior & ~(moveToActiveSpace | fullScreenPrimary | fullScreenNone)) | canJoinAllSpaces | fullScreenAuxiliary;
+        behavior = (behavior & ~(moveToActiveSpace | fullScreenPrimary | fullScreenNone)) | canJoinAllSpaces | stationary | fullScreenAuxiliary;
         // macOS 13's primary, auxiliary and canJoinAllApplications: with canJoinAllApplications set the donut still
         // stays off a full-screen Finder Space, even as a panel (#251).
         behavior &= ~((1 << 16) | (1 << 17) | (1 << 18));
         // Finder can occupy a full-screen Space that would otherwise hide another app's toolbar.
         SendInteger(window, sel_registerName("setCollectionBehavior:"), behavior);
-        // While Filee shows in the Dock, AppKit keeps its windows off another app's full-screen Space and lets only a
-        // non-activating panel join it (#251). AvnPanel is Avalonia's NSPanel build of AvnWindow, same ivars and methods
-        // but canBecomeMainWindow, so the donut becomes one in place.
+        // A non-activating panel can join another app's full-screen Space while Filee remains in the Dock (#251).
+        // Restore AvnWindow when hidden and before close so AppKit's KVO cleanup sees the initialized class (#805).
         var panel = objc_getClass("AvnPanel");
         if (panel != 0 && object_getClass(window) == objc_getClass("AvnWindow"))
         {
@@ -144,6 +174,41 @@ internal static class NativeMethods
         }
         SendInteger(window, sel_registerName("setLevel:"), 3);
         SendVoid(window, sel_registerName("orderFrontRegardless"));
+    }
+
+    internal static void MoveToActiveSpace(nint window)
+    {
+        if (window == 0)
+            return;
+
+        var getBehaviorSelector = sel_registerName("collectionBehavior");
+        var setBehaviorSelector = sel_registerName("setCollectionBehavior:");
+        if (!SendBool(window, sel_registerName("respondsToSelector:"), getBehaviorSelector)
+            || !SendBool(window, sel_registerName("respondsToSelector:"), setBehaviorSelector))
+            return;
+
+        const nint canJoinAllSpaces = 1, moveToActiveSpace = 1 << 1, stationary = 1 << 4;
+        const nint fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8, fullScreenNone = 1 << 9;
+        var behavior = Send(window, getBehaviorSelector);
+        behavior = (behavior & ~(canJoinAllSpaces | stationary | fullScreenPrimary | fullScreenNone)) | moveToActiveSpace | fullScreenAuxiliary;
+        // Clear macOS 13+ Stage Manager grouping bits (Primary, Auxiliary, CanJoinAllApplications; #251) so the window can float freely on the active Space.
+        behavior &= ~((1 << 16) | (1 << 17) | (1 << 18));
+        SendInteger(window, setBehaviorSelector, behavior);
+    }
+
+    internal static void RestoreWindow(nint window)
+    {
+        if (window == 0)
+            return;
+
+        var panel = objc_getClass("AvnPanel");
+        var avnWindow = objc_getClass("AvnWindow");
+        if (panel == 0 || avnWindow == 0 || object_getClass(window) != panel)
+            return;
+
+        const nint nonactivatingPanel = 1 << 7;
+        SendInteger(window, sel_registerName("setStyleMask:"), Send(window, sel_registerName("styleMask")) & ~nonactivatingPanel);
+        object_setClass(window, avnWindow);
     }
 
     /// <summary>
@@ -397,6 +462,9 @@ internal static class NativeMethods
     private static extern nint CGWindowListCopyWindowInfo(uint option, uint relativeToWindow);
 
     [DllImport(CoreGraphics)]
+    private static extern ulong CGEventSourceFlagsState(int stateId);
+
+    [DllImport(CoreGraphics)]
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool CGRectMakeWithDictionaryRepresentation(nint dictionary, out CGRect rect);
 
@@ -461,4 +529,38 @@ internal static class NativeMethods
     [DllImport(ObjC, EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool SendBoolWithInteger(nint receiver, nint selector, nint value);
+
+    internal static void TakeKeyWindow(nint window)
+    {
+        var selector = sel_registerName("makeKeyAndOrderFront:");
+        if (SendBool(window, sel_registerName("respondsToSelector:"), selector))
+            SendVoid(window, selector, 0);
+    }
+
+    internal static void ReleaseKeyWindow(nint window)
+    {
+        if (!IsKeyWindow(window))
+            return;
+
+        var isVisibleSelector = sel_registerName("isVisible");
+        var wasVisible = SendBool(window, sel_registerName("respondsToSelector:"), isVisibleSelector)
+            && SendBool(window, isVisibleSelector);
+
+        var orderOutSelector = sel_registerName("orderOut:");
+        if (SendBool(window, sel_registerName("respondsToSelector:"), orderOutSelector))
+            SendVoid(window, orderOutSelector, 0);
+
+        if (wasVisible)
+        {
+            var orderFrontSelector = sel_registerName("orderFrontRegardless");
+            if (SendBool(window, sel_registerName("respondsToSelector:"), orderFrontSelector))
+                SendVoid(window, orderFrontSelector);
+        }
+    }
+
+    internal static bool IsKeyWindow(nint window)
+    {
+        var selector = sel_registerName("isKeyWindow");
+        return SendBool(window, sel_registerName("respondsToSelector:"), selector) && SendBool(window, selector);
+    }
 }

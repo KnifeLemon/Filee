@@ -10,7 +10,7 @@ namespace Filee.Core.Presets;
 public static partial class OutputPathResolver
 {
     /// <summary>Values available to file name pattern tokens.</summary>
-    public readonly record struct Tokens(string SourcePath, string PresetName, int Index, DateTime Now);
+    public readonly record struct Tokens(string SourcePath, string PresetName, int Index, DateTime Now, bool SourceIsFolder = false);
 
     /// <summary>
     /// Computes the output path for one output file.
@@ -37,7 +37,7 @@ public static partial class OutputPathResolver
             _ => sourceDir,
         };
 
-        var sourceName = FormatRegistry.NameWithoutExtension(tokens.SourcePath);
+        var sourceName = tokens.SourceIsFolder ? Path.GetFileName(tokens.SourcePath) : FormatRegistry.NameWithoutExtension(tokens.SourcePath);
         var name = Sanitize(Rename(ExpandPattern(rule.FileNamePattern, tokens), rule.Renames), sourceName) + suffix;
         var ext = targetExtension.TrimStart('.');
         string PathFor(string baseName) => Path.Combine(dir, ext.Length == 0 ? baseName : $"{baseName}.{ext}");
@@ -126,8 +126,8 @@ public static partial class OutputPathResolver
         // having the token inside the inserted name expanded too.
         return Token().Replace(pattern, match => match.Groups[1].Value.ToLowerInvariant() switch
         {
-            "name" => FormatRegistry.NameWithoutExtension(tokens.SourcePath),
-            "ext" => FormatRegistry.ExtensionOf(tokens.SourcePath),
+            "name" => tokens.SourceIsFolder ? Path.GetFileName(Path.TrimEndingDirectorySeparator(tokens.SourcePath)) : FormatRegistry.NameWithoutExtension(tokens.SourcePath),
+            "ext" => tokens.SourceIsFolder ? "" : FormatRegistry.ExtensionOf(tokens.SourcePath),
             "preset" => tokens.PresetName,
             "date" => tokens.Now.ToString("yyyyMMdd"),
             "time" => tokens.Now.ToString("HHmmss"),

@@ -29,9 +29,12 @@ internal static class LibraryArchives
             if (ZipReader.TryExtract(file, name, folder, cancellationToken))
                 return;
         }
-        using var opened = Open(name, () => parts.Count > 1
+        // A file Filee opens itself: SharpCompress leaves the one it opens by path open when the archive can't be
+        // read (a 7z with encrypted names), and the folder could not be cleared afterwards.
+        using var single = parts.Count > 1 ? null : new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
+        using var opened = Open(name, () => single is null
             ? ArchiveFactory.Open(parts, Options(type))
-            : ArchiveFactory.Open(archive, Options(type)));
+            : ArchiveFactory.Open(single, Options(type)));
         Extract(opened, name, length, folder, cancellationToken);
     }
 
@@ -107,7 +110,8 @@ internal static class LibraryArchives
     {
         try
         {
-            using var opened = SevenZipArchive.Open(archive, null);
+            using var file = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
+            using var opened = SevenZipArchive.Open(file, null);
             return opened.IsSolid && opened.Entries.Count(e => !e.IsDirectory && e.Size > 0) > 1;
         }
         catch (Exception ex) when (ex is InvalidOperationException or InvalidFormatException or ArchiveException

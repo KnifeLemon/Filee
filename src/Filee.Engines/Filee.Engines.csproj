@@ -13,9 +13,11 @@
 
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q8-AnyCPU" />
+    <PackageReference Include="DiscUtils.Iso9660" />
     <PackageReference Include="PDFsharp" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="PDFtoImage" />
+    <PackageReference Include="System.Formats.Nrbf" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="ExcelNumberFormat" />
     <PackageReference Include="Svg.Skia" />
@@ -49,5 +51,6 @@
     <EmbeddedResource Include="Infrastructure\ocr-languages.json" LogicalName="Filee.Engines.ocr-languages.json" />
     <!-- ICU's Thai, Lao, Khmer and Myanmar word lists (Unicode License v3), see build/generate-word-dictionaries.ps1. -->
     <EmbeddedResource Include="Typesetting\Dictionaries\*.words.br" LogicalName="Filee.Engines.Dictionaries.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Infrastructure\upscale-models.json" LogicalName="Filee.Engines.upscale-models.json" />
   </ItemGroup>
 </Project>

@@ -202,7 +202,7 @@ internal sealed class LinuxDesktopIntegration(string configHome, string dataHome
             throw new ArgumentException("The executable path cannot contain a null character or line break.", nameof(value));
     }
 
-    private static void Write(string path, string contents, bool executable = false)
+    internal static void Write(string path, string contents, bool executable = false)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";

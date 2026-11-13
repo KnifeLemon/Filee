@@ -204,7 +204,7 @@ internal static class Program
             Tell(options, texts.Format("installer.uninstall.not_installed", folder), NativeMethods.MB_ICONERROR);
             return ExitInitFailed;
         }
-        var context = CreateContext(sandbox, paths, log);
+        var context = CreateContext(sandbox, paths, log, seeOtherAccounts: true);
         var hive = PreviousInstall.HiveOf(record.Scope);
         if (options.Language is null && context.Registry.Get(hive, SetupNames.UninstallKey, SetupNames.LanguageValue)?.Text is { } language)
             texts.SetLanguage(language);
@@ -241,7 +241,7 @@ internal static class Program
         int exitCode;
         if (options.Ui == SetupUi.VerySilent)
         {
-            exitCode = runner.Uninstall(deleteSettings: false, new SyncProgress<SetupProgress>(_ => { })) is { } error
+            exitCode = runner.Uninstall(deleteSettings: false, new SyncProgress<SetupProgress>(_ => { })).Error is { } error
                 ? Fail(error)
                 : ExitOk;
         }
@@ -293,10 +293,10 @@ internal static class Program
         }
     }
 
-    private static SetupContext CreateContext(string? sandbox, SetupPaths paths, SetupLog log)
+    private static SetupContext CreateContext(string? sandbox, SetupPaths paths, SetupLog log, bool seeOtherAccounts = false)
     {
         if (sandbox is null)
-            return new SetupContext(new WindowsRegistry(), new WindowsSetupSystem(log), paths, log);
+            return new SetupContext(new WindowsRegistry(), new WindowsSetupSystem(log, seeOtherAccounts), paths, log);
         // The sandbox's registry is a JSON file; Filee runs with its data in the sandbox.
         return new SetupContext(new MemoryRegistry(Path.Combine(sandbox, "registry.json")),
             new SandboxSetupSystem(log, paths.SettingsFolder), paths, log, Sandbox: true);
@@ -490,17 +490,18 @@ internal sealed class SetupRunner(SetupContext context, SetupPayload? payload, P
     /// <summary>Lets the uninstaller in the install folder end before its file is deleted.</summary>
     public Action? ReleaseFirstPhase { get; init; }
 
-    public Exception? Uninstall(bool deleteSettings, IProgress<SetupProgress> progress)
+    public UninstallResult Uninstall(bool deleteSettings, IProgress<SetupProgress> progress)
     {
         try
         {
-            new Uninstaller(context).Run(folder!, record!, deleteSettings, trash!, progress, ReleaseFirstPhase);
-            return null;
+            var uninstaller = new Uninstaller(context);
+            var later = uninstaller.Run(folder!, record!, deleteSettings, trash!, progress, ReleaseFirstPhase);
+            return new UninstallResult(DeletedAtRestart: later.Count, CleanupFailed: uninstaller.CleanupFailed, FilesLeftIn: uninstaller.FilesLeftIn);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             context.Log.Error($"Uninstall failed: {ex}");
-            return ex;
+            return new UninstallResult(ex);
         }
     }
 }

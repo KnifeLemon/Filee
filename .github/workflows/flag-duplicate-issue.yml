@@ -1,11 +1,13 @@
 # Flags a new issue that may repeat an earlier one: a short comment links it (mentioning only the author) and the
-# issue gets the `possible duplicate` label. Nothing is closed. It runs for newly opened issues only, never for pull
-# requests.
+# issue gets a label. Nothing is closed. It runs for newly opened issues only, never for pull requests.
 # Same request: for format requests the same "File extension" answer, for other issues the same title (ignoring case
 # and punctuation). Short or template-only titles are skipped.
-# Earlier issue still open: "may be the same request". Earlier issue closed by a pull request merged after the
-# latest release: the comment also links that pull request and says it comes in the next release. Issues closed any
-# other way are ignored.
+# Earlier issue still open: "may be the same request" + the `possible duplicate` label. Earlier issue closed by a pull
+# request merged after the latest release: the comment also links that pull request and says it comes in the next
+# release (also `possible duplicate`). Earlier issue closed as "not planned" (and nothing above applies): the comment
+# links it, says it was closed as not planned, and the issue gets the `not planned` label. This last case is skipped
+# when a newer issue for the same request was closed as completed (the newer decision wins). Issues closed any other
+# way are ignored.
 name: Flag possible duplicate issue
 
 on:
@@ -61,6 +63,16 @@ jobs:
                   found.add(part)
               return frozenset(found) or None
 
+          def is_not_planned(issue):
+              # Closed with the "not planned" reason (gh prints it as NOT_PLANNED).
+              reason = (issue.get('stateReason') or '').upper().replace(' ', '_')
+              return reason == 'NOT_PLANNED'
+
+          def is_completed(issue):
+              # Closed as completed (this is also the reason GitHub sets when a merged pull request closes an issue).
+              reason = (issue.get('stateReason') or '').upper().replace(' ', '_')
+              return reason == 'COMPLETED'
+
           QUERY = ('query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){'
                    'issue(number:$number){closedByPullRequestsReferences(first:10,includeClosedPrs:true){'
                    'nodes{number merged mergedAt}}}}}')
@@ -96,9 +108,10 @@ jobs:
           released_at = latest.stdout.strip() if latest.returncode == 0 and latest.stdout.strip() else None
 
           listing = subprocess.run(
-              ['gh', 'issue', 'list', '--state', 'all', '--limit', '5000', '--json', 'number,title,body,state'],
+              ['gh', 'issue', 'list', '--state', 'all', '--limit', '5000', '--json',
+               'number,title,body,state,stateReason'],
               check=True, capture_output=True, text=True).stdout
-          unreleased, duplicates, closed = [], [], []
+          unreleased, duplicates, closed, not_planned, completed = [], [], [], [], []
           for issue in json.loads(listing):
               if issue['number'] >= me:
                   continue
@@ -108,7 +121,14 @@ jobs:
                   same = norm(issue['title']) == key
               if not same:
                   continue
-              (duplicates if issue['state'] == 'OPEN' else closed).append(issue['number'])
+              if issue['state'] == 'OPEN':
+                  duplicates.append(issue['number'])
+              elif is_not_planned(issue):
+                  not_planned.append(issue['number'])
+              else:
+                  closed.append(issue['number'])
+                  if is_completed(issue):
+                      completed.append(issue['number'])
 
           # Closed issues count only when a merged pull request closed them, after the latest release. The newest
           # ten are checked: those are the ones a pull request since the release can have closed.
@@ -117,11 +137,16 @@ jobs:
               if pr and (released_at is None or pr['mergedAt'] > released_at):
                   unreleased.append((number, pr['number']))
 
+          # Priority: an unreleased fix, then a still-open request, then an earlier "not planned" decision
+          # (the most recent one, since it is the latest word from the maintainers). The "not planned" case is
+          # skipped when a newer issue for the same request was closed as completed: the newer decision wins.
           if unreleased:
               kind = 'release'
               original, pull = min(unreleased)
           elif duplicates:
               kind, original, pull = 'duplicate', min(duplicates), ''
+          elif not_planned and not (completed and max(completed) > max(not_planned)):
+              kind, original, pull = 'notplanned', max(not_planned), ''
           else:
               print('No duplicate found')
               sys.exit(0)
@@ -152,10 +177,22 @@ jobs:
           if [ "$KIND" = release ]; then
             # Case 1: a merged pull request closed the earlier issue and it is not released yet.
             body="@$AUTHOR, this may be the same request as #$ORIGINAL ($reason). It was added in #$PULL, which is merged but not released yet, so it will be available in the next release. If it's something different, please say how, and a maintainer will take a look."
-          else
+            label="possible duplicate"
+            label_description="May repeat an earlier issue; not confirmed by a maintainer"
+            label_color="fbca04"
+          elif [ "$KIND" = duplicate ]; then
             # Case 2: the earlier issue is still open.
             body="@$AUTHOR, this may be the same request as #$ORIGINAL ($reason). If it's something different, please say how, and a maintainer will take a look."
+            label="possible duplicate"
+            label_description="May repeat an earlier issue; not confirmed by a maintainer"
+            label_color="fbca04"
+          else
+            # Case 3: the earlier issue was closed as "not planned".
+            body="@$AUTHOR, this looks like the same request as #$ORIGINAL ($reason), which was closed as not planned. If it's something different, please say how, and a maintainer will take a look."
+            label="not planned"
+            label_description="Matches an earlier request that was closed as not planned"
+            label_color="e4e669"
           fi
           gh issue comment "$ISSUE" --body "$body"
-          gh label create "possible duplicate" --description "May repeat an earlier issue; not confirmed by a maintainer" --color fbca04 2>/dev/null || true
-          gh issue edit "$ISSUE" --add-label "possible duplicate"
+          gh label create "$label" --description "$label_description" --color "$label_color" 2>/dev/null || true
+          gh issue edit "$ISSUE" --add-label "$label"

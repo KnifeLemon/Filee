@@ -18,6 +18,9 @@ public static class SetupNames
     public const string MachineEnvironmentKey = @"SYSTEM\CurrentControlSet\Control\Session Manager\Environment";
     public const string UserEnvironmentKey = "Environment";
 
+    /// <summary>Filee's startup entry is the value <see cref="AppName"/> here (HKCU; WindowsPlatformServices writes it).</summary>
+    public const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+
     public const string AppName = "Filee";
     public const string Publisher = "Filee contributors";
     public const string AppExe = "Filee.exe";

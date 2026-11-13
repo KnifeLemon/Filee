@@ -134,6 +134,16 @@ jobs:
         with:
           global-json-file: global.json
 
+      # The disk image's background and window layout (build/build-portable.ps1, installer/macos/dmg).
+      - uses: actions/setup-python@v6
+        if: runner.os == 'macOS'
+        with:
+          python-version: '3.13'
+
+      - name: Disk image tool
+        if: runner.os == 'macOS'
+        run: python3 -m pip install dmgbuild==1.6.7
+
       - name: Linux desktop dependencies
         if: runner.os == 'Linux'
         shell: bash
@@ -156,6 +166,12 @@ jobs:
           ./build/fetch-portable-engines.ps1 -Runtime '${{ matrix.rid }}' -Destination engines
           dotnet build Filee.slnx -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Magick.NET 15 has no ImageMagick library for Intel Macs: the one the package gets goes next to each build.
+          if ('${{ matrix.rid }}' -eq 'osx-x64') {
+            $builds = Get-ChildItem -Path src, tests -Recurse -File -Filter Magick.NET-Q8-AnyCPU.dll |
+              Where-Object { $_.DirectoryName -match '[\\/]bin[\\/]Release[\\/]' } | ForEach-Object DirectoryName | Sort-Object -Unique
+            ./build/fetch-magick-native.ps1 -Runtime osx-x64 -Destination $builds
+          }
           $projects = @('Filee.Core.Tests', 'Filee.Platform.Tests', 'Filee.Engines.Tests', 'Filee.Cli.Tests', 'Filee.App.Tests')
           foreach ($project in $projects) {
             $testArguments = @('test', "tests/$project/$project.csproj", '--no-build', '-c', 'Release', '--logger', 'trx', '--results-directory', "TestResults/${{ matrix.rid }}",

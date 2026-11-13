@@ -18,6 +18,7 @@ internal sealed class MarkdownWriter
     /// <param name="imageTarget">Maps a picture file to the path written into the Markdown, or null to leave it out.</param>
     public static string Write(HDocument document, Func<string, string?> imageTarget)
     {
+        Nesting.Limit(document);
         var writer = new MarkdownWriter(imageTarget);
         var sb = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(document.Title))

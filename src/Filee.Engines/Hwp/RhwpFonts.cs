@@ -5,6 +5,10 @@
 // Korean default fonts in Chinese or Japanese text (issue #64), one consistent font for text without Hangul, Han or
 // kana. What is rhwp's own stays here:
 //
+// - Latin in Chinese and Japanese text: rhwp lays out characters with width tables of its own and guesses 0.5 em for
+//   a font it has none for, as for Microsoft YaHei, DengXian, Yu Gothic or PingFang SC. English in such a font came
+//   out evenly spaced and stretched to fit (issue #1207). The LATIN slot gets an installed Latin font of the same
+//   style that rhwp measures (MeasuredLatin); without one it gets the language font as before.
 // - CFF2: variable fonts with CFF2 outlines (Source Han Serif VF, "思源宋体 VF") fail rhwp's font subsetter and the
 //   page came out blank (issue #61); they are not usable and are always swapped.
 // - The lookup through Skia's font manager, cached per name for the HWPX copies rhwp gets.
@@ -21,6 +25,10 @@ internal sealed record InstalledFont(bool Usable, Func<int, bool> Has, Func<int,
 
 internal static class RhwpFonts
 {
+    /// <summary>Latin fonts of the substitution candidates rhwp 0.8.7 has width tables for, by exact name.</summary>
+    private static readonly HashSet<string> MeasuredLatin =
+        ["Times New Roman", "DejaVu Serif", "Georgia", "Segoe UI", "Tahoma", "Arial", "DejaVu Sans"];
+
     private static readonly ConcurrentDictionary<string, InstalledFont?> Fonts = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Forgets the fonts looked up so far (<see cref="Infrastructure.EngineCaches.Release"/>).</summary>
@@ -32,7 +40,7 @@ internal static class RhwpFonts
     /// <summary>Replacements by (slot, face): the language, coverage and CFF2 rules (see <see cref="FontSubstitution.Plan"/>).</summary>
     internal static Dictionary<(string Slot, string Face), string> Plan(
         IReadOnlyList<(string Slot, string Face)> slots, string text, Func<string, InstalledFont?> lookup) =>
-        FontSubstitution.Plan(slots, text, lookup);
+        FontSubstitution.Plan(slots, text, lookup, MeasuredLatin);
 
     /// <inheritdoc cref="FontSubstitution.Language"/>
     internal static string Language(string text) => FontSubstitution.Language(text);

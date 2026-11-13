@@ -161,13 +161,21 @@ internal sealed class DocumentPackage : IDisposable
 
     /// <summary>
     /// Unpacks a picture into a new file at <paramref name="path"/>. Returns false (and leaves no file) when its
-    /// header claims more than <see cref="DocumentLimits.MaxPicturePixels"/>.
+    /// header claims more than <see cref="DocumentLimits.MaxPicturePixels"/>. With <paramref name="unpack"/> it also
+    /// counts against what the document's pictures may unpack to in all, refusing the document past it.
     /// </summary>
-    public bool ExtractPicture(ZipArchiveEntry entry, string path)
+    public bool ExtractPicture(ZipArchiveEntry entry, string path, UnpackLimit? unpack = null)
     {
         using (var source = Open(entry))
-        using (var target = File.Create(path))
-            source.CopyTo(target);
+        {
+            if (unpack is not null)
+                unpack.Extract(entry, source, path);
+            else
+            {
+                using var target = File.Create(path);
+                source.CopyTo(target);
+            }
+        }
         if (PictureSize.Read(path) is { } size && (long)size.Width * size.Height > Limits.MaxPicturePixels)
         {
             File.Delete(path);

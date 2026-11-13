@@ -11,8 +11,8 @@
 
   Setup itself (src/Filee.Setup) is published as one self-contained, trimmed program (no .NET needed on the PC);
   build/tools/make-setup.cs appends the publish folder to it as an LZMA payload with a SHA-256 manifest, and the
-  engines Setup offers from EngineDownloads. The portable zip is the publish folder as it is: without Setup's
-  uninstall.exe next to Filee.exe, Filee knows it is a portable copy.
+  engines Setup offers from EngineDownloads. The portable zip adds filee.portable beside Filee.exe; the installer
+  payload does not include this marker.
 
 .PARAMETER Runtime
   win-x64 (default) or win-arm64. The ARM64 build (Filee-<version>-win-arm64-Setup.exe and -Portable.zip) has an ARM64
@@ -185,6 +185,12 @@ if ($Portable) {
     Write-Host "zip  $zip"
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::CreateFromDirectory($PublishDir, $zip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+    # Add only to the archive: the publish folder also supplies Setup's installed payload.
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+    try {
+        if (-not $archive.GetEntry('filee.portable')) { $null = $archive.CreateEntry('filee.portable') }
+    }
+    finally { $archive.Dispose() }
     $files += $zip
 }
 

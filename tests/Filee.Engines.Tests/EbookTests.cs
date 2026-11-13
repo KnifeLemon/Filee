@@ -492,6 +492,22 @@ public class EbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task A_comic_with_a_cmyk_jpeg_page_becomes_a_pdf()
+    {
+        // #1055: JPEG pages go into the PDF as they are, and PDFsharp refuses a CMYK one.
+        var dir = fx.NewFolder();
+        var cbz = Path.Combine(dir, "print.cbz");
+        using (var zip = ZipFile.Open(cbz, ZipArchiveMode.Create))
+        {
+            zip.CreateEntryFromFile(ImageAndPdfTests.MakeCmykJpeg(dir, "page1.jpg"), "page1.jpg");
+            zip.CreateEntryFromFile(ImageAndPdfTests.MakeScan(dir, "page2.png"), "page2.png");
+        }
+
+        using var document = PdfReader.Open(await ConvertAsync(cbz, "pdf"), PdfDocumentOpenMode.Import);
+        Assert.Equal(2, document.PageCount);
+    }
+
+    [Fact]
     public async Task A_comic_with_black_and_white_pages_becomes_a_pdf()
     {
         // #605: PNG pages go into the PDF as they are, and PDFsharp refuses a 1-bit PNG.

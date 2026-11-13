@@ -35,6 +35,16 @@ internal sealed record VideoStreamInfo(int Width, int Height, double SampleAspec
     private static readonly string[] HighBitDepthSuffixes = ["p10", "p12", "p14", "p16"];
     private static readonly string[] HighBitDepthPrefixes = ["p010", "p012", "p016", "p210", "p216", "p410", "p416", "y210", "y212", "v210"];
 
+    /// <summary>
+    /// True when the decoded pictures carry an alpha channel: ProRes 4444 (yuva444p…), QuickTime Animation (argb), PNG
+    /// in MOV and APNG (rgba), GIF (FFmpeg always decodes it to bgra, so an opaque GIF counts too). Palette formats
+    /// (pal8) are left out, since they are as often opaque. A VP9 WebM with alpha reads as yuv420p: the alpha is a
+    /// side stream that only libvpx's decoder reads.
+    /// </summary>
+    public bool HasAlpha => PixelFormat is { } format && AlphaPrefixes.Any(p => format.StartsWith(p, StringComparison.Ordinal));
+
+    private static readonly string[] AlphaPrefixes = ["yuva", "rgba", "bgra", "argb", "abgr", "gbrap", "ya8", "ya16", "ayuv", "vuya"];
+
     /// <summary>True for HDR video: PQ (HDR10, Dolby Vision) or HLG transfer.</summary>
     public bool IsHdr => Color?.Transfer is "smpte2084" or "arib-std-b67";
 

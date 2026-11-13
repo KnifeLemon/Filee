@@ -63,6 +63,7 @@ public sealed class TriggerService : IDisposable
         _detector.DragEnded += (x, y) => Post(() => DragEnded?.Invoke(this, new GestureEventArgs(null, x, y)));
         _detector.HoldTriggered += (g, x, y) => Post(() => SelectionGesture?.Invoke(this, new GestureEventArgs(g, x, y)));
         _detector.KeyChordTriggered += (g, x, y) => Post(() => SelectionGesture?.Invoke(this, new GestureEventArgs(g, x, y)));
+        _detector.ClickTriggered += (g, x, y) => Post(() => ClickTriggered?.Invoke(this, new GestureEventArgs(g, x, y)));
         _detector.HoldTimerRequested += (token, ms) =>
             _ = Task.Delay(ms).ContinueWith(_ => _detector.HoldElapsed(token), TaskScheduler.Default);
     }
@@ -75,6 +76,9 @@ public sealed class TriggerService : IDisposable
 
     /// <summary>A hold or keyboard gesture: open the donut for the file manager's current selection.</summary>
     public event EventHandler<GestureEventArgs>? SelectionGesture;
+
+    /// <summary>A click gesture: open the donut for Filee Connect or files.</summary>
+    public event EventHandler<GestureEventArgs>? ClickTriggered;
 
     /// <summary>The flip key went down while <see cref="WatchFlipKey"/> was on: flip the donut.</summary>
     public event EventHandler? FlipKeyPressed;
@@ -146,7 +150,7 @@ public sealed class TriggerService : IDisposable
     {
         if (Trace)
             _log.LogInformation("Trace: gestures set again ({Count})", settings.Triggers.Count(g => g.Enabled));
-        _detector.Configure(settings.Triggers.Where(g => _platform.SupportsSelectionShortcut || g.Kind == TriggerKind.Drag).ToList());
+        _detector.Configure(settings.Triggers.Where(g => _platform.SupportsSelectionShortcut || g.Kind is TriggerKind.Drag or TriggerKind.Click).ToList());
         _detector.Paused = settings.Paused;
         _flipKey = settings.Donut.EffectiveFlipKey(settings.Triggers);
         _flipWheel = settings.Donut.FlipWithWheel;
@@ -201,10 +205,10 @@ public sealed class TriggerService : IDisposable
             _hook.MousePressed += (_, e) =>
             {
                 if (Trace)
-                    _log.LogInformation("Trace: press {Button} at {X},{Y}, mask {Mask} = {Modifiers}", e.Data.Button, e.Data.X, e.Data.Y, e.RawEvent.Mask, Map(e.RawEvent.Mask));
+                    _log.LogInformation("Trace: press {Button} at {X},{Y}, mask {Mask} = {Modifiers}", e.Data.Button, e.Data.X, e.Data.Y, e.RawEvent.Mask, ModifiersOf(e.RawEvent.Mask));
                 var (x, y) = ButtonPoint(e);
                 (_pressX, _pressY, _heldMoves, _farthest) = (x, y, 0, 0);
-                _detector.MouseDown(Map(e.Data.Button), x, y, Map(e.RawEvent.Mask));
+                _detector.MouseDown(Map(e.Data.Button), x, y, ModifiersOf(e.RawEvent.Mask));
             };
             _hook.MouseReleased += (_, e) =>
             {
@@ -341,7 +345,7 @@ public sealed class TriggerService : IDisposable
             _heldMoves++;
             _farthest = Math.Max(_farthest, Math.Max(Math.Abs(e.Data.X - _pressX), Math.Abs(e.Data.Y - _pressY)));
         }
-        _detector.MouseMove(e.Data.X, e.Data.Y, Map(e.RawEvent.Mask), HeldButton(e.RawEvent.Mask));
+        _detector.MouseMove(e.Data.X, e.Data.Y, MoveModifiers(e.RawEvent.Mask), HeldButton(e.RawEvent.Mask));
     }
 
     private void OnRelativeMove(MouseHookEventArgs e)
@@ -350,7 +354,7 @@ public sealed class TriggerService : IDisposable
         _estY += e.Data.Y;
         if (Trace && HeldButton(e.RawEvent.Mask) != TriggerMouseButton.None)
             _log.LogInformation("Trace: relative move {Dx},{Dy} -> {X},{Y}, mask {Mask}", e.Data.X, e.Data.Y, _estX, _estY, e.RawEvent.Mask);
-        _detector.MouseMove(_estX, _estY, Map(e.RawEvent.Mask), HeldButton(e.RawEvent.Mask));
+        _detector.MouseMove(_estX, _estY, MoveModifiers(e.RawEvent.Mask), HeldButton(e.RawEvent.Mask));
     }
 
     internal bool InScope(TriggerGesture gesture, int x, int y)
@@ -379,6 +383,15 @@ public sealed class TriggerService : IDisposable
         MouseButton.Button5 => TriggerMouseButton.X2,
         _ => TriggerMouseButton.None,
     };
+
+    /// <summary>
+    /// The modifiers a mouse event was made with: what the platform reports held (macOS, whose hook mask can lose them),
+    /// else the hook's mask. Only asked while it matters: at a press, and on moves with a button held.
+    /// </summary>
+    private ModifierKeys ModifiersOf(EventMask mask) => _platform.CurrentModifiers() ?? Map(mask);
+
+    // A move's modifiers only matter while a button is held (a modifier pressed after the button): not asked otherwise.
+    private ModifierKeys MoveModifiers(EventMask mask) => HeldButton(mask) == TriggerMouseButton.None ? Map(mask) : ModifiersOf(mask);
 
     internal static ModifierKeys Map(EventMask mask)
     {

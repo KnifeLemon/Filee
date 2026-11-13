@@ -93,10 +93,16 @@ public sealed class ThemeService(IPlatformServices platform)
         var lightAccent = preset?.LightColor ?? baseColor;
         var darkAccent = preset?.DarkColor ?? baseColor;
 
+        // The top-level keys are collected here and published in one SetItems at the end: setting them one by one raises
+        // a resource change per key, and each reaches every control of every window still alive.
+        var top = new ResourceDictionary();
+
         // Radii, fonts, flow direction
-        SoftPalette.ApplyCornerRadius(res, theme.CornerRadius);
-        res["AppFontFamily"] = SoftPalette.FontFamilyFor(language);
-        SoftPalette.ApplyFlowDirection(res, language);
+        SoftPalette.ApplyCornerRadius(top, theme.CornerRadius);
+        top["AppFontFamily"] = SoftPalette.FontFamilyFor(language, theme.UseSystemFont);
+        // Annotate draws its labels in the same fonts (read when a label is first drawn).
+        AnnotationFonts.Use(language, theme.UseSystemFont);
+        SoftPalette.ApplyFlowDirection(top, language);
 
         if (theme.Style == ThemeStyle.MaterialYou)
         {
@@ -147,11 +153,17 @@ public sealed class ThemeService(IPlatformServices platform)
             }
             else
             {
-                SoftPalette.ApplyAccent(res, baseColor);
+                SoftPalette.ApplyAccent(top, baseColor);
                 ApplyCustom(res, ThemeVariant.Light, custom?.Light);
                 ApplyCustom(res, ThemeVariant.Dark, custom?.Dark);
             }
         }
+
+        if (res is ResourceDictionary dictionary)
+            dictionary.SetItems(top);
+        else
+            foreach (var (key, value) in top)
+                res[key] = value;
 
         var isMaterialYou = theme.Style == ThemeStyle.MaterialYou;
         if (app.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
@@ -164,7 +176,7 @@ public sealed class ThemeService(IPlatformServices platform)
     }
 
     /// <summary>The UI font chain for <paramref name="language"/> (see <see cref="SoftPalette.FontFamilies"/>).</summary>
-    internal static string FontFamilies(string language) => SoftPalette.FontFamilies(language);
+    internal static string FontFamilies(string language, bool systemFont = false) => SoftPalette.FontFamilies(language, systemFont);
 
     private static void ApplyCustomOverrides(IResourceDictionary dictionary, IReadOnlyDictionary<string, string>? colors)
     {

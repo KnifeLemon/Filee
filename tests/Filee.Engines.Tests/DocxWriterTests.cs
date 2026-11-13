@@ -355,4 +355,24 @@ public class DocxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         if (await ConvertibleByLibreOfficeAsync(fx, written) is { } pages)
             Assert.True(pages >= 3);
     }
+
+    [Fact]
+    public void A_write_that_fails_leaves_no_temporary_file()
+    {
+        // A picture another program holds open when the package is written: the write fails, and leaves nothing.
+        var dir = fx.NewFolder();
+        var picture = Path.Combine(dir, "locked.png");
+        using (var image = new MagickImage(MagickColors.Red, 2, 2))
+            image.Write(picture, MagickFormat.Png);
+        var paragraph = new HParagraph();
+        paragraph.Inlines.Add(new HImage(picture) { Width = 1000, Height = 1000 });
+        var section = new HSection();
+        section.Blocks.Add(paragraph);
+        var document = new HDocument();
+        document.Sections.Add(section);
+
+        using (new FileStream(picture, FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.ThrowsAny<IOException>(() => DocxWriter.Write(document, Path.Combine(dir, "report.docx")));
+        Assert.Equal([picture], Directory.GetFiles(dir));
+    }
 }

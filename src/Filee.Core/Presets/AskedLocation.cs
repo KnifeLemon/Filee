@@ -22,12 +22,14 @@ public static class AskedLocation
     /// The name the save dialog suggests for <paramref name="source"/>: the preset's name pattern and renames, and the
     /// extension the result gets.
     /// </summary>
-    public static string SuggestedName(Preset preset, string presetName, string source)
+    public static string SuggestedName(Preset preset, string presetName, string source, bool sourceIsFolder = false)
     {
-        var tokens = new OutputPathResolver.Tokens(source, presetName, 1, DateTime.Now);
+        if (preset.IsCopyToFolder)
+            return Path.GetFileName(Path.TrimEndingDirectorySeparator(source));
+        var tokens = new OutputPathResolver.Tokens(source, presetName, 1, DateTime.Now, sourceIsFolder);
         var name = OutputPathResolver.Sanitize(
             OutputPathResolver.Rename(OutputPathResolver.ExpandPattern(preset.Output.FileNamePattern, tokens), preset.Output.Renames),
-            FormatRegistry.NameWithoutExtension(source));
+            sourceIsFolder ? Path.GetFileName(Path.TrimEndingDirectorySeparator(source)) : FormatRegistry.NameWithoutExtension(source));
         var extension = Extension(preset, source);
         return extension.Length == 0 ? name : $"{name}.{extension}";
     }
@@ -37,8 +39,12 @@ public static class AskedLocation
     /// source", empty for a folder ("Extract"). The preset is the one that runs, with Settings › General applied.
     /// </summary>
     public static string Extension(Preset preset, string source) =>
-        preset.Output.ZipResult ? "zip"
-        : preset.TargetFormat == BuiltInData.SameAsSource ? FormatRegistry.ExtensionOf(source)
+        preset.IsCopyToFolder ? Path.GetExtension(source).TrimStart('.')
+        : preset.Output.ZipResult ? "zip"
+        : preset.TargetFormat == BuiltInData.SameAsSource
+            ? preset.CropsVideo && FormatRegistry.Detect(source) is { } format && VideoCrop.TargetFor(format.Id) != format.Id
+                ? FormatRegistry.Get(VideoCrop.TargetFor(format.Id)).PrimaryExtension
+                : FormatRegistry.ExtensionOf(source)
         : FormatRegistry.FindById(preset.TargetFormat)?.Extensions.FirstOrDefault() ?? "";
 
     /// <summary>

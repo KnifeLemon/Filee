@@ -329,8 +329,8 @@ public class ToolbarPageTests
 
             Assert.Equal("", vm.PaletteSearch);
             Assert.Equal(PaletteTab.Image, vm.SelectedTab!.Id);
-            // After "Edit" of the PDF donut, the one built-in group not on the images donut.
-            Assert.Equal(["pdf-edit", "test-new-group"], vm.VisiblePalette.Take(2).Select(c => c.PresetId));
+            // The unplaced built-in groups ("Crop video" is on the video donut only) stay available ahead of the new one.
+            Assert.Equal(["pdf-edit", "pdf-nup", "flip", "crop-video", "test-new-group"], vm.VisiblePalette.Take(5).Select(c => c.PresetId));
             // Up with the groups at the top, above every conversion: not below ~80 presets.
             var chips = vm.VisiblePalette.Select(c => store.FindPreset(c.PresetId)!).ToList();
             var at = chips.FindIndex(p => p.Id == "test-new-group");
@@ -760,9 +760,9 @@ public class PresetAvailabilityTests
             vm.Palette.Single(c => c.PresetId == "test-mp4").Reason);
         Assert.DoesNotContain(vm.Palette, c => c.PresetId == "test-wav");
         var warning = Assert.Single(log.Warnings);
+        Assert.Contains("test-pack", warning.Message);
         Assert.Equal(LogLevel.Warning, warning.Level);
         Assert.IsType<InvalidOperationException>(warning.Exception);
-        Assert.Contains("test-pack", warning.Message);
         Assert.DoesNotContain(vm.Palette, c => c.PresetId == "zip-all");
     }
 
@@ -1097,6 +1097,64 @@ public class PresetAvailabilityTests
 
 public class ToolbarPaletteModelTests
 {
+    [AvaloniaFact]
+    public void The_palette_leaves_out_turned_off_fields_on_every_tab_and_in_search()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var original = f.Store.Settings.TurnedOffFields.ToList();
+        f.Store.Settings.TurnedOffFields = ["font"];
+        Window? window = null;
+        try
+        {
+            using var vm = f.PageWithPalette();
+            var off = f.Store.Settings.TurnedOffFieldSet();
+            void AssertShown(IEnumerable<PaletteChip> chips) =>
+                Assert.All(chips, c => Assert.True(FormatFields.IsShown(f.Preset(c.PresetId).TargetFormat, off), c.PresetId));
+            AssertShown(vm.Palette);
+            AssertShown(vm.VisiblePalette);
+            Assert.Contains(vm.Palette, c => c.PresetId == "to-eot");
+            foreach (var tab in vm.Tabs.ToList())
+            {
+                vm.SelectedTab = tab;
+                AssertShown(vm.VisiblePalette);
+            }
+            vm.PaletteSearch = "WOFF";
+            AssertShown(vm.Palette);
+            AssertShown(vm.VisiblePalette);
+            vm.PaletteSearch = "";
+            vm.SelectedTab = vm.Tabs.Single(t => t.Id == PaletteTab.All);
+            Dispatcher.UIThread.RunJobs();
+            AssertShown(vm.VisiblePalette);
+            Assert.Contains(vm.VisiblePalette, c => c.PresetId == "to-eot");
+
+            window = new Window { Width = 1080, Height = 820, Content = new ToolbarPage { DataContext = vm } };
+            window.Show();
+            RenderTests.Pump();
+            IEnumerable<PaletteChip> RenderedChips() => window.GetVisualDescendants().OfType<Border>()
+                .Select(b => b.DataContext).OfType<PaletteChip>();
+            AssertShown(RenderedChips());
+            Assert.Contains(RenderedChips(), c => c.PresetId == "to-eot");
+            RenderTests.Save(window, "toolbar-palette-font-off.png");
+            vm.SelectedTab = vm.Tabs.Single(t => t.Id == PaletteTab.Font);
+            RenderTests.Pump();
+            RenderTests.Save(window, "toolbar-palette-font-tab-off.png");
+            f.Store.Settings.TurnedOffFields.Clear();
+            vm.PaletteSearch = "WOFF";
+            vm.PaletteSearch = "";
+            vm.SelectedTab = vm.Tabs.Single(t => t.Id == PaletteTab.All);
+            RenderTests.Pump();
+            Assert.Contains(RenderedChips(), c => c.PresetId == "to-woff2");
+            vm.SelectedTab = vm.Tabs.Single(t => t.Id == PaletteTab.Font);
+            RenderTests.Pump();
+            RenderTests.Save(window, "toolbar-palette-font-tab-on.png");
+        }
+        finally
+        {
+            window?.Close();
+            f.Store.Settings.TurnedOffFields = original;
+        }
+    }
+
     private static ToolbarProfile Profile(string id, string extension) => new()
     {
         Id = id,

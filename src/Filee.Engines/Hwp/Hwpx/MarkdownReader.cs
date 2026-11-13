@@ -5,8 +5,10 @@
 // task lists, block quotes, pipe and grid tables with spans, definition lists, links, images, footnotes and math.
 // The YAML front matter's "title", "subtitle", "author" and "date" become the document's metadata. Raw HTML is
 // skipped, except <br>. For the PPTX writer, blocks keep what they were (HBlockRole): code lines, thematic breaks and
-// the content of Pandoc-style "::: notes" containers (speaker notes).
+// the content of Pandoc-style "::: notes" containers (speaker notes). A code block is one shaded box in a monospace
+// font: a borderless one-column table with a row per line, so it can break across pages.
 
+using Filee.Engines.Infrastructure;
 using Markdig;
 using Markdig.Extensions.CustomContainers;
 using Markdig.Extensions.DefinitionLists;
@@ -28,6 +30,10 @@ internal sealed class MarkdownReader
     /// <summary>Indent per block quote level (same as PandocAstReader).</summary>
     private const int QuoteIndent = 2000;
 
+    /// <summary>A block quote's bar and background (#1098): the indent alone doesn't read as a quote on a page.</summary>
+    private static readonly HBorder QuoteBar = new(HBorderStyle.Solid, 1, "#B8B8C0");
+    private const string QuoteFill = "#F7F7F9";
+
     /// <summary>GitHub-style Markdown plus the common extensions (tables, footnotes, task lists, math, …).</summary>
     public static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -36,23 +42,44 @@ internal sealed class MarkdownReader
 
     private static readonly HCharFormat Plain = default;
     private static readonly HCharFormat CodeFormat = new(Shade: "#F1F0F5");
+
+    /// <summary>Monospace fonts for code blocks, the first installed one wins (Windows, macOS, Linux).</summary>
+    private static readonly string[] MonospaceFonts = ["Consolas", "Menlo", "DejaVu Sans Mono", "Liberation Mono", "Courier New"];
+
+    private static readonly Lazy<HCharFormat> CodeBlockFormat = new(() =>
+    {
+        var font = MonospaceFonts.FirstOrDefault(f => RhwpFonts.Find(f) is { Usable: true }) ?? "Courier New";
+        return new HCharFormat(Font: font);
+    });
+
+    /// <summary>Padding inside a code box: 2 mm at the sides, 1.5 mm above the first line and below the last.</summary>
+    private const int CodeSidePadding = 567;
+    private const int CodeEndPadding = 425;
     private readonly string _baseFolder;
     private readonly string? _resourceRoot;
 
-    private MarkdownReader(string baseFolder, string? resourceRoot)
+    /// <summary>A folder of pictures Filee wrote itself (a notebook's attachments), allowed besides the resource root.</summary>
+    private readonly string? _mediaFolder;
+
+    private MarkdownReader(string baseFolder, string? resourceRoot, string? mediaFolder = null)
     {
         _baseFolder = baseFolder;
         _resourceRoot = resourceRoot;
+        _mediaFolder = mediaFolder;
     }
 
     /// <summary>Parses Markdown text.</summary>
     /// <param name="markdown">The document text.</param>
     /// <param name="baseFolder">Folder of the Markdown file: relative image paths are resolved against it.</param>
-    /// <param name="resourceRoot">When set, images must be inside this folder (e.g. an unpacked TXTZ book).</param>
-    public static HDocument Read(string markdown, string baseFolder, string? resourceRoot = null)
+    /// <param name="resourceRoot">Folder images must be inside (e.g. an unpacked TXTZ book); default: <paramref name="baseFolder"/>.</param>
+    public static HDocument Read(string markdown, string baseFolder, string? resourceRoot = null) =>
+        Read(markdown, baseFolder, resourceRoot, mediaFolder: null);
+
+    /// <param name="mediaFolder">A folder of pictures Filee wrote itself, which images may name too (file: URLs).</param>
+    internal static HDocument Read(string markdown, string baseFolder, string? resourceRoot, string? mediaFolder)
     {
         var parsed = Markdown.Parse(markdown, Pipeline);
-        var reader = new MarkdownReader(baseFolder, resourceRoot);
+        var reader = new MarkdownReader(baseFolder, resourceRoot, mediaFolder);
         var section = new HSection();
         reader.Blocks(parsed, section.Blocks, new Context());
         var document = new HDocument();
@@ -61,8 +88,11 @@ internal sealed class MarkdownReader
         return document;
     }
 
-    /// <summary>List nesting and quote indentation of the blocks being read, and their role (speaker notes).</summary>
-    private readonly record struct Context(int ListLevel = 0, int Indent = 0, HBlockRole Role = HBlockRole.Body);
+    /// <summary>
+    /// List nesting and indentation of the blocks being read, their role (speaker notes), and whether they are inside a
+    /// block quote.
+    /// </summary>
+    private readonly record struct Context(int ListLevel = 0, int Indent = 0, HBlockRole Role = HBlockRole.Body, bool Quote = false);
 
     // ───────────────────────── Blocks ─────────────────────────
 
@@ -89,13 +119,17 @@ internal sealed class MarkdownReader
                 List(list, output, context);
                 break;
             case QuoteBlock quote:
-                Blocks(quote, output, context with { Indent = context.Indent + QuoteIndent });
+                Blocks(quote, output, context with { Indent = context.Indent + QuoteIndent, Quote = true });
                 break;
             case MathBlock math:
                 CodeLines(math, output, context, Plain with { Italic = true }, HBlockRole.Body);
                 break;
             case CodeBlock code:
-                CodeLines(code, output, context, CodeFormat, HBlockRole.Code);
+                // Speaker notes keep their lines as notes; elsewhere one shaded box of code lines.
+                if (context.Role == HBlockRole.Body)
+                    output.Add(CodeBox(code, context));
+                else
+                    CodeLines(code, output, context, CodeFormat, HBlockRole.Code);
                 break;
             case ThematicBreakBlock:
                 {
@@ -128,7 +162,13 @@ internal sealed class MarkdownReader
     }
 
     private static HParagraph NewParagraph(Context context) =>
-        new() { Format = context.Indent > 0 ? new HParaFormat(Left: context.Indent) : default, Role = context.Role };
+        new()
+        {
+            Format = context.Quote ? new HParaFormat(Left: context.Indent, LeftBar: QuoteBar, Fill: QuoteFill)
+                : context.Indent > 0 ? new HParaFormat(Left: context.Indent)
+                : default,
+            Role = context.Role,
+        };
 
     /// <summary>Pandoc's speaker notes: <c>::: notes</c> or <c>::: {.notes}</c>.</summary>
     private static bool IsNotes(CustomContainer container) =>
@@ -164,6 +204,39 @@ internal sealed class MarkdownReader
                 paragraph.Inlines.Add(new HText(line, format));
             output.Add(paragraph);
         }
+    }
+
+    /// <summary>
+    /// A code block as one shaded box (#406): before, each line was a paragraph with shaded text, which left a strip per
+    /// line, gaps between them and none on empty lines.
+    /// </summary>
+    private static HTable CodeBox(LeafBlock code, Context context)
+    {
+        var lines = code.Lines.ToString().Replace("\r\n", "\n").Split('\n');
+        // The sides are padded by the table; the first line's cell is padded above and the last one's below.
+        var single = lines.Length == 1;
+        var table = new HTable
+        {
+            ColumnCount = 1,
+            Indent = context.Indent,
+            Borders = HBorders.Empty,
+            CellMargin = new HInsets(CodeSidePadding, CodeSidePadding, single ? CodeEndPadding : 0, single ? CodeEndPadding : 0),
+        };
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var cell = new HCell { Fill = CodeFormat.Shade, Borders = HBorders.Empty };
+            if (!single && (i == 0 || i == lines.Length - 1))
+                cell.CellMargin = new HInsets(CodeSidePadding, CodeSidePadding, i == 0 ? CodeEndPadding : 0, i == 0 ? 0 : CodeEndPadding);
+            // Code lines for the PPTX writer and the renderer, inside the box the other writers write.
+            var paragraph = new HParagraph { Role = HBlockRole.Code };
+            if (lines[i].Length > 0)
+                paragraph.Inlines.Add(new HText(lines[i], CodeBlockFormat.Value));
+            cell.Blocks.Add(paragraph);
+            var row = new HRow();
+            row.Cells.Add(cell);
+            table.Rows.Add(row);
+        }
+        return table;
     }
 
     private static HNumbering Numbering(ListBlock list)
@@ -382,7 +455,8 @@ internal sealed class MarkdownReader
 
     private HImage? Image(LinkInline image)
     {
-        var path = ResolveImage(image.Url, _baseFolder, _resourceRoot);
+        var path = ResolveImage(image.Url, _baseFolder, _resourceRoot)
+                   ?? (_mediaFolder is null ? null : DocumentFiles.Find(image.Url, _baseFolder, _mediaFolder));
         if (path is null)
             return null; // remote or missing image: skip rather than produce a broken reference
 
@@ -396,24 +470,12 @@ internal sealed class MarkdownReader
         };
     }
 
-    /// <summary>Local image path of a Markdown image target, or null for remote / missing images.</summary>
-    internal static string? ResolveImage(string? target, string baseFolder, string? resourceRoot = null)
-    {
-        if (string.IsNullOrWhiteSpace(target) || target.Contains("://", StringComparison.Ordinal) && !target.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-            return null;
-        try
-        {
-            var path = target.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
-                ? new Uri(target).LocalPath
-                : Uri.UnescapeDataString(target);
-            var candidate = Path.IsPathRooted(path) ? path : Path.Combine(baseFolder, path);
-            return HtmlReader.InsideFolder(candidate, resourceRoot) && File.Exists(candidate) ? Path.GetFullPath(candidate) : null;
-        }
-        catch (Exception ex) when (ex is ArgumentException or UriFormatException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
-    }
+    /// <summary>
+    /// Local image path of a Markdown image target, or null for remote / missing images and images outside
+    /// <paramref name="resourceRoot"/> (default: <paramref name="baseFolder"/>, see <see cref="DocumentFiles"/>).
+    /// </summary>
+    internal static string? ResolveImage(string? target, string baseFolder, string? resourceRoot = null) =>
+        DocumentFiles.Find(target, baseFolder, resourceRoot ?? baseFolder);
 
     // ───────────────────────── Helpers ─────────────────────────
 

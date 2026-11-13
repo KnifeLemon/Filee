@@ -48,6 +48,7 @@ internal sealed partial class HwpxWriter
     /// <param name="template">Reference HWPX supplying styles and the default page; the built-in blank.hwpx when null.</param>
     public static void Write(HDocument document, string outputPath, Stream? template = null)
     {
+        Nesting.Limit(document); // the writer recurses per table, text box and note level
         using var templateStream = template ?? OpenBuiltInTemplate();
         using var buffer = new MemoryStream();
         templateStream.CopyTo(buffer);
@@ -73,68 +74,77 @@ internal sealed partial class HwpxWriter
     {
         var header = SerializeHeader(sections.Count);
         var temp = outputPath + ".tmp";
-        using (var file = File.Create(temp))
-        using (var output = new ZipArchive(file, ZipArchiveMode.Create))
+        try
         {
-            // OCF rule: "mimetype" first and stored uncompressed.
-            WriteText(output, "mimetype", ReadEntry(reference, "mimetype"), CompressionLevel.NoCompression);
-
-            foreach (var entry in reference.Entries)
+            using (var file = File.Create(temp))
+            using (var output = new ZipArchive(file, ZipArchiveMode.Create))
             {
-                if (entry.FullName == "mimetype" || entry.FullName.EndsWith('/'))
-                    continue;
-                switch (entry.FullName)
+                // OCF rule: "mimetype" first and stored uncompressed.
+                WriteText(output, "mimetype", ReadEntry(reference, "mimetype"), CompressionLevel.NoCompression);
+
+                foreach (var entry in reference.Entries)
                 {
-                    case "Contents/section0.xml":
-                        for (var i = 0; i < sections.Count; i++)
-                            WriteText(output, $"Contents/section{i}.xml", sections[i]);
-                        break;
-                    case "Contents/header.xml":
-                        WriteText(output, entry.FullName, header);
-                        break;
-                    case "Contents/content.hpf":
-                        WriteText(output, entry.FullName, BuildManifest(ReadEntry(reference, entry.FullName), sections.Count, title));
-                        break;
-                    case "META-INF/container.rdf":
-                        WriteText(output, entry.FullName, BuildRdf(ReadEntry(reference, entry.FullName), sections.Count));
-                        break;
-                    case "Preview/PrvText.txt":
-                        WriteText(output, entry.FullName, PreviewText());
-                        break;
-                    default:
-                        using (var source = entry.Open())
-                        using (var target = output.CreateEntry(entry.FullName, CompressionLevel.Optimal).Open())
-                            source.CopyTo(target);
-                        break;
+                    if (entry.FullName == "mimetype" || entry.FullName.EndsWith('/'))
+                        continue;
+                    switch (entry.FullName)
+                    {
+                        case "Contents/section0.xml":
+                            for (var i = 0; i < sections.Count; i++)
+                                WriteText(output, $"Contents/section{i}.xml", sections[i]);
+                            break;
+                        case "Contents/header.xml":
+                            WriteText(output, entry.FullName, header);
+                            break;
+                        case "Contents/content.hpf":
+                            WriteText(output, entry.FullName, BuildManifest(ReadEntry(reference, entry.FullName), sections.Count, title));
+                            break;
+                        case "META-INF/container.rdf":
+                            WriteText(output, entry.FullName, BuildRdf(ReadEntry(reference, entry.FullName), sections.Count));
+                            break;
+                        case "Preview/PrvText.txt":
+                            WriteText(output, entry.FullName, PreviewText());
+                            break;
+                        default:
+                            using (var source = entry.Open())
+                            using (var target = output.CreateEntry(entry.FullName, CompressionLevel.Optimal).Open())
+                                source.CopyTo(target);
+                            break;
+                    }
+                }
+
+                foreach (var (id, path, extension) in _images)
+                {
+                    var ext = HwpImageTypes.Contains(extension) ? extension : "png";
+                    using var target = output.CreateEntry($"BinData/{id}.{ext}", CompressionLevel.Optimal).Open();
+                    if (ext == extension)
+                    {
+                        using var source = File.OpenRead(path);
+                        source.CopyTo(target);
+                    }
+                    else if (Metafile.IsMetafile(path))
+                    {
+                        // EMF / WMF → PNG with Filee's own metafile renderer, on every platform (ImageMagick reads them only
+                        // through GDI+ on Windows).
+                        using var frames = ImageReader.Read(path, Metafile.Detect(Head(path)) == MetafileFormat.Emf ? "emf" : "wmf", new Preset());
+                        frames[0].Write(target, MagickFormat.Png);
+                    }
+                    else
+                    {
+                        // WEBP, TIFF, SVG ... → PNG, which 한글 always displays.
+                        using var image = new MagickImage(path);
+                        DdsChannelOrder.Correct(path, image);
+                        image.Write(target, MagickFormat.Png);
+                    }
                 }
             }
-
-            foreach (var (id, path, extension) in _images)
-            {
-                var ext = HwpImageTypes.Contains(extension) ? extension : "png";
-                using var target = output.CreateEntry($"BinData/{id}.{ext}", CompressionLevel.Optimal).Open();
-                if (ext == extension)
-                {
-                    using var source = File.OpenRead(path);
-                    source.CopyTo(target);
-                }
-                else if (Metafile.IsMetafile(path))
-                {
-                    // EMF / WMF → PNG with Filee's own metafile renderer, on every platform (ImageMagick reads them only
-                    // through GDI+ on Windows).
-                    using var frames = ImageReader.Read(path, Metafile.Detect(Head(path)) == MetafileFormat.Emf ? "emf" : "wmf", new Preset());
-                    frames[0].Write(target, MagickFormat.Png);
-                }
-                else
-                {
-                    // WEBP, TIFF, SVG ... → PNG, which 한글 always displays.
-                    using var image = new MagickImage(path);
-                    DdsChannelOrder.Correct(path, image);
-                    image.Write(target, MagickFormat.Png);
-                }
-            }
+            File.Move(temp, outputPath, overwrite: true);
         }
-        File.Move(temp, outputPath, overwrite: true);
+        finally
+        {
+            // A write that fails (a picture that can't be read) leaves no half-written file behind.
+            if (File.Exists(temp))
+                File.Delete(temp);
+        }
     }
 
     /// <summary>The first bytes of a file, enough to tell EMF from WMF.</summary>

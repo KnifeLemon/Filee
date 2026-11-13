@@ -20,7 +20,10 @@ Each component remains under its own license.
 | Svg.Skia (incl. Svg, ShimSkiaSharp, ExCSS; text shaping in `Filee.Engines/Vector/OutlinedTextPlayback.cs` adapted from it) | MIT | https://github.com/wieslawsoltes/Svg.Skia |
 | HarfBuzzSharp | MIT | https://github.com/mono/SkiaSharp |
 | SharpCompress (in-process ZIP, 7z and RAR unpacking; bzip2, xz, LZMA and zstd decompression, also for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
+| DiscUtils.Iso9660 (including DiscUtils.Core and DiscUtils.Streams; ISO creation) | MIT | https://github.com/DiscUtils/DiscUtils |
+| QRCoder | MIT | https://github.com/codebude/QRCoder |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
+| ExifTool (optional engine, downloaded on request: the Metadata tool reads and writes with it) | Perl's licence (Artistic or GPL), separate program | https://exiftool.org |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
 | ExcelDataReader | MIT | https://github.com/ExcelDataReader/ExcelDataReader |
 | PdfPig (PDF text, layout and pictures) | Apache-2.0 | https://github.com/UglyToad/PdfPig |
@@ -37,6 +40,7 @@ Each component remains under its own license.
 | AngleSharp | MIT | https://github.com/AngleSharp/AngleSharp |
 | pypandoc-hwpx (Pandoc AST mapping and package layout in `Filee.Engines/Hwp/Hwpx`, incl. the `blank.hwpx` reference document) | MIT, Copyright (c) 2024 pypandoc-hwpx Contributors | https://github.com/msjang/pypandoc-hwpx |
 | Microsoft.Extensions.* | MIT | https://github.com/dotnet/runtime |
+| System.Formats.Nrbf (reads Paint.NET .pdn files) | MIT | https://github.com/dotnet/runtime |
 | cu2qu (fontTools): the cubic-to-quadratic approach followed by `Filee.Engines/Fonts/Cff/CubicToQuadratic.cs` | Apache-2.0, Copyright 2016 Google Inc. | https://github.com/fonttools/fonttools |
 
 libuiohook (the native input hook inside SharpHook) is the fork https://github.com/TolikPylypchuk/libuiohook, licensed
@@ -77,13 +81,23 @@ Downloaded from their official release pages when the user chooses to install th
 | LibreOffice | MPL-2.0 | https://www.libreoffice.org |
 | Pandoc | GPL-2.0-or-later | https://github.com/jgm/pandoc |
 | Ghostscript (conda-forge build) | AGPL-3.0 | https://www.ghostscript.com, https://github.com/conda-forge/ghostscript-feedstock |
-| Microsoft Visual C++ Redistributable (for Ghostscript, conda-forge `vc14_runtime`) | Microsoft Visual C++ Redistributable license | https://github.com/conda-forge/vc-feedstock |
+| Microsoft Visual C++ Redistributable (for Ghostscript and Upscayl, conda-forge `vc14_runtime` and `vcomp14`) | Microsoft Visual C++ Redistributable license | https://github.com/conda-forge/vc-feedstock |
 | FFmpeg 9.0.2 (gyan.dev "full_build-shared" Windows build; ffmpeg.exe, ffprobe.exe and their libraries, incl. x264, x265, libvpx, LAME, Opus, Vorbis, Theora, OpenCORE AMR) | GPL-3.0-or-later (the build is configured with `--enable-gpl --enable-version3`); FFmpeg itself LGPL-2.1-or-later | https://ffmpeg.org, build: https://www.gyan.dev/ffmpeg/builds/ (source: https://github.com/GyanD/codexffmpeg) |
 | calibre (ebook-convert) | GPL-3.0 | https://calibre-ebook.com |
 | Tesseract OCR 5.4 (UB Mannheim Windows build, with Leptonica and the MinGW libraries it ships; their notices are in its `doc` folder) | Apache-2.0 (Tesseract); Leptonica BSD-2-Clause; others as listed in the build | https://github.com/tesseract-ocr/tesseract, build: https://github.com/UB-Mannheim/tesseract |
 | Tesseract language data (tessdata_fast 4.1.0), downloaded per language when used | Apache-2.0 | https://github.com/tesseract-ocr/tessdata_fast |
 | whisper.cpp (whisper-cli.exe Windows build) | MIT | https://github.com/ggml-org/whisper.cpp |
 | ggml Whisper base model (`ggml-base.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
+| upscayl-bin (AI super-resolution binary) | AGPL-3.0 | https://github.com/upscayl/upscayl-ncnn |
+| NMKD Siax (`4x_NMKD-Siax_200k`, nmkd) | WTFPL | https://github.com/upscayl/custom-models |
+| NMKD Superscale (`4x_NMKD-Superscale-SP_178000_G`, nmkd) | WTFPL | https://github.com/upscayl/custom-models |
+| RealESRGAN General (`RealESRGAN_General_x4_v3`, Xintao Wang) | BSD-3-Clause | https://github.com/xinntao/Real-ESRGAN |
+| RealESRGAN General WDN (`RealESRGAN_General_WDN_x4_v3`, Xintao Wang) | BSD-3-Clause | https://github.com/xinntao/Real-ESRGAN |
+| 4xLSDIR (`4xLSDIR`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-LSDIR |
+| 4xLSDIRplusC (`4xLSDIRplusC`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-LSDIRplusC |
+| 4xLSDIRCompactC3 (`4xLSDIRCompactC3`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-LSDIRCompactC3 |
+| 4xNomos8kSC (`4xNomos8kSC`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-Nomos8kSC |
+| 4xHFA2k (`4xHFA2k`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-HFA2k |
 
 These programs run as separate processes. Their source code is available from the linked projects.
 
@@ -129,7 +143,7 @@ Apple Inc., and others, https://github.com/unicode-org/icu/blob/main/LICENSE).
 
 | Component | License | Project |
 |---|---|---|
-| Noto Sans, Noto Sans Arabic, Noto Sans JP, Noto Sans KR, Noto Sans SC, Noto Sans Devanagari, Noto Sans Thai | SIL Open Font License 1.1 | https://github.com/notofonts |
+| Noto Sans, Noto Sans Arabic, Noto Sans JP, Noto Sans KR, Noto Sans SC, Noto Sans Devanagari, Noto Sans Thai, Noto Sans Bengali | SIL Open Font License 1.1 | https://github.com/notofonts |
 | Test fonts in `tests/Filee.Engines.Tests/Fonts` (subsets of Noto Sans and Noto Sans KR; not shipped) | SIL Open Font License 1.1 | see `OFL.txt` in that folder |
 | Material Design Icons (Pictogrammers) | Apache-2.0 | https://pictogrammers.com |
 | Simple Icons 16.35.0 (GitHub Sponsors, Patreon, Ko-fi and PayPal logos in the Sponsor window) | CC0-1.0 | https://simpleicons.org |

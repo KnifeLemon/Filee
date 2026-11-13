@@ -4,7 +4,6 @@
 
 using System.Globalization;
 using System.Text;
-using System.Text.Json.Nodes;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
 using Filee.Engines.Hwp.Binary;
@@ -24,8 +23,6 @@ namespace Filee.Engines.Hwp.Hwpx;
 /// <summary>Registry of document readers: format id → reader.</summary>
 internal static class DocumentReaders
 {
-    private static readonly TimeSpan PandocTimeout = TimeSpan.FromMinutes(2);
-
     /// <summary>
     /// Readers built into Filee: (input file, folder for extracted pictures) → document. Office Open XML variants
     /// (macro-enabled files, templates, slide shows) share the reader of their family.
@@ -160,36 +157,10 @@ internal static class DocumentReaders
     private static async Task<HDocument> ReadWithPandocAsync(string path, string pandocReader, string workDirectory, string media, CancellationToken cancellationToken)
     {
         var pandoc = PandocConverter.Locate() ?? throw new InvalidOperationException("Pandoc was not found.");
-        var json = Path.Combine(workDirectory, $"ast-{Guid.NewGuid():N}.json");
-        var inputFolder = Path.GetDirectoryName(Path.GetFullPath(path))!;
-
-        // Working directory = the input's folder, so relative image paths in HTML and LaTeX resolve.
-        var result = await ProcessRunner.RunAsync(pandoc,
-            [path, "-f", pandocReader, "-t", "json", "--extract-media=" + media, "-o", json],
-            PandocTimeout, cancellationToken, workingDirectory: inputFolder);
-        if (!File.Exists(json))
-            throw new InvalidOperationException($"Pandoc failed (exit {result.ExitCode}). {result.StandardError.Trim()}");
-        var ast = JsonNode.Parse(await File.ReadAllTextAsync(json, cancellationToken))
-                  ?? throw new InvalidDataException("Pandoc produced an empty document.");
-        return PandocAstReader.Read(ast, target => ResolveImage(target, inputFolder));
-    }
-
-    /// <summary>Images extracted by Pandoc have absolute paths; HTML may use paths relative to the input.</summary>
-    private static string? ResolveImage(string target, string inputFolder)
-    {
-        if (string.IsNullOrWhiteSpace(target) || target.Contains("://", StringComparison.Ordinal))
-            return null;
-        var path = Uri.UnescapeDataString(target);
-        foreach (var candidate in new[] { path, Path.Combine(inputFolder, path) })
-        {
-            try
-            {
-                if (File.Exists(candidate))
-                    return Path.GetFullPath(candidate);
-            }
-            catch (ArgumentException) { }
-        }
-        return null;
+        var input = Path.GetFullPath(path);
+        var ast = await PandocConverter.ReadAstAsync(pandoc, input, pandocReader, media, workDirectory, cancellationToken);
+        var inputFolder = Path.GetDirectoryName(input)!;
+        return PandocAstReader.Read(ast, target => PandocConverter.Picture(target, inputFolder, media));
     }
 
     // ───────────────────────── Plain text ─────────────────────────

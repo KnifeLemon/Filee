@@ -18,6 +18,7 @@ internal static class Help
                      "With --json, prints the same as JSON (for scripts and other programs).\n",
         "presets" => "Usage: filee presets [--json]\n\nLists the presets saved in Filee (built-in and your own).\n" +
                      "With --json, prints the same as JSON (for scripts and other programs).\n",
+        "engines" => Engines,
         _ => General,
     };
 
@@ -30,6 +31,9 @@ internal static class Help
           filee watch <folder> --to <format> [options]
           filee formats [<format>] [--json]
           filee presets [--json]
+          filee engines [--json]
+          filee engines (install | remove) <engine> [--json]
+          filee engines download <engine> -o <folder> [--json]
           filee help [<command>]
           filee version
 
@@ -38,10 +42,37 @@ internal static class Help
           filee convert *.png --to webp --quality 80 -o converted
           filee convert D:\Scans --recursive --preset to-pdf
           filee watch D:\Inbox --to pdf --move-originals
+          filee engines install pandoc
 
         Presets and engines are the ones in the Filee app. Exit codes: 0 nothing failed (skipped
         files included), 1 some failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to
         convert.
+
+        """;
+
+    private const string Engines = """
+        Usage: filee engines [--json]
+               filee engines install <engine> [--from <file or folder>...] [--json] [--quiet]
+               filee engines download <engine> -o <folder> [--json] [--quiet]
+               filee engines remove <engine> [--json] [--quiet]
+
+        Lists the optional engines of Settings → Engines (LibreOffice, Pandoc, FFmpeg, …), or installs or removes
+        one with the same download and checks as the app. 'remove' only removes what Filee downloaded; your own copy
+        and one found on this computer are left alone.
+
+        Without internet: 'download' saves an engine's files in a folder on a computer with internet, and
+        'install --from' installs them from that folder (or from the files downloaded by hand). The files have to be
+        the ones this version of Filee downloads: each is checked against its SHA-256 before anything is installed.
+
+        In the JSON of the list, "version" is the version Filee downloads, also for an engine whose status is
+        "owncopy" (your own copy or one found on this computer).
+
+        Options:
+              --from <path>      Take the engine's files from this file or folder instead of downloading them
+                                 (can be given more than once)
+          -o, --output <folder>  Where 'download' saves the files
+              --json             Print the result as JSON; progress goes to stderr, one JSON object per line
+              --quiet            Print nothing but errors
 
         """;
 
@@ -55,17 +86,30 @@ internal static class Help
           -p, --preset <preset>  A preset from the app, by id or name (see 'filee presets')
           -o, --output <folder>  Save there instead of next to the sources
           -r, --recursive        Include sub folders
+              --sort <order>     The order files merge in: name, name-desc, modified, modified-desc, created or
+                                 created-desc (default: as given; a folder or wildcard as the file system lists it).
+                                 By name, each folder's files stay together, sub folders first. Where a file has
+                                 no creation date (some Linux file systems), created uses its change or modified date
           -q, --quality <1-100>  Image quality for JPG, WebP, AVIF, …
+              --pages <range>    The pages of PDFs, e.g. 13-55 or 1-3,8,12-15 (default: the preset's)
+              --split-every <n>  PDF to PDF: a file for every n pages, named _p1-50, _p51-100, … (1: one per page).
+                                 With a length (90s, 10m, 1h30m, 1:30:00), video to video: a part for every
+                                 so long, named _part1, _part2, …, copied without encoding again
+              --split-parts <n>  PDF to PDF or video to video: n files of the same length, e.g. 2 for halves
               --overwrite        Replace existing output files (default: add a number)
               --skip             Leave existing output files alone
               --keep-dates       Give converted files the created and modified dates of the originals
               --zip              Save the result of each file as one ZIP (a Shapefile's files together)
-              --json             Print the result as JSON (for scripts and other programs)
+              --json             Print the result as JSON (for scripts and other programs); events go to stderr
               --quiet            Print nothing but errors
+
+        With --json, stdout gets one JSON document when the job is done. While it runs, stderr gets one JSON object per
+        line: {"event":"progress","source":…,"fraction":…} (0 to 1, about every 150 ms while it changes) and
+        {"event":"file",…} as each file is done, with the fields of its entry in "files".
 
         """;
 
-    private static string Watch => FormattableString.Invariant($"""
+    private static string Watch => FormattableString.Invariant($$"""
         Usage: filee watch <folder> (--to <format> | --preset <preset>) [options]
 
         Converts files that land in the folder until Ctrl+C. Files are converted once they are complete (no
@@ -78,10 +122,15 @@ internal static class Help
           -r, --recursive        Also watch sub folders (their files keep the sub folder in the output)
               --move-originals   Move converted sources to <folder>\originals; files already waiting are
                                  converted at start
-              --settle <seconds> How long a file must stay unchanged (default {FolderWatcher.DefaultSettleTime.TotalSeconds})
+              --settle <seconds> How long a file must stay unchanged (default {{FolderWatcher.DefaultSettleTime.TotalSeconds}})
               --keep-dates       Give converted files the created and modified dates of the originals
               --zip              Save the result of each file as one ZIP (a Shapefile's files together)
+              --json             Print events as JSON instead, one object per line (for scripts and other programs)
               --quiet            Print nothing but errors
+
+        With --json, stdout gets nothing but events: {"event":"started",…} with the folder, preset, target and output
+        folder, {"event":"file",…} as each file is done (the fields of 'filee convert --json'), and
+        {"event":"stopped"} on Ctrl+C.
 
         """);
 }

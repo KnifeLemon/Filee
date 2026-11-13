@@ -23,6 +23,7 @@ public class RhwpFontsTests(EngineFixture fx) : IClassFixture<EngineFixture>
         ["Yu Gothic"] = (true, Latin + Han + "日本語のテキスト"),
         ["Segoe UI"] = (true, Latin + Cyrillic),
         ["Times New Roman"] = (true, Latin + Cyrillic),
+        ["Noto Sans"] = (true, Latin + Cyrillic), // rhwp has no width table for it
         ["思源宋体 VF Medium"] = (false, Latin + Han),
     };
 
@@ -39,8 +40,25 @@ public class RhwpFontsTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var plan = Plan("改造我们的学习 这是一个测试文档。", ("HANJA", "맑은 고딕"), ("LATIN", "맑은 고딕"), ("HANJA", "함초롬바탕"));
 
         Assert.Equal("Microsoft YaHei", plan[("HANJA", "맑은 고딕")]); // sans for 고딕
-        Assert.Equal("Microsoft YaHei", plan[("LATIN", "맑은 고딕")]);
+        Assert.Equal("Segoe UI", plan[("LATIN", "맑은 고딕")]); // English in a Latin font rhwp measures (#1207)
         Assert.Equal("SimSun", plan[("HANJA", "함초롬바탕")]);          // serif for 바탕
+    }
+
+    [Fact]
+    public void Latin_slot_of_chinese_and_japanese_text_gets_a_latin_font_rhwp_measures()
+    {
+        // Issue #1207: rhwp has no widths for Microsoft YaHei and set English in it 0.5 em apart, stretched.
+        const string chinese = "这是一个测试文档 English words";
+        Assert.Equal("Times New Roman", Plan(chinese, ("LATIN", "함초롬바탕"))[("LATIN", "함초롬바탕")]);
+        Assert.Equal("Segoe UI", Plan("日本語のテキスト English", ("LATIN", "맑은 고딕"))[("LATIN", "맑은 고딕")]);
+
+        // Without one of the same style the language font stays: not Noto Sans, not a sans for a serif.
+        InstalledFont? Without(string name, params string[] missing) => missing.Contains(name) ? null : Lookup(name);
+        var slots = new[] { ("LATIN", "맑은 고딕"), ("HANJA", "맑은 고딕") };
+        var plan = RhwpFonts.Plan(slots, chinese, name => Without(name, "Segoe UI", "Times New Roman"));
+        Assert.Equal("Microsoft YaHei", plan[("LATIN", "맑은 고딕")]);
+        Assert.Equal("Microsoft YaHei", plan[("HANJA", "맑은 고딕")]);
+        Assert.Equal("SimSun", RhwpFonts.Plan([("LATIN", "함초롬바탕")], chinese, name => Without(name, "Times New Roman"))[("LATIN", "함초롬바탕")]);
     }
 
     [Fact]

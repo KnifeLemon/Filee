@@ -104,6 +104,49 @@ internal static class EquationScript
     private const double MatrixRowGap = 0.3;
     private const double Axis = 0.25;
 
+    // ───────────────────────── Lines ─────────────────────────
+
+    /// <summary>
+    /// An equation wider than <paramref name="width"/> cut into lines before its + - = signs, as Word breaks a long one
+    /// (rhwp draws an equation on one line, past the margin). What doesn't fit or has no such sign stays as it is.
+    /// </summary>
+    /// <param name="width">Width of a line, 0 when it isn't known.</param>
+    public static IReadOnlyList<MathNode> BreakLines(MathNode equation, double width, double size)
+    {
+        var inner = equation;
+        while (inner is MathRow { Items: [MathRow only] })
+            inner = only;
+        if (width <= 0 || inner is not MathRow { Items.Count: > 1 } row || Measure(row, size).Width <= width)
+            return [equation];
+
+        var lines = new List<MathNode>();
+        var line = new List<MathNode>();
+        var lineWidth = 0.0;
+        var pending = new List<MathNode>(); // the items since the last sign
+        var pendingWidth = 0.0;
+        void Flush()
+        {
+            if (line.Count > 0 && lineWidth + pendingWidth > width)
+            {
+                lines.Add(new MathRow(line));
+                (line, lineWidth) = ([], 0);
+            }
+            line.AddRange(pending);
+            lineWidth += pendingWidth;
+            (pending, pendingWidth) = ([], 0);
+        }
+        foreach (var item in row.Items)
+        {
+            if (item is MathSymbol { Text: "+" or "-" or "=" } && pending.Count > 0)
+                Flush();
+            pending.Add(item);
+            pendingWidth += Measure(item, size).Width;
+        }
+        Flush();
+        lines.Add(new MathRow(line));
+        return lines;
+    }
+
     // ───────────────────────── Script ─────────────────────────
 
     /// <summary>The 한글 equation script of <paramref name="node"/>.</summary>

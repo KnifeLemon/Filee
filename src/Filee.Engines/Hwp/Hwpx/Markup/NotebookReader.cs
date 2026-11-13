@@ -173,7 +173,8 @@ internal sealed partial class NotebookReader
                     source = source.Replace("attachment:" + attachment.Name, new Uri(file).AbsoluteUri, StringComparison.Ordinal);
             }
         }
-        var blocks = MarkdownReader.Read(source, _baseFolder).Sections.SelectMany(s => s.Blocks).ToList();
+        // The attachments are written to the media folder, outside the notebook's own: allowed as well.
+        var blocks = MarkdownReader.Read(source, _baseFolder, null, _media).Sections.SelectMany(s => s.Blocks).ToList();
         MarkupBlocks.Count(blocks, _budget);
         if (blocks.Count > 0 && MarkupBlocks.IsCode(blocks[0]))
             MarkupBlocks.SeparateCode(_blocks, _budget);

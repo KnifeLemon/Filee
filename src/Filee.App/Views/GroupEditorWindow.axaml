@@ -3,6 +3,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
+        xmlns:v="using:Filee.App.Views"
         x:Class="Filee.App.Views.GroupEditorWindow"
         x:DataType="vm:GroupEditorViewModel"
         Title="{DynamicResource group.editor_title}"
@@ -10,11 +11,22 @@
         Width="480" Height="560" MinWidth="400" MinHeight="420"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
+  <Window.Styles>
+    <!-- The member rows are full-width chips: the shared chip's hover scale would grow them past the card's edges and cut
+         them off at both sides, so here they only get the hover tint. They aren't dragged either (the arrows reorder
+         them), so a row shows the normal arrow (set on the row itself below) and only its icon buttons show a hand. -->
+    <Style Selector="Border.chip:pointerover">
+      <Setter Property="RenderTransform" Value="none" />
+    </Style>
+    <Style Selector="Button.icon">
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+  </Window.Styles>
   <DockPanel>
     <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
             Background="{DynamicResource SurfaceBrush}">
       <DockPanel>
-        <Button x:Name="DeleteButton" DockPanel.Dock="Left" Classes="ghost" Content="{DynamicResource group.delete}" Click="OnDelete"
+        <Button x:Name="DeleteButton" DockPanel.Dock="Left" Classes="ghost danger" Content="{DynamicResource group.delete}" Click="OnDelete"
                 IsVisible="{Binding CanDelete}" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
           <Button Content="{DynamicResource common.cancel}" Click="OnCancel" IsCancel="True" />
@@ -38,6 +50,7 @@
           <TextBlock Classes="caption danger" Text="{Binding NameError}" Margin="2,4,0,0"
                      IsVisible="{Binding NameError, Converter={x:Static ObjectConverters.IsNotNull}}" />
         </StackPanel>
+        <v:SliceLabelFieldsView DataContext="{Binding Labels}" />
 
         <Border Classes="card" Padding="14">
           <StackPanel Spacing="10">
@@ -51,7 +64,7 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:GroupMember">
-                  <Border Classes="chip" HorizontalAlignment="Stretch">
+                  <Border Classes="chip" HorizontalAlignment="Stretch" Cursor="Arrow">
                     <DockPanel>
                       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
                         <Button Classes="icon" ToolTip.Tip="{DynamicResource group.move_up}" AutomationProperties.Name="{DynamicResource group.move_up}"
@@ -62,7 +75,7 @@
                                 Command="{Binding $parent[ItemsControl].((vm:GroupEditorViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}">
                           <PathIcon Width="12" Height="12" Data="{StaticResource Icon.ArrowDown}" />
                         </Button>
-                        <Button Classes="icon" ToolTip.Tip="{DynamicResource group.remove}" AutomationProperties.Name="{DynamicResource group.remove}"
+                        <Button Classes="icon danger" ToolTip.Tip="{DynamicResource group.remove}" AutomationProperties.Name="{DynamicResource group.remove}"
                                 Command="{Binding $parent[ItemsControl].((vm:GroupEditorViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}">
                           <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
                         </Button>

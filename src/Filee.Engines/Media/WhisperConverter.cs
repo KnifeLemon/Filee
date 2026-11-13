@@ -1,4 +1,5 @@
-// Transcribes speech in video and audio using OpenAI Whisper (whisper.cpp) into SRT subtitles.
+// Transcribes speech in video and audio using OpenAI Whisper (whisper.cpp) into SRT subtitles, or into plain text
+// through the subtitle engine's TXT writer (#1274).
 
 using System.Globalization;
 using System.Text;
@@ -6,6 +7,7 @@ using System.Text.RegularExpressions;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Subtitles;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -42,6 +44,8 @@ public sealed partial class WhisperConverter : IConverter
             .. videos.Select(v => new ConversionEdge(v, "srt", Cost: 10, Caption: true)),
             // Audio -> SRT transcription directly
             .. audios.Select(a => new ConversionEdge(a, "srt", Cost: 10, Caption: true)),
+            // The same as plain text, without times
+            .. videos.Concat(audios).Select(m => new ConversionEdge(m, "txt", Cost: 10, Caption: true)),
         ];
     }
 
@@ -123,8 +127,8 @@ public sealed partial class WhisperConverter : IConverter
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        if (step.To != "srt")
-            throw new InvalidOperationException($"Whisper converter only produces SRT subtitles (requested '{step.To}').");
+        if (step.To is not ("srt" or "txt"))
+            throw new InvalidOperationException($"Whisper converter only produces SRT subtitles or plain text (requested '{step.To}').");
 
         var (whisperCli, modelPath) = LocateTools();
         if (whisperCli is null || modelPath is null)
@@ -189,18 +193,37 @@ public sealed partial class WhisperConverter : IConverter
         if (!File.Exists(srtPath) || whisperResult.ExitCode != 0)
             throw new InvalidOperationException($"Whisper failed to transcribe audio (exit code {whisperResult.ExitCode}): {whisperResult.StandardError}");
 
-        var srtContent = await File.ReadAllTextAsync(srtPath, cancellationToken);
-
         cancellationToken.ThrowIfCancellationRequested();
 
-        // 3. Produce SRT output
-        var srtOutput = step.Output.Allocate("srt");
-        if (srtOutput is null)
+        // 3. Produce SRT or TXT output
+        var output = step.Output.Allocate(step.To);
+        if (output is null)
             return [];
 
-        await File.WriteAllTextAsync(srtOutput, srtContent, Encoding.UTF8, cancellationToken);
+        if (step.To == "txt")
+        {
+            await File.WriteAllBytesAsync(output, Transcript(await File.ReadAllBytesAsync(srtPath, cancellationToken)), cancellationToken);
+        }
+        else
+        {
+            var srtContent = await File.ReadAllTextAsync(srtPath, cancellationToken);
+            await File.WriteAllTextAsync(output, srtContent, Encoding.UTF8, cancellationToken);
+        }
         progress?.Report(1.0);
-        return [srtOutput];
+        return [output];
+    }
+
+    /// <summary>The spoken text of Whisper's SRT. Silence gives an SRT without cues, and an empty text like it.</summary>
+    internal static byte[] Transcript(byte[] srt)
+    {
+        try
+        {
+            return SubtitleWriter.Write(SubtitleReader.Read("srt", srt), "txt");
+        }
+        catch (InvalidDataException)
+        {
+            return [];
+        }
     }
 
     private static void ReportWhisperProgress(string line, IProgress<double>? progress)

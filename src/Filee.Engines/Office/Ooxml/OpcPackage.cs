@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Xml;
 using System.Xml.Linq;
 using Filee.Engines.Documents;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office.Ooxml;
 
@@ -17,27 +18,39 @@ internal sealed class OpcPackage : IDisposable
 
     private readonly ZipArchive? _zip;
     private readonly DocumentPackage? _limited;
+    private readonly BoundedXml _xml = new();
     private readonly Dictionary<string, XDocument?> _parts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, OpcRelationship>> _relationships = new(StringComparer.OrdinalIgnoreCase);
 
-    public OpcPackage(string path) => _zip = ZipFile.OpenRead(path);
+    private readonly UnpackLimit _unpack;
+
+    public OpcPackage(string path) : this(path, UnpackLimit.For(path))
+    {
+    }
+
+    /// <summary>A package with another limit on what <see cref="Extract"/> unpacks (for tests).</summary>
+    internal OpcPackage(string path, UnpackLimit unpack)
+    {
+        _zip = ZipFile.OpenRead(path);
+        _unpack = unpack;
+    }
 
     /// <summary>
     /// A package read within <paramref name="limits"/> (part and package sizes, the inflate ratio, XML depth and
     /// elements); a part that isn't well-formed XML is <see cref="InvalidDataException"/>.
     /// </summary>
-    public OpcPackage(string path, DocumentLimits limits) =>
+    public OpcPackage(string path, DocumentLimits limits)
+    {
         _limited = DocumentPackage.Open(path, limits, () => new InvalidDataException("The file is not an Office Open XML package (no ZIP). It may be damaged."));
+        _unpack = UnpackLimit.For(path);
+    }
 
     private ZipArchiveEntry? Entry(string path) => _limited is not null ? _limited.GetEntry(path) : _zip!.GetEntry(path);
 
     private XDocument Load(ZipArchiveEntry entry)
     {
         if (_limited is null)
-        {
-            using var stream = entry.Open();
-            return XDocument.Load(stream, LoadOptions.PreserveWhitespace);
-        }
+            return _xml.Load(entry, LoadOptions.PreserveWhitespace);
         try
         {
             return _limited.LoadXml(entry);
@@ -116,7 +129,13 @@ internal sealed class OpcPackage : IDisposable
             return null;
         Directory.CreateDirectory(folder);
         var file = Path.Combine(folder, $"{Guid.NewGuid():N}{Path.GetExtension(partPath)}");
-        entry.ExtractToFile(file);
+        if (_limited is null)
+            _unpack.Extract(entry, file);
+        else
+        {
+            using var source = _limited.Open(entry);
+            _unpack.Extract(entry, source, file);
+        }
         return file;
     }
 

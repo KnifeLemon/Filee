@@ -138,6 +138,20 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task Spaces_are_as_wide_as_the_font_makes_them()
+    {
+        // 한글's default (and rhwp's) is half a character, twice Calibri's space: lines wrapped early (issue #510).
+        var dir = fx.NewFolder();
+        var txt = Path.Combine(dir, "spaces.txt");
+        await File.WriteAllTextAsync(txt, "two words", TestContext.Current.CancellationToken);
+
+        var shapes = Xml(await ConvertAsync(txt), "Contents/header.xml").Descendants(Hh + "charPr").ToList();
+
+        Assert.NotEmpty(shapes);
+        Assert.All(shapes, shape => Assert.Equal("1", (string?)shape.Attribute("useFontSpace")));
+    }
+
+    [Fact]
     public async Task Html_tables_with_merged_cells_keep_a_consistent_grid()
     {
         var dir = fx.NewFolder();
@@ -262,4 +276,24 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void Hangul_is_measured_wider_than_latin_text() =>
         Assert.True(HwpxWriter.TextWidth("가나다", 1000) > HwpxWriter.TextWidth("abc", 1000) * 1.5);
+
+    [Fact]
+    public void A_write_that_fails_leaves_no_temporary_file()
+    {
+        // A picture another program holds open when the package is written: the write fails, and leaves nothing.
+        var dir = fx.NewFolder();
+        var picture = Path.Combine(dir, "locked.png");
+        using (var image = new MagickImage(MagickColors.Red, 2, 2))
+            image.Write(picture, MagickFormat.Png);
+        var paragraph = new HParagraph();
+        paragraph.Inlines.Add(new HImage(picture) { Width = 1000, Height = 1000 });
+        var section = new HSection();
+        section.Blocks.Add(paragraph);
+        var document = new HDocument();
+        document.Sections.Add(section);
+
+        using (new FileStream(picture, FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.ThrowsAny<IOException>(() => HwpxWriter.Write(document, Path.Combine(dir, "report.hwpx")));
+        Assert.Equal([picture], Directory.GetFiles(dir));
+    }
 }
