@@ -82,9 +82,9 @@ internal sealed class OpfPackage
     public static string RootFile(string bookFolder)
     {
         var container = System.IO.Path.Combine(bookFolder, "META-INF", "container.xml");
-        if (File.Exists(container))
+        if (File.Exists(container) && LoadContainer(container) is { } document)
         {
-            var rootFile = LoadXml(container).Descendants().FirstOrDefault(e => e.Name.LocalName == "rootfile"
+            var rootFile = document.Descendants().FirstOrDefault(e => e.Name.LocalName == "rootfile"
                 && ((string?)e.Attribute("media-type") ?? "application/oebps-package+xml") == "application/oebps-package+xml");
             if ((string?)rootFile?.Attribute("full-path") is { } fullPath && EbookFiles.SafePath(bookFolder, Uri.UnescapeDataString(fullPath)) is { } path && File.Exists(path))
                 return path;
@@ -92,6 +92,19 @@ internal sealed class OpfPackage
         // Broken container: use the first package document in the book.
         return Directory.EnumerateFiles(bookFolder, "*.opf", SearchOption.AllDirectories).FirstOrDefault()
                ?? throw new InvalidDataException("This is not a valid EPUB file: it has no package document (content.opf).");
+    }
+
+    /// <summary>container.xml, or null when it is not well-formed (the book is then searched for its package).</summary>
+    private static XDocument? LoadContainer(string path)
+    {
+        try
+        {
+            return LoadXml(path);
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

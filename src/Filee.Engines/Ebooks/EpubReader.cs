@@ -40,7 +40,15 @@ internal static class EpubReader
     /// <param name="folder">The unpacked book, where pictures embedded in chapters are written too.</param>
     internal static Book ReadPackage(string opfPath, string folder, string format, CancellationToken cancellationToken)
     {
-        var package = OpfPackage.Load(opfPath);
+        OpfPackage package;
+        try
+        {
+            package = OpfPackage.Load(opfPath);
+        }
+        catch (System.Xml.XmlException ex)
+        {
+            throw new InvalidDataException($"The {format}'s package document (.opf) is not well-formed XML.", ex);
+        }
         var chapters = new List<string>();
         foreach (var item in package.Spine)
         {
