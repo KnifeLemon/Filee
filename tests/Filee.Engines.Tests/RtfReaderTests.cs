@@ -1,6 +1,7 @@
 // RTF → document model without Pandoc or LibreOffice. The RTF is written here the way Word, WordPad and LibreOffice
 // write it: code-page text and \u escapes, a style sheet with headings, lists through \listtable, tables with merged
-// and shaded cells, notes, hyperlink and page fields, headers and footers, pictures and page setup.
+// and shaded cells, notes, hyperlink and page fields, headers and footers, pictures and page setup; and hostile files
+// built in code that must be refused at the document limits or read in linear time.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -173,6 +174,113 @@ public class RtfReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Throws<ConversionRefusedException>(() => Read(deep));
         // Unclosed groups and a truncated hex byte still give the text read so far.
         Assert.Equal("Cut", Text(Paragraphs(Read("{\\rtf1 {\\b Cut\\'4")).Single().Inlines));
+    }
+
+    [Fact]
+    public void Rows_without_their_own_definition_share_the_one_before()
+    {
+        var rtf = "{\\rtf1 \\trowd\\cellx1000\\cellx2000\\pard\\intbl a\\cell b\\cell\\row"
+                  + "\\pard\\intbl c\\cell d\\cell\\row"
+                  + "\\cellx3000\\pard\\intbl e\\cell f\\cell g\\cell\\row\\pard After.\\par}";
+
+        var table = Read(rtf).Sections[0].Blocks.OfType<HTable>().Single();
+
+        // The third row adds a cell to the definition it kept: the rows before don't get it.
+        Assert.Equal(3, table.ColumnCount);
+        Assert.Equal([2, 2, 3], table.Rows.Select(r => r.Cells.Count));
+        Assert.Equal(["a", "b", "c", "d", "e", "f", "g"],
+            table.Rows.SelectMany(r => r.Cells).Select(c => Text(c.Blocks.OfType<HParagraph>().Single().Inlines)));
+    }
+
+    [Fact]
+    public void Hostile_tables_are_refused_at_the_cell_budget()
+    {
+        // 16,384 cell edges (about 115 KB) kept by 100,000 rows of one empty cell each.
+        var wide = new StringBuilder("{\\rtf1 \\trowd");
+        for (var i = 1; i <= 16_384; i++)
+            wide.Append("\\cellx").Append(i);
+        wide.Insert(wide.Length, "\\cell\\row ", 100_000).Append('}');
+        var refused = Assert.Throws<ConversionRefusedException>(() => Read(wide.ToString()));
+        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+
+        // Empty cells count too, though they hold no paragraph of the file's.
+        var limits = DocumentLimits.Default with { MaxParagraphs = 1_000 };
+        var cells = "{\\rtf1 \\trowd\\cellx100" + string.Concat(Enumerable.Repeat("\\cell", 2_000)) + "\\row}";
+        Assert.Throws<ConversionRefusedException>(() => RtfReader.Read(Encoding.Latin1.GetBytes(cells), fx.NewFolder(), limits));
+
+        // Rows of other divisions whose edges together pass the column limit.
+        var columns = new StringBuilder("{\\rtf1 ");
+        for (var row = 0; row < 40; row++)
+        {
+            columns.Append("\\trowd");
+            for (var i = 1; i <= 500; i++)
+                columns.Append("\\cellx").Append(row + i * 41);
+            columns.Append("\\pard\\intbl x\\cell\\row");
+        }
+        Assert.Throws<ConversionRefusedException>(() => RtfReader.Read(Encoding.Latin1.GetBytes(columns.Append('}').ToString()), fx.NewFolder(),
+            DocumentLimits.Default with { MaxTableColumns = 10_000 }));
+    }
+
+    [Fact]
+    public void Long_runs_and_style_names_read_in_linear_time()
+    {
+        // A million non-breaking spaces, one control symbol each: one run.
+        var spaces = "{\\rtf1 " + string.Concat(Enumerable.Repeat("\\~", 1_000_000)) + "\\par}";
+        var run = Assert.Single(Paragraphs(Read(spaces)).Single().Inlines.OfType<HText>());
+        Assert.Equal(1_000_000, run.Text.Length);
+
+        // A style name in 400,000 pieces.
+        var name = "{\\rtf1 {\\stylesheet{\\s1 " + string.Concat(Enumerable.Repeat("a\\~", 200_000)) + ";}}\\s1 Styled\\par}";
+        Assert.Equal("Styled", Text(Paragraphs(Read(name)).Single().Inlines));
+    }
+
+    [Fact]
+    public void Many_lists_are_looked_up_by_id()
+    {
+        var rtf = new StringBuilder("{\\rtf1 {\\*\\listtable");
+        for (var i = 1; i <= 50_000; i++)
+            rtf.Append("{\\list{\\listlevel\\levelnfc").Append(i == 50_000 ? 4 : 0).Append("{\\leveltext\\'02\\'00.;}}\\listid").Append(i).Append('}');
+        rtf.Append("}{\\*\\listoverridetable{\\listoverride\\listid50000\\ls1}}");
+        rtf.Insert(rtf.Length, "\\pard\\ls1 Item\\par", 50_000).Append('}');
+
+        var paragraphs = Paragraphs(Read(rtf.ToString()));
+
+        Assert.Equal(50_000, paragraphs.Count);
+        Assert.All(paragraphs, p => Assert.Equal("LATIN_SMALL", p.List!.Numbering.Levels[0].Format));
+        Assert.Same(paragraphs[0].List!.Numbering, paragraphs[^1].List!.Numbering);
+
+        // Tables of fonts, colours, styles and lists stay under the object limit.
+        var colours = "{\\rtf1 {\\colortbl" + new string(';', 2_000) + "}x\\par}";
+        Assert.Throws<ConversionRefusedException>(() =>
+            RtfReader.Read(Encoding.Latin1.GetBytes(colours), fx.NewFolder(), DocumentLimits.Default with { MaxObjects = 1_000 }));
+    }
+
+    [Fact]
+    public void Pictures_claiming_too_many_pixels_are_left_out()
+    {
+        // A PNG header claiming 100,000 × 100,000 pixels.
+        var png = new byte[] { 0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, (byte)'I', (byte)'H', (byte)'D', (byte)'R',
+            0x00, 0x01, 0x86, 0xA0, 0x00, 0x01, 0x86, 0xA0, 8, 6, 0, 0, 0, 0, 0, 0, 0 };
+        var media = fx.NewFolder();
+        var rtf = "{\\rtf1 Before {\\pict\\pngblip\\picwgoal1440\\pichgoal1440 " + Convert.ToHexString(png) + "} after.\\par}";
+
+        var paragraph = Paragraphs(RtfReader.Read(Encoding.Latin1.GetBytes(rtf), media, DocumentLimits.Default)).Single();
+
+        Assert.Empty(paragraph.Inlines.OfType<HImage>());
+        Assert.Equal("Before  after.", Text(paragraph.Inlines));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(media));
+    }
+
+    [Fact]
+    public void Nested_hyperlinks_are_refused_past_the_nesting_limit()
+    {
+        const string Open = "{\\field{\\*\\fldinst HYPERLINK \"https://filee.sh\"}{\\fldrslt ";
+        var nested = "{\\rtf1 " + string.Concat(Enumerable.Repeat(Open + "x", 40)) + new string('}', 80) + "\\par}";
+        Assert.Throws<ConversionRefusedException>(() => Read(nested));
+
+        // Links one after the other leave their level when they close.
+        var many = "{\\rtf1 " + string.Concat(Enumerable.Repeat(Open + "x}}", 100)) + "\\par}";
+        Assert.Equal(100, Paragraphs(Read(many)).Single().Inlines.OfType<HLink>().Count());
     }
 
     [Fact]

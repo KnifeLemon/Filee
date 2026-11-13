@@ -8,7 +8,8 @@
 // Text is decoded with the code page of the font in effect (\fcharset, \cpg) or the document's (\ansicpg), so
 // Korean, Chinese and Japanese RTF from older programs reads right; \uN takes Unicode characters and skips their
 // \ucN fallback. Destinations the reader doesn't know (\*\... and the index, comment and object data groups) are
-// skipped with their content. Group depth and everything built count against DocumentLimits.
+// skipped with their content. Group depth and everything built count against DocumentLimits; the text of a run
+// collects in a StringBuilder until something else follows it, so a long run costs no more than its length.
 
 using System.Globalization;
 using System.Text;
@@ -89,6 +90,9 @@ internal sealed partial class RtfReader
         /// <summary>Called when this group closes: it started a destination.</summary>
         public Action? Closer { get; set; }
 
+        /// <summary>The nesting level of the hyperlink this group opened, left when the group closes.</summary>
+        public DocumentBudget.Level? Link { get; set; }
+
         public Group Clone() => new()
         {
             Dest = Dest,
@@ -124,6 +128,15 @@ internal sealed partial class RtfReader
     private int _red, _green, _blue;
     private int _styleId = -1;
 
+    /// <summary>The text run at the end of an inline list, still collecting text of the same format.</summary>
+    private sealed class TextRun(string text, HCharFormat format)
+    {
+        public StringBuilder Text { get; } = new(text);
+        public HCharFormat Format { get; set; } = format;
+    }
+
+    private readonly Dictionary<List<HInline>, TextRun> _runs = new(ReferenceEqualityComparer.Instance);
+
     // Text bytes waiting to be decoded with the code page they came in.
     private readonly List<byte> _pending = [];
     private int _pendingCodePage;
@@ -144,17 +157,26 @@ internal sealed partial class RtfReader
         _g = new Group { Story = _body };
     }
 
-    public static HDocument Read(string path, string mediaFolder) => Read(File.ReadAllBytes(path), mediaFolder, DocumentLimits.Default);
+    public static HDocument Read(string path, string mediaFolder)
+    {
+        var limits = DocumentLimits.Default;
+        if (new FileInfo(path).Length > limits.MaxPackageBytes)
+            throw TooLarge(limits);
+        return Read(File.ReadAllBytes(path), mediaFolder, limits);
+    }
 
     internal static HDocument Read(byte[] rtf, string mediaFolder, DocumentLimits limits)
     {
         if (rtf.Length > limits.MaxPackageBytes)
-            throw DocumentLimits.Exceeded($"The RTF file is larger than {limits.MaxPackageBytes / (1024 * 1024)} MB.");
+            throw TooLarge(limits);
         if (!rtf.AsSpan().TrimStart(" \t\r\n"u8).StartsWith("{\\rtf"u8))
             throw new InvalidDataException("The file is not an RTF document.");
         System.Text.Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         return new RtfReader(rtf, mediaFolder, limits).Run();
     }
+
+    private static Filee.Core.Conversion.ConversionRefusedException TooLarge(DocumentLimits limits) =>
+        DocumentLimits.Exceeded($"The RTF file is larger than {limits.MaxPackageBytes / (1024 * 1024)} MB.");
 
     private HDocument Run()
     {
@@ -180,7 +202,7 @@ internal sealed partial class RtfReader
                     var closing = _g;
                     _g = _groups.Pop();
                     _skipFallback = 0;
-                    closing.Closer?.Invoke();
+                    CloseGroup(closing);
                     break;
                 case TokenKind.Word when _g.Dest != Dest.Skip:
                     Flush();
@@ -217,12 +239,23 @@ internal sealed partial class RtfReader
         {
             var closing = _g;
             _g = _groups.Pop();
-            closing.Closer?.Invoke();
+            CloseGroup(closing);
         }
         EndParagraph(_body, force: false);
         CloseTable(_body);
+        foreach (var list in _runs.Keys.ToList())
+            EndRun(list);
         ApplyPage();
         return _document;
+    }
+
+    /// <summary>After <paramref name="closing"/> was popped: its destination ends, and so does a hyperlink it opened.</summary>
+    private void CloseGroup(Group closing)
+    {
+        closing.Closer?.Invoke();
+        if (closing.Sink is { } sink && sink != _g.Sink)
+            EndRun(sink);
+        closing.Link?.Dispose();
     }
 
     // ───────────────────────── Control words ─────────────────────────
@@ -503,18 +536,25 @@ internal sealed partial class RtfReader
                 {
                     if (c == ';')
                     {
+                        Definitions(_colors.Count, "colours");
                         _colors.Add(_colors.Count == 0 && _red == 0 && _green == 0 && _blue == 0 ? null : $"#{_red:X2}{_green:X2}{_blue:X2}");
                         _red = _green = _blue = 0;
                     }
                 }
                 break;
             case Dest.StyleSheet:
+                // Only the new text can hold the ';' that ends the name: the text collected before had none.
+                var before = _collected.Length;
                 _collected.Append(text);
-                if (_collected.ToString().IndexOf(';') is >= 0 and var end)
+                if (text.IndexOf(';') is >= 0 and var semicolon)
                 {
-                    var name = _collected.ToString(0, end).Split(',')[0].Trim();
+                    var name = _collected.ToString(0, before + semicolon).Split(',')[0].Trim();
                     if (_styleId >= 0)
+                    {
+                        if (!_styles.ContainsKey(_styleId))
+                            Definitions(_styles.Count, "styles");
                         _styles[_styleId] = (name, _g.Char, _g.Para);
+                    }
                     _collected.Clear();
                     _styleId = -1;
                 }
@@ -539,6 +579,8 @@ internal sealed partial class RtfReader
             }
             if (_fontIndex >= 0)
             {
+                if (!_fonts.ContainsKey(_fontIndex))
+                    Definitions(_fonts.Count, "fonts");
                 var codePage = _fontCodePage > 0 ? _fontCodePage : CharsetCodePage(_fontCharset);
                 var eastAsian = _fontCharset is 128 or 129 or 130 or 134 or 136;
                 _fonts[_fontIndex] = (_collected.ToString().Trim(), codePage, eastAsian);
@@ -606,13 +648,39 @@ internal sealed partial class RtfReader
     {
         var format = Format(_g.Char);
         var inlines = _g.Sink ?? _g.Story.Inlines;
-        if (inlines is [.., HText { } last] && last.GetType() == typeof(HText) && last.Format.SameLayout(format))
-            inlines[^1] = new HText(last.Text + text, format);
-        else
-            inlines.Add(new HText(text, format));
+        if (_runs.TryGetValue(inlines, out var run))
+        {
+            if (run.Format.SameLayout(format))
+            {
+                run.Text.Append(text);
+                run.Format = format;
+                return;
+            }
+            EndRun(inlines);
+        }
+        _runs[inlines] = new TextRun(text, format);
     }
 
-    private void AddInline(HInline inline) => (_g.Sink ?? _g.Story.Inlines).Add(inline);
+    /// <summary>Adds the run still collecting text at the end of <paramref name="inlines"/> to them.</summary>
+    private void EndRun(List<HInline> inlines)
+    {
+        if (_runs.Remove(inlines, out var run))
+            inlines.Add(new HText(run.Text.ToString(), run.Format));
+    }
+
+    private void AddInline(HInline inline)
+    {
+        var inlines = _g.Sink ?? _g.Story.Inlines;
+        EndRun(inlines);
+        inlines.Add(inline);
+    }
+
+    /// <summary>Refuses a font, colour, style or list table with more entries than a document may have objects.</summary>
+    private void Definitions(int count, string what)
+    {
+        if (count >= _budget.Limits.MaxObjects)
+            throw DocumentLimits.Exceeded($"The RTF file defines more than {DocumentLimits.Count(_budget.Limits.MaxObjects)} {what}.");
+    }
 
     private HCharFormat Format(CharProps c)
     {
@@ -659,6 +727,7 @@ internal sealed partial class RtfReader
     /// <summary>Ends the paragraph of <paramref name="story"/>; without <paramref name="force"/>, only one with content.</summary>
     private void EndParagraph(Story story, bool force)
     {
+        EndRun(story.Inlines);
         if (!force && story.Inlines.Count == 0)
             return;
         _budget.Paragraph();
@@ -729,6 +798,7 @@ internal sealed partial class RtfReader
             level.Dispose();
             var note = new HNote(group.Endnote);
             note.Blocks.AddRange(story.Blocks);
+            EndRun(parent);
             parent.Add(note);
         };
     }
@@ -767,6 +837,9 @@ internal sealed partial class RtfReader
             case "HYPERLINK" when LinkTarget(instruction) is { } target:
                 var link = new HLink(target);
                 AddInline(link);
+                // Links in links nest in the writers too: each counts as a level.
+                _g.Link?.Dispose();
+                _g.Link = _budget.Enter();
                 _g.Sink = link.Content;
                 break;
             case "PAGE":
