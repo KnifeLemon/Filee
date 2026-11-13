@@ -25,13 +25,13 @@ public class FormatFieldsTests
     // Every specialist and legacy format.
     private static readonly string[] HiddenWithEverythingOff =
     [
-        "3g2", "3gp", "3mf", "602", "ac3", "adoc", "ai", "amr", "ani", "ape", "arj", "ass", "au", "azw", "azw4", "bik",
-        "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
+        "3g2", "3gp", "3mf", "602", "aab", "ac3", "adoc", "ai", "amr", "ani", "ape", "apks", "arj", "ass", "au", "azw",
+        "azw4", "bik", "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
         "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
         "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "geojson", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
         "hdr", "htmlz", "icns", "ipynb", "it", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
         "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mediawiki", "miff", "mng", "mobi",
-        "mod", "mp2", "mpc", "mrpack", "mxf", "obj", "oeb",
+        "mod", "mp2", "mpc", "mrpack", "mxf", "nupkg", "obj", "oeb",
         "org", "osm", "otf", "pam", "pcd", "pcx", "pdb", "pdn", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
         "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "s3m", "scc", "sda", "sdc", "sdw", "sgi", "shp", "snb", "spx",
         "ssa", "stl", "sub", "swf", "tak", "tar", "tar7z", "tbz2", "tcr", "tex", "textile", "tgz", "tlz", "toml",
@@ -49,9 +49,9 @@ public class FormatFieldsTests
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits"] },
         { "developer", [
-                "ani", "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har", "icns", "jar",
-                "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi", "rpm", "tar", "tar7z",
-                "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
+                "aab", "ani", "apks", "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
+                "icns", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "nupkg", "pam", "pfm", "plist", "ppm", "qoi",
+                "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
             ] },
         { "writing", ["adoc", "cgm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
@@ -76,9 +76,9 @@ public class FormatFieldsTests
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits", "ipynb", "jp2"] },
         { "developer", [
-                "ani", "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
-                "icns", "ipynb", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi",
-                "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
+                "aab", "ani", "apks", "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt",
+                "gz", "har", "icns", "ipynb", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "nupkg", "pam", "pfm",
+                "plist", "ppm", "qoi", "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
             ] },
         { "writing", ["adoc", "cgm", "chm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 97,
-                [FormatGrade.Specialist] = 120,
+                [FormatGrade.Specialist] = 123,
                 [FormatGrade.Legacy] = 52,
             },
             counts);

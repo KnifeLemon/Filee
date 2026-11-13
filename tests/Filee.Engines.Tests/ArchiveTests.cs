@@ -39,6 +39,9 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("zip")]
     [InlineData("jar")]
     [InlineData("zxp")]
+    [InlineData("nupkg")]
+    [InlineData("apks")]
+    [InlineData("aab")]
     [InlineData("7z")]
     [InlineData("rar")]
     [InlineData("tgz")]
@@ -871,5 +874,174 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var output = ZipFile.OpenRead(zip);
         Assert.Equal(expected.Keys.Order(), output.Entries.Where(e => !e.FullName.EndsWith('/')).Select(e => e.FullName).Order());
         Assert.Equal(original, await File.ReadAllBytesAsync(input, Ct));
+    }
+
+    // ──────────────── NuGet and Android packages (issues #1465, #1464) ────────────────
+
+    [Theory]
+    [InlineData("nupkg")]
+    [InlineData("apks")]
+    [InlineData("aab")]
+    public void A_package_is_read_but_never_written(string package)
+    {
+        var planner = fx.Catalog.CreatePlanner(["archive"]);
+        Assert.Null(planner.Plan("zip", package));
+        Assert.Null(planner.Plan("7z", package));
+        Assert.Null(planner.Plan(FormatRegistry.Folder, package));
+    }
+
+    /// <summary>The entries each kind of package holds, laid out as the tool that makes it does.</summary>
+    private static Dictionary<string, byte[]> PackageEntries(string extension) => extension switch
+    {
+        "nupkg" or "snupkg" => new()
+        {
+            ["_rels/.rels"] = Encoding.UTF8.GetBytes("<Relationships/>"),
+            ["Example.Lib.nuspec"] = Encoding.UTF8.GetBytes("<package><metadata><id>Example.Lib</id><description>예제</description></metadata></package>"),
+            ["lib/net8.0/Example.Lib." + (extension == "nupkg" ? "dll" : "pdb")] = Noise(4096, 1),
+            ["package/services/metadata/core-properties/0123456789abcdef.psmdcp"] = Encoding.UTF8.GetBytes("<coreProperties/>"),
+            ["[Content_Types].xml"] = Encoding.UTF8.GetBytes("<Types/>"),
+        },
+        // bundletool's .apks: the splits and a table of contents.
+        "apks" => new()
+        {
+            ["toc.pb"] = Noise(64, 2),
+            ["splits/base-master.apk"] = Apk("base"),
+            ["splits/base-arm64_v8a.apk"] = Apk("arm64"),
+        },
+        // APKPure's .xapk: a manifest, the APKs, the icon and an expansion file.
+        "xapk" => new()
+        {
+            ["manifest.json"] = Encoding.UTF8.GetBytes("{\"package_name\":\"com.example.app\",\"name\":\"예제\"}"),
+            ["com.example.app.apk"] = Apk("base"),
+            ["config.arm64_v8a.apk"] = Apk("arm64"),
+            ["icon.png"] = Noise(256, 3),
+            ["Android/obb/com.example.app/main.1.com.example.app.obb"] = Noise(8192, 4),
+        },
+        // APKMirror's .apkm: info.json and the APKs.
+        "apkm" => new()
+        {
+            ["info.json"] = Encoding.UTF8.GetBytes("{\"pname\":\"com.example.app\"}"),
+            ["base.apk"] = Apk("base"),
+            ["split_config.xxhdpi.apk"] = Apk("xxhdpi"),
+        },
+        // An Android App Bundle: a folder per module and the bundle's config.
+        "aab" => new()
+        {
+            ["BundleConfig.pb"] = Noise(32, 5),
+            ["base/manifest/AndroidManifest.xml"] = Noise(512, 6),
+            ["base/dex/classes.dex"] = Noise(2048, 7),
+            ["base/resources.pb"] = Noise(128, 8),
+            ["base/res/values/strings.xml"] = Encoding.UTF8.GetBytes("<resources><string name=\"app\">예제</string></resources>"),
+            ["META-INF/MANIFEST.MF"] = Encoding.ASCII.GetBytes("Manifest-Version: 1.0\r\n"),
+        },
+        _ => throw new ArgumentOutOfRangeException(nameof(extension)),
+    };
+
+    /// <summary>A small APK (itself a ZIP): it must come out as one file, not unpacked.</summary>
+    private static byte[] Apk(string name)
+    {
+        using var buffer = new MemoryStream();
+        using (var apk = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var manifest = apk.CreateEntry("AndroidManifest.xml").Open())
+                manifest.Write(Noise(256, name.Length));
+            using var dex = apk.CreateEntry("classes.dex").Open();
+            dex.Write(Encoding.UTF8.GetBytes(name));
+        }
+        return buffer.ToArray();
+    }
+
+    private static void WritePackage(string path, Dictionary<string, byte[]> entries)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        foreach (var (name, bytes) in entries)
+        {
+            // APKs and expansion files are stored, as the Android tools write them.
+            var level = name.EndsWith(".apk", StringComparison.Ordinal) || name.EndsWith(".obb", StringComparison.Ordinal)
+                ? CompressionLevel.NoCompression : CompressionLevel.Optimal;
+            using var entry = archive.CreateEntry(name, level).Open();
+            entry.Write(bytes);
+        }
+    }
+
+    [Theory]
+    [InlineData("Example.Lib.1.0.0.nupkg")]
+    [InlineData("Example.Lib.1.0.0.snupkg")]
+    [InlineData("app.apks")]
+    [InlineData("com.example.app.xapk")]
+    [InlineData("com.example.app_1.0-1_minAPI24.apkm")]
+    [InlineData("app-release.aab")]
+    public async Task A_package_extracts_and_converts_to_zip_and_tar_with_every_entry(string fileName)
+    {
+        SkipWithout7Zip();
+        var input = Path.Combine(fx.NewFolder(), fileName);
+        var expected = PackageEntries(Path.GetExtension(fileName).TrimStart('.'));
+        WritePackage(input, expected);
+        var original = await File.ReadAllBytesAsync(input, Ct);
+        var name = Path.GetFileNameWithoutExtension(fileName);
+
+        var folder = (await ConvertOkAsync(input, Extract)).Outputs.Single();
+        foreach (var (entry, bytes) in expected)
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(folder, entry), Ct)); // the APKs stay files
+        Assert.Equal(expected.Count, Directory.GetFiles(folder, "*", SearchOption.AllDirectories).Length);
+
+        var zip = (await ConvertOkAsync(input, new Preset { TargetFormat = "zip" })).Outputs.Single();
+        Assert.Equal(name + ".zip", Path.GetFileName(zip));
+        using (var output = ZipFile.OpenRead(zip))
+            foreach (var (entry, bytes) in expected)
+            {
+                using var stream = output.GetEntry(entry)!.Open();
+                using var copy = new MemoryStream();
+                await stream.CopyToAsync(copy, Ct);
+                Assert.Equal(bytes, copy.ToArray());
+            }
+
+        var tar = (await ConvertOkAsync(input, new Preset { TargetFormat = "tar" })).Outputs.Single();
+        Assert.Equal(name + ".tar", Path.GetFileName(tar));
+        var files = new List<string>();
+        await using (var reader = new TarReader(File.OpenRead(tar)))
+            while (await reader.GetNextEntryAsync(cancellationToken: Ct) is { } entry)
+                if (entry.EntryType is TarEntryType.RegularFile or TarEntryType.V7RegularFile)
+                    files.Add(entry.Name);
+        Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), files.Order(StringComparer.Ordinal));
+        Assert.Equal(original, await File.ReadAllBytesAsync(input, Ct));
+    }
+
+    [Theory]
+    [InlineData("broken.nupkg")]
+    [InlineData("broken.xapk")]
+    [InlineData("broken.aab")]
+    public async Task A_package_that_is_no_archive_fails_with_7zips_reason(string fileName)
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var input = Path.Combine(dir, fileName);
+        await File.WriteAllTextAsync(input, "This is not a package.", Ct);
+
+        var job = await fx.ConvertAsync([input], Extract);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Contains("not a valid archive", job.Files[0].ErrorDetail);
+        Assert.Empty(job.Outputs);
+        Assert.Equal([fileName], Directory.GetFileSystemEntries(dir).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task A_cut_off_package_fails_instead_of_hanging()
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var whole = Path.Combine(dir, "whole.xapk");
+        WritePackage(whole, PackageEntries("xapk"));
+        var bytes = await File.ReadAllBytesAsync(whole, Ct);
+        File.Delete(whole);
+        var input = Path.Combine(dir, "cut.xapk");
+        await File.WriteAllBytesAsync(input, bytes[..(bytes.Length / 2)], Ct);
+
+        var job = await fx.ConvertAsync([input], new Preset { TargetFormat = "zip" }).WaitAsync(TimeSpan.FromMinutes(2), Ct);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.False(string.IsNullOrWhiteSpace(job.Files[0].ErrorDetail));
+        Assert.Empty(job.Outputs);
     }
 }

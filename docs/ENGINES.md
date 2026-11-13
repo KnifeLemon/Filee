@@ -1597,7 +1597,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 
 | Format | Read | Write |
 |---|---|---|
-| ZIP, JAR, WBPZ, ZXP | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
+| ZIP, JAR, WBPZ, ZXP, NUPKG, SNUPKG, APKS, XAPK, APKM, AAB | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
 | Minecraft MCPACK, MCADDON, MCWORLD, MCTEMPLATE; Modrinth MRPACK | 7-Zip (they are ZIPs) | ZIP in-process, with the marker file at the top (see below) |
 | 7Z | 7-Zip | 7-Zip |
 | TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
@@ -1628,6 +1628,13 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   Pro, Photoshop and the other Creative Cloud apps are signed ZIPs (`mimetype`, the extension's files and
   `META-INF/signatures.xml`). They extract and convert to every archive target with the signature file inside.
   Nothing writes `.zxp`: Adobe's apps install only packages signed with the developer's certificate (ZXPSignCmd).
+- **NuGet and Android packages** (#1465, #1464, read only like JAR): NuGet packages and symbol packages (`.nupkg`,
+  `.snupkg`: the `.nuspec`, `lib/`, `[Content_Types].xml`, `_rels/`, `package/`), split-APK containers (`.apks` from
+  bundletool, `.xapk` from APKPure, `.apkm` from APKMirror: `base.apk`, the `split_config.*.apk` files, a JSON or
+  table of contents and any `.obb`) and Android App Bundles (`.aab`: `base/manifest/`, `base/dex/`,
+  `BundleConfig.pb`) are ZIPs. They extract and convert to every archive target; the APKs inside stay APK files.
+  Nothing writes these: NuGet and the Play Store take only packages their own tools build and sign, and turning a
+  bundle or splits into one installable `.apk` needs it signed again, which Filee doesn't do.
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
   file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.
