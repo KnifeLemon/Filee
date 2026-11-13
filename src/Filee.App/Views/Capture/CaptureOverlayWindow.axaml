@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Filee.App.Views.Capture.CaptureOverlayWindow"
+        Title="Capture Overlay"
+        SystemDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        WindowState="Maximized"
+        ShowInTaskbar="False">
+
+  <Panel>
+    <Canvas Name="OverlayCanvas" Background="Transparent"
+            PointerPressed="OnCanvasPointerPressed"
+            PointerMoved="OnCanvasPointerMoved"
+            PointerReleased="OnCanvasPointerReleased" />
+
+    <!-- Center 3-Second Countdown Overlay -->
+    <Border Name="CountdownContainer" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="#E61C1C1E" CornerRadius="36" Padding="40,30" IsVisible="False"
+            BorderBrush="#FF3B30" BorderThickness="2"
+            BoxShadow="0 16 48 #88000000" IsHitTestVisible="False">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+        <Border Width="110" Height="110" CornerRadius="55"
+                BorderBrush="#FF3B30" BorderThickness="5" Background="#33FF3B30"
+                HorizontalAlignment="Center">
+          <TextBlock Name="CountdownNumberText" Text="3" FontSize="64" FontWeight="Black"
+                     Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <TextBlock Text="Recording starts in..." FontSize="14" FontWeight="SemiBold"
+                   Foreground="#DDFFFFFF" HorizontalAlignment="Center" />
+      </StackPanel>
+    </Border>
+
+    <!-- In-Session Action Toast (Center of screen, unobtrusive) -->
+    <Border Name="ActionToast" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="#E61C1C1E" BorderBrush="#3A3A3C" BorderThickness="1.5"
+            CornerRadius="24" Padding="20,12" Opacity="0" IsVisible="False"
+            BoxShadow="0 12 32 #66000000" IsHitTestVisible="False">
+      <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+        <TextBlock Name="ToastIcon" FontSize="18" VerticalAlignment="Center" />
+        <TextBlock Name="ToastMessage" FontSize="14" FontWeight="Bold" Foreground="White" VerticalAlignment="Center" />
+      </StackPanel>
+    </Border>
+  </Panel>
+</Window>

@@ -6,8 +6,12 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Filee.App.Services.Capture;
+using Filee.App.Services.Connect;
 using Filee.App.ViewModels;
+using Filee.App.ViewModels.Capture;
 using Filee.App.Views;
+using Filee.App.Views.Capture;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
@@ -34,8 +38,15 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     private FileeConnectQrWindow? _connectQrWindow;
     private FileeConnectWindow? _connectWindow;
 
+    private CaptureStudioConfigWindow? _captureConfigWindow;
+    private CaptureStudioBarWindow? _captureBarWindow;
+    private CaptureOverlayWindow? _captureOverlayWindow;
+    private CaptureStudioEditorWindow? _captureEditorWindow;
+
     internal FileeConnectQrWindow? ConnectQrWindow => _connectQrWindow;
     internal FileeConnectWindow? ConnectWindow => _connectWindow;
+    internal CaptureStudioBarWindow? CaptureBarWindow => _captureBarWindow;
+    internal CaptureStudioEditorWindow? CaptureEditorWindow => _captureEditorWindow;
 
     internal FormatRequestNoticeWindow? FormatRequestNotice => _formatRequestNotice;
     private bool _isOpeningConnect;
@@ -153,6 +164,181 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
 
         connectWindow.Show();
         connectWindow.Activate();
+    }
+
+    public void ShowCaptureStudio(int triggerX = 0, int triggerY = 0)
+    {
+        if (_captureConfigWindow is { IsVisible: true })
+        {
+            _captureConfigWindow.Activate();
+            return;
+        }
+
+        if (_captureBarWindow is { IsVisible: true })
+        {
+            _captureBarWindow.Activate();
+            return;
+        }
+
+        var studioService = services.GetRequiredService<CaptureStudioService>();
+        var configVm = new CaptureStudioConfigViewModel(studioService.TargetService, loc, triggerX, triggerY);
+
+        var configWindow = new CaptureStudioConfigWindow(configVm);
+        PrepareWindow(configWindow);
+        _captureConfigWindow = configWindow;
+
+        configVm.RecordingRequested += async config =>
+        {
+            configWindow.Close();
+            _captureConfigWindow = null;
+
+            var overlayWindow = new CaptureOverlayWindow();
+            _captureOverlayWindow = overlayWindow;
+            overlayWindow.UpdateCursorHighlight(config.HighlightCursor);
+            overlayWindow.UpdateSpotlight(config.SpotlightMode, config.SpotlightRadius);
+
+            if (config.CountdownBeforeRecording)
+            {
+                overlayWindow.Show();
+                await overlayWindow.RunCountdownAsync();
+            }
+            else
+            {
+                overlayWindow.Show();
+            }
+
+            var started = await studioService.StartRecordingAsync(config);
+            if (!started)
+            {
+                overlayWindow.Close();
+                _captureOverlayWindow = null;
+                var err = studioService.RecordingEngine.LastErrorMessage;
+                var msg = !string.IsNullOrWhiteSpace(err)
+                    ? $"Screen recording could not start:\n{err}"
+                    : (loc["capture_studio.error_start"] ?? "Could not start screen capture engine. Please ensure FFmpeg is available.");
+                await MessageAsync(null, msg);
+                return;
+            }
+
+            var barVm = new CaptureStudioBarViewModel(studioService, config);
+            var barWindow = new CaptureStudioBarWindow(barVm);
+            _captureBarWindow = barWindow;
+
+            barVm.ToolSelected += tool =>
+            {
+                overlayWindow.UpdateTool(tool);
+                var icon = tool switch
+                {
+                    AnnotationTool.Pen => "✎",
+                    AnnotationTool.Arrow => "➔",
+                    AnnotationTool.Rectangle => "▭",
+                    AnnotationTool.Circle => "◯",
+                    AnnotationTool.Blur => "░",
+                    AnnotationTool.TextCallout => "T",
+                    _ => "↖"
+                };
+                overlayWindow.ShowActionToast($"Tool: {tool}", icon);
+            };
+
+            barVm.ColorSelected += hex =>
+            {
+                overlayWindow.UpdateColor(hex);
+                overlayWindow.ShowActionToast("Color Changed", "🎨");
+            };
+
+            barVm.ClearAnnotationsRequested += () =>
+            {
+                overlayWindow.ClearAnnotations();
+                overlayWindow.ShowActionToast("Annotations Cleared", "🗑");
+            };
+
+            barVm.CursorHighlightToggled += active =>
+            {
+                overlayWindow.UpdateCursorHighlight(active);
+                overlayWindow.ShowActionToast(active ? "Cursor Halo On" : "Cursor Halo Off", "🟡");
+            };
+
+            barVm.SpotlightToggled += active =>
+            {
+                overlayWindow.UpdateSpotlight(active, barVm.SpotlightRadius);
+                overlayWindow.ShowActionToast(active ? "Spotlight Mode On" : "Spotlight Mode Off", "🔦");
+            };
+
+            barVm.MicToggled += isMuted =>
+            {
+                overlayWindow.ShowActionToast(isMuted ? "Microphone Muted" : "Microphone Unmuted", isMuted ? "🔇" : "🎙");
+            };
+
+            barVm.PauseToggled += () =>
+            {
+                overlayWindow.ShowActionToast(barVm.IsPaused ? "Recording Paused" : "Recording Resumed", barVm.IsPaused ? "⏸" : "▶");
+            };
+
+            barWindow.HoverChanged += hovered => overlayWindow.SetToolbarHover(hovered);
+            barWindow.BoundsChangedNotification += bounds => overlayWindow.UpdateToolbarBounds(bounds);
+
+            barVm.MobileMirrorToggled += async () =>
+            {
+                overlayWindow.ShowActionToast("Launching Mobile Mirror...", "📱");
+                try
+                {
+                    await studioService.OnePhoneMirror.LaunchOrFocusAsync(msg => overlayWindow.ShowActionToast(msg, "📱"));
+                }
+                catch (Exception ex)
+                {
+                    await MessageAsync(null, $"Could not open 1Phone Mobile Mirror: {ex.Message}");
+                }
+            };
+
+            barVm.StopRequested += async () =>
+            {
+                barWindow.Close();
+                overlayWindow.Close();
+                _captureBarWindow = null;
+                _captureOverlayWindow = null;
+
+                var meta = await studioService.StopRecordingAsync();
+                if (meta != null && File.Exists(meta.VideoPath))
+                {
+                    ShowCaptureStudioEditor(meta, studioService);
+                }
+                else
+                {
+                    var err = studioService.RecordingEngine.LastErrorMessage;
+                    await MessageAsync(null, !string.IsNullOrWhiteSpace(err) ? $"Recording could not be finalized: {err}" : "Recording could not be finalized.");
+                }
+            };
+
+            barWindow.Show(overlayWindow);
+            barWindow.CenterOnTopScreen();
+            barWindow.ExcludeFromCapture();
+        };
+
+        configWindow.Closed += (_, _) =>
+        {
+            if (_captureConfigWindow == configWindow)
+                _captureConfigWindow = null;
+        };
+
+        configWindow.Show();
+        configWindow.Activate();
+    }
+
+    private void ShowCaptureStudioEditor(RecordedVideoMetadata metadata, CaptureStudioService studioService)
+    {
+        var editorVm = new CaptureStudioEditorViewModel(studioService, loc, metadata);
+        var editorWindow = new CaptureStudioEditorWindow(editorVm);
+        PrepareWindow(editorWindow);
+        _captureEditorWindow = editorWindow;
+
+        editorWindow.Closed += (_, _) =>
+        {
+            if (_captureEditorWindow == editorWindow)
+                _captureEditorWindow = null;
+        };
+
+        editorWindow.Show();
+        editorWindow.Activate();
     }
 
     private CropOverlayWindow? _cropOverlay;

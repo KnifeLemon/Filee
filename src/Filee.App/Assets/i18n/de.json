@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "Ziehen, ablegen, fertig.",
   "fields.title": "Bereiche",
@@ -1810,5 +1810,10 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Hinweis: Wenn dein Smartphone keine Verbindung herstellen kann, erlaube Filee in der System-Firewall.",
   "connect.no_network_message": "Filee Connect konnte nicht gestartet werden. Bitte stelle sicher, dass dieses Gerät mit einem lokalen WLAN- oder Ethernet-Netzwerk verbunden ist.",
-  "connect.save_as": "Speichern unter…"
+  "connect.save_as": "Speichern unter…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Bildschirmaufnahme",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Der Bildschirmaufnahme-Dienst konnte nicht gestartet werden. Bitte stellen Sie sicher, dass FFmpeg verfügbar ist.",
+  "donut.tools": "Filee Tools"
 }

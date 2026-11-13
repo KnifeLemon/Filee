@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "Glissez, déposez, c'est converti.",
 
@@ -1832,5 +1832,10 @@
   "connect.pin_label": "Code PIN :",
   "connect.firewall_hint_generic": "Remarque : Si votre téléphone ne peut pas se connecter, autorisez Filee dans le pare-feu du système.",
   "connect.no_network_message": "Impossible de démarrer Filee Connect. Veuillez vous assurer que cet appareil est connecté à un réseau Wi-Fi ou Ethernet local.",
-  "connect.save_as": "Enregistrer sous…"
+  "connect.save_as": "Enregistrer sous…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Enregistrement d'écran",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Impossible de démarrer le moteur de capture d'écran. Veuillez vous assurer que FFmpeg est disponible.",
+  "donut.tools": "Filee Tools"
 }

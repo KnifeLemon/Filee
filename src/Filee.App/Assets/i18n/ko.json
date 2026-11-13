@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "끌어서 놓으면, 변환 끝.",
 
@@ -1832,5 +1832,10 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "참고: 휴대폰이 연결되지 않으면 시스템 방화벽에서 Filee를 허용하세요.",
   "connect.no_network_message": "Filee Connect를 시작할 수 없습니다. 이 기기가 로컬 Wi-Fi 또는 이더넷 네트워크에 연결되어 있는지 확인하세요.",
-  "connect.save_as": "다른 이름으로 저장…"
+  "connect.save_as": "다른 이름으로 저장…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "화면 녹화",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "화면 캡처 엔진을 시작할 수 없습니다. FFmpeg을 사용할 수 있는지 확인하세요.",
+  "donut.tools": "Filee Tools"
 }

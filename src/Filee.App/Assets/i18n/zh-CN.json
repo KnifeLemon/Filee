@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "拖一拖，放一放，转换完成。",
 
@@ -1832,5 +1832,10 @@
   "connect.pin_label": "PIN 码：",
   "connect.firewall_hint_generic": "注意：如果您的手机无法连接，请在系统防火墙中允许 Filee。",
   "connect.no_network_message": "无法启动 Filee Connect。请确保此设备已连接到本地 Wi-Fi 或有线以太网。",
-  "connect.save_as": "另存为…"
+  "connect.save_as": "另存为…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "屏幕录制",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "无法启动屏幕录制引擎。请确保 FFmpeg 可用。",
+  "donut.tools": "Filee Tools"
 }

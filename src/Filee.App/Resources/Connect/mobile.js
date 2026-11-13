@@ -21,26 +21,103 @@
   // Tabs
   const tabBtnText = $('tabBtnText');
   const tabBtnFiles = $('tabBtnFiles');
+  const tabBtnMirror = $('tabBtnMirror');
   const tabText = $('tabText');
   const tabFiles = $('tabFiles');
+  const tabMirror = $('tabMirror');
 
   function switchTab(target) {
+    [tabBtnText, tabBtnFiles, tabBtnMirror].forEach(b => b?.classList.remove('active'));
+    [tabText, tabFiles, tabMirror].forEach(p => p?.classList.remove('active'));
+
     if (target === 'tabText') {
-      tabBtnText.classList.add('active');
-      tabBtnFiles.classList.remove('active');
-      tabText.classList.add('active');
-      tabFiles.classList.remove('active');
-    } else {
-      tabBtnFiles.classList.add('active');
-      tabBtnText.classList.remove('active');
-      tabFiles.classList.add('active');
-      tabText.classList.remove('active');
+      tabBtnText?.classList.add('active');
+      tabText?.classList.add('active');
+    } else if (target === 'tabFiles') {
+      tabBtnFiles?.classList.add('active');
+      tabFiles?.classList.add('active');
       if (window.refreshSharedFiles) window.refreshSharedFiles();
+    } else if (target === 'tabMirror') {
+      tabBtnMirror?.classList.add('active');
+      tabMirror?.classList.add('active');
     }
   }
 
   tabBtnText?.addEventListener('click', () => switchTab('tabText'));
   tabBtnFiles?.addEventListener('click', () => switchTab('tabFiles'));
+  tabBtnMirror?.addEventListener('click', () => switchTab('tabMirror'));
+
+  // Screen Mirroring
+  let mirrorStream = null;
+  let mirrorSocket = null;
+  let mirrorInterval = null;
+  const startMirrorBtn = $('startMirrorBtn');
+  const stopMirrorBtn = $('stopMirrorBtn');
+  const mirrorVideo = $('mirrorVideo');
+  const mirrorStatusText = $('mirrorStatusText');
+
+  startMirrorBtn?.addEventListener('click', async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        alert('Screen capture is not supported on this browser.');
+        return;
+      }
+
+      mirrorStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 25 }
+      });
+
+      mirrorVideo.srcObject = mirrorStream;
+      await mirrorVideo.play();
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const track = mirrorStream.getVideoTracks()[0];
+      const s = track.getSettings();
+      canvas.width = Math.min(s.width || 720, 720);
+      canvas.height = Math.min(s.height || 1280, 1280);
+
+      const wsProto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+      mirrorSocket = new WebSocket(`${wsProto}${location.host}/ws/mirror`);
+      mirrorSocket.binaryType = 'arraybuffer';
+
+      mirrorSocket.onopen = () => {
+        if (mirrorStatusText) mirrorStatusText.textContent = 'Broadcasting screen live to PC…';
+        startMirrorBtn.hidden = true;
+        stopMirrorBtn.hidden = false;
+
+        mirrorInterval = setInterval(() => {
+          if (mirrorSocket && mirrorSocket.readyState === WebSocket.OPEN && mirrorVideo.videoWidth > 0) {
+            ctx.drawImage(mirrorVideo, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob((blob) => {
+              if (blob && mirrorSocket && mirrorSocket.readyState === WebSocket.OPEN) {
+                blob.arrayBuffer().then((buffer) => mirrorSocket.send(buffer));
+              }
+            }, 'image/jpeg', 0.65);
+          }
+        }, 1000 / 25);
+      };
+
+      track.onended = () => stopMirroring();
+      mirrorSocket.onclose = () => stopMirroring();
+    } catch (err) {
+      if (mirrorStatusText) mirrorStatusText.textContent = 'Could not start screen sharing: ' + err.message;
+    }
+  });
+
+  function stopMirroring() {
+    if (mirrorInterval) { clearInterval(mirrorInterval); mirrorInterval = null; }
+    if (mirrorSocket) { mirrorSocket.close(); mirrorSocket = null; }
+    if (mirrorStream) {
+      mirrorStream.getTracks().forEach(t => t.stop());
+      mirrorStream = null;
+    }
+    if (startMirrorBtn) startMirrorBtn.hidden = false;
+    if (stopMirrorBtn) stopMirrorBtn.hidden = true;
+    if (mirrorStatusText) mirrorStatusText.textContent = 'Screen mirroring stopped.';
+  }
+
+  stopMirrorBtn?.addEventListener('click', stopMirroring);
 
   function getDeviceName() {
     const ua = navigator.userAgent || '';

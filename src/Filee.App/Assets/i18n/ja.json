@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "ドラッグ。ドロップ。\n変換完了。",
   "fields.title": "分野",
@@ -1812,5 +1812,10 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "注: スマートフォンが接続できない場合は、システムファイアウォールでFileeを許可してください。",
   "connect.no_network_message": "Filee Connectを開始できませんでした。このデバイスがローカルのWi-Fiまたは有線LANネットワークに接続されていることを確認してください。",
-  "connect.save_as": "名前を付けて保存…"
+  "connect.save_as": "名前を付けて保存…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "画面録画",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "画面キャプチャエンジンを開始できませんでした。FFmpegが利用可能であることを確認してください。",
+  "donut.tools": "Filee Tools"
 }

@@ -1,4 +1,4 @@
-{
+﻿{
   "app.name": "Filee",
   "app.tagline": "Перетащил — и готово.",
 
@@ -1832,5 +1832,10 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Примечание: если телефон не подключается, разрешите Filee в системном брандмауэре.",
   "connect.no_network_message": "Не удалось запустить Filee Connect. Убедитесь, что это устройство подключено к локальной сети Wi-Fi или Ethernet.",
-  "connect.save_as": "Сохранить как…"
+  "connect.save_as": "Сохранить как…",
+  "preset.capture_studio": "Capture Studio",
+  "capture_studio.caption": "Запись экрана",
+  "capture_studio.title": "Capture Studio",
+  "capture_studio.error_start": "Не удалось запустить модуль захвата экрана. Убедитесь, что FFmpeg доступен.",
+  "donut.tools": "Filee Tools"
 }

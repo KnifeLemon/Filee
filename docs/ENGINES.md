@@ -43,6 +43,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
+| 1PhoneMirror | **optional download** (Windows only; ~20 MB MSI, ~75 MB on disk) | **Mobile Screen Mirroring**: mirrors iOS/iPadOS screens wirelessly via AirPlay and Android screens via wireless debugging / scrcpy with zero companion mobile apps; launched on demand from Capture Studio |
 
 DOCX, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
 and rendered by rhwp. Anything the built-in readers understand (including PDF) is written as DOCX by the DOCX writer.
@@ -2242,3 +2243,11 @@ Filee upscales and restores images locally using an offline AI super-resolution 
   - **Settings → Presets**: The "Upscale Image" tool preset can be configured with preferred default models and scale factors.
   - **Settings → Engines**: "Upscayl (AI image upscaler)" engine package provides the local `upscayl-bin` binary, with models downloaded on demand with live progress and uninstall support in the Upscale dialog.
 - **Supported formats**: PNG, JPG, WEBP, ICO, AVIF, BMP, and TIFF.
+
+## 1PhoneMirror (Mobile Screen Mirroring)
+
+Filee Capture Studio provides wireless mobile screen presentation and mirroring using the open-source **1PhoneMirror** engine ([MSEndpointMgr/1PhoneMirror](https://github.com/MSEndpointMgr/1PhoneMirror), MIT license).
+
+- **Capabilities**: Mirrors iOS and iPadOS screens wirelessly via AirPlay (including FairPlay hardware decryption, H.264 video decoding, and audio buffering) and Android devices via wireless debugging and scrcpy without needing companion apps on the mobile device.
+- **On-Demand Download & Verification**: When the user clicks the "Mobile Mirror" button on the Capture Studio floating bar, Filee verifies whether `1PhoneMirror.exe` is already installed. If absent, Filee automatically downloads the official release MSI from GitHub, verifies its SHA-256 signature (`5962A5FDD00B1D1BE52691559EABEC06002F8AF2B688FF05EB535C394BFF2E00`), extracts the binaries into `%LOCALAPPDATA%\Filee\engines\1phonemirror`, and launches the screen mirroring receiver window.
+- **Offline & Private**: The mirror receiver runs 100% locally on your local Wi-Fi network; no screen data or video stream is ever transmitted outside your local machine.
