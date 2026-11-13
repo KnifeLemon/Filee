@@ -24,12 +24,14 @@ public class EngineUpdateTests
 
         state.Status = EnginePackageStatus.Installed;
         Assert.False(state.CanUpdate);
-        Assert.Equal(AppHost.Get<ILocalizer>()["engines.state.installed"], state.StatusText);
+        Assert.Equal(AppHost.Get<ILocalizer>()["engines.available"], state.StatusText);
+        Assert.Null(state.UpdateText);
 
         state.IsOutdated = true;
         Assert.True(state.CanUpdate);
         Assert.False(state.CanInstall);
-        Assert.Contains(state.Version!, state.StatusText);
+        Assert.Equal(AppHost.Get<ILocalizer>()["engines.available"], state.StatusText);
+        Assert.Contains(state.Version!, state.UpdateText);
     }
 
     [AvaloniaFact]

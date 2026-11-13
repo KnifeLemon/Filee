@@ -57,14 +57,39 @@
                         <TextBlock Text="{DynamicResource engines.settings}" />
                       </StackPanel>
                     </Button>
-                    <Button Classes="accent" Content="{DynamicResource engines.install}" IsVisible="{Binding CanInstall}"
+                    <Button Classes="accent" Content="{DynamicResource engines.install}"
+                            Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).InstallCommand}" CommandParameter="{Binding}">
+                      <Button.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                          <Binding Path="OffersInstall" />
+                          <Binding Path="!InstallsOverCopy" />
+                        </MultiBinding>
+                      </Button.IsVisible>
+                    </Button>
+                    <Button Classes="accent" Content="{DynamicResource engines.install_filee_copy}" IsVisible="{Binding InstallsOverCopy}"
                             Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).InstallCommand}" CommandParameter="{Binding}" />
                     <Button Classes="accent" Content="{DynamicResource engines.update}" IsVisible="{Binding CanUpdate}"
                             Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).InstallCommand}" CommandParameter="{Binding}" />
                     <Button Content="{DynamicResource engines.cancel}" IsVisible="{Binding IsBusy}"
                             Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).CancelCommand}" CommandParameter="{Binding}" />
-                    <Button Content="{DynamicResource engines.use_own}" IsVisible="{Binding CanUseOwnCopy}" Click="OnUseOwnCopy"
-                            ToolTip.Tip="{DynamicResource engines.use_own_hint}" />
+                    <!-- "Use another copy…" on an engine that is ready: nothing is missing, it picks a different
+                         copy. -->
+                    <Button Content="{DynamicResource engines.use_own}" Click="OnUseOwnCopy" ToolTip.Tip="{DynamicResource engines.use_own_hint}">
+                      <Button.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                          <Binding Path="CanUseOwnCopy" />
+                          <Binding Path="!IsInstalled" />
+                        </MultiBinding>
+                      </Button.IsVisible>
+                    </Button>
+                    <Button Content="{DynamicResource engines.use_another}" Click="OnUseOwnCopy" ToolTip.Tip="{DynamicResource engines.use_own_hint}">
+                      <Button.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                          <Binding Path="CanUseOwnCopy" />
+                          <Binding Path="IsInstalled" />
+                        </MultiBinding>
+                      </Button.IsVisible>
+                    </Button>
                     <Button Content="{DynamicResource engines.stop_own}" IsVisible="{Binding UsesOwnCopy}" Click="OnStopOwnCopy" />
                     <!-- Without internet (#447): the same downloads, brought from another computer and checked as a download is. -->
                     <Button Content="{DynamicResource engines.offline}" IsVisible="{Binding HasOfflineMenu}"
@@ -81,19 +106,48 @@
                   </StackPanel>
                   <StackPanel Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="10">
+                      <Border Width="10" Height="10" CornerRadius="999" VerticalAlignment="Center"
+                              Background="{DynamicResource SuccessBrush}" IsVisible="{Binding StatusIsOk}" />
+                      <Border Width="10" Height="10" CornerRadius="999" VerticalAlignment="Center"
+                              Background="{DynamicResource WarningBrush}" IsVisible="{Binding StatusIsWarn}" />
                       <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
                       <Border Classes="status" Classes.ok="{Binding StatusIsOk}" Classes.danger="{Binding StatusIsDanger}"
-                              Classes.warn="{Binding StatusIsWarn}" Classes.accent="{Binding StatusIsAccent}" VerticalAlignment="Center">
+                              Classes.warn="{Binding StatusIsWarn}" VerticalAlignment="Center">
                         <TextBlock Text="{Binding StatusText}" />
                       </Border>
                     </StackPanel>
                     <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}" />
-                    <TextBlock Classes="caption" Text="{Binding Sizes}" IsVisible="{Binding !UsesOwnCopy}" />
+                    <!-- Where the engine in use comes from; the download size only while it isn't there, or when
+                         Filee's download is offered over an older copy. -->
+                    <TextBlock FontSize="12" Text="{Binding SourceText}" TextTrimming="CharacterEllipsis"
+                               IsVisible="{Binding SourceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Classes="caption" Text="{Binding Sizes}">
+                      <TextBlock.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                          <Binding Path="!IsInstalled" />
+                          <Binding Path="InstallsOverCopy" />
+                        </MultiBinding>
+                      </TextBlock.IsVisible>
+                    </TextBlock>
                     <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding InstallGuidance}"
                                IsVisible="{Binding InstallGuidance, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                    <TextBlock Classes="caption" Text="{Binding OwnCopyFolder}" IsVisible="{Binding ShowsCopyFolder}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Classes="caption" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Text="{Binding UpdateNote}"
+                    <!-- A class, not a Foreground: a value set in a data template loses to the caption style. -->
+                    <TextBlock Classes="caption warning" TextWrapping="Wrap" Text="{Binding UpdateText}"
+                               IsVisible="{Binding UpdateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Classes="caption warning" TextWrapping="Wrap" Text="{Binding UpdateNote}"
                                IsVisible="{Binding UpdateNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <!-- A copy on the PC that isn't used because Filee's download is installed. -->
+                    <Border Margin="0,6,0,0" Padding="10,8" CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}"
+                            IsVisible="{Binding HasOtherCopy}">
+                      <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="{DynamicResource engines.use_other_copy}" Margin="12,0,0,0"
+                                VerticalAlignment="Center" Click="OnUseOtherCopy" />
+                        <StackPanel Spacing="2" VerticalAlignment="Center">
+                          <TextBlock FontSize="12" FontWeight="SemiBold" Text="{DynamicResource engines.other_copy_title}" />
+                          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding OtherCopyText}" />
+                        </StackPanel>
+                      </DockPanel>
+                    </Border>
                     <ProgressBar Classes="soft" Maximum="100" Value="{Binding Progress}" IsVisible="{Binding IsBusy}" Margin="0,4,0,0" />
                     <TextBlock Classes="caption" Text="{Binding ProgressDetail}" IsVisible="{Binding ProgressDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                   </StackPanel>

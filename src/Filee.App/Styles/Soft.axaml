@@ -132,6 +132,9 @@
   <Style Selector="TextBlock.danger">
     <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
   </Style>
+  <Style Selector="TextBlock.warning">
+    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+  </Style>
 
   <!-- ───────── Cards ───────── -->
   <Style Selector="Border.card">

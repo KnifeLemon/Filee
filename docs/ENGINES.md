@@ -82,8 +82,13 @@ the same on every PC. An external engine is looked for in this order:
 1. a copy the user picked in Settings → *Engines*;
 2. Filee's own copy (bundled or downloaded);
 3. a copy already on the computer: on `PATH`, in Homebrew's and the usual Unix folders, or where the LibreOffice,
-   calibre, Ghostscript and Tesseract installers put it. Settings → *Engines* shows it as "Found on this PC", with a note when
-   its version is older than the one Filee downloads.
+   calibre, Ghostscript and Tesseract installers put it.
+
+Settings → *Engines* shows every engine that works as "Ready", with where it comes from underneath ("Filee's
+download", "On this computer", "Your copy", with the folder and version), and a note when a copy is older than the
+one Filee is tested with. Filee's download is offered over a copy on the computer only when that copy is older. When
+Filee's download is installed and a copy is also on the computer, the card says so and offers to use that copy
+instead, which removes Filee's download (`EngineInstaller.StatusOf` reports it as `EngineCopy.OtherFolder`).
 
 Where Filee has no download of an engine (FFmpeg, Ghostscript and Tesseract on macOS, LibreOffice, Ghostscript and
 Tesseract on Linux),

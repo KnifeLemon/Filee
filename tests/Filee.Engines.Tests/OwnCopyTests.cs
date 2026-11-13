@@ -163,6 +163,49 @@ public sealed class SystemCopyTests : IDisposable
     }
 
     [Fact]
+    public void A_copy_on_the_pc_hidden_by_filees_download_is_reported_but_not_used()
+    {
+        File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("ffmpeg.exe")), [0x4D, 0x5A]);
+        File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("ffprobe.exe")), [0x4D, 0x5A]);
+        Environment.SetEnvironmentVariable("PATH", _folder + Path.PathSeparator + _path);
+        EngineEnvironment.ForgetSystemCopies();
+        var root = Directory.CreateTempSubdirectory("filee-download-").FullName;
+        try
+        {
+            var component = new EngineComponent("ffmpeg", "8.0", "https://example.test/ffmpeg.zip", new string('a', 64), 1, "zip");
+            var installer = new EngineInstaller(new HttpClient(), root, new Dictionary<string, EngineComponent> { ["ffmpeg"] = component });
+            var package = new EnginePackage("ffmpeg", ["ffmpeg"], 1000, ["ffmpeg"]);
+
+            // Without Filee's download the copy on the PC is the one used.
+            Assert.Equal(new EngineCopy(EngineCopyStatus.OwnCopy, _folder, true, false), installer.StatusOf(package));
+
+            // With it, the download comes first and the copy on the PC is only reported.
+            Directory.CreateDirectory(Path.Combine(root, "ffmpeg"));
+            File.WriteAllText(Path.Combine(root, "ffmpeg", ".filee-component"), component.Sha256);
+            Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, false, _folder), installer.StatusOf(package));
+
+            // The user's own copy comes first of all: nothing else is reported.
+            var own = Directory.CreateTempSubdirectory("filee-own-").FullName;
+            File.WriteAllBytes(Path.Combine(own, EngineEnvironment.ProgramName("ffmpeg.exe")), [0x4D, 0x5A]);
+            File.WriteAllBytes(Path.Combine(own, EngineEnvironment.ProgramName("ffprobe.exe")), [0x4D, 0x5A]);
+            EngineEnvironment.OwnCopies = new Dictionary<string, string> { ["ffmpeg"] = own };
+            try
+            {
+                Assert.Equal(new EngineCopy(EngineCopyStatus.OwnCopy, own, false, false), installer.StatusOf(package));
+            }
+            finally
+            {
+                EngineEnvironment.OwnCopies = new Dictionary<string, string>();
+                Directory.Delete(own, true);
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void Expected_versions_come_from_engines_json() =>
         Assert.NotNull(CopyVersions.Expected("ffmpeg"));
 }

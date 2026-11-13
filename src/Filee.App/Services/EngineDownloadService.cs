@@ -51,13 +51,14 @@ public sealed partial class EnginePackageState : ObservableObject
 
     /// <summary>
     /// How to get an engine Filee doesn't download on this system (FFmpeg and Ghostscript from Homebrew on macOS,
-    /// the distribution's packages on Linux), in the app's language; null when Filee can download it.
+    /// the distribution's packages on Linux), in the app's language; null when Filee can download it or the engine is
+    /// there already.
     /// </summary>
     public string? InstallGuidance
     {
         get
         {
-            if (EngineDownloads.CanDownload(Package))
+            if (EngineDownloads.CanDownload(Package) || IsInstalled)
                 return null;
             var system = OperatingSystem.IsMacOS() ? "macos" : OperatingSystem.IsLinux() ? "linux" : "windows";
             var key = $"engines.guidance.{system}.{Package.Id}";
@@ -68,8 +69,9 @@ public sealed partial class EnginePackageState : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsInstalled), nameof(IsBusy), nameof(CanInstall), nameof(CanRemove),
-        nameof(UsesOwnCopy), nameof(CanUseOwnCopy), nameof(ShowsCopyFolder), nameof(CanUpdate), nameof(HasOfflineMenu), nameof(CanInstallFromFiles),
-        nameof(StatusIsOk), nameof(StatusIsDanger), nameof(StatusIsWarn), nameof(StatusIsAccent))]
+        nameof(UsesOwnCopy), nameof(CanUseOwnCopy), nameof(CanUpdate), nameof(HasOfflineMenu), nameof(CanInstallFromFiles),
+        nameof(SourceText), nameof(UpdateText), nameof(InstallGuidance), nameof(HasOtherCopy), nameof(OtherCopyText), nameof(OffersInstall), nameof(InstallsOverCopy),
+        nameof(StatusIsOk), nameof(StatusIsDanger), nameof(StatusIsWarn))]
     private EnginePackageStatus _status;
 
     /// <summary>
@@ -77,7 +79,7 @@ public sealed partial class EnginePackageState : ObservableObject
     /// update): <see cref="CanUpdate"/> offers the new one.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CanUpdate), nameof(CanInstallFromFiles),
+    [NotifyPropertyChangedFor(nameof(CanUpdate), nameof(CanInstallFromFiles), nameof(SourceText), nameof(UpdateText),
         nameof(StatusIsOk), nameof(StatusIsWarn))]
     private bool _isOutdated;
 
@@ -89,16 +91,45 @@ public sealed partial class EnginePackageState : ObservableObject
 
     /// <summary>Folder of the copy in use while the status is <see cref="EnginePackageStatus.OwnCopy"/>.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SourceText))]
     private string? _ownCopyFolder;
 
     /// <summary>The copy in use was found on the PC (PATH, Program Files), not chosen by the user.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CanInstall), nameof(UsesOwnCopy), nameof(CanUseOwnCopy), nameof(CanInstallFromFiles))]
+    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(UsesOwnCopy), nameof(CanUseOwnCopy), nameof(CanInstallFromFiles), nameof(SourceText),
+        nameof(OffersInstall), nameof(InstallsOverCopy))]
     private bool _fromSystem;
+
+    /// <summary>
+    /// The version of the copy in use when Filee didn't download it ("9.0"), once its program has told it.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SourceText))]
+    private string? _copyVersion;
+
+    /// <summary>
+    /// The copy found on the PC is older than the version Filee is tested with: Filee's download is offered.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OffersInstall), nameof(InstallsOverCopy), nameof(StatusIsOk), nameof(StatusIsWarn))]
+    private bool _isOlderCopy;
 
     /// <summary>"Update recommended: 7.1 here, Filee is tested with 9.0" for an older copy, else null.</summary>
     [ObservableProperty]
     private string? _updateNote;
+
+    /// <summary>
+    /// A copy on the PC that isn't used because Filee's download is installed (it comes first): the card offers to use
+    /// it instead, which removes Filee's download (<see cref="EngineCopy.OtherFolder"/>).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOtherCopy), nameof(OtherCopyText))]
+    private string? _otherCopyFolder;
+
+    /// <summary>The version of <see cref="OtherCopyFolder"/>'s copy, once its program has told it.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OtherCopyText))]
+    private string? _otherCopyVersion;
 
     /// <summary>0..100 while downloading or unpacking.</summary>
     [ObservableProperty]
@@ -122,7 +153,6 @@ public sealed partial class EnginePackageState : ObservableObject
     public bool CanRemove => Status == EnginePackageStatus.Installed;
     /// <summary>The user chose this copy ("Stop using it" applies).</summary>
     public bool UsesOwnCopy => Status == EnginePackageStatus.OwnCopy && !FromSystem;
-    public bool ShowsCopyFolder => Status == EnginePackageStatus.OwnCopy;
     public bool CanUseOwnCopy => Status is EnginePackageStatus.NotInstalled or EnginePackageStatus.Failed or EnginePackageStatus.Installed
                                  || (Status == EnginePackageStatus.OwnCopy && FromSystem);
     public bool IsBusy => Status is EnginePackageStatus.Queued or EnginePackageStatus.Downloading or EnginePackageStatus.Copying
@@ -130,6 +160,21 @@ public sealed partial class EnginePackageState : ObservableObject
     /// <summary>Also when a copy on the PC is used: Filee's download is the tested version and wins once installed.</summary>
     public bool CanInstall => EngineDownloads.CanDownload(Package) && (Status is EnginePackageStatus.NotInstalled or EnginePackageStatus.Failed
                               || (Status == EnginePackageStatus.OwnCopy && FromSystem));
+
+    /// <summary>
+    /// The Engines page offers Filee's download: when the engine is missing, or over a copy on the PC older than the
+    /// tested version. A copy on the PC that is up to date (or whose version can't be told) is simply used; the
+    /// first-run setup and the installer's choices still go by <see cref="CanInstall"/>.
+    /// </summary>
+    public bool OffersInstall => CanInstall && (Status != EnginePackageStatus.OwnCopy || IsOlderCopy);
+
+    /// <summary>The offered download would take the place of the copy on the PC ("Install Filee's copy").</summary>
+    public bool InstallsOverCopy => OffersInstall && Status == EnginePackageStatus.OwnCopy;
+
+    /// <summary>
+    /// Filee's download is used and a copy on the PC could be used instead (<see cref="OtherCopyFolder"/>).
+    /// </summary>
+    public bool HasOtherCopy => Status == EnginePackageStatus.Installed && OtherCopyFolder is not null;
 
     /// <summary>
     /// The card's "Offline" menu (#447): install from files downloaded elsewhere, save the files for a computer without
@@ -140,23 +185,62 @@ public sealed partial class EnginePackageState : ObservableObject
     /// <summary>The files can be installed where Install or Update would download them.</summary>
     public bool CanInstallFromFiles => CanInstall || CanUpdate;
 
-    // Colour of the status tag on the Engines page (Border.status in Soft.axaml); none of them = neutral (queued, downloading...).
-    public bool StatusIsOk => Status == EnginePackageStatus.Installed && !IsOutdated;
-    public bool StatusIsWarn => Status == EnginePackageStatus.Installed && IsOutdated;
+    // Colour of the status tag on the Engines page (Border.status in Soft.axaml); none of them = neutral (queued,
+    // downloading...). Every engine that works is the same Ready; amber when its card recommends an update (Filee's
+    // download has a new version, or the copy in use is older than the one Filee is tested with).
+    public bool StatusIsOk => IsInstalled && !StatusIsWarn;
+    public bool StatusIsWarn => (Status == EnginePackageStatus.Installed && IsOutdated) || (Status == EnginePackageStatus.OwnCopy && IsOlderCopy);
     public bool StatusIsDanger => Status == EnginePackageStatus.Failed;
-    public bool StatusIsAccent => Status == EnginePackageStatus.OwnCopy;
 
+    /// <summary>
+    /// "Ready" for any engine that works, wherever it comes from (<see cref="SourceText"/> says where).
+    /// </summary>
     public string StatusText => Status switch
     {
         EnginePackageStatus.Queued => _loc["engines.state.queued"],
         EnginePackageStatus.Downloading => _loc.Format("engines.state.downloading", (int)Progress),
         EnginePackageStatus.Copying => _loc.Format("engines.state.copying", (int)Progress),
         EnginePackageStatus.Unpacking => _loc["engines.state.unpacking"],
-        EnginePackageStatus.Installed => IsOutdated ? _loc.Format("engines.state.update_available", Version ?? "") : _loc["engines.state.installed"],
-        EnginePackageStatus.OwnCopy => _loc[FromSystem ? "engines.state.system_copy" : "engines.state.own_copy"],
+        EnginePackageStatus.Installed or EnginePackageStatus.OwnCopy => _loc["engines.available"],
         EnginePackageStatus.Failed => _loc.Format("engines.state.failed", Error ?? ""),
         _ => _loc["engines.state.not_installed"],
     };
+
+    /// <summary>
+    /// Where the engine in use comes from: "Filee's download · version 3.12 · 236 MB on disk", "On this computer ·
+    /// /opt/homebrew/bin · version 8.0", "Your copy · …"; null while it isn't there.
+    /// </summary>
+    public string? SourceText => Status switch
+    {
+        EnginePackageStatus.Installed => Joined(_loc["engines.source.download"],
+            IsOutdated || Version is null ? null : _loc.Format("engines.source.version", Version),
+            _loc.Format("engines.source.on_disk", FormatBytes(Package.InstalledSize))),
+        EnginePackageStatus.OwnCopy when OwnCopyFolder is not null => Joined(
+            _loc[FromSystem ? "engines.source.system" : "engines.state.own_copy"], DisplayFolder(OwnCopyFolder),
+            CopyVersion is null ? null : _loc.Format("engines.source.version", CopyVersion)),
+        _ => null,
+    };
+
+    /// <summary>"New version 9.0" for an outdated download, else null.</summary>
+    public string? UpdateText => CanUpdate ? _loc.Format("engines.state.update_available", Version ?? "") : null;
+
+    /// <summary>
+    /// "/usr/local/bin · version 3.13 (Filee's download would be removed)" for the unused copy on the PC.
+    /// </summary>
+    public string? OtherCopyText => HasOtherCopy
+        ? _loc.Format("engines.other_copy_detail", Joined(DisplayFolder(OtherCopyFolder!),
+            OtherCopyVersion is null ? null : _loc.Format("engines.source.version", OtherCopyVersion)))
+        : null;
+
+    private static string Joined(params string?[] parts) => string.Join(" · ", parts.Where(p => !string.IsNullOrEmpty(p)));
+
+    /// <summary>A macOS app's program folder as the app itself: "/Applications/calibre.app".</summary>
+    internal static string DisplayFolder(string folder)
+    {
+        var trimmed = folder.TrimEnd('/', '\\');
+        const string inside = "/Contents/MacOS";
+        return trimmed.EndsWith(".app" + inside, StringComparison.OrdinalIgnoreCase) ? trimmed[..^inside.Length] : folder;
+    }
 
     internal CancellationTokenSource? Cancellation { get; set; }
 
@@ -211,11 +295,17 @@ public sealed class EngineDownloadService
     internal Func<EnginePackage, string, IProgress<EngineInstallProgress>, CancellationToken, Task> SavePackageFiles { get; set; }
 
     public EngineDownloadService(ConverterCatalog catalog, ILocalizer loc, ILogger<EngineDownloadService> logger)
+        : this(catalog, loc, logger, new EngineInstaller(EngineInstaller.CreateHttpClient(Timeout.InfiniteTimeSpan), logger: logger))
+    {
+    }
+
+    /// <summary>With its own installer: tests install into and remove from a folder of their own.</summary>
+    internal EngineDownloadService(ConverterCatalog catalog, ILocalizer loc, ILogger<EngineDownloadService> logger, EngineInstaller installer)
     {
         _catalog = catalog;
         _logger = logger;
         _loc = loc;
-        _installer = new EngineInstaller(EngineInstaller.CreateHttpClient(Timeout.InfiniteTimeSpan), logger: logger);
+        _installer = installer;
         InstallPackage = _installer.InstallAsync;
         InstallPackageFromFiles = _installer.InstallFromFilesAsync;
         SavePackageFiles = _installer.SaveFilesAsync;
@@ -238,18 +328,26 @@ public sealed class EngineDownloadService
     }
 
     /// <summary>
-    /// The copy the engines use (<see cref="EngineInstaller.StatusOf"/>). A copy Filee didn't download gets its
-    /// version checked in the background (<see cref="EnginePackageState.UpdateNote"/>).
+    /// The copy the engines use (<see cref="EngineInstaller.StatusOf"/>), and a copy on the PC that Filee's download
+    /// hides. A copy Filee didn't download gets its version read in the background
+    /// (<see cref="EnginePackageState.CopyVersion"/>, and <see cref="EnginePackageState.UpdateNote"/> when it is older
+    /// than the tested one).
     /// </summary>
     private EnginePackageStatus StatusOf(EnginePackageState state)
     {
         var copy = _installer.StatusOf(state.Package);
         state.OwnCopyFolder = copy.Folder;
         state.FromSystem = copy.FromSystem;
+        state.OtherCopyFolder = copy.OtherFolder;
+        state.CopyVersion = null;
+        state.OtherCopyVersion = null;
+        state.IsOlderCopy = false;
         state.UpdateNote = null;
         state.IsOutdated = copy.Outdated;
         if (copy.Folder is { } folder)
-            _ = CheckVersionAsync(state, folder);
+            _ = CheckVersionAsync(state, folder, other: false);
+        if (copy.OtherFolder is { } otherFolder)
+            _ = CheckVersionAsync(state, otherFolder, other: true);
         return copy.Status switch
         {
             EngineCopyStatus.OwnCopy => EnginePackageStatus.OwnCopy,
@@ -258,15 +356,32 @@ public sealed class EngineDownloadService
         };
     }
 
-    /// <summary>Runs the copy's version check off the UI thread (it starts the program once) and notes an old one.</summary>
-    private async Task CheckVersionAsync(EnginePackageState state, string folder)
+    /// <summary>
+    /// Runs a copy's version check off the UI thread (it starts the program once) and shows the version; for the copy
+    /// in use, also notes when it is older than the version Filee is tested with.
+    /// </summary>
+    private async Task CheckVersionAsync(EnginePackageState state, string folder, bool other)
     {
         var id = state.Package.Id;
         var (installed, expected) = await Task.Run(() => (CopyVersions.Installed(id, folder), CopyVersions.Expected(id)));
-        if (installed is null || expected is null || installed >= expected || state.OwnCopyFolder != folder)
+        if (installed is null)
             return;
         await Dispatcher.UIThread.InvokeAsync(() =>
-            state.UpdateNote = _loc.Format("engines.update_recommended", installed.ToString(2), expected.ToString(2)));
+        {
+            if (other)
+            {
+                if (state.OtherCopyFolder == folder)
+                    state.OtherCopyVersion = installed.ToString(2);
+                return;
+            }
+            if (state.OwnCopyFolder != folder)
+                return;
+            state.CopyVersion = installed.ToString(2);
+            if (expected is null || installed >= expected)
+                return;
+            state.IsOlderCopy = true;
+            state.UpdateNote = _loc.Format("engines.update_recommended", installed.ToString(2), expected.ToString(2));
+        });
     }
 
     /// <summary>Filee's downloads that have a newer version now (only engines the user installed).</summary>
@@ -285,7 +400,9 @@ public sealed class EngineDownloadService
             await RunQueuedAsync(state, (progress, token) => files is null
                 ? InstallPackage(state.Package, progress, token)
                 : InstallPackageFromFiles(state.Package, files, progress, token));
-            state.Status = EnginePackageStatus.Installed;
+            // Read from disk, not set: the copy that was in use and its notes give way, a copy on the PC now hidden is
+            // offered instead, and an update is no longer offered (#867).
+            state.Status = StatusOf(state);
             _catalog.Refresh();
             if (state.Package.ConverterIds.Contains("libreoffice"))
                 WarmUpInBackground(TimeSpan.Zero);
@@ -440,7 +557,8 @@ public sealed class EngineDownloadService
         try
         {
             _installer.Uninstall(state.Package);
-            state.Status = EnginePackageStatus.NotInstalled;
+            // A copy on the PC takes over when there is one.
+            state.Status = StatusOf(state);
             _catalog.Refresh();
             return null;
         }

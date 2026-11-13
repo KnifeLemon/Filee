@@ -52,7 +52,11 @@ public enum EngineCopyStatus
 /// <param name="Folder">Folder of the copy in use while the status is <see cref="EngineCopyStatus.OwnCopy"/>.</param>
 /// <param name="FromSystem">That copy was found on the PC (PATH, Program Files), not chosen by the user.</param>
 /// <param name="Outdated">Filee's download is older than the version engines.json pins.</param>
-public sealed record EngineCopy(EngineCopyStatus Status, string? Folder, bool FromSystem, bool Outdated);
+/// <param name="OtherFolder">
+/// Folder of a copy on the PC that isn't used because Filee's download is installed (it comes first); null otherwise.
+/// Settings → Engines offers it instead (#867).
+/// </param>
+public sealed record EngineCopy(EngineCopyStatus Status, string? Folder, bool FromSystem, bool Outdated, string? OtherFolder = null);
 
 /// <summary>Another Filee (the app, the CLI or a second copy) is installing or removing the same package.</summary>
 public sealed class EngineBusyException(string packageId)
@@ -119,19 +123,21 @@ public sealed class EngineInstaller
     public IReadOnlyDictionary<string, EngineComponent> Components => _components;
 
     /// <summary>
-    /// The copy the engines use, in the order they look: the user's own copy, Filee's download, a copy on the PC
-    /// (only looked for when neither of the others is there).
+    /// The copy the engines use, in the order they look: the user's own copy, Filee's download, a copy on the PC. A
+    /// copy on the PC is also looked for while Filee's download is used, and reported as
+    /// <see cref="EngineCopy.OtherFolder"/>; it is not used then.
     /// </summary>
     public EngineCopy StatusOf(EnginePackage package)
     {
         var installed = IsInstalled(package);
         var own = EngineEnvironment.OwnCopyFolder(package.Id);
-        var system = own is null && !installed ? EngineEnvironment.SystemCopyFolder(package.Id) : null;
-        var folder = own ?? system;
-        var status = folder is not null ? EngineCopyStatus.OwnCopy
+        var system = own is null ? EngineEnvironment.SystemCopyFolder(package.Id) : null;
+        var used = own ?? (installed ? null : system);
+        var status = used is not null ? EngineCopyStatus.OwnCopy
             : installed ? EngineCopyStatus.Installed
             : EngineCopyStatus.NotInstalled;
-        return new EngineCopy(status, folder, system is not null, folder is null && installed && !IsUpToDate(package));
+        return new EngineCopy(status, used, own is null && !installed && system is not null,
+            used is null && installed && !IsUpToDate(package), used is null && installed ? system : null);
     }
 
     /// <summary>True when every component is installed (any version).</summary>
