@@ -1597,7 +1597,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 
 | Format | Read | Write |
 |---|---|---|
-| ZIP, JAR, WBPZ, ZXP | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
+| ZIP, JAR, WBPZ, ZXP, NUPKG, SNUPKG, APKS, XAPK, APKM, AAB | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
 | Minecraft MCPACK, MCADDON, MCWORLD, MCTEMPLATE; Modrinth MRPACK | 7-Zip (they are ZIPs) | ZIP in-process, with the marker file at the top (see below) |
 | 7Z | 7-Zip | 7-Zip |
 | TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
@@ -1628,6 +1628,13 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   Pro, Photoshop and the other Creative Cloud apps are signed ZIPs (`mimetype`, the extension's files and
   `META-INF/signatures.xml`). They extract and convert to every archive target with the signature file inside.
   Nothing writes `.zxp`: Adobe's apps install only packages signed with the developer's certificate (ZXPSignCmd).
+- **NuGet and Android packages** (#1465, #1464, read only like JAR): NuGet packages and symbol packages (`.nupkg`,
+  `.snupkg`: the `.nuspec`, `lib/`, `[Content_Types].xml`, `_rels/`, `package/`), split-APK containers (`.apks` from
+  bundletool, `.xapk` from APKPure, `.apkm` from APKMirror: `base.apk`, the `split_config.*.apk` files, a JSON or
+  table of contents and any `.obb`) and Android App Bundles (`.aab`: `base/manifest/`, `base/dex/`,
+  `BundleConfig.pb`) are ZIPs. They extract and convert to every archive target; the APKs inside stay APK files.
+  Nothing writes these: NuGet and the Play Store take only packages their own tools build and sign, and turning a
+  bundle or splits into one installable `.apk` needs it signed again, which Filee doesn't do.
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
   file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.
@@ -1812,6 +1819,16 @@ Dahua DVR / NVR recordings (`.dav`, read only, #594) are read by FFmpeg's `dhav`
 the target and preset allow it (`CanCopyVideo`), like any other container's; G.711 sound is encoded for targets that
 can't hold it. The chunks carry the camera's wall-clock time, so FFmpeg reports the recording date as the start time;
 the output starts at zero.
+Hikvision camera and NVR recordings are MPEG program streams with H.264 / H.265 video and G.711 sound, whatever their
+extension; FFmpeg's mpeg demuxer reads them by their content, so they go to every video and audio target as their
+format (usually MP4) is read. Exports from iVMS-4200 and the NVR (`.mp4`, sometimes `.264`) start with a 40-byte
+`IMKH` header, which makes FFmpeg read the stream map's type 0x91 as G.711 mu-law. The recordings on a camera's SD
+card or a NAS (`hiv00000.mp4`, indexed by `index00.bin`) are the same stream without the header: FFmpeg then takes
+mu-law sound for MP2 and fails. When a file starts with a pack header and a stream map in its first 256 KB lists
+mu-law sound (`Media/HikvisionStream.cs`), Filee gives FFmpeg `concat:<header>|<file>`, a 40-byte `IMKH` header
+written to the job's work folder followed by the recording, which is not copied. A damaged stream map leaves the file
+to FFmpeg as it is. Old `4HKH` `.264` files (Hikvision's own frame format) and recordings made with stream encryption
+on can't be read and fail with FFmpeg's error.
 Bink videos (`.bik`, read only, #751), the cutscene format of many games, are read by FFmpeg's `bink` demuxer and
 decoder and go to every video and audio target. FFmpeg has no Bink encoder, so nothing writes `.bik`.
 FLIC animations (`.flc` and `.fli`, read only, #940), from Autodesk Animator and Animator Pro and the cutscenes of DOS

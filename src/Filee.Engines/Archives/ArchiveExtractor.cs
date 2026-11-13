@@ -19,7 +19,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     /// <summary>Formats read by 7-Zip.</summary>
     public static readonly IReadOnlyList<string> SevenZipFormats =
     [
-        "zip", "jar", "zxp", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz", "lzma", "z",
+        "zip", "jar", "zxp", "nupkg", "apks", "aab", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz", "lzma", "z",
         "cab", "cpio", "deb", "rpm", "dmg", "iso", "img", "lha", "arj", "split",
         "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];

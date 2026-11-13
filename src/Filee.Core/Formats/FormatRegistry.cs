@@ -331,6 +331,12 @@ public static class FormatRegistry
         // Adobe extension packages for After Effects, Premiere Pro, Photoshop … (#1382): signed ZIPs. Never a target,
         // since installing one needs the signature its developer makes with Adobe's ZXPSignCmd.
         new("zxp", "ZXP (Adobe extension)", FormatCategory.Archive, ["zxp"], Writable: false),
+        // NuGet packages and their symbol packages (#1465), split-APK containers from bundletool, SAI, APKMirror and
+        // APKPure, and Android App Bundles (#1464): all ZIPs. Never a target, since NuGet, Android and the stores need
+        // a package signed (and laid out) by its developer's tools.
+        new("nupkg", "NUPKG (NuGet package)", FormatCategory.Archive, ["nupkg", "snupkg"], Writable: false),
+        new("apks", "APKS (Android split APKs)", FormatCategory.Archive, ["apks", "xapk", "apkm"], Writable: false),
+        new("aab", "AAB (Android App Bundle)", FormatCategory.Archive, ["aab"], Writable: false),
         // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
         // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
         // the top.

@@ -260,7 +260,8 @@
   <Style Selector="Border.navpane">
     <Setter Property="Transitions">
       <Transitions>
-        <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="{StaticResource SoftEase}" />
+        <!-- A plain ease-out: SoftEase overshoots, which on Width would shrink the pane past its target and bounce back. -->
+        <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="CubicEaseOut" />
       </Transitions>
     </Setter>
   </Style>
@@ -273,16 +274,9 @@
   <Style Selector="StackPanel.navheader">
     <Setter Property="Margin" Value="8,0,0,20" />
   </Style>
-  <Style Selector="Border.navpane.collapsed Button.navtoggle">
-    <Setter Property="HorizontalContentAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Border.navpane.collapsed StackPanel.navheader">
-    <Setter Property="Margin" Value="0,0,0,20" />
-    <Setter Property="HorizontalAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Border.navpane.collapsed StackPanel.navitem">
-    <Setter Property="HorizontalAlignment" Value="Center" />
-  </Style>
+  <!-- The content stays left-aligned while collapsed instead of switching to centre: the switch happens in the same
+       frame the width animation starts, so the icons would jump to the middle of the still-wide pane and slide back.
+       Left-aligned, the rail's icons sit within 1.5px of its centre anyway. -->
 
   <!-- Generic rounded list items (profiles, presets) -->
   <Style Selector="ListBox.soft">

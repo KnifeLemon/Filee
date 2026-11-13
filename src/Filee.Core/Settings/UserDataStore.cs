@@ -118,6 +118,14 @@ public sealed class UserDataStore
     }
 
     /// <summary>
+    /// Remembers the donut's look (<see cref="AppSettings.Donut"/>: size, hole, opacity, output format, group ring) and
+    /// where its preview was dragged (<see cref="AppSettings.DonutPreviewPlace"/>), quietly as
+    /// <see cref="SaveUiScale"/>: the donut reads its look each time it opens, and the theme, triggers and integration
+    /// that <see cref="SettingsChanged"/> applies again haven't changed.
+    /// </summary>
+    public void SaveDonutLook() => Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
+
+    /// <summary>
     /// Remembers where the main window was (<see cref="AppSettings.MainWindow"/>), quietly as <see cref="SaveUiScale"/>:
     /// nothing else depends on it.
     /// </summary>
@@ -1138,9 +1146,14 @@ internal static class SettingsMigrations
         //      be renumbered if another change takes it first.)
         if (from < 87)
             changed |= LearnExtensions(profiles, out _, ["ino", "pde"]);
-        // v88: KuGou lyrics (.krc, #1296) learn the subtitles donut; custom claims stay put. (Schema 88 may be renumbered
-        //      if another change takes it first.)
+        // v88: NuGet packages (.nupkg, .snupkg, #1465), split-APK containers (.apks, .xapk, .apkm) and Android App
+        //      Bundles (.aab, #1464) learn the archives donut; custom claims stay put. (Schema 88 may be renumbered if
+        //      another change takes it first.)
         if (from < 88)
+            changed |= LearnExtensions(profiles, out _, ["nupkg", "snupkg", "apks", "xapk", "apkm", "aab"]);
+        // v89: KuGou lyrics (.krc, #1296) learn the subtitles donut; custom claims stay put. (Schema 89 may be renumbered
+        //      if another change takes it first.)
+        if (from < 89)
             changed |= LearnExtensions(profiles, out _, ["krc"]);
         return changed;
     }
