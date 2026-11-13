@@ -1155,6 +1155,9 @@ internal static class SettingsMigrations
         //      if another change takes it first.)
         if (from < 89)
             changed |= LearnExtensions(profiles, out _, ["krc"]);
+        // v90: Wisenet WAVE / Nx Witness exports (.nov) learn the video donut; custom claims stay put.
+        if (from < 90)
+            changed |= LearnExtensions(profiles, out _, ["nov"]);
         return changed;
     }
 

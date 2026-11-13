@@ -259,6 +259,9 @@ public static class FormatRegistry
         // Dahua and similar DVR / NVR recordings (#594): FFmpeg's dhav demuxer reads them (H.264 / H.265 video, often
         // with G.711 or AAC sound).
         new("dav", "DAV", FormatCategory.Video, ["dav"], Writable: false),
+        // Wisenet WAVE / Nx Witness exports: a layout file whose camera recordings are Matroska streams, read by FFmpeg
+        // from inside the file (NovExport). Password-protected exports are encrypted and refused.
+        new("nov", "NOV", FormatCategory.Video, ["nov"], Writable: false),
         // Bink Video, the game cutscene format of RAD Game Tools (#751): FFmpeg's bink demuxer reads it. Never a target.
         new("bik", "BIK", FormatCategory.Video, ["bik"], Writable: false),
         // FLIC, the animations of Autodesk Animator (.fli) and Animator Pro (.flc), also in DOS games and pixel-art tools

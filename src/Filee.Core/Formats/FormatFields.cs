@@ -78,7 +78,7 @@ public static class FormatFields
             "jp2", "psd", "psb", "ppm", "icns", "qoi", "dds", "cur", "xpm", "xbm", "pam", "pfm", "miff", "dcm",
             "exr", "hdr", "fits", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg",
             "fodt", "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
-            "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
+            "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "nov", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "zxp", "nupkg", "apks",
             "aab", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "cab",
@@ -115,7 +115,7 @@ public static class FormatFields
         // Broadcast and editing masters, broadcast audio and captions, fansub and delivery subtitles, CCTV and
         // raw streams.
         ([
-            "dv", "mxf", "cavs", "dav", "h265", "h264", "ac3", "mp2", "eac3", "dts", "ass", "ssa", "ttml", "scc"
+            "dv", "mxf", "cavs", "dav", "nov", "h265", "h264", "ac3", "mp2", "eac3", "dts", "ass", "ssa", "ttml", "scc"
         ], ["video-pro"]),
         // Lossless archiving and recorders.
         (["dss", "wv", "tta", "w64", "ape", "tak", "dsf", "dff"], ["audio-pro"]),

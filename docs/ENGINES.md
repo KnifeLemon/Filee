@@ -1886,16 +1886,32 @@ Dahua DVR / NVR recordings (`.dav`, read only, #594) are read by FFmpeg's `dhav`
 the target and preset allow it (`CanCopyVideo`), like any other container's; G.711 sound is encoded for targets that
 can't hold it. The chunks carry the camera's wall-clock time, so FFmpeg reports the recording date as the start time;
 the output starts at zero.
+Every action that hands FFmpeg a file (convert, caption, Live / Motion Photo, Merge videos, the Cut a clip editor, size
+estimates) asks `Media/MediaInput.cs` what to give it: the path, or for the two cases below a `concat:` or `subfile`
+input. Merge videos' concat list allows those protocols (`-protocol_whitelist`), which its demuxer refuses by default.
 Hikvision camera and NVR recordings are MPEG program streams with H.264 / H.265 video and G.711 sound, whatever their
 extension; FFmpeg's mpeg demuxer reads them by their content, so they go to every video and audio target as their
 format (usually MP4) is read. Exports from iVMS-4200 and the NVR (`.mp4`, sometimes `.264`) start with a 40-byte
 `IMKH` header, which makes FFmpeg read the stream map's type 0x91 as G.711 mu-law. The recordings on a camera's SD
 card or a NAS (`hiv00000.mp4`, indexed by `index00.bin`) are the same stream without the header: FFmpeg then takes
-mu-law sound for MP2 and fails. When a file starts with a pack header and a stream map in its first 256 KB lists
-mu-law sound (`Media/HikvisionStream.cs`), Filee gives FFmpeg `concat:<header>|<file>`, a 40-byte `IMKH` header
-written to the job's work folder followed by the recording, which is not copied. A damaged stream map leaves the file
-to FFmpeg as it is. Old `4HKH` `.264` files (Hikvision's own frame format) and recordings made with stream encryption
-on can't be read and fail with FFmpeg's error.
+mu-law sound for MP2 and fails. When a video file starts with a pack header and a stream map in its first 256 KB lists
+mu-law sound (`Media/HikvisionStream.cs`, which reads only four bytes of any other file), Filee gives FFmpeg
+`concat:<header>|<file>`, a 40-byte `IMKH` header written to the job's work folder (to a `media` folder in Filee's
+work folder, `WorkFolders.Root`, for the Cut a clip editor) followed by the recording, which is not copied. Sound
+files and pictures aren't looked into. A damaged stream map leaves the file to FFmpeg as it is. Old `4HKH` `.264`
+files (Hikvision's own frame format) and recordings made with stream encryption on can't be read and fail with
+FFmpeg's error.
+Wisenet WAVE / Nx Witness exports (`.nov`, read only) are layout files written by Network Optix's client: named
+streams (a NUL-terminated name, then the data) and an index of where each starts, after them with a 20-byte footer
+(version 2) or before them (version 1), as `nx_open`'s `layout_file_info.h` (MPL-2.0) describes. Each camera's
+recording is a Matroska stream named `<camera id>_<start ms>.mkv`; `Media/NovExport.cs` reads the index and gives
+FFmpeg the largest recording through the `subfile` protocol, so nothing is copied, and it goes to every video and audio
+target. An export of several cameras, or of one camera with gaps, converts only that largest recording and says so
+(`notice.nov_recordings_left_out`). A
+password-protected export is encrypted (AES-256, keyed by the password) and refused (`error.nov_password`), as is one
+without a recording (`error.nov_no_video`); a damaged index throws `InvalidDataException`, checked against the file's
+size before anything is allocated. The `.exe` export is the client's player with the same streams appended: it stays a
+Windows program (`.exe` is read for its icon) and is never run.
 Bink videos (`.bik`, read only, #751), the cutscene format of many games, are read by FFmpeg's `bink` demuxer and
 decoder and go to every video and audio target. FFmpeg has no Bink encoder, so nothing writes `.bik`.
 FLIC animations (`.flc` and `.fli`, read only, #940), from Autodesk Animator and Animator Pro and the cutscenes of DOS
