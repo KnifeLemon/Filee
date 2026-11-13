@@ -16,17 +16,22 @@ public class ArabicSheetTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private const string Statement = "كشف حساب";
 
+    // Column A is twice the default width: the printed page ends with it, and text past its edge isn't drawn. At the
+    // default 8.43 characters "كشف حساب" fits only just, and fonts that draw it a little wider lose a letter at that edge.
+    private const double Width = 17;
+
     private string Xlsx(string name, string text)
     {
         var book = new XlsxBuilder();
-        book.Sheet("Sheet1", XlsxBuilder.Row(1, book.Text("A1", text)));
+        book.Sheet("Sheet1", XlsxBuilder.Row(1, book.Text("A1", text)),
+            before: $"<cols><col min=\"1\" max=\"1\" width=\"{Width}\" customWidth=\"1\"/></cols>");
         return book.Save(Path.Combine(fx.NewFolder(), name));
     }
 
     private string Xls(string name, string text)
     {
         var book = new XlsBuilder();
-        book.Sheet("Sheet1").Text(0, 0, text);
+        book.Sheet("Sheet1").Width(0, Width).Text(0, 0, text);
         return book.Save(Path.Combine(fx.NewFolder(), name));
     }
 
