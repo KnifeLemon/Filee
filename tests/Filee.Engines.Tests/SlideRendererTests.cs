@@ -275,7 +275,7 @@ public sealed class SlideRendererTests : IDisposable
         var broken = Path.Combine(_folder, "broken.pptx");
         new SlideDeckBuilder().Slide("<p:sp><unclosed>").Save(broken);
         Assert.Throws<InvalidDataException>(() => Read(broken));
-        Assert.Null(SlideCapabilities.FirstUnsupported(text));
+        Assert.Null(SlideCapabilities.FirstUnsupported(text, TestContext.Current.CancellationToken));
     }
 
     [Fact]

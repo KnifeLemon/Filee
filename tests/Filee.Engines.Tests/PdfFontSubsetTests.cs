@@ -193,7 +193,7 @@ public class PdfFontSubsetTests(EngineFixture fx) : IClassFixture<EngineFixture>
             var original = CffFont.Parse(cff);
             var keep = original.GlyphCount - 1;
 
-            var subset = CffFont.Parse(CffSubsetter.Subset(cff, [keep]));
+            var subset = CffFont.Parse(CffSubsetter.Subset(cff, [keep], TestContext.Current.CancellationToken));
 
             Assert.Equal(original.GlyphCount, subset.GlyphCount);
             Assert.Equal(original.IsCid, subset.IsCid);

@@ -352,14 +352,14 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var model = OdtReader.Read(Document(), Media());
         var folder = fx.NewFolder();
         var written = Path.Combine(folder, "written.odt");
-        OdtWriter.Write(model, written);
+        OdtWriter.Write(model, written, TestContext.Current.CancellationToken);
         ValidPackage(written);
         var again = OdtReader.Read(written, Path.Combine(folder, "media"));
         Assert.Equal(Dump(model), Dump(again));
 
         // And once more: the writer's own output is stable.
         var twice = Path.Combine(folder, "twice.odt");
-        OdtWriter.Write(again, twice);
+        OdtWriter.Write(again, twice, TestContext.Current.CancellationToken);
         Assert.Equal(Dump(again), Dump(OdtReader.Read(twice, Path.Combine(folder, "media2"))));
     }
 
@@ -539,7 +539,7 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         source.Paragraph(DocxBuilder.P(DocxBuilder.R("Word text", "<w:b/>")));
         var docx = source.Save(Path.Combine(fx.NewFolder(), "word.docx"));
         var odt = Path.Combine(fx.NewFolder(), "word.odt");
-        OdtWriter.Write(DocxReader.Read(docx, Media()), odt);
+        OdtWriter.Write(DocxReader.Read(docx, Media()), odt, TestContext.Current.CancellationToken);
         var read = OdtReader.Read(odt, Media());
         Assert.True(Find(read, "Word text").Inlines.OfType<HText>().Single().Format.Bold);
     }
@@ -833,7 +833,7 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var model = OdtReader.Read(Document(), Media());
         var odt = Path.Combine(fx.NewFolder(), "written.odt");
-        OdtWriter.Write(model, odt);
+        OdtWriter.Write(model, odt, TestContext.Current.CancellationToken);
         if (await ConvertibleByLibreOfficeAsync(odt) is not { } docx)
         {
             Assert.Skip("LibreOffice not found (pwsh build/fetch-engines.ps1 -Only libreoffice)");

@@ -64,7 +64,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     private static void NoTemporaryFiles(string folder) =>
-        Assert.Empty(Directory.GetFiles(folder, "*.tmp").Where(f => !f.EndsWith("out.odt.tmp", StringComparison.Ordinal) && !f.EndsWith("out.pptx.tmp", StringComparison.Ordinal)));
+        Assert.DoesNotContain(Directory.GetFiles(folder, "*.tmp"), f => !f.EndsWith("out.odt.tmp", StringComparison.Ordinal) && !f.EndsWith("out.pptx.tmp", StringComparison.Ordinal));
 
     // ───────────────────────── Spans ─────────────────────────
 
@@ -97,7 +97,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var folder = fx.NewFolder();
         var odt = Path.Combine(folder, "out.odt");
 
-        OdtWriter.Write(Document(table), odt);
+        OdtWriter.Write(Document(table), odt, TestContext.Current.CancellationToken);
 
         var content = ContentXml(odt);
         Assert.Contains($"table:number-rows-spanned=\"{rows}\"", content);
@@ -126,7 +126,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var folder = fx.NewFolder();
         var odt = Path.Combine(folder, "out.odt");
 
-        OdtWriter.Write(Document(table), odt);
+        OdtWriter.Write(Document(table), odt, TestContext.Current.CancellationToken);
 
         var content = ContentXml(odt);
         Assert.Contains("<table:table-cell table:number-columns-repeated=\"4999\"/>", content);
@@ -207,7 +207,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         table.Rows[0].Cells[0].ColSpan = PptxWriter.MaxColumns;
         var output = Path.Combine(fx.NewFolder(), "wide.pptx");
 
-        var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(Document(table), output));
+        var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(Document(table), output, TestContext.Current.CancellationToken));
         Assert.Equal(DocumentLimits.ErrorKey, error.ErrorKey);
         Assert.False(File.Exists(output));
     }
@@ -228,7 +228,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var text = Words(200_000);
         var output = Path.Combine(fx.NewFolder(), "long.pptx");
 
-        PptxWriter.Write(Document(Text(text)), output);
+        PptxWriter.Write(Document(Text(text)), output, TestContext.Current.CancellationToken);
 
         var slides = PptxWriterTests.Read(output);
         Assert.True(slides.Count > 100, $"{slides.Count} slides");
@@ -246,7 +246,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var output = Path.Combine(fx.NewFolder(), "huge.pptx");
 
         var watch = Stopwatch.StartNew();
-        var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(Document(Text(text)), output));
+        var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(Document(Text(text)), output, TestContext.Current.CancellationToken));
 
         Assert.Equal(DocumentLimits.ErrorKey, error.ErrorKey);
         Assert.False(File.Exists(output));
@@ -261,7 +261,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         table.Rows[0].Header = true;
         var output = Path.Combine(fx.NewFolder(), "rows.pptx");
 
-        PptxWriter.Write(Document(table), output);
+        PptxWriter.Write(Document(table), output, TestContext.Current.CancellationToken);
 
         var slides = PptxWriterTests.Read(output);
         Assert.True(slides.Count > 100, $"{slides.Count} slides");
@@ -295,8 +295,8 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
             File.WriteAllText(Path.Combine(folder, name + ".tmp"), "keep me");
         var document = Document(Text("hello"), Rows(2));
 
-        OdtWriter.Write(document, Path.Combine(folder, "out.odt"));
-        PptxWriter.Write(document, Path.Combine(folder, "out.pptx"));
+        OdtWriter.Write(document, Path.Combine(folder, "out.odt"), TestContext.Current.CancellationToken);
+        PptxWriter.Write(document, Path.Combine(folder, "out.pptx"), TestContext.Current.CancellationToken);
 
         Assert.Equal("keep me", File.ReadAllText(Path.Combine(folder, "out.odt.tmp")));
         Assert.Equal("keep me", File.ReadAllText(Path.Combine(folder, "out.pptx.tmp")));
@@ -341,8 +341,8 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         blocks.Add(Text("deepest"));
         var folder = fx.NewFolder();
 
-        OdtWriter.Write(Document([.. tables]), Path.Combine(folder, "deep.odt"));
-        PptxWriter.Write(Document([.. tables]), Path.Combine(folder, "deep.pptx"));
+        OdtWriter.Write(Document([.. tables]), Path.Combine(folder, "deep.odt"), TestContext.Current.CancellationToken);
+        PptxWriter.Write(Document([.. tables]), Path.Combine(folder, "deep.pptx"), TestContext.Current.CancellationToken);
 
         Assert.Contains("deepest", ContentXml(Path.Combine(folder, "deep.odt")));
         Assert.Contains("deepest", string.Concat(PptxWriterTests.Read(Path.Combine(folder, "deep.pptx")).Select(s => s.Xml.InnerText)));
