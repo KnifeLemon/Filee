@@ -164,7 +164,7 @@ public static partial class ClipPreview
     internal static async Task<float[]> ReadLoudnessAsync((string Ffmpeg, string Ffprobe) tools, string path, double start, double end,
         int count, string workFolder, CancellationToken cancellationToken)
     {
-        var input = MediaInput.For(path);
+        var input = MediaInput.For(path, workDirectory: workFolder);
         var track = await MediaInfo.AudioTrackAsync(tools.Ffprobe, input, cancellationToken).ConfigureAwait(false);
         var samples = Path.Combine(workFolder, Guid.NewGuid().ToString("N") + ".f32");
         try

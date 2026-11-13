@@ -3,6 +3,7 @@
 
 using System.Globalization;
 using Filee.Core.Conversion;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Media;
@@ -38,7 +39,8 @@ public class MediaInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         Assert.StartsWith("subfile,,start,", MediaInput.For(export), StringComparison.Ordinal);
         Assert.Equal($"concat:{Path.Combine(work, "hikvision-imkh.bin")}|{sdCard}", MediaInput.For(sdCard, "mp4", work));
-        Assert.StartsWith("concat:", MediaInput.For(sdCard), StringComparison.Ordinal); // header in the temp folder
+        // Without a work folder, the header goes to Filee's own (private) work folder, never the shared temp folder.
+        Assert.Equal($"concat:{Path.Combine(WorkFolders.Root, "media", "hikvision-imkh.bin")}|{sdCard}", MediaInput.For(sdCard));
         Assert.Equal(sound, MediaInput.For(sound, workDirectory: work));
         Assert.Equal(plain, MediaInput.For(plain, workDirectory: work));
         Assert.True(MediaInput.IsUrl(MediaInput.For(export)));

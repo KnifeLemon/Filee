@@ -4,6 +4,7 @@
 // SD-card recording with mu-law sound as a concat of the IMKH header FFmpeg needs and the file (HikvisionStream).
 
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 
 namespace Filee.Engines.Media;
 
@@ -18,7 +19,7 @@ internal static class MediaInput
     /// <summary>
     /// The input to give FFmpeg for <paramref name="path"/>, a file of <paramref name="format"/> (detected from its
     /// name when null). <paramref name="workDirectory"/> holds what Filee writes for it (the Hikvision header); without
-    /// one, a folder of Filee's in the temp folder does. <paramref name="notice"/> hears what the user should know, as
+    /// one, a folder in Filee's work folder does. <paramref name="notice"/> hears what the user should know, as
     /// a localization key (a .nov export's other recordings left out). Refuses a protected .nov export or one without a
     /// recording (<see cref="Filee.Core.Conversion.ConversionRefusedException"/>), and throws
     /// <see cref="InvalidDataException"/> for a damaged one.
@@ -40,8 +41,9 @@ internal static class MediaInput
         input.StartsWith("subfile,", StringComparison.Ordinal) || input.StartsWith("concat:", StringComparison.Ordinal);
 
     /// <summary>
-    /// Where the Hikvision header is written for actions without a work folder (the Cut a clip editor, estimates):
-    /// the same 40 bytes every time, so it is left there.
+    /// Where the Hikvision header is written for actions without a work folder (the Cut a clip editor, estimates): in
+    /// Filee's own work folder, private to the user (mode 700 on Linux and macOS), so nobody else can put a file in its
+    /// place. It is the same 40 bytes every time, so it is left there.
     /// </summary>
-    private static string SharedFolder => Path.Combine(Path.GetTempPath(), "filee-media");
+    private static string SharedFolder => Path.Combine(WorkFolders.Root, "media");
 }
