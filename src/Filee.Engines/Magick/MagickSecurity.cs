@@ -10,6 +10,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using Filee.Core.Platform;
 using ImageMagick;
 using ImageMagick.Configuration;
 
@@ -92,14 +93,16 @@ internal static class MagickSecurity
     }
 
     /// <summary>
-    /// A folder in the temp folder with the configuration files, named after their content, so every Filee process
+    /// A folder with the configuration files in Filee's work root, named after their content, so every Filee process
     /// with the same files shares it instead of leaving one behind each. A folder whose files were changed is not used.
+    /// The work root is the user's own (%TEMP%\Filee, or the cache folder with mode 700 on Linux and macOS, see
+    /// <see cref="WorkFolders"/>): in a shared /tmp another user could make the folder first and loosen the policy.
     /// </summary>
     private static string Folder(IConfigurationFiles files)
     {
         var all = files.All.ToList();
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(string.Concat(all.Select(f => f.FileName + "\0" + f.Data + "\0"))));
-        var folder = Path.Combine(Path.GetTempPath(), "filee-magick-" + Convert.ToHexStringLower(hash)[..16]);
+        var folder = Path.Combine(WorkFolders.Root, "magick-" + Convert.ToHexStringLower(hash)[..16]);
         if (!Directory.Exists(folder))
         {
             var staging = folder + "-" + Guid.NewGuid().ToString("N")[..8];
