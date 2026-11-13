@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "Sistema de arquivos ISO",
   "app.name": "Filee",
   "app.tagline": "Arraste, solte, convertido.",
 

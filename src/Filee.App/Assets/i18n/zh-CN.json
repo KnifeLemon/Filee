@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "ISO 文件系统",
   "app.name": "Filee",
   "app.tagline": "拖一拖，放一放，转换完成。",
 

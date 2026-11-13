@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "سیستم فایل ISO",
   "portable.import_existing": "وارد کردن داده‌های موجود",
   "portable.start_fresh": "شروع تازه",
   "portable.import_summary": "تنظیمات، پیش‌تنظیم‌ها، تاریخچه و موتورهای دانلودشده را در این پوشه پرتابل کپی کنید. فایل‌های اصلی تغییر نمی‌کنند و حذف نمی‌شوند.",

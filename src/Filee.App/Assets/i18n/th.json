@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "ระบบไฟล์ ISO",
   "app.name": "Filee",
   "app.tagline": "ลาก วาง แปลงไฟล์ทันที",
   "fields.title": "สาขา",

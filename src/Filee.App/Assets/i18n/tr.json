@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "ISO dosya sistemi",
   "app.name": "Filee",
   "app.tagline": "Sürükle, bırak, dönüştür.",
   "fields.title": "Alanlar",

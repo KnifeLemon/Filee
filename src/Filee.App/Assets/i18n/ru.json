@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "Файловая система ISO",
   "app.name": "Filee",
   "app.tagline": "Перетащил — и готово.",
 

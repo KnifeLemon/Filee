@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "ISO फाइल प्रणाली",
   "app.name": "Filee",
   "app.tagline": "तान्नुहोस्, छाड्नुहोस्, रूपान्तरण भयो।",
   "fields.title": "क्षेत्रहरू",

@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "Sistema de ficheiros ISO",
   "app.name": "Filee",
   "app.tagline": "Arrasta, larga, convertido.",
 

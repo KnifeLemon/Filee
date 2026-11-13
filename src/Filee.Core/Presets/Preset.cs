@@ -1792,12 +1792,23 @@ public enum ArchiveLevel
 /// <summary>Archive options.</summary>
 public sealed class ArchiveOptions
 {
+    /// <summary>Filesystem used for ISO creation; absent values retain Joliet.</summary>
+    public IsoFileSystem IsoFileSystem { get; set; }
     /// <summary>Put all dropped files into one archive instead of one archive per file.</summary>
     public bool CombineIntoOne { get; set; }
 
     public ArchiveLevel Level { get; set; } = ArchiveLevel.Normal;
 
     public ArchiveOptions Clone() => (ArchiveOptions)MemberwiseClone();
+}
+
+/// <summary>Filesystems available when creating a disc image.</summary>
+public enum IsoFileSystem
+{
+    /// <summary>ISO 9660 with Joliet, the existing default.</summary>
+    Joliet,
+    /// <summary>Universal Disk Format revision 2.01.</summary>
+    Udf201,
 }
 
 /// <summary>How a raster image is traced.</summary>

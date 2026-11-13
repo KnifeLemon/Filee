@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "Sistem berkas ISO",
   "app.name": "Filee",
   "app.tagline": "Seret, lepas, terkonversi.",
   "fields.title": "Bidang",

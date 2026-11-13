@@ -466,6 +466,14 @@
       </StackPanel>
     </Border>
 
+    <Border Classes="card" IsVisible="{Binding ShowIso}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.iso_filesystem}" />
+        <ComboBox ItemsSource="{Binding IsoFileSystems}" SelectedItem="{Binding IsoFileSystem}"
+                  HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.iso_filesystem}" />
+      </StackPanel>
+    </Border>
+
     <!-- Archive options -->
     <Border x:Name="ArchiveCard" Classes="card" IsVisible="{Binding ShowArchive}" Padding="14">
       <StackPanel Spacing="10">

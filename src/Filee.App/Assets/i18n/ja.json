@@ -1,4 +1,5 @@
 {
+  "presets.iso_filesystem": "ISO ファイルシステム",
   "app.name": "Filee",
   "app.tagline": "ドラッグ。ドロップ。\n変換完了。",
   "fields.title": "分野",
