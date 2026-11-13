@@ -34,10 +34,11 @@ internal static class VtfWriter
     {
         if (frames.Count == 0)
             throw new ArgumentException("A texture needs at least one picture.", nameof(frames));
-        if (frames.Count > ushort.MaxValue)
-            throw new InvalidDataException($"A texture holds at most {ushort.MaxValue} frames.");
-
         var (width, height) = TextureSize((int)frames[0].Width, (int)frames[0].Height);
+        // The reader's budget, so every texture written here can be read back (at 4096 × 4096, 16 frames).
+        if (frames.Count > ushort.MaxValue || !Vtf.FitsBudget(width, height, frames.Count))
+            throw new InvalidDataException(
+                $"The texture would be too large: {frames.Count} frames of {width} × {height} pixels. Use fewer frames or a smaller picture.");
         var transparent = frames.Any(frame => !frame.IsOpaque);
         var format = transparent ? Vtf.Format.Dxt5 : Vtf.Format.Dxt1;
         var mipmaps = MipmapCount(width, height);
@@ -125,7 +126,7 @@ internal static class VtfWriter
         var size = Vtf.DataSize(dxt5 ? Vtf.Format.Dxt5 : Vtf.Format.Dxt1, width, height);
         if (dds.Length != DdsHeaderSize + size)
             throw new InvalidDataException($"ImageMagick wrote {dds.Length} bytes of DDS for a {width} × {height} texture, not {DdsHeaderSize + size}.");
-        return dds.AsSpan(DdsHeaderSize, size).ToArray();
+        return dds.AsSpan(DdsHeaderSize, (int)size).ToArray();
     }
 
     /// <summary>

@@ -5,6 +5,7 @@
 // such as VTFLib is needed. VtfWriter writes the format.
 
 using System.Buffers.Binary;
+using System.Numerics;
 using ImageMagick;
 
 namespace Filee.Engines.Magick;
@@ -55,8 +56,21 @@ internal static class Vtf
     /// <summary>Resource flag: the entry holds its value itself and points to no data.</summary>
     private const byte NoDataFlag = 0x02;
 
-    /// <summary>Most pixels Filee decodes from one texture, over all frames (a 4096 × 4096 texture with 64 frames).</summary>
-    private const long MaxPixels = 4096L * 4096 * 64;
+    /// <summary>
+    /// The longest side Filee reads. Source loads at most 4096 px (<see cref="VtfWriter.MaxSide"/>); a larger side is a
+    /// damaged or made-up header.
+    /// </summary>
+    internal const int MaxSide = 16_384;
+
+    /// <summary>
+    /// The most pixels Filee reads from one texture, every frame counted (frames × width × height), as for a Paint.NET
+    /// picture: 1 GB of RGBA. Checked before anything is allocated, so a small file that claims a huge texture asks for
+    /// nothing. <see cref="VtfWriter"/> keeps to it too, so every texture Filee writes can be read back.
+    /// </summary>
+    internal const long MaxPixels = PaintNet.MaxPixels;
+
+    /// <summary>True when <paramref name="frames"/> frames of <paramref name="width"/> × <paramref name="height"/> fit <see cref="MaxPixels"/>.</summary>
+    internal static bool FitsBudget(int width, int height, int frames) => (long)width * height * frames <= MaxPixels;
 
     /// <summary>What the header says about a texture.</summary>
     internal sealed record Info(int Major, int Minor, int Width, int Height, uint Flags, int Frames, Format Format,
@@ -112,16 +126,21 @@ internal static class Vtf
 
         if (width == 0 || height == 0)
             throw new InvalidDataException("The VTF file has no pixels.");
+        if (width > MaxSide || height > MaxSide)
+            throw new InvalidDataException($"The texture is too large to read ({width} × {height}; Filee reads up to {MaxSide} px a side).");
         if (format > (uint)Format.Uvlx8888)
             throw new InvalidDataException($"The VTF file uses an unknown image format ({format}).");
         if ((Format)format == Format.P8)
             throw new InvalidDataException("The VTF file uses the palette format P8, which Filee can't read.");
         frames = Math.Max(1, frames);
         mipmaps = Math.Max(1, mipmaps);
+        // Every mipmap halves the sides down to 1 × 1: a file claiming more is damaged (and the shifts below would wrap).
+        if (mipmaps > MaxMipmaps(width, height))
+            throw new InvalidDataException($"The VTF file claims {mipmaps} mipmaps; a {width} × {height} texture has at most {MaxMipmaps(width, height)}.");
         depth = Math.Max(1, (int)depth);
         // A cube map has six faces; before 7.5 a seventh, the sphere map, unless the first frame is -1.
         var faces = (flags & EnvironmentMap) == 0 ? 1 : minor < 5 && firstFrame != 0xFFFF ? 7 : 6;
-        if ((long)width * height * frames > MaxPixels)
+        if (!FitsBudget(width, height, frames))
             throw new InvalidDataException($"The texture is too large to read ({width} × {height}, {frames} frames).");
 
         long offset = -1;
@@ -144,18 +163,35 @@ internal static class Vtf
                 ? 0 : DataSize((Format)lowFormat, lowWidth, lowHeight);
             offset = headerSize + thumbnail;
         }
+        // The image data: every mipmap, frame, face and slice. A file that claims more than it holds is refused here,
+        // before anything is decoded, with sizes counted in 64 bits.
+        var end = offset + TotalDataSize((Format)format, width, height, mipmaps, frames, faces, depth);
+        if (end > data.Length)
+            throw new InvalidDataException("The VTF file is cut off: it holds less image data than its header claims.");
         return new Info(major, minor, width, height, flags, frames, (Format)format, mipmaps, faces, depth, offset);
     }
 
     /// <summary>Bytes of one image of <paramref name="format"/> at <paramref name="width"/> × <paramref name="height"/>.</summary>
-    internal static int DataSize(Format format, int width, int height) => format switch
+    internal static long DataSize(Format format, int width, int height) => format switch
     {
         Format.Dxt1 or Format.Dxt1OneBitAlpha => Blocks(width) * Blocks(height) * 8,
         Format.Dxt3 or Format.Dxt5 => Blocks(width) * Blocks(height) * 16,
-        _ => width * height * BytesPerPixel(format),
+        _ => (long)width * height * BytesPerPixel(format),
     };
 
-    private static int Blocks(int side) => Math.Max(1, (side + 3) / 4);
+    private static long Blocks(int side) => Math.Max(1, (side + 3) / 4);
+
+    /// <summary>Mipmaps down to 1 × 1: one more than the times the longer side halves.</summary>
+    internal static int MaxMipmaps(int width, int height) => 1 + BitOperations.Log2((uint)Math.Max(1, Math.Max(width, height)));
+
+    /// <summary>Bytes of all image data: every mipmap of every frame, face and slice.</summary>
+    private static long TotalDataSize(Format format, int width, int height, int mipmaps, int frames, int faces, int depth)
+    {
+        long total = 0;
+        for (var mipmap = 0; mipmap < mipmaps; mipmap++)
+            total += DataSize(format, Math.Max(1, width >> mipmap), Math.Max(1, height >> mipmap)) * frames * faces * Math.Max(1, depth >> mipmap);
+        return total;
+    }
 
     private static int BytesPerPixel(Format format) => format switch
     {
@@ -176,21 +212,17 @@ internal static class Vtf
         for (var mipmap = info.Mipmaps - 1; mipmap >= 1; mipmap--)
         {
             var size = DataSize(info.Format, Math.Max(1, info.Width >> mipmap), Math.Max(1, info.Height >> mipmap));
-            offset += (long)size * info.Frames * info.Faces * Math.Max(1, info.Depth >> mipmap);
+            offset += size * info.Frames * info.Faces * Math.Max(1, info.Depth >> mipmap);
         }
 
         var imageSize = DataSize(info.Format, info.Width, info.Height);
         var frames = new List<byte[]>(info.Frames);
         for (var frame = 0; frame < info.Frames; frame++)
         {
-            var start = offset + (long)imageSize * info.Faces * info.Depth * frame;
+            var start = offset + imageSize * info.Faces * info.Depth * frame;
             if (start < 0 || start + imageSize > data.Length)
-            {
-                if (frame == 0)
-                    throw new InvalidDataException("The VTF file is cut off: its image data is missing.");
-                break; // keep the frames that are there
-            }
-            frames.Add(Decode(data.AsSpan((int)start, imageSize), info.Format, info.Width, info.Height));
+                throw new InvalidDataException("The VTF file is cut off: its image data is missing.");
+            frames.Add(Decode(data.AsSpan((int)start, (int)imageSize), info.Format, info.Width, info.Height));
         }
         return frames;
     }
@@ -198,7 +230,11 @@ internal static class Vtf
     /// <summary>Decodes one image to RGBA, 8 bits per channel, top row first.</summary>
     internal static byte[] Decode(ReadOnlySpan<byte> source, Format format, int width, int height)
     {
-        var rgba = new byte[width * height * 4];
+        if (width is < 1 or > MaxSide || height is < 1 or > MaxSide)
+            throw new InvalidDataException($"The texture is too large to read ({width} × {height}).");
+        if (source.Length < DataSize(format, width, height))
+            throw new InvalidDataException("The VTF file is cut off: its image data is missing.");
+        var rgba = new byte[(long)width * height * 4];
         switch (format)
         {
             case Format.Dxt1:

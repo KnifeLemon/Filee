@@ -398,9 +398,12 @@ in it also builds the package (artifact `windows-arm64-package`).
   (its DDS writer, without its header). The frames of an animation or the pages of a multi-page file become the frames
   of one animated texture. Read: versions 7.0 to 7.5 (from 7.3 the image data is found through the resource list), DXT1,
   DXT3, DXT5 and every uncompressed format VTFLib knows except the palette format P8; the largest mipmap of every frame,
-  the first face of a cube map and the first slice of a volume texture. The `.vmt` material that points to a texture
-  is not written: its path depends on where the texture goes under `materials/`. A VTF is a target only where the Games
-  field is on.
+  the first face of a cube map and the first slice of a volume texture. Before any pixel is read, a file is refused
+  when a side is over 16,384 px, its frames claim more than Paint.NET's pixel budget (256 million pixels), it claims
+  more mipmaps than its sides allow or it holds less image data than its header claims (sizes counted in 64 bits); the
+  writer keeps to the same budget (16 frames at 4096 × 4096), so Filee reads back every texture it writes. The `.vmt`
+  material that points to a texture is not written: its path depends on where the texture goes under `materials/`. A
+  VTF is a target only where the Games field is on.
 - **EXE / DLL** (a Windows program or library, #1188) is read as its icon, the one Explorer shows: the first icon group
   of its resources, put back together as an `.ico` in memory (`ProgramIcon`, Filee's own reader for 32 and 64-bit PE
   files; only the headers and the icon are read, at most 64 MB, and the file is never loaded or run). To ICO it is

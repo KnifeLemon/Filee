@@ -235,6 +235,75 @@ public class VtfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(13, VtfWriter.MipmapCount(4096, 16));
     }
 
+    /// <summary>A version 7.2 header without a thumbnail, followed by <paramref name="data"/> bytes of image data.</summary>
+    private static byte[] Header(int width, int height, Vtf.Format format, int mipmaps = 1, int frames = 1, int data = 0)
+    {
+        var bytes = new byte[80 + data];
+        "VTF\0"u8.CopyTo(bytes);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), 7);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), 80);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(16), (ushort)width);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(18), (ushort)height);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(24), (ushort)frames);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), (uint)format);
+        bytes[56] = (byte)mipmaps;
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(57), 0xFFFF_FFFF);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(63), 1);
+        return bytes;
+    }
+
+    [Theory]
+    [InlineData(65535, 16384, 1)] // a side over the limit; its RGBA8888 size doesn't fit an int
+    [InlineData(16384, 16384, 2)] // each side allowed, the pixels over the budget
+    public void A_header_claiming_a_huge_texture_is_refused_before_anything_is_allocated(int width, int height, int frames)
+    {
+        var bytes = Header(width, height, Vtf.Format.Rgba8888, frames: frames, data: 20);
+        Assert.Equal(100, bytes.Length);
+        var error = Assert.Throws<InvalidDataException>(() => Vtf.ReadInfo(bytes));
+        Assert.Contains("too large", error.Message);
+    }
+
+    [Fact]
+    public void A_texture_within_the_budget_but_without_its_data_is_cut_off()
+    {
+        // 4096 × 4096 RGBA8888 claims 64 MB; the file holds 20 bytes.
+        var error = Assert.Throws<InvalidDataException>(() => Vtf.ReadInfo(Header(4096, 4096, Vtf.Format.Rgba8888, data: 20)));
+        Assert.Contains("cut off", error.Message);
+    }
+
+    [Fact]
+    public async Task A_truncated_texture_fails_with_a_clear_error()
+    {
+        // 4 × 4 DXT1, one mipmap: 8 bytes of data, of which the file holds 5.
+        var path = Path.Combine(fx.NewFolder(), "broken.vtf");
+        File.WriteAllBytes(path, Header(4, 4, Vtf.Format.Dxt1, data: 5));
+        Assert.Throws<InvalidDataException>(() => Vtf.ReadInfo(File.ReadAllBytes(path)));
+        var job = await fx.ConvertAsync([path], new Preset { TargetFormat = "png" });
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Empty(job.Outputs);
+    }
+
+    [Theory]
+    [InlineData(2, 2, 3)] // 2 × 2 has two mipmaps
+    [InlineData(64, 64, 34)] // would shift by 33, which wraps to 1
+    public void More_mipmaps_than_the_sides_allow_are_refused(int width, int height, int mipmaps)
+    {
+        var error = Assert.Throws<InvalidDataException>(() => Vtf.ReadInfo(Header(width, height, Vtf.Format.Rgba8888, mipmaps, data: 100_000)));
+        Assert.Contains("mipmaps", error.Message);
+    }
+
+    [Fact]
+    public void The_writer_keeps_to_the_budget_the_reader_reads()
+    {
+        Assert.True(Vtf.FitsBudget(VtfWriter.MaxSide, VtfWriter.MaxSide, 16));
+        Assert.False(Vtf.FitsBudget(VtfWriter.MaxSide, VtfWriter.MaxSide, 17));
+        Assert.True(Vtf.FitsBudget(Vtf.MaxSide, Vtf.MaxSide, 1));
+        Assert.Equal(2, Vtf.MaxMipmaps(2, 2));
+        Assert.Equal(13, Vtf.MaxMipmaps(4096, 1));
+        Assert.Throws<InvalidDataException>(() => Vtf.Decode(new byte[7], Vtf.Format.Dxt1, 4, 4));
+    }
+
     [Fact]
     public void A_file_that_is_no_texture_is_refused()
     {
