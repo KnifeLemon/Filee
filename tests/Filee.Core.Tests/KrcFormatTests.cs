@@ -29,19 +29,19 @@ public class KrcFormatTests
     }
 
     [Fact]
-    public void Version_86_libraries_learn_krc_without_taking_custom_claims()
+    public void Version_87_libraries_learn_krc_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var subtitles = profiles.Single(p => p.Id == "subtitles");
         subtitles.Extensions.Remove("krc");
-        Assert.True(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(87, presets, profiles));
         Assert.Contains("krc", subtitles.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(87, presets, profiles));
 
         subtitles.Extensions.Remove("krc");
         profiles.Insert(0, new ToolbarProfile { Id = "my-lyrics", Extensions = ["KRC"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(87, presets, profiles));
         Assert.DoesNotContain("krc", subtitles.Extensions); // the user's own donut has it
         Assert.Equal("my-lyrics", ProfileSelector.Select(profiles, ["song.krc"])?.Id);
     }
