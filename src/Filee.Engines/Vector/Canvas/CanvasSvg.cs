@@ -79,16 +79,61 @@ internal sealed class CanvasSvg
         Check();
     }
 
-    /// <summary>A picture as a data URI, fitted into the box (<paramref name="aspect"/> as SVG's preserveAspectRatio).</summary>
-    public void Image(double x, double y, double width, double height, string mediaType, byte[] data, string aspect = "xMidYMid meet")
+    /// <summary>How a picture fills its box.</summary>
+    public enum Fit
     {
-        if (_svg.Length + (long)data.Length * 4 / 3 + 256 > MaxLength)
+        /// <summary>All of it, its proportions kept, centred (SVG's <c>meet</c>).</summary>
+        Contain,
+
+        /// <summary>The whole box, its proportions kept, centred and cut by the clip around it (SVG's <c>slice</c>).</summary>
+        Cover,
+    }
+
+    /// <summary>The id of each picture embedded so far.</summary>
+    private readonly Dictionary<CanvasPicture, string> _pictures = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// The id of the picture's one embedded copy (a data URI in <c>&lt;defs&gt;</c>, at the picture's own pixel size),
+    /// written the first time it is drawn: a picture shown by many cards, or tiled over a group, is stored once.
+    /// </summary>
+    private string Define(CanvasPicture picture)
+    {
+        if (_pictures.TryGetValue(picture, out var id))
+            return id;
+        if (_svg.Length + (long)picture.Data.Length * 4 / 3 + 256 > MaxLength)
             throw new ConversionRefusedException("error.canvas_too_large", "the pictures of the board are too large together");
-        _svg.Append($"""<image x="{N(x)}" y="{N(y)}" width="{N(width)}" height="{N(height)}" preserveAspectRatio="{aspect}" xlink:href="data:{mediaType};base64,""");
-        _svg.Append(Convert.ToBase64String(data));
-        _svg.Append("\"/>");
+        id = $"p{_pictures.Count + 1}";
+        _svg.Append($"""<defs><image id="{id}" width="{N(picture.Width)}" height="{N(picture.Height)}" preserveAspectRatio="none" xlink:href="data:{picture.MediaType};base64,""");
+        _svg.Append(Convert.ToBase64String(picture.Data));
+        _svg.Append("\"/></defs>");
+        Check();
+        return _pictures[picture] = id;
+    }
+
+    /// <summary>The picture fitted into the box, centred.</summary>
+    public void Picture(CanvasPicture picture, double x, double y, double width, double height, Fit fit)
+    {
+        var scaleX = width / picture.Width;
+        var scaleY = height / picture.Height;
+        var scale = fit == Fit.Contain ? Math.Min(scaleX, scaleY) : Math.Max(scaleX, scaleY);
+        var drawnWidth = picture.Width * scale;
+        var drawnHeight = picture.Height * scale;
+        Place(picture, x + (width - drawnWidth) / 2, y + (height - drawnHeight) / 2, scale, scale);
+    }
+
+    /// <summary>The picture at (<paramref name="x"/>, <paramref name="y"/>), <paramref name="width"/> × <paramref name="height"/>, stretched.</summary>
+    public void Picture(CanvasPicture picture, double x, double y, double width, double height) =>
+        Place(picture, x, y, width / picture.Width, height / picture.Height);
+
+    private void Place(CanvasPicture picture, double x, double y, double scaleX, double scaleY)
+    {
+        var id = Define(picture);
+        _svg.Append($"""<use xlink:href="#{id}" transform="translate({N(x)} {N(y)}) scale({Scale(scaleX)} {Scale(scaleY)})"/>""");
         Check();
     }
+
+    /// <summary>A scale factor with enough digits for a picture shrunk a lot (N keeps two).</summary>
+    private static string Scale(double value) => Math.Round(value, 6).ToString("0.######", CultureInfo.InvariantCulture);
 
     /// <summary>Starts a group clipped to a rounded rectangle; close it with <see cref="EndClip"/>.</summary>
     public void BeginClip(double x, double y, double width, double height, double radius)

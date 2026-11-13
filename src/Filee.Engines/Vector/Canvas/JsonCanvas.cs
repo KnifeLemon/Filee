@@ -77,6 +77,12 @@ internal sealed record JsonCanvas(IReadOnlyList<CanvasNode> Nodes, IReadOnlyList
     /// <summary>Longest text of one card; more is cut, since the card can't show it anyway.</summary>
     public const int MaxTextLength = 100_000;
 
+    /// <summary>
+    /// Longest file path, subpath, URL or background kept; more is cut. Paths over CanvasFiles.MaxPathLength are not
+    /// looked for at all, and a card shows only the beginning of an address.
+    /// </summary>
+    public const int MaxReferenceLength = 4096;
+
     private static readonly JsonDocumentOptions Options = new()
     {
         MaxDepth = 64,
@@ -210,11 +216,11 @@ internal sealed record JsonCanvas(IReadOnlyList<CanvasNode> Nodes, IReadOnlyList
                 CanvasNodeKind.Text => new CanvasNode(id, kind.Value, x, y, width, height, color,
                     Cut(RequiredString(element, "text", "card", index))),
                 CanvasNodeKind.File => new CanvasNode(id, kind.Value, x, y, width, height, color,
-                    RequiredString(element, "file", "card", index), Subpath: OptionalString(element, "subpath")),
+                    Short(RequiredString(element, "file", "card", index)), Subpath: Short(OptionalString(element, "subpath"))),
                 CanvasNodeKind.Link => new CanvasNode(id, kind.Value, x, y, width, height, color,
-                    RequiredString(element, "url", "card", index)),
+                    Short(RequiredString(element, "url", "card", index))),
                 _ => new CanvasNode(id, kind.Value, x, y, width, height, color, Cut(OptionalString(element, "label") ?? ""),
-                    Background: OptionalString(element, "background"), BackgroundStyle: OptionalString(element, "backgroundStyle")),
+                    Background: Short(OptionalString(element, "background")), BackgroundStyle: OptionalString(element, "backgroundStyle")),
             };
             nodes.Add(node);
         }
@@ -292,6 +298,9 @@ internal sealed record JsonCanvas(IReadOnlyList<CanvasNode> Nodes, IReadOnlyList
     }
 
     private static string Cut(string text) => text.Length > MaxTextLength ? text[..MaxTextLength] : text;
+
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(text))]
+    private static string? Short(string? text) => text is { Length: > MaxReferenceLength } ? text[..MaxReferenceLength] : text;
 
     private static string Shorten(string text) => text.Length > 40 ? text[..40] + "…" : text;
 

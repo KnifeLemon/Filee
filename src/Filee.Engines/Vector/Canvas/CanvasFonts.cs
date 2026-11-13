@@ -4,6 +4,7 @@
 // a Korean or Japanese card isn't drawn as empty boxes.
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text;
 using Filee.Engines.Cad;
 using SkiaSharp;
@@ -62,6 +63,14 @@ internal static class CanvasFonts
         return result;
     }
 
+    /// <summary>
+    /// Letters no font is expected to draw (private use, unassigned, control and format characters, lone surrogates):
+    /// the installed families aren't scanned for them, so odd text doesn't cost a font lookup per letter.
+    /// </summary>
+    private static bool HasNoGlyph(int codePoint) =>
+        (uint)codePoint > 0x10FFFF || CharUnicodeInfo.GetUnicodeCategory(codePoint) is UnicodeCategory.PrivateUse
+            or UnicodeCategory.OtherNotAssigned or UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.Surrogate;
+
     private static bool Covered(GlyphRun run)
     {
         foreach (var rune in run.Text.EnumerateRunes())
@@ -70,7 +79,7 @@ internal static class CanvasFonts
         return true;
     }
 
-    private static SKTypeface? FaceFor(int codePoint, bool bold) => Found.GetOrAdd((codePoint, bold), key =>
+    private static SKTypeface? FaceFor(int codePoint, bool bold) => HasNoGlyph(codePoint) ? null : Found.GetOrAdd((codePoint, bold), key =>
     {
         var face = Installed.Value.FirstOrDefault(f => f.ContainsGlyph(key.CodePoint));
         if (face is null || !key.Bold)

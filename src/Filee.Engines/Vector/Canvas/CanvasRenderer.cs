@@ -26,6 +26,9 @@ internal static class CanvasRenderer
     private const double CardTint = 0.08;
     private const double GroupTint = 0.06;
 
+    /// <summary>Most tiles of a repeated group background (each a few dozen bytes: they share one picture).</summary>
+    private const int MaxTiles = 10_000;
+
     /// <summary>Draws the canvas at <paramref name="path"/> as SVG text.</summary>
     public static string Render(string path, CancellationToken ct)
     {
@@ -117,7 +120,7 @@ internal static class CanvasRenderer
             // A picture card is the picture, with rounded corners and the card's frame only when it has a colour.
             svg.BeginClip(node.X, node.Y, node.Width, node.Height, Radius);
             svg.Rect(node.X, node.Y, node.Width, node.Height, 0, CanvasColors.Background);
-            svg.Image(node.X, node.Y, node.Width, node.Height, picture.MediaType, picture.Data);
+            svg.Picture(picture, node.X, node.Y, node.Width, node.Height, CanvasSvg.Fit.Contain);
             svg.EndClip();
             if (node.Color is not null)
                 svg.Rect(node.X, node.Y, node.Width, node.Height, Radius, null, Colors(node, CardTint).Stroke, BorderWidth);
@@ -165,17 +168,18 @@ internal static class CanvasRenderer
             svg.BeginClip(group.X + BorderWidth, group.Y + BorderWidth, group.Width - 2 * BorderWidth, group.Height - 2 * BorderWidth, Radius);
             if (group.BackgroundStyle == "repeat")
             {
-                // Tiled at the picture's own size, as Obsidian repeats it; a board's worth of tiles at most.
-                double tileWidth = Math.Max(16, picture.Width / 2), tileHeight = Math.Max(16, picture.Height / 2);
+                // Tiled at the picture's own size, as Obsidian repeats it, every tile drawing the one embedded copy;
+                // a texture smaller than 16 px is tiled at 16 px, and at most MaxTiles tiles are drawn.
+                double tileWidth = Math.Max(16, picture.NaturalWidth), tileHeight = Math.Max(16, picture.NaturalHeight);
                 var tiles = 0;
-                for (var y = group.Y; y < group.Bottom && tiles < 400; y += tileHeight)
-                    for (var x = group.X; x < group.Right && tiles < 400; x += tileWidth, tiles++)
-                        svg.Image(x, y, tileWidth, tileHeight, picture.MediaType, picture.Data, "none");
+                for (var y = group.Y; y < group.Bottom && tiles < MaxTiles; y += tileHeight)
+                    for (var x = group.X; x < group.Right && tiles < MaxTiles; x += tileWidth, tiles++)
+                        svg.Picture(picture, x, y, tileWidth, tileHeight);
             }
             else
             {
-                svg.Image(group.X, group.Y, group.Width, group.Height, picture.MediaType, picture.Data,
-                    group.BackgroundStyle == "ratio" ? "xMidYMid meet" : "xMidYMid slice");
+                svg.Picture(picture, group.X, group.Y, group.Width, group.Height,
+                    group.BackgroundStyle == "ratio" ? CanvasSvg.Fit.Contain : CanvasSvg.Fit.Cover);
             }
             svg.EndClip();
         }

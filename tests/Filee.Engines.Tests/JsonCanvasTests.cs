@@ -350,4 +350,107 @@ public class JsonCanvasTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Null(CanvasColors.Parse("#12345"));
         Assert.Null(CanvasColors.Parse(null));
     }
+
+    // ───────────────────────── One card can't get around the budgets ─────────────────────────
+
+    [Fact]
+    public void A_long_vault_path_returns_quickly_without_walking_the_disk()
+    {
+        var board = MakeBoard();
+        // "a/a/a/…/x.png" of a megabyte: without the cap this joins and stats an ever-longer string for every folder.
+        var deep = string.Concat(Enumerable.Repeat("a/", 500_000)) + "x.png";
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Null(CanvasFiles.Locate(deep, board.Folder));
+        Assert.True(started.ElapsedMilliseconds < 1_000, $"{started.ElapsedMilliseconds} ms");
+
+        // A path at the limit is still looked for; one character past it is taken as not found.
+        var withinLimit = string.Concat(Enumerable.Repeat("a/", (CanvasFiles.MaxPathLength - 10) / 2)) + "x.png";
+        Assert.True(withinLimit.Length <= CanvasFiles.MaxPathLength);
+        Assert.Null(CanvasFiles.Locate(new string('a', CanvasFiles.MaxPathLength + 1) + ".png", board.Folder));
+    }
+
+    [Fact]
+    public void Only_the_first_few_folders_are_dropped_from_a_vault_path()
+    {
+        var board = MakeBoard();
+        var prefix = string.Concat(Enumerable.Repeat("x/", CanvasFiles.MaxDroppedFolders + 1));
+        // The real file is under more than MaxDroppedFolders leading folders: not reached, so the budget holds.
+        Assert.Null(CanvasFiles.Locate(prefix + "img/photo.png", board.Folder));
+        var near = string.Concat(Enumerable.Repeat("x/", CanvasFiles.MaxDroppedFolders));
+        Assert.Equal(Path.Combine(board.Folder, "img", "photo.png"), CanvasFiles.Locate(near + "img/photo.png", board.Folder));
+    }
+
+    [Fact]
+    public async Task A_link_card_with_a_huge_url_does_not_blow_the_budget()
+    {
+        var url = "https://example.invalid/" + new string('a', 5_000_000);
+        var path = Write(JsonSerializer.Serialize(new
+        {
+            nodes = new[] { new { id = "a", type = "link", x = 0, y = 0, width = 300, height = 120, url } },
+        }));
+        var svg = File.ReadAllText(await ConvertAsync(path, "svg"));
+        Assert.True(svg.Length < 200_000, $"{svg.Length} characters"); // the url is cut, and clipped to the card
+    }
+
+    /// <summary>A folder with one picture (<c>img/photo.png</c>) and a canvas that refers to it.</summary>
+    private string MakePictureBoard(JsonArray nodes)
+    {
+        var folder = fx.NewFolder();
+        Directory.CreateDirectory(Path.Combine(folder, "img"));
+        File.WriteAllBytes(Path.Combine(folder, "img", "photo.png"), EbookBuilders.Png(64, 40, MagickColors.Teal));
+        var canvas = Path.Combine(folder, "pic.canvas");
+        File.WriteAllText(canvas, new JsonObject { ["nodes"] = nodes }.ToJsonString());
+        return canvas;
+    }
+
+    [Fact]
+    public async Task The_same_picture_shown_by_many_cards_of_one_size_is_embedded_once()
+    {
+        var nodes = new JsonArray();
+        for (var i = 0; i < 20; i++)
+            nodes.Add(Node($"p{i}", "file", 0, i * 160, 200, 140, ("file", "img/photo.png")));
+        var svg = File.ReadAllText(await ConvertAsync(MakePictureBoard(nodes), "svg"));
+        Assert.Equal(1, Pictures(svg)); // one <defs> copy, drawn by every card with <use>
+        Assert.True(svg.Split("<use").Length - 1 >= 20);
+    }
+
+    [Fact]
+    public async Task A_repeated_background_embeds_the_texture_once()
+    {
+        var nodes = new JsonArray
+        {
+            Node("bg", "group", 0, 0, 4000, 3000, ("label", "Textured"),
+                ("background", "img/photo.png"), ("backgroundStyle", "repeat")),
+        };
+        var svg = File.ReadAllText(await ConvertAsync(MakePictureBoard(nodes), "svg"));
+        Assert.Equal(1, Pictures(svg)); // one copy, not one per tile
+        Assert.True(svg.Length < 2_000_000, $"{svg.Length} characters");
+    }
+
+    [Fact]
+    public async Task A_markdown_file_link_with_a_heading_subpath_stays_a_link()
+    {
+        var path = Write(JsonSerializer.Serialize(new
+        {
+            nodes = new[] { new { id = "a", type = "file", x = 0, y = 0, width = 300, height = 120, file = "Notes/Plan.md", subpath = "#Next steps" } },
+        }));
+        var markdown = File.ReadAllText(await ConvertAsync(path, "md"));
+        Assert.Contains("[Plan](Notes/Plan.md#Next%20steps)", markdown);
+        Assert.DoesNotContain("#Next steps", markdown); // a space in the destination would break the link
+    }
+
+    [Fact]
+    public async Task Deeply_nested_groups_in_the_markdown_writer_do_not_overflow_the_stack()
+    {
+        var nodes = new JsonArray();
+        for (var i = 0; i < 5_000; i++)
+        {
+            var size = 20_000 - i;
+            nodes.Add(Node($"g{i}", "group", i, i, size, size, ("label", $"G{i}")));
+        }
+        nodes.Add(Node("leaf", "text", 100, 100, 100, 100, ("text", "LEAFCARD")));
+        var path = Write(new JsonObject { ["nodes"] = nodes }.ToJsonString());
+        var markdown = File.ReadAllText(await ConvertAsync(path, "md"));
+        Assert.Contains("LEAFCARD", markdown);
+    }
 }

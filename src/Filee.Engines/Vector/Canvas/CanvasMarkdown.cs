@@ -50,20 +50,56 @@ internal static partial class CanvasMarkdown
         return markdown.ToString().TrimEnd('\n') + "\n";
     }
 
+    /// <summary>
+    /// Deepest group nesting written as nested sections; groups deeper than this are listed one after another at the
+    /// last level, without recursion (10,000 groups one inside the other fit inside the budgets).
+    /// </summary>
+    private const int MaxGroupDepth = 16;
+
     private static void Section(StringBuilder markdown, CanvasNode? group, int level, ILookup<string?, CanvasNode> children,
         CanvasFiles files, MarkdownPictures? pictures, CancellationToken ct)
     {
-        var inside = children[group?.Id].OrderBy(n => n.Y).ThenBy(n => n.X).ToList();
+        var inside = Inside(group, children);
+        Cards(markdown, inside, level, files, pictures, ct);
+        foreach (var subgroup in inside.Where(n => n.Kind == CanvasNodeKind.Group))
+        {
+            Heading(markdown, subgroup, level + 1);
+            if (level < MaxGroupDepth)
+            {
+                Section(markdown, subgroup, level + 1, children, files, pictures, ct);
+                continue;
+            }
+            // At the last level: this group's cards, then every group inside it in the same order, each at this level.
+            var stack = new Stack<CanvasNode>();
+            Cards(markdown, Inside(subgroup, children), level + 1, files, pictures, ct);
+            foreach (var deeper in Inside(subgroup, children).Where(n => n.Kind == CanvasNodeKind.Group).Reverse())
+                stack.Push(deeper);
+            while (stack.TryPop(out var next))
+            {
+                ct.ThrowIfCancellationRequested();
+                Heading(markdown, next, level + 1);
+                var nextInside = Inside(next, children);
+                Cards(markdown, nextInside, level + 1, files, pictures, ct);
+                foreach (var deeper in nextInside.Where(n => n.Kind == CanvasNodeKind.Group).Reverse())
+                    stack.Push(deeper);
+            }
+        }
+    }
+
+    private static List<CanvasNode> Inside(CanvasNode? group, ILookup<string?, CanvasNode> children) =>
+        children[group?.Id].OrderBy(n => n.Y).ThenBy(n => n.X).ToList();
+
+    private static void Heading(StringBuilder markdown, CanvasNode group, int level) =>
+        markdown.Append(new string('#', Math.Min(6, level))).Append(' ')
+            .Append(group.Content.Length > 0 ? OneLine(group.Content) : "Group").Append("\n\n");
+
+    private static void Cards(StringBuilder markdown, List<CanvasNode> inside, int level, CanvasFiles files,
+        MarkdownPictures? pictures, CancellationToken ct)
+    {
         foreach (var card in inside.Where(n => n.Kind != CanvasNodeKind.Group))
         {
             ct.ThrowIfCancellationRequested();
             markdown.Append(Card(card, level, files, pictures).TrimEnd()).Append("\n\n");
-        }
-        foreach (var subgroup in inside.Where(n => n.Kind == CanvasNodeKind.Group))
-        {
-            markdown.Append(new string('#', Math.Min(6, level + 1))).Append(' ')
-                .Append(subgroup.Content.Length > 0 ? OneLine(subgroup.Content) : "Group").Append("\n\n");
-            Section(markdown, subgroup, level + 1, children, files, pictures, ct);
         }
     }
 
@@ -81,8 +117,9 @@ internal static partial class CanvasMarkdown
                     var shown = Escape(CanvasFiles.IsNote(name) ? name[..^3] : name);
                     if (CanvasFiles.IsPicture(name) && files.Find(card.Content) is { } local && pictures?.Add(local) is { } link)
                         return $"![{shown}]({link})";
+                    // A heading usually has spaces, and a link destination with a space isn't a link in CommonMark.
                     var target = string.Join('/', card.Content.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString))
-                        + (card.Subpath ?? "");
+                        + (card.Subpath is { Length: > 1 } subpath ? "#" + Uri.EscapeDataString(subpath.TrimStart('#')) : "");
                     return $"[{shown}]({target})";
                 }
         }

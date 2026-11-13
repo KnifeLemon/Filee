@@ -438,10 +438,13 @@ internal sealed partial class CanvasText
                 Flush(force: false);
             if (wordWidth > width && word.Length > 1)
             {
-                // Wider than the card (a long URL): break it letter by letter.
+                // Wider than the card (a long URL): break it letter by letter, down to the card's bottom only, so a
+                // pasted blob of a few MB isn't laid out to its end as clipped, invisible text.
                 var part = new StringBuilder();
                 foreach (var letter in Letters(word))
                 {
+                    if (owner.Full)
+                        return;
                     var (_, partWidth) = Measure(part + letter, style);
                     if (part.Length > 0 && _x + partWidth > width)
                     {
@@ -486,8 +489,14 @@ internal sealed partial class CanvasText
         {
             if (_pieces.Count == 0 && !force)
                 return;
-            if (_pieces.Count == 0 && owner._y > owner._bottom)
+            if (owner.Full)
+            {
+                // Below the card's bottom: nothing would show.
+                _pieces.Clear();
+                _x = 0;
+                _pendingSpace = 0;
                 return;
+            }
             var lineHeight = _maxSize * LineHeight;
             var top = owner._y;
             var baseline = Baseline(top, _maxSize, lineHeight);
