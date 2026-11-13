@@ -214,6 +214,10 @@ internal sealed record HParaBorder(HBorders Borders, string? Fill, HInsets Offse
 /// <param name="AutoSpaceLatin">Space between East Asian and Latin text (한글 autoSpacing eAsianEng, Word w:autoSpaceDE).</param>
 /// <param name="AutoSpaceDigits">Space between East Asian text and digits (한글 eAsianNum, Word w:autoSpaceDN).</param>
 /// <param name="Condense">한글 "최소 공백": how far spaces may shrink to fit a line, in percent.</param>
+/// <param name="SpreadEastAsian">
+/// Justified lines spread their room between Chinese and Japanese characters too, not only over the spaces (Word's East
+/// Asian justification); null or false: over the spaces only, as 한글 justifies.
+/// </param>
 internal sealed record HLineBreaking(
     HLatinBreak? Latin = null,
     HNonLatinBreak? NonLatin = null,
@@ -223,13 +227,15 @@ internal sealed record HLineBreaking(
     bool? CompressPunctuation = null,
     bool? AutoSpaceLatin = null,
     bool? AutoSpaceDigits = null,
-    int? Condense = null)
+    int? Condense = null,
+    bool? SpreadEastAsian = null)
 {
     /// <summary>These settings with the members they leave open taken from <paramref name="baseline"/>.</summary>
     public HLineBreaking Over(HLineBreaking? baseline) => baseline is null ? this : new HLineBreaking(
         Latin ?? baseline.Latin, NonLatin ?? baseline.NonLatin, LineWrap ?? baseline.LineWrap, Kinsoku ?? baseline.Kinsoku,
         OverflowPunctuation ?? baseline.OverflowPunctuation, CompressPunctuation ?? baseline.CompressPunctuation,
-        AutoSpaceLatin ?? baseline.AutoSpaceLatin, AutoSpaceDigits ?? baseline.AutoSpaceDigits, Condense ?? baseline.Condense);
+        AutoSpaceLatin ?? baseline.AutoSpaceLatin, AutoSpaceDigits ?? baseline.AutoSpaceDigits, Condense ?? baseline.Condense,
+        SpreadEastAsian ?? baseline.SpreadEastAsian);
 }
 
 internal enum HLatinBreak

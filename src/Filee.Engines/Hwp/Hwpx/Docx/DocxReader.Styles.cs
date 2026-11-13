@@ -628,7 +628,8 @@ internal sealed partial class DocxReader
             OverflowPunctuation: p.OverflowPunct ?? true,
             CompressPunctuation: p.TopLinePunct ?? false,
             AutoSpaceLatin: p.AutoSpaceDE ?? true,
-            AutoSpaceDigits: p.AutoSpaceDN ?? true);
+            AutoSpaceDigits: p.AutoSpaceDN ?? true,
+            SpreadEastAsian: true);
         return new HParaLayout(lineHeight, border, breaking, SnapToGrid: p.SnapToGrid ?? true);
     }
 
