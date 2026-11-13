@@ -300,7 +300,8 @@ public sealed class CaptureRecordingEngine : IDisposable
                 lock (stderrLines)
                 {
                     var nonBannerLines = stderrLines
-                        .Where(l => {
+                        .Where(l =>
+                        {
                             var t = l.Trim();
                             return !t.StartsWith("ffmpeg version", StringComparison.OrdinalIgnoreCase)
                                 && !t.StartsWith("built with", StringComparison.OrdinalIgnoreCase)
@@ -451,13 +452,13 @@ public sealed class CaptureRecordingEngine : IDisposable
         catch (Exception ex)
         {
             _log?.LogWarning(ex, "Failed to post-process system audio for segment {Segment}", targetSegmentPath);
-            if (File.Exists(rawSegmentPath) && !File.Exists(targetSegmentPath))
-            {
-                File.Move(rawSegmentPath, targetSegmentPath);
-            }
         }
         finally
         {
+            if (!File.Exists(targetSegmentPath) && File.Exists(rawSegmentPath))
+            {
+                try { File.Move(rawSegmentPath, targetSegmentPath, overwrite: true); } catch { }
+            }
             try { if (File.Exists(rawSegmentPath)) File.Delete(rawSegmentPath); } catch { }
             try { if (!string.IsNullOrWhiteSpace(sysAudioPath) && File.Exists(sysAudioPath)) File.Delete(sysAudioPath); } catch { }
         }
