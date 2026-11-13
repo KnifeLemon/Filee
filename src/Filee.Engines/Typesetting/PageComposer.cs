@@ -346,8 +346,10 @@ internal sealed class PageComposer
                 var page = _pages[i];
                 PageBorder(page);
                 MasterPages(page, lastOfSection: i == _pages.Count - 1 || _pages[i + 1].Section != page.Section);
-                DrawObjects(page);
+                // Headers and footers first: what of them lies behind the text (a watermark) goes under the body's
+                // objects behind the text too, as Word draws them.
                 HeadersAndFooters(page);
+                DrawObjects(page);
             }
             return new ComposedDocument([.. _pages.Select(p => p.Content)], _outline);
         }
@@ -1364,14 +1366,17 @@ internal sealed class PageComposer
 
         /// <summary>
         /// Lays out a header's or footer's blocks from <paramref name="top"/> down, or (null) up from the bottom of the
-        /// footer area.
+        /// footer area. Its objects behind the text go under the page's body (Word's watermarks).
         /// </summary>
         private void Area(Page page, List<HBlock> blocks, float? top)
         {
             var pieces = Tables.Stack(blocks, page.Geometry.TextWidth, out var height);
             var from = top ?? page.Geometry.FooterBottom - height;
+            var behind = new PageContent(page.Content.Width, page.Content.Height);
             foreach (var piece in pieces)
-                piece.Draw(page.Content, page.Geometry.Left, from + piece.Top);
+                piece.Draw(piece.Behind ? behind : page.Content, page.Geometry.Left, from + piece.Top);
+            if (behind.Items.Count > 0)
+                page.Content.Add(behind, under: true);
         }
 
         // ───────────────────────── Fields ─────────────────────────

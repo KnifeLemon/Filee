@@ -373,6 +373,27 @@ internal sealed record HTransform(double Rotation = 0, bool FlipHorizontal = fal
     public bool IsIdentity => Rotation == 0 && !FlipHorizontal && !FlipVertical;
 }
 
+/// <summary>
+/// WordArt text (VML v:textpath, DrawingML text warps): the text box's paragraphs drawn turned with the box and see-through.
+/// </summary>
+/// <param name="Fit">
+/// The text is stretched to fill the box (VML fitshape, a DrawingML warp other than textNoShape): its lines' width across,
+/// their height down, whatever its font size.
+/// </param>
+/// <param name="Opacity">Of the text's fill, 0 (invisible) to 1.</param>
+internal sealed record HTextArt(bool Fit, double Opacity = 1);
+
+/// <summary>
+/// Colour changes of a picture, applied to each channel (0..1) as <c>(c - 0.5) × Contrast + 0.5 + Brightness</c>
+/// (Word's washout: contrast 0.3, brightness 0.35), after grey scale and before black and white.
+/// </summary>
+/// <param name="BlackAndWhite">Each pixel black or white about this threshold (0..1); null = not.</param>
+/// <param name="Opacity">0 (invisible) to 1.</param>
+internal sealed record HPictureEffects(double Contrast = 1, double Brightness = 0, bool Grayscale = false, double? BlackAndWhite = null, double Opacity = 1)
+{
+    public bool IsEmpty => Contrast == 1 && Brightness == 0 && !Grayscale && BlackAndWhite is null && Opacity >= 1;
+}
+
 internal readonly record struct HPoint(int X, int Y);
 
 /// <summary>

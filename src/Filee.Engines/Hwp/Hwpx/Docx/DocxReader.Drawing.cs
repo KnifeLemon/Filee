@@ -12,6 +12,8 @@ internal sealed partial class DocxReader
 {
     private static readonly XNamespace Wpc = "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
     private static readonly XNamespace W10 = "urn:schemas-microsoft-com:office:word";
+    private static readonly XNamespace O = "urn:schemas-microsoft-com:office:office";
+    private static readonly XNamespace W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
 
     /// <summary>Default DrawingML text box insets: 0.1" left/right, 0.05" top/bottom.</summary>
     private static readonly HInsets DefaultTextBoxPadding = new(720, 720, 360, 360);
@@ -142,7 +144,29 @@ internal sealed partial class DocxReader
             Anchor = anchor,
             Crop = cropped == path ? Crop(sourceRect) : null,
             Transform = Transform(pic.Element(Pic + "spPr")?.Element(A + "xfrm")),
+            Effects = BlipEffects(blip),
         };
+    }
+
+    /// <summary>
+    /// Colour effects of a DrawingML picture: a:lum (Word's brightness and contrast; washout is +70 % / -70 %),
+    /// a:grayscl, a:biLevel and a:alphaModFix; null when there are none.
+    /// </summary>
+    private static HPictureEffects? BlipEffects(XElement? blip)
+    {
+        if (blip is null)
+            return null;
+        static double Fraction(XElement? element, string name, double fallback) =>
+            Long(element, name) is { } value ? Math.Clamp(value / 100000.0, -1, 1) : fallback;
+        var lum = blip.Element(A + "lum");
+        var contrast = Fraction(lum, "contrast", 0);
+        var effects = new HPictureEffects(
+            Contrast: contrast < 0 ? 1 + contrast : 1 / Math.Max(0.01, 1 - contrast),
+            Brightness: Fraction(lum, "bright", 0) / 2,
+            Grayscale: blip.Element(A + "grayscl") is not null,
+            BlackAndWhite: blip.Element(A + "biLevel") is { } level ? Math.Clamp(Fraction(level, "thresh", 0.5), 0, 1) : null,
+            Opacity: blip.Element(A + "alphaModFix") is { } alpha ? Math.Clamp(Fraction(alpha, "amt", 1), 0, 1) : 1);
+        return effects.IsEmpty ? null : effects;
     }
 
     /// <summary>a:srcRect: the part of the picture cut away at each edge, in 1/1000 percent.</summary>
@@ -231,8 +255,24 @@ internal sealed partial class DocxReader
             },
         }.Build();
         box.Transform = Transform(spPr?.Element(A + "xfrm"));
+        // WordArt: a text warp other than "no shape" stretches the text over the box.
+        var warp = Attr(bodyPr?.Element(A + "prstTxWarp"), "prst");
+        if (warp is not null || Attr(bodyPr, "fromWordArt") is "1" or "true")
+            box.TextArt = new HTextArt(warp is not (null or "textNoShape"), TextOpacity(content));
         ReadTextBoxContent(content, box.Blocks);
         return box;
+    }
+
+    /// <summary>
+    /// How opaque WordArt text is: its first run's text fill (w14:textFill) with w14:alpha, which Word stores as the
+    /// transparency (50000 = half see-through); 1 when it has none.
+    /// </summary>
+    private static double TextOpacity(XElement content)
+    {
+        var color = content.Descendants(W14 + "textFill").FirstOrDefault()?.Element(W14 + "solidFill")?.Elements().FirstOrDefault();
+        return long.TryParse(Attr(color?.Element(W14 + "alpha"), "val", W14), NumberStyles.Integer, CultureInfo.InvariantCulture, out var alpha)
+            ? 1 - Math.Clamp(alpha / 100000.0, 0, 1)
+            : 1;
     }
 
     /// <summary>
@@ -488,7 +528,15 @@ internal sealed partial class DocxReader
 
             if (shape.Element(V + "imagedata") is { } imageData && ExtractImage(Attr(imageData, "id", R)) is { } path)
             {
-                yield return new HImage(path) { Width = width > 0 ? width : null, Height = height > 0 ? height : null, Anchor = anchor, Transform = transform, ZOrder = zOrder };
+                yield return new HImage(path)
+                {
+                    Width = width > 0 ? width : null,
+                    Height = height > 0 ? height : null,
+                    Anchor = anchor,
+                    Transform = transform,
+                    ZOrder = zOrder,
+                    Effects = VmlImageEffects(imageData),
+                };
             }
             else if (shape.Element(V + "textbox")?.Element(W + "txbxContent") is { } content)
             {
@@ -501,7 +549,7 @@ internal sealed partial class DocxReader
                 ReadTextBoxContent(content, box.Blocks);
                 yield return box;
             }
-            else if (WordArt(shape, width, height, format) is { } text)
+            else if (WordArt(shape, width, height, format) is ({ } text, var fit))
             {
                 if (anchor is null)
                 {
@@ -509,8 +557,18 @@ internal sealed partial class DocxReader
                 }
                 else
                 {
+                    // A floating WordArt (Word's watermarks): its text drawn turned with the shape, as see-through as its
+                    // fill, stretched over the box when the text path fits the shape.
                     var box = new TextBoxBuilder(width, height, anchor) { Line = HBorder.None, Padding = new HInsets(0, 0, 0, 0), VerticalAlign = HVerticalAlign.Center }.Build();
-                    var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Center) };
+                    (box.Transform, box.ZOrder) = (transform, zOrder);
+                    var fill = shape.Element(V + "fill");
+                    box.TextArt = new HTextArt(fit, Math.Clamp(VmlFraction((string?)fill?.Attribute("opacity") ?? (string?)shape.Attribute(O + "opacity")) ?? 1, 0, 1));
+                    // No paragraph spacing: the box holds the text's lines alone.
+                    var paragraph = new HParagraph
+                    {
+                        Format = new HParaFormat(Align: HAlign.Center, Left: 0, Right: 0, FirstLine: 0, Before: 0, After: 0,
+                            Layout: new HParaLayout(LineHeight: new HLineHeight(HLineHeightRule.Multiple, 240), SnapToGrid: false)),
+                    };
                     paragraph.Inlines.Add(text);
                     box.Blocks.Add(paragraph);
                     yield return box;
@@ -556,19 +614,23 @@ internal sealed partial class DocxReader
     /// <summary>
     /// Legacy WordArt (a VML shape with v:textpath, as WPS and older Word write it) as plain text in its font and
     /// fill colour. 한글 has no text effects, so the text keeps the run's other formatting; when the text is stretched
-    /// to the shape (fitpath / fitshape), the font size is chosen so it fills about the same box.
+    /// to the shape (fitpath / fitshape), the font size is chosen so it fills about the same box. The text path's
+    /// settings the shape leaves out come from its v:shapetype (Word's watermarks keep on and fitshape there).
     /// </summary>
-    private static HText? WordArt(XElement shape, int width, int height, HCharFormat format)
+    /// <returns>The text, and whether it is stretched over the shape; null when the shape has no text path.</returns>
+    private (HText Text, bool Fit)? WordArt(XElement shape, int width, int height, HCharFormat format)
     {
         var path = shape.Element(V + "textpath");
+        var typePath = ShapeType(shape)?.Element(V + "textpath");
+        string? Setting(string name) => (string?)path?.Attribute(name) ?? (string?)typePath?.Attribute(name);
         var text = (string?)path?.Attribute("string");
-        if (path is null || (string?)path.Attribute("on") is "f" or "false" || string.IsNullOrWhiteSpace(text))
+        if (path is null || Setting("on") is "f" or "false" || string.IsNullOrWhiteSpace(text))
             return null;
 
         var font = VmlStyle((string?)path.Attribute("style"));
         var family = font.GetValueOrDefault("font-family")?.Trim('"', '\'', ' ');
         var size = HwpxUnits.ParseLength(font.GetValueOrDefault("font-size")) is { } points and > 0 ? points : format.Size ?? 1000;
-        var stretched = (string?)path.Attribute("fitpath") is "t" or "true" || (string?)path.Attribute("fitshape") is "t" or "true";
+        var stretched = Setting("fitpath") is "t" or "true" || Setting("fitshape") is "t" or "true";
         if (stretched && width > 0 && height > 0)
         {
             // The glyphs fill the shape: capitals and digits are about 0.72 em tall, Han characters about 0.9 em;
@@ -581,7 +643,7 @@ internal sealed partial class DocxReader
         var color = (string?)shape.Attribute("filled") is "f" or "false"
             ? VmlColor((string?)shape.Attribute("strokecolor"))
             : VmlColor((string?)shape.Attribute("fillcolor"));
-        return new HText(text.Replace('\n', ' ').Replace('\r', ' '), format with
+        return (new HText(text.Replace('\n', ' ').Replace('\r', ' '), format with
         {
             Size = Math.Max(size, 100),
             Font = family ?? format.Font,
@@ -589,8 +651,58 @@ internal sealed partial class DocxReader
             Bold = font.GetValueOrDefault("font-weight") is { } weight ? weight == "bold" || int.TryParse(weight, out var w) && w >= 600 : format.Bold,
             Italic = font.GetValueOrDefault("font-style") is { } italic ? italic == "italic" : format.Italic,
             Color = color ?? format.Color,
-            Layout = family is null || format.Layout is null ? format.Layout : format.Layout with { WordFonts = new HWordFonts(family, family, family, family) },
-        });
+            Layout = family is null ? format.Layout : (format.Layout ?? new HCharLayout()) with { WordFonts = new HWordFonts(family, family, family, family) },
+        }), stretched);
+    }
+
+    /// <summary>The v:shapetype a VML shape's type ("#id") names, from anywhere in its part; null when there is none.</summary>
+    private XElement? ShapeType(XElement shape)
+    {
+        if ((string?)shape.Attribute("type") is not ['#', _, ..] type || shape.Document is not { } document)
+            return null;
+        if (!_shapeTypes.TryGetValue(document, out var types))
+        {
+            types = [];
+            foreach (var shapeType in document.Descendants(V + "shapetype"))
+            {
+                if ((string?)shapeType.Attribute("id") is { } id)
+                    types.TryAdd(id, shapeType);
+            }
+            _shapeTypes[document] = types;
+        }
+        return types.GetValueOrDefault(type[1..]);
+    }
+
+    /// <summary>The shape types of each part read so far, by id.</summary>
+    private readonly Dictionary<XDocument, Dictionary<string, XElement>> _shapeTypes = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// Word's picture adjustments on v:imagedata: gain (contrast) and blacklevel (brightness; washout is gain 0.3,
+    /// blacklevel 0.35), grayscale and bilevel; null when there are none.
+    /// </summary>
+    private static HPictureEffects? VmlImageEffects(XElement imageData)
+    {
+        static bool On(XElement element, string name) => (string?)element.Attribute(name) is "t" or "true";
+        var effects = new HPictureEffects(
+            Contrast: Math.Clamp(VmlFraction((string?)imageData.Attribute("gain")) ?? 1, 0, 100),
+            Brightness: Math.Clamp(VmlFraction((string?)imageData.Attribute("blacklevel")) ?? 0, -1, 1),
+            Grayscale: On(imageData, "grayscale"),
+            BlackAndWhite: On(imageData, "bilevel") ? 0.5 : null);
+        return effects.IsEmpty ? null : effects;
+    }
+
+    /// <summary>A VML fraction: "0.5", ".5", "50%" or 16.16 fixed point ("32768f"); null when it is none of these.</summary>
+    private static double? VmlFraction(string? value)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrEmpty(text))
+            return null;
+        var divisor = 1.0;
+        if (text.EndsWith('f'))
+            (text, divisor) = (text[..^1], 65536);
+        else if (text.EndsWith('%'))
+            (text, divisor) = (text[..^1], 100);
+        return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number) ? number / divisor : null;
     }
 
     /// <summary>VML rotation (style "rotation", degrees clockwise) and mirroring ("flip: x y"); null when there is neither.</summary>
@@ -679,14 +791,37 @@ internal sealed partial class DocxReader
             AllowOverlap: true);
     }
 
-    /// <summary>VML colours: "#RRGGBB", "#RGB" or "#RRGGBB [index]".</summary>
+    /// <summary>VML colours: "#RRGGBB", "#RGB", "#RRGGBB [index]" or one of the sixteen named colours ("silver").</summary>
     private static string? VmlColor(string? value)
     {
         var color = value?.Split(' ')[0].Trim();
+        if (color is not null && NamedColors.TryGetValue(color, out var named))
+            return named;
         if (color is null || !color.StartsWith('#'))
             return null;
         if (color.Length == 4)
             color = $"#{color[1]}{color[1]}{color[2]}{color[2]}{color[3]}{color[3]}";
         return color.Length == 7 && int.TryParse(color.AsSpan(1), NumberStyles.HexNumber, null, out _) ? color.ToUpperInvariant() : null;
     }
+
+    /// <summary>The colour names VML takes (HTML's sixteen); Word's watermarks are "silver".</summary>
+    private static readonly Dictionary<string, string> NamedColors = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["black"] = "#000000",
+        ["silver"] = "#C0C0C0",
+        ["gray"] = "#808080",
+        ["white"] = "#FFFFFF",
+        ["maroon"] = "#800000",
+        ["red"] = "#FF0000",
+        ["purple"] = "#800080",
+        ["fuchsia"] = "#FF00FF",
+        ["green"] = "#008000",
+        ["lime"] = "#00FF00",
+        ["olive"] = "#808000",
+        ["yellow"] = "#FFFF00",
+        ["navy"] = "#000080",
+        ["blue"] = "#0000FF",
+        ["teal"] = "#008080",
+        ["aqua"] = "#00FFFF",
+    };
 }

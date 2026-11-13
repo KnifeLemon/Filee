@@ -32,7 +32,11 @@ namespace Filee.Engines.Typesetting;
 /// <summary>Something drawn at <c>Top</c> in a stack, <c>Height</c> high: a line, or a row of a nested table.</summary>
 /// <param name="Draw">Draws the piece with its stack's top-left corner at the given point.</param>
 /// <param name="Below">Space at the bottom of the piece that is no ink (a line's spacing below its text).</param>
-internal sealed record Piece(float Top, float Height, Action<PageContent, float, float> Draw, float Below = 0);
+internal sealed record Piece(float Top, float Height, Action<PageContent, float, float> Draw, float Below = 0)
+{
+    /// <summary>A floating object behind the text of the stack (a header's watermark goes behind the page's body too).</summary>
+    public bool Behind { get; init; }
+}
 
 /// <summary>A cell laid out: its place in the table, size, padding and content.</summary>
 internal sealed class CellBox
@@ -242,7 +246,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                     break;
             }
         }
-        pieces.InsertRange(0, behind.OrderBy(o => o.Item1).Select(o => o.Item2));
+        pieces.InsertRange(0, behind.OrderBy(o => o.Item1).Select(o => o.Item2 with { Behind = true }));
         pieces.AddRange(front.OrderBy(o => o.Item1).Select(o => o.Item2));
         extent = y;
         return pieces;
