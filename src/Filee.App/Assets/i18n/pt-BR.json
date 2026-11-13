@@ -186,6 +186,7 @@
   "notice.under_min_size": "Salvo, mas menor que o tamanho mínimo do arquivo",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objetos que a versão do AutoCAD escolhida não tem (multilinhas de chamada, malhas…) ficaram de fora",
+  "notice.sheet_objects_left_out": "Objetos que o Filee ainda não imprime (gráficos, texto em formas…) ficaram de fora: instale o LibreOffice em Configurações → Motores para mantê-los",
   "notice.cmyk_needs_ghostscript": "Este arquivo é CMYK, mas foi salvo em RGB: instale o Ghostscript em Configurações → Motores para manter o CMYK",
   "notice.pdfa_needs_ghostscript": "Este PDF não é PDF/A: instale o Ghostscript em Configurações → Motores para criar PDF/A",
   "notice.cmyk_render_failed": "Este arquivo é CMYK, mas o Ghostscript não conseguiu desenhá-lo, então foi salvo em RGB",

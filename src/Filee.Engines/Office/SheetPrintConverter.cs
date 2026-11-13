@@ -2,6 +2,12 @@
 // the built-in readers (Office/Sheets) keep each sheet's page setup, and SheetPrinter lays the pages out with Excel's
 // page logic and writes them with the PDF writer of the Filee renderer. CSV and TSV have no page setup and keep their
 // route through the HWPX writer (each sheet fitted to the page width).
+//
+// What the printer doesn't draw yet (charts, text in shapes, SmartArt, form controls, the drawings of XLS and ODS
+// files: SheetCapabilities) is looked for first. A workbook with any of it is handed to LibreOffice when it is
+// installed, inside this step: a planned route without this engine (ConversionEdge.Checked) would take the HWPX writer
+// and rhwp instead, which cost less than LibreOffice's fallback edge and keep less than this printer. Without
+// LibreOffice the workbook is printed all the same, with a notice that something was left out.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
@@ -19,6 +25,9 @@ public sealed class SheetPrintConverter : IConverter
     /// </summary>
     internal const int Cost = 12;
 
+    /// <summary>Shown with a workbook printed without what <see cref="SheetCapabilities"/> named.</summary>
+    internal const string LeftOutNotice = "notice.sheet_objects_left_out";
+
     private static readonly string[] Sources = ["xlsx", "xlsm", "xltx", "xls", "xlt", "ods"];
 
     public string Id => "sheet-print";
@@ -27,10 +36,32 @@ public sealed class SheetPrintConverter : IConverter
 
     public IReadOnlyList<ConversionEdge> Edges { get; } = [.. Sources.Select(from => new ConversionEdge(from, "pdf", Cost))];
 
+    /// <summary>
+    /// Hands a workbook with something this engine doesn't draw to the engine that draws it (LibreOffice:
+    /// <see cref="WithFallback"/>); returns null while that engine isn't installed. Null prints everything here.
+    /// </summary>
+    internal Func<ConversionStep, IProgress<double>?, CancellationToken, Task<IReadOnlyList<string>>?>? Fallback { get; set; }
+
     public EngineStatus GetStatus() => EngineStatus.Available("XLSX, XLS, ODS → PDF", EngineVersions.BuiltIn);
 
-    public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
-        Task.Run<IReadOnlyList<string>>(() =>
+    /// <summary>Gives the sheet printer among <paramref name="converters"/> LibreOffice, when it is there, for what it doesn't draw.</summary>
+    internal static IReadOnlyList<IConverter> WithFallback(IReadOnlyList<IConverter> converters)
+    {
+        if (converters.OfType<LibreOfficeConverter>().FirstOrDefault() is { } libreOffice)
+        {
+            foreach (var printer in converters.OfType<SheetPrintConverter>())
+                printer.Fallback = (step, progress, cancellationToken) =>
+                    libreOffice.Installed ? libreOffice.ConvertAsync(step, progress, cancellationToken) : null;
+        }
+        return converters;
+    }
+
+    public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        var leftOut = await Task.Run(() => SheetCapabilities.FirstUnsupported(step.InputPath, step.From), cancellationToken);
+        if (leftOut is not null && Fallback?.Invoke(step, progress, cancellationToken) is { } handedOver)
+            return await handedOver;
+        var outputs = await Task.Run<IReadOnlyList<string>>(() =>
         {
             if (DocumentFonts.Missing(step.OriginalSourcePath ?? step.InputPath) is [_, ..] missing)
                 step.MissingFonts?.Invoke(missing);
@@ -47,4 +78,8 @@ public sealed class SheetPrintConverter : IConverter
             progress?.Report(1);
             return [target];
         }, cancellationToken);
+        if (leftOut is not null && outputs.Count > 0)
+            step.Notice?.Invoke(LeftOutNotice);
+        return outputs;
+    }
 }

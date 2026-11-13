@@ -180,6 +180,7 @@
   "notice.under_min_size": "Guardado, pero más pequeño que el tamaño mínimo de archivo",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Se omitieron objetos que la versión de AutoCAD elegida no tiene (directrices múltiples, mallas…)",
+  "notice.sheet_objects_left_out": "Se omitieron objetos que Filee aún no puede imprimir (gráficos, texto en formas…): instala LibreOffice en Ajustes → Motores para conservarlos",
   "notice.cmyk_needs_ghostscript": "Este archivo es CMYK, pero se guardó en RGB: instala Ghostscript en Ajustes → Motores para mantener CMYK",
   "notice.pdfa_needs_ghostscript": "Este PDF no es PDF/A: instala Ghostscript en Ajustes → Motores para crear PDF/A",
   "notice.cmyk_render_failed": "Este archivo es CMYK, pero Ghostscript no pudo dibujarlo, así que se guardó en RGB",

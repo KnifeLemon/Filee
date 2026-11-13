@@ -75,9 +75,9 @@ internal static class SheetPrinter
             foreach (var (sheet, index, plan) in sheets)
             {
                 var conditional = plan.Pages.Count > 0 ? ConditionalFormatting.Apply(sheet, Bounds(plan.Pages), index) : [];
-                var pictures = Pictures(sheet, printed.Images);
+                var drawings = Drawings(sheet, printed.Images);
                 var headerPictures = HeaderPictures(sheet, printed.Images);
-                var renderer = new SheetPageRenderer(book, plan, index, fonts, conditional, pictures);
+                var renderer = new SheetPageRenderer(book, plan, index, fonts, conditional, drawings);
                 if (sheet.PageSetup.FirstPageNumber is { } first)
                     number = first;
                 renderer.FirstPageNumber = number;
@@ -120,12 +120,15 @@ internal static class SheetPrinter
         return new CellRange(top, left, bottom, right);
     }
 
-    private static List<(SheetPicture, SKImage)> Pictures(Worksheet sheet, List<SKImage> images)
+    /// <summary>The sheet's drawings in drawing order, pictures with their decoded image (those Skia can't decode left out).</summary>
+    private static List<(SheetDrawing, SKImage?)> Drawings(Worksheet sheet, List<SKImage> images)
     {
-        var result = new List<(SheetPicture, SKImage)>();
-        foreach (var picture in sheet.Pictures)
+        var result = new List<(SheetDrawing, SKImage?)>();
+        foreach (var drawing in sheet.Drawings)
         {
-            if (Decode(picture.Data) is { } image)
+            if (drawing is not SheetPicture picture)
+                result.Add((drawing, null));
+            else if (Decode(picture.Data) is { } image)
             {
                 images.Add(image);
                 result.Add((picture, image));

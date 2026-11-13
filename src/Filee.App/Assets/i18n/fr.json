@@ -186,6 +186,7 @@
   "notice.under_min_size": "Enregistré, mais plus petit que la taille de fichier minimale",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Des objets que la version d'AutoCAD choisie n'a pas (multilignes de repère, maillages…) ont été omis",
+  "notice.sheet_objects_left_out": "Des objets que Filee ne sait pas encore imprimer (graphiques, texte dans les formes…) ont été omis : installez LibreOffice dans Paramètres → Moteurs pour les garder",
   "notice.cmyk_needs_ghostscript": "Ce fichier est en CMJN mais a été enregistré en RVB : installez Ghostscript dans Paramètres → Moteurs pour garder le CMJN",
   "notice.pdfa_needs_ghostscript": "Ce PDF n'est pas un PDF/A : installez Ghostscript dans Paramètres → Moteurs pour créer du PDF/A",
   "notice.cmyk_render_failed": "Ce fichier est en CMJN, mais Ghostscript n'a pas pu le dessiner : il a été enregistré en RVB",

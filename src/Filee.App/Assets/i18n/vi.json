@@ -186,6 +186,7 @@
   "notice.under_min_size": "Đã lưu, nhưng nhỏ hơn kích thước tệp tối thiểu",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Các đối tượng mà phiên bản AutoCAD đã chọn không có (multileader, lưới …) đã bị bỏ qua",
+  "notice.sheet_objects_left_out": "Các đối tượng Filee chưa in được (biểu đồ, chữ trong hình …) đã bị bỏ qua: hãy cài LibreOffice trong Cài đặt → Bộ xử lý để giữ chúng",
   "notice.cmyk_needs_ghostscript": "Tệp này là CMYK nhưng đã được lưu dưới dạng RGB: hãy cài Ghostscript trong Cài đặt → Bộ xử lý để giữ CMYK",
   "notice.pdfa_needs_ghostscript": "Tệp PDF này không phải PDF/A: hãy cài Ghostscript trong Cài đặt → Bộ xử lý để tạo PDF/A",
   "notice.cmyk_render_failed": "Tệp này là CMYK, nhưng Ghostscript không vẽ được nên đã lưu dưới dạng RGB",

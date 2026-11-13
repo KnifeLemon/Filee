@@ -194,6 +194,7 @@
   "notice.under_min_size": "ذخیره شد، اما از حداقل اندازه فایل کوچک‌تر است",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "اشیاء ناموجود در نسخه انتخابی اتوکد (multileaders، مش‌ها…) نادیده گرفته شدند",
+  "notice.sheet_objects_left_out": "اشیائی که Filee هنوز نمی‌تواند چاپ کند (نمودارها، متن داخل شکل‌ها…) نادیده گرفته شدند: برای حفظ آن‌ها، LibreOffice را در تنظیمات ← موتورها نصب کنید",
   "notice.cmyk_needs_ghostscript": "این فایل CMYK است اما به صورت RGB ذخیره شد: برای حفظ CMYK، نرم‌افزار Ghostscript را در تنظیمات ← موتورها نصب کنید",
   "notice.pdfa_needs_ghostscript": "این PDF از نوع PDF/A نیست: برای ساخت PDF/A، نرم‌افزار Ghostscript را در تنظیمات ← موتورها نصب کنید",
   "notice.cmyk_render_failed": "این فایل CMYK است، اما Ghostscript نتوانست آن را رسم کند، بنابراین به صورت RGB ذخیره شد",

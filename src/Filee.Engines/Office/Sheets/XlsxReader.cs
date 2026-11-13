@@ -3,8 +3,9 @@
 // borders (diagonals too), alignment (wrap, shrink, rotation, indent, justify, fill, centre across), merged cells,
 // column widths, row heights (custom and the autofit Excel saved), hidden rows / columns / sheets, frozen header
 // rows, and what printing needs: the page setup, margins, print options, headers and footers (with their
-// pictures), print areas, print titles, manual page breaks, conditional formats that colour cells and pictures.
-// Charts, shapes and comments are not read. The package is read within DocumentLimits.
+// pictures), print areas, print titles, manual page breaks, conditional formats that colour cells, and the pictures
+// and shapes of each sheet's drawing (XlsxDrawing, which names what it leaves out: charts, SmartArt, ...). Comments
+// are not read. The package is read within DocumentLimits.
 
 using System.Globalization;
 using System.Text;
@@ -19,16 +20,12 @@ internal sealed class XlsxReader
 {
     private static readonly XNamespace S = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-    private static readonly XNamespace Xdr = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
     private static readonly XNamespace A = "http://schemas.openxmlformats.org/drawingml/2006/main";
     private static readonly XNamespace V = "urn:schemas-microsoft-com:vml";
     private static readonly XNamespace O = "urn:schemas-microsoft-com:office:office";
 
     /// <summary>Days between the 1900 and 1904 date systems (1 January 1904 is serial 1462 in the 1900 system).</summary>
     private const double Date1904Offset = 1462;
-
-    /// <summary>Points per EMU (DrawingML positions).</summary>
-    private const double PointsPerEmu = 1 / 12700.0;
 
     /// <summary>Column entries (&lt;col min max&gt; expanded) one workbook may set, against files that repeat whole-sheet ranges.</summary>
     private const int MaxColumnEntries = 4_000_000;
@@ -41,6 +38,7 @@ internal sealed class XlsxReader
     private readonly List<(CellStyle Style, string Format)> _cellFormats = [];
     private readonly List<DifferentialStyle> _dxfs = [];
     private OoxmlColors _colors = OoxmlColors.FromTheme(null);
+    private XDocument? _theme;
     private NumberFormatter _formatter = new();
     private bool _date1904;
     private int _columnEntries;
@@ -61,7 +59,8 @@ internal sealed class XlsxReader
         _date1904 = (string?)workbook.Element(S + "workbookPr")?.Attribute("date1904") is "1" or "true";
         _formatter = new NumberFormatter(_date1904);
 
-        _colors = OoxmlColors.FromTheme(_package.TargetOfType(workbookPath, "/theme") is { } theme ? _package.Part(theme) : null);
+        _theme = _package.TargetOfType(workbookPath, "/theme") is { } theme ? _package.Part(theme) : null;
+        _colors = OoxmlColors.FromTheme(_theme);
         if (_package.TargetOfType(workbookPath, "/sharedStrings") is { } shared)
             ReadSharedStrings(_package.Part(shared));
         var result = new Workbook();
@@ -526,7 +525,7 @@ internal sealed class XlsxReader
         foreach (var formatting in xml.Elements(S + "conditionalFormatting"))
             ConditionalFormats(formatting, sheet);
         if (_package.Target(partPath, (string?)xml.Element(S + "drawing")?.Attribute(R + "id")) is { } drawing)
-            Pictures(drawing, sheet);
+            sheet.Drawings.AddRange(XlsxDrawing.Read(_package, drawing, _theme?.Root, read: true).Drawings);
         return sheet;
     }
 
@@ -674,44 +673,6 @@ internal sealed class XlsxReader
                 Scale = scale,
             });
         }
-    }
-
-    // ───────────────────────── Pictures ─────────────────────────
-
-    private void Pictures(string drawingPath, Worksheet sheet)
-    {
-        if (_package.Part(drawingPath)?.Root is not { } drawing)
-            return;
-        foreach (var anchor in drawing.Elements().Where(e => e.Name.Namespace == Xdr))
-        {
-            var embed = anchor.Descendants(Xdr + "pic").Select(p => (string?)p.Element(Xdr + "blipFill")?.Element(A + "blip")?.Attribute(R + "embed")).FirstOrDefault(e => e is not null);
-            if (_package.Target(drawingPath, embed) is not { } image || _package.Bytes(image, MaxPictureBytes) is not { } data)
-                continue;
-            static (int Row, int Column, double X, double Y)? Marker(XElement? marker) => marker is null ? null : (
-                (int)Math.Clamp(Long(marker.Element(Xdr + "row")), 0, SheetPagination.MaxRow),
-                (int)Math.Clamp(Long(marker.Element(Xdr + "col")), 0, SheetPagination.MaxColumn),
-                Long(marker.Element(Xdr + "colOff")) * PointsPerEmu,
-                Long(marker.Element(Xdr + "rowOff")) * PointsPerEmu);
-            var extent = anchor.Element(Xdr + "ext");
-            var (width, height) = (Long(extent?.Attribute("cx")) * PointsPerEmu, Long(extent?.Attribute("cy")) * PointsPerEmu);
-            SheetPicture? picture = anchor.Name.LocalName switch
-            {
-                "twoCellAnchor" when Marker(anchor.Element(Xdr + "from")) is { } from && Marker(anchor.Element(Xdr + "to")) is { } to =>
-                    new SheetPicture(data, from.Row, from.Column, from.X, from.Y, 0, 0) { To = (to.Row, to.Column, to.X, to.Y) },
-                "oneCellAnchor" when Marker(anchor.Element(Xdr + "from")) is { } from => new SheetPicture(data, from.Row, from.Column, from.X, from.Y, width, height),
-                "absoluteAnchor" => new SheetPicture(data, 0, 0, Long(anchor.Element(Xdr + "pos")?.Attribute("x")) * PointsPerEmu,
-                    Long(anchor.Element(Xdr + "pos")?.Attribute("y")) * PointsPerEmu, width, height),
-                _ => null,
-            };
-            if (picture is not null)
-                sheet.Pictures.Add(picture);
-        }
-    }
-
-    private static long Long(XObject? node)
-    {
-        var text = node switch { XElement e => e.Value, XAttribute a => a.Value, _ => null };
-        return long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? Math.Clamp(value, 0, 50_000_000_000) : 0;
     }
 
     // ───────────────────────── Cells ─────────────────────────

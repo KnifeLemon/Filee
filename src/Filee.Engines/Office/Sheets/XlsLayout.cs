@@ -65,6 +65,57 @@ internal static class XlsLayout
         }
     }
 
+    /// <summary>
+    /// The first object of a visible sheet the sheet printer doesn't draw (it reads no drawing of an XLS: charts,
+    /// pictures, text boxes, shapes, form controls; comments aside, which print only when the page setup says so), or a
+    /// visible chart sheet; null when there is none or the file can't be read.
+    /// </summary>
+    public static string? FirstObject(string path)
+    {
+        try
+        {
+            if (WorkbookStream(File.ReadAllBytes(path)) is not { } stream)
+                return null;
+            var sheets = new List<int>();
+            foreach (var (id, data) in Records(stream, 0))
+            {
+                if (id == 0x002F) // FILEPASS: the rest is encrypted
+                    return null;
+                if (id != 0x0085 || data.Length < 6 || (data[4] & 0x03) != 0) // BOUNDSHEET of a visible sheet
+                    continue;
+                if (data[5] == 0x02)
+                    return "charts";
+                if (data[5] == 0x00)
+                    sheets.Add(BinaryPrimitives.ReadInt32LittleEndian(data));
+            }
+            foreach (var offset in sheets)
+            {
+                foreach (var (id, data) in Records(stream, offset))
+                {
+                    // OBJ: the object's type is at offset 4, in BIFF8's ftCmo as in BIFF5's header.
+                    if (id != 0x005D || data.Length < 6)
+                        continue;
+                    var feature = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(4)) switch
+                    {
+                        0x19 => null, // a comment's note
+                        0x05 => "charts",
+                        0x08 => "pictures",
+                        0x06 => "text boxes",
+                        0x07 or (>= 0x0B and <= 0x14) => "form controls",
+                        _ => "shapes",
+                    };
+                    if (feature is not null)
+                        return feature;
+                }
+            }
+            return null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException or InvalidDataException or IOException or OverflowException)
+        {
+            return null;
+        }
+    }
+
     // ───────────────────────── BIFF records ─────────────────────────
 
     private sealed record FontRecord(double Size, bool Bold, bool Italic, bool Strike, int Underline, int Script, int Color, string Name);

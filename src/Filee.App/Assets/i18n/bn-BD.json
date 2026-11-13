@@ -194,6 +194,7 @@
   "notice.under_min_size": "সংরক্ষণ করা হয়েছে, তবে ফাইলের সর্বনিম্ন আকারের চেয়ে ছোট",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "নির্বাচিত AutoCAD সংস্করণে নেই এমন অবজেক্টগুলো (মাল্টিলিডার, মেশ ইত্যাদি) বাদ দেওয়া হয়েছে",
+  "notice.sheet_objects_left_out": "Filee এখনও যেসব অবজেক্ট প্রিন্ট করতে পারে না (চার্ট, আকৃতির ভেতরের লেখা ইত্যাদি) সেগুলো বাদ দেওয়া হয়েছে: রাখতে সেটিংস → ইঞ্জিন-এ LibreOffice ইনস্টল করুন",
   "notice.cmyk_needs_ghostscript": "এই ফাইলটি CMYK হলেও RGB হিসেবে সংরক্ষণ করা হয়েছে: CMYK রাখতে সেটিংস → ইঞ্জিন-এ Ghostscript ইনস্টল করুন",
   "notice.pdfa_needs_ghostscript": "এই পিডিএফটি PDF/A নয়: PDF/A বানাতে সেটিংস → ইঞ্জিন-এ Ghostscript ইনস্টল করুন",
   "notice.cmyk_render_failed": "এই ফাইলটি CMYK, কিন্তু Ghostscript এটি আঁকতে পারেনি, তাই RGB হিসেবে সংরক্ষণ করা হয়েছে",

@@ -186,6 +186,7 @@
   "notice.under_min_size": "Zapisano, ale plik jest mniejszy niż minimalny rozmiar",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Pominięto obiekty, których wybrana wersja AutoCAD nie ma (multiodnośniki, siatki…)",
+  "notice.sheet_objects_left_out": "Pominięto obiekty, których Filee jeszcze nie drukuje (wykresy, tekst w kształtach…): zainstaluj LibreOffice w Ustawienia → Silniki, aby je zachować",
   "notice.cmyk_needs_ghostscript": "Ten plik jest w CMYK, ale zapisano go w RGB: zainstaluj Ghostscript w Ustawienia → Silniki, aby zachować CMYK",
   "notice.pdfa_needs_ghostscript": "Ten PDF nie jest w formacie PDF/A: zainstaluj Ghostscript w Ustawienia → Silniki, aby tworzyć PDF/A",
   "notice.cmyk_render_failed": "Ten plik jest w CMYK, ale Ghostscript nie mógł go narysować, więc zapisano go w RGB",

@@ -90,8 +90,8 @@ internal sealed class Worksheet(string name)
     /// <summary>Conditional formats that change how cells look (fills, font colours, borders), in priority order.</summary>
     public List<ConditionalFormat> ConditionalFormats { get; } = [];
 
-    /// <summary>Pictures placed on the sheet.</summary>
-    public List<SheetPicture> Pictures { get; } = [];
+    /// <summary>Pictures and shapes placed on the sheet, in drawing order (the last one on top).</summary>
+    public List<SheetDrawing> Drawings { get; } = [];
 
     public void Set(int row, int column, SheetCell cell)
     {
@@ -287,12 +287,69 @@ internal sealed record CellRun(string Text)
     public int? Script { get; init; }
 }
 
-/// <summary>A picture on a sheet, from its anchor: top-left cell and offset in points, and its size in points.</summary>
+/// <summary>
+/// Something drawn over the cells (a picture or a shape), from its anchor: top-left cell and offset in points, and its
+/// size in points or the bottom-right cell it reaches.
+/// </summary>
+internal abstract record SheetDrawing(int Row, int Column, double OffsetX, double OffsetY, double Width, double Height)
+{
+    /// <summary>The bottom-right cell and offset of a drawing that moves and sizes with its cells (instead of the size).</summary>
+    public (int Row, int Column, double OffsetX, double OffsetY)? To { get; init; }
+
+    /// <summary>
+    /// The part of the anchor's box the drawing takes, as fractions of it (left, top, right, bottom): a picture or shape
+    /// inside a group, whose anchor is the group's. Null for the whole box.
+    /// </summary>
+    public (double Left, double Top, double Right, double Bottom)? Part { get; init; }
+
+    /// <summary>Clockwise turn in degrees (a:xfrm rot), about the centre of the box.</summary>
+    public double Rotation { get; init; }
+
+    /// <summary>Mirrored left to right (a:xfrm flipH), before the turn.</summary>
+    public bool FlipH { get; init; }
+
+    /// <summary>Mirrored top to bottom (a:xfrm flipV), before the turn.</summary>
+    public bool FlipV { get; init; }
+
+    /// <summary>
+    /// The unturned width and height (a:xfrm ext, any unit: only the proportion counts). Excel anchors a turned
+    /// drawing by the box it covers, so a picture turned 90° has an anchor as wide as the picture is tall; this tells
+    /// the two apart. Null when the file doesn't say.
+    /// </summary>
+    public (double Width, double Height)? Size { get; init; }
+}
+
+/// <summary>A picture on a sheet.</summary>
 /// <param name="Data">The picture file (PNG, JPEG, GIF, BMP).</param>
 internal sealed record SheetPicture(byte[] Data, int Row, int Column, double OffsetX, double OffsetY, double Width, double Height)
+    : SheetDrawing(Row, Column, OffsetX, OffsetY, Width, Height)
 {
-    /// <summary>The bottom-right cell and offset of a picture that moves and sizes with its cells (instead of the size).</summary>
-    public (int Row, int Column, double OffsetX, double OffsetY)? To { get; init; }
+    /// <summary>
+    /// What is cut off each edge of the picture (a:srcRect), as fractions of its width and height (left, top, right,
+    /// bottom). Negative values add empty space instead.
+    /// </summary>
+    public (double Left, double Top, double Right, double Bottom) Crop { get; init; }
+}
+
+/// <summary>A preset shape on a sheet (rectangle, oval, line, arrow, ...), filled and outlined in one colour each.</summary>
+/// <param name="Preset">The a:prstGeom name, one <see cref="Slides.PresetShapes"/> draws.</param>
+internal sealed record SheetShape(string Preset, int Row, int Column, double OffsetX, double OffsetY, double Width, double Height)
+    : SheetDrawing(Row, Column, OffsetX, OffsetY, Width, Height)
+{
+    /// <summary>The shape's adjust values (a:avLst), by name, as their formulas ("val 16667").</summary>
+    public IReadOnlyDictionary<string, string>? Adjust { get; init; }
+
+    /// <summary>Fill colour, or null for none.</summary>
+    public SkiaSharp.SKColor? Fill { get; init; }
+
+    /// <summary>Outline colour, or null for none.</summary>
+    public SkiaSharp.SKColor? Line { get; init; }
+
+    /// <summary>Outline width in points.</summary>
+    public double LineWidth { get; init; } = 0.75;
+
+    /// <summary>A dashed outline's dashes and gaps as multiples of its width, or null for a solid one.</summary>
+    public float[]? Dash { get; init; }
 }
 
 /// <summary>A cell as displayed: formatted text plus style.</summary>

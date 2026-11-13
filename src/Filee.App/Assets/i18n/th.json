@@ -180,6 +180,7 @@
   "notice.under_min_size": "บันทึกแล้ว แต่เล็กกว่าขนาดไฟล์ขั้นต่ำ",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "ละวัตถุที่ AutoCAD เวอร์ชันที่เลือกไม่มี (มัลติลีดเดอร์ เมช …) ไว้",
+  "notice.sheet_objects_left_out": "ละวัตถุที่ Filee ยังพิมพ์ไม่ได้ (แผนภูมิ ข้อความในรูปร่าง …) ไว้: ติดตั้ง LibreOffice ในการตั้งค่า → เครื่องมือแปลงไฟล์ เพื่อเก็บไว้",
   "notice.cmyk_needs_ghostscript": "ไฟล์นี้เป็น CMYK แต่บันทึกเป็น RGB: ติดตั้ง Ghostscript ในการตั้งค่า → เครื่องมือแปลงไฟล์ เพื่อคง CMYK ไว้",
   "notice.pdfa_needs_ghostscript": "PDF นี้ไม่ใช่ PDF/A: ติดตั้ง Ghostscript ในการตั้งค่า → เครื่องมือแปลงไฟล์ เพื่อสร้าง PDF/A",
   "notice.cmyk_render_failed": "ไฟล์นี้เป็น CMYK แต่ Ghostscript วาดไม่ได้ จึงบันทึกเป็น RGB",

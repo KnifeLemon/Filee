@@ -95,6 +95,9 @@ public sealed class LibreOfficeConverter : IConverter
     public int MaxParallelism => Workers;
     public IReadOnlyList<ConversionEdge> Edges { get; private set; }
 
+    /// <summary>Whether a LibreOffice was found (when the engine was made or its status last checked).</summary>
+    internal bool Installed => _soffice is not null;
+
     public EngineStatus GetStatus()
     {
         Locate();
