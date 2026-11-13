@@ -58,20 +58,28 @@ internal sealed class MarkdownReader
     private readonly string _baseFolder;
     private readonly string? _resourceRoot;
 
-    private MarkdownReader(string baseFolder, string? resourceRoot)
+    /// <summary>A folder of pictures Filee wrote itself (a notebook's attachments), allowed besides the resource root.</summary>
+    private readonly string? _mediaFolder;
+
+    private MarkdownReader(string baseFolder, string? resourceRoot, string? mediaFolder = null)
     {
         _baseFolder = baseFolder;
         _resourceRoot = resourceRoot;
+        _mediaFolder = mediaFolder;
     }
 
     /// <summary>Parses Markdown text.</summary>
     /// <param name="markdown">The document text.</param>
     /// <param name="baseFolder">Folder of the Markdown file: relative image paths are resolved against it.</param>
     /// <param name="resourceRoot">Folder images must be inside (e.g. an unpacked TXTZ book); default: <paramref name="baseFolder"/>.</param>
-    public static HDocument Read(string markdown, string baseFolder, string? resourceRoot = null)
+    public static HDocument Read(string markdown, string baseFolder, string? resourceRoot = null) =>
+        Read(markdown, baseFolder, resourceRoot, mediaFolder: null);
+
+    /// <param name="mediaFolder">A folder of pictures Filee wrote itself, which images may name too (file: URLs).</param>
+    internal static HDocument Read(string markdown, string baseFolder, string? resourceRoot, string? mediaFolder)
     {
         var parsed = Markdown.Parse(markdown, Pipeline);
-        var reader = new MarkdownReader(baseFolder, resourceRoot);
+        var reader = new MarkdownReader(baseFolder, resourceRoot, mediaFolder);
         var section = new HSection();
         reader.Blocks(parsed, section.Blocks, new Context());
         var document = new HDocument();
@@ -447,7 +455,8 @@ internal sealed class MarkdownReader
 
     private HImage? Image(LinkInline image)
     {
-        var path = ResolveImage(image.Url, _baseFolder, _resourceRoot);
+        var path = ResolveImage(image.Url, _baseFolder, _resourceRoot)
+                   ?? (_mediaFolder is null ? null : DocumentFiles.Find(image.Url, _baseFolder, _mediaFolder));
         if (path is null)
             return null; // remote or missing image: skip rather than produce a broken reference
 

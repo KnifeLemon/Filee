@@ -85,6 +85,8 @@ public sealed class MarkupConverter : IConverter
     {
         var leaveOut = step.Preset.Document.LeaveOutPictures;
         Func<string, string?> pictures = leaveOut ? _ => null : new MarkdownPictures(output, step.Output, step.WorkDirectory).Add;
+        if (step.To is "md" || Writers.ContainsKey(step.To))
+            MarkupBlocks.OpenCodeBoxes(document); // Markdown's code boxes are code blocks in markup
         switch (step.To)
         {
             case "md":

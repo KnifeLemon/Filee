@@ -10,6 +10,7 @@
 
 using System.Globalization;
 using Filee.Engines.Documents;
+using Filee.Engines.Hwp.Hwpx.Markup;
 using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx.Pptx;
@@ -201,7 +202,7 @@ internal sealed partial class PptxWriter
                     FlushCode();
                     Paragraph(paragraph, ref text, items, FlushText);
                     break;
-                case HTable box when IsCodeBox(box):
+                case HTable box when MarkupBlocks.IsCodeBox(box):
                     // A code block the reader wrote as one shaded box (a row per line): its lines, as a code block.
                     FlushCode();
                     FlushText();
@@ -221,11 +222,6 @@ internal sealed partial class PptxWriter
         FlushText();
         return items;
     }
-
-    /// <summary>A one-column table whose rows are code lines: a code block as MarkdownReader writes it.</summary>
-    private static bool IsCodeBox(HTable table) =>
-        table.ColumnCount == 1 && table.Rows.Count > 0
-        && table.Rows.All(row => row.Cells is [{ Blocks: [HParagraph { Role: HBlockRole.Code }] }]);
 
     /// <summary>A paragraph's text (and the pictures and text boxes in it, as items and paragraphs of their own).</summary>
     private void Paragraph(HParagraph paragraph, ref List<Para>? text, List<Item> items, Action flushText)

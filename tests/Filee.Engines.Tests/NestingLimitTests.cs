@@ -1,12 +1,15 @@
 // Documents nested far deeper than any real one (thousands of tables in table cells, groups in groups, links in links,
 // a note that refers to itself) and packages whose XML unpacks to more than Filee reads. A stack overflow cannot be
 // caught and ended the whole app, with every watch folder; these must give a document with the deep part as plain
-// text, or a clear refusal (error.document_too_large). Every input is built here.
+// text, or a clear refusal (error.document_too_large). The DOCX and HWPX readers of the built-in engines branch read
+// through DocumentPackage / DocumentBudget, which refuse a document past their limits (error.document_too_complex)
+// instead of opening it up. Every input is built here.
 
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 using Filee.Core.Conversion;
+using Filee.Engines.Documents;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
@@ -19,6 +22,9 @@ namespace Filee.Engines.Tests;
 public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private const string TooLarge = "error.document_too_large";
+
+    /// <summary>The DOCX and HWPX readers' refusal (<see cref="DocumentLimits"/>).</summary>
+    private const string TooComplex = DocumentLimits.ErrorKey;
 
     private static string Repeat(string text, int count) => string.Concat(Enumerable.Repeat(text, count));
 
@@ -81,17 +87,14 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     // ───────────────────────── DOCX ─────────────────────────
 
     [Fact]
-    public void Tables_nested_past_the_limit_keep_their_text_as_plain_paragraphs()
+    public void Tables_nested_past_the_limit_are_refused()
     {
         var docx = new DocxBuilder();
-        docx.Paragraph(NestedTables(300));
-        var document = DocxReader.Read(SaveDocx(docx, "tables"), Path.Combine(fx.NewFolder(), "media"));
+        docx.Paragraph(NestedTables(40));
 
-        Assert.InRange(Depth(document), Nesting.MaxDepth, Nesting.MaxDepth + 1);
-        var texts = Texts(document);
-        foreach (var expected in new[] { "level 1", "level 32", "level 33", "level 300", "deepest", "after" })
-            Assert.Contains(expected, texts);
-        WriteAll(document);
+        var error = Assert.Throws<ConversionRefusedException>(() => DocxReader.Read(SaveDocx(docx, "tables"), Path.Combine(fx.NewFolder(), "media")));
+        Assert.Equal(TooComplex, error.ErrorKey);
+        Assert.Contains("nested more than 32 levels deep", error.Detail);
     }
 
     [Fact]
@@ -102,17 +105,17 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var path = SaveDocx(docx, "five-thousand");
 
         var error = Assert.Throws<ConversionRefusedException>(() => DocxReader.Read(path, Path.Combine(fx.NewFolder(), "media")));
-        Assert.Equal(TooLarge, error.ErrorKey);
+        Assert.Equal(TooComplex, error.ErrorKey);
         Assert.Contains("word/document.xml", error.Detail);
-        Assert.Contains("1000 levels", error.Detail);
+        Assert.Contains("512 levels", error.Detail);
 
         var (key, detail) = await fx.ConvertFailsAsync(path, "hwpx");
-        Assert.Equal(TooLarge, key);
+        Assert.Equal(TooComplex, key);
         Assert.Contains("levels", detail);
     }
 
     [Fact]
-    public void Text_boxes_nested_past_the_limit_keep_their_text()
+    public void Text_boxes_nested_past_the_limit_are_refused()
     {
         var content = new StringBuilder();
         const int levels = 60;
@@ -125,13 +128,9 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         content.Append(Repeat("</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>", levels));
         var docx = new DocxBuilder();
         docx.Paragraph(content.ToString());
-        var document = DocxReader.Read(SaveDocx(docx, "boxes"), Path.Combine(fx.NewFolder(), "media"));
 
-        Assert.InRange(Depth(document), Nesting.MaxDepth, Nesting.MaxDepth + 1);
-        var texts = Texts(document);
-        foreach (var expected in new[] { "box 1", "box 33", "box 60", "innermost box" })
-            Assert.Contains(expected, texts);
-        WriteAll(document);
+        var error = Assert.Throws<ConversionRefusedException>(() => DocxReader.Read(SaveDocx(docx, "boxes"), Path.Combine(fx.NewFolder(), "media")));
+        Assert.Equal(TooComplex, error.ErrorKey);
     }
 
     [Fact]
@@ -149,19 +148,18 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
-    public void Hyperlink_fields_begun_without_end_do_not_pile_up()
+    public void Hyperlink_fields_begun_without_end_are_refused_before_they_pile_up()
     {
         var field = "<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> HYPERLINK \"https://example.com/\" </w:instrText></w:r>" +
                     "<w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>" + R("t");
         var docx = new DocxBuilder();
         docx.Paragraph(P(Repeat(field, 10_000)));
         var watch = Stopwatch.StartNew();
-        var document = DocxReader.Read(SaveDocx(docx, "fields"), Path.Combine(fx.NewFolder(), "media"));
+        var error = Assert.Throws<ConversionRefusedException>(() => DocxReader.Read(SaveDocx(docx, "fields"), Path.Combine(fx.NewFolder(), "media")));
 
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}");
-        Assert.InRange(Depth(document), 1, Nesting.MaxDepth);
-        Assert.Equal(10_000, Texts(document).Count(t => t == "t"));
-        WriteAll(document);
+        Assert.Equal(TooComplex, error.ErrorKey);
+        Assert.Contains("Fields are nested more than 32 levels deep", error.Detail);
     }
 
     [Fact]
@@ -182,7 +180,8 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void An_equation_nested_past_the_limit_becomes_its_text()
     {
-        const int levels = 300;
+        // Past OmmlReader's 200 levels, within the 512 XML levels DocumentPackage reads.
+        const int levels = 240;
         var math = "<m:oMath>" + Repeat("<m:f><m:num>", levels) + "<m:r><m:t>x</m:t></m:r>" +
                    Repeat("</m:num><m:den><m:r><m:t>y</m:t></m:r></m:den></m:f>", levels) + "</m:oMath>";
         var docx = new DocxBuilder();
@@ -266,22 +265,18 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
-    public void Hwpx_tables_nested_past_the_limit_keep_their_text()
+    public void Hwpx_tables_nested_past_the_limit_are_refused()
     {
-        var document = HwpxReader.Read(NestedHwpxTables(150), Path.Combine(fx.NewFolder(), "media"));
-
-        Assert.InRange(Depth(document), Nesting.MaxDepth, Nesting.MaxDepth + 1);
-        var texts = Texts(document);
-        foreach (var expected in new[] { "level 1", "level 33", "level 150", "deepest", "after" })
-            Assert.Contains(expected, texts);
-        WriteAll(document);
+        var error = Assert.Throws<ConversionRefusedException>(() => HwpxReader.Read(NestedHwpxTables(40), Path.Combine(fx.NewFolder(), "media")));
+        Assert.Equal(TooComplex, error.ErrorKey);
+        Assert.Contains("nested more than 32 levels deep", error.Detail);
     }
 
     [Fact]
     public void Five_thousand_nested_hwpx_tables_are_refused()
     {
         var error = Assert.Throws<ConversionRefusedException>(() => HwpxReader.Read(NestedHwpxTables(5_000), Path.Combine(fx.NewFolder(), "media")));
-        Assert.Equal(TooLarge, error.ErrorKey);
+        Assert.Equal(TooComplex, error.ErrorKey);
         Assert.Contains("Contents/section0.xml", error.Detail);
     }
 
@@ -359,9 +354,10 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
         Assert.InRange(new FileInfo(path).Length, 1, 4 * 1024 * 1024); // a small file that unpacks to 257 MB
 
+        // DocumentPackage stops a part at 64 MB, well before BoundedXml's 256.
         var error = Assert.Throws<ConversionRefusedException>(() => DocxReader.Read(path, Path.Combine(fx.NewFolder(), "media")));
-        Assert.Equal(TooLarge, error.ErrorKey);
-        Assert.Equal("word/document.xml: over 256 MB", error.Detail);
+        Assert.Equal(TooComplex, error.ErrorKey);
+        Assert.Contains("word/document.xml", error.Detail);
     }
 
     [Fact]
