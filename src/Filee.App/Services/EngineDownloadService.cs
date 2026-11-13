@@ -143,7 +143,7 @@ public sealed partial class EnginePackageState : ObservableObject
     // Colour of the status tag on the Engines page (Border.status in Soft.axaml); none of them = neutral (queued, downloading...).
     public bool StatusIsOk => Status == EnginePackageStatus.Installed && !IsOutdated;
     public bool StatusIsWarn => Status == EnginePackageStatus.Installed && IsOutdated;
-    public bool StatusIsDanger => Status is EnginePackageStatus.NotInstalled or EnginePackageStatus.Failed;
+    public bool StatusIsDanger => Status == EnginePackageStatus.Failed;
     public bool StatusIsAccent => Status == EnginePackageStatus.OwnCopy;
 
     public string StatusText => Status switch

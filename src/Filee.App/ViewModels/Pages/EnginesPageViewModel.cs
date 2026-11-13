@@ -13,6 +13,9 @@ using Filee.Engines.Infrastructure;
 
 namespace Filee.App.ViewModels.Pages;
 
+/// <summary>Colour of an engine's status tag and dot.</summary>
+public enum EngineTone { Neutral, Ok, Warn, Danger }
+
 public sealed partial class EngineItemViewModel(IConverter converter, EngineStatus status, ILocalizer loc) : ObservableObject
 {
     /// <summary>Being dragged to a new place in the priority order.</summary>
@@ -30,13 +33,23 @@ public sealed partial class EngineItemViewModel(IConverter converter, EngineStat
         }
     }
     public bool IsAvailable { get; } = status.IsAvailable;
-    // Colour of the status tag (Border.status in Soft.axaml): green when ready, red when it isn't installed or the check
-    // failed, amber for every other reason it can't run here (other platform, needs Ollama, Perl or another engine).
-    public bool StatusIsOk => IsAvailable;
-    public bool StatusIsDanger { get; } = !status.IsAvailable
-        && status.ReasonKey is null or "engine.reason.not_installed" or "engine.reason.error";
-    public bool StatusIsWarn { get; } = !status.IsAvailable
-        && status.ReasonKey is not (null or "engine.reason.not_installed" or "engine.reason.error");
+    /// <summary>How the status tag and dot are coloured (Border.status in Soft.axaml).</summary>
+    public EngineTone Tone { get; } = ToneOf(status);
+    public bool StatusIsOk => Tone == EngineTone.Ok;
+    public bool StatusIsWarn => Tone == EngineTone.Warn;
+    public bool StatusIsDanger => Tone == EngineTone.Danger;
+    public bool StatusIsNeutral => Tone == EngineTone.Neutral;
+
+    /// <summary>
+    /// Green when ready, red when the check failed, amber for the reasons it can't run here (other platform, needs
+    /// Ollama or Perl, needs another engine). A missing optional engine isn't an error, so it stays neutral.
+    /// </summary>
+    public static EngineTone ToneOf(EngineStatus status) => status.IsAvailable ? EngineTone.Ok : status.ReasonKey switch
+    {
+        null or "engine.reason.error" => EngineTone.Danger,
+        "engine.reason.not_installed" => EngineTone.Neutral,
+        _ => EngineTone.Warn,
+    };
     public string StatusText { get; } = status.IsAvailable ? loc["engines.available"] : loc[status.ReasonKey ?? "engines.unavailable"];
 
     /// <summary>Path of the program or other technical detail, shown as a tooltip.</summary>
