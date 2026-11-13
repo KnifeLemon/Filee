@@ -54,18 +54,27 @@ internal static class ConditionalFormatting
     /// <summary>Cells one sheet's rules look at in all; a sheet whose ranges hold more keeps its own look beyond.</summary>
     private const int MaxCells = 2_000_000;
 
+    /// <summary>
+    /// Rows with cells the ranges of one sheet's rules pass over in all (a million ranges over whole columns would
+    /// otherwise walk the sheet a million times); past it the remaining rules aren't evaluated.
+    /// </summary>
+    private const long MaxRowVisits = 20_000_000;
+
     /// <summary>The look of every cell a rule changes, by (row, column); the cell's own style with the rules applied.</summary>
     /// <param name="area">The cells that are printed: rules aren't evaluated outside (blank cells especially).</param>
-    public static Dictionary<(int Row, int Column), CellStyle> Apply(Worksheet sheet, CellRange area)
+    /// <param name="index">The sheet's cell index, when the caller has one.</param>
+    public static Dictionary<(int Row, int Column), CellStyle> Apply(Worksheet sheet, CellRange area, SheetIndex? index = null)
     {
         var result = new Dictionary<(int, int), CellStyle>();
         if (sheet.ConditionalFormats.Count == 0)
             return result;
+        index ??= new SheetIndex(sheet);
         var decided = new Dictionary<(int, int), Decided>();
         var budget = MaxCells;
+        var visits = MaxRowVisits;
         foreach (var rule in sheet.ConditionalFormats.OrderBy(r => r.Priority))
         {
-            var cells = Cells(sheet, rule, area, ref budget);
+            var cells = Cells(index, rule, area, ref budget, ref visits);
             if (cells.Count == 0)
                 continue;
             var matches = Matches(rule, cells);
@@ -89,12 +98,17 @@ internal static class ConditionalFormatting
         return result;
     }
 
-    /// <summary>The cells of the rule's ranges inside the printed area: the ones with a value, and blanks for blank rules.</summary>
-    private static List<((int, int) Position, SheetCell? Cell)> Cells(Worksheet sheet, ConditionalFormat rule, CellRange area, ref int budget)
+    /// <summary>
+    /// The cells of the rule's ranges inside the printed area, each once: the ones with a value (looked up in the
+    /// index, so a range costs the rows with cells it covers), and blanks for blank rules.
+    /// </summary>
+    private static List<((int, int) Position, SheetCell? Cell)> Cells(SheetIndex index, ConditionalFormat rule, CellRange area,
+        ref int budget, ref long visits)
     {
         var cells = new List<((int, int), SheetCell?)>();
         var blanks = rule.Type is "containsBlanks" or "notContainsBlanks";
-        foreach (var range in rule.Ranges)
+        var seen = new HashSet<(int, int)>();
+        foreach (var range in rule.Ranges.Distinct())
         {
             var top = Math.Max(range.Top, area.Top);
             var bottom = Math.Min(range.Bottom, area.Bottom);
@@ -108,22 +122,25 @@ internal static class ConditionalFormatting
                     return [];
                 budget -= (bottom - top + 1) * (right - left + 1);
                 for (var r = top; r <= bottom; r++)
+                {
                     for (var c = left; c <= right; c++)
-                        cells.Add(((r, c), sheet.Get(r, c)));
+                    {
+                        if (seen.Add((r, c)))
+                            cells.Add(((r, c), index.Get(r, c)));
+                    }
+                }
                 continue;
             }
-            foreach (var (r, row) in sheet.Rows)
+            visits -= index.RowsWithCells(top, bottom);
+            if (visits < 0)
+                return [];
+            foreach (var (r, c, cell) in index.Cells(top, bottom, left, right))
             {
-                if (r < top || r > bottom)
+                if (cell.Text.Length == 0 || !seen.Add((r, c)))
                     continue;
-                foreach (var (c, cell) in row)
-                {
-                    if (c < left || c > right || cell.Text.Length == 0)
-                        continue;
-                    if (--budget < 0)
-                        return [];
-                    cells.Add(((r, c), cell));
-                }
+                if (--budget < 0)
+                    return [];
+                cells.Add(((r, c), cell));
             }
         }
         return cells;

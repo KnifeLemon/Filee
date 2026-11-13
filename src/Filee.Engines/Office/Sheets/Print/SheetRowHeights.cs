@@ -1,18 +1,25 @@
 // Row heights of a printed sheet in points: hidden rows 0, the height the file stores (custom, or the autofit Excel
 // and Calc saved), else what Excel's autofit gives — the tallest of the row's cells: one line of the cell's font
 // (rounded ascent + descent + 2 px), the lines of wrapped text in its column's width, rotated text's extent — and at
-// least the sheet's default height. Merged cells don't count, as in Excel.
+// least the sheet's default height. Merged cells don't count, as in Excel. A row that shows is at least one pixel
+// tall: a hostile file's 0.01 pt rows would put a million rows on one page.
 
 namespace Filee.Engines.Office.Sheets;
 
 internal static class SheetRowHeights
 {
+    /// <summary>The smallest height of a row that shows: one pixel at 96 dpi.</summary>
+    public const double Minimum = 0.75;
+
+    /// <summary>A height as printed: 0 stays 0 (hidden), others are kept within one pixel and Excel's 409.5 pt.</summary>
+    private static double Shown(double height) => height > 0 ? Math.Clamp(height, Minimum, 409.5) : 0;
+
     /// <param name="widths">Column widths in points (wrapped text is measured in them).</param>
     public static double[] Measure(Workbook book, Worksheet sheet, int count, SheetFonts fonts, PixelMetrics defaultFont,
         double[] widths, SheetIndex index, CancellationToken cancellationToken)
     {
         var heights = new double[Math.Max(0, count)];
-        var standard = sheet.DefaultRowHeight is { } stored and > 0 and <= 409 ? stored : defaultFont.LineHeight * 0.75;
+        var standard = sheet.DefaultRowHeight is { } stored and > 0 and <= 409 ? Math.Max(stored, Minimum) : defaultFont.LineHeight * 0.75;
         Array.Fill(heights, standard);
         foreach (var (row, cells) in sheet.Rows)
         {
@@ -28,17 +35,17 @@ internal static class SheetRowHeights
                     continue;
                 height = Math.Max(height, CellHeight(book, cell, column < widths.Length ? widths[column] : 0, fonts));
             }
-            heights[row] = Math.Min(409.5, height);
+            heights[row] = Shown(height);
         }
         foreach (var (row, height) in sheet.AutoRowHeights)
         {
             if (row >= 0 && row < count)
-                heights[row] = Math.Clamp(height, 0, 409.5);
+                heights[row] = Shown(height);
         }
         foreach (var (row, height) in sheet.RowHeights)
         {
             if (row >= 0 && row < count)
-                heights[row] = Math.Clamp(height, 0, 409.5);
+                heights[row] = Shown(height);
         }
         foreach (var row in sheet.HiddenRows)
         {

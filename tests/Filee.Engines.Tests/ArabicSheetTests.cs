@@ -7,7 +7,10 @@
 using System.IO.Compression;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
+using Filee.Engines.Documents;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Office.Sheets;
+using Filee.Engines.Rendering;
 using Filee.Engines.Tests.RenderQuality;
 
 namespace Filee.Engines.Tests;
@@ -131,5 +134,32 @@ public class ArabicSheetTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(FileState.Done, file.State);
         // Shaped (joined letters carry their text as ActualText) and in logical order: it reads back as written.
         Assert.Contains(Statement, PdfLines.Text(File.ReadAllBytes(job.Outputs.Single())));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Arabic_cut_off_by_a_narrow_column_shows_the_part_inside_it(bool rightToLeftSheet)
+    {
+        // Right-to-left text runs from its last letter on the left to its first on the right. Left-aligned in a narrow
+        // column it overflows on the right with its first letters, so its last ones show; right-aligned (a
+        // right-to-left sheet) it overflows on the left with its last letters, so its first ones show.
+        const string text = "كشف حساب مصرفي";
+        var book = new Workbook();
+        var sheet = new Worksheet("Sheet1") { RightToLeft = rightToLeftSheet };
+        sheet.Set(0, 0, new SheetCell(text, CellStyle.Default));
+        sheet.ColumnWidths[0] = 4;
+        book.Sheets.Add(sheet);
+
+        using var printed = SheetPrinter.Print(book, new SheetPrintSource("narrow.xlsx", ""), DocumentLimits.Default, DateTime.Now, null,
+            TestContext.Current.CancellationToken);
+        var shown = string.Concat(printed.Pages.SelectMany(p => p.Items.OfType<GlyphItem>()).Select(g => g.Run.Text));
+
+        Assert.NotEmpty(shown);
+        Assert.True(shown.Length < text.Length, shown);
+        if (rightToLeftSheet)
+            Assert.StartsWith(shown, text);
+        else
+            Assert.EndsWith(shown, text);
     }
 }

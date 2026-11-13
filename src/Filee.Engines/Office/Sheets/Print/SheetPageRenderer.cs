@@ -26,6 +26,12 @@ internal sealed class SheetPageRenderer
     private readonly IReadOnlyList<(SheetPicture Picture, SKImage Image)> _pictures;
     private readonly float _scale;
 
+    /// <summary>Characters "fill" alignment repeats a cell's text to at most (Excel's limit for a cell's text).</summary>
+    private const int MaxFillCharacters = 32_767;
+
+    /// <summary>Rows and columns narrower than this on the page get no heading label (it couldn't be read).</summary>
+    private const float MinHeadingLabel = 1f;
+
     public SheetPageRenderer(Workbook book, SheetPrintPlan plan, SheetIndex index, SheetFonts fonts,
         IReadOnlyDictionary<(int, int), CellStyle> conditional, IReadOnlyList<(SheetPicture, SKImage)> pictures)
     {
@@ -63,8 +69,14 @@ internal sealed class SheetPageRenderer
         var content = new PageContent((float)width, (float)height);
         var s = _scale;
 
-        var columnIndexes = Visible(page.RepeatColumns && Sheet.TitleColumns is { } tc ? Range(tc.First, tc.Last) : [], page.Left, page.Right, Grid.Widths);
-        var rowIndexes = Visible(page.RepeatRows && Sheet.TitleRows is { } tr ? Range(tr.First, tr.Last) : [], page.Top, page.Bottom, Grid.Heights);
+        var areaWidth = (float)(width - setup.LeftMargin - setup.RightMargin);
+        var areaHeight = (float)(height - setup.TopMargin - setup.BottomMargin);
+        // Print titles repeat only as far as they fit on the page: titles longer than a page would otherwise be drawn
+        // whole on every page.
+        var columnIndexes = Visible(page.RepeatColumns && Sheet.TitleColumns is { } tc ? Fitting(tc.First, tc.Last, Grid.Widths, areaWidth / s) : [],
+            page.Left, page.Right, Grid.Widths);
+        var rowIndexes = Visible(page.RepeatRows && Sheet.TitleRows is { } tr ? Fitting(tr.First, tr.Last, Grid.Heights, areaHeight / s) : [],
+            page.Top, page.Bottom, Grid.Heights);
         var gridWidth = (float)(columnIndexes.Sum(c => Grid.Width(c)) * s);
         var gridHeight = (float)(rowIndexes.Sum(r => Grid.Height(r)) * s);
         var headingWidth = (float)(_plan.HeadingWidth * s);
@@ -72,8 +84,6 @@ internal sealed class SheetPageRenderer
 
         var left = (float)setup.LeftMargin;
         var top = (float)setup.TopMargin;
-        var areaWidth = (float)(width - setup.LeftMargin - setup.RightMargin);
-        var areaHeight = (float)(height - setup.TopMargin - setup.BottomMargin);
         if (setup.CenterHorizontally)
             left += Math.Max(0, (areaWidth - gridWidth - headingWidth) / 2);
         if (setup.CenterVertically)
@@ -107,11 +117,11 @@ internal sealed class SheetPageRenderer
         if (columns.Count > 0 && rows.Count > 0)
         {
             var blocks = Blocks(columns, rows);
-            DrawFills(content, blocks, columnAt, rowAt);
+            DrawFills(content, blocks, columns, rows, columnAt, rowAt);
             if (setup.PrintGridLines)
                 DrawGridLines(content, columns, rows, blocks);
-            DrawBorders(content, blocks, columnAt, rowAt);
-            DrawTexts(content, blocks, columnAt, rowAt, gridArea);
+            DrawBorders(content, blocks, columns, rows, columnAt, rowAt);
+            DrawTexts(content, blocks, columns, rows, columnAt, rowAt, gridArea);
             DrawPictures(content, columns, rows, gridArea);
         }
         if (setup.PrintHeadings)
@@ -121,6 +131,19 @@ internal sealed class SheetPageRenderer
     }
 
     private static IEnumerable<int> Range(int first, int last) => Enumerable.Range(first, Math.Max(0, last - first + 1));
+
+    /// <summary>The indexes from <paramref name="first"/> on whose sizes add up to no more than <paramref name="room"/>.</summary>
+    private static IEnumerable<int> Fitting(int first, int last, double[] sizes, double room)
+    {
+        var used = 0.0;
+        for (var i = Math.Max(0, first); i <= last && i < sizes.Length; i++)
+        {
+            used += sizes[i];
+            if (used > room + 0.01)
+                yield break;
+            yield return i;
+        }
+    }
 
     /// <summary>The titles and the page's own indexes that aren't hidden.</summary>
     private static List<int> Visible(IEnumerable<int> titles, int first, int last, double[] sizes) =>
@@ -173,19 +196,41 @@ internal sealed class SheetPageRenderer
 
     private SKRect CellRect(Placed column, Placed row) => new(column.Start, row.Start, column.End, row.End);
 
+    /// <summary>The positions in <paramref name="placed"/> of its first and last index within first..last; null when none is.</summary>
+    private static (int, int)? Between(List<Placed> placed, int first, int last)
+    {
+        var from = LowerBound(placed, first);
+        var to = LowerBound(placed, last + 1) - 1;
+        return from <= to ? (from, to) : null;
+    }
+
+    /// <summary>The position of the first placed index at or after <paramref name="index"/>.</summary>
+    private static int LowerBound(List<Placed> placed, long index)
+    {
+        int low = 0, high = placed.Count;
+        while (low < high)
+        {
+            var mid = (low + high) >>> 1;
+            if (placed[mid].Index < index)
+                low = mid + 1;
+            else
+                high = mid;
+        }
+        return low;
+    }
+
     /// <summary>
     /// Where a merged area lies on the page, whole (also the part off the page, for centring its text) and the part
     /// that shows; null when none of it shows.
     /// </summary>
-    private (SKRect Whole, SKRect Shown)? MergeRect(CellRange merge, Dictionary<int, Placed> columnAt, Dictionary<int, Placed> rowAt)
+    private (SKRect Whole, SKRect Shown)? MergeRect(CellRange merge, List<Placed> columns, List<Placed> rows)
     {
-        var shownColumns = columnAt.Values.Where(p => p.Index >= merge.Left && p.Index <= merge.Right).ToList();
-        var shownRows = rowAt.Values.Where(p => p.Index >= merge.Top && p.Index <= merge.Bottom).ToList();
-        if (shownColumns.Count == 0 || shownRows.Count == 0)
+        // The placed columns and rows ascend by index (the titles, then the page's own), and lie side by side.
+        if (Between(columns, merge.Left, merge.Right) is not (int c0, int c1) || Between(rows, merge.Top, merge.Bottom) is not (int r0, int r1))
             return null;
-        var shown = new SKRect(shownColumns.Min(p => p.Start), shownRows.Min(p => p.Start), shownColumns.Max(p => p.End), shownRows.Max(p => p.End));
-        var firstColumn = shownColumns.MinBy(p => p.Index);
-        var firstRow = shownRows.MinBy(p => p.Index);
+        var (firstColumn, lastColumn, firstRow, lastRow) = (columns[c0], columns[c1], rows[r0], rows[r1]);
+        var shown = new SKRect(Math.Min(firstColumn.Start, lastColumn.Start), Math.Min(firstRow.Start, lastRow.Start),
+            Math.Max(firstColumn.End, lastColumn.End), Math.Max(firstRow.End, lastRow.End));
         var before = (float)(Grid.ColumnSpan(merge.Left, firstColumn.Index) * _scale);
         var wide = (float)(Grid.ColumnSpan(merge.Left, merge.Right + 1) * _scale);
         var above = (float)(Grid.RowSpan(merge.Top, firstRow.Index) * _scale);
@@ -197,7 +242,8 @@ internal sealed class SheetPageRenderer
 
     // ───────────────────────── Fills ─────────────────────────
 
-    private void DrawFills(PageContent page, List<(int Top, int Bottom, int Left, int Right)> blocks, Dictionary<int, Placed> columnAt, Dictionary<int, Placed> rowAt)
+    private void DrawFills(PageContent page, List<(int Top, int Bottom, int Left, int Right)> blocks, List<Placed> columns, List<Placed> rows,
+        Dictionary<int, Placed> columnAt, Dictionary<int, Placed> rowAt)
     {
         var fills = new List<(SKRect Rect, CellStyle Style)>();
         var mergesDone = new HashSet<CellRange>();
@@ -213,7 +259,7 @@ internal sealed class SheetPageRenderer
             }
             foreach (var merge in _index.Merges(top, bottom, left, right))
             {
-                if (!mergesDone.Add(merge) || MergeRect(merge, columnAt, rowAt) is not { } rect)
+                if (!mergesDone.Add(merge) || MergeRect(merge, columns, rows) is not { } rect)
                     continue;
                 var anchor = _index.Get(merge.Top, merge.Left);
                 var style = StyleAt(merge.Top, merge.Left, anchor);
@@ -280,25 +326,37 @@ internal sealed class SheetPageRenderer
 
     private void DrawGridLines(PageContent page, List<Placed> columns, List<Placed> rows, List<(int Top, int Bottom, int Left, int Right)> blocks)
     {
-        // Merged areas have no gridlines inside: the lines are drawn in pieces around them.
-        var merges = blocks.SelectMany(b => _index.Merges(b.Top, b.Bottom, b.Left, b.Right)).Distinct().ToList();
+        // The placed columns and rows lie side by side: one line per boundary across the whole grid, broken only
+        // where a merged area covers it (merged areas have no gridlines inside).
+        var top = rows.Min(r => r.Start);
+        var bottom = rows.Max(r => r.End);
+        var left = columns.Min(c => c.Start);
+        var right = columns.Max(c => c.End);
+        var xs = columns.SelectMany(c => new[] { c.Start, c.End }).Distinct().Order().ToArray();
+        var ys = rows.SelectMany(r => new[] { r.Start, r.End }).Distinct().Order().ToArray();
+        var gapsX = new Dictionary<int, List<(float, float)>>();
+        var gapsY = new Dictionary<int, List<(float, float)>>();
+        foreach (var merge in blocks.SelectMany(b => _index.Merges(b.Top, b.Bottom, b.Left, b.Right)).Distinct())
+        {
+            if (MergeRect(merge, columns, rows) is not { } rect)
+                continue;
+            var m = rect.Shown;
+            for (var i = Above(xs, m.Left + 0.01f); i < xs.Length && xs[i] < m.Right - 0.01f; i++)
+                Gap(gapsX, i, m.Top, m.Bottom);
+            for (var i = Above(ys, m.Top + 0.01f); i < ys.Length && ys[i] < m.Bottom - 0.01f; i++)
+                Gap(gapsY, i, m.Left, m.Right);
+        }
         var vertical = new List<(float X, float Y0, float Y1)>();
         var horizontal = new List<(float Y, float X0, float X1)>();
-        var xs = columns.SelectMany(c => new[] { c.Start, c.End }).Distinct().Order().ToList();
-        var ys = rows.SelectMany(r => new[] { r.Start, r.End }).Distinct().Order().ToList();
-        foreach (var gx in xs)
-            foreach (var row in rows)
-                vertical.Add((gx, row.Start, row.End));
-        foreach (var gy in ys)
-            foreach (var column in columns)
-                horizontal.Add((gy, column.Start, column.End));
-        if (merges.Count > 0)
+        for (var i = 0; i < xs.Length; i++)
         {
-            var columnAt = columns.ToDictionary(p => p.Index);
-            var rowAt = rows.ToDictionary(p => p.Index);
-            var inside = merges.Select(m => MergeRect(m, columnAt, rowAt)).Where(r => r is not null).Select(r => r!.Value.Shown).ToList();
-            vertical.RemoveAll(v => inside.Any(m => v.X > m.Left + 0.01f && v.X < m.Right - 0.01f && v.Y0 >= m.Top - 0.01f && v.Y1 <= m.Bottom + 0.01f));
-            horizontal.RemoveAll(h => inside.Any(m => h.Y > m.Top + 0.01f && h.Y < m.Bottom - 0.01f && h.X0 >= m.Left - 0.01f && h.X1 <= m.Right + 0.01f));
+            foreach (var (y0, y1) in Pieces(top, bottom, gapsX.GetValueOrDefault(i)))
+                vertical.Add((xs[i], y0, y1));
+        }
+        for (var i = 0; i < ys.Length; i++)
+        {
+            foreach (var (x0, x1) in Pieces(left, right, gapsY.GetValueOrDefault(i)))
+                horizontal.Add((ys[i], x0, x1));
         }
         page.Draw(canvas =>
         {
@@ -310,7 +368,50 @@ internal sealed class SheetPageRenderer
         });
     }
 
-    private void DrawBorders(PageContent page, List<(int Top, int Bottom, int Left, int Right)> blocks, Dictionary<int, Placed> columnAt, Dictionary<int, Placed> rowAt)
+    /// <summary>The position of the first value above <paramref name="value"/> in an ascending array.</summary>
+    private static int Above(float[] values, float value)
+    {
+        int low = 0, high = values.Length;
+        while (low < high)
+        {
+            var mid = (low + high) >>> 1;
+            if (values[mid] <= value)
+                low = mid + 1;
+            else
+                high = mid;
+        }
+        return low;
+    }
+
+    private static void Gap(Dictionary<int, List<(float, float)>> gaps, int line, float from, float to)
+    {
+        if (!gaps.TryGetValue(line, out var list))
+            gaps[line] = list = [];
+        list.Add((from, to));
+    }
+
+    /// <summary>The parts of <paramref name="from"/>..<paramref name="to"/> outside the gaps.</summary>
+    private static List<(float, float)> Pieces(float from, float to, List<(float From, float To)>? gaps)
+    {
+        if (gaps is null)
+            return [(from, to)];
+        var pieces = new List<(float, float)>();
+        var at = from;
+        foreach (var (start, end) in gaps.OrderBy(g => g.From))
+        {
+            if (start > at + 0.01f)
+                pieces.Add((at, Math.Min(start, to)));
+            at = Math.Max(at, end);
+            if (at >= to)
+                break;
+        }
+        if (at < to - 0.01f)
+            pieces.Add((at, to));
+        return pieces;
+    }
+
+    private void DrawBorders(PageContent page, List<(int Top, int Bottom, int Left, int Right)> blocks, List<Placed> columns, List<Placed> rows,
+        Dictionary<int, Placed> columnAt, Dictionary<int, Placed> rowAt)
     {
         var lines = new List<(CellBorder Border, SKPoint From, SKPoint To)>();
         var rtl = Sheet.RightToLeft;
@@ -356,7 +457,7 @@ internal sealed class SheetPageRenderer
             foreach (var merge in _index.Merges(top, bottom, left, right))
             {
                 var anchor = StyleAt(merge.Top, merge.Left, _index.Get(merge.Top, merge.Left));
-                if ((anchor.DiagonalDown.IsVisible || anchor.DiagonalUp.IsVisible) && MergeRect(merge, columnAt, rowAt) is { } area && merge.Top >= top && merge.Left >= left)
+                if ((anchor.DiagonalDown.IsVisible || anchor.DiagonalUp.IsVisible) && MergeRect(merge, columns, rows) is { } area && merge.Top >= top && merge.Left >= left)
                 {
                     var (leftX, rightX) = rtl ? (area.Whole.Right, area.Whole.Left) : (area.Whole.Left, area.Whole.Right);
                     Add(lines, anchor.DiagonalDown, new SKPoint(leftX, area.Whole.Top), new SKPoint(rightX, area.Whole.Bottom));
@@ -425,7 +526,7 @@ internal sealed class SheetPageRenderer
 
     // ───────────────────────── Text ─────────────────────────
 
-    private void DrawTexts(PageContent page, List<(int Top, int Bottom, int Left, int Right)> blocks,
+    private void DrawTexts(PageContent page, List<(int Top, int Bottom, int Left, int Right)> blocks, List<Placed> columns, List<Placed> rows,
         Dictionary<int, Placed> columnAt, Dictionary<int, Placed> rowAt, SKRect gridArea)
     {
         var mergesDone = new HashSet<CellRange>();
@@ -442,7 +543,7 @@ internal sealed class SheetPageRenderer
             }
             foreach (var merge in _index.Merges(top, bottom, left, right))
             {
-                if (!mergesDone.Add(merge) || _index.Get(merge.Top, merge.Left) is not { Text.Length: > 0 } anchor || MergeRect(merge, columnAt, rowAt) is not { } area)
+                if (!mergesDone.Add(merge) || _index.Get(merge.Top, merge.Left) is not { Text.Length: > 0 } anchor || MergeRect(merge, columns, rows) is not { } area)
                     continue;
                 DrawCell(page, anchor, StyleAt(merge.Top, merge.Left, anchor), area.Whole, area.Shown, area.Whole.Left, area.Whole.Right, gridArea);
             }
@@ -552,8 +653,9 @@ internal sealed class SheetPageRenderer
         }
         if (style.SpecialAlign == CellSpecialAlign.Fill && !wrap)
         {
+            // As many copies as fit the cell, but never more text than a cell holds (text of almost no width).
             var one = text.SingleLineWidth();
-            var copies = one > 0 ? (int)Math.Floor(available / s / one) : 0;
+            var copies = one > 0 && text.Text.Length > 0 ? (int)Math.Min(Math.Floor(available / s / one), MaxFillCharacters / text.Text.Length) : 0;
             if (copies > 1)
                 text = CellText.Build(_fonts, _book, cell, style, color, false, string.Concat(Enumerable.Repeat(text.Text, Math.Min(copies, 1000))));
         }
@@ -602,8 +704,7 @@ internal sealed class SheetPageRenderer
                 _ => rect.Left + padding + indent,
             };
             // Only the characters that show: text clipped by a neighbour isn't in the PDF either.
-            var (from, to, offset) = text.Visible(start, end, x, textScale, spaceExtra, clip.Left, clip.Right);
-            if (from < to)
+            foreach (var (from, to, offset) in text.Visible(start, end, x, textScale, spaceExtra, clip.Left, clip.Right))
                 text.Draw(page, from, to, x + offset, baseline, textScale, null, spaceExtra, clip);
             y += lineHeight * textScale + gap;
         }
@@ -744,14 +845,16 @@ internal sealed class SheetPageRenderer
         {
             var rect = new SKRect(column.Start, gridTop - height, column.End, gridTop);
             boxes.Add(rect);
-            Label(page, ColumnName(column.Index), rect, style, s);
+            if (column.Size >= MinHeadingLabel)
+                Label(page, ColumnName(column.Index), rect, style, s);
         }
         var x0 = Sheet.RightToLeft ? gridLeft + columns.Sum(c => c.Size) : gridLeft - width;
         foreach (var row in rows)
         {
             var rect = new SKRect(x0, row.Start, x0 + width, row.End);
             boxes.Add(rect);
-            Label(page, (row.Index + 1).ToString(CultureInfo.InvariantCulture), rect, style, s);
+            if (row.Size >= MinHeadingLabel)
+                Label(page, (row.Index + 1).ToString(CultureInfo.InvariantCulture), rect, style, s);
         }
         boxes.Add(new SKRect(x0, gridTop - height, x0 + width, gridTop));
         page.Draw(canvas =>
