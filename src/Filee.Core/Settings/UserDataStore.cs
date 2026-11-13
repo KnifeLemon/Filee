@@ -1161,6 +1161,9 @@ internal static class SettingsMigrations
         // v91: Gerber PCB layers learn the CAD donut; custom claims stay put.
         if (from < 91)
             changed |= LearnExtensions(profiles, out _, ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"]);
+        // v92: Obsidian's boards (.canvas, JSON Canvas) learn the vector donut; custom claims stay put.
+        if (from < 92)
+            changed |= LearnExtensions(profiles, out _, ["canvas"]);
         return changed;
     }
 
