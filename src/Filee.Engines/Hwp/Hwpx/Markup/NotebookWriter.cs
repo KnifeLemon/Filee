@@ -16,6 +16,9 @@ internal sealed class NotebookWriter
     private readonly bool _pictures;
     private readonly List<Dictionary<string, object?>> _cells = [];
 
+    /// <summary>The caps of the whole notebook: its markdown cells' tables count together.</summary>
+    private readonly MarkupWriteBudget _budget = new(Documents.DocumentLimits.Default);
+
     private NotebookWriter(string work, bool pictures)
     {
         _work = work;
@@ -147,7 +150,7 @@ internal sealed class NotebookWriter
             var name = $"image{attachments.Count + 1}.{(mediaType == "image/png" ? "png" : "jpg")}";
             attachments[name] = new Dictionary<string, object?> { [mediaType] = data };
             return "attachment:" + name;
-        }).TrimEnd();
+        }, _budget).TrimEnd();
         blocks.Clear();
         if (text.Length == 0)
             return;

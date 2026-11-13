@@ -55,10 +55,12 @@ internal sealed class DocBookReader
 
     private readonly string _baseFolder;
     private readonly DocumentBudget _budget;
+    private readonly CancellationToken _cancellationToken;
     private readonly HashSet<string> _anchors = new(StringComparer.Ordinal);
 
-    private DocBookReader(string baseFolder, DocumentLimits limits)
+    private DocBookReader(string baseFolder, DocumentLimits limits, CancellationToken cancellationToken)
     {
+        _cancellationToken = cancellationToken;
         _baseFolder = baseFolder;
         _budget = new DocumentBudget(limits);
     }
@@ -71,7 +73,7 @@ internal sealed class DocBookReader
         return Read(File.ReadAllBytes(path), Path.GetDirectoryName(Path.GetFullPath(path))!, limits);
     }
 
-    internal static HDocument Read(byte[] bytes, string baseFolder, DocumentLimits limits)
+    internal static HDocument Read(byte[] bytes, string baseFolder, DocumentLimits limits, CancellationToken cancellationToken = default)
     {
         XDocument xml;
         try
@@ -90,7 +92,7 @@ internal sealed class DocBookReader
         if (root.Name.NamespaceName is not ("" or "http://docbook.org/ns/docbook"))
             throw new InvalidDataException("The file is not a DocBook document.");
 
-        var reader = new DocBookReader(baseFolder, limits);
+        var reader = new DocBookReader(baseFolder, limits, cancellationToken);
         var section = new HSection();
         var document = new HDocument { Title = Title(root) is { } title ? Text(title) : null };
         if (Sections.Contains(name))
@@ -192,6 +194,7 @@ internal sealed class DocBookReader
 
     private void Block(XElement element, List<HBlock> output, int indent, int listLevel)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         var name = element.Name.LocalName;
         switch (name)
         {
@@ -483,6 +486,8 @@ internal sealed class DocBookReader
             table.ColumnCount = Math.Max(table.ColumnCount, columns);
         }
         table.ColumnCount = Math.Max(1, Math.Max(table.ColumnCount, table.Rows.Count == 0 ? 1 : table.Rows.Max(r => r.Cells.Sum(c => c.ColSpan))));
+        MarkupBlocks.TableArea(table.Rows.Count, table.ColumnCount, _budget.Limits);
+        MarkupBlocks.ClampRowSpans(table);
         if (table.Rows.Count == 0)
             table.Rows.Add(new HRow { Cells = { new HCell { Blocks = { new HParagraph() } } } });
         return table;
@@ -491,10 +496,9 @@ internal sealed class DocBookReader
     /// <summary>An HTML-style table (DocBook 5 allows tr / td / th, also in thead / tbody).</summary>
     private void HtmlTable(XElement element, HTable table, int limit)
     {
-        foreach (var row in element.Descendants().Where(e => e.Name.LocalName == "tr"))
+        foreach (var row in Rows(element))
         {
-            if (row.Ancestors().FirstOrDefault(a => a.Name.LocalName is "table" or "informaltable") != element)
-                continue; // a row of a table inside a cell
+            _cancellationToken.ThrowIfCancellationRequested();
             var header = row.Parent?.Name.LocalName == "thead" || (row.Elements().Any() && row.Elements().All(e => e.Name.LocalName == "th"));
             var hRow = new HRow { Header = header };
             foreach (var entry in row.Elements().Where(e => e.Name.LocalName is "td" or "th").Take(limit))
@@ -508,6 +512,31 @@ internal sealed class DocBookReader
                 hRow.Cells.Add(cell);
             }
             table.Rows.Add(hRow);
+        }
+    }
+
+    /// <summary>
+    /// The tr elements of a table, in order, without those of tables inside its cells: the walk doesn't go into a
+    /// nested table, so each element is looked at once however deep the tables nest.
+    /// </summary>
+    private static IEnumerable<XElement> Rows(XElement table)
+    {
+        var stack = new Stack<IEnumerator<XElement>>();
+        stack.Push(table.Elements().GetEnumerator());
+        while (stack.Count > 0)
+        {
+            var children = stack.Peek();
+            if (!children.MoveNext())
+            {
+                stack.Pop();
+                continue;
+            }
+            var child = children.Current;
+            if (child.Name.LocalName is "table" or "informaltable")
+                continue;
+            if (child.Name.LocalName == "tr")
+                yield return child;
+            stack.Push(child.Elements().GetEnumerator());
         }
     }
 
@@ -531,6 +560,7 @@ internal sealed class DocBookReader
 
     private HParagraph NewParagraph(int indent)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         _budget.Paragraph();
         return new HParagraph { Format = indent > 0 ? new HParaFormat(Left: indent) : default };
     }
@@ -564,8 +594,11 @@ internal sealed class DocBookReader
     /// <summary>White space at a paragraph's ends is not text; runs of it inside were made one space already.</summary>
     private static void Trim(List<HInline> inlines)
     {
-        while (inlines.Count > 0 && inlines[0] is HText first && first.Text.TrimStart().Length == 0)
-            inlines.RemoveAt(0);
+        // Counted first and taken out at once: one RemoveAt(0) per blank run would move the whole list each time.
+        var blank = 0;
+        while (blank < inlines.Count && inlines[blank] is HText first && first.Text.TrimStart().Length == 0)
+            blank++;
+        inlines.RemoveRange(0, blank);
         if (inlines.Count > 0 && inlines[0] is HText head)
             inlines[0] = new HText(head.Text.TrimStart(), head.Format);
         while (inlines.Count > 0 && inlines[^1] is HText last && last.Text.TrimEnd().Length == 0)

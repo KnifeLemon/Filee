@@ -1,7 +1,9 @@
 // The walk the writers of the text markup languages (Textile, MediaWiki, reStructuredText, Org) share: code lines
 // gathered into one block, list paragraphs into one list (levels, numbers counted like 한글's), quotes by indent, tables
 // as a grid with their spans, runs of the same format joined, footnotes numbered. Each language says how a heading, a
-// paragraph, a list item, a code block, a table and a run of text are written.
+// paragraph, a list item, a code block, a table and a run of text are written. Spans are placed arithmetically and
+// tables, footnotes and the text are counted against the caps in MarkupGrid.cs; nesting past Nesting.MaxDepth is
+// opened up first.
 
 using System.Text;
 
@@ -25,6 +27,12 @@ internal abstract class MarkupTextWriter
 {
     private readonly ListNumbers _numbers = new();
 
+    /// <summary>The text of each footnote written so far, for a note the model refers to more than once.</summary>
+    private readonly Dictionary<HNote, string> _noteTexts = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Characters of <see cref="Notes"/> together.</summary>
+    private long _noteCharacters;
+
     /// <param name="pictures">Maps a picture file to the link written into the result, or null to leave it out.</param>
     protected MarkupTextWriter(Func<string, string?> pictures) => Pictures = pictures;
 
@@ -33,9 +41,19 @@ internal abstract class MarkupTextWriter
     /// <summary>The footnotes so far (their text), numbered from 1.</summary>
     protected List<string> Notes { get; } = [];
 
+    private MarkupWriteBudget? _budget;
+
+    /// <summary>The limits the caps of <see cref="Budget"/> come from.</summary>
+    public Documents.DocumentLimits Limits { get; init; } = Documents.DocumentLimits.Default;
+
+    /// <summary>The caps of this document's tables and text.</summary>
+    protected MarkupWriteBudget Budget => _budget ??= new(Limits);
+
     /// <summary>The text of the document.</summary>
     public string Write(HDocument document)
     {
+        // The walk recurses per table, link, note and text box level: deeper content is opened up into paragraphs.
+        Nesting.Limit(document);
         var sb = new StringBuilder();
         Start(sb, string.IsNullOrWhiteSpace(document.Title) ? null : document.Title.Trim());
         foreach (var section in document.Sections)
@@ -88,6 +106,7 @@ internal abstract class MarkupTextWriter
     {
         for (var i = 0; i < blocks.Count;)
         {
+            Budget.Characters(sb.Length + _noteCharacters);
             var block = blocks[i];
             if (MarkupBlocks.IsCode(block))
             {
@@ -138,27 +157,27 @@ internal abstract class MarkupTextWriter
                     break;
             }
         }
+        Budget.Characters(sb.Length + _noteCharacters);
     }
 
-    /// <summary>The table as a grid; a cell's paragraphs are joined by line breaks.</summary>
+    /// <summary>
+    /// The table as a grid; a cell's paragraphs are joined by line breaks. Spans are placed arithmetically
+    /// (<see cref="SpanCursor"/>) and the grid is counted before it is made.
+    /// </summary>
     private MarkupTable Grid(HTable table)
     {
-        var columns = Math.Max(1, Math.Max(table.ColumnCount, table.Rows.Max(r => r.Cells.Sum(c => Math.Max(1, c.ColSpan)))));
-        columns = Math.Min(columns, Documents.DocumentLimits.Default.MaxTableColumns);
-        var rows = new List<MarkupCell?[]>();
-        var covered = new HashSet<(int Row, int Column)>();
+        var columns = Budget.Columns(table);
+        Budget.Table(table.Rows.Count, columns);
+        var rows = new List<MarkupCell?[]>(table.Rows.Count);
+        var cursor = new SpanCursor(table.Rows.Count, columns);
         for (var r = 0; r < table.Rows.Count; r++)
         {
             var cells = new MarkupCell?[columns];
-            var column = 0;
+            cursor.NextRow();
             foreach (var cell in table.Rows[r].Cells)
             {
-                while (column < columns && covered.Contains((r, column)))
-                    column++;
-                if (column >= columns)
+                if (!cursor.Place(cell.RowSpan, cell.ColSpan, table.Rows.Count, out var column, out var rowSpan, out var colSpan))
                     break;
-                var rowSpan = Math.Clamp(cell.RowSpan, 1, table.Rows.Count - r);
-                var colSpan = Math.Clamp(cell.ColSpan, 1, columns - column);
                 // Header cells are bold by nature: no bold markers inside them.
                 var header = table.Rows[r].Header;
                 var text = string.Join(LineBreak(), cell.Blocks.OfType<HParagraph>()
@@ -167,11 +186,6 @@ internal abstract class MarkupTextWriter
                     .Where(t => t.Length > 0));
                 var simple = cell.Blocks.All(b => b is HParagraph { List: null } p && !MarkupBlocks.IsCode(p));
                 cells[column] = new MarkupCell(text, rowSpan, colSpan, cell, simple);
-                for (var rr = r; rr < r + rowSpan; rr++)
-                    for (var cc = column; cc < column + colSpan; cc++)
-                        if (rr != r || cc != column)
-                            covered.Add((rr, cc));
-                column += colSpan;
             }
             rows.Add(cells);
         }
@@ -224,8 +238,9 @@ internal abstract class MarkupTextWriter
                         sb.Append(Picture(target));
                     break;
                 case HNote note:
-                    Notes.Add(string.Join(" ", note.Blocks.OfType<HParagraph>().Select(p => Inlines(p.Inlines).Replace("\n", " ", StringComparison.Ordinal).Trim())
-                        .Where(t => t.Length > 0)));
+                    Notes.Add(Note(note));
+                    _noteCharacters += Notes[^1].Length;
+                    Budget.Characters(_noteCharacters);
                     sb.Append(NoteReference(Notes.Count));
                     break;
                 case HTextBox box:
@@ -235,6 +250,22 @@ internal abstract class MarkupTextWriter
         }
         Flush();
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// A footnote's text on one line. A note the model shares between references (the markup readers read a note once
+    /// for all of them) is written once and its text reused, unless it holds notes of its own, which each copy numbers.
+    /// </summary>
+    private string Note(HNote note)
+    {
+        if (_noteTexts.TryGetValue(note, out var known))
+            return known;
+        var before = Notes.Count;
+        var text = string.Join(" ", note.Blocks.OfType<HParagraph>().Select(p => Inlines(p.Inlines).Replace("\n", " ", StringComparison.Ordinal).Trim())
+            .Where(t => t.Length > 0));
+        if (Notes.Count == before)
+            _noteTexts[note] = text;
+        return text;
     }
 
     /// <summary>Only what a markup language can say: emphasis, code and marks; fonts, sizes and colours go.</summary>

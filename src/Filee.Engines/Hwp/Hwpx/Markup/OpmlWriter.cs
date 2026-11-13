@@ -23,15 +23,21 @@ internal static class OpmlWriter
     /// <param name="pictures">Maps a picture file to the link written into a note, or null to leave it out.</param>
     public static string Write(HDocument document, Func<string, string?> pictures)
     {
+        // Headings' text is walked through their links, and the notes are written by MarkdownWriter: content nested
+        // deeper than Nesting.MaxDepth is opened up first.
+        Nesting.Limit(document);
+        var budget = new MarkupWriteBudget(Documents.DocumentLimits.Default);
         var root = new Outline(0);
         var stack = new List<Outline> { root };
         foreach (var block in document.Sections.SelectMany(s => s.Blocks))
         {
             if (block is HParagraph { HeadingLevel: > 0 } heading)
             {
-                while (stack.Count > 1 && stack[^1].Level >= heading.HeadingLevel)
+                // Outlines are written level by level (recursively): nine levels, as headings have.
+                var level = Math.Min(heading.HeadingLevel, 9);
+                while (stack.Count > 1 && stack[^1].Level >= level)
                     stack.RemoveAt(stack.Count - 1);
-                var outline = new Outline(heading.HeadingLevel) { Text = Text(heading.Inlines) };
+                var outline = new Outline(level) { Text = Text(heading.Inlines) };
                 var parts = heading.Inlines.Where(i => i is not HBookmark).ToList();
                 if (parts is [HLink { Target: var target } link] && !target.StartsWith('#'))
                 {
@@ -71,14 +77,14 @@ internal static class OpmlWriter
             writer.WriteEndElement();
             writer.WriteStartElement("body");
             foreach (var outline in root.Children)
-                Write(writer, outline, pictures);
+                Write(writer, outline, pictures, budget);
             writer.WriteEndElement();
             writer.WriteEndElement();
         }
         return sb.ToString().Replace("encoding=\"utf-16\"", "encoding=\"UTF-8\"", StringComparison.Ordinal) + "\n";
     }
 
-    private static void Write(XmlWriter writer, Outline outline, Func<string, string?> pictures)
+    private static void Write(XmlWriter writer, Outline outline, Func<string, string?> pictures, MarkupWriteBudget budget)
     {
         writer.WriteStartElement("outline");
         writer.WriteAttributeString("text", Clean(outline.Text));
@@ -93,12 +99,12 @@ internal static class OpmlWriter
             section.Blocks.AddRange(outline.Note);
             var note = new HDocument();
             note.Sections.Add(section);
-            var markdown = MarkdownWriter.Write(note, pictures).Trim();
+            var markdown = MarkdownWriter.Write(note, pictures, budget).Trim();
             if (markdown.Length > 0)
                 writer.WriteAttributeString("_note", Clean(markdown));
         }
         foreach (var child in outline.Children)
-            Write(writer, child, pictures);
+            Write(writer, child, pictures, budget);
         writer.WriteEndElement();
     }
 
