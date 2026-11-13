@@ -196,7 +196,8 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         return image.ToByteArray(MagickFormat.Png);
     }
 
-    private string Document()
+    /// <summary>The test document's parts (also a seed of <see cref="OdtFuzzTests"/>).</summary>
+    internal static OdtBuilder DocumentBuilder()
     {
         var builder = new OdtBuilder
         {
@@ -208,8 +209,10 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Body = Text,
         };
         builder.Parts["Pictures/chart.png"] = Png();
-        return builder.Save(Path.Combine(fx.NewFolder(), "document.odt"));
+        return builder;
     }
+
+    private string Document() => DocumentBuilder().Save(Path.Combine(fx.NewFolder(), "document.odt"));
 
     private static List<HParagraph> Paragraphs(HDocument document) => DocxAssert.Paragraphs(document.Sections.SelectMany(s => s.Blocks)).ToList();
 
@@ -694,6 +697,98 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var cell = read!.Sections[0].Blocks.OfType<HTable>().Single().Rows[0].Cells[0];
         Assert.Equal((DocumentLimits.Default.MaxTableColumns, 1), (cell.ColSpan, cell.RowSpan));
         Assert.InRange(DocxAssert.TextOf(read.Sections[0].Blocks.OfType<HParagraph>().Last()).Length, 3, 10_002);
+    }
+
+    /// <summary>Refused within <paramref name="seconds"/> with error.document_too_complex.</summary>
+    private static ConversionRefusedException RefusedWithin(int seconds, Action action)
+    {
+        var refusal = Assert.IsType<ConversionRefusedException>(OnSmallStack(action, seconds));
+        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        return refusal;
+    }
+
+    [Fact]
+    public void Repeated_cells_and_spaces_count_against_the_text_budget()
+    {
+        // One cell of 10,000 spaces over 1,000 columns and 999 rows would be ten billion characters from 300 bytes.
+        var table = "<table:table><table:table-column table:number-columns-repeated=\"1000\"/><table:table-row table:number-rows-repeated=\"999\">" +
+                    "<table:table-cell table:number-columns-repeated=\"1000\"><text:p><text:s text:c=\"10000\"/></text:p></table:table-cell></table:table-row></table:table>";
+        var limits = DocumentLimits.Default with { MaxPartBytes = 4 << 20 };
+        Assert.Contains("longer than 4,194,304 characters", RefusedWithin(20, () => OdtReader.Read(Odt(table), Media(), limits)).Detail);
+
+        var spaces = string.Concat(Enumerable.Repeat("<text:s text:c=\"10000\"/>", 420));
+        Assert.Contains("characters", RefusedWithin(20, () => OdtReader.Read(Odt($"<text:p>{spaces}</text:p>"), Media(), limits)).Detail);
+    }
+
+    [Fact]
+    public void Empty_rows_and_cells_that_end_a_table_are_kept_once_and_rows_count()
+    {
+        var table = "<table:table><table:table-column table:number-columns-repeated=\"2\"/>" +
+                    "<table:table-row table:number-rows-repeated=\"3\"><table:table-cell/><table:table-cell/></table:table-row>" +
+                    "<table:table-row><table:table-cell><text:p>x</text:p></table:table-cell><table:table-cell table:number-columns-repeated=\"16384\"/></table:table-row>" +
+                    "<table:table-row table:number-rows-repeated=\"1048576\"><table:table-cell table:number-columns-repeated=\"1024\"/></table:table-row></table:table>";
+        HDocument? read = null;
+        Assert.Null(OnSmallStack(() => read = OdtReader.Read(Odt(table), Media()), seconds: 20));
+        var model = read!.Sections[0].Blocks.OfType<HTable>().Single();
+        // Empty rows before a filled one repeat; the empty cells and rows at the end fill the declared columns, once.
+        Assert.Equal([2, 2, 2, 2, 2], model.Rows.Select(r => r.Cells.Count));
+        Assert.Equal(2, model.ColumnCount);
+
+        // 20,000 empty rows of 1,000 copies each before a filled row: the rows count, empty or not.
+        var rows = string.Concat(Enumerable.Repeat("<table:table-row table:number-rows-repeated=\"1000\"/>", 20_000)) +
+                   "<table:table-row><table:table-cell><text:p>x</text:p></table:table-cell></table:table-row>";
+        var limits = DocumentLimits.Default with { MaxParagraphs = 10_000 };
+        Assert.Contains("more than 10,000 table rows", RefusedWithin(20, () => OdtReader.Read(Odt($"<table:table>{rows}</table:table>"), Media(), limits)).Detail);
+    }
+
+    private static string InlineFrame(byte[] bytes) =>
+        "<draw:frame text:anchor-type=\"as-char\" svg:width=\"1cm\" svg:height=\"1cm\"><draw:image><office:binary-data>" +
+        Convert.ToBase64String(bytes) + "</office:binary-data></draw:image></draw:frame>";
+
+    [Fact]
+    public void A_picture_stored_in_the_xml_is_decoded_once_and_counted()
+    {
+        byte[] Padded(int size, byte mark) => [.. DocumentFuzzTests.TinyPng(2, 2), .. new byte[size], mark];
+
+        // In a cell repeated 10,000 times the picture is written once.
+        var table = "<table:table><table:table-column table:number-columns-repeated=\"200\"/><table:table-row table:number-rows-repeated=\"50\">" +
+                    $"<table:table-cell table:number-columns-repeated=\"200\"><text:p>{InlineFrame(Padded(30_000, 1))}</text:p></table:table-cell></table:table-row></table:table>";
+        HDocument? read = null;
+        var media = Media();
+        Assert.Null(OnSmallStack(() => read = OdtReader.Read(Odt(table), media), seconds: 30));
+        var images = read!.Sections[0].Blocks.OfType<HTable>().Single().Rows.SelectMany(r => r.Cells).SelectMany(c => c.Blocks)
+            .OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HImage>().ToList();
+        Assert.Equal(10_000, images.Count);
+        Assert.Single(images.Select(i => i.Path).Distinct());
+        Assert.Single(Directory.GetFiles(media));
+
+        // Decoded pictures count with the unpacked parts against MaxPackageBytes: 3 × 100 KB of pictures in about
+        // 400 KB of XML pass 450 KB with the first.
+        var three = Odt("<text:p>" + InlineFrame(Padded(100_000, 1)) + InlineFrame(Padded(100_000, 2)) + InlineFrame(Padded(100_000, 3)) + "</text:p>");
+        var limits = DocumentLimits.Default with { MaxPackageBytes = 450_000 };
+        Assert.Contains("pictures stored in its XML", RefusedWithin(20, () => OdtReader.Read(three, Media(), limits)).Detail);
+    }
+
+    [Fact]
+    public void Text_split_into_a_million_pieces_joins_in_one_pass()
+    {
+        // 500,000 × (text:s, "x"): joining piece by piece copied the text half a million times.
+        var pieces = string.Concat(Enumerable.Repeat("<text:s/>x", 500_000));
+        var limits = DocumentLimits.Default with { InflateRatioFloor = 64L << 20 };
+        HDocument? read = null;
+        Assert.Null(OnSmallStack(() => read = OdtReader.Read(Odt($"<text:p>{pieces}</text:p>"), Media(), limits), seconds: 20));
+        var text = Assert.IsType<HText>(Assert.Single(read!.Sections[0].Blocks.OfType<HParagraph>().Single().Inlines));
+        Assert.Equal(1_000_000, text.Text.Length);
+    }
+
+    [Fact]
+    public void Links_inside_links_are_text_of_the_outer_link()
+    {
+        var nested = string.Concat(Enumerable.Repeat("<text:a xlink:href=\"https://example.invalid/\">", 300)) + "x" + string.Concat(Enumerable.Repeat("</text:a>", 300));
+        HDocument? read = null;
+        Assert.Null(OnSmallStack(() => read = OdtReader.Read(Odt($"<text:p>{nested}</text:p>"), Media())));
+        var link = Assert.IsType<HLink>(Assert.Single(read!.Sections[0].Blocks.OfType<HParagraph>().Single().Inlines));
+        Assert.Equal("x", Assert.IsType<HText>(Assert.Single(link.Content)).Text);
     }
 
     [Fact]
