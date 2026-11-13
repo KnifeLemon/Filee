@@ -259,11 +259,20 @@ public sealed class EngineEnvironment(string dataDirectory)
                     break;
             }
         }
+        // MSYS2 is an optional fallback after PATH and the usual installer locations, never ahead of Filee's copies.
+        if (OperatingSystem.IsWindows() && Path.GetPathRoot(Environment.SystemDirectory) is { Length: > 0 } drive)
+            folders.AddRange(Msys2Folders(id, Path.Combine(drive, "msys64")));
         // Never Filee's own folders: those are its own copy, found before.
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         return folders.Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
             .Where(f => !IsWithin(f, DownloadRoot, comparison) && !IsWithin(f, AppContext.BaseDirectory, comparison));
     }
+
+    /// <summary>Native MSYS2 environments under a standard installation; do not search MSYS's own Unix tools.</summary>
+    internal static IEnumerable<string> Msys2Folders(string id, string root) =>
+        id is "ffmpeg" or "tesseract" or "whisper"
+            ? new[] { "ucrt64", "clang64", "mingw64", "clangarm64", "mingw32" }.Select(env => Path.Combine(root, env, "bin"))
+            : [];
 
     /// <summary>Where LibreOffice's Windows installer records its program folder (the key's default value).</summary>
     internal const string LibreOfficeInstallPathKey = @"SOFTWARE\LibreOffice\UNO\InstallPath";

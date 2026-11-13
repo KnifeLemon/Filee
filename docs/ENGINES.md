@@ -81,7 +81,8 @@ the same on every PC. An external engine is looked for in this order:
 1. a copy the user picked in Settings → *Engines*;
 2. Filee's own copy (bundled or downloaded);
 3. a copy already on the computer: on `PATH`, in Homebrew's and the usual Unix folders, or where the LibreOffice,
-   calibre, Ghostscript and Tesseract installers put it. Settings → *Engines* shows it as "Found on this PC", with a note when
+   calibre, Ghostscript and Tesseract installers put it. On Windows, FFmpeg, Tesseract and Whisper are also looked for in
+   the native environments under the system drive's `msys64` folder, after these locations. Settings → *Engines* shows it as "Found on this PC", with a note when
    its version is older than the one Filee downloads.
 
 Where Filee has no download of an engine (FFmpeg, Ghostscript and Tesseract on macOS, LibreOffice, Ghostscript and
