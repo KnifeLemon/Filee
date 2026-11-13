@@ -10,7 +10,9 @@
 //  * Text boxes: their text is a story of the text box document, found by the shape id in PlcftxbxTxt.
 //
 // BLIPs: JPEG, PNG and TIFF are copied, DIBs get a BMP file header, EMF and WMF are inflated when compressed and a WMF
-// gets its placeable header. Records follow [MS-ODRAW]; every length is checked against what holds it.
+// gets its placeable header. Records follow [MS-ODRAW]; every length is checked against what holds it. Each picture is
+// unpacked and written to word/media once, however many characters show it, and what metafiles inflate to counts
+// against the document's limits (its total and the inflate ratio).
 
 using System.Buffers.Binary;
 using System.IO.Compression;
@@ -44,6 +46,15 @@ internal sealed partial class DocToDocx
     private int _inTextBox;
 
     private readonly HashSet<int> _textBoxesWritten = [];
+
+    /// <summary>
+    /// Pictures written to word/media (null: none could be read), by where they are: a BLIP record in a stream ('D'
+    /// Data, 'T' table, 'W' WordDocument) or an older picture's PICF ('P') in the Data stream.
+    /// </summary>
+    private readonly Dictionary<(char Stream, int Offset), string?> _media = [];
+
+    /// <summary>Bytes the picture being read inflated to, counted already (see <see cref="AddMedia"/>).</summary>
+    private long _inflated;
 
     // ───────────────────────── OfficeArt records ─────────────────────────
 
@@ -165,19 +176,34 @@ internal sealed partial class DocToDocx
 
     // ───────────────────────── BLIPs ─────────────────────────
 
-    /// <summary>The picture of an FBSE record at <paramref name="fbse"/> of <paramref name="bytes"/>: its own BLIP, or the one at foDelay in the WordDocument stream.</summary>
-    private (byte[] Bytes, string Extension)? FbsePicture(ReadOnlySpan<byte> bytes, Record fbse)
+    /// <summary>
+    /// The picture in word/media of an FBSE record at <paramref name="fbse"/> of <paramref name="bytes"/> (the stream
+    /// <paramref name="stream"/>): its own BLIP, or the one at foDelay in the WordDocument stream.
+    /// </summary>
+    private string? FbseMedia(char stream, ReadOnlySpan<byte> bytes, Record fbse)
     {
         if (fbse.Type != 0xF007 || fbse.Length < 36)
             return null;
         var cbName = bytes[fbse.Start + 33];
         var blipAt = fbse.Start + 36 + cbName;
         if (RecordAt(bytes, blipAt, fbse.End) is { } embedded)
-            return Blip(bytes, embedded);
+            return BlipMedia(stream, bytes, embedded);
         var delay = BinaryPrimitives.ReadUInt32LittleEndian(bytes[(fbse.Start + 28)..]);
         if (delay < _doc.Word.Length && RecordAt(_doc.Word, (int)delay, _doc.Word.Length) is { } stored)
-            return Blip(_doc.Word, stored);
+            return BlipMedia('W', _doc.Word, stored);
         return null;
+    }
+
+    /// <summary>The picture in word/media of a BLIP record, unpacked and written the first time it is shown.</summary>
+    private string? BlipMedia(char stream, ReadOnlySpan<byte> bytes, Record blip)
+    {
+        if (_media.TryGetValue((stream, blip.Start), out var name))
+            return name;
+        _inflated = 0;
+        name = Blip(bytes, blip) is { } picture ? AddMedia(picture.Bytes, picture.Extension) : null;
+        _inflated = 0; // a metafile that couldn't be unpacked writes nothing
+        _media[(stream, blip.Start)] = name;
+        return name;
     }
 
     /// <summary>A BLIP record's picture: one UID (16 bytes) or two when the instance is odd, then the data.</summary>
@@ -225,17 +251,31 @@ internal sealed partial class DocToDocx
         }
     }
 
-    /// <summary>Inflates a zlib stream, at most to the size the header gives and the part limit.</summary>
+    /// <summary>
+    /// Inflates a zlib stream, at most to the size the header gives and the part limit. What it unpacks counts against
+    /// the document's total, and a picture that unpacks to far more than its packed size is refused.
+    /// </summary>
     private byte[]? Inflate(ReadOnlySpan<byte> data, uint size)
     {
-        var limit = (int)Math.Min(Math.Min(size, (uint)int.MaxValue), _doc.Limits.MaxPartBytes);
+        var limits = _doc.Limits;
+        var limit = Math.Min(size, limits.MaxPartBytes);
+        var packed = Math.Max(1, data.Length);
         try
         {
-            using var input = new MemoryStream(data.ToArray());
+            using var input = new MemoryStream(data.ToArray(), writable: false);
             using var zlib = new ZLibStream(input, CompressionMode.Decompress);
-            var output = new byte[limit];
-            var read = zlib.ReadAtLeast(output, limit, throwOnEndOfStream: false);
-            return read == limit ? output : output[..read];
+            using var output = new MemoryStream();
+            var buffer = new byte[81920];
+            int read;
+            while (output.Length < limit && (read = zlib.Read(buffer, 0, (int)Math.Min(buffer.Length, limit - output.Length))) > 0)
+            {
+                output.Write(buffer, 0, read);
+                _doc.Count(read);
+                _inflated += read;
+                if (output.Length > limits.InflateRatioFloor && output.Length / packed > limits.MaxInflateRatio)
+                    throw Documents.DocumentLimits.Exceeded($"A picture of the document unpacks to more than {limits.MaxInflateRatio} times its packed size.");
+            }
+            return output.ToArray();
         }
         catch (InvalidDataException)
         {
@@ -321,7 +361,7 @@ internal sealed partial class DocToDocx
         var start = at + cbHeader;
         var end = at + lcb;
 
-        (byte[] Bytes, string Extension)? picture = null;
+        string? media = null;
         Dictionary<int, uint> properties = [];
         if (mm is 0x64 or 0x66)
         {
@@ -341,26 +381,26 @@ internal sealed partial class DocToDocx
                 }
                 var pib = (int)properties.GetValueOrDefault(0x0104, 1u);
                 if (pib >= 1 && pib <= fbses.Count)
-                    picture = FbsePicture(data, fbses[pib - 1]);
+                    media = FbseMedia('D', data, fbses[pib - 1]);
                 else if (fbses.Count > 0)
-                    picture = FbsePicture(data, fbses[0]);
+                    media = FbseMedia('D', data, fbses[0]);
             }
         }
-        else if (end > start)
+        else if (end > start && !_media.TryGetValue(('P', at), out media))
         {
             // An older picture: a metafile (without its placeable header) right after the PICF.
             var bounds = new byte[16];
             BinaryPrimitives.WriteInt32LittleEndian(bounds.AsSpan(8), Math.Max(1, (int)BinaryPrimitives.ReadInt16LittleEndian(picf[8..])));
             BinaryPrimitives.WriteInt32LittleEndian(bounds.AsSpan(12), Math.Max(1, (int)BinaryPrimitives.ReadInt16LittleEndian(picf[10..])));
-            picture = (Placeable(data[start..end], bounds, (dxaGoal * EmuPerTwip, dyaGoal * EmuPerTwip)), "wmf");
+            _media[('P', at)] = media = AddMedia(Placeable(data[start..end], bounds, (dxaGoal * EmuPerTwip, dyaGoal * EmuPerTwip)), "wmf");
         }
-        if (picture is not { } found)
+        if (media is null)
             return null;
 
         // The picture as placed: its goal size less the crops, scaled by mx and my (per mille).
         var width = (long)Math.Max(1, dxaGoal - cropLeft - cropRight) * (mx == 0 ? 1000 : mx) / 1000;
         var height = (long)Math.Max(1, dyaGoal - cropTop - cropBottom) * (my == 0 ? 1000 : my) / 1000;
-        var id = AddMedia(found.Bytes, found.Extension);
+        var id = MediaRelationship(media);
         if (info.Ole2)
         {
             // An OLE object's picture, as Word writes one in DOCX.
@@ -438,8 +478,8 @@ internal sealed partial class DocToDocx
         if (shape.Properties.TryGetValue(0x0104, out var pib) && pib >= 1 && pib <= _bstore.Count)
         {
             var (offset, length) = _bstore[(int)pib - 1];
-            if (RecordAt(_doc.Table, offset, offset + length) is { } fbse && FbsePicture(_doc.Table, fbse) is { } picture)
-                graphic = PictureGraphic(AddMedia(picture.Bytes, picture.Extension), CropOf(shape.Properties));
+            if (RecordAt(_doc.Table, offset, offset + length) is { } fbse && FbseMedia('T', _doc.Table, fbse) is { } media)
+                graphic = PictureGraphic(MediaRelationship(media), CropOf(shape.Properties));
         }
         if (graphic is null && ShapeGraphic(spa.Id, shape, width, height) is { } drawn)
             graphic = drawn;

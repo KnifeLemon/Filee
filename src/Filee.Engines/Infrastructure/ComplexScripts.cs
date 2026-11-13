@@ -372,7 +372,7 @@ internal static partial class ComplexScripts
                 if (!CompoundFile.HasSignature(path))
                     return FindInText(path, classifier, skipBelow); // RTF or a web page with a .doc name
                 using var doc = DocFile.Open(path, DocumentLimits.Default);
-                return Find(doc.Text(0, doc.CpEnd), classifier, skipBelow);
+                return FindInDoc(doc, classifier, skipBelow);
             }
             // Web archives and mail are MIME: their HTML (or text) part is what reaches the PDF.
             if (format is "mhtml" or "eml")
@@ -390,6 +390,22 @@ internal static partial class ComplexScripts
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// The stories of a Word 97–2003 document: only the CPs the FIB counts (pieces past them, or sharing one stretch of
+    /// text many times over, would name far more characters than the file holds), read a slice at a time.
+    /// </summary>
+    private static string? FindInDoc(DocFile doc, Classifier classifier, int skipBelow)
+    {
+        const int Slice = 1 << 20;
+        var end = doc.StoriesEnd;
+        for (var start = 0; start < end; start += Slice)
+        {
+            if (Find(doc.Text(start, (int)Math.Min(end, (long)start + Slice)), classifier, skipBelow) is { } script)
+                return script;
+        }
+        return null;
     }
 
     /// <summary>

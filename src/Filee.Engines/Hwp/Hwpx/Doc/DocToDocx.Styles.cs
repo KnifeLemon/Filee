@@ -132,6 +132,8 @@ internal sealed partial class DocToDocx
         }
         var at = 2 + cbStshi;
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // The next number to try after each id taken, so many styles of one name don't retry every number before theirs.
+        var suffixes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var istd = 0; istd < cstd && at + 2 <= stsh.Length; istd++)
         {
             var cbStd = BinaryPrimitives.ReadUInt16LittleEndian(stsh[at..]);
@@ -148,8 +150,16 @@ internal sealed partial class DocToDocx
             if (id.Length == 0)
                 id = "Style" + istd;
             var unique = id;
-            for (var n = 2; !ids.Add(unique); n++)
-                unique = id + n;
+            if (!ids.Add(unique))
+            {
+                var n = suffixes.GetValueOrDefault(id, 2);
+                do
+                {
+                    unique = id + n++;
+                }
+                while (!ids.Add(unique));
+                suffixes[id] = n;
+            }
             style.Id = unique;
             _styles[istd] = style;
         }
