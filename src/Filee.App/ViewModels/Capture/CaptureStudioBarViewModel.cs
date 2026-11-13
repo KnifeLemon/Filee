@@ -64,6 +64,7 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     public event Action? ClearAnnotationsRequested;
     public event Action<bool>? CursorHighlightToggled;
     public event Action<bool>? SpotlightToggled;
+    public event Action<bool>? MicToggled;
     public event Action? MobileMirrorToggled;
 
     public CaptureStudioBarViewModel(CaptureStudioService service, CaptureConfig config)
@@ -161,6 +162,7 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     private void ToggleMic()
     {
         IsMicMuted = !IsMicMuted;
+        MicToggled?.Invoke(IsMicMuted);
     }
 
     [RelayCommand]

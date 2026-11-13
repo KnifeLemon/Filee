@@ -32,6 +32,15 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
     [ObservableProperty]
     private WindowTargetInfo? _selectedWindow;
 
+    partial void OnSelectedWindowChanged(WindowTargetInfo? value)
+    {
+        if (value != null)
+        {
+            DetectedAppTitle = value.DisplayName;
+            DetectedAppProcess = value.ProcessName;
+        }
+    }
+
     [ObservableProperty]
     private ScreenTargetInfo? _selectedScreen;
 

@@ -32,4 +32,13 @@ public partial class CaptureStudioEditorWindow : Window
             return file?.Path.LocalPath;
         };
     }
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        if (DataContext is CaptureStudioEditorViewModel vm && vm.IsPlaying)
+        {
+            vm.TogglePlayCommand.Execute(null);
+        }
+        base.OnClosing(e);
+    }
 }

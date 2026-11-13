@@ -166,11 +166,14 @@ public sealed class CaptureStudioService
         TimeSpan trimEnd,
         IReadOnlyList<SubtitleCueModel>? subtitles,
         string format,
+        IProgress<double>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var ffmpeg = CaptureRecordingEngine.FindFfmpeg();
         if (string.IsNullOrWhiteSpace(ffmpeg))
             throw new InvalidOperationException("FFmpeg not found.");
+
+        double exportDurationSec = trimEnd > trimStart ? (trimEnd - trimStart).TotalSeconds : 0;
 
         string? srtPath = null;
         if (subtitles != null && subtitles.Count > 0)
@@ -220,25 +223,44 @@ public sealed class CaptureStudioService
             {
                 psi.ArgumentList.Add("-vf");
                 psi.ArgumentList.Add("fps=15,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse");
+                psi.ArgumentList.Add("-threads");
+                psi.ArgumentList.Add("0");
             }
             else if (format.Equals("webm", StringComparison.OrdinalIgnoreCase))
             {
+                if (srtPath != null)
+                {
+                    var escaped = srtPath.Replace("\\", "/").Replace(":", "\\:");
+                    psi.ArgumentList.Add("-vf");
+                    psi.ArgumentList.Add($"subtitles='{escaped}'");
+                }
                 psi.ArgumentList.Add("-c:v");
                 psi.ArgumentList.Add("libvpx-vp9");
                 psi.ArgumentList.Add("-crf");
-                psi.ArgumentList.Add("30");
+                psi.ArgumentList.Add("32");
                 psi.ArgumentList.Add("-b:v");
+                psi.ArgumentList.Add("0");
+                psi.ArgumentList.Add("-threads");
                 psi.ArgumentList.Add("0");
             }
             else
             {
-                // MP4 default
+                // Fast MP4 export: ultra/veryfast preset, all CPU threads
+                if (srtPath != null)
+                {
+                    var escaped = srtPath.Replace("\\", "/").Replace(":", "\\:");
+                    psi.ArgumentList.Add("-vf");
+                    psi.ArgumentList.Add($"subtitles='{escaped}'");
+                }
+
                 psi.ArgumentList.Add("-c:v");
                 psi.ArgumentList.Add("libx264");
                 psi.ArgumentList.Add("-preset");
-                psi.ArgumentList.Add("fast");
+                psi.ArgumentList.Add("veryfast");
                 psi.ArgumentList.Add("-crf");
                 psi.ArgumentList.Add("22");
+                psi.ArgumentList.Add("-threads");
+                psi.ArgumentList.Add("0");
                 psi.ArgumentList.Add("-c:a");
                 psi.ArgumentList.Add("aac");
                 psi.ArgumentList.Add("-b:a");
@@ -253,7 +275,37 @@ public sealed class CaptureStudioService
             if (proc is null)
                 return false;
 
-            await proc.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            progress?.Report(0.0);
+
+            var stderrReadTask = Task.Run(async () =>
+            {
+                try
+                {
+                    using var reader = proc.StandardError;
+                    string? line;
+                    while ((line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)) != null)
+                    {
+                        var match = System.Text.RegularExpressions.Regex.Match(line, @"time=(\d+):(\d+):(\d+\.\d+)");
+                        if (match.Success && exportDurationSec > 0)
+                        {
+                            var h = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                            var m = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                            var s = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+                            var curSec = h * 3600 + m * 60 + s;
+                            var pct = Math.Clamp((curSec / exportDurationSec) * 100.0, 0, 99.0);
+                            progress?.Report(pct);
+                        }
+                    }
+                }
+                catch { }
+            }, cancellationToken);
+
+            await Task.WhenAll(proc.WaitForExitAsync(cancellationToken), stderrReadTask).ConfigureAwait(false);
+
+            if (proc.ExitCode == 0)
+            {
+                progress?.Report(100.0);
+            }
             return proc.ExitCode == 0;
         }
         finally

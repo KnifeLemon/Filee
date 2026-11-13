@@ -192,14 +192,24 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             configWindow.Close();
             _captureConfigWindow = null;
 
+            var overlayWindow = new CaptureOverlayWindow();
+            _captureOverlayWindow = overlayWindow;
+
             if (config.CountdownBeforeRecording)
             {
-                await Task.Delay(1000);
+                overlayWindow.Show();
+                await overlayWindow.RunCountdownAsync();
+            }
+            else
+            {
+                overlayWindow.Show();
             }
 
             var started = await studioService.StartRecordingAsync(config);
             if (!started)
             {
+                overlayWindow.Close();
+                _captureOverlayWindow = null;
                 var err = studioService.RecordingEngine.LastErrorMessage;
                 var msg = !string.IsNullOrWhiteSpace(err)
                     ? $"Screen recording could not start:\n{err}"
@@ -212,14 +222,55 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             var barWindow = new CaptureStudioBarWindow(barVm);
             _captureBarWindow = barWindow;
 
-            var overlayWindow = new CaptureOverlayWindow();
-            _captureOverlayWindow = overlayWindow;
+            barVm.ToolSelected += tool =>
+            {
+                overlayWindow.UpdateTool(tool);
+                var icon = tool switch
+                {
+                    AnnotationTool.Pen => "✎",
+                    AnnotationTool.Arrow => "➔",
+                    AnnotationTool.Rectangle => "▭",
+                    AnnotationTool.Circle => "◯",
+                    AnnotationTool.Blur => "░",
+                    AnnotationTool.TextCallout => "T",
+                    _ => "↖"
+                };
+                overlayWindow.ShowActionToast($"Tool: {tool}", icon);
+            };
 
-            barVm.ToolSelected += tool => overlayWindow.UpdateTool(tool);
-            barVm.ColorSelected += hex => overlayWindow.UpdateColor(hex);
-            barVm.ClearAnnotationsRequested += () => overlayWindow.ClearAnnotations();
-            barVm.CursorHighlightToggled += active => overlayWindow.UpdateCursorHighlight(active);
-            barVm.SpotlightToggled += active => overlayWindow.UpdateSpotlight(active, barVm.SpotlightRadius);
+            barVm.ColorSelected += hex =>
+            {
+                overlayWindow.UpdateColor(hex);
+                overlayWindow.ShowActionToast("Color Changed", "🎨");
+            };
+
+            barVm.ClearAnnotationsRequested += () =>
+            {
+                overlayWindow.ClearAnnotations();
+                overlayWindow.ShowActionToast("Annotations Cleared", "🗑");
+            };
+
+            barVm.CursorHighlightToggled += active =>
+            {
+                overlayWindow.UpdateCursorHighlight(active);
+                overlayWindow.ShowActionToast(active ? "Cursor Halo On" : "Cursor Halo Off", "🟡");
+            };
+
+            barVm.SpotlightToggled += active =>
+            {
+                overlayWindow.UpdateSpotlight(active, barVm.SpotlightRadius);
+                overlayWindow.ShowActionToast(active ? "Spotlight Mode On" : "Spotlight Mode Off", "🔦");
+            };
+
+            barVm.MicToggled += isMuted =>
+            {
+                overlayWindow.ShowActionToast(isMuted ? "Microphone Muted" : "Microphone Unmuted", isMuted ? "🔇" : "🎙");
+            };
+
+            barVm.PauseToggled += () =>
+            {
+                overlayWindow.ShowActionToast(barVm.IsPaused ? "Recording Paused" : "Recording Resumed", barVm.IsPaused ? "⏸" : "▶");
+            };
 
             barWindow.HoverChanged += hovered => overlayWindow.SetToolbarHover(hovered);
             barWindow.BoundsChangedNotification += bounds => overlayWindow.UpdateToolbarBounds(bounds);
@@ -258,16 +309,9 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
                 }
             };
 
-            overlayWindow.Show();
             barWindow.Show(overlayWindow);
-
-            var screen = barWindow.Screens.ScreenFromWindow(barWindow) ?? barWindow.Screens.Primary;
-            if (screen != null)
-            {
-                var wa = screen.WorkingArea;
-                barWindow.Position = new PixelPoint(wa.X + (wa.Width - 620) / 2, wa.Y + 20);
-                barWindow.NotifyBounds();
-            }
+            barWindow.CenterOnTopScreen();
+            overlayWindow.ShowActionToast("Recording Started", "🔴");
         };
 
         configWindow.Closed += (_, _) =>

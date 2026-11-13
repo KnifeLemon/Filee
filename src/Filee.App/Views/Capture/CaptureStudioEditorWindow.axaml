@@ -45,12 +45,15 @@
             <!-- Video Player Preview Container -->
             <Border Grid.Row="0" Background="#0A0A0C" CornerRadius="8" ClipToBounds="True">
               <Panel>
-                <TextBlock Text="🎬 Video Preview" Foreground="#66FFFFFF" FontSize="16" FontWeight="SemiBold"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                <Border VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,20"
-                        Background="#CC000000" CornerRadius="6" Padding="10,6"
-                        IsVisible="{Binding SelectedSubtitle, Converter={x:Static ObjectConverters.IsNotNull}}">
-                  <TextBlock Text="{Binding SelectedSubtitle.Text}" Foreground="White" FontSize="13"
+                <Image Source="{Binding CurrentFrameBitmap}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <TextBlock Text="🎬 Video Preview" Foreground="#33FFFFFF" FontSize="16" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           IsVisible="{Binding CurrentFrameBitmap, Converter={x:Static ObjectConverters.IsNull}}" />
+                <!-- Subtitle Overlay -->
+                <Border VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,16"
+                        Background="#CC000000" CornerRadius="6" Padding="12,6"
+                        IsVisible="{Binding ActiveSubtitleText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                  <TextBlock Text="{Binding ActiveSubtitleText}" Foreground="White" FontSize="14"
                              FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" />
                 </Border>
               </Panel>
@@ -180,6 +183,15 @@
                   </StackPanel>
                 </Button>
               </Grid>
+
+              <!-- Real 0-100% Progress Bar -->
+              <StackPanel Spacing="4" Margin="0,4,0,0" IsVisible="{Binding IsExporting}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Text="Exporting Video..." FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Grid.Column="1" Text="{Binding ExportProgress, StringFormat='{}{0:F0}%'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+                </Grid>
+                <ProgressBar Minimum="0" Maximum="100" Value="{Binding ExportProgress}" Height="6" CornerRadius="3" />
+              </StackPanel>
             </StackPanel>
 
           </Grid>
@@ -190,8 +202,13 @@
       <!-- Bottom Status Bar -->
       <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderThickness="1"
               BorderBrush="{DynamicResource SubtleBorderBrush}" CornerRadius="8" Padding="12,8">
-        <TextBlock Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="11"
-                   Foreground="{DynamicResource TextSecondaryBrush}" />
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="{Binding StatusMessage, FallbackValue='Ready'}" FontSize="11"
+                     Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+          <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding ExportProgress}"
+                       Width="140" Height="6" CornerRadius="3" VerticalAlignment="Center"
+                       IsVisible="{Binding IsExporting}" />
+        </Grid>
       </Border>
 
     </Grid>

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Filee.App.Services.Capture;
 using Point = Avalonia.Point;
 
@@ -59,6 +60,41 @@ public partial class CaptureOverlayWindow : Window
             IsVisible = _cursorHighlightActive
         };
         OverlayCanvas.Children.Add(_cursorHighlight);
+    }
+
+    private DispatcherTimer? _toastTimer;
+
+    public async Task RunCountdownAsync(CancellationToken cancellationToken = default)
+    {
+        CountdownContainer.IsVisible = true;
+        for (int i = 3; i >= 1; i--)
+        {
+            CountdownNumberText.Text = i.ToString();
+            CountdownContainer.Opacity = 1.0;
+            await Task.Delay(1000, cancellationToken);
+        }
+        CountdownContainer.IsVisible = false;
+    }
+
+    public void ShowActionToast(string message, string icon = "ℹ")
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            _toastTimer?.Stop();
+            ToastIcon.Text = icon;
+            ToastMessage.Text = message;
+            ActionToast.IsVisible = true;
+            ActionToast.Opacity = 1.0;
+
+            _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1300) };
+            _toastTimer.Tick += (_, _) =>
+            {
+                _toastTimer.Stop();
+                ActionToast.IsVisible = false;
+                ActionToast.Opacity = 0.0;
+            };
+            _toastTimer.Start();
+        });
     }
 
     public void UpdateTool(AnnotationTool tool)

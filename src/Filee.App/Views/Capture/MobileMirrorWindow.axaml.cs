@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Filee.App.Services.Capture;
+using Filee.App.Services.Connect;
 
 namespace Filee.App.Views.Capture;
 
@@ -14,6 +15,7 @@ public partial class MobileMirrorWindow : Window
     public MobileMirrorWindow()
     {
         InitializeComponent();
+        LoadQrAndNetworkInfo();
     }
 
     public MobileMirrorWindow(MobileMirrorService service) : this()
@@ -26,6 +28,37 @@ public partial class MobileMirrorWindow : Window
         {
             OnFrameReceived(_service.LastJpegFrame);
         }
+    }
+
+    private void LoadQrAndNetworkInfo()
+    {
+        try
+        {
+            var lanIp = FileeConnectService.GetLocalLanIp().ToString();
+            var port = 3000;
+            var url = $"http://{lanIp}:{port}";
+            LanUrlText.Text = url;
+
+            using var generator = new QRCoder.QRCodeGenerator();
+            var data = generator.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.Q);
+            using var qrCode = new QRCoder.PngByteQRCode(data);
+            var bytes = qrCode.GetGraphic(12);
+            using var ms = new MemoryStream(bytes);
+            QrImage.Source = new Bitmap(ms);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to generate QR for mirror: {ex.Message}");
+        }
+    }
+
+    private void OnPlatformChanged(object? sender, RoutedEventArgs e)
+    {
+        var isIos = IosRadio?.IsChecked == true;
+        if (IosStepsPanel != null)
+            IosStepsPanel.IsVisible = isIos;
+        if (AndroidStepsPanel != null)
+            AndroidStepsPanel.IsVisible = !isIos;
     }
 
     private void OnFrameReceived(byte[] jpegBytes)

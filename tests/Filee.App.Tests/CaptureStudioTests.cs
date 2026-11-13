@@ -155,4 +155,85 @@ public sealed class CaptureStudioTests
         vm.DeleteSubtitleCommand.Execute(null);
         Assert.Empty(vm.Subtitles);
     }
+
+    [Fact]
+    public void CaptureStudioBarViewModel_mic_toggle_notifies()
+    {
+        var targetService = new WindowTargetService();
+        var mirrorService = new MobileMirrorService();
+        var engine = new CaptureRecordingEngine();
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+
+        var config = new CaptureConfig { EnableMicrophone = true };
+        var vm = new CaptureStudioBarViewModel(studio, config);
+
+        bool? micMutedNotified = null;
+        vm.MicToggled += m => micMutedNotified = m;
+
+        Assert.False(vm.IsMicMuted);
+        vm.ToggleMicCommand.Execute(null);
+        Assert.True(vm.IsMicMuted);
+        Assert.True(micMutedNotified);
+
+        vm.ToggleMicCommand.Execute(null);
+        Assert.False(vm.IsMicMuted);
+        Assert.False(micMutedNotified);
+    }
+
+    [Fact]
+    public void CaptureStudioConfigViewModel_updates_detected_app_when_selected_window_changes()
+    {
+        var targetService = new WindowTargetService();
+        var loc = new DummyLocalizer();
+        var vm = new CaptureStudioConfigViewModel(targetService, loc);
+
+        var testWindow = new WindowTargetInfo(
+            (nint)12345,
+            "Visual Studio Code",
+            "Code.exe",
+            0,
+            0,
+            1920,
+            1080);
+
+        vm.SelectedWindow = testWindow;
+        Assert.Equal("Code.exe - Visual Studio Code", vm.DetectedAppTitle);
+        Assert.Equal("Code.exe", vm.DetectedAppProcess);
+    }
+
+    [Fact]
+    public void CaptureStudioEditorViewModel_active_subtitle_updates_on_position_change()
+    {
+        var targetService = new WindowTargetService();
+        var mirrorService = new MobileMirrorService();
+        var engine = new CaptureRecordingEngine();
+        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+        var loc = new DummyLocalizer();
+
+        var meta = new RecordedVideoMetadata(
+            "test.mp4",
+            TimeSpan.FromSeconds(60),
+            1920,
+            1080,
+            30,
+            true);
+
+        var vm = new CaptureStudioEditorViewModel(studio, loc, meta);
+        vm.Subtitles.Add(new SubtitleCueModel
+        {
+            Index = 1,
+            Start = TimeSpan.FromSeconds(5),
+            End = TimeSpan.FromSeconds(15),
+            Text = "Hello world caption"
+        });
+
+        vm.CurrentPosition = 2;
+        Assert.Null(vm.ActiveSubtitleText);
+
+        vm.CurrentPosition = 10;
+        Assert.Equal("Hello world caption", vm.ActiveSubtitleText);
+
+        vm.CurrentPosition = 20;
+        Assert.Null(vm.ActiveSubtitleText);
+    }
 }

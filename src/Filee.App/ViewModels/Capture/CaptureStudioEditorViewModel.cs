@@ -1,8 +1,15 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
+using Avalonia;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services.Capture;
 using Filee.Core.Localization;
+using Filee.Core.Presets;
+using Filee.Engines.Media;
 
 namespace Filee.App.ViewModels.Capture;
 
@@ -47,7 +54,16 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
     private bool _isExporting = false;
 
     [ObservableProperty]
+    private double _exportProgress = 0;
+
+    [ObservableProperty]
     private string? _statusMessage;
+
+    [ObservableProperty]
+    private Bitmap? _currentFrameBitmap;
+
+    [ObservableProperty]
+    private string? _activeSubtitleText;
 
     [ObservableProperty]
     private SubtitleCueModel? _selectedSubtitle;
@@ -64,6 +80,13 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
 
     public Func<string, Task<string?>>? RequestSaveFileHandler { get; set; }
 
+    private readonly WriteableBitmap?[] _playFrames = new WriteableBitmap?[2];
+    private readonly object _playFramesLock = new();
+    private int _playFrame;
+    private CancellationTokenSource? _playCts;
+    private CancellationTokenSource? _scrubCts;
+    private bool _isUpdatingFromPlayback;
+
     public CaptureStudioEditorViewModel(CaptureStudioService service, ILocalizer loc, RecordedVideoMetadata metadata)
     {
         _service = service;
@@ -75,6 +98,8 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
         _trimEnd = metadata.Duration.TotalSeconds;
 
         LoadLanguages();
+
+        _ = ExtractFrameAtAsync(0.1);
     }
 
     private void LoadLanguages()
@@ -98,12 +123,118 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
     partial void OnCurrentPositionChanged(double value)
     {
         CurrentPositionText = FormatTime(TimeSpan.FromSeconds(value));
+        UpdateActiveSubtitle(value);
+        if (!_isPlaying && !_isUpdatingFromPlayback)
+        {
+            _ = ExtractFrameAtAsync(value);
+        }
+    }
+
+    private void UpdateActiveSubtitle(double seconds)
+    {
+        var cue = Subtitles.FirstOrDefault(s => seconds >= s.Start.TotalSeconds && seconds <= s.End.TotalSeconds);
+        ActiveSubtitleText = cue != null
+            ? (!string.IsNullOrWhiteSpace(cue.TranslatedText) ? cue.TranslatedText : cue.Text)
+            : null;
+    }
+
+    private async Task ExtractFrameAtAsync(double seconds)
+    {
+        _scrubCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _scrubCts = cts;
+
+        try
+        {
+            var temp = Path.Combine(Path.GetTempPath(), $"scrub_{Guid.NewGuid():N}.jpg");
+            var ok = await VideoFrames.WriteFrameAsync(VideoPath, Math.Max(0, seconds), temp, 480, cts.Token).ConfigureAwait(false);
+            if (ok && File.Exists(temp))
+            {
+                using var s = File.OpenRead(temp);
+                var bmp = new Bitmap(s);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    CurrentFrameBitmap = bmp;
+                });
+                try { File.Delete(temp); } catch { }
+            }
+        }
+        catch { }
     }
 
     [RelayCommand]
     private void TogglePlay()
     {
-        IsPlaying = !IsPlaying;
+        if (IsPlaying)
+        {
+            StopPlayback();
+        }
+        else
+        {
+            StartPlayback();
+        }
+    }
+
+    private void StartPlayback()
+    {
+        _playCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _playCts = cts;
+        IsPlaying = true;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var startSec = CurrentPosition >= TrimEnd ? TrimStart : CurrentPosition;
+                var edit = ClipEdit.Of(new ClipRange(startSec, TrimEnd));
+                await ClipPreview.PlayAsync(VideoPath, edit, 360, OnPlayFrame, cts.Token).ConfigureAwait(false);
+            }
+            catch { }
+            finally
+            {
+                if (ReferenceEquals(_playCts, cts))
+                {
+                    _playCts = null;
+                    Dispatcher.UIThread.Post(() => IsPlaying = false);
+                }
+            }
+        }, cts.Token);
+    }
+
+    private void StopPlayback()
+    {
+        _playCts?.Cancel();
+        _playCts = null;
+        IsPlaying = false;
+    }
+
+    private void OnPlayFrame(byte[] bgra, int width, int height, double sourceTime)
+    {
+        WriteableBitmap bitmap;
+        lock (_playFramesLock)
+        {
+            _playFrame = 1 - _playFrame;
+            bitmap = _playFrames[_playFrame] is { } existing && existing.PixelSize == new PixelSize(width, height)
+                ? existing
+                : _playFrames[_playFrame] = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
+            using var buffer = bitmap.Lock();
+            Marshal.Copy(bgra, 0, buffer.Address, bgra.Length);
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            CurrentFrameBitmap = bitmap;
+            _isUpdatingFromPlayback = true;
+            try
+            {
+                CurrentPosition = sourceTime;
+            }
+            finally
+            {
+                _isUpdatingFromPlayback = false;
+            }
+        });
     }
 
     [RelayCommand]
@@ -111,7 +242,6 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
     {
         if (CurrentPosition > TrimStart && CurrentPosition < TrimEnd)
         {
-            // Set TrimEnd to playhead or create split segment
             TrimEnd = CurrentPosition;
             StatusMessage = $"Segment trimmed to {FormatTime(TimeSpan.FromSeconds(CurrentPosition))}";
         }
@@ -211,6 +341,8 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
         if (IsExporting || string.IsNullOrEmpty(VideoPath))
             return;
 
+        StopPlayback();
+
         var ext = SelectedExportFormat.ToLowerInvariant();
         var defaultFileName = $"Capture_{DateTime.Now:yyyyMMdd_HHmmss}.{ext}";
 
@@ -224,13 +356,23 @@ public sealed partial class CaptureStudioEditorViewModel : ObservableObject
             return;
 
         IsExporting = true;
+        ExportProgress = 0;
         StatusMessage = $"Exporting video as {SelectedExportFormat}…";
 
         try
         {
             var tStart = TimeSpan.FromSeconds(TrimStart);
             var tEnd = TimeSpan.FromSeconds(TrimEnd);
-            var success = await _service.ExportVideoAsync(VideoPath, destPath, tStart, tEnd, Subtitles.ToList(), ext).ConfigureAwait(true);
+            var progress = new Progress<double>(p => ExportProgress = p);
+
+            var success = await _service.ExportVideoAsync(
+                VideoPath,
+                destPath,
+                tStart,
+                tEnd,
+                Subtitles.ToList(),
+                ext,
+                progress).ConfigureAwait(true);
 
             StatusMessage = success
                 ? $"Video exported successfully to {Path.GetFileName(destPath)}!"

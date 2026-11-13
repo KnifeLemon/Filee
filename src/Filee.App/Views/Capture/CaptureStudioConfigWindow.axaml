@@ -26,53 +26,16 @@
         </Border>
       </Grid>
 
-      <!-- Auto-Detected Application Mode Card -->
+      <!-- Recording Source Selection Card -->
       <Border Background="{DynamicResource SurfaceBrush}" BorderThickness="1.5"
-              BorderBrush="{DynamicResource AccentBrush}" CornerRadius="12" Padding="16"
-              IsVisible="{Binding !ShowAllSources}">
-        <StackPanel Spacing="10">
-          <Grid ColumnDefinitions="Auto,*,Auto">
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <Border Background="{DynamicResource AccentBrush}" Width="10" Height="10" CornerRadius="5" />
-              <TextBlock Text="Target Application" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
-            </StackPanel>
-            <Border Grid.Column="2" Background="{DynamicResource AccentSubtleBrush}" CornerRadius="8" Padding="8,3">
-              <TextBlock Text="Auto-Detected" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
-            </Border>
-          </Grid>
-
-          <!-- Detected App Preview Box -->
-          <Border Background="{DynamicResource WindowBackgroundBrush}" CornerRadius="8" Padding="12,10">
-            <Grid ColumnDefinitions="Auto,*">
-              <TextBlock Grid.Column="0" Text="🗔" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0" />
-              <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                <TextBlock Text="{Binding DetectedAppTitle}" FontWeight="SemiBold" FontSize="13"
-                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextPrimaryBrush}" />
-                <TextBlock Text="{Binding DetectedAppProcess, StringFormat='Application: {0}'}" FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}" />
-              </StackPanel>
-            </Grid>
-          </Border>
-
-          <!-- Toggle to Full Screen or other sources -->
-          <Button Command="{Binding ToggleShowAllSourcesCommand}" Background="Transparent" Padding="0" HorizontalAlignment="Left" Cursor="Hand">
-            <TextBlock Text="⚙ Switch to Full Screen or other sources..." FontSize="12"
-                       Foreground="{DynamicResource AccentBrush}" TextDecorations="Underline" />
-          </Button>
-        </StackPanel>
-      </Border>
-
-      <!-- Recording Source Selection Card (Expanded / Manual Mode) -->
-      <Border Background="{DynamicResource SurfaceBrush}" BorderThickness="1"
-              BorderBrush="{DynamicResource SubtleBorderBrush}" CornerRadius="10" Padding="16"
-              IsVisible="{Binding ShowAllSources}">
+              BorderBrush="{DynamicResource AccentBrush}" CornerRadius="12" Padding="16">
         <StackPanel Spacing="12">
           <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Text="Recording Source" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
-            <Button Grid.Column="1" Command="{Binding SwitchToAppModeCommand}" Background="Transparent" Padding="0"
-                    IsVisible="{Binding IsAppTargetMode}" Cursor="Hand">
-              <TextBlock Text="← Back to detected app" FontSize="11" Foreground="{DynamicResource AccentBrush}" />
-            </Button>
+            <TextBlock Grid.Column="0" Text="Recording Source" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <Border Grid.Column="1" Background="{DynamicResource AccentSubtleBrush}" CornerRadius="8" Padding="8,3"
+                    IsVisible="{Binding IsAppTargetMode}">
+              <TextBlock Text="⚡ Auto-Detected App" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+            </Border>
           </Grid>
 
           <!-- Source Type Tabs -->
@@ -85,16 +48,21 @@
                          IsChecked="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=2}" />
           </Grid>
 
-          <!-- App Window Selector -->
+          <!-- App Window Selector (Shows all open windows, with detected pre-selected) -->
           <StackPanel Spacing="6" IsVisible="{Binding SelectedSourceIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}">
-            <TextBlock Text="Select Application Window:" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <TextBlock Text="Choose Application Window:" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
             <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding OpenWindows}" SelectedItem="{Binding SelectedWindow}">
               <ComboBox.ItemTemplate>
                 <DataTemplate>
-                  <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                  <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Grid.Column="0" Text="🗔 " FontSize="12" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  </Grid>
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
+            <TextBlock Text="Tip: You can select any running window above to record only that application."
+                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
           </StackPanel>
 
           <!-- Full Screen Selector -->

@@ -16,6 +16,19 @@ public partial class CaptureStudioBarWindow : Window
 
         PointerEntered += (_, _) => HoverChanged?.Invoke(true);
         PointerExited += (_, _) => HoverChanged?.Invoke(false);
+        Loaded += (_, _) => CenterOnTopScreen();
+    }
+
+    public void CenterOnTopScreen()
+    {
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        if (screen != null)
+        {
+            var wa = screen.WorkingArea;
+            var w = Bounds.Width > 0 ? Bounds.Width : (DesiredSize.Width > 0 ? DesiredSize.Width : 460);
+            Position = new PixelPoint((int)(wa.X + (wa.Width - w) / 2), wa.Y + 16);
+            NotifyBounds();
+        }
     }
 
     public CaptureStudioBarWindow(CaptureStudioBarViewModel vm) : this()

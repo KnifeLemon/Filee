@@ -6,8 +6,10 @@
         Background="Transparent"
         TransparencyLevelHint="Transparent"
         Topmost="True"
-        Width="320"
-        Height="640"
+        Width="350"
+        Height="700"
+        MinWidth="300"
+        MinHeight="600"
         CanResize="True"
         ShowInTaskbar="False">
 
@@ -44,17 +46,71 @@
           <!-- Live Stream Frame Image -->
           <Image Name="FrameImage" Stretch="Uniform" />
 
-          <!-- Waiting for Connection Overlay -->
-          <StackPanel Name="WaitingPanel" VerticalAlignment="Center" HorizontalAlignment="Center"
-                      Spacing="14" Margin="24">
-            <Border Background="#2C2C2E" CornerRadius="30" Width="60" Height="60" HorizontalAlignment="Center">
-              <TextBlock Text="📱" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
-            <TextBlock Text="Waiting for Mobile Stream…" FontSize="13" FontWeight="SemiBold"
-                       Foreground="#FFFFFF" HorizontalAlignment="Center" />
-            <TextBlock Text="Open Filee Connect on your iPhone or Android and tap 'Screen Mirror' to broadcast."
-                       FontSize="11" Foreground="#8E8E93" TextAlignment="Center" TextWrapping="Wrap" />
-          </StackPanel>
+          <!-- Waiting for Connection Overlay & Guide -->
+          <ScrollViewer Name="WaitingPanel" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12" Margin="16,14">
+              <!-- Header info -->
+              <StackPanel Spacing="4" HorizontalAlignment="Center">
+                <TextBlock Text="Connect Your Phone" FontSize="15" FontWeight="Bold"
+                           Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                <TextBlock Text="Stream screen side-by-side" FontSize="11"
+                           Foreground="#8E8E93" HorizontalAlignment="Center" />
+              </StackPanel>
+
+              <!-- QR Code Card -->
+              <Border Background="White" CornerRadius="12" Padding="8" HorizontalAlignment="Center">
+                <Image Name="QrImage" Width="140" Height="140" Stretch="Uniform" />
+              </Border>
+
+              <!-- Local URL Link -->
+              <Border Background="#2C2C2E" CornerRadius="8" Padding="10,6" HorizontalAlignment="Center">
+                <TextBlock Name="LanUrlText" Text="http://192.168.1.x:3000"
+                           FontFamily="Consolas,Menlo,Monospace" FontSize="11" FontWeight="SemiBold"
+                           Foreground="#30D158" HorizontalAlignment="Center" />
+              </Border>
+
+              <!-- Platform Switcher Tabs -->
+              <Grid ColumnDefinitions="*,*" Margin="4,2">
+                <RadioButton Name="IosRadio" Grid.Column="0" Content="🍏 iPhone"
+                             IsChecked="True" GroupName="PlatformGroup"
+                             IsCheckedChanged="OnPlatformChanged" />
+                <RadioButton Name="AndroidRadio" Grid.Column="1" Content="🤖 Android"
+                             GroupName="PlatformGroup"
+                             IsCheckedChanged="OnPlatformChanged" />
+              </Grid>
+
+              <!-- iPhone (iOS) Steps -->
+              <Border Name="IosStepsPanel" Background="#1C1C1E" CornerRadius="10" Padding="12,10"
+                      BorderBrush="#2C2C2E" BorderThickness="1">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="iPhone (iOS) Setup:" FontWeight="Bold" FontSize="11" Foreground="#FFFFFF" />
+                  <TextBlock Text="1. Connect to same Wi-Fi as PC." FontSize="10.5" Foreground="#C7C7CC" TextWrapping="Wrap" />
+                  <TextBlock Text="2. Scan the QR code above or browse to URL in Safari." FontSize="10.5" Foreground="#C7C7CC" TextWrapping="Wrap" />
+                  <TextBlock Text="3. On the web page, tap 'Screen Mirror'." FontSize="10.5" Foreground="#C7C7CC" TextWrapping="Wrap" />
+                  <TextBlock Text="4. Tap 'Start Broadcast' when prompted." FontSize="10.5" Foreground="#C7C7CC" TextWrapping="Wrap" />
+                  <Border Height="1" Background="#2C2C2E" Margin="0,2" />
+                  <TextBlock Text="Tip: You can also swipe to Control Center → tap Screen Mirroring."
+                             FontSize="9.5" Foreground="#8E8E93" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+              <!-- Android Steps -->
+              <Border Name="AndroidStepsPanel" Background="#1C1C1E" CornerRadius="10" Padding="12,10"
+                      BorderBrush="#2C2C2E" BorderThickness="1" IsVisible="False">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Android Setup:" FontWeight="Bold" FontSize="11" Foreground="#FFFFFF" />
+                  <TextBlock Text="1. Connect to same Wi-Fi as PC." FontSize="10.5" Foreground="#C7C7CC" TextWrapping="Wrap" />
+                  <TextBlock Text="2. Scan QR code or browse to URL in Chrome." FontSize="10.5" Foreground="#C7C7CC" TextWrapping="Wrap" />
+                  <TextBlock Text="3. On the web page, tap 'Screen Mirror'." FontSize="10.5" Foreground="#C7C7CC" TextWrapping="Wrap" />
+                  <TextBlock Text="4. Select 'Share Entire Screen' and tap Start." FontSize="10.5" Foreground="#C7C7CC" TextWrapping="Wrap" />
+                  <Border Height="1" Background="#2C2C2E" Margin="0,2" />
+                  <TextBlock Text="Tip: You can also go to Settings → Connected Devices → Cast."
+                             FontSize="9.5" Foreground="#8E8E93" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+            </StackPanel>
+          </ScrollViewer>
         </Panel>
       </Border>
 

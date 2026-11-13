@@ -15,9 +15,9 @@
   <Border Background="{DynamicResource SurfaceBrush}"
           BorderBrush="{DynamicResource SubtleBorderBrush}"
           BorderThickness="1"
-          CornerRadius="24"
-          Padding="12,6"
-          BoxShadow="0 8 24 #33000000">
+          CornerRadius="16"
+          Padding="12,8"
+          BoxShadow="0 8 28 #44000000">
 
     <Panel>
       <!-- Mini Collapsed Mode -->
@@ -45,155 +45,169 @@
         </Button>
       </StackPanel>
 
-      <!-- Full Expanded Mode -->
-      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding !IsCollapsed}">
+      <!-- Full Expanded Mode (Two-Row Layout) -->
+      <StackPanel Orientation="Vertical" Spacing="8" IsVisible="{Binding !IsCollapsed}">
 
-        <!-- Drag Handle & Recording Pulse -->
-        <Border Cursor="SizeAll" PointerPressed="OnDragHandlePointerPressed"
-                Background="Transparent" Padding="4,0" VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-            <Ellipse Width="10" Height="10" Fill="#FF3B30" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding ElapsedTimeText}" FontWeight="Bold" FontSize="13"
-                       Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+        <!-- Row 1: Tools & Controls -->
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Center">
+
+          <!-- Annotation Tools Group -->
+          <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+            <!-- Pointer -->
+            <Button Command="{Binding SelectToolCommand}" CommandParameter="pointer"
+                    Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Select / Pointer (↖)">
+              <TextBlock Text="↖" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+
+            <!-- Pen / Marker -->
+            <Button Command="{Binding SelectToolCommand}" CommandParameter="pen"
+                    Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Pen / Freehand (✎)">
+              <TextBlock Text="✎" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+
+            <!-- Arrow -->
+            <Button Command="{Binding SelectToolCommand}" CommandParameter="arrow"
+                    Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Arrow (➔)">
+              <TextBlock Text="➔" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+
+            <!-- Rectangle -->
+            <Button Command="{Binding SelectToolCommand}" CommandParameter="rect"
+                    Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Rectangle (▭)">
+              <TextBlock Text="▭" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+
+            <!-- Circle -->
+            <Button Command="{Binding SelectToolCommand}" CommandParameter="circle"
+                    Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Circle (◯)">
+              <TextBlock Text="◯" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+
+            <!-- Blur / Mask Tool -->
+            <Button Command="{Binding SelectToolCommand}" CommandParameter="blur"
+                    Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Blur Sensitive Area (░)">
+              <TextBlock Text="░" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+
+            <!-- Text Callout Tool -->
+            <Button Command="{Binding SelectToolCommand}" CommandParameter="text"
+                    Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Stylish Text Callout (T)">
+              <TextBlock Text="T" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+
+            <!-- Clear -->
+            <Button Command="{Binding ClearAnnotationsCommand}"
+                    Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Clear All Annotations (🗑)">
+              <TextBlock Text="🗑" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
           </StackPanel>
-        </Border>
 
-        <!-- Pause / Resume -->
-        <Button Command="{Binding TogglePauseCommand}" Background="Transparent"
-                CornerRadius="14" Width="28" Height="28" Padding="0" ToolTip.Tip="Pause / Resume">
-          <TextBlock Text="{Binding IsPaused, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='▶', FallbackValue='⏸'}"
-                     FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </Button>
+          <Border Width="1" Height="18" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
 
-        <!-- Stop Recording -->
-        <Button Command="{Binding StopRecordingCommand}" Background="#FF3B30" Foreground="White"
-                CornerRadius="14" Height="26" Padding="8,0" ToolTip.Tip="Stop Recording &amp; Open Studio">
-          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-            <Rectangle Width="8" Height="8" Fill="White" RadiusX="1.5" RadiusY="1.5" VerticalAlignment="Center" />
-            <TextBlock Text="Stop" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-
-        <Border Width="1" Height="18" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
-
-        <!-- Annotation Tools Group -->
-        <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
-          <!-- Pointer -->
-          <Button Command="{Binding SelectToolCommand}" CommandParameter="pointer"
-                  Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Select / Pointer">
-            <TextBlock Text="↖" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Button>
-
-          <!-- Pen / Marker -->
-          <Button Command="{Binding SelectToolCommand}" CommandParameter="pen"
-                  Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Pen / Freehand">
-            <TextBlock Text="✎" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Button>
-
-          <!-- Arrow -->
-          <Button Command="{Binding SelectToolCommand}" CommandParameter="arrow"
-                  Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Arrow">
-            <TextBlock Text="➔" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Button>
-
-          <!-- Rectangle -->
-          <Button Command="{Binding SelectToolCommand}" CommandParameter="rect"
-                  Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Rectangle">
-            <TextBlock Text="▭" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Button>
-
-          <!-- Circle -->
-          <Button Command="{Binding SelectToolCommand}" CommandParameter="circle"
-                  Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Circle">
-            <TextBlock Text="◯" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Button>
-
-          <!-- Blur / Mask Tool -->
-          <Button Command="{Binding SelectToolCommand}" CommandParameter="blur"
-                  Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Blur Sensitive Area">
-            <TextBlock Text="░" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Button>
-
-          <!-- Text Callout Tool -->
-          <Button Command="{Binding SelectToolCommand}" CommandParameter="text"
-                  Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Stylish Text Callout">
-            <TextBlock Text="T" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Button>
-
-          <!-- Clear -->
-          <Button Command="{Binding ClearAnnotationsCommand}"
-                  Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Clear All Annotations">
-            <TextBlock Text="🗑" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Button>
-        </StackPanel>
-
-        <Border Width="1" Height="18" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
-
-        <!-- Color Selector Palette -->
-        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-          <ItemsControl ItemsSource="{Binding PaletteColors}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="4" />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Button Command="{Binding $parent[Window].((vm:CaptureStudioBarViewModel)DataContext).SelectColorCommand}"
-                        CommandParameter="{Binding}"
-                        Width="20" Height="20" CornerRadius="10" Padding="0" Margin="0" Cursor="Hand"
-                        Background="{Binding}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1.5">
-                  <Border CornerRadius="8" BorderThickness="1.5"
-                          BorderBrush="{DynamicResource TextPrimaryBrush}"
-                          IsVisible="{Binding $parent[Window].((vm:CaptureStudioBarViewModel)DataContext).SelectedColorHex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={Binding}}" />
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
-
-        <Border Width="1" Height="18" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
-
-        <!-- Visual FX: Cursor Highlight & Spotlight -->
-        <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
-          <ToggleButton IsChecked="{Binding IsCursorHighlightActive}" Command="{Binding ToggleCursorHighlightCommand}"
-                        Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Cursor Halo Highlight">
-            <TextBlock Text="🟡" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </ToggleButton>
-
-          <ToggleButton IsChecked="{Binding IsSpotlightActive}" Command="{Binding ToggleSpotlightCommand}"
-                        Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Spotlight Mode">
-            <TextBlock Text="🔦" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </ToggleButton>
-        </StackPanel>
-
-        <Border Width="1" Height="18" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
-
-        <!-- Audio Mute -->
-        <ToggleButton IsChecked="{Binding IsMicMuted}" Command="{Binding ToggleMicCommand}"
-                      Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Microphone Mute">
-          <TextBlock Text="{Binding IsMicMuted, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='🎤', FallbackValue='🎙'}"
-                     FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </ToggleButton>
-
-        <Border Width="1" Height="18" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
-
-        <!-- Mobile Mirroring Button -->
-        <Button Command="{Binding ToggleMobileMirrorCommand}"
-                Background="{DynamicResource AccentSubtleBrush}" Foreground="{DynamicResource AccentBrush}"
-                CornerRadius="13" Height="26" Padding="8,0" ToolTip.Tip="Mirror Mobile Phone Screen">
+          <!-- Color Selector Palette -->
           <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-            <TextBlock Text="📱" FontSize="11" VerticalAlignment="Center" />
-            <TextBlock Text="Mirror" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center" />
+            <ItemsControl ItemsSource="{Binding PaletteColors}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="4" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button Command="{Binding $parent[Window].((vm:CaptureStudioBarViewModel)DataContext).SelectColorCommand}"
+                          CommandParameter="{Binding}"
+                          Width="18" Height="18" CornerRadius="9" Padding="0" Margin="0" Cursor="Hand"
+                          Background="{Binding}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1.5">
+                    <Border CornerRadius="7" BorderThickness="1.5"
+                            BorderBrush="{DynamicResource TextPrimaryBrush}"
+                            IsVisible="{Binding $parent[Window].((vm:CaptureStudioBarViewModel)DataContext).SelectedColorHex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={Binding}}" />
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
           </StackPanel>
-        </Button>
 
-        <!-- Collapse / Hide Toolbar Button -->
-        <Button Command="{Binding ToggleCollapseCommand}" Background="Transparent"
-                CornerRadius="13" Width="26" Height="26" Padding="0" ToolTip.Tip="Collapse Toolbar">
-          <TextBlock Text="▲" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </Button>
+          <Border Width="1" Height="18" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
+
+          <!-- Visual FX & Audio: Cursor Highlight, Spotlight, Mic -->
+          <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+            <ToggleButton IsChecked="{Binding IsCursorHighlightActive}" Command="{Binding ToggleCursorHighlightCommand}"
+                          Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Cursor Halo Highlight">
+              <TextBlock Text="🟡" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </ToggleButton>
+
+            <ToggleButton IsChecked="{Binding IsSpotlightActive}" Command="{Binding ToggleSpotlightCommand}"
+                          Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Spotlight Mode">
+              <TextBlock Text="🔦" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </ToggleButton>
+
+            <ToggleButton IsChecked="{Binding IsMicMuted}" Command="{Binding ToggleMicCommand}"
+                          Background="Transparent" CornerRadius="13" Width="28" Height="28" Padding="0" ToolTip.Tip="Microphone Mute / Unmute">
+              <TextBlock Text="{Binding IsMicMuted, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='🎤', FallbackValue='🎙'}"
+                         FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </ToggleButton>
+          </StackPanel>
+
+          <Border Width="1" Height="18" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
+
+          <!-- Collapse / Hide Toolbar Button -->
+          <Button Command="{Binding ToggleCollapseCommand}" Background="Transparent"
+                  CornerRadius="13" Width="26" Height="26" Padding="0" ToolTip.Tip="Collapse Toolbar">
+            <TextBlock Text="▲" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Button>
+
+        </StackPanel>
+
+        <!-- Row 2: Recording Controls (Timer, Pause/Resume, Mobile Connect, Stop Recording) -->
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" VerticalAlignment="Center">
+
+          <!-- Drag Handle & Recording Pulse -->
+          <Border Grid.Column="0" Cursor="SizeAll" PointerPressed="OnDragHandlePointerPressed"
+                  Background="Transparent" Padding="4,2" VerticalAlignment="Center" ToolTip.Tip="Drag toolbar anywhere">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <TextBlock Text="⋮⋮" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+              <Ellipse Width="8" Height="8" Fill="#FF3B30" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding ElapsedTimeText}" FontWeight="Bold" FontSize="12"
+                         Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Border>
+
+          <!-- Spacer in Column 1 -->
+
+          <!-- Pause / Resume Recording -->
+          <Button Grid.Column="2" Command="{Binding TogglePauseCommand}" Margin="4,0"
+                  Background="Transparent" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
+                  CornerRadius="14" Height="28" Padding="10,0" ToolTip.Tip="Pause or Resume Recording">
+            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+              <TextBlock Text="{Binding IsPaused, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='▶', FallbackValue='⏸'}"
+                         FontSize="12" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding IsPaused, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=True, StringFormat='Resume', FallbackValue='Pause'}"
+                         FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <!-- Mobile Connect / Mirror -->
+          <Button Grid.Column="3" Command="{Binding ToggleMobileMirrorCommand}" Margin="4,0"
+                  Background="{DynamicResource AccentSubtleBrush}" Foreground="{DynamicResource AccentBrush}"
+                  CornerRadius="14" Height="28" Padding="10,0" ToolTip.Tip="Connect &amp; Mirror Mobile Screen">
+            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+              <TextBlock Text="📱" FontSize="12" VerticalAlignment="Center" />
+              <TextBlock Text="Mobile Connect" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <!-- Stop Recording (Prominent Red Button at end on right) -->
+          <Button Grid.Column="4" Command="{Binding StopRecordingCommand}" Margin="6,0,0,0"
+                  Background="#FF3B30" Foreground="White"
+                  CornerRadius="14" Height="28" Padding="12,0" ToolTip.Tip="Stop Recording &amp; Open Studio Editor">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <Rectangle Width="8" Height="8" Fill="White" RadiusX="1.5" RadiusY="1.5" VerticalAlignment="Center" />
+              <TextBlock Text="Stop Recording" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+        </Grid>
 
       </StackPanel>
     </Panel>
