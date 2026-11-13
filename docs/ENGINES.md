@@ -5,7 +5,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), a **Valve Texture VTF** (Filee's own reader and writer, for the Source engine and Garry's Mod), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
@@ -389,6 +389,18 @@ in it also builds the package (artifact `windows-arm64-package`).
   each cut to its pixels at its place, in GIMP's legacy modes, which mix in perceptual RGB as Paint.NET and Photoshop
   do. XCF → PDN → XCF gives back the same layers pixel for pixel; through PSD, ImageMagick rounds the alpha of layers
   below full opacity. An XCF is a target only where the Design & print field is on.
+- **VTF** (Valve Texture, the Source engine's texture: Garry's Mod, Counter-Strike: Source, Team Fortress 2, Half-Life 2
+  mods) is read and written by Filee itself (`Vtf`, `VtfWriter`), so no VTFLib or VTFEdit is needed. Written as VTFEdit
+  does by default: version 7.2, each side rounded to the nearest power of two (at most 4096 px, as Source draws other
+  sizes wrong), every mipmap down to 1 × 1 made from the full-size picture, **DXT1** for an opaque picture and **DXT5**
+  (with the eight-bit-alpha flag) for one with transparency, a DXT1 thumbnail of at most 16 × 16 and the reflectivity
+  (the average colour in linear light) Source uses for bounced light. ImageMagick resizes and compresses the DXT blocks
+  (its DDS writer, without its header). The frames of an animation or the pages of a multi-page file become the frames
+  of one animated texture. Read: versions 7.0 to 7.5 (from 7.3 the image data is found through the resource list), DXT1,
+  DXT3, DXT5 and every uncompressed format VTFLib knows except the palette format P8; the largest mipmap of every frame,
+  the first face of a cube map and the first slice of a volume texture. The `.vmt` material that points to a texture
+  is not written: its path depends on where the texture goes under `materials/`. A VTF is a target only where the Games
+  field is on.
 - **EXE / DLL** (a Windows program or library, #1188) is read as its icon, the one Explorer shows: the first icon group
   of its resources, put back together as an `.ico` in memory (`ProgramIcon`, Filee's own reader for 32 and 64-bit PE
   files; only the headers and the icon are read, at most 64 MB, and the file is never loaded or run). To ICO it is

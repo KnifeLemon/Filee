@@ -1155,6 +1155,10 @@ internal static class SettingsMigrations
         //      if another change takes it first.)
         if (from < 89)
             changed |= LearnExtensions(profiles, out _, ["krc"]);
+        // v90: Valve textures (.vtf) learn the images donut; custom claims stay put. (Schema 90 may be renumbered if
+        //      another change takes it first.)
+        if (from < 90)
+            changed |= LearnExtensions(profiles, out _, ["vtf"]);
         return changed;
     }
 

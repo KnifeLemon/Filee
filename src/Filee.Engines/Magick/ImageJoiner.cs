@@ -118,8 +118,8 @@ internal static class ImageJoiner
             ImageEncoder.ApplyOptions(merged, rest, format);
             cancellationToken.ThrowIfCancellationRequested();
             ImageEncoder.WriteImage(merged, outputPath, format);
-            // A PDN or XCF (lossless, written by Filee) isn't fitted, like an animation: the queue refuses one too large.
-            if ((options.MaxSizeMb > 0 || options.MinSizeMb > 0) && format is not ("pdn" or "xcf"))
+            // A PDN, XCF or VTF (written by Filee) isn't fitted, like an animation: the queue refuses one too large.
+            if ((options.MaxSizeMb > 0 || options.MinSizeMb > 0) && format is not ("pdn" or "xcf" or "vtf"))
                 ImageEncoder.FitToSize(merged, outputPath, ImageEncoder.OutputFormat(format, rest).Format, SizeLimit.Bytes(options.MaxSizeMb),
                     SizeLimit.MinimumBytes(options.MinSizeMb), options.MaxSizeKeepsPixels);
             if (format == "cur")

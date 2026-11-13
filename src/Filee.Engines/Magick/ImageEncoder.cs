@@ -41,8 +41,11 @@ internal static class ImageEncoder
         "apng", "mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff",
     ];
 
-    /// <summary>Formats that store several frames/pages in one file.</summary>
-    private static readonly HashSet<string> MultiFrame = ["tiff", "gif", "apng", "mng"];
+    /// <summary>
+    /// Formats that store several frames/pages in one file. A Valve texture (VTF) is an animated texture with them
+    /// (<see cref="VtfWriter"/>).
+    /// </summary>
+    private static readonly HashSet<string> MultiFrame = ["tiff", "gif", "apng", "mng", "vtf"];
 
     /// <summary>
     /// Formats whose frames are an animation; an AVIF only when it is an image sequence (<see cref="AvifSequence"/>), and
@@ -93,9 +96,10 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Packages of a picture and more, of which the picture is read (<see cref="ImageReader"/>): an iPhone LIVP, a Krita
-    /// KRA, a Paint.NET PDN (<see cref="PaintNet"/>), the icon of a Windows program or library (<see cref="ProgramIcon"/>).
+    /// KRA, a Paint.NET PDN (<see cref="PaintNet"/>), a Valve texture (VTF, <see cref="Vtf"/>), the icon of a Windows
+    /// program or library (<see cref="ProgramIcon"/>).
     /// </summary>
-    public static readonly string[] Packages = ["livp", "kra", "pdn", FormatRegistry.Program];
+    public static readonly string[] Packages = ["livp", "kra", "pdn", "vtf", FormatRegistry.Program];
 
     /// <summary>
     /// Every format ImageMagick reads as input: the raster formats, the picture of <see cref="Packages"/> and, on
@@ -196,6 +200,7 @@ internal static class ImageEncoder
         "avif" => 16_384,
         "pdn" => PaintNetWriter.MaxSide,
         "xcf" => XcfWriter.MaxSide,
+        "vtf" => VtfWriter.MaxSide,
         _ => double.PositiveInfinity,
     };
 
@@ -482,6 +487,16 @@ internal static class ImageEncoder
             }
             return written;
         }
+        if (targetFormat == "vtf")
+        {
+            // Valve's texture, written by Filee (VtfWriter): every frame in one file, an animated texture for several.
+            var vtf = output.Allocate("vtf");
+            if (vtf is null)
+                return written;
+            VtfWriter.Write(frames, vtf);
+            written.Add(vtf);
+            return written;
+        }
         var (format, extension) = OutputFormat(targetFormat, options ?? new ImageOptions(), sourcePath);
 
         if (targetFormat == "apng")
@@ -614,7 +629,8 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>, Paint.NET's PDN through
-    /// <see cref="PaintNetWriter"/>, GIMP's XCF through <see cref="XcfWriter"/>).
+    /// <see cref="PaintNetWriter"/>, GIMP's XCF through <see cref="XcfWriter"/>, a Valve texture through
+    /// <see cref="VtfWriter"/>).
     /// </summary>
     public static void WriteImage(IMagickImage<byte> image, string path, string targetFormat)
     {
@@ -624,6 +640,8 @@ internal static class ImageEncoder
             PaintNetWriter.Write(image, path);
         else if (targetFormat == "xcf")
             XcfWriter.Write(image, path);
+        else if (targetFormat == "vtf")
+            VtfWriter.Write([image], path);
         else
             image.Write(path, ToMagickFormat(targetFormat));
     }

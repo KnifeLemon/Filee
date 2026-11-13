@@ -4,8 +4,8 @@
 // (Filee's own reader, as ImageMagick's Q8 build reads only 8-bit DICOM), FITS (Filee's own reader, stretched and
 // debayered as the preset says), the photo of an iPhone LIVP, the merged picture of a Krita KRA, the layers of a Paint.NET
 // PDN merged as Paint.NET shows them, those of a GIMP XCF as GIMP shows them (Filee's own reader, as ImageMagick reads
-// only 8-bit files without zlib and merges them its own way) and the icon of a Windows program. Used by every engine
-// that takes a raster image as input.
+// only 8-bit files without zlib and merges them its own way), the frames of a Valve texture (VTF) and the icon of a
+// Windows program. Used by every engine that takes a raster image as input.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -40,6 +40,8 @@ internal static class ImageReader
             return [PaintNet.ReadFlattened(path)];
         if (formatId == "xcf")
             return [Xcf.ReadFlattened(path)];
+        if (formatId == "vtf")
+            return Vtf.Read(path);
         if (formatId == FormatRegistry.Program)
             return ReadPackaged(ProgramIcon.Read(path), "ico", preset);
         if (formatId == "fits")
