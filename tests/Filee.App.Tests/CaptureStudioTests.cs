@@ -337,5 +337,14 @@ public sealed class CaptureStudioTests
         var engine = new AirPlayMirrorEngine(mirrorService);
         Assert.False(string.IsNullOrWhiteSpace(engine.ServerName));
         Assert.False(string.IsNullOrWhiteSpace(AirPlayMirrorEngine.GetMacAddressString()));
+
+        var txt = AirPlayMirrorEngine.BuildTxtRecord("model=AppleTV3,2", "flags=0x4");
+        Assert.NotEmpty(txt);
+
+        // Verify start and stop cycle
+        engine.Start();
+        Assert.True(engine.IsListening);
+        engine.Stop();
+        Assert.False(engine.IsListening);
     }
 }

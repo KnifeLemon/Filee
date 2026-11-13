@@ -36,13 +36,37 @@ public partial class MobileMirrorWindow : Window
 
         // Start AirPlay listener by default
         _airPlayEngine.Start();
+        UpdateAirPlayUi();
+
+        // Scan for USB Android device on start
+        _ = ScanUsbDevicesAsync();
+    }
+
+    private void UpdateAirPlayUi()
+    {
+        if (_airPlayEngine == null) return;
+
         if (AirPlayDeviceNameText != null)
         {
             AirPlayDeviceNameText.Text = _airPlayEngine.ServerName;
         }
 
-        // Scan for USB Android device on start
-        _ = ScanUsbDevicesAsync();
+        var ip = AirPlayMirrorEngine.GetLocalIpAddress();
+        if (AirPlayIpText != null)
+        {
+            AirPlayIpText.Text = !string.IsNullOrEmpty(ip) ? $"Wi-Fi IP: {ip}" : "Wi-Fi: Not connected";
+        }
+
+        if (AirPlayStatusBadgeText != null)
+        {
+            AirPlayStatusBadgeText.Text = _airPlayEngine.StatusMessage;
+        }
+    }
+
+    private void OnRestartAirPlayClick(object? sender, RoutedEventArgs e)
+    {
+        _airPlayEngine?.Start();
+        UpdateAirPlayUi();
     }
 
     public MobileMirrorWindow(MobileMirrorService service, Filee.App.Services.Connect.FileeConnectService? connectService)

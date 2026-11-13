@@ -83,10 +83,11 @@
                     <Border Background="#1A30D158" CornerRadius="10" Padding="8,4" HorizontalAlignment="Center">
                       <StackPanel Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="6" Height="6" Fill="#30D158" VerticalAlignment="Center" />
-                        <TextBlock Text="Receiver Ready on Wi-Fi" FontSize="10" FontWeight="SemiBold"
+                        <TextBlock Name="AirPlayStatusBadgeText" Text="Receiver Ready on Wi-Fi" FontSize="10" FontWeight="SemiBold"
                                    Foreground="#30D158" VerticalAlignment="Center" />
                       </StackPanel>
                     </Border>
+                    <TextBlock Name="AirPlayIpText" Text="" FontSize="10" Foreground="#8E8E93" HorizontalAlignment="Center" />
                   </StackPanel>
                 </Border>
 
@@ -129,8 +130,14 @@
                                  Foreground="#0A84FF" />
                     </Border>
 
+                    <Button Name="RestartAirPlayBtn" Click="OnRestartAirPlayClick"
+                            Background="#2C2C2E" Foreground="#8E8E93" CornerRadius="8" Height="26" Padding="8,0"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,4,0,0" Cursor="Hand">
+                      <TextBlock Text="🔄 Re-announce / Restart Receiver" FontSize="10" FontWeight="SemiBold" />
+                    </Button>
+
                     <TextBlock Text="Your iPhone screen will instantly appear here."
-                               FontSize="10" Foreground="#8E8E93" Margin="0,4,0,0" />
+                               FontSize="10" Foreground="#8E8E93" Margin="0,2,0,0" />
                   </StackPanel>
                 </Border>
               </StackPanel>
