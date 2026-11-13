@@ -1,8 +1,11 @@
 // HUFF/CDIC compression of MOBI text records (Mobipocket "Huffman dictionary" compression), written from the
 // format description on the MobileRead wiki: a canonical Huffman code (HUFF record) selects phrases from the
-// dictionary (CDIC records); a phrase may itself be compressed and is unpacked on first use.
+// dictionary (CDIC records); a phrase may itself be compressed and is unpacked on first use. Phrases made of phrases
+// grow multiplicatively, so every record stops at the room the caller has left for the text, and the phrases unpacked
+// for the whole book together stop at the limit of one part.
 
 using System.Buffers.Binary;
+using Filee.Engines.Documents;
 
 namespace Filee.Engines.Ebooks;
 
@@ -13,6 +16,9 @@ internal sealed class HuffCdic
     private readonly ulong[] _minCode = new ulong[33];
     private readonly ulong[] _maxCode = new ulong[33];
     private readonly List<Phrase> _phrases = [];
+
+    /// <summary>Bytes the unpacked phrases of the dictionary may still take.</summary>
+    private long _dictionaryLeft = DocumentLimits.Default.MaxPartBytes;
 
     private sealed class Phrase(byte[] data, bool unpacked)
     {
@@ -67,15 +73,18 @@ internal sealed class HuffCdic
         }
     }
 
-    /// <summary>Decompresses one text record.</summary>
-    public byte[] Decompress(ReadOnlySpan<byte> data)
+    /// <summary>
+    /// Decompresses one text record, refused with <see cref="DocumentLimits.Exceeded"/> once it passes
+    /// <paramref name="maxOutput"/> bytes.
+    /// </summary>
+    public byte[] Decompress(ReadOnlySpan<byte> data, long maxOutput)
     {
-        var output = new List<byte>(data.Length * 3);
-        Unpack(data, output, 0);
+        var output = new List<byte>((int)Math.Min(data.Length * 3L, Math.Max(0, maxOutput)));
+        Unpack(data, output, 0, maxOutput);
         return [.. output];
     }
 
-    private void Unpack(ReadOnlySpan<byte> data, List<byte> output, int depth)
+    private void Unpack(ReadOnlySpan<byte> data, List<byte> output, int depth, long maxOutput)
     {
         if (depth > 32)
             throw new InvalidDataException("The book's CDIC dictionary refers to itself.");
@@ -117,12 +126,19 @@ internal sealed class HuffCdic
                     throw new InvalidDataException("The book's CDIC dictionary refers to itself.");
                 phrase.Busy = true;
                 var unpacked = new List<byte>();
-                Unpack(phrase.Data, unpacked, depth + 1);
+                Unpack(phrase.Data, unpacked, depth + 1, maxOutput);
+                if ((_dictionaryLeft -= unpacked.Count) < 0)
+                    throw TooLarge(DocumentLimits.Default.MaxPartBytes);
                 phrase.Data = [.. unpacked];
                 phrase.Unpacked = true;
                 phrase.Busy = false;
             }
+            if (output.Count + (long)phrase.Data.Length > maxOutput)
+                throw TooLarge(maxOutput);
             output.AddRange(phrase.Data);
         }
     }
+
+    private static Exception TooLarge(long bytes) =>
+        DocumentLimits.Exceeded($"The book's compressed text unpacks to more than {DocumentLimits.Megabytes(bytes)}.");
 }
