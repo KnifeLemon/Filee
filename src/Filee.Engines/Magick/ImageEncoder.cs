@@ -12,11 +12,12 @@ internal static class ImageEncoder
 {
     /// <summary>
     /// Image formats ImageMagick can read (see <see cref="ImageReader"/> for RAW, layered and metafile sources).
-    /// Camera RAW is decoded by LibRaw; XCF, HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF
+    /// Camera RAW is decoded by LibRaw; HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF
     /// are Windows metafiles, which ImageMagick renders through GDI+ on Windows only (<see cref="Metafiles"/>). APNG is
     /// read and written by Filee's own <see cref="Apng"/> (its frames decoded and encoded by ImageMagick); FITS is read
     /// by Filee's own <see cref="Fits"/> and written to TIFF by <see cref="FitsRendering"/>. ANI (an animated cursor) is
-    /// read by Filee's own <see cref="Ani"/>, its frames decoded by ImageMagick.
+    /// read by Filee's own <see cref="Ani"/>, its frames decoded by ImageMagick. GIMP's XCF is read and written by Filee's
+    /// own <see cref="Xcf"/> and <see cref="XcfWriter"/>.
     /// </summary>
     public static readonly string[] Readable =
     [
@@ -186,7 +187,7 @@ internal static class ImageEncoder
 
     /// <summary>
     /// The longest side a format stores: JPEG 65,535 px (65,500 keeps clear of encoder rounding), WebP 16,383 px,
-    /// AVIF 16,384 px. Other formats take more than any image Filee makes.
+    /// AVIF 16,384 px, Paint.NET 65,535 px, GIMP 524,288 px. Other formats take more than any image Filee makes.
     /// </summary>
     public static double MaxSide(string targetFormat) => targetFormat switch
     {
@@ -194,6 +195,7 @@ internal static class ImageEncoder
         "webp" => 16_383,
         "avif" => 16_384,
         "pdn" => PaintNetWriter.MaxSide,
+        "xcf" => XcfWriter.MaxSide,
         _ => double.PositiveInfinity,
     };
 
@@ -466,16 +468,17 @@ internal static class ImageEncoder
         ImageOptions? options = null, string? sourcePath = null, bool animation = false)
     {
         var written = new List<string>();
-        if (targetFormat == "pdn")
+        if (targetFormat is "pdn" or "xcf")
         {
-            // Paint.NET's own file, written by Filee (PaintNetWriter): one picture per file, as one layer.
+            // Paint.NET's and GIMP's own files, written by Filee (PaintNetWriter, XcfWriter): one picture per file, as
+            // one layer.
             for (var i = 0; i < frames.Count; i++)
             {
-                var pdn = output.Allocate("pdn", frames.Count > 1 ? $"_p{i + 1}" : null);
-                if (pdn is null)
+                var layered = output.Allocate(targetFormat, frames.Count > 1 ? $"_p{i + 1}" : null);
+                if (layered is null)
                     continue;
-                PaintNetWriter.Write(frames[i], pdn);
-                written.Add(pdn);
+                WriteImage(frames[i], layered, targetFormat);
+                written.Add(layered);
             }
             return written;
         }
@@ -611,7 +614,7 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>, Paint.NET's PDN through
-    /// <see cref="PaintNetWriter"/>).
+    /// <see cref="PaintNetWriter"/>, GIMP's XCF through <see cref="XcfWriter"/>).
     /// </summary>
     public static void WriteImage(IMagickImage<byte> image, string path, string targetFormat)
     {
@@ -619,6 +622,8 @@ internal static class ImageEncoder
             Apng.Write([image], path);
         else if (targetFormat == "pdn")
             PaintNetWriter.Write(image, path);
+        else if (targetFormat == "xcf")
+            XcfWriter.Write(image, path);
         else
             image.Write(path, ToMagickFormat(targetFormat));
     }
