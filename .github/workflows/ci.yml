@@ -154,11 +154,11 @@ jobs:
           path: build/.cache/zig-x86_64-windows-0.16.0
           key: zig-0.16.0-x86_64-windows
 
-      # rhwp, Pandoc, 7-Zip and ExifTool are small; with them the HWP/HWPX, archive and metadata engine tests run too
-      # (LibreOffice is skipped to save time).
-      - name: Fetch rhwp, Pandoc, 7-Zip and ExifTool for engine tests
+      # rhwp, Pandoc, 7-Zip, ExifTool and WeasyPrint are small; with them the HWP/HWPX, archive, metadata and WeasyPrint
+      # engine tests run too, WeasyPrint's against the pinned Windows build (LibreOffice is skipped to save time).
+      - name: Fetch rhwp, Pandoc, 7-Zip, ExifTool and WeasyPrint for engine tests
         shell: pwsh
-        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc,7zip,exiftool
+        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc,7zip,exiftool,weasyprint
 
       # The UI tests on their own first, as the release runs them (there they crashed with 0xC0000005): a crash
       # names the test that was running and leaves a dump in TestResults.

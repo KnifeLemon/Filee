@@ -25,6 +25,7 @@
             │   · E-mail · Signed files · Data · E-books · CAD · Fonts · Subtitles · 3D models   │
             │ Bundled: rhwp (HWP→PDF, HWP↔HWPX) · 7-Zip (archives) · Unhwp · Markdig             │
             │ Optional: FFmpeg · LibreOffice + H2Orestart · calibre · Ghostscript · Pandoc       │
+            │   · WeasyPrint                                                                     │
             └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -178,6 +179,31 @@ Shortcuts), so gestures with different modifiers open different sets of slices (
 keeps it until files enter, `ShowForFiles` takes it for the selection and clipboard shortcuts, and
 `RadialViewModel.Load` opens the front instead when the back has no slice for the files. The flip key and the wheel
 turn it over from there. Thunar's shortcut on Linux goes through the context-menu action, which always opens the front.
+
+The editor's donut is laid out at its real size and drawn smaller (a `Viewbox` that only shrinks) when its column is
+narrower, so names wrap and icons show as on the donut itself. Clicking a group slice opens it in the editor
+(`ToolbarPageViewModel.OpenGroup`): the donut then shows and edits the group's members with the same drag and drop, the
+palette offers what the group doesn't hold and no groups (`Placed`, shared with the search and the judging), and the ✎
+still opens each preset's own editor. *Edit Donut Size* (`IsAdjustingLook`) swaps the editor for the size, look and
+label settings. While either is open, `DonutPreviewWindow` shows the donut on screen beside the main window at its real
+size, filled by a `RadialViewModel` of its own as the donut opens for the profile's files (`LoadPreview`, with the
+turned-off fields left out); it follows every change and converts nothing. It holds a group open
+(`DonutMenu.HeldGroupId`, by preset id, so a flip or a reload keeps it): the one open in the editor, or, once a ring
+setting changes, the one picked under the ring sliders (*Group shown*, offered with two or more) or clicked on it, the
+first until then; a donut with none fans an example ring off its top slice (`RadialViewModel.ShowExampleGroup`). Where
+it goes is `DonutPreviewPlacement` (pure, in screen pixels at each screen's own scaling): where it was last dragged
+(`AppSettings.DonutPreviewPlace`, against the main window) if all of it is on a screen there and clear of the window;
+beside the main window, on a screen as tall as the donut; on another screen; beside it past its screen's edges; else the
+main window moves over, narrower down to its minimum width if it must, and back when the donut goes
+(`MainWindow.RestPlace` keeps where it was, so closing meanwhile remembers that). Beside the window its facing edge
+stays put as a slider grows it, and it is placed again when it no longer fits, when the window is resized, moved or
+maximized. With no room at all (a screen too small for both, or a window that can't move: maximized) it goes over the
+start side of the main window (its navigation and profile list), never over Done, owned by the main window so it stays
+above it; otherwise it isn't Topmost or owned, unlike the live donut: a click on the main window brings that in front of
+it. Dragged by its middle, it is the user's until the button is up (released, or seen up since: a window manager's move
+may keep the release); dropped onto the main window, it moves back off it. The look sliders change the settings at once
+and write them once the slider rests (`DonutLookSave`, as `UiZoom` does), with `UserDataStore.SaveDonutLook`, which
+doesn't raise `SettingsChanged`: re-applying the theme for every pixel a slider moved made them stick.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
@@ -365,7 +391,8 @@ THIRD-PARTY-NOTICES.md), keyed by their MDI names and grouped for the picker. `P
 unset for the default: a built-in preset's own (by id), else its tool's; plain format conversions have none.
 `Preset.ShortName` replaces the name on the donut and its rings (`DonutName` / `RingName`); the centre hint always
 names the slice in full (`DonutItem.FullName`). The preset and group editors share `SliceLabelFields` (Icon with
-`IconPickerFlyout`, Short name, Show); the Toolbar page sets each donut's Slice labels and Label scale.
+`IconPickerFlyout`, Short name, Show); the Toolbar page's Edit Donut Size panel sets each donut's Slice labels and
+Label scale.
 
 ## Crop overlay and PDF page editor
 
@@ -412,6 +439,11 @@ has the read-only attribute; the source's bytes and attributes are left alone.
 
 The Cut a clip tool (`tool-clip`, first on the back of the video donut) opens `Views/ClipWindow` instead of running a
 job. The window only chooses the clip; writing it is an ordinary conversion.
+
+It also opens on sounds (#1291): the timeline is then the waveform (`ClipTimeline.Waveform`) in place of the picture strip,
+and the picture, thumbnails and sequence pictures are skipped (`ClipWindowViewModel.HasPicture`). In *ringtone mode*
+(`ShowRingtoneWindow`, from the donut for a preset with `AskRingtonePart`) only the part is chosen: the editing tools are
+hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
 
 - `Core/Presets/ClipCutter` does every edit without the window: the parts of the clip (start, end, speed, volume,
   mute), gaps left by Delete, the blade, edge trims that take back or cut away, music on A2, fades, Remove silence and

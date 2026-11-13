@@ -21,7 +21,12 @@
           <SolidColorBrush x:Key="DangerBrush" Color="#C73A39" />
           <SolidColorBrush x:Key="DangerFaintBrush" Color="#1AC73A39" />
           <SolidColorBrush x:Key="SuccessBrush" Color="#0F7A5A" />
+          <SolidColorBrush x:Key="SuccessFaintBrush" Color="#1A0F7A5A" />
           <SolidColorBrush x:Key="WarningBrush" Color="#9A5B0C" />
+          <SolidColorBrush x:Key="WarningFaintBrush" Color="#1F9A5B0C" />
+          <SolidColorBrush x:Key="InfoBrush" Color="#1F6FB5" />
+          <SolidColorBrush x:Key="InfoFaintBrush" Color="#1A1F6FB5" />
+          <SolidColorBrush x:Key="StatusDangerFaintBrush" Color="#12C73A39" />
           <BoxShadows x:Key="CardShadow">0 1 3 0 #12000000, 0 6 18 0 #0D000000</BoxShadows>
           <SolidColorBrush x:Key="AccentBrush" Color="#7F77DD" />
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#2E7F77DD" />
@@ -48,7 +53,12 @@
           <SolidColorBrush x:Key="DangerBrush" Color="#F09595" />
           <SolidColorBrush x:Key="DangerFaintBrush" Color="#26F09595" />
           <SolidColorBrush x:Key="SuccessBrush" Color="#5DCAA5" />
+          <SolidColorBrush x:Key="SuccessFaintBrush" Color="#265DCAA5" />
           <SolidColorBrush x:Key="WarningBrush" Color="#EF9F27" />
+          <SolidColorBrush x:Key="WarningFaintBrush" Color="#26EF9F27" />
+          <SolidColorBrush x:Key="InfoBrush" Color="#6DB6F2" />
+          <SolidColorBrush x:Key="InfoFaintBrush" Color="#2E6DB6F2" />
+          <SolidColorBrush x:Key="StatusDangerFaintBrush" Color="#26F09595" />
           <BoxShadows x:Key="CardShadow">0 1 3 0 #40000000, 0 8 24 0 #33000000</BoxShadows>
           <SolidColorBrush x:Key="AccentBrush" Color="#7F77DD" />
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#2E7F77DD" />
@@ -164,6 +174,44 @@
     <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
   </Style>
 
+  <!-- Status tag: a small squarer tag with a faint tint and coloured text (Engines page). Light and dark follow the theme.
+       A theme.json (and Material You) replaces SuccessBrush, WarningBrush and DangerBrush but not the tint brushes
+       (SuccessFaintBrush, WarningFaintBrush, StatusDangerFaintBrush, InfoFaintBrush) or InfoBrush, which keep their defaults. -->
+  <Style Selector="Border.status">
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+  </Style>
+  <Style Selector="Border.status > TextBlock">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.status.ok">
+    <Setter Property="Background" Value="{DynamicResource SuccessFaintBrush}" />
+  </Style>
+  <Style Selector="Border.status.ok > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+  <Style Selector="Border.status.danger">
+    <Setter Property="Background" Value="{DynamicResource StatusDangerFaintBrush}" />
+  </Style>
+  <Style Selector="Border.status.danger > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+  </Style>
+  <Style Selector="Border.status.warn">
+    <Setter Property="Background" Value="{DynamicResource WarningFaintBrush}" />
+  </Style>
+  <Style Selector="Border.status.warn > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+  </Style>
+  <Style Selector="Border.status.accent">
+    <Setter Property="Background" Value="{DynamicResource InfoFaintBrush}" />
+  </Style>
+  <Style Selector="Border.status.accent > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource InfoBrush}" />
+  </Style>
+
   <!-- ───────── Buttons: soft corners and a springy press ───────── -->
   <Style Selector="Button, ToggleButton, RepeatButton">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
@@ -260,7 +308,8 @@
   <Style Selector="Border.navpane">
     <Setter Property="Transitions">
       <Transitions>
-        <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="{StaticResource SoftEase}" />
+        <!-- A plain ease-out: SoftEase overshoots, which on Width would shrink the pane past its target and bounce back. -->
+        <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="CubicEaseOut" />
       </Transitions>
     </Setter>
   </Style>
@@ -273,16 +322,9 @@
   <Style Selector="StackPanel.navheader">
     <Setter Property="Margin" Value="8,0,0,20" />
   </Style>
-  <Style Selector="Border.navpane.collapsed Button.navtoggle">
-    <Setter Property="HorizontalContentAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Border.navpane.collapsed StackPanel.navheader">
-    <Setter Property="Margin" Value="0,0,0,20" />
-    <Setter Property="HorizontalAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Border.navpane.collapsed StackPanel.navitem">
-    <Setter Property="HorizontalAlignment" Value="Center" />
-  </Style>
+  <!-- The content stays left-aligned while collapsed instead of switching to centre: the switch happens in the same
+       frame the width animation starts, so the icons would jump to the middle of the still-wide pane and slide back.
+       Left-aligned, the rail's icons sit within 1.5px of its centre anyway. -->
 
   <!-- Generic rounded list items (profiles, presets) -->
   <Style Selector="ListBox.soft">
@@ -531,6 +573,10 @@
     <Setter Property="Padding" Value="14,6" />
   </Style>
   <Style Selector="Window.material-you Border.badge">
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
+    <Setter Property="Padding" Value="10,3" />
+  </Style>
+  <Style Selector="Window.material-you Border.status">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
     <Setter Property="Padding" Value="10,3" />
   </Style>

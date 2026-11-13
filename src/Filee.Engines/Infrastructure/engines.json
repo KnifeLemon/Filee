@@ -78,6 +78,13 @@
       "size": 240201728,
       "kind": "msi"
     },
+    "weasyprint": {
+      "version": "70.0",
+      "url": "https://github.com/Kozea/WeasyPrint/releases/download/v70.0/weasyprint-windows-onedir.zip",
+      "sha256": "AB1151F210B4E6BB7AA7A79E91A67E8DDB760094C107BFDA55241B6AAEFE7D53",
+      "size": 32271073,
+      "kind": "zip"
+    },
     "tesseract": {
       "version": "5.4.0.20240606",
       "url": "https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe",

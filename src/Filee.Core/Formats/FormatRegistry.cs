@@ -61,7 +61,8 @@ public static class FormatRegistry
         new("fits", "FITS", FormatCategory.Image, ["fits", "fts"], Writable: false),
         // Read on Windows only, with its own codec (HDR screenshots of Windows are JPEG XR).
         new("jxr", "JPEG XR", FormatCategory.Image, ["jxr", "wdp", "hdp"], Writable: false),
-        new("xcf", "XCF", FormatCategory.Image, ["xcf"], Writable: false),
+        // GIMP's own file, read and written by Filee: layers merged for other pictures, kept between XCF, PDN and PSD.
+        new("xcf", "GIMP (XCF)", FormatCategory.Image, ["xcf"]),
         // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it. ".kra~" is the
         // backup Krita keeps of the previous save, the same file under another name (#1077).
         new("kra", "Krita (KRA)", FormatCategory.Image, ["kra", "kra~"], Writable: false),
@@ -331,6 +332,12 @@ public static class FormatRegistry
         // Adobe extension packages for After Effects, Premiere Pro, Photoshop … (#1382): signed ZIPs. Never a target,
         // since installing one needs the signature its developer makes with Adobe's ZXPSignCmd.
         new("zxp", "ZXP (Adobe extension)", FormatCategory.Archive, ["zxp"], Writable: false),
+        // NuGet packages and their symbol packages (#1465), split-APK containers from bundletool, SAI, APKMirror and
+        // APKPure, and Android App Bundles (#1464): all ZIPs. Never a target, since NuGet, Android and the stores need
+        // a package signed (and laid out) by its developer's tools.
+        new("nupkg", "NUPKG (NuGet package)", FormatCategory.Archive, ["nupkg", "snupkg"], Writable: false),
+        new("apks", "APKS (Android split APKs)", FormatCategory.Archive, ["apks", "xapk", "apkm"], Writable: false),
+        new("aab", "AAB (Android App Bundle)", FormatCategory.Archive, ["aab"], Writable: false),
         // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
         // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
         // the top.
@@ -372,6 +379,7 @@ public static class FormatRegistry
         new("vtt", "WebVTT", FormatCategory.Subtitle, ["vtt"]),
         new("smi", "SAMI", FormatCategory.Subtitle, ["smi", "sami"]),
         new("lrc", "LRC", FormatCategory.Subtitle, ["lrc"]),
+        new("krc", "KRC", FormatCategory.Subtitle, ["krc"], Writable: false),
         new("ttml", "TTML", FormatCategory.Subtitle, ["ttml", "dfxp"]),
         new("sub", "MicroDVD", FormatCategory.Subtitle, ["sub"]),
         new("scc", "SCC", FormatCategory.Subtitle, ["scc"], Writable: false),

@@ -44,21 +44,24 @@ public static partial class ClipPreview
         && File.Exists(ffplay) ? ffplay : null;
 
     /// <summary>
-    /// Plays <paramref name="edit"/> of the video at <paramref name="path"/> from its start (use
+    /// Plays <paramref name="edit"/> of the video (or sound) at <paramref name="path"/> from its start (use
     /// <see cref="ClipEdit.From"/> to start later): each picture, <paramref name="height"/> pixels high in BGRA, goes to
     /// <paramref name="onFrame"/> (pixels, width, height, seconds into <paramref name="edit"/>) when it is due; the sound
     /// plays along. Ends when the clip has played or <paramref name="cancellationToken"/> is cancelled (then it stops at
     /// once and doesn't throw). <paramref name="onFrame"/> is called on a worker thread, with a buffer it may keep only
-    /// until it returns.
+    /// until it returns. A sound has no pictures: <paramref name="onFrame"/> is then called as often, with no pixels and
+    /// size 0, to tell how far the clip has played.
     /// </summary>
-    /// <exception cref="InvalidOperationException">FFmpeg is missing or the video can't be read.</exception>
+    /// <exception cref="InvalidOperationException">FFmpeg is missing or the file can't be read.</exception>
     public static async Task PlayAsync(string path, ClipEdit edit, int height, Action<byte[], int, int, double> onFrame,
         CancellationToken cancellationToken)
     {
         var (ffmpeg, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
         var input = Path.GetFullPath(path);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken).ConfigureAwait(false);
-        var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
+        var video = info.Video;
+        if (video is null && info.Audio is null)
+            throw new InvalidOperationException("The file has no video or sound stream.");
         ClipEdit clip;
         try
         {
@@ -70,7 +73,11 @@ public static partial class ClipPreview
         }
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var pictures = Start(ffmpeg, MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out var width, out var frameHeight), stdin: false);
+        Process? pictures = null;
+        var width = 0;
+        var frameHeight = 0;
+        if (video is not null)
+            pictures = Start(ffmpeg, MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out width, out frameHeight), stdin: false);
         Process? decoder = null, player = null;
         Task pump = Task.CompletedTask;
         try
@@ -83,23 +90,40 @@ public static partial class ClipPreview
                 pump = Pump(decoder, player, stop.Token);
             }
 
-            var frame = new byte[width * frameHeight * 4];
-            // The clock starts with the first picture: FFmpeg takes a moment to seek and start, and pictures counted
-            // from before that would all be late (and skipped) until it caught up.
-            Stopwatch? clock = null;
             var delay = player is null ? TimeSpan.Zero : SoundStart;
-            for (var n = 0; !stop.IsCancellationRequested; n++)
+            if (pictures is null)
             {
-                if (!await ReadFully(pictures.StandardOutput.BaseStream, frame, stop.Token).ConfigureAwait(false))
-                    break;
-                clock ??= Stopwatch.StartNew();
-                var due = delay + TimeSpan.FromSeconds((double)n / Fps);
-                var wait = due - clock.Elapsed;
-                if (wait > TimeSpan.Zero)
-                    await Task.Delay(wait, stop.Token).ConfigureAwait(false);
-                else if (wait < TimeSpan.FromSeconds(-0.2))
-                    continue; // behind: skip a picture rather than run late
-                onFrame(frame, width, frameHeight, (double)n / Fps);
+                // A sound: no pictures to wait for, so the clock tells how far it has played.
+                var started = Stopwatch.StartNew();
+                while (!stop.IsCancellationRequested)
+                {
+                    var played = (started.Elapsed - delay).TotalSeconds;
+                    if (played >= clip.Length)
+                        break;
+                    if (played > 0)
+                        onFrame([], 0, 0, played);
+                    await Task.Delay(TimeSpan.FromSeconds(1.0 / Fps), stop.Token).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                var frame = new byte[width * frameHeight * 4];
+                // The clock starts with the first picture: FFmpeg takes a moment to seek and start, and pictures counted
+                // from before that would all be late (and skipped) until it caught up.
+                Stopwatch? clock = null;
+                for (var n = 0; !stop.IsCancellationRequested; n++)
+                {
+                    if (!await ReadFully(pictures.StandardOutput.BaseStream, frame, stop.Token).ConfigureAwait(false))
+                        break;
+                    clock ??= Stopwatch.StartNew();
+                    var due = delay + TimeSpan.FromSeconds((double)n / Fps);
+                    var wait = due - clock.Elapsed;
+                    if (wait > TimeSpan.Zero)
+                        await Task.Delay(wait, stop.Token).ConfigureAwait(false);
+                    else if (wait < TimeSpan.FromSeconds(-0.2))
+                        continue; // behind: skip a picture rather than run late
+                    onFrame(frame, width, frameHeight, (double)n / Fps);
+                }
             }
             // The sound may still be playing its last moment.
             if (!stop.IsCancellationRequested && player is not null)
@@ -134,7 +158,7 @@ public static partial class ClipPreview
     /// The arguments of the preview's sound: the music's track probed like the video's.
     /// </summary>
     internal static async Task<List<string>> PreviewSoundArgumentsAsync(string ffprobe, string input, ClipEdit clip,
-        VideoStreamInfo video, AudioStreamInfo? audio, CancellationToken cancellationToken)
+        VideoStreamInfo? video, AudioStreamInfo? audio, CancellationToken cancellationToken)
     {
         var musicTrack = clip.Music is { } song
             ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken).ConfigureAwait(false) : 0;

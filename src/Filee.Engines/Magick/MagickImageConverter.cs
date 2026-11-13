@@ -11,7 +11,8 @@ namespace Filee.Engines.Magick;
 
 /// <summary>
 /// Converts between PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, APNG, MNG, QOI,
-/// DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster and MIFF, and reads HEIC, XCF, camera RAW, DICOM,
+/// DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster and MIFF, reads and writes Paint.NET's PDN and GIMP's XCF
+/// (Filee's own readers and writers, keeping layers between PDN, XCF and PSD), and reads HEIC, camera RAW, DICOM,
 /// Photo CD, OpenEXR, Radiance HDR, FITS, animated cursors (ANI) and (on Windows) EMF/WMF.
 /// </summary>
 public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransformer, IImageJoiner
@@ -33,8 +34,10 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
         .. from source in ImageEncoder.Sources
            from target in ImageEncoder.Writable
            select ImageEncoder.Edge(source, target),
-        // Paint.NET's own file, written by Filee (PaintNetWriter); a PSD keeps its layers there.
+        // Paint.NET's and GIMP's own files, written by Filee (PaintNetWriter, XcfWriter); layers are kept between them
+        // and PSD.
         .. ImageEncoder.Sources.Where(source => source != "pdn").Select(source => ImageEncoder.Edge(source, "pdn")),
+        .. ImageEncoder.Sources.Where(source => source != "xcf").Select(source => ImageEncoder.Edge(source, "xcf")),
     ];
 
     public EngineStatus GetStatus() =>
@@ -81,7 +84,7 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
 
     public bool CanRead(string format) => ImageEncoder.Sources.Contains(format);
 
-    public bool CanWrite(string format) => format == "pdn" || ImageEncoder.Writable.Contains(format);
+    public bool CanWrite(string format) => format is "pdn" or "xcf" || ImageEncoder.Writable.Contains(format);
 
     /// <summary>"Merge images": the pictures one under another or side by side in one image (<see cref="ImageJoiner"/>).</summary>
     public Task JoinAsync(IReadOnlyList<(string Path, string Format)> inputs, string outputPath, string format,
@@ -107,10 +110,22 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             // A PSD as a Paint.NET file keeps its layers too.
             if (step.From is "psd" or "psb" && step.To == "pdn" && PaintNet.KeepsLayers(step.Preset.Image))
                 return PaintNetWriter.SaveLayered(step, progress, cancellationToken);
+            // A GIMP file keeps its layers as PSD or Paint.NET, and those keep theirs as a GIMP file.
+            if (step.From == "xcf" && step.To is "psd" or "psb" && PaintNet.KeepsLayers(step.Preset.Image))
+                return Xcf.SaveLayeredPsd(step, progress, cancellationToken);
+            if (step.From == "xcf" && step.To == "pdn" && PaintNet.KeepsLayers(step.Preset.Image))
+                return Xcf.SaveLayeredPdn(step, progress, cancellationToken);
+            if (step.From == "pdn" && step.To == "xcf" && PaintNet.KeepsLayers(step.Preset.Image))
+                return XcfWriter.SaveFromPdn(step, progress, cancellationToken);
+            if (step.From is "psd" or "psb" && step.To == "xcf" && PaintNet.KeepsLayers(step.Preset.Image))
+                return XcfWriter.SaveFromPsd(step, progress, cancellationToken);
             // Animated PNGs are often saved as .png: read them as APNG, so they stay animated as GIF or WebP. An AVIF is an
             // animation only when it is an image sequence.
             var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : AvifSequence.SourceFormat(step.From, step.InputPath);
-            using var images = ImageReader.Read(step.InputPath, from, step.Preset);
+            // GIMP's XCF is merged by Filee: give it the token, so a hostile file can be cancelled row by row.
+            using var images = step.From == "xcf"
+                ? new MagickImageCollection { Xcf.ReadFlattened(step.InputPath, cancellationToken) }
+                : ImageReader.Read(step.InputPath, from, step.Preset);
             var written = await WriteAsync(images, from, step, progress, cancellationToken, LocateFfmpeg);
             // From a cursor, the hotspot follows the picture into the new one (every CUR is already a cursor, its
             // hotspot at the top left).
