@@ -16,6 +16,7 @@
 //    OR to screen, XOR to difference. They are exact for black and white, which is what masks use.
 //  * Hatch and pattern brushes repeat every 8 pixels of a 96 dpi device, or of the output for raster targets.
 
+using System.Runtime.InteropServices;
 using SkiaSharp;
 
 namespace Filee.Engines.Metafiles;
@@ -771,7 +772,51 @@ internal sealed class GdiPlayer : IDisposable
         _clipChanged = true;
     }
 
-    private static SKPath Op(SKPath a, SKPath b, SKPathOp op) => a.Op(b, op) ?? new SKPath(op == SKPathOp.Intersect ? b : a);
+    /// <summary>
+    /// A region operation. Rectangles and regions that don't overlap are combined without PathOps (IntersectClipRect
+    /// and ExcludeClipRect on a rectangular clip, the usual case). PathOps' time grows with the square of the points and
+    /// faster when edges cross, so the rest counts the square of its points as drawing operations, and regions past
+    /// <see cref="MetafileLimits.MaxRegionOperationPoints"/> together are refused.
+    /// </summary>
+    private SKPath Op(SKPath a, SKPath b, SKPathOp op)
+    {
+        var (boundsA, boundsB) = (a.Bounds, b.Bounds);
+        var (rectA, rectB) = (AsRectangle(a), AsRectangle(b));
+        var plain = !Inverse(a) && !Inverse(b); // only PathOps knows what an inverse fill covers
+        if (plain && op == SKPathOp.Intersect)
+        {
+            if (rectA is { } first && rectB is { } second)
+            {
+                var both = new SKPath();
+                if (first.IntersectsWith(second))
+                    both.AddRect(SKRect.Intersect(first, second));
+                return both;
+            }
+            if (rectA is { } outer && outer.Contains(boundsB))
+                return new SKPath(b);
+            if (rectB is { } box && box.Contains(boundsA))
+                return new SKPath(a);
+            if (!boundsA.IntersectsWith(boundsB))
+                return new SKPath();
+        }
+        else if (plain && op == SKPathOp.Difference)
+        {
+            if (!boundsA.IntersectsWith(boundsB))
+                return new SKPath(a);
+            if (rectB is { } cut && cut.Contains(boundsA))
+                return new SKPath();
+        }
+        var points = (long)a.PointCount + b.PointCount;
+        if (points > Budget.Limits.MaxRegionOperationPoints)
+            throw MetafileLimits.Exceeded($"A clip record in the metafile combines regions of {Documents.DocumentLimits.Count(points)} points, more than {Documents.DocumentLimits.Count(Budget.Limits.MaxRegionOperationPoints)}.");
+        Budget.Operations(points * points, "combined clip regions");
+        return a.Op(b, op) ?? new SKPath(op == SKPathOp.Intersect ? b : a);
+    }
+
+    /// <summary>The rectangle a path fills when it is one rectangle, else null.</summary>
+    private static SKRect? AsRectangle(SKPath path) => !Inverse(path) && path.IsRect ? path.Bounds : null;
+
+    private static bool Inverse(SKPath path) => path.FillType is SKPathFillType.InverseWinding or SKPathFillType.InverseEvenOdd;
 
     /// <summary>IntersectClipRect or ExcludeClipRect, the rectangle in logical units.</summary>
     public void ClipRectangle(SKRect box, bool exclude)
@@ -1135,6 +1180,7 @@ internal sealed class GdiPlayer : IDisposable
         var box = new SKRect(a.X, a.Y, b.X, b.Y).Standardized;
         if (box.IsEmpty)
             return;
+        Budget.Operations(1, "gradient fills");
         var end = vertical ? new SKPoint(box.Left, box.Bottom) : new SKPoint(box.Right, box.Top);
         using var shader = SKShader.CreateLinearGradient(new SKPoint(box.Left, box.Top), end, [colorA, colorB], SKShaderTileMode.Clamp);
         using var paint = new SKPaint { Shader = shader, IsAntialias = false };
@@ -1152,6 +1198,7 @@ internal sealed class GdiPlayer : IDisposable
         var matrix = Logical;
         var size = Math.Max(Distance(matrix, a, b), Math.Max(Distance(matrix, b, c), Distance(matrix, a, c)));
         var steps = (int)Math.Clamp(size / (_patternUnit * 4), 1, 24);
+        Budget.Operations((long)steps * steps, "cells of gradient fills");
         using var paint = new SKPaint { IsAntialias = false, Style = SKPaintStyle.Fill };
         Paint(canvas =>
         {
@@ -1417,23 +1464,37 @@ internal sealed class GdiPlayer : IDisposable
         return SKImage.FromBitmap(bitmap);
     }
 
-    /// <summary>A monochrome pattern with its black in <paramref name="ink"/> and its white in <paramref name="paper"/>.</summary>
+    /// <summary>
+    /// A monochrome pattern with its black in <paramref name="ink"/> and its white in <paramref name="paper"/>. Each
+    /// copy is a new bitmap kept until the end, so its pixels count with the file's bitmaps.
+    /// </summary>
     private SKImage Colored(SKImage image, SKColor ink, SKColor paper)
     {
         if (_coloredPatterns.TryGetValue((image, ink, paper), out var colored))
             return colored;
-        using var source = SKBitmap.FromImage(image);
-        using var bitmap = new SKBitmap(new SKImageInfo(source.Width, source.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
-        for (var y = 0; y < source.Height; y++)
+        Budget.Bitmap(image.Width, image.Height);
+        Budget.Operations(1, "recoloured pattern brushes");
+        var info = new SKImageInfo(image.Width, image.Height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
+        var pixels = new uint[(long)image.Width * image.Height]; // BGRA, as an SKColor's value
+        var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+        try
         {
-            for (var x = 0; x < source.Width; x++)
+            if (!image.ReadPixels(info, handle.AddrOfPinnedObject(), info.RowBytes, 0, 0))
+                throw new InvalidOperationException("Skia could not read the pattern's pixels.");
+            uint inkValue = (uint)ink, paperValue = (uint)paper;
+            for (var i = 0; i < pixels.Length; i++)
             {
-                var pixel = source.GetPixel(x, y);
-                bitmap.SetPixel(x, y, pixel.Red + pixel.Green + pixel.Blue >= 384 ? paper : ink);
+                var pixel = pixels[i];
+                var sum = (pixel & 0xFF) + ((pixel >> 8) & 0xFF) + ((pixel >> 16) & 0xFF);
+                pixels[i] = sum >= 384 ? paperValue : inkValue;
             }
+            colored = SKImage.FromPixelCopy(info, handle.AddrOfPinnedObject(), info.RowBytes)
+                      ?? throw new InvalidOperationException("Skia could not make an image of the pattern.");
         }
-        bitmap.SetImmutable();
-        colored = SKImage.FromBitmap(bitmap);
+        finally
+        {
+            handle.Free();
+        }
         _coloredPatterns[(image, ink, paper)] = colored;
         return colored;
     }

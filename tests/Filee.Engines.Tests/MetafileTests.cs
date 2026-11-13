@@ -387,6 +387,156 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
         Assert.True(watch.ElapsedMilliseconds < 2000);
     }
 
+    /// <summary>EMR_GRADIENTFILL of triangles over three vertices (red, green, blue corners), each triangle naming all three.</summary>
+    internal static byte[] GradientTriangles(int size, int triangles)
+    {
+        var payload = new byte[28 + 3 * 16 + triangles * 12]; // the record from byte 8
+        void Int(int at, int value) => BitConverter.GetBytes(value).CopyTo(payload, at - 8);
+        Int(24, 3); // nVer
+        Int(28, triangles); // nTri
+        Int(32, 2); // GRADIENT_FILL_TRIANGLE
+        (int X, int Y, int Channel)[] vertices = [(0, 0, 0), (size, 0, 1), (0, size, 2)];
+        for (var i = 0; i < 3; i++)
+        {
+            Int(36 + i * 16, vertices[i].X);
+            Int(40 + i * 16, vertices[i].Y);
+            BitConverter.GetBytes((ushort)0xFF00).CopyTo(payload, 36 + i * 16 + 8 + vertices[i].Channel * 2 - 8);
+        }
+        for (var t = 0; t < triangles; t++)
+        {
+            Int(84 + t * 12, 0);
+            Int(88 + t * 12, 1);
+            Int(92 + t * 12, 2);
+        }
+        return new EmfBuilder(size, size).Raw(118, payload).ToArray();
+    }
+
+    [Fact]
+    public void Gradient_triangles_are_drawn_and_a_huge_gradient_is_refused()
+    {
+        // One triangle: red at the top left, green at the top right, blue at the bottom left, blended between.
+        var (bitmap, _) = Render(GradientTriangles(96, 1), 96);
+        using (bitmap)
+        {
+            var corner = Pixel(bitmap, 2, 2);
+            Assert.True(corner.Red > 200 && corner.Green < 60 && corner.Blue < 60, corner.ToString());
+            var middle = Pixel(bitmap, 30, 30);
+            Assert.True(middle is { Red: > 40, Green: > 40, Blue: > 40 }, middle.ToString());
+            Assert.Equal(0, Pixel(bitmap, 90, 90).Alpha); // past the diagonal
+        }
+
+        // 87,000 large triangles in one 1 MB record: each is drawn as 576 cells, about 50 million in all.
+        var huge = GradientTriangles(960, 87_000);
+        var watch = Stopwatch.StartNew();
+        var error = Assert.Throws<ConversionRefusedException>(() => Draw(huge));
+        Assert.Contains("gradient", error.Message);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
+    }
+
+    /// <summary>EMR_CREATEMONOBRUSH of a top-down 1-bpp DIB, each row's bytes from <paramref name="row"/> (bit 0 = black, 1 = white).</summary>
+    internal static EmfBuilder MonoBrush(EmfBuilder emf, int index, int width, int height, Func<int, byte> row)
+    {
+        var info = EmfBuilder.Dib(width, -height, 1);
+        info = [.. info, 0, 0, 0, 0, 255, 255, 255, 0]; // black, white
+        var stride = ((width + 31) / 32) * 4;
+        var bits = new byte[stride * height];
+        for (var y = 0; y < height; y++)
+            Array.Fill(bits, row(y), y * stride, stride);
+        var payload = new byte[24 + info.Length + bits.Length]; // the record from byte 8
+        void Int(int at, int value) => BitConverter.GetBytes(value).CopyTo(payload, at - 8);
+        Int(8, index);
+        Int(12, 0); // DIB_RGB_COLORS
+        Int(16, 32);
+        Int(20, info.Length);
+        Int(24, 32 + info.Length);
+        Int(28, bits.Length);
+        info.CopyTo(payload, 24);
+        bits.CopyTo(payload, 24 + info.Length);
+        return emf.Raw(93, payload);
+    }
+
+    [Fact]
+    public void Mono_pattern_brushes_take_the_text_and_background_colours_and_their_copies_are_counted()
+    {
+        // 8 × 8: four black rows (the text colour), four white ones (the background colour).
+        var emf = MonoBrush(new EmfBuilder(192, 96).Select(EmfBuilder.NullPen), 1, 8, 8, y => y < 4 ? (byte)0 : (byte)0xFF)
+            .Select(1)
+            .Add(24, (int)Red).Add(25, (int)Blue) // SETTEXTCOLOR, SETBKCOLOR
+            .Rectangle(0, 0, 96, 96)
+            .Add(24, (int)Green)
+            .Rectangle(96, 0, 192, 96)
+            .ToArray();
+        var (bitmap, _) = Render(emf, 96);
+        using (bitmap)
+        {
+            Assert.Equal(SKColors.Red, Pixel(bitmap, 10, 1));
+            Assert.Equal(SKColors.Blue, Pixel(bitmap, 10, 5));
+            Assert.Equal(SKColors.Red, Pixel(bitmap, 10, 9));
+            Assert.Equal(SKColors.Lime, Pixel(bitmap, 110, 1));
+            Assert.Equal(SKColors.Blue, Pixel(bitmap, 110, 5));
+        }
+
+        // A 2048² brush recoloured for 40 text colours: each copy is a new 4-megapixel bitmap.
+        var many = MonoBrush(new EmfBuilder(96, 96).Select(EmfBuilder.NullPen), 1, 2048, 2048, y => (byte)(y % 2 == 0 ? 0x55 : 0xAA)).Select(1);
+        for (var i = 0; i < 40; i++)
+            many.Add(24, i * 0x010101).Rectangle(0, 0, 4, 4);
+        var limits = MetafileLimits.Default with { MaxTotalBitmapPixels = 16L * 1024 * 1024 };
+        var watch = Stopwatch.StartNew();
+        var error = Assert.Throws<ConversionRefusedException>(() => Draw(many.ToArray(), limits: limits));
+        Assert.Contains("pixels", error.Message);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
+    }
+
+    /// <summary>EMR_POLYGON of a star whose edges nearly all cross each other.</summary>
+    internal static EmfBuilder Star(EmfBuilder emf, int points, int size)
+    {
+        var star = new (int X, int Y)[points];
+        for (var i = 0; i < points; i++)
+        {
+            var angle = Math.PI * 2 * ((long)i * (points / 2) % points) / points;
+            star[i] = ((int)(size / 2 + size * 0.45 * Math.Cos(angle)), (int)(size / 2 + size * 0.45 * Math.Sin(angle)));
+        }
+        return emf.Polygon(star);
+    }
+
+    [Fact]
+    public void Clip_regions_stay_exact_and_huge_or_many_region_operations_are_refused()
+    {
+        // Rectangles combine without PathOps; a small path still goes through it.
+        var emf = new EmfBuilder(192, 96)
+            .Select(EmfBuilder.NullPen)
+            .Add(30, 0, 0, 96, 96) // INTERSECTCLIPRECT: the left half
+            .Add(29, 0, 0, 48, 48) // EXCLUDECLIPRECT: without its top left quarter
+            .Add(29, 150, 0, 192, 96) // outside the clip: no change
+            .Add(59).Ellipse(24, 24, 72, 72).Add(60) // a path: a circle
+            .Add(67, 4) // SELECTCLIPPATH, RGN_DIFF
+            .Brush(1, Red).Select(1).Rectangle(0, 0, 192, 96)
+            .ToArray();
+        var (bitmap, _) = Render(emf, 96);
+        using (bitmap)
+        {
+            Assert.Equal(SKColors.Red, Pixel(bitmap, 80, 10)); // top right of the left half
+            Assert.Equal(SKColors.Red, Pixel(bitmap, 10, 90)); // bottom left
+            Assert.Equal(0, Pixel(bitmap, 10, 10).Alpha); // excluded quarter
+            Assert.Equal(0, Pixel(bitmap, 48, 48).Alpha); // inside the circle
+            Assert.Equal(0, Pixel(bitmap, 140, 48).Alpha); // the right half
+        }
+
+        // A self-crossing path of 30,000 points combined with the clip: PathOps would take hours.
+        var huge = Star(new EmfBuilder(960, 960).Add(30, 0, 0, 500, 500).Add(59), 30_001, 960).Add(60).Add(67, 1).ToArray();
+        var watch = Stopwatch.StartNew();
+        var error = Assert.Throws<ConversionRefusedException>(() => Draw(huge));
+        Assert.Contains("points", error.Message);
+
+        // Small crossing paths, again and again: the region operations count against the operation budget.
+        var repeated = new EmfBuilder(960, 960);
+        for (var i = 0; i < 10_000; i++)
+            Star(repeated.Add(33).Add(30, 0, 0, 900, 900).Add(59), 101, 960).Add(60).Add(67, 3).Add(34, -1); // SAVEDC … RGN_XOR … RESTOREDC
+        error = Assert.Throws<ConversionRefusedException>(() => Draw(repeated.ToArray()));
+        Assert.Contains("operations", error.Message);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(15), $"took {watch.Elapsed}");
+    }
+
     [Fact]
     public void Wmf_records_shorter_than_a_record_are_damaged()
     {

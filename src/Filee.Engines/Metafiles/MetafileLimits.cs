@@ -6,8 +6,10 @@
 //
 // Where they apply:
 //  * MetafileReader   the file size and the number of records.
-//  * GdiPlayer        the object table, saved device contexts, path points and region rectangles.
-//  * Dib              the pixels of one bitmap and of all bitmaps of the file together.
+//  * GdiPlayer        the object table, saved device contexts, path points and region rectangles, and the drawing
+//                     operations a few bytes can multiply: the cells a gradient triangle is drawn as, recoloured
+//                     pattern brushes, and the region operations (Skia PathOps) clip records combine regions with.
+//  * Dib              the pixels of one bitmap and of all bitmaps of the file together (recoloured patterns too).
 
 using Filee.Engines.Documents;
 
@@ -43,6 +45,20 @@ internal sealed record MetafileLimits
     /// <summary>Pixels of all bitmaps of one file together.</summary>
     public long MaxTotalBitmapPixels { get; init; } = 256L * 1024 * 1024;
 
+    /// <summary>
+    /// Drawing operations one record can multiply, for the whole file: a cell of a gradient triangle or a gradient
+    /// rectangle, a recoloured pattern brush, and for a region operation (PathOps) the square of its points. Records
+    /// that draw one shape each are bounded by <see cref="MaxRecords"/> instead.
+    /// </summary>
+    public long MaxOperations { get; init; } = 1_000_000;
+
+    /// <summary>
+    /// Points of the two regions of one region operation that needs PathOps (clip regions combined with AND, OR, XOR
+    /// or DIFF, other than rectangles). PathOps slows down faster than the square of the points when edges cross: a
+    /// 400-point star takes most of a second.
+    /// </summary>
+    public int MaxRegionOperationPoints { get; init; } = 256;
+
     /// <summary>The refusal for a file that passes a limit; <paramref name="detail"/> says which (in English).</summary>
     public static Core.Conversion.ConversionRefusedException Exceeded(string detail) => DocumentLimits.Exceeded(detail);
 }
@@ -51,6 +67,7 @@ internal sealed record MetafileLimits
 internal sealed class MetafileBudget(MetafileLimits limits)
 {
     private long _pixels;
+    private long _operations;
 
     public MetafileLimits Limits { get; } = limits;
 
@@ -63,5 +80,13 @@ internal sealed class MetafileBudget(MetafileLimits limits)
         _pixels += pixels;
         if (_pixels > Limits.MaxTotalBitmapPixels)
             throw MetafileLimits.Exceeded($"The bitmaps in the metafile have more than {DocumentLimits.Count(Limits.MaxTotalBitmapPixels)} pixels together.");
+    }
+
+    /// <summary>Counts <paramref name="count"/> drawing operations of <paramref name="what"/> (in English, for the refusal).</summary>
+    public void Operations(long count, string what)
+    {
+        _operations += count;
+        if (_operations > Limits.MaxOperations)
+            throw MetafileLimits.Exceeded($"The metafile needs more than {DocumentLimits.Count(Limits.MaxOperations)} drawing operations ({what}).");
     }
 }
