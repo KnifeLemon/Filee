@@ -13,6 +13,10 @@
 // a lower limit; accents (hat, bar, vec, tilde, dot, ddot, acute, grave, check, breve, under, arch, dyad) the item after
 // them; rm, it and bold switch the rest of their group. Anything left over (unknown commands, a dangling script) is
 // kept as text, so nothing written is lost.
+//
+// Depth: the reader, EquationScript and MathLayout recurse once or more per level of the tree, and a stack overflow
+// can't be caught: it ends the whole app. A script nested deeper than MaxDepth (thousands of braces or "rm rm rm" in a
+// crafted file, or a chain of "over" that nests without braces) is kept as its text.
 
 using System.Globalization;
 using System.Text;
@@ -243,19 +247,41 @@ internal static class EquationParser
         ("+-", "PLUSMINUS"), ("-+", "MINUSPLUS"), ("<<", "ll"), (">>", "gg"), ("...", "LDOTS"),
     ];
 
-    /// <summary>The tree of a 한글 equation script; an empty row for an empty script.</summary>
+    /// <summary>
+    /// Levels of groups, scripts, fractions, roots, accents, brackets and styles an equation is read with. 한글's own
+    /// equations nest a dozen or two at most (a continued fraction ten deep takes about thirty).
+    /// </summary>
+    public const int MaxDepth = 100;
+
+    /// <summary>
+    /// The tree of a 한글 equation script; an empty row for an empty script, and the script as text when it nests
+    /// deeper than <see cref="MaxDepth"/>.
+    /// </summary>
     public static MathNode Parse(string script)
     {
-        var parser = new Reader(Tokens(script));
-        var items = parser.Row(end: null);
-        // Unmatched closing braces and the like: what's left is read on as further rows.
-        while (!parser.AtEnd)
+        MathNode tree;
+        try
         {
-            parser.Skip();
-            items.AddRange(parser.Row(end: null));
+            var parser = new Reader(Tokens(script));
+            var items = parser.Row(end: null);
+            // Unmatched closing braces and the like: what's left is read on as further rows.
+            while (!parser.AtEnd)
+            {
+                parser.Skip();
+                items.AddRange(parser.Row(end: null));
+            }
+            tree = Single(items);
         }
-        return Single(items);
+        catch (TooDeepException)
+        {
+            return new MathQuoted(script);
+        }
+        // "a over b over c …" nests to the left without braces, so the tree is measured as well.
+        return EquationScript.Deeper(tree, MaxDepth) ? new MathQuoted(script) : tree;
     }
+
+    /// <summary>Thrown inside the reader when the script nests past <see cref="MaxDepth"/>; Parse keeps the text.</summary>
+    private sealed class TooDeepException : Exception;
 
     private static MathNode Single(List<MathNode> items) => items.Count == 1 ? items[0] : new MathRow(items);
 
@@ -400,12 +426,20 @@ internal static class EquationParser
     private sealed class Reader(List<Token> tokens)
     {
         private int _at;
+        private int _depth;
 
         public bool AtEnd => _at >= tokens.Count;
 
         private Token? Peek => _at < tokens.Count ? tokens[_at] : null;
 
         public void Skip() => _at++;
+
+        /// <summary>One level further in: every way the reader recurses goes through Primary or rm / it / bold.</summary>
+        private void Enter()
+        {
+            if (++_depth > MaxDepth)
+                throw new TooDeepException();
+        }
 
         private bool IsWord(string word) => Peek is { Kind: Kind.Word } t && string.Equals(t.Text, word, StringComparison.OrdinalIgnoreCase);
 
@@ -433,7 +467,9 @@ internal static class EquationParser
                 if (token.Kind == Kind.Word && token.Text.ToLowerInvariant() is "rm" or "it" or "bold")
                 {
                     _at++;
+                    Enter();
                     items.Add(new MathStyled(token.Text.ToLowerInvariant(), Single(Row(end, separators))));
+                    _depth--;
                     break;
                 }
                 if (Item(end) is { } item)
@@ -494,7 +530,14 @@ internal static class EquationParser
 
         private MathNode Primary()
         {
-            var token = tokens[_at++];
+            Enter();
+            var node = Primary(tokens[_at++]);
+            _depth--;
+            return node;
+        }
+
+        private MathNode Primary(Token token)
+        {
             switch (token.Kind)
             {
                 case Kind.Open:
