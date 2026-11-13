@@ -9,6 +9,7 @@
 
 using System.Text;
 using System.Text.Json.Nodes;
+using Filee.Engines.Documents;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -233,9 +234,11 @@ internal sealed class PandocAstReader
         // Pandoc ≥ 2.10: [attr, caption, colSpecs, head, bodies, foot]; row = [attr, cells];
         // cell = [attr, align, rowspan, colspan, blocks]
         var specs = content[2] as JsonArray ?? [];
+        // Columns and spans stay within the limit the layout and the writers hold tables to.
+        var maxColumns = DocumentLimits.Default.MaxTableColumns;
         var table = new HTable
         {
-            ColumnCount = specs.Count,
+            ColumnCount = Math.Min(specs.Count, maxColumns),
             RelativeWidths = specs.Select(s => Type(s?[1]) == "ColWidth" ? (double?)s![1]!["c"] ?? 0 : 0).ToArray(),
             Indent = context.Indent,
         };
@@ -251,8 +254,8 @@ internal sealed class PandocAstReader
                         continue;
                     var hCell = new HCell
                     {
-                        RowSpan = Math.Max(1, (int?)cell[2] ?? 1),
-                        ColSpan = Math.Max(1, (int?)cell[3] ?? 1),
+                        RowSpan = Math.Max(1, Number(cell[2]) ?? 1),
+                        ColSpan = Math.Clamp(Number(cell[3]) ?? 1, 1, maxColumns),
                     };
                     Blocks(cell[4] as JsonArray, hCell.Blocks, new Context());
                     hRow.Cells.Add(hCell);
@@ -413,6 +416,13 @@ internal sealed class PandocAstReader
         }
         return sb.ToString();
     }
+
+    /// <summary>A whole number that fits an int; null for anything else (a span of 1e300 or a string).</summary>
+    private static int? Number(JsonNode? node) =>
+        node is not JsonValue value ? null
+        : value.TryGetValue<int>(out var whole) ? whole
+        : value.TryGetValue<double>(out var number) && number >= int.MinValue && number <= int.MaxValue ? (int)number
+        : null;
 
     private static string Type(JsonNode? node) => node is JsonObject obj ? (string?)obj["t"] ?? "" : "";
 }

@@ -94,16 +94,10 @@ internal sealed class ParagraphText
 
     /// <summary>
     /// Text the model doesn't count (a field's text, a note's number): where it goes in the model's count (the count
-    /// HLineLayout.Starts are in, the list marker left out) and how long it is.
+    /// HLineLayout.Starts are in, the list marker left out) and how long it is; in the model's order. A model position
+    /// is at the text position after the list marker and the text inserted before it.
     /// </summary>
     public IReadOnlyList<(int Position, int Length)> Insertions { get; }
-
-    /// <summary>
-    /// The text position of model position <paramref name="position"/>: after the list marker of
-    /// <paramref name="marker"/> characters and the inserted text before it.
-    /// </summary>
-    public int FromModel(int position, int marker) =>
-        position + marker + Insertions.Where(i => i.Position < position).Sum(i => i.Length);
 
     public string Text { get; }
 
