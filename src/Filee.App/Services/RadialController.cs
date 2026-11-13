@@ -470,12 +470,14 @@ public sealed class RadialController(
         // from the start of the preset's part.
         if (AskedRingtone.Asks(preset) && web is null && sources.Any(AskedRingtone.IsSound))
         {
+            KeepKeyboard(); // for the clip window
+            var near = _window?.Position;
             Close(animate: false);
             var sounds = sources.Where(AskedRingtone.IsSound).ToList();
             var rest = sources.Where(file => !AskedRingtone.IsSound(file)).ToList();
             if (rest.Count > 0)
                 conversions.Start(rest, AskedRingtone.Apply(preset, preset.Media.RingtoneStart, preset.Media.RingtoneLength));
-            windows.ShowRingtoneWindow(sounds, preset);
+            windows.ShowRingtoneWindow(sounds, preset, near);
             return;
         }
 

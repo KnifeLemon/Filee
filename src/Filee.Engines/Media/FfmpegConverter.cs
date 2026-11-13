@@ -135,7 +135,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
 
         if (step.FrameSequence)
             return await FrameSequenceWriter.ConvertAsync(ffmpeg, step, input, info, progress, cancellationToken);
-        if (step.Preset.CutsClipOf(step.From) && (MediaEncoding.VideoTargets.ContainsKey(step.To) || info.Video is null && MediaEncoding.AudioTargets.ContainsKey(step.To)))
+        if (step.Preset.CutsClipOf(step.From) && (MediaEncoding.VideoTargets.ContainsKey(step.To) || MediaEncoding.AudioTargets.ContainsKey(step.To)))
             return await CutClipAsync(ffmpeg, ffprobe, step, input, info, progress, cancellationToken);
         if (step.Preset.SplitsVideoOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
             return await SplitAsync(ffmpeg, step, input, info, progress, cancellationToken);
@@ -452,7 +452,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     private async Task<IReadOnlyList<string>> CutClipAsync(string ffmpeg, string ffprobe, ConversionStep step, string input, MediaInfo info,
         IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        if (info.Video is null)
+        // A sound target is written by the sound clip, whatever the file holds besides the sound (an audiobook's chapter
+        // pictures are a real video track): the graph leaves the picture out anyway.
+        if (info.Video is null || !MediaEncoding.VideoTargets.ContainsKey(step.To))
         {
             if (info.Audio is null || !MediaEncoding.AudioTargets.ContainsKey(step.To))
                 throw new InvalidOperationException("The file has no video stream.");

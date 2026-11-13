@@ -591,7 +591,9 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         SelectedLane = ClipLane.Video;
         SelectedIndices = [];
         var first = _ringtone ? Math.Clamp(_tool.Media.RingtoneLength, MediaOptions.MinRingtoneLength, MediaOptions.MaxRingtoneLength) : FirstClipLength;
-        UseCutter(new ClipCutter(video.Duration, new ClipRange(0, Math.Min(video.Duration, first))));
+        // In ringtone mode the first part starts where the preset's own part does.
+        var from = _ringtone ? Math.Clamp(_tool.Media.RingtoneStart, 0, Math.Max(0, video.Duration - first)) : 0;
+        UseCutter(new ClipCutter(video.Duration, new ClipRange(from, Math.Min(video.Duration, from + first))));
         ActiveHandle = ClipHandle.Start;
         Playhead = 0;
         SelectedIndex = -1;
@@ -1059,10 +1061,11 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         switch (handle)
         {
             case ClipHandle.Start:
-                _cutter.MoveStart(seconds);
+                // A ringtone is at most 40 s: the dragged handle stops there instead of the end being dropped at Save.
+                _cutter.MoveStart(_ringtone ? Math.Max(seconds, _cutter.End - MediaOptions.MaxRingtoneLength) : seconds);
                 break;
             case ClipHandle.End:
-                _cutter.MoveEnd(seconds);
+                _cutter.MoveEnd(_ringtone ? Math.Min(seconds, _cutter.Start + MediaOptions.MaxRingtoneLength) : seconds);
                 break;
             default:
                 Playhead = Math.Clamp(seconds, 0, Duration);
@@ -1125,7 +1128,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         if (!CanEdit || _cutter is null || seconds <= 0)
             return;
         StopPlaying();
-        _cutter.SetLength(seconds);
+        _cutter.SetLength(_ringtone ? Math.Min(seconds, MediaOptions.MaxRingtoneLength) : seconds);
         ActiveHandle = ClipHandle.End;
         SchedulePreview();
     }

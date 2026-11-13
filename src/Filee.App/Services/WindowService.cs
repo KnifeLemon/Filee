@@ -430,8 +430,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     /// Opens the "Cut a clip" window on the sounds among the files to choose the part that becomes an iPhone ringtone
     /// (<see cref="MediaOptions.AskRingtonePart"/>, #1291). Its Save starts an ordinary M4R conversion of that part.
     /// </summary>
-    public void ShowRingtoneWindow(IReadOnlyList<string> files, Preset preset) =>
-        ShowClipWindow(files, preset, null, ringtone: true);
+    public void ShowRingtoneWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null) =>
+        ShowClipWindow(files, preset, near, ringtone: true);
 
     private void ShowClipWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near, bool ringtone)
     {
