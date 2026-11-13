@@ -74,7 +74,7 @@ public sealed class CaptureConfig
     public string? MicrophoneDevice { get; set; }
     public bool EnableSystemAudio { get; set; } = true;
 
-    public bool HighlightCursor { get; set; } = true;
+    public bool HighlightCursor { get; set; } = false;
     public bool SpotlightMode { get; set; } = false;
     public double SpotlightRadius { get; set; } = 120.0;
 

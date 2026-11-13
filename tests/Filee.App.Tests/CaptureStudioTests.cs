@@ -307,4 +307,35 @@ public sealed class CaptureStudioTests
         vm.TogglePlayCommand.Execute(null);
         Assert.Equal("⏸", vm.PlayButtonIcon);
     }
+
+    [Fact]
+    public void CaptureConfig_default_highlight_cursor_is_false()
+    {
+        var config = new CaptureConfig();
+        Assert.False(config.HighlightCursor);
+
+        var targetService = new WindowTargetService();
+        var loc = new DummyLocalizer();
+        var vm = new CaptureStudioConfigViewModel(targetService, loc);
+        Assert.False(vm.HighlightCursor);
+    }
+
+    [Fact]
+    public void AndroidMirrorEngine_FindAdb_and_device_handling()
+    {
+        var adb = AndroidMirrorEngine.FindAdb();
+        Assert.False(string.IsNullOrWhiteSpace(adb));
+
+        var engine = new AndroidMirrorEngine();
+        Assert.False(engine.IsActive);
+    }
+
+    [Fact]
+    public void AirPlayMirrorEngine_initialization_and_metadata()
+    {
+        var mirrorService = new MobileMirrorService();
+        var engine = new AirPlayMirrorEngine(mirrorService);
+        Assert.False(string.IsNullOrWhiteSpace(engine.ServerName));
+        Assert.False(string.IsNullOrWhiteSpace(AirPlayMirrorEngine.GetMacAddressString()));
+    }
 }

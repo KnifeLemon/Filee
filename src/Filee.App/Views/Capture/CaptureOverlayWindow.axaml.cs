@@ -45,7 +45,7 @@ public partial class CaptureOverlayWindow : Window
 
     private bool _spotlightActive;
     private double _spotlightRadius = 120;
-    private bool _cursorHighlightActive = true;
+    private bool _cursorHighlightActive = false;
 
     private IBrush _activeBrush = new SolidColorBrush(Color.FromRgb(255, 59, 48)); // #FF3B30
     private Color _activeColor = Color.FromRgb(255, 59, 48);
@@ -531,40 +531,180 @@ public partial class CaptureOverlayWindow : Window
 
     private void AddTextCallout(Point p)
     {
+        var currentFontSize = 16.0;
+
         var container = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(245, 255, 255, 255)),
             BorderBrush = _activeBrush,
             BorderThickness = new Thickness(2),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(4),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(6, 4),
             BoxShadow = new BoxShadows(new BoxShadow { Blur = 8, Color = Color.FromArgb(80, 0, 0, 0) })
         };
+
+        var rootStack = new StackPanel { Spacing = 4 };
+
+        // Controls bar (Drag handle, A-, Size, A+, Delete ✕)
+        var controlsBar = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,*,Auto"),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+        };
+
+        // Drag handle
+        var dragHandle = new TextBlock
+        {
+            Text = "⋮⋮",
+            FontSize = 11,
+            Foreground = Brushes.Gray,
+            Cursor = new Cursor(StandardCursorType.SizeAll),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0)
+        };
+        controlsBar.Children.Add(dragHandle);
+
+        // A- button
+        var shrinkBtn = new Button
+        {
+            Content = new TextBlock { Text = "A-", FontSize = 10, FontWeight = FontWeight.Bold },
+            Padding = new Thickness(4, 1),
+            Height = 20,
+            CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(Color.FromArgb(20, 0, 0, 0)),
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+        ToolTip.SetTip(shrinkBtn, "Decrease Text Size");
+        Grid.SetColumn(shrinkBtn, 1);
+        controlsBar.Children.Add(shrinkBtn);
+
+        // Size badge
+        var sizeBadge = new TextBlock
+        {
+            Text = "16",
+            FontSize = 10,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Brushes.DimGray,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Margin = new Thickness(4, 0)
+        };
+        Grid.SetColumn(sizeBadge, 2);
+        controlsBar.Children.Add(sizeBadge);
+
+        // A+ button
+        var growBtn = new Button
+        {
+            Content = new TextBlock { Text = "A+", FontSize = 10, FontWeight = FontWeight.Bold },
+            Padding = new Thickness(4, 1),
+            Height = 20,
+            CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(Color.FromArgb(20, 0, 0, 0)),
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+        ToolTip.SetTip(growBtn, "Increase Text Size");
+        Grid.SetColumn(growBtn, 3);
+        controlsBar.Children.Add(growBtn);
+
+        // Close ✕ button
+        var closeBtn = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = "✕",
+                FontSize = 9,
+                FontWeight = FontWeight.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            },
+            Width = 18,
+            Height = 18,
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(9),
+            Background = new SolidColorBrush(Color.FromArgb(220, 255, 59, 48)),
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+        ToolTip.SetTip(closeBtn, "Remove Text");
+        Grid.SetColumn(closeBtn, 5);
+        controlsBar.Children.Add(closeBtn);
+
+        rootStack.Children.Add(controlsBar);
 
         var textBox = new TextBox
         {
             Text = "Caption...",
-            FontSize = 13,
+            FontSize = currentFontSize,
             FontWeight = FontWeight.Bold,
             Foreground = _activeBrush,
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            MinWidth = 120,
+            MinWidth = 140,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
             SelectionStart = 0,
             SelectionEnd = 10
         };
 
-        textBox.KeyDown += (_, keyArgs) =>
+        shrinkBtn.Click += (_, _) =>
         {
-            if (keyArgs.Key == Key.Enter)
+            if (currentFontSize > 10)
             {
-                // Commit text and switch back
-                textBox.IsEnabled = false;
-                textBox.Background = Brushes.Transparent;
+                currentFontSize -= 2;
+                textBox.FontSize = currentFontSize;
+                sizeBadge.Text = $"{currentFontSize}";
             }
         };
 
-        container.Child = textBox;
+        growBtn.Click += (_, _) =>
+        {
+            if (currentFontSize < 64)
+            {
+                currentFontSize += 2;
+                textBox.FontSize = currentFontSize;
+                sizeBadge.Text = $"{currentFontSize}";
+            }
+        };
+
+        closeBtn.Click += (_, _) =>
+        {
+            OverlayCanvas.Children.Remove(container);
+            _annotationControls.Remove(container);
+            ShowActionToast("Text Callout Removed", "🗑");
+        };
+
+        // Drag container by handle
+        Point? dragStart = null;
+        dragHandle.PointerPressed += (_, args) =>
+        {
+            dragStart = args.GetPosition(OverlayCanvas);
+            args.Handled = true;
+        };
+
+        dragHandle.PointerMoved += (_, args) =>
+        {
+            if (dragStart.HasValue)
+            {
+                var cur = args.GetPosition(OverlayCanvas);
+                var dx = cur.X - dragStart.Value.X;
+                var dy = cur.Y - dragStart.Value.Y;
+                var left = Canvas.GetLeft(container) + dx;
+                var top = Canvas.GetTop(container) + dy;
+                Canvas.SetLeft(container, Math.Max(0, left));
+                Canvas.SetTop(container, Math.Max(0, top));
+                dragStart = cur;
+                args.Handled = true;
+            }
+        };
+
+        dragHandle.PointerReleased += (_, args) =>
+        {
+            dragStart = null;
+            args.Handled = true;
+        };
+
+        rootStack.Children.Add(textBox);
+        container.Child = rootStack;
 
         Canvas.SetLeft(container, p.X);
         Canvas.SetTop(container, p.Y);

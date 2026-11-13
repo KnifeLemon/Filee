@@ -105,7 +105,7 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
     private string _selectedAudioDevice = "Default Microphone";
 
     [ObservableProperty]
-    private bool _highlightCursor = true;
+    private bool _highlightCursor = false;
 
     [ObservableProperty]
     private bool _spotlightMode = false;

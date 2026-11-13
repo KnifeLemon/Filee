@@ -1,28 +1,31 @@
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Filee.App.Services.Capture;
-using Filee.App.Services.Connect;
 
 namespace Filee.App.Views.Capture;
 
 public partial class MobileMirrorWindow : Window
 {
     private readonly MobileMirrorService? _service;
-    private readonly FileeConnectService? _connectService;
+    private readonly AndroidMirrorEngine _androidEngine;
+    private readonly AirPlayMirrorEngine? _airPlayEngine;
+    private string? _selectedUsbSerial;
 
     public MobileMirrorWindow()
     {
         InitializeComponent();
-        LoadQrAndNetworkInfo();
+        _androidEngine = new AndroidMirrorEngine();
     }
 
-    public MobileMirrorWindow(MobileMirrorService service, FileeConnectService? connectService = null) : this()
+    public MobileMirrorWindow(MobileMirrorService service, AirPlayMirrorEngine? airPlayEngine = null) : this()
     {
         _service = service;
-        _connectService = connectService;
+        _airPlayEngine = airPlayEngine ?? new AirPlayMirrorEngine(service);
+
         _service.FrameReceived += OnFrameReceived;
         _service.StateChanged += OnStateChanged;
 
@@ -31,41 +34,114 @@ public partial class MobileMirrorWindow : Window
             OnFrameReceived(_service.LastJpegFrame);
         }
 
-        LoadQrAndNetworkInfo();
+        // Start AirPlay listener by default
+        _airPlayEngine.Start();
+        if (AirPlayDeviceNameText != null)
+        {
+            AirPlayDeviceNameText.Text = _airPlayEngine.ServerName;
+        }
+
+        // Scan for USB Android device on start
+        _ = ScanUsbDevicesAsync();
     }
 
-    private void LoadQrAndNetworkInfo()
+    public MobileMirrorWindow(MobileMirrorService service, Filee.App.Services.Connect.FileeConnectService? connectService)
+        : this(service)
     {
-        try
-        {
-            var lanIp = FileeConnectService.GetLocalLanIp().ToString();
-            var baseUrl = _connectService != null && _connectService.IsRunning
-                ? _connectService.ManualUrl
-                : $"http://{lanIp}:3000";
-
-            var url = baseUrl.TrimEnd('/') + "/mirror";
-            LanUrlText.Text = url;
-
-            using var generator = new QRCoder.QRCodeGenerator();
-            var data = generator.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.Q);
-            using var qrCode = new QRCoder.PngByteQRCode(data);
-            var bytes = qrCode.GetGraphic(12);
-            using var ms = new MemoryStream(bytes);
-            QrImage.Source = new Bitmap(ms);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to generate QR for mirror: {ex.Message}");
-        }
     }
 
     private void OnPlatformChanged(object? sender, RoutedEventArgs e)
     {
         var isIos = IosRadio?.IsChecked == true;
-        if (IosStepsPanel != null)
-            IosStepsPanel.IsVisible = isIos;
-        if (AndroidStepsPanel != null)
-            AndroidStepsPanel.IsVisible = !isIos;
+        if (IosPanel != null)
+            IosPanel.IsVisible = isIos;
+        if (AndroidPanel != null)
+            AndroidPanel.IsVisible = !isIos;
+    }
+
+    private async void OnScanUsbClick(object? sender, RoutedEventArgs e)
+    {
+        await ScanUsbDevicesAsync();
+    }
+
+    private async Task ScanUsbDevicesAsync()
+    {
+        if (UsbDeviceStatusText == null || StartUsbMirrorBtn == null) return;
+
+        UsbDeviceStatusText.Text = "Scanning USB devices...";
+        var devices = await _androidEngine.GetConnectedDevicesAsync();
+
+        if (devices.Count > 0)
+        {
+            var dev = devices[0];
+            _selectedUsbSerial = dev.Serial;
+            UsbDeviceStatusText.Text = $"Found: {dev.DisplayName}";
+            StartUsbMirrorBtn.IsEnabled = true;
+        }
+        else
+        {
+            _selectedUsbSerial = null;
+            UsbDeviceStatusText.Text = "No USB phone detected. Turn on USB Debugging.";
+            StartUsbMirrorBtn.IsEnabled = false;
+        }
+    }
+
+    private void OnStartUsbMirrorClick(object? sender, RoutedEventArgs e)
+    {
+        if (_service != null)
+        {
+            _androidEngine.StartScreenMirror(_selectedUsbSerial, _service);
+        }
+    }
+
+    private async void OnPairWirelessClick(object? sender, RoutedEventArgs e)
+    {
+        var ipPort = WirelessIpBox?.Text?.Trim() ?? "";
+        var code = WirelessCodeBox?.Text?.Trim() ?? "";
+
+        if (string.IsNullOrWhiteSpace(ipPort) || string.IsNullOrWhiteSpace(code))
+        {
+            if (WirelessStatusText != null)
+                WirelessStatusText.Text = "Please enter both IP:Port and Pairing Code.";
+            return;
+        }
+
+        if (WirelessStatusText != null)
+            WirelessStatusText.Text = "Pairing with phone...";
+
+        var (success, msg) = await _androidEngine.PairWirelessDeviceAsync(ipPort, code);
+        if (success)
+        {
+            if (WirelessStatusText != null)
+                WirelessStatusText.Text = "Paired! Connecting wireless screen stream...";
+
+            // Connect
+            await _androidEngine.ConnectWirelessDeviceAsync(ipPort);
+            if (_service != null)
+            {
+                _androidEngine.StartScreenMirror(ipPort, _service);
+            }
+        }
+        else
+        {
+            if (WirelessStatusText != null)
+                WirelessStatusText.Text = $"Pairing failed: {msg}";
+        }
+    }
+
+    private void OnOpenWindowsCastClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("ms-settings:projecting-to-this-pc") { UseShellExecute = true });
+        }
+        catch { }
+    }
+
+    private void OnDisconnectClick(object? sender, RoutedEventArgs e)
+    {
+        _androidEngine.StopScreenMirror();
+        _service?.OnDisconnected();
     }
 
     private void OnFrameReceived(byte[] jpegBytes)
@@ -78,10 +154,9 @@ public partial class MobileMirrorWindow : Window
                 var bmp = new Bitmap(stream);
                 FrameImage.Source = bmp;
                 WaitingPanel.IsVisible = false;
+                DisconnectBtn.IsVisible = true;
             }
-            catch
-            {
-            }
+            catch { }
         });
     }
 
@@ -90,6 +165,7 @@ public partial class MobileMirrorWindow : Window
         Dispatcher.UIThread.Post(() =>
         {
             WaitingPanel.IsVisible = !isStreaming;
+            DisconnectBtn.IsVisible = isStreaming;
             if (!isStreaming)
             {
                 FrameImage.Source = null;
@@ -107,11 +183,12 @@ public partial class MobileMirrorWindow : Window
 
     private void OnDockRightClick(object? sender, RoutedEventArgs e)
     {
-        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        var screen = Screens.Primary;
         if (screen != null)
         {
-            var bounds = screen.WorkingArea;
-            Position = new Avalonia.PixelPoint(bounds.Right - (int)Width - 20, bounds.Y + (bounds.Height - (int)Height) / 2);
+            Position = new Avalonia.PixelPoint(
+                screen.WorkingArea.Right - (int)Width - 20,
+                screen.WorkingArea.Y + (screen.WorkingArea.Height - (int)Height) / 2);
         }
     }
 
@@ -122,11 +199,8 @@ public partial class MobileMirrorWindow : Window
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        if (_service != null)
-        {
-            _service.FrameReceived -= OnFrameReceived;
-            _service.StateChanged -= OnStateChanged;
-        }
+        _androidEngine.StopScreenMirror();
+        _airPlayEngine?.Stop();
         base.OnClosing(e);
     }
 }

@@ -59,7 +59,7 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     private bool _isSystemAudioMuted = false;
 
     [ObservableProperty]
-    private bool _isCursorHighlightActive = true;
+    private bool _isCursorHighlightActive = false;
 
     partial void OnIsCursorHighlightActiveChanged(bool value)
     {

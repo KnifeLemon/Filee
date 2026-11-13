@@ -195,6 +195,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
 
             var overlayWindow = new CaptureOverlayWindow();
             _captureOverlayWindow = overlayWindow;
+            overlayWindow.UpdateCursorHighlight(config.HighlightCursor);
+            overlayWindow.UpdateSpotlight(config.SpotlightMode, config.SpotlightRadius);
 
             if (config.CountdownBeforeRecording)
             {
@@ -276,7 +278,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             barWindow.HoverChanged += hovered => overlayWindow.SetToolbarHover(hovered);
             barWindow.BoundsChangedNotification += bounds => overlayWindow.UpdateToolbarBounds(bounds);
 
-            barVm.MobileMirrorToggled += async () =>
+            barVm.MobileMirrorToggled += () =>
             {
                 if (_mobileMirrorWindow is { IsVisible: true })
                 {
@@ -285,14 +287,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
                 }
                 else
                 {
-                    var connectService = services.GetRequiredService<FileeConnectService>();
-                    connectService.MirrorService = studioService.MirrorService;
-                    if (!connectService.IsRunning)
-                    {
-                        try { await connectService.StartSessionAsync(); } catch { }
-                    }
-
-                    _mobileMirrorWindow = new MobileMirrorWindow(studioService.MirrorService, connectService);
+                    _mobileMirrorWindow = new MobileMirrorWindow(studioService.MirrorService);
                     _mobileMirrorWindow.Show();
                 }
             };
