@@ -98,7 +98,9 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.SkipUnless(fx.Converters.Any(c => c.Id == "rhwp" && fx.Catalog.StatusOf(c).IsAvailable), "rhwp not found");
         // Not through slides and LibreOffice's PPTX → PDF.
         Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("org", "pdf")!.Steps.Select(s => s.Converter.Id));
-        Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("md", "pdf")!.Steps.Select(s => s.Converter.Id));
+        // Markdown goes to WeasyPrint when it is installed (its routes are tested in WeasyPrintTests).
+        Assert.Equal(fx.Catalog.StatusOf(fx.Converters.Single(c => c.Id == "weasyprint")).IsAvailable ? ["markdown", "weasyprint"] : ["hwpx-writer", "rhwp"],
+            planner.Plan("md", "pdf")!.Steps.Select(s => s.Converter.Id));
         Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("typ", "pdf")!.Steps.Select(s => s.Converter.Id));
     }
 

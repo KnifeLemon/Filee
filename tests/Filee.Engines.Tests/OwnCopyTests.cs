@@ -131,6 +131,7 @@ public sealed class SystemCopyTests : IDisposable
     [InlineData("ffmpeg", "ffmpeg version 2025-06-02-git-688f3944ce-full_build", null)]
     [InlineData("pandoc", "pandoc.exe 3.6.4\nFeatures: +server +lua", "3.6")]
     [InlineData("calibre", "ebook-convert.exe (calibre 8.5.0)\nCreated by: Kovid Goyal", "8.5")]
+    [InlineData("weasyprint", "WeasyPrint version 70.0", "70.0")]
     [InlineData("ghostscript", "10.04.0\r\n", "10.4")]
     [InlineData("libreoffice", "[Version]\nAllLanguages=en-US\nMsiProductVersion=25.2.4.3\n", "25.2")]
     [InlineData("libreoffice", "LibreOffice 26.2.6.2 98d5f8\n", "26.2")]

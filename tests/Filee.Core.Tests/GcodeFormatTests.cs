@@ -42,20 +42,20 @@ public class GcodeFormatTests
     }
 
     [Fact]
-    public void Version_86_libraries_learn_g_code_without_taking_custom_claims()
+    public void Version_88_libraries_learn_g_code_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var cad = profiles.Single(p => p.Id == "cad");
         string[] extensions = ["gcode", "gco", "ngc"];
         cad.Extensions.RemoveAll(extensions.Contains);
-        Assert.True(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(88, presets, profiles));
         Assert.All(extensions, e => Assert.Contains(e, cad.Extensions));
-        Assert.False(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(88, presets, profiles));
 
         cad.Extensions.RemoveAll(extensions.Contains);
         profiles.Insert(0, new ToolbarProfile { Id = "my-printer", Extensions = ["GCODE"] });
-        Assert.True(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(88, presets, profiles));
         Assert.DoesNotContain("gcode", cad.Extensions); // the user's own donut has it
         Assert.Contains("ngc", cad.Extensions);
         Assert.Equal("my-printer", ProfileSelector.Select(profiles, ["benchy.gcode"])?.Id);
