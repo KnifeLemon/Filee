@@ -59,7 +59,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
 
     // ───────────────────────── Word: spaces and line height (#510, #556, #280) ─────────────────────────
 
-    [Fact(Skip = "#510: found by this test: a Word document resolved against the built-in template takes its charPr useFontSpace=0, so a space is half the font size (5 pt at 10 pt; the font's own is 2.6 pt); fixed on branch p4/q2-cjk (75ef6d0a, StyleResolver)")]
+    [Fact]
     public async Task Issue510_a_space_is_as_wide_as_the_fonts_own_space()
     {
         // rhwp drew Word's spaces about twice as wide, so lines broke early and a one-page CV ran onto two pages.
@@ -100,7 +100,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Equal(2, over.Count);
     }
 
-    [Fact(Skip = "#510, #280: paragraph borders are not drawn yet (backlog P0-2, branch p4/q1-borders); a heading's bottom rule is lost")]
+    [Fact]
     public async Task Issue510_a_heading_rule_is_drawn_under_the_heading()
     {
         // The CV's section headings carry a bottom border (w:pBdr), which rhwp draws since main #1138.
@@ -132,7 +132,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
             Assert.Contains($"Page{i + 1}of3", Text(pages[i]));
     }
 
-    [Fact(Skip = "#1152, #280: a first-page header with content is replaced by the default header (backlog P0-3, main #1159, branch p4/q2-headers)")]
+    [Fact]
     public async Task Issue1152_a_first_page_header_with_content_shows_on_page_one()
     {
         var docx = Docx(P(R("cover")) + PageBreak + P(R("contents")));
@@ -147,7 +147,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Contains("Runningheader", Text(pages[1]));
     }
 
-    [Fact(Skip = "#1152, #416: a header taller than the top margin is drawn over the body instead of moving it down (backlog P0-3, main #1156, branch p4/q2-headers)")]
+    [Fact]
     public async Task Issue1152_a_header_taller_than_the_top_margin_moves_the_body_down()
     {
         // Eight header lines from 0.5 in: the header ends near 155 pt, well under the 1 inch (72 pt) top margin.
@@ -163,7 +163,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.True(body > headerEnd + 5, $"body baseline {body}, header's last baseline {headerEnd}");
     }
 
-    [Fact(Skip = "#1152: a continuous section's header shows from the section's first page, before the break (backlog P0-3, main #1158, branch p4/q2-headers)")]
+    [Fact]
     public async Task Issue1152_a_continuous_sections_header_starts_on_the_next_page()
     {
         var docx = Docx("");
@@ -280,7 +280,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.True(check.Ok, check.ToString());
     }
 
-    [Fact(Skip = "#280: paragraph borders are not drawn yet (backlog P0-2, branch p4/q1-borders); the rule under the header is lost")]
+    [Fact]
     public async Task Issue280_the_rule_under_the_header_is_drawn()
     {
         var docx = Docx(P(R("body")));
@@ -462,7 +462,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
 
     // ───────────────────────── Word: right-to-left documents (#202, #216, #620) ─────────────────────────
 
-    [Fact(Skip = "#202, #185: Word's w:bidi is not read, so an Arabic paragraph that starts with Latin text is laid out left to right (backlog P0-4, branch p4/q1-rtl)")]
+    [Fact]
     public async Task Issue202_an_arabic_paragraph_starting_with_latin_text_reads_right_to_left()
     {
         NeedFonts(RepositoryFonts.Arabic);
@@ -475,7 +475,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.True(glyphs.Single(g => g.Char == 'F').X > glyphs.Where(g => g.Char >= 0x0600).Max(g => g.X));
     }
 
-    [Fact(Skip = "#216: w:bidiVisual is not read, so a right-to-left table keeps its first column on the left (backlog P0-4, branch p4/q1-rtl)")]
+    [Fact]
     public async Task Issue216_a_right_to_left_table_puts_its_first_column_on_the_right()
     {
         var cells = string.Concat(new[] { "first", "second" }.Select(t => $"<w:tc><w:tcPr><w:tcW w:w=\"3000\" w:type=\"dxa\"/></w:tcPr>{P(R(t))}</w:tc>"));
@@ -485,7 +485,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.True(Span(glyphs, "first").Left > Span(glyphs, "second").Right);
     }
 
-    [Fact(Skip = "#620: a note's own number (w:footnoteRef) in right-to-left note text isn't placed between its brackets (backlog P0-4, branch p4/q1-rtl)")]
+    [Fact]
     public async Task Issue620_a_footnote_number_stays_between_its_brackets_in_right_to_left_notes()
     {
         NeedFonts(RepositoryFonts.Arabic);
@@ -534,7 +534,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Contains(with.Items, i => i is DrawingItem);
     }
 
-    [Fact(Skip = "#65, #51: 한글 paragraph borders (문단 테두리, an exam's 보기 box) are not drawn yet (backlog P0-2, branch p4/q1-borders)")]
+    [Fact]
     public void Issue65_a_hangul_paragraph_box_is_drawn_around_its_paragraphs()
     {
         NeedFonts(RepositoryFonts.Korean);
@@ -758,7 +758,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         }
     }
 
-    [Fact(Skip = "#1098: a block quote's bar and background (HParaFormat.LeftBar, Fill) are not drawn yet (backlog P0-2, branch p4/q1-borders)")]
+    [Fact]
     public async Task Issue1098_a_block_quote_has_its_bar_and_background()
     {
         NeedFonts(RepositoryFonts.Latin);
