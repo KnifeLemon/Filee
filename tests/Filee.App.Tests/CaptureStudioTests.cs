@@ -56,9 +56,8 @@ public sealed class CaptureStudioTests
     public void CaptureStudioBarViewModel_toggles_and_emits_tool_events()
     {
         var targetService = new WindowTargetService();
-        var mirrorService = new MobileMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+        var studio = new CaptureStudioService(targetService, engine);
 
         var config = new CaptureConfig { HighlightCursor = true, SpotlightMode = false };
         var vm = new CaptureStudioBarViewModel(studio, config);
@@ -90,40 +89,11 @@ public sealed class CaptureStudioTests
     }
 
     [Fact]
-    public void MobileMirrorService_handles_streaming_state_and_frames()
-    {
-        var service = new MobileMirrorService();
-        Assert.False(service.IsStreaming);
-        Assert.Equal(0, service.FrameCount);
-
-        bool stateNotified = false;
-        service.StateChanged += s => stateNotified = s;
-
-        service.OnConnected();
-        Assert.True(service.IsStreaming);
-        Assert.True(stateNotified);
-
-        byte[]? received = null;
-        service.FrameReceived += bytes => received = bytes;
-
-        var sampleFrame = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10 };
-        service.OnFrame(sampleFrame);
-
-        Assert.Equal(1, service.FrameCount);
-        Assert.Equal(sampleFrame, service.LastJpegFrame);
-        Assert.NotNull(received);
-
-        service.OnDisconnected();
-        Assert.False(service.IsStreaming);
-    }
-
-    [Fact]
     public void CaptureStudioEditorViewModel_subtitles_and_trim_operations()
     {
         var targetService = new WindowTargetService();
-        var mirrorService = new MobileMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+        var studio = new CaptureStudioService(targetService, engine);
         var loc = new DummyLocalizer();
 
         var meta = new RecordedVideoMetadata(
@@ -160,9 +130,8 @@ public sealed class CaptureStudioTests
     public void CaptureStudioBarViewModel_mic_toggle_notifies()
     {
         var targetService = new WindowTargetService();
-        var mirrorService = new MobileMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+        var studio = new CaptureStudioService(targetService, engine);
 
         var config = new CaptureConfig { EnableMicrophone = true };
         var vm = new CaptureStudioBarViewModel(studio, config);
@@ -205,9 +174,8 @@ public sealed class CaptureStudioTests
     public void CaptureStudioEditorViewModel_active_subtitle_updates_on_position_change()
     {
         var targetService = new WindowTargetService();
-        var mirrorService = new MobileMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+        var studio = new CaptureStudioService(targetService, engine);
         var loc = new DummyLocalizer();
 
         var meta = new RecordedVideoMetadata(
@@ -241,9 +209,8 @@ public sealed class CaptureStudioTests
     public void CaptureStudioBarViewModel_icons_and_pause_toggle_state()
     {
         var targetService = new WindowTargetService();
-        var mirrorService = new MobileMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+        var studio = new CaptureStudioService(targetService, engine);
 
         var config = new CaptureConfig { EnableMicrophone = true };
         var vm = new CaptureStudioBarViewModel(studio, config);
@@ -289,9 +256,8 @@ public sealed class CaptureStudioTests
     public void CaptureStudioEditorViewModel_play_button_icon()
     {
         var targetService = new WindowTargetService();
-        var mirrorService = new MobileMirrorService();
         var engine = new CaptureRecordingEngine();
-        var studio = new CaptureStudioService(targetService, engine, mirrorService);
+        var studio = new CaptureStudioService(targetService, engine);
         var loc = new DummyLocalizer();
 
         var meta = new RecordedVideoMetadata(
@@ -318,16 +284,6 @@ public sealed class CaptureStudioTests
         var loc = new DummyLocalizer();
         var vm = new CaptureStudioConfigViewModel(targetService, loc);
         Assert.False(vm.HighlightCursor);
-    }
-
-    [Fact]
-    public void AndroidMirrorEngine_FindAdb_and_device_handling()
-    {
-        var adb = AndroidMirrorEngine.FindAdb();
-        Assert.False(string.IsNullOrWhiteSpace(adb));
-
-        var engine = new AndroidMirrorEngine();
-        Assert.False(engine.IsActive);
     }
 
     [Fact]
@@ -396,79 +352,5 @@ public sealed class CaptureStudioTests
         {
             Assert.Contains("gdigrab", psiGdi.ArgumentList);
         }
-    }
-
-    [Fact]
-    public void AirPlayMirrorEngine_initialization_and_metadata()
-    {
-        var mirrorService = new MobileMirrorService();
-        var engine = new AirPlayMirrorEngine(mirrorService);
-        Assert.False(string.IsNullOrWhiteSpace(engine.ServerName));
-        Assert.False(string.IsNullOrWhiteSpace(AirPlayMirrorEngine.GetMacAddressString()));
-
-        var txt = AirPlayMirrorEngine.BuildTxtRecord("model=AppleTV3,2", "flags=0x4");
-        Assert.NotEmpty(txt);
-
-        // Verify start and stop cycle
-        engine.Start();
-        Assert.True(engine.IsListening);
-        engine.Stop();
-        Assert.False(engine.IsListening);
-    }
-
-    [Fact]
-    public void BPlistWriter_and_Reader_roundtrip()
-    {
-        var w = new BPlistWriter();
-        var strKey = w.AddString("deviceName");
-        var strVal = w.AddString("FileeTest");
-        var uintKey = w.AddString("port");
-        var uintVal = w.AddUint(7100);
-        var dataKey = w.AddString("rawKey");
-        var rawBytes = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 };
-        var dataVal = w.AddData(rawBytes);
-
-        var rootDict = w.AddDict([
-            new(strKey, strVal),
-            new(uintKey, uintVal),
-            new(dataKey, dataVal)
-        ]);
-
-        var bplist = w.Build(rootDict);
-        Assert.NotNull(bplist);
-        Assert.True(bplist.Length >= 40);
-        Assert.Equal((byte)'b', bplist[0]);
-        Assert.Equal((byte)'p', bplist[1]);
-        Assert.Equal((byte)'l', bplist[2]);
-        Assert.Equal((byte)'i', bplist[3]);
-        Assert.Equal((byte)'s', bplist[4]);
-        Assert.Equal((byte)'t', bplist[5]);
-        Assert.Equal((byte)'0', bplist[6]);
-        Assert.Equal((byte)'0', bplist[7]);
-
-        var reader = new BPlistReader();
-        Assert.True(reader.Parse(bplist));
-        Assert.True(reader.HasKey("deviceName"));
-        Assert.True(reader.TryGetUint("port", out var parsedPort));
-        Assert.Equal(7100UL, parsedPort);
-        Assert.True(reader.TryGetData("rawKey", out var parsedData));
-        Assert.Equal(rawBytes, parsedData);
-    }
-
-    [Fact]
-    public void AirPlay_FairPlay_constants_and_tables_valid()
-    {
-        Assert.Equal(4, Filee.App.Services.Capture.AirPlayCrypto.FairPlayConstants.ReplyMessages.Length);
-        foreach (var msg in Filee.App.Services.Capture.AirPlayCrypto.FairPlayConstants.ReplyMessages)
-        {
-            Assert.Equal(142, msg.Length);
-            Assert.Equal(0x46, msg[0]); // 'F'
-            Assert.Equal(0x50, msg[1]); // 'P'
-            Assert.Equal(0x4C, msg[2]); // 'L'
-            Assert.Equal(0x59, msg[3]); // 'Y'
-        }
-
-        Assert.Equal(12, Filee.App.Services.Capture.AirPlayCrypto.FairPlayConstants.FpHeader.Length);
-        Assert.Equal(0x46, Filee.App.Services.Capture.AirPlayCrypto.FairPlayConstants.FpHeader[0]);
     }
 }

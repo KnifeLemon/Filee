@@ -29,7 +29,6 @@
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="BouncyCastle.Cryptography" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="SharpHook" />
@@ -53,7 +52,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Resources\AirPlay\*.bin" />
   </ItemGroup>
 
   <ItemGroup>

@@ -41,7 +41,6 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     private CaptureStudioConfigWindow? _captureConfigWindow;
     private CaptureStudioBarWindow? _captureBarWindow;
     private CaptureOverlayWindow? _captureOverlayWindow;
-    private MobileMirrorWindow? _mobileMirrorWindow;
     private CaptureStudioEditorWindow? _captureEditorWindow;
 
     internal FileeConnectQrWindow? ConnectQrWindow => _connectQrWindow;
@@ -278,32 +277,12 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             barWindow.HoverChanged += hovered => overlayWindow.SetToolbarHover(hovered);
             barWindow.BoundsChangedNotification += bounds => overlayWindow.UpdateToolbarBounds(bounds);
 
-            barVm.MobileMirrorToggled += () =>
-            {
-                if (_mobileMirrorWindow is { IsVisible: true })
-                {
-                    _mobileMirrorWindow.Close();
-                    _mobileMirrorWindow = null;
-                }
-                else
-                {
-                    _mobileMirrorWindow = new MobileMirrorWindow(studioService.MirrorService);
-                    _mobileMirrorWindow.Show();
-                }
-            };
-
             barVm.StopRequested += async () =>
             {
                 barWindow.Close();
                 overlayWindow.Close();
                 _captureBarWindow = null;
                 _captureOverlayWindow = null;
-
-                if (_mobileMirrorWindow != null)
-                {
-                    _mobileMirrorWindow.Close();
-                    _mobileMirrorWindow = null;
-                }
 
                 var meta = await studioService.StopRecordingAsync();
                 if (meta != null && File.Exists(meta.VideoPath))

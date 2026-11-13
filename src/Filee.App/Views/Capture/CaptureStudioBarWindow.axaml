@@ -159,8 +159,8 @@
 
         </StackPanel>
 
-        <!-- Row 2: Recording Controls (Timer, Pause/Resume, Mobile Connect, Stop Recording) -->
-        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" VerticalAlignment="Center">
+        <!-- Row 2: Recording Controls (Timer, Pause/Resume, Stop Recording) -->
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto" VerticalAlignment="Center">
 
           <!-- Drag Handle & Recording Pulse -->
           <Border Grid.Column="0" Cursor="SizeAll" PointerPressed="OnDragHandlePointerPressed"
@@ -187,18 +187,8 @@
             </StackPanel>
           </Button>
 
-          <!-- Mobile Connect / Mirror -->
-          <Button Grid.Column="3" Command="{Binding ToggleMobileMirrorCommand}" Margin="4,0"
-                  Background="{DynamicResource AccentSubtleBrush}" Foreground="{DynamicResource AccentBrush}"
-                  CornerRadius="14" Height="28" Padding="10,0" ToolTip.Tip="Connect &amp; Mirror Mobile Screen">
-            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-              <TextBlock Text="📱" FontSize="12" VerticalAlignment="Center" />
-              <TextBlock Text="Mobile Connect" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center" />
-            </StackPanel>
-          </Button>
-
           <!-- Stop Recording (Prominent Red Button at end on right) -->
-          <Button Grid.Column="4" Command="{Binding StopRecordingCommand}" Margin="6,0,0,0"
+          <Button Grid.Column="3" Command="{Binding StopRecordingCommand}" Margin="6,0,0,0"
                   Background="#FF3B30" Foreground="White"
                   CornerRadius="14" Height="28" Padding="12,0" ToolTip.Tip="Stop Recording &amp; Open Studio Editor">
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">

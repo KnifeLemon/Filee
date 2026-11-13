@@ -72,7 +72,6 @@ public static class AppHost
         services.AddSingleton<Filee.App.Services.Connect.FileeConnectService>();
         services.AddSingleton<Filee.App.Services.Capture.WindowTargetService>();
         services.AddSingleton<Filee.App.Services.Capture.CaptureRecordingEngine>();
-        services.AddSingleton<Filee.App.Services.Capture.MobileMirrorService>();
         services.AddSingleton<Filee.App.Services.Capture.CaptureStudioService>();
         services.AddSingleton<TriggerService>();
         services.AddSingleton<RadialController>();

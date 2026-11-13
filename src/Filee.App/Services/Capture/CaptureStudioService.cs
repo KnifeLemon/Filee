@@ -17,11 +17,9 @@ public sealed class CaptureStudioService
     private readonly ILogger<CaptureStudioService>? _log;
     private readonly WindowTargetService _targetService;
     private readonly CaptureRecordingEngine _engine;
-    private readonly MobileMirrorService _mirrorService;
 
     public WindowTargetService TargetService => _targetService;
     public CaptureRecordingEngine RecordingEngine => _engine;
-    public MobileMirrorService MirrorService => _mirrorService;
 
     public CaptureConfig CurrentConfig { get; set; } = new();
     public RecordedVideoMetadata? LastRecordedVideo { get; set; }
@@ -29,12 +27,10 @@ public sealed class CaptureStudioService
     public CaptureStudioService(
         WindowTargetService targetService,
         CaptureRecordingEngine engine,
-        MobileMirrorService mirrorService,
         ILogger<CaptureStudioService>? log = null)
     {
         _targetService = targetService;
         _engine = engine;
-        _mirrorService = mirrorService;
         _log = log;
     }
 
