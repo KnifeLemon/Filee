@@ -571,6 +571,9 @@ internal sealed class HImage(string path) : HObject
 
     /// <summary>Stacking order among floating objects (higher is in front); null = document order.</summary>
     public int? ZOrder { get; set; }
+
+    /// <summary>Colour changes drawn over the picture (Word's washout, grey scale, transparency); null = none. Read for layout only.</summary>
+    public HPictureEffects? Effects { get; set; }
 }
 
 /// <summary>A box with its own paragraphs (DOCX text box, 한글 글상자).</summary>
@@ -601,6 +604,9 @@ internal sealed class HTextBox : HObject
     public HInsets Padding { get; set; } = new(283, 283, 283, 283);
     public HVerticalAlign VerticalAlign { get; set; }
     public List<HBlock> Blocks { get; } = [];
+
+    /// <summary>The box is WordArt (a Word watermark ...): how its text is drawn; null = as paragraphs. Read for layout only.</summary>
+    public HTextArt? TextArt { get; set; }
 }
 
 internal enum HShapeKind
