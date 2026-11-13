@@ -32,6 +32,18 @@ public sealed class EngineInstallerTests : IDisposable
             EngineEnvironment.DefaultDownloadRoot(null));
     }
 
+    [Theory]
+    [InlineData("win-x64")]
+    [InlineData("osx-x64")]
+    [InlineData("osx-arm64")]
+    public void LibreOffice_is_pinned_to_its_permanent_archive(string runtime)
+    {
+        // download.documentfoundation.org/libreoffice/stable/ drops a version when the next comes out, and the pinned
+        // URL then fails in every released Filee (#1474); the archive keeps each build.
+        var libreOffice = EngineDownloads.ComponentsForRuntime(runtime)["libreoffice"];
+        Assert.StartsWith("https://downloadarchive.documentfoundation.org/libreoffice/old/", libreOffice.Url, StringComparison.Ordinal);
+    }
+
     /// <summary>Serves byte arrays by URL; a string value is a redirect target.</summary>
     private sealed class FakeServer(Dictionary<string, object> content) : HttpMessageHandler
     {
