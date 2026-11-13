@@ -311,7 +311,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
 
             barWindow.Show(overlayWindow);
             barWindow.CenterOnTopScreen();
-            overlayWindow.ShowActionToast("Recording Started", "🔴");
+            barWindow.ExcludeFromCapture();
         };
 
         configWindow.Closed += (_, _) =>

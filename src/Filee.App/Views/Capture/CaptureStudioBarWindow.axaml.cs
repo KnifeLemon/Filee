@@ -1,12 +1,19 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Threading;
 using Filee.App.ViewModels.Capture;
 
 namespace Filee.App.Views.Capture;
 
 public partial class CaptureStudioBarWindow : Window
 {
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+    private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
     public event Action<bool>? HoverChanged;
     public event Action<Rect>? BoundsChangedNotification;
 
@@ -16,7 +23,39 @@ public partial class CaptureStudioBarWindow : Window
 
         PointerEntered += (_, _) => HoverChanged?.Invoke(true);
         PointerExited += (_, _) => HoverChanged?.Invoke(false);
-        Loaded += (_, _) => CenterOnTopScreen();
+        Loaded += (_, _) =>
+        {
+            CenterOnTopScreen();
+            ExcludeFromCapture();
+        };
+        Opened += (_, _) => ExcludeFromCapture();
+    }
+
+    public void ExcludeFromCapture()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        try
+        {
+            var hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+            if (hwnd != IntPtr.Zero)
+            {
+                SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+            }
+            else
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    var h = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                    if (h != IntPtr.Zero)
+                    {
+                        SetWindowDisplayAffinity(h, WDA_EXCLUDEFROMCAPTURE);
+                    }
+                }, DispatcherPriority.Loaded);
+            }
+        }
+        catch { }
     }
 
     public void CenterOnTopScreen()

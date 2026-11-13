@@ -53,7 +53,6 @@ public partial class CaptureOverlayWindow : Window
     private bool _isToolbarHovered;
     private Rect _toolbarBounds;
     private Control? _activePreviewControl;
-    private DispatcherTimer? _toastTimer;
     private readonly DispatcherTimer _cursorTrackerTimer;
 
     public CaptureOverlayWindow()
@@ -157,23 +156,7 @@ public partial class CaptureOverlayWindow : Window
 
     public void ShowActionToast(string message, string icon = "ℹ")
     {
-        Dispatcher.UIThread.Post(() =>
-        {
-            _toastTimer?.Stop();
-            ToastIcon.Text = icon;
-            ToastMessage.Text = message;
-            ActionToast.IsVisible = true;
-            ActionToast.Opacity = 1.0;
-
-            _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1300) };
-            _toastTimer.Tick += (_, _) =>
-            {
-                _toastTimer.Stop();
-                ActionToast.IsVisible = false;
-                ActionToast.Opacity = 0.0;
-            };
-            _toastTimer.Start();
-        });
+        // Suppressed during capture sessions so no toast cards appear in the recorded output video
     }
 
     public void UpdateTool(AnnotationTool tool)
@@ -473,25 +456,27 @@ public partial class CaptureOverlayWindow : Window
             Height = h
         };
 
+        // Realistic frosted blur mask: neutral translucent gradient with soft edges and no distracting placeholder text
         var mask = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(235, 30, 30, 35)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(160, 255, 255, 255)),
-            BorderThickness = new Thickness(1.5),
-            CornerRadius = new CornerRadius(6),
-            Child = new TextBlock
+            Background = new LinearGradientBrush
             {
-                Text = "░░ BLURRED ░░",
-                FontSize = 10,
-                FontWeight = FontWeight.Bold,
-                Foreground = Brushes.Silver,
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-            }
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+                GradientStops =
+                {
+                    new GradientStop(Color.FromArgb(220, 32, 34, 40), 0.0),
+                    new GradientStop(Color.FromArgb(235, 18, 20, 24), 1.0)
+                }
+            },
+            BorderBrush = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5),
+            BoxShadow = new BoxShadows(new BoxShadow { Blur = 8, Color = Color.FromArgb(60, 0, 0, 0) })
         };
         container.Children.Add(mask);
 
-        // Cross (✕) delete button at top-right
+        // Cross (✕) delete button at top-right - ONLY visible on mouse hover, completely invisible in recorded video
         var closeBtn = new Button
         {
             Content = new TextBlock
@@ -511,15 +496,18 @@ public partial class CaptureOverlayWindow : Window
             HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
             Margin = new Thickness(0, 2, 2, 0),
-            Cursor = new Cursor(StandardCursorType.Hand)
+            Cursor = new Cursor(StandardCursorType.Hand),
+            IsVisible = false
         };
 
         closeBtn.Click += (_, _) =>
         {
             OverlayCanvas.Children.Remove(container);
             _annotationControls.Remove(container);
-            ShowActionToast("Blur Mask Removed", "🗑");
         };
+
+        container.PointerEntered += (_, _) => closeBtn.IsVisible = true;
+        container.PointerExited += (_, _) => closeBtn.IsVisible = false;
 
         container.Children.Add(closeBtn);
 
@@ -537,10 +525,10 @@ public partial class CaptureOverlayWindow : Window
         {
             Background = new SolidColorBrush(Color.FromArgb(245, 255, 255, 255)),
             BorderBrush = _activeBrush,
-            BorderThickness = new Thickness(2),
+            BorderThickness = new Thickness(1.5),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(6, 4),
-            BoxShadow = new BoxShadows(new BoxShadow { Blur = 8, Color = Color.FromArgb(80, 0, 0, 0) })
+            BoxShadow = new BoxShadows(new BoxShadow { Blur = 8, Color = Color.FromArgb(60, 0, 0, 0) })
         };
 
         var rootStack = new StackPanel { Spacing = 4 };
@@ -567,7 +555,7 @@ public partial class CaptureOverlayWindow : Window
         // A- button
         var shrinkBtn = new Button
         {
-            Content = new TextBlock { Text = "A-", FontSize = 10, FontWeight = FontWeight.Bold },
+            Content = new TextBlock { Text = "A-", FontSize = 10, FontWeight = FontWeight.Bold, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center },
             Padding = new Thickness(4, 1),
             Height = 20,
             CornerRadius = new CornerRadius(4),
@@ -594,7 +582,7 @@ public partial class CaptureOverlayWindow : Window
         // A+ button
         var growBtn = new Button
         {
-            Content = new TextBlock { Text = "A+", FontSize = 10, FontWeight = FontWeight.Bold },
+            Content = new TextBlock { Text = "A+", FontSize = 10, FontWeight = FontWeight.Bold, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center },
             Padding = new Thickness(4, 1),
             Height = 20,
             CornerRadius = new CornerRadius(4),
@@ -633,17 +621,67 @@ public partial class CaptureOverlayWindow : Window
 
         var textBox = new TextBox
         {
-            Text = "Caption...",
+            Text = "",
+            PlaceholderText = "Type text here...",
             FontSize = currentFontSize,
             FontWeight = FontWeight.Bold,
             Foreground = _activeBrush,
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            MinWidth = 140,
+            MinWidth = 120,
             AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            SelectionStart = 0,
-            SelectionEnd = 10
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        void SetEditingMode(bool editing)
+        {
+            controlsBar.IsVisible = editing;
+            if (editing)
+            {
+                container.Background = new SolidColorBrush(Color.FromArgb(245, 255, 255, 255));
+                container.BorderBrush = _activeBrush;
+                container.BorderThickness = new Thickness(1.5);
+                container.BoxShadow = new BoxShadows(new BoxShadow { Blur = 8, Color = Color.FromArgb(60, 0, 0, 0) });
+            }
+            else
+            {
+                container.Background = Brushes.Transparent;
+                container.BorderThickness = new Thickness(0);
+                container.BoxShadow = default;
+                textBox.SelectionStart = 0;
+                textBox.SelectionEnd = 0;
+            }
+        }
+
+        textBox.GotFocus += (_, _) => SetEditingMode(true);
+        textBox.LostFocus += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(textBox.Text))
+            {
+                OverlayCanvas.Children.Remove(container);
+                _annotationControls.Remove(container);
+                return;
+            }
+            SetEditingMode(false);
+        };
+
+        textBox.KeyDown += (_, keyArgs) =>
+        {
+            if (keyArgs.Key == Key.Escape || (keyArgs.Key == Key.Enter && !keyArgs.KeyModifiers.HasFlag(KeyModifiers.Shift)))
+            {
+                SetEditingMode(false);
+                Focus();
+                keyArgs.Handled = true;
+            }
+        };
+
+        container.PointerEntered += (_, _) => SetEditingMode(true);
+        container.PointerExited += (_, _) =>
+        {
+            if (!textBox.IsFocused)
+            {
+                SetEditingMode(false);
+            }
         };
 
         shrinkBtn.Click += (_, _) =>
@@ -670,7 +708,6 @@ public partial class CaptureOverlayWindow : Window
         {
             OverlayCanvas.Children.Remove(container);
             _annotationControls.Remove(container);
-            ShowActionToast("Text Callout Removed", "🗑");
         };
 
         // Drag container by handle
@@ -717,7 +754,6 @@ public partial class CaptureOverlayWindow : Window
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         _cursorTrackerTimer.Stop();
-        _toastTimer?.Stop();
         base.OnClosing(e);
     }
 }

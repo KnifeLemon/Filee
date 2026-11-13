@@ -177,9 +177,10 @@
 
           <!-- Pause / Resume Recording -->
           <Button Grid.Column="2" Command="{Binding TogglePauseCommand}" Margin="4,0"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                   Background="Transparent" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
                   CornerRadius="14" Height="28" Padding="10,0" ToolTip.Tip="Pause or Resume Recording">
-            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" HorizontalAlignment="Center">
               <TextBlock Text="{Binding PauseButtonIcon}"
                          FontSize="12" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
               <TextBlock Text="{Binding PauseButtonText}"
@@ -189,9 +190,10 @@
 
           <!-- Mobile Mirror (1Phone) -->
           <Button Grid.Column="3" Command="{Binding ToggleMobileMirrorCommand}" Margin="4,0"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                   Background="{DynamicResource AccentSubtleBrush}" Foreground="{DynamicResource AccentBrush}"
                   CornerRadius="14" Height="28" Padding="10,0" ToolTip.Tip="Mirror Mobile Screen (1Phone Mirror)">
-            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" HorizontalAlignment="Center">
               <TextBlock Text="📱" FontSize="12" VerticalAlignment="Center" />
               <TextBlock Text="Mobile Mirror" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center" />
             </StackPanel>
@@ -199,9 +201,10 @@
 
           <!-- Stop Recording (Prominent Red Button at end on right) -->
           <Button Grid.Column="4" Command="{Binding StopRecordingCommand}" Margin="6,0,0,0"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                   Background="#FF3B30" Foreground="White"
                   CornerRadius="14" Height="28" Padding="12,0" ToolTip.Tip="Stop Recording &amp; Open Studio Editor">
-            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Center">
               <Rectangle Width="8" Height="8" Fill="White" RadiusX="1.5" RadiusY="1.5" VerticalAlignment="Center" />
               <TextBlock Text="Stop Recording" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" />
             </StackPanel>
