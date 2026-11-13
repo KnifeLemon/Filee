@@ -82,6 +82,7 @@ internal sealed class GdiPlayer : IDisposable
     private readonly float _patternUnit;
     private readonly double _deviceUnitsPerMmX, _deviceUnitsPerMmY;
     private readonly SKRect _everything;
+    private readonly SKRect _picture;
     private readonly List<DcState> _saved = [];
     private readonly Dictionary<(SKImage, SKColor, SKColor), SKImage> _coloredPatterns = [];
     private DcState _dc = new();
@@ -104,6 +105,7 @@ internal sealed class GdiPlayer : IDisposable
         _patternUnit = pixel > 0 ? pixel : (float)(_deviceUnitsPerMmX * 25.4 / 96);
         var size = Math.Max(bounds.Width, bounds.Height) * 16 + 1;
         _everything = SKRect.Inflate(bounds, size, size);
+        _picture = bounds;
         Budget = budget;
         Fonts = text;
     }
@@ -775,8 +777,9 @@ internal sealed class GdiPlayer : IDisposable
     /// <summary>
     /// A region operation. Rectangles and regions that don't overlap are combined without PathOps (IntersectClipRect
     /// and ExcludeClipRect on a rectangular clip, the usual case). PathOps' time grows with the square of the points and
-    /// faster when edges cross, so the rest counts the square of its points as drawing operations, and regions past
-    /// <see cref="MetafileLimits.MaxRegionOperationPoints"/> together are refused.
+    /// much faster when edges cross, so it only combines regions of up to
+    /// <see cref="MetafileLimits.MaxRegionOperationPoints"/> points together (counting the square of their points as
+    /// drawing operations); larger regions are combined on a grid (<see cref="GridOp"/>).
     /// </summary>
     private SKPath Op(SKPath a, SKPath b, SKPathOp op)
     {
@@ -808,10 +811,105 @@ internal sealed class GdiPlayer : IDisposable
         }
         var points = (long)a.PointCount + b.PointCount;
         if (points > Budget.Limits.MaxRegionOperationPoints)
-            throw MetafileLimits.Exceeded($"A clip record in the metafile combines regions of {Documents.DocumentLimits.Count(points)} points, more than {Documents.DocumentLimits.Count(Budget.Limits.MaxRegionOperationPoints)}.");
+            return GridOp(a, b, op);
         Budget.Operations(points * points, "combined clip regions");
         return a.Op(b, op) ?? new SKPath(op == SKPathOp.Intersect ? b : a);
     }
+
+    /// <summary>Rows of the grid a large region operation is done on, at most (finer for small pictures, up to 8 per device unit).</summary>
+    private const int RegionGridRows = 2048;
+
+    /// <summary>
+    /// Edge rows (the grid rows each edge crosses, what scan conversion costs; each counts as a drawing operation) of
+    /// one region operation; past this the grid is made coarser, down to 64 rows.
+    /// </summary>
+    private const double MaxEdgeRows = 500_000;
+
+    /// <summary>
+    /// A region operation on regions too large for PathOps, done as GDI does it: both regions scan converted on a
+    /// grid over the picture (SKRegion) and combined there, then turned back into a path. Its cost is the rows each
+    /// edge crosses, counted as drawing operations before anything is converted. Regions whose edges cross the grid
+    /// too often even on a coarse grid (a self-crossing path of many points) are combined as their bounding boxes.
+    /// </summary>
+    private SKPath GridOp(SKPath a, SKPath b, SKPathOp op)
+    {
+        var view = SKRect.Inflate(_picture, 1, 1);
+        var area = Inverse(a) || Inverse(b) ? view : SKRect.Intersect(Union(a.Bounds, b.Bounds), view);
+        if (area.IsEmpty)
+            return new SKPath(); // nothing of either is inside the picture
+        var origin = new SKPoint(MathF.Floor(area.Left), MathF.Floor(area.Top));
+        var size = MathF.Max(area.Right - origin.X, area.Bottom - origin.Y) + 1;
+        var scale = RegionGridRows / size;
+        if (scale >= 1)
+            scale = MathF.Min(8, MathF.Floor(scale)); // whole grid cells per device unit: integer regions stay exact
+        var rise = Rise(a) + Rise(b);
+        var points = (double)a.PointCount + b.PointCount;
+        if (rise * scale + points > MaxEdgeRows)
+            scale = (float)Math.Max(64 / size, (MaxEdgeRows - points) / Math.Max(1, rise));
+        var edgeRows = rise * scale + points;
+        if (!(edgeRows <= MaxEdgeRows))
+        {
+            // Too costly even on a coarse grid: the regions' bounding boxes stand in for them, and drawing goes on.
+            Budget.Operations((long)points, "points of large clip regions");
+            return BoxOp(Inverse(a) ? view : a.Bounds, Inverse(b) ? view : b.Bounds, op);
+        }
+        Budget.Operations((long)edgeRows + 1, "rows of large clip regions");
+
+        var grid = SKMatrix.CreateScale(scale, scale).PreConcat(SKMatrix.CreateTranslation(-origin.X, -origin.Y));
+        var cells = new SKRectI(0, 0, (int)MathF.Ceiling((area.Right - origin.X) * scale) + 1, (int)MathF.Ceiling((area.Bottom - origin.Y) * scale) + 1);
+        using var clip = new SKRegion(cells);
+        using var first = Region(a, grid, clip);
+        using var second = Region(b, grid, clip);
+        first.Op(second, op switch
+        {
+            SKPathOp.Intersect => SKRegionOperation.Intersect,
+            SKPathOp.Union => SKRegionOperation.Union,
+            SKPathOp.Xor => SKRegionOperation.XOR,
+            SKPathOp.ReverseDifference => SKRegionOperation.ReverseDifference,
+            _ => SKRegionOperation.Difference,
+        });
+        var result = first.GetBoundaryPath();
+        result.Transform(SKMatrix.CreateTranslation(origin.X, origin.Y).PreConcat(SKMatrix.CreateScale(1 / scale, 1 / scale)));
+        return result;
+
+        static SKRegion Region(SKPath path, SKMatrix grid, SKRegion clip)
+        {
+            using var scaled = new SKPath(path);
+            scaled.Transform(grid);
+            var region = new SKRegion();
+            region.SetPath(scaled, clip);
+            return region;
+        }
+    }
+
+    /// <summary>How far a path's points go up and down in all (device units): the rows its edges cross, at one row a unit.</summary>
+    private static double Rise(SKPath path)
+    {
+        var points = path.Points;
+        var rise = 0.0;
+        for (var i = 1; i < points.Length; i++)
+            rise += Math.Abs(points[i].Y - points[i - 1].Y);
+        return double.IsFinite(rise) ? rise : double.MaxValue;
+    }
+
+    /// <summary>A region operation on two bounding boxes (as rectangles: the result covers at least the exact one's area).</summary>
+    private static SKPath BoxOp(SKRect a, SKRect b, SKPathOp op)
+    {
+        var box = op switch
+        {
+            SKPathOp.Intersect => a.IntersectsWith(b) ? SKRect.Intersect(a, b) : SKRect.Empty,
+            SKPathOp.Difference => a,
+            SKPathOp.ReverseDifference => b,
+            _ => Union(a, b),
+        };
+        var path = new SKPath();
+        if (!box.IsEmpty)
+            path.AddRect(box);
+        return path;
+    }
+
+    /// <summary>The bounds of both rectangles, an empty one left out.</summary>
+    private static SKRect Union(SKRect a, SKRect b) => a.IsEmpty ? b : b.IsEmpty ? a : SKRect.Union(a, b);
 
     /// <summary>The rectangle a path fills when it is one rectangle, else null.</summary>
     private static SKRect? AsRectangle(SKPath path) => !Inverse(path) && path.IsRect ? path.Bounds : null;

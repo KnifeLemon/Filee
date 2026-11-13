@@ -500,7 +500,7 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Fact]
-    public void Clip_regions_stay_exact_and_huge_or_many_region_operations_are_refused()
+    public void Clip_regions_stay_exact_and_huge_or_many_region_operations_stay_fast()
     {
         // Rectangles combine without PathOps; a small path still goes through it.
         var emf = new EmfBuilder(192, 96)
@@ -522,19 +522,55 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
             Assert.Equal(0, Pixel(bitmap, 140, 48).Alpha); // the right half
         }
 
-        // A self-crossing path of 30,000 points combined with the clip: PathOps would take hours.
-        var huge = Star(new EmfBuilder(960, 960).Add(30, 0, 0, 500, 500).Add(59), 30_001, 960).Add(60).Add(67, 1).ToArray();
+        // A self-crossing path of 30,000 points combined with the clip (PathOps would take hours, and its edges cross
+        // too many rows even of a coarse grid): its bounding box stands in for it, and the picture is drawn.
+        var huge = Star(new EmfBuilder(960, 960).Add(30, 0, 0, 500, 500).Add(59), 30_001, 960).Add(60).Add(67, 1)
+            .Brush(1, Red).Select(1).Rectangle(0, 0, 960, 960)
+            .ToArray();
         var watch = Stopwatch.StartNew();
-        var error = Assert.Throws<ConversionRefusedException>(() => Draw(huge));
-        Assert.Contains("points", error.Message);
+        Draw(huge).Dispose();
 
         // Small crossing paths, again and again: the region operations count against the operation budget.
         var repeated = new EmfBuilder(960, 960);
         for (var i = 0; i < 10_000; i++)
             Star(repeated.Add(33).Add(30, 0, 0, 900, 900).Add(59), 101, 960).Add(60).Add(67, 3).Add(34, -1); // SAVEDC … RGN_XOR … RESTOREDC
-        error = Assert.Throws<ConversionRefusedException>(() => Draw(repeated.ToArray()));
+        var error = Assert.Throws<ConversionRefusedException>(() => Draw(repeated.ToArray()));
         Assert.Contains("operations", error.Message);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(15), $"took {watch.Elapsed}");
+    }
+
+    [Fact]
+    public void A_large_clip_path_is_combined_on_a_grid_and_drawn()
+    {
+        // A 2,000-point polygon (a circle of radius 80 around the middle) as a clip path, ANDed with a clip rectangle that
+        // cuts off its right part, then ExcludeClipRect, then everything filled red.
+        var circle = new (int X, int Y)[2000];
+        for (var i = 0; i < circle.Length; i++)
+        {
+            var angle = Math.PI * 2 * i / circle.Length;
+            circle[i] = ((int)Math.Round(96 + 80 * Math.Cos(angle)), (int)Math.Round(96 + 80 * Math.Sin(angle)));
+        }
+        var emf = new EmfBuilder(192, 192)
+            .Select(EmfBuilder.NullPen)
+            .Add(30, 0, 0, 150, 192) // INTERSECTCLIPRECT
+            .Add(59).Polygon(circle).Add(60)
+            .Add(67, 1) // SELECTCLIPPATH, RGN_AND
+            .Add(29, 90, 90, 102, 102) // EXCLUDECLIPRECT: a small hole in the middle
+            .Brush(1, Red).Select(1).Rectangle(0, 0, 192, 192)
+            .ToArray();
+        var watch = Stopwatch.StartNew();
+        var (bitmap, _) = Render(emf, 96);
+        using (bitmap)
+        {
+            Assert.Equal(SKColors.Red, Pixel(bitmap, 60, 96)); // inside the circle
+            Assert.Equal(SKColors.Red, Pixel(bitmap, 96, 20)); // inside, 4 px from its edge
+            Assert.Equal(SKColors.Red, Pixel(bitmap, 145, 96)); // inside, just left of the rectangle's edge
+            Assert.Equal(0, Pixel(bitmap, 96, 10).Alpha); // outside, 6 px from its edge
+            Assert.Equal(0, Pixel(bitmap, 5, 5).Alpha); // a corner
+            Assert.Equal(0, Pixel(bitmap, 160, 96).Alpha); // inside the circle, right of the rectangle
+            Assert.Equal(0, Pixel(bitmap, 96, 96).Alpha); // the hole
+        }
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"took {watch.Elapsed}");
     }
 
     [Fact]

@@ -8,7 +8,7 @@
 //  * MetafileReader   the file size and the number of records.
 //  * GdiPlayer        the object table, saved device contexts, path points and region rectangles, and the drawing
 //                     operations a few bytes can multiply: the cells a gradient triangle is drawn as, recoloured
-//                     pattern brushes, and the region operations (Skia PathOps) clip records combine regions with.
+//                     pattern brushes, and the region operations clip records combine regions with.
 //  * Dib              the pixels of one bitmap and of all bitmaps of the file together (recoloured patterns too).
 
 using Filee.Engines.Documents;
@@ -47,17 +47,18 @@ internal sealed record MetafileLimits
 
     /// <summary>
     /// Drawing operations one record can multiply, for the whole file: a cell of a gradient triangle or a gradient
-    /// rectangle, a recoloured pattern brush, and for a region operation (PathOps) the square of its points. Records
-    /// that draw one shape each are bounded by <see cref="MaxRecords"/> instead.
+    /// rectangle, a recoloured pattern brush, the square of the points of a region operation done with PathOps, and
+    /// one for every grid row the edges of a larger region operation cross. Records that draw one shape each are
+    /// bounded by <see cref="MaxRecords"/> instead.
     /// </summary>
     public long MaxOperations { get; init; } = 1_000_000;
 
     /// <summary>
-    /// Points of the two regions of one region operation that needs PathOps (clip regions combined with AND, OR, XOR
-    /// or DIFF, other than rectangles). PathOps slows down faster than the square of the points when edges cross: a
-    /// 400-point star takes most of a second.
+    /// Points of the two regions of a region operation (clip regions combined with AND, OR, XOR or DIFF) that PathOps
+    /// combines exactly. PathOps slows down much faster than the square of the points when edges cross (a 400-point
+    /// star takes most of a second), so larger regions are combined on a grid over the picture, as GDI does.
     /// </summary>
-    public int MaxRegionOperationPoints { get; init; } = 256;
+    public int MaxRegionOperationPoints { get; init; } = 32;
 
     /// <summary>The refusal for a file that passes a limit; <paramref name="detail"/> says which (in English).</summary>
     public static Core.Conversion.ConversionRefusedException Exceeded(string detail) => DocumentLimits.Exceeded(detail);
