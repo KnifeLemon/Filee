@@ -302,6 +302,11 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
                 {
                     ShowCaptureStudioEditor(meta, studioService);
                 }
+                else
+                {
+                    var err = studioService.RecordingEngine.LastErrorMessage;
+                    await MessageAsync(null, !string.IsNullOrWhiteSpace(err) ? $"Recording could not be finalized: {err}" : "Recording could not be finalized.");
+                }
             };
 
             barWindow.Show(overlayWindow);

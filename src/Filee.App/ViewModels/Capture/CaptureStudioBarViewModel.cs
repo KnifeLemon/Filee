@@ -114,12 +114,12 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     {
         if (IsPaused)
         {
-            await _service.ResumeRecordingAsync().ConfigureAwait(false);
+            await _service.ResumeRecordingAsync();
             IsPaused = false;
         }
         else
         {
-            await _service.PauseRecordingAsync().ConfigureAwait(false);
+            await _service.PauseRecordingAsync();
             IsPaused = true;
         }
         PauseToggled?.Invoke();

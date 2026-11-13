@@ -132,9 +132,11 @@ public sealed class CaptureRecordingEngine : IDisposable
         await StopCurrentProcessAsync().ConfigureAwait(false);
 
         string finalVideoPath;
+        List<string> validSegments;
         lock (_lock)
         {
-            if (_segmentFiles.Count == 0)
+            validSegments = _segmentFiles.Where(f => File.Exists(f) && new FileInfo(f).Length > 0).ToList();
+            if (validSegments.Count == 0)
                 return null;
 
             finalVideoPath = Path.Combine(_sessionFolder!, "capture_output.mp4");
@@ -142,14 +144,14 @@ public sealed class CaptureRecordingEngine : IDisposable
 
         try
         {
-            if (_segmentFiles.Count == 1)
+            if (validSegments.Count == 1)
             {
-                File.Move(_segmentFiles[0], finalVideoPath, overwrite: true);
+                File.Move(validSegments[0], finalVideoPath, overwrite: true);
             }
             else
             {
                 // Concatenate segments
-                await ConcatenateSegmentsAsync(_segmentFiles, finalVideoPath).ConfigureAwait(false);
+                await ConcatenateSegmentsAsync(validSegments, finalVideoPath).ConfigureAwait(false);
             }
 
             var duration = _accumulatedTime > TimeSpan.Zero ? _accumulatedTime : TimeSpan.FromSeconds(1);
@@ -776,7 +778,9 @@ public sealed class CaptureRecordingEngine : IDisposable
             var escaped = seg.Replace("\\", "/").Replace("'", "'\\''");
             sb.AppendLine($"file '{escaped}'");
         }
-        await File.WriteAllTextAsync(listFilePath, sb.ToString(), Encoding.UTF8).ConfigureAwait(false);
+
+        // Must write UTF-8 WITHOUT BOM so FFmpeg's concat demuxer does not choke on the first line directive
+        await File.WriteAllTextAsync(listFilePath, sb.ToString(), new UTF8Encoding(false)).ConfigureAwait(false);
 
         var psi = new ProcessStartInfo(ffmpeg)
         {
@@ -795,10 +799,59 @@ public sealed class CaptureRecordingEngine : IDisposable
         psi.ArgumentList.Add("copy");
         psi.ArgumentList.Add(finalVideoPath);
 
-        using var proc = Process.Start(psi);
-        if (proc != null)
+        using (var proc = Process.Start(psi))
         {
-            await proc.WaitForExitAsync().ConfigureAwait(false);
+            if (proc != null)
+            {
+                var stderr = await proc.StandardError.ReadToEndAsync().ConfigureAwait(false);
+                await proc.WaitForExitAsync().ConfigureAwait(false);
+                if (proc.ExitCode != 0)
+                {
+                    _log?.LogWarning("FFmpeg concat -c copy returned code {Code}: {Error}", proc.ExitCode, stderr);
+                }
+            }
+        }
+
+        // If -c copy produced no file or an empty file (e.g. timestamp/codec disparity), fallback to re-encoding concat
+        if (!File.Exists(finalVideoPath) || new FileInfo(finalVideoPath).Length == 0)
+        {
+            _log?.LogInformation("Retrying segment concatenation with re-encoding fallback");
+            var psiReencode = new ProcessStartInfo(ffmpeg)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+            };
+            psiReencode.ArgumentList.Add("-y");
+            psiReencode.ArgumentList.Add("-f");
+            psiReencode.ArgumentList.Add("concat");
+            psiReencode.ArgumentList.Add("-safe");
+            psiReencode.ArgumentList.Add("0");
+            psiReencode.ArgumentList.Add("-i");
+            psiReencode.ArgumentList.Add(listFilePath);
+            psiReencode.ArgumentList.Add("-c:v");
+            psiReencode.ArgumentList.Add("libx264");
+            psiReencode.ArgumentList.Add("-preset");
+            psiReencode.ArgumentList.Add("ultrafast");
+            psiReencode.ArgumentList.Add("-c:a");
+            psiReencode.ArgumentList.Add("aac");
+            psiReencode.ArgumentList.Add(finalVideoPath);
+
+            using var procRe = Process.Start(psiReencode);
+            if (procRe != null)
+            {
+                await procRe.WaitForExitAsync().ConfigureAwait(false);
+            }
+        }
+
+        // Fail-safe: if still missing, copy the largest segment so user never loses recorded data
+        if ((!File.Exists(finalVideoPath) || new FileInfo(finalVideoPath).Length == 0) && segments.Count > 0)
+        {
+            var largest = segments.Where(File.Exists).OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault();
+            if (largest != null)
+            {
+                File.Copy(largest, finalVideoPath, overwrite: true);
+            }
         }
     }
 

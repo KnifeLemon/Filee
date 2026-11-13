@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Filee.App.Tests;
 
+[Collection("NonParallelCaptureTests")]
 public sealed class CaptureStudioTests
 {
     private sealed class DummyLocalizer : ILocalizer
@@ -427,6 +428,44 @@ public sealed class CaptureStudioTests
         Assert.True(started, $"StartRecordingAsync failed: {engine.LastErrorMessage}");
         Assert.True(engine.IsRecording);
 
+        await Task.Delay(1500);
+
+        var result = await engine.StopAsync();
+        Assert.NotNull(result);
+        Assert.True(File.Exists(result.VideoPath));
+        Assert.True(new FileInfo(result.VideoPath).Length > 0);
+
+        // Clean up
+        try { File.Delete(result.VideoPath); } catch { }
+        try { Directory.Delete(Path.GetDirectoryName(result.VideoPath)!, true); } catch { }
+    }
+
+    [Fact]
+    public async Task CaptureRecordingEngine_pause_and_resume_recording_generates_valid_concatenated_mp4()
+    {
+        var ffmpeg = CaptureRecordingEngine.FindFfmpeg();
+        if (string.IsNullOrWhiteSpace(ffmpeg) || !File.Exists(ffmpeg))
+            return;
+
+        using var engine = new CaptureRecordingEngine();
+        var config = new CaptureConfig
+        {
+            SourceType = CaptureSourceType.FullScreen,
+            Framerate = 30,
+            EnableMicrophone = false,
+            EnableSystemAudio = false
+        };
+
+        var started = await engine.StartRecordingAsync(config);
+        Assert.True(started);
+        await Task.Delay(1500);
+
+        await engine.PauseAsync();
+        Assert.True(engine.IsPaused);
+        await Task.Delay(500);
+
+        await engine.ResumeAsync();
+        Assert.False(engine.IsPaused);
         await Task.Delay(1500);
 
         var result = await engine.StopAsync();

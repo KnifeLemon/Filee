@@ -84,7 +84,11 @@ function Get-Zig {
 }
 
 if (-not $Version) {
-    $Version = ([xml](Get-Content (Join-Path $root 'Directory.Build.props'))).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+    $propGroup = ([xml](Get-Content (Join-Path $root 'Directory.Build.props'))).Project.PropertyGroup
+    $Version = ($propGroup | ForEach-Object { $_.Version } | Where-Object { $_ } | Select-Object -First 1)
+}
+if (-not $Version) {
+    $Version = '2.4.0'
 }
 $parts = ($Version -split '[-+]')[0].Split('.') + @('0', '0', '0')
 $major, $minor, $patch = [int]$parts[0], [int]$parts[1], [int]$parts[2]
@@ -116,7 +120,11 @@ $zigArgs = @('cc', '-target', $target, '-shared', '-O2', '-s', '-nostdlib', '-Wa
 $zigMinutes = 8
 for ($attempt = 1; ; $attempt++) {
     $start = [System.Diagnostics.ProcessStartInfo]::new($zig)
-    foreach ($argument in $zigArgs) { $start.ArgumentList.Add($argument) }
+    if ($start.PSObject.Properties['ArgumentList'] -and $null -ne $start.ArgumentList) {
+        foreach ($argument in $zigArgs) { $start.ArgumentList.Add($argument) }
+    } else {
+        $start.Arguments = ($zigArgs | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
+    }
     $start.UseShellExecute = $false
     $process = [System.Diagnostics.Process]::Start($start)
     if ($process.WaitForExit($zigMinutes * 60 * 1000)) {
