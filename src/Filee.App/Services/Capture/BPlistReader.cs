@@ -196,37 +196,68 @@ public sealed class BPlistReader
 
     public bool TryGetStreamConnectionId(out ulong connId)
     {
+        var streams = new List<StreamInfo>();
+        if (GetStreams(streams))
+        {
+            foreach (var s in streams)
+            {
+                if (s.StreamConnectionId != 0)
+                {
+                    connId = s.StreamConnectionId;
+                    return true;
+                }
+            }
+        }
         connId = 0;
+        return false;
+    }
+
+    public bool GetStreams(List<StreamInfo> outStreams)
+    {
         var (keys, vals) = ReadDict(_rootObject);
         for (int i = 0; i < keys.Count; i++)
         {
-            if (ReadStringObject(keys[i]) == "streams")
+            if (ReadStringObject(keys[i]) != "streams") continue;
+
+            ulong streamsArrayIdx = vals[i];
+            if (streamsArrayIdx < (ulong)_offsets.Count)
             {
-                ulong streamsArrayIdx = vals[i];
-                if (streamsArrayIdx < (ulong)_offsets.Count)
+                long off = _offsets[(int)streamsArrayIdx];
+                if (off < _data.Length && (_data[off] >> 4) == 0xA)
                 {
-                    long off = _offsets[(int)streamsArrayIdx];
-                    if (off < _data.Length && (_data[off] >> 4) == 0xA)
+                    var (count, extra) = DecodeCount(off);
+                    long refsStart = off + 1 + extra;
+                    for (ulong j = 0; j < count; j++)
                     {
-                        var (count, extra) = DecodeCount(off);
-                        long refsStart = off + 1 + extra;
-                        for (ulong j = 0; j < count; j++)
+                        ulong streamDictIdx = (ulong)ReadBe(refsStart + (long)j * _refSize, _refSize);
+                        var (sKeys, sVals) = ReadDict(streamDictIdx);
+                        var info = new StreamInfo();
+                        for (int k = 0; k < sKeys.Count; k++)
                         {
-                            ulong streamDictIdx = (ulong)ReadBe(refsStart + (long)j * _refSize, _refSize);
-                            var (sKeys, sVals) = ReadDict(streamDictIdx);
-                            for (int k = 0; k < sKeys.Count; k++)
-                            {
-                                if (ReadStringObject(sKeys[k]) == "streamConnectionID")
-                                {
-                                    connId = ReadUintObject(sVals[k]);
-                                    return true;
-                                }
-                            }
+                            var keyName = ReadStringObject(sKeys[k]);
+                            if (keyName == "type")
+                                info.Type = ReadUintObject(sVals[k]);
+                            else if (keyName == "streamConnectionID")
+                                info.StreamConnectionId = ReadUintObject(sVals[k]);
+                            else if (keyName == "ct")
+                                info.Ct = ReadUintObject(sVals[k]);
+                            else if (keyName == "spf")
+                                info.Spf = ReadUintObject(sVals[k]);
                         }
+                        outStreams.Add(info);
                     }
+                    return outStreams.Count > 0;
                 }
             }
         }
         return false;
     }
+}
+
+public struct StreamInfo
+{
+    public ulong Type;
+    public ulong StreamConnectionId;
+    public ulong Ct;
+    public ulong Spf;
 }

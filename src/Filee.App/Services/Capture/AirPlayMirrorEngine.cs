@@ -64,6 +64,12 @@ public sealed class AirPlayMirrorEngine
     private int _eventPort = EventPort;
     private int _timingPort = TimingPort;
 
+    // Audio stream listeners for AirPlay mirroring
+    private UdpClient? _audioDataClient;
+    private UdpClient? _audioControlClient;
+    private int _audioDataPort;
+    private int _audioControlPort;
+
     // Cached SPS/PPS NAL units (Annex B format)
     private byte[]? _cachedSpsPps;
 
@@ -253,6 +259,27 @@ public sealed class AirPlayMirrorEngine
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "Failed to start AirPlay timing listener");
+            }
+
+            // Start audio UDP listeners
+            try
+            {
+                _audioDataClient = new UdpClient();
+                _audioDataClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _audioDataClient.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
+                _audioDataPort = ((IPEndPoint)_audioDataClient.Client.LocalEndPoint!).Port;
+
+                _audioControlClient = new UdpClient();
+                _audioControlClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _audioControlClient.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
+                _audioControlPort = ((IPEndPoint)_audioControlClient.Client.LocalEndPoint!).Port;
+
+                _ = Task.Run(() => RunAudioDrainLoopAsync(_audioDataClient, _audioControlClient, cts.Token), cts.Token);
+                _logger?.LogInformation("AirPlay audio listener active on ports {DataPort} / {ControlPort}", _audioDataPort, _audioControlPort);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to start AirPlay audio listeners");
             }
 
             StartDiscoveryServices(boundPort, cts.Token);
@@ -553,6 +580,37 @@ public sealed class AirPlayMirrorEngine
         }
     }
 
+    private async Task RunAudioDrainLoopAsync(UdpClient dataClient, UdpClient controlClient, CancellationToken ct)
+    {
+        var dataTask = Task.Run(async () =>
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    _ = await dataClient.ReceiveAsync(ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { break; }
+                catch { }
+            }
+        }, ct);
+
+        var controlTask = Task.Run(async () =>
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    _ = await controlClient.ReceiveAsync(ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { break; }
+                catch { }
+            }
+        }, ct);
+
+        await Task.WhenAll(dataTask, controlTask).ConfigureAwait(false);
+    }
+
     private static void WriteNtpTimestamp(byte[] buf, int offset, ulong sec, ulong frac)
     {
         buf[offset + 0] = (byte)(sec >> 24);
@@ -824,7 +882,36 @@ public sealed class AirPlayMirrorEngine
                         }
 
                         // Phase 2: Stream setup (streams array present)
-                        if (reader.HasKey("streams"))
+                        var streamInfos = new List<StreamInfo>();
+                        if (reader.GetStreams(streamInfos))
+                        {
+                            var streamDicts = new List<int>();
+                            foreach (var s in streamInfos)
+                            {
+                                if (s.Type == 110)
+                                {
+                                    if (s.StreamConnectionId != 0) _streamConnectionId = s.StreamConnectionId;
+                                    InitializeMirrorCipher();
+                                    streamDicts.Add(w.AddDict([
+                                        new(w.AddString("dataPort"), w.AddUint(MirrorPort)),
+                                        new(w.AddString("type"), w.AddUint(110))
+                                    ]));
+                                }
+                                else if (s.Type == 96)
+                                {
+                                    streamDicts.Add(w.AddDict([
+                                        new(w.AddString("dataPort"), w.AddUint((ulong)_audioDataPort)),
+                                        new(w.AddString("controlPort"), w.AddUint((ulong)_audioControlPort)),
+                                        new(w.AddString("type"), w.AddUint(96))
+                                    ]));
+                                }
+                            }
+                            if (streamDicts.Count > 0)
+                            {
+                                root.Add(new(w.AddString("streams"), w.AddArray(streamDicts)));
+                            }
+                        }
+                        else if (reader.HasKey("streams"))
                         {
                             if (reader.TryGetStreamConnectionId(out var connId))
                             {
@@ -990,13 +1077,13 @@ public sealed class AirPlayMirrorEngine
             new(w.AddString("type"), w.AddUint(100)),
             new(w.AddString("audioType"), w.AddString("default")),
             new(w.AddString("inputLatencyMicros"), w.AddUint(0)),
-            new(w.AddString("outputLatencyMicros"), w.AddBool(false))
+            new(w.AddString("outputLatencyMicros"), w.AddUint(0))
         ]);
         var lat1 = w.AddDict([
             new(w.AddString("type"), w.AddUint(101)),
             new(w.AddString("audioType"), w.AddString("default")),
             new(w.AddString("inputLatencyMicros"), w.AddUint(0)),
-            new(w.AddString("outputLatencyMicros"), w.AddBool(false))
+            new(w.AddString("outputLatencyMicros"), w.AddUint(0))
         ]);
         root.Add(new(w.AddString("audioLatencies"), w.AddArray([lat0, lat1])));
 
@@ -1057,6 +1144,8 @@ public sealed class AirPlayMirrorEngine
             var ffmpegPsi = new ProcessStartInfo(ffmpeg, [
                 "-hide_banner",
                 "-loglevel", "error",
+                "-fflags", "nobuffer",
+                "-flags", "low_delay",
                 "-f", "h264",
                 "-i", "-",
                 "-f", "image2pipe",
@@ -1100,6 +1189,7 @@ public sealed class AirPlayMirrorEngine
                 using var ms = new MemoryStream();
                 var ffmpegOut = ffmpegProc.StandardOutput.BaseStream;
                 int bytesRead;
+                bool inFrame = false;
                 byte prev = 0;
 
                 try
@@ -1109,13 +1199,29 @@ public sealed class AirPlayMirrorEngine
                         for (int i = 0; i < bytesRead; i++)
                         {
                             byte b = frameBuffer[i];
-                            ms.WriteByte(b);
-
-                            if (prev == 0xFF && b == 0xD9)
+                            if (!inFrame)
                             {
-                                var jpeg = ms.ToArray();
-                                ms.SetLength(0);
-                                _mirrorService.OnFrame(jpeg);
+                                if (prev == 0xFF && b == 0xD8)
+                                {
+                                    inFrame = true;
+                                    ms.SetLength(0);
+                                    ms.WriteByte(0xFF);
+                                    ms.WriteByte(0xD8);
+                                }
+                            }
+                            else
+                            {
+                                ms.WriteByte(b);
+                                if (prev == 0xFF && b == 0xD9)
+                                {
+                                    inFrame = false;
+                                    var jpeg = ms.ToArray();
+                                    ms.SetLength(0);
+                                    if (jpeg.Length > 4)
+                                    {
+                                        _mirrorService.OnFrame(jpeg);
+                                    }
+                                }
                             }
                             prev = b;
                         }
@@ -1310,6 +1416,14 @@ public sealed class AirPlayMirrorEngine
             _timingClient?.Close();
             _timingClient?.Dispose();
             _timingClient = null;
+
+            _audioDataClient?.Close();
+            _audioDataClient?.Dispose();
+            _audioDataClient = null;
+
+            _audioControlClient?.Close();
+            _audioControlClient?.Dispose();
+            _audioControlClient = null;
 
             // Deallocate native dnssd.dll handles
             if (_airplaySdRef != IntPtr.Zero)

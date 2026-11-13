@@ -203,6 +203,18 @@ public sealed class CaptureRecordingEngine : IDisposable
             success = await TryLaunchRecordingProcessAsync(ffmpegExe, segmentPath, config, useGfxCapture: false).ConfigureAwait(false);
         }
 
+        // If recording with microphone failed, retry with video-only so screen recording always starts smoothly
+        if (!success && config.EnableMicrophone)
+        {
+            _log?.LogWarning("Recording with microphone failed, falling back to video-only capture");
+            var fallbackConfig = CloneWithoutMicrophone(config);
+            success = await TryLaunchRecordingProcessAsync(ffmpegExe, segmentPath, fallbackConfig, useGfxCapture: OperatingSystem.IsWindows()).ConfigureAwait(false);
+            if (!success && OperatingSystem.IsWindows())
+            {
+                success = await TryLaunchRecordingProcessAsync(ffmpegExe, segmentPath, fallbackConfig, useGfxCapture: false).ConfigureAwait(false);
+            }
+        }
+
         if (!success)
         {
             ErrorOccurred?.Invoke(LastErrorMessage ?? "Screen recording failed to start.");
@@ -249,11 +261,14 @@ public sealed class CaptureRecordingEngine : IDisposable
                 lock (stderrLines)
                 {
                     var nonBannerLines = stderrLines
-                        .Where(l => !l.StartsWith("ffmpeg version", StringComparison.OrdinalIgnoreCase)
-                                 && !l.StartsWith("built with", StringComparison.OrdinalIgnoreCase)
-                                 && !l.StartsWith("configuration:", StringComparison.OrdinalIgnoreCase)
-                                 && !l.StartsWith("libav", StringComparison.OrdinalIgnoreCase)
-                                 && !l.StartsWith("libsw", StringComparison.OrdinalIgnoreCase))
+                        .Where(l => {
+                            var t = l.Trim();
+                            return !t.StartsWith("ffmpeg version", StringComparison.OrdinalIgnoreCase)
+                                && !t.StartsWith("built with", StringComparison.OrdinalIgnoreCase)
+                                && !t.StartsWith("configuration:", StringComparison.OrdinalIgnoreCase)
+                                && !t.StartsWith("libav", StringComparison.OrdinalIgnoreCase)
+                                && !t.StartsWith("libsw", StringComparison.OrdinalIgnoreCase);
+                        })
                         .ToList();
                     errDetail = string.Join(Environment.NewLine, nonBannerLines.Count > 0 ? nonBannerLines : stderrLines).Trim();
                 }
@@ -347,6 +362,16 @@ public sealed class CaptureRecordingEngine : IDisposable
                 if (config.SourceType == CaptureSourceType.Window && config.TargetWindow != null && config.TargetWindow.Handle != 0)
                 {
                     GetTargetOffsetAndSize(config, out var offsetX, out var offsetY, out var width, out var height);
+                    int screenW = GetSystemMetrics(0);
+                    int screenH = GetSystemMetrics(1);
+                    if (screenW <= 0) screenW = 1920;
+                    if (screenH <= 0) screenH = 1080;
+
+                    offsetX = Math.Clamp(offsetX, 0, Math.Max(0, screenW - 64));
+                    offsetY = Math.Clamp(offsetY, 0, Math.Max(0, screenH - 64));
+                    width = Math.Clamp(width, 64, screenW - offsetX);
+                    height = Math.Clamp(height, 64, screenH - offsetY);
+
                     width = Math.Max(2, (width / 2) * 2);
                     height = Math.Max(2, (height / 2) * 2);
                     lavfi = $"gfxcapture=monitor_idx=0:crop_left={offsetX}:crop_top={offsetY}:width={width}:height={height}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
@@ -354,6 +379,16 @@ public sealed class CaptureRecordingEngine : IDisposable
                 else if (config.SourceType == CaptureSourceType.CustomRegion)
                 {
                     GetTargetOffsetAndSize(config, out var offsetX, out var offsetY, out var width, out var height);
+                    int screenW = GetSystemMetrics(0);
+                    int screenH = GetSystemMetrics(1);
+                    if (screenW <= 0) screenW = 1920;
+                    if (screenH <= 0) screenH = 1080;
+
+                    offsetX = Math.Clamp(offsetX, 0, Math.Max(0, screenW - 64));
+                    offsetY = Math.Clamp(offsetY, 0, Math.Max(0, screenH - 64));
+                    width = Math.Clamp(width, 64, screenW - offsetX);
+                    height = Math.Clamp(height, 64, screenH - offsetY);
+
                     width = Math.Max(2, (width / 2) * 2);
                     height = Math.Max(2, (height / 2) * 2);
                     lavfi = $"gfxcapture=monitor_idx=0:crop_left={offsetX}:crop_top={offsetY}:width={width}:height={height}:max_framerate={config.Framerate.ToString(CultureInfo.InvariantCulture)},hwdownload,format=bgra";
@@ -608,6 +643,23 @@ public sealed class CaptureRecordingEngine : IDisposable
 
         return "ffmpeg";
     }
+
+    private static CaptureConfig CloneWithoutMicrophone(CaptureConfig src) => new()
+    {
+        SourceType = src.SourceType,
+        TargetWindow = src.TargetWindow,
+        TargetScreen = src.TargetScreen,
+        CustomRegion = src.CustomRegion,
+        Resolution = src.Resolution,
+        Framerate = src.Framerate,
+        EnableMicrophone = false,
+        MicrophoneDevice = null,
+        EnableSystemAudio = src.EnableSystemAudio,
+        HighlightCursor = src.HighlightCursor,
+        SpotlightMode = src.SpotlightMode,
+        SpotlightRadius = src.SpotlightRadius,
+        CountdownBeforeRecording = src.CountdownBeforeRecording
+    };
 
     public void Dispose()
     {
