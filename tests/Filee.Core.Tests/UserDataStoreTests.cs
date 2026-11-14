@@ -1060,7 +1060,7 @@ public partial class UserDataStoreTests
         Assert.Equal(ids.IndexOf("models") + 1, ids.IndexOf("geo")); // and, from schema 25, the geospatial donut
         Assert.Equal(ids.IndexOf("mixed") - 1, ids.IndexOf("geo"));
         var models = profiles.Single(p => p.Id == "models");
-        Assert.Equal(["glb", "gltf", "stl", "obj", "3mf", "ply", "fbx"], models.Extensions);
+        Assert.Equal(["glb", "gltf", "stl", "obj", "3mf", "ply", "fbx", "mdl"], models.Extensions);
         Assert.Equal(BuiltInData.ModelProfile().PresetIds, models.PresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(14, presets, profiles)); // once only
     }
@@ -1074,7 +1074,7 @@ public partial class UserDataStoreTests
 
         Assert.True(SettingsMigrations.ApplyToLibrary(14, presets, profiles));
 
-        Assert.Equal(["glb", "gltf", "obj", "ply", "fbx"], profiles.Single(p => p.Id == "models").Extensions);
+        Assert.Equal(["glb", "gltf", "obj", "ply", "fbx", "mdl"], profiles.Single(p => p.Id == "models").Extensions);
     }
 
     [Fact]
@@ -1088,7 +1088,7 @@ public partial class UserDataStoreTests
 
         Assert.True(SettingsMigrations.ApplyToLibrary(21, presets, profiles));
 
-        Assert.Equal(["glb", "gltf", "stl", "obj", "3mf", "fbx"], models.Extensions);
+        Assert.Equal(["glb", "gltf", "stl", "obj", "3mf", "mdl", "fbx"], models.Extensions);
         Assert.False(SettingsMigrations.ApplyToLibrary(21, presets, profiles)); // once only
 
         // A donut of the user that already opens FBX files keeps them.

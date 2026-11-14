@@ -1,6 +1,6 @@
 // Source engine files (#1526): Garry's Mod addons, Valve paks and maps (for their packed files) open the archives donut,
-// which existing libraries learn without taking a donut of the user's own; they unpack only where the Games field is
-// on.
+// which existing libraries learn without taking a donut of the user's own, and Source models the 3D models donut; each
+// is a target only where the Games field is on.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -16,6 +16,7 @@ public class SourceFormatTests
     [InlineData("WIRE.GMA", "gma", "archives")]
     [InlineData("pak01_dir.vpk", "vpk", "archives")]
     [InlineData("gm_construct.bsp", "bsp", "archives")]
+    [InlineData("gate_e2.mdl", "mdl", "models")]
     public void Source_files_use_their_donut(string file, string format, string donut)
     {
         Assert.Same(FormatRegistry.Get(format), FormatRegistry.Detect(file));
@@ -26,6 +27,7 @@ public class SourceFormatTests
     [InlineData("gma", FormatCategory.Archive, true)]
     [InlineData("vpk", FormatCategory.Archive, false)]
     [InlineData("bsp", FormatCategory.Archive, false)]
+    [InlineData("mdl", FormatCategory.Model3D, false)]
     public void Source_files_are_game_formats(string id, FormatCategory category, bool writable)
     {
         var format = FormatRegistry.Get(id)!;
@@ -70,5 +72,24 @@ public class SourceFormatTests
         Assert.False(SettingsMigrations.ApplyToLibrary(96, presets, profiles));
         // Not on a donut.
         Assert.DoesNotContain(BuiltInData.CreateProfiles(), p => p.PresetIds.Contains("to-gma") || p.BackPresetIds?.Contains("to-gma") == true);
+    }
+
+    [Fact]
+    public void Version_99_libraries_learn_source_models_without_taking_custom_claims()
+    {
+        var presets = BuiltInData.CreatePresets();
+        var profiles = BuiltInData.CreateProfiles();
+        var models = profiles.Single(p => p.Id == "models");
+        models.Extensions.RemoveAll(e => e is "mdl");
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(99, presets, profiles));
+        Assert.Contains("mdl", models.Extensions);
+        Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id)); // no preset added
+        Assert.False(SettingsMigrations.ApplyToLibrary(99, presets, profiles));
+
+        models.Extensions.Remove("mdl");
+        profiles.Insert(0, new ToolbarProfile { Id = "my-models", Extensions = ["MDL"] });
+        Assert.False(SettingsMigrations.ApplyToLibrary(99, presets, profiles));
+        Assert.DoesNotContain("mdl", models.Extensions);
     }
 }

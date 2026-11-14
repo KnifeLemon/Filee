@@ -419,6 +419,9 @@ public static class FormatRegistry
         new("3mf", "3MF", FormatCategory.Model3D, ["3mf"]),
         new("ply", "PLY", FormatCategory.Model3D, ["ply"]),
         new("fbx", "FBX", FormatCategory.Model3D, ["fbx"], Writable: false),
+        // Source engine models (Garry's Mod and other Source games), read with the .vvd and .vtx beside them and their
+        // textures from the "materials" folder above them.
+        new("mdl", "Source model (MDL)", FormatCategory.Model3D, ["mdl"], Writable: false),
 
         // Geospatial vector data (CSV with coordinates is a Data format and reaches these through the geo engine)
         new("geojson", "GeoJSON", FormatCategory.Geo, ["geojson"]),
