@@ -209,6 +209,10 @@ internal sealed record CliOptions
                 "Use either --split-every or --split-parts.",
             "watch" when options.Inputs.Count != 1 => "Give exactly one folder to watch.",
             "watch" when options.Sort is not null => "--sort only works with 'filee convert'.",
+            "presets" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() != "check" =>
+                $"Unknown presets command '{options.Inputs[0]}'. Use 'filee presets' or 'filee presets check <folder>'.",
+            "presets" when options.Inputs.Count == 1 => "Give the folder of the shared preset to check, e.g. 'filee presets check presets/my-preset'.",
+            "presets" when options.Inputs.Count > 2 => "Give one folder at a time.",
             "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() is not ("install" or "remove" or "download") =>
                 $"Unknown engines command '{options.Inputs[0]}'. Use 'filee engines', 'filee engines install <id>', 'filee engines download <id> -o <folder>' or 'filee engines remove <id>'.",
             "engines" when options.Inputs.Count == 1 => $"Give the engine to {options.Inputs[0].ToLowerInvariant()}, e.g. 'filee engines {options.Inputs[0].ToLowerInvariant()} pandoc'.",

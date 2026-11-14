@@ -129,6 +129,14 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
         SelectedPreset = Presets.Count == 0 ? null : Presets[Math.Clamp(index, 0, Presets.Count - 1)];
     }
 
+    /// <summary>Opens the preset gallery; what it installs joins the list.</summary>
+    [RelayCommand]
+    private void OpenGallery() => _windows.ShowPresetGallery(result =>
+    {
+        foreach (var preset in result.Presets.Where(p => !p.IsGroup && (!p.IsTool || p.IsUpscaleTool)))
+            Presets.Add(new PresetListItem(preset, _loc));
+    });
+
     private void AddPreset(Preset preset)
     {
         _store.Presets.Add(preset);
