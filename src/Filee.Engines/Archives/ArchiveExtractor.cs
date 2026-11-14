@@ -1,7 +1,8 @@
 // Unpacks every archive format Filee reads into a folder: the bundled 7-Zip for most of them, Filee's own readers for
-// ALZ, EGG, lzip, Garry's Mod addons (GMA) and Valve paks (VPK). Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads
-// are unpacked stage by stage until the files appear. Every stage is checked first (encryption, paths leaving the
-// folder, disk space) and links are removed.
+// ALZ, EGG, lzip, Garry's Mod addons (GMA) and Valve paks (VPK); the files packed into a Source engine map (BSP) are a
+// ZIP that Filee copies out for 7-Zip. Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads are unpacked stage by
+// stage until the files appear. Every stage is checked first (encryption, paths leaving the folder, disk space) and
+// links are removed.
 // A single compressed stream (.gz, .bz2 …) is written by Filee as 7-Zip decodes it, so it can't fill the drive. The
 // archive's Mark of the Web goes onto the unpacked files.
 
@@ -26,7 +27,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     ];
 
     /// <summary>Formats read by Filee's own code (lzip still needs 7-Zip's LZMA decoder).</summary>
-    public static readonly IReadOnlyList<string> BuiltInFormats = ["alz", "egg", "lz", "tlz", "gma", "vpk"];
+    public static readonly IReadOnlyList<string> BuiltInFormats = ["alz", "egg", "lz", "tlz", "gma", "vpk", "bsp"];
 
     /// <summary>Everything that can be unpacked.</summary>
     public static IEnumerable<string> ReadableFormats => SevenZipFormats.Concat(BuiltInFormats);
@@ -98,6 +99,22 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
                 await Task.Run(() => Vpk.Extract(archive, folder, cancellationToken), cancellationToken);
                 PassOnMark(archive, folder);
                 break;
+            case "bsp":
+                {
+                    // The map's packed files are a ZIP inside it: copied out, then unpacked like any ZIP.
+                    var pakfile = Path.Combine(scratchRoot, $"pakfile-{Guid.NewGuid():N}.zip");
+                    try
+                    {
+                        await Task.Run(() => Bsp.ExtractPakfile(archive, pakfile, cancellationToken), cancellationToken);
+                        await ExtractOnceAsync(pakfile, "zip", folder, scratchRoot, cancellationToken);
+                    }
+                    finally
+                    {
+                        ArchiveFiles.TryDeleteFile(pakfile);
+                    }
+                    PassOnMark(archive, folder);
+                    break;
+                }
             case "lz":
             case "tlz":
                 var output = FormatRegistry.NameWithoutExtension(archive) + (format == "tlz" ? ".tar" : "");

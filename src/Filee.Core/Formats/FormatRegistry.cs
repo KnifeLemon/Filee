@@ -361,6 +361,8 @@ public static class FormatRegistry
         // Valve paks (Source engine games' files, "pak01_dir.vpk" with its "pak01_000.vpk" … parts), read by Filee; a PS
         // Vita package under the same extension is a ZIP and goes to 7-Zip.
         new("vpk", "Valve pak (VPK)", FormatCategory.Archive, ["vpk"], Writable: false),
+        // Source engine maps: the files packed into a map (its pakfile lump, a ZIP) unpack like an archive.
+        new("bsp", "Source map (BSP)", FormatCategory.Archive, ["bsp"], Writable: false),
         new("cab", "CAB", FormatCategory.Archive, ["cab"], Writable: false),
         new("cpio", "CPIO", FormatCategory.Archive, ["cpio"], Writable: false),
         new("deb", "DEB", FormatCategory.Archive, ["deb"], Writable: false),

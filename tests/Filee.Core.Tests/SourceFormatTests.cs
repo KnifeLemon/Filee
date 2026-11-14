@@ -1,5 +1,6 @@
-// Source engine files (#1526): Garry's Mod addons and Valve paks open the archives donut, which existing libraries learn
-// without taking a donut of the user's own; they unpack only where the Games field is on.
+// Source engine files (#1526): Garry's Mod addons, Valve paks and maps (for their packed files) open the archives donut,
+// which existing libraries learn without taking a donut of the user's own; they unpack only where the Games field is
+// on.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -14,6 +15,7 @@ public class SourceFormatTests
     [InlineData("wire.gma", "gma", "archives")]
     [InlineData("WIRE.GMA", "gma", "archives")]
     [InlineData("pak01_dir.vpk", "vpk", "archives")]
+    [InlineData("gm_construct.bsp", "bsp", "archives")]
     public void Source_files_use_their_donut(string file, string format, string donut)
     {
         Assert.Same(FormatRegistry.Get(format), FormatRegistry.Detect(file));
@@ -23,6 +25,7 @@ public class SourceFormatTests
     [Theory]
     [InlineData("gma", FormatCategory.Archive, false)]
     [InlineData("vpk", FormatCategory.Archive, false)]
+    [InlineData("bsp", FormatCategory.Archive, false)]
     public void Source_files_are_game_formats(string id, FormatCategory category, bool writable)
     {
         var format = FormatRegistry.Get(id)!;
@@ -38,11 +41,12 @@ public class SourceFormatTests
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var archives = profiles.Single(p => p.Id == "archives");
-        archives.Extensions.RemoveAll(e => e is "gma" or "vpk");
+        archives.Extensions.RemoveAll(e => e is "gma" or "vpk" or "bsp");
 
         Assert.True(SettingsMigrations.ApplyToLibrary(94, presets, profiles));
         Assert.Contains("gma", archives.Extensions);
         Assert.Contains("vpk", archives.Extensions);
+        Assert.Contains("bsp", archives.Extensions);
         Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id)); // no preset added
         Assert.False(SettingsMigrations.ApplyToLibrary(94, presets, profiles));
 
