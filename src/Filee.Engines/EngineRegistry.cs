@@ -72,6 +72,7 @@ public static class EngineRegistry
         new Upscale.UpscalerConverter(),
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
+        new Gcode.GcodeConverter(loggers?.CreateLogger<Gcode.GcodeConverter>()),
         new ModelConverter(),
         new ImageTo3DConverter(),
         new GeoConverter(),

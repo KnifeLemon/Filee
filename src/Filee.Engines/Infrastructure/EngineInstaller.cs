@@ -15,6 +15,7 @@
 using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using Filee.Core.Conversion;
 using Microsoft.Extensions.Logging;
@@ -51,7 +52,11 @@ public enum EngineCopyStatus
 /// <param name="Folder">Folder of the copy in use while the status is <see cref="EngineCopyStatus.OwnCopy"/>.</param>
 /// <param name="FromSystem">That copy was found on the PC (PATH, Program Files), not chosen by the user.</param>
 /// <param name="Outdated">Filee's download is older than the version engines.json pins.</param>
-public sealed record EngineCopy(EngineCopyStatus Status, string? Folder, bool FromSystem, bool Outdated);
+/// <param name="OtherFolder">
+/// Folder of a copy on the PC that isn't used because Filee's download is installed (it comes first); null otherwise.
+/// Settings → Engines offers it instead (#867).
+/// </param>
+public sealed record EngineCopy(EngineCopyStatus Status, string? Folder, bool FromSystem, bool Outdated, string? OtherFolder = null);
 
 /// <summary>Another Filee (the app, the CLI or a second copy) is installing or removing the same package.</summary>
 public sealed class EngineBusyException(string packageId)
@@ -83,13 +88,17 @@ public sealed class EngineInstaller
     private readonly IReadOnlyDictionary<string, EngineComponent> _components;
     private readonly ILogger _logger;
     private readonly IReadOnlyList<EnginePackage> _packages;
+    private readonly Func<EngineComponent, Uri?> _mirror;
 
     /// <param name="root">Folder that receives one sub folder per engine (default: EngineEnvironment.DownloadRoot).</param>
     /// <param name="components">Download list; engines.json when null (tests pass their own).</param>
     /// <param name="packages">Known packages (tests pass their own); EngineDownloads.Packages when null.</param>
-    public EngineInstaller(HttpClient http, string? root = null, IReadOnlyDictionary<string, EngineComponent>? components = null, ILogger? logger = null, IReadOnlyList<EnginePackage>? packages = null)
+    /// <param name="mirror">Where a component is taken from when its URL fails (<see cref="EngineDownloads.MirrorUrl"/> when null; tests pass their own).</param>
+    public EngineInstaller(HttpClient http, string? root = null, IReadOnlyDictionary<string, EngineComponent>? components = null, ILogger? logger = null,
+        IReadOnlyList<EnginePackage>? packages = null, Func<EngineComponent, Uri?>? mirror = null)
     {
         _http = http;
+        _mirror = mirror ?? EngineDownloads.MirrorUrl;
         _root = root ?? EngineEnvironment.DownloadRoot;
         _components = components ?? EngineDownloads.Components;
         _logger = logger ?? NullLogger.Instance;
@@ -114,19 +123,71 @@ public sealed class EngineInstaller
     public IReadOnlyDictionary<string, EngineComponent> Components => _components;
 
     /// <summary>
-    /// The copy the engines use, in the order they look: the user's own copy, Filee's download, a copy on the PC
-    /// (only looked for when neither of the others is there).
+    /// The copy the engines use, in the order they look: the user's own copy, Filee's download, a copy on the PC. A
+    /// copy on the PC is also looked for while Filee's download is used, and reported as
+    /// <see cref="EngineCopy.OtherFolder"/>; it is not used then.
     /// </summary>
     public EngineCopy StatusOf(EnginePackage package)
     {
         var installed = IsInstalled(package);
         var own = EngineEnvironment.OwnCopyFolder(package.Id);
-        var system = own is null && !installed ? EngineEnvironment.SystemCopyFolder(package.Id) : null;
-        var folder = own ?? system;
-        var status = folder is not null ? EngineCopyStatus.OwnCopy
+        var system = own is null ? EngineEnvironment.SystemCopyFolder(package.Id) : null;
+        var used = own ?? (installed ? null : system);
+        var status = used is not null ? EngineCopyStatus.OwnCopy
             : installed ? EngineCopyStatus.Installed
             : EngineCopyStatus.NotInstalled;
-        return new EngineCopy(status, folder, system is not null, folder is null && installed && !IsUpToDate(package));
+        var other = used is null && installed && system is not null && !IsFileesDownload(package.Id, system) ? system : null;
+        return new EngineCopy(status, used, own is null && !installed && system is not null,
+            used is null && installed && !IsUpToDate(package), other);
+    }
+
+    /// <summary>
+    /// True when <paramref name="folder"/>, found on the PC, is a download of Filee's reached by another path (other
+    /// letter case, a short name, a link to the folder, to a folder above it or to its programs, as when a user links
+    /// Filee's Pandoc into /usr/local/bin or its LibreOffice.app into /Applications): going up from the folder, or from
+    /// a program in it, and following every link on the way, a folder up to three levels above has Filee's installed
+    /// marker. It isn't another copy, and using it "instead" would remove it.
+    /// </summary>
+    private static bool IsFileesDownload(string id, string folder)
+    {
+        var places = new List<string> { folder };
+        if (EngineEnvironment.OwnCopyPrograms.TryGetValue(id, out var programs))
+            foreach (var program in programs)
+                places.Add(Path.GetDirectoryName(Resolved(new FileInfo(Path.Combine(folder, program)))) ?? folder);
+        foreach (var place in places)
+        {
+            DirectoryInfo? dir;
+            try
+            {
+                // One form for every way the PATH may write it ("~/ffbin//", "C:\ffbin\"): a link whose path ends in a
+                // separator isn't followed.
+                dir = new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(place)));
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
+            {
+                continue;
+            }
+            for (var level = 0; dir is not null && level <= 3; level++, dir = dir.Parent)
+            {
+                dir = new DirectoryInfo(Resolved(dir));
+                if (File.Exists(Path.Combine(dir.FullName, MarkerName)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>The path a file or folder link ends at, or the path itself.</summary>
+    private static string Resolved(FileSystemInfo item)
+    {
+        try
+        {
+            return item.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? item.FullName;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return item.FullName;
+        }
     }
 
     /// <summary>True when every component is installed (any version).</summary>
@@ -393,8 +454,38 @@ public sealed class EngineInstaller
     /// </summary>
     private async Task FetchAsync(EngineComponent component, string? localFile, string file, Action<long> reportBytes, CancellationToken cancellationToken)
     {
+        if (localFile is not null)
+        {
+            await FetchAsync(component, null, localFile, file, reportBytes, cancellationToken);
+            return;
+        }
+        try
+        {
+            await FetchAsync(component, new Uri(component.Url), null, file, reportBytes, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException && !cancellationToken.IsCancellationRequested
+                                   && _mirror(component) is { } mirror)
+        {
+            // The pinned URL is gone or broken (a retired version, a moved release, a cut or timed-out connection, a file
+            // that was replaced): Filee's own copy, checked against the same SHA-256. The first error is the one to report.
+            _logger.LogWarning(ex, "Downloading {Component} from {Url} failed; trying {Mirror}", component.Id, component.Url, mirror);
+            try
+            {
+                await FetchAsync(component, mirror, null, file, reportBytes, cancellationToken);
+            }
+            catch (Exception mirrorError) when (mirrorError is HttpRequestException or IOException or InvalidDataException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(mirrorError, "Downloading {Component} from {Mirror} failed too", component.Id, mirror);
+                ExceptionDispatchInfo.Throw(ex);
+            }
+        }
+    }
+
+    /// <summary>One attempt: from <paramref name="url"/>, or from <paramref name="localFile"/> when it's null.</summary>
+    private async Task FetchAsync(EngineComponent component, Uri? url, string? localFile, string file, Action<long> reportBytes, CancellationToken cancellationToken)
+    {
         var partial = file + ".part";
-        using var response = localFile is null ? await GetFollowingRedirectsAsync(new Uri(component.Url), cancellationToken) : null;
+        using var response = url is not null ? await GetFollowingRedirectsAsync(url, cancellationToken) : null;
         response?.EnsureSuccessStatusCode();
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         try

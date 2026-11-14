@@ -38,6 +38,8 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
         // and PSD.
         .. ImageEncoder.Sources.Where(source => source != "pdn").Select(source => ImageEncoder.Edge(source, "pdn")),
         .. ImageEncoder.Sources.Where(source => source != "xcf").Select(source => ImageEncoder.Edge(source, "xcf")),
+        // Valve's texture for the Source engine (Garry's Mod and others), written by Filee (VtfWriter).
+        .. ImageEncoder.Sources.Where(source => source != "vtf").Select(source => ImageEncoder.Edge(source, "vtf")),
     ];
 
     public EngineStatus GetStatus() =>
@@ -84,7 +86,7 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
 
     public bool CanRead(string format) => ImageEncoder.Sources.Contains(format);
 
-    public bool CanWrite(string format) => format is "pdn" or "xcf" || ImageEncoder.Writable.Contains(format);
+    public bool CanWrite(string format) => format is "pdn" or "xcf" or "vtf" || ImageEncoder.Writable.Contains(format);
 
     /// <summary>"Merge images": the pictures one under another or side by side in one image (<see cref="ImageJoiner"/>).</summary>
     public Task JoinAsync(IReadOnlyList<(string Path, string Format)> inputs, string outputPath, string format,
@@ -122,10 +124,7 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             // Animated PNGs are often saved as .png: read them as APNG, so they stay animated as GIF or WebP. An AVIF is an
             // animation only when it is an image sequence.
             var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : AvifSequence.SourceFormat(step.From, step.InputPath);
-            // GIMP's XCF is merged by Filee: give it the token, so a hostile file can be cancelled row by row.
-            using var images = step.From == "xcf"
-                ? new MagickImageCollection { Xcf.ReadFlattened(step.InputPath, cancellationToken) }
-                : ImageReader.Read(step.InputPath, from, step.Preset);
+            using var images = ImageReader.Read(step.InputPath, from, step.Preset, cancellationToken);
             var written = await WriteAsync(images, from, step, progress, cancellationToken, LocateFfmpeg);
             // From a cursor, the hotspot follows the picture into the new one (every CUR is already a cursor, its
             // hotspot at the top left).

@@ -4,7 +4,8 @@
 // SVG → EPS, …) is planned through PDF or PNG by the route planner. "Compress PDF" may also run a PDF through pdfwrite
 // (PdfSharpConverter calls CompressPdfAsync; there is no PDF → PDF edge here, so routes don't change), and
 // PdfiumConverter has CMYK pages rendered here for a CMYK JPG or TIFF (RenderCmykAsync). The job queue has every PDF a
-// PDF/A preset writes made PDF/A-2b here (ArchiveAsync), so PDF → PDF/A is the PDFsharp step followed by this one.
+// PDF/A preset writes made PDF/A-2b here (ArchiveAsync), so PDF → PDF/A is the PDFsharp step followed by this one;
+// links and markup that don't say they print get a copy where they do first (PdfPrintableAnnotations), or PDF/A drops them.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -135,7 +136,8 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer, IPdfAr
     /// <summary>
     /// Rewrites a PDF as PDF/A-2b. Colours become RGB to match the sRGB output intent the standard asks for, fonts are
     /// embedded, and what PDF/A doesn't allow is left out rather than the file refused (policy 1). A tagged PDF loses its
-    /// tags (pdfwrite doesn't carry them), which part B doesn't need.
+    /// tags (pdfwrite doesn't carry them), which part B doesn't need. Ghostscript reads a copy whose visible annotations
+    /// print (<see cref="PdfAInput"/>): PDF/A leaves out every annotation that doesn't.
     /// </summary>
     internal static async Task ConvertToPdfAAsync(string gs, string input, string output, string workDirectory, CancellationToken cancellationToken)
     {
@@ -143,9 +145,17 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer, IPdfAr
         var intent = Path.Combine(scratch, "pdfa.ps");
         await File.WriteAllTextAsync(intent, OutputIntent(ColorProfiles.SRGB.ToByteArray()), Encoding.ASCII, cancellationToken);
         var target = Path.Combine(scratch, "out.pdf");
-        await RunAsync(gs, PdfAArguments(), target, input, cancellationToken, progress: null, prelude: intent);
+        var source = PdfAInput(input, scratch, cancellationToken);
+        await RunAsync(gs, PdfAArguments(), target, source, cancellationToken, progress: null, prelude: intent);
         File.Move(target, output, overwrite: true);
     }
+
+    /// <summary>
+    /// What Ghostscript reads for PDF/A: the copy in <paramref name="folder"/> with annotations made to print, or
+    /// <paramref name="input"/> itself when none needed it or the copy couldn't be made.
+    /// </summary>
+    internal static string PdfAInput(string input, string folder, CancellationToken cancellationToken) =>
+        Pdf.PdfPrintableAnnotations.Prepare(input, folder, cancellationToken) ?? input;
 
     internal static List<string> PdfAArguments() =>
         ["-sDEVICE=pdfwrite", "-dPDFA=2", "-dPDFACompatibilityPolicy=1", "-sColorConversionStrategy=RGB", "-dAutoRotatePages=/None"];

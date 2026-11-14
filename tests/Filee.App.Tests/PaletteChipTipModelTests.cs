@@ -5,6 +5,7 @@ using Filee.App.ViewModels;
 using Filee.App.ViewModels.Pages;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
+using Filee.Core.Localization;
 using Filee.Core.Presets;
 
 namespace Filee.App.Tests;
@@ -14,6 +15,99 @@ public class PaletteChipTipModelTests
 {
     private static PresetFormatTip Tip(ToolbarPageViewModel vm, string id) =>
         Assert.IsType<PresetFormatTip>(vm.Palette.Single(c => c.PresetId == id).Tip);
+
+    [AvaloniaFact]
+    public void Ordinary_notice_follows_the_profile_and_extensions_without_rebuilding_formats()
+    {
+        using var f = new PresetAvailabilityTests.Fixture(new OrdinaryConversionNoticeTests.Inputs());
+        var other = new Filee.Core.Profiles.ToolbarProfile { Id = "notice-video", Extensions = ["mp4"], PresetIds = [] };
+        f.Store.Profiles.Add(other);
+        using var vm = f.PageWithPalette("png");
+        Dispatcher.UIThread.RunJobs();
+        var originalProfile = vm.SelectedProfile;
+        var tip = Tip(vm, "extract-frames-jpg");
+        tip.EnsureBuilt();
+        var rows = tip.FullRows;
+        Assert.Equal(f.Loc["toolbar.chip_tip.ordinary_conversion.single"], tip.OrdinaryConversionNotice);
+
+        vm.SelectedProfile = vm.Profiles.Single(p => p.Profile == other);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(tip, Tip(vm, "extract-frames-jpg"));
+        Assert.Null(tip.OrdinaryConversionNotice);
+        vm.SelectedProfile = originalProfile;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(tip, Tip(vm, "extract-frames-jpg"));
+        Assert.Equal(f.Loc["toolbar.chip_tip.ordinary_conversion.single"], tip.OrdinaryConversionNotice);
+
+        vm.ExtensionTags!.AddCommand.Execute("mp4");
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(tip, Tip(vm, "extract-frames-jpg"));
+        Assert.Equal(f.Loc["toolbar.chip_tip.ordinary_conversion.some"], tip.OrdinaryConversionNotice);
+        vm.ExtensionTags.RemoveCommand.Execute(vm.ExtensionTags.Tags.Single(t => t.Value == "png"));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(tip, Tip(vm, "extract-frames-jpg"));
+        Assert.Null(tip.OrdinaryConversionNotice);
+        vm.ExtensionTags.RemoveCommand.Execute(vm.ExtensionTags.Tags.Single());
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(tip, Tip(vm, "extract-frames-jpg"));
+        Assert.Null(tip.OrdinaryConversionNotice);
+        vm.IsMixed = true;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(tip, Tip(vm, "extract-frames-jpg"));
+        Assert.Null(tip.OrdinaryConversionNotice);
+        vm.MixedExtensions!.Set(["png"], check: true);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(tip, Tip(vm, "extract-frames-jpg"));
+        Assert.Equal(f.Loc["toolbar.chip_tip.ordinary_conversion.single"], tip.OrdinaryConversionNotice);
+        vm.MixedExtensions.Set(["png"], check: false);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(tip, Tip(vm, "extract-frames-jpg"));
+        Assert.Null(tip.OrdinaryConversionNotice);
+        Assert.Same(rows, tip.FullRows);
+        Assert.Equal(1, tip.BuildCount);
+    }
+
+    [AvaloniaFact]
+    public void Engine_changes_rejudge_the_notice_and_failed_probes_do_not_attach_one()
+    {
+        var inputs = new OrdinaryConversionNoticeTests.Inputs();
+        using var f = new PresetAvailabilityTests.Fixture(inputs);
+        using (var vm = f.PageWithPalette("png"))
+        {
+            Dispatcher.UIThread.RunJobs();
+            var before = Tip(vm, "extract-frames-jpg");
+            Assert.NotNull(before.OrdinaryConversionNotice);
+            inputs.Available = f.Built.Available = false;
+            f.Catalog.Refresh();
+            Dispatcher.UIThread.RunJobs();
+            vm.PaletteSearch = f.Loc.DisplayName(f.Preset("extract-frames-jpg"));
+            var unavailable = vm.VisiblePalette.Single(c => c.PresetId == "extract-frames-jpg");
+            Assert.NotNull(unavailable.Reason);
+            Assert.IsType<string>(unavailable.Tip);
+            inputs.Available = f.Built.Available = true;
+            f.Catalog.Refresh();
+            Dispatcher.UIThread.RunJobs();
+            var after = Tip(vm, "extract-frames-jpg");
+            Assert.NotSame(before, after);
+            Assert.Equal(f.Loc["toolbar.chip_tip.ordinary_conversion.single"], after.OrdinaryConversionNotice);
+        }
+
+        var profile = new Filee.Core.Profiles.ToolbarProfile { Id = "notice-failed-probe", Extensions = ["png"], PresetIds = [] };
+        f.Store.Profiles.Add(profile);
+        var probeFails = false;
+        var failing = new PresetAvailability(f.Catalog, f.Loc, [],
+            () => probeFails ? throw new InvalidOperationException("Probe failed.") : f.Catalog.CreatePlanner());
+        using var failed = new ToolbarPageViewModel(f.Store, f.Loc, AppHost.Get<WindowService>(), failing, f.Catalog,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ToolbarPageViewModel>.Instance);
+        failed.SelectedProfile = failed.Profiles.Single(p => p.Profile == profile);
+        Dispatcher.UIThread.RunJobs();
+        Assert.NotNull(Tip(failed, "extract-frames-jpg").OrdinaryConversionNotice);
+        probeFails = true;
+        failed.PresetEdited(f.Preset("extract-frames-jpg"));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Null(failed.Palette.Single(c => c.PresetId == "extract-frames-jpg").Reason);
+        Assert.Null(Tip(failed, "extract-frames-jpg").OrdinaryConversionNotice);
+    }
 
     [AvaloniaFact]
     public void T1_usable_formats_match_single_format_checks_in_registry_order()

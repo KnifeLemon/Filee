@@ -10,6 +10,7 @@
 // How each slice's name and icon fit inside it (the safe zone, one size and one style per ring): SliceLabelLayout.cs.
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
@@ -43,6 +44,9 @@ public sealed class DonutItem
 
     /// <summary>Tooltip shown for disabled slices.</summary>
     public string? DisabledReason { get; init; }
+
+    /// <summary>A runnable slice's operation differs from its name, shown in the hub, not as an error.</summary>
+    public string? OrdinaryConversionNotice { get; init; }
 
     /// <summary>
     /// A group slice: converts nothing itself; hovering it fans these out in a small ring outside the donut, where they
@@ -89,6 +93,8 @@ public sealed partial class DonutMenu : Control
         AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterTitle));
     public static readonly StyledProperty<string?> CenterSubtitleProperty =
         AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterSubtitle));
+    public static readonly StyledProperty<string?> CenterNoticeProperty =
+        AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterNotice));
     public static readonly StyledProperty<bool> IsEditModeProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(IsEditMode));
     public static readonly StyledProperty<bool> AllowContextEditProperty =
@@ -172,7 +178,7 @@ public sealed partial class DonutMenu : Control
     static DonutMenu()
     {
         AffectsMeasure<DonutMenu>(OuterRadiusProperty, ReserveSubRingProperty, GroupRingSizeProperty);
-        AffectsRender<DonutMenu>(HoleRatioProperty, SliceOpacityProperty, CenterTitleProperty, CenterSubtitleProperty,
+        AffectsRender<DonutMenu>(HoleRatioProperty, SliceOpacityProperty, CenterTitleProperty, CenterSubtitleProperty, CenterNoticeProperty,
             IsEditModeProperty, SliceBrushProperty, SliceBorderBrushProperty, CenterBrushProperty, AccentBrushProperty,
             OnAccentBrushProperty, ForegroundProperty, SecondaryForegroundProperty, SuccessBrushProperty, CornerRadiusProperty,
             CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty,
@@ -201,6 +207,7 @@ public sealed partial class DonutMenu : Control
     public double SliceOpacity { get => GetValue(SliceOpacityProperty); set => SetValue(SliceOpacityProperty, value); }
     public string? CenterTitle { get => GetValue(CenterTitleProperty); set => SetValue(CenterTitleProperty, value); }
     public string? CenterSubtitle { get => GetValue(CenterSubtitleProperty); set => SetValue(CenterSubtitleProperty, value); }
+    public string? CenterNotice { get => GetValue(CenterNoticeProperty); set => SetValue(CenterNoticeProperty, value); }
 
     /// <summary>Settings editor mode: shows ✎ on hover, raises drag and edit events instead of invoking slices.</summary>
     public bool IsEditMode { get => GetValue(IsEditModeProperty); set => SetValue(IsEditModeProperty, value); }
@@ -1071,46 +1078,257 @@ public sealed partial class DonutMenu : Control
         var scale = DonutScale;
         using var scaled = context.PushTransform(Matrix.CreateTranslation(-center.X, -center.Y) * Matrix.CreateScale(scale, scale) *
                                                  Matrix.CreateTranslation(center.X, center.Y));
-        var maxWidth = radius * 1.6 / scale;
-        var title = CachedText(CenterTitle ?? "", bold, 14, Foreground, maxWidth, maxLines: 2);
-        var subtitle = CachedText(CenterSubtitle ?? "", regular, 11.5, cancelHot ? DangerBrush : SecondaryForeground, maxWidth, maxLines: 2);
-        // "⟳ Tab back": small, under the rest, a little narrower (the hub is round), with room for its icons.
-        var hintIcons = FlipArrowSize + (CenterHintWheel ? MouseWidth + MouseGap : 0) + IconGap;
-        var hint = string.IsNullOrEmpty(CenterHint) ? null : CachedText(CenterHint, regular, 10.5, SecondaryForeground, maxWidth * 0.85 - hintIcons);
-        var total = title.Height + (string.IsNullOrEmpty(CenterSubtitle) ? 0 : subtitle.Height + 2) + (hint is null ? 0 : hint.Height + 5);
-        var y = center.Y - total / 2;
-        DrawCentered(context, title, center.X, y);
-        y += title.Height;
-        if (!string.IsNullOrEmpty(CenterSubtitle))
+        var key = new CenterPlanKey(CenterNotice, CenterTitle, CenterSubtitle, CenterHint, CenterHintWheel,
+            radius, scale, bold, regular, Foreground, cancelHot ? DangerBrush : SecondaryForeground,
+            SecondaryForeground, CultureInfo.CurrentUICulture.Name, TextDirection);
+        if (!_centerPlans.TryGetValue(key, out var plan))
         {
-            DrawCentered(context, subtitle, center.X, y + 2);
-            y += subtitle.Height + 2;
+            if (_centerPlans.Count >= MaxCachedPlans) _centerPlans.Clear();
+            _centerPlans[key] = plan = PlanCenter(key);
         }
+        if (string.IsNullOrEmpty(CenterNotice))
+        {
+            // Preserve the original absolute-coordinate draw order, including subpixel icon placement.
+            var y = center.Y + plan.TitleTop;
+            DrawCentered(context, plan.Title!, center.X, y);
+            y += plan.Title!.Height;
+            if (!string.IsNullOrEmpty(CenterSubtitle))
+            {
+                DrawCentered(context, plan.Subtitle, center.X, y + 2);
+                y += plan.Subtitle.Height + 2;
+            }
+            if (plan.Hint is not null)
+                using (context.PushOpacity(0.85))
+                    DrawCenterHint(context, plan.Hint, center.X, y + 5);
+            return;
+        }
+        if (plan.Title is not null) DrawCentered(context, plan.Title, center.X, center.Y + plan.TitleTop);
+        if (!string.IsNullOrEmpty(CenterSubtitle))
+            DrawCentered(context, plan.Subtitle, center.X, center.Y + plan.SubtitleTop);
+        if (plan.Hint is not null)
+            using (context.PushOpacity(0.85))
+            using (context.PushTransform(Matrix.CreateScale(plan.HintScale, plan.HintScale) *
+                Matrix.CreateTranslation(center.X, center.Y + plan.HintTop)))
+                DrawCenterHint(context, plan.Hint, 0, 0);
+    }
+
+    private readonly record struct CenterPlanKey(string? Notice, string? Title, string? Subtitle, string? Hint,
+        bool Wheel, double Radius, double Scale, Typeface Bold, Typeface Regular, IBrush? Foreground,
+        IBrush? ActionBrush, IBrush? HintBrush, string Culture, FlowDirection Direction);
+    private sealed record CenterPlan(FormattedText? Title, FormattedText Subtitle, FormattedText? Hint,
+        double TitleTop, double SubtitleTop, double HintTop, double HintScale);
+    private readonly Dictionary<CenterPlanKey, CenterPlan> _centerPlans = new();
+
+    private CenterPlan PlanCenter(CenterPlanKey key)
+    {
+        var maxWidth = key.Radius * 1.6 / key.Scale;
+        var notice = !string.IsNullOrEmpty(key.Notice);
+        var title = notice
+            ? CachedText(key.Notice!, key.Regular, 11.5, key.Foreground, maxWidth, int.MaxValue)
+            : CachedText(key.Title ?? "", key.Bold, 14, key.Foreground, maxWidth, 2);
+        // This is deliberately identical to the no-notice action layout. The notice never takes its width.
+        var subtitle = CachedText(key.Subtitle ?? "", key.Regular, 11.5, key.ActionBrush, maxWidth, 2);
+        var hintIcons = FlipArrowSize + (key.Wheel ? MouseWidth + MouseGap : 0) + IconGap;
+        var hint = string.IsNullOrEmpty(key.Hint) ? null
+            : CachedText(key.Hint, key.Regular, 10.5, key.HintBrush, maxWidth * 0.85 - hintIcons);
+        var subtitleGap = 2.0;
+        var hintGap = 5.0;
+        var total = title.Height + (string.IsNullOrEmpty(key.Subtitle) ? 0 : subtitle.Height + subtitleGap)
+            + (hint is null ? 0 : hint.Height + hintGap);
+        var fitScale = 1.0;
+        var complete = true;
+        if (notice)
+        {
+            var width = Math.Max(Math.Max(title.Width, subtitle.Width), hint is null ? 0 : hint.Width + hintIcons);
+            fitScale = Math.Clamp(key.Radius * 1.9 / key.Scale / Math.Sqrt(width * width + total * total), 0.78, 1);
+            var line = CachedText(key.Notice!, key.Regular, 11.5 * fitScale, key.Foreground, maxWidth);
+            var otherHeight = total - title.Height;
+            var maxLines = Math.Max(1, (int)((key.Radius * 1.5 / key.Scale - otherHeight) / line.Height));
+            title = CachedText(key.Notice!, key.Regular, 11.5 * fitScale, key.Foreground, maxWidth, maxLines);
+            complete = title.Height >= CachedText(key.Notice!, key.Regular, 11.5 * fitScale,
+                key.Foreground, maxWidth, int.MaxValue).Height;
+            total = title.Height + otherHeight;
+        }
+        var titleTop = -total / 2;
+        var subtitleTop = titleTop + title.Height + subtitleGap;
+        var hintTop = (string.IsNullOrEmpty(key.Subtitle) ? titleTop + title.Height : subtitleTop + subtitle.Height) + hintGap;
+        // The no-notice path retains the original file count, metric spacing and unscaled hint.
+        // Containment and yielding apply only to the replacement notice.
+        if (!notice) return new(title, subtitle, hint, titleTop, subtitleTop, hintTop, 1);
+        var hintBounds = hint is null ? null : CenterHintBounds(hint);
+        var originalHintBounds = hintBounds;
+        var hintScale = 1.0;
+        if (complete && Place(keepPosition: true)) return Result();
+
+        // Search the circle's full diameter using actual ink. Let the secondary hint yield before
+        // truncating a complete notice; a platform's wider glyphs must not decide that priority.
+        for (var lines = int.MaxValue; lines >= 1; lines = lines == int.MaxValue ? 3 : lines - 1)
+            for (var hintStep = 10; hintStep >= (hint is not null && lines == int.MaxValue ? 5 : 10); hintStep--)
+            {
+                hintScale = hintStep / 10.0;
+                hintBounds = originalHintBounds?.Select(b =>
+                    b.TransformToAABB(Matrix.CreateScale(hintScale, hintScale))).ToList();
+                for (var smaller = 0; smaller < 2; smaller++)
+                    for (var step = 10; step >= 1; step--)
+                    {
+                        title = NoticeText(11.5 * (smaller == 0 ? fitScale : 0.78),
+                            key.Radius * 2 / key.Scale * step / 10, lines);
+                        Stack();
+                        if (Place()) return Result();
+                    }
+            }
+        title = null;
+        hintScale = 1;
+        hintBounds = originalHintBounds;
+        Stack();
+        CenterPlan? withoutNotice = null;
+        if (Place())
+        {
+            withoutNotice = Result();
+            if (hint is null) return withoutNotice;
+        }
+        if (hint is not null && withoutNotice is null)
+            for (var step = 9; step >= 1; step--)
+            {
+                hint = CachedText(key.Hint!, key.Regular, 10.5, key.HintBrush,
+                    Math.Max(10, (maxWidth * 0.85 - hintIcons) * step / 10));
+                hintBounds = CenterHintBounds(hint);
+                Stack();
+                if (Place())
+                {
+                    withoutNotice = Result();
+                    break;
+                }
+            }
+        // A minimum hub can lack room even after the notice yields. Fit the secondary hint as a unit,
+        // including its strokes, rather than taking any glyphs or font size from the action.
         if (hint is not null)
         {
-            using (context.PushOpacity(0.85))
+            var unscaled = CenterHintBounds(hint);
+            for (var step = 9; step >= 5; step--)
             {
-                // The flip arrow is drawn, not typed: a font without "↻" showed a box in its place (#554). A small mouse
-                // comes first when the wheel flips and no key does. The icons stand at the start of the line: on its
-                // left, or on its right in a right-to-left language, in reading order there too.
-                var left = center.X - (hintIcons + hint.Width) / 2;
-                var rtl = TextDirection == FlowDirection.RightToLeft;
-                var textLeft = rtl ? left : left + hintIcons;
-                var middle = y + 5 + hint.Height / 2;
-                var x = rtl ? left + hint.Width + IconGap : left;
-                var arrowFirst = rtl && CenterHintWheel;
-                if (CenterHintWheel && !arrowFirst)
+                hintScale = step / 10.0;
+                hintBounds = unscaled.Select(b => b.TransformToAABB(Matrix.CreateScale(hintScale, hintScale))).ToList();
+                Stack();
+                if (Place())
                 {
-                    DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
-                    x += MouseWidth + MouseGap;
+                    for (var width = 10; width >= 1; width--)
+                    {
+                        title = NoticeText(11.5 * 0.78, maxWidth * width / 10, 1);
+                        Stack();
+                        if (Place()) return Result();
+                    }
+                    title = null;
+                    Stack();
+                    if (Place()) withoutNotice = Result();
                 }
-                DrawFlipArrow(context, new Point(x + FlipArrowSize / 2, middle), FlipArrowSize / 2, SecondaryForeground);
-                x += FlipArrowSize + (arrowFirst ? MouseGap : IconGap);
-                if (arrowFirst)
-                    DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
-                DrawCentered(context, hint, textLeft + hint.Width / 2, y + 5);
             }
         }
+        // If even the unchanged guidance cannot fit, never return the last rejected candidate.
+        // Keep the original baseline positions and omit only the replacement notice.
+        return withoutNotice ?? PlanCenter(key with { Notice = null }) with { Title = null };
+
+        CenterPlan Result() => new(title, subtitle, hint, titleTop, subtitleTop, hintTop, hintScale);
+
+        FormattedText NoticeText(double size, double width, int lines) =>
+            CachedText(key.Notice!, key.Regular, size, key.Foreground,
+                Math.Max(Math.Ceiling(CachedText("…", key.Regular, size, key.Foreground, maxWidth).Width), width), lines);
+
+        void Stack()
+        {
+            // Pack actual ink, not the empty leading/trailing space of the font's metric boxes.
+            var bottom = 0.0;
+            titleTop = 0;
+            if (title is not null)
+            {
+                var bounds = TextBounds(title);
+                if (bounds.Count > 0)
+                {
+                    titleTop = -bounds.Min(b => b.Top);
+                    bottom = titleTop + bounds.Max(b => b.Bottom) + (string.IsNullOrEmpty(key.Subtitle) ? 0.5 : subtitleGap);
+                }
+            }
+            if (!string.IsNullOrEmpty(key.Subtitle))
+            {
+                subtitleTop = bottom - TextBounds(subtitle).Min(b => b.Top);
+                bottom = subtitleTop + TextBounds(subtitle).Max(b => b.Bottom) + 0.5;
+            }
+            hintTop = hintBounds is null ? bottom : bottom - hintBounds.Min(b => b.Top);
+        }
+
+        bool Place(bool keepPosition = false)
+        {
+            if (title is not null && !string.IsNullOrEmpty(key.Subtitle)
+                && subtitleTop + TextBounds(subtitle).Min(b => b.Top)
+                    - titleTop - TextBounds(title).Max(b => b.Bottom) < subtitleGap - 1e-6)
+                return false;
+            var r = key.Radius / key.Scale;
+            var lower = double.NegativeInfinity;
+            var upper = double.PositiveInfinity;
+            bool Include(IEnumerable<Rect> bounds, double y)
+            {
+                foreach (var b in bounds)
+                {
+                    var edge = Math.Max(Math.Abs(b.Left), Math.Abs(b.Right));
+                    if (edge >= r) return false;
+                    var halfChord = Math.Sqrt(r * r - edge * edge);
+                    lower = Math.Max(lower, -halfChord - b.Top - y);
+                    upper = Math.Min(upper, halfChord - b.Bottom - y);
+                }
+                return lower <= upper;
+            }
+            if (title is not null && !Include(TextBounds(title), titleTop)) return false;
+            if (!string.IsNullOrEmpty(key.Subtitle) && !Include(TextBounds(subtitle), subtitleTop)) return false;
+            if (hintBounds is not null && !Include(hintBounds, hintTop)) return false;
+            if (keepPosition) return lower <= 0 && upper >= 0;
+            var move = (lower + upper) / 2;
+            titleTop += move;
+            subtitleTop += move;
+            hintTop += move;
+            return true;
+        }
+    }
+
+    private List<Rect> CenterHintBounds(FormattedText hint)
+    {
+        var drawing = new DrawingGroup();
+        using (var context = drawing.Open()) DrawCenterHint(context, hint, 0, 0);
+        var bounds = new List<Rect>();
+        void Walk(Drawing item, Matrix transform)
+        {
+            if (item is DrawingGroup group)
+            {
+                var within = (group.Transform?.Value ?? Matrix.Identity) * transform;
+                foreach (var child in group.Children) Walk(child, within);
+            }
+            else if (item is GlyphRunDrawing { GlyphRun: { } glyph })
+                bounds.Add(glyph.InkBounds.TransformToAABB(transform));
+            else if (item is GeometryDrawing { Geometry: { } geometry } shape)
+                bounds.Add((shape.Pen is { } pen ? geometry.GetRenderBounds(pen) : geometry.Bounds).TransformToAABB(transform));
+        }
+        Walk(drawing, Matrix.Identity);
+        return bounds;
+    }
+
+    private void DrawCenterHint(DrawingContext context, FormattedText hint, double centerX, double top)
+    {
+        var hintIcons = FlipArrowSize + (CenterHintWheel ? MouseWidth + MouseGap : 0) + IconGap;
+        var left = centerX - (hintIcons + hint.Width) / 2;
+        var rtl = TextDirection == FlowDirection.RightToLeft;
+        var textLeft = rtl ? left : left + hintIcons;
+        var middle = top + hint.Height / 2;
+        var x = rtl ? left + hint.Width + IconGap : left;
+        var arrowFirst = rtl && CenterHintWheel;
+        if (CenterHintWheel && !arrowFirst)
+        {
+            DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
+            x += MouseWidth + MouseGap;
+        }
+        DrawFlipArrow(context, new Point(x + FlipArrowSize / 2, middle), FlipArrowSize / 2, SecondaryForeground);
+        x += FlipArrowSize + (arrowFirst ? MouseGap : IconGap);
+        if (arrowFirst)
+            DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
+        DrawCentered(context, hint, textLeft + hint.Width / 2, top);
     }
 
     // The hub hint's icons: the flip arrow, the mouse (wheel only) and the room between them and before the text. The
@@ -1423,6 +1641,28 @@ public sealed partial class DonutMenu : Control
     // Text shaping is much more expensive than the slice transforms. Keep layouts across frames,
     // with all layout/paint inputs in the key so language, theme and hover changes remain correct.
     private readonly Dictionary<(string Text, Typeface Typeface, double Size, IBrush? Brush, double Width, int Lines, string Culture), FormattedText> _textLayouts = new();
+    private readonly ConditionalWeakTable<FormattedText, List<Rect>> _textBounds = new();
+
+    private List<Rect> TextBounds(FormattedText text) => _textBounds.GetValue(text, layout =>
+    {
+        var drawing = new DrawingGroup();
+        using (var context = drawing.Open())
+            DrawCentered(context, layout, 0, 0);
+        var bounds = new List<Rect>();
+        void Walk(Drawing item, Matrix transform)
+        {
+            if (item is DrawingGroup group)
+            {
+                var within = (group.Transform?.Value ?? Matrix.Identity) * transform;
+                foreach (var child in group.Children)
+                    Walk(child, within);
+            }
+            else if (item is GlyphRunDrawing { GlyphRun: { } glyph })
+                bounds.Add(glyph.InkBounds.TransformToAABB(transform));
+        }
+        Walk(drawing, Matrix.Identity);
+        return bounds;
+    });
 
     private FormattedText CachedText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth, int maxLines = 1)
     {
@@ -1435,9 +1675,9 @@ public sealed partial class DonutMenu : Control
     private static FormattedText MakeText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth, int maxLines = 1) =>
         new(text, CultureInfo.CurrentUICulture, TextDirection, typeface, size, brush)
         {
-            MaxTextWidth = Math.Max(10, maxWidth),
+            MaxTextWidth = Math.Max(1, maxWidth),
             MaxLineCount = maxLines,
-            Trimming = TextTrimming.CharacterEllipsis,
+            Trimming = maxLines == int.MaxValue ? TextTrimming.None : TextTrimming.CharacterEllipsis,
             TextAlignment = TextAlignment.Center,
         };
 

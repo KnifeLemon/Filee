@@ -18,6 +18,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     [ObservableProperty] private IReadOnlyList<DonutItem> _items = [];
     [ObservableProperty] private string _centerTitle = "";
     [ObservableProperty] private string? _centerSubtitle;
+    [ObservableProperty] private string? _centerNotice;
+    private bool _singleInput;
 
     /// <summary>The job the progress ring shows, for the download badge above it; null when the ring shows none.</summary>
     [ObservableProperty] private JobViewModel? _progressJob;
@@ -151,6 +153,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         IsClickMode = true;
         IsConnectMode = true;
         Files = [];
+        CenterNotice = null;
         DonutOpacity = 1;
         HitBackground = "Transparent";
         ApplyAppearance();
@@ -186,6 +189,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         IsClickMode = false;
         IsConnectMode = false;
         Files = [];
+        CenterNotice = null;
         ApplyAppearance();
         ReserveSubRing = store.Profiles.Any(profile => HasGroups(profile.PresetIds.Concat(profile.BackPresetIds ?? [])));
         _loads++;
@@ -208,6 +212,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         IsClickMode = clickMode;
         IsConnectMode = false;
         Files = files;
+        CenterNotice = null;
         DonutOpacity = 1;
         HitBackground = "Transparent";
         ApplyAppearance();
@@ -218,6 +223,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         var folders = files.Where(Directory.Exists).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
         var mainFiles = CompanionFiles.WithoutCompanions(files.Where(p => !folders.Contains(p)).ToList()).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
         var counted = files.Where(p => folders.Contains(p) || mainFiles.Contains(p)).ToList();
+        _singleInput = counted.Count == 1;
         var foldersOnly = counted.Count > 0 && counted.All(folders.Contains);
         var profile = (foldersOnly ? store.Profiles.FirstOrDefault(p => p.Id == "folders") : null)
             ?? ProfileSelector.Select(store.Profiles, counted);
@@ -387,6 +393,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         if (!CanFlip)
             return false;
         ShowFace(!IsBackFace);
+        CenterNotice = null;
         CenterSubtitle = IsClickMode ? loc["donut.close_hint"] : null;
         if (_example is { } example)
             ShowExample(example.Title, example.Subtitle);
@@ -475,6 +482,12 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                 IconKey = SliceIcons.For(p),
                 Show = p.Show,
                 Direction = p.Direction,
+                OrdinaryConversionNotice = reason is not null ? null : availability.OrdinaryConversionFor(p, formats) switch
+                {
+                    OrdinaryConversion.All => loc[_singleInput ? "donut.ordinary_conversion.single" : "donut.ordinary_conversion.all"],
+                    OrdinaryConversion.Some => loc["donut.ordinary_conversion.some"],
+                    _ => null,
+                },
             };
         }
 
@@ -506,6 +519,10 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// <summary>Updates the centre hint for the emphasised slice (and slice <paramref name="sub"/> of its group's ring).</summary>
     public void ShowHint(int index, int sub, bool centerHot)
     {
+        var item = !centerHot && index >= 0 && index < Items.Count ? Items[index] : null;
+        if (item?.Children is { } ring)
+            item = sub >= 0 && sub < ring.Count ? ring[sub] : null;
+        CenterNotice = item is { IsEnabled: true, IsGroup: false } ? item.OrdinaryConversionNotice : null;
         if (centerHot)
             CenterSubtitle = loc["donut.cancel"];
         else if (index >= 0 && index < Items.Count && Items[index].Children is { Count: > 0 } children &&

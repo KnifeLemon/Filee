@@ -9,6 +9,9 @@ namespace Filee.App.Services;
 
 public enum PresetUse { Usable, NeedsPackage, Unusable }
 
+/// <summary>Whether the agreed extraction presets convert usable inputs without their named operation.</summary>
+public enum OrdinaryConversion { None, All, Some }
+
 /// <summary>Why a preset can or cannot run; usable presets have no reason.</summary>
 public readonly record struct PresetJudgement(PresetUse Use, string? Reason);
 
@@ -61,6 +64,24 @@ public sealed class PresetAvailability
             if (Evaluate(preset, [format], Installed, Enabling).Use == PresetUse.Usable)
                 usable.Add(format);
         return usable;
+    }
+
+    /// <summary>Counts only runnable inputs; an envelope's operation is unknown until its file is opened.</summary>
+    public OrdinaryConversion OrdinaryConversionFor(Preset preset, IReadOnlyList<FileFormat> formats)
+    {
+        Func<string, bool>? asNamed = preset.Id switch
+        {
+            "extract-frames-png" or "extract-frames-jpg" => preset.SavesFramesOf,
+            "extract-motion" => preset.ExtractsMotionOf,
+            _ => null,
+        };
+        if (asNamed is null)
+            return OrdinaryConversion.None;
+        var usable = UsableFormats(preset, formats);
+        var ordinary = usable.Count(format => !asNamed(format.Id)
+            && !_catalog.All.OfType<IEnvelopeOpener>().Any(opener => opener.Opens(format.Id)));
+        return ordinary == 0 ? OrdinaryConversion.None
+            : ordinary == usable.Count ? OrdinaryConversion.All : OrdinaryConversion.Some;
     }
 
     private EnginePackageState? PackageEnabling(Func<RoutePlanner, bool> possible, Func<EnginePackageState, RoutePlanner> plannerFor) =>

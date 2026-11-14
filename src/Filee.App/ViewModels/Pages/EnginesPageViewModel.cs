@@ -154,6 +154,12 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     public string? Remove(EnginePackageState package) => _downloads.Uninstall(package);
 
     /// <summary>
+    /// Uses the copy on the PC instead of Filee's download (<see cref="EngineDownloadService.UseOtherCopyAsync"/>).
+    /// </summary>
+    public Task<string?> UseOtherCopyAsync(EnginePackageState package, string folder) =>
+        _downloads.UseOtherCopyAsync(package, folder);
+
+    /// <summary>
     /// Uses the user's own copy of a package from <paramref name="path"/> (a program they picked). Returns false when
     /// that folder doesn't have the package's programs; nothing is saved then.
     /// </summary>

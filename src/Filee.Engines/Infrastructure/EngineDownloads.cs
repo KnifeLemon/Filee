@@ -81,6 +81,18 @@ public static class EngineDownloads
     }
 
     /// <summary>
+    /// Filee's own copy of every pinned download (Cloudflare R2 behind dl.filee.sh), filed under its SHA-256. A download
+    /// site drops old versions (LibreOffice's "stable" folder lost 26.2.6 when 26.2.7 came out, #1474), and a released
+    /// Filee can't change its pinned URL, so when the URL fails the installer takes the file from here. The pinned
+    /// SHA-256 is checked either way, so a copy here can't be anything but the pinned file.
+    /// </summary>
+    public const string MirrorRoot = "https://dl.filee.sh/engines/";
+
+    /// <summary>Where Filee's copy of <paramref name="component"/> is: <see cref="MirrorRoot"/>/&lt;sha256&gt;/&lt;file name&gt;.</summary>
+    public static Uri MirrorUrl(EngineComponent component) =>
+        new(MirrorRoot + component.Sha256.ToLowerInvariant() + "/" + Uri.EscapeDataString(FileName(component)));
+
+    /// <summary>
     /// The package's downloads as text to copy (#447): per file its name, URL and SHA-256, to fetch them on a computer
     /// with internet and install them here with "Install from downloaded files…".
     /// </summary>

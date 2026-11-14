@@ -23,9 +23,52 @@ public static partial class CopyVersions
 
     /// <summary>
     /// The version of the copy in <paramref name="folder"/> (major.minor), or null when it can't be told (e.g. an
-    /// FFmpeg git build named by date). Cached per program and file time.
+    /// FFmpeg git build named by date). Cached per program and file time once the program answered: one that didn't
+    /// start, timed out or failed is asked again next time, while one that answered keeps its version until its file
+    /// changes, even if it stops working (Runs starts it again).
     /// </summary>
     public static Version? Installed(string id, string folder)
+    {
+        if (ProgramOf(id, folder) is not { } program)
+            return null;
+        var key = $"{program}|{File.GetLastWriteTimeUtc(program).Ticks}";
+        if (Cache.TryGetValue(key, out var known))
+            return known;
+        var (text, works) = Read(id, program);
+        var version = ParseVersion(id, text);
+        // A start that failed or timed out once (many programs started together, a library missing until repaired) is
+        // tried again next time.
+        if (works || version is not null)
+            Cache[key] = version;
+        return version;
+    }
+
+    /// <summary>
+    /// True when the copy's program in <paramref name="folder"/> starts and answers its version switch (exit code 0, or
+    /// a version in what it printed). Started again on every call: the copy may have stopped working since (a library
+    /// it needs was removed) while the program file stayed the same.
+    /// </summary>
+    public static bool Runs(string id, string folder)
+    {
+        if (ProgramOf(id, folder) is not { } program)
+            return false;
+        if (id == "libreoffice" && OperatingSystem.IsWindows())
+            return File.Exists(Path.Combine(folder, "soffice.exe"));
+        // The file's time is taken before it runs: replaced meanwhile (an upgrade), the new file gets its own read.
+        var key = $"{program}|{File.GetLastWriteTimeUtc(program).Ticks}";
+        var (text, finished, exitCode) = Start(id, program);
+        var version = ParseVersion(id, text);
+        // The version read here serves Installed's next call for the same file, so the program starts once.
+        if (finished && (exitCode == 0 || version is not null))
+        {
+            Cache[key] = version;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>The file the version is read from: the main program, or LibreOffice's version.ini on Windows.</summary>
+    private static string? ProgramOf(string id, string folder)
     {
         var program = id switch
         {
@@ -33,9 +76,7 @@ public static partial class CopyVersions
             _ when EngineEnvironment.OwnCopyPrograms.TryGetValue(id, out var programs) => Path.Combine(folder, programs[0]),
             _ => null,
         };
-        if (program is null || !File.Exists(program))
-            return null;
-        return Cache.GetOrAdd($"{program}|{File.GetLastWriteTimeUtc(program).Ticks}", _ => ParseVersion(id, Read(id, program)));
+        return program is not null && File.Exists(program) ? program : null;
     }
 
     /// <summary>True when the copy is older (major.minor) than the version Filee is tested with.</summary>
@@ -52,27 +93,45 @@ public static partial class CopyVersions
             "calibre" => CalibreVersion().Match(text),
             "weasyprint" => WeasyPrintVersion().Match(text),
             "libreoffice" => LibreOfficeVersion().Match(text),
+            "tesseract" => TesseractVersion().Match(text),
             _ => LeadingVersion().Match(text),
         };
-        return match.Success ? new Version(int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value)) : null;
+        return VersionOf(match);
     }
 
-    private static Version? Parse(string? text)
-    {
-        var match = LeadingVersion().Match(text ?? "");
-        return match.Success ? new Version(int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value)) : null;
-    }
+    private static Version? Parse(string? text) => VersionOf(LeadingVersion().Match(text ?? ""));
 
-    private static string Read(string id, string program)
+    /// <summary>Major and minor from a match; null when there is none or a number is too big to be a version.</summary>
+    private static Version? VersionOf(Match match) =>
+        match.Success && int.TryParse(match.Groups[1].ValueSpan, out var major) && int.TryParse(match.Groups[2].ValueSpan, out var minor)
+            ? new Version(major, minor) : null;
+
+    /// <summary>What the program says about its version, and whether it started and ended well (exit code 0).</summary>
+    private static (string Text, bool Works) Read(string id, string program)
     {
         if (id == "libreoffice" && OperatingSystem.IsWindows())
         {
             // LibreOffice 26 dropped MsiProductVersion from version.ini; soffice.exe next to it still says it.
             var soffice = Path.Combine(Path.GetDirectoryName(program)!, "soffice.exe");
             var product = File.Exists(soffice) ? FileVersionInfo.GetVersionInfo(soffice).ProductVersion : null;
-            return File.ReadAllText(program) + (product is null ? "" : $"\nLibreOffice {product}");
+            return (File.ReadAllText(program) + (product is null ? "" : $"\nLibreOffice {product}"), true);
         }
-        var arguments = id == "ffmpeg" ? "-hide_banner -version" : "--version";
+        var (text, finished, exitCode) = Start(id, program);
+        return (text, finished && exitCode == 0);
+    }
+
+    /// <summary>
+    /// Starts the program with its version switch: its output, whether it finished in time, and its exit code.
+    /// </summary>
+    private static (string Text, bool Finished, int ExitCode) Start(string id, string program)
+    {
+        // ExifTool's --version prints its manual; -ver prints the number alone.
+        var arguments = id switch
+        {
+            "ffmpeg" => "-hide_banner -version",
+            "exiftool" => "-ver",
+            _ => "--version",
+        };
         try
         {
             using var process = Process.Start(new ProcessStartInfo(program, arguments)
@@ -83,19 +142,21 @@ public static partial class CopyVersions
                 RedirectStandardError = true,
             });
             if (process is null)
-                return "";
+                return ("", false, -1);
             var output = process.StandardOutput.ReadToEndAsync();
             var errors = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(10_000))
             {
                 process.Kill(entireProcessTree: true);
-                return "";
+                return ("", false, -1);
             }
-            return output.Result + "\n" + errors.Result;
+            return (output.Result + "\n" + errors.Result, true, process.ExitCode);
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        // AggregateException: reading what it printed failed (the pipe broke).
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException
+            or AggregateException)
         {
-            return "";
+            return ("", false, -1);
         }
     }
 
@@ -113,6 +174,10 @@ public static partial class CopyVersions
 
     [GeneratedRegex(@"(?:MsiProductVersion=|LibreOffice\s+)(\d+)\.(\d+)")]
     private static partial Regex LibreOfficeVersion();
+
+    // "tesseract 5.5.3" (Homebrew), "tesseract v5.4.0.20240606" (the Windows build Filee downloads).
+    [GeneratedRegex(@"^tesseract(?:\.exe)? v?(\d+)\.(\d+)", RegexOptions.Multiline)]
+    private static partial Regex TesseractVersion();
 
     [GeneratedRegex(@"^\s*(\d+)\.(\d+)", RegexOptions.Multiline)]
     private static partial Regex LeadingVersion();

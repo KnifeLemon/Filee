@@ -4,8 +4,8 @@
 // (Filee's own reader, as ImageMagick's Q8 build reads only 8-bit DICOM), FITS (Filee's own reader, stretched and
 // debayered as the preset says), the photo of an iPhone LIVP, the merged picture of a Krita KRA, the layers of a Paint.NET
 // PDN merged as Paint.NET shows them, those of a GIMP XCF as GIMP shows them (Filee's own reader, as ImageMagick reads
-// only 8-bit files without zlib and merges them its own way) and the icon of a Windows program. Used by every engine
-// that takes a raster image as input.
+// only 8-bit files without zlib and merges them its own way), the frames of a Valve texture (VTF) and the icon of a
+// Windows program. Used by every engine that takes a raster image as input.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -24,7 +24,9 @@ internal static class ImageReader
     /// Reads <paramref name="path"/> as format <paramref name="formatId"/>. Layered formats come back as a single,
     /// flattened image; other multi-frame formats (TIFF pages, GIF frames, ICO sizes) keep all frames.
     /// </summary>
-    public static MagickImageCollection Read(string path, string formatId, Preset preset)
+    /// <param name="cancellationToken">Stops the merge of a GIMP file between rows; other formats are read at once.</param>
+    public static MagickImageCollection Read(string path, string formatId, Preset preset,
+        CancellationToken cancellationToken = default)
     {
         if (formatId == "apng")
             return Apng.Read(path);
@@ -39,7 +41,9 @@ internal static class ImageReader
         if (formatId == "pdn")
             return [PaintNet.ReadFlattened(path)];
         if (formatId == "xcf")
-            return [Xcf.ReadFlattened(path)];
+            return [Xcf.ReadFlattened(path, cancellationToken)];
+        if (formatId == "vtf")
+            return Vtf.Read(path);
         if (formatId == FormatRegistry.Program)
             return ReadPackaged(ProgramIcon.Read(path), "ico", preset);
         if (formatId == "fits")

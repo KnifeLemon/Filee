@@ -253,10 +253,22 @@ public interface IEnvelopeOpener
 /// <param name="SourceName">The original source's basename, including its extension, without directories.</param>
 public sealed record PdfMergeInput(string PdfPath, string SourceName);
 
+/// <summary>The paper size and orientation shared by every page of a merged PDF.</summary>
+/// <param name="Paper">The target paper, or the visible physical size of the first imported page.</param>
+/// <param name="Orientation">The target orientation, chosen once from the first imported page when automatic.</param>
+public readonly record struct PdfMergePaper(PdfSheetPaper Paper, PdfSheetOrientation Orientation);
+
 /// <summary>Merges several PDF files into one. Implemented by the PDF engine.</summary>
 public interface IPdfMerger
 {
-    Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken);
+    /// <summary>Imports the input PDFs in order and writes their pages and supported structure into one PDF.</summary>
+    /// <param name="inputs">PDFs and original source names in the order to merge.</param>
+    /// <param name="outputPath">File to create.</param>
+    /// <param name="sourceBookmarks">Add a parent bookmark for each original source file.</param>
+    /// <param name="paper">Fit merged pages to this paper, or null to preserve their original geometry.</param>
+    /// <param name="cancellationToken">Cancels the merge without modifying the inputs.</param>
+    Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
