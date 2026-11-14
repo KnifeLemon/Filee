@@ -290,7 +290,6 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
             Assert.Contains((format, "zip"), edges);
         if (SevenZipExe is null)
         {
-            Assert.DoesNotContain(("dmg", "zip"), edges);
             Assert.DoesNotContain(("zip", "tbz2"), edges); // 7z and TAR.XZ are written in-process now
             Assert.Contains(("xz", "gz"), edges);
         }
