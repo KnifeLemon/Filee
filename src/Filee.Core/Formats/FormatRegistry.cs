@@ -358,6 +358,9 @@ public static class FormatRegistry
         // Garry's Mod addons (Steam Workshop), unpacked by Filee with an addon.json for their title, description, type
         // and tags.
         new("gma", "Garry's Mod addon (GMA)", FormatCategory.Archive, ["gma"], Writable: false),
+        // Valve paks (Source engine games' files, "pak01_dir.vpk" with its "pak01_000.vpk" … parts), read by Filee; a PS
+        // Vita package under the same extension is a ZIP and goes to 7-Zip.
+        new("vpk", "Valve pak (VPK)", FormatCategory.Archive, ["vpk"], Writable: false),
         new("cab", "CAB", FormatCategory.Archive, ["cab"], Writable: false),
         new("cpio", "CPIO", FormatCategory.Archive, ["cpio"], Writable: false),
         new("deb", "DEB", FormatCategory.Archive, ["deb"], Writable: false),

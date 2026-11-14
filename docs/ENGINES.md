@@ -33,7 +33,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
-| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, Garry's Mod addons (GMA), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip, GMA read in-process; "Compress into one archive" for any files |
+| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip, GMA, VPK read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
@@ -1825,6 +1825,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
 | EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (decoded by 7-Zip); several blocks per file | — |
 | GMA (Garry's Mod addon) | Filee: versions 1–3, CRCs checked, an `addon.json` written beside the files | — |
+| VPK (Valve pak) | Filee: versions 1 and 2, `_dir.vpk` with its `_000.vpk` … parts, CRCs checked; a PS Vita `.vpk` (a ZIP) by 7-Zip | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
@@ -1845,6 +1846,16 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   the archive limit and their sizes must fit inside the addon. Unpacking checks every file's CRC (0, as `gmad -nocrc`
   writes it, is not checked) and writes an `addon.json` with the title, description, type and tags, as gmad reads it
   to pack the folder again; the required-content list and the author are not kept (Garry's Mod uses neither).
+- **Valve paks** (`.vpk`, #1526, the Games field; `Archives/Vpk.cs`): the archives Source engine games keep their files
+  in (`hl2_textures_dir.vpk`, the content Garry's Mod mounts). The directory file holds a tree of extensions, folders
+  and names; each file's content is a few preload bytes stored in the tree plus its data, which follows the tree in the
+  directory file (archive index 0x7FFF) or sits in `<name>_nnn.vpk` next to it. The directory file is what unpacks;
+  a data part on its own is refused with the name of its directory file, a missing part names the part. Every name is
+  checked before anything is written, the tree is capped at 256 MB and the entries at the archive limit, preload bytes
+  must lie inside the tree, parts are `_000` to `_999`, and each file's data must lie inside its part; the total is
+  checked against the free space first. The MD5 and signature sections of version 2 are not read; every file's CRC-32
+  is checked. Nothing writes VPK (Garry's Mod
+  loads addons as folders or GMA). A PS Vita package has the same extension but is a ZIP: it goes to 7-Zip.
 - **Adobe extension packages** (`.zxp`, #1382, read only like JAR): the panels and plug-ins of After Effects, Premiere
   Pro, Photoshop and the other Creative Cloud apps are signed ZIPs (`mimetype`, the extension's files and
   `META-INF/signatures.xml`). They extract and convert to every archive target with the signature file inside.
