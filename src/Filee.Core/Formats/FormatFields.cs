@@ -83,7 +83,7 @@ public static class FormatFields
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "zxp", "nupkg", "apks",
             "aab", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "cab", "gerber",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
-            "stl", "obj", "3mf", "ply", "fbx", "gcode", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani"
+            "stl", "obj", "3mf", "ply", "fbx", "gcode", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani", "vtf"
         ]),
         (FormatGrade.Legacy,
         [
@@ -100,7 +100,7 @@ public static class FormatFields
         // Layout, print, photo post-production, signs and embroidery.
         (["psd", "psb", "exr", "hdr", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
         // Game textures and cutscenes, Minecraft packs and modpacks.
-        (["dds", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"], ["game"]),
+        (["dds", "vtf", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"], ["game"]),
         // Medical imaging and astronomy.
         (["dcm", "fits"], ["science"]),
         // Software work: raw image formats of graphics tools, app icons and cursors, config and data files, flat XML

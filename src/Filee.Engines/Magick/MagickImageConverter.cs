@@ -38,6 +38,8 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
         // and PSD.
         .. ImageEncoder.Sources.Where(source => source != "pdn").Select(source => ImageEncoder.Edge(source, "pdn")),
         .. ImageEncoder.Sources.Where(source => source != "xcf").Select(source => ImageEncoder.Edge(source, "xcf")),
+        // Valve's texture for the Source engine (Garry's Mod and others), written by Filee (VtfWriter).
+        .. ImageEncoder.Sources.Where(source => source != "vtf").Select(source => ImageEncoder.Edge(source, "vtf")),
     ];
 
     public EngineStatus GetStatus() =>
@@ -84,7 +86,7 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
 
     public bool CanRead(string format) => ImageEncoder.Sources.Contains(format);
 
-    public bool CanWrite(string format) => format is "pdn" or "xcf" || ImageEncoder.Writable.Contains(format);
+    public bool CanWrite(string format) => format is "pdn" or "xcf" or "vtf" || ImageEncoder.Writable.Contains(format);
 
     /// <summary>"Merge images": the pictures one under another or side by side in one image (<see cref="ImageJoiner"/>).</summary>
     public Task JoinAsync(IReadOnlyList<(string Path, string Format)> inputs, string outputPath, string format,

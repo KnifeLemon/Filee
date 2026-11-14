@@ -1167,6 +1167,9 @@ internal static class SettingsMigrations
         // v93: G-code toolpaths (.gcode, .gco, .ngc) learn the CAD donut; custom claims stay put.
         if (from < 93)
             changed |= LearnExtensions(profiles, out _, ["gcode", "gco", "ngc"]);
+        // v94: Valve textures (.vtf) learn the images donut; custom claims stay put.
+        if (from < 94)
+            changed |= LearnExtensions(profiles, out _, ["vtf"]);
         return changed;
     }
 

@@ -35,7 +35,7 @@ public class FormatFieldsTests
         "org", "osm", "otf", "pam", "pcd", "pcx", "pdb", "pdn", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
         "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "s3m", "scc", "sda", "sdc", "sdw", "sgi", "shp", "snb", "spx",
         "ssa", "stl", "sub", "swf", "tak", "tar", "tar7z", "tbz2", "tcr", "tex", "textile", "tgz", "tlz", "toml",
-        "tta", "ttf", "ttml", "txtz", "txz", "typ", "tz", "usm", "vob", "voc", "w64", "wbmp", "wmf", "woff", "woff2",
+        "tta", "ttf", "ttml", "txtz", "txz", "typ", "tz", "usm", "vob", "voc", "vtf", "w64", "wbmp", "wmf", "woff", "woff2",
         "wpd", "wtv", "wv", "xbm", "xcf", "xlt", "xm", "xpm", "xz", "yaml", "z", "zxp"
     ];
 
@@ -45,7 +45,7 @@ public class FormatFieldsTests
         { "model3d", ["fbx", "glb", "gltf", "ply"] },
         { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
         { "font", ["otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "dds", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "usm"] },
+        { "game", ["bik", "dds", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "usm", "vtf"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits"] },
         { "developer", [
@@ -72,7 +72,7 @@ public class FormatFieldsTests
         { "model3d", ["3mf", "fbx", "gcode", "glb", "gltf", "obj", "ply", "stl"] },
         { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
         { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "dds", "flc", "it", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm", "xm"] },
+        { "game", ["bik", "dds", "flc", "it", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm", "vtf", "xm"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits", "ipynb", "jp2"] },
         { "developer", [
@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 99,
-                [FormatGrade.Specialist] = 126,
+                [FormatGrade.Specialist] = 127,
                 [FormatGrade.Legacy] = 52,
             },
             counts);
