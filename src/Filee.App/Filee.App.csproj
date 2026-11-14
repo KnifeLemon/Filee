@@ -51,6 +51,7 @@
     <AvaloniaResource Include="..\..\THIRD-PARTY-NOTICES.md" Link="Assets\THIRD-PARTY-NOTICES.md" />
   </ItemGroup>
 
+
   <ItemGroup>
     <InternalsVisibleTo Include="Filee.App.Tests" />
   </ItemGroup>
@@ -99,8 +100,7 @@
   </ItemGroup>
 
   <!-- A subject alone is only text: an expected publisher needs the certificate authority that issued it. -->
-  <Target Name="FileeCheckExpectedPublisher" BeforeTargets="CoreCompile"
-          Condition="'$(FileeRelease)' == 'true' And '$(FileeExpectedPublisher)' != '' And '$(FileeExpectedIssuer)' == ''">
+  <Target Name="FileeCheckExpectedPublisher" BeforeTargets="CoreCompile" Condition="'$(FileeRelease)' == 'true' And '$(FileeExpectedPublisher)' != '' And '$(FileeExpectedIssuer)' == ''">
     <Error Text="FileeExpectedPublisher is set without FileeExpectedIssuer (Directory.Build.props)." />
   </Target>
   <ItemGroup>

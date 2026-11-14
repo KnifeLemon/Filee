@@ -165,8 +165,13 @@ public sealed class RadialController(
         WatchFlipKey();
     }
 
+    private int _lastTriggerX;
+    private int _lastTriggerY;
+
     public void ShowForConnect(int x, int y)
     {
+        _lastTriggerX = x;
+        _lastTriggerY = y;
         ReleaseProgressToToast();
         _grace.Cancel();
         ReplaceWeb(null);
@@ -403,7 +408,16 @@ public sealed class RadialController(
     /// </summary>
     private void Convert(int index, int sub, IReadOnlyList<string> files, WebDrop? web = null)
     {
-        if (viewModel.IsConnectMode || viewModel.PresetAt(index, sub)?.Id == "preset.filee_connect")
+        var targetPreset = viewModel.PresetAt(index, sub);
+        if (targetPreset?.Id == "preset.capture_studio")
+        {
+            KeepKeyboard();
+            Close(animate: false);
+            windows.ShowCaptureStudio(_lastTriggerX, _lastTriggerY);
+            return;
+        }
+
+        if (viewModel.IsConnectMode || targetPreset?.Id == "preset.filee_connect")
         {
             KeepKeyboard();
             Close(animate: false);

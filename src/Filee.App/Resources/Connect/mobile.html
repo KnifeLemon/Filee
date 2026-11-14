@@ -61,6 +61,7 @@
       <nav class="tabs-nav" aria-label="Sections">
         <button class="tab-btn active" id="tabBtnText" data-tab="tabText">Text</button>
         <button class="tab-btn" id="tabBtnFiles" data-tab="tabFiles">Shared Folder</button>
+        <button class="tab-btn" id="tabBtnMirror" data-tab="tabMirror">Screen Mirror</button>
       </nav>
 
       <!-- Tab 1: Text (Default Active) -->
@@ -129,6 +130,24 @@
           <div class="workspace-footer">
             <span id="itemCount">0 items</span>
             <span>Stored on PC</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 3: Screen Mirror -->
+      <section class="tab-pane" id="tabMirror">
+        <div class="card">
+          <div class="section-title">
+            <p class="eyebrow">CAPTURE STUDIO</p>
+            <h2>Mobile Screen Mirroring</h2>
+            <p class="muted small">Broadcast your phone screen live to Capture Studio on your PC.</p>
+          </div>
+          <div style="text-align: center; padding: 24px 12px;">
+            <div style="font-size: 48px; margin-bottom: 12px;">📱</div>
+            <p id="mirrorStatusText" class="muted small" style="margin-bottom: 20px;">Ready to share your phone's screen with your PC.</p>
+            <button class="button button-primary" id="startMirrorBtn" type="button" style="width: 100%; height: 44px; font-size: 15px;">Start Screen Mirroring</button>
+            <button class="button button-secondary" id="stopMirrorBtn" type="button" style="width: 100%; height: 44px; font-size: 15px; margin-top: 10px;" hidden>Stop Mirroring</button>
+            <video id="mirrorVideo" autoplay playsinline muted style="display: none;"></video>
           </div>
         </div>
       </section>

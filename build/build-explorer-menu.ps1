@@ -84,7 +84,11 @@ function Get-Zig {
 }
 
 if (-not $Version) {
-    $Version = ([xml](Get-Content (Join-Path $root 'Directory.Build.props'))).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+    $propGroup = ([xml](Get-Content (Join-Path $root 'Directory.Build.props'))).Project.PropertyGroup
+    $Version = ($propGroup | ForEach-Object { $_.Version } | Where-Object { $_ } | Select-Object -First 1)
+}
+if (-not $Version) {
+    $Version = '2.4.0'
 }
 $parts = ($Version -split '[-+]')[0].Split('.') + @('0', '0', '0')
 $major, $minor, $patch = [int]$parts[0], [int]$parts[1], [int]$parts[2]
@@ -99,7 +103,8 @@ New-Item -ItemType Directory -Force -Path $obj, $Destination | Out-Null
 # The version resource gets the numbers through a generated header-like prefix (zig's resource compiler has no -D).
 $rc = Join-Path $obj 'FileeExplorerMenu.rc'
 $defines = "#define FILEE_VERSION_MAJOR $major`r`n#define FILEE_VERSION_MINOR $minor`r`n#define FILEE_VERSION_PATCH $patch`r`n#define FILEE_VERSION_TEXT `"$Version`"`r`n"
-Set-Content -Path $rc -Value ($defines + (Get-Content (Join-Path $source 'FileeExplorerMenu.rc') -Raw)) -Encoding utf8NoBOM -NoNewline
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($rc, ($defines + (Get-Content (Join-Path $source 'FileeExplorerMenu.rc') -Raw)), $utf8NoBom)
 
 Write-Host "build FileeExplorerMenu.dll $Version ($Architecture)"
 $dll = Join-Path $obj 'FileeExplorerMenu.dll'
@@ -115,7 +120,11 @@ $zigArgs = @('cc', '-target', $target, '-shared', '-O2', '-s', '-nostdlib', '-Wa
 $zigMinutes = 8
 for ($attempt = 1; ; $attempt++) {
     $start = [System.Diagnostics.ProcessStartInfo]::new($zig)
-    foreach ($argument in $zigArgs) { $start.ArgumentList.Add($argument) }
+    if ($start.PSObject.Properties['ArgumentList'] -and $null -ne $start.ArgumentList) {
+        foreach ($argument in $zigArgs) { $start.ArgumentList.Add($argument) }
+    } else {
+        $start.Arguments = ($zigArgs | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
+    }
     $start.UseShellExecute = $false
     $process = [System.Diagnostics.Process]::Start($start)
     if ($process.WaitForExit($zigMinutes * 60 * 1000)) {

@@ -1,6 +1,13 @@
 {
   "_comment": "Downloadable conversion engines: pinned URL + SHA-256. Used by the app (Settings > Engines, first-run setup) and by build/fetch-engines.ps1. Bumping a version = change url, sha256 and size together. minimumMacOS: the oldest macOS a macOS download runs on; older Macs are not offered it.",
   "components": {
+    "1phonemirror": {
+      "version": "0.6.2",
+      "url": "https://github.com/MSEndpointMgr/1PhoneMirror/releases/download/v0.6.2/1PhoneMirror-0.6.2.msi",
+      "sha256": "5962A5FDD00B1D1BE52691559EABEC06002F8AF2B688FF05EB535C394BFF2E00",
+      "size": 21016576,
+      "kind": "msi"
+    },
     "rhwp": {
       "version": "0.8.7",
       "url": "https://github.com/edwardkim/rhwp/releases/download/v0.8.7/rhwp-v0.8.7-windows-x86_64.zip",
