@@ -8,8 +8,15 @@
 // /ActualText for glyphs that don't map one to one (see PageContent.DrawRun). Links and named destinations are Skia
 // annotations; the outline (bookmarks) is added afterwards with PDFsharp, which Skia has no API for.
 //
+// A glyph no character of the cmap leads to (a font feature put it in place of the character's own glyph: Noto Sans
+// CJK's digits after a Latin letter, small caps, a ligature) is written to the ToUnicode map as U+0000, its text only
+// as /ActualText, which many readers ignore (they copy "H" and a NUL for "H1"). Where such a glyph always draws the
+// same text as a cluster of its own, that text goes into the map afterwards, with PDFsharp.
+//
 // docs/ENGINES.md ("Filee renderer: PDF output") compares this with a page writer of Filee's own on PDFsharp.
 
+using System.Text;
+using System.Text.RegularExpressions;
 using Filee.Engines.Fonts;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
@@ -29,7 +36,7 @@ internal sealed record PdfDocumentInfo
 }
 
 /// <summary>Page model → PDF.</summary>
-internal static class PdfPageWriter
+internal static partial class PdfPageWriter
 {
     /// <summary>Writes <paramref name="pages"/> as a PDF to <paramref name="output"/>.</summary>
     /// <param name="progress">Pages written, as a fraction of all pages.</param>
@@ -38,7 +45,7 @@ internal static class PdfPageWriter
     {
         info ??= new PdfDocumentInfo();
         using var fonts = SubsetFonts(pages, cancellationToken);
-        if (info.Outline.Count == 0 && pages.All(p => !NeedsExactSize(p)))
+        if (info.Outline.Count == 0 && fonts.Unmapped.Count == 0 && pages.All(p => !NeedsExactSize(p)))
         {
             WritePages(output, pages, info, fonts, progress, cancellationToken);
             return;
@@ -46,7 +53,7 @@ internal static class PdfPageWriter
         using var buffer = new MemoryStream();
         WritePages(buffer, pages, info, fonts, progress, cancellationToken);
         buffer.Position = 0;
-        Finish(buffer, output, pages, info.Outline);
+        Finish(buffer, output, pages, info.Outline, fonts.Unmapped);
     }
 
     /// <summary>
@@ -89,7 +96,7 @@ internal static class PdfPageWriter
     /// <summary>One subset typeface per font the pages use.</summary>
     private static SubsetTypefaces SubsetFonts(IReadOnlyList<PageContent> pages, CancellationToken cancellationToken)
     {
-        var glyphs = new Dictionary<PageFont, (HashSet<int> Glyphs, HashSet<int> CodePoints)>(ReferenceEqualityComparer.Instance);
+        var glyphs = new Dictionary<PageFont, (HashSet<int> Glyphs, HashSet<int> CodePoints, Dictionary<ushort, string?> Texts)>(ReferenceEqualityComparer.Instance);
         foreach (var page in pages)
         {
             foreach (var item in page.Items)
@@ -97,21 +104,58 @@ internal static class PdfPageWriter
                 if (item is not GlyphItem { Run: var run })
                     continue;
                 if (!glyphs.TryGetValue(run.Font, out var used))
-                    glyphs[run.Font] = used = ([], []);
+                    glyphs[run.Font] = used = ([], [], []);
                 foreach (var glyph in run.Glyphs)
                     used.Glyphs.Add(glyph);
                 foreach (var rune in run.Text.EnumerateRunes())
                     used.CodePoints.Add(rune.Value);
+                GlyphTexts(run, used.Texts);
             }
         }
         var result = new SubsetTypefaces();
         foreach (var (font, used) in glyphs)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            result.Add(font, SubsetTypeface(font, used.Glyphs, used.CodePoints, cancellationToken));
+            var typeface = SubsetTypeface(font, used.Glyphs, used.CodePoints, cancellationToken);
+            result.Add(font, typeface);
+            // The glyphs the subset's cmap leads to: it keeps the entries of the drawn characters (FontSubsetter).
+            var mapped = used.CodePoints.Select(c => font.Typeface.GetGlyph(c)).ToHashSet();
+            result.AddUnmapped(typeface.PostScriptName, used.Texts.Where(t => t.Value is not null && !mapped.Contains(t.Key)));
         }
         return result;
     }
+
+    /// <summary>
+    /// The text of each glyph of <paramref name="run"/> that is a cluster on its own; a glyph found with two different
+    /// texts gets null.
+    /// </summary>
+    internal static void GlyphTexts(GlyphRun run, Dictionary<ushort, string?> texts)
+    {
+        var (glyphs, _, clusters) = PageContent.LogicalOrder(run);
+        for (var i = 0; i < glyphs.Length; i++)
+        {
+            var start = clusters[i];
+            if ((i > 0 && clusters[i - 1] == start) || (i + 1 < glyphs.Length && clusters[i + 1] == start))
+                continue; // one of several glyphs of a cluster
+            var end = i + 1 < glyphs.Length ? clusters[i + 1] : run.Text.Length;
+            // A ligature's few letters at most: more means a run whose text goes on past its glyphs.
+            if (start < 0 || end <= start || end > run.Text.Length || end - start > MaxGlyphText)
+                continue;
+            var text = run.Text.AsSpan(start, end - start);
+            if (texts.TryGetValue(glyphs[i], out var known))
+            {
+                if (known is not null && !text.SequenceEqual(known))
+                    texts[glyphs[i]] = null;
+            }
+            else if (!text.ContainsAnyInRange('\0', '\x1F') && !text.ContainsAnyInRange('\x7F', '\x9F'))
+            {
+                texts[glyphs[i]] = text.ToString();
+            }
+        }
+    }
+
+    /// <summary>The most UTF-16 units of text one glyph gets in the ToUnicode map ("ffi", an emoji sequence).</summary>
+    private const int MaxGlyphText = 8;
 
     /// <summary>
     /// A typeface over the subset of <paramref name="font"/>; the whole font when it can't be subset (Skia then
@@ -129,9 +173,11 @@ internal static class PdfPageWriter
     /// What Skia can't write, added to the PDF it wrote: exact page sizes (a media box that ends at the top edge Skia
     /// drew from, so nothing moves) and the outline.
     /// </summary>
-    private static void Finish(Stream pdf, Stream output, IReadOnlyList<PageContent> pages, IReadOnlyList<OutlineEntry> entries)
+    private static void Finish(Stream pdf, Stream output, IReadOnlyList<PageContent> pages, IReadOnlyList<OutlineEntry> entries,
+        IReadOnlyDictionary<string, Dictionary<ushort, string?>> unmapped)
     {
         using var document = PdfReader.Open(pdf, PdfDocumentOpenMode.Modify);
+        AddGlyphText(document, unmapped);
         for (var i = 0; i < pages.Count; i++)
         {
             if (!NeedsExactSize(pages[i]))
@@ -145,6 +191,52 @@ internal static class PdfPageWriter
         AddOutline(document, pages, entries);
         document.Save(output, closeStream: false);
     }
+
+    /// <summary>
+    /// Gives the glyphs Skia mapped to U+0000 in a font's ToUnicode map their text. Fonts are matched by PostScript name
+    /// (Skia's BaseFont is a subset tag and the typeface's PostScript name); codes are glyph IDs (Identity-H with an
+    /// identity CIDToGIDMap).
+    /// </summary>
+    private static void AddGlyphText(PdfDocument document, IReadOnlyDictionary<string, Dictionary<ushort, string?>> unmapped)
+    {
+        if (unmapped.Count == 0)
+            return;
+        var done = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance);
+        foreach (var item in document.Internals.GetAllObjects())
+        {
+            if (item is not PdfDictionary font || font.Elements.GetName("/Type") != "/Font" || font.Elements.GetName("/Subtype") != "/Type0"
+                || !unmapped.TryGetValue(PostScriptName(font.Elements.GetName("/BaseFont")), out var texts)
+                || font.Elements.GetDictionary("/ToUnicode") is not { Stream: { } stream } map || !done.Add(map))
+                continue;
+            var cmap = Encoding.Latin1.GetString(stream.UnfilteredValue);
+            var patched = BfChar().Replace(cmap, section => ZeroEntry().Replace(section.Value, entry =>
+                texts.TryGetValue(Convert.ToUInt16(entry.Groups[1].Value, 16), out var text) && text is not null
+                    ? $"<{entry.Groups[1].Value}>{entry.Groups[2].Value}<{Convert.ToHexString(Encoding.BigEndianUnicode.GetBytes(text))}>"
+                    : entry.Value));
+            if (patched == cmap)
+                continue;
+            stream.Value = Encoding.Latin1.GetBytes(patched);
+            map.Elements.Remove("/Filter");
+            map.Elements.Remove("/DecodeParms");
+        }
+    }
+
+    /// <summary>A PostScript name as a key: without a subset tag ("AAAAAA+") and without spaces.</summary>
+    internal static string PostScriptName(string name)
+    {
+        name = name.TrimStart('/');
+        if (name.Length > 7 && name[6] == '+' && name[..6].All(char.IsAsciiLetterUpper))
+            name = name[7..];
+        return name.Replace(" ", "", StringComparison.Ordinal);
+    }
+
+    /// <summary>A bfchar section of a CMap.</summary>
+    [GeneratedRegex(@"beginbfchar.*?endbfchar", RegexOptions.Singleline | RegexOptions.CultureInvariant)]
+    private static partial Regex BfChar();
+
+    /// <summary>A bfchar entry of a two-byte code mapped to U+0000.</summary>
+    [GeneratedRegex(@"<([0-9A-Fa-f]{4})>(\s*)<0000>", RegexOptions.CultureInvariant)]
+    private static partial Regex ZeroEntry();
 
     /// <summary>Adds outline entries pointing into the pages (y measured from the top edge Skia drew from).</summary>
     private static void AddOutline(PdfDocument document, IReadOnlyList<PageContent> pages, IReadOnlyList<OutlineEntry> entries)
@@ -171,8 +263,26 @@ internal static class PdfPageWriter
     private sealed class SubsetTypefaces : IDisposable
     {
         private readonly Dictionary<PageFont, SKTypeface> _typefaces = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<string, Dictionary<ushort, string?>> _unmapped = new(StringComparer.Ordinal);
+
+        /// <summary>Text of glyphs no character of the cmap leads to, by the PostScript name of the typeface drawing them.</summary>
+        public IReadOnlyDictionary<string, Dictionary<ushort, string?>> Unmapped => _unmapped;
 
         public void Add(PageFont font, SKTypeface typeface) => _typefaces[font] = typeface;
+
+        public void AddUnmapped(string? postScriptName, IEnumerable<KeyValuePair<ushort, string?>> texts)
+        {
+            if (string.IsNullOrEmpty(postScriptName))
+                return;
+            var key = PostScriptName(postScriptName);
+            foreach (var (glyph, text) in texts)
+            {
+                if (!_unmapped.TryGetValue(key, out var known))
+                    _unmapped[key] = known = [];
+                // Two fonts of one name that disagree about a glyph: neither text.
+                known[glyph] = known.TryGetValue(glyph, out var other) && other != text ? null : text;
+            }
+        }
 
         public SKTypeface For(PageFont font) => _typefaces.GetValueOrDefault(font) ?? font.Typeface;
 

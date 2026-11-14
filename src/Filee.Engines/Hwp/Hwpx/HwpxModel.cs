@@ -652,6 +652,12 @@ internal sealed class HTextBox : HObject
 
     /// <summary>The box is WordArt (a Word watermark ...): how its text is drawn; null = as paragraphs. Read for layout only.</summary>
     public HTextArt? TextArt { get; set; }
+
+    /// <summary>
+    /// The box holds the number of the Word equation after it (DocxReader), placed for rhwp; Filee's own layout draws
+    /// the number with the equation instead. Read for layout only.
+    /// </summary>
+    public bool EquationNumber { get; set; }
 }
 
 internal enum HShapeKind

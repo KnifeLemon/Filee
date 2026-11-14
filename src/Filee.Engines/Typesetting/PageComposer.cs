@@ -24,7 +24,8 @@
 //   page on); a page number field shows the number of its page and a total pages field the count, which a first pass
 //   finds when the body shows it. 한글's automatic page number is drawn apart from the footer; see PageNumber.
 // - Styles: models read from other formats leave formats to the 한글 style (null members); with a StyleResolver every
-//   paragraph and run is resolved before layout, as the HWPX writer would write it.
+//   paragraph and run is resolved before layout, as the HWPX writer would write it. A Word equation's number, which
+//   the reader keeps in a text box placed for rhwp, goes with its equation instead (ParagraphLayout.Equations.cs).
 //
 // - Tables (TableLayout): rows bound by spanning cells move to a page together, header rows repeat, and a table splits
 //   by its page break mode.
@@ -77,8 +78,8 @@ internal sealed class PageComposer
     /// <param name="storedLines">Paragraphs follow 한글's stored line layout where it can be used.</param>
     public PageComposer(FontResolver fonts, Shaper shaper, IReadOnlyList<HKinsoku>? kinsoku = null, StyleResolver? styles = null, bool storedLines = true)
     {
-        // Paragraph borders of models of other formats are Word's (their lines outside the text), 한글's otherwise.
-        _layouter = new ParagraphLayouter(fonts, shaper, kinsoku, storedLines) { WordBorders = styles is not null };
+        // Paragraph borders and equation numbers of models of other formats are Word's (borders outside the text), 한글's otherwise.
+        _layouter = new ParagraphLayouter(fonts, shaper, kinsoku, storedLines) { WordBorders = styles is not null, WordEquations = styles is not null };
         _styles = styles;
     }
 
@@ -1539,12 +1540,22 @@ internal sealed class PageComposer
     {
         HCharFormat Format(HCharFormat format) => _styles!.Character(code && format.Font is null ? format with { Font = FontNames.MonospaceFamily } : format,
             paragraph, HStyleContext.Body, link);
+        // A Word equation's number box (DocxReader.NumberBox) is placed for rhwp: the number goes with the equation after it.
+        HTextBox? numberBox = null;
         foreach (var inline in inlines)
         {
+            if (numberBox is not null && inline is not HEquation)
+            {
+                yield return numberBox;
+                numberBox = null;
+            }
             switch (inline)
             {
+                case HTextBox { EquationNumber: true, Blocks: [HParagraph { Inlines: [HText] }] } box:
+                    numberBox = box;
+                    break;
                 case HEquation equation:
-                    yield return new HEquation(equation.Math, Format(equation.Format))
+                    var resolved = new HEquation(equation.Math, Format(equation.Format))
                     {
                         Width = equation.Width,
                         Height = equation.Height,
@@ -1552,6 +1563,10 @@ internal sealed class PageComposer
                         Size = equation.Size,
                         Color = equation.Color,
                     };
+                    if (numberBox is { Blocks: [HParagraph { Inlines: [HText numberText] }] })
+                        _layouter.Number(resolved, new HText(numberText.Text, Format(numberText.Format)));
+                    numberBox = null;
+                    yield return resolved;
                     break;
                 case HText text:
                     yield return new HText(text.Text, Format(text.Format));
@@ -1578,6 +1593,8 @@ internal sealed class PageComposer
                     break;
             }
         }
+        if (numberBox is not null)
+            yield return numberBox;
     }
 
     private static string Title(HParagraph paragraph) =>

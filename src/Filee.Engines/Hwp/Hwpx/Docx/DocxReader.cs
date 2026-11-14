@@ -1062,6 +1062,7 @@ internal sealed partial class DocxReader
             Line = HBorder.None,
             Padding = new HInsets(0, 0, 0, 0),
             Anchor = new HAnchor("COLUMN", "LEFT", width - boxWidth, "PARA", "TOP", Math.Max(0, middle - boxHeight / 2), "IN_FRONT_OF_TEXT", true),
+            EquationNumber = true,
         };
         var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Right, Before: 0, After: 0) };
         paragraph.Inlines.Add(number);

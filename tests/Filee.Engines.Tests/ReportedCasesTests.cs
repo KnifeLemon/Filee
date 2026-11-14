@@ -867,10 +867,14 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
 
     private string Save(XlsxBuilder book) => book.Save(Path.Combine(fx.NewFolder(), "book.xlsx"));
 
-    /// <summary>The printed pages' words, one string per page.</summary>
+    /// <summary>
+    /// The printed pages' words, one string per page. The sheet's 맑은 고딕 is drawn with Noto Sans KR, whose locl
+    /// swaps a digit after a Latin letter for a glyph the cmap doesn't reach (as Noto Sans CJK does on Linux).
+    /// </summary>
     private List<string> PrintSheet(XlsxBuilder book)
     {
-        var pdf = SheetPrinter.ToPdf(XlsxReader.Read(Save(book)), new SheetPrintSource("book.xlsx", ""), Token);
+        NeedFonts(RepositoryFonts.Latin, RepositoryFonts.Korean);
+        var pdf = SheetPrinter.ToPdf(XlsxReader.Read(Save(book)), new SheetPrintSource("book.xlsx", ""), Token, fonts: new FontResolver(_fonts));
         using var document = PigDocument.Open(pdf);
         return [.. document.GetPages().Select(p => string.Join(" ", p.GetWords().Select(w => w.Text)))];
     }
@@ -939,10 +943,10 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         return lines[1].Y - lines[0].Y;
     }
 
-    /// <summary>A glyph's advance in its run's font and size.</summary>
+    /// <summary>A glyph's advance in its run's font and size (unhinted: FreeType rounds hinted advances to whole pixels).</summary>
     private static float Width(Glyph glyph)
     {
-        using var font = new SKFont(glyph.Run.Font.Typeface, glyph.Run.Size) { ScaleX = glyph.Run.ScaleX };
+        using var font = new SKFont(glyph.Run.Font.Typeface, glyph.Run.Size) { ScaleX = glyph.Run.ScaleX, Hinting = SKFontHinting.None, LinearMetrics = true };
         return font.GetGlyphWidths([glyph.Run.Glyphs[glyph.GlyphIndex]])[0];
     }
 
@@ -954,9 +958,10 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         return (drawn.Min(g => g.X), drawn.Max(g => g.X + Width(g)));
     }
 
+    /// <summary>A character's advance in a font, unhinted (FreeType on Linux rounds hinted advances to whole pixels).</summary>
     private float Advance(string family, char c, float size)
     {
-        using var font = new SKFont(_fonts.Font(family).Typeface, size);
+        using var font = new SKFont(_fonts.Font(family).Typeface, size) { Hinting = SKFontHinting.None, LinearMetrics = true };
         return font.MeasureText(c.ToString());
     }
 
