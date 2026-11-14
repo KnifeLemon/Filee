@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Globalization;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -426,17 +427,26 @@ public class DonutCenterReadabilityTests
     }
 
     [AvaloniaTheory]
-    [InlineData("fa", "some", 0.40)]
-    [InlineData("hi", "all", 0.38)]
-    public void A_wide_notice_uses_the_circle_before_collapsing_text(string language, string scope, double holeRatio)
+    [InlineData("fa")]
+    [InlineData("hi")]
+    public void A_wide_notice_uses_the_circle_before_collapsing_text(string language)
     {
         using var f = new PresetAvailabilityTests.Fixture(new OrdinaryConversionNoticeTests.Inputs());
         TestServices.EnsureInitialized(language);
+        const string word = "WWWWWWWWWWWWWW";
+        const string noticeText = word + "\n" + word + "\n" + word + "\n" + word;
+        var family = SoftPalette.FontFamilyFor(language);
+        var measured = new FormattedText(word, CultureInfo.CurrentUICulture,
+            CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
+            new Typeface(family), 11.5 * 0.78, Brushes.Lime)
+        { MaxTextWidth = 1000, MaxLineCount = int.MaxValue, Trimming = TextTrimming.None };
+        // At the font floor the old 1.6r limit wraps each explicit line; the resulting eight lines do not fit.
+        // The full diameter leaves 17.5% width reserve for four lines, using actual platform advances.
+        var radius = measured.Width / 1.65;
         var donut = new DonutMenu
         {
             OuterRadius = 150,
-            // Tighten the ink budget to model larger platform metrics with real script glyphs.
-            HoleRatio = holeRatio,
+            HoleRatio = (radius + 6) / 150,
             Items = [new() { Id = "one", Label = "" }],
             Foreground = Brushes.Lime,
             SecondaryForeground = Brushes.Red,
@@ -444,7 +454,7 @@ public class DonutCenterReadabilityTests
             CenterHint = "Tab back",
             CenterHintWheel = true,
         };
-        donut.SetValue(TextElement.FontFamilyProperty, SoftPalette.FontFamilyFor(language));
+        donut.SetValue(TextElement.FontFamilyProperty, family);
         var window = new Window { Content = donut, SizeToContent = SizeToContent.WidthAndHeight };
         try
         {
@@ -453,11 +463,14 @@ public class DonutCenterReadabilityTests
             var original = Runs(donut, Brushes.Red, centerOnly: true)
                 .Where(run => run.Glyph.FontRenderingEmSize == 11.5).ToList();
             Assert.NotEmpty(original);
-            donut.CenterNotice = f.Loc["donut.ordinary_conversion." + scope];
-            var lines = Lines(Layout(donut, donut.CenterNotice!));
+            donut.CenterNotice = noticeText;
+            var layout = Layout(donut, noticeText);
+            var lines = Lines(layout);
             Assert.NotEmpty(lines);
             Assert.All(lines, line => Assert.False(line.HasCollapsed || line.HasOverflowed));
             Assert.True(lines.Sum(line => line.Length) >= donut.CenterNotice.Length);
+            Assert.True(layout.Width <= radius * 2 * 0.92,
+                $"Notice width {layout.Width:F3} exceeds the 8% reserve in diameter {radius * 2:F3}.");
             var notice = Runs(donut, Brushes.Lime, centerOnly: true);
             Assert.All(notice, run => Assert.InRange(run.Glyph.FontRenderingEmSize / 11.5, 0.78 - 1e-6, 1));
             AssertInside(donut, notice);

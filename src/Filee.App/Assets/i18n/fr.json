@@ -79,7 +79,7 @@
   "donut.files_mixed": "{0} fichiers",
   "donut.drop_to": "Déposer → {0}",
   "donut.ordinary_conversion.single": "Ce fichier utilise une conversion normale",
-  "donut.ordinary_conversion.all": "Tous les fichiers convertibles utilisent une conversion normale",
+  "donut.ordinary_conversion.all": "Conversion normale de tous les fichiers convertibles",
   "donut.ordinary_conversion.some": "Certains fichiers utilisent une conversion normale",
   "donut.pick_in_group": "Éloignez-vous pour choisir",
   "donut.group_empty": "Plus aucun préréglage dans ce groupe. Modifiez-le dans Paramètres → Menu circulaire",

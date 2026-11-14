@@ -75,7 +75,7 @@
   "donut.files_mixed": "{0} फाइलहरू",
   "donut.drop_to": "छाड्नुहोस् → {0}",
   "donut.ordinary_conversion.single": "यो फाइल सामान्य रूपान्तरणको रूपमा चल्छ",
-  "donut.ordinary_conversion.all": "रूपान्तरण गर्न मिल्ने सबै फाइल सामान्य रूपान्तरणको रूपमा चल्छन्",
+  "donut.ordinary_conversion.all": "सबै रूपान्तरणयोग्य फाइलको सामान्य रूपान्तरण",
   "donut.ordinary_conversion.some": "केही फाइल सामान्य रूपान्तरणको रूपमा चल्छन्",
   "donut.pick_in_group": "छनोट गर्न बाहिरतर्फ लैजानुहोस्",
   "donut.group_empty": "यस समूहमा कुनै प्रिसेट बाँकी छैन। यसलाई सेटिङहरू → डोनट टुलबारमा सम्पादन गर्नुहोस्",
