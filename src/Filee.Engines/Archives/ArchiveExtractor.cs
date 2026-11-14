@@ -1,9 +1,11 @@
 // Unpacks every archive format Filee reads into a folder. In-process first: Filee's own readers (7z, xz, LZMA, ALZ,
-// EGG, lzip, Unix compress, ar / DEB, cpio, RPM, ISO 9660, CAB, LHA, ARJ), SharpCompress (ZIP, RAR), .NET's TAR reader
-// and gzip / bzip2 / zstd decoders. The bundled 7-Zip reads what is left (DMG, IMG, UDF discs; 7z archives with a
-// method Filee does not decode, such as PPMd, see SevenZipReader.NeedsOtherDecoder) and is asked again when an
-// in-process reader meets a feature it lacks (Quantum CABs, cabinet sets, other LHA methods, multi-volume ARJ) or
-// damage it can't read past; deliberate refusals (password,
+// EGG, lzip, Unix compress, ar / DEB, cpio, RPM, ISO 9660, CAB, LHA, ARJ, FAT disk images), SharpCompress (ZIP, RAR),
+// DiscUtils (UDF discs, HFS+ volumes, DMG blocks; see DiskImageReader), .NET's TAR reader and gzip / bzip2 / zstd
+// decoders. The bundled 7-Zip reads what is left (7z archives with a method Filee does not decode, such as PPMd, see
+// SevenZipReader.NeedsOtherDecoder) and is asked again when an in-process reader meets a feature it lacks (Quantum
+// CABs, cabinet sets, other LHA methods, multi-volume ARJ; NTFS, APFS, exFAT or LZFSE in disk images) or damage it
+// can't read past; without 7-Zip, a bridge disc whose UDF part fails is read by its ISO 9660 part. Deliberate refusals
+// (password,
 // paths leaving the folder, bombs) are final. Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads are unpacked
 // stage by stage until the files appear. Every stage is listed and checked first, and links are removed. A single
 // compressed stream (.gz, .bz2 …) stops at the room on the drive (ArchiveSafety.StreamLimit), in-process or written by
@@ -25,12 +27,12 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     public static readonly IReadOnlyList<string> BuiltInFormats =
     [
         "zip", "jar", "zxp", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tlz", "gz", "bz2", "xz", "lzma", "z",
-        "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split", "cab", "lha", "arj",
+        "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split", "cab", "lha", "arj", "dmg", "img",
         "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
 
     /// <summary>Formats only the bundled 7-Zip reads.</summary>
-    public static readonly IReadOnlyList<string> SevenZipFormats = ["dmg", "img"];
+    public static readonly IReadOnlyList<string> SevenZipFormats = [];
 
     /// <summary>Everything that can be unpacked when 7-Zip is there.</summary>
     public static IEnumerable<string> ReadableFormats => BuiltInFormats.Concat(SevenZipFormats);
@@ -39,7 +41,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     private static readonly HashSet<string> SevenZipAlsoReads =
     [
         "zip", "jar", "zxp", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz", "lzma", "z", "cpio",
-        "deb", "rpm", "iso", "split", "cab", "lha", "arj", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
+        "deb", "rpm", "iso", "split", "cab", "lha", "arj", "dmg", "img", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
 
     /// <summary>A TAR inside a compressed stream (or a 7z): unpacking the outer layer yields one .tar file.</summary>
@@ -87,7 +89,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     private async Task ExtractOnceAsync(string archive, string format, string folder, string scratchRoot, CancellationToken cancellationToken)
     {
         if (SevenZipFormats.Contains(format)
-            || sevenZip is not null && (format == "iso" && IsoReader.HasUdf(archive) || format is "7z" or "tar7z" && SevenZipReader.NeedsOtherDecoder(archive)))
+            || sevenZip is not null && format is "7z" or "tar7z" && SevenZipReader.NeedsOtherDecoder(archive))
         {
             await WithSevenZipAsync(archive, format, folder, scratchRoot, cancellationToken);
             return;
@@ -103,6 +105,21 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
             ArchiveFiles.TryDeleteFolder(folder);
             Directory.CreateDirectory(folder);
             await WithSevenZipAsync(archive, format, folder, scratchRoot, cancellationToken);
+        }
+        catch (Exception ex) when (MayRetry(ex) && format == "iso" && IsoReader.HasUdf(archive))
+        {
+            // No 7-Zip to read the UDF part: a bridge disc may still have its files in the ISO 9660 part.
+            ArchiveFiles.TryDeleteFolder(folder);
+            Directory.CreateDirectory(folder);
+            try
+            {
+                await Task.Run(() => IsoReader.Extract(archive, folder, cancellationToken), cancellationToken);
+                PassOnMark(archive, folder);
+            }
+            catch (Exception other) when (MayRetry(other))
+            {
+                throw Explain(ex, Path.GetFileName(archive), sevenZipWouldTry: true);
+            }
         }
         catch (Exception ex) when (MayRetry(ex))
         {
@@ -142,7 +159,14 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
                 RpmReader.Extract(archive, folder, cancellationToken);
                 break;
             case "iso":
-                IsoReader.Extract(archive, folder, cancellationToken);
+                if (IsoReader.HasUdf(archive))
+                    DiskImageReader.ExtractUdf(archive, folder, cancellationToken);
+                else
+                    IsoReader.Extract(archive, folder, cancellationToken);
+                break;
+            case "dmg":
+            case "img":
+                DiskImageReader.Extract(archive, format, folder, cancellationToken);
                 break;
             case "split":
                 ExtractSplit(archive, folder, cancellationToken);

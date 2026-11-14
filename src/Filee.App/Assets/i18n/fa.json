@@ -295,7 +295,7 @@
   "engine.geo.name": "داده‌های برداری جغرافیایی (داخلی)",
   "engine.geo.description": "داده‌های برداری جغرافیایی: GeoJSON، KML، KMZ، GPX، Shapefile و CSV (طول/عرض جغرافیایی یا WKT) به یکدیگر.\nنتایج با سیستم WGS 84 تولید می‌شوند؛ فایل‌های Shapefile تصویرشده (UTM، Web Mercator، Lambert، Albers) تبدیل می‌گردند.",
   "engine.archive.name": "آرشیوها (داخلی)",
-  "engine.archive.description": "استخراج ZIP، 7Z (از جمله solid)، RAR، TAR، XZ، LZMA، CAB، LHA، ARJ، ISO و موارد دیگر، و فشرده‌سازی به ZIP، 7Z، TAR.GZ، TAR.BZ2، TAR.XZ، BZ2 و XZ بدون برنامهٔ دیگر.\nبا 7-Zip دیسک‌های DMG، IMG و UDF را هم باز می‌کند و گونه‌های کمیاب را هم پوشش می‌دهد (CAB با فشرده‌سازی Quantum، ARJ چندبخشی، روش‌های 7Z مانند PPMd…).",
+  "engine.archive.description": "استخراج ZIP، 7Z (از جمله solid)، RAR، TAR، XZ، LZMA، CAB، LHA، ARJ، ISO، UDF، IMG، DMG و موارد دیگر، و فشرده‌سازی به ZIP، 7Z، TAR.GZ، TAR.BZ2، TAR.XZ، BZ2 و XZ بدون برنامهٔ دیگر.\nبا 7-Zip گونه‌های کمیاب را هم پوشش می‌دهد (CAB با فشرده‌سازی Quantum، ARJ چندبخشی، روش‌های 7Z مانند PPMd، تصویرهای دیسک NTFS یا APFS…).",
   "engine.ebook.name": "کتاب‌های الکترونیکی (داخلی)",
   "engine.ebook.description": "تبدیل EPUB، MOBI، AZW3، FB2 و کمیک‌ها (CBZ، CBR) به PDF، EPUB، DOCX و متن.\nهمچنین ویرایش فراداده و جلد، و جداسازی کتاب‌های دو فرمتی Kindle (MOBI + KF8).",
   "engine.subtitle.name": "زیرنویس‌ها (داخلی)",

@@ -281,7 +281,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "地理空間ベクターデータ（GeoJSON、KML、KMZ、GPX、Shapefile、経度・緯度またはWKTのCSV）を相互変換します。\n結果はWGS 84の経度・緯度です。投影座標系のShapefile（UTM、Webメルカトル、ランベルト、アルベルス）も変換します。",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "ZIP、7Z（ソリッド形式も）、RAR、TAR、XZ、LZMA、CAB、LHA、ARJ、ISOなどを展開し、ZIP、7Z、TAR.GZ、TAR.BZ2、TAR.XZ、BZ2、XZ形式へは単独で圧縮します。\n7-Zipがあれば、DMG、IMG、UDFのディスクイメージも開き、まれな形式（Quantum圧縮のCAB、分割ARJ、PPMdなどの7Z圧縮方式…）にも対応します。",
+  "engine.archive.description": "ZIP、7Z（ソリッド形式も）、RAR、TAR、XZ、LZMA、CAB、LHA、ARJ、ISO、UDF、IMG、DMGなどを展開し、ZIP、7Z、TAR.GZ、TAR.BZ2、TAR.XZ、BZ2、XZ形式へは単独で圧縮します。\n7-Zipがあれば、まれな形式（Quantum圧縮のCAB、分割ARJ、PPMdなどの7Z圧縮方式、NTFSやAPFSのディスクイメージ…）にも対応します。",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB、MOBI、AZW3、FB2、コミック（CBZ、CBR）をPDF、EPUB、AZW3、MOBI、DOCX、テキストに変換します。\n文書からEPUB、EPUBからKobo用KEPUB、PDFからCBZへの変換にも対応します。",
   "engine.subtitle.name": "Subtitles (built-in)",

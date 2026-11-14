@@ -288,7 +288,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "地理空間向量資料 GeoJSON、KML、KMZ、GPX、Shapefile 和 CSV（經緯度或 WKT）互相轉換。\n結果為 WGS 84 經緯度，Shapefile 的投影座標系統（UTM、Web 麥卡托、蘭伯特、阿爾伯斯）會被轉換。",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "解壓縮 ZIP、7Z（含固實壓縮）、RAR、TAR、XZ、LZMA、CAB、LHA、ARJ、ISO 等，並可自行打包為 ZIP、7Z、TAR.GZ、TAR.BZ2、TAR.XZ、BZ2 和 XZ。\n有 7-Zip 時還能開啟 DMG、IMG 和 UDF 光碟映像，並處理少見的變體（Quantum CAB、分割 ARJ、PPMd 等 7Z 壓縮方式…）。",
+  "engine.archive.description": "解壓縮 ZIP、7Z（含固實壓縮）、RAR、TAR、XZ、LZMA、CAB、LHA、ARJ、ISO、UDF、IMG、DMG 等，並可自行打包為 ZIP、7Z、TAR.GZ、TAR.BZ2、TAR.XZ、BZ2 和 XZ。\n有 7-Zip 時還能處理少見的變體（Quantum CAB、分割 ARJ、PPMd 等 7Z 壓縮方式、NTFS 或 APFS 磁碟映像…）。",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB、MOBI、AZW3、FB2 和漫畫（CBZ、CBR）轉為 PDF、EPUB、AZW3、MOBI、DOCX 和文字。\n也能把文件轉為 EPUB、把 EPUB 轉為 Kobo 用的 KEPUB、把 PDF 轉為 CBZ。",
   "engine.subtitle.name": "Subtitles (built-in)",

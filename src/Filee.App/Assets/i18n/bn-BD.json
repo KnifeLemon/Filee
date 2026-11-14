@@ -295,7 +295,7 @@
   "engine.geo.name": "ভৌগোলিক ভেক্টর উপাত্ত (বিল্ট-ইন)",
   "engine.geo.description": "ভৌগোলিক ভেক্টর উপাত্ত: GeoJSON, KML, KMZ, GPX, Shapefile এবং CSV (দ্রাঘিমাংশ/অক্ষাংশ বা WKT) একে অপরে রূপান্তর।\nফলাফল WGS 84 দ্রাঘিমাংশ/অক্ষাংশ; প্রজেক্টেড Shapefile (UTM, Web Mercator, Lambert, Albers) রূপান্তর করা হয়।",
   "engine.archive.name": "আর্কাইভ (বিল্ট-ইন)",
-  "engine.archive.description": "ZIP, 7Z (সলিডও), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO এবং অন্যান্য ফাইল আনপ্যাক করে, এবং নিজেই ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 ও XZ প্যাক করে।\n7-Zip থাকলে DMG, IMG ও UDF ডিস্কও খোলে, এবং বিরল ধরনগুলোও সামলায় (Quantum CAB, মাল্টি-ভলিউম ARJ, PPMd-এর মতো 7Z পদ্ধতি…)।",
+  "engine.archive.description": "ZIP, 7Z (সলিডও), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO, UDF, IMG, DMG এবং অন্যান্য ফাইল আনপ্যাক করে, এবং নিজেই ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 ও XZ প্যাক করে।\n7-Zip থাকলে বিরল ধরনগুলোও সামলায় (Quantum CAB, মাল্টি-ভলিউম ARJ, PPMd-এর মতো 7Z পদ্ধতি, NTFS বা APFS ডিস্ক ইমেজ…)।",
   "engine.ebook.name": "ই-বুক (বিল্ট-ইন)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 এবং কমিকস (CBZ, CBR) থেকে পিডিএফ, EPUB, DOCX ও টেক্সটে রূপান্তর।\nডকুমেন্ট থেকে EPUB, Kobo-র জন্য EPUB থেকে KEPUB এবং পিডিএফ থেকে CBZ।",
   "engine.subtitle.name": "সাবটাইটেল (বিল্ট-ইন)",
