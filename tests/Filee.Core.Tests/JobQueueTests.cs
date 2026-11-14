@@ -850,14 +850,16 @@ public class JobQueueTests
         Assert.Equal("x", File.ReadAllText(pdf));
     }
 
-    [Fact]
-    public async Task A_refused_merge_fails_every_merged_file_with_its_reason_and_writes_nothing()
+    [Theory]
+    [InlineData("error.merge_paper_geometry")]
+    [InlineData("error.merge_paper_limit")]
+    public async Task A_refused_merge_fails_every_merged_file_with_its_reason_and_writes_nothing(string errorKey)
     {
         using var dir = new TempDir();
         var image = dir.File("photo.jpg");
         var pdf = dir.File("report.pdf");
         await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("writer", new ConversionEdge("jpg", "pdf"))]),
-            new RefusingMerger());
+            new RefusingMerger(errorKey));
         var job = await Run(queue, [image, pdf], new Preset
         {
             TargetFormat = "pdf",
@@ -870,7 +872,7 @@ public class JobQueueTests
         Assert.All(job.Files, f =>
         {
             Assert.Equal(FileState.Failed, f.State);
-            Assert.Equal("error.merge_paper_geometry", f.ErrorKey);
+            Assert.Equal(errorKey, f.ErrorKey);
             Assert.Equal("page 2", f.ErrorDetail);
         });
         Assert.False(File.Exists(Path.Combine(dir.Path, "photo_merged.pdf")));
@@ -878,13 +880,13 @@ public class JobQueueTests
         Assert.Equal("x", File.ReadAllText(pdf));
     }
 
-    private sealed class RefusingMerger : IPdfMerger
+    private sealed class RefusingMerger(string errorKey) : IPdfMerger
     {
         public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
             CancellationToken cancellationToken)
         {
             File.WriteAllText(outputPath, "half");
-            throw new ConversionRefusedException("error.merge_paper_geometry", "page 2");
+            throw new ConversionRefusedException(errorKey, "page 2");
         }
     }
 

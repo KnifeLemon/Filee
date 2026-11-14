@@ -22,7 +22,7 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
         public int SourceNumbers { get; init; } = 1_000_000;
         public int InkStrokes { get; init; } = 4096;
         public int AppearanceStates { get; init; } = 256;
-        public int Objects { get; init; } = 10_000;
+        public int Objects { get; init; } = 1_000_000;
         public int StreamBytes { get; init; } = 4_194_304;
         public int Items { get; init; } = 1_000_000;
         public int DaLength { get; init; } = 4096;
@@ -88,8 +88,10 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
         PdfDictionary? node = page;
         while (node is not null)
         {
-            if (visited.Count >= limits.ParentDepth || !visited.Add(node))
+            if (!visited.Add(node))
                 throw GeometryError();
+            if (visited.Count > limits.ParentDepth)
+                throw LimitError();
             media ??= node.Elements["/MediaBox"];
             crop ??= node.Elements["/CropBox"];
             rotation ??= node.Elements["/Rotate"];
@@ -109,8 +111,10 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
         }
         var rotate = rotation is null ? 0 : Number(rotation);
         var unit = page.Elements.ContainsKey("/UserUnit") ? Number(page.Elements["/UserUnit"]) : 1;
-        if (!Finite(rotate, unit) || rotate % 90 != 0 || unit <= 0)
-            throw GeometryError();
+        if (!double.IsFinite(rotate) || rotate % 90 != 0)
+            rotate = 0;
+        if (!double.IsFinite(unit) || unit <= 0)
+            unit = 1;
         var normalized = (int)((rotate % 360 + 360) % 360);
         var width = (normalized is 90 or 270 ? visible.Height : visible.Width) * unit;
         var height = (normalized is 90 or 270 ? visible.Width : visible.Height) * unit;
@@ -189,10 +193,10 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
         {
             foreach (var item in array.Elements)
                 if (Dictionary(item)?.Stream is null)
-                    throw LimitError();
+                    throw GeometryError();
         }
         else if (old is not null && Dictionary(old)?.Stream is null)
-            throw LimitError();
+            throw GeometryError();
         output.Internals.AddObject(prefix);
         output.Internals.AddObject(suffix);
         contents.Elements.Add(prefix.Reference!);
@@ -265,8 +269,7 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
         return destination.Elements.Skip(2).All(item => Value(item) is PdfNull || double.IsFinite(Number(item)));
     }
 
-    private readonly HashSet<PdfDictionary> _sharedWidgets = new(ReferenceEqualityComparer.Instance);
-    private bool _annotationsComplete = true;
+    private readonly HashSet<PdfDictionary> _sharedAnnotations = new(ReferenceEqualityComparer.Instance);
     private int _numbers, _objects, _items, _streamBytes, _daBytes;
 
     internal void CollectAnnotations(PdfDocument source)
@@ -278,18 +281,14 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
             if (Array(page.Elements["/Annots"]) is not { } annotations)
                 continue;
             if (annotations.Elements.Count > limits.AnnotationSlots - slots)
-            {
-                _annotationsComplete = false;
-                return;
-            }
+                throw LimitError();
             slots += annotations.Elements.Count;
             foreach (var item in annotations.Elements)
             {
-                if (Dictionary(item) is not { } annotation ||
-                    (Value(annotation.Elements["/Subtype"]) as PdfName)?.Value != "/Widget")
+                if (Dictionary(item) is not { } annotation)
                     continue;
                 if (owners.TryGetValue(annotation, out var owner) && !ReferenceEquals(owner, page))
-                    _sharedWidgets.Add(annotation);
+                    _sharedAnnotations.Add(annotation);
                 else
                     owners[annotation] = page;
             }
@@ -297,36 +296,37 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
     }
 
     // Stages only shallow mutable copies. No imported object is written before the whole annotation is valid
-    // and its budget is reserved; rejected entries keep exactly what Carry produced.
+    // and its work budget is reserved. Rejected entries keep what Carry produced, but work is never refunded.
     private sealed class OptionalGeometryException : Exception;
 
     private sealed class Changes(PdfMergePaperFitter owner)
     {
-        internal int Numbers, Objects, Items, StreamBytes, DaBytes, States;
+        internal int Numbers, States;
         internal List<PdfDictionary> Streams { get; } = [];
         internal List<PdfDictionary> Dictionaries { get; } = [];
 
         internal void Check()
         {
-            if (Numbers > owner.limits.AnnotationNumbers || Numbers > owner.limits.SourceNumbers - owner._numbers ||
-                Objects > owner.limits.Objects - owner._objects || Items > owner.limits.Items - owner._items ||
-                StreamBytes > owner.limits.StreamBytes - owner._streamBytes || DaBytes > owner.limits.DaBytes - owner._daBytes ||
-                States > owner.limits.AppearanceStates)
-                throw new OptionalGeometryException();
+            if (States > owner.limits.AppearanceStates)
+                throw LimitError();
         }
         internal void Coordinates(int count)
         {
-            if (count > owner.limits.AnnotationNumbers - Numbers || count > owner.limits.SourceNumbers - owner._numbers - Numbers)
-                throw new OptionalGeometryException();
+            if (count > owner.limits.AnnotationNumbers - Numbers || count > owner.limits.SourceNumbers - owner._numbers)
+                throw LimitError();
             Numbers += count;
+            owner._numbers += count;
+        }
+        internal void Reserve(int count)
+        {
+            if (count > owner.limits.Items - owner._items || owner._objects >= owner.limits.Objects)
+                throw LimitError();
+            owner._items += count;
+            owner._objects++;
         }
         internal PdfArray Array(int count)
         {
-            if (count > owner.limits.Items - owner._items - Items)
-                throw new OptionalGeometryException();
-            Items += count;
-            Objects++;
-            Check();
+            Reserve(count);
             return new(owner.output);
         }
         internal PdfArray NumbersArray(IEnumerable<double> values)
@@ -342,11 +342,7 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
         internal PdfDictionary Dictionary(PdfDictionary? original = null, int extra = 0)
         {
             var count = original?.Elements.Count ?? 0;
-            if (count > owner.limits.Items - owner._items - Items - extra)
-                throw new OptionalGeometryException();
-            Items += count + extra;
-            Objects++;
-            Check();
+            Reserve(count + extra);
             var result = new PdfDictionary(owner.output);
             if (original is not null)
                 foreach (var entry in original.Elements)
@@ -356,11 +352,6 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
         }
         internal void Commit()
         {
-            owner._numbers += Numbers;
-            owner._objects += Objects;
-            owner._items += Items;
-            owner._streamBytes += StreamBytes;
-            owner._daBytes += DaBytes;
             foreach (var stream in Streams)
                 owner.output.Internals.AddObject(stream);
             foreach (var dictionary in Dictionaries)
@@ -372,20 +363,18 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
 
     internal void Annotations(PdfPage original, PdfPage page, Transform transform)
     {
-        if (!_annotationsComplete || Array(original.Elements["/Annots"]) is not { } source ||
+        if (Array(original.Elements["/Annots"]) is not { } source ||
             Array(page.Elements["/Annots"]) is not { } imported)
             return;
-        if (imported.Elements.Count > limits.Items - _items || _objects >= limits.Objects)
-            return;
         // A page's Annots array itself can be shared. Do not replace any of its slots in place.
-        var result = new PdfArray(output);
+        var result = new Changes(this).Array(imported.Elements.Count);
         foreach (var item in imported.Elements)
             result.Elements.Add(item);
         var done = new Dictionary<PdfDictionary, PdfItem>(ReferenceEqualityComparer.Instance);
         for (var i = 0; i < source.Elements.Count && i < result.Elements.Count; i++)
         {
             if (Dictionary(source.Elements[i]) is not { } sourceAnnotation ||
-                Dictionary(imported.Elements[i]) is not { } annotation || _sharedWidgets.Contains(sourceAnnotation))
+                Dictionary(imported.Elements[i]) is not { } annotation)
                 continue;
             if (done.TryGetValue(annotation, out var previous))
             {
@@ -393,19 +382,15 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
                 continue;
             }
             var widget = (Value(annotation.Elements["/Subtype"]) as PdfName)?.Value == "/Widget";
+            var shared = _sharedAnnotations.Contains(sourceAnnotation);
+            if (widget && shared)
+                continue;
             try
             {
                 var changes = new Changes(this);
-                // Account for a new page slot array once, as part of the first successful transaction.
-                if (done.Count == 0)
-                {
-                    changes.Items += result.Elements.Count;
-                    changes.Objects++;
-                    changes.Check();
-                }
                 var copy = TransformAnnotation(annotation, page, transform, changes, widget);
                 changes.Commit();
-                if (widget)
+                if (!shared)
                 {
                     foreach (var key in copy.Elements.Keys)
                         annotation.Elements[key] = copy.Elements[key];
@@ -449,8 +434,10 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
         }
         if (annotation.Elements.ContainsKey("/InkList"))
         {
-            if (Array(annotation.Elements["/InkList"]) is not { } ink || ink.Elements.Count > limits.InkStrokes)
+            if (Array(annotation.Elements["/InkList"]) is not { } ink)
                 throw new OptionalGeometryException();
+            if (ink.Elements.Count > limits.InkStrokes)
+                throw LimitError();
             var strokes = changes.Array(ink.Elements.Count);
             foreach (var item in ink.Elements)
             {
@@ -476,7 +463,7 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
                 else
                 {
                     if (appearance.Elements.Count > limits.AppearanceStates - changes.States)
-                        throw new OptionalGeometryException();
+                        throw LimitError();
                     var states = changes.Dictionary(appearance);
                     foreach (var state in appearance.Elements)
                     {
@@ -508,32 +495,41 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
                 mk.Elements.SetInteger("/R", 360 - transform.Source.Rotate);
                 copy.Elements["/MK"] = mk;
             }
+        }
+        if (widget || (Value(annotation.Elements["/Subtype"]) as PdfName)?.Value == "/FreeText")
+        {
             PdfString? da = null;
             var visited = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance);
             PdfDictionary? node = annotation;
             while (node is not null)
             {
-                if (visited.Count >= limits.ParentDepth || !visited.Add(node))
+                if (!visited.Add(node))
                     throw new OptionalGeometryException();
+                if (visited.Count > limits.ParentDepth)
+                    throw LimitError();
                 if (Value(node.Elements["/DA"]) is PdfString text)
                 {
                     da = text;
                     break;
                 }
-                node = Dictionary(node.Elements["/Parent"]);
+                node = widget ? Dictionary(node.Elements["/Parent"]) : null;
             }
             if (da is not null)
             {
+                if (da.Value.Length > limits.DaLength)
+                    throw LimitError();
                 var encoded = da.Encoding == PdfStringEncoding.Unicode || da.Value.Any(c => c > 255)
                     ? 2 + Encoding.BigEndianUnicode.GetByteCount(da.Value) : da.Value.Length;
-                if (da.Value.Length > limits.DaLength || encoded > appearanceLength)
-                    throw new OptionalGeometryException();
+                if (encoded > appearanceLength)
+                    throw LimitError();
                 PdfString scaled;
                 try { scaled = PdfMergeStructure.ScaleAppearance(da, transform.Scale); }
                 catch (InvalidDataException) { throw new OptionalGeometryException(); }
-                changes.DaBytes += scaled.Encoding == PdfStringEncoding.Unicode || scaled.Value.Any(c => c > 255)
+                var bytes = scaled.Encoding == PdfStringEncoding.Unicode || scaled.Value.Any(c => c > 255)
                     ? 2 + Encoding.BigEndianUnicode.GetByteCount(scaled.Value) : scaled.Value.Length;
-                changes.Check();
+                if (bytes > limits.DaBytes - _daBytes)
+                    throw LimitError();
+                _daBytes += bytes;
                 copy.Elements["/DA"] = scaled;
             }
         }
@@ -594,10 +590,9 @@ internal sealed class PdfMergePaperFitter(PdfDocument document, PdfMergePaperFit
         wrapper.Elements["/Resources"] = resources;
         var text = "q\n" + Cm(placed) + "/Original Do\nQ\n";
         var bytes = Encoding.ASCII.GetByteCount(text);
-        if (bytes > limits.StreamBytes - _streamBytes - changes.StreamBytes)
-            throw new OptionalGeometryException();
-        changes.StreamBytes += bytes;
-        changes.Check();
+        if (bytes > limits.StreamBytes - _streamBytes)
+            throw LimitError();
+        _streamBytes += bytes;
         wrapper.CreateStream(Encoding.ASCII.GetBytes(text));
         changes.Streams.Add(wrapper);
         return wrapper;

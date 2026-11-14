@@ -42,8 +42,7 @@ public class PdfMergePaperPresetTests
         fresh.Load();
         AssertDefaults(new PdfOptions());
         AssertDefaults(fresh.Presets.Single(preset => preset.Id == "merge-pdf").Pdf);
-        Assert.Equal(86, fresh.Settings.SchemaVersion);
-        Assert.Equal(86, AppSettings.CurrentSchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, fresh.Settings.SchemaVersion);
         File.WriteAllText(Path.Combine(dir.Path, "presets.json"), OldPresets);
         var store = new UserDataStore(dir.Path);
         store.Load();
@@ -56,7 +55,7 @@ public class PdfMergePaperPresetTests
 
         AssertLegacy(Assert.Single(reloaded.Presets));
         AssertDefaults(reloaded.Presets[0].Pdf);
-        Assert.Equal(86, reloaded.Settings.SchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, reloaded.Settings.SchemaVersion);
     }
 
     [Theory]
@@ -169,7 +168,7 @@ public class PdfMergePaperPresetTests
         store.Load();
         AssertLegacy(Assert.Single(store.Presets));
         AssertDefaults(store.Presets[0].Pdf);
-        Assert.Equal(86, store.Settings.SchemaVersion);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
     private sealed class PreviousPreset

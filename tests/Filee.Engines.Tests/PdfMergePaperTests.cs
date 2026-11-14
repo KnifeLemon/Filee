@@ -85,12 +85,26 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
         objects.AddRange(extra ?? []);
         return Raw(objects.ToArray());
     }
-    private string Merge(string[] inputs, Paper? paper, Geometry.Limits? limits = null, bool bookmarks = false)
+    private string Merge(string[] inputs, Paper? paper, Geometry.Limits? limits = null, bool bookmarks = false,
+        int appearanceLength = 4096)
     {
         var output = Path.Combine(fx.NewFolder(), "merged.pdf");
         PdfSharpConverter.Merge(inputs.Select(path => new PdfMergeInput(path, Path.GetFileName(path))).ToArray(), output,
-            bookmarks, paper, TestContext.Current.CancellationToken, new() { Paper = limits });
+            bookmarks, paper, TestContext.Current.CancellationToken, new() { Paper = limits, AppearanceLength = appearanceLength });
         return output;
+    }
+    private void Refused(string[] inputs, Geometry.Limits limits, string key = "error.merge_paper_limit",
+        int appearanceLength = 4096)
+    {
+        var hashes = inputs.Select(path => SHA256.HashData(File.ReadAllBytes(path))).ToArray();
+        var output = Path.Combine(fx.NewFolder(), "refused.pdf");
+        var error = Assert.Throws<ConversionRefusedException>(() => PdfSharpConverter.Merge(
+            inputs.Select(path => new PdfMergeInput(path, "source")).ToArray(), output, false, Same,
+            TestContext.Current.CancellationToken, new() { Paper = limits, AppearanceLength = appearanceLength }));
+        Assert.Equal(key, error.ErrorKey);
+        Assert.False(File.Exists(output));
+        for (var i = 0; i < inputs.Length; i++)
+            Assert.Equal(hashes[i], SHA256.HashData(File.ReadAllBytes(inputs[i])));
     }
     private static void Page(PdfPage page, double w, double h)
     {
@@ -240,9 +254,6 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Theory]
     [InlineData("/MediaBox [0 0 0 100]")]
     [InlineData("/MediaBox [100 0 0 100]")]
-    [InlineData("/MediaBox [0 0 100 100] /Rotate 45")]
-    [InlineData("/MediaBox [0 0 100 100] /UserUnit 0")]
-    [InlineData("/MediaBox [0 0 100 100] /UserUnit -1")]
     public void E5_Invalid_geometry_refuses_without_output_or_input_changes(string entry)
     {
         var input = Make([entry]);
@@ -256,9 +267,6 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Theory]
-    [InlineData(double.NaN)]
-    [InlineData(double.PositiveInfinity)]
-    [InlineData(double.NegativeInfinity)]
     [InlineData(double.MaxValue)]
     [InlineData(double.Epsilon)]
     public void E5_Nonfinite_overflow_and_underflow_are_geometry_errors(double unit)
@@ -514,16 +522,22 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var input = Make(["/MediaBox [0 0 200 200] /Annots [5 0 R 6 0 R]"],
             [
-                "<< /Subtype /Polygon /Rect [20 20 60 60] /Vertices [20 20 60 60] >>",
+                "<< /Subtype /FreeText /Rect [20 20 60 60] /Vertices [20 20 60 60] /DA (/F1 12 Tf) >>",
                 "<< /Subtype /Link /Rect [20 20 60 60] >>",
             ]);
         var first = Make(["/MediaBox [0 0 100 100]"]);
+        if (!changed)
+        {
+            Refused([first, input], new() { AnnotationNumbers = limit, SourceNumbers = 12 });
+            return;
+        }
         using var result = PdfReader.Open(Merge([first, input, input], Same,
-            new() { AnnotationNumbers = limit, SourceNumbers = 12 }), PdfDocumentOpenMode.Import);
+            new() { AnnotationNumbers = limit, SourceNumbers = 12, Objects = 6, Items = 24, DaBytes = 8 }), PdfDocumentOpenMode.Import);
         foreach (var page in result.Pages.Cast<PdfPage>().Skip(1))
         {
             Near(changed ? [10, 10, 30, 30] : [20, 20, 60, 60], Values(Annotation(page).Elements["/Rect"]));
             Near(changed ? [10, 10, 30, 30] : [20, 20, 60, 60], Values(Annotation(page).Elements["/Vertices"]));
+            Assert.Equal("/F1 6 Tf", S(Annotation(page).Elements["/DA"]));
             Near([10, 10, 30, 30], Values(Annotation(page, 1).Elements["/Rect"]));
         }
     }
@@ -537,7 +551,7 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("items")]
     [InlineData("streams")]
     [InlineData("da")]
-    public void E11_Optional_budget_failure_keeps_Carry_result(string budget)
+    public void E11_Optional_budget_failure_refuses_the_merge(string budget)
     {
         var limits = budget switch
         {
@@ -556,23 +570,19 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 "<< /Subtype /Widget /FT /Tx /T (field) /V (value) /Rect [20 20 60 60] /InkList [[20 20 60 60]] /AP << /N 6 0 R >> /DA (/F1 12 Tf) >>",
                 RawStream("0 0 1 1 re S\n", "/Subtype /Form /BBox [0 0 1 1] /Resources << >>"),
             ], "/AcroForm << /Fields [5 0 R] >>");
-        using var result = PdfReader.Open(Merge([first, input], Same, limits), PdfDocumentOpenMode.Import);
-        var annotation = Annotation(result.Pages[1]);
-        Near([20, 20, 60, 60], Values(annotation.Elements["/Rect"]));
-        Assert.Equal("/F1 12 Tf", S(annotation.Elements["/DA"]));
-        Near([0, 0, 1, 1], Values(D(D(annotation.Elements["/AP"]).Elements["/N"]).Elements["/BBox"]));
+        Refused([first, input], limits);
     }
 
     public static TheoryData<string, int> BudgetBoundaries => new()
     {
         { "slots", 2 }, { "sourceNumbers", 8 }, { "strokes", 2 }, { "states", 2 },
-        { "objects", 3 }, { "items", 10 }, { "daLength", 9 }, { "daBytes", 8 },
+        { "objects", 5 }, { "items", 18 }, { "daLength", 9 }, { "daBytes", 8 },
         { "streamBytes", Encoding.ASCII.GetByteCount("q\n0.5 0 0 0.5 0 0 cm\n/Original Do\nQ\n") },
     };
 
     [Theory]
     [MemberData(nameof(BudgetBoundaries))]
-    public void E11_Each_optional_budget_has_below_at_and_above_boundary_cases(string budget, int boundary)
+    public void E11_Each_budget_refuses_below_and_fits_at_or_above_boundary(string budget, int boundary)
     {
         foreach (var offset in new[] { -1, 0, 1 })
         {
@@ -605,24 +615,26 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
                     "<< /Subtype /Link /Rect [20 20 60 60] >>",
                     RawStream("0 0 1 1 re S\n", "/Subtype /Form /BBox [0 0 1 1] /Resources << >>"),
                 ], widget ? "/AcroForm << /Fields [5 0 R] >>" : "");
+            if (offset < 0)
+            {
+                Refused([first, input], limits);
+                continue;
+            }
             using var result = PdfReader.Open(Merge([first, input], Same, limits), PdfDocumentOpenMode.Import);
-            var annotation = Annotation(result.Pages[1], budget == "sourceNumbers" ? 1 : 0);
-            Near(offset < 0 ? [20, 20, 60, 60] : [10, 10, 30, 30], Values(annotation.Elements["/Rect"]));
+            foreach (var annotation in A(result.Pages[1].Elements["/Annots"]).Elements.Select(D))
+                Near([10, 10, 30, 30], Values(annotation.Elements["/Rect"]));
         }
     }
 
     [Fact]
-    public void E11_Slot_overflow_does_not_transform_only_one_owner_of_a_shared_widget()
+    public void E11_Slot_overflow_refuses_before_partial_owner_collection()
     {
         var input = Make(["/MediaBox [0 0 100 100] /Annots [6 0 R]", "/MediaBox [0 0 200 200] /Annots [6 0 R 7 0 R]"],
             [
                 "<< /Subtype /Widget /FT /Tx /T (field) /Rect [20 20 60 60] /DA (/F1 12 Tf) >>",
                 "<< /Subtype /Link /Rect [20 20 60 60] >>",
             ], "/AcroForm << /Fields [6 0 R] >>");
-        using var result = PdfReader.Open(Merge([input], Same, new() { AnnotationSlots = 2 }), PdfDocumentOpenMode.Import);
-        Near([20, 20, 60, 60], Values(Annotation(result.Pages[1], 1).Elements["/Rect"]));
-        Assert.Equal("/F1 12 Tf", S(Annotation(result.Pages[0]).Elements["/DA"]));
-        Assert.Equal("/F1 12 Tf", S(Annotation(result.Pages[1]).Elements["/DA"]));
+        Refused([input], new() { AnnotationSlots = 2 });
     }
 
     [Theory]
@@ -674,7 +686,7 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
         if (success)
             Assert.NotNull(normalizer.Snapshot(page));
         else
-            Assert.Equal("error.merge_paper_geometry", Assert.Throws<ConversionRefusedException>(() => normalizer.Snapshot(page)).ErrorKey);
+            Assert.Equal("error.merge_paper_limit", Assert.Throws<ConversionRefusedException>(() => normalizer.Snapshot(page)).ErrorKey);
     }
 
     [Theory]
@@ -711,14 +723,18 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
         {
             var page = input.AddPage();
             page.Elements["/Parent"] = page.Reference!;
-            var normalizer = new Geometry(input, new(), 4096);
-            Assert.Throws<ConversionRefusedException>(() => normalizer.Snapshot(page));
+            foreach (var limits in new[] { new Geometry.Limits(), new Geometry.Limits { ParentDepth = 1 } })
+            {
+                var normalizer = new Geometry(input, limits, 4096);
+                var error = Assert.Throws<ConversionRefusedException>(() => normalizer.Snapshot(page));
+                Assert.Equal("error.merge_paper_geometry", error.ErrorKey);
+            }
         }
         var source = Raw("<< /Type /Catalog /Pages 2 0 R >>",
             "<< /Type /Pages /Kids [4 0 R] /Count 1 >>", RawStream(Body),
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Contents [[3 0 R]] >>");
         var output = Path.Combine(fx.NewFolder(), "nested.pdf");
-        Assert.Equal("error.merge_paper_limit", Assert.Throws<ConversionRefusedException>(() => PdfSharpConverter.Merge(
+        Assert.Equal("error.merge_paper_geometry", Assert.Throws<ConversionRefusedException>(() => PdfSharpConverter.Merge(
             [new(source, "input")], output, false, Same, TestContext.Current.CancellationToken)).ErrorKey);
         Assert.False(File.Exists(output));
     }
@@ -754,5 +770,413 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(clock.Elapsed - cancelled.Value < TimeSpan.FromSeconds(1));
         Assert.False(File.Exists(output));
         Assert.Equal(hash, SHA256.HashData(File.ReadAllBytes(input)));
+    }
+
+    [Theory]
+    [InlineData("/Rotate 45")]
+    [InlineData("/Rotate 90.5")]
+    [InlineData("/Rotate (bad)")]
+    [InlineData("/UserUnit 0")]
+    [InlineData("/UserUnit -1")]
+    [InlineData("/UserUnit (bad)")]
+    public void E5_Viewer_tolerated_rotation_and_unit_values_use_defaults(string entry)
+    {
+        var input = Make([$"/MediaBox [0 0 200 100] {entry}"]);
+        var hash = SHA256.HashData(File.ReadAllBytes(input));
+        using var result = PdfReader.Open(Merge([input], Same), PdfDocumentOpenMode.Import);
+        Page(result.Pages[0], 200, 100);
+        Near([1, 0, 0, 1, 0, 0], ContentMatrix(result.Pages[0]));
+        Assert.Equal(hash, SHA256.HashData(File.ReadAllBytes(input)));
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void E5_Nonfinite_rotation_and_unit_default_in_snapshot(double value)
+    {
+        using var document = new PdfDocument();
+        var page = document.AddPage();
+        page.MediaBox = new PdfRectangle(new XPoint(0, 0), new XPoint(200, 100));
+        page.Elements["/Rotate"] = new PdfReal(value);
+        page.Elements["/UserUnit"] = new PdfReal(value);
+        var geometry = new Geometry(document, new(), 4096).Snapshot(page);
+        Assert.Equal(0, geometry.Rotate);
+        Assert.Equal(1, geometry.Unit);
+        Assert.Equal(200, geometry.Width);
+        Assert.Equal(100, geometry.Height);
+    }
+
+    [Theory]
+    [InlineData("7")]
+    [InlineData("<< >>")]
+    [InlineData("[3 0 R 7]")]
+    [InlineData("[3 0 R null]")]
+    [InlineData("[[3 0 R]]")]
+    public void E12_Non_stream_contents_is_geometry_error(string contents)
+    {
+        var input = Raw("<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [4 0 R] /Count 1 >>", RawStream(Body),
+            $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Contents {contents} >>");
+        Refused([input], new(), "error.merge_paper_geometry");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void E11_Default_objects_budget_fits_large_link_and_checkbox_documents(bool widgets)
+    {
+        var pages = widgets ? 40 : 1000;
+        var perPage = widgets ? 15 : 6;
+        var firstAnnotation = pages + 4;
+        var streamId = firstAnnotation + pages * perPage;
+        var entries = Enumerable.Range(0, pages).Select(p => "/MediaBox [0 0 200 200] /Annots [" +
+            string.Join(" ", Enumerable.Range(0, perPage).Select(i => $"{firstAnnotation + p * perPage + i} 0 R")) + "]").ToArray();
+        var annotations = Enumerable.Range(0, pages * perPage).Select(i => widgets
+            ? $"<< /Subtype /Widget /FT /Btn /T (box{i}) /Rect [20 20 60 60] /MK << /R 0 >> /AP << /N << /On {streamId} 0 R /Off {streamId} 0 R >> /D << /On {streamId} 0 R /Off {streamId} 0 R >> >> >>"
+            : "<< /Subtype /Link /Rect [20 20 60 60] >>").ToList();
+        if (widgets)
+            annotations.Add(RawStream("0 0 1 1 re S\n", "/Subtype /Form /BBox [0 0 1 1]"));
+        var catalog = widgets ? "/AcroForm << /Fields [" +
+            string.Join(" ", Enumerable.Range(0, pages * perPage).Select(i => $"{firstAnnotation + i} 0 R")) + "] >>" : "";
+        var input = Make(entries, annotations.ToArray(), catalog);
+        var clock = Stopwatch.StartNew();
+        var path = Merge([Make(["/MediaBox [0 0 100 100]"]), input], Same);
+        using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        Assert.Equal(pages + 1, result.PageCount);
+        foreach (var page in result.Pages.Cast<PdfPage>().Skip(1))
+            for (var i = 0; i < perPage; i++)
+            {
+                var annotation = Annotation(page, i);
+                Near([10, 10, 30, 30], Values(annotation.Elements["/Rect"]));
+                if (!widgets)
+                    continue;
+                var ap = D(annotation.Elements["/AP"]);
+                foreach (var mode in new[] { "/N", "/D" })
+                    foreach (var state in new[] { "/On", "/Off" })
+                        Near([10, 10, 30, 30], Values(D(D(ap.Elements[mode]).Elements[state]).Elements["/BBox"]));
+            }
+        if (widgets)
+        {
+            var fields = A(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/Fields"]);
+            Assert.Contains(fields.Elements, item => ReferenceEquals(V(item), Annotation(result.Pages[^1], perPage - 1)));
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine($"paper-large widgets={widgets} input={new FileInfo(input).Length} output={new FileInfo(path).Length} ms={clock.ElapsedMilliseconds} rss={Process.GetCurrentProcess().PeakWorkingSet64}");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void E9_Text_popup_and_reply_keep_in_annots_identity_and_fitted_coordinates(bool crossPage)
+    {
+        CheckPopup(crossPage, false);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void E9_Cross_page_popup_parent_and_reply_keep_identity(bool reverse)
+    {
+        CheckPopup(true, reverse);
+    }
+
+    private void CheckPopup(bool crossPage, bool reverse)
+    {
+        var first = crossPage ? 6 : 5;
+        var rootPage = reverse ? 1 : 0;
+        var popupPage = crossPage ? 1 - rootPage : 0;
+        var entries = crossPage ? new[] { "/MediaBox [0 0 100 100]", "/MediaBox [0 0 200 200]" }
+            : ["/MediaBox [0 0 200 200]"];
+        if (crossPage)
+            entries[rootPage] += $" /Annots [{first} 0 R]";
+        entries[popupPage] += crossPage ? $" /Annots [{first + 1} 0 R {first + 2} 0 R]"
+            : $" /Annots [{first} 0 R {first + 1} 0 R {first + 2} 0 R]";
+        var input = Make(entries,
+            [
+                $"<< /Subtype /Text /NM (root) /Rect [20 20 60 60] /Popup {first + 1} 0 R >>",
+                $"<< /Subtype /Popup /NM (popup) /Rect [40 40 80 80] /Parent {first} 0 R >>",
+                $"<< /Subtype /Text /NM (reply) /Rect [60 60 100 100] /IRT {first} 0 R >>",
+            ]);
+        using var result = PdfReader.Open(Merge([Make(["/MediaBox [0 0 100 100]"]), input], Same), PdfDocumentOpenMode.Import);
+        var root = Annotation(result.Pages[rootPage + 1]);
+        var popup = Annotation(result.Pages[popupPage + 1], crossPage ? 0 : 1);
+        var reply = Annotation(result.Pages[popupPage + 1], crossPage ? 1 : 2);
+        Assert.Same(popup, V(root.Elements["/Popup"]));
+        Assert.Same(root, V(popup.Elements["/Parent"]));
+        Assert.Same(root, V(reply.Elements["/IRT"]));
+        var rootScale = crossPage && rootPage == 0 ? 1d : .5;
+        var popupScale = crossPage && popupPage == 0 ? 1d : .5;
+        Near(new double[] { 20, 20, 60, 60 }.Select(n => n * rootScale), Values(root.Elements["/Rect"]));
+        Near(new double[] { 40, 40, 80, 80 }.Select(n => n * popupScale), Values(popup.Elements["/Rect"]));
+        Near(new double[] { 60, 60, 100, 100 }.Select(n => n * popupScale), Values(reply.Elements["/Rect"]));
+        Assert.Same(result.Pages[rootPage + 1], V(root.Elements["/P"]));
+        Assert.Same(result.Pages[popupPage + 1], V(popup.Elements["/P"]));
+        foreach (var name in new[] { "root", "popup", "reply" })
+            Assert.Single(result.Internals.GetAllObjects().OfType<PdfDictionary>(),
+                d => V(d.Elements["/NM"]) is PdfString text && text.Value == name);
+    }
+
+    [Fact]
+    public void E9_Repeated_single_page_annotation_is_fitted_once_without_replacement()
+    {
+        var input = Make(["/MediaBox [0 0 200 200] /Annots [5 0 R 5 0 R 6 0 R]"],
+            [
+                "<< /Subtype /Text /Rect [20 20 60 60] /Popup 6 0 R >>",
+                "<< /Subtype /Popup /Rect [40 40 80 80] /Parent 5 0 R >>",
+            ]);
+        using var source = PdfReader.Open(input, PdfDocumentOpenMode.Import);
+        using var output = new PdfDocument();
+        var imported = output.AddPage(source.Pages[0]);
+        var captured = Annotation(imported);
+        var fitter = new Geometry(output, new(), 4096);
+        fitter.CollectAnnotations(source);
+        fitter.Annotations(source.Pages[0], imported, Geometry.Fit(fitter.Snapshot(source.Pages[0]), (100, 100)));
+        Assert.Same(captured, Annotation(imported));
+        Assert.Same(captured, Annotation(imported, 1));
+        Near([10, 10, 30, 30], Values(captured.Elements["/Rect"]));
+        Assert.Same(Annotation(imported, 2), V(captured.Elements["/Popup"]));
+        var saved = Path.Combine(fx.NewFolder(), "repeated.pdf");
+        output.Save(saved);
+        using var reopened = PdfReader.Open(saved, PdfDocumentOpenMode.Import);
+        var root = Annotation(reopened.Pages[0]);
+        Assert.Same(root, Annotation(reopened.Pages[0], 1));
+        Assert.Same(Annotation(reopened.Pages[0], 2), V(root.Elements["/Popup"]));
+        Assert.Same(root, V(Annotation(reopened.Pages[0], 2).Elements["/Parent"]));
+        Near([10, 10, 30, 30], Values(root.Elements["/Rect"]));
+    }
+
+    [Fact]
+    public void E9_Shared_annots_array_is_not_written_in_place()
+    {
+        var input = Make(["/MediaBox [0 0 100 100] /Annots 6 0 R", "/MediaBox [0 0 200 200] /Annots 6 0 R"],
+            ["[7 0 R]", "<< /Subtype /Text /Rect [20 20 60 60] >>"]);
+        using var result = PdfReader.Open(Merge([input], Same), PdfDocumentOpenMode.Import);
+        Assert.NotSame(Annotation(result.Pages[0]), Annotation(result.Pages[1]));
+        Near([20, 20, 60, 60], Values(Annotation(result.Pages[0]).Elements["/Rect"]));
+        Near([10, 10, 30, 30], Values(Annotation(result.Pages[1]).Elements["/Rect"]));
+    }
+
+    [Theory]
+    [InlineData("objects")]
+    [InlineData("items")]
+    [InlineData("numbers")]
+    [InlineData("streams")]
+    [InlineData("da")]
+    public void E11_Budget_hit_mid_page_refuses_the_whole_merge(string budget)
+    {
+        var input = Make(["/MediaBox [0 0 200 200] /Annots [5 0 R 6 0 R]"],
+            [
+                "<< /Subtype /FreeText /Rect [20 20 60 60] /DA (/F1 12 Tf) /AP << /N 7 0 R >> >>",
+                "<< /Subtype /FreeText /Rect [20 20 60 60] /DA (/F1 12 Tf) /AP << /N 7 0 R >> >>",
+                RawStream("0 0 1 1 re S\n", "/Subtype /Form /BBox [0 0 1 1]"),
+            ]);
+        var limits = budget switch
+        {
+            "objects" => new Geometry.Limits { Objects = 9 },
+            "items" => new() { Items = 40 },
+            "numbers" => new() { SourceNumbers = 8 },
+            "streams" => new() { StreamBytes = 40 },
+            _ => new() { DaBytes = 9 },
+        };
+        Refused([Make(["/MediaBox [0 0 100 100]"]), input], limits);
+    }
+
+    [Theory]
+    [InlineData(false, "items")]
+    [InlineData(false, "objects")]
+    [InlineData(true, "items")]
+    [InlineData(true, "objects")]
+    public void E11_Repeated_damaged_annotation_consumes_work_budget(bool enough, string budget)
+    {
+        CheckDamagedWork(false, enough, budget);
+    }
+
+    [Theory]
+    [InlineData(false, "items")]
+    [InlineData(false, "objects")]
+    [InlineData(true, "items")]
+    [InlineData(true, "objects")]
+    public void E11_Distinct_damaged_annotations_charge_shared_AP_copies(bool enough, string budget)
+    {
+        CheckDamagedWork(true, enough, budget);
+    }
+
+    private void CheckDamagedWork(bool sharedAp, bool enough, string budget)
+    {
+        var keys = string.Join(" ", Enumerable.Range(0, 100).Select(i => $"/Private{i} {i}"));
+        var extra = sharedAp
+            ? new[] { "<< /Subtype /Text /Rect [20 20 60 60] /AP 8 0 R >>",
+                "<< /Subtype /Text /Rect [20 20 60 60] /AP 8 0 R >>",
+                "<< /Subtype /Link /Rect [20 20 60 60] >>", $"<< /N 7 {keys} >>" }
+            : new[] { $"<< /Subtype /Text /Rect [20 20 60 60] /Vertices [1] {keys} >>",
+                "<< /Subtype /Link /Rect [20 20 60 60] >>" };
+        var slots = sharedAp ? "5 0 R 6 0 R 7 0 R" : "5 0 R 5 0 R 6 0 R";
+        var input = Make([$"/MediaBox [0 0 200 200] /Annots [{slots}]"], extra);
+        var limits = budget == "items"
+            ? new Geometry.Limits { Items = enough ? 1000 : 150 }
+            : new() { Objects = enough ? 100 : sharedAp ? 4 : 3 };
+        var clock = Stopwatch.StartNew();
+        if (!enough)
+            Refused([input], limits);
+        else
+        {
+            using var result = PdfReader.Open(Merge([Make(["/MediaBox [0 0 100 100]"]), input], Same, limits), PdfDocumentOpenMode.Import);
+            Near([20, 20, 60, 60], Values(Annotation(result.Pages[1]).Elements["/Rect"]));
+            Near([10, 10, 30, 30], Values(Annotation(result.Pages[1], 2).Elements["/Rect"]));
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine($"paper-damage sharedAp={sharedAp} enough={enough} budget={budget} input={new FileInfo(input).Length} slots=3 keys=100 limit={(budget == "items" ? limits.Items : limits.Objects)} ms={clock.ElapsedMilliseconds} rss={Process.GetCurrentProcess().PeakWorkingSet64}");
+    }
+
+    [Fact]
+    public void E11_Widget_DA_parent_depth_has_independent_limit_boundaries()
+    {
+        var input = Make(["/MediaBox [0 0 200 200] /Annots [5 0 R]"],
+            [
+                "<< /Subtype /Widget /FT /Tx /Rect [20 20 60 60] /Parent 6 0 R >>",
+                "<< /Kids [5 0 R] /Parent 7 0 R >>",
+                "<< /T (root) /Kids [6 0 R] /DA (/F1 12 Tf) >>",
+            ]);
+        Refused([input], new() { ParentDepth = 2 });
+        foreach (var depth in new[] { 2, 3, 4 })
+        {
+            using var source = PdfReader.Open(input, PdfDocumentOpenMode.Import);
+            using var output = new PdfDocument();
+            var page = output.AddPage(source.Pages[0]);
+            var fitter = new Geometry(output, new() { ParentDepth = depth }, 4096);
+            fitter.CollectAnnotations(source);
+            var transform = Geometry.Fit(fitter.Snapshot(source.Pages[0]), (100, 100));
+            if (depth < 3)
+                Assert.Equal("error.merge_paper_limit", Assert.Throws<ConversionRefusedException>(
+                    () => fitter.Annotations(source.Pages[0], page, transform)).ErrorKey);
+            else
+            {
+                fitter.Annotations(source.Pages[0], page, transform);
+                Near([10, 10, 30, 30], Values(Annotation(page).Elements["/Rect"]));
+                Assert.Equal("/F1 6 Tf", S(Annotation(page).Elements["/DA"]));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(8)]
+    public void E11_Widget_DA_parent_cycle_precedes_depth_limit(int depth)
+    {
+        var input = Make(["/MediaBox [0 0 200 200] /Annots [5 0 R 7 0 R]"],
+            [
+                "<< /Subtype /Widget /Rect [20 20 60 60] /Parent 6 0 R /AP << /N 8 0 R >> >>",
+                "<< /Parent 5 0 R >>",
+                "<< /Subtype /Link /Rect [20 20 60 60] >>",
+                RawStream("0 0 1 1 re S\n", "/Subtype /Form /BBox [0 0 1 1]"),
+            ]);
+        using var result = PdfReader.Open(Merge([Make(["/MediaBox [0 0 100 100]"]), input], Same,
+            new() { ParentDepth = depth }), PdfDocumentOpenMode.Import);
+        var widget = Annotation(result.Pages[1]);
+        Near([20, 20, 60, 60], Values(widget.Elements["/Rect"]));
+        Near([0, 0, 1, 1], Values(D(D(widget.Elements["/AP"]).Elements["/N"]).Elements["/BBox"]));
+        Assert.Null(widget.Elements["/DA"]);
+        Near([10, 10, 30, 30], Values(Annotation(result.Pages[1], 1).Elements["/Rect"]));
+    }
+
+    [Theory]
+    [InlineData(false, 0, 200, 1)]
+    [InlineData(false, 0, 50, 2)]
+    [InlineData(false, 12, 200, 1)]
+    [InlineData(false, 12, 50, 2)]
+    [InlineData(true, 0, 200, 2)]
+    [InlineData(true, 0, 50, 1)]
+    [InlineData(true, 12, 200, 2)]
+    [InlineData(true, 12, 50, 2)]
+    public void E8_FreeText_DA_scales_with_or_without_AP(bool appearance, int size, int width, int unit)
+    {
+        var da = $"/F1 {size} Tf 0.3 g (Fake /F1 99 Tf) Tj /F#31 0 Tf";
+        var ap = appearance ? "/AP << /N 6 0 R >>" : "";
+        var input = Make([$"/MediaBox [0 0 {width} {width}] /UserUnit {unit} /Annots [5 0 R]"],
+            [$"<< /Subtype /FreeText /Rect [20 20 60 60] /DA ({da}) {ap} >>",
+                RawStream("0 0 1 1 re S\n", "/Subtype /Form /BBox [0 0 1 1]")]);
+        using var result = PdfReader.Open(Merge([Make(["/MediaBox [0 0 100 100]"]), input], Same), PdfDocumentOpenMode.Import);
+        var annotation = Annotation(result.Pages[1]);
+        var scale = 100d / width;
+        Near(new double[] { 20, 20, 60, 60 }.Select(n => n * scale), Values(annotation.Elements["/Rect"]));
+        Assert.Equal($"/F1 {size * scale} Tf 0.3 g (Fake /F1 99 Tf) Tj /F#31 0 Tf", S(annotation.Elements["/DA"]));
+        if (appearance)
+        {
+            var original = D(D(D(D(D(annotation.Elements["/AP"]).Elements["/N"]).Elements["/Resources"]).Elements["/XObject"]).Elements["/Original"]);
+            Assert.Equal("0 0 1 1 re S\n", Stream(original));
+        }
+    }
+
+    [Fact]
+    public void E8_FreeText_DA_is_local_and_other_subtypes_are_unchanged()
+    {
+        var input = Make(["/MediaBox [0 0 200 200] /Annots [5 0 R 6 0 R 7 0 R]"],
+            [
+                "<< /Subtype /FreeText /Rect [20 20 60 60] /Parent 8 0 R >>",
+                "<< /Subtype /Text /Rect [20 20 60 60] /DA (/F1 12 Tf) >>",
+                "<< /Subtype /Link /Rect [20 20 60 60] /DA (/F1 12 Tf) >>",
+                "<< /DA (/F1 18 Tf) >>",
+            ]);
+        using var result = PdfReader.Open(Merge([Make(["/MediaBox [0 0 100 100]"]), input], Same), PdfDocumentOpenMode.Import);
+        Assert.Null(Annotation(result.Pages[1]).Elements["/DA"]);
+        Assert.Equal("/F1 12 Tf", S(Annotation(result.Pages[1], 1).Elements["/DA"]));
+        Assert.Equal("/F1 12 Tf", S(Annotation(result.Pages[1], 2).Elements["/DA"]));
+    }
+
+    [Theory]
+    [InlineData("length", 9)]
+    [InlineData("bytes", 8)]
+    public void E11_FreeText_DA_limits_refuse_and_damage_stays_atomic(string budget, int boundary)
+    {
+        var input = Make(["/MediaBox [0 0 200 200] /Annots [5 0 R 6 0 R]"],
+            ["<< /Subtype /FreeText /Rect [20 20 60 60] /DA (/F1 12 Tf) >>",
+                "<< /Subtype /Link /Rect [20 20 60 60] >>"]);
+        var first = Make(["/MediaBox [0 0 100 100]"]);
+        foreach (var offset in new[] { -1, 0, 1 })
+        {
+            var limits = budget == "length" ? new Geometry.Limits { DaLength = boundary + offset }
+                : new() { DaBytes = boundary + offset };
+            if (offset < 0)
+                Refused([first, input], limits);
+            else
+            {
+                using var result = PdfReader.Open(Merge([first, input], Same, limits), PdfDocumentOpenMode.Import);
+                Near([10, 10, 30, 30], Values(Annotation(result.Pages[1]).Elements["/Rect"]));
+                Assert.Equal("/F1 6 Tf", S(Annotation(result.Pages[1]).Elements["/DA"]));
+            }
+        }
+        var damaged = Make(["/MediaBox [0 0 100 100] /Annots [5 0 R 6 0 R]"],
+            [$"<< /Subtype /FreeText /Rect [20 20 60 60] /DA (/F1 {new string('9', 308)} Tf) /AP << /N 7 0 R >> >>",
+                "<< /Subtype /Link /Rect [20 20 60 60] >>",
+                RawStream("0 0 1 1 re S\n", "/Subtype /Form /BBox [0 0 1 1]")]);
+        var target = Make(["/MediaBox [0 0 200 200]"]);
+        using var output = PdfReader.Open(Merge([target, damaged], Same), PdfDocumentOpenMode.Import);
+        Near([20, 20, 60, 60], Values(Annotation(output.Pages[1]).Elements["/Rect"]));
+        Near([0, 0, 1, 1], Values(D(D(Annotation(output.Pages[1]).Elements["/AP"]).Elements["/N"]).Elements["/BBox"]));
+        Assert.Equal($"/F1 {new string('9', 308)} Tf", S(Annotation(output.Pages[1]).Elements["/DA"]));
+        Near([40, 40, 120, 120], Values(Annotation(output.Pages[1], 1).Elements["/Rect"]));
+    }
+
+    [Fact]
+    public void E11_FreeText_encoded_appearance_length_has_independent_boundaries()
+    {
+        const string da = "/F1 12 Tf % \uD55C\uAE00\n";
+        var hex = "FEFF" + Convert.ToHexString(Encoding.BigEndianUnicode.GetBytes(da));
+        var input = Make(["/MediaBox [0 0 200 200] /Annots [5 0 R]"],
+            [$"<< /Subtype /FreeText /Rect [20 20 60 60] /DA <{hex}> >>"]);
+        var first = Make(["/MediaBox [0 0 100 100]"]);
+        var boundary = 2 + Encoding.BigEndianUnicode.GetByteCount(da);
+        Assert.True(boundary > da.Length);
+        foreach (var offset in new[] { -1, 0, 1 })
+        {
+            if (offset < 0)
+                Refused([first, input], new() { DaLength = 1000, DaBytes = 1000 }, appearanceLength: boundary + offset);
+            else
+            {
+                using var result = PdfReader.Open(Merge([first, input], Same, new() { DaLength = 1000, DaBytes = 1000 },
+                    appearanceLength: boundary + offset), PdfDocumentOpenMode.Import);
+                Near([10, 10, 30, 30], Values(Annotation(result.Pages[1]).Elements["/Rect"]));
+                Assert.Equal("/F1 6 Tf % \uD55C\uAE00\n", S(Annotation(result.Pages[1]).Elements["/DA"]));
+            }
+        }
     }
 }
