@@ -205,6 +205,7 @@ internal sealed partial class DocxReader
     {
         var main = _part;
         LoadStyles(RelatedPart(main, "/styles"));
+        DefaultFonts();
         var theme = RelatedPart(main, "/theme");
         LoadTheme(theme);
         LoadThemeColors(theme);

@@ -439,6 +439,30 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Null(renderer.FirstUnsupported(plain, "docx"));
     }
 
+    [Fact]
+    public void Issue1180_text_in_a_document_that_names_no_font_is_in_times_new_roman()
+    {
+        // A worksheet whose styles and defaults name no font at all: Word draws it in Times New Roman, the renderer
+        // drew it in its own sans serif, wider, and the pages ran over. A theme or named font still wins.
+        const string Bare = """
+            <w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>
+            <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="normal"/></w:style>
+            """;
+        var docx = new DocxBuilder { Styles = Bare }.Paragraph(P(R("Student Name")) + P(R("UID", "<w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>")));
+        var themed = new DocxBuilder { Styles = Bare.Replace("<w:sz ", "<w:rFonts w:asciiTheme=\"minorHAnsi\" w:hAnsiTheme=\"minorHAnsi\"/><w:sz ", StringComparison.Ordinal) }.Paragraph(P(R("Body")));
+
+        var plain = DocxReader.Read(docx.Save(Path.Combine(fx.NewFolder(), "bare.docx")), fx.NewFolder());
+        var theme = DocxReader.Read(themed.Save(Path.Combine(fx.NewFolder(), "themed.docx")), fx.NewFolder());
+
+        var texts = Assert.Single(plain.Sections).Blocks.OfType<HParagraph>().Select(p => p.Inlines.OfType<HText>().Single()).ToList();
+        Assert.Equal("Times New Roman", texts[0].Format.Font);
+        Assert.Equal("Times New Roman", texts[0].Format.Layout?.WordFonts?.Ascii);
+        Assert.Equal("Times New Roman", texts[0].Format.Layout?.WordFonts?.ComplexScript);
+        Assert.Equal("Arial", texts[1].Format.Font);
+        var body = Assert.Single(theme.Sections).Blocks.OfType<HParagraph>().Single().Inlines.OfType<HText>().Single();
+        Assert.NotEqual("Times New Roman", body.Format.Font);
+    }
+
     // ───────────────────────── Word: fixes that came with the main merge (#1194, #355, #1237) ─────────────────────────
 
     [Fact]
