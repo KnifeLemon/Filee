@@ -38,9 +38,10 @@ public class VisioFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var builder = new VsdxBuilder();
         builder.StyleSheets += "<StyleSheet ID='1' NameU='Blue' LineStyle='0' FillStyle='0' TextStyle='0'>" + Cell("FillForegnd", "4") +
                                Cell("FillPattern", 7) + Cell("LinePattern", 2) + "</StyleSheet>";
-        var master = builder.Master(
-            Shape(5, 0.5, 0.5, 1, 1, Rectangle(1, 1) + Cell("FillForegnd", "#3366CC") + TextBlock("<cp IX='0'/>Master")) +
-            Shape(6, 1.5, 0.5, 1, 1, "<Shapes>" + Shape(7, 0.25, 0.25, 0.5, 0.5, Rectangle(0.5, 0.5)) + "</Shapes>", "Type='Group'"));
+        // One shape per master, as Visio saves them: a box with text, and a group whose instance lists its member.
+        var master = builder.Master(Shape(5, 0.5, 0.5, 1, 1, Rectangle(1, 1) + Cell("FillForegnd", "#3366CC") + TextBlock("<cp IX='0'/>Master")));
+        var groupMaster = builder.Master(
+            Shape(6, 0.5, 0.5, 1, 1, "<Shapes>" + Shape(7, 0.25, 0.25, 0.5, 0.5, Rectangle(0.5, 0.5)) + "</Shapes>", "Type='Group' LineStyle='0' FillStyle='0' TextStyle='0'"));
         var picture = DocumentFuzzTests.TinyPng(4, 3);
         var media = builder.Media(picture);
         var rows = Geometry(
@@ -62,9 +63,10 @@ public class VisioFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var layers = "<Section N='Layer'><Row IX='0'>" + Cell("Visible", 0) + "</Row></Section>";
         builder.Page(
             Shape(1, 1, 1, 1, 1, rows + text + Cell("Angle", 0.3) + Cell("FlipY", 1), "Type='Shape' LineStyle='1' FillStyle='1' TextStyle='0'") +
-            $"<Shape ID='2' Type='Shape' Master='{master}' MasterShape='5'>" + Cell("PinX", 3) + Cell("PinY", 2) + Cell("Width", 1.5) + "</Shape>" +
-            $"<Shape ID='3' Type='Group' Master='{master}' MasterShape='6'>" + Cell("PinX", 2) + Cell("PinY", 0.5) + "</Shape>" +
-            Shape(4, 3, 1, 1, 0.5, "<ForeignData ForeignType='Bitmap'><Rel r:id='rId1' xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'/></ForeignData>", "Type='Foreign'") +
+            // Resized: Visio keeps the geometry values recalculated for the new width in the instance.
+            $"<Shape ID='2' Type='Shape' Master='{master}'>" + Cell("PinX", 3) + Cell("PinY", 2) + Cell("Width", 1.5) + Rectangle(1.5, 1) + "</Shape>" +
+            $"<Shape ID='3' Type='Group' Master='{groupMaster}'>" + Cell("PinX", 2) + Cell("PinY", 0.5) + "<Shapes><Shape ID='6' Type='Shape' MasterShape='7'/></Shapes></Shape>" +
+            Picture(4, 3, 1, 1, 0.5, "rId1") +
             Shape(5, 2, 2.5, 1, 0, Geometry(Row("MoveTo", 1, ("X", 0), ("Y", 0)) + Row("LineTo", 2, ("X", 1), ("Y", 0))) + Cell("EndArrow", 4) + Cell("LayerMember", "0")),
             4, 3, layers, backPage: background, pictures: new Dictionary<string, string> { ["rId1"] = media });
         return builder.ToBytes();

@@ -1,6 +1,11 @@
 // Builds Visio drawings (.vsdx, [MS-VSDX]) in code for the Visio reader's tests and fuzz seeds: the document part with
 // its colours, face names and style sheets, pages (with page sheets, background pages and layers), masters, and
 // pictures, from XML strings of shapes. Nothing is read from disk.
+//
+// The package is laid out as Visio saves one, so other readers (LibreOffice's) draw it the same way: every part has its
+// content type, a master's PageSheet has cells (an empty one made LibreOffice skip the master's shapes), a shape without
+// a master names its style sheets (LibreOffice draws a shape without them unfilled), and a picture is a Foreign shape
+// with its compression type and image rectangle (see Picture).
 
 using System.Globalization;
 using System.IO.Compression;
@@ -42,10 +47,25 @@ internal sealed class VsdxBuilder
 
     /// <summary>A shape: its transform cells, then <paramref name="body"/> (more cells, sections, text, sub-shapes).</summary>
     /// <param name="locPinX">The local pin; null = the box's centre.</param>
-    public static string Shape(int id, double pinX, double pinY, double width, double height, string body = "", string attributes = "Type='Shape'",
+    /// <param name="attributes">The Shape element's attributes; the default names style sheet 0 for line, fill and text, as Visio does.</param>
+    public static string Shape(int id, double pinX, double pinY, double width, double height, string body = "", string attributes = Styled,
         double? locPinX = null, double? locPinY = null) =>
         $"<Shape ID='{id}' {attributes}>" + Cell("PinX", pinX) + Cell("PinY", pinY) + Cell("Width", width) + Cell("Height", height) +
         Cell("LocPinX", locPinX ?? width / 2) + Cell("LocPinY", locPinY ?? height / 2) + body + "</Shape>";
+
+    /// <summary>The default attributes of a shape: a plain shape on style sheet 0 ("No Style") for line, fill and text.</summary>
+    public const string Styled = "Type='Shape' LineStyle='0' FillStyle='0' TextStyle='0'";
+
+    /// <summary>
+    /// A picture as Visio saves one: a Foreign shape without a line whose image fills its box (ImgOffset / ImgWidth / ImgHeight) and
+    /// whose ForeignData names the compression of the picture part behind relationship <paramref name="relationship"/>.
+    /// </summary>
+    public static string Picture(int id, double pinX, double pinY, double width, double height, string relationship, string compression = "PNG",
+        string body = "") =>
+        Shape(id, pinX, pinY, width, height,
+            Cell("ImgOffsetX", 0) + Cell("ImgOffsetY", 0) + Cell("ImgWidth", width) + Cell("ImgHeight", height) + Cell("LinePattern", 0) + body +
+            $"<ForeignData ForeignType='Bitmap' CompressionType='{compression}'><Rel r:id='{relationship}' xmlns:r='{R}'/></ForeignData>",
+            "Type='Foreign' LineStyle='0' FillStyle='0' TextStyle='0'");
 
     /// <summary>A Geometry section of rows (Row elements).</summary>
     public static string Geometry(string rows, int index = 0, string cells = "") => $"<Section N='Geometry' IX='{index}'>{cells}{rows}</Section>";
@@ -112,7 +132,15 @@ internal sealed class VsdxBuilder
                 "<?xml version='1.0' encoding='UTF-8'?><Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'>" +
                 "<Default Extension='rels' ContentType='application/vnd.openxmlformats-package.relationships+xml'/>" +
                 "<Default Extension='xml' ContentType='application/xml'/><Default Extension='png' ContentType='image/png'/>" +
-                "<Override PartName='/visio/document.xml' ContentType='application/vnd.ms-visio.drawing.main+xml'/></Types>");
+                "<Default Extension='jpeg' ContentType='image/jpeg'/><Default Extension='jpg' ContentType='image/jpeg'/>" +
+                "<Default Extension='gif' ContentType='image/gif'/><Default Extension='bmp' ContentType='image/bmp'/>" +
+                "<Default Extension='emf' ContentType='image/x-emf'/><Default Extension='wmf' ContentType='image/x-wmf'/>" +
+                "<Override PartName='/visio/document.xml' ContentType='application/vnd.ms-visio.drawing.main+xml'/>" +
+                "<Override PartName='/visio/pages/pages.xml' ContentType='application/vnd.ms-visio.pages+xml'/>" +
+                string.Concat(_pages.Select(p => $"<Override PartName='/visio/pages/page{p.Id + 1}.xml' ContentType='application/vnd.ms-visio.page+xml'/>")) +
+                "<Override PartName='/visio/masters/masters.xml' ContentType='application/vnd.ms-visio.masters+xml'/>" +
+                string.Concat(_masters.Select(m => $"<Override PartName='/visio/masters/master{m.Id}.xml' ContentType='application/vnd.ms-visio.master+xml'/>")) +
+                "</Types>");
             Write("_rels/.rels", Relationships([("rId1", "visio/document.xml", $"{RelationshipTypes}/document")]));
             Write("visio/document.xml",
                 $"<?xml version='1.0' encoding='UTF-8'?><VisioDocument xmlns='{Namespace}' xmlns:r='{R}'><DocumentSettings/>" +
@@ -140,7 +168,9 @@ internal sealed class VsdxBuilder
             var masters = new StringBuilder($"<?xml version='1.0' encoding='UTF-8'?><Masters xmlns='{Namespace}' xmlns:r='{R}'>");
             foreach (var (id, shapes) in _masters)
             {
-                masters.Append($"<Master ID='{id}' NameU='Master {id}'><PageSheet/><Rel r:id='rId{id}'/></Master>");
+                masters.Append($"<Master ID='{id}' NameU='Master {id}' Name='Master {id}'><PageSheet LineStyle='0' FillStyle='0' TextStyle='0'>")
+                    .Append(Cell("PageWidth", 1)).Append(Cell("PageHeight", 1)).Append(Cell("PageScale", 1)).Append(Cell("DrawingScale", 1))
+                    .Append($"</PageSheet><Rel r:id='rId{id}'/></Master>");
                 Write($"visio/masters/master{id}.xml",
                     $"<?xml version='1.0' encoding='UTF-8'?><MasterContents xmlns='{Namespace}' xmlns:r='{R}'><Shapes>{shapes}</Shapes></MasterContents>");
             }

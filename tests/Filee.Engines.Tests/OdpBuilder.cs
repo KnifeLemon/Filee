@@ -87,13 +87,47 @@ internal sealed class OdpBuilder
                 (Title is null ? "" : $"<dc:title>{Title}</dc:title>") + "</office:meta></office:document-meta>"));
             foreach (var (name, bytes) in Parts)
                 Add(zip, name, bytes);
-            Add(zip, "META-INF/manifest.xml", Encoding.UTF8.GetBytes(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.3\">" +
-                $"<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"{MimeType}\"/>" +
-                "<manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/></manifest:manifest>"));
+            Add(zip, "META-INF/manifest.xml", Encoding.UTF8.GetBytes(Manifest()));
         }
         return path;
     }
+
+    /// <summary>
+    /// META-INF/manifest.xml: the package itself with its version, then every part. LibreOffice refuses an ODF 1.2+
+    /// package with a part the manifest doesn't list ("source file could not be loaded").
+    /// </summary>
+    public string Manifest()
+    {
+        static string Entry(string path, string type) =>
+            $"<manifest:file-entry manifest:full-path=\"{System.Security.SecurityElement.Escape(path)}\" manifest:media-type=\"{type}\"/>";
+        var parts = new StringBuilder();
+        foreach (var (name, bytes) in Parts)
+        {
+            // An embedded object (Object 1/content.xml) is a sub-document: its folder is listed with its own type.
+            if (name.EndsWith("/content.xml", StringComparison.Ordinal))
+            {
+                var kind = Encoding.UTF8.GetString(bytes).Contains("<office:chart", StringComparison.Ordinal) ? "chart" : "graphics";
+                parts.Append(Entry(name[..(name.Length - "content.xml".Length)], $"application/vnd.oasis.opendocument.{kind}"));
+            }
+            parts.Append(Entry(name, MediaType(name)));
+        }
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.3\">" +
+               $"<manifest:file-entry manifest:full-path=\"/\" manifest:version=\"1.3\" manifest:media-type=\"{MimeType}\"/>" +
+               Entry("content.xml", "text/xml") + Entry("styles.xml", "text/xml") + Entry("meta.xml", "text/xml") + parts + "</manifest:manifest>";
+    }
+
+    private static string MediaType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".svg" => "image/svg+xml",
+        ".bmp" => "image/bmp",
+        ".wmf" => "image/x-wmf",
+        ".emf" => "image/x-emf",
+        ".xml" => "text/xml",
+        _ => "application/octet-stream",
+    };
 
     public string SaveFlat(string path)
     {

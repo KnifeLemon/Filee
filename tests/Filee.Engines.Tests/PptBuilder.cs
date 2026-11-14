@@ -182,10 +182,24 @@ internal sealed class PptBuilder
 
     // ───────────────────────── Text formats ─────────────────────────
 
-    /// <summary>A TextPFException with the fields given (in the order the format keeps them).</summary>
+    /// <summary>
+    /// A TextPFException with the fields given (in the order the format keeps them). <paramref name="full"/> writes every
+    /// field, the ones not given with PowerPoint's defaults, as PowerPoint saves the first level of a master's text
+    /// styles: LibreOffice reads that level's fields by older mask bits, so only a full set lines up with the format.
+    /// </summary>
     public static byte[] Paragraph(bool? bullet = null, char? bulletChar = null, int? bulletFont = null, int? align = null,
-        short? lineSpacing = null, short? spaceBefore = null, short? leftMargin = null, short? indent = null)
+        short? lineSpacing = null, short? spaceBefore = null, short? leftMargin = null, short? indent = null, bool full = false)
     {
+        if (full)
+        {
+            // Masks 0x3FFDFF: bullet flags, font, colour, size, character, left margin, indent, alignment, line spacing,
+            // space before / after, default tab, font alignment, wrap flags, tab stops, text direction. The bullet colour is
+            // scheme colour 1 (text), unused while the flags leave it off.
+            var flags = (ushort)((bullet == true ? 1 : 0) | (bulletFont is null ? 0 : 2));
+            return Bytes(0x3FFDFFu, flags, (ushort)(bulletChar ?? '•'), (ushort)(bulletFont ?? 0), (short)100, 0x01000000u,
+                (ushort)(align ?? 0), lineSpacing ?? (short)100, spaceBefore ?? (short)0, (short)0, leftMargin ?? (short)0, indent ?? (short)0,
+                (short)576, (ushort)0, (ushort)0, (ushort)0x2, (ushort)0);
+        }
         uint masks = 0;
         var fields = new List<object>();
         if (bullet is { } on)
@@ -282,17 +296,20 @@ internal sealed class PptBuilder
             .. levels.SelectMany((l, i) => type >= 5 ? new object[] { (ushort)i, l.Paragraph, l.Character } : [l.Paragraph, l.Character]),
         ]), type);
 
-    /// <summary>The default master styles: a 44 pt centred title in the title colour, a bulleted body in five levels, other text 18 pt.</summary>
+    /// <summary>
+    /// The default master styles: a 44 pt centred title in the title colour, a bulleted body in five levels, other text
+    /// 18 pt. The first level of the title, body and other text has every paragraph field, as PowerPoint writes it.
+    /// </summary>
     public static List<byte[]> DefaultMasterStyles() =>
     [
-        MasterStyle(0, (Paragraph(bullet: false, align: 1), Character(bold: false, font: 0, size: 44, color: 3))),
+        MasterStyle(0, (Paragraph(bullet: false, align: 1, full: true), Character(bold: false, font: 0, size: 44, color: 3))),
         MasterStyle(1,
-            (Paragraph(bullet: true, bulletChar: '•', align: 0, leftMargin: 216, indent: 0), Character(font: 0, size: 32, color: 1)),
+            (Paragraph(bullet: true, bulletChar: '•', align: 0, leftMargin: 216, indent: 0, full: true), Character(font: 0, size: 32, color: 1)),
             (Paragraph(bullet: true, bulletChar: '–', align: 0, leftMargin: 576, indent: 360), Character(font: 0, size: 28, color: 1)),
             (Paragraph(bullet: true, bulletChar: '•', align: 0, leftMargin: 936, indent: 720), Character(font: 0, size: 24, color: 1)),
             (Paragraph(bullet: true, bulletChar: '–', align: 0, leftMargin: 1296, indent: 1080), Character(font: 0, size: 20, color: 1)),
             (Paragraph(bullet: true, bulletChar: '»', align: 0, leftMargin: 1656, indent: 1440), Character(font: 0, size: 20, color: 1))),
-        MasterStyle(4, (Paragraph(bullet: false, align: 0), Character(font: 0, size: 18, color: 1))),
+        MasterStyle(4, (Paragraph(bullet: false, align: 0, full: true), Character(font: 0, size: 18, color: 1))),
         MasterStyle(6, (Paragraph(align: 1), Character(size: 40))),
         MasterStyle(5, (Paragraph(bullet: false, align: 1, leftMargin: 0, indent: 0), Character(size: 28))),
     ];
@@ -378,8 +395,30 @@ internal sealed class PptBuilder
         var slideList = new List<byte[]>();
         for (var i = 0; i < Slides.Count; i++)
         {
-            slideList.Add(PersistAtom(slidePersists[i], (uint)(256 + i)));
-            slideList.AddRange(Slides[i].Outline);
+            // The outline's TextHeaderAtoms are numbered by their record instance, as PowerPoint saves them: an
+            // OutlineTextRefAtom names that number (LibreOffice finds the text by it). Left as they are when a test
+            // numbered any of them itself. cTexts counts them.
+            static bool IsHeader(byte[] record) => record.Length >= 8 && BinaryPrimitives.ReadUInt16LittleEndian(record.AsSpan(2)) == 0x0F9F;
+            var numbered = Slides[i].Outline.Any(r => IsHeader(r) && BinaryPrimitives.ReadUInt16LittleEndian(r) >> 4 != 0);
+            var texts = 0;
+            var outline = new List<byte[]>();
+            foreach (var record in Slides[i].Outline)
+            {
+                var copy = record;
+                if (IsHeader(record))
+                {
+                    var header = BinaryPrimitives.ReadUInt16LittleEndian(record);
+                    if (!numbered)
+                    {
+                        copy = (byte[])record.Clone();
+                        BinaryPrimitives.WriteUInt16LittleEndian(copy, (ushort)(header & 0xF | texts << 4));
+                    }
+                    texts++;
+                }
+                outline.Add(copy);
+            }
+            slideList.Add(PersistAtom(slidePersists[i], (uint)(256 + i), texts));
+            slideList.AddRange(outline);
         }
         var notesList = Slides.Select((s, i) => s.Notes is null ? null : PersistAtom(notesPersists[i], (uint)(0x100 + i))).OfType<byte[]>().ToArray();
         var document = Container(0x03E8, 0, [
@@ -422,7 +461,7 @@ internal sealed class PptBuilder
         };
         if (pictures.Length > 0)
             streams.Add(("Pictures", pictures.ToArray()));
-        return HwpBuilder.Cfb(streams);
+        return HwpBuilder.Cfb(streams, standard: true);
     }
 
     private static byte[] SlideAtom(uint master, uint notes, ushort flags) =>
@@ -431,7 +470,7 @@ internal sealed class PptBuilder
     private static byte[] SchemeAtom(uint[] scheme) =>
         Atom(0x07F0, Bytes([.. scheme.Select(c => Bytes((byte)(c >> 16), (byte)(c >> 8), (byte)c, (byte)0))]), 1);
 
-    private static byte[] PersistAtom(int persist, uint slideId) => Atom(0x03F3, Bytes((uint)persist, 0u, 0, slideId, 0u));
+    private static byte[] PersistAtom(int persist, uint slideId, int texts = 0) => Atom(0x03F3, Bytes((uint)persist, 0u, texts, slideId, 0u));
 
     /// <summary>A DrawingContainer: the patriarch group with the sheet's shapes, and the background shape.</summary>
     private static byte[] Drawing(Sheet sheet, Func<int> spid)
