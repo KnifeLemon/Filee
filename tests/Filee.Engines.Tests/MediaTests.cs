@@ -1644,6 +1644,10 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // A run that reports each picture's time writes -progress only to show it is working.
         Assert.Null(FfmpegRunner.ParsePosition("out_time_us=2500000", byFrame: true));
         Assert.Equal(1.25, FfmpegRunner.ParsePosition("frame_time=1.25", byFrame: true));
+        // FFmpeg before 6.0 has no -stats_enc_pre: those runs go without, on -progress alone.
+        Assert.Equal(["-i", "in.mp4", "-progress", "pipe:1", "out.mp4"],
+            FfmpegRunner.WithoutFrameStats(["-i", "in.mp4", .. MediaEncoding.FrameProgress, "out.mp4"]));
+        Assert.Null(FfmpegRunner.WithoutFrameStats(["-i", "in.mp4", "-progress", "pipe:1", "out.mp4"]));
         Assert.Equal("too many channels: got 6, need 2 or fewer Error while opening encoder",
             FfmpegRunner.Summarize("[wmav2 @ 000001e0] too many channels: got 6, need 2 or fewer\r\n" +
                                    "[aost#0:1/wmav2 @ 000001e0] [enc:wmav2 @ 000001e0] Error while opening encoder\r\n"));

@@ -41,7 +41,9 @@ namespace Filee.Engines.Media;
 /// the command then seeks to <see cref="From"/> and counts from there, as Filee did before.
 /// </param>
 /// <param name="CopyFrom">
-/// <c>-ss</c> for a copy (<c>-c copy</c>), which starts where FFmpeg's seek lands: on the key frame found.
+/// <c>-ss</c> for a copy (<c>-c copy</c>), which starts where FFmpeg's seek lands, so it lands on the key frame found:
+/// that key frame in a file without an index, otherwise the time itself (FFmpeg's index finds the key frame), or the
+/// key frame's time plus the 3/23 s FFmpeg seeks early where it does.
 /// </param>
 /// <param name="Start">
 /// The time asked for, in seconds from the file's start: time 0 of what is encoded from there (<see

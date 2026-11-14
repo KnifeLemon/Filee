@@ -751,6 +751,31 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var movie = Assert.Single(job.Outputs, p => p.EndsWith(".mov", StringComparison.Ordinal));
         Assert.Equal(50, await NumberOfPictureAsync(photo));
         Assert.Equal(Enumerable.Range(40, 30), (await FramesAsync(movie)).Select(f => f.Number));
+        // The TS beeps in frame 50, the movie's 11th: its sound is cut where its picture is.
+        if (name == "soundfirst.ts")
+            Assert.InRange(await BeepAsync(movie), 10 / 30.0 - 0.02, 10 / 30.0 + 0.02);
+    }
+
+    [Fact]
+    public async Task A_copy_allows_for_the_early_seek_of_b_frames_in_any_video_stream()
+    {
+        SkipUnlessInstalled();
+        // The first video has no B-frames and the second has: FFmpeg seeks 3/23 s early for both, so a copy from just
+        // after the key frame at 2 s landed on the one at 1 s when only the first video counted.
+        var plain = await NumberedAsync("plain.mp4", "30", 4, ["-c:v", "libx264", "-g", "30", "-bf", "0", "-x264-params", "scenecut=0",
+            "-pix_fmt", "yuv420p"]);
+        var reordered = await NumberedAsync("reordered.mp4", "30", 4, ["-c:v", "libx264", "-g", "30", "-bf", "2", "-x264-params", "scenecut=0",
+            "-pix_fmt", "yuv420p"]);
+        var video = Path.Combine(fx.NewFolder(), "two.mkv");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            [.. MediaEncoding.Common, "-i", plain, "-i", reordered, "-map", "0:v", "-map", "1:v", "-c", "copy", video], TimeSpan.FromMinutes(1), Ct);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        var frames = await FramesAsync(video);
+
+        var clip = await CutAsync(video, ClipEdit.Of(new ClipRange(frames[62].Time, frames[80].Time)), exact: false, target: "mkv");
+
+        var numbers = (await FramesAsync(clip)).Select(f => f.Number).ToList();
+        Assert.Equal(Enumerable.Range(60, numbers.Count), numbers);
     }
 
     [Fact]
@@ -786,7 +811,11 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // Between the parts no picture reaches the encoder, so the time of each one (the progress of a run with
         // -copyts) is silent for as long as FFmpeg reads there; FFmpeg's own -progress shows it is still working. The
         // video comes over a socket that pauses between the parts, three times the stall limit, as a long read would
-        // (after 12 s of it: FFmpeg reads the first seconds before it starts).
+        // (after 12 s of it: FFmpeg reads the first seconds before it starts). FFmpeg 6 reports nothing while it waits
+        // for its input, though it does while it reads (every half second of a 55 s gap on Ubuntu's 6.1).
+        var version = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-version"], TimeSpan.FromMinutes(1), Ct);
+        if (CopyVersions.ParseVersion("ffmpeg", version.StandardOutput) is { Major: < 7 } old)
+            Assert.Skip($"FFmpeg {old} reports nothing while its input pauses");
         var video = await VideoAsync("30fps.ts", 20);
         var bytes = await File.ReadAllBytesAsync(video, Ct);
         var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, video, Ct);
