@@ -278,7 +278,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "भौगोलिक भेक्टर डाटा: GeoJSON, KML, KMZ, GPX, Shapefile र CSV (देशान्तर/अक्षांश वा WKT) एकअर्कामा।\nपरिणामहरू WGS 84 देशान्तर/अक्षांशमा हुन्छन्; प्रोजेक्टेड Shapefile (UTM, Web Mercator, Lambert, Albers) रूपान्तरण गरिन्छ।",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "ZIP, 7Z (सोलिड पनि), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO र अन्य अनप्याक गर्छ, र आफैँ ZIP, 7Z, TAR.GZ, TAR.XZ र XZ प्याक गर्छ।\n7-Zip भए DMG, IMG र UDF डिस्क पनि खोल्छ, TAR.BZ2 र BZ2 प्याक गर्छ, र दुर्लभ प्रकारहरू पनि सम्हाल्छ (Quantum CAB, बहु-भोल्युम ARJ, PPMd जस्ता 7Z विधिहरू…)।",
+  "engine.archive.description": "ZIP, 7Z (सोलिड पनि), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO र अन्य अनप्याक गर्छ, र आफैँ ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 र XZ प्याक गर्छ।\n7-Zip भए DMG, IMG र UDF डिस्क पनि खोल्छ, र दुर्लभ प्रकारहरू पनि सम्हाल्छ (Quantum CAB, बहु-भोल्युम ARJ, PPMd जस्ता 7Z विधिहरू…)।",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 र अन्य इ-पुस्तक ढाँचाहरू पढ्छ र रूपान्तरण गर्दछ।",
   "engine.subtitle.name": "Subtitles (built-in)",

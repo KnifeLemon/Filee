@@ -278,7 +278,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "التحويل بين البيانات الجغرافية المتجهية: GeoJSON وKML وKMZ وGPX وShapefile وCSV (خطوط طول وعرض أو WKT).\nتُحفَظ النتائج بخطوط طول وعرض وفق WGS 84؛ وتُحوَّل ملفات Shapefile ذات الإحداثيات المسقطة (UTM وWeb Mercator وLambert وAlbers).",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "استخراج ZIP و7Z (بما فيها الأرشيفات الصلبة) وRAR وTAR وXZ وLZMA وCAB وLHA وARJ وISO وغيرها، وإنشاء ZIP و7Z وTAR.GZ وTAR.XZ وXZ دون برامج أخرى.\nومع 7-Zip يفتح أيضًا أقراص DMG وIMG وUDF، وينشئ TAR.BZ2 وBZ2، ويتعامل مع الأنواع النادرة (CAB بضغط Quantum، وARJ متعدد الأجزاء، وطرق ضغط 7Z مثل PPMd…).",
+  "engine.archive.description": "استخراج ZIP و7Z (بما فيها الأرشيفات الصلبة) وRAR وTAR وXZ وLZMA وCAB وLHA وARJ وISO وغيرها، وإنشاء ZIP و7Z وTAR.GZ وTAR.BZ2 وTAR.XZ وBZ2 وXZ دون برامج أخرى.\nومع 7-Zip يفتح أيضًا أقراص DMG وIMG وUDF، ويتعامل مع الأنواع النادرة (CAB بضغط Quantum، وARJ متعدد الأجزاء، وطرق ضغط 7Z مثل PPMd…).",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "تحويل EPUB وMOBI وAZW3 وFB2 والقصص المصورة (CBZ وCBR) إلى PDF وEPUB وAZW3 وMOBI وDOCX ونص.\nوكذلك تحويل المستندات إلى EPUB، وEPUB إلى KEPUB لأجهزة Kobo، وPDF إلى CBZ.",
   "engine.subtitle.name": "Subtitles (built-in)",

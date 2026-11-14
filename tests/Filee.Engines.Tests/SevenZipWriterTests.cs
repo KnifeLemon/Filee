@@ -40,7 +40,7 @@ public class SevenZipWriterTests(EngineFixture fx) : IClassFixture<EngineFixture
     private static async Task<string> PackAsync(string dir, IReadOnlyList<PackItem> items, ArchiveLevel level, string name = "out.7z")
     {
         var output = Path.Combine(dir, name);
-        await new ArchivePacker(null).PackAsync(items, output, "7z", level, dir, null, Ct);
+        await new ArchivePacker().PackAsync(items, output, "7z", level, dir, null, Ct);
         return output;
     }
 
@@ -244,7 +244,7 @@ public class SevenZipWriterTests(EngineFixture fx) : IClassFixture<EngineFixture
         {
             var output = Path.Combine(dir, "many.7z");
             var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                new ArchivePacker(null).PackAsync([new PackItem(folder, "many")], output, "7z", ArchiveLevel.Normal, dir, null, Ct));
+                new ArchivePacker().PackAsync([new PackItem(folder, "many")], output, "7z", ArchiveLevel.Normal, dir, null, Ct));
             Assert.Contains("10", error.Message);
             Assert.False(File.Exists(output));
         }
@@ -265,7 +265,7 @@ public class SevenZipWriterTests(EngineFixture fx) : IClassFixture<EngineFixture
         using var cancel = new CancellationTokenSource();
         var progress = new SyncProgress(p => { if (p > 0.1) cancel.Cancel(); });
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new ArchivePacker(null).PackAsync([new PackItem(source, "src")], output, "7z", ArchiveLevel.Normal, dir, progress, cancel.Token));
+            new ArchivePacker().PackAsync([new PackItem(source, "src")], output, "7z", ArchiveLevel.Normal, dir, progress, cancel.Token));
         Assert.False(File.Exists(output));
         Assert.Equal(["src"], Directory.GetFileSystemEntries(dir).Select(Path.GetFileName));
     }
