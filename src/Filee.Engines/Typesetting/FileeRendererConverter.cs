@@ -2,8 +2,8 @@
 // records become, Hwp/Binary) and the documents Filee reads into its document model (Word, ODT, RTF, text, Markdown,
 // HTML, e-books, and Pandoc's formats when Pandoc is there) → PDF in one step, read, laid out and written in-process.
 // A preview the user turns on in Settings → Engines; off, the engine is unavailable and every route stays as it was.
-// Slide decks (PPTX, PPTM, POTX, PPSX) → PDF, PNG and JPG go through Filee's slide renderer (Slides/): a page or a
-// picture per slide. Spreadsheets, other presentations, PDF and OFD keep their own routes.
+// Slide decks (SlideFormats: PPTX, PPTM, POTX, POTM, PPSX, and PPT through the PPTX package it translates to) → PDF,
+// PNG and JPG go through Filee's slide renderer (Slides/): a page or a picture per slide. Spreadsheets, other presentations, PDF and OFD keep their own routes.
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
 // doesn't draw yet (OLE objects and charts, vertical text, form controls, SmartArt), and such a file takes the route
@@ -52,9 +52,9 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// and the planner keeps the edge it met first, this engine's (registered before LibreOffice). Moving LibreOffice up
     /// the list keeps LibreOffice.
     /// </summary>
-    private static readonly string[] Slides = ["pptx", "pptm", "potx", "ppsx"];
+    private static string[] Slides => SlideFormats.Decks;
 
-    private static readonly string[] SlideTargets = ["pdf", "png", "jpg"];
+    private static string[] SlideTargets => SlideFormats.Targets;
 
     /// <summary>Pixels of one slide picture at most; a larger picture is drawn at a lower resolution.</summary>
     private const long MaxSlidePixels = 200_000_000;
