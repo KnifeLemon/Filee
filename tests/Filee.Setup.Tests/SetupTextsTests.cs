@@ -38,6 +38,9 @@ public partial class SetupTextsTests
 
     [Theory]
     [InlineData("tr", "en-US", "tr")]
+    [InlineData("mn", "en-US", "mn")]
+    [InlineData("auto", "mn-MN", "mn")]
+    [InlineData(null, "mni", "en")]
     [InlineData("TR", "en-US", "tr")]
     [InlineData("auto", "tr-TR", "tr")]
     [InlineData(null, "tr-CY", "tr")]
