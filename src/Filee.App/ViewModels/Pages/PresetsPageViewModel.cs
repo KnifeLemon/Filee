@@ -137,6 +137,10 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
             Presets.Add(new PresetListItem(preset, _loc));
     });
 
+    /// <summary>Opens "Export for the gallery" with the chosen preset ticked.</summary>
+    [RelayCommand]
+    private void ExportForGallery() => _windows.ShowGalleryExport(SelectedPreset?.Preset);
+
     private void AddPreset(Preset preset)
     {
         _store.Presets.Add(preset);

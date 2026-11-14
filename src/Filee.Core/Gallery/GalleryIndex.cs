@@ -50,6 +50,32 @@ public sealed record GalleryEntry
     /// <summary>The cover's thumbnail; null without one (the cover is shown instead).</summary>
     public string? Thumb { get; init; }
 
+    /// <summary>
+    /// Pictures in a language of the app's ("ko" → its list, gaps already filled with the default pictures), for people
+    /// using Filee in that language; empty when the preset has none.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> ImagesByLang { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
+
+    /// <summary>The cover's thumbnail per language, as <see cref="ImagesByLang"/>.</summary>
+    public IReadOnlyDictionary<string, string> ThumbByLang { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// The pictures for someone using Filee in <paramref name="language"/>: its own set, else its base language's
+    /// ("pt" for "pt-PT"), else the default set.
+    /// </summary>
+    public IReadOnlyList<string> ImagesFor(string language) =>
+        ByLanguage(ImagesByLang, language) is { Count: > 0 } images ? images : Images;
+
+    /// <summary>The cover's thumbnail for <paramref name="language"/>, picked as <see cref="ImagesFor"/>.</summary>
+    public string? ThumbFor(string language) => ByLanguage(ThumbByLang, language) ?? Thumb;
+
+    private static T? ByLanguage<T>(IReadOnlyDictionary<string, T> sets, string language) where T : class =>
+        sets.GetValueOrDefault(language) ?? sets.GetValueOrDefault(language.Split('-')[0]);
+
+    /// <summary>Every picture of the preset, in any language (what the app may download for it).</summary>
+    public bool HasPicture(string path) =>
+        path == Thumb || Images.Contains(path) || ThumbByLang.Values.Contains(path) || ImagesByLang.Values.Any(set => set.Contains(path));
+
     /// <summary>Its preset.json, as a path relative to index.json.</summary>
     public required string Preset { get; init; }
 
@@ -112,8 +138,20 @@ public sealed partial record GalleryIndex(int Version, DateTimeOffset Generated,
         var title = Text(item, "title", 60).Trim();
         if (InFolder(preset, id) != "preset.json" || !Sha256Pattern().IsMatch(sha256) || title.Length == 0)
             return null;
-        var images = List(item, "images", 4, 200).Where(path => InFolder(path, id) is { } file && ImageName().IsMatch(file)).ToList();
+        bool IsPicture(string path) => InFolder(path, id) is { } file && KnownLanguage(ImageName().Match(file));
+        bool IsThumb(string path) => InFolder(path, id) is { } file && KnownLanguage(ThumbName().Match(file));
+        var images = List(item, "images", 4, 200).Where(IsPicture).ToList();
         var thumb = Text(item, "thumb", 200);
+        var imagesByLang = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var thumbByLang = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (item.TryGetProperty("imagesByLang", out var byLang) && byLang.ValueKind == JsonValueKind.Object)
+            foreach (var set in byLang.EnumerateObject().Where(set => IsLanguage(set.Name)).Take(SharedPresetFolderCheck.Languages.Count * 2))
+                if (List(byLang, set.Name, 4, 200).Where(IsPicture).ToList() is { Count: > 0 } list)
+                    imagesByLang[set.Name] = list;
+        if (item.TryGetProperty("thumbByLang", out var thumbs) && thumbs.ValueKind == JsonValueKind.Object)
+            foreach (var set in thumbs.EnumerateObject().Where(set => IsLanguage(set.Name)).Take(SharedPresetFolderCheck.Languages.Count * 2))
+                if (Text(thumbs, set.Name, 200) is { } path && IsThumb(path))
+                    thumbByLang[set.Name] = path;
         var download = Text(item, "download", 200);
         var formats = item.TryGetProperty("formats", out var f) && f.ValueKind == JsonValueKind.Object ? f : default;
         var stats = item.TryGetProperty("stats", out var s) && s.ValueKind == JsonValueKind.Object ? s : default;
@@ -134,7 +172,9 @@ public sealed partial record GalleryIndex(int Version, DateTimeOffset Generated,
             Discussion = item.TryGetProperty("discussion", out var d) && d.ValueKind == JsonValueKind.Number && d.TryGetInt32(out var n) && n > 0 ? n : null,
             License = Text(item, "license", 16) is { Length: > 0 } license ? license : SharedPresetFolderCheck.License,
             Images = images,
-            Thumb = InFolder(thumb, id) is { } thumbFile && ThumbName().IsMatch(thumbFile) ? thumb : null,
+            Thumb = IsThumb(thumb) ? thumb : null,
+            ImagesByLang = imagesByLang,
+            ThumbByLang = thumbByLang,
             Preset = preset,
             Download = IsDownload(download, id) ? download : null,
             Sha256 = sha256,
@@ -164,14 +204,23 @@ public sealed partial record GalleryIndex(int Version, DateTimeOffset Generated,
     }
 
     // Up to three plain folders before presets/<id>/ (no "..", no scheme, no leading slash), then a file of the folder.
-    [GeneratedRegex(@"^(?:[a-z0-9][a-z0-9_\-]*/){0,3}presets/(?<id>[a-z0-9\-]{3,48})/(?<file>preset\.json|images/[1-4](?:-thumb)?\.[a-z]{3,4})$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?:[a-z0-9][a-z0-9_\-]*/){0,3}presets/(?<id>[a-z0-9\-]{3,48})/(?<file>preset\.json|images/(?:[A-Za-z]{2,3}(?:-[A-Za-z]{2,4})?/)?[1-4](?:-thumb)?\.[a-z]{3,4})$", RegexOptions.CultureInvariant)]
     private static partial Regex RelativePath();
 
-    [GeneratedRegex(@"^images/[1-4]\.(webp|png|jpg|jpeg)$", RegexOptions.CultureInvariant)]
+    // A picture of the default set (images/1.webp) or of a language's (images/ko/1.webp).
+    [GeneratedRegex(@"^images/(?:(?<lang>[A-Za-z]{2,3}(?:-[A-Za-z]{2,4})?)/)?[1-4]\.(webp|png|jpg|jpeg)$", RegexOptions.CultureInvariant)]
     private static partial Regex ImageName();
 
-    [GeneratedRegex(@"^images/[1-4]-thumb\.webp$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^images/(?:(?<lang>[A-Za-z]{2,3}(?:-[A-Za-z]{2,4})?)/)?[1-4]-thumb\.webp$", RegexOptions.CultureInvariant)]
     private static partial Regex ThumbName();
+
+    /// <summary>A match of a picture's name, in the default set or a set of a language of the app's.</summary>
+    private static bool KnownLanguage(Match match) =>
+        match.Success && (!match.Groups["lang"].Success || SharedPresetFolderCheck.Languages.Contains(match.Groups["lang"].Value));
+
+    /// <summary>A language of the app's, or the base of one ("pt", "zh"): the keys of the per-language pictures.</summary>
+    private static bool IsLanguage(string code) =>
+        SharedPresetFolderCheck.Languages.Any(l => l == code || l.Split('-')[0] == code);
 
     /// <summary>
     /// An install link of the preset's: <c>https://filee.sh/presets/download/&lt;id&gt;</c> or relative to index.json

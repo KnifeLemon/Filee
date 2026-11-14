@@ -112,6 +112,26 @@ internal static partial class SharedText
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._\-]{0,79}$", RegexOptions.CultureInvariant)]
     private static partial Regex ModelPattern();
 
+    /// <summary>An Ollama model name ("llama3.1:8b", "library/qwen2.5"): never an address.</summary>
+    public static string? OllamaModel(string text) =>
+        OllamaPattern().IsMatch(text) && !text.Contains("//", StringComparison.Ordinal) ? null : "is not a model name like llama3.1:8b";
+
+    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._:/\-]{0,99}$", RegexOptions.CultureInvariant)]
+    private static partial Regex OllamaPattern();
+
+    /// <summary>One metadata field, "Group:Tag" (<see cref="MetadataEdits.IsFieldKey"/>).</summary>
+    public static string? MetadataField(string text) =>
+        MetadataEdits.IsFieldKey(text) ? null : "is not a metadata field like XMP-dc:Title";
+
+    /// <summary>
+    /// True for a metadata field that names a person, a place or a copyright owner (author, artist, creator, copyright,
+    /// owner, credit, GPS and place fields, contact details): a shared preset may only remove it, never give it a value.
+    /// </summary>
+    public static bool IsPersonalField(string field) => PersonalField().IsMatch(field);
+
+    [GeneratedRegex(@"(?i)(author|artist|creator|copyright|owner|by-?line|credit|rights|contact|e-?mail|phone|address|city|country|state|province|location|gps|latitude|longitude|altitude|position|lastmodifiedby|company|manager|name|person|serial|keywords?)", RegexOptions.CultureInvariant)]
+    private static partial Regex PersonalField();
+
     /// <summary>"auto", a ratio ("16:9") or empty (<see cref="VideoCrop"/>).</summary>
     public static string? CropFrame(string text) =>
         text.Length == 0 || VideoCrop.Crops(text) ? null : "is not a frame like 16:9 or auto";

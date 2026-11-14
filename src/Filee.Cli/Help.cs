@@ -60,15 +60,18 @@ internal static class Help
         'check' checks a shared preset for the preset gallery: a folder with preset.json (what Settings → General →
         Export writes, with at most 20 presets and one donut), meta.json (optional) and 1 to 4 pictures in images/
         (1.png … 4.webp; PNG, JPEG or WebP, 640 to 2,560 pixels on the long edge, at most 2 MB, not animated).
-        Only fields on the gallery's list may be in preset.json, and nothing that saves outside the source's folder,
-        runs a program, or carries a path, a password or a link. It reads nothing else and changes nothing.
+        Only fields on the gallery's list may be in preset.json, and nothing that runs a program or carries a folder
+        of one's own, a password, a path, a link or personal metadata (names, places, copyright owners). Settings that
+        touch the installer's files (replacing or moving originals, overwriting, metadata) pass with a warning. It reads
+        nothing else and changes nothing.
         Exit codes: 0 the preset may be shared, 1 it has problems, 2 the folder doesn't exist.
 
         Options:
               --json             Print the result as JSON: "ok", "errors" (each with "code", "file", "path" and
                                  "message") and "derived" (what the preset is: "kinds", "formats" with "from" and
-                                 "to", "minVersion", the number of "presets" and "profiles", and the "sha256" of
-                                 preset.json)
+                                 "to", "minVersion", the number of "presets" and "profiles", the "sha256" of
+                                 preset.json and "warnings", each with "code", "severity" (high, medium or info),
+                                 "message" and the "presets" that have it)
               --quiet            Print nothing when the preset passes
 
         """;

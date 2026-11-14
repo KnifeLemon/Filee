@@ -156,6 +156,44 @@ public sealed class PresetGalleryInstallTests : IDisposable
     }
 
     [Fact]
+    public void Installed_presets_keep_their_settings_and_say_where_they_came_from()
+    {
+        var shared = GalleryFiles.Photo();
+        shared.Output.ReplaceOriginal = true;
+        shared.Output.Conflict = ConflictPolicy.Overwrite;
+        var json = GalleryFiles.Bundle(shared);
+        var result = GalleryInstaller.Install(_store, json, Sha(json), NameOf, p => p.Name, gallery: "instagram-jpg");
+
+        var added = Assert.Single(result.Presets);
+        Assert.Equal("instagram-jpg", added.Gallery);
+        Assert.True(added.Output.ReplaceOriginal);
+        Assert.Equal(ConflictPolicy.Overwrite, added.Output.Conflict);
+        // Shared again, it no longer says so (the gallery check leaves the field out).
+        Assert.Null(added.ForSharing().Gallery);
+        Assert.Equal("instagram-jpg", added.Gallery);
+    }
+
+    [Fact]
+    public void Export_for_the_gallery_takes_the_chosen_presets_with_what_their_groups_and_donut_need()
+    {
+        var turn = _store.Presets.First(p => p.IsGroup);
+        var donut = new ToolbarProfile { Id = "mine", Name = "Mine", Extensions = ["png"], PresetIds = ["to-jpg"], BackPresetIds = [] };
+        var file = GalleryExport.Build(_store.Presets, [turn], donut);
+
+        Assert.True(file.Check.Ok, string.Join("\n", file.Check.Errors));
+        Assert.Equal(turn.SubPresetIds.Append(turn.Id).Append("to-jpg").ToHashSet(), file.Presets.Select(p => p.Id).ToHashSet());
+        Assert.Contains("toolbar", file.Check.Derived!.Kinds);
+
+        var own = _store.FindPreset("to-png")!.Clone();
+        own.Output.Location = OutputLocation.CustomFolder;
+        own.Output.CustomFolder = Path.Combine(_dir.Path, "out");
+        own.Pdf.Password = "secret";
+        var refused = GalleryExport.Build([own], [own], null);
+        Assert.Contains(refused.Check.Errors, e => e.Path == "presets[0].output.customFolder");
+        Assert.DoesNotContain("secret", System.Text.Encoding.UTF8.GetString(refused.Json), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Unique_names_count_up()
     {
         var taken = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase) { "A", "a (2)" };

@@ -27,8 +27,9 @@ public static class GalleryInstaller
     /// to <paramref name="store"/> and saves the library. <paramref name="presetName"/> and <paramref name="profileName"/>
     /// give the names the user sees (a built-in name in their language), to tell a clash.
     /// </summary>
+    /// <param name="gallery">The gallery entry's id, kept on each preset (<see cref="Preset.Gallery"/>).</param>
     public static GalleryInstallResult Install(UserDataStore store, ReadOnlySpan<byte> json, string sha256,
-        Func<Preset, string> presetName, Func<ToolbarProfile, string> profileName)
+        Func<Preset, string> presetName, Func<ToolbarProfile, string> profileName, string? gallery = null)
     {
         var actual = Convert.ToHexStringLower(SHA256.HashData(json));
         if (!string.Equals(actual, sha256.Trim(), StringComparison.OrdinalIgnoreCase))
@@ -59,6 +60,8 @@ public static class GalleryInstaller
         var names = store.Presets.Select(presetName).ToHashSet(StringComparer.CurrentCultureIgnoreCase);
         foreach (var preset in bundle.Presets)
         {
+            // Kept as shared, settings and all: the window showed its warnings before the user chose to install it.
+            preset.Gallery = gallery;
             preset.SubPresetIds = [.. preset.SubPresetIds.Select(Map)];
             var name = Unique(presetName(preset), names);
             if (name != presetName(preset))

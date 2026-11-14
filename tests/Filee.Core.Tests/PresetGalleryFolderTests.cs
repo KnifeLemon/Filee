@@ -16,6 +16,8 @@ public sealed class PresetGalleryFolderTests : IDisposable
     private string Folder(params (string Name, byte[] Data)[] files)
     {
         var folder = Path.Combine(_dir.Path, "instagram-jpg");
+        if (Directory.Exists(folder))
+            Directory.Delete(folder, true);
         Directory.CreateDirectory(Path.Combine(folder, "images"));
         File.WriteAllBytes(Path.Combine(folder, "preset.json"), GalleryFiles.Bundle(GalleryFiles.Photo()));
         foreach (var (name, data) in files)
@@ -141,7 +143,43 @@ public sealed class PresetGalleryFolderTests : IDisposable
     {
         AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("run.cmd", "calc"u8.ToArray()))), "folder.unexpected_file", "run.cmd");
         AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("extra/a.txt", "x"u8.ToArray()))), "folder.unexpected_file", "extra");
-        AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("images/sub/1.png", GalleryFiles.Png(800, 800)))), "images.unexpected_file");
+        AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("images/sub/1.png", GalleryFiles.Png(800, 800)))), "images.language", "images/sub/");
+        AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("images/ko/deeper/1.png", GalleryFiles.Png(800, 800)))), "images.unexpected_file");
+    }
+
+    [Fact]
+    public void Pictures_in_the_apps_languages_pass_and_may_be_fewer()
+    {
+        var folder = Folder(Cover, ("images/2.png", GalleryFiles.Png(1280, 720)),
+            ("images/ko/1.png", GalleryFiles.Png(1280, 720)), ("images/ko/1-thumb.webp", GalleryFiles.WebP(480, 270)),
+            ("images/pt-BR/2.jpg", GalleryFiles.Jpeg(1600, 900)), ("images/zh-TW/1.webp", GalleryFiles.WebP(800, 800)));
+        var result = SharedPresetFolderCheck.Check(folder);
+        Assert.True(result.Ok, string.Join("\n", result.Errors));
+    }
+
+    [Fact]
+    public void A_language_set_follows_the_default_sets_rules()
+    {
+        AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("images/xx/1.png", GalleryFiles.Png(800, 800)))), "images.language", "images/xx/");
+        AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("images/KO/1.png", GalleryFiles.Png(800, 800)))), "images.language");
+        AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("images/ko/2.png", GalleryFiles.Png(800, 800)))), "images.name", "images/ko/");
+        AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("images/ko/1.png", GalleryFiles.Png(300, 300)))), "images.size", "images/ko/1.png");
+        AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("images/ko/1.gif", GalleryFiles.Png(800, 800)))), "images.name");
+        AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("images/ko/1.png", GalleryFiles.Png(800, 800, animated: true)))), "images.animated");
+        var empty = Folder(Cover);
+        Directory.CreateDirectory(Path.Combine(empty, "images", "ja"));
+        AssertFails(SharedPresetFolderCheck.Check(empty), "images.missing", "images/ja/");
+    }
+
+    [Fact]
+    public void A_folder_over_40_MB_fails()
+    {
+        var folder = Folder(Cover);
+        foreach (var language in SharedPresetFolderCheck.Languages.Take(22))
+            File.WriteAllBytes(Path.Combine(Directory.CreateDirectory(Path.Combine(folder, "images", language)).FullName, "1.png"),
+                [.. GalleryFiles.Png(1280, 720), .. new byte[SharedPresetFolderCheck.MaxImageBytes - 200]]);
+        var result = SharedPresetFolderCheck.Check(folder);
+        Assert.Contains(result.Errors, e => e.Code == "folder.too_large");
     }
 
     [Fact]
@@ -191,6 +229,7 @@ public sealed class PresetGalleryFolderTests : IDisposable
         ["updated"] = "2026-11-15T00:00:00Z",
         ["discussion"] = 12,
         ["license"] = "CC0-1.0",
+        ["warnings"] = new JsonArray(new JsonObject { ["code"] = "strips_metadata", ["severity"] = "info" }),
     };
 
     [Fact]
@@ -217,6 +256,8 @@ public sealed class PresetGalleryFolderTests : IDisposable
     [InlineData("kinds", "[\"toolbar\"]", "meta.derived_mismatch")]
     [InlineData("formats", "{\"from\":[],\"to\":[\"png\"]}", "meta.derived_mismatch")]
     [InlineData("minVersion", "\"2.0.0\"", "meta.derived_mismatch")]
+    [InlineData("warnings", "[{\"code\":\"replaces_original\",\"severity\":\"high\"}]", "meta.derived_mismatch")]
+    [InlineData("warnings", "[{\"code\":\"made_up\",\"severity\":\"high\"}]", "field.value")]
     public void A_wrong_meta_json_fails(string field, string value, string code)
     {
         var meta = Meta();

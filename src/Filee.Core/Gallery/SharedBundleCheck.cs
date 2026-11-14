@@ -132,6 +132,11 @@ public static class SharedBundleCheck
                 if (preset.TargetFormat != Preset.GroupTarget)
                     result.Add("preset.target_unknown", FileName, at + ".targetFormat", $"a group's target is \"{Preset.GroupTarget}\"");
             }
+            else if (preset.IsCopyToFolder)
+            {
+                if (preset.TargetFormat != Preset.CopyTarget)
+                    result.Add("preset.target_unknown", FileName, at + ".targetFormat", $"Copy to folder's target is \"{Preset.CopyTarget}\"");
+            }
             else if (preset.TargetFormat != BuiltInData.SameAsSource
                      && (FormatRegistry.FindById(preset.TargetFormat) is null || preset.TargetFormat == Preset.CopyTarget))
             {
@@ -177,7 +182,7 @@ public static class SharedBundleCheck
         var kinds = new List<string>();
         if (bundle.Presets.Any(p => p.Kind is PresetKind.Convert or PresetKind.Group))
             kinds.Add("convert");
-        if (bundle.Presets.Any(p => p.Kind == PresetKind.Tool))
+        if (bundle.Presets.Any(p => p.IsTool))
             kinds.Add("tool");
         if (bundle.Profiles.Count > 0)
             kinds.Add("toolbar");
@@ -186,7 +191,10 @@ public static class SharedBundleCheck
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         var to = bundle.Presets.Where(p => p.Kind == PresetKind.Convert && p.TargetFormat != BuiltInData.SameAsSource)
             .Select(p => p.TargetFormat).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
-        return new PresetCheckDerived(kinds, from, to, BaselineVersion, bundle.Presets.Count, bundle.Profiles.Count, sha256);
+        return new PresetCheckDerived(kinds, from, to, BaselineVersion, bundle.Presets.Count, bundle.Profiles.Count, sha256)
+        {
+            Warnings = SharedPresetWarnings.Of(bundle.Presets),
+        };
     }
 
     private static string FirstLine(string text)
@@ -273,6 +281,29 @@ public static class SharedBundleCheck
                         result.Add(code, file, path, message);
                     else if (text.Check?.Invoke(s) is { } why)
                         result.Add("field.value", file, path, $"\"{Shorten(s)}\" {why}");
+                    break;
+                case MapRule map:
+                    if (value.ValueKind != JsonValueKind.Object)
+                    {
+                        result.Add("field.type", file, path, "must be an object");
+                        break;
+                    }
+                    var names = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var property in value.EnumerateObject())
+                    {
+                        var at = $"{path}.{property.Name}";
+                        if (!names.Add(property.Name))
+                            result.Add("field.duplicate", file, at, "appears twice");
+                        else if (names.Count > map.MaxCount)
+                        {
+                            result.Add("field.range", file, path, $"has more than {map.MaxCount} fields");
+                            break;
+                        }
+                        else if (map.KeyCheck(property.Name) is { } bad)
+                            result.Add("field.value", file, at, $"\"{Shorten(property.Name)}\" {bad}");
+                        else
+                            Check(property.Value, map.ValueFor(property.Name), at);
+                    }
                     break;
                 case ListRule list:
                     if (value.ValueKind != JsonValueKind.Array)

@@ -99,6 +99,34 @@ public sealed class PresetGalleryIndexTests
     }
 
     [Fact]
+    public void Pictures_per_language_are_read_and_picked_with_the_base_language_and_the_default_as_fallbacks()
+    {
+        var entry = Entry();
+        entry["imagesByLang"] = new JsonObject
+        {
+            ["ko"] = new JsonArray("presets/instagram-jpg/images/ko/1.webp", "presets/instagram-jpg/images/2.webp"),
+            ["pt"] = new JsonArray("presets/instagram-jpg/images/pt-BR/1.webp"),
+            ["xx"] = new JsonArray("presets/instagram-jpg/images/xx/1.webp"),
+            ["ja"] = new JsonArray("presets/instagram-jpg/images/xx/1.webp", "https://evil.example/1.webp"),
+        };
+        entry["thumbByLang"] = new JsonObject
+        {
+            ["ko"] = "presets/instagram-jpg/images/ko/1-thumb.webp",
+            ["de"] = "presets/other/images/de/1-thumb.webp",
+        };
+        var read = Assert.Single(Parse(entry).Entries);
+
+        Assert.Equal(["ko", "pt"], read.ImagesByLang.Keys.Order());
+        Assert.Equal(["presets/instagram-jpg/images/ko/1.webp", "presets/instagram-jpg/images/2.webp"], read.ImagesFor("ko"));
+        Assert.Equal("presets/instagram-jpg/images/ko/1-thumb.webp", read.ThumbFor("ko"));
+        Assert.Equal(["presets/instagram-jpg/images/pt-BR/1.webp"], read.ImagesFor("pt-PT")); // the base language's set
+        Assert.Equal(read.Images, read.ImagesFor("de"));
+        Assert.Equal(read.Thumb, read.ThumbFor("de"));
+        Assert.True(read.HasPicture("presets/instagram-jpg/images/ko/1-thumb.webp"));
+        Assert.False(read.HasPicture("presets/instagram-jpg/images/xx/1.webp"));
+    }
+
+    [Fact]
     public void Stats_are_optional()
     {
         var bare = Entry();

@@ -38,6 +38,8 @@ internal static class PresetsCheckCommand
             return;
         }
         var derived = result.Derived!;
+        foreach (var warning in derived.Warnings)
+            output.WriteLine($"warning ({warning.Severity}): {warning.Message} ({warning.Code}: {string.Join(", ", warning.Presets)})");
         output.WriteLine($"OK: {derived.Presets} preset(s), {derived.Profiles} donut(s). Kinds: {string.Join(", ", derived.Kinds)}. "
             + $"Formats: {(derived.From.Count == 0 ? "any" : string.Join(", ", derived.From))} → {(derived.To.Count == 0 ? "-" : string.Join(", ", derived.To))}. "
             + $"Needs Filee {derived.MinVersion} or later.");
@@ -70,6 +72,17 @@ internal static class PresetsCheckCommand
             json.WriteNumber("presets", derived.Presets);
             json.WriteNumber("profiles", derived.Profiles);
             json.WriteString("sha256", derived.Sha256);
+            json.WriteStartArray("warnings");
+            foreach (var warning in derived.Warnings)
+            {
+                json.WriteStartObject();
+                json.WriteString("code", warning.Code);
+                json.WriteString("severity", warning.Severity);
+                json.WriteString("message", warning.Message);
+                WriteList(json, "presets", warning.Presets);
+                json.WriteEndObject();
+            }
+            json.WriteEndArray();
             json.WriteEndObject();
         }
         else

@@ -168,6 +168,12 @@ public sealed class PresetGalleryTests : IDisposable
             site["thumb"] = "files/" + site["thumb"]!.GetValue<string>();
             site["preset"] = "files/" + site["preset"]!.GetValue<string>();
             site["download"] = "https://filee.sh/presets/download/" + site["id"]!.GetValue<string>();
+            if (site["imagesByLang"] is JsonObject byLang)
+                foreach (var (language, list) in byLang.ToList())
+                    byLang[language] = new JsonArray([.. list!.AsArray().Select(p => (JsonNode)("files/" + p!.GetValue<string>()))]);
+            if (site["thumbByLang"] is JsonObject thumbs)
+                foreach (var (language, path) in thumbs.ToList())
+                    thumbs[language] = "files/" + path!.GetValue<string>();
             return site;
         }));
     }
@@ -456,6 +462,196 @@ public sealed class PresetGalleryTests : IDisposable
         Assert.Equal(1, gallery.Count(path));
     }
 
+    /// <summary>A gallery of one preset that replaces the originals (a high warning) and strips metadata.</summary>
+    private FakeGallery RiskyGallery()
+    {
+        var gallery = new FakeGallery();
+        var risky = Insta();
+        risky.Output.ReplaceOriginal = true;
+        Publish(gallery, Share(gallery, "in-place-jpg", "JPG in place", Bundle([risky]), SKColors.Tomato, ["convert"], ["jpg"], ["images"], ["en"]));
+        return gallery;
+    }
+
+    [AvaloniaFact]
+    public void A_preset_that_can_replace_originals_warns_and_installs_only_once_the_user_agrees()
+    {
+        TestServices.EnsureInitialized();
+        var store = Store();
+        var (vm, client, _, installed) = Open(RiskyGallery(), store);
+        using var _client = client;
+        using var _vm = vm;
+
+        vm.Selected = vm.Cards.Single();
+        var detail = vm.Detail!;
+        ClipWindowTests.WaitFor(() => detail.Installable);
+        var loc = AppHost.Get<ILocalizer>();
+        Assert.Equal([loc["gallery.warning.replaces_original"], loc["gallery.warning.strips_metadata"]], detail.Warnings.Select(w => w.Text));
+        Assert.True(detail.HasHighWarnings);
+        Assert.False(detail.InstallCommand.CanExecute(null));
+
+        detail.WarningsAccepted = true;
+        Assert.True(detail.InstallCommand.CanExecute(null));
+        detail.InstallCommand.Execute(null);
+        ClipWindowTests.WaitFor(() => detail.InstallState == GalleryInstallState.Installed);
+
+        // Kept as shared, and marked as from the gallery.
+        var preset = Assert.Single(Assert.Single(installed).Presets);
+        Assert.True(preset.Output.ReplaceOriginal);
+        Assert.Equal("in-place-jpg", preset.Gallery);
+        var editor = new PresetEditorViewModel(preset, loc);
+        Assert.Contains("in-place-jpg", editor.GalleryNote);
+        Assert.Null(new PresetEditorViewModel(Insta(), loc).GalleryNote);
+    }
+
+    [AvaloniaFact]
+    public void A_preset_with_only_milder_warnings_installs_without_the_tick()
+    {
+        TestServices.EnsureInitialized();
+        var (vm, client, _, _) = Open(Gallery(), Store());
+        using var _client = client;
+        using var _vm = vm;
+
+        vm.Selected = vm.Cards.Single(c => c.Entry.Id == "instagram-jpg");
+        ClipWindowTests.WaitFor(() => vm.Detail!.Installable);
+        Assert.True(vm.Detail!.HasWarnings); // it removes metadata
+        Assert.False(vm.Detail.HasHighWarnings);
+        Assert.True(vm.Detail.InstallCommand.CanExecute(null));
+    }
+
+    [AvaloniaFact]
+    public void Pictures_follow_the_apps_language_and_change_with_it()
+    {
+        TestServices.EnsureInitialized("en");
+        var gallery = Gallery();
+        var entry = Share(gallery, "korean-shots", "Korean screenshots", Bundle([Insta()]), SKColors.SkyBlue, ["convert"], ["jpg"], [], ["ko"]);
+        var korean = Picture(1280, 720, SKColors.HotPink);
+        var koreanThumb = Picture(480, 270, SKColors.HotPink, SKEncodedImageFormat.Webp);
+        gallery.Files["/presets/files/presets/korean-shots/images/ko/1.webp"] = korean;
+        gallery.Files["/presets/files/presets/korean-shots/images/ko/1-thumb.webp"] = koreanThumb;
+        entry["imagesByLang"] = new JsonObject { ["ko"] = new JsonArray("presets/korean-shots/images/ko/1.webp", "presets/korean-shots/images/2.webp") };
+        entry["thumbByLang"] = new JsonObject { ["ko"] = "presets/korean-shots/images/ko/1-thumb.webp" };
+        Publish(gallery, entry);
+        var localization = AppHost.Get<LocalizationService>();
+        var (vm, client, _, _) = Open(gallery, Store());
+        using var _client = client;
+        try
+        {
+            var card = vm.Cards.Single();
+            ClipWindowTests.WaitFor(() => card.Thumb is not null);
+            Assert.Equal(0, gallery.Count("/presets/files/presets/korean-shots/images/ko/1-thumb.webp"));
+            vm.Selected = card;
+            ClipWindowTests.WaitFor(() => vm.Detail!.Images.All(i => i.Bitmap is not null));
+            var english = card.Thumb;
+
+            localization.SetLanguage("ko");
+            ClipWindowTests.WaitFor(() => card.Thumb != english && vm.Detail!.Images.All(i => i.Bitmap is not null));
+            Assert.Equal(1, gallery.Count("/presets/files/presets/korean-shots/images/ko/1-thumb.webp"));
+            Assert.Equal(1, gallery.Count("/presets/files/presets/korean-shots/images/ko/1.webp"));
+            Assert.Equal(2, vm.Detail!.Images.Count);
+            Assert.Equal(AppHost.Get<ILocalizer>().Format("gallery.image", 1, 2), vm.Detail.Images[0].Name);
+        }
+        finally
+        {
+            vm.Dispose();
+            TestServices.EnsureInitialized("en");
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_validator_knows_every_language_of_the_app()
+    {
+        Assert.Equal(LocalizationService.Languages.Select(l => l.Code).Order(StringComparer.Ordinal),
+            SharedPresetFolderCheck.Languages.Order(StringComparer.Ordinal));
+    }
+
+    [AvaloniaFact]
+    public void Export_for_the_gallery_checks_the_choice_and_saves_preset_json()
+    {
+        TestServices.EnsureInitialized();
+        var store = Store();
+        var own = store.FindPreset("to-png")!;
+        var opened = new List<Uri>();
+        var path = Path.Combine(_root, "shared", "preset.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var vm = new GalleryExportViewModel(store, AppHost.Get<ILocalizer>(), own, uri => { opened.Add(uri); return Task.CompletedTask; },
+            () => Task.FromResult<string?>(path));
+
+        Assert.True(vm.CanSave);
+        Assert.Single(vm.Presets, p => p.IsChosen);
+        vm.SaveCommand.Execute(null);
+        ClipWindowTests.WaitFor(() => vm.Status == AppHost.Get<ILocalizer>()["gallery.export_saved"]);
+        Assert.True(SharedBundleCheck.Check(File.ReadAllBytes(path)).Ok);
+        Assert.Equal(AppHost.Get<ILocalizer>()["gallery.export_saved"], vm.Status);
+
+        // A folder of one's own can't be shared: listed, and Save waits.
+        own.Output.Location = OutputLocation.CustomFolder;
+        own.Output.CustomFolder = Path.Combine(_root, "out");
+        own.Output.ReplaceOriginal = true;
+        vm.Presets.Single(p => p.Preset == own).IsChosen = false;
+        vm.Presets.Single(p => p.Preset == own).IsChosen = true;
+        Assert.False(vm.CanSave);
+        Assert.Contains(vm.Problems, p => p.StartsWith("presets[0].output.customFolder", StringComparison.Ordinal));
+        // Without the folder it can be shared, with the warning the gallery will show.
+        own.Output.CustomFolder = "";
+        vm.Presets.Single(p => p.Preset == own).IsChosen = false;
+        vm.Presets.Single(p => p.Preset == own).IsChosen = true;
+        Assert.True(vm.CanSave);
+        Assert.Contains(vm.Warnings, w => w.Code == "replaces_original" && w.IsHigh);
+
+        vm.Presets.Single(p => p.Preset == own).IsChosen = false;
+        Assert.False(vm.CanSave);
+        Assert.Equal(AppHost.Get<ILocalizer>()["gallery.export_none"], vm.Status);
+
+        vm.OpenFormCommand.Execute(null);
+        Assert.Equal(GalleryExportViewModel.SubmitUri, Assert.Single(opened));
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en", false)]
+    [InlineData("ko", true)]
+    [InlineData("ar", false)]
+    public void The_export_and_the_warnings_render(string language, bool dark)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        if (dark)
+            theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
+        try
+        {
+            var (vm, client, _, _) = Open(RiskyGallery(), Store());
+            using var _client = client;
+            using var _vm = vm;
+            vm.Selected = vm.Cards.Single();
+            ClipWindowTests.WaitFor(() => vm.Detail!.Installable && vm.Detail.Images.All(i => i.Bitmap is not null));
+            var window = new PresetGalleryWindow { DataContext = vm };
+            window.Show();
+            RenderTests.Pump();
+            Assert.True(window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "WarningPanel").IsEffectivelyVisible);
+            Assert.True(window.GetVisualDescendants().OfType<CheckBox>().Single(b => b.Name == "AcceptRisk").IsEffectivelyVisible);
+            RenderTests.Save(window, $"preset-gallery-warning-{language}-{(dark ? "dark" : "light")}.png");
+            window.Close();
+
+            var store = Store();
+            var own = store.FindPreset("to-png")!;
+            own.Output.Location = OutputLocation.CustomFolder;
+            own.Output.CustomFolder = @"C:\Users\Public\Out";
+            own.Output.Conflict = Filee.Core.Presets.ConflictPolicy.Overwrite;
+            var export = new GalleryExportWindow
+            {
+                DataContext = new GalleryExportViewModel(store, AppHost.Get<ILocalizer>(), own, _ => Task.CompletedTask, () => Task.FromResult<string?>(null)),
+            };
+            export.Show();
+            RenderTests.Pump();
+            RenderTests.Save(export, $"gallery-export-{language}-{(dark ? "dark" : "light")}.png");
+            export.Close();
+        }
+        finally
+        {
+            if (dark)
+                theme.Apply(new ThemeSettings(), language);
+        }
+    }
+
     [AvaloniaFact]
     public void The_presets_page_opens_the_gallery()
     {
@@ -467,6 +663,8 @@ public sealed class PresetGalleryTests : IDisposable
         var button = page.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "GalleryButton");
         Assert.Equal(AppHost.Get<ILocalizer>()["gallery.title"], AutomationProperties.GetName(button));
         Assert.True(button.Command!.CanExecute(null));
+        var export = page.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "GalleryExportButton");
+        Assert.Equal(AppHost.Get<ILocalizer>()["gallery.export"], AutomationProperties.GetName(export));
         window.Close();
     }
 

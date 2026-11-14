@@ -127,3 +127,11 @@ internal static class GallerySummaries
         }
     }
 }
+
+/// <summary>Converters of the preset gallery's window.</summary>
+public static class GalleryConverters
+{
+    /// <summary>A high warning in semibold, the others regular.</summary>
+    public static readonly Avalonia.Data.Converters.IValueConverter Emphasis =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, Avalonia.Media.FontWeight>(high => high ? Avalonia.Media.FontWeight.SemiBold : Avalonia.Media.FontWeight.Normal);
+}

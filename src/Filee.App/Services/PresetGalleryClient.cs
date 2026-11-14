@@ -76,14 +76,14 @@ public sealed class PresetGalleryClient : IDisposable
     }
 
     /// <summary>
-    /// A picture of <paramref name="entry"/> (one of its <see cref="GalleryEntry.Images"/> or its thumbnail), from the
-    /// cache when it has it for this version of the preset.
+    /// A picture of <paramref name="entry"/> (one of its pictures or thumbnails, in any language), from the cache when it
+    /// has it for this version of the preset.
     /// </summary>
     public async Task<byte[]> GetImageAsync(GalleryEntry entry, string path, CancellationToken cancellationToken)
     {
-        if (path != entry.Thumb && !entry.Images.Contains(path))
+        if (!entry.HasPicture(path))
             throw new ArgumentException("Not one of the preset's pictures.", nameof(path));
-        var max = path == entry.Thumb ? MaxThumbBytes : MaxImageBytes;
+        var max = path.EndsWith("-thumb.webp", StringComparison.Ordinal) ? MaxThumbBytes : MaxImageBytes;
         var key = CacheKey(entry, path);
         if (ReadCache(key, max) is { } cached)
             return cached;

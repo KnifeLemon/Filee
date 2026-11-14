@@ -38,6 +38,19 @@ public static partial class SharedPresetFolderCheck
     /// <summary>A preset's id: 3 to 48 of a-z, 0-9 and '-', not starting or ending with '-', and not reserved.</summary>
     public static bool IsSlug(string text) => Slug().IsMatch(text) && !ReservedSlugs.Contains(text);
 
+    /// <summary>Largest folder of a shared preset, every file in it counted, in bytes.</summary>
+    public const long MaxFolderBytes = 40L * 1024 * 1024;
+
+    /// <summary>
+    /// The app's languages (its i18n files): images/&lt;language&gt;/ may hold pictures in one of them, shown to people
+    /// using Filee in that language. The app's tests keep this in step with its languages.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Languages =
+    [
+        "ar", "bn-BD", "de", "en", "es", "fa", "fr", "hi", "id", "it", "ja", "ko", "mn", "ne", "pl", "pt-BR", "pt-PT", "ru",
+        "th", "tr", "vi", "zh-CN", "zh-TW",
+    ];
+
     /// <summary>The kinds meta.json may list (see <see cref="PresetCheckDerived.Kinds"/>).</summary>
     public static readonly IReadOnlyList<string> Kinds = ["convert", "tool", "toolbar"];
 
@@ -96,25 +109,69 @@ public static partial class SharedPresetFolderCheck
             result.Add("images.missing", ImagesFolder + "/", "", $"is missing: a shared preset needs {MinImages} to {MaxImages} pictures (1 is the cover)");
         else
             CheckImages(new DirectoryInfo(Path.Combine(root.FullName, ImagesFolder)), decoder, result);
+
+        var size = root.EnumerateFiles("*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint })
+            .Sum(f => f.Length);
+        if (size > MaxFolderBytes)
+            result.Add("folder.too_large", "", "", $"holds {size:N0} bytes; a shared preset's folder may hold at most {MaxFolderBytes:N0}");
         return result;
     }
 
-    /// <summary>The pictures: 1.png … 4.webp (1 to 4, no gaps), each with an optional 1-thumb.webp.</summary>
+    /// <summary>
+    /// The pictures: 1.png … 4.webp (1 to 4, no gaps), each with an optional 1-thumb.webp, and the language sets in
+    /// images/&lt;language&gt;/ (<see cref="Languages"/>): the same names, 1 to 4 of the default set's numbers (a number a
+    /// set leaves out shows the default picture).
+    /// </summary>
     private static void CheckImages(DirectoryInfo folder, IGalleryImageDecoder? decoder, PresetCheckResult result)
+    {
+        var languages = new List<DirectoryInfo>();
+        var numbers = CheckImageSet(folder, ImagesFolder, decoder, result, languages);
+        if (numbers.Count < MinImages)
+            result.Add("images.missing", ImagesFolder + "/", "", $"has no pictures: a shared preset needs {MinImages} to {MaxImages} (1 is the cover)");
+        else if (numbers.Max != numbers.Count)
+            result.Add("images.name", ImagesFolder + "/", "", "the pictures must be numbered from 1 without gaps (1 is the cover)");
+
+        foreach (var language in languages)
+        {
+            var prefix = $"{ImagesFolder}/{language.Name}";
+            if (!Languages.Contains(language.Name))
+            {
+                result.Add("images.language", prefix + "/", "", $"is not a language of Filee's ({string.Join(", ", Languages)})");
+                continue;
+            }
+            var set = CheckImageSet(language, prefix, decoder, result, null);
+            if (set.Count < MinImages)
+                result.Add("images.missing", prefix + "/", "", "has no pictures; leave the folder out instead");
+            foreach (var number in set.Where(n => !numbers.Contains(n)))
+                result.Add("images.name", prefix + "/", "", $"has a picture {number}, which the default set (images/) doesn't have");
+        }
+    }
+
+    /// <summary>
+    /// One set of pictures in <paramref name="folder"/>: checks each, returns their numbers. Folders go to
+    /// <paramref name="languages"/> (the default set's language sets), or are refused where there is none.
+    /// </summary>
+    private static SortedSet<int> CheckImageSet(DirectoryInfo folder, string prefix, IGalleryImageDecoder? decoder, PresetCheckResult result,
+        List<DirectoryInfo>? languages)
     {
         var numbers = new SortedSet<int>();
         var thumbs = new List<(int Number, FileInfo File)>();
         foreach (var entry in folder.EnumerateFileSystemInfos())
         {
-            var name = $"{ImagesFolder}/{entry.Name}";
+            var name = $"{prefix}/{entry.Name}";
             if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
             {
                 result.Add("folder.link", name, "", "is a link; the folder may only hold real files");
                 continue;
             }
+            if (entry is DirectoryInfo directory && languages is not null)
+            {
+                languages.Add(directory);
+                continue;
+            }
             if (entry is not FileInfo file)
             {
-                result.Add("images.unexpected_file", name, "", "doesn't belong in images/ (only 1.png … 4.webp)");
+                result.Add("images.unexpected_file", name, "", "doesn't belong here (only 1.png … 4.webp, and a folder per language in images/)");
                 continue;
             }
             var match = ImageName().Match(file.Name);
@@ -136,19 +193,15 @@ public static partial class SharedPresetFolderCheck
             }
             CheckImage(file, name, match.Groups[3].Value.ToLowerInvariant(), thumb: false, decoder, result);
         }
-
-        if (numbers.Count < MinImages)
-            result.Add("images.missing", ImagesFolder + "/", "", $"has no pictures: a shared preset needs {MinImages} to {MaxImages} (1 is the cover)");
-        else if (numbers.Max != numbers.Count)
-            result.Add("images.name", ImagesFolder + "/", "", "the pictures must be numbered from 1 without gaps (1 is the cover)");
         foreach (var (number, file) in thumbs)
         {
-            var name = $"{ImagesFolder}/{file.Name}";
+            var name = $"{prefix}/{file.Name}";
             if (!numbers.Contains(number))
                 result.Add("images.name", name, "", $"is a thumbnail of picture {number}, which isn't there");
             else
                 CheckImage(file, name, "webp", thumb: true, decoder, result);
         }
+        return numbers;
     }
 
     [GeneratedRegex(@"^([1-4])(?:(-thumb)\.webp|\.(png|jpg|jpeg|webp))$", RegexOptions.CultureInvariant)]
@@ -218,6 +271,11 @@ public static partial class SharedPresetFolderCheck
         ["updated"] = new StringRule(40, Timestamp),
         ["discussion"] = new IntRule(1, int.MaxValue) { Nullable = true },
         ["license"] = new StringRule(16, text => text == License ? null : $"must be {License}"),
+        ["warnings"] = new ListRule(new ObjectRule(new Dictionary<string, ValueRule>(StringComparer.Ordinal)
+        {
+            ["code"] = new EnumRule([.. SharedPresetWarnings.All.Select(w => w.Code)]),
+            ["severity"] = new EnumRule([SharedPresetWarnings.High, SharedPresetWarnings.Medium, SharedPresetWarnings.Info]),
+        }), SharedPresetWarnings.All.Count),
     });
 
     private static string? Timestamp(string text) =>
@@ -271,6 +329,10 @@ public static partial class SharedPresetFolderCheck
                 if (formats.TryGetProperty("to", out var to) && !SameSet(to, derived.To))
                     result.Add("meta.derived_mismatch", MetaName, "formats.to", $"must be [{string.Join(", ", derived.To)}], as preset.json is");
             }
+            if (root.TryGetProperty("warnings", out var warnings)
+                && !warnings.EnumerateArray().Select(w => w.TryGetProperty("code", out var c) ? c.GetString() : null).ToHashSet(StringComparer.Ordinal)
+                    .SetEquals(derived.Warnings.Select(w => w.Code)))
+                result.Add("meta.derived_mismatch", MetaName, "warnings", $"must be [{string.Join(", ", derived.Warnings.Select(w => w.Code))}], as preset.json is");
             if (root.TryGetProperty("minVersion", out var min) && Version.Parse(min.GetString()!) < Version.Parse(derived.MinVersion))
                 result.Add("meta.derived_mismatch", MetaName, "minVersion", $"must be at least {derived.MinVersion}, the first Filee that can install it");
         }

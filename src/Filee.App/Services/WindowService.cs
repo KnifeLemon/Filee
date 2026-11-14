@@ -853,6 +853,58 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     internal WhatsNewWindow? WhatsNew => _whatsNew;
 
     private PresetGalleryWindow? _gallery;
+    private GalleryExportWindow? _galleryExport;
+
+    internal GalleryExportWindow? GalleryExport => _galleryExport;
+
+    /// <summary>
+    /// Opens "Export for the gallery" (#1530) with <paramref name="selected"/> ticked; a second call brings the open one
+    /// to the front.
+    /// </summary>
+    public void ShowGalleryExport(Preset? selected)
+    {
+        if (_galleryExport is not null)
+        {
+            _galleryExport.Activate();
+            return;
+        }
+        GalleryExportWindow? window = null;
+        var vm = new GalleryExportViewModel(services.GetRequiredService<UserDataStore>(), loc, selected,
+            async uri =>
+            {
+                if (window is not null)
+                    await window.Launcher.LaunchUriAsync(uri);
+            },
+            async () =>
+            {
+                if (window is null)
+                    return null;
+                var file = await window.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+                {
+                    SuggestedFileName = "preset.json",
+                    DefaultExtension = "json",
+                    FileTypeChoices = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }],
+                });
+                return file?.TryGetLocalPath();
+            });
+        window = new GalleryExportWindow { DataContext = vm };
+        PrepareWindow(window);
+        window.Closed += (_, _) =>
+        {
+            if (_galleryExport == window)
+                _galleryExport = null;
+            trimmer.Request();
+        };
+        _galleryExport = window;
+        if (_main is { IsVisible: true } main && main.WindowState != WindowState.Minimized)
+            window.Show(main);
+        else
+        {
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            window.Show();
+        }
+        window.Activate();
+    }
 
     internal PresetGalleryWindow? Gallery => _gallery;
 

@@ -92,7 +92,6 @@ public sealed class PresetsCheckTests : IDisposable
         var root = json.RootElement;
         Assert.False(root.GetProperty("ok").GetBoolean());
         var errors = root.GetProperty("errors").EnumerateArray().ToList();
-        Assert.Contains(errors, e => e.GetProperty("code").GetString() == "field.value" && e.GetProperty("path").GetString() == "presets[0].output.location");
         Assert.Contains(errors, e => e.GetProperty("code").GetString() == "field.left_out" && e.GetProperty("path").GetString() == "presets[0].output.customFolder");
         Assert.Contains(errors, e => e.GetProperty("code").GetString() == "images.size" && e.GetProperty("file").GetString() == "images/1.png");
         Assert.All(errors, e => Assert.False(string.IsNullOrEmpty(e.GetProperty("message").GetString())));
@@ -114,6 +113,26 @@ public sealed class PresetsCheckTests : IDisposable
         Assert.Equal("2.5.0", derived.GetProperty("minVersion").GetString());
         Assert.Equal(64, derived.GetProperty("sha256").GetString()!.Length);
         Assert.Empty(json.RootElement.GetProperty("errors").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Risky_settings_pass_with_warnings_for_the_gallery()
+    {
+        var preset = Photo();
+        preset.Output.ReplaceOriginal = true;
+        preset.Image.KeepMetadata = false;
+        var folder = Folder(preset, ("1.png", Picture(1280, 720, SKEncodedImageFormat.Png)));
+
+        var json = await Run("presets", "check", folder, "--json");
+        var text = await Run("presets", "check", folder);
+
+        Assert.True(json.Code == 0, json.Output);
+        using var document = JsonDocument.Parse(json.Output);
+        var warnings = document.RootElement.GetProperty("derived").GetProperty("warnings").EnumerateArray().ToList();
+        Assert.Equal(["replaces_original", "strips_metadata"], warnings.Select(w => w.GetProperty("code").GetString()));
+        Assert.Equal(["high", "info"], warnings.Select(w => w.GetProperty("severity").GetString()));
+        Assert.Equal(["insta"], warnings[0].GetProperty("presets").EnumerateArray().Select(p => p.GetString()));
+        Assert.Contains("warning (high):", text.Output, StringComparison.Ordinal);
     }
 
     [Fact]

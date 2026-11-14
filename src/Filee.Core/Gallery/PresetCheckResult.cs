@@ -28,7 +28,18 @@ public sealed record PresetCheckDerived(
     string MinVersion,
     int Presets,
     int Profiles,
-    string Sha256);
+    string Sha256)
+{
+    /// <summary>The settings that touch the installer's files, most serious first (<see cref="SharedPresetWarnings"/>).</summary>
+    public IReadOnlyList<PresetCheckWarning> Warnings { get; init; } = [];
+}
+
+/// <summary>
+/// A setting of a shared preset that touches the installer's files: <see cref="Code"/> (stable, see
+/// <see cref="SharedPresetWarnings"/>), <see cref="Severity"/> ("high", "medium" or "info"), what it does in English,
+/// and the ids of the presets in the file that have it.
+/// </summary>
+public sealed record PresetCheckWarning(string Code, string Severity, string Message, IReadOnlyList<string> Presets);
 
 /// <summary>The outcome of <see cref="SharedBundleCheck"/> or <see cref="SharedPresetFolderCheck"/>.</summary>
 public sealed class PresetCheckResult

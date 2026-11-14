@@ -79,6 +79,16 @@ public sealed partial class PresetGalleryViewModel : ObservableObject, IDisposab
         _tag = Tags[0];
         Languages = [new(Any, loc["gallery.language.all"])];
         _language = Languages[0];
+        _loc.LanguageChanged += OnUiLanguageChanged;
+    }
+
+    /// <summary>The app's language changed while the window is open: pictures in that language, where a preset has them.</summary>
+    private void OnUiLanguageChanged(object? sender, EventArgs e)
+    {
+        if (State != GalleryState.Ready)
+            return;
+        _ = LoadThumbsAsync();
+        _ = Detail?.LoadImagesAsync();
     }
 
     /// <summary>This Filee's version, as the update check reads it (a pre-release counts as its release).</summary>
@@ -280,6 +290,7 @@ public sealed partial class PresetGalleryViewModel : ObservableObject, IDisposab
 
     public void Dispose()
     {
+        _loc.LanguageChanged -= OnUiLanguageChanged;
         _closing.Cancel();
         Detail?.Dispose();
         foreach (var card in _all)
@@ -294,11 +305,14 @@ public sealed partial class PresetGalleryCardViewModel : ObservableObject, IDisp
     /// <summary>The cover's size in the list, in pixels of its long edge.</summary>
     public const int ThumbEdge = 480;
 
+    private readonly ILocalizer _loc;
     private bool _loading;
+    private string? _thumbPath;
 
     public PresetGalleryCardViewModel(GalleryEntry entry, ILocalizer loc)
     {
         Entry = entry;
+        _loc = loc;
         Byline = entry.Author.Length == 0 ? "" : loc.Format("gallery.by", entry.Author);
         Likes = loc.Format("gallery.likes", entry.Stats.Likes.ToString("N0", CultureInfo.CurrentCulture));
         Downloads = loc.Format("gallery.downloads", entry.Stats.Downloads.ToString("N0", CultureInfo.CurrentCulture));
@@ -325,20 +339,29 @@ public sealed partial class PresetGalleryCardViewModel : ObservableObject, IDisp
         || Entry.Author.Contains(query, StringComparison.CurrentCultureIgnoreCase)
         || Entry.Tags.Any(t => t.Contains(query, StringComparison.CurrentCultureIgnoreCase));
 
-    /// <summary>Loads the cover's thumbnail (the cover itself when there is none); a failure leaves the placeholder.</summary>
+    /// <summary>
+    /// Loads the cover's thumbnail in the app's language (<see cref="GalleryEntry.ThumbFor"/>; the cover itself when there
+    /// is none), or again after the language changed; a failure leaves what is shown.
+    /// </summary>
     public async Task LoadThumbAsync(PresetGalleryClient client, CancellationToken cancellationToken)
     {
-        if (Thumb is not null || _loading || (Entry.Thumb ?? Entry.Images.FirstOrDefault()) is not { } path)
+        var language = _loc.Language;
+        if (_loading || (Entry.ThumbFor(language) ?? Entry.ImagesFor(language).FirstOrDefault()) is not { } path
+            || (Thumb is not null && path == _thumbPath))
             return;
         _loading = true;
         try
         {
             var data = await client.GetImageAsync(Entry, path, cancellationToken);
             var bitmap = await Task.Run(() => GalleryBitmaps.Decode(data, ThumbEdge), cancellationToken);
-            if (cancellationToken.IsCancellationRequested)
+            if (cancellationToken.IsCancellationRequested || bitmap is null)
                 bitmap?.Dispose();
             else
-                Thumb = bitmap;
+            {
+                var old = Thumb;
+                (Thumb, _thumbPath) = (bitmap, path);
+                old?.Dispose();
+            }
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or InvalidDataException or ArgumentException)
         {
@@ -369,6 +392,9 @@ public sealed record PresetGallerySummary(string Name, string What, string Optio
 {
     public bool HasOptions => Options.Length > 0;
 }
+
+/// <summary>A setting of the chosen preset that touches the user's files, in their words (<see cref="SharedPresetWarnings"/>).</summary>
+public sealed record PresetGalleryWarning(string Code, string Text, bool IsHigh);
 
 /// <summary>Whether the chosen preset is being installed, was, or couldn't be.</summary>
 public enum GalleryInstallState
@@ -408,9 +434,6 @@ public sealed partial class PresetGalleryDetailViewModel : ObservableObject, IDi
             ? string.Join(" · ", loc.Format("gallery.likes", entry.Stats.Likes.ToString("N0", CultureInfo.CurrentCulture)),
                 loc.Format("gallery.downloads", entry.Stats.Downloads.ToString("N0", CultureInfo.CurrentCulture)))
             : "";
-        for (var i = 0; i < entry.Images.Count; i++)
-            Images.Add(new PresetGalleryImageViewModel(loc.Format("gallery.image", i + 1, entry.Images.Count)));
-        _shownImage = Images.FirstOrDefault();
     }
 
     public GalleryEntry Entry { get; }
@@ -430,6 +453,9 @@ public sealed partial class PresetGalleryDetailViewModel : ObservableObject, IDi
     [ObservableProperty] private PresetGalleryImageViewModel? _shownImage;
 
     public bool HasSeveralImages => Images.Count > 1;
+
+    /// <summary>The paths <see cref="Images"/> shows, for the language they were picked for.</summary>
+    private IReadOnlyList<string> _imagePaths = [];
 
     /// <summary>What each preset in it does.</summary>
     public ObservableCollection<PresetGallerySummary> Presets { get; } = [];
@@ -456,22 +482,63 @@ public sealed partial class PresetGalleryDetailViewModel : ObservableObject, IDi
 
     public bool HasComments => Entry.Discussion is not null;
 
+    /// <summary>
+    /// What the preset does to the user's files, worked out here from the file itself (never from the index), most
+    /// serious first.
+    /// </summary>
+    public ObservableCollection<PresetGalleryWarning> Warnings { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHighWarnings))]
+    private bool _hasWarnings;
+
+    /// <summary>It can replace, move or overwrite files: Install waits for <see cref="WarningsAccepted"/>.</summary>
+    public bool HasHighWarnings => Warnings.Any(w => w.IsHigh);
+
+    /// <summary>The user ticked "I understand…" for a preset with <see cref="HasHighWarnings"/>.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    private bool _warningsAccepted;
+
     /// <summary>Loads the pictures and what the preset does.</summary>
     public async Task LoadAsync()
     {
         SummaryNote = _loc["gallery.loading_details"];
+        await LoadSummaryAsync(_cancel.Token);
+        await LoadImagesAsync();
+    }
+
+    /// <summary>
+    /// Loads the pictures in the app's language (<see cref="GalleryEntry.ImagesFor"/>), or again after the language
+    /// changed; nothing happens when the language has the same pictures.
+    /// </summary>
+    public async Task LoadImagesAsync()
+    {
         var token = _cancel.Token;
-        await LoadSummaryAsync(token);
-        for (var i = 0; i < Entry.Images.Count && !token.IsCancellationRequested; i++)
+        var paths = Entry.ImagesFor(_loc.Language);
+        if (paths.SequenceEqual(_imagePaths) || token.IsCancellationRequested)
+            return;
+        _imagePaths = paths;
+        var shown = ShownImage is { } current ? Images.IndexOf(current) : 0;
+        foreach (var image in Images)
+            image.Bitmap?.Dispose();
+        Images.Clear();
+        for (var i = 0; i < paths.Count; i++)
+            Images.Add(new PresetGalleryImageViewModel(_loc.Format("gallery.image", i + 1, paths.Count)));
+        ShownImage = Images.Count == 0 ? null : Images[Math.Clamp(shown, 0, Images.Count - 1)];
+        OnPropertyChanged(nameof(HasSeveralImages));
+        var set = Images.ToList();
+        for (var i = 0; i < paths.Count && !token.IsCancellationRequested && _imagePaths == paths; i++)
         {
             try
             {
-                var data = await _client.GetImageAsync(Entry, Entry.Images[i], token);
+                var data = await _client.GetImageAsync(Entry, paths[i], token);
                 var bitmap = await Task.Run(() => GalleryBitmaps.Decode(data, ImageEdge), token);
-                if (token.IsCancellationRequested)
+                // A language changed meanwhile: these pictures are no longer shown.
+                if (token.IsCancellationRequested || _imagePaths != paths)
                     bitmap?.Dispose();
                 else
-                    Images[i].Bitmap = bitmap;
+                    set[i].Bitmap = bitmap;
             }
             catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or InvalidDataException or ArgumentException)
             {
@@ -508,11 +575,17 @@ public sealed partial class PresetGalleryDetailViewModel : ObservableObject, IDi
             ? _loc.Format("gallery.donut_new", _loc.DisplayName(profile),
                 profile.Extensions.Count == 0 ? _loc["gallery.donut_mixed"] : string.Join(", ", profile.Extensions.Take(8).Select(e => e.ToUpperInvariant())) + (profile.Extensions.Count > 8 ? " …" : ""))
             : _loc["gallery.donut_none"];
+        foreach (var warning in check.Derived?.Warnings ?? [])
+            Warnings.Add(new PresetGalleryWarning(warning.Code, _loc[$"gallery.warning.{warning.Code}"], warning.Severity == SharedPresetWarnings.High));
+        HasWarnings = Warnings.Count > 0;
+        OnPropertyChanged(nameof(HasHighWarnings));
         SummaryNote = null;
         Installable = true;
     }
 
-    private bool CanInstall() => Installable && InstallState is not (GalleryInstallState.Installing or GalleryInstallState.Installed);
+    private bool CanInstall() =>
+        Installable && (!HasHighWarnings || WarningsAccepted)
+        && InstallState is not (GalleryInstallState.Installing or GalleryInstallState.Installed);
 
     /// <summary>Downloads it through the install link and adds it to the library as new presets.</summary>
     [RelayCommand(CanExecute = nameof(CanInstall))]
@@ -531,7 +604,9 @@ public sealed partial class PresetGalleryDetailViewModel : ObservableObject, IDi
             InstallMessage = _loc["gallery.download_failed"];
             return;
         }
-        var result = GalleryInstaller.Install(_store, json, Entry.Sha256, _loc.DisplayName, _loc.DisplayName);
+        // The installer checks the file's SHA-256 against the index's, as the view did: it is the file the warnings
+        // shown were worked out from.
+        var result = GalleryInstaller.Install(_store, json, Entry.Sha256, _loc.DisplayName, _loc.DisplayName, Entry.Id);
         if (!result.Ok)
         {
             InstallState = GalleryInstallState.Failed;

@@ -38,13 +38,10 @@ public sealed class PresetGalleryCheckTests
     }
 
     [Fact]
-    public void Every_built_in_preset_but_copying_to_a_folder_and_metadata_can_be_shared()
+    public void Every_built_in_preset_can_be_shared()
     {
         // Copies of the built-in presets are what most users start from: the allow-list's ranges must take them all.
-        var shareable = BuiltInData.CreatePresets()
-            .Where(p => p.Kind != PresetKind.CopyToFolder && p.Tool != Preset.MetadataTool)
-            .ToList();
-        var actions = shareable.Where(p => !p.IsGroup).Select(p => p.Id).ToHashSet();
+        var shareable = BuiltInData.CreatePresets();
         foreach (var chunk in shareable.Chunk(SharedPresetRules.MaxPresets))
         {
             // A group with its members, so the references resolve.
@@ -54,18 +51,90 @@ public sealed class PresetGalleryCheckTests
             var result = SharedBundleCheck.Check(bundle, maxPresets: 100);
             Assert.True(result.Ok, string.Join("\n", result.Errors));
         }
-        Assert.NotEmpty(actions);
     }
 
     [Fact]
-    public void Copying_to_a_folder_and_the_metadata_tool_are_not_shared()
+    public void Copying_to_a_folder_and_the_metadata_tool_are_shared_with_their_warnings()
     {
-        var copy = new Preset { Id = "copy", Name = "Copy to NAS", Kind = PresetKind.CopyToFolder, TargetFormat = Preset.CopyTarget };
-        AssertFails(GalleryFiles.Bundle(copy), "field.value", "presets[0].kind");
+        var copy = new Preset
+        {
+            Id = "copy",
+            Name = "Move to NAS",
+            Kind = PresetKind.CopyToFolder,
+            TargetFormat = Preset.CopyTarget,
+            Output = { Location = OutputLocation.CustomFolder, MoveInsteadOfCopy = true },
+        };
+        var result = Check(GalleryFiles.Bundle(copy));
+        Assert.True(result.Ok, string.Join("\n", result.Errors));
+        Assert.Equal(["tool"], result.Derived!.Kinds);
+        Assert.Equal(["moves_original", "copies_to_folder"], result.Derived.Warnings.Select(w => w.Code));
+        Assert.Equal("high", result.Derived.Warnings[0].Severity);
+        Assert.Equal(["copy"], result.Derived.Warnings[0].Presets);
+
         var metadata = BuiltInData.CreatePresets().Single(p => p.Tool == Preset.MetadataTool);
-        AssertFails(GalleryFiles.Bundle(metadata), "preset.tool_not_allowed");
+        Assert.True(Check(GalleryFiles.Bundle(metadata)).Ok);
+        // A tool this version doesn't know could be anything, a program it runs included.
         AssertFails(GalleryFiles.With(p => p["kind"] = "Tool", new Preset { Id = "x", Name = "X", Kind = PresetKind.Tool, Tool = "run-program" }),
             "preset.tool_not_allowed");
+        AssertFails(GalleryFiles.With(p => p["targetFormat"] = "jpg", copy), "preset.target_unknown");
+    }
+
+    private static IEnumerable<string> WarningCodes(Preset preset) =>
+        Check(GalleryFiles.Bundle(preset)).Derived!.Warnings.Select(w => w.Code);
+
+    private static Preset Kept(Action<Preset>? change = null)
+    {
+        var preset = GalleryFiles.Photo();
+        preset.Image.KeepMetadata = true;
+        change?.Invoke(preset);
+        return preset;
+    }
+
+    [Fact]
+    public void Each_risky_setting_gives_its_warning()
+    {
+        Assert.Empty(WarningCodes(Kept()));
+        Assert.Equal(["strips_metadata"], WarningCodes(GalleryFiles.Photo()));
+        Assert.Equal(["replaces_original"], WarningCodes(Kept(p => p.Output.ReplaceOriginal = true)));
+        Assert.Equal(["overwrites_existing"], WarningCodes(Kept(p => p.Output.Conflict = ConflictPolicy.Overwrite)));
+        Assert.Equal(["edits_metadata", "strips_metadata"], WarningCodes(Kept(p => p.Metadata = new MetadataEdits
+        {
+            Set = new() { ["XMP-dc:Title"] = ["Holiday"] },
+            RemoveLocation = true,
+        })));
+        Assert.Equal(["fixed_edits"], WarningCodes(Kept(p => p.Image.HiddenAreas = [new HiddenArea { Width = 0.5, Height = 0.5 }])));
+        Assert.Equal(["uses_translate_model"], WarningCodes(new Preset
+        {
+            Id = "tr",
+            Name = "To English",
+            TargetFormat = "docx",
+            Translate = { Enabled = true, Model = "llama3.1:8b" },
+        }));
+        Assert.Equal(["high", "high", "medium", "medium", "medium", "medium", "info", "info"], SharedPresetWarnings.All.Select(w => w.Severity));
+    }
+
+    [Theory]
+    [InlineData("XMP-dc:Creator")]
+    [InlineData("EXIF:Artist")]
+    [InlineData("XMP-dc:Rights")]
+    [InlineData("IPTC:By-line")]
+    [InlineData("GPS:GPSLatitude")]
+    [InlineData("XMP-photoshop:City")]
+    [InlineData("EXIF:OwnerName")]
+    public void Metadata_naming_people_places_or_owners_may_only_be_removed(string field)
+    {
+        AssertFails(GalleryFiles.With(p => p["metadata"] = JsonNode.Parse("{\"set\":{\"" + field + "\":[\"Kim\"]}}")),
+            "field.left_out", $"presets[0].metadata.set.{field}");
+        var removed = Check(GalleryFiles.With(p => p["metadata"] = JsonNode.Parse("{\"set\":{\"" + field + "\":[]},\"remove\":[\"" + field + "\"]}")));
+        Assert.True(removed.Ok, string.Join("\n", removed.Errors));
+    }
+
+    [Fact]
+    public void Other_metadata_may_be_written_and_bad_field_names_fail()
+    {
+        Assert.True(Check(GalleryFiles.With(p => p["metadata"] = JsonNode.Parse("{\"set\":{\"XMP-dc:Title\":[\"Scan\"],\"EXIF:Software\":[\"Filee\"]}}"))).Ok);
+        AssertFails(GalleryFiles.With(p => p["metadata"] = JsonNode.Parse("{\"set\":{\"-all=\":[\"x\"]}}")), "field.value");
+        AssertFails(GalleryFiles.With(p => p["metadata"] = JsonNode.Parse("{\"set\":{\"XMP-dc:Title\":[\"see https://evil.example\"]}}")), "text.url");
     }
 
     [Fact]
@@ -94,9 +163,9 @@ public sealed class PresetGalleryCheckTests
     public void Fields_that_carry_the_sharers_own_things_are_left_out()
     {
         var leftOut = SharedPresetRules.Paths(SharedPresetRules.PresetFields).Where(p => p.LeftOut).Select(p => p.Path).ToHashSet();
-        foreach (var path in (string[])["output.customFolder", "output.keepFoldersFrom", "pdf.password", "image.backdrop",
-                     "image.backdropLook.picture", "media.clip", "metadata", "translate.model", "image.hiddenAreas", "image.annotations"])
-            Assert.Contains(path, leftOut);
+        Assert.Equal(["gallery", "image.backdrop.picture", "image.backdrop.pictureLength", "image.backdrop.pictureWritten",
+            "image.backdropLook.picture", "image.backdropLook.pictureLength", "image.backdropLook.pictureWritten",
+            "media.clip.music.path", "output.customFolder", "output.keepFoldersFrom", "pdf.password"], leftOut.Order());
     }
 
     /// <summary>The allow-list has every field of <paramref name="type"/>, but none inside a field it leaves out.</summary>
@@ -126,19 +195,31 @@ public sealed class PresetGalleryCheckTests
     }
 
     [Theory]
-    [InlineData("output.customFolder", "\"C:/Users/me/Pictures\"")]
-    [InlineData("output.keepFoldersFrom", "\"D:/Inbox\"")]
-    [InlineData("pdf.password", "\"hunter2\"")]
-    [InlineData("image.backdrop", "{\"kind\":\"Color\"}")]
-    [InlineData("image.hiddenAreas", "[{\"x\":0,\"y\":0,\"width\":1,\"height\":1}]")]
-    [InlineData("image.annotations", "[{\"kind\":\"Text\",\"text\":\"Ann\"}]")]
-    [InlineData("media.clip", "{\"music\":{\"path\":\"/home/me/song.mp3\"}}")]
-    [InlineData("metadata", "{\"set\":{\"Artist\":[\"Me\"]},\"removeLocation\":false}")]
-    [InlineData("translate.model", "\"llama3:70b\"")]
-    public void A_left_out_field_with_a_value_fails(string path, string value)
+    [InlineData("output.customFolder", "\"C:/Users/me/Pictures\"", "output.customFolder")]
+    [InlineData("output.keepFoldersFrom", "\"D:/Inbox\"", "output.keepFoldersFrom")]
+    [InlineData("pdf.password", "\"hunter2\"", "pdf.password")]
+    [InlineData("image.backdrop", "{\"kind\":\"Picture\",\"picture\":\"C:/bg.png\"}", "image.backdrop.picture")]
+    [InlineData("media.clip", "{\"music\":{\"path\":\"/home/me/song.mp3\"}}", "media.clip.music.path")]
+    [InlineData("gallery", "\"some-preset\"", "gallery")]
+    public void A_left_out_field_with_a_value_fails(string field, string value, string path)
     {
-        var json = GalleryFiles.With(p => Set(p, path, JsonNode.Parse(value)));
+        var json = GalleryFiles.With(p => Set(p, field, JsonNode.Parse(value)));
         AssertFails(json, "field.left_out", "presets[0]." + path);
+    }
+
+    [Theory]
+    [InlineData("output.location", "\"CustomFolder\"")]
+    [InlineData("output.conflict", "\"Overwrite\"")]
+    [InlineData("output.replaceOriginal", "true")]
+    [InlineData("pdf.passwordLeftOut", "true")]
+    [InlineData("translate.model", "\"llama3.1:70b\"")]
+    [InlineData("image.hiddenAreas", "[{\"x\":0.1,\"y\":0.1,\"width\":0.2,\"height\":0.2,\"style\":\"Box\"}]")]
+    [InlineData("image.annotations", "[{\"kind\":\"Arrow\",\"color\":\"#FF0000\",\"points\":[{\"x\":0.1,\"y\":0.2},{\"x\":0.5,\"y\":0.5}]}]")]
+    [InlineData("media.clip", "{\"parts\":[{\"start\":0,\"end\":5}],\"music\":{\"path\":\"\",\"volume\":0.5}}")]
+    public void Settings_once_left_out_are_shared_now(string path, string value)
+    {
+        var result = Check(GalleryFiles.With(p => Set(p, path, JsonNode.Parse(value))));
+        Assert.True(result.Ok, string.Join("\n", result.Errors));
     }
 
     [Fact]
@@ -151,11 +232,6 @@ public sealed class PresetGalleryCheckTests
     }
 
     [Theory]
-    [InlineData("output.location", "\"CustomFolder\"", "field.value")]
-    [InlineData("output.conflict", "\"Overwrite\"", "field.value")]
-    [InlineData("output.replaceOriginal", "true", "field.not_allowed")]
-    [InlineData("output.moveInsteadOfCopy", "true", "field.not_allowed")]
-    [InlineData("pdf.passwordLeftOut", "true", "field.not_allowed")]
     [InlineData("image.quality", "101", "field.range")]
     [InlineData("image.quality", "0", "field.range")]
     [InlineData("image.quality", "85.5", "field.type")]
@@ -172,7 +248,9 @@ public sealed class PresetGalleryCheckTests
     [InlineData("media.spokenLanguage", "\"klingon\"", "field.value")]
     [InlineData("media.cropFrame", "\"crop=iw:ih\"", "field.value")]
     [InlineData("translate.targetLanguage", "\"en; drop\"", "field.value")]
-    [InlineData("kind", "\"CopyToFolder\"", "field.value")]
+    [InlineData("kind", "\"RunProgram\"", "field.value")]
+    [InlineData("translate.model", "\"http://evil.example/m\"", "text.url")]
+    [InlineData("image.hiddenAreas", "[{\"x\":2}]", "field.range")]
     [InlineData("image", "null", "field.type")]
     [InlineData("image", "[]", "field.type")]
     [InlineData("subPresetIds", "\"a\"", "field.type")]

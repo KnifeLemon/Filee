@@ -1,8 +1,11 @@
 // The allow-list of what a preset shared in the preset gallery may hold (#1530): every field of a preset and a toolbar
 // profile that may appear in a shared preset.json, with the values it may take. A field that isn't listed here fails the
 // check, so a field added to Preset later stays out of the gallery until someone decides it is safe and lists it.
-// Fields that would carry something of the sharer's (a folder, a password, a picture's path) or run something on the
-// installer's computer are listed as "left out": they may be there, as an export writes them, but only empty.
+// Shared presets get as much freedom as the model has; settings that touch the installer's files (replacing or moving
+// originals, overwriting, editing metadata) are allowed and reported as warnings (SharedPresetWarnings). Only what
+// can't work on another computer or would give something of the sharer's away is "left out": a folder of one's own, a
+// password, a picture's or a sound's path, and names, places and copyright owners written into metadata. Those may be
+// there, as an export writes them, but only empty.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -42,6 +45,12 @@ internal sealed record StringRule(int MaxLength, Func<string, string?>? Check = 
 internal sealed record ListRule(ValueRule Item, int MaxCount) : ValueRule;
 
 /// <summary>
+/// An object whose field names are data (metadata fields, "XMP-dc:Title"): at most <see cref="MaxCount"/>, each name
+/// passing <see cref="KeyCheck"/> (null: fine), each value checked with the rule <see cref="ValueFor"/> gives for it.
+/// </summary>
+internal sealed record MapRule(int MaxCount, Func<string, string?> KeyCheck, Func<string, ValueRule> ValueFor) : ValueRule;
+
+/// <summary>
 /// A field left out of shared presets: absent, null, "", false, 0, [] or {} only. <see cref="Why"/> says why, for the
 /// message.
 /// </summary>
@@ -62,25 +71,28 @@ internal static class SharedPresetRules
     /// <summary>How deep the JSON may nest; a preset needs 5 levels.</summary>
     public const int MaxDepth = 16;
 
-    /// <summary>The kinds of preset that may be shared. Copy to folder needs a folder of one's own.</summary>
-    public static readonly IReadOnlyList<string> Kinds = [nameof(PresetKind.Convert), nameof(PresetKind.Group), nameof(PresetKind.Tool)];
+    /// <summary>
+    /// The kinds of preset that may be shared: every kind there is. Copy to folder comes without its folder (the
+    /// installer chooses one); a warning says so.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Kinds =
+        [nameof(PresetKind.Convert), nameof(PresetKind.Group), nameof(PresetKind.Tool), nameof(PresetKind.CopyToFolder)];
 
     /// <summary>
-    /// The tools that may be shared (<see cref="Preset.Tool"/>; null is the crop). Metadata is left out: what it
-    /// changes (author, GPS) is about people.
+    /// The tools that may be shared (<see cref="Preset.Tool"/>; null is the crop): every tool there is. A tool that runs
+    /// a program or a command (none yet) must never be added here.
     /// </summary>
     public static readonly IReadOnlyList<string?> Tools =
     [
         null, Preset.CropTool, Preset.ClipTool, Preset.ImageEditTool, Preset.HideTool, Preset.AnnotateTool,
-        Preset.BackgroundTool, Preset.UpscaleTool,
+        Preset.BackgroundTool, Preset.MetadataTool, Preset.UpscaleTool,
     ];
 
     /// <summary>
-    /// Where a shared preset may save: the default location, next to the source, or in a folder next to it (named by
-    /// <see cref="OutputRule.SubfolderName"/>, which may not hold a separator). Never a folder of its own.
+    /// Where a shared preset may save: every location. The folder of <see cref="OutputLocation.CustomFolder"/> is left
+    /// out (a path of one's own), so that one saves next to the source until the installer picks a folder.
     /// </summary>
-    public static readonly IReadOnlyList<string> Locations =
-        [nameof(OutputLocation.Default), nameof(OutputLocation.SameFolder), nameof(OutputLocation.Subfolder)];
+    public static readonly IReadOnlyList<string> Locations = System.Enum.GetNames<OutputLocation>();
 
     /// <summary>The placeholders a file name pattern may use (<see cref="OutputPathResolver.ExpandPattern"/>).</summary>
     public static readonly IReadOnlyList<string> Placeholders = ["name", "ext", "preset", "date", "time", "index"];
@@ -96,6 +108,27 @@ internal static class SharedPresetRules
     private static readonly BoolRule Flag = new();
     private static readonly StringRule Colour = new(9, SharedText.HexColour);
 
+    private static readonly ObjectRule Backdrop = Obj(
+        ("kind", Enum<BackdropKind>()),
+        ("from", Colour),
+        ("to", Colour),
+        ("color", Colour),
+        ("picture", new LeftOutRule("a picture of one's own is a path on one's computer")),
+        ("pictureWritten", new LeftOutRule("belongs to a picture of one's own")),
+        ("pictureLength", new LeftOutRule("belongs to a picture of one's own")),
+        ("padding", new IntRule(0, BackdropOptions.MaxPadding)),
+        ("corners", new IntRule(0, BackdropOptions.MaxCorners)),
+        ("shadow", new IntRule(0, BackdropOptions.MaxShadow)),
+        ("canvas", Enum<BackdropCanvas>()));
+
+    /// <summary>
+    /// A metadata field given a value: one that names a person, a place or a copyright owner
+    /// (<see cref="SharedText.IsPersonalField"/>) may only be emptied ([], which removes it), any other may hold text.
+    /// </summary>
+    private static ValueRule MetadataValue(string field) => SharedText.IsPersonalField(field)
+        ? new LeftOutRule("names, places and copyright owners are personal data; a shared preset may only remove this field")
+        : new ListRule(new StringRule(500), 50);
+
     /// <summary>The fields of one preset.</summary>
     public static readonly ObjectRule PresetFields = Obj(
         ("id", new StringRule(64, SharedText.Id)),
@@ -110,6 +143,7 @@ internal static class SharedPresetRules
         ("show", Enum<LabelShow>() with { Nullable = true }),
         ("direction", Enum<LabelDirection>() with { Nullable = true }),
         ("askCompression", Flag),
+        ("gallery", new LeftOutRule("set by the app on a preset installed from the gallery")),
         ("image", Obj(
             ("quality", new IntRule(1, 100)),
             ("maxSizeMb", new NumberRule(0, 10_000)),
@@ -118,23 +152,18 @@ internal static class SharedPresetRules
             ("resize", Enum<ResizeMode>()),
             ("rotation", Enum<ImageRotation>()),
             ("flip", Enum<ImageFlip>()),
-            ("annotations", new LeftOutRule("marks are drawn on one picture, never saved with a preset")),
+            ("annotations", new ListRule(Obj(
+                ("kind", Enum<AnnotationKind>()),
+                ("color", Colour),
+                ("width", Enum<AnnotationWidth>()),
+                ("points", new ListRule(Obj(("x", new NumberRule(-1, 2)), ("y", new NumberRule(-1, 2))), 5000)),
+                ("text", new StringRule(500) { Nullable = true }),
+                ("number", new IntRule(-9999, 9999))), 500)
+            { Nullable = true }),
             ("annotationColor", Colour with { Nullable = true }),
             ("annotationWidth", Enum<AnnotationWidth>()),
-            ("backdrop", new LeftOutRule("set on one conversion, never saved with a preset")),
-            ("backdropLook", Obj(
-                ("kind", Enum<BackdropKind>()),
-                ("from", Colour),
-                ("to", Colour),
-                ("color", Colour),
-                ("picture", new LeftOutRule("a picture of one's own is a path on one's computer")),
-                ("pictureWritten", new LeftOutRule("belongs to a picture of one's own")),
-                ("pictureLength", new LeftOutRule("belongs to a picture of one's own")),
-                ("padding", new IntRule(0, BackdropOptions.MaxPadding)),
-                ("corners", new IntRule(0, BackdropOptions.MaxCorners)),
-                ("shadow", new IntRule(0, BackdropOptions.MaxShadow)),
-                ("canvas", Enum<BackdropCanvas>())) with
-            { Nullable = true }),
+            ("backdrop", Backdrop with { Nullable = true }),
+            ("backdropLook", Backdrop with { Nullable = true }),
             ("resizePercent", new IntRule(1, 1000)),
             ("longEdge", new IntRule(1, CustomImageSize.MaxSide)),
             ("width", new IntRule(1, CustomImageSize.MaxSide)),
@@ -171,7 +200,13 @@ internal static class SharedPresetRules
             ("icoSizes", new ListRule(new IntRule(16, 256, IcoSizes), IcoSizes.Length)),
             ("hideStyle", Enum<HideStyle>()),
             ("hideStrength", new IntRule(HideTool.MinStrength, HideTool.MaxStrength)),
-            ("hiddenAreas", new LeftOutRule("the parts of one picture to hide, never saved with a preset")),
+            ("hiddenAreas", new ListRule(Obj(
+                ("x", new NumberRule(0, 1)),
+                ("y", new NumberRule(0, 1)),
+                ("width", new NumberRule(0, 1)),
+                ("height", new NumberRule(0, 1)),
+                ("style", Enum<HideStyle>() with { Nullable = true })), 500)
+            { Nullable = true }),
             ("animationSpeed", new NumberRule(0.1, 10)))),
         ("pdf", Obj(
             ("mergeIntoSingle", Flag),
@@ -204,7 +239,7 @@ internal static class SharedPresetRules
             ("watermark", new StringRule(100)),
             ("pageNumbers", Flag),
             ("password", new LeftOutRule("a password is never shared")),
-            ("passwordLeftOut", new BoolRule(false)),
+            ("passwordLeftOut", Flag),
             ("ocr", Flag),
             ("ocrLanguage", new StringRule(64, SharedText.OcrLanguages)))),
         ("document", Obj(
@@ -239,7 +274,25 @@ internal static class SharedPresetRules
             ("exactCut", Flag),
             ("splitEverySeconds", new IntRule(0, 86_400)),
             ("splitParts", new IntRule(0, MediaOptions.MaxSplitParts)),
-            ("clip", new LeftOutRule("a clip is cut from one video, and its music is a file of one's own")),
+            ("clip", Obj(
+                ("parts", new ListRule(Obj(
+                    ("start", new NumberRule(0, 1_000_000)),
+                    ("end", new NumberRule(0, 1_000_000)),
+                    ("blank", Flag),
+                    ("volume", new NumberRule(0, ClipPart.MaxVolume)),
+                    ("muted", Flag),
+                    ("speed", new NumberRule(ClipPart.MinSpeed, ClipPart.MaxSpeed))), 1000)),
+                ("fadeIn", new NumberRule(0, ClipEdit.MaxFade)),
+                ("fadeOut", new NumberRule(0, ClipEdit.MaxFade)),
+                ("music", Obj(
+                    ("path", new LeftOutRule("a sound of one's own is a path on one's computer")),
+                    ("offset", new NumberRule(0, 1_000_000)),
+                    ("from", new NumberRule(0, 1_000_000)),
+                    ("length", new NumberRule(0, 1_000_000)),
+                    ("volume", new NumberRule(0, ClipPart.MaxVolume)),
+                    ("fade", Flag)) with
+                { Nullable = true })) with
+            { Nullable = true }),
             ("joinIntoOne", Flag),
             ("loopMusic", Flag),
             ("slideshow", Flag),
@@ -263,12 +316,17 @@ internal static class SharedPresetRules
             ("enabled", Flag),
             ("targetLanguage", new StringRule(16, SharedText.LanguageCode)),
             ("sourceLanguage", new StringRule(16, SharedText.LanguageCode)),
-            ("model", new LeftOutRule("the AI model is the installer's own choice (Settings)")))),
+            ("model", new StringRule(100, SharedText.OllamaModel) { Nullable = true }))),
         ("upscale", Obj(
             ("enabled", Flag),
             ("model", new StringRule(80, SharedText.ModelId) { Nullable = true }),
             ("scale", new IntRule(1, 8)))),
-        ("metadata", new LeftOutRule("metadata edits write names, places and dates into files")),
+        ("metadata", Obj(
+            ("set", new MapRule(200, SharedText.MetadataField, MetadataValue)),
+            ("remove", new ListRule(new StringRule(100, SharedText.MetadataField), 500)),
+            ("removeLocation", Flag),
+            ("removeAll", Flag)) with
+        { Nullable = true }),
         ("output", Obj(
             ("location", new EnumRule(Locations)),
             ("askEveryTime", Flag),
@@ -283,12 +341,12 @@ internal static class SharedPresetRules
                 ("replace", new StringRule(100, SharedText.RenameReplace)),
                 // Written by an export, never read back (RenameStep.IsBlank has no setter).
                 ("isBlank", Flag)), 10)),
-            ("conflict", new EnumRule([nameof(ConflictPolicy.Rename), nameof(ConflictPolicy.Skip)])),
+            ("conflict", Enum<ConflictPolicy>()),
             ("keepDates", Flag),
             ("zipResult", Flag),
             ("onlyIfSmaller", Flag),
-            ("replaceOriginal", new BoolRule(false)),
-            ("moveInsteadOfCopy", new BoolRule(false)))));
+            ("replaceOriginal", Flag),
+            ("moveInsteadOfCopy", Flag))));
 
     /// <summary>The fields of one toolbar profile (a donut).</summary>
     public static readonly ObjectRule ProfileFields = Obj(
