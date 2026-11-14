@@ -1365,12 +1365,16 @@ a slide.
   theme's hyperlink colour; slide number fields; Latin, East Asian and complex-script fonts per character
   (`HWordFonts`), symbol fonts as the Unicode characters they show. Text turns with its shape but isn't mirrored; a
   vertically flipped shape turns it upside down, as PowerPoint does.
-- **Geometry** (`ShapeGeometry.cs`, `PresetShapes.cs`): the guide formula language and path commands of ECMA-376
-  (20.1.9), with arc angles turned into the ellipse's parameter. 107 presets are written from the standard's
-  definitions in Filee's own compact notation (rectangles and rounded / snipped variants, ellipses, polygons, stars of
-  4 to 32 points, arrows, callouts, brackets and braces, connectors, flowchart shapes, can, cube, bevel, frame, donut,
-  pie, chord, arc, heart, smiley, math signs, wave, ...). Damage stays contained: unknown names count as 0, a
-  division by zero gives 0, values are clamped, guides and path commands are limited per shape and per deck.
+- **Geometry** (`ShapeGeometry.cs`, `PresetShapes*.cs`): the guide formula language and path commands of ECMA-376
+  (20.1.9), with arc angles turned into the ellipse's parameter (seen in the path's own space when it has a w / h).
+  All 187 presets of ST_ShapeType are written from the standard's definitions in Filee's own compact notation
+  (rectangles and rounded / snipped variants, ellipses, polygons, stars of 4 to 32 points, arrows, callouts with
+  leaders and accent bars, brackets and braces, connectors, flowchart shapes, action buttons, ribbons, scrolls,
+  curved and circular arrows, gears, clouds, sun, moon, math signs, waves, ...); families that repeat one rule
+  (callouts, gears, circular arrows, action buttons) are generated, and turned twins (curved arrows, ribbon2,
+  ellipseRibbon2, verticalScroll) are their shape mirrored or transposed. Damage stays contained: unknown names
+  count as 0, a division by zero gives 0, values are clamped, guides and path commands are limited per shape and per
+  deck.
 - **Drawing** (`SlideRenderer.cs`, `SlidePaint.cs`): on `PageContent`, which now also draws glyph runs and layers
   through a matrix (`GlyphRun.Transform`, `PageContent.Add(layer, matrix)`), so turned shapes and vertical frames keep
   real text in the PDF. Paths filled (the lighter and darker parts of 3D-looking presets as a white or black veil),
@@ -1385,8 +1389,8 @@ a slide.
 - **The check** (`SlideCapabilities.cs`) looks at the shown slides and the layouts and masters they use, leaving out
   what a fallback replaces, and names: charts without a stored picture, SmartArt without its drawing, OLE objects and
   other embedded content without a picture, ink, shadows and other effects (on shapes, pictures and text, or through
-  the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, presets not in
-  `PresetShapes`, and TIFF and JPEG XR pictures.
+  the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, preset names outside
+  ST_ShapeType, and TIFF and JPEG XR pictures.
 - **Hostile input:** parts through `DocumentPackage` (part and package sizes, inflate ratio, XML depth and elements),
   `DocumentBudget` for paragraphs, objects and group nesting, pictures whose header claims more than
   `MaxPicturePixels` left out, slide sizes clamped to PowerPoint's range; a file that is no deck, or a damaged part, is
@@ -1406,8 +1410,7 @@ Every slide's text reads back, nothing is outside a slide, every font is embedde
 Not yet: shadows, glow, reflection, soft edges and 3D (named by the check); WordArt warps and text outlines; East Asian
 vertical text (upright characters); gradient-filled text (the first stop's colour); tiled pictures at their own
 resolution (taken as 96 dpi); a gradient that doesn't turn with its shape; "rect" path gradients (drawn as an ellipse
-through the corners); the remaining presets (block arcs, no-smoking signs, clouds, ribbons, scrolls, curved and
-circular arrows, action buttons, border callouts, gears, ...); charts drawn from their data; notes pages and handouts.
+through the corners); charts drawn from their data; notes pages and handouts.
 
 ## DOCX writer
 

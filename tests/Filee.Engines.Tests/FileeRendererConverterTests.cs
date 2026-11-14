@@ -101,7 +101,7 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
 
     [Theory]
     [InlineData("<p:graphicFrame><p:xfrm/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" r:id=\"rId9\"/></a:graphicData></a:graphic></p:graphicFrame>", "charts")]
-    [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"cloud\"/></p:spPr></p:sp>", "the preset shape cloud")]
+    [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"notAPreset\"/></p:spPr></p:sp>", "the preset shape notAPreset")]
     [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"rect\"/><a:effectLst><a:outerShdw blurRad=\"40000\"/></a:effectLst></p:spPr></p:sp>", "shadows and effects")]
     [InlineData("<p:sp><p:spPr/><p:style><a:effectRef idx=\"3\"/></p:style></p:sp>", "shadows and effects")]
     [InlineData("<p:sp><p:spPr/><p:txBody><a:bodyPr vert=\"eaVert\"/></p:txBody></p:sp>", "vertical East Asian text")]
@@ -120,8 +120,8 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     public void The_slide_check_leaves_out_hidden_slides_and_what_a_fallback_replaces()
     {
         var deck = new SlideDeckBuilder();
-        deck.Slide("<p:sp><p:spPr><a:prstGeom prst=\"cloud\"/></p:spPr></p:sp>", hidden: true);
-        deck.Slide("<mc:AlternateContent><mc:Choice Requires=\"p14\"><p:sp><p:spPr><a:prstGeom prst=\"cloud\"/></p:spPr></p:sp></mc:Choice>" +
+        deck.Slide("<p:sp><p:spPr><a:prstGeom prst=\"notAPreset\"/></p:spPr></p:sp>", hidden: true);
+        deck.Slide("<mc:AlternateContent><mc:Choice Requires=\"p14\"><p:sp><p:spPr><a:prstGeom prst=\"notAPreset\"/></p:spPr></p:sp></mc:Choice>" +
                    "<mc:Fallback><p:sp><p:spPr><a:prstGeom prst=\"rect\"/></p:spPr></p:sp></mc:Fallback></mc:AlternateContent>");
         var path = deck.Save(Path.Combine(fx.NewFolder(), "deck.pptx"));
         Assert.Null(new FileeRendererConverter().FirstUnsupported(path, "pptx"));
