@@ -15,6 +15,7 @@ using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Odf.Draw;
 using Filee.Engines.Office.Ppt;
 
 namespace Filee.Engines.Office;
@@ -54,7 +55,9 @@ public sealed class PptxWriterConverter : IConverter, ICapabilityCheck
     /// <summary>A Word 6.0 / 95 or Works file with a .doc or .wps name, which the DOC reader doesn't read.</summary>
     public string? FirstUnsupported(string sourcePath, string sourceFormat) => DocumentReaders.Unsupported(sourcePath, sourceFormat);
 
-    private static IEnumerable<string> Sources(bool pandoc) => DocumentReaders.Formats(pandoc).Where(f => !NotSources.Contains(f));
+    private static IEnumerable<string> Sources(bool pandoc) => DocumentReaders.Formats(pandoc).Where(f => !NotSources.Contains(f))
+        // OpenDocument presentations are decks already: ODP → PPTX stays with LibreOffice.
+        .Where(f => !OdfDrawReader.Presentations.Contains(f));
 
     public EngineStatus GetStatus()
     {

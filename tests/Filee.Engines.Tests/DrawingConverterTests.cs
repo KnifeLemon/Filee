@@ -1,5 +1,6 @@
 // SVG output of the slide renderer (SlideOutput.ToSvg) and the drawing converter (Drawings/), tried with a test format
-// whose reader is the PPTX slide reader (VisioTests try its VSDX format). Decks are written in code.
+// whose reader is the PPTX slide reader (VisioTests try its VSDX format, OdfDrawTests its ODG / FODG ones). Decks are
+// written in code.
 
 using System.Xml.Linq;
 using Filee.Core.Conversion;
@@ -114,7 +115,7 @@ public sealed class DrawingConverterTests : IDisposable
     {
         var engine = Assert.Single(EngineRegistry.CreateAll(new Infrastructure.EngineEnvironment(_folder)).OfType<DrawingConverter>());
         Assert.Equal("drawing", engine.Id);
-        Assert.Equal(["vsd"], engine.Edges.Select(e => e.From).Distinct());
+        Assert.Equal(["vsd", "odg", "fodg"], engine.Edges.Select(e => e.From).Distinct());
         Assert.True(engine.GetStatus().IsAvailable);
         Assert.Null(engine.FirstUnsupported(Path.Combine(_folder, "a.odg"), "odg"));
     }

@@ -606,7 +606,7 @@ internal sealed partial class OdtReader
     /// Joins neighbouring text of one format (ODF splits it at spaces, spans and soft page breaks) and drops empty
     /// text, in one pass: each run of text is built once.
     /// </summary>
-    private static void Merge(List<HInline> inlines)
+    internal static void Merge(List<HInline> inlines)
     {
         var merged = new List<HInline>(inlines.Count);
         HText? first = null;
