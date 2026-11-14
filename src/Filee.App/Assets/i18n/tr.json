@@ -1405,6 +1405,7 @@
   "engines.other_copy_detail": "{0} (Filee'nin indirdiği kopya kaldırılır)",
   "engines.use_other_copy": "Bunun yerine bunu kullan",
   "engines.use_other_copy_confirm": "{0} içindeki kopya kullanılsın ve Filee'nin indirdiği {1} kaldırılsın mı? Daha sonra yeniden indirebilirsiniz.",
+  "engines.other_copy_gone": "Bu kopya artık bulunamıyor veya başlamıyor. Filee'nin indirdiği kopya korundu.",
   "engines.install_filee_copy": "Filee'nin kopyasını kur",
   "engines.use_another": "Başka bir kopya kullan…",
   "engines.update_recommended": "Güncelleme önerilir: bu kopya {0}, Filee ise {1} ile test edilmiştir.\nÇoğu dönüştürme yine de çalışır.",

@@ -1422,6 +1422,7 @@
   "engines.other_copy_detail": "{0} (a transferência do Filee seria removida)",
   "engines.use_other_copy": "Utilizar esta em vez disso",
   "engines.use_other_copy_confirm": "Utilizar a cópia em {0} e remover a transferência de {1} feita pelo Filee? Podes voltar a descarregá-lo mais tarde.",
+  "engines.other_copy_gone": "Essa cópia já não é encontrada ou não arranca. A transferência do Filee foi mantida.",
   "engines.install_filee_copy": "Instalar a cópia do Filee",
   "engines.use_another": "Utilizar outra cópia…",
   "engines.update_recommended": "Atualização recomendada: esta cópia é a versão {0}; o Filee é testado com a {1}.\nA maioria das conversões continua a funcionar.",

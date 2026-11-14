@@ -1405,6 +1405,7 @@
   "engines.other_copy_detail": "{0} (unduhan Filee akan dihapus)",
   "engines.use_other_copy": "Gunakan yang ini saja",
   "engines.use_other_copy_confirm": "Gunakan salinan di {0} dan hapus unduhan {1} dari Filee? Anda dapat mengunduhnya lagi nanti.",
+  "engines.other_copy_gone": "Salinan itu tidak ditemukan lagi atau tidak bisa dijalankan. Unduhan Filee tetap disimpan.",
   "engines.install_filee_copy": "Pasang salinan Filee",
   "engines.use_another": "Gunakan salinan lain…",
   "engines.update_recommended": "Pembaruan disarankan: salinan ini versi {0}, Filee diuji dengan versi {1}.\nSebagian besar konversi tetap dapat berjalan.",

@@ -1422,6 +1422,7 @@
   "engines.other_copy_detail": "{0} (Filee's download would be removed)",
   "engines.use_other_copy": "Use this one instead",
   "engines.use_other_copy_confirm": "Use the copy in {0} and remove Filee's download of {1}? You can download it again later.",
+  "engines.other_copy_gone": "That copy can no longer be found or doesn't start. Filee's download was kept.",
   "engines.install_filee_copy": "Install Filee's copy",
   "engines.use_another": "Use another copy…",
   "engines.update_recommended": "Update recommended: this copy is {0}, Filee is tested with {1}.\nMost conversions still work.",

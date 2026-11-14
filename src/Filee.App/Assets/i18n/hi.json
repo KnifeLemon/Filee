@@ -1405,6 +1405,7 @@
   "engines.other_copy_detail": "{0} (Filee का डाउनलोड हटा दिया जाएगा)",
   "engines.use_other_copy": "इसके बजाय यह इस्तेमाल करें",
   "engines.use_other_copy_confirm": "{0} वाली कॉपी इस्तेमाल करें और Filee का डाउनलोड किया {1} हटाएँ? आप इसे बाद में दोबारा डाउनलोड कर सकते हैं।",
+  "engines.other_copy_gone": "वह कॉपी अब नहीं मिल रही या शुरू नहीं होती। Filee का डाउनलोड रखा गया है।",
   "engines.install_filee_copy": "Filee की कॉपी इंस्टॉल करें",
   "engines.use_another": "दूसरी कॉपी इस्तेमाल करें…",
   "engines.update_recommended": "अपडेट अनुशंसित: यह कॉपी {0} है, Filee का परीक्षण {1} के साथ हुआ है।\nज़्यादातर कन्वर्ज़न फिर भी काम करते हैं।",

@@ -1405,6 +1405,7 @@
   "engines.other_copy_detail": "{0} (der Download von Filee würde entfernt)",
   "engines.use_other_copy": "Stattdessen diese verwenden",
   "engines.use_other_copy_confirm": "Die Installation in {0} verwenden und den Download von {1} durch Filee entfernen? Du kannst es später erneut herunterladen.",
+  "engines.other_copy_gone": "Diese Installation ist nicht mehr zu finden oder startet nicht. Der Download von Filee wurde behalten.",
   "engines.install_filee_copy": "Version von Filee installieren",
   "engines.use_another": "Andere Version…",
   "engines.update_recommended": "Update empfohlen: Diese Installation hat Version {0}; Filee wurde mit {1} getestet.\nDie meisten Konvertierungen funktionieren trotzdem.",

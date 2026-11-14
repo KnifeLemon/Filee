@@ -513,7 +513,7 @@ public partial class EnginesPage : UserControl
         var loc = AppHost.Get<ILocalizer>();
         if (!await ConfirmAsync(window, loc.Format("engines.use_other_copy_confirm", EnginePackageState.DisplayFolder(folder), package.Name)))
             return;
-        if (vm.Remove(package) is { } reason)
+        if (await vm.UseOtherCopyAsync(package, folder) is { } reason)
             await AppHost.Get<WindowService>().MessageAsync(window, loc[reason]);
     }
 

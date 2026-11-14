@@ -1422,6 +1422,7 @@
   "engines.other_copy_detail": "{0} (копия, загруженная Filee, будет удалена)",
   "engines.use_other_copy": "Использовать эту",
   "engines.use_other_copy_confirm": "Использовать копию из {0} и удалить {1}, загруженный Filee? Его можно будет скачать снова.",
+  "engines.other_copy_gone": "Эта копия больше не найдена или не запускается. Копия, загруженная Filee, сохранена.",
   "engines.install_filee_copy": "Установить копию Filee",
   "engines.use_another": "Использовать другую копию…",
   "engines.update_recommended": "Рекомендуется обновить: у этой копии версия {0}, а Filee проверен с {1}.\nБольшинство конвертаций всё равно работает.",

@@ -133,6 +133,11 @@ public sealed class SystemCopyTests : IDisposable
     [InlineData("calibre", "ebook-convert.exe (calibre 8.5.0)\nCreated by: Kovid Goyal", "8.5")]
     [InlineData("weasyprint", "WeasyPrint version 70.0", "70.0")]
     [InlineData("ghostscript", "10.04.0\r\n", "10.4")]
+    [InlineData("tesseract", "tesseract 5.5.3\n leptonica-1.87.0\n  libgif 5.2.2 : libjpeg 8d", "5.5")]
+    [InlineData("tesseract", "tesseract v5.4.0.20240606\r\n leptonica-1.84.1\r\n", "5.4")]
+    [InlineData("tesseract", " leptonica-1.87.0\n  libpng 1.6.58 : zlib 1.2.12\n", null)]
+    [InlineData("exiftool", "13.60\n", "13.60")]
+    [InlineData("ghostscript", "99999999999.1\n", null)]
     [InlineData("libreoffice", "[Version]\nAllLanguages=en-US\nMsiProductVersion=25.2.4.3\n", "25.2")]
     [InlineData("libreoffice", "LibreOffice 26.2.6.2 98d5f8\n", "26.2")]
     // LibreOffice 26.8's version.ini has no MsiProductVersion; Installed adds soffice.exe's product version to it.
@@ -202,6 +207,153 @@ public sealed class SystemCopyTests : IDisposable
         finally
         {
             Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void Filees_download_reached_by_another_path_is_not_reported_as_another_copy()
+    {
+        var root = Directory.CreateTempSubdirectory("filee-download-").FullName;
+        try
+        {
+            var component = new EngineComponent("ffmpeg", "8.0", "https://example.test/ffmpeg.zip", new string('a', 64), 1, "zip");
+            var installer = new EngineInstaller(new HttpClient(), root, new Dictionary<string, EngineComponent> { ["ffmpeg"] = component });
+            var package = new EnginePackage("ffmpeg", ["ffmpeg"], 1000, ["ffmpeg"]);
+            var download = Directory.CreateDirectory(Path.Combine(root, "ffmpeg")).FullName;
+            File.WriteAllText(Path.Combine(download, ".filee-component"), component.Sha256);
+            var bin = Directory.CreateDirectory(Path.Combine(download, "bin")).FullName;
+            var programs = new[] { "ffmpeg.exe", "ffprobe.exe" }.Select(EngineEnvironment.ProgramName).ToList();
+            File.WriteAllBytes(Path.Combine(bin, programs[0]), [0x4D, 0x5A, 1]);
+            File.WriteAllBytes(Path.Combine(bin, programs[1]), [0x4D, 0x5A, 2]);
+
+            // A link to the download, a link to its bin folder (also written with separators at the end, as PATH
+            // entries may be), and links to its programs in a folder of their own (a user putting Filee's FFmpeg on the
+            // PATH).
+            var toDownload = Path.Combine(_folder, "to-download");
+            var toBin = Path.Combine(_folder, "to-bin");
+            var programLinks = Directory.CreateDirectory(Path.Combine(_folder, "program-links")).FullName;
+            try
+            {
+                Directory.CreateSymbolicLink(toDownload, download);
+                Directory.CreateSymbolicLink(toBin, bin);
+                foreach (var program in programs)
+                    File.CreateSymbolicLink(Path.Combine(programLinks, program), Path.Combine(bin, program));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("Making a link needs Developer Mode or an administrator here.");
+            }
+            // And a link to a folder above the programs, as a user linking Filee's LibreOffice.app into /Applications.
+            var app = Directory.CreateDirectory(Path.Combine(download, "app", "Contents", "MacOS")).FullName;
+            foreach (var program in programs)
+                File.Copy(Path.Combine(bin, program), Path.Combine(app, program));
+            Directory.CreateSymbolicLink(Path.Combine(_folder, "app-link"), Path.Combine(download, "app"));
+            var throughApp = Path.Combine(_folder, "app-link", "Contents", "MacOS");
+            var sep = Path.DirectorySeparatorChar;
+            foreach (var entry in new[] { toDownload, toBin, $"{toBin}{sep}", $"{toBin}{sep}{sep}", programLinks, throughApp })
+            {
+                Environment.SetEnvironmentVariable("PATH", entry + Path.PathSeparator + _path);
+                EngineEnvironment.ForgetSystemCopies();
+                Assert.NotNull(EngineEnvironment.SystemCopyFolder("ffmpeg"));
+                // Removing "Filee's download" to use this copy would remove the copy itself.
+                Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, false), installer.StatusOf(package));
+            }
+
+            // A copy of its own is reported, even one unpacked from the same archive (the same files and times).
+            var other = Directory.CreateDirectory(Path.Combine(_folder, "other")).FullName;
+            foreach (var program in programs)
+            {
+                File.Copy(Path.Combine(bin, program), Path.Combine(other, program));
+                File.SetLastWriteTimeUtc(Path.Combine(other, program), File.GetLastWriteTimeUtc(Path.Combine(bin, program)));
+            }
+            Environment.SetEnvironmentVariable("PATH", other + Path.PathSeparator + _path);
+            EngineEnvironment.ForgetSystemCopies();
+            Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, false, other), installer.StatusOf(package));
+        }
+        finally
+        {
+            foreach (var link in new[] { "to-download", "to-bin", "app-link" }.Select(l => Path.Combine(_folder, l)))
+                if (Directory.Exists(link))
+                    Directory.Delete(link);
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")] // skips there
+    public void A_copy_runs_when_it_answers_and_a_start_that_failed_is_tried_again()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in programs are shell scripts.");
+        var program = Path.Combine(_folder, "tesseract");
+        File.WriteAllText(program, "#!/bin/sh\necho 'tesseract 5.5.3'\n");
+        File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        Assert.True(CopyVersions.Runs("tesseract", _folder));
+        Assert.Equal(new Version(5, 5), CopyVersions.Installed("tesseract", _folder));
+
+        // Answers without a version Filee can read: it still runs.
+        var convert = Path.Combine(_folder, "ebook-convert");
+        File.WriteAllText(convert, "#!/bin/sh\necho 'Usage: ebook-convert input_file output_file'\n");
+        File.SetUnixFileMode(convert, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        Assert.True(CopyVersions.Runs("calibre", _folder));
+        Assert.Null(CopyVersions.Installed("calibre", _folder));
+
+        // ExifTool's --version prints its manual; only -ver prints the number.
+        var exiftool = Path.Combine(_folder, "exiftool");
+        File.WriteAllText(exiftool, "#!/bin/sh\nif [ \"$1\" = -ver ]; then echo 13.60; else echo NAME; echo '    exiftool 12.5 - Read and write meta information'; fi\n");
+        File.SetUnixFileMode(exiftool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        Assert.Equal(new Version(13, 60), CopyVersions.Installed("exiftool", _folder));
+
+        // It stopped working (a library it needs was removed): the same file, but it fails.
+        var time = File.GetLastWriteTimeUtc(program);
+        File.WriteAllText(program, "#!/bin/sh\nexit 134\n");
+        File.SetLastWriteTimeUtc(program, time);
+        Assert.False(CopyVersions.Runs("tesseract", _folder));
+
+        // Not startable at first (no execute permission), then fixed with the same file time: the version is read then.
+        var pandoc = Path.Combine(_folder, "pandoc");
+        File.WriteAllText(pandoc, "#!/bin/sh\necho 'pandoc 3.6.4'\n");
+        File.SetUnixFileMode(pandoc, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        Assert.Null(CopyVersions.Installed("pandoc", _folder));
+        Assert.False(CopyVersions.Runs("pandoc", _folder));
+        File.SetUnixFileMode(pandoc, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        Assert.Equal(new Version(3, 6), CopyVersions.Installed("pandoc", _folder));
+
+        // Failing at first (a library missing), then repaired with the same file: the version is read then too.
+        var gs = Path.Combine(_folder, "gs");
+        File.WriteAllText(gs, "#!/bin/sh\nexit 1\n");
+        File.SetUnixFileMode(gs, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var written = File.GetLastWriteTimeUtc(gs);
+        Assert.Null(CopyVersions.Installed("ghostscript", _folder));
+        File.WriteAllText(gs, "#!/bin/sh\necho 10.04.0\n");
+        File.SetLastWriteTimeUtc(gs, written);
+        Assert.Equal(new Version(10, 4), CopyVersions.Installed("ghostscript", _folder));
+    }
+
+    [Fact]
+    public void Forgetting_one_package_searches_again_for_it_only()
+    {
+        File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("ffmpeg.exe")), [0x4D, 0x5A]);
+        File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("ffprobe.exe")), [0x4D, 0x5A]);
+        File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("pandoc.exe")), [0x4D, 0x5A]);
+        Environment.SetEnvironmentVariable("PATH", _folder + Path.PathSeparator + _path);
+        EngineEnvironment.ForgetSystemCopies();
+        Assert.Equal(_folder, EngineEnvironment.SystemCopyFolder("ffmpeg"));
+        Assert.Equal(_folder, EngineEnvironment.SystemCopyFolder("pandoc"));
+
+        // Both move; only Pandoc's download was removed, so only Pandoc is searched again.
+        var moved = Directory.CreateTempSubdirectory("filee-path-moved-").FullName;
+        try
+        {
+            foreach (var program in new[] { "ffmpeg.exe", "ffprobe.exe", "pandoc.exe" })
+                File.Move(Path.Combine(_folder, EngineEnvironment.ProgramName(program)), Path.Combine(moved, EngineEnvironment.ProgramName(program)));
+            Environment.SetEnvironmentVariable("PATH", moved + Path.PathSeparator + _path);
+            EngineEnvironment.ForgetSystemCopy("pandoc");
+            Assert.Equal(moved, EngineEnvironment.SystemCopyFolder("pandoc"));
+            Assert.Equal(_folder, EngineEnvironment.SystemCopyFolder("ffmpeg"));
+        }
+        finally
+        {
+            Directory.Delete(moved, true);
         }
     }
 

@@ -1422,6 +1422,7 @@
   "engines.other_copy_detail": "{0}（將刪除 Filee 下載的程式）",
   "engines.use_other_copy": "改用這個",
   "engines.use_other_copy_confirm": "使用 {0} 中的程式並刪除 Filee 下載的 {1}？以後可以重新下載。",
+  "engines.other_copy_gone": "找不到該程式或無法啟動。已保留 Filee 下載的版本。",
   "engines.install_filee_copy": "安裝 Filee 的版本",
   "engines.use_another": "使用其他程式…",
   "engines.update_recommended": "建議更新：此程式為 {0} 版，Filee 使用 {1} 版測試。\n大多數轉換仍可正常進行。",

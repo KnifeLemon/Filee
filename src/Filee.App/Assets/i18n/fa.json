@@ -1404,6 +1404,7 @@
   "engines.other_copy_detail": "{0} (دانلود Filee حذف می‌شود)",
   "engines.use_other_copy": "به جای آن از این استفاده شود",
   "engines.use_other_copy_confirm": "از نسخه موجود در {0} استفاده شود و دانلود {1} توسط Filee حذف شود؟ می‌توانید بعداً دوباره آن را دانلود کنید.",
+  "engines.other_copy_gone": "آن نسخه دیگر پیدا نمی‌شود یا اجرا نمی‌شود. دانلود Filee نگه داشته شد.",
   "engines.install_filee_copy": "نصب نسخه Filee",
   "engines.use_another": "استفاده از نسخه دیگر…",
   "engines.update_recommended": "به‌روزرسانی توصیه می‌شود: این نسخه {0} است، در حالی که Filee با نسخه {1} آزمایش شده است.\nبیشتر تبدیل‌ها همچنان کار می‌کنند.",

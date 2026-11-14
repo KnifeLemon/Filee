@@ -1422,6 +1422,7 @@
   "engines.other_copy_detail": "{0} (bản tải xuống của Filee sẽ bị gỡ bỏ)",
   "engines.use_other_copy": "Dùng bản này thay thế",
   "engines.use_other_copy_confirm": "Dùng bản trong {0} và gỡ bỏ bản tải xuống {1} của Filee? Bạn có thể tải xuống lại sau.",
+  "engines.other_copy_gone": "Không còn tìm thấy bản đó hoặc bản đó không chạy. Bản tải xuống của Filee được giữ lại.",
   "engines.install_filee_copy": "Cài bản của Filee",
   "engines.use_another": "Dùng bản khác…",
   "engines.update_recommended": "Nên cập nhật: bản này là {0}, Filee được kiểm thử với {1}.\nHầu hết các chuyển đổi vẫn hoạt động.",

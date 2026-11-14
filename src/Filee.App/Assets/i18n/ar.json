@@ -1405,6 +1405,7 @@
   "engines.other_copy_detail": "{0} (ستُزال نسخة Filee المنزّلة)",
   "engines.use_other_copy": "استخدام هذه بدلًا منها",
   "engines.use_other_copy_confirm": "هل تريد استخدام النسخة الموجودة في {0} وإزالة نسخة {1} التي نزّلها Filee؟ يمكنك تنزيلها مجددًا لاحقًا.",
+  "engines.other_copy_gone": "لم يعد من الممكن العثور على تلك النسخة أو أنها لا تعمل. تم الإبقاء على نسخة Filee المنزّلة.",
   "engines.install_filee_copy": "تثبيت نسخة Filee",
   "engines.use_another": "استخدام نسخة أخرى…",
   "engines.update_recommended": "يوصى بالتحديث: هذه النسخة هي {0}، وقد اختُبر Filee مع {1}.\nتظل معظم التحويلات تعمل.",

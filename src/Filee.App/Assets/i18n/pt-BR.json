@@ -1422,6 +1422,7 @@
   "engines.other_copy_detail": "{0} (o download do Filee seria removido)",
   "engines.use_other_copy": "Usar esta no lugar",
   "engines.use_other_copy_confirm": "Usar a cópia em {0} e remover o download do {1} feito pelo Filee? Você pode baixar de novo depois.",
+  "engines.other_copy_gone": "Essa cópia não foi mais encontrada ou não inicia. O download do Filee foi mantido.",
   "engines.install_filee_copy": "Instalar a cópia do Filee",
   "engines.use_another": "Usar outra cópia…",
   "engines.update_recommended": "Atualização recomendada: esta cópia é {0}, o Filee foi testado com {1}.\nA maioria das conversões continua funcionando.",

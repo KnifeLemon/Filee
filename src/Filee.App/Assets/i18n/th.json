@@ -1405,6 +1405,7 @@
   "engines.other_copy_detail": "{0} (โปรแกรมที่ Filee ดาวน์โหลดไว้จะถูกลบ)",
   "engines.use_other_copy": "ใช้โปรแกรมนี้แทน",
   "engines.use_other_copy_confirm": "ใช้โปรแกรมใน {0} และลบ {1} ที่ Filee ดาวน์โหลดไว้หรือไม่? คุณสามารถดาวน์โหลดใหม่ได้ในภายหลัง",
+  "engines.other_copy_gone": "ไม่พบโปรแกรมนั้นแล้วหรือเปิดไม่ได้ จึงเก็บสิ่งที่ Filee ดาวน์โหลดไว้ตามเดิม",
   "engines.install_filee_copy": "ติดตั้งของ Filee",
   "engines.use_another": "ใช้โปรแกรมอื่น…",
   "engines.update_recommended": "แนะนำให้อัปเดต: เวอร์ชันที่คุณใช้อยู่คือ {0} แต่ Filee ได้รับการทดสอบกับ {1}\nการแปลงส่วนใหญ่จะยังคงทำงานได้",

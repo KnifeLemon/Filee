@@ -117,8 +117,8 @@
                       </Border>
                     </StackPanel>
                     <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}" />
-                    <!-- Where the engine in use comes from; the download size only while it isn't there, or when
-                         Filee's download is offered over an older copy. -->
+                    <!-- Where the engine in use comes from; the download size only while it isn't there, when Filee's
+                         download is offered over a copy (older, or of unknown version), or when its update is. -->
                     <TextBlock FontSize="12" Text="{Binding SourceText}" TextTrimming="CharacterEllipsis"
                                IsVisible="{Binding SourceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     <TextBlock Classes="caption" Text="{Binding Sizes}">
@@ -126,6 +126,7 @@
                         <MultiBinding Converter="{x:Static BoolConverters.Or}">
                           <Binding Path="!IsInstalled" />
                           <Binding Path="InstallsOverCopy" />
+                          <Binding Path="CanUpdate" />
                         </MultiBinding>
                       </TextBlock.IsVisible>
                     </TextBlock>

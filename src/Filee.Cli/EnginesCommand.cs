@@ -156,8 +156,9 @@ internal static class EnginesCommand
     // ───────────────────────── Install and remove ─────────────────────────
 
     /// <summary>
-    /// As the Engines page offers it: a package not installed, Filee's download of an outdated one, and Filee's download
-    /// over a copy found on the PC (it is the tested version). The user's own copy is left in use.
+    /// A package not installed, Filee's download of an outdated one, and Filee's download over a copy found on the PC
+    /// (it is the tested version), as the first-run setup installs it; the Engines page offers that last one only over
+    /// a copy that is older or whose version can't be read. The user's own copy is left in use.
     /// </summary>
     private static async Task<Result> InstallAsync(EnginePackage package, CliOptions options, CliHost host, TextWriter errors,
         CancellationToken cancellationToken)

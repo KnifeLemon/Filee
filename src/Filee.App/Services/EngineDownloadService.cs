@@ -104,8 +104,16 @@ public sealed partial class EnginePackageState : ObservableObject
     /// The version of the copy in use when Filee didn't download it ("9.0"), once its program has told it.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SourceText))]
+    [NotifyPropertyChangedFor(nameof(SourceText), nameof(OffersInstall), nameof(InstallsOverCopy))]
     private string? _copyVersion;
+
+    /// <summary>
+    /// The version check of the copy in use has come back (with <see cref="CopyVersion"/>, or without when it can't be
+    /// told): until then nothing is offered over it, so the card doesn't show Install for a moment.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OffersInstall), nameof(InstallsOverCopy))]
+    private bool _copyVersionChecked;
 
     /// <summary>
     /// The copy found on the PC is older than the version Filee is tested with: Filee's download is offered.
@@ -130,6 +138,18 @@ public sealed partial class EnginePackageState : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OtherCopyText))]
     private string? _otherCopyVersion;
+
+    /// <summary>
+    /// <see cref="OtherCopyFolder"/>'s program started and answered (<see cref="CopyVersions.Runs"/>).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOtherCopy), nameof(OtherCopyText))]
+    private bool _otherCopyRuns;
+
+    /// <summary>
+    /// Counts the reads of the card: a version check started before the latest read doesn't land on it.
+    /// </summary>
+    internal int VersionCheck { get; set; }
 
     /// <summary>0..100 while downloading or unpacking.</summary>
     [ObservableProperty]
@@ -163,18 +183,24 @@ public sealed partial class EnginePackageState : ObservableObject
 
     /// <summary>
     /// The Engines page offers Filee's download: when the engine is missing, or over a copy on the PC older than the
-    /// tested version. A copy on the PC that is up to date (or whose version can't be told) is simply used; the
-    /// first-run setup and the installer's choices still go by <see cref="CanInstall"/>.
+    /// tested version or whose version can't be told (it may not start at all: a library missing, the wrong
+    /// architecture; an FFmpeg nightly named by date is offered it too). A copy on the PC that is up to date is simply
+    /// used; the first-run setup and the installer's choices still go by <see cref="CanInstall"/>.
     /// </summary>
-    public bool OffersInstall => CanInstall && (Status != EnginePackageStatus.OwnCopy || IsOlderCopy);
+    public bool OffersInstall => CanInstall && (Status != EnginePackageStatus.OwnCopy || IsOlderCopy ||
+                                                (CopyVersionChecked && CopyVersion is null));
 
     /// <summary>The offered download would take the place of the copy on the PC ("Install Filee's copy").</summary>
     public bool InstallsOverCopy => OffersInstall && Status == EnginePackageStatus.OwnCopy;
 
     /// <summary>
-    /// Filee's download is used and a copy on the PC could be used instead (<see cref="OtherCopyFolder"/>).
+    /// Filee's download is used and a copy on the PC could be used instead (<see cref="OtherCopyFolder"/>): its program
+    /// starts (<see cref="OtherCopyRuns"/>), and Filee's download is that program alone. A download with more parts
+    /// (Windows: LibreOffice's H2Orestart and Java, Whisper's model, a C++ runtime) would take parts with it that the
+    /// copy on the PC doesn't have.
     /// </summary>
-    public bool HasOtherCopy => Status == EnginePackageStatus.Installed && OtherCopyFolder is not null;
+    public bool HasOtherCopy => Status == EnginePackageStatus.Installed && OtherCopyFolder is not null &&
+                                OtherCopyRuns && Package.Components.Count == 1;
 
     /// <summary>
     /// The card's "Offline" menu (#447): install from files downloaded elsewhere, save the files for a computer without
@@ -294,13 +320,26 @@ public sealed class EngineDownloadService
     /// <summary>Saves one package's downloads in a folder (<see cref="EngineInstaller.SaveFilesAsync"/>); tests swap it.</summary>
     internal Func<EnginePackage, string, IProgress<EngineInstallProgress>, CancellationToken, Task> SavePackageFiles { get; set; }
 
+    /// <summary>
+    /// The version of a copy's program (<see cref="CopyVersions.Installed"/>: package id, folder); tests swap it for
+    /// programs that can't run on every system.
+    /// </summary>
+    internal Func<string, string, Version?> ReadVersion { get; set; }
+
+    /// <summary>A copy's program starts (<see cref="CopyVersions.Runs"/>: package id, folder); tests swap it.</summary>
+    internal Func<string, string, bool> CopyRuns { get; set; }
+
     public EngineDownloadService(ConverterCatalog catalog, ILocalizer loc, ILogger<EngineDownloadService> logger)
         : this(catalog, loc, logger, new EngineInstaller(EngineInstaller.CreateHttpClient(Timeout.InfiniteTimeSpan), logger: logger))
     {
     }
 
-    /// <summary>With its own installer: tests install into and remove from a folder of their own.</summary>
-    internal EngineDownloadService(ConverterCatalog catalog, ILocalizer loc, ILogger<EngineDownloadService> logger, EngineInstaller installer)
+    /// <summary>
+    /// With its own installer, and optionally its own <see cref="ReadVersion"/> and <see cref="CopyRuns"/>: tests
+    /// install into and remove from a folder of their own.
+    /// </summary>
+    internal EngineDownloadService(ConverterCatalog catalog, ILocalizer loc, ILogger<EngineDownloadService> logger, EngineInstaller installer,
+        Func<string, string, Version?>? readVersion = null, Func<string, string, bool>? copyRuns = null)
     {
         _catalog = catalog;
         _logger = logger;
@@ -309,6 +348,8 @@ public sealed class EngineDownloadService
         InstallPackage = _installer.InstallAsync;
         InstallPackageFromFiles = _installer.InstallFromFilesAsync;
         SavePackageFiles = _installer.SaveFilesAsync;
+        ReadVersion = readVersion ?? CopyVersions.Installed;
+        CopyRuns = copyRuns ?? CopyVersions.Runs;
         Packages = EngineDownloads.Packages.Select(p => new EnginePackageState(p, loc)).ToList();
         if (loc is LocalizationService localization)
             localization.LanguageChanged += (_, _) => Packages.ToList().ForEach(p => p.Relocalize());
@@ -336,18 +377,29 @@ public sealed class EngineDownloadService
     private EnginePackageStatus StatusOf(EnginePackageState state)
     {
         var copy = _installer.StatusOf(state.Package);
+        // The versions read for the same folders stay until they are read again, so the card doesn't blink on every
+        // refresh.
+        if (state.OwnCopyFolder != copy.Folder)
+        {
+            state.CopyVersion = null;
+            state.CopyVersionChecked = false;
+            state.IsOlderCopy = false;
+            state.UpdateNote = null;
+        }
+        if (state.OtherCopyFolder != copy.OtherFolder)
+        {
+            state.OtherCopyVersion = null;
+            state.OtherCopyRuns = false;
+        }
         state.OwnCopyFolder = copy.Folder;
         state.FromSystem = copy.FromSystem;
         state.OtherCopyFolder = copy.OtherFolder;
-        state.CopyVersion = null;
-        state.OtherCopyVersion = null;
-        state.IsOlderCopy = false;
-        state.UpdateNote = null;
         state.IsOutdated = copy.Outdated;
+        var check = ++state.VersionCheck;
         if (copy.Folder is { } folder)
-            _ = CheckVersionAsync(state, folder, other: false);
+            _ = CheckVersionAsync(state, check, folder, other: false);
         if (copy.OtherFolder is { } otherFolder)
-            _ = CheckVersionAsync(state, otherFolder, other: true);
+            _ = CheckVersionAsync(state, check, otherFolder, other: true);
         return copy.Status switch
         {
             EngineCopyStatus.OwnCopy => EnginePackageStatus.OwnCopy,
@@ -360,27 +412,48 @@ public sealed class EngineDownloadService
     /// Runs a copy's version check off the UI thread (it starts the program once) and shows the version; for the copy
     /// in use, also notes when it is older than the version Filee is tested with.
     /// </summary>
-    private async Task CheckVersionAsync(EnginePackageState state, string folder, bool other)
+    private async Task CheckVersionAsync(EnginePackageState state, int check, string folder, bool other)
     {
         var id = state.Package.Id;
-        var (installed, expected) = await Task.Run(() => (CopyVersions.Installed(id, folder), CopyVersions.Expected(id)));
-        if (installed is null)
-            return;
+        var (read, runs) = (ReadVersion, CopyRuns);
+        // A hidden copy is started first (not cached: it may have stopped working); its version comes from that same
+        // start, and isn't asked for when it doesn't start (one that hangs costs one time-out, not two).
+        var (installed, started, expected) = await Task.Run(() =>
+        {
+            try
+            {
+                var starts = !other || runs(id, folder);
+                return (starts ? read(id, folder) : null, other && starts, CopyVersions.Expected(id));
+            }
+            catch (Exception ex)
+            {
+                // Something unforeseen (the folder unreadable, its file time out of reach): the version is unknown, the
+                // hidden copy isn't offered, and the card is still marked checked.
+                _logger.LogWarning(ex, "Reading the version of {Package} in {Folder} failed", id, folder);
+                return ((Version?)null, false, (Version?)null);
+            }
+        });
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            // The card was read again since (Check again, an install): that read's own check lands instead.
+            if (state.VersionCheck != check)
+                return;
             if (other)
             {
-                if (state.OtherCopyFolder == folder)
-                    state.OtherCopyVersion = installed.ToString(2);
+                if (state.OtherCopyFolder != folder)
+                    return;
+                state.OtherCopyVersion = installed?.ToString(2);
+                state.OtherCopyRuns = started;
                 return;
             }
             if (state.OwnCopyFolder != folder)
                 return;
-            state.CopyVersion = installed.ToString(2);
-            if (expected is null || installed >= expected)
-                return;
-            state.IsOlderCopy = true;
-            state.UpdateNote = _loc.Format("engines.update_recommended", installed.ToString(2), expected.ToString(2));
+            state.CopyVersion = installed?.ToString(2);
+            state.CopyVersionChecked = true;
+            state.IsOlderCopy = installed is not null && expected is not null && installed < expected;
+            state.UpdateNote = state.IsOlderCopy
+                ? _loc.Format("engines.update_recommended", installed!.ToString(2), expected!.ToString(2))
+                : null;
         });
     }
 
@@ -547,6 +620,59 @@ public sealed class EngineDownloadService
     }
 
     /// <summary>
+    /// Uses the copy on the PC in <paramref name="folder"/> (the one the user confirmed) instead of Filee's download,
+    /// which is removed (#867). The copy is started again first (the search is cached until Check again, and the copy
+    /// may have been uninstalled or stopped working since): when it is gone, no longer starts, or is no longer the one
+    /// on the card, Filee's download is kept, the cards and converters are read again and the key of the reason is
+    /// returned.
+    /// </summary>
+    public async Task<string?> UseOtherCopyAsync(EnginePackageState state, string folder)
+    {
+        // A second click while the copy is being started again waits for nothing: the first one does the switch.
+        if (!_switching.Add(state))
+            return null;
+        try
+        {
+            return await SwitchAsync(state, folder);
+        }
+        finally
+        {
+            _switching.Remove(state);
+        }
+    }
+
+    private readonly HashSet<EnginePackageState> _switching = [];
+
+    private async Task<string?> SwitchAsync(EnginePackageState state, string folder)
+    {
+        var id = state.Package.Id;
+        var runs = CopyRuns;
+        bool works;
+        try
+        {
+            works = state.HasOtherCopy && state.OtherCopyFolder == folder &&
+                    await Task.Run(() => EngineEnvironment.FolderWithPrograms(id, folder) is not null && runs(id, folder));
+        }
+        catch (Exception ex)
+        {
+            // As in CheckVersionAsync: whatever went wrong, the copy isn't taken as working and the download is kept.
+            _logger.LogWarning(ex, "Checking the copy of {Package} in {Folder} failed", id, folder);
+            works = false;
+        }
+        // Filee's download was removed meanwhile (Remove on the same card): there is nothing left to switch from.
+        if (state.Status != EnginePackageStatus.Installed)
+            return null;
+        if (!works || state.OtherCopyFolder != folder)
+        {
+            EngineEnvironment.ForgetSystemCopies();
+            RefreshStatus();
+            _catalog.Refresh();
+            return "engines.other_copy_gone";
+        }
+        return Uninstall(state);
+    }
+
+    /// <summary>
     /// Removes a package. Returns null when it's gone, else the key of the reason: its files are in use (a conversion
     /// is running), or another Filee is installing or removing it (#963).
     /// </summary>
@@ -557,7 +683,9 @@ public sealed class EngineDownloadService
         try
         {
             _installer.Uninstall(state.Package);
-            // A copy on the PC takes over when there is one.
+            // A copy on the PC takes over when there is one. Searched again: the one found while the download was there
+            // may have been the download itself, through a link that now leads nowhere.
+            EngineEnvironment.ForgetSystemCopy(state.Package.Id);
             state.Status = StatusOf(state);
             _catalog.Refresh();
             return null;

@@ -146,7 +146,7 @@ public sealed class EngineEnvironment(string dataDirectory)
     /// The folder of a copy of package <paramref name="id"/> already on the PC: on the PATH (also the user's and the
     /// machine's PATH as saved, so a tool installed after Filee started is found, e.g. Scoop's shims) or where its
     /// installer puts it (LibreOffice, calibre, Ghostscript under Program Files). Cached until
-    /// <see cref="ForgetSystemCopies"/>.
+    /// <see cref="ForgetSystemCopies"/>, or <see cref="ForgetSystemCopy"/> for this package.
     /// </summary>
     public static string? SystemCopyFolder(string id) =>
         SearchSystem ? SystemCopies.GetOrAdd(id, FindOnSystem) : null;
@@ -161,6 +161,12 @@ public sealed class EngineEnvironment(string dataDirectory)
         SystemCopies.Clear();
         ReachableShares.Clear();
     }
+
+    /// <summary>
+    /// Searches the PC again for package <paramref name="id"/> only (after Filee's download of it was removed): the
+    /// other packages keep what was found, and each network share keeps its answer.
+    /// </summary>
+    public static void ForgetSystemCopy(string id) => SystemCopies.TryRemove(id, out _);
 
     private static string? FindOnSystem(string id) =>
         SystemFolders(id).Where(IsReachable).Select(folder => FolderWithPrograms(id, folder)).FirstOrDefault(found => found is not null);
