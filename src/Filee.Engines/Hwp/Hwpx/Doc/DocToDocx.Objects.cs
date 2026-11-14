@@ -9,14 +9,15 @@
 //    it shows from the BStore, its text box) is in the OfficeArt drawing of the table stream (fcDggInfo).
 //  * Text boxes: their text is a story of the text box document, found by the shape id in PlcftxbxTxt.
 //
-// BLIPs: JPEG, PNG and TIFF are copied, DIBs get a BMP file header, EMF and WMF are inflated when compressed and a WMF
-// gets its placeable header. Records follow [MS-ODRAW]; every length is checked against what holds it. Each picture is
-// unpacked and written to word/media once, however many characters show it, and what metafiles inflate to counts
-// against the document's limits (its total and the inflate ratio).
+// Records, shapes, property tables and BLIPs are read by Office/OfficeArt ([MS-ODRAW]), shared with the PPT reader:
+// every length is checked against what holds it; JPEG, PNG and TIFF are copied, DIBs get a BMP file header, EMF and
+// WMF are inflated when compressed and a WMF gets its placeable header. Each picture is unpacked and written to
+// word/media once, however many characters show it, and what metafiles inflate to counts against the document's
+// limits (its total and the inflate ratio).
 
 using System.Buffers.Binary;
-using System.IO.Compression;
 using System.Xml.Linq;
+using Filee.Engines.Office.OfficeArt;
 
 namespace Filee.Engines.Hwp.Hwpx.Doc;
 
@@ -26,12 +27,13 @@ internal sealed partial class DocToDocx
     private const string ShapeUri = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
     private const int EmuPerTwip = 635;
 
-    /// <summary>A shape of the OfficeArt drawings: its type, simple properties (pid → value) and flags.</summary>
-    private sealed class Shape
+    /// <summary>A shape of the OfficeArt drawings (type, flags, properties) and the id of its text box story.</summary>
+    private sealed class Shape(OfficeArtShape art)
     {
-        public int Type;
-        public uint Flags;
-        public Dictionary<int, uint> Properties { get; } = [];
+        public OfficeArtShape Art { get; } = art;
+        public int Type => Art.Type;
+        public uint Flags => Art.Flags;
+        public Dictionary<int, uint> Properties => Art.Properties;
         public int? TextId;
     }
 
@@ -56,38 +58,7 @@ internal sealed partial class DocToDocx
     /// <summary>Bytes the picture being read inflated to, counted already (see <see cref="AddMedia"/>).</summary>
     private long _inflated;
 
-    // ───────────────────────── OfficeArt records ─────────────────────────
-
-    private readonly record struct Record(int Instance, int Type, int Start, int Length)
-    {
-        public int End => Start + Length;
-    }
-
-    /// <summary>The record at <paramref name="at"/> of <paramref name="bytes"/> (header 8 bytes), when it fits within <paramref name="end"/>.</summary>
-    private static Record? RecordAt(ReadOnlySpan<byte> bytes, int at, int end)
-    {
-        if (at < 0 || at + 8 > end || end > bytes.Length)
-            return null;
-        var instance = BinaryPrimitives.ReadUInt16LittleEndian(bytes[at..]) >> 4;
-        var type = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(at + 2)..]);
-        var length = BinaryPrimitives.ReadUInt32LittleEndian(bytes[(at + 4)..]);
-        if (length > end - at - 8)
-            return null;
-        return new Record(instance, type, at + 8, (int)length);
-    }
-
-    /// <summary>The children of a container record.</summary>
-    private static List<Record> Children(ReadOnlySpan<byte> bytes, Record container)
-    {
-        var children = new List<Record>();
-        var at = container.Start;
-        while (RecordAt(bytes, at, container.End) is { } child)
-        {
-            children.Add(child);
-            at = child.End;
-        }
-        return children;
-    }
+    // ───────────────────────── OfficeArt drawings ─────────────────────────
 
     /// <summary>
     /// OfficeArtContent: the drawing group (with the BStore) and then, per drawing, a dgglbl byte (0 main text,
@@ -101,16 +72,16 @@ internal sealed partial class DocToDocx
         var (offset, _) = _doc.Location(DocFile.FibIndex.DggInfo);
         var table = _doc.Table;
         var end = offset + content.Length;
-        if (RecordAt(table, offset, end) is not { Type: 0xF000 } group)
+        if (OfficeArtRecords.At(table, offset, end) is not { Type: OfficeArtRecords.DggContainer } group)
             return;
-        foreach (var child in Children(table, group).Where(c => c.Type == 0xF001))
+        foreach (var child in OfficeArtRecords.Children(table, group).Where(c => c.Type == OfficeArtRecords.BStoreContainer))
         {
-            foreach (var fbse in Children(table, child))
-                _bstore.Add((fbse.Start - 8, fbse.Length + 8));
+            foreach (var fbse in OfficeArtRecords.Children(table, child))
+                _bstore.Add((fbse.HeaderStart, fbse.Length + OfficeArtRecords.HeaderSize));
         }
         var at = group.End;
-        var stack = new Stack<Record>();
-        while (at + 1 < end && RecordAt(table, at + 1, end) is { Type: 0xF002 } drawing)
+        var stack = new Stack<OfficeArtRecord>();
+        while (at + 1 < end && OfficeArtRecords.At(table, at + 1, end) is { Type: OfficeArtRecords.DgContainer } drawing)
         {
             stack.Push(drawing);
             at = drawing.End;
@@ -121,57 +92,27 @@ internal sealed partial class DocToDocx
             var record = stack.Pop();
             if (++visited > _doc.Limits.MaxObjects)
                 throw Documents.DocumentLimits.Exceeded("The document has too many drawing objects.");
-            foreach (var child in Children(table, record))
+            foreach (var child in OfficeArtRecords.Children(table, record))
             {
-                if (child.Type is 0xF002 or 0xF003)
+                if (child.Type is OfficeArtRecords.DgContainer or OfficeArtRecords.SpgrContainer)
                     stack.Push(child);
-                else if (child.Type == 0xF004)
+                else if (child.Type == OfficeArtRecords.SpContainer)
                     ReadShape(table, child);
             }
         }
     }
 
-    private void ReadShape(byte[] table, Record container)
+    /// <summary>A shape of the drawings, with the id of its text box (its ClientTextbox).</summary>
+    private void ReadShape(byte[] table, OfficeArtRecord container)
     {
-        var shape = new Shape();
-        int? id = null;
-        foreach (var child in Children(table, container))
+        var shape = new Shape(OfficeArtShape.Read(table, container));
+        foreach (var child in shape.Art.Records)
         {
-            switch (child.Type)
-            {
-                case 0xF003: // a group as the first record of its container: its shapes are read as the stack reaches them
-                    break;
-                case 0xF00A when child.Length >= 8:
-                    shape.Type = child.Instance;
-                    id = BinaryPrimitives.ReadInt32LittleEndian(table.AsSpan(child.Start));
-                    shape.Flags = BinaryPrimitives.ReadUInt32LittleEndian(table.AsSpan(child.Start + 4));
-                    break;
-                case 0xF00B or 0xF121:
-                    ReadProperties(table, child, shape.Properties);
-                    break;
-                case 0xF122:
-                    // The tertiary FOPT holds other flags under the same property ids: the primary ones stay.
-                    ReadProperties(table, child, shape.Properties, overwrite: false);
-                    break;
-                case 0xF00D when child.Length >= 4:
-                    shape.TextId = BinaryPrimitives.ReadInt32LittleEndian(table.AsSpan(child.Start));
-                    break;
-            }
+            if (child.Type == OfficeArtRecords.ClientTextbox && child.Length >= 4)
+                shape.TextId = BinaryPrimitives.ReadInt32LittleEndian(table.AsSpan(child.Start));
         }
-        if (id is { } spid)
+        if (shape.Art.Id is { } spid)
             _shapes.TryAdd(spid, shape);
-    }
-
-    /// <summary>An FOPT: instance = number of properties, each an opid (pid, fBid, fComplex) and a 4-byte value.</summary>
-    private static void ReadProperties(ReadOnlySpan<byte> bytes, Record fopt, Dictionary<int, uint> properties, bool overwrite = true)
-    {
-        for (var i = 0; i < fopt.Instance && fopt.Start + i * 6 + 6 <= fopt.End; i++)
-        {
-            var opid = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(fopt.Start + i * 6)..]);
-            var value = BinaryPrimitives.ReadUInt32LittleEndian(bytes[(fopt.Start + i * 6 + 2)..]);
-            if ((opid & 0x8000) == 0 && (overwrite || !properties.ContainsKey(opid & 0x3FFF)))
-                properties[opid & 0x3FFF] = value;
-        }
     }
 
     // ───────────────────────── BLIPs ─────────────────────────
@@ -180,155 +121,30 @@ internal sealed partial class DocToDocx
     /// The picture in word/media of an FBSE record at <paramref name="fbse"/> of <paramref name="bytes"/> (the stream
     /// <paramref name="stream"/>): its own BLIP, or the one at foDelay in the WordDocument stream.
     /// </summary>
-    private string? FbseMedia(char stream, ReadOnlySpan<byte> bytes, Record fbse)
+    private string? FbseMedia(char stream, ReadOnlySpan<byte> bytes, OfficeArtRecord fbse)
     {
-        if (fbse.Type != 0xF007 || fbse.Length < 36)
+        if (OfficeArtBlips.FbseBlip(bytes, fbse, _doc.Word, out var delayed) is not { } blip)
             return null;
-        var cbName = bytes[fbse.Start + 33];
-        var blipAt = fbse.Start + 36 + cbName;
-        if (RecordAt(bytes, blipAt, fbse.End) is { } embedded)
-            return BlipMedia(stream, bytes, embedded);
-        var delay = BinaryPrimitives.ReadUInt32LittleEndian(bytes[(fbse.Start + 28)..]);
-        if (delay < _doc.Word.Length && RecordAt(_doc.Word, (int)delay, _doc.Word.Length) is { } stored)
-            return BlipMedia('W', _doc.Word, stored);
-        return null;
+        return delayed ? BlipMedia('W', _doc.Word, blip) : BlipMedia(stream, bytes, blip);
     }
 
     /// <summary>The picture in word/media of a BLIP record, unpacked and written the first time it is shown.</summary>
-    private string? BlipMedia(char stream, ReadOnlySpan<byte> bytes, Record blip)
+    private string? BlipMedia(char stream, ReadOnlySpan<byte> bytes, OfficeArtRecord blip)
     {
         if (_media.TryGetValue((stream, blip.Start), out var name))
             return name;
         _inflated = 0;
-        name = Blip(bytes, blip) is { } picture ? AddMedia(picture.Bytes, picture.Extension) : null;
+        name = OfficeArtBlips.Read(bytes, blip, _doc.Limits, CountInflated) is { } picture ? AddMedia(picture.Bytes, picture.Extension) : null;
         _inflated = 0; // a metafile that couldn't be unpacked writes nothing
         _media[(stream, blip.Start)] = name;
         return name;
     }
 
-    /// <summary>A BLIP record's picture: one UID (16 bytes) or two when the instance is odd, then the data.</summary>
-    private (byte[] Bytes, string Extension)? Blip(ReadOnlySpan<byte> bytes, Record blip)
+    /// <summary>Counts what a metafile inflates to against the document, and remembers it for <see cref="AddMedia"/>.</summary>
+    private void CountInflated(long bytes)
     {
-        var uids = (blip.Instance & 1) == 1 ? 32 : 16;
-        switch (blip.Type)
-        {
-            case 0xF01A or 0xF01B:
-                {
-                    // Metafile header: uncompressed size, bounds, size in EMU, saved size, compression (0 deflate, 0xFE none).
-                    var header = blip.Start + uids;
-                    if (header + 34 > blip.End)
-                        return null;
-                    var size = BinaryPrimitives.ReadUInt32LittleEndian(bytes[header..]);
-                    var saved = BinaryPrimitives.ReadUInt32LittleEndian(bytes[(header + 28)..]);
-                    var compressed = bytes[header + 32] == 0;
-                    var data = header + 34;
-                    var length = (int)Math.Min(saved, (uint)(blip.End - data));
-                    var metafile = compressed ? Inflate(bytes.Slice(data, length), size) : bytes.Slice(data, length).ToArray();
-                    if (metafile is null)
-                        return null;
-                    if (blip.Type == 0xF01A)
-                        return (metafile, "emf");
-                    var bounds = bytes.Slice(header + 4, 16);
-                    var emu = (BinaryPrimitives.ReadInt32LittleEndian(bytes[(header + 20)..]), BinaryPrimitives.ReadInt32LittleEndian(bytes[(header + 24)..]));
-                    return (Placeable(metafile, bounds, emu), "wmf");
-                }
-            case 0xF01D or 0xF02A or 0xF01E or 0xF01F or 0xF029:
-                {
-                    var data = blip.Start + uids + 1; // the tag byte
-                    if (data > blip.End)
-                        return null;
-                    var picture = bytes[data..blip.End].ToArray();
-                    return blip.Type switch
-                    {
-                        0xF01E => (picture, "png"),
-                        0xF029 => (picture, "tif"),
-                        0xF01F => Bitmap(picture) is { } bmp ? (bmp, "bmp") : null,
-                        _ => (picture, "jpg"),
-                    };
-                }
-            default:
-                return null; // PICT and unknown kinds
-        }
-    }
-
-    /// <summary>
-    /// Inflates a zlib stream, at most to the size the header gives and the part limit. What it unpacks counts against
-    /// the document's total, and a picture that unpacks to far more than its packed size is refused.
-    /// </summary>
-    private byte[]? Inflate(ReadOnlySpan<byte> data, uint size)
-    {
-        var limits = _doc.Limits;
-        var limit = Math.Min(size, limits.MaxPartBytes);
-        var packed = Math.Max(1, data.Length);
-        try
-        {
-            using var input = new MemoryStream(data.ToArray(), writable: false);
-            using var zlib = new ZLibStream(input, CompressionMode.Decompress);
-            using var output = new MemoryStream();
-            var buffer = new byte[81920];
-            int read;
-            while (output.Length < limit && (read = zlib.Read(buffer, 0, (int)Math.Min(buffer.Length, limit - output.Length))) > 0)
-            {
-                output.Write(buffer, 0, read);
-                _doc.Count(read);
-                _inflated += read;
-                if (output.Length > limits.InflateRatioFloor && output.Length / packed > limits.MaxInflateRatio)
-                    throw Documents.DocumentLimits.Exceeded($"A picture of the document unpacks to more than {limits.MaxInflateRatio} times its packed size.");
-            }
-            return output.ToArray();
-        }
-        catch (InvalidDataException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>A WMF with the placeable header (bounds in metafile units, units per inch from the size in EMU) it lacks in DOC.</summary>
-    private static byte[] Placeable(byte[] wmf, ReadOnlySpan<byte> bounds, (int Cx, int Cy) emu)
-    {
-        if (wmf.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(wmf) == 0x9AC6CDD7)
-            return wmf;
-        var left = BinaryPrimitives.ReadInt32LittleEndian(bounds);
-        var top = BinaryPrimitives.ReadInt32LittleEndian(bounds[4..]);
-        var right = BinaryPrimitives.ReadInt32LittleEndian(bounds[8..]);
-        var bottom = BinaryPrimitives.ReadInt32LittleEndian(bounds[12..]);
-        var width = (long)right - left;
-        var inch = width > 0 && emu.Cx > 0 ? Math.Clamp(width * 914400 / emu.Cx, 1, 65535) : 1440;
-        var header = new byte[22];
-        BinaryPrimitives.WriteUInt32LittleEndian(header, 0x9AC6CDD7);
-        BinaryPrimitives.WriteInt16LittleEndian(header.AsSpan(6), (short)Math.Clamp(left, short.MinValue, short.MaxValue));
-        BinaryPrimitives.WriteInt16LittleEndian(header.AsSpan(8), (short)Math.Clamp(top, short.MinValue, short.MaxValue));
-        BinaryPrimitives.WriteInt16LittleEndian(header.AsSpan(10), (short)Math.Clamp(right, short.MinValue, short.MaxValue));
-        BinaryPrimitives.WriteInt16LittleEndian(header.AsSpan(12), (short)Math.Clamp(bottom, short.MinValue, short.MaxValue));
-        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(14), (ushort)inch);
-        ushort checksum = 0;
-        for (var i = 0; i < 20; i += 2)
-            checksum ^= BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(i));
-        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(20), checksum);
-        return [.. header, .. wmf];
-    }
-
-    /// <summary>A DIB with the BMP file header in front: where the pixels start after the header and palette.</summary>
-    private static byte[]? Bitmap(byte[] dib)
-    {
-        if (dib.Length < 40)
-            return null;
-        var headerSize = BinaryPrimitives.ReadInt32LittleEndian(dib);
-        if (headerSize < 12 || headerSize > dib.Length)
-            return null;
-        var bits = headerSize >= 16 ? BinaryPrimitives.ReadUInt16LittleEndian(dib.AsSpan(14)) : 0;
-        var compression = headerSize >= 20 ? BinaryPrimitives.ReadInt32LittleEndian(dib.AsSpan(16)) : 0;
-        var used = headerSize >= 36 ? BinaryPrimitives.ReadInt32LittleEndian(dib.AsSpan(32)) : 0;
-        var colors = used > 0 ? used : bits <= 8 ? 1 << bits : 0;
-        var masks = compression == 3 && headerSize == 40 ? 12 : 0;
-        var offset = 14L + headerSize + masks + Math.Min(colors, 256) * 4L;
-        var file = new byte[14 + dib.Length];
-        file[0] = (byte)'B';
-        file[1] = (byte)'M';
-        BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(2), file.Length);
-        BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(10), (int)Math.Min(offset, file.Length));
-        dib.CopyTo(file, 14);
-        return file;
+        _doc.Count(bytes);
+        _inflated += bytes;
     }
 
     // ───────────────────────── Inline pictures ─────────────────────────
@@ -367,19 +183,19 @@ internal sealed partial class DocToDocx
         {
             if (mm == 0x66 && start < end)
                 start += 1 + data[start];
-            if (RecordAt(data, start, end) is { Type: 0xF004 } container)
+            if (OfficeArtRecords.At(data, start, end) is { Type: OfficeArtRecords.SpContainer } container)
             {
-                foreach (var child in Children(data, container).Where(c => c.Type is 0xF00B or 0xF122))
-                    ReadProperties(data, child, properties, overwrite: child.Type == 0xF00B);
+                foreach (var child in OfficeArtRecords.Children(data, container).Where(c => c.Type is OfficeArtRecords.Fopt or OfficeArtRecords.TertiaryFopt))
+                    OfficeArtProperties.Read(data, child, properties, overwrite: child.Type == OfficeArtRecords.Fopt);
                 // The FBSEs of the pictures follow the shape container; pib (property 260) picks one, 1-based.
-                var fbses = new List<Record>();
+                var fbses = new List<OfficeArtRecord>();
                 var next = container.End;
-                while (RecordAt(data, next, end) is { } fbse)
+                while (OfficeArtRecords.At(data, next, end) is { } fbse)
                 {
                     fbses.Add(fbse);
                     next = fbse.End;
                 }
-                var pib = (int)properties.GetValueOrDefault(0x0104, 1u);
+                var pib = (int)properties.GetValueOrDefault(OfficeArtProperties.Pib, 1u);
                 if (pib >= 1 && pib <= fbses.Count)
                     media = FbseMedia('D', data, fbses[pib - 1]);
                 else if (fbses.Count > 0)
@@ -392,7 +208,7 @@ internal sealed partial class DocToDocx
             var bounds = new byte[16];
             BinaryPrimitives.WriteInt32LittleEndian(bounds.AsSpan(8), Math.Max(1, (int)BinaryPrimitives.ReadInt16LittleEndian(picf[8..])));
             BinaryPrimitives.WriteInt32LittleEndian(bounds.AsSpan(12), Math.Max(1, (int)BinaryPrimitives.ReadInt16LittleEndian(picf[10..])));
-            _media[('P', at)] = media = AddMedia(Placeable(data[start..end], bounds, (dxaGoal * EmuPerTwip, dyaGoal * EmuPerTwip)), "wmf");
+            _media[('P', at)] = media = AddMedia(OfficeArtBlips.Placeable(data[start..end], bounds, (dxaGoal * EmuPerTwip, dyaGoal * EmuPerTwip)), "wmf");
         }
         if (media is null)
             return null;
@@ -421,7 +237,7 @@ internal sealed partial class DocToDocx
     private static XElement? CropOf(Dictionary<int, uint> properties)
     {
         int Crop(int pid) => properties.TryGetValue(pid, out var value) ? (int)Math.Clamp((int)value / 65536.0 * 100000, -100000, 100000) : 0;
-        var (top, bottom, left, right) = (Crop(0x0100), Crop(0x0101), Crop(0x0102), Crop(0x0103));
+        var (top, bottom, left, right) = (Crop(OfficeArtProperties.CropFromTop), Crop(OfficeArtProperties.CropFromBottom), Crop(OfficeArtProperties.CropFromLeft), Crop(OfficeArtProperties.CropFromRight));
         if ((top | bottom | left | right) == 0)
             return null;
         return new XElement(A + "srcRect", new XAttribute("l", left), new XAttribute("t", top), new XAttribute("r", right), new XAttribute("b", bottom));
@@ -475,10 +291,10 @@ internal sealed partial class DocToDocx
         var height = (long)Math.Clamp(spa.Bottom - spa.Top, 1, 31_680) * EmuPerTwip;
 
         XElement? graphic = null;
-        if (shape.Properties.TryGetValue(0x0104, out var pib) && pib >= 1 && pib <= _bstore.Count)
+        if (shape.Properties.TryGetValue(OfficeArtProperties.Pib, out var pib) && pib >= 1 && pib <= _bstore.Count)
         {
             var (offset, length) = _bstore[(int)pib - 1];
-            if (RecordAt(_doc.Table, offset, offset + length) is { } fbse && FbseMedia('T', _doc.Table, fbse) is { } media)
+            if (OfficeArtRecords.At(_doc.Table, offset, offset + length) is { } fbse && FbseMedia('T', _doc.Table, fbse) is { } media)
                 graphic = PictureGraphic(MediaRelationship(media), CropOf(shape.Properties));
         }
         if (graphic is null && ShapeGraphic(spa.Id, shape, width, height) is { } drawn)
@@ -497,15 +313,15 @@ internal sealed partial class DocToDocx
         var horizontalFrom = bx switch { 1 => "page", 2 => "column", _ => "margin" };
         var verticalFrom = by switch { 1 => "page", 2 => "paragraph", _ => "margin" };
         string? horizontalAlign = null, verticalAlign = null;
-        if (shape.Properties.TryGetValue(0x0390, out var relativeH))
+        if (shape.Properties.TryGetValue(OfficeArtProperties.PosRelH, out var relativeH))
             horizontalFrom = relativeH switch { 0 => "margin", 1 => "page", 3 => "character", _ => "column" };
-        if (shape.Properties.TryGetValue(0x0392, out var relativeV))
+        if (shape.Properties.TryGetValue(OfficeArtProperties.PosRelV, out var relativeV))
             verticalFrom = relativeV switch { 0 => "margin", 1 => "page", 3 => "line", _ => "paragraph" };
-        if (shape.Properties.TryGetValue(0x038F, out var posh))
+        if (shape.Properties.TryGetValue(OfficeArtProperties.PosH, out var posh))
             horizontalAlign = posh switch { 1 => "left", 2 => "center", 3 => "right", 4 => "inside", 5 => "outside", _ => null };
-        if (shape.Properties.TryGetValue(0x0391, out var posv))
+        if (shape.Properties.TryGetValue(OfficeArtProperties.PosV, out var posv))
             verticalAlign = posv switch { 1 => "top", 2 => "center", 3 => "bottom", 4 => "inside", 5 => "outside", _ => null };
-        if (shape.Properties.TryGetValue(0x03BF, out var group) && (group & (1u << 21)) != 0)
+        if (shape.Properties.TryGetValue(OfficeArtProperties.GroupBooleans, out var group) && (group & (1u << 21)) != 0)
             below = (group & (1u << 5)) != 0;
         var wrapElement = wrap switch
         {
@@ -546,25 +362,21 @@ internal sealed partial class DocToDocx
         if (geometry is null && story is null)
             return null;
         var properties = shape.Properties;
-        bool Flag(int pid, int bit, bool fallback) =>
-            properties.TryGetValue(pid, out var value) && (value & (1u << (bit + 16))) != 0 ? (value & (1u << bit)) != 0 : fallback;
-        string? Color(int pid) => properties.TryGetValue(pid, out var value) && (value >> 24) == 0
-            ? $"{value & 0xFF:X2}{(value >> 8) & 0xFF:X2}{(value >> 16) & 0xFF:X2}" : null;
         var spPr = new XElement(Wps + "spPr",
             new XElement(A + "xfrm",
-                (shape.Flags & 0x40) != 0 ? new XAttribute("flipH", 1) : null, (shape.Flags & 0x80) != 0 ? new XAttribute("flipV", 1) : null,
+                (shape.Flags & OfficeArtShape.FlipH) != 0 ? new XAttribute("flipH", 1) : null, (shape.Flags & OfficeArtShape.FlipV) != 0 ? new XAttribute("flipV", 1) : null,
                 new XElement(A + "off", new XAttribute("x", 0), new XAttribute("y", 0)),
                 new XElement(A + "ext", new XAttribute("cx", width), new XAttribute("cy", height))),
             new XElement(A + "prstGeom", new XAttribute("prst", geometry ?? "rect")));
         if (geometry != "line")
         {
-            spPr.Add(Flag(0x01BF, 4, true)
-                ? new XElement(A + "solidFill", new XElement(A + "srgbClr", new XAttribute("val", Color(0x0181) ?? "FFFFFF")))
+            spPr.Add(OfficeArtProperties.Flag(properties, OfficeArtProperties.FillBooleans, 4, true)
+                ? new XElement(A + "solidFill", new XElement(A + "srgbClr", new XAttribute("val", OfficeArtProperties.Rgb(properties, OfficeArtProperties.FillColor) ?? "FFFFFF")))
                 : new XElement(A + "noFill"));
         }
-        spPr.Add(Flag(0x01FF, 3, true)
-            ? new XElement(A + "ln", new XAttribute("w", properties.GetValueOrDefault(0x01CB, 9525u)),
-                new XElement(A + "solidFill", new XElement(A + "srgbClr", new XAttribute("val", Color(0x01C0) ?? "000000"))))
+        spPr.Add(OfficeArtProperties.Flag(properties, OfficeArtProperties.LineBooleans, 3, true)
+            ? new XElement(A + "ln", new XAttribute("w", properties.GetValueOrDefault(OfficeArtProperties.LineWidth, 9525u)),
+                new XElement(A + "solidFill", new XElement(A + "srgbClr", new XAttribute("val", OfficeArtProperties.Rgb(properties, OfficeArtProperties.LineColor) ?? "000000"))))
             : new XElement(A + "ln", new XElement(A + "noFill")));
         var wsp = new XElement(Wps + "wsp", new XElement(Wps + "cNvSpPr", story is null ? null : new XAttribute("txBox", 1)), spPr);
         if (story is { } range)
@@ -582,8 +394,8 @@ internal sealed partial class DocToDocx
         }
         // Text insets in EMU (dxTextLeft, dyTextTop, dxTextRight, dyTextBottom), Word's defaults 0.1" and 0.05".
         wsp.Add(new XElement(Wps + "bodyPr",
-            new XAttribute("lIns", properties.GetValueOrDefault(0x0081, 91440u)), new XAttribute("tIns", properties.GetValueOrDefault(0x0082, 45720u)),
-            new XAttribute("rIns", properties.GetValueOrDefault(0x0083, 91440u)), new XAttribute("bIns", properties.GetValueOrDefault(0x0084, 45720u))));
+            new XAttribute("lIns", properties.GetValueOrDefault(OfficeArtProperties.TextLeft, 91440u)), new XAttribute("tIns", properties.GetValueOrDefault(OfficeArtProperties.TextTop, 45720u)),
+            new XAttribute("rIns", properties.GetValueOrDefault(OfficeArtProperties.TextRight, 91440u)), new XAttribute("bIns", properties.GetValueOrDefault(OfficeArtProperties.TextBottom, 45720u))));
         return new XElement(A + "graphic", new XElement(A + "graphicData", new XAttribute("uri", ShapeUri), wsp));
     }
 

@@ -4,6 +4,7 @@ using Filee.Core.Conversion;
 using Filee.Engines.Archives;
 using Filee.Engines.Cad;
 using Filee.Engines.Data;
+using Filee.Engines.Drawings;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
 using Filee.Engines.Fonts;
@@ -78,6 +79,7 @@ public static class EngineRegistry
         new Upscale.UpscalerConverter(),
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
+        new DrawingConverter(),
         new ModelConverter(),
         new ImageTo3DConverter(),
         new GeoConverter(),
