@@ -500,13 +500,30 @@ public partial class EnginesPage : UserControl
             vm.StopUsingOwnCopy(package);
     }
 
+    /// <summary>Asks before removing Filee's download; tests answer in place of the dialog.</summary>
+    internal Func<Window, string, Task<bool>> ConfirmAsync { get; set; } =
+        (window, message) => AppHost.Get<WindowService>().ConfirmAsync(window, message, destructive: true);
+
+    /// <summary>Uses the copy on the PC instead of Filee's download, which is removed (after asking, #867).</summary>
+    private async void OnUseOtherCopy(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: EnginePackageState { OtherCopyFolder: { } folder } package } ||
+            DataContext is not EnginesPageViewModel vm || TopLevel.GetTopLevel(this) is not Window window)
+            return;
+        var loc = AppHost.Get<ILocalizer>();
+        if (!await ConfirmAsync(window, loc.Format("engines.use_other_copy_confirm", EnginePackageState.DisplayFolder(folder), package.Name)))
+            return;
+        if (await vm.UseOtherCopyAsync(package, folder) is { } reason)
+            await AppHost.Get<WindowService>().MessageAsync(window, loc[reason]);
+    }
+
     private async void OnRemove(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { DataContext: EnginePackageState package } || DataContext is not EnginesPageViewModel vm ||
             TopLevel.GetTopLevel(this) is not Window window)
             return;
         var loc = AppHost.Get<ILocalizer>();
-        if (!await AppHost.Get<WindowService>().ConfirmAsync(window, loc.Format("engines.remove_confirm", package.Name), destructive: true))
+        if (!await ConfirmAsync(window, loc.Format("engines.remove_confirm", package.Name)))
             return;
         if (vm.Remove(package) is { } reason)
             await AppHost.Get<WindowService>().MessageAsync(window, loc[reason]);

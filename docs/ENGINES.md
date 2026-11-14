@@ -82,8 +82,20 @@ the same on every PC. An external engine is looked for in this order:
 1. a copy the user picked in Settings → *Engines*;
 2. Filee's own copy (bundled or downloaded);
 3. a copy already on the computer: on `PATH`, in Homebrew's and the usual Unix folders, or where the LibreOffice,
-   calibre, Ghostscript and Tesseract installers put it. Settings → *Engines* shows it as "Found on this PC", with a note when
-   its version is older than the one Filee downloads.
+   calibre, Ghostscript and Tesseract installers put it. Not for WeasyPrint (see *WeasyPrint*), rhwp or 7-Zip.
+
+Settings → *Engines* shows every engine that works as "Ready" (green, or amber while its card recommends an update),
+with where it comes from underneath ("Filee's download", "On this computer", "Your copy", with the folder and version),
+and a note when a copy is older than the one Filee is tested with. Filee's download is offered over a copy on the
+computer only when that copy is older, or when its version can't be read (it may not start at all, or tell no version,
+as an FFmpeg nightly named by date or Upscayl), once its version check has come back. When Filee's download is installed
+and a copy that runs is also on the computer, the card says so and offers to use that copy instead, which removes
+Filee's download (`EngineInstaller.StatusOf` reports it as `EngineCopy.OtherFolder`). Only where Filee's download is
+that one program: on Windows, LibreOffice's (with H2Orestart and Java), Whisper's (with its model), Ghostscript's and
+Upscayl's (with a C++ runtime) have parts the copy on the computer doesn't, so none is offered there. The copy is
+started again just before Filee's download is removed, and Filee's download is kept if it no longer starts. A copy whose
+folder or programs lead (through links at any level) to a folder with Filee's installed marker is Filee's own download
+reached by another path, not another copy; a wrapper script that runs Filee's download can't be told apart.
 
 Where Filee has no download of an engine (FFmpeg, Ghostscript and Tesseract on macOS, LibreOffice, Ghostscript and
 Tesseract on Linux),
@@ -1722,10 +1734,10 @@ in the right order. The built-in route (HWPX writer → rhwp) keeps structure on
 
 - **Download**: Windows only for now, WeasyPrint's own "onedir" build (`weasyprint-windows-onedir.zip`, pinned in
   `engines.json`): `weasyprint.exe` with an `_internal` folder holding Python, Pango, HarfBuzz, Fontconfig, ... The
-  folder with `weasyprint.exe` becomes `engines/weasyprint`, with WeasyPrint's `LICENSE` moved into it. It is found
-  only as Filee's download or a copy the user picked in Settings → *Engines*, never on the PATH. Linux and macOS
-  follow in a separate change once WeasyPrint publishes a self-contained build for them; until then they keep the
-  routes below.
+  folder with `weasyprint.exe` becomes `engines/weasyprint`, with WeasyPrint's `LICENSE` moved into it. It is found only
+  as Filee's download or a copy the user picked in Settings → *Engines*, never on the PATH, so the Engines page doesn't
+  report one found there either (`EngineEnvironment.NeverFromSystem`). Linux and macOS follow in a separate change once
+  WeasyPrint publishes a self-contained build for them; until then they keep the routes below.
 - **Routes**: one edge, HTML → PDF, cost 1, used only in routes that start from HTML, Markdown, EML, MSG or MHTML
   (`ConversionEdge.Sources`). So a page goes straight to WeasyPrint, Markdown through Markdig's page (Markdown → HTML
   → PDF, 9 + 10 at the end of the engine order) and an e-mail or a saved web page through its page (19 + 10), all

@@ -279,6 +279,83 @@ public class ToolbarPageTests
     }
 
     [AvaloniaFact]
+    public void Every_button_has_a_name_screen_readers_can_read_also_after_a_language_change()
+    {
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+        var languages = AppHost.Get<LocalizationService>();
+        using var vm = new ToolbarPageViewModel(AppHost.Get<UserDataStore>(), loc, AppHost.Get<WindowService>(),
+            AppHost.Get<PresetAvailability>(), AppHost.Get<ConverterCatalog>(), NullLogger<ToolbarPageViewModel>.Instance);
+        var page = new ToolbarPage { DataContext = vm };
+        var window = new Window { Content = page, Width = 1100, Height = 800 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        // Buttons whose text is in a panel with an icon (or a count) have no name of their own: a screen reader would
+        // read "Avalonia.Controls.StackPanel". Each is named from its own visible text.
+        string NameOf(Control control) => Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(control).GetName();
+        void EveryButtonIsNamed()
+        {
+            // Parts of another control's template (a slider's track, a scroll bar's arrows) are read as that control.
+            var buttons = page.GetVisualDescendants().OfType<Control>()
+                .Where(c => c is Button or Avalonia.Controls.Primitives.ToggleButton or ListBoxItem).Where(c => c.IsEffectivelyVisible && c.TemplatedParent is null).ToList();
+            Assert.NotEmpty(buttons);
+            Assert.All(buttons, b => Assert.False(string.IsNullOrWhiteSpace(NameOf(b)) || NameOf(b).StartsWith("Avalonia.", StringComparison.Ordinal)
+                || NameOf(b).StartsWith("Filee.", StringComparison.Ordinal),
+                $"{b.GetType().Name} {b.Name}: \"{NameOf(b)}\""));
+        }
+        void NamedAsShown()
+        {
+            Assert.Equal(loc["toolbar.edit_size"], NameOf(page.FindControl<Button>("EditSize")!));
+            Assert.Equal(loc["toolbar.new_preset"], NameOf(page.FindControl<Button>("NewPresetButton")!));
+            Assert.Equal(loc["toolbar.new_group"], NameOf(page.FindControl<Button>("NewGroupButton")!));
+            var faces = page.FindControl<Border>("FaceSwitch")!.GetVisualDescendants().OfType<RadioButton>().Select(NameOf);
+            Assert.Equal([loc["toolbar.face_front"], loc["toolbar.face_back"]], faces);
+            Assert.Contains(page.GetVisualDescendants().OfType<Button>(), b => NameOf(b) == loc["toolbar.add_profile"]);
+            // A profile is read by its name, not by its count beside it.
+            var profiles = page.FindControl<ListBox>("ProfileList")!.GetVisualDescendants().OfType<ListBoxItem>().ToList();
+            Assert.NotEmpty(profiles);
+            Assert.All(profiles, item => Assert.Equal(((ProfileItemViewModel)item.DataContext!).Name, NameOf(item)));
+        }
+        try
+        {
+            EveryButtonIsNamed();
+            NamedAsShown();
+            Assert.Equal("Edit Donut Size", NameOf(page.FindControl<Button>("EditSize")!));
+
+            languages.SetLanguage("ko");
+            Dispatcher.UIThread.RunJobs();
+            EveryButtonIsNamed();
+            NamedAsShown();
+            Assert.Equal("도넛 크기 편집", NameOf(page.FindControl<Button>("EditSize")!));
+
+            // A group open in the editor (the way back to the donut), and a profile for mixed selections.
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "images");
+            vm.EditingBack = true;
+            vm.OpenGroupAt(vm.SelectedProfile.Profile.BackPresetIds!.IndexOf("rotate"));
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(page.FindControl<Button>("GroupBack")!.IsEffectivelyVisible);
+            EveryButtonIsNamed();
+            vm.CloseGroupCommand.Execute(null);
+            vm.EditingFront = true;
+            vm.SelectedProfile = vm.Profiles.First(p => p.Profile.IsFallback);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(page.FindControl<ToggleSwitch>("MixedToggle")!.IsEffectivelyVisible);
+            EveryButtonIsNamed();
+
+            // The Edit Donut Size panel too.
+            vm.AdjustLookCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            EveryButtonIsNamed();
+        }
+        finally
+        {
+            languages.SetLanguage("en");
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void Search_boxes_have_a_clear_button()
     {
         TestServices.EnsureInitialized("en");
