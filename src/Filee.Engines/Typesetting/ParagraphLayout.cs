@@ -564,20 +564,6 @@ internal sealed partial class ParagraphLayouter
         return (w, h, 0);
     }
 
-    private readonly Dictionary<HEquation, EquationBox> _equations = new(ReferenceEqualityComparer.Instance);
-
-    /// <summary>An equation laid out at its size (its own, else its text's) in its colour.</summary>
-    private EquationBox Equation(HEquation equation)
-    {
-        if (_equations.TryGetValue(equation, out var box))
-            return box;
-        var size = (equation.Size ?? equation.Format.Size ?? 1000) / 100f;
-        var color = ParagraphText.Color(equation.Color ?? equation.Format.Color) ?? SKColors.Black;
-        if (_equations.Count > 10_000)
-            _equations.Clear();
-        return _equations[equation] = _math.Layout(equation.Math, size, color);
-    }
-
     /// <summary>Draws an object laid out like a character into its area.</summary>
     private Action<PageContent, SKRect> ObjectDrawing(HInline item)
     {
@@ -1023,6 +1009,9 @@ internal sealed partial class ParagraphLayouter
                 var (pictureWidth, pictureHeight) = (part.Size.Width * squeeze, part.Size.Height);
                 if (source.Objects.TryGetValue(part.Start, out var item) && pictureWidth > 0)
                     pictures.Add(new LineObject(new SKRect(x, -pictureHeight, x + pictureWidth, part.Size.Depth), ObjectDrawing(item)));
+                // Word's equation numbers at the right end of the line (see ParagraphLayout.Equations.cs).
+                if (item is HEquation equation)
+                    runs.AddRange(Numbers(equation, width - (settings.RightToLeft ? settings.Left : settings.Right)).Select(r => (part.Start, r)));
                 x += pictureWidth + gaps[part.Start - start] * squeeze;
             }
             else if (part.Item.Kind == ItemKind.Tab)

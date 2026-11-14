@@ -42,7 +42,10 @@ internal sealed class EquationBox(float width, float ascent, float descent, Acti
 internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 {
     private const float ScriptScale = 0.7f;
-    private const float Axis = 0.27f;
+
+    /// <summary>The math axis (fraction bars, the middle of brackets and equation arrays) above the baseline, of the size.</summary>
+    internal const float Axis = 0.27f;
+
     private const float Rule = 0.05f;
     private const float Gap = 0.12f;
 
@@ -83,6 +86,13 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     /// <summary>Lays out <paramref name="node"/> at <paramref name="size"/> points in <paramref name="color"/>.</summary>
     public EquationBox Layout(MathNode node, float size, SKColor color) => Lay(node, new Style(size, color, false, false));
+
+    /// <summary>
+    /// Lays out the lines of an equation array as <see cref="Layout"/> does, with where each line's baseline is (down
+    /// from the array's) in <paramref name="baselines"/>.
+    /// </summary>
+    public EquationBox Lines(MathPile pile, float size, SKColor color, List<float> baselines) =>
+        Pile(pile.Rows, pile.Align, new Style(size, color, false, false), baselines);
 
     /// <summary>
     /// The width <paramref name="node"/> takes as an item in the middle of a row, operators with the room on their
@@ -524,7 +534,9 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         Grid([.. rows.Select(r => r.Select(c => Lay(c, style)).ToList())], style, _ => align, _ => columnGap);
 
     /// <summary>Laid out cells in columns, each column aligned as <paramref name="align"/> says, with its gap after it.</summary>
-    private static EquationBox Grid(List<List<EquationBox>> cells, Style style, Func<int, string> align, Func<int, float> gapAfter)
+    /// <param name="baselines">Collects each row's baseline (down from the grid's), or null.</param>
+    private static EquationBox Grid(List<List<EquationBox>> cells, Style style, Func<int, string> align, Func<int, float> gapAfter,
+        List<float>? baselines = null)
     {
         var size = style.Size;
         var columns = cells.Count == 0 ? 0 : cells.Max(r => r.Count);
@@ -542,6 +554,7 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         for (var r = 0; r < cells.Count; r++)
         {
             y += ascents[r];
+            baselines?.Add(y);
             float x = 0;
             for (var c = 0; c < cells[r].Count; c++)
             {
@@ -580,14 +593,14 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     /// alignment points (what comes before ends there, what follows starts there), the even ones start a new column a
     /// space further on, as in Word.
     /// </summary>
-    private EquationBox Pile(IReadOnlyList<MathNode> rows, string align, Style style)
+    private EquationBox Pile(IReadOnlyList<MathNode> rows, string align, Style style, List<float>? baselines = null)
     {
         var lines = rows.Select(Segments).ToList();
         if (lines.All(l => l.Count <= 1))
-            return Grid([.. rows.Select(r => (IReadOnlyList<MathNode>)[r])], style, align, 0);
+            return Grid([.. rows.Select(r => new List<EquationBox> { Lay(r, style) })], style, _ => align, _ => 0, baselines);
         var cells = lines.Select(segments => segments.Select((segment, i) =>
             Row(segment, style, i > 0 && segments[i - 1] is [.., var last] ? last : null)).ToList()).ToList();
-        return Grid(cells, style, c => c % 2 == 0 ? "rpile" : "lpile", c => c % 2 == 1 ? style.Size : 0);
+        return Grid(cells, style, c => c % 2 == 0 ? "rpile" : "lpile", c => c % 2 == 1 ? style.Size : 0, baselines);
     }
 
     /// <summary>The items of a line between its alignment marks.</summary>

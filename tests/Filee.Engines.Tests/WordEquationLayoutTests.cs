@@ -246,25 +246,60 @@ public sealed class WordEquationLayoutTests : IDisposable
 
     // ───────── Equation numbers and long equations (#1143) ─────────
 
+    /// <summary>A4 with 1 inch margins: the column ends 72 pt from the right edge.</summary>
+    private const float RightMargin = 595.3f - 72;
+
     [Fact]
-    public void An_equation_number_is_at_the_right_margin_level_with_the_equation()
+    public void An_equation_number_is_at_the_right_margin_centred_on_the_fraction_bar()
     {
+        // 11 pt text: the number DocxReader places for rhwp (NumberBox) was 7 pt below the bar on this route.
         var docx = new DocxBuilder().Paragraph(P(Display(EqArr(Frac(MR("a"), MR("b")) + MR("=c#(1)"))), "<w:jc w:val=\"center\"/>"));
         var page = Render(docx)[0];
 
         Assert.DoesNotContain(page.Items.OfType<GlyphItem>(), i => i.Run.Text.Contains('#'));
-        var number = page.Items.OfType<GlyphItem>().Select(i => i.Run).Where(r => r.Text.Contains("(1)") || r.Text is "(" or "1" or ")").ToList();
-        Assert.NotEmpty(number);
-        var right = number.Select(Ink).Max(r => r.Right);
-        // A4 with 1 inch margins: the column ends 72 pt from the right edge.
-        Assert.InRange(right, 595.3f - 72 - 2, 595.3f - 72 + 0.5f);
-        // Level with the fraction, and the equation still in the middle of the line. The box is placed where rhwp
-        // needs it (DocxReader.NumberBox), which on this route is some points below the fraction's bar.
-        var (a, b) = (Ink(Single(page, "a")), Ink(Single(page, "b")));
-        var numberInk = number.Select(Ink).Aggregate(SKRect.Union);
-        TestContext.Current.TestOutputHelper?.WriteLine($"number middle {numberInk.MidY:0.0} pt, fraction bar {(a.Bottom + b.Top) / 2:0.0} pt");
-        Assert.InRange(numberInk.MidY, a.Top, b.Bottom);
-        Assert.InRange(Centre(a), 297.6f - 20, 297.6f + 20);
+        var number = Ink(Single(page, "(1)"));
+        Assert.InRange(number.Right, RightMargin - 2, RightMargin + 0.5f);
+        // Word centres the number on the equation's math axis: the fraction's bar.
+        var bar = DrawnInk(page);
+        TestContext.Current.TestOutputHelper?.WriteLine($"number middle {number.MidY:0.00} pt, fraction bar {bar.MidY:0.00} pt");
+        Assert.Equal(bar.MidY, number.MidY, 0.5f);
+        // The equation still in the middle of the line.
+        Assert.InRange(Centre(Ink(Single(page, "a"))), 297.6f - 20, 297.6f + 20);
+    }
+
+    [Fact]
+    public void An_equation_number_beside_a_radical_is_centred_on_the_math_axis()
+    {
+        var page = Render(new DocxBuilder().Paragraph(P(Display(EqArr(Rad(MR("x+1")) + MR("#(2)"))), "<w:jc w:val=\"center\"/>")))[0];
+
+        var (x, number) = (Single(page, "x"), Ink(Single(page, "(2)")));
+        // The axis is above the baseline the radical's body stands on.
+        var axis = x.Positions[0].Y - x.Size * MathLayout.Axis;
+        Assert.Equal(axis, number.MidY, 0.5f);
+        Assert.InRange(number.Right, RightMargin - 2, RightMargin + 0.5f);
+        Assert.True(Ink(x).Right < number.Left - 50);
+    }
+
+    [Fact]
+    public void Each_line_of_an_equation_array_has_its_number_at_the_margin_level_with_it()
+    {
+        // Word's "#(n)" in each line of an equation array numbers that line, at the right margin.
+        var page = Render(new DocxBuilder().Paragraph(P(Display(EqArr(MR("x+y&=10#(1)"), MR("2x&=4#(2)"), MR("x−3y+z&=0#(3)"))),
+            "<w:jc w:val=\"center\"/>")))[0];
+
+        Assert.DoesNotContain(page.Items.OfType<GlyphItem>(), i => i.Run.Text.Contains('#'));
+        var equals = Runs(page, "=").OrderBy(r => r.Positions[0].Y).ToList();
+        Assert.Equal(3, equals.Count);
+        // The lines still line up at their marks.
+        Assert.True(equals.Max(e => e.Positions[0].X) - equals.Min(e => e.Positions[0].X) < 0.5f);
+        for (var i = 0; i < 3; i++)
+        {
+            var number = Ink(Single(page, $"({i + 1})"));
+            var axis = equals[i].Positions[0].Y - equals[i].Size * MathLayout.Axis;
+            TestContext.Current.TestOutputHelper?.WriteLine($"line {i + 1}: number middle {number.MidY:0.00} pt, axis {axis:0.00} pt");
+            Assert.Equal(axis, number.MidY, 0.5f);
+            Assert.InRange(number.Right, RightMargin - 2, RightMargin + 0.5f);
+        }
     }
 
     [Fact]
