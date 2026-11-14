@@ -22,6 +22,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → DOCX** |
 | **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → ODT** (OpenDocument text, LibreOffice Writer) |
 | **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
+| **ODP writer** | built in | **PPTX (+ PPTM/POTX/POTM/PPSX), PPT → ODP** with masters, shapes, pictures, tables, lists and speaker notes; **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → ODP slides** laid out as the PPTX writer lays them out (see [ODP writer](#odp-writer)); a deck with what the slide model leaves out (charts without a picture, effects, 3D) keeps LibreOffice's route |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
@@ -39,7 +40,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, .NET and Filee's own readers and writers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip**: DMG, IMG, UDF discs, and the rare kinds the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.XZ, XZ, the packs** (in-process), **TAR.BZ2, BZ2** (7-Zip); "Compress into one archive" for any files |
-| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
+| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
@@ -1685,7 +1686,8 @@ in-process into the slide model, written from OpenDocument 1.3 Part 3 (`Odf/Draw
 presentations to PDF, PNG and JPG through the [slide renderer](#filee-renderer-slides) (the Filee renderer,
 `Slides/SlideFormats.cs`), drawings to PDF, SVG and PNG through the [drawing engine](#drawings-visio-odg).
 Presentations also reach DOCX, ODT, HWPX and text, a section per slide (`Slides/SlideDeckText.cs`: text frames,
-pictures and table cells in reading order). ODP → PPTX stays with LibreOffice.
+pictures and table cells in reading order). ODP → PPTX stays with LibreOffice; PowerPoint decks and documents reach
+ODP through the [ODP writer](#odp-writer).
 
 - `OdfDrawPackage.cs`: a package through `DocumentPackage`, a flat file through `SafeXml` (up to 256 MB); the mimetype
   must be a presentation or a drawing (or their templates); encrypted packages are refused as for ODT;
@@ -1777,8 +1779,9 @@ engine makes pages (`DocumentLimits.MaxPages`, 20,000); more is refused with `er
 **Routes.** The writer has two edges per source format: PPTX itself at cost 8 (as the DOCX and ODT writers), below
 Pandoc's slides (20) even with Pandoc first in the engine order, and `DirectOnly`, so no document → PDF takes the
 shortcut through slides and LibreOffice's PPTX → PDF (which costs 0 when LibreOffice is chosen for presentations);
-and PPTX as a step towards ODP, PPT and the other presentation formats at 25 (LibreOffice's fallback cost), taken
-only where nothing else reaches them (without Pandoc, Markdown → ODP). PDF keeps its picture slides, the PowerPoint
+and PPTX as a step towards PPT and the other presentation formats at 25 (LibreOffice's fallback cost), taken
+only where nothing else reaches them. ODP has a writer of its own, which lays documents out with these rules
+([ODP writer](#odp-writer)). PDF keeps its picture slides, the PowerPoint
 variants the Office Open XML engine. `tests/Filee.Engines.Tests/PptxWriterTests.cs` checks the slide rules, the title
 slide, levels, tables, pictures, code, notes, continuation slides, the Open XML SDK validator, Filee's own PPTX
 reader reading every deck back, that every other route keeps its cost, and hostile documents.
@@ -1786,6 +1789,66 @@ reader reading every deck back, that every other route keeps its cost, and hosti
 Not yet: two-column layouts (Pandoc's `::: columns`), "Picture with Caption" slides, incremental lists, a table of
 contents slide, slide numbers and footers, syntax highlighting of code, and a reference deck (template) to take the
 look from.
+
+## ODP writer
+
+`Odf/Draw/OdpWriter*.cs` writes OpenDocument presentations (ODF 1.3) from the slide model, the one the
+[slide renderer](#filee-renderer-slides) draws, so ODP output needs no LibreOffice (`Office/OdpWriterConverter.cs`,
+engine `odp-writer`). The counterpart of the [ODP / ODG reader](#odp--odg-reader): a written file reads back into the
+same model, which the tests check shape by shape and as pictures.
+
+- **Sources.** PowerPoint decks (PPTX, PPTM, POTX, POTM, PPSX; PPT as the [PPT reader](#ppt-reader) translates it)
+  through `PptxSlideReader`, with their speaker notes (`PptxNotes.cs`: the notes slide's body text). Every other format
+  `DocumentReaders` reads is laid out on slides by the [PPTX writer](#pptx-writer) first (a slide per heading, Pandoc's
+  rules, notes from `::: notes`), then written as the same deck, so both writers give the same slides.
+- **Package** (`Odf/OdfPackageWriter.cs`): `mimetype` first, stored and without an extra field; `content.xml`,
+  `styles.xml`, `meta.xml` (title), the pictures, and `META-INF/manifest.xml` listing every part with its media type.
+  Written through a temporary file and moved into place.
+- **Masters.** The shapes every slide of a group starts with alike (the master's and layout's own shapes, which the
+  model repeats on each slide) become that group's `style:master-page`, behind its slides on the background-objects
+  layer; the group's most common background is the master's, a slide with another one keeps its own. Each master has
+  Impress's title and outline placeholders and presentation styles, and a notes page. The page layout is the deck's
+  slide size.
+- **Shapes** are `draw:custom-shape` with their outlines as `draw:enhanced-path` in a `svg:viewBox` of the box in
+  1/100 pt (every preset and custom geometry the readers resolve, so nothing depends on a preset table; `draw:type`
+  names a plain rectangle or ellipse), outlines without fill or line (`F`, `S`) and the lighter and darker parts of 3D
+  presets (LibreOffice's `H`–`K`), the geometry's text area as `draw:text-areas`. A straight line without fill is a
+  `draw:line`; pictures in a plain box are `draw:frame` with `draw:image`; tables are `table:table` in a frame
+  (column widths, row heights, spans, covered cells, cell fills, borders, insets, anchoring); groups are `draw:g`.
+  Placement is `svg:x / svg:y / svg:width / svg:height`, or `draw:transform` (rotate, translate) for a turned box; a
+  mirrored shape is mirrored top to bottom (`draw:mirror-vertical`, a left-to-right mirror being that and half a turn).
+- **Fills and lines:** solid with opacity; gradients as `draw:gradient` (linear, axial, radial, rectangular: the outer
+  colours with a border, more stops also as LibreOffice's `loext:gradient-stop`), uneven transparency as
+  `draw:opacity`; picture fills as `draw:fill-image`, stretched or tiled; line patterns as `draw:hatch`, dotted ones as
+  their blended colour. Lines with width (0 a hairline), colour, transparency, dashes (`draw:stroke-dash` in multiples
+  of the width), caps, joins and arrowheads (`draw:marker`, named by kind as Impress names them).
+- **Pictures:** PNG, JPEG, GIF, BMP, TIFF, EMF and WMF as they are, others as PNG, each stored once; a cropped,
+  recoloured or mirrored picture is drawn out once into a PNG (at its own resolution, at most 4096 px a side) as the
+  renderer draws it, so every reader shows the same.
+- **Text:** paragraphs with an automatic style (alignment, indents, spacing, the source's line height, tab stops, right
+  to left as `rl-tb`) and the mark's character format, spans where a run differs (fonts, size, bold, italic,
+  underline, strike, super- and subscript, colour, highlight, letter spacing), links, page number and count. A
+  paragraph that starts with a bullet (a symbol and a tab or space) or a number in a known form (`1.`, `2)`, `(c)`,
+  `iv.`, `B.`) becomes an item of a `text:list`: the label is the level's bullet character or number format, its size
+  `text:bullet-relative-size`, its colour and font the level's, the number the item's `text:start-value`; levels are
+  the frame's distinct indents. Frames: insets, anchoring, horizontal centring, wrapping, vertical text (`tb-rl`),
+  columns and turned text (`draw:text-rotate-angle`).
+- **Routes.** Its edges cost 8, as the PPTX writer's, below LibreOffice's fallback (25), and are `DirectOnly`. Deck
+  edges are checked with the renderer's capability check (charts without a picture, effects, 3D, WordArt, …), so such
+  a deck keeps LibreOffice's route where it is installed. OpenDocument presentations (ODP, OTP, FODP) are not
+  sources: ODP → PPTX and the template formats stay with LibreOffice.
+- **Hostile input:** the model comes from the bounded readers; the writer caps the XML it makes (512 million
+  characters), group nesting (`MaxNestingDepth`) and the pictures' bytes (`MaxPackageBytes`), refused with
+  `error.document_too_complex`; non-finite boxes and turns are left out, coordinates cut at ±10 km, characters XML
+  can't hold (control characters, unpaired surrogates) dropped; cancelling stops it between slides and shapes.
+- Tests: `OdpWriterTests` (decks built in code by `SlideDeckBuilder`: the package rules, the round trip through the
+  reader with boxes, text and pictures at 48 dpi compared, lists, masters, notes, fills and lines, routes, PPTX and
+  Markdown conversions, hostile models).
+
+Not yet: shapes as placeholders (`presentation:class`; the model doesn't say which shapes were), the preset name and
+adjust handles of a shape (its outline is written, not the formula), shadows and other effects, charts, SmartArt as
+anything but its drawing, animations and transitions, compound lines, ODG output, OTP and FODP output. Checked against
+Filee's own reader; not yet opened in LibreOffice by the tests.
 
 ## PDF reader
 
