@@ -5,6 +5,8 @@
 // (PdfSharpConverter calls CompressPdfAsync; there is no PDF → PDF edge here, so routes don't change), and
 // PdfiumConverter has CMYK pages rendered here for a CMYK JPG or TIFF (RenderCmykAsync). The job queue has every PDF a
 // PDF/A preset writes made PDF/A-2b here (ArchiveAsync), so PDF → PDF/A is the PDFsharp step followed by this one.
+// PDF → EPS/PS is the built-in PostScript writer's (Pdf/PdfPostScriptConverter, cheaper edges); Ghostscript's edges
+// stay for a user who moves it above the writer in the engine order.
 
 using System.Text;
 using Filee.Core.Conversion;
