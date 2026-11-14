@@ -888,6 +888,8 @@
   "presets.duplicate": "Nhân bản",
   "presets.delete": "Xóa",
   "presets.save": "Lưu",
+  "presets.saved": "Đã lưu",
+  "presets.save_failed": "Không thể lưu các thiết lập sẵn: {0}",
   "presets.revert": "Hoàn nguyên",
   "presets.name": "Tên",
   "presets.icon": "Biểu tượng",

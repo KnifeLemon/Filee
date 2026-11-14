@@ -363,15 +363,7 @@ public sealed partial class DonutMenu
         using var _ = context.PushTransform(transform);
         if (outcome == DonutProgressOutcome.Succeeded)
         {
-            var check = new StreamGeometry();
-            using (var g = check.Open())
-            {
-                g.BeginFigure(new Point(center.X - 9, center.Y + 0.5), false);
-                g.LineTo(new Point(center.X - 2.5, center.Y + 7));
-                g.LineTo(new Point(center.X + 10, center.Y - 6.5));
-                g.EndFigure(false);
-            }
-            context.DrawGeometry(null, new Pen(OnAccentBrush, 3.6, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round), check);
+            OutcomeGlyph.DrawCheck(context, center, OnAccentBrush);
         }
         else
         {

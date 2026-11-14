@@ -888,6 +888,8 @@
   "presets.duplicate": "复制",
   "presets.delete": "删除",
   "presets.save": "保存",
+  "presets.saved": "已保存",
+  "presets.save_failed": "无法保存预设：{0}",
   "presets.revert": "还原",
   "presets.name": "名称",
   "presets.icon": "图标",

@@ -892,6 +892,8 @@
   "presets.duplicate": "Dupliquer",
   "presets.delete": "Supprimer",
   "presets.save": "Enregistrer",
+  "presets.saved": "Enregistré",
+  "presets.save_failed": "Impossible d’enregistrer les préréglages : {0}",
   "presets.revert": "Rétablir",
   "presets.name": "Nom",
   "presets.icon": "Icône",

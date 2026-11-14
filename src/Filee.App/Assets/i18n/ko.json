@@ -888,6 +888,8 @@
   "presets.duplicate": "복제",
   "presets.delete": "삭제",
   "presets.save": "저장",
+  "presets.saved": "저장됨",
+  "presets.save_failed": "프리셋을 저장할 수 없습니다: {0}",
   "presets.revert": "되돌리기",
   "presets.name": "이름",
   "presets.icon": "아이콘",

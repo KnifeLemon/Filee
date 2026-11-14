@@ -877,6 +877,8 @@
   "presets.duplicate": "डुप्लिकेट करें",
   "presets.delete": "हटाएँ",
   "presets.save": "सहेजें",
+  "presets.saved": "सहेजा गया",
+  "presets.save_failed": "प्रीसेट सहेजे नहीं जा सके: {0}",
   "presets.revert": "वापस लौटाएँ",
   "presets.name": "नाम",
   "presets.icon": "आइकन",

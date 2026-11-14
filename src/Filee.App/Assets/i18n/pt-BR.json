@@ -892,6 +892,8 @@
   "presets.duplicate": "Duplicar",
   "presets.delete": "Excluir",
   "presets.save": "Salvar",
+  "presets.saved": "Salvo",
+  "presets.save_failed": "Não foi possível salvar as predefinições: {0}",
   "presets.revert": "Desfazer",
   "presets.name": "Nome",
   "presets.icon": "Ícone",

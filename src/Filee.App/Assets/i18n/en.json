@@ -888,6 +888,8 @@
   "presets.duplicate": "Duplicate",
   "presets.delete": "Delete",
   "presets.save": "Save",
+  "presets.saved": "Saved",
+  "presets.save_failed": "Could not save presets: {0}",
   "presets.revert": "Revert",
   "presets.name": "Name",
   "presets.icon": "Icon",

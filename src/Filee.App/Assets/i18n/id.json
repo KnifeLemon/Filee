@@ -877,6 +877,8 @@
   "presets.duplicate": "Duplikatkan",
   "presets.delete": "Hapus",
   "presets.save": "Simpan",
+  "presets.saved": "Tersimpan",
+  "presets.save_failed": "Tidak dapat menyimpan preset: {0}",
   "presets.revert": "Kembalikan",
   "presets.name": "Nama",
   "presets.icon": "Ikon",

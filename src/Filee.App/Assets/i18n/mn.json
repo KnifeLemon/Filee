@@ -864,6 +864,8 @@
   "presets.duplicate": "Хувилах",
   "presets.delete": "Устгах",
   "presets.save": "Хадгалах",
+  "presets.saved": "Хадгаллаа",
+  "presets.save_failed": "Урьдчилсан тохиргоог хадгалж чадсангүй: {0}",
   "presets.revert": "Буцаах",
   "presets.name": "Нэр",
   "presets.icon": "Дүрс",

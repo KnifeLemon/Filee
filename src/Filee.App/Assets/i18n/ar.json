@@ -873,6 +873,8 @@
   "presets.duplicate": "إنشاء نسخة",
   "presets.delete": "حذف",
   "presets.save": "حفظ",
+  "presets.saved": "تم الحفظ",
+  "presets.save_failed": "تعذّر حفظ الإعدادات المسبقة: {0}",
   "presets.revert": "تراجع عن التغييرات",
   "presets.name": "الاسم",
   "presets.icon": "الأيقونة",

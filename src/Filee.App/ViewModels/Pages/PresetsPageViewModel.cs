@@ -3,6 +3,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
@@ -13,7 +14,14 @@ namespace Filee.App.ViewModels.Pages;
 
 public sealed partial class PresetListItem(Preset preset, ILocalizer loc) : ObservableObject
 {
-    public Preset Preset { get; } = preset;
+    public Preset Preset { get; private set; } = preset;
+
+    /// <summary>Updates the list only after the edited preset has been saved.</summary>
+    public void Saved(Preset preset, ILocalizer loc)
+    {
+        Preset = preset;
+        Refresh(loc);
+    }
 
     [ObservableProperty] private string _name = loc.DisplayName(preset);
     [ObservableProperty] private string _target = TargetLabel(preset, loc);
@@ -38,6 +46,7 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;
     private readonly WindowService _windows;
+    private Preset? _editingPreset;
 
     public PresetsPageViewModel(UserDataStore store, ILocalizer loc, WindowService windows)
     {
@@ -65,22 +74,62 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
 
     [ObservableProperty] private PresetListItem? _selectedPreset;
     [ObservableProperty] private PresetEditorViewModel? _editor;
-    [ObservableProperty] private string? _savedMessage;
+    [ObservableProperty] private SaveResult _saveResult;
+    [ObservableProperty] private string? _saveError;
+
+    /// <summary>Exposed as help text without replacing the button's accessible name.</summary>
+    public string? SaveStatus => SaveError ?? (SaveResult == SaveResult.Succeeded ? _loc["presets.saved"] : null);
+
+    partial void OnSaveResultChanged(SaveResult value) => OnPropertyChanged(nameof(SaveStatus));
+    partial void OnSaveErrorChanged(string? value) => OnPropertyChanged(nameof(SaveStatus));
+
+    /// <summary>Asks the editor view to reveal the first invalid field.</summary>
+    public event EventHandler? ValidationFailed;
 
     partial void OnSelectedPresetChanged(PresetListItem? value)
     {
-        Editor = value is null ? null : new PresetEditorViewModel(value.Preset, _loc, _store.Settings.TurnedOffFieldSet());
-        SavedMessage = null;
+        _editingPreset = value?.Preset.Clone();
+        Editor = _editingPreset is null ? null : new PresetEditorViewModel(_editingPreset, _loc, _store.Settings.TurnedOffFieldSet());
+        SaveResult = SaveResult.None;
+        SaveError = null;
     }
 
     [RelayCommand]
     private void Save()
     {
-        if (Editor is null || SelectedPreset is null || !Editor.Apply())
+        SaveResult = SaveResult.None;
+        SaveError = null;
+        if (Editor is null || SelectedPreset is null || _editingPreset is null)
             return;
-        _store.SaveLibrary();
-        SelectedPreset.Refresh(_loc);
-        SavedMessage = "✓";
+        if (!Editor.Apply())
+        {
+            SaveError = Editor.NameError ?? Editor.SizeRangeError ?? Editor.DestinationError ?? Editor.CustomSizeError;
+            SaveResult = SaveResult.Failed;
+            ValidationFailed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        var original = SelectedPreset.Preset;
+        var index = _store.Presets.IndexOf(original);
+        if (index < 0)
+            return;
+        // The live library keeps the last saved preset until the write succeeds. Failed edits remain in the editor
+        // for retry; Revert and switching presets still restore the saved values.
+        _store.Presets[index] = _editingPreset;
+        try
+        {
+            _store.SaveLibrary();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _store.Presets[index] = original;
+            SaveError = _loc.Format("presets.save_failed", ex.Message);
+            SaveResult = SaveResult.Failed;
+            return;
+        }
+        SelectedPreset.Saved(_editingPreset, _loc);
+        OnSelectedPresetChanged(SelectedPreset);
+        SaveResult = SaveResult.Succeeded;
     }
 
     [RelayCommand]
