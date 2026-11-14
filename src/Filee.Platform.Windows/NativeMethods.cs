@@ -11,6 +11,23 @@ internal static partial class NativeMethods
     public const uint GA_ROOTOWNER = 3;
     public const uint SPI_GETCLIENTAREAANIMATION = 0x1042;
 
+    // Shell change notifications (SHChangeNotify, shell32): the folder-icon tool's way of repainting Explorer
+    // without the user pressing F5.
+    public const uint SHCNE_UPDATEDIR = 0x00001000;
+    public const uint SHCNE_UPDATEITEM = 0x00002000;
+    public const uint SHCNE_UPDATEIMAGE = 0x00004000;
+    public const uint SHCNE_ASSOCCHANGED = 0x08000000;
+
+    public const uint SHCNF_PATHW = 0x0005;
+    public const uint SHCNF_DWORD = 0x0003;
+    public const uint SHCNF_FLUSH = 0x1000;
+
+    [LibraryImport("shell32.dll", EntryPoint = "SHChangeNotify")]
+    public static partial void SHChangeNotify(uint eventId, uint flags, nint item1, nint item2);
+
+    [LibraryImport("shell32.dll", EntryPoint = "SHChangeNotify", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial void SHChangeNotifyPath(uint eventId, uint flags, string? item1, nint item2);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
     {

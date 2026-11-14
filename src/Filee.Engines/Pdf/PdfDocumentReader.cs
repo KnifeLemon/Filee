@@ -301,6 +301,29 @@ internal sealed partial class PdfDocumentReader
         }
     }
 
+    /// <summary>
+    /// True when any page carries real or invisible text (an OCR layer); false when they are all pictures.
+    /// </summary>
+    public static bool HasText(string path, CancellationToken cancellationToken = default)
+    {
+        var reader = new PdfDocumentReader(path, "", textOnly: true);
+        try
+        {
+            using var pdf = PdfDocument.Open(path, new ParsingOptions { UseLenientParsing = true, SkipMissingFonts = true });
+            for (var number = 1; number <= pdf.NumberOfPages; number++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!reader.ReadPage(pdf.GetPage(number)).Scanned)
+                    return true;
+            }
+            return false;
+        }
+        catch (PdfDocumentEncryptedException)
+        {
+            throw PasswordProtected();
+        }
+    }
+
     private PageContent ReadPage(Page page)
     {
         // PdfPig gives every position (letters, lines, pictures, links) on the page as it is shown: turned by its
@@ -339,9 +362,10 @@ internal sealed partial class PdfDocumentReader
             var center = new PdfPoint((box.Left + box.Right) / 2, (box.Top + box.Bottom) / 2);
             var link = links.FirstOrDefault(l => Inside(l.Bounds, center)).Uri;
             var format = Format(lead, size);
-            // An OCR layer's font only places the words (Tesseract's GlyphLessFont): the document's own font is used.
+            // An OCR layer's font only places the words (Tesseract's GlyphLessFont) and says nothing of the scan's
+            // typeface, so a definite one is applied: Arial covers Arabic and Latin at every size the layer carries.
             if (invisible)
-                format = format with { Font = null, Bold = false, Italic = false };
+                format = format with { Font = FontFamily("Arial"), Bold = false, Italic = false };
             words.Add(new TextWord(CleanText(word.Text), box.Left, box.Right, box.Top, box.Bottom,
                 lead.StartBaseLine.Y, Math.Max(1, size), format, link, word.DrawnForward));
         }

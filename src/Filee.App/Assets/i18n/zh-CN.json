@@ -86,6 +86,7 @@
   "donut.empty": "把预设拖到这里",
   "donut.same_format": "同格式",
   "donut.group_caption": "组 · {0} 项",
+  "donut.folder_icon_browse": "浏览选择图标",
   "donut.flip_to_back": "{0} 背面",
   "donut.flip_to_front": "{0} 正面",
 
@@ -103,6 +104,7 @@
   "download.badge_files": "{0} · 第 {1}/{2} 个文件",
 
   "error.unsupported_source": "不支持此文件类型",
+  "error.folder_icon_platform": "文件夹图标仅在 Windows 上更改",
   "error.empty_file": "文件是空的（0 字节）。用右键菜单“新建”创建的文件，要在对应的应用中打开并保存后才有内容",
   "error.p7m_unreadable": "这不是 Filee 能打开的已签名 .p7m 文件，或文件已损坏",
   "error.p7m_detached": "这个 .p7m 只包含签名，没有被签名的文件。请转换它所签名的文件",
@@ -1600,6 +1602,7 @@
   "engine.iso.description": "从文件夹或压缩包内容创建 ISO 映像，保留 Unicode 名称和空文件夹。",
   "preset.iso_image": "ISO 镜像",
   "profile.folders": "文件夹",
+  "preset.folder_icon": "更改文件夹图标",
 
   "preset.upscale": "放大图像画质",
   "preset.upscale.donut": "超分辨率放大",

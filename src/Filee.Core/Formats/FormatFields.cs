@@ -77,7 +77,7 @@ public static class FormatFields
             "jp2", "psd", "psb", "ppm", "icns", "qoi", "dds", "cur", "xpm", "xbm", "pam", "pfm", "miff", "dcm",
             "exr", "hdr", "fits", "xcf", "kra", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg", "fodt",
             "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
-            "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
+            "jsonl", "yaml", "toml", "har", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "mcpack", "mcaddon",
             "mcworld", "mctemplate", "mrpack", "cab",
@@ -106,7 +106,7 @@ public static class FormatFields
         // ODF for version control, man pages, streaming segments, packages and compressed archives.
         ([
             "ppm", "icns", "qoi", "cur", "xpm", "xbm", "pam", "pfm", "miff", "fodg", "fodt", "fods", "fodp", "man",
-            "jsonl", "yaml", "toml", "har", "plist", "m4s", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz",
+            "jsonl", "yaml", "toml", "har", "m4s", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz",
             "lz", "lzma", "jar", "cab", "cpio", "deb", "rpm"
         ], ["developer"]),
         // Markup sources, papers and outlines, maintenance-doc drawings (CGM), Calibre's ebook formats.

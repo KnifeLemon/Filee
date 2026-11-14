@@ -82,6 +82,7 @@
   "donut.empty": "प्रीसेट यहाँ खींचें",
   "donut.same_format": "वही फ़ॉर्मैट",
   "donut.group_caption": "{0} का समूह",
+  "donut.folder_icon_browse": "आइकन ब्राउज़ करें",
   "donut.flip_to_back": "{0} पीछे",
   "donut.flip_to_front": "{0} आगे",
   "toast.converting": "{0} → {1}",
@@ -97,6 +98,7 @@
   "download.badge": "{0}/s · {1}",
   "download.badge_files": "{0} · {2} में से {1} फ़ाइल",
   "error.unsupported_source": "यह फ़ाइल प्रकार समर्थित नहीं है",
+  "error.folder_icon_platform": "फ़ोल्डर आइकन केवल Windows पर बदलते हैं",
   "error.empty_file": "फ़ाइल खाली है (0 बाइट)। राइट-क्लिक मेनू के “नया” से बनाई गई फ़ाइल तब तक खाली रहती है, जब तक आप उसे उसके ऐप में खोलकर सेव न करें",
   "error.p7m_unreadable": "यह ऐसी साइन की गई .p7m फ़ाइल नहीं है जिसे Filee खोल सके, या यह खराब है",
   "error.p7m_detached": "इस .p7m में सिर्फ़ सिग्नेचर है, साइन की गई फ़ाइल नहीं। इसकी जगह वह फ़ाइल बदलें जिस पर यह साइन है",
@@ -1580,6 +1582,7 @@
   "engine.iso.description": "फ़ोल्डर या आर्काइव की सामग्री से ISO इमेज बनाता है और Unicode नाम तथा खाली फ़ोल्डर सुरक्षित रखता है।",
   "preset.iso_image": "ISO इमेज",
   "profile.folders": "फ़ोल्डर",
+  "preset.folder_icon": "फ़ोल्डर आइकन बदलें",
 
   "preset.upscale": "छवि की गुणवत्ता बढ़ाएं",
   "preset.upscale.donut": "अपस्केल",

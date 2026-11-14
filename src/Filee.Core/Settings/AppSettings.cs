@@ -225,6 +225,12 @@ public sealed class AppSettings
     /// <summary>Where presets set to "Default" save (Settings → General).</summary>
     public DefaultOutputSettings DefaultOutput { get; set; } = new();
 
+    /// <summary>
+    /// The folder the folder-icon file picker opened in last (settings schema 75), so "Change folder icon" starts
+    /// there the next time; empty until the first pick, when the folder on the donut opens instead.
+    /// </summary>
+    public string LastIconBrowseFolder { get; set; } = "";
+
     /// <summary>Where files dragged from a web browser are saved (Settings → General).</summary>
     public BrowserDropSettings BrowserDrops { get; set; } = new();
 

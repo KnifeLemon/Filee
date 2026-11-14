@@ -48,6 +48,13 @@ public sealed class DonutItem
     /// </summary>
     public IReadOnlyList<DonutItem>? Children { get; init; }
 
+    /// <summary>
+    /// The picture the slice shows instead of its name (a folder-icon ring entry): the icon candidate itself, seen
+    /// before it is applied. A slice with a preview draws the picture alone, big and centred; its label keeps for the
+    /// hover caption of the centre.
+    /// </summary>
+    public IImage? Preview { get; init; }
+
     /// <summary>A group slice (<see cref="Children"/> set), even one left with nothing to fan out.</summary>
     public bool IsGroup => Children is not null;
 
@@ -1003,6 +1010,15 @@ public sealed partial class DonutMenu : Control
         if (cancelHot)
             context.DrawEllipse(WithOpacity(DangerBrush, 0.18), null, center, radius, radius);
 
+        // A hovered folder-icon slice borrows the centre: its picture drawn there, bigger than the disk itself, is
+        // the "look before you drop". The centre's texts step aside while it shows.
+        if (ExpandedChildren is { } lensChildren && _subHover >= 0 && _subHover < lensChildren.Count &&
+            lensChildren[_subHover].Preview is { } lens && !_progressMode)
+        {
+            DrawSlicePicture(context, lens, center, radius * 2.24, lensChildren[_subHover].IsEnabled);
+            return;
+        }
+
         var maxWidth = radius * 1.6;
         var title = CachedText(CenterTitle ?? "", bold, 14, Foreground, maxWidth, maxLines: 2);
         var subtitle = CachedText(CenterSubtitle ?? "", regular, 11.5, cancelHot ? DangerBrush : SecondaryForeground, maxWidth, maxLines: 2);
@@ -1099,9 +1115,18 @@ public sealed partial class DonutMenu : Control
 
     /// <param name="face">The slices <paramref name="item"/> is shown among: its face, or its group's ring.</param>
     private void DrawLabel(DrawingContext context, DonutItem item, IReadOnlyList<DonutItem> face, Point center,
-        double radius, double angle, double maxWidth, double maxHeight, Typeface bold, Typeface regular, bool hot)
+        double radius, double angle, double maxWidth, double maxHeight, Typeface bold, Typeface regular, bool hot,
+        bool rotated = false)
     {
         var foreground = hot ? OnAccentBrush : item.IsEnabled ? Foreground : SecondaryForeground;
+        var anchor = DonutGeometry.PointAt(center, radius, angle);
+        if (item.Preview is { } picture)
+        {
+            // A folder-icon ring entry: the picture itself, as big as the band allows, centred on the slice — its
+            // name adds nothing the eye wants under a picture this small, and the centre shows the hovered one huge.
+            DrawSlicePicture(context, picture, anchor, Math.Min(maxHeight - 4, 40), item.IsEnabled);
+            return;
+        }
         var width = Math.Clamp(maxWidth, 30, 120);
         var text = KeepKoreanWords(item.Label);
         var label = CachedText(text, bold, LabelSize(text, bold, width), foreground, width, maxLines: 2);
@@ -1115,11 +1140,41 @@ public sealed partial class DonutMenu : Control
             : null;
 
         var total = label.Height + (caption?.Height ?? 0);
-        var anchor = DonutGeometry.PointAt(center, radius, angle);
         var y = anchor.Y - total / 2;
+        if (rotated)
+        {
+            // Text along the ring: turned to the arc's tangent, flipped on the left half so it never stands upside
+            // down (like the lettering round a seal). The whole block turns as one, so shaped scripts (Arabic, Deva-
+            // nagari) keep their ligatures.
+            var degrees = angle * 180 / Math.PI;
+            if (degrees > 90 && degrees < 270)
+                degrees += 180;
+            using (context.PushTransform(Matrix.CreateTranslation(anchor.X, anchor.Y)
+                * Matrix.CreateRotation(degrees * Math.PI / 180)
+                * Matrix.CreateTranslation(-anchor.X, -anchor.Y)))
+            {
+                DrawCentered(context, label, anchor.X, y);
+                if (caption is not null)
+                    DrawCentered(context, caption, anchor.X, y + label.Height);
+            }
+            return;
+        }
         DrawCentered(context, label, anchor.X, y);
         if (caption is not null)
             DrawCentered(context, caption, anchor.X, y + label.Height);
+    }
+
+    /// <summary>A slice's picture at <paramref name="anchor"/>: scaled to <paramref name="size"/> keeping its ratio.</summary>
+    private static void DrawSlicePicture(DrawingContext context, IImage picture, Point anchor, double size, bool enabled)
+    {
+        var w = picture.Size.Width;
+        var h = picture.Size.Height;
+        if (w <= 0 || h <= 0)
+            return;
+        var scale = Math.Min(size / w, size / h);
+        var rect = new Rect(anchor.X - w * scale / 2, anchor.Y - h * scale / 2, w * scale, h * scale);
+        using (context.PushOpacity(enabled ? 1 : 0.4))
+            picture.Draw(context, new Rect(picture.Size), rect);
     }
 
     /// <summary>Another slice of <paramref name="face"/> has the name, and only the caption tells them apart.</summary>

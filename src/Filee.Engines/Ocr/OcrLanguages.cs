@@ -106,13 +106,15 @@ public static class OcrLanguages
         using var stream = typeof(OcrLanguages).Assembly.GetManifestResourceStream("Filee.Engines.ocr-languages.json")
                            ?? throw new InvalidOperationException("Embedded ocr-languages.json is missing.");
         using var json = JsonDocument.Parse(stream);
-        var url = json.RootElement.GetProperty("url").GetString()!;
+        var url_template = json.RootElement.GetProperty("url").GetString()!;
         var languages = new List<OcrLanguage>();
         var components = new Dictionary<string, EngineComponent>();
         foreach (var entry in json.RootElement.GetProperty("languages").EnumerateObject())
         {
             var size = entry.Value.GetProperty("size").GetInt64();
             languages.Add(new OcrLanguage(entry.Name, entry.Value.GetProperty("culture").GetString()!, size));
+            // A language may pin its own source (ara reads tessdata_best, the rest tessdata_fast).
+            var url = entry.Value.TryGetProperty("url", out var own) ? own.GetString()! : url_template;
             components[entry.Name] = new EngineComponent(entry.Name, Version, string.Format(CultureInfo.InvariantCulture, url, entry.Name),
                 entry.Value.GetProperty("sha256").GetString()!, size, "traineddata");
         }

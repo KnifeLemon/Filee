@@ -92,7 +92,7 @@
                           <TextBlock Text="{Binding RecordLabel}" />
                         </StackPanel>
                       </ToggleButton>
-                      <Button Classes="ghost danger" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
+                      <Button Classes="ghost" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
                     </StackPanel>
                   </StackPanel>
                 </StackPanel>
@@ -148,7 +148,7 @@
             </StackPanel>
           </ToggleButton>
           <Button Classes="ghost" Content="{DynamicResource triggers.flip_reset}" Command="{Binding ResetKeyCommand}" />
-          <Button Classes="ghost danger" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
+          <Button Classes="ghost" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
         </StackPanel>
         <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding Error}"
                    IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

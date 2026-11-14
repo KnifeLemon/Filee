@@ -20,7 +20,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.Tests;
 
-[Collection("Motion")]
 public class EnginesPageTests
 {
     private static void Pump()
@@ -84,7 +83,6 @@ public class EnginesPageTests
         TestServices.EnsureInitialized("en");
         var store = AppHost.Get<UserDataStore>();
         var saved = store.Settings.EnginePriority.ToList();
-        var motion = Motion.Enabled;
         var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("engines");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
@@ -92,9 +90,6 @@ public class EnginesPageTests
         Pump();
         try
         {
-            // No animation: the card is a card again as soon as the button is released (the animation runs on a timer
-            // that headless tests can't rely on). The test is in the "Motion" collection so no other test switches it back.
-            Motion.Set(false);
             var page = window.GetVisualDescendants().OfType<EnginesPage>().Single();
             var engines = ((EnginesPageViewModel)page.DataContext!).Engines;
             var (first, second, third) = (engines[0], engines[1], engines[2]);
@@ -140,7 +135,6 @@ public class EnginesPageTests
         finally
         {
             window.Close();
-            Motion.Set(motion);
             store.Settings.EnginePriority = saved;
             store.SaveSettings();
         }

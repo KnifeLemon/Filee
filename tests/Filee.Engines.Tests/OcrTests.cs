@@ -28,7 +28,10 @@ public class OcrLanguageListTests
             var component = OcrLanguages.Components[language.Code];
             Assert.Matches("^[0-9A-F]{64}$", component.Sha256);
             Assert.True(component.Size > 0);
-            Assert.Equal($"https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/{language.Code}.traineddata", component.Url);
+            var url = language.Code == "ara"
+                ? $"https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/4.1.0/{language.Code}.traineddata"
+                : $"https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/{language.Code}.traineddata";
+            Assert.Equal(url, component.Url);
         });
         Assert.Equal("Deutsch", OcrLanguages.Find("deu")!.NativeName);
         Assert.Null(OcrLanguages.Find("klingon"));

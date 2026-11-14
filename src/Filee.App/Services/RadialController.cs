@@ -16,6 +16,7 @@
 //   finished quickly → ✓ pops up in the centre, then the ring fades out;
 //   still running after HandOffAfter, failed, Esc, click elsewhere or a new gesture → the toast takes over.
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Threading;
@@ -29,6 +30,8 @@ using Filee.Core.Presets;
 using Filee.Core.Profiles;
 using Filee.Core.Settings;
 using Filee.Core.Web;
+using Filee.Engines.Magick;
+using ImageMagick;
 using Microsoft.Extensions.Logging;
 
 namespace Filee.App.Services;
@@ -70,6 +73,9 @@ public sealed class RadialController(
     private bool _keepOrder;    // the click-mode donut's files come in the order given (the Home page's queue), not sorted
     private Action<ConversionJob>? _onJob;  // told the conversion the donut starts (the Home page's list follows it)
     private bool _forLaunches;  // the click-mode donut's files came from later launches, so more of them can join it
+
+    /// <summary>Folder-icon jobs waiting for their conversion: job id → the folders the drag brought (first one first).</summary>
+    private readonly ConcurrentDictionary<string, IReadOnlyList<string>> _folderIconFolders = [];
 
     /// <summary>
     /// How long a drag that never brought files may keep the invisible window up, in case the button release is
@@ -395,6 +401,30 @@ public sealed class RadialController(
             return;
         }
 
+        // The folder-icon tool and its ring entries ("the icon is inside the folder", "Browse…"): not an ordinary
+        // conversion — the picture (or the one a picker finds) goes into the folder as an .ico, and the folder's
+        // desktop.ini records it once the conversion has finished.
+        if (preset.IsFolderIconTool || preset.Id.StartsWith(FolderIcons.ChildIdPrefix, StringComparison.Ordinal))
+        {
+            var folders = FolderIcons.FoldersIn(files);
+            if (orphaned || folders.Count == 0)
+            {
+                log.LogInformation("The donut closed without converting: {Reason}",
+                    orphaned ? "the browser drop behind the files is gone" : "a folder-icon entry with no folder among the files");
+                web?.Dispose();
+                Close();
+                return;
+            }
+            if (preset.IsFolderIconTool)
+            {
+                // "Browse…": the picker needs the keyboard, like the other dialogs its place comes from.
+                KeepKeyboard();
+                Close(animate: false);
+            }
+            _ = StartFolderIconAsync(preset, folders, web, _visible);
+            return;
+        }
+
         if (preset.IsTool && !preset.IsCopyToFolder)
         {
             log.LogInformation("Opening {Preset} for {Count} file(s)", preset.Id, sources.Count);
@@ -449,6 +479,220 @@ public sealed class RadialController(
         _converted = true;
         ShowProgress(job);
         ReturnKeyboard(); // the ring shows the conversion; nothing here needs the keyboard any more
+    }
+
+    /// <summary>
+    /// Gives the folders on the donut their icon. A ring entry converts the picture it carries into the first folder
+    /// (the preset's output in it) — with "Browse…" the picture is picked by hand first, starting in the folder the
+    /// last pick was made in, else the first folder; a ready-made .ico goes in without a conversion. Anything else is
+    /// converted by a job; when it finishes, the folder's desktop.ini records the icon and the shell is told (Windows).
+    /// The folders but the first get a copy of the icon and their own record: one job makes one .ico.
+    /// </summary>
+    private async Task StartFolderIconAsync(Preset preset, IReadOnlyList<string> folders, WebDrop? web, bool ring)
+    {
+        try
+        {
+            web?.Dispose();
+            string? picked = null;
+            if (preset.IsFolderIconTool)
+            {
+                var start = Directory.Exists(store.Settings.LastIconBrowseFolder)
+                    ? store.Settings.LastIconBrowseFolder : folders[0];
+                picked = await windows.PickIconFileAsync(start, "preset.folder_icon");
+                if (picked is null)
+                    return;
+                store.Settings.LastIconBrowseFolder = Path.GetDirectoryName(picked) ?? "";
+                store.SaveSettings();
+            }
+            var source = preset.FolderIconPath ?? Path.GetFullPath(picked!);
+            if (Path.GetExtension(source).Equals(".ico", StringComparison.OrdinalIgnoreCase))
+            {
+                // Ready-made .ico: recorded as it is — by its own name when it already sits in the folder, by its
+                // absolute path otherwise. Nothing is copied, nothing is converted, nothing stalls the change: the
+                // record lands now, and a folder.jpg a previous picture left behind goes (it would cover the icon
+                // in the big-icons view).
+                foreach (var folder in folders)
+                    PutAndRecord(source, folder, folderJpg: false, copyWhenOutside: false);
+                if (ring)
+                {
+                    _converted = true;
+                    ReturnKeyboard();
+                    Close();
+                }
+                return;
+            }
+            if (preset.IsFolderIconTool)
+                preset = new Preset
+                {
+                    // Browse found a picture that is not an .ico: not a tool and not in the library — a conversion
+                    // that turns it into an .ico in the first folder (the others are copied after, ApplyIcon below).
+                    TargetFormat = "ico",
+                    Output =
+                    {
+                        Location = OutputLocation.CustomFolder, CustomFolder = folders[0],
+                        Conflict = ConflictPolicy.Overwrite, FileNamePattern = "icon",
+                    },
+                };
+            var job = conversions.Start([source], preset, showInToast: !ring);
+            if (job is null)
+            {
+                log.LogInformation("No folder-icon conversion started");
+                if (ring)
+                    Close();
+                return;
+            }
+            _folderIconFolders[job.Job.Id] = folders;
+            job.PropertyChanged += OnFolderIconJobChanged;
+            if (ring)
+            {
+                _onJob?.Invoke(job.Job);
+                _converted = true;
+                ShowProgress(job);
+                ReturnKeyboard(); // the ring shows the conversion; nothing here needs the keyboard any more
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning("Changing a folder icon failed: {Error}", ex.Message);
+            if (ring)
+                Close();
+        }
+    }
+
+    /// <summary>
+    /// Watches a folder-icon conversion: when it is done, the .ico is already in the first folder (the preset saves
+    /// into it), so the record and the shell call are all that is left; the other folders get a copy of the icon and
+    /// their own record. Detaches whatever became of the job.
+    /// </summary>
+    private void OnFolderIconJobChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not JobViewModel vm || vm.Job.State is JobState.Queued or JobState.Running)
+            return;
+        vm.PropertyChanged -= OnFolderIconJobChanged;
+        if (!_folderIconFolders.TryRemove(vm.Job.Id, out var folders))
+            return;
+        if (vm.Job.Outputs.FirstOrDefault(File.Exists) is not { } ico)
+        {
+            log.LogInformation("The folder icon was not made: {Failed} of {Count} conversion(s) failed",
+                vm.Job.Files.Count(file => file.State == FileState.Failed), vm.Job.Files.Count);
+            return;
+        }
+        ApplyIcon(ico, folders);
+    }
+
+    /// <summary>Shares the converted icon with every folder on the drag and records each (the first has it already).</summary>
+    private void ApplyIcon(string ico, IReadOnlyList<string> folders)
+    {
+        foreach (var folder in folders)
+            PutAndRecord(ico, folder, folderJpg: true, copyWhenOutside: true);
+    }
+
+    /// <summary>
+    /// Records one folder's icon; false (logged, the rest of the folders go on) when the folder would not take it.
+    /// <paramref name="folderJpg"/> is for a converted picture: its folder.jpg is what makes the big-icons view show
+    /// the artwork over a video's own preview frame. An .ico recording skips it (and clears a stale one). The record
+    /// touches a desktop.ini that may be hidden and system-owned by a previous icon: a denial there is a log, never
+    /// an app crash.
+    /// </summary>
+    private bool PutAndRecord(string ico, string folder, bool folderJpg, bool copyWhenOutside)
+    {
+        if (!TryPutIcon(ico, folder, copyWhenOutside, out var reference))
+            return false;
+        try
+        {
+            FolderIcons.RecordIcon(folder, reference);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "The folder icon record failed for {Folder}", folder);
+            return false;
+        }
+        if (folderJpg)
+            WriteFolderJpg(ico, folder);
+        else
+            RemoveFolderJpg(folder);
+        platform.FolderIconChanged(folder);
+        return true;
+    }
+
+    /// <summary>
+    /// The record's icon reference for one folder. An .ico already in the folder keeps its own name and nothing is
+    /// touched; an .ico living elsewhere is recorded by its absolute path, unless <paramref name="copyWhenOutside"/>
+    /// (one converted icon shared by several folders of a drag): then it lands in the folder as icon.ico and the
+    /// record stays relative, so it survives the folder moving. False when that copy was refused.
+    /// </summary>
+    private static bool TryPutIcon(string ico, string folder, bool copyWhenOutside, out string reference)
+    {
+        var full = Path.GetFullPath(ico);
+        if (string.Equals(Path.GetDirectoryName(full), Path.GetFullPath(folder), StringComparison.OrdinalIgnoreCase))
+        {
+            reference = Path.GetFileName(full); // in the folder already: recorded under its own name, untouched
+            return true;
+        }
+        if (!copyWhenOutside)
+        {
+            reference = full; // recorded where it lives, nothing copied
+            return true;
+        }
+        reference = "icon.ico";
+        try
+        {
+            File.Copy(full, Path.Combine(folder, reference), overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// An .ico records without a folder.jpg: a folder.jpg a previous picture left behind would keep covering the
+    /// icon in the big-icons view, so it goes. A missing or locked one is no failure.
+    /// </summary>
+    private void RemoveFolderJpg(string folder)
+    {
+        try
+        {
+            File.Delete(Path.Combine(folder, "folder.jpg"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning("The folder's old folder.jpg would not go: {Error}", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Drops the artwork as the folder's folder.jpg: Explorer draws the big-icons thumbnail from that picture, so the
+    /// folder's face is the artwork even when videos inside it would otherwise push their own preview frame over the
+    /// desktop.ini icon (lab-verified on this machine, 2026-11-11: without it a folder holding an .mp4 keeps showing
+    /// the film's frame instead of the chosen icon). A picture that will not decode is a log, the record stands alone.
+    /// </summary>
+    private void WriteFolderJpg(string ico, string folder)
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+        try
+        {
+            var target = Path.Combine(folder, "folder.jpg");
+            if (Path.GetExtension(ico).Equals(".jpg", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!File.Exists(target) || new FileInfo(target).Length != new FileInfo(ico).Length)
+                    File.Copy(ico, target, overwrite: true);
+                return;
+            }
+            // The icon may carry several sizes inside; SelectFrames picks the artwork's representative frame.
+            using var images = new MagickImageCollection(ico);
+            var picked = ImageEncoder.SelectFrames(images, "ico", "jpg");
+            if (picked.Count == 0)
+                return;
+            using var frame = picked[0].Clone();
+            ImageEncoder.WriteImage(frame, target, "jpg");
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning("The folder's folder.jpg was not written: {Error}", ex.Message);
+        }
     }
 
     private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard, bool keepOrder)
@@ -618,10 +862,13 @@ public sealed class RadialController(
 
     /// <summary>
     /// What <paramref name="preset"/> converts of <paramref name="files"/>: folders only go into "Compress into one
-    /// archive"; any other preset converts the files beside them (issue #186).
+    /// archive" (and "Compress into ISO image"); a ring entry of the folder-icon tool converts the picture it carries;
+    /// any other preset converts the files beside the folders (issue #186).
     /// </summary>
     internal static IReadOnlyList<string> SourcesFor(Preset preset, IReadOnlyList<string> files) =>
-        preset.PacksIntoOneArchive || preset.IsCopyToFolder || preset.TargetFormat == "iso" ? files : [.. files.Where(path => !Directory.Exists(path))];
+        preset.Id.StartsWith(FolderIcons.ChildIdPrefix, StringComparison.Ordinal) && preset.FolderIconPath is { } icon ? [icon]
+        : preset.PacksIntoOneArchive || preset.IsCopyToFolder || preset.IsFolderIconTool || preset.TargetFormat == "iso" ? files
+        : [.. files.Where(path => !Directory.Exists(path))];
 
     // ───────── Progress ring ─────────
 
@@ -703,7 +950,8 @@ public sealed class RadialController(
     /// <summary>Edits the preset of slice <paramref name="index"/>, or of slice <paramref name="sub"/> of its group's ring.</summary>
     private async Task EditPresetAsync(int index, int sub = -1)
     {
-        if (_window is null || viewModel.PresetShownAt(index, sub) is not { } preset)
+        if (_window is null || viewModel.PresetShownAt(index, sub) is not { } preset
+            || preset.IsFolderIconTool || preset.Id.StartsWith(FolderIcons.ChildIdPrefix, StringComparison.Ordinal))
             return;
         _editing = true;
         try

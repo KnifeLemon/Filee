@@ -169,8 +169,9 @@
     },
     "ara": {
       "culture": "ar",
-      "sha256": "E3206D3DC87FD50C24A0FB9F01838615911D25168F4E64415244B67D2BB3E729",
-      "size": 1432056
+      "url": "https://raw.githubusercontent.com/tesseract-ocr/tessdata_best/4.1.0/{0}.traineddata",
+      "sha256": "AB9D157D8E38CA00E7E39C7D5363A5239E053F5B0DBDB3167DDE9D8124335896",
+      "size": 12603724
     },
     "fas": {
       "culture": "fa",

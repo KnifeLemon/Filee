@@ -6,6 +6,8 @@ using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Ocr;
+using Filee.Engines.Pdf;
 
 namespace Filee.Engines.Office;
 
@@ -31,10 +33,26 @@ public sealed class DocxWriterConverter : IConverter
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        progress?.Report(0.1);
-        var document = await DocumentReaders.ReadAsync(step.InputPath, step.From, step.WorkDirectory, cancellationToken,
-            ocrLayer: step.Preset.Pdf.Ocr);
+        progress?.Report(0.05);
+        var input = step.InputPath;
+        var ocrLayer = step.Preset.Pdf.Ocr;
+        if (step.From == "pdf" && !ocrLayer && !PdfDocumentReader.HasText(input, cancellationToken))
+        {
+            // The layer between analysis and conversion: a PDF without text is a scan — Tesseract reads it into
+            // text first, so the Word file carries the text, never the page picture. The layer itself is an
+            // intermediate: it goes to the work directory and is deleted with it.
+            var ocr = new TesseractConverter();
+            var layered = await ocr.ConvertAsync(step with { To = "pdf", Output = new ScratchAllocator(step.WorkDirectory) },
+                progress is null ? null : new Progress<double>(p => progress.Report(0.05 + p * 0.5)), cancellationToken);
+            if (layered.Count == 0)
+                throw new InvalidOperationException("The OCR layer produced no file.");
+            input = layered[0];
+            ocrLayer = true;
+        }
+
         progress?.Report(0.6);
+        var document = await DocumentReaders.ReadAsync(input, step.From, step.WorkDirectory, cancellationToken,
+            ocrLayer: ocrLayer);
 
         var output = step.Output.Allocate("docx");
         if (output is null)
@@ -42,5 +60,17 @@ public sealed class DocxWriterConverter : IConverter
         await Task.Run(() => DocxWriter.Write(document, output), cancellationToken);
         progress?.Report(1);
         return [output];
+    }
+
+    /// <summary>Hands out paths in the job's work directory: the intermediate OCR layer is deleted with it.</summary>
+    private sealed class ScratchAllocator(string workDirectory) : IOutputAllocator
+    {
+        public string? Allocate(string extension, string? suffix = null)
+        {
+            var dir = Path.Combine(workDirectory, Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(dir);
+            var ext = extension.TrimStart('.');
+            return ext.Length == 0 ? dir : Path.Combine(dir, $"layer{suffix}.{ext}");
+        }
     }
 }

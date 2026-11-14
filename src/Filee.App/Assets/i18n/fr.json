@@ -86,6 +86,7 @@
   "donut.empty": "Glissez des préréglages ici",
   "donut.same_format": "Inchangé",
   "donut.group_caption": "{0} options",
+  "donut.folder_icon_browse": "Parcourir les icônes",
   "donut.flip_to_back": "{0} verso",
   "donut.flip_to_front": "{0} recto",
 
@@ -103,6 +104,7 @@
   "download.badge_files": "{0} · {1} sur {2} fichiers",
 
   "error.unsupported_source": "Ce type de fichier n'est pas pris en charge",
+  "error.folder_icon_platform": "Les icônes de dossiers changent sous Windows",
   "error.empty_file": "Le fichier est vide (0 octet). Un fichier créé avec « Nouveau » dans le menu contextuel reste vide tant que vous ne l'avez pas ouvert et enregistré dans son application",
   "error.p7m_unreadable": "Ce n'est pas un fichier signé .p7m que Filee peut ouvrir, ou il est endommagé",
   "error.p7m_detached": "Ce .p7m ne contient que la signature, pas le fichier signé. Convertissez plutôt le fichier qu'il signe",
@@ -1600,6 +1602,7 @@
   "engine.iso.description": "Crée des images ISO à partir de dossiers ou du contenu des archives, en conservant les noms Unicode et les dossiers vides.",
   "preset.iso_image": "Image ISO",
   "profile.folders": "Dossiers",
+  "preset.folder_icon": "Changer l'icône du dossier",
 
   "preset.upscale": "Mettre à l'échelle l'image",
   "preset.upscale.donut": "Mettre à l'échelle",

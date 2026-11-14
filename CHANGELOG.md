@@ -25,10 +25,7 @@ ko: 배경 넣기: 사진에 그라데이션, 색, 그림 배경과 여백, 둥�
 ko: 홈 화면에서 파일을 목록으로 모아 순서를 정한 뒤 변환해요
 ko: PDF 나누기: 끌어다 놓을 때마다 페이지 범위를 물어요
 ko: Word → PDF·HWPX: 머리글, 그림 자르기, 줄 간격, 각주 번호, 수식 번호 등 레이아웃을 많이 고쳤어요
-ko: 새 형식: 서명된 .p7m, FLIC 애니메이션, DBML, Krita 백업(.kra~), 속성 목록(.plist), .java, .jif
-ko: 새 도구: 오프라인 AI 이미지 확대(최대 4배), 폴더·압축 파일로 ISO 만들기, 메타데이터 보고 남길 항목 고르기
-ko: PDF 합치기: 책갈피, 문서 안 링크, 양식 필드를 지켜요
-ko: 새 언어: 벵골어, 페르시아어
+ko: 새 형식: 서명된 .p7m, FLIC 애니메이션, DBML, Krita 백업(.kra~)
 en: Security fixes: update signatures are checked, documents can't read other files on the PC or network, and inflated files are refused
 en: Installing or updating the Calibre engine no longer fails
 en: The Translate preset now reaches libraries upgraded from 2.2 or earlier
@@ -36,10 +33,7 @@ en: Add background: gradient, colour or picture backgrounds with padding, rounde
 en: Home page: collect files in a list and set their order before converting
 en: Split PDF asks for the pages each time you drop a file
 en: Word to PDF and HWPX: many layout fixes for headers, cropped pictures, line spacing, footnote and equation numbers
-en: New formats: signed .p7m, FLIC animations, DBML, Krita backups (.kra~), property lists (.plist), .java, .jif
-en: New tools: offline AI image upscaling (up to 4x), ISO images from folders and archives, and Metadata to see and choose what a file keeps
-en: Merge PDF keeps bookmarks, internal links and form fields
-en: New languages: Bengali and Persian
+en: New formats: signed .p7m, FLIC animations, DBML, Krita backups (.kra~)
 zh: 安全修复：校验更新签名，文档不能再读取电脑或网络上的其他文件，并拒绝解压后过大的文件
 zh: 修复了 Calibre 引擎安装或更新失败的问题
 zh: 修复了升级用户看不到翻译预设的问题
@@ -47,10 +41,7 @@ zh: 添加背景：为图片添加渐变、纯色或图片背景，以及边距�
 zh: 主页：先把文件收集到列表并排好顺序，再开始转换
 zh: 拆分 PDF：每次拖入文件时询问页码范围
 zh: Word 转 PDF、HWPX：大量版面修复，包括页眉、裁剪图片、行距、脚注和公式编号
-zh: 新格式：签名的 .p7m、FLIC 动画、DBML、Krita 备份（.kra~）、属性列表（.plist）、.java、.jif
-zh: 新工具：离线 AI 图片放大（最高 4 倍）、用文件夹或压缩包制作 ISO、查看元数据并选择要保留的内容
-zh: 合并 PDF：保留书签、文档内链接和表单字段
-zh: 新语言：孟加拉语、波斯语
+zh: 新格式：签名的 .p7m、FLIC 动画、DBML、Krita 备份（.kra~）
 -->
 
 ### Security
@@ -60,28 +51,17 @@ Fixes for two advisories, [GHSA-gw2f-hq9g-3jc2](https://github.com/KnifeLemon/Fi
 - **Updates:** from this version on, the updater checks a signature over the release's checksums with a key kept in Filee, and checks the publisher of the installer it downloaded.
 - **Pictures and links in documents:** HTML, Markdown and Pandoc documents only take pictures and style sheets from their own folder, and network shares are refused. LibreOffice gets a copy without outside links, and its macro and link settings are fixed for each conversion. If a document has macros, you get a notice that they weren't run.
 - **Links dropped from a browser:** downloads refuse this computer and the local network on every redirect. A new setting, *Allow links to this computer and the local network*, lifts this if you need it.
-- **Downloaded files:** Mark of the Web now stays on downloads, unpacked files and converted results, and on an archive packed from marked files ("One ZIP" and the other pack-into-one presets).
+- **Downloaded files:** Mark of the Web now stays on downloads, unpacked files and converted results.
 - **Files built to do damage:** documents, e-books and archives that unpack to far too much, or are nested far too deep, are refused with a clear message instead of filling the disk or memory or ending Filee.
 - **Links on disk:** watch folders don't follow or convert symbolic links and junctions, and folder deletes and merges don't write through them.
 
 ### New tools and features
 
-- **Upscale** (pictures, palette; by @rohitLovesKrishna): enlarge pictures 2× to 4× with AI models that run on this computer, never online. Choose a model and a scale, and see the new size before you start. It needs the *Upscayl* engine from *Settings → Engines* and a Vulkan graphics device, and models download when you first pick them.
-- **Create ISO images** (by @Feraris20): make an ISO (ISO 9660 with Joliet, or plain ISO 9660) from a folder or an archive. Folders can also become ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2 or TAR.XZ. ISO isn't on the Archives donut by default; add it from the palette. If an ISO fails or is cancelled, a file already at that name is left as it was.
-- **Metadata** (palette, Edit tab; by @lightscape-jm): see every metadata field of a picture, PDF, video or sound file, grouped by where it lives with the location first, and choose what to keep. The **Remove metadata** preset stays for removing it all in one go. Very large metadata is summed up instead of read whole, so a small file can't freeze the window.
-- **Merge PDF keeps the document's structure** (by @SeoJCalive): bookmarks, links inside the document, named destinations and form fields come through, each pointing at its page in the merged file.
-- **OCR in several languages:** a preset's OCR can read more than one language at once, for scans that mix them (Simplified Chinese and English, for example).
-- **Subtitles and transcripts to TXT:** subtitle files (SRT, ASS, WebVTT, SAMI, LRC, TTML and more) convert to plain text with one line per cue and no times. With *Generate subtitles (Whisper)* turned on, a TXT preset turns speech in a video or sound file into text.
-- **Animated AVIF:** animated GIF, WebP, APNG and MNG keep every frame in AVIF, and an animated AVIF converts as an animation. With the FFmpeg engine installed, writing is much faster and can be cancelled.
-- **Show output format** (*Settings → Donut toolbar → Appearance*; by @lightscape-jm): turn it off to show only the slice names. It's on by default.
-- **New languages:** বাংলা (Bengali, by @fluentmoheshwar) and فارسی (Persian, by @nimazerobit).
-- **Engines page** (by @adnan-bhaldar): dragging an engine card is animated, with an outlined slot and a smaller copy that follows the pointer, and only the drag handle shows the move cursor. It follows *Reduce animations*.
-- **Settings → General** (by @adnan-bhaldar): the Settings folder card says what Filee keeps there, and each button of the Presets and toolbars card has an icon and a short description. *Clear history* and *Clear* on the Triggers page use the danger style.
 - **Add background** (pictures, palette; by @lightscape-jm): set pictures on a gradient, a colour or a picture of your own, with padding, rounded corners, a soft shadow and a canvas shape.
 - **File list on the Home page** (by @arielsrossi): files dropped on the Home page collect in a list with previews. Drag them or use the keyboard to set their order, then choose an action. A merge started from the list keeps its order.
 - **Split PDF asks for the pages:** drop a PDF and type a range like `1-3, 8, 12-`, then choose one PDF or one file per page. Other PDF presets can turn on "Ask every time" too, and the command line has `--pages`.
 - **Group slices have a mark** (by @lightscape-jm): a small chevron at the outer edge shows which slices open up to more actions.
-- **New formats:** signed `.p7m` files are read as the file inside them, FLIC animations (`.flc`, `.fli`) as video, and DBML database schemas as text. Krita's `.kra~` backups open like `.kra`. Property lists (`.plist`, XML and binary; by @senthan-07) convert to TXT, JSON, YAML, TOML, XML and CSV. Java source files (`.java`; by @adnan-bhaldar) convert like other code files, and `.jif` opens as JPEG (by @Stamina9).
+- **New formats:** signed `.p7m` files are read as the file inside them, FLIC animations (`.flc`, `.fli`) as video, and DBML database schemas as text. Krita's `.kra~` backups open like `.kra`.
 - **Command line** (by @yavuzmeteafsar): `convert --json` streams progress and file events to stderr, and `watch` has `--json`. A wrapper that reads stdout to the end before stderr can stall on a long conversion; `--quiet` avoids that.
 - **About page** (by @adnan-bhaldar): the version is now an accent-coloured pill.
 
@@ -95,10 +75,7 @@ Fixes for two advisories, [GHSA-gw2f-hq9g-3jc2](https://github.com/KnifeLemon/Fi
 - **Spreadsheet PDFs:** pages are redrawn when characters would have been left out.
 - **HWP and HWPX to PDF:** a picture alone in a header or footer paragraph is drawn, and the degree sign gets its full width in Chinese fonts.
 - **PDF reading:** right-to-left text keeps its brackets and letter forms. Pictures inside a table stay in their cell when converting to HWPX or DOCX.
-- **Markdown:** block quotes have a bar and a background. Without Pandoc or LibreOffice, English inside Chinese or Japanese text is set in a Latin font, so its letters are spaced right in the PDF (by @SeoJCalive).
-- **Word lists** (by @Marouane-elfadli): paragraphs of the same list style no longer keep the gap Word takes out between them, so lists are as long as in Word.
-- **HTML** (by @Marouane-elfadli): colours and backgrounds from `<style>` rules are used, not only from `style=""`, and an `@import` no longer makes the next rule get lost. Code coloured for a dark theme turns dark where it would be too pale to read.
-- **Damaged PDFs** (by @Marouane-elfadli, issue #1175): PDFs with broken internal structure are repaired before converting, merging or splitting.
+- **Markdown:** block quotes have a bar and a background.
 - **OCR:** small pictures such as screenshots are read from an enlarged copy, so small text comes through.
 
 ### Fixes
@@ -110,18 +87,12 @@ Fixes for two advisories, [GHSA-gw2f-hq9g-3jc2](https://github.com/KnifeLemon/Fi
 - **Cut a clip** (by @SeoJCalive): a clip with music plays its preview again.
 - **Accent colours:** text on an accent fill now takes the colour with the better contrast, in every control and state. The default lavender and most accents now have dark text on buttons and checks.
 - **Donut toolbar** (by @lightscape-jm): changing profile or resetting while holding a slice can no longer remove or move the wrong preset.
-- **Selecting many files in Explorer:** the launches of one selection make one donut, and none of them are lost, also on macOS and Linux. On macOS and Linux one error can no longer lose the launches waiting in line or stop Filee from taking new ones (by @lightscape-jm).
-- **Error messages:** a failed conversion's notice shows the whole message, which you can select, copy and scroll.
-- **Donut toolbar editor** (by @lightscape-jm): a drag whose release got lost ends instead of staying on screen and acting on the next press.
-- **Points to CSV** (by @mertkayacs): an attribute named like a geometry column (`wkt`, `shape`, …) no longer takes over the points' position when the CSV is read back.
-- **Logs** are kept for 14 days instead of 7, so a log is still there when you report a problem a week later.
-- **Theme** (by @adnan-bhaldar): the number box's up and down buttons have a rounded hover, and the toggle switch track stays round at any Softness.
-- **Windows on ARM64:** Filee draws with the graphics card by default, so it scrolls smoothly. Set `FILEE_RENDERING=auto` to go back to the old choice.
+- **Selecting many files in Explorer:** the launches of one selection make one donut, and none of them are lost, also on macOS and Linux.
 - **Watch folders:** a file is converted once its data has arrived, and a file that failed gets one more try.
 - **Uninstaller:** it reaches the signed-in user's Filee and never reports success with Filee left behind.
 - **Fonts:** Han text is drawn in the font of the interface language, and Filee uses less memory while it waits in the tray, because fonts now load when needed.
-- **macOS:** a move after the release no longer starts a second drag. The *Ask every time* save dialog opens on the full-screen Space you're in instead of switching to the desktop, and Option+drag no longer ends Show Desktop (by @AzrielTheHellrazor).
-- **Linux:** Fedora 45 and GNOME 51 are supported (by @yanscholze). Hyprland window rules for the donut come with the package, and INSTALL.txt shows how to turn them on (by @manish0467).
+- **macOS:** a move after the release no longer starts a second drag.
+- **Linux:** Fedora 45 and GNOME 51 are supported (by @yanscholze).
 
 ## 2.3.0
 

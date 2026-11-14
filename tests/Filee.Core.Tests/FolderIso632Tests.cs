@@ -19,7 +19,9 @@ public class FolderIso632Tests
         profiles.RemoveAll(p => p.Id == "folders");
         Assert.True(SettingsMigrations.ApplyToLibrary(73, presets, profiles));
         Assert.Equal("to-iso", presets[^1].Id);
-        Assert.Equal(original, presets.Take(presets.Count - 1).Select(p => p.Id));
+        // Schema 75 puts the folder-icon tool before the ISO preset it precedes on the folders donut.
+        Assert.Equal(BuiltInData.FolderIconId, presets[^2].Id);
+        Assert.Equal(original, presets.Take(presets.Count - 2).Select(p => p.Id));
     }
 
     [Fact]

@@ -369,6 +369,22 @@ public sealed class WindowsPlatformServices : IPlatformServices
         Process.Start(new ProcessStartInfo("explorer.exe", args) { UseShellExecute = true });
     }
 
+    /// <summary>Tells Explorer a folder's icon changed, so it repaints without the user pressing F5.</summary>
+    public void FolderIconChanged(string folder)
+    {
+        var full = Path.GetFullPath(folder);
+        var parent = Path.GetDirectoryName(full);
+        var flush = NativeMethods.SHCNF_PATHW | NativeMethods.SHCNF_FLUSH;
+        // The glyph the user looks at lives in the parent's listing: both the folder and its parent get re-read,
+        // the system image cache gets a full flush (index -1), and ASSOCCHANGED shakes the association cache.
+        // UPDATEDIR on the folder alone turned out intermittent — sometimes the old icon kept showing until F5.
+        NativeMethods.SHChangeNotifyPath(NativeMethods.SHCNE_UPDATEDIR, flush, full, nint.Zero);
+        if (parent is not null)
+            NativeMethods.SHChangeNotifyPath(NativeMethods.SHCNE_UPDATEDIR, flush, parent, nint.Zero);
+        NativeMethods.SHChangeNotify(NativeMethods.SHCNE_UPDATEIMAGE, NativeMethods.SHCNF_DWORD | NativeMethods.SHCNF_FLUSH, nint.Zero, (nint)(-1));
+        NativeMethods.SHChangeNotify(NativeMethods.SHCNE_ASSOCCHANGED, flush, nint.Zero, nint.Zero);
+    }
+
     public void OpenFile(string path) =>
         Process.Start(new ProcessStartInfo(Path.GetFullPath(path)) { UseShellExecute = true })?.Dispose();
 

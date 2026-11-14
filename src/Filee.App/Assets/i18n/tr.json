@@ -82,6 +82,7 @@
   "donut.empty": "Ön ayarları buraya sürükleyin",
   "donut.same_format": "Aynı biçim",
   "donut.group_caption": "{0} öğelik grup",
+  "donut.folder_icon_browse": "Simge seç",
   "donut.flip_to_back": "{0} arka",
   "donut.flip_to_front": "{0} ön",
   "toast.converting": "{0} → {1}",
@@ -97,6 +98,7 @@
   "download.badge": "{0}/sn · {1}",
   "download.badge_files": "{0} · {2} dosyadan {1}",
   "error.unsupported_source": "Bu dosya türü desteklenmiyor",
+  "error.folder_icon_platform": "Klasör simgeleri Windows'ta değişir",
   "error.empty_file": "Dosya boş (0 bayt). Sağ tık menüsündeki “Yeni” ile oluşturulan dosya, uygulamasında açıp kaydedene kadar boş kalır",
   "error.p7m_unreadable": "Bu, Filee'nin açabileceği imzalı bir .p7m dosyası değil ya da dosya bozuk",
   "error.p7m_detached": "Bu .p7m yalnızca imzayı içeriyor, imzalanan dosyayı değil. Bunun yerine imzaladığı dosyayı dönüştürün",
@@ -1578,6 +1580,7 @@
   "engine.iso.description": "Klasörlerden veya arşiv içeriğinden ISO kalıpları oluşturur, Unicode adları ve boş klasörleri korur.",
   "preset.iso_image": "ISO görüntüsü",
   "profile.folders": "Klasörler",
+  "preset.folder_icon": "Klasör simgesini değiştir",
 
   "preset.upscale": "Görüntü Kalitesini Yükselt",
   "preset.upscale.donut": "Büyüt ve İyileştir",

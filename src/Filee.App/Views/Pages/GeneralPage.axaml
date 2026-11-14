@@ -93,7 +93,7 @@
                          HorizontalAlignment="Left" MinWidth="160" AutomationProperties.Name="{DynamicResource general.history_limit}" />
         </StackPanel>
         <StackPanel Orientation="Horizontal" Spacing="10">
-          <Button Classes="danger" Content="{DynamicResource general.clear_history}" Command="{Binding ClearHistoryCommand}" />
+          <Button Content="{DynamicResource general.clear_history}" Command="{Binding ClearHistoryCommand}" />
           <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding HistoryText}" />
         </StackPanel>
       </StackPanel>

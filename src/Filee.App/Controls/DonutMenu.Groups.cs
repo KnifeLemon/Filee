@@ -22,8 +22,9 @@ public sealed partial class DonutMenu
     /// <summary>Gap between a popped-out slice and the ring a group fans out.</summary>
     private const double SubGap = 6;
 
-    /// <summary>Thickness of the ring a group fans out.</summary>
-    private const double SubBand = 46;
+    /// <summary>Thickness of the ring a group fans out — wide enough for two rotated lines (name + caption) to sit
+    /// inside the band without running off its edges.</summary>
+    private const double SubBand = 58;
 
     /// <summary>Extra room around the donut for the ring a group fans out (and its labels, which reach past it).</summary>
     public const double SubRingSpace = SubGap + SubBand + 10;
@@ -432,7 +433,7 @@ public sealed partial class DonutMenu
                 if (hot)
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82), null, wedge);
                 DrawLabel(context, item, children, center, (inner + outer) / 2, mid, subSpan * (inner + outer) / 2 - 8,
-                    SubBand - 8, bold, regular, hot);
+                    SubBand - 8, bold, regular, hot, rotated: true);
             }
         }
     }

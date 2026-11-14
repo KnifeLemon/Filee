@@ -82,6 +82,7 @@
   "donut.empty": "Vorlagen hierher ziehen",
   "donut.same_format": "Gleiches Format",
   "donut.group_caption": "Gruppe mit {0}",
+  "donut.folder_icon_browse": "Symbol auswählen",
   "donut.flip_to_back": "{0} Rückseite",
   "donut.flip_to_front": "{0} Vorderseite",
   "toast.converting": "{0} → {1}",
@@ -97,6 +98,7 @@
   "download.badge": "{0}/s · {1}",
   "download.badge_files": "{0} · {1} von {2} Dateien",
   "error.unsupported_source": "Dieser Dateityp wird nicht unterstützt",
+  "error.folder_icon_platform": "Ordnersymbole lassen sich nur unter Windows ändern",
   "error.empty_file": "Die Datei ist leer (0 Bytes). Eine über „Neu“ im Kontextmenü erstellte Datei bleibt leer, bis du sie in ihrem Programm öffnest und speicherst",
   "error.p7m_unreadable": "Das ist keine signierte .p7m-Datei, die Filee öffnen kann, oder sie ist beschädigt",
   "error.p7m_detached": "Diese .p7m enthält nur die Signatur, nicht die signierte Datei. Konvertiere stattdessen die Datei, die sie signiert",
@@ -1578,6 +1580,7 @@
   "engine.iso.description": "Erstellt ISO-Abbilder aus Ordnern oder Archivinhalten und erhält Unicode-Namen und leere Ordner.",
   "preset.iso_image": "ISO-Abbild",
   "profile.folders": "Ordner",
+  "preset.folder_icon": "Ordnersymbol ändern",
 
   "preset.upscale": "Bild hochskalieren",
   "preset.upscale.donut": "Hochskalieren",

@@ -113,6 +113,17 @@ public sealed class PresetAvailability
     {
         if (preset.IsCopyToFolder)
             return new(PresetUse.Usable, null);
+        // The folder-icon tool and its ring entries (settings schema 75): a folder among the files (the folders
+        // donut's drop) is all they can act on, and the desktop.ini they write (and check) is a Windows thing:
+        // on macOS and Linux the slice is greyed out and says why.
+        if (preset.IsFolderIconTool || preset.Id.StartsWith(FolderIcons.ChildIdPrefix, StringComparison.Ordinal))
+        {
+            if (!OperatingSystem.IsWindows())
+                return new(PresetUse.Unusable, _loc["error.folder_icon_platform"]);
+            return formats.Count == 0 || formats.All(f => f.Id == FormatRegistry.Folder)
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.unsupported_source"]);
+        }
         // Single-file compressors also implement combining, but cannot hold a directory tree.
         if (formats.Count > 0 && formats.All(f => f.Id == FormatRegistry.Folder) && !BuiltInData.AcceptsFolders(preset))
             return new(PresetUse.Unusable, _loc["error.no_route"]);

@@ -86,6 +86,7 @@
   "donut.empty": "프리셋을 끌어다 놓으세요",
   "donut.same_format": "같은 형식",
   "donut.group_caption": "묶음 · {0}개",
+  "donut.folder_icon_browse": "아이콘 찾아보기",
   "donut.flip_to_back": "{0} 뒷면",
   "donut.flip_to_front": "{0} 앞면",
 
@@ -103,6 +104,7 @@
   "download.badge_files": "{0} · {2}개 중 {1}번째",
 
   "error.unsupported_source": "지원하지 않는 파일 형식이에요",
+  "error.folder_icon_platform": "폴더 아이콘은 Windows에서 바꿉니다",
   "error.empty_file": "빈 파일이에요(0바이트). 우클릭 메뉴의 “새로 만들기”로 만든 파일은 앱에서 열어 저장해야 내용이 생겨요",
   "error.p7m_unreadable": "Filee가 열 수 있는 서명 파일(.p7m)이 아니거나 손상됐어요",
   "error.p7m_detached": "이 .p7m에는 서명만 있고 서명된 파일은 없어요. 서명 대상 파일을 변환해 주세요",
@@ -1600,6 +1602,7 @@
   "engine.iso.description": "폴더 또는 압축 파일의 내용으로 ISO 이미지를 만들고 유니코드 이름과 빈 폴더를 보존합니다.",
   "preset.iso_image": "ISO 이미지",
   "profile.folders": "폴더",
+  "preset.folder_icon": "폴더 아이콘 바꾸기",
 
   "preset.upscale": "이미지 고화질 확대",
   "preset.upscale.donut": "고화질 확대",

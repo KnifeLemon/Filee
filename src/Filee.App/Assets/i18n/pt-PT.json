@@ -86,6 +86,7 @@
   "donut.empty": "Arrasta predefinições para aqui",
   "donut.same_format": "Mesmo formato",
   "donut.group_caption": "Grupo de {0}",
+  "donut.folder_icon_browse": "Procurar um ícone",
   "donut.flip_to_back": "{0} verso",
   "donut.flip_to_front": "{0} frente",
 
@@ -103,6 +104,7 @@
   "download.badge_files": "{0} · {1} de {2} ficheiros",
 
   "error.unsupported_source": "Este tipo de ficheiro não é suportado",
+  "error.folder_icon_platform": "Os ícones de pastas mudam no Windows",
   "error.empty_file": "O ficheiro está vazio (0 bytes). Um ficheiro criado com «Novo» no menu de contexto fica vazio até o abrires na respetiva aplicação e o guardares",
   "error.p7m_unreadable": "Este não é um ficheiro assinado .p7m que o Filee consiga abrir, ou está danificado",
   "error.p7m_detached": "Este .p7m contém só a assinatura, não o ficheiro assinado. Converte o ficheiro que ele assina",
@@ -1600,6 +1602,7 @@
   "engine.iso.description": "Cria imagens ISO de pastas ou do conteúdo de arquivos comprimidos, preservando nomes Unicode e pastas vazias.",
   "preset.iso_image": "Imagem ISO",
   "profile.folders": "Pastas",
+  "preset.folder_icon": "Alterar ícone da pasta",
 
   "preset.upscale": "Aumentar resolução da imagem",
   "preset.upscale.donut": "Super-resolução",

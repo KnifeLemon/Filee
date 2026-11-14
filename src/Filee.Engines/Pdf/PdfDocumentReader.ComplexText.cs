@@ -33,7 +33,9 @@ internal sealed partial class PdfDocumentReader
     /// A word of a page before it gets its position relative to the crop box and its formatting.
     /// <paramref name="DrawnForward"/>: the page draws right-to-left text left to right in reading order.
     /// </summary>
-    private sealed record PageWord(string Text, PdfRectangle Box, IReadOnlyList<Letter> Letters, Letter Lead, bool DrawnForward = false);
+    /// <summary>A word of a page before it gets its position relative to the crop box and its formatting. Internal for
+    /// the OCR-layer regression tests (ComplexTextTests) that feed synthetic letters to <see cref="ComplexWords"/>.</summary>
+    internal sealed record PageWord(string Text, PdfRectangle Box, IReadOnlyList<Letter> Letters, Letter Lead, bool DrawnForward = false);
 
     /// <summary>An ActualText that covers more glyphs or lines than this is a label for a passage, not a cluster's text.</summary>
     private const int MaxActualTextLetters = 64;
@@ -158,8 +160,8 @@ internal sealed partial class PdfDocumentReader
         public List<Letter> Letters { get; } = [lead];
         public StringBuilder Text { get; } = new(lead.Value);
         public double Size { get; } = Math.Max(1, LetterSize(lead));
-        public double Start => Lead.StartBaseLine.X;
-        public double End { get; private set; } = lead.EndBaseLine.X;
+        public double Start { get; private set; } = Math.Min(lead.StartBaseLine.X, lead.EndBaseLine.X);
+        public double End { get; private set; } = Math.Max(lead.StartBaseLine.X, lead.EndBaseLine.X);
         public double Center => (Lead.StartBaseLine.X + Lead.EndBaseLine.X) / 2;
         public double Baseline => Lead.StartBaseLine.Y;
         public bool IsSpace => string.IsNullOrWhiteSpace(Lead.Value);
@@ -168,7 +170,8 @@ internal sealed partial class PdfDocumentReader
         {
             Letters.Add(mark);
             Text.Append(mark.Value);
-            End = Math.Max(End, mark.EndBaseLine.X);
+            Start = Math.Min(Start, Math.Min(mark.StartBaseLine.X, mark.EndBaseLine.X));
+            End = Math.Max(End, Math.Max(mark.StartBaseLine.X, mark.EndBaseLine.X));
         }
     }
 
@@ -178,11 +181,19 @@ internal sealed partial class PdfDocumentReader
     /// <summary>
     /// The words of a page with text that needs shaping, from its letters in content-stream order (see the top of this
     /// file): marks joined to their letters, words split at spaces, line changes and gaps, and pieces that touch on
-    /// a line (a full stop drawn by another text run) joined again.
+    /// a line (a full stop drawn by another text run) joined again. Internal for the OCR-layer regression tests.
     /// </summary>
-    private static List<PageWord> ComplexWords(List<Letter> letters)
+    internal static List<PageWord> ComplexWords(List<Letter> letters)
     {
-        var horizontal = letters.Where(l => l.TextOrientation == TextOrientation.Horizontal).ToList();
+        // A horizontal line of glyphs either runs left to right, or, when the engine draws right-to-left text properly
+        // placed (Tesseract's OCR layer uses a mirrored matrix for that), the glyphs advance right to left: their
+        // baseline stays level and their end stands before their start. Both are read here; really turned text
+        // (a sideways page) is not.
+        var horizontal = letters.Where(ReadsHorizontally).ToList();
+        // An OCR layer's font has no real advances: Tesseract spaces a word's letters evenly over the word's width, so
+        // ligature-heavy Arabic (few glyphs, wide word) stands wider apart than a normal font would. There the stream
+        // order and the spaces Tesseract writes carry the words; only a seam as wide as a column gutter ends one.
+        var layered = horizontal.Count > 0 && horizontal.All(l => l.RenderingMode == TextRenderingMode.Neither);
 
         // Letters → clusters.
         var clusters = new List<Cluster>();
@@ -236,7 +247,12 @@ internal sealed partial class PdfDocumentReader
             {
                 var previous = current[^1];
                 var size = Math.Min(cluster.Size, previous.Size);
-                if (!OnSameBaseline(previous.Lead, cluster.Lead) || cluster.Start > previous.End + 0.25 * size || cluster.Start < previous.Start - 0.1 * size)
+                // The next cluster joins when it abuts the previous one in the writing direction: a gap wider than a
+                // quarter of the size ends the word (an OCR layer's own seam is wider still). Writing leftwards, its
+                // start is left of the previous start, so the distance between the nearest edges counts, not the
+                // direction.
+                var gap = Math.Max(cluster.Start - previous.End, previous.Start - cluster.End);
+                if (!OnSameBaseline(previous.Lead, cluster.Lead) || gap > (layered ? 1.5 : 0.25) * size)
                     current = null;
             }
             if (current is null)
@@ -276,15 +292,22 @@ internal sealed partial class PdfDocumentReader
                     joined = [.. row[w]];
             }
         }
-        var read = result.Select(word => Word(word, drawnForward: false)).ToList();
-        return ReadsBackwards(read) ? result.Select(word => Word(word, drawnForward: true)).ToList() : read;
+        // A layered page's stream is already the logical text (Tesseract writes the line logically but places every
+        // glyph monotonically right to left, bidi runs included — digits included — so the positions reverse an LTR
+        // run inside RTL text). Read such a word in stream order; do not derive it from positions.
+        var read = layered
+            ? result.Select(word => Word(word, drawnForward: false, streamOrdered: true)).ToList()
+            : result.Select(word => Word(word, drawnForward: false)).ToList();
+        return layered ? read : ReadsBackwards(read) ? result.Select(word => Word(word, drawnForward: true)).ToList() : read;
     }
 
     /// <summary>A word of clusters: its characters in logical order and its box.</summary>
-    private static PageWord Word(List<Cluster> clusters, bool drawnForward)
+    /// <param name="streamOrdered">The clusters already stand in logical (stream) order — an OCR layer's word.</param>
+    private static PageWord Word(List<Cluster> clusters, bool drawnForward, bool streamOrdered = false)
     {
-        var rtl = !drawnForward && ComplexScripts.Direction(string.Concat(clusters.Select(c => c.Text.ToString()))) < 0;
-        IEnumerable<Cluster> ordered = rtl
+        var rtl = !streamOrdered && !drawnForward && ComplexScripts.Direction(string.Concat(clusters.Select(c => c.Text.ToString()))) < 0;
+        IEnumerable<Cluster> ordered = streamOrdered ? clusters
+            : rtl
             ? LogicalOrder(clusters.OrderByDescending(c => c.Center).ToList(), c => ComplexScripts.Direction(c.Text.ToString()), rightToLeft: true)
             : clusters.OrderBy(c => c.Start);
         var text = string.Concat(ordered.Select(c => c.Text.ToString()));
@@ -323,6 +346,19 @@ internal sealed partial class PdfDocumentReader
 
     private static bool OnSameBaseline(Letter a, Letter b) =>
         Math.Abs(a.StartBaseLine.Y - b.StartBaseLine.Y) <= 0.3 * Math.Max(1, Math.Min(LetterSize(a), LetterSize(b)));
+
+    /// <summary>
+    /// Whether the glyph's line runs along the page's width: its baseline is level. Drawn in either direction counts:
+    /// an engine placing right-to-left text properly draws it with a mirrored matrix (Tesseract's OCR layer does), so
+    /// the glyph advances right to left and its end stands before its start. Really turned text (a sideways page)
+    /// advances along the height and is not read here.
+    /// </summary>
+    private static bool ReadsHorizontally(Letter letter)
+    {
+        var width = Math.Abs(letter.EndBaseLine.X - letter.StartBaseLine.X);
+        var rise = Math.Abs(letter.EndBaseLine.Y - letter.StartBaseLine.Y);
+        return rise <= 0.1 * Math.Max(1, Math.Min(LetterSize(letter), width));
+    }
 
     /// <summary>Combining marks only (vowel signs, viramas, nuktas, Arabic harakat, Thai tone marks, joiners).</summary>
     private static bool IsMark(string value) =>

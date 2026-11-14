@@ -9,8 +9,10 @@ using System.Text.RegularExpressions;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Ocr;
 using Filee.Engines.Pdf;
 using ImageMagick;
+using ImageMagick.Drawing;
 using static Filee.Engines.Tests.DocxAssert;
 
 namespace Filee.Engines.Tests;
@@ -329,6 +331,34 @@ public class PdfReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         // Nothing to extract as text from the scan, but the text page still is.
         Assert.Equal("Text after the scan\r\n", await File.ReadAllTextAsync(await ConvertAsync(path, "txt"), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task A_scan_without_text_is_read_by_the_layer_between_analysis_and_conversion()
+    {
+        Assert.SkipUnless(TesseractConverter.Locate() is not null, "Tesseract is not installed.");
+
+        var dir = fx.NewFolder();
+        var picture = PdfBuilder.Photo(dir, "scan.jpg", MagickFormat.Jpeg, 595, 842);
+        using (var image = new MagickImage(picture))
+        {
+            // A scan of a text page, not of a blank photo: the layer must read its words, never keep the picture.
+            new Drawables().FontPointSize(36).FillColor(MagickColors.Black)
+                .Text(60, 120, "Annual Report 2026").Text(60, 220, "Second line")
+                .Draw(image);
+            image.Write(picture, MagickFormat.Jpeg);
+        }
+        var pdf = new PdfBuilder().NewPage();
+        pdf.Picture(picture, 0, 0, 595, 842);
+        var path = pdf.Save(Path.Combine(dir, "scan-only.pdf"));
+
+        Assert.False(PdfDocumentReader.HasText(path));
+
+        var docx = await ConvertAsync(path, "docx");
+
+        // The rule: the Word file carries the text the layer read, never the page picture.
+        Assert.DoesNotContain(ReadBack(docx).Sections.SelectMany(s => s.Blocks),
+            b => b is HParagraph p && p.Inlines.OfType<HImage>().Any());
     }
 
     /// <summary>

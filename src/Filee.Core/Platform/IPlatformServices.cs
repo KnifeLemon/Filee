@@ -29,6 +29,12 @@ public interface IPlatformServices
     /// </summary>
     TrashRefusal? MoveToTrash(string path) => new TrashRefusal("trash.no_recycle_bin");
 
+    /// <summary>
+    /// Tells the shell a folder's icon changed (Windows: SHChangeNotify / SHCNE_UPDATE), so it repaints it at once.
+    /// Platforms without a shell call do nothing; the icon shows the next time Explorer looks anyway.
+    /// </summary>
+    void FolderIconChanged(string folder) { }
+
     /// <summary>Process name (without extension) owning the window under the point, or <c>null</c>.</summary>
     string? ProcessNameAt(int x, int y);
 

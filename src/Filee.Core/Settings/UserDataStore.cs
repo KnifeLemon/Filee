@@ -1074,9 +1074,25 @@ internal static class SettingsMigrations
                 changed = true;
             }
         }
-        // v75: property lists (#1256) learn the data donut; custom claims stay put.
+        // v75: the "Change folder icon" tool knows the folders donut, before the ISO slice. Custom donuts are left
+        //      alone; a library that already has the tool keeps its slices as they are.
         if (from < 75)
-            changed |= LearnExtensions(profiles, out _, ["plist"]);
+        {
+            var hadIconTool = presets.Any(p => p.Id == BuiltInData.FolderIconId);
+            if (!hadIconTool)
+            {
+                var at = presets.FindIndex(p => p.Id == "to-iso");
+                presets.Insert(at >= 0 ? at : presets.Count, BuiltInData.FolderIconPresets().Single());
+                changed = true;
+            }
+            // A library already containing our tool may have deliberately taken its slice off the folders donut.
+            if (!hadIconTool && profiles.FirstOrDefault(p => p.Id == "folders") is { } folders && !folders.PresetIds.Contains(BuiltInData.FolderIconId))
+            {
+                var at = folders.PresetIds.IndexOf("to-iso");
+                folders.PresetIds.Insert(at >= 0 ? at : folders.PresetIds.Count, BuiltInData.FolderIconId);
+                changed = true;
+            }
+        }
         return changed;
     }
 

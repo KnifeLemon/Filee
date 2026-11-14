@@ -82,6 +82,7 @@
   "donut.empty": "ここにプリセットをドラッグ",
   "donut.same_format": "同じ形式",
   "donut.group_caption": "{0}個入り",
+  "donut.folder_icon_browse": "アイコンを選ぶ",
   "donut.flip_to_back": "{0} 裏面",
   "donut.flip_to_front": "{0} 表面",
   "toast.converting": "{0} → {1}",
@@ -97,6 +98,7 @@
   "download.badge": "{0}/秒 · {1}",
   "download.badge_files": "{0} · {2}件中{1}件目",
   "error.unsupported_source": "このファイル形式には対応していません",
+  "error.folder_icon_platform": "フォルダーのアイコンは Windows で変更します",
   "error.empty_file": "ファイルが空です（0バイト）。右クリックメニューの「新規作成」で作ったファイルは、対応アプリで開いて保存するまで空のままです",
   "error.p7m_unreadable": "Filee で開ける署名付きファイル（.p7m）ではないか、ファイルが壊れています",
   "error.p7m_detached": "この .p7m には署名だけが入っていて、署名されたファイルはありません。署名対象のファイルを変換してください",
@@ -1580,6 +1582,7 @@
   "engine.iso.description": "フォルダーまたはアーカイブの内容から ISO イメージを作成し、Unicode 名と空のフォルダーを保持します。",
   "preset.iso_image": "ISOイメージ",
   "profile.folders": "フォルダー",
+  "preset.folder_icon": "フォルダーのアイコンを変更",
 
   "preset.upscale": "画像をアップスケール",
   "preset.upscale.donut": "拡大・高画質化",

@@ -239,7 +239,25 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// <summary>The back face's slices for the files, checked now if they weren't yet.</summary>
     private Face BackFace() => _back ??= BuildFace(_backIds, _formats, _off);
 
-    private bool HasGroups(IEnumerable<string> presetIds) => presetIds.Any(id => store.FindPreset(id)?.IsGroup == true);
+    private bool HasGroups(IEnumerable<string> presetIds) =>
+        presetIds.Any(id => store.FindPreset(id)?.IsGroup == true || id == BuiltInData.FolderIconId);
+
+    /// <summary>
+    /// The folder-icon tool's ring: the pictures out of the folder on the donut, each a preset of its own like a
+    /// group's children (synthesized, never stored: see FolderIcons), and "Browse…" at the end. Empty when the files
+    /// bring no folder; otherwise never, so a greyed-out tool is not possible off the folders donut.
+    /// </summary>
+    private IReadOnlyList<Preset> FolderIconSubPresets()
+    {
+        var folder = FolderIcons.FoldersIn(Files).FirstOrDefault();
+        if (folder is null)
+            return [];
+        return [.. FolderIcons.IconCandidatesOf(folder)
+            .Select(picture => FolderIcons.ChildFor(folder, picture))
+            .Where(child => FormatFields.IsShown(child.TargetFormat, _off))
+            .Take(Preset.MaxSubPresets - 1)
+            .Append(FolderIcons.BrowseChild())];
+    }
 
     private Face BuildFace(IEnumerable<string> presetIds, IReadOnlyList<FileFormat> formats, IReadOnlySet<string> off)
     {
@@ -250,8 +268,10 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             .ToList();
 
         var subPresets = presets
-            .Select(p => (IReadOnlyList<Preset>)(p.IsGroup ? p.SubPresetIds : [])
-                .Select(store.FindPreset).OfType<Preset>().Where(c => !c.IsGroup).Take(Preset.MaxSubPresets).ToList())
+            .Select(p => p.IsGroup
+                ? (IReadOnlyList<Preset>)[.. p.SubPresetIds
+                    .Select(store.FindPreset).OfType<Preset>().Where(c => !c.IsGroup).Take(Preset.MaxSubPresets)]
+                : p.IsFolderIconTool ? FolderIconSubPresets() : [])
             .ToList();
 
         // Children are filtered after Take, so a hidden child doesn't let in one the group editor doesn't show. A group
@@ -282,6 +302,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                         ? string.Join("/", formats.Select(f => f.DisplayName).Take(2))
                         : FormatLabels.NameOf(loc, p.TargetFormat),
                 KeepsCaption = p.IsCopyToFolder,
+                // A folder-icon ring entry shows the picture itself: seen before it is applied.
+                Preview = p.FolderIconPath is { } picture ? IconPreviews.Of(picture) : null,
                 IsEnabled = reason is null,
                 DisabledReason = reason,
             };
@@ -289,7 +311,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
 
         var items = presets.Select((p, i) =>
         {
-            if (!p.IsGroup)
+            if (!p.IsGroup && !p.IsFolderIconTool)
                 return ItemOf(p);
             // A group: its own name and size, and its presets on the ring it fans out (labels only, they're small).
             var children = subPresets[i].Select(c => ItemOf(c, caption: false)).ToList();
@@ -297,11 +319,10 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             {
                 Id = p.Id,
                 Label = loc.DisplayName(p),
-                Caption = loc.Format("donut.group_caption", children.Count),
-                IsEnabled = children.Any(c => c.IsEnabled),
+                Caption = p.IsFolderIconTool ? null : loc.Format("donut.group_caption", children.Count),
+                IsEnabled = children.Count > 0,
                 // Its presets were all deleted since it was made: say so rather than show a dead slice.
-                DisabledReason = children.Count == 0 ? loc["donut.group_empty"]
-                    : children.Select(c => c.DisabledReason).FirstOrDefault(r => r is not null),
+                DisabledReason = children.Count == 0 && p.IsGroup ? loc["donut.group_empty"] : null,
                 Children = children,
             };
         }).ToList();
