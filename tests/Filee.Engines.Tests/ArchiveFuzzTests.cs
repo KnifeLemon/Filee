@@ -1,8 +1,9 @@
 // Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG, 7z,
-// CAB, LHA, ARJ, and the LZMA / LZMA2 / .xz decoder) and of TAR (System.Formats.Tar behind Filee's header walk): seeds
-// are built in code, bytes are flipped, overwritten, cut and repeated, and every input must unpack or be refused with
-// InvalidDataException, in time. The loop is FuzzHarness's: a short fixed run normally, FILEE_FUZZ_SECONDS for a
-// longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
+// CAB, LHA, ARJ, disk images with FAT, UDF and DMG, and the LZMA / LZMA2 / .xz decoder) and of TAR
+// (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
+// repeated, and every input must unpack or be refused with InvalidDataException, in time. The loop is FuzzHarness's: a
+// short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to
+// keep failing inputs.
 
 using System.Buffers.Binary;
 using System.Formats.Tar;
@@ -61,6 +62,21 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void Iso_reader_unpacks_or_refuses_every_mutated_image() =>
         Fuzz("iso", [Iso(Seed(), IsoNames.Joliet), Iso(Seed(), IsoNames.RockRidge, symlink: "a"), Iso(Seed(), IsoNames.Plain)], mutateFrom: 16 * 2048);
+
+    /// <summary>
+    /// Disk images (DiskImageReader): FAT12 volumes alone and behind MBR and GPT tables, UDF discs (one behind an ISO
+    /// 9660 bridge) and DMGs with every run type, all packed small so the mutations hit the structures.
+    /// </summary>
+    [Fact]
+    public void Disk_image_readers_unpack_or_refuse_every_mutated_image()
+    {
+        var fat = DiskImageBuilders.Fat(Seed(), 12, floppySectors: 160);
+        var other = DiskImageBuilders.Fat([new("x.txt", Words(700))], 12, "OTHER", floppySectors: 64);
+        Fuzz("img", [fat, DiskImageBuilders.Mbr([(0x01, fat), (0x01, other)], 1), DiskImageBuilders.Gpt([("a", fat), ("b", other)], 1)]);
+        Fuzz("iso", [DiskImageBuilders.Udf(Seed()), DiskImageBuilders.Udf(Seed(), 0x0201, bridge: true)], mutateFrom: 16 * 2048);
+        Fuzz("dmg", [DiskImageBuilders.Dmg(fat, [DmgRun.Zlib, DmgRun.Raw], chunkSectors: 16),
+            DiskImageBuilders.Dmg(DiskImageBuilders.Gpt([("a", fat)], 1), [DmgRun.Bzip2, DmgRun.Adc], chunkSectors: 64)]);
+    }
 
     [Fact]
     public void Unix_compress_reader_unpacks_or_refuses_every_mutated_file() =>

@@ -11,7 +11,7 @@
 // PX the Unix mode, SL a symbolic link, CL / RE a directory moved out of a deep tree and back, CE more entries in
 // another block. Names come from Rock Ridge when present, else from Joliet, else the plain ISO 9660 names.
 // Directories that point back at a folder already read (a loop), extents beyond the image, deep trees and huge
-// listings are refused. UDF images (Windows install discs) are left to 7-Zip; the El Torito boot image is not
+// listings are refused. UDF images (Windows install discs) are read by DiskImageReader; the El Torito boot image is not
 // unpacked. Written from ECMA-119, the Joliet specification and IEEE P1282 / P1281 (Rock Ridge, SUSP).
 
 using System.Buffers.Binary;
