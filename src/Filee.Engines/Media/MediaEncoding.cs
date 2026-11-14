@@ -415,7 +415,10 @@ internal static partial class MediaEncoding
     internal static List<string> ClipCopy(string input, string output, string target, ClipRange clip, SeekPoint seek, MediaOptions options,
         MediaInfo info)
     {
-        var (args, spec) = CopyStreams(input, target, [.. SeekTo(seek.CopyFrom), "-to", ClipRange.Ffmpeg(clip.End)], options, info);
+        // A copy keeps what lies between the key frame and -ss, so a clip shorter than the 3/23 s -ss lies past the key
+        // frame ends there (FFmpeg refuses an end before -ss, and the clip was encoded instead).
+        var end = Math.Max(clip.End, seek.CopyFrom + 0.00001);
+        var (args, spec) = CopyStreams(input, target, [.. SeekTo(seek.CopyFrom), "-to", ClipRange.Ffmpeg(end)], options, info);
         args.AddRange(ContainerArguments(target));
         args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;

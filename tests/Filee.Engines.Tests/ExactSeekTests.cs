@@ -221,6 +221,21 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(SeekPoint.Plain(7), await KeyFrames.FindAsync(Tools!.Value.Ffprobe, junk, 7, Ct));
     }
 
+    [Theory]
+    [InlineData("raw.h264", "libx264", false)]
+    [InlineData("raw.m2v", "mpeg2video", true)]
+    public async Task A_stream_without_timestamps_is_seeked_as_before(string name, string codec, bool picture)
+    {
+        SkipUnlessInstalled();
+        // FFmpeg makes up a raw stream's timestamps from wherever it starts reading, so no time in it can be named:
+        // read as its own times, the MPEG-2 stream's picture at 14 s was missing. (FFmpeg's own seek finds no picture
+        // in a raw H.264 stream at all.)
+        var video = await NumberedAsync(name, "25", 20, ["-c:v", codec, "-g", "25"]);
+        Assert.Equal(SeekPoint.Plain(14), await KeyFrames.FindAsync(Tools!.Value.Ffprobe, video, 14, Ct));
+        if (picture)
+            Assert.True(await VideoFrames.WriteFrameAsync(video, 14, Path.Combine(fx.NewFolder(), "14.jpg"), Height, Ct));
+    }
+
     // ───────────────────────── Numbered videos ─────────────────────────
 
     private const int Width = 128, Height = 32;
@@ -556,14 +571,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var edit = ClipEdit.Of(range);
         edit.Parts[0].Volume = 0.9;
         Assert.Equal(Enumerable.Range(41, 30), (await FramesAsync(await CutAsync(video, edit, exact: true))).Select(f => f.Number));
-        int? first = null;
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
-        await ClipPreview.PlayAsync(video, ClipEdit.Of(range), Height, (pixels, width, height, _) =>
-        {
-            first ??= Number(pixels, 0, width, height, bytesPerPixel: 4);
-            stop.Cancel();
-        }, stop.Token);
-        Assert.Equal(41, first);
+        Assert.Equal(41, await FirstPlayedAsync(video, ClipEdit.Of(range)));
     }
 
     [Fact]
@@ -649,6 +657,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         SkipUnlessInstalled();
         // With -copyts, FFmpeg's -progress counted from its first report: a clip ended its progress well short of 1,
         // and mixed with each picture's time it went back and forth.
+        if (await FfmpegVersionAsync() is { Major: < 6 } old)
+            Assert.Skip($"FFmpeg {old} has no picture times, and this clip is over before its second -progress report");
         var video = await VideoAsync("30fps.ts", 4);
         var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, video, Ct);
         var range = new ClipRange(0.7, 3.7);
@@ -680,15 +690,105 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var frames = await FramesAsync(video);
         var edit = ClipEdit.Of(new ClipRange(frames[40].Time, frames[70].Time));
 
-        int? first = null;
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
-        await ClipPreview.PlayAsync(video, edit, Height, (pixels, width, height, _) =>
-        {
-            first ??= Number(pixels, 0, width, height, bytesPerPixel: 4);
-            stop.Cancel();
-        }, stop.Token);
+        Assert.Equal(40, await FirstPlayedAsync(video, edit));
+    }
 
-        Assert.Equal(40, first);
+    [Theory]
+    [InlineData("30fps.mp4", 1)]
+    [InlineData("soundfirst.ts", 1)]
+    [InlineData("2997fps.mp4", 1)]
+    [InlineData("60fps.mp4", 1)]
+    [InlineData("30fps.mp4", 2)]
+    public async Task Playback_from_between_two_frames_starts_with_the_later_one_as_the_window_shows(string name, double speed)
+    {
+        SkipUnlessInstalled();
+        // The window shows the first frame at or after a time; playback, 25 pictures a second, starts with it too, also
+        // where frames come faster than that.
+        var video = await VideoAsync(name, 4);
+        var frames = await FramesAsync(video);
+        List<string> wrong = [];
+        for (var i = 40; i < 46; i++)
+        {
+            foreach (var part in new[] { 0.0, 0.3, 0.6, 0.75, 0.9 })
+            {
+                var start = frames[i].Time + (frames[i + 1].Time - frames[i].Time) * part;
+                var shown = part == 0 ? frames[i].Number : frames[i + 1].Number;
+                var edit = ClipEdit.Of(new ClipRange(start, frames[i + 30].Time));
+                edit.Parts[0].Speed = speed;
+                if (await FirstPlayedAsync(video, edit) is var first && first != shown)
+                    wrong.Add($"{start:0.000000} s: frame {first} instead of {shown}");
+            }
+        }
+        Assert.True(wrong.Count == 0, string.Join("; ", wrong));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_preview_plays_the_sound_heard_with_its_pictures(bool soundLater)
+    {
+        SkipUnlessInstalled();
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in player is a Unix script.");
+        // Each TS beeps in frame 50: played from frame 40, the beep is heard 10 frames in, where the pictures show it.
+        // The sound starts before the pictures, or 0.3 s after them: read for itself from its own -ss, on Ubuntu's
+        // FFmpeg 6.1 the beep of the second came two frames early (FFmpeg 8.0 and later get it right either way).
+        var video = soundLater ? await SoundLaterAsync() : await VideoAsync("soundfirst.ts", 4);
+        var frames = await FramesAsync(video);
+        // The player writes down what it is given: a real one needs a sound device, which a CI runner hasn't got.
+        var player = StandIn("player", "#!/bin/sh\ncat > \"$(dirname \"$0\")/played.wav\"\n");
+        ClipPreview.PlayerProgram = player;
+        try
+        {
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+            limit.CancelAfter(TimeSpan.FromSeconds(30));
+            await ClipPreview.PlayAsync(video, ClipEdit.Of(new ClipRange(frames[40].Time, frames[70].Time)), Height, (_, _, _, _) => { },
+                limit.Token);
+        }
+        finally
+        {
+            ClipPreview.PlayerProgram = null;
+        }
+        var played = Path.Combine(Path.GetDirectoryName(player)!, "played.wav");
+        Assert.InRange(await BeepAsync(played), 10 / 30.0 - 0.02, 10 / 30.0 + 0.02);
+    }
+
+    /// <summary>
+    /// A 4 s TS, 30 frames a second, whose sound starts 0.3 s after its pictures and beeps in frame 50.
+    /// </summary>
+    private async Task<string> SoundLaterAsync()
+    {
+        var pictures = await VideoAsync("30fps.ts", 4);
+        var video = Path.Combine(fx.NewFolder(), "soundlater.ts");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            [.. MediaEncoding.Common, "-i", pictures, "-itsoffset", "0.3", "-f", "lavfi", "-i",
+                "aevalsrc='if(between(t\\,50/30-0.3\\,51/30-0.3)\\,0.8*sin(2*PI*1000*t)\\,0)':s=48000:d=3.7",
+                "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-f", "mpegts", video], TimeSpan.FromMinutes(1), Ct);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        return video;
+    }
+
+    /// <summary>
+    /// The number of the first picture the window plays of <paramref name="edit"/>, its sound silent.
+    /// </summary>
+    private async Task<int?> FirstPlayedAsync(string video, ClipEdit edit)
+    {
+        int? first = null;
+        var volume = ClipPreview.PlayerVolume;
+        ClipPreview.PlayerVolume = 0;
+        try
+        {
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+            await ClipPreview.PlayAsync(video, edit, Height, (pixels, width, height, _) =>
+            {
+                first ??= Number(pixels, 0, width, height, bytesPerPixel: 4);
+                stop.Cancel();
+            }, stop.Token);
+        }
+        finally
+        {
+            ClipPreview.PlayerVolume = volume;
+        }
+        return first;
     }
 
     [Theory]
@@ -776,6 +876,149 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var numbers = (await FramesAsync(clip)).Select(f => f.Number).ToList();
         Assert.Equal(Enumerable.Range(60, numbers.Count), numbers);
+
+        // A copy shorter than the 3/23 s: its -ss lay past its end, which FFmpeg refused, and the clip was encoded
+        // from frame 61 instead.
+        var range = new ClipRange(frames[60].Time + 0.01, frames[60].Time + 0.11);
+        var seek = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, video, range.Start, Ct);
+        Assert.True(seek.CopyFrom > range.End, $"-ss {seek.CopyFrom} is before the end, so this tests nothing");
+        var shortClip = await CutAsync(video, ClipEdit.Of(range), exact: false, target: "mkv");
+        numbers = [.. (await FramesAsync(shortClip)).Select(f => f.Number)];
+        Assert.Equal(60, numbers[0]);
+        Assert.InRange(numbers.Count, 4, 7); // to the 3/23 s, and a frame shown later but decoded before it
+    }
+
+    [Fact]
+    public async Task A_copy_from_before_a_ts_files_first_key_frame_starts_with_it()
+    {
+        SkipUnlessInstalled();
+        // The first key frame is decoded 0.4 s before it is shown, after the sound's start: a copy from between the
+        // sound's start and the key frame, seeked by decode time, landed on a packet after the key frame.
+        var (rate, _, codec) = VideoOf("5fps.ts");
+        var video = await NumberedAsync("bframes-sound.ts", rate, 4, codec, beepFrame: 10);
+        var frames = await FramesAsync(video);
+        Assert.True(frames[0].Time > 0.01, $"the pictures start at {frames[0].Time}, with the sound");
+
+        var clip = await CutAsync(video, ClipEdit.Of(new ClipRange(frames[0].Time / 2, frames[15].Time)), exact: false, target: "ts");
+
+        var numbers = (await FramesAsync(clip)).Select(f => f.Number).ToList();
+        Assert.Equal(Enumerable.Range(0, numbers.Count), numbers);
+    }
+
+    [Theory]
+    [InlineData("bframes.nut", "30", 30, "libx264")]
+    [InlineData("bframes.mxf", "25", 15, "mpeg2video")]
+    public async Task Formats_sought_by_the_time_shown_are_read_from_the_key_frame_itself(string name, string rate, int group, string codec)
+    {
+        SkipUnlessInstalled();
+        // Like MOV, these are sought by the time shown, with no 3/23 s taken off: reading starts at the key frame.
+        var video = await NumberedAsync(name, rate, 3, ["-c:v", codec, "-g", group.ToString(CultureInfo.InvariantCulture), "-bf", "2",
+            .. codec == "libx264" ? new[] { "-x264-params", "scenecut=0" } : []]);
+        var frames = await FramesAsync(video);
+        var key = frames[group];
+        Assert.True(key.Key, $"frame {group} is no key frame");
+        var time = frames[group + group * 4 / 5].Time;
+
+        var seek = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, video, time, Ct);
+
+        Assert.Equal(key.Time, seek.From, 0.0005);
+    }
+
+    [Fact]
+    public async Task With_no_key_frame_in_the_furthest_look_times_are_still_the_files_own()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in ffprobe is a Unix script.");
+        // A TS whose ffprobe lists no key frame within 32 s before the time: FFmpeg seeks to the time itself, still
+        // with the file's own timestamps, which keep its sound and pictures together (see the file header).
+        var ffprobe = StandIn("ffprobe", """
+            #!/bin/sh
+            case "$*" in
+            *-read_intervals*) echo '{"packets":[{"pts_time":"30.000000","dts_time":"29.900000","flags":"__"}]}';;
+            *) echo '{"streams":[{"codec_type":"video","has_b_frames":0,"time_base":"1/90000"}],"format":{"format_name":"mpegts","start_time":"1.400000"}}';;
+            esac
+
+            """);
+
+        var seek = await KeyFrames.FindAsync(ffprobe, Path.Combine(fx.NewFolder(), "far.ts"), 40, Ct);
+
+        Assert.Equal(SeekPoint.Plain(40) with { Origin = 1.4, Tick = (1, 90000) }, seek);
+    }
+
+    [Fact]
+    public async Task A_cover_picture_does_not_set_the_videos_ticks()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in ffprobe is a Unix script.");
+        // A cover listed before the video (FFmpeg itself writes it after): cut in the cover's ticks of 1/90000 s, a
+        // clip from the video's of 1/15360 s would start nearly six times too late.
+        var ffprobe = StandIn("ffprobe", """
+            #!/bin/sh
+            case "$*" in
+            *-read_intervals*) echo '{"packets":[{"pts_time":"1.000000","dts_time":"1.000000","flags":"K__"}]}';;
+            *) echo '{"streams":[{"codec_type":"video","has_b_frames":0,"time_base":"1/90000","disposition":{"attached_pic":1}},{"codec_type":"video","has_b_frames":0,"time_base":"1/15360","disposition":{"attached_pic":0}}],"format":{"format_name":"mov,mp4,m4a,3gp,3g2,mj2","start_time":"0.000000"}}';;
+            esac
+
+            """);
+
+        var seek = await KeyFrames.FindAsync(ffprobe, Path.Combine(fx.NewFolder(), "covered.mp4"), 1.5, Ct);
+
+        Assert.Equal((1L, 15360L), seek.Tick);
+    }
+
+    [Fact]
+    public async Task A_file_replaced_under_the_same_name_is_looked_at_again()
+    {
+        SkipUnlessInstalled();
+        // The clip window looks at one file again and again; written over meanwhile, its start time is read again.
+        var path = Path.Combine(fx.NewFolder(), "video");
+        File.Copy(await VideoAsync("30fps.mp4"), path);
+        var before = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, path, 1, Ct);
+        File.Copy(await VideoAsync("30fps.ts"), path, overwrite: true);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(1));
+
+        var after = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, path, 1, Ct);
+
+        Assert.Equal(0, before.Origin);
+        Assert.True(after.Origin > 1, $"start time {after.Origin}");
+    }
+
+    [Theory]
+    [InlineData("5.1.1", false)]
+    [InlineData("6.0", true)]
+    public async Task Ffmpeg_before_6_runs_without_the_picture_times_it_lacks(string version, bool kept)
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in FFmpeg is a Unix script.");
+        // FFmpeg 5 refused the whole run: "Unrecognized option 'stats_enc_pre:v:0'".
+        var ffmpeg = StandIn("ffmpeg", $$"""
+            #!/bin/sh
+            case "$*" in *-version*) echo 'ffmpeg version {{version}} Copyright (c) 2000-2022 the FFmpeg developers'; exit 0;; esac
+            echo "$*" > "$(dirname "$0")/arguments"
+
+            """);
+        var folder = Path.GetDirectoryName(ffmpeg)!;
+
+        var result = await FfmpegRunner.RunAsync(ffmpeg, ["-i", "in.mp4", .. MediaEncoding.FrameProgress, "out.mp4"], null, Ct);
+
+        Assert.Equal(0, result.ExitCode);
+        var arguments = await File.ReadAllTextAsync(Path.Combine(folder, "arguments"), Ct);
+        Assert.Equal(kept, arguments.Contains("-stats_enc_pre", StringComparison.Ordinal));
+        Assert.Contains("-progress pipe:1", arguments, StringComparison.Ordinal);
+    }
+
+    /// <summary>A program named <paramref name="name"/> in a new folder: a shell script (Unix only).</summary>
+    private string StandIn(string name, string script)
+    {
+        var path = Path.Combine(fx.NewFolder(), name);
+        File.WriteAllText(path, script);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return path;
+    }
+
+    /// <summary>The installed FFmpeg's version (major and minor); null when it doesn't say.</summary>
+    private async Task<Version?> FfmpegVersionAsync()
+    {
+        var version = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-version"], TimeSpan.FromMinutes(1), Ct);
+        return CopyVersions.ParseVersion("ffmpeg", version.StandardOutput);
     }
 
     [Fact]
@@ -813,8 +1056,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // video comes over a socket that pauses between the parts, three times the stall limit, as a long read would
         // (after 12 s of it: FFmpeg reads the first seconds before it starts). FFmpeg 6 reports nothing while it waits
         // for its input, though it does while it reads (every half second of a 55 s gap on Ubuntu's 6.1).
-        var version = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-version"], TimeSpan.FromMinutes(1), Ct);
-        if (CopyVersions.ParseVersion("ffmpeg", version.StandardOutput) is { Major: < 7 } old)
+        if (await FfmpegVersionAsync() is { Major: < 7 } old)
             Assert.Skip($"FFmpeg {old} reports nothing while its input pauses");
         var video = await VideoAsync("30fps.ts", 20);
         var bytes = await File.ReadAllBytesAsync(video, Ct);

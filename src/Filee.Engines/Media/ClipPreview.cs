@@ -35,13 +35,16 @@ public static partial class ClipPreview
     /// <summary>Told how many bytes of sound reached the player once a clip has played (tests).</summary>
     internal static Action<long>? SoundPlayed { get; set; }
 
+    /// <summary>The program the sound (a WAV stream on its stdin) goes to instead of ffplay (tests).</summary>
+    internal static string? PlayerProgram { get; set; }
+
     /// <summary>True when the preview plays sound: ffplay is next to Filee's FFmpeg.</summary>
     public static bool HasSound => Player() is not null;
 
     private static string? Player() =>
-        FfmpegConverter.Locate() is { } tools
+        PlayerProgram ?? (FfmpegConverter.Locate() is { } tools
         && Path.Combine(Path.GetDirectoryName(tools.Ffmpeg) ?? "", EngineEnvironment.ProgramName("ffplay.exe")) is var ffplay
-        && File.Exists(ffplay) ? ffplay : null;
+        && File.Exists(ffplay) ? ffplay : null);
 
     /// <summary>
     /// Plays <paramref name="edit"/> of the video (or sound) at <paramref name="path"/> from its start (use

@@ -196,7 +196,9 @@ internal static class KeyFrames
     /// <summary>
     /// Where to start reading the first video stream of <paramref name="input"/> (as <c>-map 0:V:0</c> picks it) for
     /// the frame at <paramref name="seconds"/> from the file's start (see the file header). When ffprobe can't read the
-    /// file or finds no key frame within <see cref="LastReach"/>, FFmpeg seeks to the time itself, as it always did.
+    /// file, finds it has no start time (a raw <c>.h264</c> or <c>.m2v</c> stream, whose frames FFmpeg counts from
+    /// wherever it starts reading) or finds no key frame within <see cref="LastReach"/>, FFmpeg seeks to the time
+    /// itself, as it always did.
     /// </summary>
     public static async Task<SeekPoint> FindAsync(string ffprobe, string input, double seconds, CancellationToken cancellationToken)
     {
@@ -240,7 +242,7 @@ internal static class KeyFrames
 
     /// <summary>
     /// The file's cache key, start time, how FFmpeg seeks it, and its first video stream's time base; null when ffprobe
-    /// can't read it.
+    /// can't read it or it has no start time.
     /// </summary>
     private static async Task<(string File, double Origin, Seeking How, (long Num, long Den)? Tick)?> FormatAsync(string ffprobe, string input,
         CancellationToken cancellationToken)
@@ -266,7 +268,8 @@ internal static class KeyFrames
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("format", out var format))
+            // A stream without timestamps (FFmpeg makes them up from where it starts reading) has no start time either.
+            if (!document.RootElement.TryGetProperty("format", out var format) || Time(format, "start_time") is not { } origin)
                 return null;
             var names = format.TryGetProperty("format_name", out var name) && name.GetString() is { } text ? text.Split(',') : [];
             List<JsonElement> streams = document.RootElement.TryGetProperty("streams", out var list) && list.ValueKind == JsonValueKind.Array
@@ -282,7 +285,7 @@ internal static class KeyFrames
                 && long.TryParse(n, NumberStyles.None, CultureInfo.InvariantCulture, out var num)
                 && long.TryParse(d, NumberStyles.None, CultureInfo.InvariantCulture, out var den) && num > 0 && den > 0
                 ? (num, den) : ((long, long)?)null;
-            var found = (Time(format, "start_time") ?? 0,
+            var found = (origin,
                 new Seeking(names.Any(Unindexed.Contains), names.Any(ByShownTime.Contains), reordered), tick);
             // A clip window looks at one file again and again; a queue of conversions goes through many once each.
             if (Formats.Count > 64)
