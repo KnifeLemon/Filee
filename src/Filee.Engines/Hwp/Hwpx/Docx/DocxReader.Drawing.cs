@@ -573,6 +573,9 @@ internal sealed partial class DocxReader
                 continue;
 
             var style = VmlStyle((string?)shape.Attribute("style"));
+            // Word doesn't draw a hidden shape (a stamp's text kept for later, a template's spare WordArt).
+            if (style.GetValueOrDefault("visibility") == "hidden")
+                continue;
             var width = HwpxUnits.ParseLength(style.GetValueOrDefault("width")) ?? 0;
             var height = HwpxUnits.ParseLength(style.GetValueOrDefault("height")) ?? 0;
             var anchor = style.GetValueOrDefault("position") == "absolute" ? VmlAnchor(shape, style) : null;

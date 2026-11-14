@@ -540,6 +540,32 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Equal(SKColors.Black, Runs(page).First(r => r.Text.Contains("Plain", StringComparison.Ordinal)).Color);
     }
 
+    [Fact]
+    public async Task Issue1313_a_frame_sits_where_its_page_position_puts_it()
+    {
+        // The form's verification code: a paragraph in a frame (w:framePr) 492 pt from the left and 720 pt from the top
+        // of the page, 84 × 98 pt, centred. It came out under the signature in the text, in the middle of the page.
+        var frame = "<w:framePr w:w=\"1680\" w:h=\"1961\" w:hRule=\"exact\" w:wrap=\"none\" w:vAnchor=\"page\" w:hAnchor=\"page\" w:x=\"9840\" w:y=\"14400\" w:anchorLock=\"1\"/><w:jc w:val=\"center\"/>";
+        var docx = Docx(P(R("Signature")) + P(R("Code"), frame) + P(R("Check"), frame) + P(R("After")));
+
+        var page = Single(await DocxAsync(docx));
+
+        var lines = Lines(page);
+        var signature = lines.Single(l => l.Text == "Signature");
+        var after = lines.Single(l => l.Text == "After");
+        Assert.Equal(LineHeight(RepositoryFonts.Latin, 10), after.Y - signature.Y, 0.5f);
+        var codeLine = lines.Single(l => l.Text == "Code");
+        var code = Glyphs(page).Where(g => g.Text.Length > 0 && MathF.Round(g.Y, 1) == codeLine.Y).ToList();
+        Assert.Equal(4, code.Count);
+        Assert.InRange(codeLine.Y, 720, 720 + 98);
+        Assert.InRange(code.Min(g => g.X), 492, 492 + 84);
+        Assert.InRange(code.Max(g => g.X), 492, 492 + 84);
+        // Centred in the frame, the two paragraphs one under the other.
+        Assert.InRange((code.Min(g => g.X) + code.Max(g => g.X)) / 2, 492 + 42 - 12, 492 + 42 + 12);
+        var check = lines.Single(l => l.Text == "Check");
+        Assert.True(check.Y > code[0].Y && check.Y < 720 + 98, $"second line at {check.Y}");
+    }
+
     // ───────────────────────── Word: right-to-left documents (#202, #216, #620) ─────────────────────────
 
     [Fact]

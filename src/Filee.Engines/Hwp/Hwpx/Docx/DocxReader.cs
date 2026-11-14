@@ -656,7 +656,9 @@ internal sealed partial class DocxReader
     {
         var count = output.Count;
         var pageBreak = ReferenceEquals(_pageBreakFor, output);
-        if (element.Name == W + "p")
+        if (element.Name == W + "p" && PageFrame(element) is { } frame)
+            ReadFramed(element, frame, output);
+        else if (element.Name == W + "p")
             ReadParagraph(element, output);
         else if (element.Name == W + "tbl")
         {
@@ -679,6 +681,98 @@ internal sealed partial class DocxReader
             }
         }
     }
+
+    // ───────────────────────── Frames ─────────────────────────
+
+    /// <summary>The frame paragraphs are being read into, while the next paragraph with the same w:framePr joins it.</summary>
+    private (XElement Properties, HTextBox Box, List<HBlock> Output, int Count)? _frame;
+
+    /// <summary>
+    /// The w:framePr of a paragraph Word sets in a frame of a given size at a place on the page or within the margins
+    /// (a verification code at the bottom of a form); null for other paragraphs, drop caps and frames that move with
+    /// the text, which stay in the text.
+    /// </summary>
+    private static XElement? PageFrame(XElement paragraph)
+    {
+        var frame = paragraph.Element(W + "pPr")?.Element(W + "framePr");
+        if (frame is null || Attr(frame, "dropCap") is "drop" or "margin" || Attr(frame, "vAnchor") is not ("page" or "margin")
+            || Twips(frame, "w") is not > 0 || Twips(frame, "h") is not (> 0 or < 0))
+            return null;
+        return frame;
+    }
+
+    /// <summary>
+    /// A paragraph in a frame: a box without border or padding at the frame's place, floating at the paragraph before
+    /// it (the frame takes no room in the text). Consecutive paragraphs with the same frame share the box.
+    /// </summary>
+    private void ReadFramed(XElement paragraph, XElement properties, List<HBlock> output)
+    {
+        HTextBox box;
+        if (_frame is { } open && ReferenceEquals(open.Output, output) && open.Count == output.Count && XNode.DeepEquals(open.Properties, properties))
+        {
+            box = open.Box;
+        }
+        else
+        {
+            var height = Math.Abs(Twips(properties, "h") ?? 0);
+            box = new TextBoxBuilder(HwpxUnits.FromTwips(Twips(properties, "w") ?? 0), HwpxUnits.FromTwips(height), FrameAnchor(properties))
+            {
+                Line = HBorder.None,
+                Padding = new HInsets(0, 0, 0, 0),
+            }.Build();
+            if (output.LastOrDefault() is HParagraph host)
+            {
+                host.Inlines.Add(box);
+            }
+            else
+            {
+                var empty = new HParagraph();
+                empty.Inlines.Add(box);
+                output.Add(empty);
+            }
+        }
+        _textBoxDepth++;
+        try
+        {
+            ReadParagraph(paragraph, box.Blocks);
+        }
+        finally
+        {
+            _textBoxDepth--;
+        }
+        _frame = (properties, box, output, output.Count);
+    }
+
+    /// <summary>Where w:framePr puts its frame: x/xAlign from the page, margin or column, y/yAlign from the page or margin.</summary>
+    private static HAnchor FrameAnchor(XElement frame) => new(
+        HorizontalRelativeTo: Attr(frame, "hAnchor") switch
+        {
+            "page" => "PAPER",
+            "margin" => "PAGE",
+            _ => "COLUMN",
+        },
+        HorizontalAlign: Attr(frame, "xAlign") switch
+        {
+            "center" => "CENTER",
+            "right" or "outside" => "RIGHT",
+            _ => "LEFT",
+        },
+        HorizontalOffset: Attr(frame, "xAlign") is null ? HwpxUnits.FromTwips(Twips(frame, "x") ?? 0) : 0,
+        VerticalRelativeTo: Attr(frame, "vAnchor") == "page" ? "PAPER" : "PAGE",
+        VerticalAlign: Attr(frame, "yAlign") switch
+        {
+            "center" => "CENTER",
+            "bottom" or "outside" => "BOTTOM",
+            _ => "TOP",
+        },
+        VerticalOffset: Attr(frame, "yAlign") is null ? HwpxUnits.FromTwips(Twips(frame, "y") ?? 0) : 0,
+        Wrap: Attr(frame, "wrap") switch
+        {
+            "through" => "IN_FRONT_OF_TEXT",
+            "none" or "notBeside" => "TOP_AND_BOTTOM",
+            _ => "SQUARE",
+        },
+        AllowOverlap: true);
 
     // ───────────────────────── Paragraphs ─────────────────────────
 
