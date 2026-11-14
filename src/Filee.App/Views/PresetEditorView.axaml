@@ -817,6 +817,11 @@
           <TextBlock Classes="caption" Text="{DynamicResource presets.replace_original_hint}" TextWrapping="Wrap"
                      IsVisible="{Binding ReplaceOriginal}" Margin="28,2,0,0" />
         </StackPanel>
+        <StackPanel IsVisible="{Binding ShowReplaceOriginal}">
+          <CheckBox Content="{DynamicResource presets.trash_original}" IsChecked="{Binding TrashOriginal}" />
+          <TextBlock Classes="caption" Text="{DynamicResource presets.trash_original_hint}" TextWrapping="Wrap"
+                     IsVisible="{Binding TrashOriginal}" Margin="28,2,0,0" />
+        </StackPanel>
       </StackPanel>
     </Border>
   </StackPanel>
