@@ -81,7 +81,8 @@ internal static class MediaJoining
 
     /// <summary>The list of the concat demuxer: one <c>file '…'</c> line per clip, quotes escaped.</summary>
     public static string ConcatList(IEnumerable<string> paths) =>
-        string.Concat(paths.Select(path => "file '" + Path.GetFullPath(path).Replace("'", @"'\''", StringComparison.Ordinal) + "'\n"));
+        string.Concat(paths.Select(path => "file '"
+            + (MediaInput.IsUrl(path) ? path : Path.GetFullPath(path)).Replace("'", @"'\''", StringComparison.Ordinal) + "'\n"));
 
     /// <summary>
     /// Clips that share codecs and size, copied one after the other into one MP4 (<see cref="CanCopyVideos"/>). With
@@ -91,7 +92,9 @@ internal static class MediaJoining
     public static List<string> CopyVideos(string listFile, string output, MediaInfo first, JoinMusic? music = null,
         MediaOptions? options = null, string workDirectory = "")
     {
-        List<string> args = [.. MediaEncoding.Common, "-f", "concat", "-safe", "0", "-i", listFile];
+        // The clips may be read through the subfile or concat protocols (MediaInput).
+        List<string> args = [.. MediaEncoding.Common, "-protocol_whitelist", MediaInput.ListProtocols, "-f", "concat", "-safe", "0",
+            "-i", listFile];
         if (music is not null)
         {
             var graph = new List<string>();

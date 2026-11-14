@@ -458,6 +458,9 @@ public class XcfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var picture = Magick.Xcf.Open(Xcf());
         Assert.Throws<OperationCanceledException>(() =>
             Magick.Xcf.Merge(picture, picture.Layers, new CancellationToken(canceled: true)));
+        // Through the picture reader too, which PDF, HEIC, ICNS, upscaling and tracing use.
+        Assert.Throws<OperationCanceledException>(() =>
+            Magick.ImageReader.Read(Xcf(), "xcf", new Preset(), new CancellationToken(canceled: true)));
     }
 
     [Fact]

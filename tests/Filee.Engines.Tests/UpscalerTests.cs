@@ -120,7 +120,7 @@ public class UpscalerTests
             }
 
             var preset = BuiltInData.UpscalePresets().Single();
-            using var images = ImageReader.Read(inputPath, "jpg", preset);
+            using var images = ImageReader.Read(inputPath, "jpg", preset, TestContext.Current.CancellationToken);
             var frames = ImageEncoder.SelectFrames(images, "jpg", "png");
             Assert.NotEmpty(frames);
 

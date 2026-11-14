@@ -198,17 +198,20 @@ internal static class SvgRenderer
     }
 
     /// <summary>Renders the drawing on a transparent bitmap and hands it to ImageMagick for encoding.</summary>
-    public static MagickImage Rasterize(Drawing drawing, float scale)
+    public static MagickImage Rasterize(Drawing drawing, float scale) => Rasterize(drawing.Picture, drawing.Bounds, scale);
+
+    /// <summary>Renders a picture recorded in CSS pixels (the part in <paramref name="bounds"/>), as <see cref="Rasterize(Drawing, float)"/>.</summary>
+    public static MagickImage Rasterize(SKPicture picture, SKRect bounds, float scale)
     {
-        var width = Math.Max(1, (int)Math.Ceiling(drawing.Bounds.Width * scale));
-        var height = Math.Max(1, (int)Math.Ceiling(drawing.Bounds.Height * scale));
+        var width = Math.Max(1, (int)Math.Ceiling(bounds.Width * scale));
+        var height = Math.Max(1, (int)Math.Ceiling(bounds.Height * scale));
         using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
         using (var canvas = new SKCanvas(bitmap))
         {
             canvas.Clear(SKColors.Transparent);
             canvas.Scale(scale);
-            canvas.Translate(-drawing.Bounds.Left, -drawing.Bounds.Top);
-            canvas.DrawPicture(drawing.Picture);
+            canvas.Translate(-bounds.Left, -bounds.Top);
+            canvas.DrawPicture(picture);
         }
 
         // Skia draws premultiplied; ImageMagick expects straight alpha.
