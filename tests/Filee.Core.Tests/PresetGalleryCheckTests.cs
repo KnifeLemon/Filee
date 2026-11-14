@@ -129,6 +129,19 @@ public sealed class PresetGalleryCheckTests
         Assert.True(removed.Ok, string.Join("\n", removed.Errors));
     }
 
+    [Theory]
+    [InlineData("XMP-dc:Title")]
+    [InlineData("EXIF:DocumentName")]
+    [InlineData("XMP-dc:Description")]
+    [InlineData("PDF:Subject")]
+    [InlineData("XMP-dc:Subject")]
+    public void Fields_that_name_a_document_not_a_person_may_be_written(string field)
+    {
+        Assert.False(SharedText.IsPersonalField(field));
+        var result = Check(GalleryFiles.With(p => p["metadata"] = JsonNode.Parse("{\"set\":{\"" + field + "\":[\"Quarterly report\"]}}")));
+        Assert.True(result.Ok, string.Join('\n', result.Errors));
+    }
+
     [Fact]
     public void Other_metadata_may_be_written_and_bad_field_names_fail()
     {

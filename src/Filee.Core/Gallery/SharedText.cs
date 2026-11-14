@@ -124,12 +124,13 @@ internal static partial class SharedText
         MetadataEdits.IsFieldKey(text) ? null : "is not a metadata field like XMP-dc:Title";
 
     /// <summary>
-    /// True for a metadata field that names a person, a place or a copyright owner (author, artist, creator, copyright,
-    /// owner, credit, GPS and place fields, contact details): a shared preset may only remove it, never give it a value.
+    /// True for a metadata field that clearly names a person, a place or a copyright owner (author, artist, creator,
+    /// copyright and rights holder, by-line, owner, credit, GPS and location fields, contact details): a shared preset may
+    /// only remove it, never give it a value. A document's title or name is not one of them.
     /// </summary>
     public static bool IsPersonalField(string field) => PersonalField().IsMatch(field);
 
-    [GeneratedRegex(@"(?i)(author|artist|creator|copyright|owner|by-?line|credit|rights|contact|e-?mail|phone|address|city|country|state|province|location|gps|latitude|longitude|altitude|position|lastmodifiedby|company|manager|name|person|serial|keywords?)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(?i)(author|artist|creator|copyright|rights|by-?line|owner|credit|contact|e-?mail|phone|address|gps|latitude|longitude|altitude|location|city|country|province)", RegexOptions.CultureInvariant)]
     private static partial Regex PersonalField();
 
     /// <summary>"auto", a ratio ("16:9") or empty (<see cref="VideoCrop"/>).</summary>
