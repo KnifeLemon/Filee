@@ -216,7 +216,11 @@ public sealed class WordEquationLayoutTests : IDisposable
     [Fact]
     public void An_accent_sits_over_its_letter_and_raises_the_box()
     {
-        var math = new MathLayout(_system, _shaper);
+        // The repository's Noto Sans (italic made by slanting): a bar spans its content's advance, and how far a
+        // letter's ink reaches past that depends on the font (Linux's serif italics overhang more than 2 pt at 20 pt).
+        var fonts = RepositoryFonts.Load();
+        Assert.SkipUnless(fonts.Has(RepositoryFonts.Latin), "Noto Sans is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        var math = new MathLayout(new FontResolver(fonts), _shaper);
         static MathNode Read(string omml) => OmmlReader.Read(System.Xml.Linq.XElement.Parse($"<m:oMath {Namespaces}>{omml}</m:oMath>"));
         var plain = math.Layout(Read(MR("a")), 20, SKColors.Black);
         var hat = math.Layout(Read(Accent("̂", MR("a"))), 20, SKColors.Black);

@@ -5,6 +5,7 @@
 
 using Filee.Engines.Documents;
 using Filee.Engines.Rendering;
+using Filee.Engines.Typesetting;
 using SkiaSharp;
 
 namespace Filee.Engines.Office.Sheets;
@@ -23,11 +24,12 @@ internal static class SheetPrinter
 
     /// <summary>The workbook as a PDF.</summary>
     /// <param name="progress">Pages drawn and written, as a fraction.</param>
+    /// <param name="fonts">The fonts to draw with; the installed ones when null.</param>
     public static byte[] ToPdf(Workbook book, SheetPrintSource source, CancellationToken cancellationToken = default,
-        IProgress<double>? progress = null, DocumentLimits? limits = null, DateTime? now = null)
+        IProgress<double>? progress = null, DocumentLimits? limits = null, DateTime? now = null, FontResolver? fonts = null)
     {
         using var printed = Print(book, source, limits ?? DocumentLimits.Default, now ?? DateTime.Now,
-            progress is null ? null : new Progress<double>(p => progress.Report(p * 0.5)), cancellationToken);
+            progress is null ? null : new Progress<double>(p => progress.Report(p * 0.5)), cancellationToken, fonts);
         using var output = new MemoryStream();
         PdfPageWriter.Write(output, printed.Pages, new PdfDocumentInfo { Outline = printed.Outline },
             progress is null ? null : new Progress<double>(p => progress.Report(0.5 + p * 0.5)), cancellationToken);
@@ -50,13 +52,14 @@ internal static class SheetPrinter
         }
     }
 
+    /// <param name="resolver">The fonts to draw with; the installed ones when null.</param>
     internal static Printed Print(Workbook book, SheetPrintSource source, DocumentLimits limits, DateTime now,
-        IProgress<double>? progress, CancellationToken cancellationToken)
+        IProgress<double>? progress, CancellationToken cancellationToken, FontResolver? resolver = null)
     {
         var printed = new Printed();
         try
         {
-            var fonts = printed.Fonts = new SheetFonts();
+            var fonts = printed.Fonts = new SheetFonts(resolver);
             var guard = new LayoutGuard(limits, cancellationToken);
             var sheets = new List<(Worksheet Sheet, SheetIndex Index, SheetPrintPlan Plan)>();
             var count = 0;
