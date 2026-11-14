@@ -885,6 +885,10 @@ internal sealed partial class DocxReader
                     foreach (var text in SymbolFonts.Runs(child.Value, format))
                         builder.Add(text);
                 }
+                else if (StoredResult() is { } stored && stored.Stored!.Length < 32)
+                {
+                    stored.Stored += child.Value;
+                }
                 break;
             case "tab" or "ptab":
                 if (ShowsText())
@@ -1123,10 +1127,19 @@ internal sealed partial class DocxReader
         public bool Result;
         public bool Suppress;
         public string? Target;
+
+        /// <summary>The page number field whose result text is kept as <see cref="HField.Stored"/>.</summary>
+        public HField? Stored;
     }
 
     /// <summary>Field result text is shown unless we are inside an instruction or a field we replace (PAGE ...).</summary>
     private bool ShowsText() => _fields.All(f => f.Result && !f.Suppress);
+
+    /// <summary>The page number whose result text is being read, when only that field hides it.</summary>
+    private HField? StoredResult() =>
+        _fields.Count > 0 && _fields[^1] is { Result: true, Stored: { } stored } && _fields.Take(_fields.Count - 1).All(f => f.Result && !f.Suppress)
+            ? stored
+            : null;
 
     private void FieldChar(XElement fldChar, ParagraphBuilder builder, HCharFormat format)
     {
@@ -1165,8 +1178,15 @@ internal sealed partial class DocxReader
         switch (words.FirstOrDefault()?.ToUpperInvariant())
         {
             case "PAGE" or "NUMPAGES" or "SECTIONPAGES" when _inFirstPageHeader && _tableDepth > 0:
-                // rhwp leaves a page number in a table in a text box blank: Word's result, which comes next, stays.
-                break;
+                {
+                    // rhwp leaves a page number in a table in a text box blank: the HWPX writer writes Word's result,
+                    // which comes next, as text. The layout engine counts the pages, as for any other page number.
+                    var number = new HField(words[0].Equals("PAGE", StringComparison.OrdinalIgnoreCase) ? HFieldKind.PageNumber : HFieldKind.TotalPages, format) { Stored = "" };
+                    builder.Add(number);
+                    field.Stored = number;
+                    field.Suppress = true;
+                    break;
+                }
             case "HYPERLINK":
                 {
                     // HYPERLINK "url" [\l "bookmark"] or HYPERLINK \l "bookmark"

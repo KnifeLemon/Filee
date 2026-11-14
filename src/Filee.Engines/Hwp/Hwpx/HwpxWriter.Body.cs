@@ -286,6 +286,10 @@ internal sealed partial class HwpxWriter
                 case HBookmark bookmark:
                     runs.Control(charPrBase, $"<hp:ctrl><hp:bookmark name=\"{Escape(bookmark.Name)}\"/></hp:ctrl>");
                     break;
+                case HField { Stored: { } stored } field:
+                    if (stored.Length > 0)
+                        runs.Text(CharPr(charPrBase, field.Format, link), Escape(stored));
+                    break;
                 case HField field:
                     runs.Control(CharPr(charPrBase, field.Format), AutoNumber(field.Kind == HFieldKind.PageNumber ? "PAGE" : "TOTAL_PAGE", 1, ""));
                     break;

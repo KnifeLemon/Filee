@@ -15,6 +15,7 @@ using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Office;
 using Filee.Engines.Office.Sheets;
 using Filee.Engines.Rendering;
@@ -145,6 +146,33 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Contains("Coverheader", Text(pages[0]));
         Assert.DoesNotContain("Runningheader", Text(pages[0]));
         Assert.Contains("Runningheader", Text(pages[1]));
+    }
+
+    [Fact]
+    public async Task Issue1152_page_x_of_y_in_a_first_page_header_table_counts_every_page()
+    {
+        // The Doc Ref table of a first-page header: "Page 1 of 2" where Word last saved two pages, in a three-page
+        // document. The HWPX writer keeps Word's text there (rhwp leaves such a number blank); the renderer counts.
+        var docx = Docx(P(R("first")) + PageBreak + P(R("second")) + PageBreak + P(R("third")));
+        var cell = P(R("Page ") + Field("PAGE", "1") + R(" of ") + Field("NUMPAGES", "2"));
+        var first = docx.Header("<w:tbl><w:tblPr><w:tblW w:w=\"4000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid>" +
+            $"<w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr>{cell}</w:tc></w:tr></w:tbl>" + P(""));
+        docx.SectionProperties = $"<w:headerReference w:type=\"first\" r:id=\"{first}\"/>{DefaultPage}<w:titlePg/>";
+        var path = docx.Save(Path.Combine(fx.NewFolder(), "case.docx"));
+
+        var pages = await ComposeAsync(path, "docx");
+
+        Assert.Equal(3, pages.Count);
+        Assert.Contains("Page1of3", Text(pages[0]));
+        var document = DocxReader.Read(path, fx.NewFolder());
+        var header = Assert.IsType<List<HBlock>>(Assert.Single(document.Sections).FirstPageHeader);
+        var fields = Assert.IsType<HTable>(header[0]).Rows[0].Cells[0].Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HField>().ToList();
+        Assert.Equal(["1", "2"], fields.Select(f => f.Stored));
+        var hwpx = Path.Combine(fx.NewFolder(), "case.hwpx");
+        HwpxWriter.Write(document, hwpx);
+        using var zip = ZipFile.OpenRead(hwpx);
+        using var section = new StreamReader(zip.GetEntry("Contents/section0.xml")!.Open());
+        Assert.Contains("Page 1 of 2", await section.ReadToEndAsync(Token), StringComparison.Ordinal);
     }
 
     [Fact]
