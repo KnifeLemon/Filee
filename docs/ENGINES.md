@@ -33,7 +33,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
-| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip, GMA, VPK read in-process; "Compress into one archive" for any files |
+| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs, GMA**; ALZ, EGG, lzip, GMA, VPK read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
@@ -1824,7 +1824,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 | Split archives (.001, .7z.001, .zip.001, .tar.001) | 7-Zip (combining .002, .003 … automatically) | — |
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
 | EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (decoded by 7-Zip); several blocks per file | — |
-| GMA (Garry's Mod addon) | Filee: versions 1–3, CRCs checked, an `addon.json` written beside the files | — |
+| GMA (Garry's Mod addon) | Filee: versions 1–3, CRCs checked, an `addon.json` written beside the files | Filee, as gmad does (see below) |
 | BSP (Source engine map), its packed files | Filee copies the pakfile lump (a ZIP) out, 7-Zip unpacks it | — |
 | VPK (Valve pak) | Filee: versions 1 and 2, `_dir.vpk` with its `_000.vpk` … parts, CRCs checked; a PS Vita `.vpk` (a ZIP) by 7-Zip | — |
 
@@ -1845,8 +1845,16 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   (names, sizes, CRC-32s) and the files one after another, ended by a CRC-32 of everything before it. Every name is
   checked before anything is written (an absolute name, a drive or a `..` stops the addon), the entries are capped at
   the archive limit and their sizes must fit inside the addon. Unpacking checks every file's CRC (0, as `gmad -nocrc`
-  writes it, is not checked) and writes an `addon.json` with the title, description, type and tags, as gmad reads it
-  to pack the folder again; the required-content list and the author are not kept (Garry's Mod uses neither).
+  writes it, is not checked) and writes an `addon.json` with the title, description, type and tags, so the folder packs
+  back into the same addon; the required-content list and the author are not kept (Garry's Mod uses neither). Packing
+  a folder, a ZIP of one or the files dropped onto "Compress into one archive" reads `addon.json` like gmad: `title`
+  (else the folder's name), `type` (else `servercontent`), `tags`, `description` and the `ignore` wildcards. Only
+  files on gmad's whitelist go in (`lua/*.lua`, `materials/*.vtf`, `models/*.mdl` …, the ones Garry's Mod mounts;
+  `addon.json`, `thumbs.db`, `desktop.ini`, `.git*` and `.DS_Store` never), so a `.psd` or a `readme.txt` beside them
+  is left out rather than failing the addon as gmad does without `-warninvalid`; a folder with none of them is
+  refused. Names are stored in lower case, sorted, with a CRC each. The type and tags are written as given (lower
+  case), not checked against the Workshop's lists. The "GMA" preset is in the palette after the game packs (schema
+  96), not on a donut.
 - **Valve paks** (`.vpk`, #1526, the Games field; `Archives/Vpk.cs`): the archives Source engine games keep their files
   in (`hl2_textures_dir.vpk`, the content Garry's Mod mounts). The directory file holds a tree of extensions, folders
   and names; each file's content is a few preload bytes stored in the tree plus its data, which follows the tree in the

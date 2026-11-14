@@ -226,8 +226,8 @@ public static class BuiltInData
     ];
 
     /// <summary>
-    /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62): in the palette
-    /// only, after "TAR", in the Games field (off in a new install).
+    /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62) and Garry's Mod
+    /// addons (#1526, schema 96): in the palette only, after "TAR", in the Games field (off in a new install).
     /// </summary>
     public static List<Preset> GamePackPresets() =>
     [
@@ -236,6 +236,7 @@ public static class BuiltInData
         new() { Id = "to-mcworld", Name = "MCWORLD", TargetFormat = "mcworld" },
         new() { Id = "to-mctemplate", Name = "MCTEMPLATE", TargetFormat = "mctemplate" },
         new() { Id = "to-mrpack", Name = "MRPACK", TargetFormat = "mrpack" },
+        new() { Id = "to-gma", Name = "GMA", TargetFormat = "gma" },
     ];
 
     /// <summary>

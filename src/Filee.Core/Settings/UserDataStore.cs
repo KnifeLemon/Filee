@@ -1181,6 +1181,10 @@ internal static class SettingsMigrations
         //      takes it first.)
         if (from < 95)
             changed |= LearnExtensions(profiles, out _, ["gma", "vpk", "bsp"]);
+        // v96: "GMA" (packing a folder into a Garry's Mod addon) joins the game packs in the palette, not a donut; the
+        //      game packs the user removed stay removed. (Schema 96 may be renumbered if another change takes it first.)
+        if (from < 96)
+            changed |= AddGma(presets);
         return changed;
     }
 
@@ -1236,6 +1240,22 @@ internal static class SettingsMigrations
             changed = true;
         }
         return changed;
+    }
+
+    /// <summary>
+    /// "GMA" after the last game pack of the library (else after "TAR", else at the end); the game packs the user removed
+    /// stay removed.
+    /// </summary>
+    private static bool AddGma(List<Preset> presets)
+    {
+        if (presets.Any(p => p.Id == "to-gma"))
+            return false;
+        var packs = BuiltInData.GamePackPresets().Select(p => p.Id).ToHashSet();
+        var at = presets.FindLastIndex(p => packs.Contains(p.Id));
+        if (at < 0)
+            at = presets.FindIndex(p => p.Id == "to-tar");
+        presets.Insert(at < 0 ? presets.Count : at + 1, BuiltInData.GamePackPresets().Single(p => p.Id == "to-gma"));
+        return true;
     }
 
     private static bool AddCropVideo(List<Preset> presets)

@@ -1,10 +1,12 @@
-// Writes archives. ZIP (and the game packs that are ZIPs, see GamePacks), TAR and TAR.GZ are written in-process (System.IO.Compression / System.Formats.Tar), so file
+// Writes archives. ZIP (and the game packs that are ZIPs, see GamePacks), TAR, TAR.GZ and Garry's Mod addons (GMA, see Gma)
+// are written in-process (System.IO.Compression / System.Formats.Tar / Filee's own writer), so file
 // names are exactly what Filee chooses: UTF-8 in ZIP (with the language encoding flag), PAX headers in TAR. 7Z, the
 // bzip2 / xz TAR variants and single-file GZ / BZ2 / XZ are written by the bundled 7-Zip.
 
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text;
+using Filee.Core.Formats;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 
@@ -18,7 +20,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
 {
     /// <summary>Formats written without 7-Zip.</summary>
     public static readonly IReadOnlySet<string> BuiltInFormats =
-        new HashSet<string>(["zip", "tar", "tgz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
+        new HashSet<string>(["zip", "tar", "tgz", "gma", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Formats that hold exactly one file, without name or folders.</summary>
     public static readonly IReadOnlySet<string> SingleFileFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "gz", "bz2", "xz" };
@@ -40,6 +42,12 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
             {
                 case "zip" or "mcpack" or "mcaddon" or "mcworld" or "mctemplate" or "mrpack":
                     await Task.Run(() => WriteZip(items, temp, level, progress, cancellationToken), cancellationToken);
+                    break;
+                case "gma":
+                    // The addon's title, without an addon.json, is the name it is saved under (its folder's name).
+                    await Task.Run(() => Gma.Write(
+                        [.. Expand(items).Where(f => !f.IsFolder).Select(f => (f.EntryName, f.Path))], temp,
+                        FormatRegistry.NameWithoutExtension(outputPath), progress, cancellationToken), cancellationToken);
                     break;
                 case "tar":
                 case "tgz":

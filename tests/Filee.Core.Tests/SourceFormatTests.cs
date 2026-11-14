@@ -23,7 +23,7 @@ public class SourceFormatTests
     }
 
     [Theory]
-    [InlineData("gma", FormatCategory.Archive, false)]
+    [InlineData("gma", FormatCategory.Archive, true)]
     [InlineData("vpk", FormatCategory.Archive, false)]
     [InlineData("bsp", FormatCategory.Archive, false)]
     public void Source_files_are_game_formats(string id, FormatCategory category, bool writable)
@@ -55,5 +55,20 @@ public class SourceFormatTests
         Assert.False(SettingsMigrations.ApplyToLibrary(94, presets, profiles));
         Assert.DoesNotContain("gma", archives.Extensions); // the user's own donut has it
         Assert.Equal("my-addons", ProfileSelector.Select(profiles, ["wire.gma"])?.Id);
+    }
+
+    [Fact]
+    public void Version_95_libraries_get_the_gma_preset_after_the_game_packs()
+    {
+        var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id == "to-gma");
+        var profiles = BuiltInData.CreateProfiles();
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
+        var ids = presets.Select(p => p.Id).ToList();
+        Assert.Equal(ids.IndexOf("to-mrpack") + 1, ids.IndexOf("to-gma"));
+        Assert.False(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
+        // Not on a donut.
+        Assert.DoesNotContain(BuiltInData.CreateProfiles(), p => p.PresetIds.Contains("to-gma") || p.BackPresetIds?.Contains("to-gma") == true);
     }
 }

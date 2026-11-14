@@ -1,6 +1,6 @@
 // Archives: unpack (to a folder, the "Extract" preset), convert between archive formats (ZIP, 7Z, TAR, TAR.GZ,
-// TAR.BZ2, TAR.XZ, single-file GZ / BZ2 / XZ, and the Minecraft and Modrinth packs that are ZIPs, see GamePacks), and
-// "Compress into one archive" for any files (IFileCombiner).
+// TAR.BZ2, TAR.XZ, single-file GZ / BZ2 / XZ, the Minecraft and Modrinth packs that are ZIPs, see GamePacks, and Garry's
+// Mod addons, see Gma), and "Compress into one archive" for any files (IFileCombiner).
 // Reading uses the bundled 7-Zip (engines/7zip, LGPL, separate process) plus Filee's own ALZ, EGG and lzip readers;
 // ZIP, TAR and TAR.GZ are written in-process, the other formats by 7-Zip. See docs/ENGINES.md.
 
@@ -16,7 +16,7 @@ namespace Filee.Engines.Archives;
 public sealed class ArchiveConverter : IConverter, IFileCombiner
 {
     /// <summary>Archive formats Filee writes (plus <see cref="FormatRegistry.Folder"/>).</summary>
-    private static readonly string[] ArchiveTargets = ["zip", "7z", "tar", "tgz", "tbz2", "txz", .. GamePacks.Formats];
+    private static readonly string[] ArchiveTargets = ["zip", "7z", "tar", "tgz", "tbz2", "txz", "gma", .. GamePacks.Formats];
 
     /// <summary>Compressed single files (no names or folders inside); they convert among each other.</summary>
     private static readonly string[] SingleFileSources = ["gz", "bz2", "xz", "lzma", "z", "lz"];
@@ -38,7 +38,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
            from target in ArchivePacker.SingleFileFormats
            select new ConversionEdge(source, target),
         .. ArchiveExtractor.ReadableFormats.Select(source => new ConversionEdge(source, "iso", DirectOnly: true)),
-        .. new[] { "zip", "7z", "tar", "tgz", "tbz2", "txz" }
+        .. new[] { "zip", "7z", "tar", "tgz", "tbz2", "txz", "gma" }
             .Select(target => new ConversionEdge(FormatRegistry.Folder, target, DirectOnly: true)),
     ];
 
@@ -85,6 +85,8 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
             }
             if (GamePacks.Formats.Contains(step.To))
                 unpacked = GamePacks.Root(unpacked, step.To);
+            else if (step.To == "gma")
+                unpacked = Gma.Root(unpacked);
             var items = Directory.EnumerateFileSystemEntries(unpacked)
                 .Order(StringComparer.Ordinal)
                 .Select(path => new PackItem(path, Path.GetFileName(path)))
@@ -141,10 +143,11 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
         string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var sevenZip = ArchivePacker.BuiltInFormats.Contains(format) ? null : _sevenZip ??= SevenZip.Locate();
-        // A pack made from its folder holds the folder's content, so its marker file is at the top.
-        var entries = GamePacks.Formats.Contains(format) && inputPaths is [var folder] && Directory.Exists(folder)
-            ? Directory.EnumerateFileSystemEntries(GamePacks.Root(folder, format)).Order(StringComparer.Ordinal)
-                .Select(path => new PackItem(path, Path.GetFileName(path))).ToList()
+        // A pack (or a Garry's Mod addon) made from its folder holds the folder's content, so its marker file (addon.json)
+        // is at the top.
+        var entries = (GamePacks.Formats.Contains(format) || format == "gma") && inputPaths is [var folder] && Directory.Exists(folder)
+            ? Directory.EnumerateFileSystemEntries(format == "gma" ? Gma.Root(folder) : GamePacks.Root(folder, format))
+                .Order(StringComparer.Ordinal).Select(path => new PackItem(path, Path.GetFileName(path))).ToList()
             : UniqueEntries(inputPaths);
         await new ArchivePacker(sevenZip).PackAsync(entries, outputPath, format, preset.Archive.Level,
             workDirectory, progress, cancellationToken);
