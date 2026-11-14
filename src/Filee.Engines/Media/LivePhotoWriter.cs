@@ -184,8 +184,8 @@ internal static class LivePhotoWriter
 
     /// <summary>
     /// The photo: frame <paramref name="frame"/> of the clip at the video's full size, picked by the same 30 fps timing
-    /// as the clip so it is exactly the frame the still image time points at. Reading starts at the same key frame
-    /// <paramref name="seek"/> as the clip's.
+    /// as the clip, counted from the same time 0, so it is exactly the frame the still image time points at. Reading
+    /// starts at the same key frame <paramref name="seek"/> as the clip's.
     /// </summary>
     internal static List<string> CoverArguments(string input, string output, double start, int frame, VideoStreamInfo video, string toneMap,
         SeekPoint seek)
@@ -194,7 +194,7 @@ internal static class LivePhotoWriter
         return
         [
             .. MediaEncoding.Common, .. seek.Input, "-i", input, "-map", "0:V:0",
-            "-vf", $"settb=AVTB,trim=start={seek.Time(start)},{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
+            "-vf", $"settb=AVTB,trim=start={seek.Time(start)},setpts={seek.Zero(start)},{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
             "-frames:v", "1", "-fps_mode", "passthrough", "-update", "1", "-c:v", "png", "-f", "image2", "-progress", "pipe:1", output,
         ];
     }

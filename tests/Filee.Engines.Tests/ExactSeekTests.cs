@@ -51,6 +51,9 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
             }),
         });
 
+    /// <summary>How FFmpeg seeks an MPEG-TS, and an MKV or AVI, without B-frames.</summary>
+    private static readonly Seeking Ts1 = new(Unindexed: true, ByShownTime: false, Reordered: false), Index1 = new(false, false, false);
+
     [Fact]
     public void A_file_without_an_index_is_read_from_the_decode_time_of_the_last_key_frame_shown_before_the_time()
     {
@@ -59,11 +62,11 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var json = Packets((3.4, 3.3667, true), (3.4333, 3.4, false), (4.4, 4.3667, true), (4.4333, 4.4, false));
 
         // FFmpeg seeks such a file by decode time onto any packet: from the key frame's own, it lands on the key frame.
-        Assert.Equal(1.9667, KeyFrames.Choose(json, 1.4, 2.5, unindexed: true, fromFirstPacket: false)!.Value, 6);
-        Assert.Equal(1.9667, KeyFrames.Choose(json, 1.4, 2.0, unindexed: true, fromFirstPacket: false)!.Value, 6); // the key frame itself
-        Assert.Equal(2.9667, KeyFrames.Choose(json, 1.4, 3.2, unindexed: true, fromFirstPacket: false)!.Value, 6);
+        Assert.Equal(1.9667, KeyFrames.Choose(json, 1.4, 2.5, how: Ts1, fromFirstPacket: false)!.Value, 6);
+        Assert.Equal(1.9667, KeyFrames.Choose(json, 1.4, 2.0, how: Ts1, fromFirstPacket: false)!.Value, 6); // the key frame itself
+        Assert.Equal(2.9667, KeyFrames.Choose(json, 1.4, 3.2, how: Ts1, fromFirstPacket: false)!.Value, 6);
         // Before the first key frame read: none in this look.
-        Assert.Null(KeyFrames.Choose(json, 1.4, 1.9, unindexed: true, fromFirstPacket: false));
+        Assert.Null(KeyFrames.Choose(json, 1.4, 1.9, how: Ts1, fromFirstPacket: false));
     }
 
     [Fact]
@@ -72,8 +75,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // MP4, MKV, AVI: FFmpeg seeks through an index of key frames by the time they are shown; at the decode time it
         // landed on the key frame before, a whole group of pictures early.
         var json = Packets((2.0, 1.9333, true), (4.0, 3.8, true));
-        Assert.Equal(2.0, KeyFrames.Choose(json, 0, 3, unindexed: false, fromFirstPacket: false)!.Value, 6);
-        Assert.Equal(4.0, KeyFrames.Choose(json, 0, 4.5, unindexed: false, fromFirstPacket: false)!.Value, 6);
+        Assert.Equal(2.0, KeyFrames.Choose(json, 0, 3, how: Index1, fromFirstPacket: false)!.Value, 6);
+        Assert.Equal(4.0, KeyFrames.Choose(json, 0, 4.5, how: Index1, fromFirstPacket: false)!.Value, 6);
     }
 
     [Fact]
@@ -83,8 +86,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // 1.97 s that lead it and need the group before. Starting at it would skip them, so the key frame at 0 is
         // taken.
         var json = Packets((0, -0.0667, true), (2.0, 1.8, true), (1.8667, 1.8333, false), (1.9333, 1.8667, false));
-        Assert.Equal(0, KeyFrames.Choose(json, 0, 1.8667, unindexed: true, fromFirstPacket: false)); // before 0 counts as 0
-        Assert.Equal(1.8, KeyFrames.Choose(json, 0, 2.0, unindexed: true, fromFirstPacket: false)!.Value, 6);
+        Assert.Equal(0, KeyFrames.Choose(json, 0, 1.8667, how: Ts1, fromFirstPacket: false)); // before 0 counts as 0
+        Assert.Equal(1.8, KeyFrames.Choose(json, 0, 2.0, how: Ts1, fromFirstPacket: false)!.Value, 6);
     }
 
     [Fact]
@@ -94,12 +97,41 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // before the time may still be shown after it, so reading starts at the key frame before it, which surely
         // isn't.
         var json = Packets((0.5, 0.4667, true), (null, 1.4333, true), (null, 2.4333, true));
-        Assert.Equal(1.4333, KeyFrames.Choose(json, 0, 2.6, unindexed: false, fromFirstPacket: true)!.Value, 6);
-        Assert.Equal(0.4667, KeyFrames.Choose(json, 0, 1.5, unindexed: true, fromFirstPacket: true)!.Value, 6);
+        Assert.Equal(1.4333, KeyFrames.Choose(json, 0, 2.6, how: Index1, fromFirstPacket: true)!.Value, 6);
+        Assert.Equal(0.4667, KeyFrames.Choose(json, 0, 1.5, how: Ts1, fromFirstPacket: false)!.Value, 6);
         // The file's first key frame: from the start; further on, none in this look.
         var first = Packets((null, 0.4, true), (null, 1.4, true));
-        Assert.Equal(0, KeyFrames.Choose(first, 0, 1.0, unindexed: false, fromFirstPacket: true));
-        Assert.Null(KeyFrames.Choose(first, 0, 1.0, unindexed: false, fromFirstPacket: false));
+        Assert.Equal(0, KeyFrames.Choose(first, 0, 1.0, how: Index1, fromFirstPacket: true));
+        Assert.Null(KeyFrames.Choose(first, 0, 1.0, how: Index1, fromFirstPacket: false));
+    }
+
+    [Fact]
+    public void From_the_files_first_key_frame_reading_starts_at_its_first_packet()
+    {
+        // An FLV whose sound starts first: its first key frame is shown 23 ms in. -ss 0.023 made FFmpeg seek before the
+        // file's start (3/23 s early, B-frames), which failed and landed between key frames: frame 45 for the first 45.
+        var json = Packets((0.067, 0, true), (1.567, 1.5, true));
+        var flv = new Seeking(Unindexed: false, ByShownTime: false, Reordered: true);
+        Assert.Equal(0, KeyFrames.Choose(json, 0.044, 0.7, flv, fromFirstPacket: true));
+        // The same key frame in a look that didn't start at the first packet may be any key frame.
+        Assert.Equal(0.023 + KeyFrames.DtsHeuristic, KeyFrames.Choose(json, 0.044, 0.7, flv, fromFirstPacket: false)!.Value, 6);
+    }
+
+    [Fact]
+    public void With_b_frames_ss_allows_for_the_3_23_s_ffmpeg_seeks_early_where_it_does()
+    {
+        var json = Packets((0.5, 0.4333, true), (10.0, 9.8, true));
+        // MKV, AVI, FLV: FFmpeg seeks 3/23 s before -ss, so -ss is that much past the key frame, or the key frame
+        // before it is read, a whole group of pictures more; never past the time itself.
+        var mkv = new Seeking(Unindexed: false, ByShownTime: false, Reordered: true);
+        Assert.Equal(10 + KeyFrames.DtsHeuristic, KeyFrames.Choose(json, 0, 12, mkv, fromFirstPacket: false)!.Value, 6);
+        Assert.Equal(10.05, KeyFrames.Choose(json, 0, 10.05, mkv, fromFirstPacket: false)!.Value, 6);
+        // MP4 and MOV are sought by the time shown, with no margin.
+        Assert.Equal(10, KeyFrames.Choose(json, 0, 12, mkv with { ByShownTime = true }, fromFirstPacket: false)!.Value, 6);
+        // MPEG-TS: from the decode time, or as much later as the margin still lands on the key frame.
+        var ts = new Seeking(Unindexed: true, ByShownTime: false, Reordered: true);
+        Assert.Equal(9.8 + KeyFrames.DtsHeuristic, KeyFrames.Choose(json, 0, 12, ts, fromFirstPacket: false)!.Value, 6);
+        Assert.Equal(10, KeyFrames.Choose(Packets((10.0, 9.95, true)), 0, 12, ts, fromFirstPacket: false)!.Value, 6);
     }
 
     [Fact]
@@ -107,9 +139,10 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         // ffprobe writes six decimals: 1.000001 for a key frame shown at the 1.0000006 s asked for.
         var json = """{"packets":[{"pts_time":"1.000001","dts_time":"N/A","flags":"K__"}]}""";
-        Assert.Equal(1.000001, KeyFrames.Choose(json, 0, 1.0000006, unindexed: false, fromFirstPacket: false)!.Value, 7);
-        Assert.Null(KeyFrames.Choose("""{"packets":[]}""", 0, 1, unindexed: false, fromFirstPacket: true));
-        Assert.Null(KeyFrames.Choose("{}", 0, 1, unindexed: false, fromFirstPacket: true));
+        // Reading never starts past the time itself.
+        Assert.Equal(1.0000006, KeyFrames.Choose(json, 0, 1.0000006, how: Index1, fromFirstPacket: false)!.Value, 7);
+        Assert.Null(KeyFrames.Choose("""{"packets":[]}""", 0, 1, how: Index1, fromFirstPacket: true));
+        Assert.Null(KeyFrames.Choose("{}", 0, 1, how: Index1, fromFirstPacket: true));
     }
 
     [Fact]
@@ -131,12 +164,27 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(["-copyts", "-ss", "60.000000"], exact.Input);
         Assert.Equal("62.65", exact.Time(61.25));
         Assert.Equal("PTS-62.65/TB", exact.Zero(61.25));
+        Assert.Equal(["-output_ts_offset", "-62.65"], exact.Offset(61.25));
+        Assert.Empty(SeekPoint.Plain(61.25).Offset(61.25));
         // Without the file's start time, as Filee seeked before: straight to the time, counting from there.
         var plain = SeekPoint.Plain(61.25);
         Assert.Equal(["-ss", "61.250000"], plain.Input);
         Assert.Equal("0", plain.Time(61.25));
         Assert.Equal("1.5", plain.Time(62.75));
         Assert.Empty(SeekPoint.Plain(0).Input);
+    }
+
+    [Fact]
+    public async Task The_previews_sound_is_read_from_where_its_pictures_are()
+    {
+        // Pictures and sound play from two FFmpeg runs: both read with the file's own timestamps, from the same key
+        // frame.
+        var clip = ClipEdit.Of(new ClipRange(12.5, 20));
+        var hd = new VideoStreamInfo(1920, 1080, 1, 0, 30, "h264", "yuv420p");
+        var args = await ClipPreview.PreviewSoundArgumentsAsync("ffprobe", "in.ts", clip, hd, new AudioStreamInfo(2, 48000, "aac"), Ct,
+            new SeekPoint(10, 1.4, 10));
+        Assert.Equal(["-copyts", "-ss", "10.000000"], args.SkipWhile(a => a != "-copyts").Take(3));
+        Assert.Contains("atrim=start=13.9:end=21.4", args[args.IndexOf("-filter_complex") + 1]);
     }
 
     [Fact]
@@ -272,17 +320,25 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         "opengop.ts" => ("30", "128x32", ["-c:v", "libx265", "-x265-params", "log-level=error:keyint=45", "-pix_fmt", "yuv420p", "-f", "mpegts"]),
         "bframes.avi" => ("30", "128x32", ["-c:v", "mpeg4", "-bf", "2", "-g", "32", "-q:v", "3"]),
         "bframes.mkv" => ("30", "128x32", ["-c:v", "libx264", "-g", "32", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p"]),
+        // B-frames decoded 2/15 s before they are shown, longer than FFmpeg's 3/23 s margin.
+        "15fps.ts" => ("15", "128x32", ["-c:v", "libx264", "-g", "30", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p", "-f", "mpegts"]),
+        // An FLV whose sound starts before its first key frame is shown.
+        "sound.flv" => ("30", "128x32", ["-c:v", "libx264", "-g", "45", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p", "-c:a", "aac",
+            "-ar", "44100"]),
+        "25fps.mp4" => ("25", "128x32", Mp4),
         _ => throw new ArgumentException(name, nameof(name)),
     };
 
     public static TheoryData<string> Videos =>
-        ["30fps.mp4", "2997fps.mp4", "15fps.mp4", "30fps.ts", "soundfirst.ts", "dvd.vob", "opengop.mp4", "opengop.ts", "bframes.avi", "bframes.mkv"];
+        ["30fps.mp4", "2997fps.mp4", "15fps.mp4", "30fps.ts", "15fps.ts", "soundfirst.ts", "dvd.vob", "opengop.mp4", "opengop.ts", "bframes.avi",
+            "bframes.mkv", "sound.flv"];
 
     private async Task<string> VideoAsync(string name, double seconds = 3)
     {
         var (rate, size, codec) = VideoOf(name);
         // With sound, an MPEG-TS file starts with it, and its frames are shown at times that aren't round.
-        return await NumberedAsync(name, rate, seconds, codec, beepFrame: name == "soundfirst.ts" ? 50 : null, size: size);
+        return await NumberedAsync(name, rate, seconds, codec, beepFrame: name == "soundfirst.ts" ? 50 : null, tone: name == "sound.flv",
+            size: size);
     }
 
     // ───────────────────────── The clip window's picture ─────────────────────────
@@ -307,9 +363,10 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
         foreach (var (time, number, _) in frames)
             await CheckAsync(time, number);
-        // A time between two frames shows the later one: the first frame shown at or after it.
+        // A time between two frames shows the later one, the first frame shown at or after it: also a third of the way,
+        // where a time base of whole frames (AVI) rounds back to the earlier one.
         for (var i = 3; i + 1 < frames.Count; i += 7)
-            await CheckAsync((frames[i].Time + frames[i + 1].Time) / 2, frames[i + 1].Number);
+            await CheckAsync(frames[i].Time + (frames[i + 1].Time - frames[i].Time) * 0.3, frames[i + 1].Number);
         Assert.True(wrong.Count == 0, string.Join("; ", wrong));
     }
 
@@ -463,6 +520,46 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }, stop.Token);
 
         Assert.Equal(40, first);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(7)]
+    [InlineData(20)]
+    public async Task A_live_photo_of_a_25_fps_video_shows_the_movies_frame_at_the_still_time(int cover)
+    {
+        SkipUnlessInstalled();
+        // The movie and its photo pick frames by 30 fps timing from the same time 0: counted from the file's own times,
+        // the photo's timing fell between other frames than the movie's.
+        var video = await VideoAsync("25fps.mp4", 4);
+        var frames = await FramesAsync(video);
+        var preset = new Preset { TargetFormat = "jpg", Media = { LivePhoto = LivePhotoKind.Apple } };
+        preset.Media.LivePhotoStart = frames[20].Time;
+        preset.Media.LivePhotoLength = 1.5;
+        preset.Media.LivePhotoCover = cover / 30.0;
+
+        var job = await fx.ConvertAsync([video], preset);
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var photo = Assert.Single(job.Outputs, p => p.EndsWith(".jpg", StringComparison.Ordinal));
+        var movie = Assert.Single(job.Outputs, p => p.EndsWith(".mov", StringComparison.Ordinal));
+        Assert.Equal((await FramesAsync(movie))[cover].Number, await NumberOfPictureAsync(photo));
+    }
+
+    [Fact]
+    public async Task A_part_played_twice_as_fast_shows_every_second_frame()
+    {
+        SkipUnlessInstalled();
+        // Microsecond times before the speed change made the steps uneven: 21, 22, 25, 27, 28, 31…
+        var video = await VideoAsync("30fps.mp4");
+        var frames = await FramesAsync(video);
+        var edit = ClipEdit.Of(new ClipRange(frames[20].Time, frames[60].Time));
+        edit.Parts[0].Speed = 2;
+
+        var numbers = (await FramesAsync(await CutAsync(video, edit, exact: true))).Select(f => f.Number).ToList();
+
+        Assert.InRange(numbers.Count, 19, 21);
+        Assert.All(numbers.Zip(numbers.Skip(1)), pair => Assert.Equal(2, pair.Second - pair.First));
     }
 
     [Fact]

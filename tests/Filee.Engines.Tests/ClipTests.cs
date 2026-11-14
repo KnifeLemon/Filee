@@ -106,9 +106,13 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("42.500000", After(args, "-to"));
         Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
         Assert.True(IndexOf(args, "-copyts") < IndexOf(args, "-i"));
-        // Cut at both ends in the file's own time (1.5 + 12.5 s, 1.5 + 42.5 s), sound and picture alike, from time 0.
-        Assert.StartsWith("settb=AVTB,trim=start=14:end=44,setpts=PTS-14/TB,", After(args, "-vf"));
-        Assert.Equal("atrim=start=14:end=44,asetpts=PTS-14/TB", After(args, "-af"));
+        // Cut at both ends in the file's own time (1.5 + 12.5 s, 1.5 + 42.5 s), sound and picture alike, and the start
+        // made time 0 by an output offset (setpts in FFmpeg 7.0 to 8.0 drops frame durations, and the last frame).
+        Assert.StartsWith("settb=AVTB,trim=start=14:end=44,", After(args, "-vf"));
+        Assert.DoesNotContain("setpts", After(args, "-vf"));
+        Assert.Equal("atrim=start=14:end=44", After(args, "-af"));
+        Assert.Equal("-14", After(args, "-output_ts_offset"));
+        Assert.True(IndexOf(args, "-output_ts_offset") > IndexOf(args, "-i"));
         // Encoded although the video could be copied (H.264 in MP4): only an encode cuts at any frame.
         Assert.Equal("libx264", After(args, "-c:v"));
         Assert.Contains("720", After(args, "-vf"));
@@ -370,14 +374,14 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains("[0:V:0]split=2[vs0][vs1];", filter);
         Assert.Contains("[0:a:0]asplit=2[as0][as1];", filter);
         // The parts are cut out of what was read: their times count from the first part's start, in microseconds.
-        Assert.Contains("[vs0]settb=AVTB,trim=start=0:end=10,setpts=PTS-STARTPTS,fps=30,scale=1920:1080,setsar=1,format=yuv420p[v0]", filter);
-        Assert.Contains("[vs1]settb=AVTB,trim=start=20:end=30,setpts=(PTS-STARTPTS)/2,", filter);
+        Assert.Contains("[vs0]trim=start=0:end=10,setpts=PTS-STARTPTS,fps=30,scale=1920:1080,setsar=1,format=yuv420p[v0]", filter);
+        Assert.Contains("[vs1]trim=start=20:end=30,setpts=(PTS-STARTPTS)/2,", filter);
         Assert.Contains("[as0]atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0.5,", filter);
         Assert.Contains("[as1]atrim=start=20:end=30,asetpts=PTS-STARTPTS,atempo=2,", filter);
         // From a key frame KeyFrames found: read from it, the parts in the file's own time.
         var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10));
         Assert.Equal(["-copyts", "-ss", "9.000000", "-to", "40.000000", "-i", "in.mp4"], seeked.Inputs);
-        Assert.Contains("[vs1]settb=AVTB,trim=start=32:end=42,", seeked.Filter);
+        Assert.Contains("[vs1]trim=start=32:end=42,", seeked.Filter);
         // The pause: black and silence as long as the part played.
         Assert.Contains("color=c=black:s=1920x1080:r=30:d=2,setsar=1,format=yuv420p[v1]", filter);
         Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=2[a1]", filter);

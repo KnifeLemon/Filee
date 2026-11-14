@@ -286,13 +286,13 @@ internal static partial class MediaEncoding
             : info.AudioTracks;
 
         // A clip: read from the key frame found before its start (KeyFrames) to its end, and cut at both ends by trims
-        // in the file's own time, sound and picture alike, so its first and last frames are exact.
+        // in the file's own time, sound and picture alike, so its first and last frames are exact. Its start becomes
+        // time 0 by an output offset: setpts in FFmpeg 7.0 to 8.0 drops frame durations, and the last frame with them.
         var seek = clip is { } range ? clipSeek ?? SeekPoint.Plain(range.Start) : (SeekPoint?)null;
-        var cut = clip is { } part && seek is { } at
-            ? $"settb=AVTB,trim=start={at.Time(part.Start)}:end={at.Time(part.End)},setpts={at.Zero(part.Start)},"
-            : "";
+        var cut = clip is { } part && seek is { } at ? $"settb=AVTB,trim=start={at.Time(part.Start)}:end={at.Time(part.End)}," : "";
         string[] read = clip is { } window && seek is { } point ? [.. point.Input, "-to", ClipRange.Ffmpeg(window.End)] : [];
-        List<string> args = [.. Common, .. read, "-i", input, "-map", "0:V:0"];
+        string[] zero = clip is { } first && seek is { } origin ? origin.Offset(first.Start) : [];
+        List<string> args = [.. Common, .. read, "-i", input, .. zero, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
         // Subtitle tracks stay switchable (#789), with their language tags (FFmpeg copies stream tags with each stream). A
@@ -331,7 +331,7 @@ internal static partial class MediaEncoding
         if (tracks.Count == 0)
             args.Add("-an");
         else if (clip is { } sound && seek is { } from)
-            args.AddRange(["-af", $"atrim=start={from.Time(sound.Start)}:end={from.Time(sound.End)},asetpts={from.Zero(sound.Start)}"]);
+            args.AddRange(["-af", $"atrim=start={from.Time(sound.Start)}:end={from.Time(sound.End)}"]);
         for (var i = 0; i < tracks.Count; i++)
         {
             // Each track on its own: copied where the container takes it, else encoded for its own channel count. A
@@ -408,13 +408,13 @@ internal static partial class MediaEncoding
     /// <see cref="MediaOptions.RemoveAudio"/>), as in an exact or edited clip; the
     /// other options only apply to an exact clip, which is encoded.
     /// </summary>
-    /// <exception cref="InvalidOperationException">The file has no video stream.</exception>
-    /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
     /// <param name="seek">
     /// Where the copy starts (<see cref="SeekPoint.CopyFrom"/>): in a file without an index (MPEG-TS), the key frame
     /// <see cref="KeyFrames.FindAsync"/> found, as a seek to the start itself would land between key frames there and
     /// the copy would begin with frames that can't be decoded.
     /// </param>
+    /// <exception cref="InvalidOperationException">The file has no video stream.</exception>
+    /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
     internal static List<string> ClipCopy(string input, string output, string target, ClipRange clip, SeekPoint seek, MediaOptions options,
         MediaInfo info)
     {

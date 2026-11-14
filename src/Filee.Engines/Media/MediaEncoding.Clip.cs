@@ -96,7 +96,7 @@ internal static partial class MediaEncoding
             var speed = part.PlaySpeed;
             var setpts = speed == 1 ? "setpts=PTS-STARTPTS" : $"setpts=(PTS-STARTPTS)/{Seconds(speed)}";
             if (video)
-                graph.Append($"[vs{source}]settb=AVTB,trim=start={start}:end={end},{setpts},{picture}[v{i}];");
+                graph.Append($"[vs{source}]trim=start={start}:end={end},{setpts},{picture}[v{i}];");
             if (audio)
             {
                 graph.Append($"[as{source}]atrim=start={start}:end={end},asetpts=PTS-STARTPTS");

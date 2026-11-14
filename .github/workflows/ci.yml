@@ -237,6 +237,21 @@ jobs:
           FILEE_TEST_FFMPEG: required
         run: dotnet test tests/Filee.Engines.Tests -c Release --no-build --filter "FullyQualifiedName~ExactSeekTests"
 
+      # Again with the FFmpeg Filee installs (engines.json), which it finds in engines/ before the system's: FFmpeg's
+      # seeking and timing differ between versions, and Ubuntu's is 6.1.
+      - name: Test exact seeks with Filee's FFmpeg
+        env:
+          FILEE_TEST_FFMPEG: required
+        run: |
+          set -euo pipefail
+          read -r url sha256 < <(jq -r '.platforms."linux-x64".components.ffmpeg | "\(.url) \(.sha256)"' src/Filee.Engines/Infrastructure/engines.json)
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/ffmpeg.tar.xz" "$url"
+          echo "$sha256  $RUNNER_TEMP/ffmpeg.tar.xz" | sha256sum --check
+          mkdir -p engines/ffmpeg
+          tar -xJf "$RUNNER_TEMP/ffmpeg.tar.xz" -C engines/ffmpeg --strip-components=1
+          engines/ffmpeg/bin/ffmpeg -hide_banner -version | sed -n 1p
+          dotnet test tests/Filee.Engines.Tests -c Release --no-build --filter "FullyQualifiedName~ExactSeekTests"
+
   # Windows on ARM64 (#236), built and tested natively: the Explorer menu DLL, Setup, 7-Zip, rhwp and Unhwp's library
   # are ARM64 builds, the downloaded engines (Pandoc here) x64 ones under emulation. rhwp and Unhwp come from pinned
   # builds of .github/workflows/windows-arm64-native.yml (build/fetch-engines.ps1). Until both are pinned, their tests
