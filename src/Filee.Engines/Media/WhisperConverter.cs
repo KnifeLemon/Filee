@@ -148,7 +148,7 @@ public sealed partial class WhisperConverter : IConverter
         var extractArgs = new[]
         {
             "-hide_banner", "-nostdin", "-nostats", "-v", "error", "-y",
-            "-i", step.InputPath,
+            "-i", MediaInput.For(step.InputPath, step.From, step.WorkDirectory, step.Notice),
             "-vn", "-ar", "16000", "-ac", "1",
             "-progress", "pipe:1",
             audioWav

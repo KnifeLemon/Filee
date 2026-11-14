@@ -126,6 +126,9 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
+    /// <summary>Options used when a G-code toolpath becomes a PDF, SVG or picture.</summary>
+    public GcodeOptions Gcode { get; set; } = new();
+
     /// <summary>Options used for offline AI translation.</summary>
     public TranslateOptions Translate { get; set; } = new();
 
@@ -445,6 +448,7 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
+        Gcode = Gcode.Clone(),
         Translate = Translate.Clone(),
         Upscale = Upscale.Clone(),
         Metadata = Metadata?.Clone(),
@@ -1880,6 +1884,30 @@ public sealed class CadOptions
     public CadColors Colors { get; set; }
 
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
+}
+
+/// <summary>What a G-code file (3D printer or CNC) shows when it becomes a picture, an SVG or a PDF.</summary>
+public enum GcodeView
+{
+    /// <summary>The toolpath seen from above.</summary>
+    Top,
+    /// <summary>The toolpath seen from the front left corner, above the bed, so the height of the print shows.</summary>
+    Isometric,
+    /// <summary>
+    /// The preview the slicer saved in the file (PrusaSlicer, Cura, OrcaSlicer, Bambu Studio …), for pictures; the
+    /// toolpath from above for SVG and PDF, and for a file without one.
+    /// </summary>
+    Thumbnail,
+}
+
+/// <summary>Options for G-code files drawn into a PDF, SVG or picture.</summary>
+public sealed class GcodeOptions
+{
+    /// <summary>A choice from a newer Filee reads as <see cref="GcodeView.Top"/>.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<GcodeView>))]
+    public GcodeView View { get; set; }
+
+    public GcodeOptions Clone() => (GcodeOptions)MemberwiseClone();
 }
 
 /// <summary>Options for offline AI document translation.</summary>

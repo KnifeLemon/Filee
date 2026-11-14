@@ -31,19 +31,19 @@ public class VtfFormatTests
     }
 
     [Fact]
-    public void Version_89_libraries_learn_vtf_without_taking_custom_claims()
+    public void Version_94_libraries_learn_vtf_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var images = profiles.Single(p => p.Id == "images");
         images.Extensions.Remove("vtf");
-        Assert.True(SettingsMigrations.ApplyToLibrary(89, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(93, presets, profiles));
         Assert.Contains("vtf", images.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(89, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(93, presets, profiles));
 
         images.Extensions.Remove("vtf");
         profiles.Insert(0, new ToolbarProfile { Id = "my-textures", Extensions = ["VTF"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(89, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(93, presets, profiles));
         Assert.DoesNotContain("vtf", images.Extensions); // the user's own donut has it
         Assert.Equal("my-textures", ProfileSelector.Select(profiles, ["spray.vtf"])?.Id);
     }

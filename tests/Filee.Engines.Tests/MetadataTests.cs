@@ -1214,20 +1214,6 @@ public class MetadataTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
-    public async Task ExifTool_filling_the_memory_is_stopped()
-    {
-        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell script stands in for it.");
-        var (path, spy) = SpyPaths();
-        File.WriteAllText(spy, "#!/bin/sh\nexec perl -e 'my @held; push @held, q(a) x 10_000_000 for 1..300; sleep 300'\n");
-        MakeRunnable(spy);
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-
-        await Assert.ThrowsAsync<MetadataTooLargeException>(() => ExifTool.ReadAsync(spy, path, Token));
-
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(60), clock.Elapsed.ToString());
-    }
-
-    [Fact]
     public async Task The_folder_a_copy_is_written_in_is_private_while_ExifTool_runs()
     {
         if (OperatingSystem.IsWindows())

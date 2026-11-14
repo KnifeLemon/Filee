@@ -24,7 +24,9 @@ internal static class ImageReader
     /// Reads <paramref name="path"/> as format <paramref name="formatId"/>. Layered formats come back as a single,
     /// flattened image; other multi-frame formats (TIFF pages, GIF frames, ICO sizes) keep all frames.
     /// </summary>
-    public static MagickImageCollection Read(string path, string formatId, Preset preset)
+    /// <param name="cancellationToken">Stops the merge of a GIMP file between rows; other formats are read at once.</param>
+    public static MagickImageCollection Read(string path, string formatId, Preset preset,
+        CancellationToken cancellationToken = default)
     {
         if (formatId == "apng")
             return Apng.Read(path);
@@ -39,7 +41,7 @@ internal static class ImageReader
         if (formatId == "pdn")
             return [PaintNet.ReadFlattened(path)];
         if (formatId == "xcf")
-            return [Xcf.ReadFlattened(path)];
+            return [Xcf.ReadFlattened(path, cancellationToken)];
         if (formatId == "vtf")
             return Vtf.Read(path);
         if (formatId == FormatRegistry.Program)

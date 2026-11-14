@@ -36,7 +36,7 @@ public sealed class IcnsConverter : IConverter, IImageTransformer
     /// </summary>
     private static IReadOnlyList<string> WriteIcon(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
-        using var images = ImageReader.Read(step.InputPath, step.From, step.Preset);
+        using var images = ImageReader.Read(step.InputPath, step.From, step.Preset, ct);
         // An icon holds one picture: the first page/frame, or the largest icon of an .ico.
         var master = ImageEncoder.SelectFrames(images, step.From, "icns")[0];
         ImageEncoder.ApplyOptions(master, step.Preset.Image, "icns");
