@@ -394,8 +394,10 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.DoesNotContain(withLibreOffice, s => s.Converter.Id == "libreoffice");
     }
 
+    // PPT is read by Filee now (Office/Ppt); Keynote and Publisher still need LibreOffice.
     [Theory]
-    [InlineData("ppt", "pdf")]
+    [InlineData("key", "pdf")]
+    [InlineData("pub", "pdf")]
     public void Rare_formats_need_libreoffice(string from, string to)
     {
         Assert.Null(BuiltInPlanner("rhwp").Plan(from, to));
