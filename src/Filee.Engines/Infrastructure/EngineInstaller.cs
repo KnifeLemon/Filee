@@ -7,7 +7,8 @@
 //    entries, no admin rights. Parts headless LibreOffice never uses (help, gallery, most dictionaries) are removed.
 //  * conda-forge packages (Ghostscript, the Microsoft C++ runtime) are zip files holding zstd-compressed tarballs;
 //    only their Windows binaries (Library/bin) are unpacked, with a managed decompressor (no 7-Zip, no installer).
-//  * NSIS installers (Tesseract) are unpacked with Filee's own 7-Zip, never run: files only, no registry entries.
+//  * NSIS installers (Tesseract) are unpacked with Filee's own NSIS reader (Archives/NsisReader), never run: the files
+//    the script puts in $INSTDIR, no registry entries, no 7-Zip.
 //  * A marker file with the component's hash records what is installed, so an engines.json update is detected.
 //  * Without internet the same files can come from a folder instead (#447): saved by Filee on another computer
 //    (SaveFilesAsync) or downloaded there by hand. They are copied and checked against the same SHA-256 first.
@@ -646,10 +647,7 @@ public sealed class EngineInstaller
                     Replace(component.Id, staging);
                     break;
                 case "nsis":
-                    var sevenZip = Archives.SevenZip.Locate()
-                                   ?? throw new InvalidOperationException($"{component.Id} needs Filee's 7-Zip, which is missing.");
-                    Directory.CreateDirectory(staging);
-                    await sevenZip.ExtractAsync(file, staging, [], _root, cancellationToken);
+                    await UnpackNsisAsync(file, staging, cancellationToken);
                     TrimTesseract(staging);
                     Replace(component.Id, staging);
                     break;
@@ -658,6 +656,13 @@ public sealed class EngineInstaller
             }
             File.WriteAllText(Path.Combine(FolderOf(component.Id), MarkerName), component.Sha256);
         });
+
+    /// <summary>
+    /// Writes what an NSIS installer (Tesseract's Windows build) puts in $INSTDIR into <paramref name="target"/>, without
+    /// running it: Filee's own reader, no 7-Zip.
+    /// </summary>
+    internal static Task UnpackNsisAsync(string installer, string target, CancellationToken cancellationToken) =>
+        Task.Run(() => Archives.NsisReader.Extract(installer, target, Archives.NsisScope.InstallDir, cancellationToken), cancellationToken);
 
     internal static async Task UnpackTarAsync(string file, string target, string kind, CancellationToken cancellationToken)
     {

@@ -1,17 +1,20 @@
 // bzip2 decompression in managed code, written for ALZip archives: ALZ stores bzip2 blocks without the "BZh" stream
 // header, marks each block with "DLZ\x01" (instead of the 48-bit block magic, the block CRC and the "randomised" bit)
-// and ends with "DLZ\x02". Standard bzip2 streams (used by EGG) are read too. The block format itself (Huffman
-// coded MTF/RLE2 symbols, Burrows-Wheeler transform, RLE1) is plain bzip2.
+// and ends with "DLZ\x02". Standard bzip2 streams (used by EGG) are read too, and NSIS installers' framing: no stream
+// header, the byte 0x31 before each block (no block CRC, no "randomised" bit) and 0x17 at the end. The block format
+// itself (Huffman coded MTF/RLE2 symbols, Burrows-Wheeler transform, RLE1) is plain bzip2.
 
 namespace Filee.Engines.Archives;
 
-/// <summary>Decodes standard or ALZ-framed bzip2 data.</summary>
+/// <summary>Decodes standard, ALZ-framed or NSIS-framed bzip2 data.</summary>
 internal sealed class Bzip2Decoder
 {
     private const ulong BlockMagic = 0x314159265359;
     private const ulong StreamEndMagic = 0x177245385090;
     private const uint AlzBlockMarker = 0x444C5A01; // "DLZ\x01"
     private const uint AlzEndMarker = 0x444C5A02;   // "DLZ\x02"
+    private const uint NsisBlockMarker = 0x31;
+    private const uint NsisEndMarker = 0x17;
     private const int MaxCodeLength = 20;
     private const int GroupSize = 50;
     private const int MaxSelectors = 18002;
@@ -49,6 +52,25 @@ internal sealed class Bzip2Decoder
         else
             decoder.DecodeStandard(cancellationToken);
         return decoder._written;
+    }
+
+    /// <summary>Decompresses bzip2 data in NSIS's framing (see the file comment) to <paramref name="output"/>.</summary>
+    /// <param name="maxOutput">Stops with an error when the data would unpack to more bytes than this.</param>
+    /// <returns>Number of bytes written.</returns>
+    public static long DecompressNsis(Stream input, Stream output, long maxOutput, CancellationToken cancellationToken)
+    {
+        var decoder = new Bzip2Decoder(input, output, maxOutput);
+        // NSIS always writes 900k blocks.
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var marker = decoder.ReadBits(8);
+            if (marker == NsisEndMarker)
+                return decoder._written;
+            if (marker != NsisBlockMarker)
+                throw new InvalidDataException("bzip2 block marker missing");
+            decoder.DecodeBlock(9, expectedCrc: null);
+        }
     }
 
     private void DecodeAlz(CancellationToken cancellationToken)
