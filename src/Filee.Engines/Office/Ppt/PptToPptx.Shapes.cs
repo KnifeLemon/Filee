@@ -8,10 +8,10 @@
 // - Properties: the shape's own property tables, over those of its master shape (hspMaster: a slide's placeholder
 //   takes what it doesn't set from the master's), over the drawing group's defaults, over [MS-ODRAW]'s defaults.
 //   Boolean property sets merge bit by bit (each bit counts where its "use" bit is set).
-// - Geometry: the shape type (MSOSPT) as the preset of the same shape (prstGeom); a freeform (custom geometry) and
-//   WordArt are left out for now (Dropped).
-// - Fill: solid (with opacity) and picture / texture fills from the BLIP store; gradients and patterns in their first
-//   colour. Line: colour, width, dash, arrowheads. Colours: RGB, or the colour scheme by index as theme colours.
+// - Geometry: the shape type (MSOSPT) as the preset of the same shape (prstGeom); a freeform's vertices and segments as
+//   custom geometry (PptToPptx.Geometry); WordArt as its text (PptToPptx.Fills).
+// - Fill, shadow (PptToPptx.Fills): solid (with opacity), picture, texture, pattern and gradient fills; the shape's
+//   shadow. Line: colour, width, dash, arrowheads. Colours: RGB, or the colour scheme by index as theme colours.
 // - Pictures: a picture frame, or any shape with a picture (OLE objects, charts and media show theirs), with its crop.
 // - Placeholders: OEPlaceholderAtom's kind as the p:ph type and index the layout and master match.
 // - Text: the client text box's text, or the slide list's outline text an OutlineTextRefAtom names; body properties
@@ -321,14 +321,18 @@ internal sealed partial class PptToPptx
             Drop("OLE objects without a picture");
             return;
         }
-        var text = TextOf(shape, sheet);
-        string? preset;
-        if (shape.Type is >= 136 and <= 175)
+        if (WordArtText(shape, properties) is { } wordArt)
         {
-            Drop("WordArt");
+            WriteWordArt(xml, shape, box, properties, wordArt, sheet);
             return;
         }
-        if (!Presets.TryGetValue(shape.Type, out preset))
+        var text = TextOf(shape, sheet);
+        string? geometry = null;
+        if (Presets.TryGetValue(shape.Type, out var preset))
+            geometry = $"<a:prstGeom prst=\"{preset}\"><a:avLst/></a:prstGeom>";
+        else if (CustomGeometry(shape, properties) is { } custom)
+            geometry = custom;
+        else
         {
             Drop("freeform shapes");
             if (text is null)
@@ -338,16 +342,17 @@ internal sealed partial class PptToPptx
         var id = sheet.NextId();
         var line = (shape.Flags & Connector) != 0 || shape.Type is 20 or (>= 32 and <= 40);
         var spPr = new StringBuilder("<p:spPr>").Append(Xfrm(box, properties, shape.Flags, ""));
-        spPr.Append("<a:prstGeom prst=\"").Append(preset ?? "rect").Append("\"><a:avLst/></a:prstGeom>");
-        // A placeholder is filled and outlined only where it or its master says so, not by the drawing's defaults.
+        spPr.Append(geometry ?? "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>");
+        // A placeholder is filled, outlined and shadowed only where it or its master says so, not by the drawing's defaults.
         var own = placeholder is null ? null : Properties(shape, defaults: false);
         var filled = own is null || Uses(own, OfficeArtProperties.FillBooleans, 4);
         var outlined = own is null || Uses(own, OfficeArtProperties.LineBooleans, 3);
-        if (preset is null)
+        if (geometry is null)
             spPr.Append("<a:noFill/><a:ln><a:noFill/></a:ln>");
         else
-            spPr.Append(line || !filled ? "<a:noFill/>" : FillXml(properties, sheet) ?? "<a:noFill/>")
-                .Append(outlined ? LineXml(properties) : "<a:ln><a:noFill/></a:ln>");
+            spPr.Append(line || !filled ? "<a:noFill/>" : FillXml(properties, sheet, shape) ?? "<a:noFill/>")
+                .Append(outlined ? LineXml(properties) : "<a:ln><a:noFill/></a:ln>")
+                .Append(ShadowXml(own ?? properties));
         spPr.Append("</p:spPr>");
 
         if (line && text is null && placeholder is null)
@@ -614,26 +619,6 @@ internal sealed partial class PptToPptx
     }
 
     // ───────────────────────── Fills, lines, colours ─────────────────────────
-
-    /// <summary>The fill: none, solid, or a picture; gradients and patterns in their first colour. Null when nothing can be drawn.</summary>
-    private string? FillXml(Dictionary<int, uint> properties, Sheet sheet)
-    {
-        if (!OfficeArtProperties.Flag(properties, OfficeArtProperties.FillBooleans, 4, true))
-            return "<a:noFill/>";
-        var type = properties.GetValueOrDefault(OfficeArtProperties.FillType);
-        if (type is 2 or 3 && properties.GetValueOrDefault(OfficeArtProperties.FillBlip) is var pib and > 0 && MediaPart(pib) is { } media)
-        {
-            var embed = sheet.Relationship("image", media);
-            return type == 2
-                ? $"<a:blipFill rotWithShape=\"1\"><a:blip r:embed=\"{embed}\"/><a:tile tx=\"0\" ty=\"0\" sx=\"100000\" sy=\"100000\" algn=\"tl\"/></a:blipFill>"
-                : $"<a:blipFill rotWithShape=\"1\"><a:blip r:embed=\"{embed}\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>";
-        }
-        if (type == 9)
-            return "<a:noFill/>"; // the slide's background shows through
-        var color = ColorRef(properties.GetValueOrDefault(OfficeArtProperties.FillColor, 0xFFFFFFu), properties,
-            properties.GetValueOrDefault(OfficeArtProperties.FillOpacity, 0x10000u), 0);
-        return $"<a:solidFill>{color}</a:solidFill>";
-    }
 
     /// <summary>a:ln: no line, or colour, width, dash and arrowheads.</summary>
     private static string LineXml(Dictionary<int, uint> properties)
