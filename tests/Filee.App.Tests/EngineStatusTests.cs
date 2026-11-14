@@ -35,7 +35,9 @@ public sealed class EngineStatusTests : IDisposable
     /// <summary>What the copy of Pandoc on the PATH says its version is; null when it doesn't tell or start.</summary>
     private volatile Version? _systemVersion;
 
-    /// <summary>The copy on the PATH starts even when it tells no version (as an FFmpeg nightly or Upscayl does).</summary>
+    /// <summary>
+    /// The copy on the PATH starts even when it tells no version (as an FFmpeg nightly or Upscayl does).
+    /// </summary>
     private volatile bool _systemRuns;
 
     /// <summary>

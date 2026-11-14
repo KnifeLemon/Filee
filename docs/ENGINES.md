@@ -82,7 +82,7 @@ the same on every PC. An external engine is looked for in this order:
 1. a copy the user picked in Settings → *Engines*;
 2. Filee's own copy (bundled or downloaded);
 3. a copy already on the computer: on `PATH`, in Homebrew's and the usual Unix folders, or where the LibreOffice,
-   calibre, Ghostscript and Tesseract installers put it.
+   calibre, Ghostscript and Tesseract installers put it. Not for WeasyPrint (see *WeasyPrint*), rhwp or 7-Zip.
 
 Settings → *Engines* shows every engine that works as "Ready" (green, or amber while its card recommends an update),
 with where it comes from underneath ("Filee's download", "On this computer", "Your copy", with the folder and version),
@@ -1719,10 +1719,10 @@ in the right order. The built-in route (HWPX writer → rhwp) keeps structure on
 
 - **Download**: Windows only for now, WeasyPrint's own "onedir" build (`weasyprint-windows-onedir.zip`, pinned in
   `engines.json`): `weasyprint.exe` with an `_internal` folder holding Python, Pango, HarfBuzz, Fontconfig, ... The
-  folder with `weasyprint.exe` becomes `engines/weasyprint`, with WeasyPrint's `LICENSE` moved into it. It is found
-  only as Filee's download or a copy the user picked in Settings → *Engines*, never on the PATH. Linux and macOS
-  follow in a separate change once WeasyPrint publishes a self-contained build for them; until then they keep the
-  routes below.
+  folder with `weasyprint.exe` becomes `engines/weasyprint`, with WeasyPrint's `LICENSE` moved into it. It is found only
+  as Filee's download or a copy the user picked in Settings → *Engines*, never on the PATH, so the Engines page doesn't
+  report one found there either (`EngineEnvironment.NeverFromSystem`). Linux and macOS follow in a separate change once
+  WeasyPrint publishes a self-contained build for them; until then they keep the routes below.
 - **Routes**: one edge, HTML → PDF, cost 1, used only in routes that start from HTML, Markdown, EML, MSG or MHTML
   (`ConversionEdge.Sources`). So a page goes straight to WeasyPrint, Markdown through Markdig's page (Markdown → HTML
   → PDF, 9 + 10 at the end of the engine order) and an e-mail or a saved web page through its page (19 + 10), all

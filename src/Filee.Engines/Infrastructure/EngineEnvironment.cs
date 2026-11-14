@@ -145,11 +145,19 @@ public sealed class EngineEnvironment(string dataDirectory)
     /// <summary>
     /// The folder of a copy of package <paramref name="id"/> already on the PC: on the PATH (also the user's and the
     /// machine's PATH as saved, so a tool installed after Filee started is found, e.g. Scoop's shims) or where its
-    /// installer puts it (LibreOffice, calibre, Ghostscript under Program Files). Cached until
-    /// <see cref="ForgetSystemCopies"/>, or <see cref="ForgetSystemCopy"/> for this package.
+    /// installer puts it (LibreOffice, calibre, Ghostscript under Program Files). Never for the engines Filee doesn't
+    /// take from the PC (<see cref="NeverFromSystem"/>). Cached until <see cref="ForgetSystemCopies"/>, or
+    /// <see cref="ForgetSystemCopy"/> for this package.
     /// </summary>
     public static string? SystemCopyFolder(string id) =>
-        SearchSystem ? SystemCopies.GetOrAdd(id, FindOnSystem) : null;
+        SearchSystem && !NeverFromSystem.Contains(id) ? SystemCopies.GetOrAdd(id, FindOnSystem) : null;
+
+    /// <summary>
+    /// Engines never taken from the PC: WeasyPrint, used only as Filee's copy or one the user picked (an old copy on
+    /// the PATH may not know --allowed-protocols, #1403), and rhwp and 7-Zip, used only as Filee's bundled copy.
+    /// Settings → Engines doesn't report a copy of these found on the PC either, since it would never be used.
+    /// </summary>
+    private static readonly HashSet<string> NeverFromSystem = ["weasyprint", "rhwp", "7zip"];
 
     /// <summary>A program of the copy of package <paramref name="id"/> on the PC, or null.</summary>
     public static string? SystemProgram(string id, string program) =>

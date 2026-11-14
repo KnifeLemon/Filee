@@ -168,6 +168,43 @@ public sealed class SystemCopyTests : IDisposable
     }
 
     [Fact]
+    public void A_weasyprint_on_the_pc_is_never_reported_since_filee_never_runs_one()
+    {
+        // #1403: an old WeasyPrint on the PATH may not know --allowed-protocols, so only Filee's copy or the user's
+        // runs.
+        File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("weasyprint.exe")), [0x4D, 0x5A]);
+        Environment.SetEnvironmentVariable("PATH", _folder + Path.PathSeparator + _path);
+        EngineEnvironment.ForgetSystemCopies();
+        var root = Directory.CreateTempSubdirectory("filee-download-").FullName;
+        try
+        {
+            Assert.Null(EngineEnvironment.SystemCopyFolder("weasyprint"));
+            Assert.Null(EngineEnvironment.SystemProgram("weasyprint", "weasyprint.exe"));
+            var component = new EngineComponent("weasyprint", "70.0", "https://example.test/weasyprint.zip", new string('a', 64), 1, "zip");
+            var installer = new EngineInstaller(new HttpClient(), root, new Dictionary<string, EngineComponent> { ["weasyprint"] = component });
+            var package = new EnginePackage("weasyprint", ["weasyprint"], 1000, ["weasyprint"]);
+
+            // Without Filee's download it is missing (Install stays on its card), not "On this computer".
+            Assert.Equal(EngineCopyStatus.NotInstalled, installer.StatusOf(package).Status);
+            Assert.Null(installer.StatusOf(package).Folder);
+
+            // With it, no copy is offered in its place ("Use this one instead" would remove the one that works).
+            Directory.CreateDirectory(Path.Combine(root, "weasyprint"));
+            File.WriteAllText(Path.Combine(root, "weasyprint", ".filee-component"), component.Sha256);
+            Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, false), installer.StatusOf(package));
+
+            // A Pandoc in the same folder is still found: only the engines Filee never takes from the PC are left out.
+            File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("pandoc.exe")), [0x4D, 0x5A]);
+            EngineEnvironment.ForgetSystemCopies();
+            Assert.Equal(_folder, EngineEnvironment.SystemCopyFolder("pandoc"));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void A_copy_on_the_pc_hidden_by_filees_download_is_reported_but_not_used()
     {
         File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("ffmpeg.exe")), [0x4D, 0x5A]);
