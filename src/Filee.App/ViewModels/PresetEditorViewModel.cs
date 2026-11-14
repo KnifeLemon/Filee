@@ -376,6 +376,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _icoSizes = string.Join(", ", _edit.Image.IcoSizes);
         _merge = _edit.Pdf.MergeIntoSingle;
         _sourceBookmarks = _edit.Pdf.SourceBookmarks;
+        _normalizeMergePaper = _edit.Pdf.NormalizeMergePaper;
+        _mergePaper = SheetPapers.First(c => c.Value == _edit.Pdf.MergePaper);
+        _mergeOrientation = SheetOrientations.First(c => c.Value == _edit.Pdf.MergeOrientation);
         _marginMm = _edit.Pdf.MarginMm;
         _renderDpi = _edit.Pdf.RenderDpi;
         _pageRange = _edit.Pdf.PageRange;
@@ -538,7 +541,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
-        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
+        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowMergePaper), nameof(ShowMergePaperSettings),
+        nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
         nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowAskCompressionImage), nameof(ShowAskCompressionMedia), nameof(ShowAskCompressionPdf),
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
@@ -821,9 +825,20 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _webpLossless;
     [ObservableProperty] private bool _multiPageTiff;
     [ObservableProperty] private string _icoSizes;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowSourceBookmarks), nameof(ShowAskCompressionPdf))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowSourceBookmarks),
+        nameof(ShowMergePaper), nameof(ShowMergePaperSettings), nameof(ShowAskCompressionPdf))]
     private bool _merge;
     [ObservableProperty] private bool _sourceBookmarks;
+
+    /// <summary>Fit all merged pages to one paper without changing the image or N-up page settings.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowMergePaperSettings))]
+    private bool _normalizeMergePaper;
+
+    /// <summary>The shared paper of the merged PDF, retained while its controls are hidden.</summary>
+    [ObservableProperty] private Choice<PdfSheetPaper> _mergePaper;
+
+    /// <summary>The shared orientation of the merged PDF, chosen once when automatic.</summary>
+    [ObservableProperty] private Choice<PdfSheetOrientation> _mergeOrientation;
     [ObservableProperty] private double _marginMm;
     [ObservableProperty] private int _renderDpi;
     [ObservableProperty] private string _pageRange;
@@ -1107,6 +1122,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     partial void OnSheetPaperChanged(Choice<PdfSheetPaper>? oldValue, Choice<PdfSheetPaper> newValue) => Choices.Restore(oldValue, newValue, v => SheetPaper = v);
     partial void OnSheetOrientationChanged(Choice<PdfSheetOrientation>? oldValue, Choice<PdfSheetOrientation> newValue) =>
         Choices.Restore(oldValue, newValue, v => SheetOrientation = v);
+    partial void OnMergePaperChanged(Choice<PdfSheetPaper>? oldValue, Choice<PdfSheetPaper> newValue) =>
+        Choices.Restore(oldValue, newValue, v => MergePaper = v);
+    partial void OnMergeOrientationChanged(Choice<PdfSheetOrientation>? oldValue, Choice<PdfSheetOrientation> newValue) =>
+        Choices.Restore(oldValue, newValue, v => MergeOrientation = v);
     partial void OnSheetOrderChanged(Choice<PdfSheetOrder>? oldValue, Choice<PdfSheetOrder> newValue) => Choices.Restore(oldValue, newValue, v => SheetOrder = v);
     partial void OnAudioBitrateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioBitrate = v);
     partial void OnAudioChannelsChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioChannels = v);
@@ -1160,6 +1179,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowZipResult => TargetCategory == FormatCategory.Geo;
     public bool ShowPdfBuild => TargetId == "pdf";
     public bool ShowSourceBookmarks => ShowPdfBuild && Merge;
+
+    /// <summary>The merge paper option is offered only for a merged PDF.</summary>
+    public bool ShowMergePaper => ShowPdfBuild && Merge;
+
+    /// <summary>The shared paper and orientation are shown only while fitting is enabled.</summary>
+    public bool ShowMergePaperSettings => ShowMergePaper && NormalizeMergePaper;
 
     /// <summary>Page size and margin of a PDF built from pictures; not with text recognition (<see cref="Recognizes"/>).</summary>
     public bool ShowPageSize => ShowPdfBuild && !Recognizes;
@@ -1377,6 +1402,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var pdf = _original.Pdf;
         pdf.MergeIntoSingle = Merge;
         pdf.SourceBookmarks = SourceBookmarks;
+        pdf.NormalizeMergePaper = NormalizeMergePaper;
+        pdf.MergePaper = MergePaper.Value;
+        pdf.MergeOrientation = MergeOrientation.Value;
         pdf.PageSize = PageSize.Value;
         pdf.MarginMm = Math.Clamp(MarginMm, 0, 100);
         pdf.RenderDpi = Math.Clamp(RenderDpi, 36, 1200);

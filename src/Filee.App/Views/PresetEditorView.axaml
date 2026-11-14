@@ -544,6 +544,26 @@
         <CheckBox x:Name="SourceBookmarks" IsChecked="{Binding SourceBookmarks}" IsVisible="{Binding ShowSourceBookmarks}">
           <TextBlock Text="{DynamicResource presets.source_bookmarks}" TextWrapping="Wrap" />
         </CheckBox>
+        <StackPanel Spacing="2" IsVisible="{Binding ShowMergePaper}">
+          <CheckBox x:Name="NormalizeMergePaper" IsChecked="{Binding NormalizeMergePaper}"
+                    AutomationProperties.Name="{DynamicResource presets.normalize_merge_paper}">
+            <TextBlock Text="{DynamicResource presets.normalize_merge_paper}" TextWrapping="Wrap" />
+          </CheckBox>
+          <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.merge_paper_hint}" />
+        </StackPanel>
+        <StackPanel x:Name="MergePaperSettings" Spacing="10" IsVisible="{Binding ShowMergePaperSettings}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.merge_paper}" />
+            <ComboBox x:Name="MergePaper" ItemsSource="{Binding SheetPapers}" SelectedItem="{Binding MergePaper}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource presets.merge_paper}" />
+          </StackPanel>
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.sheet_orientation}" />
+            <ComboBox x:Name="MergeOrientation" ItemsSource="{Binding SheetOrientations}" SelectedItem="{Binding MergeOrientation}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource presets.sheet_orientation}" />
+          </StackPanel>
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.merge_paper_auto_hint}" />
+        </StackPanel>
         <!-- PDF → PDF: one PDF, one file per page, or several pages per file (#1259) -->
         <StackPanel x:Name="PageOutputPanel" Spacing="8" IsVisible="{Binding ShowPdfSplit}">
           <StackPanel>

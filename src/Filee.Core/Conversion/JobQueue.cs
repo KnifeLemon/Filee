@@ -322,10 +322,21 @@ public sealed partial class JobQueue : IAsyncDisposable
 
         try
         {
-            await _pdfMerger!.MergeAsync(inputs, output, job.Preset.Pdf.SourceBookmarks, job.CancellationToken);
+            var pdf = job.Preset.Pdf;
+            PdfMergePaper? paper = pdf.NormalizeMergePaper ? new(pdf.MergePaper, pdf.MergeOrientation) : null;
+            await _pdfMerger!.MergeAsync(inputs, output, pdf.SourceBookmarks, paper, job.CancellationToken);
             // Once for the merged PDF, so its pages are numbered through. PDFsharp wrote it, so it is no PDF/A yet.
             await FinishPdfsAsync(job.Preset, [output], job.CancellationToken);
             await ArchivePdfsAsync(job.Preset, [output], first, workDir, changed: true, job.CancellationToken);
+        }
+        catch (ConversionRefusedException ex)
+        {
+            // A refusal (a page the paper size can't be fitted to, say) is told on every merged file, as joining does.
+            allocator.Discard();
+            _log.LogInformation("Merging {Count} file(s) into {Output} was refused: {Reason}", inputs.Count, output, ex.Message);
+            foreach (var f in job.Files.Where(f => !Stopped(f)))
+                FailFile(job, f, ex.ErrorKey, ex.Detail);
+            return;
         }
         catch
         {

@@ -1211,7 +1211,7 @@ public enum PdfRotation
     Rotate180,
 }
 
-/// <summary>The paper "Pages per sheet" puts the pages on (<see cref="PdfOptions.PagesPerSheet"/>).</summary>
+/// <summary>The paper for "Pages per sheet" or for fitting merged pages to one size.</summary>
 public enum PdfSheetPaper
 {
     A4,
@@ -1221,7 +1221,7 @@ public enum PdfSheetPaper
     SameAsFirstPage,
 }
 
-/// <summary>Which way a sheet of "Pages per sheet" stands.</summary>
+/// <summary>Which way a sheet of "Pages per sheet" or a merged PDF stands.</summary>
 public enum PdfSheetOrientation
 {
     /// <summary>Whichever fits the first page larger.</summary>
@@ -1247,6 +1247,17 @@ public sealed class PdfOptions
 
     /// <summary>Add a bookmark for each original source file when merging several files into one PDF.</summary>
     public bool SourceBookmarks { get; set; }
+
+    /// <summary>Fit every merged page to one paper size after input conversions and before PDF finishing.</summary>
+    public bool NormalizeMergePaper { get; set; }
+
+    /// <summary>With <see cref="NormalizeMergePaper"/>: the paper, independent of image and N-up page settings.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetPaper>))]
+    public PdfSheetPaper MergePaper { get; set; } = PdfSheetPaper.A4;
+
+    /// <summary>With <see cref="NormalizeMergePaper"/>: the orientation, chosen once from the first imported page.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetOrientation>))]
+    public PdfSheetOrientation MergeOrientation { get; set; } = PdfSheetOrientation.Auto;
 
     public PdfPageSize PageSize { get; set; } = PdfPageSize.FitImage;
 

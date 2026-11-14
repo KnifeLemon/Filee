@@ -26,6 +26,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         public int AppearanceLength { get; init; } = 4096;
         public int AppearanceBytes { get; init; } = 1024 * 1024;
         public Action? BeforeCarry { get; init; }
+        public PdfMergePaperFitter.Limits? Paper { get; init; }
     }
 
     private sealed class Outline(PdfDictionary dictionary, bool opened)
@@ -46,10 +47,13 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     private int _filePosition;
     private int _stringBytes;
     private bool _needAppearances;
+    private IReadOnlyDictionary<PdfObjectID, PdfMergePaperFitter.Transform>? _transforms;
 
     internal void Carry(PdfDocument source, IReadOnlyDictionary<PdfObjectID, PdfPage> pages, CancellationToken ct,
-        string? sourceName = null, PdfPage? firstPage = null)
+        string? sourceName = null, PdfPage? firstPage = null,
+        IReadOnlyDictionary<PdfObjectID, PdfMergePaperFitter.Transform>? transforms = null)
     {
+        _transforms = transforms;
         if (++_filePosition == 1)
             limits.BeforeCarry?.Invoke();
         ct.ThrowIfCancellationRequested();
@@ -238,6 +242,9 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         var result = new PdfArray(output);
         foreach (var value in values)
             result.Elements.Add(value);
+        if (_transforms is not null && _transforms.TryGetValue(reference.ObjectID, out var transform) &&
+            !PdfMergePaperFitter.Destination(result, transform))
+            return null;
         return result;
     }
 
@@ -939,11 +946,16 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     private static bool White(char c) => c is '\0' or '\t' or '\n' or '\f' or '\r' or ' ';
     private static bool Delimiter(char c) => White(c) || c is '(' or ')' or '<' or '>' or '[' or ']' or '{' or '}' or '/' or '%';
 
-    private static PdfString RewriteAppearance(PdfString source, Dictionary<(string Kind, string Name), string> names, CancellationToken ct)
+    internal static PdfString ScaleAppearance(PdfString source, double scale) =>
+        RewriteAppearance(source, new(), CancellationToken.None, scale);
+
+    private static PdfString RewriteAppearance(PdfString source, Dictionary<(string Kind, string Name), string> names,
+        CancellationToken ct, double? scale = null)
     {
         var text = source.Value;
         var operands = new List<Token>();
         var changes = new List<(int Start, int Length, string Text)>();
+        var compositeDepth = 0;
         string? Default(string device) =>
             names.TryGetValue(("/ColorSpace", DefaultSpaces[device]), out var renamed) ? renamed : null;
         for (var i = 0; i < text.Length;)
@@ -995,6 +1007,21 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
             else if (Delimiter(text[i]))
             {
                 // Composite operands are legal, but are not resource-name operands.
+                if (scale is not null)
+                {
+                    if (text[i] is '[' or '{' || text[i] == '<' && i + 1 < text.Length && text[i + 1] == '<')
+                    {
+                        compositeDepth++;
+                        if (text[i] == '<')
+                            i++;
+                    }
+                    else if (text[i] is ']' or '}' || text[i] == '>' && i + 1 < text.Length && text[i + 1] == '>')
+                    {
+                        compositeDepth--;
+                        if (text[i] == '>')
+                            i++;
+                    }
+                }
                 i++;
             }
             else
@@ -1007,6 +1034,11 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                     word = value;
             }
             var token = new Token(start, i - start, name, word);
+            if (scale is not null && compositeDepth != 0)
+            {
+                operands.Clear();
+                continue;
+            }
             if (word is null)
             {
                 operands.Add(token);
@@ -1032,6 +1064,15 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
             if (kind is not null && index >= 0 && operands[index] is { Name: { } resource } operand &&
                 names.TryGetValue((kind, resource), out var renamed) && renamed != resource)
                 changes.Add((operand.Start, operand.Length, Encoded(renamed)));
+            if (word == "Tf" && scale is { } factor && index >= 0 && operands[index].Name is not null &&
+                double.TryParse(text.AsSpan(operands[index + 1].Start, operands[index + 1].Length), NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out var size) && double.IsFinite(size) && size >= 0)
+            {
+                var changed = size * factor;
+                if (!double.IsFinite(changed) || size > 0 && changed <= 0)
+                    throw new InvalidDataException("Invalid scaled font size.");
+                changes.Add((operands[index + 1].Start, operands[index + 1].Length, PdfMergePaperFitter.NumberText(changed)));
+            }
             if (DeviceColours.TryGetValue(word, out var colour) && operands.Count == colour.Operands &&
                 Default(colour.Space) is { } replacement)
             {

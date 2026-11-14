@@ -45,11 +45,20 @@ public class SpreadsheetPrintSourceBookmarksTests(ITestOutputHelper output)
                 cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(false, merger.SourceBookmarks);
+            Assert.Null(merger.Paper);
             Assert.Equal(2, merger.Inputs.Count);
             Assert.All(merger.Inputs, input => Assert.Equal(Path.GetFileName(input.PdfPath), input.SourceName));
             Assert.All(merger.PageCounts, count => Assert.True(count > 0));
             using var document = PdfReader.Open(outputPath, PdfDocumentOpenMode.Import);
             Assert.Equal(merger.PageCounts.Sum(), document.PageCount);
+            for (var index = 0; index < document.PageCount; index++)
+            {
+                var page = document.Pages[index];
+                var expected = merger.PageGeometry[index];
+                AssertBox(expected.MediaBox, page.MediaBox);
+                AssertBox(expected.CropBox, page.CropBox);
+                Assert.Equal(expected.Rotate, page.Rotate);
+            }
             var outlines = Outlines(document);
             output.WriteLine("Merged outlines: " + string.Join("; ", outlines));
             Assert.Equal(merger.ExpectedOutlines, outlines);
@@ -61,13 +70,23 @@ public class SpreadsheetPrintSourceBookmarksTests(ITestOutputHelper output)
         finally { Directory.Delete(folder, recursive: true); }
     }
 
+    private static void AssertBox(PdfRectangle expected, PdfRectangle actual)
+    {
+        Assert.InRange(Math.Abs(expected.X1 - actual.X1), 0, 0.01);
+        Assert.InRange(Math.Abs(expected.Y1 - actual.Y1), 0, 0.01);
+        Assert.InRange(Math.Abs(expected.X2 - actual.X2), 0, 0.01);
+        Assert.InRange(Math.Abs(expected.Y2 - actual.Y2), 0, 0.01);
+    }
+
     private sealed class RecordingMerger(ITestOutputHelper output) : IConverter, IPdfMerger
     {
         private readonly PdfSharpConverter _inner = new();
         public IReadOnlyList<PdfMergeInput> Inputs { get; private set; } = [];
         public List<int> PageCounts { get; } = [];
+        public List<(PdfRectangle MediaBox, PdfRectangle CropBox, int Rotate)> PageGeometry { get; } = [];
         public List<(int Depth, string Title, int Page)> ExpectedOutlines { get; } = [];
         public bool? SourceBookmarks { get; private set; }
+        public PdfMergePaper? Paper { get; private set; }
         public string Id => _inner.Id;
         public string DisplayName => _inner.DisplayName;
         public IReadOnlyList<ConversionEdge> Edges => _inner.Edges;
@@ -76,10 +95,12 @@ public class SpreadsheetPrintSourceBookmarksTests(ITestOutputHelper output)
         public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
             _inner.ConvertAsync(step, progress, cancellationToken);
 
-        public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken)
+        public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
+            CancellationToken cancellationToken)
         {
             Inputs = inputs.ToArray();
             SourceBookmarks = sourceBookmarks;
+            Paper = paper;
             foreach (var input in inputs)
             {
                 using var document = PdfReader.Open(input.PdfPath, PdfDocumentOpenMode.Import);
@@ -87,8 +108,10 @@ public class SpreadsheetPrintSourceBookmarksTests(ITestOutputHelper output)
                 output.WriteLine($"Rendered {Path.GetFileName(input.PdfPath)}: pages={document.PageCount}; outlines={string.Join("; ", outlines)}");
                 ExpectedOutlines.AddRange(outlines.Select(outline => (outline.Depth, outline.Title, outline.Page + PageCounts.Sum())));
                 PageCounts.Add(document.PageCount);
+                foreach (var page in document.Pages)
+                    PageGeometry.Add((page.MediaBox, page.CropBox, page.Rotate));
             }
-            return _inner.MergeAsync(inputs, outputPath, sourceBookmarks, cancellationToken);
+            return _inner.MergeAsync(inputs, outputPath, sourceBookmarks, paper, cancellationToken);
         }
     }
 

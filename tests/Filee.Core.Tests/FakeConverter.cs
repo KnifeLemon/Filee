@@ -141,11 +141,14 @@ internal sealed class FakeMerger : IPdfMerger
     public List<string> Inputs { get; } = [];
     public List<PdfMergeInput> MergeInputs { get; } = [];
     public bool? SourceBookmarks { get; private set; }
+    public PdfMergePaper? Paper { get; private set; }
 
-    public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken)
+    public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
+        CancellationToken cancellationToken)
     {
         MergeInputs.AddRange(inputs);
         SourceBookmarks = sourceBookmarks;
+        Paper = paper;
         var inputPaths = inputs.Select(input => input.PdfPath).ToList();
         Inputs.AddRange(inputPaths);
         File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
