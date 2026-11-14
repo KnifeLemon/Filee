@@ -482,6 +482,31 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
     }
 
     [Fact]
+    public async Task Issue1194_a_page_break_at_the_end_of_a_paragraph_leaves_no_empty_line_on_the_next_page()
+    {
+        // Each chapter of the report starts after a paragraph holding only a page break. Word keeps that paragraph's
+        // mark on the old page; the renderer put it on the new one, an empty line and 10 pt above every chapter.
+        var styles = NotoStyles.Replace("<w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>",
+            "<w:spacing w:after=\"200\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>", StringComparison.Ordinal);
+        Assert.NotEqual(NotoStyles, styles);
+        const string Break = "<w:r><w:br w:type=\"page\"/></w:r>";
+        var own = new DocxBuilder { Styles = styles, SectionProperties = DefaultPage }.Paragraph(P(R("Chapter 1")) + P(Break) + P(R("Chapter 2")));
+        var ending = new DocxBuilder { Styles = styles, SectionProperties = DefaultPage }.Paragraph(P(R("Chapter 1") + Break) + P(R("Chapter 2")));
+        var property = new DocxBuilder { Styles = styles, SectionProperties = DefaultPage }.Paragraph(P(R("Chapter 1")) + P(R("Chapter 2"), "<w:pageBreakBefore/>"));
+        var middle = new DocxBuilder { Styles = styles, SectionProperties = DefaultPage }.Paragraph(P(R("Chapter 1") + Break + R("Chapter 2")));
+
+        var expected = Lines((await DocxAsync(property))[1]).Single().Y;
+        foreach (var docx in new[] { own, ending, middle })
+        {
+            var pages = await DocxAsync(docx);
+            Assert.Equal(2, pages.Count);
+            var line = Assert.Single(Lines(pages[1]));
+            Assert.Equal("Chapter2", line.Text);
+            Assert.Equal(expected, line.Y, 0.1f);
+        }
+    }
+
+    [Fact]
     public async Task Issue355_an_equation_number_after_a_hash_sits_at_the_right_margin()
     {
         // "a=b#(1)" in Word: the equation in the middle, "(1)" at the right margin; rhwp drew "#(1)" in the equation.

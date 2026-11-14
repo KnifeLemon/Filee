@@ -61,6 +61,12 @@ internal sealed partial class DocxReader
     /// <summary>Reading the header for the first page only, which becomes a text box (see <see cref="HSection.FirstPageHeader"/>).</summary>
     private bool _inFirstPageHeader;
 
+    /// <summary>
+    /// The block list whose next block starts a new page: a paragraph ended right after its page break, and Word keeps
+    /// such a paragraph's mark on the old page.
+    /// </summary>
+    private List<HBlock>? _pageBreakFor;
+
     /// <summary>Table cells, text boxes and notes around the blocks being read (see <see cref="ReadNestedBlocks"/>).</summary>
     private int _depth;
 
@@ -648,6 +654,8 @@ internal sealed partial class DocxReader
 
     private void ReadBlock(XElement element, List<HBlock> output)
     {
+        var count = output.Count;
+        var pageBreak = ReferenceEquals(_pageBreakFor, output);
         if (element.Name == W + "p")
             ReadParagraph(element, output);
         else if (element.Name == W + "tbl")
@@ -655,6 +663,20 @@ internal sealed partial class DocxReader
             _tableDepth++;
             output.Add(ReadTable(element));
             _tableDepth--;
+        }
+        if (pageBreak && output.Count > count)
+        {
+            if (ReferenceEquals(_pageBreakFor, output))
+                _pageBreakFor = null;
+            switch (output[count])
+            {
+                case HParagraph paragraph:
+                    paragraph.PageBreakBefore = true;
+                    break;
+                case HTable table:
+                    table.PageBreakBefore = true;
+                    break;
+            }
         }
     }
 
@@ -673,6 +695,7 @@ internal sealed partial class DocxReader
         private readonly int _heading;
         private readonly HListRef? _list;
         private readonly ParaProps _props;
+        private bool _pageBroken;
         private readonly Stack<List<HInline>> _sinks = new();
 
         public ParagraphBuilder(DocxReader reader, List<HBlock> output, ParaProps props, RunProps mark, XElement? pPr)
@@ -728,7 +751,7 @@ internal sealed partial class DocxReader
                 _sinks.Clear();
             }
             if (page)
-                Current.PageBreakBefore = true;
+                Current.PageBreakBefore = _pageBroken = true;
             else
                 Current.ColumnBreakBefore = true;
         }
@@ -744,7 +767,18 @@ internal sealed partial class DocxReader
             _sinks.Clear();
         }
 
-        public void Finish() => Emit();
+        /// <param name="endsSection">The paragraph holds a section's properties (its section ends here).</param>
+        public void Finish(bool endsSection = false)
+        {
+            // Word keeps the mark of a paragraph that ends right after a page break on the old page: the new page starts
+            // with the next paragraph, not with an empty line and the paragraph's space after.
+            if (_pageBroken && Current.Inlines.Count == 0 && Current.List is not { Numbered: true } && !endsSection)
+            {
+                _reader._pageBreakFor = _output;
+                return;
+            }
+            Emit();
+        }
 
         private void Emit()
         {
@@ -772,7 +806,7 @@ internal sealed partial class DocxReader
         // Run formatting starts from the paragraph style, not from the paragraph mark's direct formatting.
         var styleRun = ParagraphStyle(Val(pPr?.Element(W + "pStyle")) ?? _defaultParagraphStyle).Run;
         ParagraphContent(p.Elements(), builder, styleRun);
-        builder.Finish();
+        builder.Finish(endsSection: pPr?.Element(W + "sectPr") is not null);
     }
 
     private void ParagraphContent(IEnumerable<XElement> elements, ParagraphBuilder builder, RunProps styleRun)
