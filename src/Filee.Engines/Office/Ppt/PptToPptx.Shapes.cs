@@ -51,7 +51,7 @@ internal sealed partial class PptToPptx
     private const int MaxMasterChain = 4;
 
     /// <summary>MSOSPT shape types and the DrawingML presets of the same shapes.</summary>
-    private static readonly Dictionary<int, string> Presets = new()
+    internal static readonly Dictionary<int, string> Presets = new()
     {
         [1] = "rect",
         [2] = "roundRect",

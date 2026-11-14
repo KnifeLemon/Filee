@@ -275,14 +275,19 @@ public sealed class PptReaderTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 
     [Fact]
-    public void A_shape_the_slide_renderer_has_no_preset_for_yet_is_named_by_the_check()
+    public void Every_shape_type_becomes_a_preset_the_slide_renderer_draws()
     {
-        // MSOSPT 106 is DrawingML's cloudCallout, which the slide renderer doesn't draw yet: LibreOffice takes the deck.
+        Assert.All(PptToPptx.Presets, p => Assert.True(PresetShapes.Known(p.Value), $"MSOSPT {p.Key}: {p.Value}"));
+
+        // MSOSPT 106 is DrawingML's cloudCallout: the check passes it and the renderer fills its cloud.
         var ppt = new PptBuilder();
         var slide = new Sheet();
         slide.Shapes.Add(Shape(3001, 106, (288, 288, 2880, 2880), [(0x0181, Rgb(0xFF0000)), (0x01BF, 0x00100010)]));
         ppt.Slides.Add(slide);
-        Assert.Equal("the preset shape cloudCallout", new FileeRendererConverter().FirstUnsupported(Save(ppt), "ppt"));
+        var path = Save(ppt);
+        Assert.Null(new FileeRendererConverter().FirstUnsupported(path, "ppt"));
+        using var picture = SlideOutput.ToBitmaps(PptxSlideReader.Read(path, cancellationToken: Token), 72, [0], Token).Single();
+        Assert.Equal(new SKColor(0xFF, 0, 0), picture.GetPixel(216, 216));
     }
 
     // ───────────────────────── Refused and left out ─────────────────────────

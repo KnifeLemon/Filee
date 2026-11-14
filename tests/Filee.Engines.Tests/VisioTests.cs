@@ -379,7 +379,7 @@ public sealed class VisioTests(EngineFixture fx) : IDisposable, IClassFixture<En
     public void The_drawing_converter_reads_vsdx_and_leaves_binary_vsd_to_libreoffice()
     {
         var converter = new DrawingConverter();
-        Assert.Equal([("vsd", "pdf"), ("vsd", "svg"), ("vsd", "png")], converter.Edges.Select(e => (e.From, e.To)));
+        Assert.Equal([("vsd", "pdf"), ("vsd", "svg"), ("vsd", "png")], converter.Edges.Where(e => e.From == "vsd").Select(e => (e.From, e.To)));
         Assert.All(converter.Edges, e => Assert.True(e.Checked));
 
         var binary = Path.Combine(_folder, "old.vsd");

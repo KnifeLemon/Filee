@@ -508,10 +508,11 @@ public sealed class OdfDrawTests : IDisposable
     [Fact]
     public void Charts_3d_scenes_and_other_objects_are_named_by_the_check()
     {
-        string Deck(string content, string? name = null, bool hidden = false)
+        string Deck(string content, string? name = null, bool hidden = false, bool drawing = false)
         {
             var builder = new OdpBuilder
             {
+                Drawing = drawing,
                 Styles = GraphicDefault,
                 ContentStyles = "<style:style style:name=\"hidden\" style:family=\"drawing-page\"><style:drawing-page-properties presentation:visibility=\"hidden\"/></style:style>",
                 Pages = OdpBuilder.Page(content, hidden ? "hidden" : null),
@@ -533,6 +534,11 @@ public sealed class OdfDrawTests : IDisposable
         // Through the renderer's check.
         var renderer = new Typesetting.FileeRendererConverter();
         Assert.Equal("charts", renderer.FirstUnsupported(Deck(chart, "renderer.odp"), "odp"));
+        // Through the drawing converter's: its ODG / FODG edges are Checked, so such a drawing keeps LibreOffice Draw.
+        var drawings = new DrawingConverter();
+        Assert.All(drawings.Edges.Where(e => OdfDrawReader.Drawings.Contains(e.From)), e => Assert.True(e.Checked));
+        Assert.Equal("charts", drawings.FirstUnsupported(Deck(chart, "drawing.odg", drawing: true), "odg"));
+        Assert.Null(drawings.FirstUnsupported(Deck("<draw:rect svg:width=\"5cm\" svg:height=\"5cm\"/>", "plain.odg", drawing: true), "odg"));
         // The chart's replacement picture can't be drawn here (no part): the frame is left out.
         Assert.Empty(Read(Deck(chart)).Slides[0].Elements);
     }
