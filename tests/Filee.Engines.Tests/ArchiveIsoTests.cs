@@ -16,7 +16,7 @@ public sealed class ArchiveIsoTests : IDisposable
     private readonly string _root = Directory.CreateTempSubdirectory("filee-archive-iso-").FullName;
     public void Dispose() => Directory.Delete(_root, true);
 
-    public static IEnumerable<object[]> ReadableFormats() => ArchiveExtractor.ReadableFormats.Select(f => new object[] { f });
+    public static IEnumerable<object[]> ReadableFormats() => ArchiveExtractor.BuiltInFormats.Select(f => new object[] { f });
 
     [Theory]
     [InlineData(true)]
@@ -24,7 +24,6 @@ public sealed class ArchiveIsoTests : IDisposable
     public async Task Archive_to_iso_keeps_the_source_archives_mark_of_the_web(bool marked)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
-        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
         var input = Path.Combine(_root, "download.zip");
         using (var zip = ZipFile.Open(input, ZipArchiveMode.Create))
         using (var writer = new StreamWriter(zip.CreateEntry("nested/setup.exe").Open()))
@@ -46,7 +45,6 @@ public sealed class ArchiveIsoTests : IDisposable
     [MemberData(nameof(ReadableFormats))]
     public void Every_supported_archive_has_a_direct_iso_route(string format)
     {
-        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
         var planner = new ConverterCatalog([new ArchiveConverter(), new FolderIsoConverter()]).CreatePlanner();
         Assert.Equal("archive", Assert.Single(planner.Plan(format, "iso")!.Steps).Converter.Id);
         Assert.Null(planner.Plan("png", "iso"));
@@ -65,7 +63,6 @@ public sealed class ArchiveIsoTests : IDisposable
     [InlineData("zxp")]
     public async Task Archives_become_iso_with_nested_unicode_files_and_empty_directories(string format)
     {
-        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
         var input = Path.Combine(_root, "sample." + FormatRegistry.Get(format).PrimaryExtension);
         if (format == "alz")
             WriteAlz(input, [new("nested/한글.txt", "contents"u8.ToArray()), new("empty", null)]);
@@ -92,14 +89,13 @@ public sealed class ArchiveIsoTests : IDisposable
     }
 
     [Theory]
-    [InlineData("gz", "gzip")]
-    [InlineData("bz2", "bzip2")]
-    [InlineData("xz", "xz")]
-    [InlineData("lzma", "lzma")]
-    [InlineData("lz", "lzip")]
-    public async Task Single_compressed_files_can_be_put_in_an_iso(string format, string sevenZipType)
+    [InlineData("gz")]
+    [InlineData("bz2")]
+    [InlineData("xz")]
+    [InlineData("lzma")]
+    [InlineData("lz")]
+    public async Task Single_compressed_files_can_be_put_in_an_iso(string format)
     {
-        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
         var source = Path.Combine(_root, "source.txt");
         File.WriteAllText(source, "compressed contents");
         var input = Path.Combine(_root, "source.txt." + format);
@@ -116,7 +112,12 @@ public sealed class ArchiveIsoTests : IDisposable
         else if (format == "lz")
             File.WriteAllBytes(input, await LzipAsync(File.ReadAllBytes(source), _root));
         else
-            await Run7zAsync("a", "-t" + sevenZipType, input, source);
+            File.WriteAllBytes(input, format switch
+            {
+                "gz" => ArchiveFormatBuilders.Gzip(File.ReadAllBytes(source)),
+                "bz2" => Bzip2(File.ReadAllBytes(source)),
+                _ => ArchiveFormatBuilders.Xz(File.ReadAllBytes(source)),
+            });
         var job = await Run(input);
         Assert.True(job.State == JobState.Completed, job.Files[0].ErrorDetail);
         using var stream = File.OpenRead(Assert.Single(job.Outputs));
@@ -132,14 +133,23 @@ public sealed class ArchiveIsoTests : IDisposable
     [InlineData("7z", true)]
     public async Task Password_protected_archives_fail_clearly_and_preserve_existing_iso(string format, bool encryptedNames)
     {
-        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
+        // 7-Zip encrypts for real where it is there; without it the test's own archives say they are encrypted (a
+        // flagged ZIP entry, an AES coder in a 7z). Only 7-Zip encrypts a 7z's names.
+        Assert.SkipUnless(!encryptedNames || SevenZipExe is not null, "Only 7-Zip makes a 7z with encrypted names (-mhe=on).");
         var secret = Path.Combine(_root, "secret.txt");
         File.WriteAllText(secret, "secret contents");
         var input = Path.Combine(_root, "locked." + format);
-        var args = new List<string> { "a", "-t" + format, "-ptest-password" };
-        if (encryptedNames) args.Add("-mhe=on");
-        args.AddRange([input, secret]);
-        await Run7zAsync(args.ToArray());
+        if (SevenZipExe is not null)
+        {
+            var args = new List<string> { "a", "-t" + format, "-ptest-password" };
+            if (encryptedNames) args.Add("-mhe=on");
+            args.AddRange([input, secret]);
+            await Run7zAsync(args.ToArray());
+        }
+        else
+            File.WriteAllBytes(input, format == "zip"
+                ? ArchiveFormatBuilders.EncryptedZip("secret.txt", "secret contents"u8.ToArray())
+                : ArchiveFormatBuilders.SevenZip([new("secret.txt", "secret contents"u8.ToArray())], encrypted: true));
         var output = Path.Combine(_root, "locked.iso");
         File.WriteAllText(output, "keep this image");
         var job = await Run(input);
@@ -153,7 +163,6 @@ public sealed class ArchiveIsoTests : IDisposable
     [InlineData(true)]
     public async Task Invalid_archive_entries_or_joliet_names_preserve_existing_iso(bool escapingPath)
     {
-        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
         var input = Path.Combine(_root, "invalid.zip");
         using (var zip = ZipFile.Open(input, ZipArchiveMode.Create))
         using (var writer = new StreamWriter(zip.CreateEntry(escapingPath ? "../escape.txt" : new string('a', 65) + ".txt").Open()))
@@ -169,7 +178,6 @@ public sealed class ArchiveIsoTests : IDisposable
     [Fact]
     public async Task Empty_zip_becomes_an_empty_iso()
     {
-        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
         var input = Path.Combine(_root, "empty.zip");
         using (ZipFile.Open(input, ZipArchiveMode.Create)) { }
         var job = await Run(input);
@@ -183,7 +191,6 @@ public sealed class ArchiveIsoTests : IDisposable
     [Fact]
     public async Task Cancellation_after_extraction_preserves_destination_and_cleans_scratch()
     {
-        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
         var input = Path.Combine(_root, "cancel.zip");
         using (var zip = ZipFile.Open(input, ZipArchiveMode.Create))
         using (var writer = new StreamWriter(zip.CreateEntry("file.txt").Open())) writer.Write("contents");

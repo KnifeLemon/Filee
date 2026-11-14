@@ -7,6 +7,7 @@
 using System.IO.Compression;
 using System.Text;
 using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Core.Presets;
 using Filee.Engines.Archives;
 using static Filee.Engines.Tests.ArchiveBuilders;
@@ -167,7 +168,7 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
     [Fact]
     public async Task Unix_compress_files_written_by_the_test_encoder_are_what_7zip_reads()
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip is the independent reader of the test encoder's .Z files (optional engine, not installed)");
         var data = Words(400_000);
         var z = Write("check.txt.Z", UnixCompress(data));
         var output = Path.Combine(Path.GetDirectoryName(z)!, "out");
@@ -281,19 +282,23 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 
     [Fact]
-    public void Without_7zip_the_engine_keeps_the_in_process_edges_only()
+    public void The_engine_has_every_edge_with_or_without_7zip()
     {
+        // 7-Zip is optional: it adds no format, only the rare variants of formats Filee reads itself.
         var engine = new ArchiveConverter();
         Assert.True(engine.GetStatus().IsAvailable);
         var edges = new HashSet<(string, string)>(engine.Edges.Select(e => (e.From, e.To)));
         foreach (var format in ArchiveExtractor.BuiltInFormats)
-            Assert.Contains((format, "zip"), edges);
-        if (SevenZipExe is null)
         {
-            Assert.DoesNotContain(("dmg", "zip"), edges);
-            Assert.Contains(("zip", "tbz2"), edges); // every target is written in-process now
-            Assert.Contains(("xz", "gz"), edges);
+            Assert.Contains((format, "zip"), edges);
+            Assert.Contains((format, "iso"), edges);
         }
+        Assert.Contains(("zip", "tbz2"), edges);
+        Assert.Contains(("xz", "gz"), edges);
+        Assert.Contains(("lzma", "bz2"), edges);
+        Assert.Contains((FormatRegistry.Folder, "7z"), edges);
+        foreach (var format in new[] { "zip", "7z", "tar", "tgz", "tbz2", "txz", "gz", "bz2", "xz" })
+            Assert.True(engine.CanCombineInto(format), format);
     }
 
     // ───────── Hostile input ─────────
@@ -480,7 +485,9 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Assert.Contains("not a valid archive", await RefusedAsync(Write("fake.7z", "not an archive"u8.ToArray()), "7z"));
         Assert.Contains("not a valid archive", await RefusedAsync(Write("fake.cpio", "not an archive"u8.ToArray()), "cpio"));
         Assert.Contains("not a valid archive", await RefusedAsync(Write("fake.deb", "not an archive"u8.ToArray()), "deb"));
-        await RefusedAsync(Write("fake.iso", new byte[40_000]), "iso");
+        // Neither ISO 9660 nor UDF: other disc file systems are left to 7-Zip, so without it the error suggests it.
+        var disc = await Assert.ThrowsAsync<ConversionRefusedException>(() => UnpackAsync(Write("fake.iso", new byte[40_000]), "iso"));
+        Assert.Equal(ArchiveExtractor.NeedsSevenZip, disc.ErrorKey);
         await RefusedAsync(Write("fake.Z", [0x1F, 0x9D, 0x90, 0xFF, 0xFF, 0xFF]), "z");
     }
 

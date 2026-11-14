@@ -221,7 +221,7 @@ Filee, **Myeonggu Kim** ([KnifeLemon](https://github.com/KnifeLemon)) tarafında
   - SmartScreen, yeterli sayıda indirilene kadar yeni bir sürüm hakkında yine de uyarı verebilir ("Ek bilgi" → "Yine de çalıştır").
 - macOS paketleri ad-hoc imzalıdır ve noter onaylı değildir.
 - Yalnızca bu deponun GitHub Actions sürüm iş akışı tarafından oluşturulan dosyalar imzalanır ve her sürüm elle imzalanıp onaylanır.
-  - Geliştiricileri tarafından imzalanmış kütüphaneler ve programlar (.NET, SkiaSharp, ImageMagick, Microsoft C++ çalışma zamanı…) kendi imzalarını korur; imzasız gelen paketlenmiş bileşenler (rhwp, 7-Zip ve çoğu kütüphane), Filee'nin bir parçası olarak Filee'nin sertifikasıyla imzalanır.
+  - Geliştiricileri tarafından imzalanmış kütüphaneler ve programlar (.NET, SkiaSharp, ImageMagick, Microsoft C++ çalışma zamanı…) kendi imzalarını korur; imzasız gelen paketlenmiş bileşenler (rhwp ve çoğu kütüphane), Filee'nin bir parçası olarak Filee'nin sertifikasıyla imzalanır.
 
 ### Gizlilik politikası
 

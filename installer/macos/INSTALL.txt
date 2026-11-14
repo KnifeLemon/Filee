@@ -38,6 +38,6 @@ and run the uninstaller again. A manually placed app in
 /Applications can be removed after running its Filee executable with
 --uninstall-cleanup.
 
-rhwp and 7-Zip are bundled. Other engines can be installed in Filee settings or
-discovered in the system. Public distribution requires Developer ID signing
+rhwp is bundled. Other engines (7-Zip for rare archive variants among them) can be
+installed in Filee settings or discovered in the system. Public distribution requires Developer ID signing
 and notarization; neither is supplied by this test package.

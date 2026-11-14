@@ -1,8 +1,9 @@
 // Shared context for engines: where Filee's own engine copies live and where engines keep their state.
 // Built-in engines never use software installed on the system (Microsoft Office, Hancom Office). The optional
-// engines (FFmpeg, calibre, Pandoc, Ghostscript, LibreOffice, Tesseract) are looked up in this order: a copy the user chose in
-// Settings → Engines (OwnCopies), Filee's own copy (installer or download, the tested version), then one already on
-// the PC (on the PATH or where its installer puts it), so nobody has to download a second FFmpeg they already have.
+// engines (FFmpeg, calibre, Pandoc, Ghostscript, LibreOffice, Tesseract …) are looked up in this order: a copy the
+// user chose in Settings → Engines (OwnCopies), Filee's own copy (installer or download, the tested version), then one
+// already on the PC (on the PATH or where its installer puts it), so nobody has to download a second FFmpeg they
+// already have. 7-Zip skips the last step (UsesSystemCopy).
 
 using System.Collections.Concurrent;
 using System.Runtime.Versioning;
@@ -152,7 +153,14 @@ public sealed class EngineEnvironment(string dataDirectory)
     /// <see cref="ForgetSystemCopies"/>.
     /// </summary>
     public static string? SystemCopyFolder(string id) =>
-        SearchSystem ? SystemCopies.GetOrAdd(id, FindOnSystem) : null;
+        SearchSystem && UsesSystemCopy(id) ? SystemCopies.GetOrAdd(id, FindOnSystem) : null;
+
+    /// <summary>
+    /// False for packages Filee never takes from the PC: 7-Zip, whose installed version and switches are unknown, is
+    /// used only as Filee downloads it or as the user picks it in Settings → Engines (so the Engines page never shows
+    /// a 7-Zip on the PC as installed).
+    /// </summary>
+    public static bool UsesSystemCopy(string id) => id != "7zip";
 
     /// <summary>A program of the copy of package <paramref name="id"/> on the PC, or null.</summary>
     public static string? SystemProgram(string id, string program) =>

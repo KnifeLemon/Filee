@@ -38,7 +38,7 @@ Use the matching runtime on a Mac or ARM64 Linux machine. A Mac also needs dmgbu
 (`python3 -m pip install dmgbuild==1.6.7`). Magick.NET has no ImageMagick library for Intel Macs: there,
 put Filee's own next to each build after building, e.g.
 `pwsh build/fetch-magick-native.ps1 -Runtime osx-x64 -Destination src/Filee.App/bin/Debug/net10.0`. Packaging runs on Linux/macOS so archives retain
-executable permissions. Each archive contains the app, CLI, rhwp, 7-Zip, installation instructions and per-user
+executable permissions. Each archive contains the app, CLI, rhwp, installation instructions and per-user
 install/uninstall scripts. `Filee-<version>-<rid>-SHA256SUMS.txt` verifies the archive. macOS bundles use
 `com.filee.app` and a development ad-hoc signature by default; public distribution still needs Developer ID signing
 and notarization. `-SigningIdentity` can supply a signing identity, but does not perform notarization.
@@ -117,7 +117,7 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. In short:
 
 Bump `<Version>` in `Directory.Build.props`, merge, then push a tag `vX.Y.Z`. `.github/workflows/release.yml` runs the
 tests and `build/build-installer.ps1 -Portable`: it publishes the app (`-p:FileeRelease=true`, which lets it register
-Explorer and startup entries), adds the Explorer menu extension and the bundled rhwp and 7-Zip, compiles
+Explorer and startup entries), adds the Explorer menu extension and the bundled rhwp, compiles
 `src/Filee.Setup` (Filee's own installer) and appends the app to it. It drafts the release with the Linux and macOS
 packages and release notes generated from the merged pull requests, and keeps the tested Windows build unsigned (the
 artifact `windows-unsigned`).

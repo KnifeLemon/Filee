@@ -246,8 +246,9 @@ jobs:
       - name: Test
         run: dotnet test tests/Filee.Engines.Tests -c Release --filter "FullyQualifiedName~MetadataTests"
 
-  # Windows on ARM64 (#236), built and tested natively: the Explorer menu DLL, Setup, 7-Zip and rhwp are ARM64 builds,
-  # the downloaded engines (Pandoc here) x64 ones under emulation. rhwp comes from a pinned build of
+  # Windows on ARM64 (#236), built and tested natively: the Explorer menu DLL, Setup and rhwp are ARM64 builds (7-Zip
+  # too, for the archive tests; the app downloads the x64 one), the downloaded engines (Pandoc here) x64 ones under
+  # emulation. rhwp comes from a pinned build of
   # .github/workflows/windows-arm64-native.yml (build/fetch-engines.ps1). Until it is pinned, its tests skip and no
   # package is built; once it is, the job also builds the win-arm64 Setup and portable zip to try out.
   build-arm64:

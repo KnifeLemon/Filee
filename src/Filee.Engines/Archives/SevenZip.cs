@@ -1,10 +1,11 @@
-// Runs Filee's own copy of the 7-Zip console program (engines/7zip: 7z.exe + 7z.dll, GNU LGPL with the unRAR
-// restriction, used as a separate process) to list, unpack and create archives, and turns its messages into clear
-// errors. 7-Zip installed on the system is never used.
+// Runs 7-Zip's console program (7z.exe + 7z.dll on Windows, 7zz elsewhere; GNU LGPL with the unRAR restriction,
+// used as a separate process) to list and unpack the rare archives Filee's own readers leave out, and turns its
+// messages into clear errors. 7-Zip is an optional engine (Settings → Engines): the copy the user chose there, else
+// Filee's download. A 7-Zip installed on the PC is never used (unlike the other optional engines): its version and
+// switches are unknown. Filee writes every archive format itself and never asks 7-Zip to create one.
 
 using System.Globalization;
 using System.Text;
-using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Archives;
@@ -26,7 +27,7 @@ internal sealed record SevenZipEntry(string Path, bool IsFolder, long Size, bool
                                   || Mode is { } mode && mode.Split(' ').Any(part => part.Length == 10 && part[0] == 'l');
 }
 
-/// <summary>The bundled 7-Zip console program.</summary>
+/// <summary>The 7-Zip console program, when it is installed.</summary>
 internal sealed class SevenZip(string executable)
 {
     /// <summary>Archives can be many gigabytes; the timeout only ends a process that hangs.</summary>
@@ -46,13 +47,22 @@ internal sealed class SevenZip(string executable)
     /// </summary>
     public const string HideVariable = "FILEE_HIDE_7ZIP";
 
-    /// <summary>Filee's own copy (engines/7zip), never one installed on the system.</summary>
-    public static SevenZip? Locate() =>
-        Environment.GetEnvironmentVariable(HideVariable) != "1"
-        && EngineEnvironment.FindBundled("7zip") is { } folder
-        && EngineEnvironment.FirstExisting(Path.Combine(folder, OperatingSystem.IsWindows() ? "7z.exe" : "7zz")) is { } exe
-            ? new SevenZip(exe)
-            : null;
+    /// <summary>The program's name in 7-Zip's folder: 7z.exe on Windows, 7zz (the full console build) elsewhere.</summary>
+    internal static string ProgramName => OperatingSystem.IsWindows() ? "7z.exe" : "7zz";
+
+    /// <summary>
+    /// The 7-Zip the archive engine uses: the copy the user chose in Settings → Engines, else Filee's download
+    /// (engines/7zip), never one installed on the PC (<see cref="EngineEnvironment.UsesSystemCopy"/>). Null when there
+    /// is none or it is hidden.
+    /// </summary>
+    public static SevenZip? Locate()
+    {
+        if (Environment.GetEnvironmentVariable(HideVariable) == "1")
+            return null;
+        var program = EngineEnvironment.OwnProgram("7zip", ProgramName)
+                      ?? EngineEnvironment.BundledProgram("7zip", ProgramName);
+        return program is not null && File.Exists(program) ? new SevenZip(program) : null;
+    }
 
     /// <summary>Lists the entries of an archive.</summary>
     public async Task<IReadOnlyList<SevenZipEntry>> ListAsync(string archive, CancellationToken cancellationToken)
@@ -66,14 +76,12 @@ internal sealed class SevenZip(string executable)
     /// <summary>
     /// Unpacks every entry of <paramref name="archive"/> except <paramref name="exclude"/> into
     /// <paramref name="outputDirectory"/>. Clashing names ("A.txt" and "a.txt" on Windows) are renamed, not overwritten.
-    /// On Windows the archive's Mark of the Web goes onto every unpacked file (-snz), as Explorer does.
+    /// The caller passes on the archive's Mark of the Web (not -snz, which 7-Zip older than 22 doesn't know).
     /// </summary>
     public async Task ExtractAsync(string archive, string outputDirectory, IReadOnlyCollection<string> exclude,
         string workDirectory, CancellationToken cancellationToken)
     {
         List<string> args = ["x", "-y", "-aou", "-sccUTF-8", "-scsUTF-8", "-bsp0", "-bb0", NoPassword, "-o" + Path.GetFullPath(outputDirectory)];
-        if (OperatingSystem.IsWindows())
-            args.Add("-snz");
         if (exclude.Count > 0)
         {
             // A list file keeps unusual names intact; -spd turns off wildcard matching so "*" in a name is literal.
@@ -107,35 +115,6 @@ internal sealed class SevenZip(string executable)
             throw Failure(archive, result);
         return written;
     }
-
-    /// <summary>
-    /// Creates <paramref name="archive"/> (which must not exist) from files and folders; each is stored under its own
-    /// name, folders with their content.
-    /// </summary>
-    /// <param name="type">7-Zip archive type: 7z, zip, tar, gzip, bzip2 or xz.</param>
-    public async Task AddAsync(string archive, string type, ArchiveLevel level, IReadOnlyList<string> items,
-        string workDirectory, CancellationToken cancellationToken)
-    {
-        var list = Path.Combine(workDirectory, $"items-{Guid.NewGuid():N}.txt");
-        await File.WriteAllLinesAsync(list, items.Select(Path.GetFullPath), new UTF8Encoding(false), cancellationToken);
-        // -ssw packs files other programs have open; -sse stops instead of silently leaving out unreadable files.
-        // No "--" here: it would also turn off the @list file.
-        var result = await RunAsync(
-            ["a", "-t" + type, LevelSwitch(level), "-ssw", "-sse", "-y", "-sccUTF-8", "-scsUTF-8", "-bsp0", "-bb0",
-             Path.GetFullPath(archive), "@" + list],
-            cancellationToken);
-        if (result.ExitCode is not (0 or 1) || !File.Exists(archive))
-            throw new InvalidOperationException($"7-Zip could not create the archive (exit {result.ExitCode}). {ErrorText(result)}".Trim());
-    }
-
-    /// <summary>7-Zip's -mx switch for a preset level.</summary>
-    internal static string LevelSwitch(ArchiveLevel level) => level switch
-    {
-        ArchiveLevel.Store => "-mx0",
-        ArchiveLevel.Fast => "-mx1",
-        ArchiveLevel.Maximum => "-mx9",
-        _ => "-mx5",
-    };
 
     /// <summary>Parses the technical listing: blocks of "Key = Value" lines, one per entry, after a "----------" line.</summary>
     internal static List<SevenZipEntry> ParseListing(string output)

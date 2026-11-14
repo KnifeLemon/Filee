@@ -259,7 +259,18 @@ internal static class Cli
         if (file.State == FileState.Failed && file.ErrorKey == "error.no_route"
             && file.FailedRoute is { } request && optional.MissingPackages(request) is { Count: > 0 } packages)
             WriteStrings(json, "needsEngines", packages);
+        else if (file.State == FileState.Failed && file.ErrorKey is { } key && RefusalPackages.TryGetValue(key, out var package))
+            WriteStrings(json, "needsEngines", [package]);
     }
+
+    /// <summary>
+    /// Refusals that name the optional engine package that would convert the file: the archive engine refuses the
+    /// rare archives only 7-Zip unpacks while it isn't installed.
+    /// </summary>
+    private static readonly Dictionary<string, string> RefusalPackages = new(StringComparer.Ordinal)
+    {
+        ["error.archive_needs_7zip"] = "7zip",
+    };
 
     /// <summary>The preset from --to or --preset, with --quality and --overwrite/--skip applied (a copy).</summary>
     private static Preset? ResolvePreset(CliOptions options, CliHost host, TextWriter errors)

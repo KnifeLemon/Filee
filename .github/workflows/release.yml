@@ -86,8 +86,8 @@ jobs:
           path: TestResults/
           if-no-files-found: ignore
 
-      # Publishes the app (Release, self-contained, ReadyToRun) with the Explorer menu extension and the bundled rhwp
-      # and 7-Zip and the Microsoft C++ runtime, publishes Setup (one self-contained file), appends the app to it as a
+      # Publishes the app (Release, self-contained, ReadyToRun) with the Explorer menu extension, the bundled rhwp
+      # and the Microsoft C++ runtime, publishes Setup (one self-contained file), appends the app to it as a
       # checked payload and zips the portable copy.
       - name: Build installer and portable zip
         shell: pwsh

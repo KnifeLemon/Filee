@@ -65,7 +65,7 @@ internal static class ArchiveBuilders
         return Encoding.UTF8.GetBytes(sb.ToString())[..length];
     }
 
-    /// <summary>The bundled 7-Zip, or null when engines/7zip is missing.</summary>
+    /// <summary>7-Zip (an optional engine), or null when it isn't installed or is hidden.</summary>
     public static string? SevenZipExe => SevenZip.Locate()?.Executable;
 
     /// <summary>Runs 7-Zip with the given arguments and fails the test on an error.</summary>

@@ -1,9 +1,9 @@
 // Archive engine: conversions between archive formats (names incl. Korean, folders, contents and times survive),
 // Extract to a folder, "Compress into one archive", Filee's own ALZ / EGG / lzip / bzip2 readers, and the safety
-// checks (zip slip, links, passwords). Tests that need the bundled 7-Zip (to make their input, or for a format only
-// it reads or writes: BZ2) skip when engines/7zip is missing (pwsh build/fetch-engines.ps1 -Only 7zip) or hidden with
-// FILEE_HIDE_7ZIP=1; everything else runs in-process. ArchiveInProcessTests covers the in-process readers,
-// SevenZipWriterTests and LzmaTests Filee's own 7z and XZ writers.
+// checks (zip slip, links, passwords). Everything runs in-process: 7-Zip is an optional engine, and where it is there
+// (pwsh build/fetch-engines.ps1 -Only 7zip, not hidden with FILEE_HIDE_7ZIP=1) it makes some inputs for real
+// (encrypted archives). ArchiveInProcessTests covers the in-process readers, SevenZipWriterTests and LzmaTests
+// Filee's own 7z and XZ writers.
 
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -19,10 +19,6 @@ namespace Filee.Engines.Tests;
 public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-
-    /// <summary>For tests that make their input with 7-Zip, or convert to or from a format only 7-Zip handles.</summary>
-    private static void SkipWithout7Zip() =>
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found (pwsh build/fetch-engines.ps1 -Only 7zip) or hidden (FILEE_HIDE_7ZIP=1)");
 
     private async Task<ConversionJob> ConvertOkAsync(string source, Preset preset)
     {
@@ -60,8 +56,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("split")]
     public void Every_readable_archive_converts_in_one_step(string from)
     {
-        if (ArchiveExtractor.SevenZipFormats.Contains(from))
-            SkipWithout7Zip();
         var planner = fx.Catalog.CreatePlanner(["archive"]);
         // Every target is written in-process.
         foreach (var to in new[] { "zip", "7z", "tar", "tgz", "tbz2", "txz", FormatRegistry.Folder })
@@ -197,13 +191,17 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Split_archive_001_extracts_all_volumes()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var content = "This is a split multi-part archive test payload."u8.ToArray();
         var file = Path.Combine(dir, "document.txt");
         await File.WriteAllBytesAsync(file, content, Ct);
-        var split7z = Path.Combine(dir, "split_archive.7z");
-        await Run7zAsync("a", "-t7z", "-v20b", split7z, file);
+        // What 7-Zip's -v20b writes: the 7z cut into numbered 20-byte volumes.
+        var whole = Path.Combine(dir, "whole.7z");
+        await new ArchivePacker().PackAsync([new PackItem(file, "document.txt")], whole, "7z", ArchiveLevel.Normal, dir, null, Ct);
+        var bytes = await File.ReadAllBytesAsync(whole, Ct);
+        for (var (offset, part) = (0, 1); offset < bytes.Length; offset += 20, part++)
+            await File.WriteAllBytesAsync(Path.Combine(dir, $"split_archive.7z.{part:D3}"), bytes[offset..Math.Min(bytes.Length, offset + 20)], Ct);
+        File.Delete(whole);
         File.Delete(file);
 
         var firstPart = Path.Combine(dir, "split_archive.7z.001");
@@ -282,16 +280,25 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Password_protected_archives_fail_with_a_clear_message()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var secret = Path.Combine(dir, "secret.txt");
         await File.WriteAllTextAsync(secret, "secret", Ct);
+        // Archives that say they are encrypted (a flagged ZIP entry, an AES coder in a 7z), and with 7-Zip real ones.
         var zip = Path.Combine(dir, "locked.zip");
         var sevenZip = Path.Combine(dir, "locked.7z");
-        await Run7zAsync("a", "-tzip", "-ppassword", zip, secret);
-        await Run7zAsync("a", "-t7z", "-ppassword", "-mhe=on", sevenZip, secret);
+        await File.WriteAllBytesAsync(zip, ArchiveFormatBuilders.EncryptedZip("secret.txt", "secret"u8.ToArray()), Ct);
+        await File.WriteAllBytesAsync(sevenZip, ArchiveFormatBuilders.SevenZip([new("secret.txt", "secret"u8.ToArray())], encrypted: true), Ct);
+        List<string> archives = [zip, sevenZip];
+        if (SevenZipExe is not null)
+        {
+            var realZip = Path.Combine(dir, "real.zip");
+            var real7z = Path.Combine(dir, "real.7z");
+            await Run7zAsync("a", "-tzip", "-ppassword", realZip, secret);
+            await Run7zAsync("a", "-t7z", "-ppassword", "-mhe=on", real7z, secret);
+            archives.AddRange([realZip, real7z]);
+        }
 
-        foreach (var archive in new[] { zip, sevenZip })
+        foreach (var archive in archives)
         {
             var job = await fx.ConvertAsync([archive], new Preset { TargetFormat = "tgz" });
             Assert.Equal(JobState.Failed, job.State);
@@ -316,7 +323,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Extract_into_an_existing_folder_refuses_a_link_inside_it_before_moving_anything()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var tree = MakeTree(dir, "data");
         var zip = Path.Combine(dir, "data.zip");
@@ -349,7 +355,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Unpacked_files_keep_the_mark_of_the_web_of_their_archive()
     {
-        SkipWithout7Zip();
         Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
         var dir = fx.NewFolder();
         var tree = MakeTree(dir, "tree");
@@ -389,7 +394,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task A_compressed_stream_that_unpacks_past_the_limit_is_stopped_and_nothing_is_kept()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var zeros = new byte[16 * 1024 * 1024]; // a few hundred bytes as .bz2 and a few KB as .gz
         var bz2 = Path.Combine(dir, "zeros.bin.bz2");
@@ -422,7 +426,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task An_lzip_member_longer_than_its_trailer_says_is_stopped_at_that_size()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var member = await LzipAsync(Words(200_000), dir);
         BitConverter.GetBytes(1_000L).CopyTo(member, member.Length - 16); // the trailer's data size
@@ -690,13 +693,18 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(unsafePath, ArchiveSafety.IsUnsafePath(path));
 
     [Fact]
-    public void Entry_names_are_made_valid_windows_names_inside_the_root()
+    public void Entry_names_are_made_valid_file_names_inside_the_root()
     {
         var root = fx.NewFolder();
         Assert.Equal(Path.Combine(root, "폴더", "파일.txt"), ArchiveSafety.ResolveEntryPath(root, @"폴더\파일.txt", "x.alz"));
         Assert.Equal(Path.Combine(root, "a_b", "_CON.txt"), ArchiveSafety.ResolveEntryPath(root, "a|b/CON.txt", "x.alz"));
         Assert.Equal(Path.Combine(root, "file.txt_stream"), ArchiveSafety.ResolveEntryPath(root, "file.txt:stream", "x.alz")); // no NTFS streams
         Assert.Equal(Path.Combine(root, "dir", "file_"), ArchiveSafety.ResolveEntryPath(root, "./dir//file?", "x.alz"));
+        // macOS refuses noncharacters in names ("Illegal byte sequence"); a lone surrogate has no UTF-8 form.
+        Assert.Equal(Path.Combine(root, "__txt"), ArchiveSafety.ResolveEntryPath(root, "￿￾txt", "x.7z"));
+        Assert.Equal(Path.Combine(root, "a_b_c"), ArchiveSafety.ResolveEntryPath(root, "a﷐b\uD800c", "x.7z"));
+        Assert.Equal(Path.Combine(root, "__.txt"), ArchiveSafety.ResolveEntryPath(root, "\U0001FFFF.txt", "x.7z"));
+        Assert.Equal(Path.Combine(root, "\U0001F600.txt"), ArchiveSafety.ResolveEntryPath(root, "\U0001F600.txt", "x.7z"));
     }
 
     [Fact]
@@ -828,7 +836,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task An_adobe_zxp_extracts_and_converts_to_zip_with_its_signature_file()
     {
-        SkipWithout7Zip();
         var input = Path.Combine(fx.NewFolder(), "panel.zxp");
         // The layout ZXPSignCmd writes: the mimetype first, the extension's files, the signature in META-INF.
         var expected = new Dictionary<string, byte[]>

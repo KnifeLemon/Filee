@@ -1,12 +1,12 @@
 // Archives: unpack (to a folder, the "Extract" preset), convert between archive formats (ZIP, 7Z, TAR, TAR.GZ,
 // TAR.BZ2, TAR.XZ, single-file GZ / BZ2 / XZ, and the Minecraft and Modrinth packs that are ZIPs, see GamePacks), and
 // "Compress into one archive" for any files (IFileCombiner).
-// Reading is in-process for the common formats (SharpCompress, .NET and Filee's own readers, see ArchiveExtractor);
-// the bundled 7-Zip (engines/7zip, LGPL, separate process) reads DMG, IMG and UDF discs and is the
-// fallback for what the in-process readers can't. Every format is written in-process: ZIP (and the packs), 7Z, TAR,
-// TAR.GZ, TAR.BZ2, TAR.XZ, GZ, BZ2 and XZ (7Z and XZ with Filee's own LZMA2 encoder, BZ2 with its own bzip2 encoder,
-// see SevenZipWriter, XzWriter and Bzip2Writer). Without 7-Zip the engine stays available with the in-process
-// readers' edges.
+// Every format is read in-process (SharpCompress, DiscUtils, .NET and Filee's own readers, see ArchiveExtractor) and
+// written in-process: ZIP (and the packs), 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, BZ2 and XZ (7Z and XZ with Filee's
+// own LZMA2 encoder, BZ2 with its own bzip2 encoder, see SevenZipWriter, XzWriter and Bzip2Writer). 7-Zip is an
+// optional engine (Settings → Engines, LGPL, separate process) that adds no route: when it is installed it unpacks the
+// rare variants Filee's readers leave out (PPMd 7z, Quantum CABs, NTFS or APFS disk images …); without it those are
+// refused with a message that suggests installing it.
 // See docs/ENGINES.md.
 
 using Filee.Core.Conversion;
@@ -26,23 +26,25 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
     /// <summary>Compressed single files (no names or folders inside); they convert among each other.</summary>
     private static readonly string[] SingleFileSources = ["gz", "bz2", "xz", "lzma", "z", "lz"];
 
-    private static readonly IReadOnlyList<ConversionEdge> AllEdges = CreateEdges(withSevenZip: true);
-    private static readonly IReadOnlyList<ConversionEdge> BuiltInEdges = CreateEdges(withSevenZip: false);
+    private static readonly IReadOnlyList<ConversionEdge> AllEdges = CreateEdges();
 
     private SevenZip? _sevenZip;
     private bool _located;
 
+    /// <summary>How the optional 7-Zip is found (<see cref="SevenZip.Locate"/>); tests run the engine without it.</summary>
+    internal Func<SevenZip?> LocateSevenZip { get; init; } = SevenZip.Locate;
+
     public string Id => "archive";
     public string DisplayName => "Archives (built-in)";
 
-    /// <summary>The bundled 7-Zip, looked for once (and again on every status check), or null.</summary>
+    /// <summary>The optional 7-Zip, looked for once (and again on every status check), or null.</summary>
     private SevenZip? Tool
     {
         get
         {
             if (!_located)
             {
-                _sevenZip = SevenZip.Locate();
+                _sevenZip = LocateSevenZip();
                 _located = true;
             }
             return _sevenZip;
@@ -55,14 +57,14 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
     /// </summary>
     public int MaxParallelism => 2;
 
-    /// <summary>Every edge with 7-Zip; without it, the formats read and written in-process.</summary>
-    public IReadOnlyList<ConversionEdge> Edges => Tool is null ? BuiltInEdges : AllEdges;
+    /// <summary>The same with or without 7-Zip: every format is read and written in-process.</summary>
+    public IReadOnlyList<ConversionEdge> Edges => AllEdges;
 
-    private static IReadOnlyList<ConversionEdge> CreateEdges(bool withSevenZip)
+    private static IReadOnlyList<ConversionEdge> CreateEdges()
     {
-        var sources = withSevenZip ? ArchiveExtractor.ReadableFormats : ArchiveExtractor.BuiltInFormats;
-        var targets = ArchiveTargets.Where(t => withSevenZip || ArchivePacker.BuiltInFormats.Contains(t)).Append(FormatRegistry.Folder).ToList();
-        var singleTargets = ArchivePacker.SingleFileFormats.Where(t => withSevenZip || ArchivePacker.BuiltInFormats.Contains(t)).ToList();
+        var sources = ArchiveExtractor.BuiltInFormats;
+        var targets = ArchiveTargets.Append(FormatRegistry.Folder).ToList();
+        var singleTargets = ArchivePacker.SingleFileFormats.ToList();
         string[] folderTargets = ["zip", "7z", "tar", "tgz", "tbz2", "txz"];
         return
         [
@@ -73,18 +75,19 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
                from target in singleTargets
                select new ConversionEdge(source, target),
             .. sources.Select(source => new ConversionEdge(source, "iso", DirectOnly: true)),
-            .. folderTargets.Where(t => withSevenZip || ArchivePacker.BuiltInFormats.Contains(t))
-                .Select(target => new ConversionEdge(FormatRegistry.Folder, target, DirectOnly: true)),
+            .. folderTargets.Select(target => new ConversionEdge(FormatRegistry.Folder, target, DirectOnly: true)),
         ];
     }
 
     public EngineStatus GetStatus()
     {
-        _sevenZip = SevenZip.Locate();
+        _sevenZip = LocateSevenZip();
         _located = true;
         return _sevenZip is null
             ? EngineStatus.Available(null, "built in")
-            : EngineStatus.Available(_sevenZip.Executable, $"built in + 7-Zip {EngineVersions.Component("7zip")}");
+            : EngineStatus.Available(_sevenZip.Executable, EngineEnvironment.UsesFileesCopy("7zip")
+                ? $"built in + 7-Zip {EngineVersions.Component("7zip")}"
+                : "built in + 7-Zip");
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -171,10 +174,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
         }
     }
 
-    public bool CanCombineInto(string format) =>
-        ArchivePacker.BuiltInFormats.Contains(format)
-        || (ArchiveTargets.Contains(format) || ArchivePacker.SingleFileFormats.Contains(format))
-           && Tool is not null;
+    public bool CanCombineInto(string format) => ArchivePacker.BuiltInFormats.Contains(format);
 
     public async Task CombineAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Preset preset,
         string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken)

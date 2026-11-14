@@ -40,7 +40,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
-| Archives | built in (SharpCompress, .NET and Filee's own readers and writers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip**: DMG, IMG, UDF discs, and the rare kinds the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs** (in-process); "Compress into one archive" for any files |
+| Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs** (in-process); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
@@ -50,6 +50,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF, PDB, PML, RB, SNB, TCR (MOBI, AZW3 too, below the built-in writer); e-books → PDF (ranked above the HWPX writer with the Filee renderer off, see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
+| 7-Zip | **optional download** (~2 MB; ~2.5 MB on disk on Windows, ~6.5 MB elsewhere; not suggested) | **rare archive variants** the archive engine's own readers leave out: 7Z with PPMd and other uncommon methods, Quantum CABs and cabinet sets, LHA methods other than -lh0-/-lz4-/-lh4- to -lh7-, multi-volume ARJ, NTFS, exFAT, APFS, HFSX and ext volumes in disk images, LZFSE / LZMA DMG blocks, damaged archives it can read past (see [Archives](#archives)). Without it these are refused with "Install 7-Zip in Settings → Engines"; every common archive works without it |
 
 DOCX, DOC, ODT, XLSX, XLS, ODS, PPTX, PPT and ODP → PDF need neither Microsoft Office nor LibreOffice: they are read
 in-process (and VSDX and ODG drawings → PDF, SVG and PNG, see [Drawings](#drawings-visio-odg)).
@@ -99,7 +100,8 @@ the same on every PC. An external engine is looked for in this order:
 1. a copy the user picked in Settings → *Engines*;
 2. Filee's own copy (bundled or downloaded);
 3. a copy already on the computer: on `PATH`, in Homebrew's and the usual Unix folders, or where the LibreOffice,
-   calibre, Ghostscript and Tesseract installers put it. Settings → *Engines* shows it as "Found on this PC", with a note when
+   calibre, Ghostscript and Tesseract installers put it. Not for 7-Zip: only Filee's download or the copy the user
+   picks is used, never one installed on the PC. Settings → *Engines* shows it as "Found on this PC", with a note when
    its version is older than the one Filee downloads.
 
 Where Filee has no download of an engine (FFmpeg, Ghostscript and Tesseract on macOS, LibreOffice, Ghostscript and
@@ -135,8 +137,9 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   intranet) never go through it, and logs show only its scheme, host and port.
 - Engines go to `%LOCALAPPDATA%\Filee\engines`: outside the app folder, so updates keep them, and inside Filee's
   install root, so uninstalling removes them.
-- LibreOffice and calibre come as MSIs and are unpacked with an administrative install (`msiexec /a`): files only,
-  no registry entries, no admin rights. LibreOffice's help, gallery and most dictionaries are removed afterwards
+- LibreOffice, calibre and 7-Zip (Windows) come as MSIs and are unpacked with an administrative install
+  (`msiexec /a`): files only, no registry entries, no admin rights. Of 7-Zip only the console program is kept
+  (`7z.exe`, `7z.dll`, its licence and readme). LibreOffice's help, gallery and most dictionaries are removed afterwards
   (~500 MB). msiexec gets the real paths of the package, the target and its log: the Windows Installer service won't
   follow a junction a user made (error 1620 or 1622, #527), as when `AppData\Local` was moved to another drive.
 - Ghostscript comes from conda-forge (Artifex publishes only an NSIS installer): a `.conda` package is a zip with a
@@ -144,13 +147,47 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   Its fonts and resources are compiled into `gsdll64.dll`. The Microsoft C++ runtime it was built against
   (`vcruntime` component) is copied next to `gswin64c.exe`, so it runs on PCs without the VC++ Redistributable.
 - Tesseract is UB Mannheim's Windows build (the one Tesseract's documentation points to), published only as an NSIS
-  installer. It is never run: Filee's own 7-Zip unpacks it (`nsis` kind), and the training programs, manuals,
+  installer. It is never run: Filee's own NSIS reader writes the files its script puts in `$INSTDIR` (`nsis` kind, see
+  [NSIS installers](#nsis-installers); no 7-Zip needed), and the training programs, manuals,
   installer files and bundled language data are removed (`TrimTesseract`, ~80 MB). The languages come from
   `tessdata_fast` 4.1.0, pinned like the engines in `Infrastructure/ocr-languages.json` (`traineddata` kind, one
   folder per language under `engines/ocr-languages`), and are downloaded the first time a preset uses one.
 - ExifTool is Phil Harvey's Windows build (a Perl bundled with it), whose `exiftool(-k).exe` is renamed `exiftool.exe`:
   the "-k" makes it wait for a key before it exits. On macOS and Linux it is the Perl distribution
   (`Image-ExifTool-*.tar.gz`), run by the Perl both come with.
+
+### NSIS installers
+
+`Archives/NsisReader.cs` reads NSIS installers (Tesseract's Windows build) without running them. It is Filee's own,
+written from the format description; the engine installer is its only user (`EngineInstaller.UnpackNsisAsync`, with
+`NsisScope.InstallDir`: only what goes into `$INSTDIR`; `NsisScope.Everything` also writes `$PLUGINSDIR\…`, as 7-Zip
+does).
+
+- The first header is looked for at every 512-byte boundary; its flags and the CRC-32 (from offset 512 to the end of
+  the data, unless flag 4 turns it off) are checked.
+- Solid installers (one stream) and non-solid ones (a block per file); the compression is told from the data: LZMA
+  (with or without the x86 BCJ filter byte), NSIS's bzip2 framing (`Bzip2Decoder.DecompressNsis`: no stream header,
+  no block CRCs or randomised bit), raw deflate, and stored blocks.
+- The header block's entries are read in order, without taking jumps (as 7-Zip does): SetOutPath, File and, in NSIS
+  3, WriteUninstaller (the uninstaller data is written as it is). Strings are NSIS 3 Unicode, NSIS 3 ANSI or NSIS 2
+  ANSI (read as Latin-1), with variables, `$OUTDIR`, shell folders and language strings. A leading `$INSTDIR\` is
+  dropped; a plug-in DLL extracted again with the same data is one file, the same name with other data `name_1`.
+- Not read: NSIS 1.x scripts, Jim Park's Unicode 2.46 build, ANSI code pages, empty folders (CreateDirectory), NSIS
+  2's uninstaller.
+- Hostile input: the header block is refused over 64 MB before anything is read and its buffer grows only as data
+  arrives; every count, offset and block size is checked against what it points into; overlapping solid offsets,
+  4 GB sizes and LZMA dictionaries over `LzmaDecoder.MaxDictionary` are refused. Decoded bytes (skipped ones too)
+  count against the bomb ratio, written bytes go through `UnpackBudget`, names through `CheckListing` and
+  `ResolveEntryPath`; a `$OUTDIR` that keeps doubling is refused as a name too long. Errors are
+  `InvalidDataException`s with the usual `ArchiveSafety` reasons.
+- Compared with 7-Zip 26.05 on the pinned Tesseract 5.4.0.20240606 installer (solid LZMA, NSIS 3 Unicode): the same
+  139 files and 249,571,062 bytes, every SHA-256 equal, and the same times where the script gives one. It takes 20.5 s against 7-Zip's 5.0 s,
+  nearly all in the shared LZMA decoder.
+- Tests: `NsisReaderTests` (installers built in code by `NsisBuilder`: every compression, solid and not, the string
+  formats, the hostile cases, an `InstallAsync` of a fake Tesseract package with 7-Zip hidden, and the real installer
+  when `build/.cache` or `FILEE_TESSERACT_INSTALLER` has it, compared with 7-Zip's output), `NsisFuzzTests`.
+- `build/fetch-engines.ps1 -Only 7zip,tesseract` still unpacks Tesseract with 7-Zip for development: the script can't
+  call Filee's reader without building Filee first.
 
 ### Microsoft C++ runtime (Windows)
 
@@ -213,8 +250,10 @@ win-arm64`). The engines the app downloads stay x64: on Windows 11 on ARM, which
 offers the win-x64 downloads (`EngineDownloads.DownloadRuntime`); Windows 10 on ARM can't run them and gets none.
 Setup's engine list is made when it is packed (`build/tools/make-setup.cs`), so the ARM64 Setup offers the x64 one.
 
-- **7-Zip**: the official ARM64 installer of the version engines.json pins, a 7z self-extracting archive unpacked by
-  the x64 7-Zip (Windows' `tar.exe` can't undo its ARM64 executable filter).
+- **7-Zip** is not bundled (it is an optional download, x64 under emulation like the others). `fetch-engines.ps1
+  -Runtime win-arm64 -Only 7zip` still fetches its ARM64 build for the archive tests on the ARM64 runner: the official
+  ARM64 installer of the version engines.json pins (`$arm64Pins`), a 7z self-extracting archive unpacked by the x64
+  7-Zip (Windows' `tar.exe` can't undo its ARM64 executable filter).
 - **rhwp** has no ARM64 release. `.github/workflows/windows-arm64-native.yml` (run it from the Actions tab once per
   version) builds it on a Windows ARM64 runner with `build/build-native.py`, from the same pinned commit as above, with
   the C runtime linked statically (`+crt-static`): it imports no Visual C++ runtime DLL, so the ARM64 build ships none.
@@ -3129,22 +3168,27 @@ Folder contents are stored under the selected folder's name, retaining Unicode n
 7Z stages directory inputs through the same link-skipping copy used for renamed items, so nested symbolic links
 and junctions cannot add files outside the selected tree. Custom folder donut layouts are preserved on upgrade.
 
-The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) reads the common formats in-process and keeps
-Filee's own copy of the 7-Zip console program (`7z.exe` + `7z.dll`, taken from the official x64 MSI with `msiexec /a`
-by `build/fetch-engines.ps1 -Only 7zip` and bundled with the installer, never a 7-Zip installed on the PC; a separate
-process, LGPL) for the long tail. In-process comes first (`Archives/ArchiveExtractor.cs`); 7-Zip reads the formats
-nobody else does, and is asked again when an in-process reader meets something it lacks (an unknown 7z or RAR
-method, a GNU sparse file, an interleaved ISO file, a Quantum CAB, an LHA method or ARJ volume Filee doesn't read) or
-damage it can't get past. Two kinds prefer 7-Zip when it is there: ISO images with a UDF file system, and 7z archives
-with a method Filee doesn't decode (PPMd, RISC-V, …; see below). Deliberate refusals (password,
-paths leaving the folder, bombs, entry floods) are final and never retried. Without 7-Zip the engine stays available
-with the in-process edges only (Settings → *Engines* shows "built in" instead of "built in + 7-Zip …").
+The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) reads and writes every format in-process
+(`Archives/ArchiveExtractor.cs`, `Archives/ArchivePacker.cs`), so its routes are the same with or without 7-Zip.
+7-Zip is an optional engine for the long tail (Settings → *Engines*, package `7zip`; not bundled, not suggested):
+the 7-Zip console program, a separate process under the LGPL: the copy the user picks in Settings → *Engines*, else
+Filee's download in `engines/7zip` (`7z.exe` on Windows, `7zz` elsewhere), never a 7-Zip installed on the PC
+(`EngineEnvironment.UsesSystemCopy`: its version and switches are unknown, and the Engines page doesn't show it). Filee's download is the official x64 MSI unpacked with `msiexec /a` down to `7z.exe`,
+`7z.dll`, the licence and the readme on Windows, and 7-Zip's own `tar.xz` builds on Linux and macOS, pinned in
+`engines.json`. When it is there, 7-Zip is asked again when an in-process reader meets something it lacks (an
+unknown 7z or RAR method, a GNU sparse file, an interleaved ISO file, a Quantum CAB, an LHA method or ARJ volume
+Filee doesn't read, an NTFS or APFS volume) or damage it can't get past, and 7z archives with a method Filee doesn't
+decode (PPMd, RISC-V, …; see below) go to it first. Without it, such an archive is refused with
+`error.archive_needs_7zip` ("Install 7-Zip in Settings → Engines", with the missing feature as the detail; the
+command line adds `"needsEngines": ["7zip"]`); damage stays a "damaged" error. Deliberate refusals (password,
+paths leaving the folder, bombs, entry floods) are final and never retried. Settings → *Engines* shows "built in" or
+"built in + 7-Zip …".
 
 | Format | Read | Write |
 |---|---|---|
 | ZIP, JAR, WBPZ, ZXP | .NET (System.IO.Compression) when every entry is stored or Deflate, else SharpCompress (MIT: Deflate64, BZip2, LZMA, PPMd and the old methods); names without the UTF-8 flag as UTF-8 when valid, else the system's OEM code page (CP949 on Korean Windows), as 7-Zip does | in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
 | Minecraft MCPACK, MCADDON, MCWORLD, MCTEMPLATE; Modrinth MRPACK | as ZIP (they are ZIPs) | ZIP in-process, with the marker file at the top (see below) |
-| 7Z | Filee (`SevenZipReader`: Copy, LZMA, LZMA2, BCJ, BCJ2, ARM64, ARM, ARMT, PPC, SPARC, IA64, Delta, Deflate, BZip2; solid blocks decoded once, see below); other methods (PPMd, RISC-V …) by 7-Zip when it is there, else SharpCompress | in-process (Filee's `SevenZipWriter`, LZMA2): UTF-16 names, times, attributes, empty folders |
+| 7Z | Filee (`SevenZipReader`: Copy, LZMA, LZMA2, BCJ, BCJ2, ARM64, ARM, ARMT, PPC, SPARC, IA64, Delta, Deflate, BZip2; solid blocks decoded once, see below); other methods (PPMd, RISC-V …) by 7-Zip when it is installed, else SharpCompress, else the method is named in the "install 7-Zip" error | in-process (Filee's `SevenZipWriter`, LZMA2): UTF-16 names, times, attributes, empty folders |
 | RAR 4 / 5 | SharpCompress (only unpacks, under the unRAR terms, see THIRD-PARTY-NOTICES), with the other volumes (`.part2.rar`, `.r00`) | — |
 | TAR | .NET's System.Formats.Tar (ustar, PAX, GNU, V7): tells symbolic from hard links | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
 | TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z, TAR.LZ, TAR.7Z | in two stages: the outer layer as below, then the TAR | TAR.GZ, TAR.BZ2 and TAR.XZ in-process |
@@ -3157,14 +3201,15 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
 | CPIO | Filee (`CpioReader`: newc, crc with its byte sum checked, odc, old binary in either byte order; newc hard link groups become copies) | — |
 | DEB (ar) | Filee (`ArReader`: GNU and BSD long names, symbol tables skipped): unpacks to `debian-binary`, `control.tar.*`, `data.tar.*` | — |
 | RPM | Filee (`RpmReader`): the payload (gzip, bzip2, xz, LZMA, zstd or plain) becomes `<name>.cpio`, unpacked in the next stage | — |
-| ISO | Filee (`IsoReader`: ISO 9660 with Rock Ridge names, else Joliet, else the plain names; multi-extent files); images with UDF (Windows install discs) go to 7-Zip when it is there | — |
+| ISO | Filee (`IsoReader`: ISO 9660 with Rock Ridge names, else Joliet, else the plain names; multi-extent files); discs with UDF (Windows install discs, DVD and Blu-ray data discs, UDF 1.02 to 2.60) by DiscUtils.Udf through `DiskImageReader`, and when that fails by 7-Zip, or without 7-Zip by the ISO 9660 part of a bridge disc | — |
 | Split archives (.001, .7z.001, .zip.001, .tar.001) | the volumes read as one stream (`SplitVolumes`): 7z by Filee's reader, ZIP and RAR by SharpCompress, TAR by .NET | — |
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
 | EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (SharpCompress's decoder); several blocks per file | — |
 | CAB | Filee (`CabReader`: stored, MSZIP, LZX); Quantum and cabinet sets by 7-Zip | — |
 | LHA / LZH | Filee (`LhaReader`: -lh0-, -lz4-, -lh4- to -lh7-); other methods by 7-Zip | — |
 | ARJ | Filee (`ArjReader`: methods 0–4); multi-volume archives and other methods by 7-Zip | — |
-| DMG, IMG | 7-Zip only | — |
+| IMG (raw disk images) | Filee (`DiskImageReader`): GPT, Apple partition map or MBR with extended partitions (`DiskImagePartitions`), a folder `<number> <label>` per volume when there are several; FAT12/16/32 by Filee's own reader (`DiskImageFat`: long names and the lowercase flags), UDF and HFS+ by DiscUtils; a CD or DVD image named .img goes to the disc readers; NTFS, exFAT, APFS, HFSX, classic HFS and ext2/3/4 volumes send the image to 7-Zip; BitLocker and LUKS volumes are refused as encrypted | — |
+| DMG | Filee: DiscUtils.Dmg reads the UDIF blocks (raw, zero fill and ignore, zlib, bzip2, ADC) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); LZFSE and LZMA blocks and APFS volumes by 7-Zip; encrypted DMGs are refused | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
@@ -3198,22 +3243,31 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   every 256 MB). Sizes are checked against what each entry declares, CRC-32s by Filee for ZIP, 7z, lzip, ALZ, EGG, ARJ and
   the cpio byte sum, CAB checksums and LHA's CRC-16 (gzip, xz and bzip2 by their decoders); LZMA dictionaries over 1 GiB are refused before the decoder allocates them. ISO
   folders that point back at a folder already read (a loop), extents past the end of the image, trees deeper than 64
-  folders and folder listings over 16 MB are refused as damage.
+  folders and folder listings over 16 MB are refused as damage. Disk images: partition tables are checked against the
+  disk (EBR chains that come back, more than 1,024 GPT entries), FAT chains are read only as far as a file's size
+  needs and folder chains may not loop or pass the format's 65,536 entries, DMG block lists over 16 MB or nested over 32
+  levels and chunk buffers over 64 MB are refused before DiscUtils reads them, and DiscUtils itself only reads through
+  a window with a budget per call (256 MB, plus the file being copied) and a stack check, so structures that lead in
+  circles end as damage instead of running on.
 - **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z) state
   no size (bzip2) or one their author chose (gzip, modulo 4 GiB), so the listing can't be trusted: the in-process
   decoders stop once one passes the room on the drive less a tenth of the free space (`ArchiveSafety.StreamLimit`,
-  "unpacks to more than …, but only … is free") and delete what was written; when 7-Zip decodes one (as the fallback),
+  "unpacks to more than …, but only … is free") and delete what was written; when 7-Zip decodes one (the fallback),
   it writes to its standard output (`x -so`) and Filee writes the file, stopping 7-Zip at the same limit.
 - **Mark of the Web** (Windows): unpacked files get the archive's `Zone.Identifier` stream, so a ZIP a browser saved
-  still gives SmartScreen prompts and Office's macro block once unpacked. 7-Zip copies it (`-snz`); for files Filee
-  writes itself (every in-process reader) it is copied after unpacking (`Core/Platform/MarkOfTheWeb`). A drive
+  still gives SmartScreen prompts and Office's macro block once unpacked. It is copied after unpacking, by Filee's
+  readers and by 7-Zip alike (`Core/Platform/MarkOfTheWeb`; not 7-Zip's `-snz`, which 7-Zip before 22 lacks). A drive
   without NTFS streams (FAT32, exFAT) gets none, and that never fails the job.
-- **7-Zip hidden**: with the environment variable `FILEE_HIDE_7ZIP=1` Filee behaves as if `engines/7zip` were
-  missing. `FILEE_HIDE_7ZIP=1 dotnet test tests/Filee.Engines.Tests --filter FullyQualifiedName~Filee.Engines.Tests.Archive`
-  shows which archive tests still need it (they skip).
+- **7-Zip hidden**: with the environment variable `FILEE_HIDE_7ZIP=1` Filee behaves as if 7-Zip weren't installed.
+  `FILEE_HIDE_7ZIP=1 dotnet test tests/Filee.Engines.Tests --filter FullyQualifiedName~Filee.Engines.Tests.Archive`
+  runs the archive tests that way; only those that need 7-Zip itself skip (it makes their input or is the
+  independent reader they compare with). CI runs them so on Linux x64 (`portable.yml`, "Archive tests without
+  7-Zip"), pull requests into builtin-engines included; the other legs fetch 7-Zip for the interop tests.
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG. Without
-  7-Zip also: DMG, IMG, UDF-only discs, Quantum CABs and cabinet sets, LHA methods other than -lh0-, -lz4- and -lh4- to
+  7-Zip installed also (refused with the "install 7-Zip" error): NTFS, exFAT, APFS, HFSX, HFS and ext volumes in disk images, LZFSE- and LZMA-compressed DMGs, UDF discs
+  that use what DiscUtils.Udf lacks (virtual and sparable partitions, extended allocation descriptors), Quantum CABs
+  and cabinet sets, LHA methods other than -lh0-, -lz4- and -lh4- to
   -lh7-, multi-volume ARJ, GNU sparse files in TARs, interleaved ISO files, the El Torito boot image of an ISO (7-Zip
   shows it as `[BOOT]`; Filee's ISO reader leaves it out).
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
@@ -3221,12 +3275,15 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   instead of the block magic, CRC and randomised bit, and ends with `DLZ\x02` (`Archives/Bzip2Decoder.cs`). The .Z,
   ar, cpio, RPM and ISO readers are written from the formats' own descriptions (compress(1), ar(5), cpio(5), rpm.org's
   file format, ECMA-119, Joliet, IEEE P1281 / P1282).
-- Tests: `ArchiveTests.cs` (conversions, Extract, the ALZ / EGG / lzip readers; the parts that make their input
-  with 7-Zip or need a 7-Zip format skip without it), `ArchiveInProcessTests.cs` (every in-process format built in
+- Tests: `ArchiveTests.cs` (conversions, Extract, the ALZ / EGG / lzip readers; inputs 7-Zip encrypts for real are
+  added when it is there), `ArchiveInProcessTests.cs` (every in-process format built in
   code by `ArchiveFormatBuilders.cs` — 7z, xz, RAR 4 / 5 with stored entries, ISO, cpio, ar, RPM, .Z — and the hostile
   inputs: traversal, links, passwords, bombs with lowered limits, entry floods, ISO loops, damaged data),
-  `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z, lzip, ALZ, EGG, 7z, xz, LZMA, CAB, LHA and ARJ
-  files must unpack or be refused with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
+  `DiskImageTests.cs` (FAT, UDF, partition tables and DMGs built in code by `DiskImageBuilders.cs` and DiscUtils.Fat,
+  compared with 7-Zip; UDF discs written by Windows' IMAPI2 and HFS+ DMGs by macOS' hdiutil where those exist; loops,
+  bombs, damaged tables, encrypted volumes), `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z,
+  lzip, ALZ, EGG, 7z, xz, LZMA, CAB, LHA, ARJ, FAT / MBR / GPT images, UDF discs and DMGs must unpack or be refused
+  with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
   `FILEE_ARCHIVE_BENCHMARK=1`: the in-process readers next to 7-Zip).
 
 ### Filee's own 7z, xz, bzip2, CAB, LHA and ARJ code
@@ -3307,6 +3364,22 @@ with the square of the file count. Filee's own 7z reader decodes each block once
 written by 7-Zip at `-mx5` unpacked in 1.17 s, 7-Zip 0.81 s and SharpCompress 44.3 s (best of two, the PC busy).
 Filee's LZMA decoder takes about twice 7-Zip's CPU time (1.9–2.3× on a 33.6 MB .xz, single-threaded), so 7-Zip is
 still faster, but it is no longer needed for speed. SharpCompress remains only for 7z methods Filee doesn't decode.
+
+### Disk images
+
+UDF, HFS+ and the UDIF block layer of DMG come from DiscUtils (`DiscUtils.Udf`, `DiscUtils.HfsPlus`, `DiscUtils.Dmg`
+0.16.13, MIT, the same family as the `DiscUtils.Iso9660` that writes ISOs). `DiscUtils.Dmg` brings `lzfse-net`
+(BSD-3-Clause), whose native LZFSE library is not shipped: LZFSE chunks never reach it, they go to 7-Zip. FAT is
+Filee's own (`Archives/DiskImageFat.cs`, from Microsoft's FAT specification) because `DiscUtils.Fat` reads only 8.3
+names in capitals; the tests use `DiscUtils.Fat` as an independent FAT writer. The partition tables
+(`DiskImagePartitions.cs`: MBR and EBRs, GPT from the UEFI specification, Apple partition map) and the checks of the DMG
+trailer and block tables (`DiskImageGuards.cs`) are Filee's own too, so nothing reaches DiscUtils unchecked.
+`DiscUtils.Dmg` doesn't read run type 0 ("zero fill"), which hdiutil writes into its HFS+ disks beside type 2, so
+it reads the DMG through `UdifOverlay`: the block list with those runs relabelled type 2, same length.
+`DiscUtils.HfsPlus` 0.16.13 reads the BSD file mode two bytes early, so its attributes never mark a symbolic link
+and opening one follows it; `HfsPlusLinks` asks its directory entry instead (the Finder type "slnk"). NTFS
+stays on 7-Zip: `DiscUtils.Ntfs` walks its index blocks recursively from a cache, where an index pointing back at
+itself would overflow the stack without any read Filee could stop.
 
 ## ISO images
 

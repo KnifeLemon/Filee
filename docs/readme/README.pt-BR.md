@@ -221,7 +221,7 @@ O Filee é desenvolvido e publicado por **Myeonggu Kim** ([KnifeLemon](https://g
   - O SmartScreen do Windows ainda pode avisar sobre uma versão nova até ela ser baixada o bastante (“Mais informações” → “Executar mesmo assim”).
 - Os pacotes de macOS são assinados ad hoc e não são notarizados.
 - Só os arquivos gerados pelo fluxo de release das GitHub Actions deste repositório são assinados, e cada release é assinada e aprovada manualmente.
-  - Bibliotecas e programas já assinados pelos próprios editores mantêm a assinatura; os que vêm sem assinatura (rhwp, 7-Zip e a maioria das bibliotecas) são assinados com o certificado do Filee.
+  - Bibliotecas e programas já assinados pelos próprios editores mantêm a assinatura; os que vêm sem assinatura (rhwp e a maioria das bibliotecas) são assinados com o certificado do Filee.
 
 ### Política de privacidade
 

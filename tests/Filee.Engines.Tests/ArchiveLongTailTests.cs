@@ -1,5 +1,5 @@
 // Filee's own CAB, LHA and ARJ readers. Archives are built in code (ArchiveFormatBuilders: stored and compressed, every
-// header level and method the readers decode) and unpacked without 7-Zip; the bundled 7-Zip, where present, reads the
+// header level and method the readers decode) and unpacked without 7-Zip; 7-Zip, where present, reads the
 // same archives, which checks the builders against an independent reader. Real archives come from the tools on the PC
 // when there are any: makecab (Windows: stored, MSZIP, LZX at the smallest and largest window, Quantum) and Bandizip's
 // bz.exe (LZH). Then the hostile and damaged inputs.
@@ -7,6 +7,8 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using Filee.Core.Conversion;
+using Filee.Core.Presets;
 using Filee.Engines.Archives;
 using static Filee.Engines.Tests.ArchiveBuilders;
 using static Filee.Engines.Tests.ArchiveFormatBuilders;
@@ -69,21 +71,43 @@ public class ArchiveLongTailTests(EngineFixture fx) : IClassFixture<EngineFixtur
         return await new ArchiveExtractor(null).ExtractAsync(archive, format, scratch, Ct);
     }
 
-    private async Task AssertUnpacksAsync(string archive, string format, IReadOnlyList<TestEntry> entries)
+    /// <param name="recorded">The local time the tool that wrote the archive stored for an entry's time.</param>
+    private async Task AssertUnpacksAsync(string archive, string format, IReadOnlyList<TestEntry> entries,
+        Func<DateTime, DateTime>? recorded = null)
     {
         var folder = await UnpackAsync(archive, format);
         Assert.Equal(Expected(entries), Snapshot(folder));
         foreach (var entry in entries.Where(e => !e.IsFolder))
         {
             var time = File.GetLastWriteTime(Path.Combine(folder, entry.Name));
-            Assert.True(Math.Abs((time - entry.Time).TotalSeconds) <= 2, $"{entry.Name}: time {time} instead of {entry.Time}");
+            var expected = recorded?.Invoke(entry.Time) ?? entry.Time;
+            Assert.True(Math.Abs((time - expected).TotalSeconds) <= 2, $"{entry.Name}: time {time} instead of {expected}");
         }
     }
+
+    /// <summary>
+    /// The local time makecab stores: Windows' FileTimeToLocalFileTime, which applies today's offset from UTC rather
+    /// than the one in force on that date, so in a zone with summer time a May file is an hour off in November.
+    /// </summary>
+    private static DateTime MakecabTime(DateTime local) =>
+        DateTime.SpecifyKind(local.ToUniversalTime() + TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow), DateTimeKind.Local);
 
     private async Task<string> RefusedAsync(string archive, string format)
     {
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => UnpackAsync(archive, format));
         return error.Message;
+    }
+
+    /// <summary>
+    /// What only 7-Zip unpacks, without it: refused with the key that suggests installing 7-Zip, and the reader's
+    /// reason as the detail, which is returned.
+    /// </summary>
+    private async Task<string> NeedsSevenZipAsync(string archive, string format)
+    {
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => UnpackAsync(archive, format));
+        Assert.Equal(ArchiveExtractor.NeedsSevenZip, error.ErrorKey);
+        Assert.False(string.IsNullOrWhiteSpace(error.Detail));
+        return error.Detail!;
     }
 
     // ───────── Formats ─────────
@@ -138,11 +162,11 @@ public class ArchiveLongTailTests(EngineFixture fx) : IClassFixture<EngineFixtur
         await AssertUnpacksAsync(Write("test.arj", Arj(entries, method)), "arj", entries);
     }
 
-    /// <summary>The bundled 7-Zip reads what the builders write: they follow the formats, not just Filee's readers.</summary>
+    /// <summary>7-Zip reads what the builders write: they follow the formats, not just Filee's readers.</summary>
     [Fact]
     public async Task The_builders_archives_are_read_by_7zip()
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip is the independent reader of the builders' archives (optional engine, not installed)");
         var entries = Entries(ascii: true);
         var files = Entries(ascii: true, folders: false);
         foreach (var (name, bytes, list) in new[]
@@ -188,14 +212,14 @@ public class ArchiveLongTailTests(EngineFixture fx) : IClassFixture<EngineFixtur
         foreach (var compression in new[] { "NONE", "MSZIP", "LZX 15", "LZX 21" })
         {
             var cab = await MakecabAsync(makecab, source, entries, compression);
-            await AssertUnpacksAsync(cab, "cab", entries);
+            await AssertUnpacksAsync(cab, "cab", entries, MakecabTime);
         }
 
         // Quantum: not decoded in-process; without 7-Zip that is said, with it 7-Zip unpacks it.
         var quantum = await MakecabAsync(makecab, source, entries, "QUANTUM 7 21");
         if (!quantum.EndsWith(".cab", StringComparison.Ordinal))
             return; // this makecab writes no Quantum
-        Assert.Contains("does not unpack", await RefusedAsync(quantum, "cab"));
+        Assert.Contains("Quantum", await NeedsSevenZipAsync(quantum, "cab"));
         if (Filee.Engines.Archives.SevenZip.Locate() is { } sevenZip)
         {
             var scratch = Directory.CreateDirectory(Path.Combine(fx.NewFolder(), "scratch")).FullName;
@@ -298,18 +322,43 @@ public class ArchiveLongTailTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Fact]
-    public async Task Password_arj_is_refused_and_unsupported_features_are_named()
+    public async Task Password_arj_is_refused_and_what_only_7zip_unpacks_asks_for_it()
     {
         Assert.Contains("password", await RefusedAsync(Write("locked.arj", Arj(Entries(), 1, flags: 0x01)), "arj"));
-        // Without 7-Zip these say that the bundled 7-Zip might read them.
-        Assert.Contains("does not unpack", await RefusedAsync(Write("part.arj", Arj(Entries(), 1, flags: 0x04)), "arj"));
-        Assert.Contains("does not unpack", await RefusedAsync(Write("quantum.cab", Cab(Entries(folders: false), CabCompression.Quantum)), "cab"));
+        // Without 7-Zip these are refused with the message that suggests installing it, naming what is missing.
+        Assert.Contains("multi-volume", await NeedsSevenZipAsync(Write("part.arj", Arj(Entries(), 1, flags: 0x04)), "arj"));
+        Assert.Contains("Quantum", await NeedsSevenZipAsync(Write("quantum.cab", Cab(Entries(folders: false), CabCompression.Quantum)), "cab"));
         var lzs = Lzh([new("a.txt", Words(100))], "-lh0-", 2);
         "-lzs-"u8.CopyTo(lzs.AsSpan(2));
-        Assert.Contains("does not unpack", await RefusedAsync(Write("lzs.lzh", FixLevel2Crc(lzs)), "lha"));
+        Assert.Contains("-lzs-", await NeedsSevenZipAsync(Write("lzs.lzh", FixLevel2Crc(lzs)), "lha"));
         var set = Cab(Entries(folders: false), CabCompression.None);
         set[30] |= 2; // "a next cabinet follows"
-        Assert.Contains("does not unpack", await RefusedAsync(Write("set.cab", set), "cab"));
+        Assert.Contains("several files", await NeedsSevenZipAsync(Write("set.cab", set), "cab"));
+    }
+
+    [Fact]
+    public async Task A_7z_with_a_method_neither_filee_nor_sharpcompress_decodes_asks_for_7zip()
+    {
+        // Filee's reader leaves the method (an id no 7z method has yet) to SharpCompress, which can't either: the
+        // method is the reason, not "not a valid archive".
+        var archive = Write("method.7z", SevenZip([new("a.txt", Words(1_000))], lzma: false, method: 0x0C));
+        Assert.Contains("7z method", await NeedsSevenZipAsync(archive, "7z"));
+    }
+
+    [Fact]
+    public async Task A_conversion_of_an_archive_only_7zip_unpacks_fails_with_the_key_that_suggests_it()
+    {
+        var quantum = Write("quantum.cab", Cab(Entries(folders: false), CabCompression.Quantum));
+        var converter = new ArchiveConverter { LocateSevenZip = () => null };
+        await using var queue = new JobQueue(new ConverterCatalog([converter]));
+        var job = new ConversionJob([quantum], new Preset { TargetFormat = "zip" }, "ZIP");
+        await queue.RunAsync(job);
+
+        var file = Assert.Single(job.Files);
+        Assert.Equal(FileState.Failed, file.State);
+        Assert.Equal("error.archive_needs_7zip", file.ErrorKey);
+        Assert.Contains("Quantum", file.ErrorDetail);
+        Assert.Empty(job.Outputs);
     }
 
     /// <summary>A level-2 LHA header's own CRC (extended header 0x00) after a test changed the header.</summary>

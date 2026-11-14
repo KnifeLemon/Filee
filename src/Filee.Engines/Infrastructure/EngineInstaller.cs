@@ -9,6 +9,7 @@
 //    only their Windows binaries (Library/bin) are unpacked, with a managed decompressor (no 7-Zip, no installer).
 //  * NSIS installers (Tesseract) are unpacked with Filee's own NSIS reader (Archives/NsisReader), never run: the files
 //    the script puts in $INSTDIR, no registry entries, no 7-Zip.
+//  * 7-Zip's MSI keeps only its console program (7z.exe, 7z.dll) with its licence and readme.
 //  * A marker file with the component's hash records what is installed, so an engines.json update is detected.
 //  * Without internet the same files can come from a folder instead (#447): saved by Filee on another computer
 //    (SaveFilesAsync) or downloaded there by hand. They are copied and checked against the same SHA-256 first.
@@ -749,6 +750,12 @@ public sealed class EngineInstaller
         }
     }
 
+    /// <summary>The component id of 7-Zip in engines.json.</summary>
+    private const string SevenZipComponent = "7zip";
+
+    /// <summary>Files of 7-Zip's MSI that are kept: the console program, the codecs it loads, its licence and readme.</summary>
+    private static readonly HashSet<string> SevenZipFiles = new(["7z.exe", "7z.dll", "License.txt", "readme.txt"], StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// The folder to keep from an administratively installed MSI, which lays files out as they would be installed
     /// (PFiles64\...): LibreOffice's folder with program/ and share/ (trimmed, with its C++ runtime copied into
@@ -756,6 +763,18 @@ public sealed class EngineInstaller
     /// </summary>
     private static string MsiProgramFolder(string id, string staging)
     {
+        if (id == SevenZipComponent)
+        {
+            var program = Directory.EnumerateFiles(staging, "7z.exe", SearchOption.AllDirectories).FirstOrDefault()
+                          ?? throw new InvalidDataException("7z.exe not found in the 7-Zip package.");
+            var folder = Path.GetDirectoryName(program)!;
+            // The file manager, the GUI, help and translations are not used.
+            foreach (var file in Directory.EnumerateFiles(folder).Where(f => !SevenZipFiles.Contains(Path.GetFileName(f))).ToList())
+                File.Delete(file);
+            foreach (var sub in Directory.EnumerateDirectories(folder).ToList())
+                Directory.Delete(sub, recursive: true);
+            return folder;
+        }
         if (id == "calibre")
         {
             var convert = Directory.EnumerateFiles(staging, "ebook-convert.exe", SearchOption.AllDirectories).FirstOrDefault()

@@ -1,8 +1,10 @@
 // Unpacks ZIP (and JAR, WBPZ …), 7z and RAR 4 / 5 in-process. 7z goes to Filee's own SevenZipReader, ZIPs with only
 // stored and Deflate entries to .NET's faster reader (ZipReader); the rest, and 7z archives with a method Filee has no
 // decoder for (PPMd, RISC-V …), to SharpCompress (MIT; its RAR decoder only unpacks, under the same unRAR terms as
-// 7-Zip's). The archive is listed first and checked by ArchiveSafety; encrypted archives and entries are refused,
-// links are left out, sizes and (for ZIP and 7z) CRC-32s are checked as each file is written.
+// 7-Zip's). When SharpCompress can't read such a 7z either, the method Filee's reader named is the error (only 7-Zip
+// unpacks it, see ArchiveExtractor.NeedsSevenZip). The archive is listed first and checked by ArchiveSafety; encrypted
+// archives and entries are refused, links are left out, sizes and (for ZIP and 7z) CRC-32s are checked as each file
+// is written.
 
 using System.Globalization;
 using System.Text;
@@ -23,20 +25,28 @@ internal static class LibraryArchives
         var parts = Volumes(archive);
         var length = parts.Sum(p => p.Length);
         var type = TypeOf(archive);
+        SevenZipUnsupportedException? unsupported = null;
         if (parts.Count == 1)
         {
             using var file = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
             if (type == ArchiveType.Zip && ZipReader.TryExtract(file, name, folder, cancellationToken)
-                || TryExtractSevenZip(file, name, folder, cancellationToken))
+                || TryExtractSevenZip(file, name, folder, cancellationToken, out unsupported))
                 return;
         }
         // A file Filee opens itself: SharpCompress leaves the one it opens by path open when the archive can't be
         // read (a 7z with encrypted names), and the folder could not be cleared afterwards.
         using var single = parts.Count > 1 ? null : new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
-        using var opened = Open(name, () => single is null
-            ? ArchiveFactory.Open(parts, Options(type))
-            : ArchiveFactory.Open(single, Options(type)));
-        Extract(opened, name, length, folder, cancellationToken);
+        try
+        {
+            using var opened = Open(name, () => single is null
+                ? ArchiveFactory.Open(parts, Options(type))
+                : ArchiveFactory.Open(single, Options(type)));
+            Extract(opened, name, length, folder, cancellationToken);
+        }
+        catch (Exception ex) when (unsupported is not null && SharpCompressFailed(ex))
+        {
+            throw unsupported;
+        }
     }
 
     /// <summary>Unpacks an archive read from <paramref name="stream"/> (a split archive's joined volumes).</summary>
@@ -44,28 +54,49 @@ internal static class LibraryArchives
     {
         ArchiveType? type = null;
         stream.Position = 0;
-        if (TryExtractSevenZip(stream, name, folder, cancellationToken))
+        if (TryExtractSevenZip(stream, name, folder, cancellationToken, out var unsupported))
             return;
         stream.Position = 0;
         var isArchive = ArchiveFactory.IsArchive(stream, out type, ReaderOptions.DefaultBufferSize);
         stream.Position = 0;
         if (!isArchive)
-            throw ArchiveSafety.NotAnArchive(name);
+            throw unsupported ?? ArchiveSafety.NotAnArchive(name);
         if (type == ArchiveType.Zip && ZipReader.TryExtract(stream, name, folder, cancellationToken))
             return;
         stream.Position = 0;
         var options = Options(type);
         options.LeaveStreamOpen = true;
-        using var opened = Open(name, () => ArchiveFactory.Open(stream, options));
-        Extract(opened, name, stream.Length, folder, cancellationToken);
+        try
+        {
+            using var opened = Open(name, () => ArchiveFactory.Open(stream, options));
+            Extract(opened, name, stream.Length, folder, cancellationToken);
+        }
+        catch (Exception ex) when (unsupported is not null && SharpCompressFailed(ex))
+        {
+            throw unsupported;
+        }
     }
 
     /// <summary>
-    /// Unpacks a 7z with Filee's own reader; false (nothing written) when it is no 7z or uses a method Filee has no
-    /// decoder for, which SharpCompress may have.
+    /// True when SharpCompress gave up on a 7z Filee's reader left to it: not for refusals (password, bombs, unsafe
+    /// paths), cancellation or a full or unwritable disk, which stay the error.
     /// </summary>
-    private static bool TryExtractSevenZip(Stream stream, string name, string folder, CancellationToken cancellationToken)
+    private static bool SharpCompressFailed(Exception ex) => !ArchiveSafety.IsRefusal(ex) && ex switch
     {
+        OperationCanceledException or UnauthorizedAccessException or OutOfMemoryException => false,
+        EndOfStreamException => true,
+        IOException => false,
+        _ => true,
+    };
+
+    /// <summary>
+    /// Unpacks a 7z with Filee's own reader; false (nothing written) when it is no 7z or uses a method Filee has no
+    /// decoder for (<paramref name="unsupported"/>), which SharpCompress may have.
+    /// </summary>
+    private static bool TryExtractSevenZip(Stream stream, string name, string folder, CancellationToken cancellationToken,
+        out SevenZipUnsupportedException? unsupported)
+    {
+        unsupported = null;
         stream.Position = 0;
         if (!SevenZipReader.HasSignature(stream))
             return false;
@@ -74,8 +105,9 @@ internal static class LibraryArchives
             SevenZipReader.Extract(stream, name, folder, cancellationToken);
             return true;
         }
-        catch (SevenZipUnsupportedException)
+        catch (SevenZipUnsupportedException ex)
         {
+            unsupported = ex;
             return false;
         }
     }

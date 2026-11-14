@@ -47,9 +47,11 @@ internal static class ArchiveFormatBuilders
     /// <summary>
     /// A 7z archive with all files in one folder (solid) compressed with LZMA (or stored with the copy coder).
     /// <paramref name="encrypted"/> declares an AES coder in front (the data is then garbage, as without the key);
-    /// <paramref name="declaredSize"/> replaces the sizes the header states (for bomb tests).
+    /// <paramref name="declaredSize"/> replaces the sizes the header states (for bomb tests); <paramref name="method"/>
+    /// names another one-byte coder in place of copy (the data stays as it is, for methods no reader should decode).
     /// </summary>
-    public static byte[] SevenZip(IReadOnlyList<TestEntry> entries, bool lzma = true, bool encrypted = false, long? declaredSize = null)
+    public static byte[] SevenZip(IReadOnlyList<TestEntry> entries, bool lzma = true, bool encrypted = false, long? declaredSize = null,
+        byte method = 0x00)
     {
         var files = entries.Where(e => !e.IsFolder && e.Data!.Length > 0).ToList();
         var joined = files.SelectMany(f => f.Data!).ToArray();
@@ -102,7 +104,7 @@ internal static class ArchiveFormatBuilders
             else
             {
                 Byte(0x01);
-                Byte(0x00); // copy
+                Byte(method); // copy, unless a test names another
             }
             if (encrypted)
             {
@@ -737,6 +739,22 @@ internal static class ArchiveFormatBuilders
         output.Write(data);
         output.Write(payload);
         return output.ToArray();
+    }
+
+    /// <summary>
+    /// A ZIP whose one entry says it is encrypted (general purpose flag bit 0 in the local and the central header), as
+    /// a ZIP with a password does; the data is the plain entry, which no reader gets to without the password.
+    /// </summary>
+    public static byte[] EncryptedZip(string name, byte[] data)
+    {
+        using var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        using (var entry = zip.CreateEntry(name, CompressionLevel.NoCompression).Open())
+            entry.Write(data);
+        var bytes = ms.ToArray();
+        bytes[6] |= 1;
+        bytes[bytes.AsSpan().LastIndexOf("PK\x01\x02"u8) + 8] |= 1;
+        return bytes;
     }
 
     public static byte[] Gzip(byte[] data)
