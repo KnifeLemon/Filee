@@ -22,6 +22,7 @@
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="PDFtoImage" />
     <PackageReference Include="System.Formats.Nrbf" />
+    <PackageReference Include="System.IO.Hashing" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="ExcelNumberFormat" />
     <PackageReference Include="Svg.Skia" />

@@ -290,7 +290,9 @@ internal static class LhaReader
 /// <summary>Read-through stream that computes the CRC-16 (ARC, polynomial 0xA001) of what it passes on.</summary>
 internal sealed class Crc16Stream(Stream inner) : Stream
 {
-    private static readonly ushort[] Table = CreateTable();
+    // Sixteen tables of 256: entry i of table k is the CRC change of byte i followed by k zero bytes. Sixteen bytes
+    // then take sixteen lookups that do not wait for each other, instead of a chain of sixteen ("slicing by 16").
+    private static readonly ushort[] Tables = CreateTables();
     private ushort _crc;
 
     /// <summary>The checksum of everything read so far.</summary>
@@ -312,11 +314,32 @@ internal sealed class Crc16Stream(Stream inner) : Stream
     public override int Read(Span<byte> buffer)
     {
         var read = inner.Read(buffer);
-        var crc = _crc;
-        foreach (var b in buffer[..read])
-            crc = (ushort)(Table[(crc ^ b) & 0xFF] ^ (crc >> 8));
-        _crc = crc;
+        _crc = Update(_crc, buffer[..read]);
         return read;
+    }
+
+    /// <summary>The CRC-16 <paramref name="crc"/> continued over <paramref name="data"/>.</summary>
+    internal static ushort Update(ushort crc, ReadOnlySpan<byte> data)
+    {
+        var t = Tables;
+        uint c = crc;
+        while (data.Length >= 16)
+        {
+            var x = BinaryPrimitives.ReadUInt64LittleEndian(data) ^ c;
+            var y = BinaryPrimitives.ReadUInt64LittleEndian(data[8..]);
+            c = (uint)(t[0xF00 + (int)(x & 0xFF)] ^ t[0xE00 + (int)((x >> 8) & 0xFF)]
+                ^ t[0xD00 + (int)((x >> 16) & 0xFF)] ^ t[0xC00 + (int)((x >> 24) & 0xFF)]
+                ^ t[0xB00 + (int)((x >> 32) & 0xFF)] ^ t[0xA00 + (int)((x >> 40) & 0xFF)]
+                ^ t[0x900 + (int)((x >> 48) & 0xFF)] ^ t[0x800 + (int)(x >> 56)]
+                ^ t[0x700 + (int)(y & 0xFF)] ^ t[0x600 + (int)((y >> 8) & 0xFF)]
+                ^ t[0x500 + (int)((y >> 16) & 0xFF)] ^ t[0x400 + (int)((y >> 24) & 0xFF)]
+                ^ t[0x300 + (int)((y >> 32) & 0xFF)] ^ t[0x200 + (int)((y >> 40) & 0xFF)]
+                ^ t[0x100 + (int)((y >> 48) & 0xFF)] ^ t[(int)(y >> 56)]);
+            data = data[16..];
+        }
+        foreach (var b in data)
+            c = t[(int)((c ^ b) & 0xFF)] ^ (c >> 8);
+        return (ushort)c;
     }
 
     public override void Flush() { }
@@ -331,15 +354,20 @@ internal sealed class Crc16Stream(Stream inner) : Stream
         base.Dispose(disposing);
     }
 
-    private static ushort[] CreateTable()
+    private static ushort[] CreateTables()
     {
-        var table = new ushort[256];
+        var table = new ushort[16 * 256];
         for (var i = 0; i < 256; i++)
         {
             var c = (uint)i;
             for (var k = 0; k < 8; k++)
                 c = (c & 1) != 0 ? 0xA001 ^ (c >> 1) : c >> 1;
             table[i] = (ushort)c;
+        }
+        for (var i = 256; i < table.Length; i++)
+        {
+            var previous = table[i - 256];
+            table[i] = (ushort)(table[previous & 0xFF] ^ (previous >> 8));
         }
         return table;
     }

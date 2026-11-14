@@ -51,6 +51,8 @@
     <PackageVersion Include="PDFtoImage" Version="5.2.1" />
     <!-- Reads the .NET binary serialization inside Paint.NET's .pdn files as data, never instantiating types. -->
     <PackageVersion Include="System.Formats.Nrbf" Version="10.0.14" />
+    <!-- CRC-32 for the archive readers and writers (Archives/Crc32.cs), with the CPU's CRC instructions where there are any. -->
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.14" />
     <PackageVersion Include="Markdig" Version="1.5.1" />
     <PackageVersion Include="ExcelNumberFormat" Version="1.1.0" />
     <!-- 5.2+ requires SkiaSharp 4 (see PDFtoImage above); 5.1.1 uses SkiaSharp 3.119 and HarfBuzzSharp 8.3 like Avalonia. -->
