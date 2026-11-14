@@ -177,6 +177,11 @@ internal static partial class MediaEncoding
     /// A video target: only this part of the video, cut exactly (the video is always encoded; <see cref="ClipCopy"/>
     /// copies it instead, cut at key frames).
     /// </param>
+    /// <param name="clipFrom">
+    /// With <paramref name="clip"/>: where decoding starts, the key frame <see cref="KeyFrames.DecodeStartAsync"/>
+    /// found for its start; null starts at the clip's start itself, where FFmpeg's own seek is exact only in some
+    /// files.
+    /// </param>
     /// <param name="crop">
     /// A video target: the filters that crop the frame first ("Crop video", <see cref="CropFilter"/>); the video is
     /// always encoded then.
@@ -188,10 +193,10 @@ internal static partial class MediaEncoding
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
     public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
         CoverExtras? cover = null, IReadOnlySet<string>? encoders = null, HardwareEncoder? hardware = null, double animationSpeed = 1,
-        ClipRange? clip = null, string? crop = null, bool subtitles = true)
+        ClipRange? clip = null, string? crop = null, bool subtitles = true, double? clipFrom = null)
     {
         if (clip is { } part && VideoTargets.TryGetValue(target, out var clipTarget))
-            return [new FfmpegPass(Video(input, output, target, clipTarget, options, info, encoders, hardware, part), 1)];
+            return [new FfmpegPass(Video(input, output, target, clipTarget, options, info, encoders, hardware, part, clipFrom: clipFrom), 1)];
         if (target == "gif")
             return AnimatedGif(input, output, options, info, workDirectory, animationSpeed);
         if (target == "apng")
@@ -270,7 +275,8 @@ internal static partial class MediaEncoding
             : null;
 
     private static List<string> Video(string input, string output, string target, MediaTarget spec, MediaOptions options, MediaInfo info,
-        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null, string? crop = null, bool keepSubtitles = true)
+        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null, string? crop = null, bool keepSubtitles = true,
+        double? clipFrom = null)
     {
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         // An input without sound is fine: the output simply has no audio track. Every track is kept (languages,
@@ -280,8 +286,10 @@ internal static partial class MediaEncoding
             : clip is not null || SingleAudioTargets.Contains(target) ? [.. info.AudioTracks.Take(1)]
             : info.AudioTracks;
 
-        // A clip: FFmpeg seeks the input and decodes from the key frame before the start, so the first frame is exact.
-        List<string> args = [.. Common, .. clip is { } part ? ClipInput(part) : [], "-i", input, "-map", "0:V:0"];
+        // A clip: FFmpeg decodes from the key frame found before the start (clipFrom) and drops what comes before the
+        // start, so the first frame is exact.
+        List<string> args = [.. Common, .. clip is { } part ? ClipInput(part, clipFrom ?? part.Start) : [], "-i", input,
+            .. clip is { } range ? ClipStart(range, clipFrom ?? range.Start) : [], "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
         // Subtitle tracks stay switchable (#789), with their language tags (FFmpeg copies stream tags with each stream). A
@@ -397,9 +405,15 @@ internal static partial class MediaEncoding
     /// </summary>
     /// <exception cref="InvalidOperationException">The file has no video stream.</exception>
     /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
-    internal static List<string> ClipCopy(string input, string output, string target, ClipRange clip, MediaOptions options, MediaInfo info)
+    /// <param name="from">
+    /// Where the copy starts: the key frame <see cref="KeyFrames.DecodeStartAsync"/> found for the clip's start. A seek
+    /// to the start itself would land between key frames in a file without an index (MPEG-TS), and the copy would then
+    /// begin with frames that can't be decoded.
+    /// </param>
+    internal static List<string> ClipCopy(string input, string output, string target, ClipRange clip, double from, MediaOptions options,
+        MediaInfo info)
     {
-        var (args, spec) = CopyStreams(input, target, ClipInput(clip), options, info);
+        var (args, spec) = CopyStreams(input, target, ClipInput(clip, from), options, info);
         args.AddRange(ContainerArguments(target));
         args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;
@@ -515,18 +529,44 @@ internal static partial class MediaEncoding
 
     /// <summary>
     /// Input options that read only <paramref name="clip"/> of the file: <c>-ss</c> and <c>-to</c> before <c>-i</c>,
-    /// both positions in the source.
+    /// both positions in the source. Reading starts at <paramref name="from"/>, the key frame
+    /// <see cref="KeyFrames.DecodeStartAsync"/> found for the clip's start; <see cref="ClipStart"/> drops what comes
+    /// before the start.
     /// </summary>
-    internal static string[] ClipInput(ClipRange clip) => ["-ss", ClipRange.Ffmpeg(clip.Start), "-to", ClipRange.Ffmpeg(clip.End)];
+    internal static string[] ClipInput(ClipRange clip, double from) => [.. SeekTo(from), "-to", ClipRange.Ffmpeg(clip.End - CutSlack)];
+
+    /// <summary>
+    /// The output option that drops what <see cref="ClipInput"/> read before the clip's start: sound and picture both
+    /// start at the first frame shown at or after it.
+    /// </summary>
+    internal static string[] ClipStart(ClipRange clip, double from) => ["-ss", ClipRange.Ffmpeg(clip.Start - Math.Max(0, from) - CutSlack)];
+
+    /// <summary>
+    /// How much before a time FFmpeg is asked to cut, in seconds: a tenth of a millisecond, far shorter than any frame
+    /// and far longer than the rounding of times to the microsecond. A frame shown exactly at a time then belongs to
+    /// what starts there and not to what ends there, whichever way its time and the time asked for were rounded: in an
+    /// MPEG-TS file whose sound starts first, frame 40 is shown at 1.3546666… s, and 1.354667 cut it off.
+    /// </summary>
+    internal const double CutSlack = 0.0001;
+
+    /// <summary>
+    /// <c>-ss</c> before <c>-i</c> to start reading at <paramref name="from"/> seconds, a key frame; nothing at 0, so
+    /// the file is read from its very first packet.
+    /// </summary>
+    internal static string[] SeekTo(double from) => from > 0 ? ["-ss", ClipRange.Ffmpeg(from)] : [];
 
     /// <summary>
     /// One frame at <paramref name="seconds"/> as a JPEG at most <paramref name="maxHeight"/> pixels high (square
-    /// pixels, turned upright): the timeline and the large picture of the clip window.
+    /// pixels, turned upright): the timeline and the large picture of the clip window. Decoding starts at the key frame
+    /// <paramref name="from"/> (<see cref="KeyFrames.DecodeStartAsync"/>), and the frames before the time are dropped
+    /// before they are scaled, so the picture is the first frame shown at or after the time, as a clip from there
+    /// starts with.
     /// </summary>
-    internal static List<string> FrameAt(string input, double seconds, string output, int maxHeight, VideoStreamInfo? video) =>
+    internal static List<string> FrameAt(string input, double seconds, double from, string output, int maxHeight, VideoStreamInfo? video) =>
     [
-        .. Common, "-ss", ClipRange.Ffmpeg(seconds), "-i", input, "-map", "0:V:0",
-        "-vf", (video is null ? "" : SquarePixels(video)) + $"scale=w=-2:h='trunc(min(ih,{Math.Max(16, maxHeight)})/2)*2'",
+        .. Common, .. SeekTo(from), "-i", input, "-map", "0:V:0",
+        "-vf", $"trim=start={ClipRange.Ffmpeg(seconds - Math.Max(0, from) - CutSlack)},"
+            + (video is null ? "" : SquarePixels(video)) + $"scale=w=-2:h='trunc(min(ih,{Math.Max(16, maxHeight)})/2)*2'",
         "-frames:v", "1", "-update", "1", "-c:v", "mjpeg", "-q:v", "3", "-f", "image2", output,
     ];
 

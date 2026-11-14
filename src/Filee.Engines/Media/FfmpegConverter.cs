@@ -463,6 +463,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         }
         var media = step.Preset.Media;
         var edit = media.Clip!.Clamped(info.Duration?.TotalSeconds);
+        // Decoding (or a copy) starts at the key frame shown last before the clip's start, so the clip's first frame is
+        // the one the clip window showed, also in an MPEG-TS file or an open group of pictures (KeyFrames).
+        var from = await KeyFrames.DecodeStartAsync(ffprobe, input, edit.Start, cancellationToken);
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)
             return [];
@@ -475,7 +478,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 var musicTrack = edit.Music is { } song && !media.RemoveAudio
                     ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken) : 0;
                 var pass = new FfmpegPass(MediaEncoding.ClipEditArguments(input, output, step.To, edit, media, info,
-                    await EncodersOfAsync(ffmpeg), musicTrack), 1);
+                    await EncodersOfAsync(ffmpeg), musicTrack, from), 1);
                 await RunPassesAsync(ffmpeg, [pass], output, duration, progress, cancellationToken);
             }
             catch
@@ -494,7 +497,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             {
                 try
                 {
-                    var copy = new FfmpegPass(MediaEncoding.ClipCopy(input, output, step.To, clip, media, info), 1);
+                    var copy = new FfmpegPass(MediaEncoding.ClipCopy(input, output, step.To, clip, from, media, info), 1);
                     await RunPassesAsync(ffmpeg, [copy], output, duration, progress, cancellationToken);
                     progress?.Report(1);
                     return [output];
@@ -516,7 +519,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                     : await HardwareProbe.SelectAsync(ffmpeg, codec, tenBit, encoders, _logger, cancellationToken);
             }
             IReadOnlyList<FfmpegPass> Plan(HardwareEncoder? encoder) =>
-                MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, encoders: encoders, hardware: encoder, clip: clip);
+                MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, encoders: encoders, hardware: encoder, clip: clip,
+                    clipFrom: from);
             await RunWithFallbackAsync(Plan(hardware), hardware, Plan,
                 planned => RunPassesAsync(ffmpeg, planned, output, duration, progress, cancellationToken), output, _logger, cancellationToken);
         }

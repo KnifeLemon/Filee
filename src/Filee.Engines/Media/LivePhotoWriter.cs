@@ -57,8 +57,11 @@ internal static class LivePhotoWriter
 
         var encoder = MediaEncoding.VideoEncoder("mov", "libx264", options.VideoCodec, encoders);
         var audio = options.RemoveAudio ? null : info.Audio;
+        // Both the clip and its photo are decoded from the key frame before the start (KeyFrames), so an MPEG-TS video
+        // or an open group of pictures starts on time too.
+        var from = await KeyFrames.DecodeStartAsync(ffprobe, input, clip.Start, ct);
         await FfmpegConverter.RunPassAsync(ffmpeg, new FfmpegPass(ClipArguments(input, movie, apple ? "mov" : "mp4", clip, video, audio,
-            options, encoder, toneMap), 0.8), TimeSpan.FromSeconds(clip.Length), progress, 0, ct);
+            options, encoder, toneMap, from), 0.8), TimeSpan.FromSeconds(clip.Length), progress, 0, ct);
 
         // The frame of the photo, within the frames the clip really has (a video may end sooner than it says).
         uint frames;
@@ -67,7 +70,7 @@ internal static class LivePhotoWriter
         if (frames == 0)
             throw new InvalidOperationException("FFmpeg wrote a clip without frames.");
         var cover = Math.Min(clip.CoverFrame, (int)frames - 1);
-        await FfmpegConverter.RunPassAsync(ffmpeg, new FfmpegPass(CoverArguments(input, png, clip.Start, cover, video, toneMap), 0.1),
+        await FfmpegConverter.RunPassAsync(ffmpeg, new FfmpegPass(CoverArguments(input, png, clip.Start, cover, video, toneMap, from), 0.1),
             null, progress, 0.8, ct);
         if (!File.Exists(png))
             throw new InvalidOperationException("FFmpeg did not write the photo's frame.");
@@ -143,16 +146,21 @@ internal static class LivePhotoWriter
     /// tagged hvc1 for Apple), AAC in stereo or mono. FFmpeg turns the picture upright, so the orientation is kept
     /// in the pixels. The movie header stays at the end, where <see cref="AppleLivePhoto.TagMovie"/> rewrites it.
     /// </summary>
+    /// <param name="from">
+    /// Where decoding starts: the key frame <see cref="KeyFrames.DecodeStartAsync"/> found for the clip's start. The
+    /// frames before the start are dropped before the 30 fps timing, so it counts from the start as the photo's does.
+    /// </param>
     internal static List<string> ClipArguments(string input, string output, string muxer, LivePhotoClip clip, VideoStreamInfo video,
-        AudioStreamInfo? audio, MediaOptions options, string encoder, string toneMap)
+        AudioStreamInfo? audio, MediaOptions options, string encoder, string toneMap, double from)
     {
         var (width, height) = ClipSize(video, options.MaxHeight > 0 ? Math.Min(options.MaxHeight, ShortSide) : ShortSide);
+        var skip = Seconds(Math.Max(0, clip.Start - Math.Max(0, from) - MediaEncoding.CutSlack));
         List<string> args =
         [
-            .. MediaEncoding.Common, "-ss", Seconds(clip.Start), "-i", input, "-map", "0:V:0",
+            .. MediaEncoding.Common, .. MediaEncoding.SeekTo(from), "-i", input, "-ss", skip, "-map", "0:V:0",
             .. audio is null ? Array.Empty<string>() : ["-map", $"0:a:{audio.Ordinal}"],
             "-t", Seconds(clip.Length),
-            "-vf", $"{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
+            "-vf", $"trim=start={skip},{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
         ];
         var crf = Choose(options.Quality, encoder == "libx265" ? [22, 26, 30] : [18, 23, 28]);
         args.AddRange(encoder == "libx265"
@@ -176,15 +184,17 @@ internal static class LivePhotoWriter
 
     /// <summary>
     /// The photo: frame <paramref name="frame"/> of the clip at the video's full size, picked by the same 30 fps
-    /// timing as the clip so it is exactly the frame the still image time points at.
+    /// timing as the clip so it is exactly the frame the still image time points at. Decoding starts at the same key
+    /// frame <paramref name="from"/> as the clip's.
     /// </summary>
-    internal static List<string> CoverArguments(string input, string output, double start, int frame, VideoStreamInfo video, string toneMap)
+    internal static List<string> CoverArguments(string input, string output, double start, int frame, VideoStreamInfo video, string toneMap,
+        double from)
     {
         var square = Math.Abs(video.SampleAspect - 1) > 0.01 && video.SampleAspect > 0 ? "scale=w='trunc(iw*sar/2)*2':h=ih,setsar=1," : "";
         return
         [
-            .. MediaEncoding.Common, "-ss", Seconds(start), "-i", input, "-map", "0:V:0",
-            "-vf", $"{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
+            .. MediaEncoding.Common, .. MediaEncoding.SeekTo(from), "-i", input, "-map", "0:V:0",
+            "-vf", $"trim=start={Seconds(Math.Max(0, start - Math.Max(0, from) - MediaEncoding.CutSlack))},{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
             "-frames:v", "1", "-fps_mode", "passthrough", "-update", "1", "-c:v", "png", "-f", "image2", "-progress", "pipe:1", output,
         ];
     }

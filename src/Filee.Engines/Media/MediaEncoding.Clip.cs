@@ -32,6 +32,11 @@ internal static partial class MediaEncoding
     /// starts playing.
     /// </summary>
     /// <param name="edit">The clip, already <see cref="ClipEdit.Clamped"/> to the video.</param>
+    /// <param name="decodeFrom">
+    /// Where reading the video starts: the key frame <see cref="KeyFrames.DecodeStartAsync"/> found for the first
+    /// part's start, so its first frame is exact; null starts at the first part's start itself (enough for sound
+    /// alone).
+    /// </param>
     /// <param name="pixelFormat">The pictures' format, the same for every part (pauses included) so they join.</param>
     /// <param name="video">
     /// False for the sound alone (the preview's): FFmpeg refuses a graph with a picture output nothing takes.
@@ -41,7 +46,7 @@ internal static partial class MediaEncoding
     /// <param name="audioTrack">The selected audio track's ordinal in the input file.</param>
     /// <param name="musicTrack">The music file's audio track ordinal.</param>
     internal static ClipGraph ClipGraphOf(string input, ClipEdit edit, bool audio, int width, int height, string fps, string pixelFormat = "yuv420p",
-        bool video = true, bool music = true, int audioTrack = 0, int musicTrack = 0)
+        bool video = true, bool music = true, int audioTrack = 0, int musicTrack = 0, double? decodeFrom = null)
     {
         var song = music ? edit.Music : null;
         var sound = audio || song is not null;
@@ -50,9 +55,9 @@ internal static partial class MediaEncoding
         var sourceParts = edit.Parts.Where(p => !p.Blank).ToList();
         if (sourceParts.Count == 0)
             throw new InvalidOperationException("The clip has no part of the video.");
-        var from = sourceParts[0].Start;
+        var from = Math.Max(0, Math.Min(decodeFrom ?? sourceParts[0].Start, sourceParts[0].Start));
         var to = sourceParts[^1].End;
-        List<string> inputs = ["-ss", ClipRange.Ffmpeg(from), "-to", ClipRange.Ffmpeg(to), "-i", input];
+        List<string> inputs = [.. SeekTo(from), "-to", ClipRange.Ffmpeg(to), "-i", input];
         if (song is not null)
             inputs.AddRange(["-ss", ClipRange.Ffmpeg(song.From), "-i", song.Path]);
 
@@ -87,8 +92,8 @@ internal static partial class MediaEncoding
                     graph.Append($"anullsrc=r=48000:cl=stereo,atrim=duration={length}[a{i}];");
                 continue;
             }
-            var start = Seconds(part.Start - from);
-            var end = Seconds(part.End - from);
+            var start = Seconds(part.Start - from - CutSlack);
+            var end = Seconds(part.End - from - CutSlack);
             var speed = part.PlaySpeed;
             var setpts = speed == 1 ? "setpts=PTS-STARTPTS" : $"setpts=(PTS-STARTPTS)/{Seconds(speed)}";
             if (video)
@@ -144,10 +149,11 @@ internal static partial class MediaEncoding
     /// The arguments that write <paramref name="edit"/> of <paramref name="input"/> as <paramref name="target"/>,
     /// encoded with the preset's quality, largest height and codec, at the video's size and frame rate.
     /// </summary>
+    /// <param name="decodeFrom">Where reading the video starts (<see cref="ClipGraphOf"/>).</param>
     /// <exception cref="InvalidOperationException">The file has no video stream.</exception>
     /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
     internal static List<string> ClipEditArguments(string input, string output, string target, ClipEdit edit, MediaOptions options,
-        MediaInfo info, IReadOnlySet<string>? encoders = null, int musicTrack = 0)
+        MediaInfo info, IReadOnlySet<string>? encoders = null, int musicTrack = 0, double? decodeFrom = null)
     {
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         if (!VideoTargets.TryGetValue(target, out var spec))
@@ -158,7 +164,7 @@ internal static partial class MediaEncoding
         var tenBit = video.IsHighBitDepth && encoder is "libx265" or "libsvtav1" or "libaom-av1";
         // "Remove audio" leaves the clip silent, music and all.
         var graph = ClipGraphOf(input, edit, !options.RemoveAudio && info.Audio is not null, width, height, fps, tenBit ? "yuv420p10le" : "yuv420p",
-            music: !options.RemoveAudio, audioTrack: info.Audio?.Ordinal ?? 0, musicTrack: musicTrack);
+            music: !options.RemoveAudio, audioTrack: info.Audio?.Ordinal ?? 0, musicTrack: musicTrack, decodeFrom: decodeFrom);
         var audio = graph.HasAudio;
         var pal = IsPal(video.FrameRate);
         var filter = target is "vob" or "dv"
@@ -211,12 +217,14 @@ internal static partial class MediaEncoding
     /// The arguments that play <paramref name="edit"/> in the clip window: its pictures <paramref name="height"/>
     /// pixels high as raw BGRA frames at <paramref name="fps"/> on stdout.
     /// </summary>
+    /// <param name="decodeFrom">Where reading the video starts (<see cref="ClipGraphOf"/>).</param>
     internal static List<string> ClipPreviewVideo(string input, ClipEdit edit, VideoStreamInfo video, int height, int fps,
-        out int width, out int frameHeight)
+        out int width, out int frameHeight, double? decodeFrom = null)
     {
         (width, frameHeight) = ClipSize(video, height);
         // Pictures only: FFmpeg refuses a graph with a sound output nothing takes, the music's included.
-        var graph = ClipGraphOf(input, edit, false, width, frameHeight, fps.ToString(CultureInfo.InvariantCulture), "bgra", music: false);
+        var graph = ClipGraphOf(input, edit, false, width, frameHeight, fps.ToString(CultureInfo.InvariantCulture), "bgra", music: false,
+            decodeFrom: decodeFrom);
         return [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1"];
     }
 
@@ -283,5 +291,9 @@ internal static partial class MediaEncoding
     }
 
     /// <summary>A number as FFmpeg's filters read it: up to three decimals, a point, no thousands separator.</summary>
-    private static string Seconds(double value) => Math.Round(Math.Max(0, value), 3).ToString("0.###", CultureInfo.InvariantCulture);
+    /// <summary>
+    /// A number for the graph, to the microsecond as FFmpeg counts time: a part trimmed from 0.067 s would miss the
+    /// frame a 30 fps video shows at 0.0666… s.
+    /// </summary>
+    private static string Seconds(double value) => Math.Round(Math.Max(0, value), 6).ToString("0.######", CultureInfo.InvariantCulture);
 }

@@ -77,7 +77,11 @@ public static partial class ClipPreview
         var width = 0;
         var frameHeight = 0;
         if (video is not null)
-            pictures = Start(ffmpeg, MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out width, out frameHeight), stdin: false);
+        {
+            // From the key frame before the first part, so the pictures start with the frame the clip window showed.
+            var from = await KeyFrames.DecodeStartAsync(ffprobe, input, clip.Start, stop.Token).ConfigureAwait(false);
+            pictures = Start(ffmpeg, MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out width, out frameHeight, from), stdin: false);
+        }
         Process? decoder = null, player = null;
         Task pump = Task.CompletedTask;
         try
