@@ -6,13 +6,14 @@
 // persist id, followed on the slide list by the text of the slide's placeholders (the outline).
 //
 // What Filee can't read is refused with a message before anything else is read: presentations protected with a
-// password (nothing is ever decrypted), PowerPoint 95 and older files (no PowerPoint 97 Current User atom), and
-// compound files that hold no presentation. Unsupported names the old versions for the route planner, which then takes
-// LibreOffice when it is installed.
+// password (nothing is ever decrypted), PowerPoint 95 and older files (no PowerPoint 97 Current User atom; refused with
+// the error key that recommends LibreOffice, NeedsLibreOffice), and compound files that hold no presentation.
+// Unsupported names the old versions for the route planner, which then takes LibreOffice when it is installed.
 //
 // Everything points into a stream that comes from anywhere: records are read only where they fit in what holds them,
 // persist ids only when the directory lists them, and damage that leaves no document is InvalidDataException.
 
+using Filee.Core.Conversion;
 using Filee.Engines.Documents;
 using Filee.Engines.Office.OfficeArt;
 
@@ -30,8 +31,8 @@ internal sealed class PptFile : IDisposable
     private const string Encrypted =
         "The presentation is protected with a password (encrypted). Open it in PowerPoint, remove the password (File → Info → Protect Presentation), save it and convert it again.";
 
-    private const string Old =
-        "The file is a PowerPoint 95 or older presentation, which Filee reads only through LibreOffice. Install LibreOffice in Settings → Engines, or open it in PowerPoint and save it as a PowerPoint presentation, and convert it again.";
+    /// <summary>The refusal of a PowerPoint 95 or older presentation, which only LibreOffice converts.</summary>
+    public const string NeedsLibreOffice = "error.old_ppt_needs_libreoffice";
 
     private readonly CompoundFile _cfb;
 
@@ -124,7 +125,7 @@ internal sealed class PptFile : IDisposable
                 return cfb.Exists("PP40") ? "a PowerPoint 4.0 presentation" : "a compound file without a PowerPoint presentation";
             return CurrentEdit(cfb.Read("Current User")) is null ? "a PowerPoint 95 or older presentation" : null;
         }
-        catch (Exception ex) when (ex is InvalidDataException or IOException or Core.Conversion.ConversionRefusedException)
+        catch (Exception ex) when (ex is InvalidDataException or IOException or ConversionRefusedException)
         {
             return null; // the reader says what is wrong
         }
@@ -138,12 +139,12 @@ internal sealed class PptFile : IDisposable
         if (!cfb.Exists("PowerPoint Document"))
         {
             if (cfb.Exists("PP40"))
-                throw new InvalidDataException(Old);
+                throw new ConversionRefusedException(NeedsLibreOffice);
             throw new InvalidDataException("The file is not a PowerPoint presentation (it has no PowerPoint Document stream). It may be another program's file with a .ppt name.");
         }
         var current = cfb.Read("Current User");
         if (CurrentEdit(current) is not { } edit)
-            throw new InvalidDataException(Old);
+            throw new ConversionRefusedException(NeedsLibreOffice);
         if (PptRecords.U32(current!, 12) == EncryptedToken)
             throw new InvalidDataException(Encrypted);
         return (cfb.Read("PowerPoint Document")!, edit);

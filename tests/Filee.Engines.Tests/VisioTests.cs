@@ -385,7 +385,7 @@ public sealed class VisioTests(EngineFixture fx) : IDisposable, IClassFixture<En
         var binary = Path.Combine(_folder, "old.vsd");
         File.WriteAllBytes(binary, [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0]);
         Assert.Equal("binary Visio (VSD)", converter.FirstUnsupported(binary, "vsd"));
-        Assert.Equal("error.unsupported_source", Assert.Throws<ConversionRefusedException>(() => VisioReader.Read(binary, Token)).ErrorKey);
+        Assert.Equal(VisioReader.NeedsLibreOffice, Assert.Throws<ConversionRefusedException>(() => VisioReader.Read(binary, Token)).ErrorKey);
 
         var builder = new VsdxBuilder();
         builder.Page(Shape(1, 1, 1, 1, 1, Rectangle(1, 1)), 4, 3);
@@ -401,6 +401,20 @@ public sealed class VisioTests(EngineFixture fx) : IDisposable, IClassFixture<En
             Assert.Equal("drawing", planner.Plan("vsd", target)!.Steps[0].Converter.Id);
             Assert.Equal("libreoffice", planner.Plan("vsd", target, withoutChecked: true)!.Steps[0].Converter.Id);
         }
+    }
+
+    [Fact]
+    public async Task Without_libreoffice_a_binary_vsd_fails_with_the_error_that_recommends_it()
+    {
+        // The drawing converter's checked edge is the only route left, so the reader's refusal is what the user sees.
+        var binary = Path.Combine(_folder, "old.vsd");
+        File.WriteAllBytes(binary, [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0]);
+        var job = await fx.ConvertAsync([binary], new Preset { TargetFormat = "pdf" }, new ConverterCatalog([new DrawingConverter()]));
+
+        var file = Assert.Single(job.Files);
+        Assert.Equal(FileState.Failed, file.State);
+        Assert.Equal("error.vsd_needs_libreoffice", file.ErrorKey);
+        Assert.Null(file.ErrorDetail);
     }
 
     [Theory]

@@ -9,6 +9,7 @@ using Filee.Core.Presets;
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Office;
 using Filee.Engines.Office.Ppt;
 using Filee.Engines.Slides;
 using Filee.Engines.Typesetting;
@@ -301,11 +302,24 @@ public sealed class PptReaderTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Assert.Null(PptReader.Unsupported(encrypted));
 
         var old = Save(new PptBuilder { PowerPoint95 = true }, "old.ppt");
-        Assert.Contains("LibreOffice", Assert.Throws<InvalidDataException>(() => PptxSlideReader.Read(old, cancellationToken: Token)).Message, StringComparison.Ordinal);
+        Assert.Equal(PptFile.NeedsLibreOffice, Assert.Throws<ConversionRefusedException>(() => PptxSlideReader.Read(old, cancellationToken: Token)).ErrorKey);
         Assert.Equal("a PowerPoint 95 or older presentation", PptReader.Unsupported(old));
         Assert.Equal("a PowerPoint 95 or older presentation", new FileeRendererConverter().FirstUnsupported(old, "ppt"));
         Assert.Equal("a PowerPoint 95 or older presentation", DocumentReaders.Unsupported(old, "ppt"));
         Assert.Null(PptReader.Unsupported(Save(RichDeck())));
+    }
+
+    [Fact]
+    public async Task Without_libreoffice_a_powerpoint_95_file_fails_with_the_error_that_recommends_it()
+    {
+        // The checked PPT → PPTX edge is the only route left, so the reader's refusal is what the user sees.
+        var old = Save(new PptBuilder { PowerPoint95 = true }, "old.ppt");
+        var job = await fx.ConvertAsync([old], new Preset { TargetFormat = "pptx" }, new ConverterCatalog([new PptxWriterConverter()]));
+
+        var file = Assert.Single(job.Files);
+        Assert.Equal(FileState.Failed, file.State);
+        Assert.Equal("error.old_ppt_needs_libreoffice", file.ErrorKey);
+        Assert.Null(file.ErrorDetail);
     }
 
     [Fact]

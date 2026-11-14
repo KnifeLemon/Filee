@@ -126,7 +126,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         _pandoc = PandocConverter.Locate() is not null;
         _libreOffice = _findLibreOffice();
         return EngineEnvironment.FileeRenderer
-            ? EngineStatus.Available("HWP, HWPX, Word, ODT, RTF, OFD, e-books, PPTX → PDF", EngineVersions.BuiltIn)
+            ? EngineStatus.Available("HWP, HWPX, Word, ODT, RTF, OFD, e-books, PPTX, PPT, ODP → PDF", EngineVersions.BuiltIn)
             : EngineStatus.Unavailable("engine.reason.preview_off");
     }
 

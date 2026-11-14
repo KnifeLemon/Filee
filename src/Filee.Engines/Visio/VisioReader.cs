@@ -54,6 +54,9 @@ internal sealed class VisioReader
     /// <summary>The largest side of a text block in points.</summary>
     private const double MaxTextBlock = 100_000;
 
+    /// <summary>The refusal of a binary .vsd when LibreOffice, which converts it, isn't installed.</summary>
+    public const string NeedsLibreOffice = "error.vsd_needs_libreoffice";
+
     /// <summary>The first bytes of a compound file (binary .vsd).</summary>
     private static readonly byte[] CompoundFile = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 
@@ -95,7 +98,7 @@ internal sealed class VisioReader
     {
         // Reached only when no other route is installed (FirstUnsupported sends .vsd to LibreOffice Draw).
         if (IsCompoundFile(path))
-            throw new ConversionRefusedException("error.unsupported_source", "A binary Visio drawing (VSD) is converted by LibreOffice, which isn't installed.");
+            throw new ConversionRefusedException(NeedsLibreOffice);
         using var package = VisioPackage.Open(path, limits);
         return new VisioReader(package, cancellationToken).ReadDrawing();
     }

@@ -154,6 +154,24 @@ public partial class LocalizationTests
         }
     }
 
+    [Fact]
+    public void Refusals_that_recommend_libreoffice_name_it_in_every_language()
+    {
+        // The readers of binary Visio and PowerPoint 95 files refuse with these keys when LibreOffice isn't installed.
+        string[] keys = ["error.vsd_needs_libreoffice", "error.old_ppt_needs_libreoffice"];
+        foreach (var language in LocalizationService.Languages)
+        {
+            var translations = Load(language.Code);
+            foreach (var key in keys)
+            {
+                Assert.True(translations.TryGetValue(key, out var value), $"{language.Code}:{key} is missing");
+                Assert.Contains("LibreOffice", value, StringComparison.Ordinal);
+            }
+            Assert.Contains("Visio", translations["engine.drawing.description"], StringComparison.Ordinal);
+            Assert.Contains("7-Zip", translations["engine.archive.description"], StringComparison.Ordinal);
+        }
+    }
+
     [Theory]
     [MemberData(nameof(Languages))]
     public void Format_placeholders_match_english(string code)
