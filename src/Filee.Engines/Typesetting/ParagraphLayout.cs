@@ -6,12 +6,19 @@
 // 2. Measure: each item is shaped (Shaper) and every grapheme cluster gets its advance, letter spacing included.
 // 3. Break: lines fill greedily up to the column width, breaking at the last opportunity LineBreaker allows (한글 and
 //    Word break the same way); spaces and tabs at a line end hang past it. A word wider than the line breaks between
-//    clusters. 한글's 최소 공백 (condense) lets a line keep a word that fits once its spaces shrink. With lineWrap
-//    KEEP or SQUEEZE the paragraph stays on one line, squeezed to fit with SQUEEZE.
+//    clusters, where kinsoku is on (Word's paragraphs) not before closing punctuation nor after an opening bracket.
+//    Where Word lets punctuation overflow (w:overflowPunct), an East Asian comma or full stop that doesn't fit hangs
+//    past the line end instead of taking the character before it to the next line. 한글's 최소 공백 (condense) lets a
+//    line keep a word that fits once its spaces shrink. With lineWrap KEEP or SQUEEZE the paragraph stays on one line,
+//    squeezed to fit with SQUEEZE. Beside floating objects (text wrap) the page composer gives each line its place and
+//    the stretches of the column it has (LineRoom): the line's text fills them in reading order, a part in each, under
+//    the same breaking rules, and the parts are one row (LineBox.Beside).
 // 4. Place: each line's part of every item is shaped again with its context, so a break inside an Arabic word or
 //    after an Indic cluster is shaped as it ends; tabs get their width from the stops (left, right, centre, decimal,
 //    with leaders); alignment adds the remaining width before the line (right, centre) or between its spaces
-//    (justify; between clusters where a line has no spaces) or its clusters (distribute, 한글 배분, the last line too).
+//    (justify; between clusters where a line has no spaces; in Word's paragraphs between Chinese and Japanese characters
+//    too) or its clusters (distribute, 한글 배분, the last line too). Word and 한글 put a little space between East Asian
+//    text and Latin letters or digits that touch it (auto-spacing); ParagraphLayout.EastAsian.cs has both.
 // 5. Line height: by the rule the paragraph carries. 한글's rules (percent, fixed, at least, between lines) measure
 //    from the font size, the text taking 85% of it above the baseline as 한글 lays out (its stored line segments put
 //    the baseline at 0.85 × the text height); Word's multiple, and 한글 "글꼴에 어울리는 줄 높이", measure from the
@@ -25,7 +32,9 @@
 // Lines Filee estimated are never used; otherwise the paragraph is broken again and ParagraphBox says why.
 //
 // Bidirectional text: the paragraph's levels come from the Unicode Bidirectional Algorithm (BidiAlgorithm), items
-// split where the level changes, and each line's parts are reordered by level (UAX #9 rule L2).
+// split where the level changes, and each line's parts are reordered by level (UAX #9 rule L2). Spaces and other
+// neutral characters of a right-to-left run (Word w:rtl) read right to left, as Word reads them. A right-to-left
+// paragraph starts at the right: its alignment and indents name the start and end side (HParaFormat.RightToLeft).
 // Tab positions are measured from the paragraph's left indent, as 한글 measures them; a hanging indent is a tab stop
 // on the first line (the text after a list number starts there).
 //
@@ -38,8 +47,30 @@ using SkiaSharp;
 
 namespace Filee.Engines.Typesetting;
 
+/// <summary>Where a line laid out anew goes and the room it has there beside floating objects (text wrap).</summary>
+/// <param name="Top">The line's top below the paragraph's first line's top, moved down past the objects in its way.</param>
+/// <param name="Spans">
+/// The stretches of the column its text goes in, from the column's left edge and left to right; null for the whole width.
+/// </param>
+internal sealed record LineRoom(float Top, IReadOnlyList<(float Start, float End)>? Spans)
+{
+    /// <summary>The same place and stretches (to a hundredth of a point).</summary>
+    public bool Same(LineRoom other)
+    {
+        static bool Near(float a, float b) => Math.Abs(a - b) < 0.01f;
+        if (!Near(Top, other.Top) || Spans?.Count != other.Spans?.Count)
+            return false;
+        for (var i = 0; i < (Spans?.Count ?? 0); i++)
+        {
+            if (!Near(Spans![i].Start, other.Spans![i].Start) || !Near(Spans[i].End, other.Spans[i].End))
+                return false;
+        }
+        return true;
+    }
+}
+
 /// <summary>Lays out paragraphs; one per layout job, sharing its font resolver and shaper (not thread-safe).</summary>
-internal sealed class ParagraphLayouter
+internal sealed partial class ParagraphLayouter
 {
     /// <summary>Distance between the default tab stops, in points (한글's 40 pt).</summary>
     private const float DefaultTabInterval = 40;
@@ -62,6 +93,12 @@ internal sealed class ParagraphLayouter
     /// <summary>The layout job's time budget and cancellation, checked every <see cref="GuardLines"/> lines; null checks nothing.</summary>
     public LayoutGuard? Guard { get; set; }
 
+    /// <summary>
+    /// Paragraph borders are Word's (a model of another format): their lines go outside the text. Else they are 한글's,
+    /// whose box moves the text in from the margins (see BoxBorder).
+    /// </summary>
+    public bool WordBorders { get; set; }
+
     /// <summary>Lines laid out between checks of <see cref="Guard"/>.</summary>
     private const int GuardLines = 256;
     private readonly string? _notAtLineStart;
@@ -80,8 +117,8 @@ internal sealed class ParagraphLayouter
         _storedLines = storedLines;
         if (kinsoku is { Count: > 0 })
         {
-            _notAtLineStart = string.Concat(kinsoku.Select(k => k.NotAtLineStart));
-            _notAtLineEnd = string.Concat(kinsoku.Select(k => k.NotAtLineEnd));
+            _notAtLineStart = string.Concat(kinsoku.Select(k => k.NotAtLineStart)) is { Length: > 0 } start ? start : null;
+            _notAtLineEnd = string.Concat(kinsoku.Select(k => k.NotAtLineEnd)) is { Length: > 0 } end ? end : null;
         }
     }
 
@@ -90,27 +127,41 @@ internal sealed class ParagraphLayouter
     /// <param name="fields">The text of page number and total pages fields; null leaves them out.</param>
     /// <param name="notes">The number a note reference shows; null leaves note references out.</param>
     /// <param name="wrap">
-    /// Room objects take beside the lines laid out anew (text wrap): for a line at a height below the first line's top
-    /// and its height, how far in from the left and right it starts and ends. Null leaves the lines whole.
+    /// The room the lines laid out anew have beside floating objects (text wrap): for a line at a height below the first
+    /// line's top and its height, where it goes and the stretches of the column its text goes in. Null leaves the lines
+    /// whole.
     /// </param>
+    /// <param name="noteNumber">In a note's text, the note's number, put where the text has it (HNoteNumber).</param>
     public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<HField, string>? fields = null,
-        Func<HNote, string>? notes = null, Func<float, float, (float Left, float Right)>? wrap = null)
+        Func<HNote, string>? notes = null, Func<float, float, LineRoom>? wrap = null, string? noteNumber = null)
     {
         var format = paragraph.Format;
-        var source = ParagraphText.From(paragraph, marker, fields, notes);
+        var source = ParagraphText.From(paragraph, marker, fields, notes, noteNumber);
         var text = source.Text;
         var language = FontSubstitution.Language(text);
         var rightToLeft = format.RightToLeft ?? BidiAlgorithm.IsRightToLeft(text);
-        var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft));
+        // A paragraph border: 한글's moves the text in from the margins (Left and Right name the start and end side of a
+        // right-to-left paragraph).
+        var border = BoxBorder.Of(format, WordBorders, width, rightToLeft);
+        if (border is not null && BoxBorder.TextInset(format, WordBorders) is var (insetLeft, insetRight) && insetLeft + insetRight > 0)
+        {
+            var (startInset, endInset) = rightToLeft ? (insetRight, insetLeft) : (insetLeft, insetRight);
+            format = format with { Left = (format.Left ?? 0) + startInset, Right = (format.Right ?? 0) + endInset };
+        }
+        var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft, source.RightToLeftRuns()));
         var (advances, starts) = Measure(source, items);
 
         var breaking = format.Layout?.Breaking;
+        // Kinsoku: the document's own characters (unless it turns kinsoku off), else where it is on (Word's) the usual ones.
+        var kinsoku = breaking?.Kinsoku == true;
         var rules = new LineBreakRules(
             KeepNonLatinWords: breaking?.NonLatin == HNonLatinBreak.KeepWord,
             BreakLatinWords: breaking?.Latin == HLatinBreak.BreakWord,
             BreakNonLatinCharacters: breaking?.NonLatin == HNonLatinBreak.BreakWord,
-            NotAtLineStart: _notAtLineStart,
-            NotAtLineEnd: _notAtLineEnd);
+            NotAtLineStart: breaking?.Kinsoku == false ? null : _notAtLineStart ?? (kinsoku ? LineBreaker.StandardNotAtLineStart : null),
+            NotAtLineEnd: breaking?.Kinsoku == false ? null : _notAtLineEnd ?? (kinsoku ? LineBreaker.StandardNotAtLineEnd : null),
+            KeepKoreanWords: breaking?.NonLatin == HNonLatinBreak.KeepKoreanWord,
+            Kinsoku: kinsoku);
         var breaks = LineBreaker.Breaks(text, rules);
         var paragraphLayout = new Settings(
             format.Align ?? HAlign.Left,
@@ -122,7 +173,10 @@ internal sealed class ParagraphLayouter
             breaking?.LineWrap ?? HLineWrap.Break,
             Math.Clamp(breaking?.Condense ?? 0, 0, 100) / 100f,
             format.Layout?.LineHeight ?? HLineHeight.From(format.LineSpacing ?? new HLineSpacing(HLineSpacingKind.Percent, 160)),
-            format.Layout?.FontLineHeight == true);
+            format.Layout?.FontLineHeight == true,
+            SpreadEastAsian: breaking?.SpreadEastAsian == true,
+            Language: language,
+            HangPunctuation: breaking?.OverflowPunctuation == true);
         // A number that indents its paragraph (한글 autoIndent): the lines after the first hang under the text after it.
         if (marker is { Length: > 0 } && paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count
             && levels[level].AutoIndent && marker.Length + 1 <= text.Length)
@@ -136,6 +190,13 @@ internal sealed class ParagraphLayouter
 
         var (stored, ignored) = _storedLines ? StoredStarts(paragraph, source, marker, items, advances) : (null, null);
         var ranges = new LineIndex(source, items);
+        // Auto-spacing on the lines laid out anew; 한글's stored lines already hold what 한글 put there.
+        if (stored is null && AutoSpace(source, items, starts, breaking) is { } autoSpace)
+        {
+            for (var i = 0; i < advances.Length; i++)
+                advances[i] += autoSpace[i];
+            paragraphLayout = paragraphLayout with { AutoSpace = autoSpace };
+        }
         if (stored is not null)
         {
             var segments = paragraph.Lines!.Segments;
@@ -149,7 +210,7 @@ internal sealed class ParagraphLayouter
                 var forced = end == text.Length || text[end - 1] == ParagraphText.LineSeparator;
                 storedLines.Add(Place(source, ranges, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], whole)));
             }
-            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker, FloatingAt = source.Floating };
+            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker, FloatingAt = source.Floating, Border = border };
         }
 
         var lines = new List<LineBox>();
@@ -160,12 +221,24 @@ internal sealed class ParagraphLayouter
             if (lines.Count % GuardLines == GuardLines - 1)
                 Guard?.Paragraph();
             var first = lines.Count == 0;
+            if (wrap is not null)
+            {
+                // The room for a line as high as the one before; once laid out, again for its own height where it is higher.
+                var estimate = lines.Count > 0 ? lines[^1].Height : mark.FontSize * 1.6f;
+                var room = wrap(y, estimate);
+                var row = Row(room, start, first);
+                if (LineBox.Stacked(row) is var high && high > estimate + Epsilon && wrap(y, high) is var again && !again.Same(room))
+                    (room, row) = (again, Row(again, start, first));
+                lines.AddRange(row);
+                y = room.Top + LineBox.Stacked(row);
+                start = row[^1].End;
+                continue;
+            }
             var settings = paragraphLayout;
-            if (wrap?.Invoke(y, lines.Count > 0 ? lines[^1].Height : mark.FontSize * 1.6f) is var (left, right) && left + right > 0)
-                settings = settings with { Left = settings.Left + left, Right = settings.Right + right };
             var available = width - settings.Left - settings.Right - (first ? settings.FirstLine : 0);
             var (end, forced) = settings.Wrap == HLineWrap.Break
-                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense)
+                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense, settings.AutoSpace,
+                    rules, settings.HangPunctuation)
                 : (text.Length, true);
             lines.Add(Place(source, ranges, start, end, forced, first, width, settings, mark));
             y += lines[^1].Height;
@@ -176,7 +249,63 @@ internal sealed class ParagraphLayouter
         if (text.Length > 0 && text[^1] == ParagraphText.LineSeparator)
             lines.Add(Place(source, ranges, text.Length, text.Length, true, false, width, paragraphLayout, mark));
 
-        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating };
+        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating, Border = border };
+
+        // One row of text from start in the room's stretches, in reading order: a part of the text in each, as much as
+        // fits, until a line break or the end. A stretch the next word doesn't fit in is left empty while another
+        // follows; the last takes the text anyway.
+        List<LineBox> Row(LineRoom room, int from, bool firstLine)
+        {
+            IEnumerable<(float Start, float End)> spans = room.Spans is { Count: > 0 } stretches ? stretches : [(0f, width)];
+            var order = (paragraphLayout.RightToLeft ? spans.Reverse() : spans).ToList();
+            var row = new List<LineBox>();
+            for (var k = 0; k < order.Count && (row.Count == 0 || from < text.Length); k++)
+            {
+                var opening = firstLine && row.Count == 0;
+                var settings = Within(paragraphLayout, order[k], width, opening);
+                var available = width - settings.Left - settings.Right - (opening ? settings.FirstLine : 0);
+                var lastSpan = k == order.Count - 1;
+                if (available <= Epsilon && !lastSpan)
+                    continue;
+                var (end, forced) = settings.Wrap == HLineWrap.Break
+                    ? Fit(text, breaks, advances, starts, from, available, x => NextStop(settings, opening, x), settings.Condense,
+                        settings.AutoSpace, rules, settings.HangPunctuation)
+                    : (text.Length, true);
+                // Broken inside a word because the word is wider than the stretch: it goes on in the next stretch.
+                if (!lastSpan && !forced && end < text.Length && breaks[end] != LineBreak.Allowed)
+                    continue;
+                var line = Place(source, ranges, from, end, forced, opening, width, settings, mark);
+                row.Add(row.Count == 0 ? line : line.Along());
+                from = end;
+                if (forced)
+                    break;
+            }
+            return row;
+        }
+    }
+
+    /// <summary>
+    /// The paragraph's settings for a line in the stretch of the column from <paramref name="span"/>.Start to .End: at
+    /// a side where an object ends the stretch, its indent where it reaches further in, else the object's edge (Word's
+    /// lines beside an object start at the object, not indented from it); at the column's edge the indent as it is.
+    /// </summary>
+    private static Settings Within(Settings settings, (float Start, float End) span, float width, bool firstLine)
+    {
+        var indent = firstLine ? settings.FirstLine : 0;
+        var (atLeft, atRight) = (span.Start <= Epsilon, span.End >= width - Epsilon);
+        // A right-to-left paragraph's Left and Right name its start (right) and end (left) side; the first line's indent
+        // is on the start side.
+        return settings.RightToLeft
+            ? settings with
+            {
+                Left = atRight ? settings.Left : Math.Max(settings.Left + indent, width - span.End) - indent,
+                Right = atLeft ? settings.Right : Math.Max(settings.Right, span.Start),
+            }
+            : settings with
+            {
+                Left = atLeft ? settings.Left : Math.Max(settings.Left + indent, span.Start) - indent,
+                Right = atRight ? settings.Right : Math.Max(settings.Right, width - span.End),
+            };
     }
 
     /// <summary>
@@ -247,8 +376,12 @@ internal sealed class ParagraphLayouter
     }
 
     /// <summary>The paragraph settings the line steps share (lengths in points).</summary>
+    /// <param name="SpreadEastAsian">Justified lines spread their room between Chinese and Japanese characters too (Word).</param>
+    /// <param name="Language">The paragraph's East Asian language (FontSubstitution.Language): "ko" justifies Han at the spaces.</param>
+    /// <param name="AutoSpace">Per UTF-16 index, the auto-spacing after the cluster starting there; null = none.</param>
     private sealed record Settings(HAlign Align, bool RightToLeft, float Left, float Right, float FirstLine, IReadOnlyList<HTabStop> Tabs,
-        HLineWrap Wrap, float Condense, HLineHeight LineHeight, bool FontLineHeight);
+        HLineWrap Wrap, float Condense, HLineHeight LineHeight, bool FontLineHeight, bool SpreadEastAsian = false, string Language = "",
+        float[]? AutoSpace = null, bool HangPunctuation = false);
 
     // ───────────────────────── Items ─────────────────────────
 
@@ -431,20 +564,6 @@ internal sealed class ParagraphLayouter
         return (w, h, 0);
     }
 
-    private readonly Dictionary<HEquation, EquationBox> _equations = new(ReferenceEqualityComparer.Instance);
-
-    /// <summary>An equation laid out at its size (its own, else its text's) in its colour.</summary>
-    private EquationBox Equation(HEquation equation)
-    {
-        if (_equations.TryGetValue(equation, out var box))
-            return box;
-        var size = (equation.Size ?? equation.Format.Size ?? 1000) / 100f;
-        var color = ParagraphText.Color(equation.Color ?? equation.Format.Color) ?? SKColors.Black;
-        if (_equations.Count > 10_000)
-            _equations.Clear();
-        return _equations[equation] = _math.Layout(equation.Math, size, color);
-    }
-
     /// <summary>Draws an object laid out like a character into its area.</summary>
     private Action<PageContent, SKRect> ObjectDrawing(HInline item)
     {
@@ -469,8 +588,11 @@ internal sealed class ParagraphLayouter
     // ───────────────────────── Breaking ─────────────────────────
 
     /// <summary>Where the line starting at <paramref name="start"/> ends, and whether it had to (a line break, the end).</summary>
+    /// <param name="autoSpace">Auto-spacing included in <paramref name="advances"/>, which a line ending there leaves out.</param>
+    /// <param name="rules">The paragraph's breaking rules: with kinsoku, a word broken inside keeps the East Asian rules.</param>
+    /// <param name="hang">An East Asian comma or full stop that doesn't fit hangs past the line end (Word w:overflowPunct).</param>
     private static (int End, bool Forced) Fit(string text, LineBreak[] breaks, float[] advances, bool[] starts, int start, float available,
-        Func<float, TabStop> nextStop, float condense)
+        Func<float, TabStop> nextStop, float condense, float[]? autoSpace = null, LineBreakRules? rules = null, bool hang = false)
     {
         var pen = new Pen();
         var lastBreak = -1;
@@ -497,12 +619,44 @@ internal sealed class ParagraphLayouter
                     spaces += width;
                 continue;
             }
-            var after = pen.After(width);
+            var after = pen.After(width - (autoSpace?[i] ?? 0));
             if (i > start && after > available + Epsilon && !(condense > 0 && after - spaces * condense <= available + Epsilon))
-                return (lastBreak > start ? lastBreak : i, false);
+            {
+                if (hang && LineBreaker.Hangs(c) && HangingEnd(text, breaks, i) is { } end)
+                    return (end, breaks[end] == LineBreak.Mandatory);
+                if (lastBreak > start)
+                    return (lastBreak, false);
+                return (rules is { Kinsoku: true } ? InsideWord(text, starts, start, i, rules) : i, false);
+            }
             pen.Add(width, c);
         }
         return (text.Length, true);
+    }
+
+    /// <summary>
+    /// Where a line ends whose punctuation at <paramref name="index"/> hangs past it: after it and the spaces after it,
+    /// when the line may break there; else null.
+    /// </summary>
+    private static int? HangingEnd(string text, LineBreak[] breaks, int index)
+    {
+        var end = index + 1;
+        while (end < text.Length && IsStretchable(text[end]))
+            end++;
+        return breaks[end] == LineBreak.None ? null : end;
+    }
+
+    /// <summary>
+    /// Where a word that overflows at <paramref name="overflow"/> breaks: the last cluster before it that may start a
+    /// line under the East Asian rules, else the overflowing cluster.
+    /// </summary>
+    private static int InsideWord(string text, bool[] starts, int start, int overflow, LineBreakRules rules)
+    {
+        for (var i = overflow; i > start; i--)
+        {
+            if (starts[i] && LineBreaker.MayBreakInside(text, i, rules))
+                return i;
+        }
+        return overflow;
     }
 
     /// <summary>Spaces that hang at a line end and take no part in its width.</summary>
@@ -735,6 +889,22 @@ internal sealed class ParagraphLayouter
                 advances[i] += spacing[i];
             }
         }
+        if (settings.AutoSpace is { } autoSpace)
+        {
+            // Auto-spacing between characters that are both on the line.
+            var next = contentEnd;
+            for (var i = contentEnd - 1; i >= start; i--)
+            {
+                if (!starts[i - start])
+                    continue;
+                if (autoSpace[i] > 0 && next < contentEnd)
+                {
+                    spacing[i - start] += autoSpace[i];
+                    advances[i - start] += autoSpace[i];
+                }
+                next = i;
+            }
+        }
 
         // Tabs in logical order, then the natural width.
         var pen = new Pen();
@@ -763,6 +933,11 @@ internal sealed class ParagraphLayouter
         if (pendingTab >= 0)
             tabs[pendingTab] = tabs[pendingTab] with { Width = pen.Gap() };
         var natural = pen.X;
+        // An East Asian comma or full stop hanging past the end of a full line (Fit) takes no part in its alignment.
+        var last = contentEnd - 1;
+        if (settings.HangPunctuation && stored is null && natural > available + Epsilon && last > start && starts[last - start] &&
+            LineBreaker.Hangs(text[last]))
+            natural -= advances[last - start];
 
         // Alignment: the space left over goes before the line or into it.
         var extra = available - natural;
@@ -795,7 +970,9 @@ internal sealed class ParagraphLayouter
         }
         else if (extra > 0 && align == HAlign.Justify)
         {
-            var stretch = spaces.Count > 0 ? spaces : clusterIndices.Take(clusterIndices.Count - 1).ToList();
+            var stretch = settings.SpreadEastAsian ? JustifyGaps(text, clusterIndices, settings.Language) : spaces;
+            if (stretch.Count == 0)
+                stretch = clusterIndices.Take(clusterIndices.Count - 1).ToList();
             foreach (var i in stretch)
                 gaps[i - start] = extra / stretch.Count;
             if (stretch.Count > 0)
@@ -832,6 +1009,9 @@ internal sealed class ParagraphLayouter
                 var (pictureWidth, pictureHeight) = (part.Size.Width * squeeze, part.Size.Height);
                 if (source.Objects.TryGetValue(part.Start, out var item) && pictureWidth > 0)
                     pictures.Add(new LineObject(new SKRect(x, -pictureHeight, x + pictureWidth, part.Size.Depth), ObjectDrawing(item)));
+                // Word's equation numbers at the right end of the line (see ParagraphLayout.Equations.cs).
+                if (item is HEquation equation)
+                    runs.AddRange(Numbers(equation, width - (settings.RightToLeft ? settings.Left : settings.Right)).Select(r => (part.Start, r)));
                 x += pictureWidth + gaps[part.Start - start] * squeeze;
             }
             else if (part.Item.Kind == ItemKind.Tab)

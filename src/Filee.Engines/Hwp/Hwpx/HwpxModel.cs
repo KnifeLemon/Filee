@@ -46,6 +46,12 @@ internal sealed class HSection
     /// <summary>Header of the first page only, instead of <see cref="Headers"/> there (DOCX "different first page").</summary>
     public List<HBlock>? FirstPageHeader { get; set; }
 
+    /// <summary>
+    /// Footer of the first page only, instead of <see cref="Footers"/> there (DOCX "different first page"). Only the
+    /// layout engine draws it; the writers keep the other footer there.
+    /// </summary>
+    public List<HBlock>? FirstPageFooter { get; set; }
+
     /// <summary>Restart page numbering at this number; null continues from the previous section.</summary>
     public int? StartPageNumber { get; set; }
 
@@ -74,6 +80,15 @@ internal sealed class HSection
 
     /// <summary>A header taller than the room above the body moves the body down (Word, unless its top margin is negative).</summary>
     public bool HeaderMovesBody { get; set; }
+
+    /// <summary>A footer taller than the room below the body moves the body up (Word, unless its bottom margin is negative).</summary>
+    public bool FooterMovesBody { get; set; }
+
+    /// <summary>
+    /// The footer ends at the bottom of its area and grows up from there (Word measures the footer's distance from the
+    /// paper's bottom edge to its last line); otherwise it starts at the top of its area (한글).
+    /// </summary>
+    public bool FooterGrowsUp { get; set; }
 
     public List<HBlock> Blocks { get; } = [];
 }
@@ -133,7 +148,8 @@ internal sealed record HPageBorder(HPageType Pages, HBorders Borders, string? Fi
     public bool IsEmpty => Fill is null && Picture is null && Borders == HBorders.Empty;
 }
 
-internal sealed record HColumns(int Count, int Gap, bool Separator)
+/// <param name="RightToLeft">The first column is the rightmost (Word sectPr w:bidi, RTF \rtlsect). Only the layout engine uses it.</param>
+internal sealed record HColumns(int Count, int Gap, bool Separator, bool RightToLeft = false)
 {
     public static readonly HColumns Single = new(1, 0, false);
 }
@@ -292,6 +308,13 @@ internal sealed class HTable : HBlock
     public int ColumnCount { get; set; }
     public HAlign Align { get; set; } = HAlign.Left;
     public int Indent { get; set; }
+
+    /// <summary>
+    /// The columns run from the right (Word w:bidiVisual, RTF \rtlrow): the first column is the rightmost, and
+    /// <see cref="Align"/>, <see cref="Indent"/> and each cell's left and right borders and padding name the start and
+    /// the end side, as in a right-to-left paragraph. Only the layout engine uses it.
+    /// </summary>
+    public bool RightToLeft { get; set; }
 
     /// <summary>Cell padding; null = 한글 default.</summary>
     public HInsets? CellMargin { get; set; }
@@ -491,6 +514,34 @@ internal sealed class HBookmark(string name) : HInline
     public string Name { get; } = name;
 }
 
+internal enum HDirectionKind
+{
+    /// <summary>Left-to-right embedding (Word w:dir w:val="ltr").</summary>
+    LeftToRight,
+
+    /// <summary>Right-to-left embedding (Word w:dir w:val="rtl").</summary>
+    RightToLeft,
+
+    /// <summary>Left-to-right override: every character reads left to right (Word w:bdo w:val="ltr").</summary>
+    OverrideLeftToRight,
+
+    /// <summary>Right-to-left override (Word w:bdo w:val="rtl").</summary>
+    OverrideRightToLeft,
+
+    /// <summary>Ends the innermost embedding or override.</summary>
+    End,
+}
+
+/// <summary>
+/// Where an explicit text direction starts or ends inside a paragraph (Word w:dir and w:bdo). The text between the
+/// marks stays in the paragraph's inlines; the layout reads the marks as the Unicode embedding and override controls.
+/// Read for layout only; the writers leave the marks out.
+/// </summary>
+internal sealed class HDirectionMark(HDirectionKind kind) : HInline
+{
+    public HDirectionKind Kind { get; } = kind;
+}
+
 internal sealed class HNote(bool endnote) : HInline
 {
     public bool Endnote { get; } = endnote;
@@ -501,6 +552,15 @@ internal sealed class HNote(bool endnote) : HInline
 
     /// <summary>The format of the run the reference is in (its colour, size ...); null = the text's around it.</summary>
     public HCharFormat? Format { get; set; }
+}
+
+/// <summary>
+/// The number of the note this text belongs to, where the note's text has it (Word w:footnoteRef / w:endnoteRef): in
+/// "(1) text" between the brackets. Read for layout only; the writers leave it out (한글 numbers its notes itself).
+/// </summary>
+internal sealed class HNoteNumber(HCharFormat format) : HInline
+{
+    public HCharFormat Format { get; } = format;
 }
 
 internal enum HFieldKind
@@ -556,6 +616,9 @@ internal sealed class HImage(string path) : HObject
 
     /// <summary>Stacking order among floating objects (higher is in front); null = document order.</summary>
     public int? ZOrder { get; set; }
+
+    /// <summary>Colour changes drawn over the picture (Word's washout, grey scale, transparency); null = none. Read for layout only.</summary>
+    public HPictureEffects? Effects { get; set; }
 }
 
 /// <summary>A box with its own paragraphs (DOCX text box, 한글 글상자).</summary>
@@ -586,6 +649,15 @@ internal sealed class HTextBox : HObject
     public HInsets Padding { get; set; } = new(283, 283, 283, 283);
     public HVerticalAlign VerticalAlign { get; set; }
     public List<HBlock> Blocks { get; } = [];
+
+    /// <summary>The box is WordArt (a Word watermark ...): how its text is drawn; null = as paragraphs. Read for layout only.</summary>
+    public HTextArt? TextArt { get; set; }
+
+    /// <summary>
+    /// The box holds the number of the Word equation after it (DocxReader), placed for rhwp; Filee's own layout draws
+    /// the number with the equation instead. Read for layout only.
+    /// </summary>
+    public bool EquationNumber { get; set; }
 }
 
 internal enum HShapeKind
@@ -644,7 +716,20 @@ internal sealed record HGradient(IReadOnlyList<string> Colors, int Angle);
 internal sealed record HAnchor(
     string HorizontalRelativeTo, string HorizontalAlign, int HorizontalOffset,
     string VerticalRelativeTo, string VerticalAlign, int VerticalOffset,
-    string Wrap, bool AllowOverlap);
+    string Wrap, bool AllowOverlap)
+{
+    /// <summary>
+    /// The sides of a SQUARE object text goes on: BOTH_SIDES, LEFT_ONLY, RIGHT_ONLY or LARGEST_ONLY (OWPML textFlow,
+    /// Word wrapText). Read for layout only.
+    /// </summary>
+    public string TextFlow { get; init; } = "BOTH_SIDES";
+
+    /// <summary>
+    /// The outline text goes up to beside a tightly wrapped object (Word wp:wrapPolygon), its points as fractions of
+    /// the object's width and height; null wraps at the object's box. Read for layout only.
+    /// </summary>
+    public IReadOnlyList<(double X, double Y)>? WrapPolygon { get; init; }
+}
 
 // ───────────────────────── Formats ─────────────────────────
 

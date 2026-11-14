@@ -477,6 +477,18 @@ internal static class SettingsMigrations
             settings.FileeRenderer = true;
         settings.LibreOfficeForHwp = null;
 
+        // v91: Filee's renderer is the default document → PDF engine, and its slide renderer draws presentations. The
+        //      renderer is turned on for everyone (it was a preview of unreleased builds, so an "off" there was no
+        //      choice against a default), and "Use LibreOffice for presentations", on by default since it beat the
+        //      HWPX writer and rhwp, is turned off once so decks reach the slide renderer; whoever turns it back on
+        //      keeps it. The other LibreOffice switches were off by default and stay as the user set them.
+        //      (Built-in engines branch. May be renumbered if another change takes it first.)
+        if (settings.SchemaVersion < 91)
+        {
+            settings.FileeRenderer = true;
+            settings.LibreOfficeForSlides = false;
+        }
+
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
 

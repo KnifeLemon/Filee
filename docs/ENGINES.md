@@ -12,7 +12,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
-| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF through the Filee renderer, → DOCX through the DOCX writer) |
 | **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
@@ -35,8 +35,8 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents (DOCX and DOC), TXT, Markdown, HTML, e-books, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, PPSX → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
-| rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
+| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
+| rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, .NET and Filee's own readers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG; **7-Zip**: CAB, DMG, IMG, LHA, ARJ, UDF discs **→ folder, ZIP, TAR, TAR.GZ, the packs** (in-process), **7Z, TAR.BZ2/XZ** (7-Zip); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
@@ -44,12 +44,13 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
-| Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF, PDB, PML, RB, SNB, TCR (MOBI, AZW3 too, below the built-in writer); e-books → PDF (ranked above the HWPX writer, see below) |
+| Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF, PDB, PML, RB, SNB, TCR (MOBI, AZW3 too, below the built-in writer); e-books → PDF (ranked above the HWPX writer with the Filee renderer off, see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
 
 DOCX, DOC, ODT, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process.
-Documents and slides are written as HWPX and rendered by rhwp; spreadsheets are printed by Filee's own print engine
+Documents and slides are laid out by the [Filee renderer](#filee-renderer-pdf-output) (with it off, or for a file with
+what it doesn't draw yet, written as HWPX and rendered by rhwp); spreadsheets are printed by Filee's own print engine
 (Excel's page logic, see [Spreadsheet printing](#spreadsheet-printing)). Anything the built-in readers understand
 (including PDF) is written as DOCX by the DOCX writer, as ODT by the ODT writer and as PPTX slides by the PPTX writer
 (PDF keeps its picture slides).
@@ -67,7 +68,9 @@ edges: DOCX, TXT, Markdown, HTML, PPTX and HWPX → PDF (and → images through 
 when Settings → *Engines* doesn't choose it for documents (HWPX as DOCX written by the DOCX writer: LibreOffice doesn't
 open HWP itself; XLSX, XLS and ODS don't: the spreadsheet print engine shapes with HarfBuzz). Without LibreOffice the
 file fails with "This script needs
-LibreOffice to convert correctly" and the script's name instead of becoming a broken PDF. The same scan also finds
+the Filee renderer or LibreOffice to convert correctly" and the script's name instead of becoming a broken PDF. With the
+Filee renderer on (the default) none of this applies to the files it takes: its edges aren't `Unshaped`, it shapes
+the text itself; only a file it leaves to rhwp (something it doesn't draw yet) goes through this. The same scan also finds
 text rhwp has no widths for: its width tables cover only ASCII and Latin-1, general punctuation, math, the CJK forms
 and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish, Vietnamese, Greek, Cyrillic, ... — or a
 combining mark is laid out at a fixed half-em. Such a document takes a route without unshaped edges when one exists
@@ -735,8 +738,9 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
 
 - **Route.** Cost 12; the engine is not in the default priority list, which adds 9: 21, below the HWPX writer and
   rhwp (about 31) and LibreOffice's fallback (25 + 9), above LibreOffice when Settings → Engines → *Use LibreOffice
-  for spreadsheets → PDF* is on (10 + 9), so that choice still holds. CSV and TSV have no page setup and keep their
-  route through the HWPX writer (each sheet fitted to the page width). Its edges aren't `Unshaped`: Arabic, Hebrew,
+  for spreadsheets → PDF* is on (10 + 9), so that choice still holds. CSV and TSV have no page setup: the Filee
+  renderer lays them out as one table each (with it off, the HWPX writer and rhwp, each sheet fitted to the page
+  width); with LibreOffice installed and chosen for spreadsheets, CSV goes to LibreOffice like XLSX. Its edges aren't `Unshaped`: Arabic, Hebrew,
   Indic and Thai sheets are shaped. Pictures of the pages go on from its PDF through PDFium.
 - **Units** (`SheetPagination`, `SheetRowHeights`, `SheetText`). Excel measures at 96 dpi (0.75 pt a pixel) with
   the Normal style's font at a whole pixel size. A column of width *w* (characters, as files store it) is
@@ -861,28 +865,47 @@ rendered glyph with its source bitmap.
 ## Filee renderer: PDF output
 
 Groundwork for Filee's own document renderer (GitHub Project 4, "Filee: built-in engines", item *Layout engine: PDF
-backend and font subsetting spike*). The layout engine's page model is drawn through it; the engine itself is a
-preview the user turns on (below).
+backend and font subsetting spike*). The layout engine's page model is drawn through it; the engine itself is the
+default document → PDF engine (below).
 
 **Recommended decision (for the maintainer to confirm, "Decisions to make" #1): write PDFs with Skia's PDF backend
 (`SKDocument.CreatePdf`) and fonts subset by Filee (option A), not with a page writer of Filee's own on PDFsharp's
 low-level objects (option B).**
 
-### The engine: "Use the Filee renderer (preview)"
+### The engine: "Use the Filee renderer"
 
 `Typesetting/FileeRendererConverter.cs` (id `layout`, "Filee renderer") reads a document into the document model,
-lays it out and writes the PDF in one step, in-process. Settings → Engines → *Use the Filee renderer (preview)* turns
-it on (`AppSettings.FileeRenderer`, off by default); off, it has no edges and is shown as off, so every route stays
-as it was.
+lays it out and writes the PDF in one step, in-process. Settings → Engines → *Use the Filee renderer* turns it on and
+off (`AppSettings.FileeRenderer`, on by default; settings schema 91 turned it on once for everyone, as it had been a
+preview of unreleased builds). Off, it has no edges and is shown as off, and documents → PDF go through the HWPX
+writer and rhwp again. The engine tests read no settings: there `EngineEnvironment.FileeRenderer` is off unless a
+test turns it on.
 
 - **What it takes:** HWPX and HWP (read with 한글's stored line layout; HWP through the [HWP reader](#hwp-reader)),
   Word documents (DOCX, DOCM, DOTX, DOTM, and DOC, DOT, WPS through the [DOC reader](#doc-reader)), ODT, RTF, text,
-  Markdown, HTML and MHTML, EPUB, KEPUB, MOBI / AZW3 / AZW / PRC, FB2, HTMLZ, TXTZ, and Pandoc's formats when Pandoc
-  is installed, to PDF. Pictures of the pages go on from its PDF through PDFium, which applies the image options.
-- **Slide decks:** PPTX, PPTM, POTX and PPSX to PDF, PNG and JPG through the [slide renderer](#filee-renderer-slides):
-  a page or a picture per slide, the pictures drawn directly (no PDF → PDFium step) with the image options applied.
-- **What keeps its route:** spreadsheets ([Spreadsheet printing](#spreadsheet-printing)), other presentations (PPT, ODP), PDF and OFD.
-- **Cost 1:** it wins over rhwp and the HWPX writer whatever their place in the priority list.
+  Markdown, HTML and MHTML, EPUB, KEPUB, MOBI / AZW3 / AZW / PRC, FB2, HTMLZ, TXTZ, the other e-book and markup
+  formats Filee reads, CSV and TSV (one table each: sheet print needs a page setup), OFD (the pages the
+  [OFD reader](#ofd-reader) rebuilds, tables and seals included), and Pandoc's formats when Pandoc is installed, to
+  PDF. Pictures of the pages go on from its PDF through PDFium, which applies the image options.
+- **Slide decks** (`Slides/SlideFormats.cs`): PPTX, PPTM, POTX, POTM and PPSX to PDF, PNG and JPG through the
+  [slide renderer](#filee-renderer-slides): a page or a picture per slide, the pictures drawn directly (no PDF →
+  PDFium step) with the image options applied.
+- **What keeps its route:** workbooks ([Spreadsheet printing](#spreadsheet-printing)), other presentations (PPT, ODP)
+  and PDF.
+- **Cost 1:** it wins over rhwp and the HWPX writer whatever their place in the priority list (1 + at most 9 against
+  about 31).
+- **LibreOffice choices still hold.** On cost alone it would also win over LibreOffice where Settings → Engines → *When
+  LibreOffice is installed* chooses it (10 + 9 for Word documents and spreadsheets, 0 + 9 for presentations, a tie
+  the renderer would win as the converter registered first). So while LibreOffice is installed (`LibreOfficeConverter.Installed`,
+  checked with the engines' status) the engine leaves out what the user chose it for: DOCX, DOC, ODT and RTF for Word
+  documents, CSV for spreadsheets, and the decks (PPTX, and PPTM, POTX, POTM, PPSX, which reach LibreOffice as PPTX
+  through `ooxml`; all targets) for presentations. The Word variants (DOCM, DOTX, DOTM, DOT, WPS) and TSV stay with
+  the renderer: LibreOffice takes them only at its fallback cost, so left out they would go to the HWPX writer and
+  rhwp, as they did before the renderer. Without LibreOffice the switches change
+  nothing. *Use LibreOffice for presentations* was on by default when the alternative was the HWPX writer and rhwp;
+  settings schema 91 turned it off once, so decks reach the slide renderer, and it is off for new users. The other two
+  were always off by default and are left as the user set them. Tests: `FileeRendererConverterTests`
+  (`Libreoffice_chosen_for_*`), `RoutePlannerTests` (the costs).
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
   or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects and charts, vertical
   text, form controls, videos, SmartArt — and a deck for what the slide renderer doesn't draw (charts without a
@@ -1300,8 +1323,8 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     glyphs. The render matrix has Lao, Khmer, Myanmar and a right-to-left paragraph with Latin, numbers and brackets:
     text read back in order and no overlapping glyphs. 한글 itself lays such a Hebrew line out against UAX #9 (its words
     come out in reverse order), so Filee follows the standard there.
-  - With the renderer preview off, `ComplexScripts` and the `Unshaped` edges still send such documents to
-    LibreOffice; on, the new engine draws them. Not yet: vertical text, and Word's and 한글's character spacing for
+  - With the renderer off, `ComplexScripts` and the `Unshaped` edges still send such documents to LibreOffice; on
+    (the default), the new engine draws them. Not yet: vertical text, and Word's and 한글's character spacing for
     Arabic (kashida justification).
 
 The PDF writer's subsets now keep only the characters the text has in their cmap: CJK fonts map 文 and the Kangxi
@@ -1321,15 +1344,16 @@ line, which 한글 keeps on one line.
 
 Filee's own slide renderer (GitHub Project 4, item *Built-in slide renderer (PPTX → PDF / PNG)*), in
 `src/Filee.Engines/Slides`: a deck read into a slide model and drawn with the layout engine's text services onto the
-page record PDF and pictures are written from, without LibreOffice. It is part of the Filee renderer preview: with
-*Use the Filee renderer (preview)* on, PPTX, PPTM, POTX and PPSX → PDF, PNG and JPG take it (`FileeRendererConverter`,
-edges `Checked`); off, every route stays as it was. `PptxReader` (Hwp/Hwpx/Pptx) stays the reader the document writers
+page record PDF and pictures are written from, without LibreOffice. It is part of the Filee renderer: with
+*Use the Filee renderer* on (the default), PPTX, PPTM, POTX, POTM and PPSX → PDF, PNG and JPG take it
+(`FileeRendererConverter`, edges `Checked`, formats in `Slides/SlideFormats.cs`); off, decks go through the HWPX
+writer and rhwp. `PptxReader` (Hwp/Hwpx/Pptx) stays the reader the document writers
 use: it turns a deck into flowing pages of text boxes, which is right for DOCX or HWPX output but not for a picture of
 a slide.
 
-- **Cost 0:** with the priority list's penalty it ties LibreOffice's slides edge (0 when Settings → Engines sends
-  presentations to LibreOffice, the default) at the bottom of the list, and the planner keeps the edge it met first,
-  the Filee renderer's (registered before LibreOffice). A user who moves LibreOffice up the list keeps LibreOffice.
+- **Cost 0:** with the priority list's penalty it would tie LibreOffice's slides edge (0 when Settings → Engines →
+  *Use LibreOffice for presentations → PDF* is on; off by default since settings schema 91) at the bottom of the list.
+  While that switch is on and LibreOffice is installed, the renderer leaves the decks out, so LibreOffice takes them.
 - **Slide model** (`SlideModel.cs`): the deck's size and slides; each slide's background and elements in drawing order
   (the master's and layout's own shapes first). Elements have a box in their parent's coordinates, a rotation and
   mirroring: shapes (outlines with a fill, a line and a text frame; a picture is a shape filled with its picture),
@@ -1493,7 +1517,7 @@ the same model (`tests/Filee.Engines.Tests/OdtTests.cs` builds such an ODT in co
 model, the hostile inputs and, when LibreOffice is installed, LibreOffice reading the written file).
 
 `OdtWriterConverter` (engine `odt-writer`) offers every built-in reader's format → ODT at cost 8, like the DOCX writer,
-so it wins over Pandoc and LibreOffice. ODT → PDF goes through the HWPX writer and rhwp until the layout engine ships.
+so it wins over Pandoc and LibreOffice. ODT → PDF goes through the Filee renderer (the HWPX writer and rhwp with it off).
 
 Not yet: numbering restarts in the middle of a list (only an item's start value on the first item counts), outline numbering
 of headings (`text:outline-style`), different first-page headers with content, gradients (a gradient fills with its
@@ -1560,8 +1584,8 @@ so with LibreOffice installed they take LibreOffice instead (Word 6.0 / 95 read 
 LibreOffice reads them whole). Their text is scanned for scripts that need shaping like a DOCX's (`ComplexScripts`), so
 an Arabic DOC → PDF takes LibreOffice when rhwp would draw it.
 
-The edges are the DOCX ones: DOC → HWPX costs 10, → DOCX and ODT 8, so DOC → PDF goes through the HWPX writer and rhwp
-(or the Filee renderer when it is on) at 31 against LibreOffice's 34, and DOC → DOCX through the DOCX writer. Settings
+The edges are the DOCX ones: DOC → HWPX costs 10, → DOCX and ODT 8, so DOC → PDF goes through the Filee renderer (or,
+with it off, the HWPX writer and rhwp at 31 against LibreOffice's 34), and DOC → DOCX through the DOCX writer. Settings
 → Engines → *Use LibreOffice for Word documents → PDF* sends DOC → PDF to LibreOffice as it does DOCX.
 
 Limits: the streams count against DocumentLimits like the HWP reader's (a stream up to 64 MB, all of them 1 GB);
@@ -1739,7 +1763,8 @@ Lua filter drops the pictures, figures keep their captions).
 
 OFD (GB/T 33190-2016) is China's fixed-layout format: fully digitalized e-invoices (数电票), contracts and official
 documents. `Ofd/OfdReader*.cs` reads it into the document model with no external engine, so OFD → DOCX and HWPX are
-one step, → PDF two (rhwp), and TXT, Markdown, HTML, EPUB follow from there. OFD is read only (`Writable: false`) and
+one step, → PDF one through the Filee renderer (two, HWPX writer and rhwp, with it off), and TXT, Markdown, HTML, EPUB
+follow from there. OFD is read only (`Writable: false`) and
 sits on the office donut (settings schema 27 teaches existing donuts `.ofd`).
 
 - **Package** (`Ofd/OfdPackage.cs`): OFD.xml → the first document (Document.xml) → its pages, template pages and
@@ -2066,7 +2091,8 @@ A web page saved as "Webpage, Single File" (`.mhtml` from Chrome and Edge, `.mht
 is a MIME message like an e-mail: the page and its pictures, style sheets and frames as parts of a
 multipart/related body (RFC 2557). `Email/MhtmlArchive.cs` reads it with the same MimeKit parser and writes the page
 as **one HTML file** (`MHTML → HTML`, engine `email`); the HWPX and DOCX writers read archives directly through the
-same code (`DocumentReaders`), so MHTML → DOCX / HWPX is one step and → PDF two (rhwp), and TXT, Markdown, EPUB and
+same code (`DocumentReaders`), so MHTML → DOCX / HWPX is one step and → PDF one (the Filee renderer; two through rhwp
+with it off), and TXT, Markdown, EPUB and
 the other HTML targets go on from the page.
 
 - **The page** is the root of multipart/related (its `start` parameter, else the first part), else the first
@@ -2527,7 +2553,7 @@ HWP onto the document model itself: the records are written out as the OWPML pac
 `HwpxReader` reads that, so both 한글 formats share every mapping, the stored line layout included. The same package
 is Filee's HWP → HWPX conversion: the HWPX writer's `hwp → hwpx` edge costs 4, so with the engines' places in the
 default order it wins over rhwp's `export-hwpx` (4 + 8 against 10 + 3). HWP → DOCX, HTML, EPUB and Markdown go
-through the document model like any other format; HWP → PDF takes the Filee renderer when it is on, rhwp otherwise.
+through the document model like any other format; HWP → PDF takes the Filee renderer (on by default), rhwp otherwise.
 
 - `Documents/CompoundFile.cs`: a read-only compound file (CFB) reader of Filee's own, shared with the
   [DOC reader](#doc-reader). Every sector number is checked against the file, every chain is walked at most once per
@@ -2571,8 +2597,8 @@ stale. `HwpReaderTests` reads HWP files rhwp makes from HWPX written in code int
 `DocumentHostileInputTests` and `DocumentFuzzTests` hold the hostile compound files and records.
 
 Not read yet: charts, video and form objects (as in HWPX), memos, change tracking and the extended master pages
-(last page, any page) at a section's end. With the Filee renderer on, HWP → PDF takes it (`HwpReader.ReadForLayout`);
-otherwise rhwp stays the HWP → PDF engine. Video and form objects are not written into the package, so the renderer's
+(last page, any page) at a section's end. With the Filee renderer on (the default), HWP → PDF takes it
+(`HwpReader.ReadForLayout`); with it off, or for a file it can't draw yet, rhwp stays the HWP → PDF engine. Video and form objects are not written into the package, so the renderer's
 check doesn't see them in an HWP.
 
 The format document asks that products made with it say so: "본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를
@@ -2765,7 +2791,9 @@ route, HWPX writer → rhwp (a 640-page novel: about a minute against some 48 mi
 stays the default so results don't change under users. The PDF edges cost 23: in the default engine order the
 built-in route costs 31 (HWPX writer 10 + 8, rhwp 10 + 3) and calibre 23 + 9, so the built-in route wins by one; once
 the user moves calibre above the HWPX writer in Settings → *Engines*, calibre costs at most 31 and the built-in route
-at least 32. LIT and LRF, which only calibre reads, go straight to PDF instead of calibre → EPUB → HWPX writer → rhwp. When rhwp runs out of time and calibre is installed, the error says to rank calibre higher; Filee
+at least 32. With the Filee renderer on (the default) e-books → PDF take it (1 + 9) whatever calibre's place: the
+ranking matters only with it off. LIT and LRF, which only calibre reads, go straight to PDF instead of calibre → EPUB →
+HWPX writer → rhwp. When rhwp runs out of time and calibre is installed, the error says to rank calibre higher; Filee
 never switches engines by itself.
 
 - The pinned `calibre-64bit-<version>.msi` from download.calibre-ebook.com is unpacked like LibreOffice; the folder
@@ -2954,8 +2982,8 @@ all expected bytes have been written; failures and cancellation preserve any pre
 - Each parallel worker gets its own profile under `%APPDATA%\Filee\libreoffice-profiles` (LibreOffice silently
   fails when two conversions share a profile).
 - LibreOffice doesn't open HWP or HWPX: Filee reads them itself ([HWP reader](#hwp-reader), [HWPX
-  reader](#hwpx-reader)) and writes DOCX, ODT, HWPX, TXT, Markdown, HTML and EPUB with its own writers; PDF is rhwp's
-  or the Filee renderer's. Only HWP → RTF still takes an optional engine, as there is no built-in RTF writer: Filee
+  reader](#hwpx-reader)) and writes DOCX, ODT, HWPX, TXT, Markdown, HTML and EPUB with its own writers; PDF is the
+  Filee renderer's (rhwp's with it off). Only HWP → RTF still takes an optional engine, as there is no built-in RTF writer: Filee
   writes Markdown that Pandoc turns into RTF, or, without Pandoc, DOCX or ODT that LibreOffice does. Until settings
   schema 90 LibreOffice opened HWP with the H2Orestart extension (GPL, Java) and a Java runtime downloaded with it
   (about 50 MB, 130 MB on disk); Filee removes the copies an earlier version installed (`EngineInstaller.RemoveRetired`,

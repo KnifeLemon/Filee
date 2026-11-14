@@ -1,9 +1,13 @@
 // Filee's own document renderer as an engine (id "layout", "Filee renderer"): HWPX, HWP (through the HWPX package its
 // records become, Hwp/Binary) and the documents Filee reads into its document model (Word, ODT, RTF, text, Markdown,
-// HTML, e-books, and Pandoc's formats when Pandoc is there) → PDF in one step, read, laid out and written in-process.
-// A preview the user turns on in Settings → Engines; off, the engine is unavailable and every route stays as it was.
-// Slide decks (PPTX, PPTM, POTX, PPSX) → PDF, PNG and JPG go through Filee's slide renderer (Slides/): a page or a
-// picture per slide. Spreadsheets, other presentations, PDF and OFD keep their own routes.
+// HTML, e-books, CSV / TSV tables, OFD, and Pandoc's formats when Pandoc is there) → PDF in one step, read, laid out and
+// written in-process. The default document → PDF engine; turned off in Settings → Engines, the engine is unavailable and
+// those files go through the HWPX writer and rhwp again.
+// Slide decks (SlideFormats: PPTX, PPTM, POTX, POTM, PPSX) → PDF, PNG and JPG go through Filee's slide renderer
+// (Slides/): a page or a picture per slide. Spreadsheets (sheet print), other presentations and PDF keep their own routes.
+//
+// Settings → Engines → "When LibreOffice is installed" still holds: with LibreOffice there and chosen for Word documents,
+// presentations or spreadsheets, the engine leaves those files to it (its edge would win on cost otherwise).
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
 // doesn't draw yet (OLE objects and charts, vertical text, form controls, SmartArt), and such a file takes the route
@@ -38,42 +42,80 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// <summary>Package parts read for the check at most, against a file built to make the check slow.</summary>
     private const long MaxScannedBytes = 64 * 1024 * 1024;
 
-    /// <summary>Built-in readers of documents (not of sheets, slides, PDF or OFD, which have routes of their own).</summary>
+    /// <summary>
+    /// Built-in readers of documents (not of workbooks, which sheet print takes, slides, or PDF). CSV and TSV have no
+    /// page setup for sheet print and are laid out as one table each; OFD as the pages its reader rebuilds.
+    /// </summary>
     private static readonly string[] Documents =
     [
         "hwpx", "hwp", "docx", "docm", "dotx", "dotm", "doc", "dot", "wps", "odt", "rtf", "txt", "md", "html", "mhtml",
         "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "chm", "pdb", "pml", "tcr", "rb", "snb", "oeb",
-        "ipynb", "opml", "textile", "mediawiki", "rst", "org", "dbk",
+        "ipynb", "opml", "textile", "mediawiki", "rst", "org", "dbk", "csv", "tsv", "ofd",
     ];
 
     /// <summary>
-    /// Slide decks the slide renderer reads, to PDF and pictures. Cost 0: with the priority list's penalty it ties
-    /// LibreOffice's slides edge (0, Settings → Engines → presentations through LibreOffice) at the bottom of the list,
-    /// and the planner keeps the edge it met first, this engine's (registered before LibreOffice). Moving LibreOffice up
-    /// the list keeps LibreOffice.
+    /// Word processor files left to LibreOffice when Settings → Engines chooses it for Word documents: the ones its chosen
+    /// edge reads (10 + 9, which loses to this engine's 1 + 9). The variants (DOCM, DOTX, DOTM, DOT, WPS) stay: LibreOffice
+    /// takes them only at its fallback cost, so without this engine they would go to the HWPX writer and rhwp instead.
     /// </summary>
-    private static readonly string[] Slides = ["pptx", "pptm", "potx", "ppsx"];
+    private static readonly string[] WordProcessor = ["docx", "doc", "odt", "rtf"];
 
-    private static readonly string[] SlideTargets = ["pdf", "png", "jpg"];
+    /// <summary>
+    /// Tables left to LibreOffice when Settings → Engines chooses it for spreadsheets, as XLSX goes to it. Not TSV, which
+    /// LibreOffice doesn't take (it would go to the HWPX writer and rhwp).
+    /// </summary>
+    private static readonly string[] Tables = ["csv"];
+
+    /// <summary>
+    /// Decks → PDF and pictures. Cost 0: with the priority list's penalty it ties LibreOffice's chosen slides edge (0)
+    /// at the bottom of the list, so the decks are left to LibreOffice while it is chosen for presentations.
+    /// </summary>
+    private static string[] Slides => SlideFormats.Decks;
 
     /// <summary>Pixels of one slide picture at most; a larger picture is drawn at a lower resolution.</summary>
     private const long MaxSlidePixels = 200_000_000;
 
     private static readonly HashSet<string> WordFormats = new(StringComparer.OrdinalIgnoreCase) { "docx", "docm", "dotx", "dotm" };
 
+    private readonly Func<bool> _findLibreOffice;
     private bool? _pandoc;
+    private bool? _libreOffice;
+
+    /// <param name="libreOfficeInstalled">Whether LibreOffice is there (tests stand one in); <see cref="LibreOfficeConverter.Installed"/> by default.</param>
+    public FileeRendererConverter(Func<bool>? libreOfficeInstalled = null) =>
+        _findLibreOffice = libreOfficeInstalled ?? LibreOfficeConverter.Installed;
 
     public string Id => "layout";
     public string DisplayName => "Filee renderer";
     public int MaxParallelism => 0;
 
-    /// <summary>None while the preview is off, so no planner, however it was made, routes through it.</summary>
-    public IReadOnlyList<ConversionEdge> Edges => !EngineEnvironment.FileeRenderer ? [] :
-        Documents.Where(DocumentReaders.BuiltInFormats.Contains)
-            .Concat((_pandoc ??= PandocConverter.Locate() is not null) ? DocumentReaders.PandocFormats : [])
-            .Select(from => new ConversionEdge(from, "pdf", Cost, Checked: true))
-            .Concat(Slides.SelectMany(from => SlideTargets.Select(to => new ConversionEdge(from, to, 0, Checked: true))))
-            .ToList();
+    /// <summary>
+    /// None while it is turned off, so no planner, however it was made, routes through it. Without the formats the user
+    /// chose LibreOffice for, while LibreOffice is there.
+    /// </summary>
+    public IReadOnlyList<ConversionEdge> Edges
+    {
+        get
+        {
+            if (!EngineEnvironment.FileeRenderer)
+                return [];
+            var libreOffice = _libreOffice ??= _findLibreOffice();
+            var leftOut = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (libreOffice && EngineEnvironment.LibreOfficeForDocuments)
+                leftOut.UnionWith(WordProcessor);
+            if (libreOffice && EngineEnvironment.LibreOfficeForSheets)
+                leftOut.UnionWith(Tables);
+            if (libreOffice && EngineEnvironment.LibreOfficeForSlides)
+                leftOut.UnionWith(Slides);
+            return Documents.Where(DocumentReaders.BuiltInFormats.Contains)
+                .Concat((_pandoc ??= PandocConverter.Locate() is not null) ? DocumentReaders.PandocFormats : [])
+                .Where(from => !leftOut.Contains(from))
+                .Select(from => new ConversionEdge(from, "pdf", Cost, Checked: true))
+                .Concat(Slides.Where(from => !leftOut.Contains(from))
+                    .SelectMany(from => SlideFormats.Targets.Select(to => new ConversionEdge(from, to, 0, Checked: true))))
+                .ToList();
+        }
+    }
 
     /// <summary>Pictures of slides are drawn here, with the image options (turn, mirror, size) applied.</summary>
     public bool Transforms(string from, string to) => Slides.Contains(from) && to != "pdf";
@@ -81,8 +123,9 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     public EngineStatus GetStatus()
     {
         _pandoc = PandocConverter.Locate() is not null;
+        _libreOffice = _findLibreOffice();
         return EngineEnvironment.FileeRenderer
-            ? EngineStatus.Available(version: "preview")
+            ? EngineStatus.Available("HWP, HWPX, Word, ODT, RTF, OFD, e-books, PPTX → PDF", EngineVersions.BuiltIn)
             : EngineStatus.Unavailable("engine.reason.preview_off");
     }
 

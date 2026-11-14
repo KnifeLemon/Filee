@@ -590,12 +590,14 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(new HBorder(HBorderStyle.Solid, 8 / 8.0 * 25.4 / 72, "#FF0000"), border.Borders.Top);
         Assert.Equal(HBorderStyle.None, border.Borders.Bottom.Style);
         Assert.Equal((HBorderStyle.Dash, "#DDEEFF", 400, true), (border.Between!.Value.Style, border.Fill, border.Offsets.Top, border.Connect));
-        Assert.Equal(new HLineBreaking(HLatinBreak.BreakWord, Kinsoku: false, OverflowPunctuation: false, CompressPunctuation: true, AutoSpaceLatin: false, AutoSpaceDigits: false),
+        Assert.Equal(new HLineBreaking(HLatinBreak.BreakWord, Kinsoku: false, OverflowPunctuation: false, CompressPunctuation: true, AutoSpaceLatin: false, AutoSpaceDigits: false,
+            SpreadEastAsian: true),
             paragraphs[0].Format.Layout!.Breaking);
 
         // Word's defaults when nothing is said.
         Assert.Equal(HParaBorder.None, paragraphs[1].Format.Layout!.Border);
-        Assert.Equal(new HLineBreaking(HLatinBreak.KeepWord, Kinsoku: true, OverflowPunctuation: true, CompressPunctuation: false, AutoSpaceLatin: true, AutoSpaceDigits: true),
+        Assert.Equal(new HLineBreaking(HLatinBreak.KeepWord, Kinsoku: true, OverflowPunctuation: true, CompressPunctuation: false, AutoSpaceLatin: true, AutoSpaceDigits: true,
+            SpreadEastAsian: true),
             paragraphs[1].Format.Layout!.Breaking);
     }
 

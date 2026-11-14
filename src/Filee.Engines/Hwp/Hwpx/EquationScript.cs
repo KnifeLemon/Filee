@@ -83,7 +83,10 @@ internal sealed record MathStyled(string Command, MathNode Body) : MathNode;
 /// <summary>A space: a normal one (~, <c>Width</c> 1) or a quarter of one (`, 0.25).</summary>
 internal sealed record MathSpace(double Width = 1) : MathNode;
 
-/// <summary>An alignment mark (&amp;) of a Word equation array: the cell boundary of cases, nothing elsewhere.</summary>
+/// <summary>
+/// An alignment mark (&amp;) of a Word equation array: the cell boundary of cases, where MathLayout lines up the lines of
+/// a pile; the script and linear text leave it out.
+/// </summary>
 internal sealed record MathAlign : MathNode;
 
 /// <summary>Width, height and baseline (from the top) of laid out math.</summary>
@@ -152,12 +155,17 @@ internal static class EquationScript
     /// (rhwp draws an equation on one line, past the margin). What doesn't fit or has no such sign stays as it is.
     /// </summary>
     /// <param name="width">Width of a line, 0 when it isn't known.</param>
-    public static IReadOnlyList<MathNode> BreakLines(MathNode equation, double width, double size)
+    /// <param name="drawn">
+    /// The width another renderer draws an item at (Filee's own, MathLayout), in the same units: lines then fit both it
+    /// and rhwp.
+    /// </param>
+    public static IReadOnlyList<MathNode> BreakLines(MathNode equation, double width, double size, Func<MathNode, double>? drawn = null)
     {
         var inner = equation;
         while (inner is MathRow { Items: [MathRow only] })
             inner = only;
-        if (width <= 0 || inner is not MathRow { Items.Count: > 1 } row || Measure(row, size).Width <= width)
+        double Width(MathNode node) => drawn is null ? Measure(node, size).Width : Math.Max(Measure(node, size).Width, drawn(node));
+        if (width <= 0 || inner is not MathRow { Items.Count: > 1 } row || Width(row) <= width)
             return [equation];
 
         var lines = new List<MathNode>();
@@ -181,7 +189,7 @@ internal static class EquationScript
             if (item is MathSymbol { Text: "+" or "-" or "=" } && pending.Count > 0)
                 Flush();
             pending.Add(item);
-            pendingWidth += Measure(item, size).Width;
+            pendingWidth += Width(item);
         }
         Flush();
         lines.Add(new MathRow(line));

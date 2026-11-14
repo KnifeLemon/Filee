@@ -95,6 +95,9 @@ public sealed class LibreOfficeConverter : IConverter
     public int MaxParallelism => Workers;
     public IReadOnlyList<ConversionEdge> Edges { get; private set; }
 
+    /// <summary>Whether a LibreOffice was found (when the engine was made or its status last checked).</summary>
+    internal bool Found => _soffice is not null;
+
     public EngineStatus GetStatus()
     {
         Locate();
@@ -433,11 +436,13 @@ public sealed class LibreOfficeConverter : IConverter
         // what nothing else reads or writes (DOC, XLS, PPT, OpenDocument, DOCX output, ...).
         const int Fallback = 25;
         // Chosen in Settings → Engines: cheap enough to beat the built-in route even at the bottom of the engine list
-        // (its priority adds at most 9; PPTX → HWPX → PDF costs about 32).
+        // (its priority adds at most 9; PPTX → HWPX → PDF costs about 32). The slide renderer ties it (0 + 9) and leaves
+        // the decks to LibreOffice while it is chosen.
         const int Preferred = 0;
         // Word and spreadsheet sources the built-in route also reads: cheap enough to win for the file itself (10 + 9
         // against about 31 through the HWPX writer and rhwp), not as a hop for other formats, which the DOCX writer can
-        // turn into DOCX (Excel → DOCX → LibreOffice would cost 17 + 19).
+        // turn into DOCX (Excel → DOCX → LibreOffice would cost 17 + 19). The Filee renderer costs less (1 + 9): it
+        // leaves a chosen kind of file to LibreOffice itself (FileeRendererConverter.Edges).
         const int Chosen = 10;
         Add(Writer, [.. Writer, "txt", "html"], Fallback);
         // RTF → TXT (#1204): the built-in routes read RTF through Pandoc, which makes a code span of every run in a
@@ -465,6 +470,15 @@ public sealed class LibreOfficeConverter : IConverter
     /// The user's own LibreOffice when they chose one in Settings → Engines, else Filee's copy (engines/libreoffice),
     /// else a LibreOffice installed on the PC. Each conversion uses its own profile, so an open LibreOffice is untouched.
     /// </summary>
+    /// <summary>
+    /// True when a LibreOffice is there, where <see cref="Locate"/> looks: other engines leave a conversion the user
+    /// chose LibreOffice for to it (<see cref="Typesetting.FileeRendererConverter"/>).
+    /// </summary>
+    internal static bool Installed() =>
+        (EngineEnvironment.OwnProgram("libreoffice", "soffice.exe")
+            ?? EngineEnvironment.BundledProgram("libreoffice", "soffice.exe")
+            ?? EngineEnvironment.SystemProgram("libreoffice", "soffice.exe")) is not null;
+
     private void Locate()
     {
         _soffice = EngineEnvironment.OwnProgram("libreoffice", "soffice.exe")

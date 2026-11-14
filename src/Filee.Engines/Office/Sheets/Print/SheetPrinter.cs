@@ -5,6 +5,7 @@
 
 using Filee.Engines.Documents;
 using Filee.Engines.Rendering;
+using Filee.Engines.Typesetting;
 using SkiaSharp;
 
 namespace Filee.Engines.Office.Sheets;
@@ -23,11 +24,12 @@ internal static class SheetPrinter
 
     /// <summary>The workbook as a PDF.</summary>
     /// <param name="progress">Pages drawn and written, as a fraction.</param>
+    /// <param name="fonts">The fonts to draw with; the installed ones when null.</param>
     public static byte[] ToPdf(Workbook book, SheetPrintSource source, CancellationToken cancellationToken = default,
-        IProgress<double>? progress = null, DocumentLimits? limits = null, DateTime? now = null)
+        IProgress<double>? progress = null, DocumentLimits? limits = null, DateTime? now = null, FontResolver? fonts = null)
     {
         using var printed = Print(book, source, limits ?? DocumentLimits.Default, now ?? DateTime.Now,
-            progress is null ? null : new Progress<double>(p => progress.Report(p * 0.5)), cancellationToken);
+            progress is null ? null : new Progress<double>(p => progress.Report(p * 0.5)), cancellationToken, fonts);
         using var output = new MemoryStream();
         PdfPageWriter.Write(output, printed.Pages, new PdfDocumentInfo { Outline = printed.Outline },
             progress is null ? null : new Progress<double>(p => progress.Report(0.5 + p * 0.5)), cancellationToken);
@@ -50,13 +52,14 @@ internal static class SheetPrinter
         }
     }
 
+    /// <param name="resolver">The fonts to draw with; the installed ones when null.</param>
     internal static Printed Print(Workbook book, SheetPrintSource source, DocumentLimits limits, DateTime now,
-        IProgress<double>? progress, CancellationToken cancellationToken)
+        IProgress<double>? progress, CancellationToken cancellationToken, FontResolver? resolver = null)
     {
         var printed = new Printed();
         try
         {
-            var fonts = printed.Fonts = new SheetFonts();
+            var fonts = printed.Fonts = new SheetFonts(resolver);
             var guard = new LayoutGuard(limits, cancellationToken);
             var sheets = new List<(Worksheet Sheet, SheetIndex Index, SheetPrintPlan Plan)>();
             var count = 0;
@@ -75,9 +78,9 @@ internal static class SheetPrinter
             foreach (var (sheet, index, plan) in sheets)
             {
                 var conditional = plan.Pages.Count > 0 ? ConditionalFormatting.Apply(sheet, Bounds(plan.Pages), index) : [];
-                var pictures = Pictures(sheet, printed.Images);
+                var drawings = Drawings(sheet, printed.Images);
                 var headerPictures = HeaderPictures(sheet, printed.Images);
-                var renderer = new SheetPageRenderer(book, plan, index, fonts, conditional, pictures);
+                var renderer = new SheetPageRenderer(book, plan, index, fonts, conditional, drawings);
                 if (sheet.PageSetup.FirstPageNumber is { } first)
                     number = first;
                 renderer.FirstPageNumber = number;
@@ -120,12 +123,15 @@ internal static class SheetPrinter
         return new CellRange(top, left, bottom, right);
     }
 
-    private static List<(SheetPicture, SKImage)> Pictures(Worksheet sheet, List<SKImage> images)
+    /// <summary>The sheet's drawings in drawing order, pictures with their decoded image (those Skia can't decode left out).</summary>
+    private static List<(SheetDrawing, SKImage?)> Drawings(Worksheet sheet, List<SKImage> images)
     {
-        var result = new List<(SheetPicture, SKImage)>();
-        foreach (var picture in sheet.Pictures)
+        var result = new List<(SheetDrawing, SKImage?)>();
+        foreach (var drawing in sheet.Drawings)
         {
-            if (Decode(picture.Data) is { } image)
+            if (drawing is not SheetPicture picture)
+                result.Add((drawing, null));
+            else if (Decode(picture.Data) is { } image)
             {
                 images.Add(image);
                 result.Add((picture, image));

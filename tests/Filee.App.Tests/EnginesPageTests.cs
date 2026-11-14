@@ -208,11 +208,12 @@ public class EnginesPageTests
     }
 
     [AvaloniaFact]
-    public void The_filee_renderer_switch_is_off_by_default_and_saves()
+    public void The_filee_renderer_switch_is_on_by_default_and_saves()
     {
         TestServices.EnsureInitialized("en");
         var store = AppHost.Get<UserDataStore>();
-        Assert.False(new Filee.Core.Settings.AppSettings().FileeRenderer);
+        Assert.True(new Filee.Core.Settings.AppSettings().FileeRenderer);
+        Assert.False(new Filee.Core.Settings.AppSettings().LibreOfficeForSlides);
         var before = store.Settings.FileeRenderer;
         var vm = new EnginesPageViewModel(store, AppHost.Get<Filee.Core.Conversion.ConverterCatalog>(), AppHost.Get<ILocalizer>(),
             AppHost.Get<EngineDownloadService>());

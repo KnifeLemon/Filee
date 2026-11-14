@@ -143,6 +143,8 @@ internal static class DocumentTranslator
         {
             foreach (var p in CollectBlockParagraphs(sec.FirstPageHeader ?? []))
                 yield return p;
+            foreach (var p in CollectBlockParagraphs(sec.FirstPageFooter ?? []))
+                yield return p;
             foreach (var header in sec.Headers)
             {
                 foreach (var p in CollectBlockParagraphs(header.Blocks))

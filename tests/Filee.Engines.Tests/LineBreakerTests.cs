@@ -96,6 +96,31 @@ public class LineBreakerTests
     public void Breaks_latin_words_anywhere(string expected) =>
         Assert.Equal(expected, Mark(Unmark(expected), new LineBreakRules(BreakLatinWords: true)));
 
+    [Theory]
+    [InlineData("한국어 |문서는 |단어 |사이에서 |나뉜다.")]
+    [InlineData("中|文|按|字|断|行，|句|号|不|在|行|首。")]
+    [InlineData("日|本|語|も|「同|じ」。")]
+    public void Words_rules_keep_korean_words_and_break_chinese_and_japanese_between_characters(string expected) =>
+        Assert.Equal(expected, Mark(Unmark(expected), new LineBreakRules(KeepKoreanWords: true)));
+
+    [Theory]
+    [InlineData("文文", 1, true)]
+    [InlineData("文。", 1, false)] // closing punctuation doesn't start a line
+    [InlineData("文ー", 1, false)] // nor a prolonged sound mark
+    [InlineData("「文", 1, false)] // an opening bracket doesn't end one
+    [InlineData("“文", 1, false)]
+    [InlineData("文字", 1, false, "字")] // the document's own characters
+    public void A_word_broken_inside_keeps_the_east_asian_rules(string text, int index, bool allowed, string? notAtLineStart = null) =>
+        Assert.Equal(allowed, LineBreaker.MayBreakInside(text, index, new LineBreakRules(NotAtLineStart: notAtLineStart, Kinsoku: true)));
+
+    [Fact]
+    public void The_standard_kinsoku_characters_never_start_or_end_a_line_between_ideographs()
+    {
+        var rules = new LineBreakRules(NotAtLineStart: LineBreaker.StandardNotAtLineStart, NotAtLineEnd: LineBreaker.StandardNotAtLineEnd);
+        Assert.All(LineBreaker.StandardNotAtLineStart, c => Assert.DoesNotContain($"|{c}", Mark($"文{c}文", rules), StringComparison.Ordinal));
+        Assert.All(LineBreaker.StandardNotAtLineEnd, c => Assert.DoesNotContain($"{c}|", Mark($"文{c}文", rules), StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Honours_characters_forbidden_at_the_start_or_end_of_a_line()
     {

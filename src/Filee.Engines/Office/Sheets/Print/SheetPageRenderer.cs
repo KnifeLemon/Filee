@@ -2,10 +2,12 @@
 // when the sheet says so), fills (solid, patterns as their mixed colour, gradients), the gridlines and the row and
 // column headings when they print, borders (shared with the neighbour, merged areas only at their edges, diagonals),
 // text (aligned, indented, wrapped, justified, shrunk, rotated or stacked; text overflowing into empty cells; numbers
-// too wide for their column as ####), pictures, and the header and footer with their fields.
+// too wide for their column as ####), pictures (turned, mirrored and cropped) and preset shapes, and the header and
+// footer with their fields.
 
 using System.Globalization;
 using Filee.Engines.Rendering;
+using Filee.Engines.Slides;
 using SkiaSharp;
 
 namespace Filee.Engines.Office.Sheets;
@@ -23,7 +25,7 @@ internal sealed class SheetPageRenderer
     private readonly SheetFonts _fonts;
     private readonly IReadOnlyDictionary<(int Row, int Column), CellStyle> _conditional;
     private readonly Dictionary<int, List<(int Column, CellStyle Style)>> _blanks = [];
-    private readonly IReadOnlyList<(SheetPicture Picture, SKImage Image)> _pictures;
+    private readonly IReadOnlyList<(SheetDrawing Drawing, SKImage? Image)> _drawings;
     private readonly float _scale;
 
     /// <summary>Characters "fill" alignment repeats a cell's text to at most (Excel's limit for a cell's text).</summary>
@@ -33,7 +35,7 @@ internal sealed class SheetPageRenderer
     private const float MinHeadingLabel = 1f;
 
     public SheetPageRenderer(Workbook book, SheetPrintPlan plan, SheetIndex index, SheetFonts fonts,
-        IReadOnlyDictionary<(int, int), CellStyle> conditional, IReadOnlyList<(SheetPicture, SKImage)> pictures)
+        IReadOnlyDictionary<(int, int), CellStyle> conditional, IReadOnlyList<(SheetDrawing, SKImage?)> drawings)
     {
         _book = book;
         _plan = plan;
@@ -49,7 +51,7 @@ internal sealed class SheetPageRenderer
                 _blanks[row] = list = [];
             list.Add((column, style));
         }
-        _pictures = pictures;
+        _drawings = drawings;
         _scale = (float)plan.Scale;
     }
 
@@ -122,7 +124,7 @@ internal sealed class SheetPageRenderer
                 DrawGridLines(content, columns, rows, blocks);
             DrawBorders(content, blocks, columns, rows, columnAt, rowAt);
             DrawTexts(content, blocks, columns, rows, columnAt, rowAt, gridArea);
-            DrawPictures(content, columns, rows, gridArea);
+            DrawDrawings(content, columns, rows, gridArea);
         }
         if (setup.PrintHeadings)
             DrawHeadings(content, columns, rows, gridLeft, gridTop, headingWidth, headingHeight);
@@ -799,40 +801,156 @@ internal sealed class SheetPageRenderer
         }
     }
 
-    // ───────────────────────── Pictures ─────────────────────────
+    // ───────────────────────── Pictures and shapes ─────────────────────────
 
-    private void DrawPictures(PageContent page, List<Placed> columns, List<Placed> rows, SKRect area)
+    private void DrawDrawings(PageContent page, List<Placed> columns, List<Placed> rows, SKRect area)
     {
-        if (_pictures.Count == 0)
+        if (_drawings.Count == 0)
             return;
         var s = _scale;
         var first = columns.MinBy(c => c.Index);
         var top = rows.MinBy(r => r.Index);
-        var placed = new List<(SKImage, SKRect)>();
-        foreach (var (picture, image) in _pictures)
+        var placed = new List<(SheetDrawing, SKImage?, SKRect)>();
+        foreach (var (drawing, image) in _drawings)
         {
-            // Position from the page's first column and row (pictures over print titles are left out).
-            var dx = (float)((Grid.ColumnSpan(first.Index, picture.Column) + picture.OffsetX) * s);
-            var dy = (float)((Grid.RowSpan(top.Index, picture.Row) + picture.OffsetY) * s);
-            var w = (float)((picture.To is { } to ? Grid.ColumnSpan(picture.Column, to.Column) + to.OffsetX - picture.OffsetX : picture.Width) * s);
-            var h = (float)((picture.To is { } end ? Grid.RowSpan(picture.Row, end.Row) + end.OffsetY - picture.OffsetY : picture.Height) * s);
-            if (w <= 0 || h <= 0)
+            // Position from the page's first column and row (drawings over print titles are left out).
+            var dx = (float)((Grid.ColumnSpan(first.Index, drawing.Column) + drawing.OffsetX) * s);
+            var dy = (float)((Grid.RowSpan(top.Index, drawing.Row) + drawing.OffsetY) * s);
+            var w = (float)((drawing.To is { } to ? Grid.ColumnSpan(drawing.Column, to.Column) + to.OffsetX - drawing.OffsetX : drawing.Width) * s);
+            var h = (float)((drawing.To is { } end ? Grid.RowSpan(drawing.Row, end.Row) + end.OffsetY - drawing.OffsetY : drawing.Height) * s);
+            // A line is a shape without width or height; a picture needs both.
+            if (!float.IsFinite(w) || !float.IsFinite(h) || w < 0 || h < 0 || drawing is SheetPicture && (w == 0 || h == 0))
                 continue;
             var x = Sheet.RightToLeft ? first.End - dx - w : first.Start + dx;
             var rect = new SKRect(x, top.Start + dy, x + w, top.Start + dy + h);
-            if (rect.IntersectsWith(area))
-                placed.Add((image, rect));
+            if (drawing.Part is { } part)
+                rect = new SKRect(rect.Left + (float)part.Left * w, rect.Top + (float)part.Top * h, rect.Left + (float)part.Right * w, rect.Top + (float)part.Bottom * h);
+            // Turned, the drawing stays within the circle around its box.
+            var reach = (float)Math.Sqrt(rect.Width * rect.Width + rect.Height * rect.Height) / 2 + 1;
+            if (SKRect.Create(rect.MidX - reach, rect.MidY - reach, 2 * reach, 2 * reach).IntersectsWith(area))
+                placed.Add((drawing, image, rect));
         }
         if (placed.Count == 0)
             return;
         page.Draw(canvas =>
         {
             canvas.ClipRect(area);
-            using var paint = new SKPaint { IsAntialias = true };
-            foreach (var (image, rect) in placed)
-                canvas.DrawImage(image, rect, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear), paint);
+            foreach (var (drawing, image, rect) in placed)
+                Draw(canvas, drawing, image, rect, s);
         });
     }
+
+    /// <summary>One picture or shape in its anchor's box, turned and mirrored about the box's centre.</summary>
+    private static void Draw(SKCanvas canvas, SheetDrawing drawing, SKImage? image, SKRect anchor, float scale)
+    {
+        var (w, h) = (anchor.Width, anchor.Height);
+        if (drawing.Part is null && AnchoredTurned(drawing, w, h))
+            (w, h) = (h, w);
+        canvas.Save();
+        canvas.Translate(anchor.MidX, anchor.MidY);
+        if (drawing.Rotation != 0)
+            canvas.RotateDegrees((float)drawing.Rotation);
+        if (drawing.FlipH || drawing.FlipV)
+            canvas.Scale(drawing.FlipH ? -1 : 1, drawing.FlipV ? -1 : 1);
+        var box = new SKRect(-w / 2, -h / 2, w / 2, h / 2);
+        switch (drawing)
+        {
+            case SheetPicture picture when image is not null:
+                DrawPicture(canvas, picture, image, box);
+                break;
+            case SheetShape shape:
+                DrawShape(canvas, shape, box, scale);
+                break;
+        }
+        canvas.Restore();
+    }
+
+    /// <summary>
+    /// Whether the anchor is the box a quarter-turned drawing covers (Excel anchors a drawing turned by 45° to 135°, or
+    /// 225° to 315°, that way), so the unturned box is as wide as the anchor is high. The unturned proportions, when
+    /// the file gives them, decide: the anchor's own proportions match them one way round or the other.
+    /// </summary>
+    internal static bool AnchoredTurned(SheetDrawing drawing, float width, float height)
+    {
+        var rotation = drawing.Rotation;
+        if (rotation is < 45 or (>= 135 and < 225) or >= 315)
+            return false;
+        if (drawing.Size is { } size && width > 0 && height > 0 && size.Width > 0 && size.Height > 0)
+        {
+            var anchor = Math.Log(width / height);
+            var unturned = Math.Log(size.Width / size.Height);
+            if (Math.Abs(unturned) > 0.01)
+                return Math.Abs(anchor + unturned) < Math.Abs(anchor - unturned);
+        }
+        return true;
+    }
+
+    /// <summary>A picture in <paramref name="box"/>, without what its crop cuts off (empty where the crop adds space).</summary>
+    private static void DrawPicture(SKCanvas canvas, SheetPicture picture, SKImage image, SKRect box)
+    {
+        var (left, top, right, bottom) = picture.Crop;
+        var source = new SKRect((float)(left * image.Width), (float)(top * image.Height), (float)((1 - right) * image.Width), (float)((1 - bottom) * image.Height));
+        if (source.Width <= 0 || source.Height <= 0)
+            return;
+        var shown = SKRect.Intersect(source, new SKRect(0, 0, image.Width, image.Height));
+        if (shown.IsEmpty)
+            return;
+        var (sx, sy) = (box.Width / source.Width, box.Height / source.Height);
+        var target = new SKRect(box.Left + (shown.Left - source.Left) * sx, box.Top + (shown.Top - source.Top) * sy,
+            box.Left + (shown.Right - source.Left) * sx, box.Top + (shown.Bottom - source.Top) * sy);
+        using var paint = new SKPaint { IsAntialias = true };
+        canvas.DrawImage(image, shown, target, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear), paint);
+    }
+
+    /// <summary>A preset shape in <paramref name="box"/> (page points), filled and outlined.</summary>
+    private static void DrawShape(SKCanvas canvas, SheetShape shape, SKRect box, float scale)
+    {
+        if (PresetShapes.Find(shape.Preset) is not { } definition || shape.Fill is null && shape.Line is null)
+            return;
+        // The definitions' formulas work in EMU.
+        const double EmuPerPoint = 12700;
+        var geometry = ShapeGeometry.Evaluate(definition, box.Width / scale * EmuPerPoint, box.Height / scale * EmuPerPoint, shape.Adjust,
+            scale / EmuPerPoint);
+        try
+        {
+            canvas.Translate(box.Left, box.Top);
+            if (shape.Fill is { } color)
+            {
+                using var fill = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
+                foreach (var path in geometry.Paths.Where(p => p.Fill != PathFill.None))
+                {
+                    fill.Color = path.Fill switch
+                    {
+                        PathFill.Lighten => Mix(color, SKColors.White, 0.4f),
+                        PathFill.LightenLess => Mix(color, SKColors.White, 0.2f),
+                        PathFill.Darken => Mix(color, SKColors.Black, 0.4f),
+                        PathFill.DarkenLess => Mix(color, SKColors.Black, 0.2f),
+                        _ => color,
+                    };
+                    canvas.DrawPath(path.Path, fill);
+                }
+            }
+            if (shape.Line is { } line)
+            {
+                var width = Math.Max((float)shape.LineWidth * scale, 0.1f);
+                using var dash = shape.Dash is { Length: >= 2 } pattern
+                    ? SKPathEffect.CreateDash([.. (pattern.Length % 2 == 0 ? pattern : [.. pattern, .. pattern]).Select(d => Math.Max(0.01f, d * width))], 0)
+                    : null;
+                using var stroke = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, Color = line, StrokeWidth = width, PathEffect = dash };
+                foreach (var path in geometry.Paths.Where(p => p.Stroke))
+                    canvas.DrawPath(path.Path, stroke);
+            }
+        }
+        finally
+        {
+            foreach (var path in geometry.Paths)
+                path.Path.Dispose();
+        }
+    }
+
+    private static SKColor Mix(SKColor color, SKColor with, float amount) =>
+        new((byte)(color.Red + (with.Red - color.Red) * amount), (byte)(color.Green + (with.Green - color.Green) * amount),
+            (byte)(color.Blue + (with.Blue - color.Blue) * amount), color.Alpha);
 
     // ───────────────────────── Headings ─────────────────────────
 

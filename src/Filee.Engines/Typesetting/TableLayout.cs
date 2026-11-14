@@ -9,8 +9,13 @@
 //   wider; 한글's keep the widths 한글 gave them, as 한글 draws them.
 // - Cells: their blocks are laid out at the columns' width less the padding (the cell's, else the table's, else
 //   한글's default 1.8 mm by 0.5 mm), nested tables too; a row is as high as its tallest single-row cell or its own
-//   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it.
-//   Content sits at the top, middle or bottom of the cell.
+//   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it. A
+//   한글 cell holds its content down to its last line's text; a Word cell (WordCells) holds the whole last line and
+//   the space after its last paragraph too, as Word sizes rows.
+//   Content sits at the top, middle or bottom of the cell. Paragraph borders and backgrounds in a stack (a cell, a
+//   header) are drawn as in the body (BoxBorder), each line with its part of the box.
+// - Right to left (Word w:bidiVisual, RTF \rtlrow): the first column is the rightmost, and the table's alignment and
+//   indent and each cell's left and right borders and padding name the start and the end side, so they change places.
 // - Drawing: each cell's fill (a colour, a picture; EMF / WMF as vector drawing), then its content, then its borders (the cell's, else the table's, else a thin grid);
 //   solid, dashed, dotted, dash-dot and double lines at their width.
 // - Pages: rows bound by a cell spanning them form a group that moves to a page together. A table that must not split
@@ -29,7 +34,11 @@ namespace Filee.Engines.Typesetting;
 /// <summary>Something drawn at <c>Top</c> in a stack, <c>Height</c> high: a line, or a row of a nested table.</summary>
 /// <param name="Draw">Draws the piece with its stack's top-left corner at the given point.</param>
 /// <param name="Below">Space at the bottom of the piece that is no ink (a line's spacing below its text).</param>
-internal sealed record Piece(float Top, float Height, Action<PageContent, float, float> Draw, float Below = 0);
+internal sealed record Piece(float Top, float Height, Action<PageContent, float, float> Draw, float Below = 0)
+{
+    /// <summary>A floating object behind the text of the stack (a header's watermark goes behind the page's body too).</summary>
+    public bool Behind { get; init; }
+}
 
 /// <summary>A cell laid out: its place in the table, size, padding and content.</summary>
 internal sealed class CellBox
@@ -53,8 +62,17 @@ internal sealed class CellBox
     /// <summary>Height of the content without the spacing below its last line: what 한글 centres in a cell.</summary>
     public float InkHeight => Content.Count == 0 ? 0 : Content.Max(p => p.Top + p.Height - p.Below);
 
-    /// <summary>The height the cell needs: its content without the spacing below the last line, and its padding (as 한글 sizes cells).</summary>
-    public float Needed => InkHeight + (Padding.Top + Padding.Bottom) / 100f;
+    /// <summary>
+    /// How far the content goes down with the space after its last paragraph, which a Word cell holds (Stack's extent);
+    /// null for a 한글 cell, which holds its content down to the last line's text.
+    /// </summary>
+    public float? Extent { get; init; }
+
+    /// <summary>The height of the content the cell holds and centres: Word's down to <see cref="Extent"/>, 한글's <see cref="InkHeight"/>.</summary>
+    public float Held => Extent is { } extent ? Math.Max(ContentHeight, extent) : InkHeight;
+
+    /// <summary>The height the cell needs: the content it holds and its padding.</summary>
+    public float Needed => Held + (Padding.Top + Padding.Bottom) / 100f;
 }
 
 /// <summary>A row: its height and the cells that start in it.</summary>
@@ -106,6 +124,12 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
 
     private int _depth;
 
+    /// <summary>
+    /// Cells are sized as Word sizes them (a model of another format, resolved through the style resolver): the space
+    /// after a cell's last paragraph counts in its row. Else as 한글 sizes them, down to the last line's text.
+    /// </summary>
+    public bool WordCells { get; init; }
+
     // ───────────────────────── Stacks ─────────────────────────
 
     /// <summary>
@@ -113,7 +137,11 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     /// stored layout take their stored place while the list so far follows it, as on a page. Floating objects come
     /// first (behind the text) or last (in front of it).
     /// </summary>
-    public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width)
+    public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width) => Stack(blocks, width, out _);
+
+    /// <inheritdoc cref="Stack(IReadOnlyList{HBlock}, float)"/>
+    /// <param name="extent">How far the list goes down: its lines and tables with their spacing, without floating objects.</param>
+    public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width, out float extent)
     {
         var pieces = new List<Piece>();
         var (behind, front) = (new List<(int, Piece)>(), new List<(int, Piece)>());
@@ -126,6 +154,9 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         var inStep = true;
         var skipBefore = false;
         HParagraph? holder = null;
+        // The paragraph laid out ahead (to see whether its border continues the box), and the box the last paragraph drew.
+        (int Index, ParagraphBox Box)? ahead = null;
+        (BoxBorder Border, int Index, float Bottom)? box = null;
         for (var i = 0; i < blocks.Count; i++)
         {
             switch (blocks[i])
@@ -134,24 +165,53 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                     holder = p;
                     break;
                 case HParagraph p:
-                    var box = paragraph(p, width);
-                    y += skipBefore ? 0 : box.SpaceBefore;
+                    var laid = ahead is (var at, var early) && at == i ? early : paragraph(p, width);
+                    ahead = null;
+                    y += skipBefore ? 0 : laid.SpaceBefore;
                     skipBefore = false;
-                    if (box.Lines.Count == 0)
-                        Objects(p, y);
-                    foreach (var line in box.Lines)
+                    var (opens, closes) = (true, true);
+                    if (laid.Border is { } border)
                     {
-                        if (box.StoredLines && inStep && line.StoredTop is { } top)
+                        opens = !(box is (var before, var index, _) && index == i - 1 && before.Joins(border));
+                        if (i + 1 < blocks.Count && blocks[i + 1] is HParagraph following && !HoldsTable(blocks, i + 1))
+                        {
+                            ahead = (i + 1, paragraph(following, width));
+                            closes = !border.Joins(ahead.Value.Box.Border);
+                        }
+                        laid = border.Pad(laid, opens, closes);
+                    }
+                    if (laid.Lines.Count == 0)
+                        Objects(p, y);
+                    for (var l = 0; l < laid.Lines.Count; l++)
+                    {
+                        var line = laid.Lines[l];
+                        if (laid.StoredLines && inStep && line.StoredTop is { } top)
                             y = Math.Max(y, top);
-                        if (line == box.Lines[0])
+                        if (l == 0)
                             Objects(p, y);
-                        pieces.Add(new Piece(y, line.Height, line.Draw, line.Below));
+                        if (laid.Border is { } own)
+                        {
+                            var gap = l == 0 && !opens && box is (_, _, var bottom) ? Math.Max(0, y - bottom) : 0;
+                            var slice = own.Slice(laid, l == 0, l == laid.Lines.Count - 1, opens, closes, gap);
+                            var height = line.Height;
+                            pieces.Add(new Piece(y, height, (page, left, lineTop) =>
+                            {
+                                page.Draw(canvas => slice.Draw(canvas, left, lineTop, height));
+                                line.Draw(page, left, lineTop);
+                            }, line.Below));
+                        }
+                        else
+                        {
+                            pieces.Add(new Piece(y, line.Height, line.Draw, line.Below));
+                        }
                         y += line.Height;
                     }
-                    y += box.SpaceAfter;
-                    inStep &= box.StoredLines;
+                    box = laid.Border is { } drawn ? (drawn, i, y) : null;
+                    y += laid.SpaceAfter;
+                    inStep &= laid.StoredLines;
                     break;
                 case HTable t when _depth < MaxDepth:
+                    box = null;
                     _depth++;
                     try
                     {
@@ -203,8 +263,9 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                     break;
             }
         }
-        pieces.InsertRange(0, behind.OrderBy(o => o.Item1).Select(o => o.Item2));
+        pieces.InsertRange(0, behind.OrderBy(o => o.Item1).Select(o => o.Item2 with { Behind = true }));
         pieces.AddRange(front.OrderBy(o => o.Item1).Select(o => o.Item2));
+        extent = y;
         return pieces;
     }
 
@@ -249,24 +310,32 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         var cells = new List<CellBox>[rowCount];
         for (var r = 0; r < rowCount; r++)
             cells[r] = [];
+        var mirror = table.RightToLeft;
         foreach (var (row, column, cell) in placed)
         {
             var span = Math.Clamp(cell.ColSpan, 0, columns - column);
             var padding = cell.CellMargin ?? table.CellMargin ?? DefaultPadding;
+            var borders = cell.Borders ?? table.Borders ?? HBorders.Grid;
+            if (mirror)
+            {
+                padding = padding with { Left = padding.Right, Right = padding.Left };
+                borders = borders with { Left = borders.Right, Right = borders.Left };
+            }
             var cellWidth = left[column + span] - left[column];
             var contentWidth = Math.Max(1, cellWidth - (padding.Left + padding.Right) / 100f);
             cells[row].Add(new CellBox
             {
                 Row = row,
                 RowSpan = Math.Max(1, Math.Min(cell.RowSpan, rowCount - row)),
-                X = left[column],
+                X = mirror ? tableWidth - left[column + span] : left[column],
                 Width = cellWidth,
                 Padding = padding,
                 VerticalAlign = cell.VerticalAlign,
-                Borders = cell.Borders ?? table.Borders ?? HBorders.Grid,
+                Borders = borders,
                 Fill = ParagraphText.Color(cell.Fill),
                 FillPicture = cell.FillPicture,
-                Content = Stack(cell.Blocks, contentWidth),
+                Content = Stack(cell.Blocks, contentWidth, out var extent),
+                Extent = WordCells ? extent : null,
             });
         }
 
@@ -293,10 +362,12 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             }
         }
 
-        var offset = table.Align switch
+        var offset = (table.Align, mirror) switch
         {
-            HAlign.Center => (width - tableWidth) / 2,
-            HAlign.Right => width - tableWidth,
+            (HAlign.Center, _) => (width - tableWidth) / 2,
+            (HAlign.Right, false) => width - tableWidth,
+            (HAlign.Right, true) => 0,
+            (_, true) => width - tableWidth - table.Indent / 100f,
             _ => table.Indent / 100f,
         };
         var caption = table.Caption.Count > 0 ? Stack(table.Caption, tableWidth) : [];
@@ -501,7 +572,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             any |= fits.Count > 0;
             var shift = after.Count > 0 ? after[0].Top : 0;
             first.Add(Copy(cell, fits));
-            rest.Add(Copy(cell, [.. after.Select(p => p with { Top = p.Top - shift })]));
+            rest.Add(Copy(cell, [.. after.Select(p => p with { Top = p.Top - shift })], after.Count > 0 ? cell.Extent - shift : null));
         }
         if (!any)
             return null;
@@ -510,7 +581,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         return (firstRow, restRow);
     }
 
-    private static CellBox Copy(CellBox cell, IReadOnlyList<Piece> content) => new()
+    private static CellBox Copy(CellBox cell, IReadOnlyList<Piece> content, float? extent = null) => new()
     {
         Row = cell.Row,
         RowSpan = 1,
@@ -522,6 +593,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         Fill = cell.Fill,
         FillPicture = cell.FillPicture,
         Content = content,
+        Extent = extent,
     };
 
     // ───────────────────────── Drawing ─────────────────────────
@@ -573,7 +645,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         foreach (var (cell, area) in cells)
         {
             var inner = area.Height - (cell.Padding.Top + cell.Padding.Bottom) / 100f;
-            var extra = Math.Max(0, inner - cell.InkHeight);
+            var extra = Math.Max(0, inner - cell.Held);
             var shift = cell.VerticalAlign switch
             {
                 HVerticalAlign.Center => extra / 2,
@@ -601,7 +673,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         Line(canvas, borders.Right, area.Right, area.Top, area.Right, area.Bottom);
     }
 
-    private static void Line(SKCanvas canvas, HBorder border, float x0, float y0, float x1, float y1)
+    /// <summary>Draws one border line; <paramref name="phase"/> starts its dashes as far into their pattern (to join up parts of one line).</summary>
+    internal static void Line(SKCanvas canvas, HBorder border, float x0, float y0, float x1, float y1, float phase = 0)
     {
         if (border.Style == HBorderStyle.None)
             return;
@@ -629,7 +702,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             HBorderStyle.DashDot => [width * 4, width * 2, width, width * 2],
             _ => null,
         };
-        using var effect = dashes is null ? null : SKPathEffect.CreateDash(dashes, 0);
+        using var effect = dashes is null ? null : SKPathEffect.CreateDash(dashes, phase % dashes.Sum());
         paint.PathEffect = effect;
         canvas.DrawLine(x0, y0, x1, y1, paint);
     }
