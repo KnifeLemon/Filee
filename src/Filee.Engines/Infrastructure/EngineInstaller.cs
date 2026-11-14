@@ -7,8 +7,8 @@
 //    entries, no admin rights. Parts headless LibreOffice never uses (help, gallery, most dictionaries) are removed.
 //  * conda-forge packages (Ghostscript, the Microsoft C++ runtime) are zip files holding zstd-compressed tarballs;
 //    only their Windows binaries (Library/bin) are unpacked, with a managed decompressor (no 7-Zip, no installer).
-//  * NSIS installers (Tesseract) are unpacked with 7-Zip, never run: files only, no registry entries. Without a 7-Zip
-//    on the PC, Filee's 7-Zip download is installed first (it stays, as the optional 7-Zip engine).
+//  * NSIS installers (Tesseract) are unpacked with Filee's own NSIS reader (Archives/NsisReader), never run: the files
+//    the script puts in $INSTDIR, no registry entries, no 7-Zip.
 //  * 7-Zip's MSI keeps only its console program (7z.exe, 7z.dll) with its licence and readme.
 //  * A marker file with the component's hash records what is installed, so an engines.json update is detected.
 //  * Without internet the same files can come from a folder instead (#447): saved by Filee on another computer
@@ -163,10 +163,9 @@ public sealed class EngineInstaller
         if (package.Components.Any(c => !_components.ContainsKey(c)))
             throw new PlatformNotSupportedException(EngineDownloads.UnavailableReason(package)
                 ?? $"The {package.Id} package is unavailable on this platform.");
-        var helpers = NsisHelpers(package);
-        using var packageLock = LockPackage(package, helpers);
-        ClearAside([.. helpers, .. package.Components]);
-        var pending = helpers.Concat(package.Components)
+        using var packageLock = LockPackage(package);
+        ClearAside(package.Components);
+        var pending = package.Components
             .Where(c => !string.Equals(Marker(c), _components[c].Sha256, StringComparison.OrdinalIgnoreCase))
             .Select(c => _components[c])
             .ToList();
@@ -368,15 +367,14 @@ public sealed class EngineInstaller
     /// is the lock (deleting it on close would let a third process lock a new file while a second still holds the old).
     /// </summary>
     /// <exception cref="EngineBusyException">Another process holds the lock.</exception>
-    /// <param name="extra">Components installed along with the package's own (7-Zip for an NSIS installer).</param>
-    private IDisposable LockPackage(EnginePackage package, IReadOnlyList<string>? extra = null)
+    private IDisposable LockPackage(EnginePackage package)
     {
         var locks = Path.Combine(_root, ".downloads", "locks");
         Directory.CreateDirectory(locks);
         var streams = new List<FileStream>();
         try
         {
-            var keys = new[] { package.Id }.Concat(package.Components).Concat(extra ?? []).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(k => k, StringComparer.Ordinal);
+            var keys = new[] { package.Id }.Concat(package.Components).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(k => k, StringComparer.Ordinal);
             foreach (var key in keys)
             {
                 try
@@ -650,8 +648,7 @@ public sealed class EngineInstaller
                     Replace(component.Id, staging);
                     break;
                 case "nsis":
-                    Directory.CreateDirectory(staging);
-                    await UnpackNsisAsync(component, file, staging, cancellationToken);
+                    await UnpackNsisAsync(file, staging, cancellationToken);
                     TrimTesseract(staging);
                     Replace(component.Id, staging);
                     break;
@@ -660,6 +657,13 @@ public sealed class EngineInstaller
             }
             File.WriteAllText(Path.Combine(FolderOf(component.Id), MarkerName), component.Sha256);
         });
+
+    /// <summary>
+    /// Writes what an NSIS installer (Tesseract's Windows build) puts in $INSTDIR into <paramref name="target"/>, without
+    /// running it: Filee's own reader, no 7-Zip.
+    /// </summary>
+    internal static Task UnpackNsisAsync(string installer, string target, CancellationToken cancellationToken) =>
+        Task.Run(() => Archives.NsisReader.Extract(installer, target, Archives.NsisScope.InstallDir, cancellationToken), cancellationToken);
 
     internal static async Task UnpackTarAsync(string file, string target, string kind, CancellationToken cancellationToken)
     {
@@ -746,52 +750,17 @@ public sealed class EngineInstaller
         }
     }
 
+    /// <summary>The component id of 7-Zip in engines.json.</summary>
+    private const string SevenZipComponent = "7zip";
+
+    /// <summary>Files of 7-Zip's MSI that are kept: the console program, the codecs it loads, its licence and readme.</summary>
+    private static readonly HashSet<string> SevenZipFiles = new(["7z.exe", "7z.dll", "License.txt", "readme.txt"], StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// The folder to keep from an administratively installed MSI, which lays files out as they would be installed
     /// (PFiles64\...): LibreOffice's folder with program/ and share/ (trimmed, with its C++ runtime copied into
     /// program/), calibre's folder with ebook-convert (it keeps its own C++ runtime in app/bin).
     /// </summary>
-    // ── NSIS installers (Tesseract) ──
-    // Unpacked with 7-Zip for now; without one, Filee's 7-Zip download is installed first (and stays, as the optional
-    // engine). Everything about that is here: when Filee reads NSIS itself, set NsisNeedsSevenZip to false and unpack
-    // in UnpackNsisAsync.
-
-    /// <summary>NSIS installers are unpacked with 7-Zip (the one switch for Filee's own NSIS reader).</summary>
-    private const bool NsisNeedsSevenZip = true;
-
-    /// <summary>The component id of 7-Zip in engines.json.</summary>
-    private const string SevenZipComponent = "7zip";
-
-    /// <summary>How the 7-Zip the engines use is found (<see cref="Archives.SevenZip.Locate"/>); tests leave it out.</summary>
-    internal Func<Archives.SevenZip?> LocateSevenZip { get; init; } = Archives.SevenZip.Locate;
-
-    /// <summary>
-    /// Components installed before <paramref name="package"/>'s own: Filee's 7-Zip when the package has an NSIS
-    /// installer and no 7-Zip is there to unpack it.
-    /// </summary>
-    private string[] NsisHelpers(EnginePackage package) =>
-        NsisNeedsSevenZip && package.Components.Any(c => _components[c].Kind == "nsis") && SevenZipForInstallers() is null
-        && _components.ContainsKey(SevenZipComponent) && !package.Components.Contains(SevenZipComponent)
-            ? [SevenZipComponent]
-            : [];
-
-    /// <summary>Unpacks an NSIS installer into <paramref name="staging"/> without running it.</summary>
-    private async Task UnpackNsisAsync(EngineComponent component, string file, string staging, CancellationToken cancellationToken)
-    {
-        var sevenZip = SevenZipForInstallers()
-                       ?? throw new InvalidOperationException($"{component.Id} is unpacked with 7-Zip, which is missing.");
-        await sevenZip.ExtractAsync(file, staging, [], _root, cancellationToken);
-    }
-
-    /// <summary>The 7-Zip that unpacks installers: this installer's own download first, else the one the engines use.</summary>
-    private Archives.SevenZip? SevenZipForInstallers() =>
-        EngineEnvironment.FolderWithPrograms(SevenZipComponent, FolderOf(SevenZipComponent)) is { } folder
-            ? new Archives.SevenZip(Path.Combine(folder, Archives.SevenZip.ProgramName))
-            : LocateSevenZip();
-
-    /// <summary>Files of 7-Zip's MSI that are kept: the console program, the codecs it loads, its licence and readme.</summary>
-    private static readonly HashSet<string> SevenZipFiles = new(["7z.exe", "7z.dll", "License.txt", "readme.txt"], StringComparer.OrdinalIgnoreCase);
-
     private static string MsiProgramFolder(string id, string staging)
     {
         if (id == SevenZipComponent)

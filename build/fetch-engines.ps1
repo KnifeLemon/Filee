@@ -18,7 +18,8 @@
       calibre/       calibre (GPL-3.0, separate program), extracted from the official MSI via an administrative
                      install: ebook-convert for LIT, LRF, PDB, ... and MOBI / AZW3 output
       tesseract/     Tesseract OCR (Apache-2.0, separate program), UB Mannheim's Windows build unpacked from its
-                     installer with 7-Zip (never run); the language data is downloaded by the app when needed
+                     installer with 7-Zip (never run; the app uses its own NSIS reader instead, which this script
+                     can't call without building Filee); the language data is downloaded by the app when needed
       exiftool/      ExifTool (Perl's licence, separate program), the Windows build: exiftool(-k).exe renamed
                      exiftool.exe (the "-k" makes it wait for a key), with its exiftool_files/ beside it
 
@@ -314,6 +315,7 @@ if ('ghostscript' -in $selected) {
 }
 
 if ('tesseract' -in $selected) {
+    # Unpacked with 7-Zip here (development only); the app reads the installer itself (NsisReader, no 7-Zip).
     # Trimmed like EngineInstaller.TrimTesseract: no training programs, manuals, installer files or language data.
     $setup = Get-Engine 'tesseract'
     $sevenZip = Join-Path $Destination '7zip\7z.exe'

@@ -147,14 +147,47 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   Its fonts and resources are compiled into `gsdll64.dll`. The Microsoft C++ runtime it was built against
   (`vcruntime` component) is copied next to `gswin64c.exe`, so it runs on PCs without the VC++ Redistributable.
 - Tesseract is UB Mannheim's Windows build (the one Tesseract's documentation points to), published only as an NSIS
-  installer. It is never run: 7-Zip unpacks it (`nsis` kind; without Filee's or the user's 7-Zip, Filee's 7-Zip
-  download is installed first and stays as the optional 7-Zip engine; all of it in `EngineInstaller`'s NSIS part), and the training programs, manuals,
+  installer. It is never run: Filee's own NSIS reader writes the files its script puts in `$INSTDIR` (`nsis` kind, see
+  [NSIS installers](#nsis-installers); no 7-Zip needed), and the training programs, manuals,
   installer files and bundled language data are removed (`TrimTesseract`, ~80 MB). The languages come from
   `tessdata_fast` 4.1.0, pinned like the engines in `Infrastructure/ocr-languages.json` (`traineddata` kind, one
   folder per language under `engines/ocr-languages`), and are downloaded the first time a preset uses one.
 - ExifTool is Phil Harvey's Windows build (a Perl bundled with it), whose `exiftool(-k).exe` is renamed `exiftool.exe`:
   the "-k" makes it wait for a key before it exits. On macOS and Linux it is the Perl distribution
   (`Image-ExifTool-*.tar.gz`), run by the Perl both come with.
+
+### NSIS installers
+
+`Archives/NsisReader.cs` reads NSIS installers (Tesseract's Windows build) without running them. It is Filee's own,
+written from the format description; the engine installer is its only user (`EngineInstaller.UnpackNsisAsync`, with
+`NsisScope.InstallDir`: only what goes into `$INSTDIR`; `NsisScope.Everything` also writes `$PLUGINSDIR\…`, as 7-Zip
+does).
+
+- The first header is looked for at every 512-byte boundary; its flags and the CRC-32 (from offset 512 to the end of
+  the data, unless flag 4 turns it off) are checked.
+- Solid installers (one stream) and non-solid ones (a block per file); the compression is told from the data: LZMA
+  (with or without the x86 BCJ filter byte), NSIS's bzip2 framing (`Bzip2Decoder.DecompressNsis`: no stream header,
+  no block CRCs or randomised bit), raw deflate, and stored blocks.
+- The header block's entries are read in order, without taking jumps (as 7-Zip does): SetOutPath, File and, in NSIS
+  3, WriteUninstaller (the uninstaller data is written as it is). Strings are NSIS 3 Unicode, NSIS 3 ANSI or NSIS 2
+  ANSI (read as Latin-1), with variables, `$OUTDIR`, shell folders and language strings. A leading `$INSTDIR\` is
+  dropped; a plug-in DLL extracted again with the same data is one file, the same name with other data `name_1`.
+- Not read: NSIS 1.x scripts, Jim Park's Unicode 2.46 build, ANSI code pages, empty folders (CreateDirectory), NSIS
+  2's uninstaller.
+- Hostile input: the header block is refused over 64 MB before anything is read and its buffer grows only as data
+  arrives; every count, offset and block size is checked against what it points into; overlapping solid offsets,
+  4 GB sizes and LZMA dictionaries over `LzmaDecoder.MaxDictionary` are refused. Decoded bytes (skipped ones too)
+  count against the bomb ratio, written bytes go through `UnpackBudget`, names through `CheckListing` and
+  `ResolveEntryPath`; a `$OUTDIR` that keeps doubling is refused as a name too long. Errors are
+  `InvalidDataException`s with the usual `ArchiveSafety` reasons.
+- Compared with 7-Zip 26.05 on the pinned Tesseract 5.4.0.20240606 installer (solid LZMA, NSIS 3 Unicode): the same
+  139 files and 249,571,062 bytes, every SHA-256 equal, and the same times where the script gives one. It takes 20.5 s against 7-Zip's 5.0 s,
+  nearly all in the shared LZMA decoder.
+- Tests: `NsisReaderTests` (installers built in code by `NsisBuilder`: every compression, solid and not, the string
+  formats, the hostile cases, an `InstallAsync` of a fake Tesseract package with 7-Zip hidden, and the real installer
+  when `build/.cache` or `FILEE_TESSERACT_INSTALLER` has it, compared with 7-Zip's output), `NsisFuzzTests`.
+- `build/fetch-engines.ps1 -Only 7zip,tesseract` still unpacks Tesseract with 7-Zip for development: the script can't
+  call Filee's reader without building Filee first.
 
 ### Microsoft C++ runtime (Windows)
 
