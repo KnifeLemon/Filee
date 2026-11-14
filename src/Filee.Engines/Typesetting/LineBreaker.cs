@@ -5,8 +5,12 @@
 // - Breaking Latin words anywhere (한글 breakLatinWord BREAK_WORD, Word without w:wordWrap): letters and digits of
 //   Latin, Greek and Cyrillic text break like ideographs. Hyphenation needs dictionaries Filee doesn't have, so it
 //   keeps words whole.
-// - Characters a document forbids at the start or end of a line (Word w:noLineBreaksBefore / After) on top of the
-//   East Asian rules UAX #14 already has (closing punctuation, small kana and iteration marks don't start a line).
+// - Word's East Asian breaking (and the other formats' that aren't 한글's): Korean words stay whole as in 한글's 어절,
+//   Chinese and Japanese text breaks between any two characters by UAX #14.
+// - Kinsoku (Word w:kinsoku, on by default): characters forbidden at the start or end of a line, the document's own
+//   (Word w:noLineBreaksBefore / After) or else the usual Chinese and Japanese ones, on top of the East Asian rules
+//   UAX #14 already has (closing punctuation, small kana and iteration marks don't start a line, opening brackets
+//   don't end one). A word longer than the line, broken where UAX #14 has no break, still keeps them (MayBreakInside).
 //
 // SA characters (Thai, Lao, Khmer, Myanmar): LB1 makes their marks join the letter before them and the letters AL, and
 // the line may also break between the words WordDictionary finds in a run of them (these scripts don't put spaces
@@ -43,12 +47,19 @@ internal enum LineBreak : byte
 /// </param>
 /// <param name="NotAtLineStart">Characters that may not start a line, besides UAX #14's.</param>
 /// <param name="NotAtLineEnd">Characters that may not end a line, besides UAX #14's.</param>
+/// <param name="KeepKoreanWords">Hangul syllables and jamo stay together like letters of a word (Word's Korean).</param>
+/// <param name="Kinsoku">
+/// East Asian line start and end rules hold where a word longer than the line must break inside it too (see
+/// <see cref="LineBreaker.MayBreakInside"/>).
+/// </param>
 internal sealed record LineBreakRules(
     bool KeepNonLatinWords = false,
     bool BreakLatinWords = false,
     bool BreakNonLatinCharacters = false,
     string? NotAtLineStart = null,
-    string? NotAtLineEnd = null)
+    string? NotAtLineEnd = null,
+    bool KeepKoreanWords = false,
+    bool Kinsoku = false)
 {
     public static readonly LineBreakRules Default = new();
 }
@@ -57,6 +68,47 @@ internal sealed record LineBreakRules(
 internal static class LineBreaker
 {
     private const int DottedCircle = 0x25CC;
+
+    /// <summary>
+    /// Chinese and Japanese characters that don't start a line where the document names none of its own: closing
+    /// brackets and quotes, sentence and clause punctuation, small kana, iteration and prolonged sound marks, and signs
+    /// that follow a number (Japanese JIS X 4051 and Chinese GB/T 15834 practice). ASCII and quotation marks are
+    /// left to UAX #14, so Latin text keeps its own rules.
+    /// </summary>
+    public const string StandardNotAtLineStart =
+        "¢°‰′″℃、。〃々〆〉》」』】〕〗〙〛〞〟ぁぃぅぇぉっゃゅょゎゕゖ゛゜ゝゞァィゥェォッャュョヮヵヶ・ーヽヾㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ" +
+        "‥…！％），．：；？］｝～｡｣､･ｧｨｩｪｫｬｭｮｯｰﾞﾟ￠";
+
+    /// <summary>Chinese and Japanese characters that don't end a line: opening brackets and quotes, and signs before a number.</summary>
+    public const string StandardNotAtLineEnd = "〈《「『【〔〖〘〚〝（［｛｢＄￡￥£¥";
+
+    /// <summary>
+    /// Whether a line that must break inside a word (no break is allowed before it overflows) may break before
+    /// <paramref name="index"/> under the East Asian rules: the character there may start a line (it is no closing
+    /// punctuation, small kana ... nor one of <see cref="LineBreakRules.NotAtLineStart"/>) and the one before may end
+    /// one (no opening bracket, nor one of <see cref="LineBreakRules.NotAtLineEnd"/>).
+    /// </summary>
+    public static bool MayBreakInside(string text, int index, LineBreakRules rules)
+    {
+        if (index <= 0 || index >= text.Length)
+            return true;
+        var next = UnicodeData.CodePointAt(text, index);
+        var previous = UnicodeData.CodePointAt(text, index >= 2 && char.IsSurrogatePair(text[index - 2], text[index - 1]) ? index - 2 : index - 1);
+        if (UnicodeData.GetLineBreak(next) is LineBreakClass.CL or LineBreakClass.CP or LineBreakClass.EX or LineBreakClass.IS or LineBreakClass.NS
+                or LineBreakClass.CJ
+            || CharUnicodeInfo.GetUnicodeCategory(next) == UnicodeCategory.FinalQuotePunctuation
+            || Contains(rules.NotAtLineStart, next))
+            return false;
+        return UnicodeData.GetLineBreak(previous) != LineBreakClass.OP
+               && CharUnicodeInfo.GetUnicodeCategory(previous) != UnicodeCategory.InitialQuotePunctuation
+               && !Contains(rules.NotAtLineEnd, previous);
+    }
+
+    /// <summary>
+    /// Punctuation that may hang past the end of a full line instead of moving to the next with the character before it
+    /// (Word w:overflowPunct): the East Asian comma and full stop.
+    /// </summary>
+    public static bool Hangs(char c) => c is '、' or '。' or '，' or '．' or '｡' or '､';
 
     /// <summary>
     /// What may happen before each UTF-16 index of <paramref name="text"/>: <c>result[i]</c> is the break between
@@ -78,16 +130,15 @@ internal static class LineBreaker
 
         if (rules.NotAtLineStart is { Length: > 0 } || rules.NotAtLineEnd is { Length: > 0 })
         {
-            foreach (var unit in units)
+            var notAtStart = Set(rules.NotAtLineStart);
+            var notAtEnd = Set(rules.NotAtLineEnd);
+            for (var j = 1; j < units.Count; j++)
             {
-                if (unit.Start > 0 && result[unit.Start] == LineBreak.Allowed && Contains(rules.NotAtLineStart, text, unit.Start))
+                var (before, unit) = (units[j - 1], units[j]);
+                if (result[unit.Start] == LineBreak.Allowed &&
+                    (notAtStart.Contains(UnicodeData.CodePointAt(text, unit.Start)) ||
+                     notAtEnd.Contains(UnicodeData.CodePointAt(text, LastCodePointStart(text, before.Start, before.Length)))))
                     result[unit.Start] = LineBreak.None;
-            }
-            for (var j = 0; j + 1 < units.Count; j++)
-            {
-                var next = units[j + 1].Start;
-                if (result[next] == LineBreak.Allowed && Contains(rules.NotAtLineEnd, text, next - units[j].Length, units[j].Length))
-                    result[next] = LineBreak.None;
             }
         }
         return result;
@@ -130,14 +181,23 @@ internal static class LineBreaker
     private static UnicodeScript? SaScript(string text, Unit unit) =>
         unit.ComplexContext ? UnicodeData.GetScript(UnicodeData.CodePointAt(text, unit.Start)) : null;
 
-    /// <summary>Whether the code point at <paramref name="index"/> (or the unit ending there) is in <paramref name="set"/>.</summary>
-    private static bool Contains(string? set, string text, int index, int length = 0)
+    private static readonly HashSet<int> StandardStart = NewSet(StandardNotAtLineStart);
+    private static readonly HashSet<int> StandardEnd = NewSet(StandardNotAtLineEnd);
+
+    /// <summary>The code points of <paramref name="characters"/> (the standard lists' made once).</summary>
+    private static HashSet<int> Set(string? characters) => characters switch
     {
-        if (string.IsNullOrEmpty(set))
-            return false;
-        var codePoint = UnicodeData.CodePointAt(text, length > 0 ? LastCodePointStart(text, index, length) : index);
-        return set.EnumerateRunes().Any(r => r.Value == codePoint);
-    }
+        null or "" => [],
+        StandardNotAtLineStart => StandardStart,
+        StandardNotAtLineEnd => StandardEnd,
+        _ => NewSet(characters),
+    };
+
+    private static HashSet<int> NewSet(string characters) => [.. characters.EnumerateRunes().Select(r => r.Value)];
+
+    /// <summary>Whether <paramref name="codePoint"/> is in <paramref name="set"/>.</summary>
+    private static bool Contains(string? set, int codePoint) =>
+        !string.IsNullOrEmpty(set) && set.EnumerateRunes().Any(r => r.Value == codePoint);
 
     private static int LastCodePointStart(string text, int start, int length) =>
         length >= 2 && char.IsSurrogatePair(text[start + length - 2], text[start + length - 1]) ? start + length - 2 : start + length - 1;
@@ -200,6 +260,8 @@ internal static class LineBreaker
             LineBreakClass.CJ => LineBreakClass.NS,
             _ => cls,
         };
+        if (rules.KeepKoreanWords && !rules.KeepNonLatinWords && IsKorean(cls))
+            return LineBreakClass.AL;
         if (rules.KeepNonLatinWords && (cls is LineBreakClass.H2 or LineBreakClass.H3 or LineBreakClass.JL or LineBreakClass.JV or LineBreakClass.JT
                                         or LineBreakClass.QU || EastAsian(codePoint, cls)))
             return LineBreakClass.AL;

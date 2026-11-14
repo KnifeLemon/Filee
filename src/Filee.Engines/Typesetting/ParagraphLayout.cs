@@ -6,8 +6,11 @@
 // 2. Measure: each item is shaped (Shaper) and every grapheme cluster gets its advance, letter spacing included.
 // 3. Break: lines fill greedily up to the column width, breaking at the last opportunity LineBreaker allows (한글 and
 //    Word break the same way); spaces and tabs at a line end hang past it. A word wider than the line breaks between
-//    clusters. 한글's 최소 공백 (condense) lets a line keep a word that fits once its spaces shrink. With lineWrap
-//    KEEP or SQUEEZE the paragraph stays on one line, squeezed to fit with SQUEEZE.
+//    clusters, where kinsoku is on (Word's paragraphs) not before closing punctuation nor after an opening bracket.
+//    Where Word lets punctuation overflow (w:overflowPunct), an East Asian comma or full stop that doesn't fit hangs
+//    past the line end instead of taking the character before it to the next line. 한글's 최소 공백 (condense) lets a
+//    line keep a word that fits once its spaces shrink. With lineWrap KEEP or SQUEEZE the paragraph stays on one line,
+//    squeezed to fit with SQUEEZE.
 // 4. Place: each line's part of every item is shaped again with its context, so a break inside an Arabic word or
 //    after an Indic cluster is shaped as it ends; tabs get their width from the stops (left, right, centre, decimal,
 //    with leaders); alignment adds the remaining width before the line (right, centre) or between its spaces
@@ -90,8 +93,8 @@ internal sealed partial class ParagraphLayouter
         _storedLines = storedLines;
         if (kinsoku is { Count: > 0 })
         {
-            _notAtLineStart = string.Concat(kinsoku.Select(k => k.NotAtLineStart));
-            _notAtLineEnd = string.Concat(kinsoku.Select(k => k.NotAtLineEnd));
+            _notAtLineStart = string.Concat(kinsoku.Select(k => k.NotAtLineStart)) is { Length: > 0 } start ? start : null;
+            _notAtLineEnd = string.Concat(kinsoku.Select(k => k.NotAtLineEnd)) is { Length: > 0 } end ? end : null;
         }
     }
 
@@ -124,12 +127,16 @@ internal sealed partial class ParagraphLayouter
         var (advances, starts) = Measure(source, items);
 
         var breaking = format.Layout?.Breaking;
+        // Kinsoku: the document's own characters (unless it turns kinsoku off), else where it is on (Word's) the usual ones.
+        var kinsoku = breaking?.Kinsoku == true;
         var rules = new LineBreakRules(
             KeepNonLatinWords: breaking?.NonLatin == HNonLatinBreak.KeepWord,
             BreakLatinWords: breaking?.Latin == HLatinBreak.BreakWord,
             BreakNonLatinCharacters: breaking?.NonLatin == HNonLatinBreak.BreakWord,
-            NotAtLineStart: _notAtLineStart,
-            NotAtLineEnd: _notAtLineEnd);
+            NotAtLineStart: breaking?.Kinsoku == false ? null : _notAtLineStart ?? (kinsoku ? LineBreaker.StandardNotAtLineStart : null),
+            NotAtLineEnd: breaking?.Kinsoku == false ? null : _notAtLineEnd ?? (kinsoku ? LineBreaker.StandardNotAtLineEnd : null),
+            KeepKoreanWords: breaking?.NonLatin == HNonLatinBreak.KeepKoreanWord,
+            Kinsoku: kinsoku);
         var breaks = LineBreaker.Breaks(text, rules);
         var paragraphLayout = new Settings(
             format.Align ?? HAlign.Left,
@@ -143,7 +150,8 @@ internal sealed partial class ParagraphLayouter
             format.Layout?.LineHeight ?? HLineHeight.From(format.LineSpacing ?? new HLineSpacing(HLineSpacingKind.Percent, 160)),
             format.Layout?.FontLineHeight == true,
             SpreadEastAsian: breaking?.SpreadEastAsian == true,
-            Language: language);
+            Language: language,
+            HangPunctuation: breaking?.OverflowPunctuation == true);
         // A number that indents its paragraph (한글 autoIndent): the lines after the first hang under the text after it.
         if (marker is { Length: > 0 } && paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count
             && levels[level].AutoIndent && marker.Length + 1 <= text.Length)
@@ -193,7 +201,8 @@ internal sealed partial class ParagraphLayouter
                 settings = settings with { Left = settings.Left + left, Right = settings.Right + right };
             var available = width - settings.Left - settings.Right - (first ? settings.FirstLine : 0);
             var (end, forced) = settings.Wrap == HLineWrap.Break
-                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense, settings.AutoSpace)
+                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense, settings.AutoSpace,
+                    rules, settings.HangPunctuation)
                 : (text.Length, true);
             lines.Add(Place(source, ranges, start, end, forced, first, width, settings, mark));
             y += lines[^1].Height;
@@ -280,7 +289,7 @@ internal sealed partial class ParagraphLayouter
     /// <param name="AutoSpace">Per UTF-16 index, the auto-spacing after the cluster starting there; null = none.</param>
     private sealed record Settings(HAlign Align, bool RightToLeft, float Left, float Right, float FirstLine, IReadOnlyList<HTabStop> Tabs,
         HLineWrap Wrap, float Condense, HLineHeight LineHeight, bool FontLineHeight, bool SpreadEastAsian = false, string Language = "",
-        float[]? AutoSpace = null);
+        float[]? AutoSpace = null, bool HangPunctuation = false);
 
     // ───────────────────────── Items ─────────────────────────
 
@@ -502,8 +511,10 @@ internal sealed partial class ParagraphLayouter
 
     /// <summary>Where the line starting at <paramref name="start"/> ends, and whether it had to (a line break, the end).</summary>
     /// <param name="autoSpace">Auto-spacing included in <paramref name="advances"/>, which a line ending there leaves out.</param>
+    /// <param name="rules">The paragraph's breaking rules: with kinsoku, a word broken inside keeps the East Asian rules.</param>
+    /// <param name="hang">An East Asian comma or full stop that doesn't fit hangs past the line end (Word w:overflowPunct).</param>
     private static (int End, bool Forced) Fit(string text, LineBreak[] breaks, float[] advances, bool[] starts, int start, float available,
-        Func<float, TabStop> nextStop, float condense, float[]? autoSpace = null)
+        Func<float, TabStop> nextStop, float condense, float[]? autoSpace = null, LineBreakRules? rules = null, bool hang = false)
     {
         var pen = new Pen();
         var lastBreak = -1;
@@ -532,10 +543,42 @@ internal sealed partial class ParagraphLayouter
             }
             var after = pen.After(width - (autoSpace?[i] ?? 0));
             if (i > start && after > available + Epsilon && !(condense > 0 && after - spaces * condense <= available + Epsilon))
-                return (lastBreak > start ? lastBreak : i, false);
+            {
+                if (hang && LineBreaker.Hangs(c) && HangingEnd(text, breaks, i) is { } end)
+                    return (end, breaks[end] == LineBreak.Mandatory);
+                if (lastBreak > start)
+                    return (lastBreak, false);
+                return (rules is { Kinsoku: true } ? InsideWord(text, starts, start, i, rules) : i, false);
+            }
             pen.Add(width, c);
         }
         return (text.Length, true);
+    }
+
+    /// <summary>
+    /// Where a line ends whose punctuation at <paramref name="index"/> hangs past it: after it and the spaces after it,
+    /// when the line may break there; else null.
+    /// </summary>
+    private static int? HangingEnd(string text, LineBreak[] breaks, int index)
+    {
+        var end = index + 1;
+        while (end < text.Length && IsStretchable(text[end]))
+            end++;
+        return breaks[end] == LineBreak.None ? null : end;
+    }
+
+    /// <summary>
+    /// Where a word that overflows at <paramref name="overflow"/> breaks: the last cluster before it that may start a
+    /// line under the East Asian rules, else the overflowing cluster.
+    /// </summary>
+    private static int InsideWord(string text, bool[] starts, int start, int overflow, LineBreakRules rules)
+    {
+        for (var i = overflow; i > start; i--)
+        {
+            if (starts[i] && LineBreaker.MayBreakInside(text, i, rules))
+                return i;
+        }
+        return overflow;
     }
 
     /// <summary>Spaces that hang at a line end and take no part in its width.</summary>
@@ -812,6 +855,11 @@ internal sealed partial class ParagraphLayouter
         if (pendingTab >= 0)
             tabs[pendingTab] = tabs[pendingTab] with { Width = pen.Gap() };
         var natural = pen.X;
+        // An East Asian comma or full stop hanging past the end of a full line (Fit) takes no part in its alignment.
+        var last = contentEnd - 1;
+        if (settings.HangPunctuation && stored is null && natural > available + Epsilon && last > start && starts[last - start] &&
+            LineBreaker.Hangs(text[last]))
+            natural -= advances[last - start];
 
         // Alignment: the space left over goes before the line or into it.
         var extra = available - natural;

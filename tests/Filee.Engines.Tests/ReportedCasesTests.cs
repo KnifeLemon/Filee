@@ -184,15 +184,18 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
     [Fact]
     public async Task Issue1152_a_table_styles_paragraph_spacing_sets_its_row_heights()
     {
-        // Word's Normal (10 pt after, 1.15 lines) under a table style that sets single spacing and no space after:
-        // the rows are one line high (main #1394).
-        const string Spaced = """
-            <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:pPr><w:spacing w:after="200" w:line="276" w:lineRule="auto"/></w:pPr></w:style>
+        // Word's defaults (10 pt after, 1.15 lines, in w:docDefaults as Word writes them) under a table style that sets
+        // single spacing and no space after: the rows are one line high (main #1394). A paragraph style that sets its
+        // own spacing would win over the table style.
+        const string Compact = """
             <w:style w:type="table" w:styleId="Compact"><w:name w:val="Compact"/><w:basedOn w:val="TableNormal"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:style>
             """;
         var rows = string.Concat(Enumerable.Range(1, 5).Select(i => $"<w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr>{P(R($"Row {i}"))}</w:tc></w:tr>"));
         var docx = Docx($"<w:tbl><w:tblPr><w:tblStyle w:val=\"Compact\"/><w:tblW w:w=\"4000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid>{rows}</w:tbl>" + P(R("after")));
-        docx.Styles = NotoStyles.Replace("<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/></w:style>", Spaced, StringComparison.Ordinal);
+        var styles = NotoStyles.Replace("<w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>",
+            "<w:spacing w:after=\"200\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>", StringComparison.Ordinal);
+        Assert.NotEqual(NotoStyles, styles);
+        docx.Styles = styles + Compact;
 
         var page = Single(await DocxAsync(docx));
 
@@ -202,7 +205,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.All(baselines.Zip(baselines.Skip(1), (a, b) => b - a), pitch => Assert.InRange(pitch, single - 0.5f, single + 2));
     }
 
-    [Fact(Skip = "#1152: found by this test: a table cell is as high as its last line's ink (TableLayout.InkHeight), so the space after a cell's last paragraph (Word's Normal: 10 pt) is left out of the row, which Word counts")]
+    [Fact]
     public async Task Issue1152_the_space_after_a_cells_paragraph_counts_in_its_row()
     {
         // The same table without a table style: Normal's 1.15 lines and 10 pt after reach every cell.
@@ -310,7 +313,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.True(text.Ok, text.ToString());
     }
 
-    [Fact(Skip = "#66: found by this test: Word paragraphs take 한글's 어절 breaking from the template (blank.hwpx breakNonLatinWord, DocxReader leaves HLineBreaking.NonLatin open), so Chinese text without spaces is one word, broken at any character when it overflows: a full stop starts a line, an opening bracket ends one")]
+    [Fact]
     public async Task Issue66_closing_punctuation_never_starts_a_line_and_opening_punctuation_never_ends_one()
     {
         NeedFonts(RepositoryFonts.Korean);

@@ -9,7 +9,9 @@
 //   wider; 한글's keep the widths 한글 gave them, as 한글 draws them.
 // - Cells: their blocks are laid out at the columns' width less the padding (the cell's, else the table's, else
 //   한글's default 1.8 mm by 0.5 mm), nested tables too; a row is as high as its tallest single-row cell or its own
-//   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it.
+//   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it. A
+//   한글 cell holds its content down to its last line's text; a Word cell (WordCells) holds the whole last line and
+//   the space after its last paragraph too, as Word sizes rows.
 //   Content sits at the top, middle or bottom of the cell. Paragraph borders and backgrounds in a stack (a cell, a
 //   header) are drawn as in the body (BoxBorder), each line with its part of the box.
 // - Right to left (Word w:bidiVisual, RTF \rtlrow): the first column is the rightmost, and the table's alignment and
@@ -60,8 +62,17 @@ internal sealed class CellBox
     /// <summary>Height of the content without the spacing below its last line: what 한글 centres in a cell.</summary>
     public float InkHeight => Content.Count == 0 ? 0 : Content.Max(p => p.Top + p.Height - p.Below);
 
-    /// <summary>The height the cell needs: its content without the spacing below the last line, and its padding (as 한글 sizes cells).</summary>
-    public float Needed => InkHeight + (Padding.Top + Padding.Bottom) / 100f;
+    /// <summary>
+    /// How far the content goes down with the space after its last paragraph, which a Word cell holds (Stack's extent);
+    /// null for a 한글 cell, which holds its content down to the last line's text.
+    /// </summary>
+    public float? Extent { get; init; }
+
+    /// <summary>The height of the content the cell holds and centres: Word's down to <see cref="Extent"/>, 한글's <see cref="InkHeight"/>.</summary>
+    public float Held => Extent is { } extent ? Math.Max(ContentHeight, extent) : InkHeight;
+
+    /// <summary>The height the cell needs: the content it holds and its padding.</summary>
+    public float Needed => Held + (Padding.Top + Padding.Bottom) / 100f;
 }
 
 /// <summary>A row: its height and the cells that start in it.</summary>
@@ -112,6 +123,12 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     private const int MaxDepth = 16;
 
     private int _depth;
+
+    /// <summary>
+    /// Cells are sized as Word sizes them (a model of another format, resolved through the style resolver): the space
+    /// after a cell's last paragraph counts in its row. Else as 한글 sizes them, down to the last line's text.
+    /// </summary>
+    public bool WordCells { get; init; }
 
     // ───────────────────────── Stacks ─────────────────────────
 
@@ -317,7 +334,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 Borders = borders,
                 Fill = ParagraphText.Color(cell.Fill),
                 FillPicture = cell.FillPicture,
-                Content = Stack(cell.Blocks, contentWidth),
+                Content = Stack(cell.Blocks, contentWidth, out var extent),
+                Extent = WordCells ? extent : null,
             });
         }
 
@@ -554,7 +572,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             any |= fits.Count > 0;
             var shift = after.Count > 0 ? after[0].Top : 0;
             first.Add(Copy(cell, fits));
-            rest.Add(Copy(cell, [.. after.Select(p => p with { Top = p.Top - shift })]));
+            rest.Add(Copy(cell, [.. after.Select(p => p with { Top = p.Top - shift })], after.Count > 0 ? cell.Extent - shift : null));
         }
         if (!any)
             return null;
@@ -563,7 +581,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         return (firstRow, restRow);
     }
 
-    private static CellBox Copy(CellBox cell, IReadOnlyList<Piece> content) => new()
+    private static CellBox Copy(CellBox cell, IReadOnlyList<Piece> content, float? extent = null) => new()
     {
         Row = cell.Row,
         RowSpan = 1,
@@ -575,6 +593,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         Fill = cell.Fill,
         FillPicture = cell.FillPicture,
         Content = content,
+        Extent = extent,
     };
 
     // ───────────────────────── Drawing ─────────────────────────
@@ -626,7 +645,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         foreach (var (cell, area) in cells)
         {
             var inner = area.Height - (cell.Padding.Top + cell.Padding.Bottom) / 100f;
-            var extra = Math.Max(0, inner - cell.InkHeight);
+            var extra = Math.Max(0, inner - cell.Held);
             var shift = cell.VerticalAlign switch
             {
                 HVerticalAlign.Center => extra / 2,

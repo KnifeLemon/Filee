@@ -205,7 +205,7 @@ internal sealed record HParaBorder(HBorders Borders, string? Fill, HInsets Offse
 /// <param name="Latin">Latin words: kept whole (어절), hyphenated or broken anywhere (한글 breakLatinWord, Word w:wordWrap).</param>
 /// <param name="NonLatin">
 /// Korean words: kept whole (어절) or broken at any syllable (글자) (한글 breakNonLatinWord, whose BREAK_WORD is 어절 and
-/// KEEP_WORD 글자).
+/// KEEP_WORD 글자); or Word's: Korean words kept whole, Chinese and Japanese broken between any two characters.
 /// </param>
 /// <param name="LineWrap">한글 lineWrap: wrap, squeeze the line, or keep it on one line.</param>
 /// <param name="Kinsoku">East Asian line start / end rules apply (Word w:kinsoku; 한글 applies its 금칙 characters).</param>
@@ -247,8 +247,17 @@ internal enum HLatinBreak
 
 internal enum HNonLatinBreak
 {
+    /// <summary>한글 어절: Korean, Chinese and Japanese text breaks only between words (at spaces).</summary>
     KeepWord,
+
+    /// <summary>한글 글자: a break between any two characters.</summary>
     BreakWord,
+
+    /// <summary>
+    /// Word's (and the other formats' that aren't 한글's): Korean words are kept whole, Chinese and Japanese text breaks
+    /// between any two characters, by the East Asian rules.
+    /// </summary>
+    KeepKoreanWord,
 }
 
 internal enum HLineWrap

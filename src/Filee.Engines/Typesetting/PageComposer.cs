@@ -397,7 +397,10 @@ internal sealed class PageComposer
             {
                 _guard.Paragraph();
                 return Layout(composer.Resolve(p), width);
-            }, composer._styles is not null, () => Frame(_y));
+            }, composer._styles is not null, () => Frame(_y))
+            {
+                WordCells = composer._styles is not null,
+            };
             // Text boxes laid out like characters stack their content as cells do.
             composer._layouter.Stack = tables.Stack;
             composer._layouter.Guard = _guard;
