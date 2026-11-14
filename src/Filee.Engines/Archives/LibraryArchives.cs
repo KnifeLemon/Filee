@@ -1,6 +1,6 @@
 // Unpacks ZIP (and JAR, WBPZ …), 7z and RAR 4 / 5 in-process. 7z goes to Filee's own SevenZipReader, ZIPs with only
 // stored and Deflate entries to .NET's faster reader (ZipReader); the rest, and 7z archives with a method Filee has no
-// decoder for (PPMd, ARM64 …), to SharpCompress (MIT; its RAR decoder only unpacks, under the same unRAR terms as
+// decoder for (PPMd, RISC-V …), to SharpCompress (MIT; its RAR decoder only unpacks, under the same unRAR terms as
 // 7-Zip's). The archive is listed first and checked by ArchiveSafety; encrypted archives and entries are refused,
 // links are left out, sizes and (for ZIP and 7z) CRC-32s are checked as each file is written.
 

@@ -285,7 +285,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "Векторные геоданные: GeoJSON, KML, KMZ, GPX, Shapefile и CSV (долгота/широта или WKT) друг в друга.\nРезультат — долгота и широта в WGS 84; Shapefile в проекциях (UTM, Web Mercator, Lambert, Albers) пересчитываются.",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "Распаковывает ZIP, 7Z (в том числе непрерывные), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO и другие, сам упаковывает в ZIP, 7Z, TAR.GZ, TAR.XZ и XZ.\nС 7-Zip также открывает образы DMG, IMG и UDF, упаковывает в TAR.BZ2 и BZ2 и справляется с редкими вариантами (CAB с Quantum, многотомные ARJ, методы 7Z вроде PPMd…).",
+  "engine.archive.description": "Распаковывает ZIP, 7Z (в том числе непрерывные), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO и другие, сам упаковывает в ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 и XZ.\nС 7-Zip также открывает образы DMG, IMG и UDF и справляется с редкими вариантами (CAB с Quantum, многотомные ARJ, методы 7Z вроде PPMd…).",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 и комиксы (CBZ, CBR) — в PDF, EPUB, AZW3, MOBI, DOCX и текст.\nА ещё документы в EPUB, EPUB в KEPUB для Kobo и PDF в CBZ.",
   "engine.subtitle.name": "Subtitles (built-in)",

@@ -124,7 +124,7 @@ public sealed class FolderArchives1345Tests : IDisposable
         {
             var archive = Path.Combine(_root, "output." + format);
             var work = Directory.CreateDirectory(Path.Combine(_root, "work")).FullName;
-            await new ArchivePacker(sevenZip).PackAsync([new PackItem(folder, "selected")], archive, format,
+            await new ArchivePacker().PackAsync([new PackItem(folder, "selected")], archive, format,
                 ArchiveLevel.Fast, work, null, TestContext.Current.CancellationToken);
             var extracted = await new ArchiveExtractor(sevenZip).ExtractAsync(archive, format, work, TestContext.Current.CancellationToken);
             Assert.False(Directory.Exists(Path.Combine(extracted, "selected", "link")));
@@ -142,7 +142,7 @@ public sealed class FolderArchives1345Tests : IDisposable
         File.WriteAllText(output, "previous archive");
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new ArchivePacker(null).PackAsync(
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new ArchivePacker().PackAsync(
             [new PackItem(folder, "selected")], output, "zip", ArchiveLevel.Normal, _root, null, cancellation.Token));
         Assert.Equal("previous archive", File.ReadAllText(output));
         Assert.Empty(Directory.GetFiles(_root, "*.tmp"));

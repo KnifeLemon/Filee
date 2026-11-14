@@ -285,7 +285,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "Wektorowe dane geoprzestrzenne: GeoJSON, KML, KMZ, GPX, Shapefile i CSV (długość/szerokość lub WKT) wzajemnie.\nWynik to długość i szerokość WGS 84; układy rzutowane w Shapefile (UTM, Web Mercator, Lambert, Albers) są przeliczane.",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "Rozpakowuje ZIP, 7Z (także ciągłe), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO i inne, samodzielnie pakuje do ZIP, 7Z, TAR.GZ, TAR.XZ i XZ.\nZ 7-Zip otwiera też obrazy DMG, IMG i UDF, pakuje do TAR.BZ2 i BZ2 oraz obsługuje rzadkie odmiany (CAB Quantum, wieloczęściowe ARJ, metody 7Z takie jak PPMd…).",
+  "engine.archive.description": "Rozpakowuje ZIP, 7Z (także ciągłe), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO i inne, samodzielnie pakuje do ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 i XZ.\nZ 7-Zip otwiera też obrazy DMG, IMG i UDF oraz obsługuje rzadkie odmiany (CAB Quantum, wieloczęściowe ARJ, metody 7Z takie jak PPMd…).",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 i komiksy (CBZ, CBR) do PDF, EPUB, AZW3, MOBI, DOCX i tekstu.\nTakże dokumenty do EPUB, EPUB do KEPUB dla Kobo i PDF do CBZ.",
   "engine.subtitle.name": "Subtitles (built-in)",
