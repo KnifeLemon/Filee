@@ -84,18 +84,18 @@ the same on every PC. An external engine is looked for in this order:
 3. a copy already on the computer: on `PATH`, in Homebrew's and the usual Unix folders, or where the LibreOffice,
    calibre, Ghostscript and Tesseract installers put it.
 
-Settings → *Engines* shows every engine that works as "Ready", with where it comes from underneath ("Filee's download",
-"On this computer", "Your copy", with the folder and version), and a note when a copy is older than the one Filee is
-tested with. Filee's download is offered over a copy on the computer only when that copy is older, or when its version
-can't be read (it may not start at all, or tell no version, as an FFmpeg nightly named by date or Upscayl), once its
-version check has come back. When Filee's download is installed and a copy that runs is also on the computer, the card
-says so and offers to use that copy instead, which removes Filee's download (`EngineInstaller.StatusOf` reports it as
-`EngineCopy.OtherFolder`). Only where Filee's download is that one program: on Windows, LibreOffice's (with H2Orestart
-and Java), Whisper's (with its model), Ghostscript's and Upscayl's (with a C++ runtime) have parts the copy on the
-computer doesn't, so none is offered there. The copy is started again just before Filee's download is removed, and
-Filee's download is kept if it no longer starts. A copy whose folder or programs lead (through links at any level) to a
-folder with Filee's installed marker is Filee's own download reached by another path, not another copy; a wrapper script
-that runs Filee's download can't be told apart.
+Settings → *Engines* shows every engine that works as "Ready" (green, or amber while its card recommends an update),
+with where it comes from underneath ("Filee's download", "On this computer", "Your copy", with the folder and version),
+and a note when a copy is older than the one Filee is tested with. Filee's download is offered over a copy on the
+computer only when that copy is older, or when its version can't be read (it may not start at all, or tell no version,
+as an FFmpeg nightly named by date or Upscayl), once its version check has come back. When Filee's download is installed
+and a copy that runs is also on the computer, the card says so and offers to use that copy instead, which removes
+Filee's download (`EngineInstaller.StatusOf` reports it as `EngineCopy.OtherFolder`). Only where Filee's download is
+that one program: on Windows, LibreOffice's (with H2Orestart and Java), Whisper's (with its model), Ghostscript's and
+Upscayl's (with a C++ runtime) have parts the copy on the computer doesn't, so none is offered there. The copy is
+started again just before Filee's download is removed, and Filee's download is kept if it no longer starts. A copy whose
+folder or programs lead (through links at any level) to a folder with Filee's installed marker is Filee's own download
+reached by another path, not another copy; a wrapper script that runs Filee's download can't be told apart.
 
 Where Filee has no download of an engine (FFmpeg, Ghostscript and Tesseract on macOS, LibreOffice, Ghostscript and
 Tesseract on Linux),

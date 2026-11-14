@@ -208,6 +208,40 @@ public sealed class EngineStatusTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Every_ready_engine_has_the_same_green_tag_and_amber_when_its_card_recommends_an_update()
+    {
+        TestServices.EnsureInitialized("en");
+        var state = Downloadable();
+        (bool Ok, bool Warn, bool Danger) Tone() => (state.StatusIsOk, state.StatusIsWarn, state.StatusIsDanger);
+
+        state.Status = EnginePackageStatus.Installed;
+        Assert.Equal((true, false, false), Tone());
+        state.IsOutdated = true; // Filee's download has a new version
+        Assert.Equal((false, true, false), Tone());
+        state.IsOutdated = false;
+
+        // A copy on the computer and the user's own copy are the same Ready, in the same colour.
+        state.OwnCopyFolder = "/opt/homebrew/bin";
+        state.FromSystem = true;
+        state.Status = EnginePackageStatus.OwnCopy;
+        Assert.Equal((true, false, false), Tone());
+        state.IsOlderCopy = true; // older than the version Filee is tested with
+        Assert.Equal((false, true, false), Tone());
+        state.FromSystem = false;
+        Assert.Equal((false, true, false), Tone());
+        state.IsOlderCopy = false;
+        Assert.Equal((true, false, false), Tone());
+
+        state.Status = EnginePackageStatus.Failed;
+        Assert.Equal((false, false, true), Tone());
+        foreach (var busy in new[] { EnginePackageStatus.NotInstalled, EnginePackageStatus.Queued, EnginePackageStatus.Downloading, EnginePackageStatus.Unpacking })
+        {
+            state.Status = busy;
+            Assert.Equal((false, false, false), Tone());
+        }
+    }
+
+    [AvaloniaFact]
     public void Filees_download_is_offered_over_a_copy_on_the_computer_only_when_older_or_its_version_unknown()
     {
         TestServices.EnsureInitialized("en");
@@ -679,15 +713,20 @@ public sealed class EngineStatusTests : IDisposable
         Pump();
         try
         {
-            bool Dot() => window.GetVisualDescendants().OfType<Border>()
-                .Any(b => ReferenceEquals(b.DataContext, pandoc) && b.Width == 10 && b.IsEffectivelyVisible);
+            bool Dot(string brush = "SuccessBrush") => window.GetVisualDescendants().OfType<Border>()
+                .Any(b => ReferenceEquals(b.DataContext, pandoc) && b.Width == 10 && b.IsEffectivelyVisible
+                          && window.TryFindResource(brush, window.ActualThemeVariant, out var colour) && Equals(b.Background, colour));
+            bool Tag(string tone) => window.GetVisualDescendants().OfType<Border>()
+                .Any(b => ReferenceEquals(b.DataContext, pandoc) && b.Classes.Contains("status") && b.Classes.Contains(tone));
             bool Offers(string text) => window.GetVisualDescendants().OfType<Button>()
                 .Any(b => ReferenceEquals(b.DataContext, pandoc) && Equals(b.Content, text) && b.IsEffectivelyVisible);
             bool Shown(string? text) => window.GetVisualDescendants().OfType<TextBlock>()
                 .Any(t => ReferenceEquals(t.DataContext, pandoc) && t.Text == text && t.IsEffectivelyVisible);
 
-            // Filee's download, up to date: Ready, no size, another copy can be picked.
+            // Filee's download, up to date: Ready in green, no size, another copy can be picked.
             Assert.True(Dot());
+            Assert.True(Tag("ok"));
+            Assert.False(Dot("WarningBrush"));
             Assert.True(Offers("Use another copy…"));
             Assert.False(Offers("Use my copy…"));
             Assert.False(Shown(pandoc.Sizes));
@@ -697,6 +736,12 @@ public sealed class EngineStatusTests : IDisposable
             downloads.RefreshStatus();
             Pump();
             Assert.True(pandoc.CanUpdate);
+            // Still Ready, in amber: its card recommends the update.
+            Assert.Equal("Ready", pandoc.StatusText);
+            Assert.True(Dot("WarningBrush"));
+            Assert.False(Dot());
+            Assert.True(Tag("warn"));
+            Assert.False(Tag("ok"));
             Assert.True(Shown(pandoc.UpdateText));
             Assert.True(Shown(pandoc.Sizes));
 
@@ -705,6 +750,8 @@ public sealed class EngineStatusTests : IDisposable
             pandoc.Status = EnginePackageStatus.NotInstalled;
             Pump();
             Assert.False(Dot());
+            Assert.False(Dot("WarningBrush"));
+            Assert.False(Tag("ok") || Tag("warn"));
             Assert.True(Offers("Use my copy…"));
             Assert.False(Offers("Use another copy…"));
             Assert.True(Shown(pandoc.Sizes));
