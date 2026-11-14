@@ -90,6 +90,7 @@
   "donut.empty": "Перетащите пресеты сюда",
   "donut.same_format": "Тот же формат",
   "donut.group_caption": "Группа: {0}",
+  "donut.folder_icon_browse": "Выбрать значок",
   "donut.flip_to_back": "{0} оборот",
   "donut.flip_to_front": "{0} лицо",
 
@@ -110,6 +111,7 @@
   "download.badge_files": "{0} · файл {1} из {2}",
 
   "error.unsupported_source": "Этот тип файлов не поддерживается",
+  "error.folder_icon_platform": "Значки папок меняются в Windows",
   "error.empty_file": "Файл пустой (0 байт). Файл, созданный через «Создать» в контекстном меню, остаётся пустым, пока его не откроют в программе и не сохранят",
   "error.p7m_unreadable": "Это не подписанный файл .p7m, который может открыть Filee, или он повреждён",
   "error.p7m_detached": "В этом .p7m только подпись, без подписанного файла. Конвертируйте сам подписанный файл",
@@ -1802,6 +1804,7 @@
   "engine.iso.description": "Создаёт образы ISO из папок или содержимого архивов, сохраняя имена Unicode и пустые папки.",
   "preset.iso_image": "Образ ISO",
   "profile.folders": "Папки",
+  "preset.folder_icon": "Изменить значок папки",
 
   "preset.upscale": "Увеличить разрешение изображения",
   "preset.upscale.donut": "Увеличить",

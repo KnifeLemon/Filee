@@ -85,6 +85,7 @@
 "donut.empty": "Trascina qui i preset",
 "donut.same_format": "Stesso formato",
 "donut.group_caption": "Gruppo di {0}",
+  "donut.folder_icon_browse": "Cerca un'icona",
 "donut.flip_to_back": "{0} retro",
 "donut.flip_to_front": "{0} fronte",
 "toast.converting": "{0} → {1}",
@@ -103,6 +104,7 @@
 "download.badge": "{0}/s · {1}",
 "download.badge_files": "{0} · {1} di {2} file",
 "error.unsupported_source": "Questo tipo di file non è supportato",
+  "error.folder_icon_platform": "Le icone delle cartelle si cambiano su Windows",
 "error.empty_file": "Il file è vuoto (0 byte). Un file creato con “Nuovo” nel menu del clic destro resta vuoto finché non lo apri nella sua app e lo salvi",
 "error.p7m_unreadable": "Non è un file firmato .p7m che Filee riesce ad aprire, oppure è danneggiato",
 "error.p7m_detached": "Questo .p7m contiene solo la firma, non il file firmato. Converti invece il file che firma",
@@ -1779,6 +1781,7 @@
   "engine.iso.description": "Crea immagini ISO da cartelle o dal contenuto degli archivi, mantenendo i nomi Unicode e le cartelle vuote.",
   "preset.iso_image": "Immagine ISO",
   "profile.folders": "Cartelle",
+  "preset.folder_icon": "Cambia icona cartella",
 
   "preset.upscale": "Migliora e ingrandisci immagine",
   "preset.upscale.donut": "Migliora",

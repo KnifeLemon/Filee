@@ -23,7 +23,7 @@ public partial class BackFaceTests
         ["subtitles"] = (["to-srt", "to-vtt"], ["zip-all"]),
         ["vector"] = (["to-png", "to-pdf", "to-svg", "to-jpg", "to-webp"], ["to-tiff", "to-ico", "to-icns", "to-dxf", "zip-all"]),
         ["archives"] = (["extract", "zip-all", "to-zip", "to-7z"], []),
-        ["folders"] = (["to-iso", "to-zip", "zip-all"], []),
+        ["folders"] = (["tool-folder-icon", "to-iso", "to-zip", "zip-all"], []),
         ["cad"] = (["to-pdf", "to-png", "to-svg", "to-dxf", "to-dwg"], ["to-jpg", "merge-pdf", "zip-all"]),
         ["fonts"] = (["to-woff2", "to-woff", "to-ttf", "to-otf"], ["zip-all"]),
         ["data"] = (["to-json", "to-yaml", "to-xml", "to-csv", "to-xlsx"], ["to-ods", "to-html", "to-md", "zip-all"]),
@@ -40,7 +40,8 @@ public partial class BackFaceTests
             "zip-all" => 'B',
             "tool-crop" or "rotate" or "remove-background" or "merge-images" or "compress-image" or "half-size"
                 or "tool-image-edit" or "pdf-edit" or "pdf-split" or "compress-pdf" or "remove-metadata"
-                or "tool-clip" or "compress-video" or "merge-videos" or "compress-audio" or "merge-audio" or "translate" => 'E',
+                or "tool-clip" or "compress-video" or "merge-videos" or "compress-audio" or "merge-audio" or "translate"
+                or "tool-folder-icon" => 'E',
             "merge-pdf" when p.Key == "pdf" => 'E',
             _ => 'V',
         });
@@ -70,7 +71,9 @@ public partial class BackFaceTests
         foreach (var profile in BuiltInData.CreateProfiles())
             foreach (var id in profile.PresetIds)
                 foreach (var work in WorkOf(profile.Id, id, presets))
-                    Assert.True(work == 'V' || work == 'B' && profile.Id is "archives" or "folders" or "mixed", $"{profile.Id}/front: {id} is {work}");
+                    // The folders donut is the one front that leads with a tool ("Change folder icon") before its conversions.
+                    Assert.True(work == 'V' || work == 'B' && profile.Id is "archives" or "folders" or "mixed"
+                        || work == 'E' && profile.Id == "folders", $"{profile.Id}/front: {id} is {work}");
     }
 
     [Fact]

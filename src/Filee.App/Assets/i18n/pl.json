@@ -90,6 +90,7 @@
   "donut.empty": "Przeciągnij tu ustawienia",
   "donut.same_format": "Ten sam format",
   "donut.group_caption": "Grupa: {0}",
+  "donut.folder_icon_browse": "Wybierz ikonę",
   "donut.flip_to_back": "{0} tył",
   "donut.flip_to_front": "{0} przód",
 
@@ -110,6 +111,7 @@
   "download.badge_files": "{0} · plik {1} z {2}",
 
   "error.unsupported_source": "Ten typ pliku nie jest obsługiwany",
+  "error.folder_icon_platform": "Ikony folderów zmienia się w systemie Windows",
   "error.empty_file": "Plik jest pusty (0 bajtów). Plik utworzony przez „Nowy” w menu kontekstowym pozostaje pusty, dopóki nie otworzysz go w jego aplikacji i nie zapiszesz",
   "error.p7m_unreadable": "To nie jest podpisany plik .p7m, który Filee może otworzyć, albo jest uszkodzony",
   "error.p7m_detached": "Ten .p7m zawiera tylko podpis, a nie podpisany plik. Przekonwertuj plik, który podpisuje",
@@ -1802,6 +1804,7 @@
   "engine.iso.description": "Tworzy obrazy ISO z folderów lub zawartości archiwów, zachowując nazwy Unicode i puste foldery.",
   "preset.iso_image": "Obraz ISO",
   "profile.folders": "Foldery",
+  "preset.folder_icon": "Zmień ikonę folderu",
 
   "preset.upscale": "Zwiększ rozdzielczość obrazu",
   "preset.upscale.donut": "Zwiększ jakość",

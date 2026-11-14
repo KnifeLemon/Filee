@@ -86,6 +86,7 @@
   "donut.empty": "اسحب الإعدادات المسبقة إلى هنا",
   "donut.same_format": "الصيغة نفسها",
   "donut.group_caption": "مجموعة من {0}",
+  "donut.folder_icon_browse": "استعراض لاختيار أيقونة",
   "donut.flip_to_back": "{0} الخلف",
   "donut.flip_to_front": "{0} الأمام",
   "toast.converting": "تحويل {0} إلى {1}",
@@ -104,6 +105,7 @@
   "download.badge": "{0}/ث · {1}",
   "download.badge_files": "{0} · {1} من أصل {2} من الملفات",
   "error.unsupported_source": "نوع الملف هذا غير مدعوم",
+  "error.folder_icon_platform": "تغيير أيقونات المجلدات على Windows فقط",
   "error.empty_file": "الملف فارغ (0 بايت). يبقى الملف المُنشأ باستخدام «جديد» من قائمة النقر بالزر الأيمن فارغًا حتى تفتحه في تطبيقه وتحفظه",
   "error.p7m_unreadable": "هذا ليس ملفًا موقّعًا (.p7m) يستطيع Filee فتحه، أو أنه تالف",
   "error.p7m_detached": "لا يحتوي ملف .p7m هذا إلا على التوقيع، لا على الملف الموقّع. حوّل الملف الذي يوقّعه بدلًا منه",
@@ -1781,6 +1783,7 @@
   "engine.iso.description": "ينشئ صور ISO من المجلدات أو محتويات الأرشيف، مع الحفاظ على أسماء Unicode والمجلدات الفارغة.",
   "preset.iso_image": "صورة ISO",
   "profile.folders": "المجلدات",
+  "preset.folder_icon": "تغيير أيقونة المجلد",
 
   "preset.upscale": "ترقية جودة الصورة",
   "preset.upscale.donut": "ترقية الجودة",

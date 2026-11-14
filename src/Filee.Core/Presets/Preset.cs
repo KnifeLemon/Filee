@@ -382,6 +382,21 @@ public sealed class Preset
     public bool IsUpscaleTool => IsTool && Tool == UpscaleTool;
 
     /// <summary>
+    /// <see cref="Tool"/> of "Change folder icon" (settings schema 95): an icon inside the folder or picked by hand,
+    /// converted to an .ico in the folder and recorded in its desktop.ini (see <see cref="FolderIcons"/>). Nothing
+    /// opens on macOS and Linux: the slice is greyed out there (PresetAvailability).
+    /// </summary>
+    public const string FolderIconTool = "folder-icon";
+
+    /// <summary>The picture the tool's ring entry converts (a file the folder holds), for the per-picture presets
+    /// <see cref="FolderIcons"/> makes; null for every other preset, including the tool itself.</summary>
+    public string? FolderIconPath { get; set; }
+
+    /// <summary>True for "Change folder icon".</summary>
+    [JsonIgnore]
+    public bool IsFolderIconTool => IsTool && Tool == FolderIconTool;
+
+    /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
     /// set by the clip window on the conversion it starts): the file is a video or a sound. Other files convert as usual.
     /// </summary>

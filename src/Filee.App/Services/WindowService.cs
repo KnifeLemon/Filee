@@ -382,6 +382,51 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         }
     }
 
+    /// <summary>
+    /// One file picker for a folder icon ("Change folder icon" → "Browse…", settings schema 95): an .ico or a picture
+    /// of one. Starts in the folder the last pick was made in, else the folder getting the icon (caller says). The
+    /// donut has closed and the main window may be in the tray: a small window of its own owns the dialog. Null when
+    /// cancelled. <paramref name="titleKey"/> is localized here.
+    /// </summary>
+    public async Task<string?> PickIconFileAsync(string startFolder, string titleKey)
+    {
+        if (!Directory.Exists(startFolder))
+            startFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var host = new Window
+        {
+            Width = 1,
+            Height = 1,
+            Opacity = 0,
+            ShowInTaskbar = false,
+            // Keep activated on Windows so SetForegroundWindow brings the dialog above Explorer; macOS suppresses it to stay on the active Space.
+            ShowActivated = !OperatingSystem.IsMacOS(),
+            WindowDecorations = WindowDecorations.None,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Title = "Filee",
+        };
+        var platform = services.GetRequiredService<Filee.Core.Platform.IPlatformServices>();
+        // Move to active Space before Show() so collection behavior is set before Avalonia maps the NSWindow onto WindowServer (#596).
+        if (host.TryGetPlatformHandle()?.Handle is { } handle)
+            platform.MoveToActiveSpace(handle);
+        host.Show();
+        try
+        {
+            var storage = host.StorageProvider;
+            var start = await storage.TryGetFolderFromPathAsync(startFolder);
+            var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = loc[titleKey],
+                SuggestedStartLocation = start,
+                AllowMultiple = false,
+            });
+            return files.FirstOrDefault()?.TryGetLocalPath();
+        }
+        finally
+        {
+            host.Close();
+        }
+    }
+
     public MainWindow? Main => _main;
 
     /// <summary>
