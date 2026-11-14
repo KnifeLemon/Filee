@@ -176,6 +176,28 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
     }
 
     [Fact]
+    public async Task Issue1152_table_of_contents_entries_are_not_drawn_as_blue_links()
+    {
+        // Word writes each entry of a table of contents as a link in the Hyperlink character style (blue, underlined),
+        // yet draws it in the TOC style's black, as LibreOffice does; a link in the text stays blue.
+        const string Hyperlink = "<w:style w:type=\"character\" w:styleId=\"Hyperlink\"><w:name w:val=\"Hyperlink\"/><w:rPr><w:color w:val=\"0000FF\"/><w:u w:val=\"single\"/></w:rPr></w:style>";
+        static string Entry(string text, string anchor) =>
+            $"<w:hyperlink w:anchor=\"{anchor}\" w:history=\"1\">{R(text, "<w:rStyle w:val=\"Hyperlink\"/><w:noProof/>")}</w:hyperlink>";
+        var toc = P("<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> TOC \\o \"1-3\" \\h \\z \\u </w:instrText></w:r>" +
+                    "<w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>" + Entry("Introduction", "_Toc1")) +
+                  P(Entry("Results", "_Toc2") + "<w:r><w:fldChar w:fldCharType=\"end\"/></w:r>");
+        var docx = Docx(toc + P(Entry("Elsewhere", "_Toc1")));
+        docx.Styles = NotoStyles + Hyperlink;
+
+        var page = Single(await DocxAsync(docx));
+
+        SKColor ColorOf(string word) => Glyphs(page).First(g => g.Char == word[0] && Lines(page).Any(l => l.Text == word && MathF.Round(g.Y, 1) == l.Y)).Run.Color;
+        Assert.Equal(SKColors.Black, ColorOf("Introduction"));
+        Assert.Equal(SKColors.Black, ColorOf("Results"));
+        Assert.Equal(new SKColor(0, 0, 0xFF), ColorOf("Elsewhere"));
+    }
+
+    [Fact]
     public async Task Issue1152_a_header_taller_than_the_top_margin_moves_the_body_down()
     {
         // Eight header lines from 0.5 in: the header ends near 155 pt, well under the 1 inch (72 pt) top margin.

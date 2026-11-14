@@ -509,7 +509,10 @@ internal sealed partial class DocxReader
     private RunProps RunProperties(XElement? rPr, RunProps paragraphRun)
     {
         var run = paragraphRun.Clone();
-        if (Val(rPr?.Element(W + "rStyle")) is { } characterStyle && _styles.TryGetValue(characterStyle, out var style))
+        // Word and LibreOffice draw the entries of a table of contents in the TOC styles' look, though Word gives each
+        // entry's link the Hyperlink character style (blue, underlined).
+        if (Val(rPr?.Element(W + "rStyle")) is { } characterStyle && _styles.TryGetValue(characterStyle, out var style)
+            && !(InTableOfContents && (style.Id == "Hyperlink" || string.Equals(style.Name, "Hyperlink", StringComparison.OrdinalIgnoreCase))))
         {
             // Character styles only carry run properties; apply their chain on top of the paragraph's.
             var chain = new List<Style>();

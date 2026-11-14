@@ -1259,7 +1259,13 @@ internal sealed partial class DocxReader
 
         /// <summary>The page number field whose result text is kept as <see cref="HField.Stored"/>.</summary>
         public HField? Stored;
+
+        /// <summary>A table of contents (TOC): its entries don't take the Hyperlink character style's look.</summary>
+        public bool TableOfContents;
     }
+
+    /// <summary>Text is in the entries of a table of contents.</summary>
+    private bool InTableOfContents => _fields.Any(f => f.Result && f.TableOfContents);
 
     /// <summary>Field result text is shown unless we are inside an instruction or a field we replace (PAGE ...).</summary>
     private bool ShowsText() => _fields.All(f => f.Result && !f.Suppress);
@@ -1316,6 +1322,9 @@ internal sealed partial class DocxReader
                     field.Suppress = true;
                     break;
                 }
+            case "TOC":
+                field.TableOfContents = true;
+                break;
             case "HYPERLINK":
                 {
                     // HYPERLINK "url" [\l "bookmark"] or HYPERLINK \l "bookmark"
