@@ -5,6 +5,7 @@
 // dictionaries) are refused quickly; cancellation stops it. The mutation fuzz target is in ArchiveFuzzTests.
 
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Text;
 using Filee.Core.Presets;
 using Filee.Engines.Archives;
@@ -241,10 +242,12 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
         var dir = fx.NewFolder();
         var tree = MakeSourceTree(dir, switches.Contains("-mmt=4") ? 3_000_000 : 150_000);
-        // A real program (7-Zip's own: 7z.dll on Windows, the 7zz binary elsewhere) for the exe filters 7-Zip picks by
-        // extension.
+        // A real x86-64 program (7-Zip's own: 7z.dll on Windows, the 7zz binary elsewhere) for the x86 exe filter 7-Zip
+        // picks by extension. On ARM64 machines 7-Zip's binary would make it pick its ARM64 filter, which Filee leaves to
+        // 7-Zip, so there the sample stays plain data.
         var program = Path.Combine(Path.GetDirectoryName(SevenZipExe)!, "7z.dll");
-        File.Copy(File.Exists(program) ? program : SevenZipExe!, Path.Combine(tree, "a", "tool.dll"));
+        if (RuntimeInformation.OSArchitecture == Architecture.X64)
+            File.Copy(File.Exists(program) ? program : SevenZipExe!, Path.Combine(tree, "a", "tool.dll"));
         var output = Path.Combine(dir, "theirs.7z");
         await Run7zAsync(["a", "-t7z", .. switches.Split(' '), output, tree]);
         TestContext.Current.TestOutputHelper?.WriteLine($"{switches}: {Methods(output)}");
