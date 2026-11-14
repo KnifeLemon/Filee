@@ -195,7 +195,8 @@ jobs:
             tests/Filee.Setup.Tests/bin/Release/net10.0/screenshots/
           if-no-files-found: ignore
 
-  # The metadata writer on Linux, with the Perl ExifTool pinned in engines.json (the build above is its Windows side).
+  # The metadata writer on Linux, with the Perl ExifTool pinned in engines.json (the build above is its Windows side),
+  # and the exact seeks of the video tools with Ubuntu's FFmpeg (no other job has FFmpeg, so they skip there).
   metadata-linux:
     name: metadata (linux-x64)
     needs: changes
@@ -228,6 +229,13 @@ jobs:
 
       - name: Test
         run: dotnet test tests/Filee.Engines.Tests -c Release --filter "FullyQualifiedName~MetadataTests"
+
+      # Exact seeks (#1205): every frame of numbered MP4, MPEG-TS, MPEG-PS and open-GOP HEVC videos, and clips, playback
+      # and Live Photos from MPEG-TS. FILEE_TEST_FFMPEG=required makes a missing FFmpeg fail them instead of skipping.
+      - name: Test exact seeks
+        env:
+          FILEE_TEST_FFMPEG: required
+        run: dotnet test tests/Filee.Engines.Tests -c Release --no-build --filter "FullyQualifiedName~ExactSeekTests"
 
   # Windows on ARM64 (#236), built and tested natively: the Explorer menu DLL, Setup, 7-Zip, rhwp and Unhwp's library
   # are ARM64 builds, the downloaded engines (Pandoc here) x64 ones under emulation. rhwp and Unhwp come from pinned

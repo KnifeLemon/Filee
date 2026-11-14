@@ -19,8 +19,18 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private static readonly (string Ffmpeg, string Ffprobe)? Tools = FfmpegConverter.Locate();
 
-    private static void SkipUnlessInstalled() =>
+    /// <summary>
+    /// CI sets it where it installs FFmpeg: a missing FFmpeg or encoder then fails these tests instead of skipping
+    /// them.
+    /// </summary>
+    private static bool Required => Environment.GetEnvironmentVariable("FILEE_TEST_FFMPEG") == "required";
+
+    private static void SkipUnlessInstalled()
+    {
+        if (Tools is null && Required)
+            Assert.Fail("FILEE_TEST_FFMPEG is required, but FFmpeg was not found.");
         Assert.SkipUnless(Tools is not null, "FFmpeg is not installed (pwsh build/fetch-engines.ps1 -Only ffmpeg)");
+    }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -259,6 +269,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // With sound, an MPEG-TS file starts with it, and the frames are shown at times that aren't round: frame 40 at
         // 1.3546666… s, which six decimals round up past it.
         var video = await NumberedAsync(name, rate, 3, CodecOf(name), beepFrame: name == "soundfirst.ts" ? 50 : null);
+        if (video is null && Required)
+            Assert.Fail($"FILEE_TEST_FFMPEG is required, but this FFmpeg can't write {name}.");
         Assert.SkipWhen(video is null, $"This FFmpeg can't write {name}");
         var frames = await FramesAsync(video!);
         Assert.InRange(frames.Count, 80, 95); // 3 s at 30 or 29.97 fps, as decoded
