@@ -91,6 +91,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private sealed class PaletteJudging
     {
         public Dictionary<string, PresetJudgement> Judged { get; } = [];
+        public Dictionary<string, OrdinaryConversion> Notices { get; } = [];
+        public IReadOnlyList<FileFormat> Formats { get; set; } = [];
         public PresetAvailability.PaletteSession? Session { get; set; }
     }
 
@@ -1025,6 +1027,14 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         if (!_tipsByPreset.TryGetValue(preset.Id, out var tip))
             _tipsByPreset[preset.Id] = tip =
                 new PresetFormatTip(preset, _availability, _catalog.CreatePlanner, _loc);
+        _judgingByProfile.TryGetValue(Profile?.Id ?? "", out var judging);
+        tip.OrdinaryConversionNotice = (JudgesCurrentProfile ? judging?.Notices.GetValueOrDefault(preset.Id) : null) switch
+        {
+            OrdinaryConversion.All => _loc[judging!.Formats.Count == 1
+                ? "toolbar.chip_tip.ordinary_conversion.single" : "toolbar.chip_tip.ordinary_conversion.all"],
+            OrdinaryConversion.Some => _loc["toolbar.chip_tip.ordinary_conversion.some"],
+            _ => null,
+        };
         return tip;
     }
 
@@ -1257,12 +1267,16 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         var pending = ShownPresets().Where(p => !p.IsGroup && (profile.Id == "folders" || !placed.Contains(p.Id)) && !judging.Judged.ContainsKey(p.Id)).ToList();
         if (pending.Count > 0)
         {
-            judging.Session ??= _availability.ForPalette(profile.Id == "folders" ? [FormatRegistry.FindById(FormatRegistry.Folder)!] : profile.Extensions.Select(FormatRegistry.FindByExtension)
-                .OfType<FileFormat>().DistinctBy(f => f.Id).ToList());
+            if (judging.Session is null)
+            {
+                judging.Formats = profile.Id == "folders" ? [FormatRegistry.FindById(FormatRegistry.Folder)!]
+                    : profile.Extensions.Select(FormatRegistry.FindByExtension).OfType<FileFormat>().DistinctBy(f => f.Id).ToList();
+                judging.Session = _availability.ForPalette(judging.Formats);
+            }
             var clock = Stopwatch.StartNew();
             foreach (var preset in pending)
             {
-                judging.Judged[preset.Id] = JudgeOne(judging.Session, preset);
+                judging.Judged[preset.Id] = JudgeOne(judging, preset);
                 JudgementObserved?.Invoke(profileId, preset.Id);
                 if (clock.Elapsed >= JudgeSlice)
                     break;
@@ -1278,11 +1292,15 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     }
 
     // A failed probe must not end this dispatcher job. Folder offers fail closed; other profiles keep their fallback.
-    private PresetJudgement JudgeOne(PresetAvailability.PaletteSession session, Preset preset)
+    private PresetJudgement JudgeOne(PaletteJudging judging, Preset preset)
     {
+        judging.Notices.Remove(preset.Id);
         try
         {
-            return session.Judge(preset);
+            var result = judging.Session!.Judge(preset);
+            if (result.Use == PresetUse.Usable)
+                judging.Notices[preset.Id] = _availability.OrdinaryConversionFor(preset, judging.Formats);
+            return result;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

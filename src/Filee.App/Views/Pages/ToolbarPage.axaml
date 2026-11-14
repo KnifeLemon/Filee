@@ -205,6 +205,8 @@
                    IsVisible="{Binding Title, Converter={x:Static ObjectConverters.IsNotNull}}" />
         <TextBlock x:Name="TipMakes" Classes="muted" TextWrapping="Wrap"
                    IsVisible="{Binding Title, Converter={x:Static ObjectConverters.IsNotNull}}"><Run Text="{Binding MakesBefore}" /><Run Text="{Binding MakesName}" FontWeight="Bold" /><Run Text="{Binding MakesAfter}" /></TextBlock>
+        <TextBlock x:Name="TipOrdinaryConversionNotice" Text="{Binding OrdinaryConversionNotice}" TextWrapping="Wrap"
+                   IsVisible="{Binding OrdinaryConversionNotice, Converter={x:Static ObjectConverters.IsNotNull}}" />
         <Border Height="1" Background="{DynamicResource SubtleBorderBrush}"
                 IsVisible="{Binding Title, Converter={x:Static ObjectConverters.IsNotNull}}" />
         <TextBlock x:Name="TipAnyFile" Classes="caption" FontWeight="SemiBold" Text="{Binding AnyFile}"

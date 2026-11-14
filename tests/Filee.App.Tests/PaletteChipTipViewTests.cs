@@ -116,6 +116,108 @@ public class PaletteChipTipViewTests
         ? string.Concat(inlines.OfType<Run>().Select(r => r.Text))
         : block.Text ?? "";
 
+    [AvaloniaTheory]
+    [InlineData("png", "single", false)]
+    [InlineData("png,mp4", "some", false)]
+    [InlineData("png,jpg", "all", false)]
+    [InlineData("jpg,jpeg", "single", false)]
+    [InlineData("mp4", null, false)]
+    [InlineData("", null, false)]
+    [InlineData("notice-unknown", null, false)]
+    [InlineData("png", "single", true)]
+    [InlineData("", null, true)]
+    public void Ordinary_notice_is_an_additional_row_in_a_runnable_chips_real_tip(string extensions, string? scope, bool fallback)
+    {
+        using var f = new Fixture(new OrdinaryConversionNoticeTests.Inputs());
+        using var vm = f.Page(new ToolbarProfile
+        {
+            Id = "notice-tip",
+            Extensions = extensions.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList(),
+            IsFallback = fallback,
+            PresetIds = [],
+        });
+        using var view = new View(vm);
+        if (extensions == "notice-unknown")
+        {
+            vm.PaletteSearch = f.Loc.DisplayName(f.Preset("extract-frames-jpg"));
+            RenderTests.Pump();
+            var unknown = view.Chip("extract-frames-jpg");
+            var reason = ((PaletteChip)unknown.DataContext!).Reason;
+            Assert.NotNull(reason);
+            Assert.Equal(reason, View.Open(unknown).Content);
+            View.Close(unknown);
+            return;
+        }
+        var chip = view.Chip("extract-frames-jpg");
+        var model = Assert.IsType<PaletteChip>(chip.DataContext);
+        Assert.Null(model.Reason);
+        Assert.True(chip.IsEnabled);
+        Assert.Equal(1, chip.Opacity);
+        var tip = View.Open(chip);
+        var block = tip.GetVisualDescendants().OfType<TextBlock>().Single(b => b.Name == "TipOrdinaryConversionNotice");
+        Assert.Equal(scope is not null, block.IsEffectivelyVisible);
+        Assert.Equal(scope is null ? null : f.Loc["toolbar.chip_tip.ordinary_conversion." + scope], block.Text);
+        Assert.NotNull(Read(tip).Makes);
+        Assert.NotNull(Read(tip).WorksWith);
+        Assert.NotEmpty(Read(tip).Rows);
+        Assert.DoesNotContain("ordinary_conversion.", string.Join(" ", Read(tip).Lines));
+        View.Close(chip);
+        var preset = f.Preset("extract-frames-jpg");
+        Assert.True(vm.Insert(preset.Id, 0));
+        Assert.Contains(preset.Id, vm.SelectedProfile!.Profile.PresetIds);
+    }
+
+    [AvaloniaFact]
+    public void An_open_ordinary_tip_updates_and_clears_when_input_extensions_change()
+    {
+        using var f = new Fixture(new OrdinaryConversionNoticeTests.Inputs());
+        using var vm = f.PageWithPalette("png");
+        using var view = new View(vm);
+        var tipModel = Assert.IsType<PresetFormatTip>(((PaletteChip)view.Chip("extract-frames-jpg").DataContext!).Tip);
+        void Check(string? scope)
+        {
+            var chip = view.Chip("extract-frames-jpg");
+            var tip = View.Open(chip);
+            Assert.Same(tipModel, ((PaletteChip)chip.DataContext!).Tip);
+            var block = tip.GetVisualDescendants().OfType<TextBlock>().Single(b => b.Name == "TipOrdinaryConversionNotice");
+            Assert.Equal(scope is not null, block.IsEffectivelyVisible);
+            Assert.Equal(scope is null ? null : f.Loc["toolbar.chip_tip.ordinary_conversion." + scope], block.Text);
+            View.Close(chip);
+        }
+
+        Check("single");
+        vm.ExtensionTags!.AddCommand.Execute("mp4");
+        RenderTests.Pump();
+        Check("some");
+        vm.ExtensionTags.RemoveCommand.Execute(vm.ExtensionTags.Tags.Single(t => t.Value == "png"));
+        RenderTests.Pump();
+        Check(null);
+        vm.ExtensionTags.RemoveCommand.Execute(vm.ExtensionTags.Tags.Single());
+        RenderTests.Pump();
+        Check(null);
+        Assert.Equal(1, tipModel.BuildCount);
+    }
+
+    [AvaloniaFact]
+    public void Folder_and_missing_engine_chips_keep_only_their_reason_tip()
+    {
+        using var f = new Fixture();
+        using var vm = f.Page(new ToolbarProfile { Id = "folders", PresetIds = [] });
+        using var view = new View(vm);
+        vm.PaletteSearch = f.Loc.DisplayName(f.Preset("extract-frames-jpg"));
+        RenderTests.Pump();
+        Assert.DoesNotContain(vm.Palette, c => c.PresetId == "extract-frames-jpg");
+        Assert.DoesNotContain(view.Chips, c => ((PaletteChip)c.DataContext!).PresetId == "extract-frames-jpg");
+
+        using var ordinary = f.PageWithPalette("png");
+        using var ordinaryView = new View(ordinary);
+        var chip = ordinaryView.Chip("extract-motion");
+        var reason = ((PaletteChip)chip.DataContext!).Reason;
+        Assert.NotNull(reason);
+        Assert.Equal(reason, View.Open(chip).Content);
+        View.Close(chip);
+    }
+
     private static Shown Read(ToolTip tip)
     {
         var blocks = tip.GetVisualDescendants().OfType<TextBlock>().Where(b => b.IsEffectivelyVisible).ToList();
