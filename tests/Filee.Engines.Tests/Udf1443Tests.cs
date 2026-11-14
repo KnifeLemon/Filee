@@ -77,7 +77,9 @@ public sealed class Udf1443Tests : IDisposable
         File.WriteAllText(Path.Combine(folder, new string('\u0100', 126) + "ab"), "invalid UDF identifier");
         var output = Path.Combine(_root, "result.iso");
         File.WriteAllText(output, "keep");
-        await Assert.ThrowsAnyAsync<ArgumentException>(() => Write(folder, output, ct: TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => Write(folder, output, ct: TestContext.Current.CancellationToken));
+        Assert.Equal("error.iso_udf_name", error.ErrorKey);
+        Assert.Equal(new string('\u0100', 126) + "ab", error.Detail);
         Assert.Equal("keep", File.ReadAllText(output));
         Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*.tmp"));
     }
@@ -94,9 +96,148 @@ public sealed class Udf1443Tests : IDisposable
         {
             if (value > 0) File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddDays(-1));
         });
-        await Assert.ThrowsAnyAsync<IOException>(() => Write(folder, output, progress, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => Write(folder, output, progress, TestContext.Current.CancellationToken));
+        Assert.Equal("error.iso_changed", error.ErrorKey);
         Assert.Equal("keep", File.ReadAllText(output));
         Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*.tmp"));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Identifier_limits_preserve_files_and_directories(bool wide, bool directory)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "source")).FullName;
+        var name = wide ? new string('\u0100', 127) : new string('a', 254);
+        var path = Path.Combine(folder, name);
+        if (directory) Directory.CreateDirectory(path);
+        else File.WriteAllText(path, "boundary");
+        var output = Path.Combine(_root, "result.iso");
+        await Write(folder, output, ct: TestContext.Current.CancellationToken);
+        using var image = File.OpenRead(output);
+        using var udf = new UdfReader(image);
+        if (directory) Assert.True(udf.DirectoryExists(name));
+        else
+        {
+            using var reader = new StreamReader(udf.OpenFile(name, FileMode.Open));
+            Assert.Equal("boundary", reader.ReadToEnd());
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Overlong_identifiers_refuse_with_a_localized_reason(bool wide, bool directory)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "source")).FullName;
+        // Both cases fit the host's component limit, but need 255 or 256 identifier payload bytes in UDF.
+        var name = wide ? new string('\u0100', 126) + "ab" : new string('a', 255);
+        var path = Path.Combine(folder, name);
+        if (directory) Directory.CreateDirectory(path);
+        else File.WriteAllText(path, "invalid");
+        var output = Path.Combine(_root, "result.iso");
+        File.WriteAllText(output, "keep");
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => Write(folder, output, ct: TestContext.Current.CancellationToken));
+        Assert.Equal("error.iso_udf_name", error.ErrorKey);
+        Assert.Equal(name, error.Detail);
+        Assert.Equal("keep", File.ReadAllText(output));
+        Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*.tmp"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Literal_backslashes_are_refused_instead_of_becoming_image_directories(bool directory)
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "Windows treats backslashes as separators.");
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "source")).FullName;
+        var name = "literal\\name";
+        if (directory) Directory.CreateDirectory(Path.Combine(folder, name));
+        else File.WriteAllText(Path.Combine(folder, name), "must not be moved");
+        var output = Path.Combine(_root, "result.iso");
+        File.WriteAllText(output, "keep");
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => Write(folder, output, ct: TestContext.Current.CancellationToken));
+        Assert.Equal("error.iso_udf_name", error.ErrorKey);
+        Assert.Equal(name, error.Detail);
+        Assert.Equal("keep", File.ReadAllText(output));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(".")]
+    [InlineData("..")]
+    [InlineData("a/b")]
+    [InlineData("a\\b")]
+    [InlineData("a\0b")]
+    public void Invalid_components_are_translatable_even_when_the_host_cannot_create_them(string name)
+    {
+        var error = Assert.Throws<ConversionRefusedException>(() => FolderIsoConverter.ValidateUdfName(name, "relative-name"));
+        Assert.Equal("error.iso_udf_name", error.ErrorKey);
+        Assert.Equal("relative-name", error.Detail);
+    }
+
+    [Theory]
+    [InlineData(0xD800)]
+    [InlineData(0xDFFF)]
+    public void Unpaired_surrogates_are_refused(int codeUnit)
+    {
+        // Construct at runtime: attribute strings are encoded as UTF-8 and cannot retain an unpaired surrogate.
+        var name = new string((char)codeUnit, 1);
+        var error = Assert.Throws<ConversionRefusedException>(() => FolderIsoConverter.ValidateUdfName(name, "relative-name"));
+        Assert.Equal("error.iso_udf_name", error.ErrorKey);
+        Assert.Equal("relative-name", error.Detail);
+    }
+
+    [Fact]
+    public async Task Valid_surrogate_pairs_are_preserved_at_the_identifier_limit()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "source")).FullName;
+        var name = string.Concat(Enumerable.Repeat("\ud83d\ude00", 61)) + "abcde";
+        Assert.Equal(127, name.Length);
+        File.WriteAllText(Path.Combine(folder, name), "non-BMP");
+        var output = Path.Combine(_root, "result.iso");
+        await Write(folder, output, ct: TestContext.Current.CancellationToken);
+        using var image = File.OpenRead(output);
+        using var udf = new UdfReader(image);
+        using var reader = new StreamReader(udf.OpenFile(name, FileMode.Open));
+        Assert.Equal("non-BMP", reader.ReadToEnd());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Removed_or_truncated_sources_are_reported_consistently(bool remove)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "source")).FullName;
+        var source = Path.Combine(folder, "data.bin");
+        File.WriteAllBytes(source, new byte[2 * 1024 * 1024]);
+        var output = Path.Combine(_root, "result.iso");
+        File.WriteAllText(output, "keep");
+        var changed = false;
+        var progress = new CallbackProgress(value =>
+        {
+            if (value <= 0 || changed) return;
+            changed = true;
+            if (remove) File.Delete(source);
+            else File.WriteAllBytes(source, []);
+        });
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => Write(folder, output, progress, TestContext.Current.CancellationToken));
+        Assert.True(changed);
+        Assert.Equal("error.iso_changed", error.ErrorKey);
+        Assert.Equal("keep", File.ReadAllText(output));
+        Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*.tmp"));
+    }
+
+    [Fact]
+    public async Task Destination_io_errors_are_not_reported_as_source_changes()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "source")).FullName;
+        File.WriteAllText(Path.Combine(folder, "data.txt"), "content");
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => Write(folder, Path.Combine(_root, "missing", "result.iso"), ct: TestContext.Current.CancellationToken));
     }
 
     [Fact]

@@ -25,6 +25,35 @@ public sealed class Udf1443Tests
     }
 
     [AvaloniaFact]
+    public void Every_language_explains_udf_name_limits()
+    {
+        TestServices.EnsureInitialized("en");
+        foreach (var language in LocalizationService.Languages)
+        {
+            var strings = LocalizationService.LoadStrings(language.Code);
+            Assert.True(strings.TryGetValue("error.iso_udf_name", out var reason), language.Code);
+            Assert.Contains("254", reason);
+            Assert.Contains("127", reason);
+            Assert.Contains("UTF-16", reason);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Target_changes_notify_both_iso_and_gcode_visibility()
+    {
+        TestServices.EnsureInitialized("en");
+        var editor = new PresetEditorViewModel(new Preset { Name = "Conversion", TargetFormat = "pdf" }, AppHost.Get<ILocalizer>());
+        var changed = new List<string?>();
+        editor.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        editor.Target = editor.Targets.Single(c => c.Value == "iso");
+        Assert.Contains(nameof(editor.ShowIso), changed);
+        Assert.Contains(nameof(editor.ShowGcode), changed);
+        Assert.True(editor.ShowIso);
+        editor.Target = editor.Targets.Single(c => c.Value == "pdf");
+        Assert.False(editor.ShowIso);
+    }
+
+    [AvaloniaFact]
     public void Filesystem_choice_round_trips_without_changing_the_default()
     {
         TestServices.EnsureInitialized("en");

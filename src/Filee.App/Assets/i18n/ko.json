@@ -1,4 +1,5 @@
 {
+  "error.iso_udf_name": "UDF 이름은 유효한 Unicode여야 하며 슬래시, 역슬래시, 널 문자를 포함하거나 . 또는 ..일 수 없습니다. Latin-1 문자만 있으면 최대 254자, 그 외 문자가 있으면 UTF-16 단위로 최대 127개입니다.",
   "presets.iso_filesystem": "ISO 파일 시스템",
   "app.name": "Filee",
   "app.tagline": "끌어서 놓으면, 변환 끝.",

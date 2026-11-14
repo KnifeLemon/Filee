@@ -1,4 +1,5 @@
 {
+  "error.iso_udf_name": "Los nombres UDF deben ser Unicode válido, sin barras, barras inversas ni caracteres nulos, y no pueden ser . ni ... El límite es de 254 caracteres Latin-1, o 127 unidades UTF-16 si hay algún carácter fuera de Latin-1.",
   "presets.iso_filesystem": "Sistema de archivos ISO",
   "app.name": "Filee",
   "app.tagline": "Arrastra, suelta y convierte.",

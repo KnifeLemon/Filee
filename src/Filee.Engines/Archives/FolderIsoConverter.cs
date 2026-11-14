@@ -1,5 +1,6 @@
 // Creates data ISO images in-process; folder contents become the disc root without an external program.
 
+using System.Text;
 using DiscUtils.Iso9660;
 using DiscUtils.Udf;
 using Filee.Core.Conversion;
@@ -57,9 +58,8 @@ public sealed class FolderIsoConverter : IConverter
                     if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
                         throw new ConversionRefusedException("error.iso_link", entry.Name);
                     var name = prefix + entry.Name;
-                    // A literal backslash in a Unix filename must not become an image path separator.
-                    if (udf is not null && entry.Name.Contains('\\'))
-                        throw new ArgumentException($"UDF cannot preserve a backslash in a filename: {entry.Name}");
+                    if (udf is not null)
+                        ValidateUdfName(entry.Name, name);
                     // DiscUtils appends a version suffix (;1), and a dot for extensionless files.
                     if (udf is null && (entry.Name.Length > 62 || entry.Name.Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is ';' or '\\' or '*' or ':' or '?') || name.Length > 240))
                         throw new ConversionRefusedException("error.iso_name", name);
@@ -96,9 +96,18 @@ public sealed class FolderIsoConverter : IConverter
                     long copied = 0;
                     long lastReport = 0;
                     int count;
-                    while ((count = image.Read(buffer, 0, buffer.Length)) != 0)
+                    while (true)
                     {
                         ct.ThrowIfCancellationRequested();
+                        try { count = image.Read(buffer, 0, buffer.Length); }
+                        catch (IOException) when (udf is not null)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            throw new ConversionRefusedException("error.iso_changed");
+                        }
+                        if (count == 0) break;
+                        // Keep destination failures outside the source-read catch: a full or unwritable disk is
+                        // not evidence that the source changed.
                         destination.Write(buffer, 0, count);
                         copied += count;
                         var now = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -126,4 +135,21 @@ public sealed class FolderIsoConverter : IConverter
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }, ct);
+
+    /// <summary>Checks one component against UdfBuilder 1.0.90's path and compressed-Unicode identifier rules.</summary>
+    internal static void ValidateUdfName(string component, string relativePath)
+    {
+        // Slash and backslash are both interpreted as separators by the builder, even on Unix. The payload has
+        // 254 bytes plus a compression-ID byte: Latin-1 uses one byte per UTF-16 unit; other names use two.
+        if (component.Length == 0 || component is "." or ".." || component.IndexOfAny(['/', '\\', '\0']) >= 0)
+            throw new ConversionRefusedException("error.iso_udf_name", relativePath);
+        var wide = component.Any(c => c > byte.MaxValue);
+        try
+        {
+            var bytes = wide ? new UnicodeEncoding(true, false, true).GetByteCount(component) : component.Length;
+            if (bytes <= 254) return;
+        }
+        catch (EncoderFallbackException) { }
+        throw new ConversionRefusedException("error.iso_udf_name", relativePath);
+    }
 }

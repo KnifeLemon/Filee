@@ -21,6 +21,7 @@ Each component remains under its own license.
 | HarfBuzzSharp | MIT | https://github.com/mono/SkiaSharp |
 | SharpCompress (zstd decompression for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
 | LTRData.DiscUtils.Iso9660 and LTRData.DiscUtils.Udf (including Core and Streams; Joliet and UDF 2.01 image creation) | MIT | https://github.com/LTRData/DiscUtils |
+| LTRData.Extensions 1.0.23 (dependency of LTRData.DiscUtils.Streams on .NET 10) | MIT | https://github.com/LTRData/Library |
 | QRCoder | MIT | https://github.com/codebude/QRCoder |
 | Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |

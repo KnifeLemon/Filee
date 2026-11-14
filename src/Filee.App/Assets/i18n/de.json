@@ -1,4 +1,5 @@
 {
+  "error.iso_udf_name": "UDF-Namen müssen gültiges Unicode sein, dürfen keine Schrägstriche, Rückstriche oder Nullzeichen enthalten und nicht . oder .. sein. Die Grenze beträgt 254 Latin-1-Zeichen oder 127 UTF-16-Einheiten, sobald ein Zeichen außerhalb von Latin-1 vorkommt.",
   "presets.iso_filesystem": "ISO-Dateisystem",
   "app.name": "Filee",
   "app.tagline": "Ziehen, ablegen, fertig.",

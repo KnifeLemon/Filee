@@ -1,4 +1,5 @@
 {
+  "error.iso_udf_name": "UDF 名称必须是有效的 Unicode，不能包含斜杠、反斜杠或空字符，也不能是 . 或 ..。仅含 Latin-1 字符时最多254个字符；包含其他字符时最多127个 UTF-16 单元。",
   "presets.iso_filesystem": "ISO 文件系统",
   "app.name": "Filee",
   "app.tagline": "拖一拖，放一放，转换完成。",

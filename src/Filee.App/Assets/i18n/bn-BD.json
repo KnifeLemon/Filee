@@ -1,4 +1,5 @@
 {
+  "error.iso_udf_name": "UDF নাম বৈধ Unicode হতে হবে; স্ল্যাশ, ব্যাকস্ল্যাশ বা নাল অক্ষর থাকা যাবে না এবং নাম . বা .. হতে পারবে না। সীমা 254টি Latin-1 অক্ষর, অথবা অন্য অক্ষর থাকলে 127টি UTF-16 একক।",
   "presets.iso_filesystem": "ISO ফাইল সিস্টেম",
   "portable.import_existing": "বিদ্যমান ডেটা আমদানি করুন",
   "portable.start_fresh": "নতুন করে শুরু করুন",
