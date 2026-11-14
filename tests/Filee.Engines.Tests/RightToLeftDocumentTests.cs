@@ -202,7 +202,7 @@ public sealed class RightToLeftDocumentTests(EngineFixture fx) : IClassFixture<E
         Assert.True(year.End < BodyRight + 0.5f && year.End > BodyRight - 15, $"the line ends at {year.End}, not at the right margin");
         Assert.True(first.End < filee.Start && last.End < first.Start, $"{first} {last} {filee}");
         // The runs keep the order the text was written in, so the PDF's text reads as the document does.
-        Assert.Equal(text.Replace(" ", ""), RunText(page, rtl[0].Y).Replace(" ", ""));
+        Assert.Equal(text.Replace(" ", ""), RunText(page, rtl[0].Baseline).Replace(" ", ""));
 
         // Without w:bidi Word starts the same text at the left: Latin first, the Arabic words after it from their right.
         var ltr = lines[1];
@@ -267,8 +267,7 @@ public sealed class RightToLeftDocumentTests(EngineFixture fx) : IClassFixture<E
         builder.Paragraph(Table(bidiVisual: true, "واحد", "اثنان")).Paragraph(DocxBuilder.P(""))
             .Paragraph(Table(bidiVisual: false, "واحد", "اثنان"));
 
-        var glyphs = Glyphs(Compose(builder, fonts).Pages[0]);
-        var rows = glyphs.GroupBy(g => MathF.Round(g.Y)).OrderBy(g => g.Key).Select(g => g.ToList()).ToList();
+        var rows = Lines(Compose(builder, fonts).Pages[0]);
         Assert.Equal(2, rows.Count);
 
         // bidiVisual: the first cell is the rightmost, the table starts at the right margin.
@@ -388,8 +387,11 @@ public sealed class RightToLeftDocumentTests(EngineFixture fx) : IClassFixture<E
             .Compose(document, TestContext.Current.CancellationToken);
     }
 
-    /// <summary>A drawn glyph: the character its cluster starts with, its origin and advance, and its run.</summary>
-    private readonly record struct Glyph(char Char, float X, float Y, float Advance, GlyphRun Run);
+    /// <summary>
+    /// A drawn glyph: the character its cluster starts with, its origin and advance, its run and the run's
+    /// <see cref="Baseline"/>.
+    /// </summary>
+    private readonly record struct Glyph(char Char, float X, float Y, float Advance, GlyphRun Run, float Baseline);
 
     private static List<Glyph> Glyphs(PageContent page)
     {
@@ -398,25 +400,34 @@ public sealed class RightToLeftDocumentTests(EngineFixture fx) : IClassFixture<E
         {
             using var font = new SkiaSharp.SKFont(run.Font.Typeface, run.Size) { ScaleX = run.ScaleX, LinearMetrics = true, Subpixel = true };
             var widths = font.GetGlyphWidths(run.Glyphs);
+            var baseline = Baseline(run);
             for (var g = 0; g < run.Glyphs.Length; g++)
             {
                 var c = run.Text[run.Clusters[g]];
                 // The explicit direction controls draw nothing.
                 if (c is >= '‪' and <= '‮')
                     continue;
-                glyphs.Add(new Glyph(c, run.Positions[g].X, run.Positions[g].Y, widths[g], run));
+                glyphs.Add(new Glyph(c, run.Positions[g].X, run.Positions[g].Y, widths[g], run, baseline));
             }
         }
         return glyphs;
     }
 
-    /// <summary>The glyphs of each line of a page (by baseline), top to bottom.</summary>
+    /// <summary>
+    /// The baseline a run sits on: the y most of its glyphs share. A glyph's own y is not its line's: fonts such as Noto
+    /// Sans Arabic draw the dots of ب ت ن ي as mark glyphs of their own, which the font's mark positioning moves above
+    /// or below the letter, so their y is a point or two off the baseline.
+    /// </summary>
+    private static float Baseline(GlyphRun run) =>
+        run.Positions.GroupBy(p => p.Y).OrderByDescending(g => g.Count()).ThenByDescending(g => g.Key).First().Key;
+
+    /// <summary>The glyphs of each line of a page (by their runs' baselines), top to bottom.</summary>
     private static List<List<Glyph>> Lines(PageContent page) =>
-        [.. Glyphs(page).GroupBy(g => MathF.Round(g.Y)).OrderBy(g => g.Key).Select(g => g.ToList())];
+        [.. Glyphs(page).GroupBy(g => MathF.Round(g.Baseline)).OrderBy(g => g.Key).Select(g => g.ToList())];
 
     /// <summary>The text of the runs drawn on the baseline <paramref name="y"/>, in their (logical) order.</summary>
     private static string RunText(PageContent page, float y) =>
-        string.Concat(page.Items.OfType<GlyphItem>().Select(i => i.Run).Where(r => r.Positions.Length > 0 && MathF.Abs(r.Positions[0].Y - y) < 0.5f).Select(r => r.Text))
+        string.Concat(page.Items.OfType<GlyphItem>().Select(i => i.Run).Where(r => r.Positions.Length > 0 && MathF.Abs(Baseline(r) - y) < 0.5f).Select(r => r.Text))
             .Replace("‪", "").Replace("‫", "").Replace("‬", "").Replace("‭", "").Replace("‮", "");
 
     /// <summary>Where the glyphs of <paramref name="text"/> lie (the first run among <paramref name="glyphs"/> that holds it).</summary>
