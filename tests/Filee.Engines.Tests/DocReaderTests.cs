@@ -292,7 +292,7 @@ public class DocReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var builder = new DocBuilder { NFib = 0x0065 };
         builder.Paragraph(R("old"));
         var path = Write(builder);
-        foreach (var engine in fx.Converters.OfType<Core.Conversion.ICapabilityCheck>().Where(c => c is not Typesetting.FileeRendererConverter))
+        foreach (var engine in fx.Converters.Where(c => c.Edges.Any(e => e.From == "doc")).OfType<Core.Conversion.ICapabilityCheck>().Where(c => c is not Typesetting.FileeRendererConverter))
             Assert.Equal("a Word 6.0 / 95 document", engine.FirstUnsupported(path, "doc"));
         var renderer = fx.Converters.OfType<Typesetting.FileeRendererConverter>().Single();
         Assert.Equal("a Word 6.0 / 95 document", renderer.FirstUnsupported(path, "doc"));
