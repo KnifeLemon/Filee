@@ -72,7 +72,7 @@ internal static class HeicWriter
     /// </summary>
     private static List<Picture> Prepare(ConversionStep step, CancellationToken cancellationToken)
     {
-        using var images = ImageReader.Read(step.InputPath, step.From, step.Preset);
+        using var images = ImageReader.Read(step.InputPath, step.From, step.Preset, cancellationToken);
         var pictures = new List<Picture>();
         foreach (var frame in ImageEncoder.SelectFrames(images, AvifSequence.SourceFormat(step.From, step.InputPath), "heic"))
         {

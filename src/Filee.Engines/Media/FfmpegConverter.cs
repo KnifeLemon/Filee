@@ -129,14 +129,13 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 progress, cancellationToken);
         if (step.To == "heic")
             return await HeicWriter.ConvertAsync(ffmpeg, step, progress, cancellationToken);
-        // A Hikvision SD-card recording is read through the concat protocol, with the header FFmpeg needs for its sound.
-        var input = HikvisionStream.InputFor(Path.GetFullPath(step.InputPath), step.WorkDirectory);
+        var input = MediaInput.For(step.InputPath, step.From, step.WorkDirectory, step.Notice);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken);
         progress?.Report(0.02);
 
         if (step.FrameSequence)
             return await FrameSequenceWriter.ConvertAsync(ffmpeg, step, input, info, progress, cancellationToken);
-        if (step.Preset.CutsClipOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
+        if (step.Preset.CutsClipOf(step.From) && (MediaEncoding.VideoTargets.ContainsKey(step.To) || MediaEncoding.AudioTargets.ContainsKey(step.To)))
             return await CutClipAsync(ffmpeg, ffprobe, step, input, info, progress, cancellationToken);
         if (step.Preset.SplitsVideoOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
             return await SplitAsync(ffmpeg, step, input, info, progress, cancellationToken);
@@ -346,8 +345,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             var clips = new List<(string Path, MediaInfo Info)>();
             for (var i = 0; i < inputPaths.Count; i++)
             {
-                var path = Path.GetFullPath(inputPaths[i]);
-                await RequireTrackerDemuxerAsync(ffmpeg, FormatRegistry.Detect(path)?.Id);
+                var clipFormat = FormatRegistry.Detect(inputPaths[i])?.Id;
+                await RequireTrackerDemuxerAsync(ffmpeg, clipFormat);
+                var path = MediaInput.For(inputPaths[i], clipFormat, scratch);
                 clips.Add((path, await MediaInfo.ProbeAsync(ffprobe, path, cancellationToken)));
                 progress?.Report(0.05 * (i + 1) / inputPaths.Count);
             }
@@ -453,8 +453,14 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     private async Task<IReadOnlyList<string>> CutClipAsync(string ffmpeg, string ffprobe, ConversionStep step, string input, MediaInfo info,
         IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        if (info.Video is null)
-            throw new InvalidOperationException("The file has no video stream.");
+        // A sound target is written by the sound clip, whatever the file holds besides the sound (an audiobook's chapter
+        // pictures are a real video track): the graph leaves the picture out anyway.
+        if (info.Video is null || !MediaEncoding.VideoTargets.ContainsKey(step.To))
+        {
+            if (info.Audio is null || !MediaEncoding.AudioTargets.ContainsKey(step.To))
+                throw new InvalidOperationException("The file has no video stream.");
+            return await CutSoundClipAsync(ffmpeg, ffprobe, step, input, info, progress, cancellationToken);
+        }
         var media = step.Preset.Media;
         var edit = media.Clip!.Clamped(info.Duration?.TotalSeconds);
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
@@ -513,6 +519,35 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, encoders: encoders, hardware: encoder, clip: clip);
             await RunWithFallbackAsync(Plan(hardware), hardware, Plan,
                 planned => RunPassesAsync(ffmpeg, planned, output, duration, progress, cancellationToken), output, _logger, cancellationToken);
+        }
+        catch
+        {
+            TryDelete(output);
+            throw;
+        }
+        progress?.Report(1);
+        return [output];
+    }
+
+    /// <summary>
+    /// "Cut a clip" of a sound (an MP3, a recording): the parts, volumes, speeds, fades and music the window made, always
+    /// encoded through one filter graph (a sound takes moments to encode, and the cut is exact), written in the sound's
+    /// own format.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> CutSoundClipAsync(string ffmpeg, string ffprobe, ConversionStep step, string input, MediaInfo info,
+        IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        var media = step.Preset.Media;
+        var edit = media.Clip!.Clamped(info.Duration?.TotalSeconds);
+        var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
+        if (output is null)
+            return [];
+        try
+        {
+            var musicTrack = edit.Music is { } song
+                ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken) : 0;
+            var pass = new FfmpegPass(MediaEncoding.ClipSoundArguments(input, output, step.To, edit, media, info, musicTrack), 1);
+            await RunPassesAsync(ffmpeg, [pass], output, TimeSpan.FromSeconds(edit.Length), progress, cancellationToken);
         }
         catch
         {

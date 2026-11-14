@@ -25,6 +25,7 @@ public sealed partial class PresetFormatTip(
     [ObservableProperty] private string? _worksWith;
     [ObservableProperty] private string? _anyFile;
     [ObservableProperty] private string? _reason;
+    [ObservableProperty] private string? _ordinaryConversionNotice;
     [ObservableProperty] private IReadOnlyList<PresetFormatTipRow> _summaryRows = [];
     [ObservableProperty] private IReadOnlyList<PresetFormatTipRow> _fullRows = [];
     [ObservableProperty] private string? _footer;

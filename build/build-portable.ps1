@@ -1,7 +1,7 @@
 # Builds the Linux or macOS portable package (tar.gz + SHA256SUMS) on its own operating system. macOS also gets a
 # disk image (the signed Filee.app next to an Applications link, to drag it there, on the background and window
-# layout of installer/macos/dmg, built with dmgbuild: python3 -m pip install dmgbuild==1.6.7). The image itself is not
-# signed, and neither it nor the app is notarized here.
+# layout of installer/macos/dmg, built with dmgbuild, pinned in installer/macos/dmg/requirements.txt). The image
+# itself is not signed, and neither it nor the app is notarized here.
 #
 # Linux packages must run on Ubuntu 22.04 (glibc 2.35). rhwp's Linux release needs a newer glibc, so CI builds it from
 # source on Ubuntu 22.04 (build/build-native.py) and passes it in:
@@ -40,7 +40,9 @@ if (($Runtime.StartsWith('osx-') -and -not $IsMacOS) -or ($Runtime.StartsWith('l
 }
 if ($Runtime.StartsWith('osx-')) {
     python3 -c 'import dmgbuild' 2>$null
-    if ($LASTEXITCODE -ne 0) { throw 'The disk image needs dmgbuild: python3 -m pip install dmgbuild==1.6.7' }
+    if ($LASTEXITCODE -ne 0) {
+        throw 'The disk image needs dmgbuild: install installer/macos/dmg/requirements.txt into an active virtual environment (CONTRIBUTING.md).'
+    }
 }
 if ($RhwpOverride -and -not $Runtime.StartsWith('linux-')) {
     throw '-RhwpOverride is for Linux packages.'

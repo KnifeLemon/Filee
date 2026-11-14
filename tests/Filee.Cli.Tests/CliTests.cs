@@ -1,6 +1,7 @@
 // End-to-end tests of the "filee" command: real engines, a temporary settings folder, files in a temporary folder.
 
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
 using Filee.Core.Conversion;
@@ -106,7 +107,7 @@ public sealed class CliTests : IDisposable
     }
 
     /// <summary>A one-page PDF whose page width tells it apart in a merge, with the date modified it is given.</summary>
-    private string SizedPdf(string name, int width, DateTime modified)
+    private string SizedPdf(string name, int width, DateTime modified, int height = 500)
     {
         var path = Path.Combine(_folder, name);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -114,11 +115,154 @@ public sealed class CliTests : IDisposable
         {
             var page = document.AddPage();
             page.Width = PdfSharp.Drawing.XUnit.FromPoint(width);
-            page.Height = PdfSharp.Drawing.XUnit.FromPoint(500);
+            page.Height = PdfSharp.Drawing.XUnit.FromPoint(height);
             document.Save(path);
         }
         File.SetLastWriteTimeUtc(path, modified);
         return path;
+    }
+
+    /// <summary>L1: saved on/off presets reach the real merger without changing inputs or the saved library.</summary>
+    [Fact]
+    public async Task Merge_paper_saved_presets_control_all_three_page_sizes()
+    {
+        var day = new DateTime(2024, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+        var inputs = new[]
+        {
+            SizedPdf("sheet.pdf", 842, day, 596),
+            SizedPdf("letter.pdf", 612, day, 792),
+            SizedPdf("image.pdf", 1200, day, 675),
+        };
+        AddPresets(
+            new Preset
+            {
+                Id = "merge-paper-a4",
+                TargetFormat = "pdf",
+                Pdf = { MergeIntoSingle = true, NormalizeMergePaper = true, MergeOrientation = PdfSheetOrientation.Portrait },
+            },
+            new Preset { Id = "merge-paper-off", TargetFormat = "pdf", Pdf = { MergeIntoSingle = true } });
+        var protectedPaths = inputs.Append(Path.Combine(_settings, "presets.json")).ToArray();
+        var hashes = protectedPaths.Select(FileHash).ToArray();
+
+        foreach (var enabled in new[] { true, false })
+        {
+            var mode = enabled ? "a4" : "off";
+            var output = Path.Combine(_folder, mode);
+            var result = await Run("convert", inputs[0], inputs[1], inputs[2], "--preset", $"merge-paper-{mode}", "-o", output);
+            Assert.True(result.Code == 0, result.Errors + result.Output);
+            using var merged = PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfDocumentOpenMode.Import);
+            Assert.Equal(3, merged.PageCount);
+            for (var i = 0; i < inputs.Length; i++)
+            {
+                var width = enabled ? 595.28 : new[] { 842d, 612, 1200 }[i];
+                var height = enabled ? 841.89 : new[] { 596d, 792, 675 }[i];
+                AssertMergePage(merged.Pages[i], width, height, enabled);
+            }
+            Assert.Equal(hashes, protectedPaths.Select(FileHash));
+        }
+    }
+
+    /// <summary>L2: mixed real conversions are normalized only after their intermediate PDFs have been produced.</summary>
+    [Fact]
+    public async Task Merge_paper_mixed_inputs_keep_the_sum_of_individually_converted_pages()
+    {
+        Assert.SkipUnless(new Filee.Engines.Office.LibreOfficeConverter(new EngineEnvironment(_settings)).GetStatus().IsAvailable,
+            "LibreOffice is required for the mixed DOCX/XLSX integration case.");
+        var docx = OfficeFile("document.docx", spreadsheet: false);
+        var xlsx = OfficeFile("workbook.xlsx", spreadsheet: true);
+        var store = new UserDataStore(_settings);
+        store.Load();
+        store.Settings.LibreOfficeForDocuments = true;
+        store.Settings.LibreOfficeForSheets = true;
+        store.SaveSettings();
+        AddPresets(
+            new Preset { Id = "merge-paper-individual", TargetFormat = "pdf" },
+            new Preset
+            {
+                Id = "merge-paper-mixed",
+                TargetFormat = "pdf",
+                Pdf = { MergeIntoSingle = true, NormalizeMergePaper = true, MergeOrientation = PdfSheetOrientation.Portrait },
+            });
+        var inputs = new[] { SizedPdf("source.pdf", 842, DateTime.UnixEpoch, 596), Png("picture.png"), docx, xlsx };
+        var protectedPaths = inputs.Append(Path.Combine(_settings, "presets.json")).ToArray();
+        var hashes = protectedPaths.Select(FileHash).ToArray();
+        var pages = 0;
+        for (var i = 0; i < inputs.Length; i++)
+        {
+            var individual = Path.Combine(_folder, $"individual-{i}");
+            var result = await Run("convert", inputs[i], "--preset", "merge-paper-individual", "-o", individual);
+            Assert.True(result.Code == 0, result.Errors + result.Output);
+            using var pdf = PdfReader.Open(Assert.Single(Directory.GetFiles(individual, "*.pdf")), PdfDocumentOpenMode.Import);
+            Assert.True(pdf.PageCount > 0);
+            pages += pdf.PageCount;
+        }
+        var output = Path.Combine(_folder, "mixed");
+        var merge = await Run(["convert", .. inputs, "--preset", "merge-paper-mixed", "-o", output]);
+        Assert.True(merge.Code == 0, merge.Errors + merge.Output);
+        using var merged = PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfDocumentOpenMode.Import);
+        Assert.Equal(pages, merged.PageCount);
+        foreach (var page in merged.Pages)
+            AssertMergePage(page, 595.28, 841.89, normalized: true);
+        Assert.Equal(hashes, protectedPaths.Select(FileHash));
+    }
+
+    private static string FileHash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+    private string OfficeFile(string name, bool spreadsheet)
+    {
+        var path = Path.Combine(_folder, name);
+        using var zip = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Create);
+        void Part(string part, string xml)
+        {
+            var entry = zip.CreateEntry(part);
+            entry.LastWriteTime = new DateTimeOffset(2024, 3, 1, 0, 0, 0, TimeSpan.Zero);
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write(xml);
+        }
+        const string rel = "http://schemas.openxmlformats.org/package/2006/relationships";
+        const string office = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        var main = spreadsheet ? "xl/workbook.xml" : "word/document.xml";
+        var type = spreadsheet ? "spreadsheetml.sheet" : "wordprocessingml.document";
+        Part("[Content_Types].xml", $"""
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+            <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+            <Default Extension="xml" ContentType="application/xml"/>
+            <Override PartName="/{main}" ContentType="application/vnd.openxmlformats-officedocument.{type}.main+xml"/>
+            {(spreadsheet ? "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" : "")}
+            </Types>
+            """);
+        Part("_rels/.rels", $"<Relationships xmlns=\"{rel}\"><Relationship Id=\"rId1\" Type=\"{office}/officeDocument\" Target=\"{main}\"/></Relationships>");
+        if (spreadsheet)
+        {
+            Part(main, $"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"{office}\"><sheets><sheet name=\"QA\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+            Part("xl/_rels/workbook.xml.rels", $"<Relationships xmlns=\"{rel}\"><Relationship Id=\"rId1\" Type=\"{office}/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>");
+            Part("xl/worksheets/sheet1.xml", """
+                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>
+                <row r="1"><c r="A1" t="inlineStr"><is><t>Merge paper sheet</t></is></c></row></sheetData></worksheet>
+                """);
+        }
+        else
+            Part(main, """
+                <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                <w:body><w:p><w:r><w:t>Merge paper document</w:t></w:r></w:p></w:body></w:document>
+                """);
+        return path;
+    }
+
+    private static void AssertMergePage(PdfPage page, double width, double height, bool normalized)
+    {
+        Assert.InRange(page.MediaBox.X1, -.01, .01);
+        Assert.InRange(page.MediaBox.Y1, -.01, .01);
+        Assert.InRange(page.MediaBox.Width, width - .01, width + .01);
+        Assert.InRange(page.MediaBox.Height, height - .01, height + .01);
+        Assert.Equal(0, page.Rotate);
+        if (!normalized)
+            return;
+        Assert.InRange(page.CropBox.X1, -.01, .01);
+        Assert.InRange(page.CropBox.Y1, -.01, .01);
+        Assert.InRange(page.CropBox.Width, width - .01, width + .01);
+        Assert.InRange(page.CropBox.Height, height - .01, height + .01);
+        Assert.Equal(1, page.Elements.GetInteger("/UserUnit"));
     }
 
     [Fact]
@@ -1619,7 +1763,8 @@ public sealed class CliTests : IDisposable
 
     private sealed class UnexpectedMerger : IPdfMerger, ITiffMerger, IMediaJoiner
     {
-        public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken) =>
+        public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
+            CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Unexpected PDF merge");
         public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, ImageOptions options, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Unexpected TIFF merge");

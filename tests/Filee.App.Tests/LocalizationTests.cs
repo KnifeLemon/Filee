@@ -212,6 +212,11 @@ public partial class LocalizationTests
     [InlineData("zh-Hant-HK", "zh-TW")]
     [InlineData("zh-MO", "zh-TW")]
     [InlineData("fr-FR", "fr")]
+    [InlineData("mn", "mn")]
+    [InlineData("mn-MN", "mn")]
+    [InlineData("mn-Cyrl-MN", "mn")]
+    [InlineData("mn-Mong-CN", "en")] // the traditional script isn't this Cyrillic translation
+    [InlineData("mni", "en")]
     [InlineData("fr-CA", "fr")]
     [InlineData("frr-DE", "en")]
     [InlineData("ne-NP", "ne")]

@@ -99,8 +99,10 @@ public class OcrRouteTests
         Assert.Equal([("jpg", "pdf", false), ("pdf", "pdf", false)], tesseract.Steps.OrderBy(s => s.From));
     }
 
-    [Fact]
-    public async Task Source_bookmarks_keep_original_names_after_ocr()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Source_bookmarks_keep_original_names_after_ocr(bool normalizePaper)
     {
         using var dir = new TempDir();
         var pdf = dir.File("scan.pdf");
@@ -111,7 +113,11 @@ public class OcrRouteTests
         var job = new ConversionJob([pdf, image], new Preset
         {
             TargetFormat = "pdf",
-            Pdf = { Ocr = true, MergeIntoSingle = true, SourceBookmarks = true },
+            Pdf =
+            {
+                Ocr = true, MergeIntoSingle = true, SourceBookmarks = true, NormalizeMergePaper = normalizePaper,
+                MergePaper = PdfSheetPaper.Letter, MergeOrientation = PdfSheetOrientation.Portrait
+            },
             Output = { FileNamePattern = "{name}_merged" }
         }, "Test");
 
@@ -120,6 +126,8 @@ public class OcrRouteTests
         Assert.Equal(JobState.Completed, job.State);
         Assert.Equal([("jpg", "pdf", false), ("pdf", "pdf", false)], tesseract.Steps.OrderBy(step => step.From));
         Assert.True(merger.SourceBookmarks);
+        Assert.Equal(normalizePaper ? new PdfMergePaper(PdfSheetPaper.Letter, PdfSheetOrientation.Portrait) : (PdfMergePaper?)null,
+            merger.Paper);
         Assert.Equal(["scan.pdf", "photo.jpg"], merger.MergeInputs.Select(input => input.SourceName));
         Assert.Equal(["scan.pdf", "photo.pdf"], merger.MergeInputs.Select(input => Path.GetFileName(input.PdfPath)));
         Assert.NotEqual(pdf, merger.MergeInputs[0].PdfPath);
