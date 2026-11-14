@@ -13,10 +13,13 @@ using Filee.Engines.Hwp.Hwpx.Markup;
 using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Odf.Draw;
 using Filee.Engines.Ofd;
 using Filee.Engines.Office;
+using Filee.Engines.Office.Ppt;
 using Filee.Engines.Office.Sheets;
 using Filee.Engines.Pdf;
+using Filee.Engines.Slides;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -54,6 +57,12 @@ internal static class DocumentReaders
         ["potx"] = PptxReader.Read,
         ["potm"] = PptxReader.Read,
         ["ppsx"] = PptxReader.Read,
+        // PowerPoint 97–2003 (.ppt, .pps, .pot): written out as the PPTX package PptxReader reads.
+        ["ppt"] = PptReader.Read,
+        // OpenDocument presentations: each slide's text and pictures in reading order, a section per slide (SlideDeckText).
+        ["odp"] = ReadSlides,
+        ["otp"] = ReadSlides,
+        ["fodp"] = ReadSlides,
         ["pdf"] = PdfDocumentReader.Read,
         ["ofd"] = OfdReader.Read,
         ["hwpx"] = HwpxReader.Read,
@@ -110,13 +119,16 @@ internal static class DocumentReaders
 
     /// <summary>
     /// Formats whose built-in reader doesn't read every file of the format: their edges are checked
-    /// (<see cref="Filee.Core.Conversion.ConversionEdge.Checked"/>), so a Word 6.0 / 95 or Microsoft Works file takes
-    /// LibreOffice when it is installed.
+    /// (<see cref="Filee.Core.Conversion.ConversionEdge.Checked"/>), so a Word 6.0 / 95, Microsoft Works or PowerPoint 95
+    /// file takes LibreOffice when it is installed.
     /// </summary>
-    public static bool Checked(string format) => DocReader.Formats.Contains(format, StringComparer.OrdinalIgnoreCase);
+    public static bool Checked(string format) =>
+        DocReader.Formats.Contains(format, StringComparer.OrdinalIgnoreCase) || string.Equals(format, PptReader.Format, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>What the built-in reader of <paramref name="format"/> doesn't read in the file, or null.</summary>
-    public static string? Unsupported(string path, string format) => Checked(format) ? DocReader.Unsupported(path) : null;
+    public static string? Unsupported(string path, string format) =>
+        string.Equals(format, PptReader.Format, StringComparison.OrdinalIgnoreCase) ? PptReader.Unsupported(path)
+        : Checked(format) ? DocReader.Unsupported(path) : null;
 
     /// <summary>Formats read without any optional engine.</summary>
     public static IEnumerable<string> BuiltInFormats => BuiltIn.Keys;
@@ -151,6 +163,8 @@ internal static class DocumentReaders
             return await ReadWithPandocAsync(path, pandocReader, workDirectory, media, cancellationToken);
         throw new NotSupportedException($"There is no document reader for {format.ToUpperInvariant()} files.");
     }
+
+    private static HDocument ReadSlides(string path, string mediaFolder) => SlideDeckText.Build(OdfDrawReader.Read(path), mediaFolder);
 
     // ───────────────────────── Pandoc ─────────────────────────
 

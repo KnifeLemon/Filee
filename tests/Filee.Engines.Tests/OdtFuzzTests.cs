@@ -2,10 +2,9 @@
 // package with what costs the reader the most (repeated rows and cells, text:s counts, pictures stored in the XML,
 // a formula object, links in links, notes and frames in cells), written in code. DocumentFuzzer changes them, and
 // every input must be read or refused with InvalidDataException / ConversionRefusedException, in time and on a 1 MB
-// stack. Same switches as DocumentFuzzTests: a short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one,
+// stack. Run by FuzzHarness: a short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one,
 // FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
 
-using System.Globalization;
 using Filee.Engines.Hwp.Hwpx.Odt;
 
 namespace Filee.Engines.Tests;
@@ -15,8 +14,6 @@ public class OdtFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     /// <summary>Inputs per seed in a normal test run.</summary>
     private const int QuickIterations = 50;
-
-    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
 
     [Fact]
     public void OdtReader_reads_or_refuses_every_mutated_package() =>
@@ -57,60 +54,6 @@ public class OdtFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     private byte[] Seed(OdtBuilder builder) => File.ReadAllBytes(builder.Save(Path.Combine(fx.NewFolder(), "seed.odt")));
 
-    private void Fuzz(List<byte[]> seeds, Action<string, string> read)
-    {
-        var seconds = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SECONDS"), out var s) && s > 0 ? s : 0;
-        var seed = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SEED"), out var fixedSeed) ? fixedSeed
-            : seconds > 0 ? Environment.TickCount : 20261114;
-        var outFolder = Environment.GetEnvironmentVariable("FILEE_FUZZ_OUT") is { Length: > 0 } o ? o : null;
-        var keep = outFolder ?? fx.NewFolder();
-        var output = TestContext.Current.TestOutputHelper;
-        output?.WriteLine($"Seed {seed}, {(seconds > 0 ? seconds + " s" : QuickIterations + " inputs per seed package")}");
-
-        var random = new Random(seed);
-        var fuzzers = seeds.Select(bytes => new DocumentFuzzer(bytes, random)).ToList();
-        var folder = fx.NewFolder();
-        var input = Path.Combine(outFolder ?? folder, "running-odt.odt");
-        var media = Path.Combine(folder, "media");
-
-        foreach (var bytes in seeds)
-        {
-            File.WriteAllBytes(input, bytes);
-            Assert.Equal(DocumentFuzzer.Outcome.Read, DocumentFuzzer.Run(() => read(input, media), ReadTimeout));
-        }
-
-        var failures = new Dictionary<string, string>();
-        var (inputs, refused) = (0, 0);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        while (seconds > 0 ? stopwatch.Elapsed < TimeSpan.FromSeconds(seconds) : inputs < QuickIterations * seeds.Count)
-        {
-            var bytes = fuzzers[inputs % fuzzers.Count].Next();
-            inputs++;
-            File.WriteAllBytes(input, bytes);
-            if (Directory.Exists(media))
-                Directory.Delete(media, recursive: true);
-            try
-            {
-                if (DocumentFuzzer.Run(() => read(input, media), ReadTimeout) == DocumentFuzzer.Outcome.Refused)
-                    refused++;
-            }
-            catch (DocumentFuzzer.FuzzFailure failure)
-            {
-                var frame = failure.InnerException?.StackTrace?.Split('\n').FirstOrDefault()?.Trim() ?? "";
-                var kind = $"{failure.InnerException?.GetType().Name ?? "Timeout"} {frame}";
-                if (!failures.ContainsKey(kind))
-                {
-                    var kept = Path.Combine(keep, string.Create(CultureInfo.InvariantCulture, $"odt-{seed}-{inputs}.odt"));
-                    File.WriteAllBytes(kept, bytes);
-                    failures[kind] = $"{failure.Message} (input {kept})\n{failure.InnerException}";
-                }
-                if (failure.InnerException is null)
-                    break; // a read that hangs keeps running; don't pile them up
-            }
-        }
-        output?.WriteLine($"{inputs} inputs, {refused} refused, {inputs - refused - failures.Count} read, {failures.Count} kinds of failure");
-        if (failures.Count == 0 || failures.Keys.All(k => !k.StartsWith("Timeout", StringComparison.Ordinal)))
-            File.Delete(input);
-        Assert.True(failures.Count == 0, $"Seed {seed}: " + string.Join("\n\n", failures.Values));
-    }
+    private void Fuzz(List<byte[]> seeds, Action<string, string> read) =>
+        new FuzzHarness(fx, QuickIterations, 20261114).Files("odt", "odt", seeds, FuzzHarness.Packages, read);
 }

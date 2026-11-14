@@ -197,7 +197,8 @@ public sealed class SlideRendererTests : IDisposable
             foreach (var path in result.Paths)
             {
                 var bounds = path.Path.TightBounds;
-                Assert.True(bounds.Left >= -0.5 && bounds.Top >= -0.5 && bounds.Right <= 100.5 && bounds.Bottom <= 60.5 || name.StartsWith("wedge", StringComparison.Ordinal),
+                // Callouts reach out to what they point at.
+                Assert.True(bounds.Left >= -0.5 && bounds.Top >= -0.5 && bounds.Right <= 100.5 && bounds.Bottom <= 60.5 || name.Contains("allout", StringComparison.Ordinal) && !name.Contains("Arrow", StringComparison.Ordinal),
                     $"{name}: {bounds}");
                 Assert.True(path.Path.PointCount > 1, name);
             }

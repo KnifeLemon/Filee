@@ -7,11 +7,15 @@
 // or through the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, preset shapes not
 // in PresetShapes, and pictures Skia can't decode (TIFF, JPEG XR).
 //
+// A PowerPoint 97–2003 deck is looked through as the PPTX package it translates to, after what the translation leaves
+// out (Office/Ppt: freeforms, WordArt, ...); a PowerPoint 95 file is named as such.
+//
 // Each slide, layout and master is looked through once, in one pass over its elements, however often the presentation
 // lists it or slides use it; the scan stops when the conversion is cancelled.
 
 using System.Xml.Linq;
 using Filee.Engines.Documents;
+using Filee.Engines.Office.Ppt;
 
 namespace Filee.Engines.Slides;
 
@@ -28,8 +32,10 @@ internal static class SlideCapabilities
     {
         try
         {
+            if (PptReader.Unsupported(path) is { } old)
+                return old;
             using var package = SlidePackage.Open(path);
-            return Scan(package, cancellationToken);
+            return package.Dropped ?? Scan(package, cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or Core.Conversion.ConversionRefusedException)
         {

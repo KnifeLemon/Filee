@@ -9,8 +9,9 @@
 // 3cd4, 3cd8, 5cd8, 7cd8) or a number. Angles are 60,000ths of a degree, clockwise (y points down).
 //
 // Paths: moveTo, lnTo, arcTo (wR hR stAng swAng from the current point), quadBezTo, cubicBezTo, close; a path with its
-// own w / h is in that coordinate space, stretched over the shape. Arc angles are the angles seen on the stretched
-// ellipse; they are turned into the ellipse's parameter (t = atan2(wR·sin a, hR·cos a)) before drawing.
+// own w / h is in that coordinate space, stretched over the shape. Arc angles are the angles seen on the ellipse in the
+// path's coordinates (the shape's, for a path without w / h), so a path of its own size bends the same however the shape
+// is stretched; they are turned into the ellipse's parameter (t = atan2(wR·sin a, hR·cos a)) before drawing.
 //
 // Damage stays contained: unknown names count as 0, a division by zero gives 0, results are clamped, and the counts of
 // guides and path commands (each path counting as one, so empty paths are counted too) are limited.
@@ -78,7 +79,7 @@ internal static class ShapeGeometry
                 break;
             var sx = path.Width > 0 ? width / path.Width : 1;
             var sy = path.Height > 0 ? height / path.Height : 1;
-            paths.Add(new SlidePath(Build(path, values, sx * scale, sy * scale, sx, sy), path.Fill, path.Stroke));
+            paths.Add(new SlidePath(Build(path, values, sx * scale, sy * scale), path.Fill, path.Stroke));
         }
 
         SKRect? text = null;
@@ -91,7 +92,7 @@ internal static class ShapeGeometry
         return new GeometryResult(paths, text);
     }
 
-    private static SKPath Build(GeometryPathDefinition path, Dictionary<string, double> values, double sx, double sy, double unitX, double unitY)
+    private static SKPath Build(GeometryPathDefinition path, Dictionary<string, double> values, double sx, double sy)
     {
         var result = new SKPath { FillType = SKPathFillType.EvenOdd };
         double X(string operand) => Value(operand, values) * sx;
@@ -134,7 +135,7 @@ internal static class ShapeGeometry
                         result.MoveTo(current);
                     started = true;
                     current = Arc(result, current, Value(a[0], values) * sx, Value(a[1], values) * sy,
-                        Value(a[0], values) * unitX, Value(a[1], values) * unitY, Value(a[2], values) / AngleUnit, Value(a[3], values) / AngleUnit);
+                        Value(a[0], values), Value(a[1], values), Value(a[2], values) / AngleUnit, Value(a[3], values) / AngleUnit);
                     break;
                 case 'Z':
                     result.Close();
@@ -164,7 +165,7 @@ internal static class ShapeGeometry
     /// <summary>
     /// An arc from <paramref name="from"/> on an ellipse of radii <paramref name="rx"/> × <paramref name="ry"/> (output
     /// units), from angle <paramref name="start"/> through <paramref name="sweep"/> degrees; the angles are seen on the
-    /// ellipse in shape space (radii <paramref name="ux"/> × <paramref name="uy"/>). Returns the arc's end.
+    /// ellipse in the path's own space (radii <paramref name="ux"/> × <paramref name="uy"/>). Returns the arc's end.
     /// </summary>
     private static SKPoint Arc(SKPath path, SKPoint from, double rx, double ry, double ux, double uy, double start, double sweep)
     {

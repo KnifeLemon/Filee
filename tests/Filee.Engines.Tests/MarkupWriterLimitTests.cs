@@ -348,38 +348,15 @@ public class MarkupWriterLimitTests(EngineFixture fx) : IClassFixture<EngineFixt
     [Trait("Category", "Fuzz")]
     public void Writers_write_or_refuse_every_mutated_span_table()
     {
-        var seconds = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SECONDS"), out var s) && s > 0 ? s : 0;
-        var randomSeed = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SEED"), out var fixedSeed) ? fixedSeed
-            : seconds > 0 ? Environment.TickCount : 20261114;
-        var fuzzer = new TextFuzzer(Encoding.UTF8.GetBytes(SpanSeed), new Random(randomSeed),
-            ["| rowspan=\"9999\" colspan=\"99999\" | x ", "| colspan=\"16384\" | w ", "| rowspan=\"2\" | t ", "||", "!!", "|-\n", "|}\n", "{|\n",
-             "<ref name=\"a\" />", "\n"]);
         var writers = Writers().ToList();
-        void Run(string text)
-        {
-            foreach (var (_, write) in writers)
-                write(MediaWikiReader.Read(text, fx.NewFolder(), DocumentLimits.Default));
-        }
-
-        Assert.Equal(DocumentFuzzer.Outcome.Read, DocumentFuzzer.Run(() => Run(SpanSeed), Quick));
-        var failures = new List<string>();
-        var stopwatch = Stopwatch.StartNew();
-        for (var inputs = 0; seconds > 0 ? stopwatch.Elapsed < TimeSpan.FromSeconds(seconds) : inputs < 40; inputs++)
-        {
-            var text = Encoding.UTF8.GetString(fuzzer.Next());
-            try
+        new FuzzHarness(fx, 40, 20261114) { Timeout = Quick }.Data("spans", "txt", [Encoding.UTF8.GetBytes(SpanSeed)],
+            FuzzHarness.Text(["| rowspan=\"9999\" colspan=\"99999\" | x ", "| colspan=\"16384\" | w ", "| rowspan=\"2\" | t ", "||", "!!", "|-\n", "|}\n",
+                              "{|\n", "<ref name=\"a\" />", "\n"]),
+            bytes =>
             {
-                DocumentFuzzer.Run(() => Run(text), Quick);
-            }
-            catch (DocumentFuzzer.FuzzFailure failure)
-            {
-                var kept = Path.Combine(fx.NewFolder(), $"spans-{randomSeed}-{inputs}.txt");
-                File.WriteAllText(kept, text);
-                failures.Add($"{failure.Message} (input {kept})\n{failure.InnerException}");
-                if (failure.InnerException is null)
-                    break; // a write that hangs keeps running
-            }
-        }
-        Assert.True(failures.Count == 0, $"Seed {randomSeed}: " + string.Join("\n\n", failures));
+                var text = Encoding.UTF8.GetString(bytes);
+                foreach (var (_, write) in writers)
+                    write(MediaWikiReader.Read(text, fx.NewFolder(), DocumentLimits.Default));
+            });
     }
 }

@@ -1,7 +1,7 @@
-// Writes archives. ZIP (and the game packs that are ZIPs, see GamePacks), TAR, TAR.GZ and single-file GZ are written
-// in-process (System.IO.Compression / System.Formats.Tar), so file names are exactly what Filee chooses: UTF-8 in ZIP
-// (with the language encoding flag), PAX headers in TAR. 7Z, the bzip2 / xz TAR variants and single-file BZ2 / XZ are
-// written by the bundled 7-Zip.
+// Writes archives. ZIP (and the game packs that are ZIPs, see GamePacks), 7Z, TAR, TAR.GZ, TAR.XZ and single-file
+// GZ / XZ are written in-process (System.IO.Compression / System.Formats.Tar, and Filee's own SevenZipWriter and
+// XzWriter), so file names are exactly what Filee chooses: UTF-8 in ZIP (with the language encoding flag), UTF-16 in
+// 7Z, PAX headers in TAR. TAR.BZ2 and single-file BZ2 are written by the bundled 7-Zip.
 
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -19,7 +19,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
 {
     /// <summary>Formats written without 7-Zip.</summary>
     public static readonly IReadOnlySet<string> BuiltInFormats =
-        new HashSet<string>(["zip", "tar", "tgz", "gz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
+        new HashSet<string>(["zip", "7z", "tar", "tgz", "txz", "gz", "xz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Formats that hold exactly one file, without name or folders.</summary>
     public static readonly IReadOnlySet<string> SingleFileFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "gz", "bz2", "xz" };
@@ -44,17 +44,17 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
                     break;
                 case "tar":
                 case "tgz":
-                    await Task.Run(() => WriteTar(items, temp, format == "tgz" ? level : null, progress, cancellationToken), cancellationToken);
+                case "txz":
+                    await Task.Run(() => WriteTar(items, temp, format, level, progress, cancellationToken), cancellationToken);
                     break;
                 case "tbz2":
-                case "txz":
                     {
                         // 7-Zip compresses a single stream; the TAR is written first, in the work folder.
                         var tar = Path.Combine(workDirectory, $"pack-{Guid.NewGuid():N}.tar");
                         try
                         {
-                            await Task.Run(() => WriteTar(items, tar, null, Scaled(progress, 0, 0.3), cancellationToken), cancellationToken);
-                            await RunSevenZipAsync(format == "tbz2" ? "bzip2" : "xz", [tar], temp, level, workDirectory, progress, 0.3, cancellationToken);
+                            await Task.Run(() => WriteTar(items, tar, "tar", level, Scaled(progress, 0, 0.3), cancellationToken), cancellationToken);
+                            await RunSevenZipAsync("bzip2", [tar], temp, level, workDirectory, progress, 0.3, cancellationToken);
                         }
                         finally
                         {
@@ -63,7 +63,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
                         break;
                     }
                 case "7z":
-                    await RunSevenZipAsync("7z", await NamedAsAsync(items, workDirectory, cancellationToken), temp, level, workDirectory, progress, 0, cancellationToken);
+                    await Task.Run(() => WriteSevenZip(items, temp, level, progress, cancellationToken), cancellationToken);
                     break;
                 case "gz":
                 case "bz2":
@@ -71,13 +71,12 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
                     if (items.Count != 1 || !File.Exists(items[0].SourcePath))
                         throw new InvalidOperationException(
                             $"A .{format} file holds a single file. Choose TAR.{format.ToUpperInvariant()} to compress several files or folders.");
-                    if (format == "gz")
+                    if (format is "gz" or "xz")
                     {
-                        await Task.Run(() => WriteGzip(items[0].SourcePath, temp, level, progress, cancellationToken), cancellationToken);
+                        await Task.Run(() => WriteSingle(items[0].SourcePath, temp, format, level, progress, cancellationToken), cancellationToken);
                         break;
                     }
-                    var type = format switch { "gz" => "gzip", "bz2" => "bzip2", _ => "xz" };
-                    await RunSevenZipAsync(type, await NamedAsAsync(items, workDirectory, cancellationToken), temp, level, workDirectory, progress, 0, cancellationToken);
+                    await RunSevenZipAsync("bzip2", await NamedAsAsync(items, workDirectory, cancellationToken), temp, level, workDirectory, progress, 0, cancellationToken);
                     break;
                 default:
                     throw new NotSupportedException($"Filee cannot write {format} archives.");
@@ -189,16 +188,101 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         }
     }
 
-    /// <summary>One file as a .gz, its time kept on the archive.</summary>
-    private static void WriteGzip(string source, string path, ArchiveLevel level, IProgress<double>? progress, CancellationToken cancellationToken)
+    /// <summary>
+    /// A 7z archive (SevenZipWriter): folders first, then the files grouped by extension, so similar data shares a
+    /// solid block and the dictionary.
+    /// </summary>
+    private static void WriteSevenZip(IReadOnlyList<PackItem> items, string path, ArchiveLevel level, IProgress<double>? progress,
+        CancellationToken cancellationToken)
+    {
+        var files = Expand(items).ToList();
+        if (files.Count > ArchiveSafety.EntryLimit)
+            throw new InvalidOperationException(
+                $"A 7z archive Filee writes holds at most {ArchiveSafety.EntryLimit:N0} files and folders; there are {files.Count:N0}.");
+        var bytes = files.Sum(f => f.Length);
+        var counter = new ByteCounter(bytes, progress);
+        var ordered = files.Where(f => f.IsFolder)
+            .Concat(files.Where(f => !f.IsFolder)
+                .OrderBy(f => Path.GetExtension(f.EntryName), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(f => f.EntryName, StringComparer.Ordinal));
+
+        using var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1 << 16);
+        var writer = new SevenZipWriter(file, level, bytes, cancellationToken);
+        foreach (var item in ordered)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // 7z keeps times to 100 ns, so they are read again here: a folder listing can lag behind on NTFS.
+            if (item.IsFolder)
+            {
+                writer.AddFolder(item.EntryName, FreshTime(() => Directory.GetLastWriteTimeUtc(item.Path), item.Modified),
+                    SevenZipAttributes(item.Path, folder: true));
+                continue;
+            }
+            using var source = new FileStream(item.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16);
+            writer.AddFile(item.EntryName, source, source.Length, FreshTime(() => File.GetLastWriteTimeUtc(source.SafeFileHandle), item.Modified),
+                SevenZipAttributes(item.Path, folder: false), counter.Add);
+        }
+        writer.Finish();
+    }
+
+    private static DateTime FreshTime(Func<DateTime> read, DateTimeOffset listed)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return listed.UtcDateTime;
+        }
+    }
+
+    /// <summary>
+    /// 7z attributes: the Windows ones that matter (read-only, hidden, system, archive, directory) and the Unix mode in
+    /// the high 16 bits: the file's own off Windows, rw-r--r-- / rwxr-xr-x on Windows (as the TAR writer).
+    /// </summary>
+    private static uint SevenZipAttributes(string path, bool folder)
+    {
+        const FileAttributes kept = FileAttributes.ReadOnly | FileAttributes.Hidden | FileAttributes.System | FileAttributes.Archive;
+        var attributes = folder ? FileAttributes.Directory : 0;
+        var mode = folder ? 0x1EDu : 0x1A4u; // 0755, 0644
+        try
+        {
+            attributes |= File.GetAttributes(path) & kept;
+            if (!OperatingSystem.IsWindows())
+                mode = (uint)File.GetUnixFileMode(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Gone or locked since it was listed: the defaults.
+        }
+        if (attributes.HasFlag(FileAttributes.ReadOnly))
+            mode &= ~0x92u; // no write bits
+        mode |= folder ? 0x4000u : 0x8000u; // S_IFDIR / S_IFREG
+        return (uint)attributes | SevenZipWriter.UnixExtension | (mode << 16);
+    }
+
+    /// <summary>One file as a .gz or .xz, its time kept on the archive.</summary>
+    private static void WriteSingle(string source, string path, string format, ArchiveLevel level, IProgress<double>? progress,
+        CancellationToken cancellationToken)
     {
         using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16))
         using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16))
-        using (var gzip = new GZipStream(file, GzipLevel(level)))
         {
             var length = Math.Max(1, input.Length);
             long done = 0;
-            ArchiveFiles.CopyLimited(input, gzip, long.MaxValue, cancellationToken, read => progress?.Report((done += read) / (double)length));
+            void Report(long read) => progress?.Report((done += read) / (double)length);
+            if (format == "xz")
+            {
+                using var xz = new XzWriter(file, level, input.Length, cancellationToken, leaveOpen: true);
+                ArchiveFiles.CopyLimited(input, xz, long.MaxValue, cancellationToken, Report);
+                xz.Finish();
+            }
+            else
+            {
+                using var gzip = new GZipStream(file, GzipLevel(level), leaveOpen: true);
+                ArchiveFiles.CopyLimited(input, gzip, long.MaxValue, cancellationToken, Report);
+            }
         }
         File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(source));
     }
@@ -211,22 +295,34 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         _ => CompressionLevel.Optimal,
     };
 
-    /// <summary>Writes a PAX TAR (UTF-8 names, times), gzip-compressed when <paramref name="gzipLevel"/> is set.</summary>
-    private static void WriteTar(IReadOnlyList<PackItem> items, string path, ArchiveLevel? gzipLevel, IProgress<double>? progress, CancellationToken cancellationToken)
+    /// <summary>
+    /// Writes a PAX TAR (UTF-8 names, times): plain for "tar", gzip-compressed for "tgz", xz-compressed for "txz"
+    /// (at <paramref name="level"/>; a plain TAR ignores it).
+    /// </summary>
+    private static void WriteTar(IReadOnlyList<PackItem> items, string path, string format, ArchiveLevel level,
+        IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var files = Expand(items).ToList();
-        var counter = new ByteCounter(files.Sum(f => f.Length), progress);
+        var bytes = files.Sum(f => f.Length);
+        var counter = new ByteCounter(bytes, progress);
 
         using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16);
-        using Stream stream = gzipLevel is { } level
-            ? new GZipStream(file, level switch
-            {
-                ArchiveLevel.Store => CompressionLevel.NoCompression,
-                ArchiveLevel.Fast => CompressionLevel.Fastest,
-                ArchiveLevel.Maximum => CompressionLevel.SmallestSize,
-                _ => CompressionLevel.Optimal,
-            }, leaveOpen: true)
-            : new NonClosingStream(file);
+        XzWriter? xz = null;
+        using (var stream = format switch
+        {
+            "tgz" => new GZipStream(file, GzipLevel(level), leaveOpen: true),
+            // A PAX TAR adds about 1.5 KB of headers per entry; the estimate only sizes the dictionary.
+            "txz" => xz = new XzWriter(file, level, bytes + files.Count * 1536L + 1024, cancellationToken, leaveOpen: true),
+            _ => (Stream)new NonClosingStream(file),
+        })
+        {
+            WriteTarEntries(files, stream, counter, cancellationToken);
+            xz?.Finish();
+        }
+    }
+
+    private static void WriteTarEntries(List<PackFile> files, Stream stream, ByteCounter counter, CancellationToken cancellationToken)
+    {
         using var writer = new TarWriter(stream, TarEntryFormat.Pax, leaveOpen: true);
         foreach (var item in files)
         {

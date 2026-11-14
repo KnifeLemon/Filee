@@ -1,17 +1,16 @@
 // DrawingML's preset shapes (a:prstGeom), written from the definitions in ECMA-376 Part 1, 20.1.10.56 (ST_ShapeType)
 // and its presetShapeDefinitions, in Filee's own compact notation (ShapeGeometry.ParseNotation): the same adjust
 // values, guide formulas, paths and text rectangles. Stars of 4 to 32 points are made by one rule (Star) with the
-// definitions' radii, inner radius adjust value and stretch factors.
-//
-// Shapes not here (block arcs, no-smoking signs, clouds, ribbons, scrolls, curved and circular arrows, action buttons, border callouts,
-// gears, ...) are named by the slide capability check, and drawn as their bounding rectangle when no other route is.
+// definitions' radii, inner radius adjust value and stretch factors. The rest of ST_ShapeType (callouts, action buttons,
+// ribbons, scrolls, curved and circular arrows, gears, clouds, ...) is in PresetShapes.More.cs. A name outside
+// ST_ShapeType is named by the slide capability check, and drawn as its bounding rectangle when no other route is.
 
 using System.Globalization;
 using System.Text;
 
 namespace Filee.Engines.Slides;
 
-internal static class PresetShapes
+internal static partial class PresetShapes
 {
     private static readonly Lazy<Dictionary<string, GeometryDefinition>> All = new(Build);
 
@@ -32,6 +31,7 @@ internal static class PresetShapes
                      (10, 42533, 105146, 0), (12, 37500, 0, 0), (16, 37500, 0, 0), (24, 37500, 0, 0), (32, 37500, 0, 0),
                  })
             shapes[$"star{points}"] = ShapeGeometry.ParseNotation(Star(points, adjust, hf, vf))[$"star{points}"];
+        AddMore(shapes);
         return shapes;
     }
 

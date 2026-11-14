@@ -1,6 +1,8 @@
 // Formatting of an ODT: default styles, named styles (styles.xml office:styles) and automatic styles (office:automatic-
 // styles of content.xml for the body, of styles.xml for headers and footers), followed through style:parent-style-name.
 // Properties are folded in that order onto a bag of nullable values, so what no style sets keeps ODF's default.
+// The bags (TextProps, ParaProps) and their mapping to the model (CharFormat, ParaFormat) are shared with the ODP / ODG
+// reader (Odf/Draw), whose text is the same paragraphs and spans.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -155,7 +157,7 @@ internal sealed partial class OdtReader
 
     /// <summary>A paragraph style with everything it inherits.</summary>
     /// <param name="OwnIndent">The style is automatic (direct formatting) and sets an indent: it wins over the list's.</param>
-    private sealed record ParagraphStyle(ParaProps Para, TextProps Text, string? MasterPage, string? PageNumber, string? ListStyle,
+    internal sealed record ParagraphStyle(ParaProps Para, TextProps Text, string? MasterPage, string? PageNumber, string? ListStyle,
         int? OutlineLevel, bool OwnIndent);
 
     private ParagraphStyle ParagraphStyleOf(string? name)
@@ -196,7 +198,7 @@ internal sealed partial class OdtReader
     }
 
     /// <summary>The model's paragraph format; <paramref name="listIndent"/> is the list level's indent, used unless the paragraph has its own.</summary>
-    private static HParaFormat ParaFormat(ParagraphStyle style, (int Left, int FirstLine)? listIndent)
+    internal static HParaFormat ParaFormat(ParagraphStyle style, (int Left, int FirstLine)? listIndent)
     {
         var p = style.Para;
         var rtl = p.WritingMode is "rl-tb" or "rl";
@@ -273,7 +275,7 @@ internal sealed partial class OdtReader
         return stops;
     }
 
-    private enum LineKind
+    internal enum LineKind
     {
         Proportional,
         Fixed,
@@ -281,10 +283,10 @@ internal sealed partial class OdtReader
         Leading,
     }
 
-    private readonly record struct LineRule(LineKind Kind, double Value);
+    internal readonly record struct LineRule(LineKind Kind, double Value);
 
     /// <summary>Paragraph properties; null = not set by any style so far.</summary>
-    private sealed record ParaProps
+    internal sealed record ParaProps
     {
         public string? Align { get; init; }
         public string? AlignLast { get; init; }
@@ -353,7 +355,7 @@ internal sealed partial class OdtReader
     // ───────────────────────── Text styles ─────────────────────────
 
     /// <summary>Character properties; null = not set by any style so far.</summary>
-    private sealed record TextProps
+    internal sealed record TextProps
     {
         public bool? Bold { get; init; }
         public bool? Italic { get; init; }
@@ -436,7 +438,7 @@ internal sealed partial class OdtReader
     }
 
     /// <summary>The model's character format of resolved text properties.</summary>
-    private static HCharFormat CharFormat(TextProps t)
+    internal static HCharFormat CharFormat(TextProps t)
     {
         var size = t.Size ?? 12;
         var position = t.Position ?? 0;
@@ -468,7 +470,7 @@ internal sealed partial class OdtReader
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) ? number : null;
 
     /// <summary>The first family of a font family list, without quotes ("'Liberation Serif', serif" → "Liberation Serif").</summary>
-    private static string? FirstFamily(string? families)
+    internal static string? FirstFamily(string? families)
     {
         if (string.IsNullOrWhiteSpace(families))
             return null;

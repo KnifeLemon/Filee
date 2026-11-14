@@ -3,8 +3,9 @@
 // HTML, e-books, CSV / TSV tables, OFD, and Pandoc's formats when Pandoc is there) → PDF in one step, read, laid out and
 // written in-process. The default document → PDF engine; turned off in Settings → Engines, the engine is unavailable and
 // those files go through the HWPX writer and rhwp again.
-// Slide decks (SlideFormats: PPTX, PPTM, POTX, POTM, PPSX) → PDF, PNG and JPG go through Filee's slide renderer
-// (Slides/): a page or a picture per slide. Spreadsheets (sheet print), other presentations and PDF keep their own routes.
+// Slide decks (SlideFormats: PPTX, PPTM, POTX, POTM, PPSX, PPT through the PPTX package it translates to, and ODP,
+// OTP, FODP through OdfDrawReader) → PDF, PNG and JPG go through Filee's slide renderer (Slides/): a page or a picture
+// per slide. Spreadsheets (sheet print), other presentations and PDF keep their own routes.
 //
 // Settings → Engines → "When LibreOffice is installed" still holds: with LibreOffice there and chosen for Word documents,
 // presentations or spreadsheets, the engine leaves those files to it (its edge would win on cost otherwise).
@@ -125,7 +126,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         _pandoc = PandocConverter.Locate() is not null;
         _libreOffice = _findLibreOffice();
         return EngineEnvironment.FileeRenderer
-            ? EngineStatus.Available("HWP, HWPX, Word, ODT, RTF, OFD, e-books, PPTX → PDF", EngineVersions.BuiltIn)
+            ? EngineStatus.Available("HWP, HWPX, Word, ODT, RTF, OFD, e-books, PPTX, PPT, ODP → PDF", EngineVersions.BuiltIn)
             : EngineStatus.Unavailable("engine.reason.preview_off");
     }
 
@@ -136,7 +137,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     public string? FirstUnsupported(string sourcePath, string sourceFormat)
     {
         if (Slides.Contains(sourceFormat))
-            return SlideCapabilities.FirstUnsupported(sourcePath);
+            return SlideFormats.FirstUnsupported(sourcePath, sourceFormat);
         if (sourceFormat == "hwp")
             return HwpUnsupported(sourcePath);
         if (DocumentReaders.Checked(sourceFormat))
@@ -274,7 +275,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// <summary>A deck → one PDF, or a picture per slide (the PDF options' page range and resolution, then the image options).</summary>
     private static async Task<IReadOnlyList<string>> ConvertSlidesAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        var deck = await Task.Run(() => PptxSlideReader.Read(step.InputPath, cancellationToken: cancellationToken), cancellationToken);
+        var deck = await Task.Run(() => SlideFormats.Read(step.InputPath, step.From, cancellationToken), cancellationToken);
         progress?.Report(0.2);
         var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
         if (step.To == "pdf")

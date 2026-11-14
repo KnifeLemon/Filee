@@ -2,9 +2,9 @@
 // formats CHM, PDB, TCR, RB, SNB with the LZX decoder on its own): seeds are written in code, DocumentFuzzer
 // (packages), HwpFuzzer (HWP records and compound files), DocFuzzer (DOC streams) or BinaryFuzzer (binary containers)
 // changes them, and every input must be read or refused with InvalidDataException / ConversionRefusedException, in
-// time. In a normal test run each reader gets a short, fixed run (the same inputs every time); the nightly fuzz workflow
-// sets FILEE_FUZZ_SECONDS for a longer run with a new random seed, and FILEE_FUZZ_OUT for a folder that keeps the inputs
-// that failed. FILEE_FUZZ_SEED repeats a run.
+// time. The loop is FuzzHarness's: a short, fixed run normally, FILEE_FUZZ_SECONDS for a longer random one,
+// FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs. Readers added later keep their own fuzz file
+// (OdtFuzzTests, RtfFuzzTests, ...) on the same harness.
 
 using System.Globalization;
 using Filee.Engines.Ebooks;
@@ -23,8 +23,6 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     /// <summary>Inputs per reader in a normal test run.</summary>
     private const int QuickIterations = 50;
-
-    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
 
     [Fact]
     public void HwpxReader_reads_or_refuses_every_mutated_package() =>
@@ -46,7 +44,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             using var shaper = new Typesetting.Shaper();
             var box = new Typesetting.MathLayout(new Typesetting.FontResolver(), shaper).Layout(tree, 10, SkiaSharp.SKColors.Black);
             box.Paint(new Rendering.PageContent(200, 200), 0, 0, 1);
-        }, TextMutator(["{", "}", "{a over b}", " over ", " atop ", "sqrt ", "root 3 of ", "rm ", "it ", "bold ", "rmA", "^", "_", " sup ",
+        }, FuzzHarness.Text(["{", "}", "{a over b}", " over ", " atop ", "sqrt ", "root 3 of ", "rm ", "it ", "bold ", "rmA", "^", "_", " sup ",
                         " sub ", "#", "&", "~", "`", "\"x\"", "LEFT ( ", " RIGHT )", "LEFT . ", "matrix {", "pmatrix {", "cases {", "pile {",
                         "SUM from ", " to ", "int _", "lim from ", "hat ", "vec ", "not ", "color {1 0 0} ", "binom ", "big ", "alpha",
                         "LEQ", "<=", "->", "...", "1.5"]));
@@ -113,7 +111,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void ChmReader_reads_or_refuses_every_mutated_file() =>
         Fuzz("chm", "chm", [LegacyEbookBuilders.Chm(), LegacyEbookBuilders.Chm(new LegacyEbookBuilders.ChmOptions(ResetFrames: 0, WindowBits: 15))],
-            Book(ChmReader.Read), Bytes);
+            Book(ChmReader.Read), FuzzHarness.Bytes);
 
     [Fact]
     public void LzxDecoder_decodes_or_refuses_every_mutated_stream()
@@ -124,19 +122,17 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             LzxEncoder.Compress(data, new LzxEncoder.Options(16, 2)).Data,
             LzxEncoder.Compress(data, new LzxEncoder.Options(16, 2, BlockSize: 7_000, Kinds: [LzxEncoder.BlockKind.Aligned, LzxEncoder.BlockKind.Uncompressed], E8FileSize: 1_000_000)).Data,
         ];
-        Fuzz("lzx", "lzx", seeds, (path, _) => LegacyEbookTests.Decode(File.ReadAllBytes(path), 16, 2, data.Length), Bytes);
+        Fuzz("lzx", "lzx", seeds, (path, _) => LegacyEbookTests.Decode(File.ReadAllBytes(path), 16, 2, data.Length), FuzzHarness.Bytes);
     }
 
     [Fact]
     public void Legacy_e_book_readers_read_or_refuse_every_mutated_file()
     {
-        Fuzz("pdb", "pdb", [LegacyEbookBuilders.PalmDoc(LegacyEbookBuilders.StoryText), LegacyEbookBuilders.Ztxt(LegacyEbookBuilders.StoryText)], Book(PdbReader.Read), Bytes);
-        Fuzz("tcr", "tcr", [LegacyEbookBuilders.Tcr(LegacyEbookBuilders.StoryText)], Book(TcrReader.Read), Bytes);
-        Fuzz("rb", "rb", [LegacyEbookBuilders.RocketBook()], Book(RocketBookReader.Read), Bytes);
-        Fuzz("snb", "snb", [LegacyEbookBuilders.Snb()], Book(SnbReader.Read), Bytes);
+        Fuzz("pdb", "pdb", [LegacyEbookBuilders.PalmDoc(LegacyEbookBuilders.StoryText), LegacyEbookBuilders.Ztxt(LegacyEbookBuilders.StoryText)], Book(PdbReader.Read), FuzzHarness.Bytes);
+        Fuzz("tcr", "tcr", [LegacyEbookBuilders.Tcr(LegacyEbookBuilders.StoryText)], Book(TcrReader.Read), FuzzHarness.Bytes);
+        Fuzz("rb", "rb", [LegacyEbookBuilders.RocketBook()], Book(RocketBookReader.Read), FuzzHarness.Bytes);
+        Fuzz("snb", "snb", [LegacyEbookBuilders.Snb()], Book(SnbReader.Read), FuzzHarness.Bytes);
     }
-
-    private static Func<byte[]> Bytes(byte[] seed, Random random) => new BinaryFuzzer(seed, random).Next;
 
     /// <summary>An e-book reader; a refusal for DRM (or an eReader book) counts as a refusal.</summary>
     private static Action<string, string> Book(Func<string, string, HDocument> read) => (path, media) =>
@@ -154,27 +150,27 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void NotebookReader_reads_or_refuses_every_mutated_notebook() =>
         Fuzz("ipynb", "ipynb", [System.Text.Encoding.UTF8.GetBytes(NotebookTests.Analysis())], (path, media) => NotebookReader.Read(path, media),
-            JsonMutator(["{", "}", "[", "]", ",", ":", "\"cells\"", "\"source\"", "\"outputs\"", "\"cell_type\": \"code\"", "\"cell_type\": \"markdown\"",
+            FuzzHarness.Json(["{", "}", "[", "]", ",", ":", "\"cells\"", "\"source\"", "\"outputs\"", "\"cell_type\": \"code\"", "\"cell_type\": \"markdown\"",
                   "\"output_type\": \"stream\"", "\"data\"", "\"image/png\"", "\"text/html\"", "\"attachments\"", "\"worksheets\"", "\\u001b[31m",
                   "\\n", "# ", "**", "![x](attachment:chart.png)", "<table><tr><td>", "1e999"]));
 
     [Fact]
     public void OpmlReader_reads_or_refuses_every_mutated_outline() =>
         Fuzz("opml", "opml", [System.Text.Encoding.UTF8.GetBytes(OpmlTests.Plan)], (path, media) => OpmlReader.Read(path, media),
-            XmlMutator(["<outline text=\"x\">", "</outline>", "<outline/>", " type=\"link\" url=\"", " type=\"rss\" xmlUrl=\"", " _note=\"",
+            FuzzHarness.Xml(["<outline text=\"x\">", "</outline>", "<outline/>", " type=\"link\" url=\"", " type=\"rss\" xmlUrl=\"", " _note=\"",
                          "&#10;", "&lt;b&gt;", "&amp;", "<!DOCTYPE opml [<!ENTITY a \"aaaa\">]>", "&a;", "<![CDATA[", "]]>", "<head>", "<body>"]));
 
     [Fact]
     public void TextileReader_reads_or_refuses_every_mutated_page() =>
         Fuzz("textile", "textile", [System.Text.Encoding.UTF8.GetBytes(TextileTests.Page)], (path, media) => TextileReader.Read(path, media),
-            TextMutator(["h1. ", "p. ", "bq. ", "bc. ", "bc.. ", "fn1. ", "###. ", "notextile. ", "* ", "** ", "# ", "|", "|_. ", "|\\2. ",
+            FuzzHarness.Text(["h1. ", "p. ", "bq. ", "bc. ", "bc.. ", "fn1. ", "###. ", "notextile. ", "* ", "** ", "# ", "|", "|_. ", "|\\2. ",
                          "|/3. ", "table. ", "\"text\":http://x", "[\"t\":u]", "!img.png!", "[1]", "*", "_", "-", "+", "^", "~", "@", "%", "==",
                          "??", "(class)", "{color:red}", "[en]", "&#42;", "<br>", "- term := def"]));
 
     [Fact]
     public void MediaWikiReader_reads_or_refuses_every_mutated_page() =>
         Fuzz("mediawiki", "wiki", [System.Text.Encoding.UTF8.GetBytes(MediaWikiTests.Page)], (path, media) => MediaWikiReader.Read(path, media),
-            TextMutator(["{|", "|}", "|-", "|+", "!", "!!", "||", "| colspan=\"99999\" |", "rowspan=\"2147483647\"", "{{", "}}", "[[", "]]",
+            FuzzHarness.Text(["{|", "|}", "|-", "|+", "!", "!!", "||", "| colspan=\"99999\" |", "rowspan=\"2147483647\"", "{{", "}}", "[[", "]]",
                          "[[File:x.png|thumb]]", "[http://x y]", "''", "'''", "'''''", "== ", " ==", "* ", "# ", ": ", "; ", "----", "<ref>",
                          "</ref>", "<ref name=\"a\" />", "<nowiki>", "</nowiki>", "<pre>", "</pre>", "<blockquote>", "</blockquote>",
                          "<!--", "-->", "<b>", "</b>", "<sup>", "&lt;", "__TOC__", "[[Category:x]]"]));
@@ -182,7 +178,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void RstReader_reads_or_refuses_every_mutated_document() =>
         Fuzz("rst", "rst", [System.Text.Encoding.UTF8.GetBytes(RstTests.Guide)], (path, media) => RstReader.Read(path, media),
-            TextMutator(["\n", "\n\n", "    ", "  ", "=====", "-----", "~~~~", "+---+---+", "+===+", "| a | b |", "===  ===", "- ", "* ", "#. ",
+            FuzzHarness.Text(["\n", "\n\n", "    ", "  ", "=====", "-----", "~~~~", "+---+---+", "+===+", "| a | b |", "===  ===", "- ", "* ", "#. ",
                          "1. ", "(a) ", "i) ", ".. ", ".. code-block:: python\n\n   ", ".. image:: x.png", ".. note::\n\n   ", ".. [#] ",
                          ".. _t: http://x", ".. |s| replace:: x", ".. list-table::\n   :header-rows: 1\n\n   * - a\n     - b", "::", "**", "*", "``", "`",
                          "`x <http://y>`__", "name_", "[#]_", "[1]_", "|s|", ":sub:`x`", "\\", ">>> ", "| ", ":field: "]));
@@ -190,7 +186,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void OrgReader_reads_or_refuses_every_mutated_file() =>
         Fuzz("org", "org", [System.Text.Encoding.UTF8.GetBytes(OrgTests.Notes)], (path, media) => OrgReader.Read(path, media),
-            TextMutator(["\n", "\n\n", "* ", "** ", "*** ", "- ", "  - ", "1. ", "+ ", "[X] ", " :: ", "#+BEGIN_SRC\n", "#+END_SRC\n",
+            FuzzHarness.Text(["\n", "\n\n", "* ", "** ", "*** ", "- ", "  - ", "1. ", "+ ", "[X] ", " :: ", "#+BEGIN_SRC\n", "#+END_SRC\n",
                          "#+BEGIN_QUOTE\n", "#+END_QUOTE\n", "#+TITLE: ", ": ", "| a | b |\n", "|---+---|\n", "-----", "[fn:1]", "[fn::x]",
                          "[[http://x][y]]", "[[file:x.png]]", "*", "/", "_", "+", "=", "~", "^{", "_{", "}", "\\\\", ":PROPERTIES:\n", ":END:\n",
                          "SCHEDULED: ", "\u200B"]));
@@ -198,18 +194,9 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void DocBookReader_reads_or_refuses_every_mutated_article() =>
         Fuzz("dbk", "dbk", [System.Text.Encoding.UTF8.GetBytes(DocBookTests.Article)], (path, media) => DocBookReader.Read(path, media),
-            XmlMutator(["c1", "c2", "c99", "-1", "2147483647", "1000000", "loweralpha", "upperroman", "bold", "strikethrough", "#use", "use",
+            FuzzHarness.Xml(["c1", "c2", "c99", "-1", "2147483647", "1000000", "loweralpha", "upperroman", "bold", "strikethrough", "#use", "use",
                         "https://example.invalid/", "x.png", "../../etc/passwd", "monospaced", "sect9", "<!DOCTYPE article [<!ENTITY a \"a\">]>",
                         "&a;", "&nbsp;", "<section>", "</para>", "<![CDATA[x]]>"]));
-
-    /// <summary>The mutator of a text format, with the format's own tokens.</summary>
-    private static Func<byte[], Random, Func<byte[]>> TextMutator(string[] tokens) => (seed, random) => new TextFuzzer(seed, random, tokens).Next;
-
-    /// <summary>The mutator of an XML format in one file: mostly the tree, sometimes the text.</summary>
-    private static Func<byte[], Random, Func<byte[]>> XmlMutator(string[] tokens) => (seed, random) => new XmlFuzzer(seed, random, tokens).Next;
-
-    /// <summary>The mutator of a JSON format: mostly the tree, sometimes the text.</summary>
-    private static Func<byte[], Random, Func<byte[]>> JsonMutator(string[] tokens) => (seed, random) => new JsonFuzzer(seed, random, tokens).Next;
 
     // ───────────────────────── Seeds ─────────────────────────
 
@@ -411,65 +398,6 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     /// <param name="name">Names the kept inputs.</param>
     /// <param name="mutator">Makes the mutated inputs of one seed; ZIP packages (DocumentFuzzer) when null.</param>
-    private void Fuzz(string name, string extension, List<byte[]> seeds, Action<string, string> read, Func<byte[], Random, Func<byte[]>>? mutator = null)
-    {
-        var seconds = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SECONDS"), out var s) && s > 0 ? s : 0;
-        var seed = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SEED"), out var fixedSeed) ? fixedSeed
-            : seconds > 0 ? Environment.TickCount : 20261028;
-        var outFolder = Environment.GetEnvironmentVariable("FILEE_FUZZ_OUT") is { Length: > 0 } o ? o : null;
-        var keep = outFolder ?? fx.NewFolder();
-        var output = TestContext.Current.TestOutputHelper;
-        output?.WriteLine($"Seed {seed}, {(seconds > 0 ? seconds + " s" : QuickIterations + " inputs per seed package")}");
-
-        var random = new Random(seed);
-        var fuzzers = seeds.Select(bytes => mutator?.Invoke(bytes, random) ?? new DocumentFuzzer(bytes, random).Next).ToList();
-        var folder = fx.NewFolder();
-        // With an output folder the input being read lives there: a crash that ends the process (a stack overflow)
-        // leaves it behind for the report. A run that ends normally removes it.
-        var input = Path.Combine(outFolder ?? folder, $"running-{name}.{extension}");
-        var media = Path.Combine(folder, "media");
-
-        // Every seed itself reads without trouble.
-        foreach (var bytes in seeds)
-        {
-            File.WriteAllBytes(input, bytes);
-            Assert.Equal(DocumentFuzzer.Outcome.Read, DocumentFuzzer.Run(() => read(input, media), ReadTimeout));
-        }
-
-        var failures = new Dictionary<string, string>();
-        var (inputs, refused) = (0, 0);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        while (seconds > 0 ? stopwatch.Elapsed < TimeSpan.FromSeconds(seconds) : inputs < QuickIterations * seeds.Count)
-        {
-            var fuzzer = fuzzers[inputs % fuzzers.Count];
-            var bytes = fuzzer();
-            inputs++;
-            File.WriteAllBytes(input, bytes);
-            if (Directory.Exists(media))
-                Directory.Delete(media, recursive: true);
-            try
-            {
-                if (DocumentFuzzer.Run(() => read(input, media), ReadTimeout) == DocumentFuzzer.Outcome.Refused)
-                    refused++;
-            }
-            catch (DocumentFuzzer.FuzzFailure failure)
-            {
-                // One input per kind of failure (exception type and the frame it came from).
-                var frame = failure.InnerException?.StackTrace?.Split('\n').FirstOrDefault()?.Trim() ?? "";
-                var kind = $"{failure.InnerException?.GetType().Name ?? "Timeout"} {frame}";
-                if (!failures.ContainsKey(kind))
-                {
-                    var kept = Path.Combine(keep, $"{name}-{seed}-{inputs}.{extension}");
-                    File.WriteAllBytes(kept, bytes);
-                    failures[kind] = $"{failure.Message} (input {kept})\n{failure.InnerException}";
-                }
-                if (failure.InnerException is null)
-                    break; // a read that hangs keeps running; don't pile them up
-            }
-        }
-        output?.WriteLine($"{inputs} inputs, {refused} refused, {inputs - refused - failures.Count} read, {failures.Count} kinds of failure");
-        if (failures.Count == 0 || failures.Keys.All(k => !k.StartsWith("Timeout", StringComparison.Ordinal)))
-            File.Delete(input); // a read that still runs holds it open
-        Assert.True(failures.Count == 0, $"Seed {seed}: " + string.Join("\n\n", failures.Values));
-    }
+    private void Fuzz(string name, string extension, List<byte[]> seeds, Action<string, string> read, Func<byte[], Random, Func<byte[]>>? mutator = null) =>
+        new FuzzHarness(fx, QuickIterations, 20261028).Files(name, extension, seeds, mutator ?? FuzzHarness.Packages, read);
 }

@@ -1,8 +1,9 @@
-// Unpacks every archive format Filee reads into a folder. In-process first: SharpCompress (ZIP, 7z, RAR), .NET's TAR
-// reader, gzip / bzip2 / xz / LZMA / zstd decoders, and Filee's own readers (ALZ, EGG, lzip, Unix compress, ar / DEB,
-// cpio, RPM, ISO 9660). The bundled 7-Zip reads what is left (CAB, DMG, IMG, LHA, ARJ, UDF discs; solid 7z with several
-// files too, which SharpCompress decodes far slower, see LibraryArchives.IsSolidSevenZip) and is asked again
-// when an in-process reader meets a feature it lacks or damage it can't read past; deliberate refusals (password,
+// Unpacks every archive format Filee reads into a folder. In-process first: Filee's own readers (7z, xz, LZMA, ALZ,
+// EGG, lzip, Unix compress, ar / DEB, cpio, RPM, ISO 9660, CAB, LHA, ARJ), SharpCompress (ZIP, RAR), .NET's TAR reader
+// and gzip / bzip2 / zstd decoders. The bundled 7-Zip reads what is left (DMG, IMG, UDF discs; 7z archives with a
+// method Filee does not decode, such as PPMd, see SevenZipReader.NeedsOtherDecoder) and is asked again when an
+// in-process reader meets a feature it lacks (Quantum CABs, cabinet sets, other LHA methods, multi-volume ARJ) or
+// damage it can't read past; deliberate refusals (password,
 // paths leaving the folder, bombs) are final. Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads are unpacked
 // stage by stage until the files appear. Every stage is listed and checked first, and links are removed. A single
 // compressed stream (.gz, .bz2 …) stops at the room on the drive (ArchiveSafety.StreamLimit), in-process or written by
@@ -24,12 +25,12 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     public static readonly IReadOnlyList<string> BuiltInFormats =
     [
         "zip", "jar", "zxp", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tlz", "gz", "bz2", "xz", "lzma", "z",
-        "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split",
+        "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split", "cab", "lha", "arj",
         "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
 
     /// <summary>Formats only the bundled 7-Zip reads.</summary>
-    public static readonly IReadOnlyList<string> SevenZipFormats = ["cab", "dmg", "img", "lha", "arj"];
+    public static readonly IReadOnlyList<string> SevenZipFormats = ["dmg", "img"];
 
     /// <summary>Everything that can be unpacked when 7-Zip is there.</summary>
     public static IEnumerable<string> ReadableFormats => BuiltInFormats.Concat(SevenZipFormats);
@@ -38,7 +39,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     private static readonly HashSet<string> SevenZipAlsoReads =
     [
         "zip", "jar", "zxp", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz", "lzma", "z", "cpio",
-        "deb", "rpm", "iso", "split", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
+        "deb", "rpm", "iso", "split", "cab", "lha", "arj", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
 
     /// <summary>A TAR inside a compressed stream (or a 7z): unpacking the outer layer yields one .tar file.</summary>
@@ -86,7 +87,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     private async Task ExtractOnceAsync(string archive, string format, string folder, string scratchRoot, CancellationToken cancellationToken)
     {
         if (SevenZipFormats.Contains(format)
-            || sevenZip is not null && (format == "iso" && IsoReader.HasUdf(archive) || format == "7z" && LibraryArchives.IsSolidSevenZip(archive)))
+            || sevenZip is not null && (format == "iso" && IsoReader.HasUdf(archive) || format is "7z" or "tar7z" && SevenZipReader.NeedsOtherDecoder(archive)))
         {
             await WithSevenZipAsync(archive, format, folder, scratchRoot, cancellationToken);
             return;
@@ -145,6 +146,15 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
                 break;
             case "split":
                 ExtractSplit(archive, folder, cancellationToken);
+                break;
+            case "cab":
+                CabReader.Extract(archive, folder, cancellationToken);
+                break;
+            case "lha":
+                LhaReader.Extract(archive, folder, cancellationToken);
+                break;
+            case "arj":
+                ArjReader.Extract(archive, folder, cancellationToken);
                 break;
             case "zip":
             case "jar":
