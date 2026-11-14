@@ -192,7 +192,7 @@ public sealed class FolderIso632Tests : IDisposable
     public async Task Generated_image_is_readable_by_the_independent_7zip_engine()
     {
         var reader = SevenZip.Locate();
-        Assert.SkipUnless(reader is not null, "Bundled 7-Zip is required for the independent reader check.");
+        Assert.SkipUnless(reader is not null, "7-Zip (an optional engine) is the independent reader here: pwsh build/fetch-engines.ps1 -Only 7zip.");
         var folder = Folder();
         Directory.CreateDirectory(Path.Combine(folder, "empty"));
         File.WriteAllText(Path.Combine(folder, "한글.txt"), "independent contents");

@@ -1,5 +1,5 @@
 // Filee's own bzip2 writer (Archives/Bzip2Writer, Bzip2BlockEncoder, Bzip2Sort): every output unpacks byte for byte
-// with Filee's own decoder, SharpCompress and the bundled 7-Zip (skipped when it is missing), across data that tests
+// with Filee's own decoder, SharpCompress and 7-Zip (skipped when it is missing), across data that tests
 // the run-length step, the transform and the block edges; one thread or several give the same bytes; .bz2 and .tar.bz2
 // are written without 7-Zip; cancellation stops it. The speed comparison with 7-Zip runs only with
 // FILEE_ARCHIVE_BENCHMARK=1 and prints a Markdown table.
@@ -360,7 +360,7 @@ public class Bzip2WriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task Speed_and_size_next_to_7zip()
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK") == "1", "set FILEE_ARCHIVE_BENCHMARK=1");
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip is what the speed is compared with (optional engine, not installed)");
         var megabytes = int.TryParse(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_MB"), out var mb) ? mb : 30;
         var dir = fx.NewFolder();
         var data = MixedSample(megabytes);

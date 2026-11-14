@@ -24,7 +24,6 @@ public sealed class FolderArchives1345Tests : IDisposable
     [InlineData(true)]
     public async Task Zip_creates_one_archive_per_folder_or_one_for_the_whole_selection(bool combine)
     {
-        Assert.SkipUnless(SevenZip.Locate() is not null, "The archive converter uses bundled 7-Zip.");
         string[] folders = [Folder("first"), Folder("second")];
         var converter = new ArchiveConverter();
         await using var queue = new JobQueue(new ConverterCatalog([converter]), combiner: converter);
@@ -43,7 +42,6 @@ public sealed class FolderArchives1345Tests : IDisposable
     public async Task Folder_zip_keeps_the_mark_of_an_included_downloaded_file()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Mark of the Web is Windows-only.");
-        Assert.SkipUnless(SevenZip.Locate() is not null, "The archive converter uses bundled 7-Zip.");
         var folder = Folder("downloaded");
         var source = Path.Combine(folder, "日本語.txt");
         MarkOfTheWeb.TryWrite(source, MarkOfTheWeb.Internet());
@@ -68,7 +66,6 @@ public sealed class FolderArchives1345Tests : IDisposable
     public async Task Folder_archives_round_trip_names_contents_and_empty_folders(string format, bool combine)
     {
         var sevenZip = SevenZip.Locate();
-        Assert.SkipUnless(sevenZip is not null, "Bundled 7-Zip is required for the independent archive check.");
         var one = Folder("photos.jpg");
         var two = Folder("second");
         string[] sources = combine ? [one, two] : [one];
@@ -107,7 +104,6 @@ public sealed class FolderArchives1345Tests : IDisposable
     public async Task Nested_links_never_pack_files_outside_the_selected_folder(string format)
     {
         var sevenZip = SevenZip.Locate();
-        Assert.SkipUnless(sevenZip is not null, "Bundled 7-Zip is required to inspect all archive formats.");
         var folder = Folder("selected");
         var outside = Directory.CreateDirectory(Path.Combine(_root, "outside")).FullName;
         File.WriteAllText(Path.Combine(outside, "private.txt"), "do not archive");

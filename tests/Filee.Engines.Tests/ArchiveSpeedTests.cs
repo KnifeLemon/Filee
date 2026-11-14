@@ -1,4 +1,4 @@
-// Speed of the in-process archive readers next to the bundled 7-Zip on archives 7-Zip writes from generated files
+// Speed of the in-process archive readers next to 7-Zip on archives 7-Zip writes from generated files
 // (text that compresses well and noise that doesn't, in a few hundred files), of Filee's own 7z reader on a solid 7z
 // of 100 files (next to 7-Zip and SharpCompress) and of its LZMA decoder alone, and size and speed of Filee's own 7z
 // writer next to 7-Zip's. Not part of a normal run: set FILEE_ARCHIVE_BENCHMARK=1 (and optionally
@@ -24,7 +24,7 @@ public class ArchiveSpeedTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task In_process_readers_next_to_7zip()
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK") == "1", "set FILEE_ARCHIVE_BENCHMARK=1");
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip is what the speed is compared with (optional engine, not installed)");
         var megabytes = int.TryParse(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_MB"), out var mb) ? mb : 200;
 
         var dir = fx.NewFolder();
@@ -107,7 +107,7 @@ public class ArchiveSpeedTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task Seven_zip_writer_next_to_7zip()
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK") == "1", "set FILEE_ARCHIVE_BENCHMARK=1");
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip is what the speed is compared with (optional engine, not installed)");
         var megabytes = int.TryParse(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_MB"), out var mb) ? mb : 8;
 
         // Source-like text, prose, a CSV and some noise in a few dozen files.
@@ -160,7 +160,7 @@ public class ArchiveSpeedTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task Seven_zip_reader_on_a_solid_archive_of_100_files()
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK") == "1", "set FILEE_ARCHIVE_BENCHMARK=1");
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip is what the speed is compared with (optional engine, not installed)");
         var megabytes = int.TryParse(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_MB"), out var mb) ? mb : 32;
 
         // 100 files: prose, CSV and some noise, about the same size each.
@@ -224,7 +224,7 @@ public class ArchiveSpeedTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task Lzma_decoder_next_to_7zip()
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK") == "1", "set FILEE_ARCHIVE_BENCHMARK=1");
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip is what the speed is compared with (optional engine, not installed)");
         var megabytes = int.TryParse(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_MB"), out var mb) ? mb : 32;
         var dir = fx.NewFolder();
         var source = Path.Combine(dir, "input.bin");

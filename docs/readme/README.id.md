@@ -214,7 +214,7 @@ Filee dikembangkan dan dipublikasikan oleh **Myeonggu Kim** ([KnifeLemon](https:
   - Windows SmartScreen mungkin masih menampilkan peringatan pada rilis baru sampai aplikasi mencapai batas reputasi unduhan tertentu ("More info" → "Run anyway").
 - Paket macOS ditandatangani secara *ad-hoc* dan belum dinotarisasi (*notarized*).
 - Hanya biner yang dihasilkan oleh workflow rilis GitHub Actions di repositori resmi ini yang ditandatangani, dan setiap rilis ditandatangani serta disetujui secara manual.
-  - Pustaka pihak ketiga yang sudah ditandatangani oleh pembuatnya (.NET, SkiaSharp, ImageMagick, Microsoft C++ Runtime, dll.) tetap mempertahankan tanda tangan aslinya; komponen tanpa tanda tangan bawaan (seperti rhwp, 7-Zip, dan pustaka pendukung lainnya) ditandatangani dengan sertifikat resmi Filee sebagai satu kesatuan paket.
+  - Pustaka pihak ketiga yang sudah ditandatangani oleh pembuatnya (.NET, SkiaSharp, ImageMagick, Microsoft C++ Runtime, dll.) tetap mempertahankan tanda tangan aslinya; komponen tanpa tanda tangan bawaan (seperti rhwp dan pustaka pendukung lainnya) ditandatangani dengan sertifikat resmi Filee sebagai satu kesatuan paket.
 
 ### Kebijakan Privasi
 

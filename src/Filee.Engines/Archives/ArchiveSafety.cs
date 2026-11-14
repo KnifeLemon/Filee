@@ -1,13 +1,13 @@
 // Guards for unpacking archives from anywhere: entries that would land outside the target folder ("zip slip"),
 // symbolic links, encrypted content, archives that would not fit on the disk and decompression bombs. Every reader
-// (Filee's own, SharpCompress and the bundled 7-Zip) lists the archive first and goes through CheckListing; what is
-// written while unpacking is counted by UnpackBudget. Also the error messages for them.
+// (Filee's own, SharpCompress, and 7-Zip when it is installed) lists the archive first and goes through CheckListing;
+// what is written while unpacking is counted by UnpackBudget. Also the error messages for them.
 
 using System.Globalization;
 
 namespace Filee.Engines.Archives;
 
-/// <summary>Checks and path helpers shared by the 7-Zip and the built-in archive readers.</summary>
+/// <summary>Checks and path helpers shared by 7-Zip and the built-in archive readers.</summary>
 internal static class ArchiveSafety
 {
     /// <summary>More entries than this are refused: real archives stay far below, "entry bombs" do not.</summary>
@@ -253,7 +253,7 @@ internal static class ArchiveSafety
 
     /// <summary>
     /// An archive Filee refuses on purpose (password, unsafe path, bomb, too many entries). Unlike damage or a
-    /// feature an in-process reader lacks, it is final: the bundled 7-Zip is not asked to try again.
+    /// feature an in-process reader lacks, it is final: 7-Zip is not asked to try again.
     /// </summary>
     private static InvalidDataException Refusal(string message)
     {

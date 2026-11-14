@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Downloads and prepares conversion engines for development and for the installer (which bundles rhwp and 7-Zip
-  only; the app downloads the large engines on demand, see src/Filee.Engines/Infrastructure/EngineInstaller.cs).
+  Downloads and prepares conversion engines for development and for the installer (which bundles rhwp only; the app
+  downloads the other engines on demand, see src/Filee.Engines/Infrastructure/EngineInstaller.cs).
 
 .DESCRIPTION
   Produces this layout (next to Filee.exe in a published build, or in the repo root for development):
@@ -10,7 +10,8 @@
       libreoffice/   LibreOffice (MPL-2.0), extracted from the official MSI via an administrative install
       rhwp/          rhwp command line (MIT), HWP/HWPX -> PDF, with the Microsoft C++ runtime DLLs next to rhwp.exe
       pandoc/        Pandoc (GPL-2.0-or-later, separate program), Markdown/HTML and MD/HTML/ODT/RTF -> HWPX
-      7zip/          7-Zip console (7z.exe + 7z.dll, LGPL-2.1 + unRAR restriction, separate program), archives
+      7zip/          7-Zip console (7z.exe + 7z.dll, LGPL-2.1 + unRAR restriction, separate program): the optional
+                     engine for rare archive variants; here for the archive tests and to unpack Tesseract
       ghostscript/   Ghostscript (AGPL-3.0, separate program) from conda-forge, EPS/PS <-> PDF, with the Microsoft
                      C++ runtime DLLs (vcruntime/) copied next to gswin64c.exe
       ffmpeg/        FFmpeg (GPL-3.0 build, separate program), video and audio; bin/ffmpeg.exe + bin/ffprobe.exe
@@ -28,7 +29,8 @@
   programs built with Visual C++ that do not ship it themselves (rhwp.exe, gswin64c.exe; LibreOffice's own copy goes
   into its program folder), so they also run on PCs without the Visual C++ Redistributable.
 
-  Windows on ARM64 (-Runtime win-arm64): rhwp and 7-Zip are ARM64 builds. rhwp has no ARM64 release:
+  Windows on ARM64 (-Runtime win-arm64): rhwp (bundled) and 7-Zip (for the archive tests on the ARM64 runner) are
+  ARM64 builds. rhwp has no ARM64 release:
   .github/workflows/windows-arm64-native.yml builds it from the pinned source (build/build-native.py), the file is
   hosted on dl.filee.sh and pinned below ($arm64Pins). It links the C runtime statically, so nothing gets the
   Microsoft C++ runtime DLLs. Every other engine is the x64 download, which Windows 11 on ARM runs under emulation.
@@ -70,7 +72,8 @@ foreach ($component in $manifest.components.PSObject.Properties) {
     $engines[$component.Name] = @{ Url = $component.Value.url; Sha256 = $component.Value.sha256 }
 }
 
-# The ARM64 builds for -Runtime win-arm64, each of the version the x64 build uses (engines.json). rhwp: run the
+# The ARM64 builds for -Runtime win-arm64, each of the version the x64 build uses (engines.json): rhwp for the
+# package, 7-Zip for the archive tests (the app downloads the x64 one, which Windows 11 on ARM emulates). rhwp: run the
 # "Windows ARM64 native" workflow (Actions tab), upload the files of its artifact to the url below and copy sha256 from its SHA256SUMS.txt. A version update needs a new build: the
 # workflow fails until build/build-native.py builds the new version, and this script until the pin is updated.
 $arm64Pins = [ordered]@{

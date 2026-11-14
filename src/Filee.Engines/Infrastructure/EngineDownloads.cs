@@ -37,13 +37,13 @@ public static class EngineDownloads
     /// <summary>
     /// The downloads a Windows build runs: Filee has no ARM64 builds of the engines it downloads, and Windows 11 on ARM64
     /// (build 22000 and later) runs the x64 ones under emulation, so win-arm64 gets the win-x64 list there. Windows 10 on
-    /// ARM64 can't run x64 programs and gets none. The bundled rhwp and 7-Zip are ARM64 builds of the same versions.
+    /// ARM64 can't run x64 programs and gets none. The bundled rhwp is an ARM64 build of the same version.
     /// </summary>
     internal static string DownloadRuntime(string runtimeIdentifier, int windowsBuild) =>
         runtimeIdentifier == "win-arm64" && windowsBuild >= 22000 ? "win-x64" : runtimeIdentifier;
 
     /// <summary>
-    /// Packages offered in Settings → Engines and on first run. rhwp and 7-Zip are not listed: they are small and bundled.
+    /// Packages offered in Settings → Engines and on first run. rhwp is not listed: it is small and bundled.
     /// </summary>
     public static IReadOnlyList<EnginePackage> Packages { get; } =
     [
@@ -59,6 +59,11 @@ public static class EngineDownloads
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"])] : Array.Empty<EnginePackage>()),
         // The Metadata tool reads with it and its conversions write with it (Filee.Engines.Metadata).
         new("exiftool", ["exiftool"], 30_000_000, ["exiftool"]),
+        // The long tail of archives: Filee reads and writes every common format itself, and the archive engine asks
+        // 7-Zip for the rare variants its readers leave out (PPMd 7z, Quantum CABs, NTFS or APFS images …). It adds no
+        // route, so it names no engine. On Windows it also unpacks Tesseract's installer (EngineInstaller).
+        // On disk: 7z.exe and 7z.dll on Windows; 7-Zip's whole Linux / macOS archive (7zz, 7zzs, the manual) elsewhere.
+        new("7zip", ["7zip"], OperatingSystem.IsWindows() ? 2_600_000 : 6_500_000, []),
     ];
 
     /// <summary>Total download size of a package in bytes.</summary>
@@ -119,11 +124,12 @@ public static class EngineDownloads
     /// <summary>
     /// Ticked by default in the installer and in the first-run choice. Large downloads are offered, not suggested:
     /// LibreOffice is only needed for older formats (DOC, XLS, PPT, OpenDocument), FFmpeg (~100 MB) only for video and
-    /// audio, calibre (~230 MB) only for rare e-book formats and Kindle output. Ghostscript and Tesseract are small but
-    /// only needed for EPS / PostScript and for scans.
+    /// audio, calibre (~230 MB) only for rare e-book formats and Kindle output. Ghostscript, Tesseract and 7-Zip are
+    /// small but only needed for EPS / PostScript, for scans and for rare archive variants.
     /// </summary>
     public static bool IsSuggested(EnginePackage package) =>
-        CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id is not ("ghostscript" or "tesseract" or "upscayl-bin");
+        CanDownload(package) && DownloadSize(package) < SuggestLimit
+        && package.Id is not ("ghostscript" or "tesseract" or "upscayl-bin" or "7zip");
 
     /// <param name="macOSVersion">The running macOS; downloads whose minimumMacOS is newer are left out. Null keeps all.</param>
     public static IReadOnlyDictionary<string, EngineComponent> ComponentsForRuntime(string runtimeIdentifier, Version? macOSVersion = null)

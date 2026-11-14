@@ -24,8 +24,8 @@
             │   PDF, HTML, EPUB, MOBI, FB2, HWPX, Markdown) · Spreadsheets · OOXML variants      │
             │   · E-mail · Signed files · Data · E-books · CAD · Fonts · Subtitles · 3D models   │
             │   · HWP text                                                                       │
-            │ Bundled: rhwp (HWP→PDF, HWP↔HWPX) · 7-Zip (archives) · Markdig                     │
-            │ Optional: FFmpeg · LibreOffice · calibre · Ghostscript · Pandoc                    │
+            │ Bundled: rhwp (HWP→PDF, HWP↔HWPX) · Markdig                                        │
+            │ Optional: FFmpeg · LibreOffice · calibre · Ghostscript · Pandoc · 7-Zip            │
             └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidateSet('linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')][string]$Runtime,
     [Parameter(Mandatory)][string]$Destination,
-    [ValidateSet('rhwp', '7zip')][string[]]$Only = @('rhwp', '7zip')
+    # rhwp goes into the packages; 7-Zip, an optional engine the app downloads, only for the archive tests in CI.
+    [ValidateSet('rhwp', '7zip')][string[]]$Only = @('rhwp')
 )
 
 $ErrorActionPreference = 'Stop'

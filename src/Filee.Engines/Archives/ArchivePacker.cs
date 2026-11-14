@@ -17,7 +17,7 @@ internal sealed record PackItem(string SourcePath, string EntryName);
 /// <summary>Creates archives from files and folders.</summary>
 internal sealed class ArchivePacker
 {
-    /// <summary>Formats written without 7-Zip (all that Filee writes).</summary>
+    /// <summary>Formats Filee writes, all in-process.</summary>
     public static readonly IReadOnlySet<string> BuiltInFormats =
         new HashSet<string>(["zip", "7z", "tar", "tgz", "tbz2", "txz", "gz", "bz2", "xz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
 

@@ -22,7 +22,6 @@ public sealed class CliTests : IDisposable
     [Fact]
     public async Task Folder_to_zip_keeps_the_folder_tree_instead_of_converting_its_individual_files()
     {
-        Assert.SkipUnless(new Filee.Engines.Archives.ArchiveConverter().GetStatus().IsAvailable, "Bundled 7-Zip is required.");
         var folder = Directory.CreateDirectory(Path.Combine(_folder, "photos.jpg")).FullName;
         Directory.CreateDirectory(Path.Combine(folder, "empty"));
         await File.WriteAllTextAsync(Path.Combine(folder, "input.txt"), "folder contents", TestContext.Current.CancellationToken);
@@ -1405,6 +1404,21 @@ public sealed class CliTests : IDisposable
     }
 
     [Fact]
+    public async Task An_archive_only_7zip_unpacks_names_the_7zip_package()
+    {
+        var archive = new ControlledConverter("archive", true, [new("cab", "zip")])
+        {
+            Convert = (_, _) => throw new ConversionRefusedException("error.archive_needs_7zip", "Quantum-compressed cabinets"),
+        };
+        var (_, output, _) = await RunWith(new([archive]), "convert", Input("cab", "MSCF"), "--to", "zip", "--json");
+        var file = FileResultOf(output);
+        Assert.Equal("error.archive_needs_7zip", file.GetProperty("errorKey").GetString());
+        Assert.Equal(["7zip"], Strings(file.GetProperty("needsEngines")));
+        Assert.Contains("7-Zip", file.GetProperty("error").GetString());
+        Assert.Contains("Quantum", file.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task Non_route_failures_do_not_suggest_packages()
     {
         var magick = new Filee.Engines.Magick.MagickImageConverter();
@@ -1573,7 +1587,8 @@ public sealed class CliTests : IDisposable
         }
         else
         {
-            var catalog = new ConverterCatalog(EngineDownloads.Packages.Select(p => Package(p.Id, false)));
+            // 7-Zip adds no engine of its own (it helps the archive engine), so it has no converter here.
+            var catalog = new ConverterCatalog(EngineDownloads.Packages.Where(p => p.ConverterIds.Count > 0).Select(p => Package(p.Id, false)));
             Assert.Equal(packageIds.Order(), catalog.All.Select(c => c.Id).Order());
             Assert.All(catalog.All, c => Assert.False(catalog.StatusOf(c).IsAvailable));
             var (code, output, errors) = await RunWith(catalog, "formats", "md", "--json");

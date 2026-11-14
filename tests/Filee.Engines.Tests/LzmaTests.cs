@@ -1,5 +1,5 @@
 // Filee's own LZMA / LZMA2 codec and .xz writer (Archives/Lzma, Archives/XzWriter): round trips across sizes, data
-// and levels; interop both ways with SharpCompress, the bundled 7-Zip and xz (where installed, skipped otherwise);
+// and levels; interop both ways with SharpCompress, 7-Zip and xz (where installed, skipped otherwise);
 // damaged and hostile input; cancellation. The speed / ratio comparison with 7-Zip runs only with
 // FILEE_ARCHIVE_BENCHMARK=1 (like ArchiveSpeedTests) and prints a Markdown table. Speeds there are per second of CPU
 // time (7-Zip with -mmt=off), so other work on the machine doesn't skew them.
@@ -497,7 +497,7 @@ public class LzmaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task Speed_and_ratio_next_to_7zip()
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK") == "1", "set FILEE_ARCHIVE_BENCHMARK=1");
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip is what the speed is compared with (optional engine, not installed)");
         var megabytes = int.TryParse(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_MB"), out var mb) ? mb : 8;
         var dir = fx.NewFolder();
         var sets = new List<(string Label, byte[] Data)> { ("source code", SourceText(megabytes << 20)), ("generated prose", Prose(megabytes << 20)) };

@@ -632,6 +632,42 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
+    public void A_7zip_on_the_pc_is_never_shown_as_installed()
+    {
+        // 7-Zip is used only as Filee downloads it (or as the user picks it): without the download it is not
+        // installed, whatever the PATH or Program Files hold.
+        var sevenZip = Component("7zip", "zip", Zip(("7zz", "x")));
+        var installer = Installer(new FakeServer(new()), sevenZip);
+        var copy = installer.StatusOf(new EnginePackage("7zip", ["7zip"], 1, []));
+        Assert.Equal(EngineCopyStatus.NotInstalled, copy.Status);
+        Assert.False(copy.FromSystem);
+    }
+
+    [Fact]
+    public async Task An_nsis_installer_brings_filees_7zip_first_when_the_pc_has_none()
+    {
+        // NSIS installers (Tesseract) are unpacked with 7-Zip: with none on the PC, the 7-Zip download is installed
+        // first and stays (as the optional engine). This one can't unpack anything, so the install stops there.
+        var program = OperatingSystem.IsWindows() ? "7z.exe" : "7zz";
+        var sevenZipBytes = Zip((program, "#!/bin/sh\nexit 2\n"));
+        var setupBytes = Encoding.UTF8.GetBytes("not an installer");
+        var sevenZip = Component("7zip", "zip", sevenZipBytes);
+        var setup = Component("tool", "nsis", setupBytes);
+        var server = new FakeServer(new() { [sevenZip.Url] = sevenZipBytes, [setup.Url] = setupBytes });
+        var installer = new EngineInstaller(new HttpClient(server), _root, new[] { sevenZip, setup }.ToDictionary(c => c.Id))
+        {
+            LocateSevenZip = () => null,
+        };
+        var package = new EnginePackage("tool", ["tool"], 1, ["tool"]);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => installer.InstallAsync(package, null, TestContext.Current.CancellationToken));
+
+        Assert.True(installer.IsInstalled(new EnginePackage("7zip", ["7zip"], 1, [])));
+        Assert.True(File.Exists(Path.Combine(_root, "7zip", program)));
+        Assert.False(installer.IsInstalled(package));
+    }
+
+    [Fact]
     public void Every_package_component_is_pinned_in_the_manifest()
     {
         foreach (var package in EngineDownloads.Packages.Where(EngineDownloads.CanDownload))
