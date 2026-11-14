@@ -79,6 +79,17 @@ public class OcrLanguageListTests
     }
 
     [Fact]
+    public void Seven_zip_is_offered_for_every_platform_but_not_suggested()
+    {
+        var package = EngineDownloads.Packages.Single(p => p.Id == "7zip");
+        Assert.False(EngineDownloads.IsSuggested(package));
+        Assert.Empty(package.ConverterIds); // it adds no route: the archive engine asks it for the rare variants
+        foreach (var runtime in new[] { "win-x64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64" })
+            Assert.True(EngineDownloads.ComponentsForRuntime(runtime).ContainsKey("7zip"), runtime);
+        Assert.Equal(OperatingSystem.IsWindows() ? "7z.exe" : "7zz", Assert.Single(EngineEnvironment.OwnCopyPrograms["7zip"]));
+    }
+
+    [Fact]
     public void Tesseract_is_offered_but_not_suggested()
     {
         var package = EngineDownloads.Packages.Single(p => p.Id == "tesseract");

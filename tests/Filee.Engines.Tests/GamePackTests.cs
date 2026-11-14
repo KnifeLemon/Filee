@@ -15,12 +15,6 @@ public class GamePackTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private void SkipWithout7Zip()
-    {
-        var engine = fx.Converters.Single(c => c.Id == "archive");
-        Assert.SkipUnless(fx.Catalog.StatusOf(engine).IsAvailable, "7-Zip not found (pwsh build/fetch-engines.ps1 -Only 7zip)");
-    }
-
     private async Task<string> ConvertOkAsync(IReadOnlyList<string> sources, Preset preset)
     {
         var job = await fx.ConvertAsync(sources, preset);
@@ -79,7 +73,6 @@ public class GamePackTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("mrpack", "modrinth.index.json")]
     public async Task A_zip_of_the_pack_folder_gives_a_pack_with_the_marker_at_the_top(string format, string marker)
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var folder = PackFolder(dir, "My Pack", marker);
         var zip = Path.Combine(dir, "My Pack.zip");
@@ -96,7 +89,6 @@ public class GamePackTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task An_add_on_keeps_its_packs_side_by_side()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var addOn = Directory.CreateDirectory(Path.Combine(dir, "add-on")).FullName;
         PackFolder(addOn, "behavior");
@@ -115,7 +107,6 @@ public class GamePackTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("mrpack")]
     public async Task A_pack_becomes_a_zip_with_the_same_files(string format)
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var folder = PackFolder(dir, "pack", format == "mrpack" ? "modrinth.index.json" : "manifest.json");
         var pack = Path.Combine(dir, "pack." + format);

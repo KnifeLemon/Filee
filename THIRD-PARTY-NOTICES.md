@@ -57,7 +57,6 @@ Bundled with the installer:
 | Component | License | Project |
 |---|---|---|
 | rhwp | MIT | https://github.com/edwardkim/rhwp |
-| 7-Zip (console: `7z.exe`, `7z.dll`) | GNU LGPL-2.1-or-later; parts of `7z.dll`: LGPL with the unRAR license restriction, BSD-3-Clause, BSD-2-Clause | https://www.7-zip.org |
 | Microsoft Visual C++ Redistributable (Windows: next to `Filee.exe` and `rhwp.exe`, conda-forge `vc14_runtime`) | Microsoft Visual C++ Redistributable license | https://github.com/conda-forge/vc-feedstock |
 
 The Linux packages contain an rhwp built by Filee's CI from the unmodified source of the same release (tag `v0.8.7`,
@@ -66,13 +65,9 @@ runs on older Linux systems than rhwp's own Linux build. The Windows ARM64 build
 on Windows ARM64 (with the C runtime linked statically), as rhwp has no ARM64 release. Both are under the same MIT
 license; its `LICENSE` is next to them (`engines/rhwp`). Windows x64 and macOS use rhwp's release builds.
 
-7-Zip is Copyright (C) 1999-2026 Igor Pavlov; its `License.txt` is installed next to it (`engines/7zip`). The RAR
-decompression code in `7z.dll` is under the unRAR license restriction: it may be used to unpack RAR archives, but not
-to develop a RAR (WinRAR) compatible archiver or to re-create the RAR compression algorithm. Filee only reads RAR
-files. Source code: https://github.com/ip7z/7zip.
-
-SharpCompress's RAR decoder is used under the same terms: Filee only unpacks RAR archives with it and does not create
-them.
+SharpCompress's RAR decoder is used under the unRAR license restriction: it may be used to unpack RAR archives, but
+not to develop a RAR (WinRAR) compatible archiver or to re-create the RAR compression algorithm. Filee only unpacks
+RAR archives with it and does not create them.
 
 Downloaded from their official release pages when the user chooses to install them
 (pinned in `src/Filee.Engines/Infrastructure/engines.json`):
@@ -80,6 +75,7 @@ Downloaded from their official release pages when the user chooses to install th
 | Component | License | Project |
 |---|---|---|
 | LibreOffice | MPL-2.0 | https://www.libreoffice.org |
+| 7-Zip (Windows: the console `7z.exe`, `7z.dll` from the official MSI; Linux and macOS: `7zz`), for rare archive variants. Copyright (C) 1999-2026 Igor Pavlov; its `License.txt` is installed next to it (`engines/7zip`). The RAR decompression code in it is under the unRAR license restriction (unpacking only, as above); Filee only reads RAR files with it. Source: https://github.com/ip7z/7zip | GNU LGPL-2.1-or-later; parts: LGPL with the unRAR license restriction, BSD-3-Clause, BSD-2-Clause | https://www.7-zip.org |
 | Pandoc | GPL-2.0-or-later | https://github.com/jgm/pandoc |
 | Ghostscript (conda-forge build) | AGPL-3.0 | https://www.ghostscript.com, https://github.com/conda-forge/ghostscript-feedstock |
 | Microsoft Visual C++ Redistributable (for Ghostscript and Upscayl, conda-forge `vc14_runtime` and `vcomp14`) | Microsoft Visual C++ Redistributable license | https://github.com/conda-forge/vc-feedstock |

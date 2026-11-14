@@ -1,8 +1,9 @@
 // Shared context for engines: where Filee's own engine copies live and where engines keep their state.
 // Built-in engines never use software installed on the system (Microsoft Office, Hancom Office). The optional
-// engines (FFmpeg, calibre, Pandoc, Ghostscript, LibreOffice, Tesseract) are looked up in this order: a copy the user chose in
-// Settings → Engines (OwnCopies), Filee's own copy (installer or download, the tested version), then one already on
-// the PC (on the PATH or where its installer puts it), so nobody has to download a second FFmpeg they already have.
+// engines (FFmpeg, calibre, Pandoc, Ghostscript, LibreOffice, Tesseract, 7-Zip …) are looked up in this order: a copy
+// the user chose in Settings → Engines (OwnCopies), Filee's own copy (installer or download, the tested version), then
+// one already on the PC (on the PATH or where its installer puts it), so nobody has to download a second FFmpeg they
+// already have.
 
 using System.Collections.Concurrent;
 using System.Runtime.Versioning;
@@ -246,6 +247,9 @@ public sealed class EngineEnvironment(string dataDirectory)
                     break;
                 case "tesseract":
                     folders.Add(Path.Combine(root, "Tesseract-OCR"));
+                    break;
+                case "7zip":
+                    folders.Add(Path.Combine(root, "7-Zip"));
                     break;
                 case "ghostscript":
                     // C:\Program Files\gs\gs10.04.0\bin, newest first

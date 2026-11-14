@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Signs every .exe and .dll under -Path (files or folders) that has no valid signature yet: Filee's own programs, and
-  the bundled ones that come unsigned (rhwp, 7-Zip, most NuGet libraries). Files their makers signed (.NET, Microsoft,
+  the bundled ones that come unsigned (rhwp, most NuGet libraries). Files their makers signed (.NET, Microsoft,
   ImageMagick …) keep their signature. Afterwards every program under -Path must have a valid signature.
 
   The certificate's key is in Certum's SimplySign cloud: sign in to SimplySign Desktop (with the token from the

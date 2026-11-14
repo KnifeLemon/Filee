@@ -221,7 +221,7 @@ O Filee é desenvolvido e publicado por **Myeonggu Kim** ([KnifeLemon](https://g
   - O SmartScreen pode continuar a mostrar um aviso sobre uma versão nova até que esta tenha sido descarregada vezes suficientes ("Mais informações" → "Executar mesmo assim").
 - Os pacotes para macOS têm uma assinatura ad hoc e não foram notarizados pela Apple.
 - Só são assinados ficheiros compilados pelo fluxo de publicação do GitHub Actions deste repositório, e cada versão é assinada e aprovada manualmente.
-  - As bibliotecas e os programas assinados pelos respetivos autores (.NET, SkiaSharp, ImageMagick, o runtime do Microsoft C++…) mantêm as suas assinaturas; os componentes incluídos sem assinatura (rhwp, 7-Zip e a maioria das bibliotecas) são assinados com o certificado do Filee, como parte do Filee.
+  - As bibliotecas e os programas assinados pelos respetivos autores (.NET, SkiaSharp, ImageMagick, o runtime do Microsoft C++…) mantêm as suas assinaturas; os componentes incluídos sem assinatura (rhwp e a maioria das bibliotecas) são assinados com o certificado do Filee, como parte do Filee.
 
 ### Política de privacidade
 

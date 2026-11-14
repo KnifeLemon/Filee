@@ -155,6 +155,24 @@ public partial class LocalizationTests
     }
 
     [Fact]
+    public void Seven_zip_is_named_in_its_refusal_and_its_package_in_every_language()
+    {
+        // The archive engine refuses what only 7-Zip unpacks with this key while 7-Zip isn't installed; the package
+        // is offered in Settings → Engines and in Setup.
+        foreach (var language in LocalizationService.Languages)
+        {
+            var translations = Load(language.Code);
+            foreach (var key in new[] { "error.archive_needs_7zip", "engines.package.7zip.name" })
+            {
+                Assert.True(translations.TryGetValue(key, out var value), $"{language.Code}:{key} is missing");
+                Assert.Contains("7-Zip", value, StringComparison.Ordinal);
+            }
+            Assert.True(translations.TryGetValue("engines.package.7zip.description", out var description), $"{language.Code}: no description");
+            Assert.Contains("PPMd", description, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void Refusals_that_recommend_libreoffice_name_it_in_every_language()
     {
         // The readers of binary Visio and PowerPoint 95 files refuse with these keys when LibreOffice isn't installed.

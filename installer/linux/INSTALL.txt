@@ -143,8 +143,8 @@ the Hyprland window rule the donut opens in the wrong place.
 Packages are built and smoke-tested on Ubuntu 24.04 and started on Ubuntu 22.04
 by the automated builds.
 
-rhwp and 7-Zip are bundled. Other engines are installed from Filee settings or
-discovered in the system. Format support depends on available native engines.
+rhwp is bundled. Other engines (7-Zip for rare archive variants among them) are
+installed from Filee settings or discovered in the system. Format support depends on available native engines.
 Optional engines can require additional system libraries. In particular, calibre
 may require libxcb-cursor0, libxcb-xinerama0 and other Qt/XCB dependencies.
 

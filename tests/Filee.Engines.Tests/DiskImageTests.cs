@@ -1,13 +1,14 @@
 // Disk images unpacked in-process (DiskImageReader): FAT12/16/32 volumes with long names, MBR / GPT / Apple partition
 // maps with a folder per volume, UDF discs (plain and behind an ISO 9660 bridge) and DMG files with every run type
 // DiscUtils.Dmg decodes. Images are built in code (DiskImageBuilders, and DiscUtils.Fat as an independent FAT writer);
-// the bundled 7-Zip, where present, reads the same images, and the tools of the PC write real ones where there are
+// 7-Zip, where present, reads the same images, and the tools of the PC write real ones where there are
 // any: Windows' IMAPI2 (UDF 1.02 / 2.01 / 2.50 with an ISO 9660 bridge) and macOS' hdiutil (HFS+ DMGs). Then the
 // hostile and damaged inputs, and what is left to 7-Zip.
 
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Filee.Core.Conversion;
 using Filee.Engines.Archives;
 using static Filee.Engines.Tests.ArchiveBuilders;
 using static Filee.Engines.Tests.DiskImageBuilders;
@@ -84,6 +85,14 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => UnpackAsync(image, format));
         return error.Message;
+    }
+
+    /// <summary>What only 7-Zip reads, without it: the key that suggests installing it, with the reason as the detail.</summary>
+    private async Task<string> NeedsSevenZipAsync(string image, string format)
+    {
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => UnpackAsync(image, format));
+        Assert.Equal(ArchiveExtractor.NeedsSevenZip, error.ErrorKey);
+        return error.Detail ?? "";
     }
 
     // ───────── FAT ─────────
@@ -185,11 +194,11 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     // ───────── 7-Zip and other tools ─────────
 
-    /// <summary>The bundled 7-Zip reads what the builders write: they follow the formats, not just Filee's readers.</summary>
+    /// <summary>7-Zip reads what the builders write: they follow the formats, not just Filee's readers.</summary>
     [Fact]
     public async Task The_builders_images_are_read_by_7zip()
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip is the independent reader of the builders' images (optional engine, not installed)");
         var entries = Entries(ascii: true);
         foreach (var (name, bytes) in new[]
                  {
@@ -350,27 +359,26 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
         {
             var copy = (byte[])volume.Clone();
             patch(copy);
-            var message = await RefusedAsync(Write(kind.Replace('/', '-') + ".img", Gpt(("data", Fat(Entries(), 12)), ("other", copy))), "img");
-            Assert.Contains(kind, message);
-            Assert.Contains("does not unpack", message);
+            var reason = await NeedsSevenZipAsync(Write(kind.Replace('/', '-') + ".img", Gpt(("data", Fat(Entries(), 12)), ("other", copy))), "img");
+            Assert.Contains(kind, reason);
         }
-        Assert.Contains("does not unpack", await RefusedAsync(Write("blank.img", new byte[1 << 20]), "img"));
+        await NeedsSevenZipAsync(Write("blank.img", new byte[1 << 20]), "img");
         var lzfse = Dmg(Fat(Entries(), 12), [DmgRun.Lzfse]);
-        Assert.Contains("LZFSE", await RefusedAsync(Write("lzfse.dmg", lzfse), "dmg"));
+        Assert.Contains("LZFSE", await NeedsSevenZipAsync(Write("lzfse.dmg", lzfse), "dmg"));
     }
 
     [Fact]
     public async Task With_7zip_what_filee_leaves_out_goes_to_7zip()
     {
         var sevenZip = Filee.Engines.Archives.SevenZip.Locate();
-        Assert.SkipUnless(sevenZip is not null, "7-Zip not found");
+        Assert.SkipUnless(sevenZip is not null, "The test is what 7-Zip does with what Filee leaves out (optional engine, not installed)");
         // A disk with an NTFS volume: unpacked by 7-Zip as a whole (it shows the volumes as files) instead of in
         // part by Filee.
         var ntfs = new byte[1 << 20];
         ntfs[0] = 0xEB;
         "NTFS    "u8.CopyTo(ntfs.AsSpan(3));
         var path = Write("ntfs.img", Gpt(("data", Fat(Entries(ascii: true), 12)), ("windows", ntfs)));
-        Assert.Contains("NTFS", await RefusedAsync(path, "img"));
+        Assert.Contains("NTFS", await NeedsSevenZipAsync(path, "img"));
         var scratch = Directory.CreateDirectory(Path.Combine(fx.NewFolder(), "scratch")).FullName;
         var folder = await new ArchiveExtractor(sevenZip).ExtractAsync(path, "img", scratch, Ct);
         Assert.NotEmpty(Directory.GetFiles(folder, "*", SearchOption.AllDirectories));

@@ -226,7 +226,7 @@ Filee is developed and published by **Myeonggu Kim** ([KnifeLemon](https://githu
   - SmartScreen can still warn about a new release until it has been downloaded enough ("More info" → "Run anyway").
 - macOS packages are ad-hoc signed and not notarized.
 - Only files built by this repository's GitHub Actions release workflow are signed, and every release is signed and approved by hand.
-  - Libraries and programs their makers signed (.NET, SkiaSharp, ImageMagick, the Microsoft C++ runtime …) keep their own signatures; bundled ones that come unsigned (rhwp, 7-Zip and most libraries) are signed with Filee's certificate, as part of Filee.
+  - Libraries and programs their makers signed (.NET, SkiaSharp, ImageMagick, the Microsoft C++ runtime …) keep their own signatures; bundled ones that come unsigned (rhwp and most libraries) are signed with Filee's certificate, as part of Filee.
 
 ### Privacy policy
 

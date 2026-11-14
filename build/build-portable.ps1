@@ -85,7 +85,7 @@ foreach ($project in @('Filee.App', 'Filee.Cli')) {
 }
 $engines = Join-Path $publish 'engines'
 if ($RhwpOverride) {
-    & (Join-Path $PSScriptRoot 'fetch-portable-engines.ps1') -Runtime $Runtime -Destination $engines -Only 7zip
+    New-Item -ItemType Directory -Force -Path $engines | Out-Null
     Copy-Item -LiteralPath $RhwpOverride -Destination (Join-Path $engines 'rhwp') -Recurse
     Invoke-Checked 'rhwp permissions' { chmod +x (Join-Path $engines 'rhwp/rhwp') }
     Write-Host "rhwp from $RhwpOverride"

@@ -244,7 +244,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
     [InlineData("-mx1 -mmt=4 -md=64k")]
     public async Task Archives_from_7zip_unpack_byte_for_byte_without_it(string switches)
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip makes the archives this test reads (optional engine, not installed)");
         var dir = fx.NewFolder();
         var tree = MakeSourceTree(dir, switches.Contains("-mmt=4") ? 3_000_000 : 150_000);
         // A real program (7-Zip's own: 7z.dll on Windows, the 7zz binary elsewhere) for the exe filter 7-Zip picks by
@@ -266,7 +266,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
     [Fact]
     public async Task The_x86_filters_change_the_data_and_are_undone()
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip makes the archives this test reads (optional engine, not installed)");
         var dir = fx.NewFolder();
         var source = Directory.CreateDirectory(Path.Combine(dir, "code")).FullName;
         // Odd sizes and offsets, so opcodes fall on the converters' buffer edges.
@@ -380,7 +380,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
     [InlineData("IA64")]
     public async Task The_branch_filters_for_other_processors_change_the_data_and_are_undone(string filter)
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip makes the archives this test reads (optional engine, not installed)");
         var dir = fx.NewFolder();
         var source = Directory.CreateDirectory(Path.Combine(dir, "code")).FullName;
         // Odd sizes, so instructions fall on the converter's buffer edges and a short tail is left at the end.
@@ -426,7 +426,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
     [Fact]
     public async Task Programs_for_arm_machines_get_7zips_arm_filters_by_themselves_and_unpack_without_it()
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip makes the archives this test reads (optional engine, not installed)");
         var dir = fx.NewFolder();
         var source = Directory.CreateDirectory(Path.Combine(dir, "apps")).FullName;
         File.WriteAllBytes(Path.Combine(source, "arm64.dll"), Program(0xAA64, BranchLike("ARM64", 300_000, 1)));
@@ -445,7 +445,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
     [Fact]
     public async Task Ppmd_goes_to_7zip_when_it_is_there_and_to_SharpCompress_when_not()
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip makes the archives this test reads (optional engine, not installed)");
         var dir = fx.NewFolder();
         var tree = MakeSourceTree(dir);
         var output = Path.Combine(dir, "ppmd.7z");
@@ -462,7 +462,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
     [Fact]
     public async Task Password_protected_7z_is_refused_with_or_without_encrypted_names()
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip makes the archives this test reads (optional engine, not installed)");
         var dir = fx.NewFolder();
         var secret = Path.Combine(dir, "secret.txt");
         await File.WriteAllBytesAsync(secret, Words(5_000), Ct);

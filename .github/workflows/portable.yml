@@ -163,7 +163,8 @@ jobs:
 
       - name: Build and test native projects
         run: |
-          ./build/fetch-portable-engines.ps1 -Runtime '${{ matrix.rid }}' -Destination engines
+          # 7-Zip isn't in the packages; the archive tests compare with it.
+          ./build/fetch-portable-engines.ps1 -Runtime '${{ matrix.rid }}' -Destination engines -Only rhwp,7zip
           dotnet build Filee.slnx -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Magick.NET 15 has no ImageMagick library for Intel Macs: the one the package gets goes next to each build.

@@ -6,8 +6,8 @@
 .DESCRIPTION
   Without -PublishDir the app is published first (Release, self-contained, -p:FileeRelease=true) into
   publish/win-x64, together with the Windows 11 Explorer menu extension (build-explorer-menu.ps1), the bundled
-  small engines rhwp and 7-Zip and the Microsoft C++ runtime DLLs next to rhwp.exe (fetch-engines.ps1); the large
-  engines are downloaded by the app (engines.json).
+  small rhwp and the Microsoft C++ runtime DLLs next to rhwp.exe (fetch-engines.ps1); the other engines (7-Zip too)
+  are downloaded by the app (engines.json).
 
   Setup itself (src/Filee.Setup) is published as one self-contained, trimmed program (no .NET needed on the PC);
   build/tools/make-setup.cs appends the publish folder to it as an LZMA payload with a SHA-256 manifest, and the
@@ -16,7 +16,7 @@
 
 .PARAMETER Runtime
   win-x64 (default) or win-arm64. The ARM64 build (Filee-<version>-win-arm64-Setup.exe and -Portable.zip) has an ARM64
-  Setup, Explorer menu DLL, rhwp and 7-Zip (fetch-engines.ps1 -Runtime win-arm64, which fails while the ARM64 rhwp
+  Setup, Explorer menu DLL and rhwp (fetch-engines.ps1 -Runtime win-arm64, which fails while the ARM64 rhwp
   build is not pinned yet). It links the C runtime statically: no Microsoft C++ runtime DLLs are copied.
 
 .PARAMETER CertificateThumbprint
@@ -96,10 +96,10 @@ elseif (-not $PublishDir) {
     # Next to Filee.exe: the Explorer menu package's external location is the install folder.
     $architecture = $Runtime.Substring(4)
     & (Join-Path $PSScriptRoot 'build-explorer-menu.ps1') -Destination $PublishDir -Version $Version -Architecture $architecture
-    # Only the small rhwp and 7-Zip are bundled; the app downloads the others when the user picks them. The Microsoft
+    # Only the small rhwp is bundled; the app downloads the others (7-Zip too) when the user picks them. The Microsoft
     # C++ runtime goes next to rhwp.exe, so it doesn't need the Visual C++ Redistributable (#248). Nothing loaded into
     # Filee.exe imports it. The ARM64 builds need none.
-    & (Join-Path $PSScriptRoot 'fetch-engines.ps1') -Runtime $Runtime -Only rhwp, 7zip -Destination (Join-Path $PublishDir 'engines')
+    & (Join-Path $PSScriptRoot 'fetch-engines.ps1') -Runtime $Runtime -Only rhwp -Destination (Join-Path $PublishDir 'engines')
 }
 $PublishDir = (Resolve-Path $PublishDir).Path
 if (-not (Test-Path (Join-Path $PublishDir 'Filee.exe'))) { throw "Filee.exe is missing in $PublishDir" }

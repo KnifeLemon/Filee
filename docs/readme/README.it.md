@@ -221,7 +221,7 @@ Filee è sviluppato e pubblicato da **Myeonggu Kim** ([KnifeLemon](https://githu
   - SmartScreen può comunque avvisare su una nuova release finché non è stata scaricata abbastanza volte ("Altre informazioni" → "Esegui comunque").
 - I pacchetti macOS sono firmati ad hoc e non notarizzati.
 - Solo i file compilati dal workflow di release di GitHub Actions di questo repository sono firmati, e ogni release è firmata e approvata manualmente.
-  - Le librerie e i programmi firmati dai rispettivi autori (.NET, SkiaSharp, ImageMagick, il runtime C++ di Microsoft …) mantengono la propria firma; quelli inclusi che arrivano non firmati (rhwp, 7-Zip e la maggior parte delle librerie) vengono firmati con il certificato di Filee, come parte di Filee.
+  - Le librerie e i programmi firmati dai rispettivi autori (.NET, SkiaSharp, ImageMagick, il runtime C++ di Microsoft …) mantengono la propria firma; quelli inclusi che arrivano non firmati (rhwp e la maggior parte delle librerie) vengono firmati con il certificato di Filee, come parte di Filee.
 
 ### Informativa sulla privacy
 

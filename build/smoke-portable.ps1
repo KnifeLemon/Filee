@@ -1,5 +1,6 @@
-# Checks a portable package the way a user gets it: verifies the archive checksum, unpacks it and runs the CLI,
-# rhwp and 7-Zip from it, including conversions through rhwp (TXT -> HWPX -> HWP -> PDF). On Linux it also loads
+# Checks a portable package the way a user gets it: verifies the archive checksum, unpacks it and runs the CLI and
+# rhwp from it, including conversions through rhwp (TXT -> HWPX -> HWP -> PDF) and archives without 7-Zip (not
+# bundled: ZIP -> 7Z -> ZIP in-process). On Linux it also loads
 # the X11 input hook back end (libuiohook-xrecord.so) to prove its libraries and glibc requirement resolve.
 # Used by .github/workflows/portable.yml on the build machine and on the oldest supported Ubuntu.
 #
@@ -42,7 +43,7 @@ $cli = Join-Path $bin 'filee-cli'
 
 Invoke-Checked 'CLI start' { & $cli version }
 Invoke-Checked 'rhwp start' { & (Join-Path $bin 'engines/rhwp/rhwp') --version }
-Invoke-Checked '7-Zip start' { & (Join-Path $bin 'engines/7zip/7zz') i | Out-Null }
+if (Test-Path -LiteralPath (Join-Path $bin 'engines/7zip')) { throw 'The package must not contain 7-Zip (an optional download).' }
 
 function Convert-Smoke([string]$source, [string]$target) {
     $folder = Join-Path $smoke "to-$target"
@@ -68,6 +69,15 @@ if ($header -ne '%PDF-') { throw "rhwp's PDF does not start with %PDF- ($header)
 # HWP -> Markdown is built in (Filee's HWP reader), on every platform.
 $markdown = Convert-Smoke $hwp 'md'
 if (-not (Get-Content -LiteralPath $markdown -Raw).Contains('Filee')) { throw "The Markdown of $hwp lacks its text." }
+
+# Archives are read and written in-process: ZIP -> 7Z -> ZIP, the text the same at the end.
+$zip = Join-Path $smoke 'sample.zip'
+Compress-Archive -LiteralPath $inputFile -DestinationPath $zip
+$sevenZip = Convert-Smoke $zip '7z'
+$back = Convert-Smoke $sevenZip 'zip'
+$unpacked = Join-Path $smoke 'unpacked'
+Expand-Archive -LiteralPath $back -DestinationPath $unpacked
+if (-not (Get-Content -LiteralPath (Join-Path $unpacked 'sample.txt') -Raw).Contains('Filee')) { throw "The ZIP made from $sevenZip lacks the text." }
 
 if ($IsLinux) {
     # The loader dlopens this back end in an X11 session; loading it here fails like the app would when a library

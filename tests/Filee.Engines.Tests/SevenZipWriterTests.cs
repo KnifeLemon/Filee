@@ -1,5 +1,5 @@
 // Filee's own 7z writer (Archives/SevenZipWriter): archives packed without 7-Zip read back by SharpCompress, by the
-// in-process extractor and by the bundled 7-Zip (`7z t`, `7z x`, `7z l -slt`; skipped when it is missing): nested
+// in-process extractor and by 7-Zip (`7z t`, `7z x`, `7z l -slt`; skipped when it is missing): nested
 // folders, Unicode names, empty files and folders, sizes and times, data across several solid blocks, the store
 // level, an archive without entries, the LZMA-encoded header, the entry cap and cancellation.
 
@@ -109,7 +109,7 @@ public class SevenZipWriterTests(EngineFixture fx) : IClassFixture<EngineFixture
     [InlineData(ArchiveLevel.Normal)]
     public async Task SevenZip_tests_lists_and_extracts_our_archives(ArchiveLevel level)
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip tests, lists and unpacks the archives here (optional engine, not installed)");
         var dir = fx.NewFolder();
         var tree = MakeUnicodeTree(dir);
         var single = Path.Combine(dir, "단독.bin");
