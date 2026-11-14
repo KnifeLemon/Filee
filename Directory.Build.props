@@ -47,5 +47,6 @@
     <PublishReadyToRunExclude Include="Microsoft.Extensions.Logging.Abstractions.dll;Microsoft.Extensions.Logging.dll" />
     <PublishReadyToRunExclude Include="Microsoft.Extensions.Options.dll;Microsoft.Extensions.Primitives.dll" />
     <PublishReadyToRunExclude Include="Microsoft.IO.RecyclableMemoryStream.dll;Microsoft.Maui.Graphics.dll;System.Security.Cryptography.Pkcs.dll" />
+    <PublishReadyToRunExclude Include="System.IO.Hashing.dll" />
   </ItemGroup>
 </Project>
