@@ -1,11 +1,14 @@
 // Speed of the in-process archive readers next to the bundled 7-Zip on archives 7-Zip writes from generated files
-// (text that compresses well and noise that doesn't, in a few hundred files). Not part of a normal run: set
-// FILEE_ARCHIVE_BENCHMARK=1 (and optionally FILEE_ARCHIVE_BENCHMARK_MB, default 200). Prints a Markdown table.
+// (text that compresses well and noise that doesn't, in a few hundred files), and size and speed of Filee's own 7z
+// writer next to 7-Zip's. Not part of a normal run: set FILEE_ARCHIVE_BENCHMARK=1 (and optionally
+// FILEE_ARCHIVE_BENCHMARK_MB, default 200 for the readers and 8 for the writer). Each prints a Markdown table.
 
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using Filee.Core.Presets;
 using Filee.Engines.Archives;
+using Filee.Engines.Infrastructure;
 using static Filee.Engines.Tests.ArchiveBuilders;
 
 namespace Filee.Engines.Tests;
@@ -94,6 +97,79 @@ public class ArchiveSpeedTests(EngineFixture fx) : IClassFixture<EngineFixture>
         TestContext.Current.TestOutputHelper?.WriteLine(table.ToString());
         if (Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_OUT") is { Length: > 0 } outFile)
             await File.WriteAllTextAsync(outFile, table.ToString(), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task Seven_zip_writer_next_to_7zip()
+    {
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK") == "1", "set FILEE_ARCHIVE_BENCHMARK=1");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        var megabytes = int.TryParse(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_MB"), out var mb) ? mb : 8;
+
+        // Source-like text, prose, a CSV and some noise in a few dozen files.
+        var dir = fx.NewFolder();
+        var tree = Path.Combine(dir, "data");
+        var random = new Random(2);
+        long total = 0;
+        for (var i = 0; total < megabytes * (1L << 20); i++)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(tree, $"folder{i % 5}")).FullName;
+            var size = random.Next(32 << 10, 768 << 10);
+            var (bytes, extension) = (i % 4) switch
+            {
+                0 => (LzmaTests.Prose(size + i), "txt"),
+                1 => (Encoding.UTF8.GetBytes(string.Join('\n', Enumerable.Range(i * 10_000, size / 24).Select(n => $"{n},{n % 97},{n * 31 % 1000}.5,값{n % 13}"))), "csv"),
+                2 => (Words(size), "md"),
+                _ => (Noise(size / 4, i), "bin"),
+            };
+            await File.WriteAllBytesAsync(Path.Combine(folder, $"file{i}.{extension}"), bytes, TestContext.Current.CancellationToken);
+            total += bytes.Length;
+        }
+
+        var table = new StringBuilder();
+        table.AppendLine(CultureInfo.InvariantCulture, $"{total / 1e6:0.0} MB in {Directory.GetFiles(tree, "*", SearchOption.AllDirectories).Length} files, 7-Zip {EngineVersions.Component("7zip")}, single-threaded (-mmt=off), CPU time");
+        table.AppendLine();
+        table.AppendLine("| Writer | Level | Size | Ratio | Pack (CPU) | Pack speed |");
+        table.AppendLine("|---|---|---:|---:|---:|---:|");
+        foreach (var (level, sevenLevel) in new[] { (ArchiveLevel.Fast, "-mx1"), (ArchiveLevel.Normal, "-mx5"), (ArchiveLevel.Maximum, "-mx9") })
+        {
+            var ours = Path.Combine(dir, $"filee-{level}.7z");
+            var cpu = ProcessCpu();
+            await new ArchivePacker(null).PackAsync([new PackItem(tree, "data")], ours, "7z", level, dir, null, CancellationToken.None);
+            Row("Filee", level.ToString(), new FileInfo(ours).Length, ProcessCpu() - cpu);
+            await SevenZipAsync("t", ours);
+
+            var theirs = Path.Combine(dir, $"7zip{sevenLevel}.7z");
+            var time = await SevenZipCpuAsync("a", "-t7z", sevenLevel, "-mmt=off", theirs, tree);
+            Row("7-Zip", sevenLevel, new FileInfo(theirs).Length, time);
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine(table.ToString());
+        if (Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_OUT") is { Length: > 0 } outFile)
+            await File.WriteAllTextAsync(outFile, table.ToString(), TestContext.Current.CancellationToken);
+
+        void Row(string writer, string level, long size, TimeSpan cpu) =>
+            table.AppendLine(CultureInfo.InvariantCulture,
+                $"| {writer} | {level} | {size:N0} | {size * 100.0 / total:0.00}% | {cpu.TotalSeconds:0.00} s | {total / 1e6 / cpu.TotalSeconds:0.0} MB/s |");
+    }
+
+    private static TimeSpan ProcessCpu()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.TotalProcessorTime;
+    }
+
+    /// <summary>Runs 7-Zip and returns the CPU time it used.</summary>
+    private static async Task<TimeSpan> SevenZipCpuAsync(params string[] args)
+    {
+        var start = new ProcessStartInfo(SevenZipExe!) { RedirectStandardInput = true, RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        foreach (var arg in args)
+            start.ArgumentList.Add(arg);
+        using var process = Process.Start(start)!;
+        process.StandardInput.Close();
+        var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        Assert.True(process.ExitCode == 0, await output);
+        return process.TotalProcessorTime;
     }
 
     private static Task SevenZipAsync(params string[] args) => Run7zAsync(TimeSpan.FromMinutes(30), args);

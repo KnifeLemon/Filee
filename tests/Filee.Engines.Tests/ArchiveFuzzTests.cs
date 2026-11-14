@@ -1,11 +1,13 @@
-// Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG) and of
-// TAR (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
+// Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG, and
+// the LZMA / LZMA2 / .xz decoder) and of TAR (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
 // repeated, and every input must unpack or be refused with InvalidDataException, in time. The loop is FuzzHarness's: a
 // short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to
 // keep failing inputs.
 
 using System.Formats.Tar;
+using Filee.Core.Presets;
 using Filee.Engines.Archives;
+using Filee.Engines.Archives.Lzma;
 using static Filee.Engines.Tests.ArchiveBuilders;
 using static Filee.Engines.Tests.ArchiveFormatBuilders;
 
@@ -76,7 +78,54 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Fuzz("egg", [File.ReadAllBytes(egg)]);
     }
 
-    private void Fuzz(string format, List<byte[]> seeds, int mutateFrom = 0)
+    /// <summary>
+    /// Filee's own .xz decoder (XzReader → Lzma2Reader → LzmaDecoder): seeds from Filee's writer at every level, with
+    /// text, noise and a long run, and the test builder's xz (another LZMA encoder inside LZMA2 chunks). Half the
+    /// mutations go past the headers, into the LZMA2 data. Output goes through the usual UnpackBudget.
+    /// </summary>
+    [Fact]
+    public void Xz_decoder_unpacks_or_refuses_every_mutated_file()
+    {
+        static byte[] Ours(byte[] data, ArchiveLevel level)
+        {
+            using var output = new MemoryStream();
+            using (var xz = new XzWriter(output, level, data.Length, CancellationToken.None, leaveOpen: true))
+            {
+                xz.Write(data);
+                xz.Finish();
+            }
+            return output.ToArray();
+        }
+
+        byte[] mixed = [.. Words(30_000), .. Noise(3_000, 2), .. new byte[20_000], .. Words(5_000)];
+        List<byte[]> seeds = [Ours(mixed, ArchiveLevel.Normal), Ours(Words(40_000), ArchiveLevel.Fast), Ours(mixed, ArchiveLevel.Store),
+            Ours(mixed, ArchiveLevel.Maximum), Xz(Words(20_000))];
+        Fuzz("xz", seeds, read: DecodeXz);
+        Fuzz("xz", seeds, mutateFrom: 24, read: DecodeXz);
+    }
+
+    /// <summary>Raw LZMA with an end marker (as in lzip and .lzma), decoded by Filee's LzmaRawReader.</summary>
+    [Fact]
+    public void Raw_lzma_decoder_decodes_or_refuses_every_mutated_stream() =>
+        Fuzz("lzma-raw", [RawLzma(Words(30_000), endMarker: true), RawLzma([.. Noise(2_000, 3), .. Words(4_000)], endMarker: true)],
+            read: (input, scratch) =>
+            {
+                using var file = File.OpenRead(input);
+                using var reader = new LzmaRawReader(file, LzmaProperties.Default, 1 << 20, -1);
+                ArchiveFiles.CopyLimited(reader, Stream.Null, long.MaxValue, CancellationToken.None,
+                    budget: new UnpackBudget("fuzz.lzma", file.Length, scratch));
+            });
+
+    private static void DecodeXz(string input, string scratch)
+    {
+        using var file = File.OpenRead(input);
+        using var reader = new XzReader(file, "fuzz.xz");
+        ArchiveFiles.CopyLimited(reader, Stream.Null, long.MaxValue, CancellationToken.None,
+            budget: new UnpackBudget("fuzz.xz", file.Length, scratch));
+    }
+
+    /// <param name="read">Reads the input file (path, scratch folder); the archive extractor for <paramref name="format"/> when null.</param>
+    private void Fuzz(string format, List<byte[]> seeds, int mutateFrom = 0, Action<string, string>? read = null)
     {
         var folder = fx.NewFolder();
         new FuzzHarness(fx, QuickIterations, 20261101).Files("archive-" + format, format, seeds,
@@ -86,7 +135,10 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 Directory.CreateDirectory(scratch);
                 try
                 {
-                    new ArchiveExtractor(null).ExtractAsync(input, format, scratch, CancellationToken.None).GetAwaiter().GetResult();
+                    if (read is not null)
+                        read(input, scratch);
+                    else
+                        new ArchiveExtractor(null).ExtractAsync(input, format, scratch, CancellationToken.None).GetAwaiter().GetResult();
                 }
                 finally
                 {
