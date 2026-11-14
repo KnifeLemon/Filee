@@ -4,10 +4,8 @@
 // edges and no route goes through it.
 //
 // Formats whose reader draws only part of what they hold come with a check (DrawingFormat.FirstUnsupported), which
-// FirstUnsupported asks. The converter doesn't declare ICapabilityCheck yet, so its edges are not Checked: the first
-// format with a check (VSDX, for binary .vsd) adds the interface and Checked edges; DocReaderTests'
-// Word_95_files_are_named_by_every_engine_that_reads_doc then needs to look only at engines with a doc edge, as it
-// asks every ICapabilityCheck engine about a DOC file.
+// FirstUnsupported (ICapabilityCheck) asks: their edges are Checked, so a file the reader can't draw (a binary .vsd)
+// keeps the route it would take without this converter.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
@@ -18,7 +16,7 @@ using ImageMagick;
 namespace Filee.Engines.Drawings;
 
 /// <summary>Drawings → PDF, SVG and PNG through the slide renderer.</summary>
-public sealed class DrawingConverter : IConverter, IImageTransformer
+public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilityCheck
 {
     /// <summary>Pixels of one page picture at most; a larger picture is drawn at a lower resolution.</summary>
     private const long MaxPagePixels = 200_000_000;
@@ -37,7 +35,7 @@ public sealed class DrawingConverter : IConverter, IImageTransformer
         [
             .. from format in formats
                from target in DrawingFormats.Targets
-               select new ConversionEdge(format.Id, target),
+               select new ConversionEdge(format.Id, target, Checked: format.FirstUnsupported is not null),
         ];
     }
 
