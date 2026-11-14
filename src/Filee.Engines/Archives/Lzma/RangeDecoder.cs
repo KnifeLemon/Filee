@@ -1,6 +1,9 @@
 // The LZMA range decoder (lzma-specification.txt, "The range decoder"): a 32-bit range and code, adaptive 11-bit
 // probabilities that move by 1/32 of the distance to the bound after each bit, and "direct" bits of probability 1/2.
 // Input comes from a byte array: one whole LZMA2 chunk, or a buffer that is refilled from a stream for raw LZMA.
+//
+// LzmaDecoder doesn't call in here per bit: it takes range, code and the input position into locals for a whole run
+// of symbols (Take / Put back) and decodes the bits itself; only a refill comes back here. BCJ2 uses DecodeBit.
 
 using System.Runtime.CompilerServices;
 
@@ -26,6 +29,7 @@ internal sealed class RangeDecoder
     private int _position;
     private int _end;
     private Stream? _source;
+    private bool _sourceEnded;
     private uint _range;
     private uint _code;
 
@@ -35,9 +39,16 @@ internal sealed class RangeDecoder
     /// <summary>True when the coder ended cleanly: the encoder's flush leaves the code at zero.</summary>
     public bool IsFinishedOk => _code == 0;
 
+    /// <summary>The input buffer; bytes before <see cref="End"/> are valid (the buffer itself never changes on refill).</summary>
+    internal byte[] Buffer => _buffer;
+
+    /// <summary>The end of the valid input in <see cref="Buffer"/>.</summary>
+    internal int End => _end;
+
     /// <summary>Starts decoding <paramref name="length"/> bytes of <paramref name="buffer"/>; reading past them is damage.</summary>
     public void Start(byte[] buffer, int length)
     {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)length, (uint)buffer.Length, nameof(length));
         _buffer = buffer;
         _position = 0;
         _end = length;
@@ -52,6 +63,7 @@ internal sealed class RangeDecoder
         _position = 0;
         _end = 0;
         _source = source;
+        _sourceEnded = false;
         Init();
     }
 
@@ -69,80 +81,75 @@ internal sealed class RangeDecoder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal uint NextByte()
+    private uint NextByte()
     {
         if (_position == _end)
             Refill();
         return _buffer[_position++];
     }
 
-    private void Refill()
+    /// <summary>
+    /// Reads the next block of input into <see cref="Buffer"/> from its start and returns the new <see cref="End"/>
+    /// (the position goes back to 0); the input ending, or a whole chunk already used up, is damage.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal int Refill()
     {
-        if (_source is null || _buffer.Length == 0)
+        if (_source is null || _sourceEnded || _buffer.Length == 0)
             throw new InvalidDataException("the LZMA data ends too early");
         var read = _source.Read(_buffer, 0, _buffer.Length);
         if (read <= 0)
             throw new InvalidDataException("the LZMA data ends too early");
+        // LzmaDecoder reads the buffer without bounds checks up to End: never trust a stream for more than was asked.
+        if (read > _buffer.Length)
+            throw new InvalidOperationException("a stream returned more bytes than were asked for");
         _position = 0;
         _end = read;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void Normalize()
-    {
-        if (_range < RangeCoder.TopValue)
-        {
-            _range <<= 8;
-            _code = _code << 8 | NextByte();
-        }
+        return read;
     }
 
     /// <summary>
-    /// Hands range and code to a caller that keeps them in locals over many bits (<see cref="Bit"/>); it gives them back
-    /// with <see cref="Store"/> before calling any other method here.
+    /// Makes at least <paramref name="wanted"/> unread bytes available when the input is a stream that still has them:
+    /// the unread rest moves to the start of the buffer and the stream fills the space after it. Returns the unread
+    /// bytes now in the buffer (fewer at the end of the stream, or of a whole chunk).
     /// </summary>
-    public void Load(out uint range, out uint code)
+    internal int TopUp(int wanted)
+    {
+        var left = _end - _position;
+        if (left >= wanted || _source is null || _sourceEnded || _buffer.Length < wanted)
+            return left;
+        System.Buffer.BlockCopy(_buffer, _position, _buffer, 0, left);
+        _position = 0;
+        _end = left;
+        while (_end < wanted)
+        {
+            var read = _source.Read(_buffer, _end, _buffer.Length - _end);
+            if (read <= 0)
+            {
+                _sourceEnded = true;
+                break;
+            }
+            if (read > _buffer.Length - _end)
+                throw new InvalidOperationException("a stream returned more bytes than were asked for");
+            _end += read;
+        }
+        return _end - _position;
+    }
+
+    /// <summary>Hands range, code and the input position to a decoder that keeps them in locals over many symbols.</summary>
+    internal void Take(out uint range, out uint code, out int position)
     {
         range = _range;
         code = _code;
+        position = _position;
     }
 
-    /// <summary>Takes range and code back from <see cref="Load"/>.</summary>
-    public void Store(uint range, uint code)
+    /// <summary>Takes back what <see cref="Take"/> handed out.</summary>
+    internal void Put(uint range, uint code, int position)
     {
         _range = range;
         _code = code;
-    }
-
-    /// <summary>
-    /// <see cref="DecodeBit"/> on range and code held in the caller's locals, which the JIT keeps in registers: the
-    /// decoder's single-bit decisions (match or literal, which repeat) run through here.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int Bit(ref uint range, ref uint code, ref ushort probability, RangeDecoder rc)
-    {
-        var p = probability;
-        var bound = (range >> RangeCoder.ProbabilityBits) * p;
-        int bit;
-        if (code < bound)
-        {
-            range = bound;
-            probability = (ushort)(p + ((RangeCoder.ProbabilityOne - p) >> RangeCoder.MoveBits));
-            bit = 0;
-        }
-        else
-        {
-            range -= bound;
-            code -= bound;
-            probability = (ushort)(p - (p >> RangeCoder.MoveBits));
-            bit = 1;
-        }
-        if (range < RangeCoder.TopValue)
-        {
-            range <<= 8;
-            code = code << 8 | rc.NextByte();
-        }
-        return bit;
+        _position = position;
     }
 
     /// <summary>One bit with the adaptive probability <paramref name="probability"/> (of a zero).</summary>
@@ -165,122 +172,11 @@ internal sealed class RangeDecoder
             probability = (ushort)(p - (p >> RangeCoder.MoveBits));
             bit = 1;
         }
-        Normalize();
+        if (_range < RangeCoder.TopValue)
+        {
+            _range <<= 8;
+            _code = _code << 8 | NextByte();
+        }
         return bit;
-    }
-
-    /// <summary><paramref name="count"/> bits of probability one half, most significant first.</summary>
-    public uint DecodeDirectBits(int count)
-    {
-        uint result = 0;
-        for (; count > 0; count--)
-        {
-            _range >>= 1;
-            _code -= _range;
-            var t = 0u - (_code >> 31); // all ones when the subtraction went below zero (bit 0)
-            _code += _range & t;
-            if (_code == _range)
-                throw new InvalidDataException("the LZMA data is damaged");
-            Normalize();
-            result = (result << 1) + (t + 1);
-        }
-        return result;
-    }
-
-    /// <summary>
-    /// A <paramref name="bits"/>-bit symbol from a binary tree of probabilities (index 1 is the root). Range and code
-    /// stay in locals for the whole symbol (the hot path of literals and lengths), not in the fields for every bit.
-    /// </summary>
-    public uint DecodeTree(Span<ushort> probabilities, int bits)
-    {
-        var range = _range;
-        var code = _code;
-        uint m = 1;
-        var end = 1u << bits;
-        while (m < end)
-        {
-            ref var probability = ref probabilities[(int)m];
-            var p = probability;
-            var bound = (range >> RangeCoder.ProbabilityBits) * p;
-            if (code < bound)
-            {
-                range = bound;
-                probability = (ushort)(p + ((RangeCoder.ProbabilityOne - p) >> RangeCoder.MoveBits));
-                m <<= 1;
-            }
-            else
-            {
-                range -= bound;
-                code -= bound;
-                probability = (ushort)(p - (p >> RangeCoder.MoveBits));
-                m = (m << 1) + 1;
-            }
-            if (range < RangeCoder.TopValue)
-            {
-                range <<= 8;
-                code = code << 8 | NextByte();
-            }
-        }
-        _range = range;
-        _code = code;
-        return m - end;
-    }
-
-    /// <summary>
-    /// A literal after a match (the LZMA spec's "matched literal"): while its bits equal those of
-    /// <paramref name="matchByte"/>, the probabilities for that bit value are used; after the first difference, the
-    /// plain ones. <paramref name="probabilities"/> are the 0x300 of the literal's context.
-    /// </summary>
-    public uint DecodeMatchedLiteral(Span<ushort> probabilities, uint matchByte)
-    {
-        var range = _range;
-        var code = _code;
-        uint symbol = 1;
-        var offset = 0x100u;
-        while (symbol < 0x100)
-        {
-            matchByte <<= 1;
-            var index = offset + (matchByte & offset) + symbol;
-            ref var probability = ref probabilities[(int)index];
-            var p = probability;
-            var bound = (range >> RangeCoder.ProbabilityBits) * p;
-            if (code < bound)
-            {
-                range = bound;
-                probability = (ushort)(p + ((RangeCoder.ProbabilityOne - p) >> RangeCoder.MoveBits));
-                symbol <<= 1;
-                offset &= ~matchByte; // a 0 where the match byte has a 1: plain probabilities from here on
-            }
-            else
-            {
-                range -= bound;
-                code -= bound;
-                probability = (ushort)(p - (p >> RangeCoder.MoveBits));
-                symbol = (symbol << 1) + 1;
-                offset &= matchByte;
-            }
-            if (range < RangeCoder.TopValue)
-            {
-                range <<= 8;
-                code = code << 8 | NextByte();
-            }
-        }
-        _range = range;
-        _code = code;
-        return symbol - 0x100;
-    }
-
-    /// <summary>Like <see cref="DecodeTree"/>, least significant bit first.</summary>
-    public uint DecodeReverseTree(Span<ushort> probabilities, int bits)
-    {
-        uint m = 1;
-        uint symbol = 0;
-        for (var i = 0; i < bits; i++)
-        {
-            var bit = (uint)DecodeBit(ref probabilities[(int)m]);
-            m = (m << 1) + bit;
-            symbol |= bit << i;
-        }
-        return symbol;
     }
 }
