@@ -18,10 +18,10 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
-| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
-| **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → DOCX** |
-| **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → ODT** (OpenDocument text, LibreOffice Writer) |
-| **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed) |
+| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
+| **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → DOCX** |
+| **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → ODT** (OpenDocument text, LibreOffice Writer) |
+| **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
@@ -30,15 +30,16 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
+| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
+| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
-| Archives | built in (SharpCompress, .NET and Filee's own readers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG; **7-Zip**: CAB, DMG, IMG, LHA, ARJ, UDF discs **→ folder, ZIP, TAR, TAR.GZ, the packs** (in-process), **7Z, TAR.BZ2/XZ** (7-Zip); "Compress into one archive" for any files |
-| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
+| Archives | built in (SharpCompress, .NET and Filee's own readers and writers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip**: DMG, IMG, UDF discs, and the rare kinds the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.XZ, XZ, the packs** (in-process), **TAR.BZ2, BZ2** (7-Zip); "Compress into one archive" for any files |
+| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
@@ -48,7 +49,8 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
 
-DOCX, DOC, ODT, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process.
+DOCX, DOC, ODT, XLSX, XLS, ODS, PPTX, PPT and ODP → PDF need neither Microsoft Office nor LibreOffice: they are read
+in-process (and VSDX and ODG drawings → PDF, SVG and PNG, see [Drawings](#drawings-visio-odg)).
 Documents and slides are laid out by the [Filee renderer](#filee-renderer-pdf-output) (with it off, or for a file with
 what it doesn't draw yet, written as HWPX and rendered by rhwp); spreadsheets are printed by Filee's own print engine
 (Excel's page logic, see [Spreadsheet printing](#spreadsheet-printing)). Anything the built-in readers understand
@@ -887,11 +889,13 @@ test turns it on.
   formats Filee reads, CSV and TSV (one table each: sheet print needs a page setup), OFD (the pages the
   [OFD reader](#ofd-reader) rebuilds, tables and seals included), and Pandoc's formats when Pandoc is installed, to
   PDF. Pictures of the pages go on from its PDF through PDFium, which applies the image options.
-- **Slide decks** (`Slides/SlideFormats.cs`): PPTX, PPTM, POTX, POTM and PPSX to PDF, PNG and JPG through the
-  [slide renderer](#filee-renderer-slides): a page or a picture per slide, the pictures drawn directly (no PDF →
+- **Slide decks** (`Slides/SlideFormats.cs`): PPTX, PPTM, POTX, POTM and PPSX, PPT through the PPTX package the
+  [PPT reader](#ppt-reader) translates it to, and ODP, OTP and FODP through the [ODP / ODG reader](#odp--odg-reader)
+  to PDF, PNG and JPG through the [slide renderer](#filee-renderer-slides): a page or a picture per slide, the
+  pictures drawn directly (no PDF →
   PDFium step) with the image options applied.
-- **What keeps its route:** workbooks ([Spreadsheet printing](#spreadsheet-printing)), other presentations (PPT, ODP)
-  and PDF.
+- **What keeps its route:** workbooks ([Spreadsheet printing](#spreadsheet-printing)), other presentations (Keynote,
+  WPS Presentation, StarImpress), drawings ([Drawings](#drawings-visio-odg)) and PDF.
 - **Cost 1:** it wins over rhwp and the HWPX writer whatever their place in the priority list (1 + at most 9 against
   about 31).
 - **LibreOffice choices still hold.** On cost alone it would also win over LibreOffice where Settings → Engines → *When
@@ -899,7 +903,8 @@ test turns it on.
   the renderer would win as the converter registered first). So while LibreOffice is installed (`LibreOfficeConverter.Installed`,
   checked with the engines' status) the engine leaves out what the user chose it for: DOCX, DOC, ODT and RTF for Word
   documents, CSV for spreadsheets, and the decks (PPTX, and PPTM, POTX, POTM, PPSX, which reach LibreOffice as PPTX
-  through `ooxml`; all targets) for presentations. The Word variants (DOCM, DOTX, DOTM, DOT, WPS) and TSV stay with
+  through `ooxml`; PPT, ODP, OTP, FODP; all targets) for presentations. The Word variants (DOCM, DOTX, DOTM, DOT,
+  WPS) and TSV stay with
   the renderer: LibreOffice takes them only at its fallback cost, so left out they would go to the HWPX writer and
   rhwp, as they did before the renderer. Without LibreOffice the switches change
   nothing. *Use LibreOffice for presentations* was on by default when the alternative was the HWPX writer and rhwp;
@@ -1345,7 +1350,8 @@ line, which 한글 keeps on one line.
 Filee's own slide renderer (GitHub Project 4, item *Built-in slide renderer (PPTX → PDF / PNG)*), in
 `src/Filee.Engines/Slides`: a deck read into a slide model and drawn with the layout engine's text services onto the
 page record PDF and pictures are written from, without LibreOffice. It is part of the Filee renderer: with
-*Use the Filee renderer* on (the default), PPTX, PPTM, POTX, POTM and PPSX → PDF, PNG and JPG take it
+*Use the Filee renderer* on (the default), PPTX, PPTM, POTX, POTM and PPSX → PDF, PNG and JPG take it, and PPT
+([PPT reader](#ppt-reader)) and ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) with them
 (`FileeRendererConverter`, edges `Checked`, formats in `Slides/SlideFormats.cs`); off, decks go through the HWPX
 writer and rhwp. `PptxReader` (Hwp/Hwpx/Pptx) stays the reader the document writers
 use: it turns a deck into flowing pages of text boxes, which is right for DOCX or HWPX output but not for a picture of
@@ -1624,6 +1630,98 @@ properties, fast-saved files whose PAPX FKPs don't cover their text, embedded fo
 picture in its field result (its ObjectPool storage is not read). Nested tables and horizontally merged cells (TC80
 fFirstMerged / fMerged) are checked against DocBuilder's files only: LibreOffice's DOC export of the render features
 has none, and LibreOffice doesn't show them in DocBuilder's files.
+
+## PPT reader
+
+PowerPoint 97–2003 presentations (`.ppt`, `.pps`, `.pot`, format id `ppt`) are read in-process, written from
+Microsoft's published [MS-PPT] and [MS-ODRAW] specifications (`Office/Ppt`), so PPT → PDF / PNG / JPG / PPTX / DOCX /
+ODT / HWPX / TXT needs neither PowerPoint nor LibreOffice. Like the [DOC reader](#doc-reader) it doesn't map the format
+onto a model itself: `PptToPptx` writes the binary file out as the PPTX package PowerPoint would save for it, and the
+PPTX readers take it from there: the [slide renderer](#filee-renderer-slides) through the Filee renderer (the package
+in memory, `Slides/SlidePackage.cs`), `PptxReader` for the document writers, and the PPTX writer, which hands
+PPT → PPTX the translated package as it is (cost 8, `Checked`). A `.ppt` that is really a PPTX is read as one.
+
+- `PptFile.cs`: the compound file (`Documents/CompoundFile.cs`); Current User → the chain of user edits → the persist
+  directory (`PptPersist.cs`: each edit visited once, up to 65,536, later saves win); the DocumentContainer: slide size,
+  fonts, the text master styles, the drawing group (default shape properties, the BLIP store whose pictures are in the
+  Pictures stream), and the lists of masters, slides and notes with the outline text of the slides' placeholders.
+- `PptToPptx.Masters.cs`: the main master as a slide master and theme (its 8-colour scheme as the theme's 12 colours,
+  title and body fonts as the major and minor font), background, shapes and text styles; a slide with its own colour
+  scheme gets a copy of its master with that scheme (up to 64), so scheme colours come out as PowerPoint shows them; a
+  layout per master and per title master in use; hidden slides; notes as plain paragraphs.
+- `PptToPptx.Shapes.cs`: shapes, connectors, pictures and groups in drawing order; anchors, rotation and flips;
+  properties from the shape, its master shape (up to 4 levels), the drawing group's defaults and ODRAW's; the shape
+  types mapped to DrawingML presets, every one of which the slide renderer draws; solid and picture fills (gradients
+  and patterns as their first colour), lines with dashes and arrowheads, scheme and system colours; pictures with
+  their crop (also the preview pictures of OLE objects, charts and media); placeholders; text frames.
+- `PptToPptx.Text.cs`: paragraphs and line breaks, the paragraph and character runs (StyleTextPropAtom: what a run
+  doesn't set comes from the master's styles), bullets, alignment, spacing, indents, bold / italic / underline,
+  sizes, colours and fonts, slide number and date fields; the master text styles as `lvl1pPr`–`lvl5pPr`.
+- **Refused:** presentations protected with a password (nothing is ever decrypted; the message says how to remove it)
+  and compound files without a presentation (`InvalidDataException` with the reason). PowerPoint 95 and older files (no
+  PowerPoint 97 Current User atom, or PowerPoint 4.0's `PP40` stream) are named by the check ("a PowerPoint 95 or
+  older presentation"), so they take LibreOffice when it is installed; without it the reader refuses them with
+  `error.old_ppt_needs_libreoffice` ("PowerPoint 95 and older presentations are converted by LibreOffice. Install it in
+  Settings → Engines, or save the file again in a newer PowerPoint").
+- **The check:** what the translation leaves out that would show (freeform shapes, WordArt, OLE objects without a
+  preview picture) is named, and such a deck keeps its usual route; else `SlideCapabilities` looks through the
+  translated package as through any PPTX.
+- **Hostile input:** records are read only where they fit in what holds them, persist ids only when the directory
+  lists them; `DocumentBudget` for objects and group nesting; pictures within `MaxPartBytes`, the package within
+  `MaxPackageBytes`. `PptFuzzTests` fuzzes the PowerPoint Document stream through the slide renderer and the
+  document reader.
+- Tests: `PptReaderTests` with decks built in code (`PptBuilder`): the package against the Open XML SDK validator,
+  the slide model, pixels, the routes (PPT → PDF, PPTX, DOCX), the refusals and hostile files.
+
+Not yet: freeform shapes (custom geometry from the vertices), WordArt, gradient and pattern fills, adjust values,
+shadows, tables as tables (they are drawn as the shape groups PowerPoint 97–2003 saves), slide headers and footers,
+automatic numbering, hyperlinks, animations, sound and media, notes formatting, the document's title and author.
+Checked against decks built from the specification, not against files PowerPoint saved.
+
+## ODP / ODG reader
+
+OpenDocument presentations (`.odp`, templates `.otp`, flat `.fodp`) and drawings (`.odg`, flat `.fodg`) are read
+in-process into the slide model, written from OpenDocument 1.3 Part 3 (`Odf/Draw`), without LibreOffice:
+presentations to PDF, PNG and JPG through the [slide renderer](#filee-renderer-slides) (the Filee renderer,
+`Slides/SlideFormats.cs`), drawings to PDF, SVG and PNG through the [drawing engine](#drawings-visio-odg).
+Presentations also reach DOCX, ODT, HWPX and text, a section per slide (`Slides/SlideDeckText.cs`: text frames,
+pictures and table cells in reading order). ODP → PPTX stays with LibreOffice.
+
+- `OdfDrawPackage.cs`: a package through `DocumentPackage`, a flat file through `SafeXml` (up to 256 MB); the mimetype
+  must be a presentation or a drawing (or their templates); encrypted packages are refused as for ODT;
+  `office:binary-data` pictures are decoded once and counted against `MaxPackageBytes`.
+- `OdfDrawReader.cs`: pages in order (hidden slides left out, as LibreOffice's PDF export does), the size of the first
+  page's master; backgrounds (the page's, else its master's); a master's shapes behind each page, its placeholders
+  not drawn apart from the footer, date and slide number a page shows; empty placeholders left out, one without a
+  position at its master's; frames (text box, picture, table, an embedded object's replacement picture), custom shapes,
+  rectangles, ellipses and circles (full, section, cut, arc), lines, polylines, polygons, SVG paths, connectors and
+  measures (straight), groups and links; `draw:transform` resolved to the model's box, rotation and flips.
+- `OdfGraphicStyles.cs`: default, named and automatic styles (those of the content and the styles part kept apart)
+  along parent chains up to 20 levels; fills (solid with opacity, the six gradient kinds, hatches as the nearest
+  DrawingML pattern, bitmaps stretched or tiled) and lines (colour, width, hairline, transparency, dashes, joins,
+  caps, markers).
+- `OdfEnhancedGeometry.cs`: `draw:enhanced-geometry` with modifiers, equations (arithmetic, the named values and
+  functions) and every path command, LibreOffice's extensions included; a shape without a path takes the DrawingML
+  preset its `draw:type` names (`ooxml-*` by name), an unknown type is drawn as a rectangle and named by the check.
+  `OdfPathData.cs` reads `draw:points` and SVG path data.
+- `OdfDrawText.cs`: paragraphs and spans with the ODT reader's text and paragraph properties (shared), along the
+  graphic or presentation style → the master's outline style → the text style → paragraph → span chain; bulleted and
+  numbered lists; padding, anchoring, wrapping, vertical text and columns of text frames; page number, page count,
+  footer, header and date fields; tables with spans, covered cells, fills and borders.
+- **The check** (`FirstUnsupported`, a pass of the reader that draws nothing) names the first chart, OLE or other
+  embedded object, 3D scene or extrusion, Fontwork, shadow, form control, shape type without a preset, or SVG / TIFF
+  picture on a shown page, so such a file keeps LibreOffice's route.
+- **Hostile input:** pages up to `MaxPages`; `DocumentBudget` for paragraphs, objects and nesting (groups, links,
+  lists and tables, 32 levels); a limit for the whole deck on path commands, points and equation evaluations (2
+  million; a master's shapes count again for every page on it); per shape at most 100,000 path tokens and 4,096
+  equations; elements visited, transforms and repeated table rows capped. Refusals are `error.document_too_complex` or
+  `InvalidDataException`. `OdfDrawFuzzTests` fuzzes packages and flat files through the reader, the check, the text
+  and the renderer.
+- Tests: `OdfDrawTests` (decks and drawings built in code by `OdpBuilder`, checked as model values and as pixels at
+  72 dpi) and `OdfDrawRouteTests`.
+
+Not yet: charts, OLE objects, 3D, Fontwork, shadows, form controls (named by the check), notes and animations.
+
 ## PPTX writer
 
 `Hwp/Hwpx/Pptx/PptxWriter*.cs` writes PowerPoint slides from the document model, so Markdown and every reader in
@@ -2273,6 +2371,48 @@ and writes the files; Filee's own renderer draws them with SkiaSharp (one drawin
   segments in total; beyond that the drawing is cut short with a warning in the log. Damaged or truncated files fail
   with "The file is not a valid DWG/DXF drawing or is damaged: …".
 
+## Drawings (Visio, ODG)
+
+Built in, no Visio or LibreOffice: `Drawings/DrawingConverter.cs` (id `drawing`, "Drawings (built-in)") reads a
+drawing into the slide model (a slide per page) and draws it with the [slide renderer](#filee-renderer-slides): to PDF
+(a page per drawing page), SVG and PNG (a file per page, `_p2`, …, with the PDF options' page range and resolution,
+then the image options; a page picture over 200 million pixels is drawn at a lower resolution). Each format comes with
+its reader, one line in `Drawings/DrawingFormats.cs`:
+
+- **VSDX** (Visio 2013 and later, `Visio/`, written from [MS-VSDX]; format id `vsd`, which also covers the binary
+  `.vsd`): pages in order over their background pages, with their layers (shapes on hidden layers, guides and
+  non-printing shapes left out) and their size from the page sheet, scaled by the page and drawing scale; shapes with
+  their transform (pin, local pin, angle, flips), Geometry sections (MoveTo, LineTo, ArcTo, EllipticalArcTo, Ellipse,
+  the relative rows, NURBSTo, PolylineTo, SplineStart / SplineKnot; NoShow, NoFill and NoLine; inner sections cut
+  holes), line (colour, weight, dash pattern, cap, transparency, a few basic arrowheads) and fill (solid, the 23
+  two-colour patterns; gradient patterns as their foreground colour), text blocks with their Character and Paragraph
+  rows, groups, connectors (the geometry they carry) and pictures (Foreign shapes: PNG, JPEG, GIF, BMP, TIFF, EMF,
+  WMF). Cells, geometry and text are inherited from master shapes and style sheets; colours by index come from the
+  document's colour table, fonts from its face names. Only stored values (`V`) are read; formulas aren't calculated.
+- **ODG and FODG** (OpenDocument drawings, packaged and flat): the [ODP / ODG reader](#odp--odg-reader).
+
+Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
+takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a
+compound file: "binary Visio (VSD)") and an ODG with what the ODF reader names (charts, OLE objects, 3D, …). Without
+LibreOffice the drawing engine's route is the only one left, and the VSDX reader refuses a binary `.vsd` with
+`error.vsd_needs_libreoffice` ("Old binary Visio drawings (.vsd) are converted by LibreOffice. Install it in Settings →
+Engines, or save the drawing as VSDX in Visio"). Neither engine is in the priority list, so both pay its penalty, and
+the drawing engine wins the tie with LibreOffice's Draw edges as it is registered first.
+
+- **Hostile input:** parts through `DocumentPackage`; `DocumentBudget` for shapes (counted every time one is drawn,
+  a background page's shapes once per page on it), paragraphs and group nesting; pages up to `MaxPages`; master, style
+  and background page chains up to 32 levels with loops cut; sections, rows and NURBS / polyline points capped for the
+  whole drawing; numbers clamped and finite; pictures within `MaxPartBytes` and `MaxPicturePixels`. Refusals are
+  `error.document_too_complex`. `VisioFuzzTests` and `OdfDrawFuzzTests` fuzz the readers, their checks and the
+  renderer together.
+- Tests: `VisioTests` (drawings built in code by `VsdxBuilder`, checked as model values and as pixels at 72 dpi),
+  `OdfDrawTests`, `DrawingConverterTests`.
+
+Not yet (VSDX): theme colours and effects stored as "Themed" (the inherited or default value is used), FillGradient
+sections, shadows, rounding, the full arrowhead table, text backgrounds, formulas beyond stored values, and `.vsdm` /
+`.vssx` / `.vstx`. The slide model has one size per deck, so pages of other sizes sit at the top left of the largest
+page's size. Checked against drawings built from the specification, not against files Visio saved.
+
 ## 3D models
 
 `Filee.Engines/Models3D` converts GLB, glTF, STL, OBJ, 3MF and PLY into each other, and FBX into any of them, in
@@ -2849,8 +2989,9 @@ Filee's own copy of the 7-Zip console program (`7z.exe` + `7z.dll`, taken from t
 by `build/fetch-engines.ps1 -Only 7zip` and bundled with the installer, never a 7-Zip installed on the PC; a separate
 process, LGPL) for the long tail. In-process comes first (`Archives/ArchiveExtractor.cs`); 7-Zip reads the formats
 nobody else does, and is asked again when an in-process reader meets something it lacks (an unknown 7z or RAR
-method, a GNU sparse file, an interleaved ISO file) or damage it can't get past. Two formats prefer 7-Zip when it is
-there: ISO images with a UDF file system, and solid 7z archives with several files (for speed). Deliberate refusals (password,
+method, a GNU sparse file, an interleaved ISO file, a Quantum CAB, an LHA method or ARJ volume Filee doesn't read) or
+damage it can't get past. Two kinds prefer 7-Zip when it is there: ISO images with a UDF file system, and 7z archives
+with a method Filee doesn't decode (PPMd, ARM64, …; see below). Deliberate refusals (password,
 paths leaving the folder, bombs, entry floods) are final and never retried. Without 7-Zip the engine stays available
 with the in-process edges only (Settings → *Engines* shows "built in" instead of "built in + 7-Zip …").
 
@@ -2858,23 +2999,27 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
 |---|---|---|
 | ZIP, JAR, WBPZ, ZXP | .NET (System.IO.Compression) when every entry is stored or Deflate, else SharpCompress (MIT: Deflate64, BZip2, LZMA, PPMd and the old methods); names without the UTF-8 flag as UTF-8 when valid, else the system's OEM code page (CP949 on Korean Windows), as 7-Zip does | in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
 | Minecraft MCPACK, MCADDON, MCWORLD, MCTEMPLATE; Modrinth MRPACK | as ZIP (they are ZIPs) | ZIP in-process, with the marker file at the top (see below) |
-| 7Z | SharpCompress (LZMA, LZMA2, PPMd, BZip2, Deflate, the BCJ / BCJ2 filters); a solid 7z with several files goes to 7-Zip when it is there (SharpCompress 1.0 decodes the block again for every file, see the speed table) | 7-Zip |
+| 7Z | Filee (`SevenZipReader`: Copy, LZMA, LZMA2, BCJ, BCJ2, Delta, Deflate, BZip2; solid blocks decoded once, see below); other methods (PPMd, ARM64 …) by 7-Zip when it is there, else SharpCompress | in-process (Filee's `SevenZipWriter`, LZMA2): UTF-16 names, times, attributes, empty folders |
 | RAR 4 / 5 | SharpCompress (only unpacks, under the unRAR terms, see THIRD-PARTY-NOTICES), with the other volumes (`.part2.rar`, `.r00`) | — |
 | TAR | .NET's System.Formats.Tar (ustar, PAX, GNU, V7): tells symbolic from hard links | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
-| TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z, TAR.LZ, TAR.7Z | in two stages: the outer layer as below, then the TAR | TAR.GZ in-process; TAR.BZ2 / TAR.XZ: TAR in-process, compressed by 7-Zip |
+| TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z, TAR.LZ, TAR.7Z | in two stages: the outer layer as below, then the TAR | TAR.GZ and TAR.XZ in-process; TAR.BZ2: TAR in-process, compressed by 7-Zip |
 | GZ | .NET's gzip decoder (CRC-32 checked) | in-process (GZipStream); one file only |
-| BZ2, XZ | SharpCompress | 7-Zip; one file only |
-| LZMA (`.lzma`) | SharpCompress's LZMA decoder | — |
+| BZ2 | SharpCompress | 7-Zip; one file only |
+| XZ | Filee (`XzReader`) | in-process (Filee's `XzWriter`); one file only |
+| LZMA (`.lzma`) | Filee (`LzmaRawReader`) | — |
 | Z (Unix compress) | Filee (`UnixCompressStream`: LZW, 9–16-bit codes, block mode with table clears) | — |
 | LZ (lzip) | Filee: members found from the end, each LZMA stream decoded by SharpCompress, CRC-32 and sizes checked (data longer than the trailer states is refused) | — |
 | CPIO | Filee (`CpioReader`: newc, crc with its byte sum checked, odc, old binary in either byte order; newc hard link groups become copies) | — |
 | DEB (ar) | Filee (`ArReader`: GNU and BSD long names, symbol tables skipped): unpacks to `debian-binary`, `control.tar.*`, `data.tar.*` | — |
 | RPM | Filee (`RpmReader`): the payload (gzip, bzip2, xz, LZMA, zstd or plain) becomes `<name>.cpio`, unpacked in the next stage | — |
 | ISO | Filee (`IsoReader`: ISO 9660 with Rock Ridge names, else Joliet, else the plain names; multi-extent files); images with UDF (Windows install discs) go to 7-Zip when it is there | — |
-| Split archives (.001, .7z.001, .zip.001, .tar.001) | the volumes read as one stream (`SplitVolumes`): 7z, ZIP and RAR by SharpCompress, TAR by .NET | — |
+| Split archives (.001, .7z.001, .zip.001, .tar.001) | the volumes read as one stream (`SplitVolumes`): 7z by Filee's reader, ZIP and RAR by SharpCompress, TAR by .NET | — |
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
 | EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (SharpCompress's decoder); several blocks per file | — |
-| CAB, DMG, IMG, LHA / LZH, ARJ | 7-Zip only | — |
+| CAB | Filee (`CabReader`: stored, MSZIP, LZX); Quantum and cabinet sets by 7-Zip | — |
+| LHA / LZH | Filee (`LhaReader`: -lh0-, -lz4-, -lh4- to -lh7-); other methods by 7-Zip | — |
+| ARJ | Filee (`ArjReader`: methods 0–4); multi-volume archives and other methods by 7-Zip | — |
+| DMG, IMG | 7-Zip only | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
@@ -2895,7 +3040,8 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   Nothing writes `.zxp`: Adobe's apps install only packages signed with the developer's certificate (ZXPSignCmd).
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
-  file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR, TAR.GZ and GZ need no 7-Zip.
+  file with the output pattern; files with the same name become `name (2).ext`. ZIP, 7Z, TAR, TAR.GZ, TAR.XZ, GZ and XZ
+  need no 7-Zip.
 - **Safety** (`Archives/ArchiveSafety.cs`, the same for every reader): every archive is listed first and checked
   before anything is written. Encrypted entries or archives stop with "password-protected"; entries (or hard links)
   with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is written);
@@ -2904,8 +3050,8 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   refused (a listing without sizes still needs the 64 MB reserve). A **decompression bomb** — more than 1 GiB that is also more than 10,000 times the archive's size — is
   refused from the listing (lying headers, ZIPs whose entries share one stream) or, for streams that declare no size
   (.gz, .bz2, .xz, .Z), as soon as that much has come out (`UnpackBudget`, which also looks at the free space again
-  every 256 MB). Sizes are checked against what each entry declares, CRC-32s by Filee for ZIP, 7z, lzip, ALZ, EGG and
-  the cpio byte sum (gzip, xz and bzip2 by their decoders); LZMA dictionaries over 1 GiB are refused before the decoder allocates them. ISO
+  every 256 MB). Sizes are checked against what each entry declares, CRC-32s by Filee for ZIP, 7z, lzip, ALZ, EGG, ARJ and
+  the cpio byte sum, CAB checksums and LHA's CRC-16 (gzip, xz and bzip2 by their decoders); LZMA dictionaries over 1 GiB are refused before the decoder allocates them. ISO
   folders that point back at a folder already read (a loop), extents past the end of the image, trees deeper than 64
   folders and folder listings over 16 MB are refused as damage.
 - **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z) state
@@ -2922,8 +3068,9 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   shows which archive tests still need it (they skip).
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG. Without
-  7-Zip also: CAB, DMG, IMG, LHA, ARJ, UDF-only discs, GNU sparse files in TARs, interleaved ISO files, the El Torito
-  boot image of an ISO (7-Zip shows it as `[BOOT]`; Filee's ISO reader leaves it out), and 7Z / BZ2 / XZ output.
+  7-Zip also: DMG, IMG, UDF-only discs, Quantum CABs and cabinet sets, LHA methods other than -lh0-, -lz4- and -lh4- to
+  -lh7-, multi-volume ARJ, GNU sparse files in TARs, interleaved ISO files, the El Torito boot image of an ISO (7-Zip
+  shows it as `[BOOT]`; Filee's ISO reader leaves it out), and BZ2 / TAR.BZ2 output.
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
   `unalz` Rust crate, EggDotNet and unegg (MIT). ALZip's bzip2 has no `BZh` header, starts every block with `DLZ\x01`
   instead of the block magic, CRC and randomised bit, and ends with `DLZ\x02` (`Archives/Bzip2Decoder.cs`). The .Z,
@@ -2933,15 +3080,58 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   with 7-Zip or need a 7-Zip format skip without it), `ArchiveInProcessTests.cs` (every in-process format built in
   code by `ArchiveFormatBuilders.cs` — 7z, xz, RAR 4 / 5 with stored entries, ISO, cpio, ar, RPM, .Z — and the hostile
   inputs: traversal, links, passwords, bombs with lowered limits, entry floods, ISO loops, damaged data),
-  `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z, lzip, ALZ and EGG files must unpack or be
-  refused with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
+  `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z, lzip, ALZ, EGG, 7z, xz, LZMA, CAB, LHA and ARJ
+  files must unpack or be refused with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
   `FILEE_ARCHIVE_BENCHMARK=1`: the in-process readers next to 7-Zip).
+
+### Filee's own 7z, xz, CAB, LHA and ARJ code
+
+Written from the formats' own descriptions (7zFormat.txt, the .xz file format 1.2.1, lzma-specification.txt,
+[MS-CAB], the LHA and ARJ header layouts), not from other projects' code:
+
+- **7z reading** (`SevenZipReader.cs`, `SevenZipCoders.cs`): the signature header, packed (encoded) headers, pack,
+  unpack and substream info, names, empty files and folders, times and attributes; files are unpacked in their order,
+  so a solid block is decoded once from start to end. Coders: Copy, LZMA and LZMA2 (Filee's decoder, `Archives/Lzma`),
+  BCJ, BCJ2 and Delta (written there), Deflate (.NET) and BZip2 (SharpCompress). File and folder CRCs are checked and
+  every coder's output must have the size the header names. AES (an encrypted folder or header) is refused as
+  password-protected. A method Filee doesn't decode (PPMd, ARM64 and the other branch filters, Deflate64) is found
+  before anything is written (`NeedsOtherDecoder`): 7-Zip unpacks such an archive when it is there, else SharpCompress
+  does (slowly for a solid one: it decodes the block again for every file). Headers over 512 MiB, more files than the
+  entry limit, counts the header has no room for, packed streams outside the file, dictionaries over 1.5 GiB and
+  folders that would unpack past the bomb ratio are refused before anything is decoded.
+- **xz and LZMA reading** (`Lzma/XzReader.cs`, `LzmaRawReader`): stream and block headers, padding, the CRC32, CRC64
+  and SHA-256 checks, the index checked against the blocks, concatenated streams; the LZMA2 filter alone (a BCJ or
+  delta chain is refused as damage). The dictionary size is checked before anything is allocated, and the window grows
+  with the output. RPM payloads in xz or LZMA go through the same code.
+- **7z and xz writing** (`SevenZipWriter.cs`, `XzWriter.cs`, `Lzma/`): Filee's own LZMA2 encoder (hash chains and
+  greedy parsing at Fast, binary trees and price-based optimal parsing at Normal and Maximum; dictionaries of 4, 16
+  and 64 MiB, smaller for smaller input). 7z: solid blocks of 16 times the dictionary, the Copy coder and a folder per
+  file for Store (as 7-Zip's `-mx0`), UTF-16 names, times and attributes, the header packed with LZMA when that is
+  smaller. xz: one stream with a CRC64 check and one LZMA2 block. At Normal the results are about 1 % larger than
+  7-Zip's `-mx5`; the encoder runs on one thread, so a large folder takes longer than with 7-Zip.
+- **CAB** (`CabReader.cs`): folders and data blocks with their reserve areas and checksums; stored, MSZIP (Filee's
+  inflater, keeping the 32 KB history from block to block) and LZX (the CHM reader's decoder, windows 2^15–2^21);
+  a folder is decoded once and shared out to its files. Quantum, cabinet sets spanning several files and LZX blocks of
+  other sizes go to 7-Zip.
+- **LHA / LZH** (`LhaReader.cs`): header levels 0–3 with the extended headers for names, folders, Windows and Unix
+  times, 64-bit sizes and Unix modes, header sums and the data's CRC-16; methods -lh0- and -lz4- (stored) and -lh4- to
+  -lh7-; other methods (-lh1-, -lzs-, -lz5-, -pm?-) go to 7-Zip. Symbolic links are skipped; names are UTF-8 when
+  valid, else the OEM code page.
+- **ARJ** (`ArjReader.cs`): main and local headers with their CRC-32, methods 0 (stored), 1–3 (the LHA reader's
+  decoder) and 4 ("fastest"); encrypted entries are refused, multi-volume archives and other methods go to 7-Zip.
+- Every reader lists and checks the whole archive first (`ArchiveSafety.CheckListing`) and writes through the same
+  entry paths and `UnpackBudget` as the others. Tests: `SevenZipReaderTests` (also 7-Zip's own archives with every
+  coder chain, when 7-Zip is there), `SevenZipWriterTests`, `LzmaTests` (also `xz` and 7-Zip on Filee's files, when
+  installed), `ArchiveLongTailTests` (CAB, LHA and ARJ built in code by `ArchiveFormatBuilders`, cross-checked with
+  7-Zip, Windows `makecab` and Bandizip where they are installed) and the 7z, xz, LZMA, CAB, LHA and ARJ targets of
+  `ArchiveFuzzTests`.
 
 ### Speed next to 7-Zip
 
 `ArchiveSpeedTests` (100 MB in 100 files, two thirds text and one third noise, archives written by 7-Zip 26.02 at
 `-mx5`; best of two runs, unpacking with the engine's listing first and both TAR stages; Windows 11, 8 logical
-processors, the PC busy with other builds, so the numbers move by ±30 %):
+processors, the PC busy with other builds, so the numbers move by ±30 %). The 7z and TAR.XZ rows were measured with
+SharpCompress's decoders, before Filee's own (see below):
 
 | Archive | Size | Filee in-process | 7-Zip | In-process / 7-Zip |
 |---|---:|---:|---:|---:|
@@ -2954,8 +3144,11 @@ processors, the PC busy with other builds, so the numbers move by ±30 %):
 
 ZIP, TAR and TAR.GZ are as fast as 7-Zip or faster (no process start, one pass less), XZ is close. SharpCompress's
 bzip2 decoder is single-threaded where 7-Zip decodes blocks in parallel (Filee's own `Bzip2Decoder` is slower still).
-A solid 7z is the outlier: SharpCompress 1.0 decodes the block from its start again for every file, so the time grows
-with the square of the file count; such archives go to 7-Zip whenever it is there.
+A solid 7z was the outlier: SharpCompress 1.0 decodes the block from its start again for every file, so the time grows
+with the square of the file count. Filee's own 7z reader decodes each block once: a solid 7z of 100 files (27.9 MB)
+written by 7-Zip at `-mx5` unpacked in 1.17 s, 7-Zip 0.81 s and SharpCompress 44.3 s (best of two, the PC busy).
+Filee's LZMA decoder takes about twice 7-Zip's CPU time (1.9–2.3× on a 33.6 MB .xz, single-threaded), so 7-Zip is
+still faster, but it is no longer needed for speed. SharpCompress remains only for 7z methods Filee doesn't decode.
 
 ## ISO images
 
@@ -3012,8 +3205,11 @@ all expected bytes have been written; failures and cancellation preserve any pre
   and Microsoft Works documents (a `.doc`, `.dot` or `.wps` the [DOC reader](#doc-reader) names as such), WordPerfect,
   Lotus Word Pro, AbiWord, Apple Pages, StarWriter, ClarisWorks / AppleWorks (`.cwk`), MacWrite (`.mcw`), T602
   (`.602`) and Pocket Word (`.psw`) (→ DOCX, ODT, FODT, OTT, DOC, RTF, TXT, HTML); WPS Spreadsheets (ET), Apple Numbers, StarCalc and flat ODS (`.fods`) (→ XLSX, ODS, OTS, XLS, XLT, CSV, HTML); Apple
-  Keynote, WPS Presentation (DPS), StarImpress / StarDraw and flat ODP (`.fodp`) (→ PPTX, ODP, OTP, PPT);
-  Publisher, CorelDRAW, Visio, CGM, ODG and flat ODG (`.fodg`) (→ ODG, SVG, PNG, EMF, WMF). The `--convert-to`
+  Keynote, WPS Presentation (DPS), StarImpress / StarDraw and PowerPoint 95 and older PPT (→ PPTX, ODP, OTP, PPT);
+  Publisher, CorelDRAW, binary Visio (`.vsd`) and CGM (→ ODG, SVG, PNG, EMF, WMF). VSDX, ODP, FODP, ODG and FODG
+  are read by Filee itself ([Drawings](#drawings-visio-odg), [ODP / ODG reader](#odp--odg-reader)); LibreOffice keeps
+  them when their check names what Filee doesn't draw yet (charts, OLE objects, 3D), and converts them to the editable
+  formats (ODP → PPTX, ODG → EMF, …). The `--convert-to`
   filter follows the application that opens the file (checked against LibreOffice's filter registry): Publisher,
   CorelDRAW and Visio open in Draw, CGM in Impress, and "SDA" files in Draw (.sda) or Impress (.sdd). ClarisWorks
   files can also be spreadsheets or drawings; Filee treats them as text documents, the common case. SVG, PNG, EMF
