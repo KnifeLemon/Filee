@@ -16,6 +16,8 @@
 // ArchiveSafety.CheckListing and the writing through EntryWriter like every other in-process reader; symbolic links,
 // devices and NTFS-style reparse points are left out.
 
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using DiscUtils;
 using DiscUtils.HfsPlus;
 using DiscUtils.Streams;
@@ -248,7 +250,8 @@ internal static class DiskImageReader
                 guard.Allow(DiskImageGuard.StructureBudget);
                 var attributes = Library(name, () => fs.GetAttributes(entry));
                 var modified = Library(name, () => Time(fs.GetLastWriteTimeUtc(entry)));
-                if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Device)) != 0)
+                if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Device)) != 0
+                    || decomposed && Library(name, () => HfsPlusLinks.IsSymbolicLink(fs, entry)))
                 {
                     nodes.Add(new DiskImageNode(path, false, true, 0, modified, null));
                     continue;
@@ -332,5 +335,38 @@ internal static class DiskImageReader
                 inner.Dispose();
             base.Dispose(disposing);
         }
+    }
+}
+
+/// <summary>
+/// Tells HFS+ symbolic links from files. DiscUtils.HfsPlus 0.16.13 reads a record's BSD file mode two bytes early
+/// (offset 8 of HFSPlusBSDInfo, the admin and owner flags, instead of 10), so its attributes never say "link" or
+/// "device"; and opening a link follows it (to another file of the volume, or to nothing: a NullReferenceException).
+/// Its directory entries do know a link, by the Finder type "slnk" every HFS+ link carries, but only through the
+/// file system's protected GetDirectoryEntry, reached here by reflection. The package version is pinned; should that
+/// member not be found, the volume is left to 7-Zip rather than unpacked with links followed.
+/// </summary>
+internal static class HfsPlusLinks
+{
+    private static readonly FieldInfo? Wrapped =
+        typeof(DiscUtils.Vfs.VfsFileSystemFacade).GetField("_wrapped", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    public static bool IsSymbolicLink(DiscFileSystem fs, string path)
+    {
+        var inner = Wrapped?.GetValue(fs);
+        var lookup = inner?.GetType().GetMethod("GetDirectoryEntry", BindingFlags.Instance | BindingFlags.NonPublic, [typeof(string)]);
+        if (lookup is null)
+            throw new NotSupportedException("HFS+ volumes with this DiscUtils (its symbolic links can't be told apart)");
+        object? entry;
+        try
+        {
+            entry = lookup.Invoke(inner, [path]);
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is { } cause)
+        {
+            ExceptionDispatchInfo.Throw(cause);
+            throw;
+        }
+        return entry is DiscUtils.Vfs.VfsDirEntry { IsSymlink: true };
     }
 }

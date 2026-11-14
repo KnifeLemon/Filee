@@ -3329,7 +3329,9 @@ names in capitals; the tests use `DiscUtils.Fat` as an independent FAT writer. T
 (`DiskImagePartitions.cs`: MBR and EBRs, GPT from the UEFI specification, Apple partition map) and the checks of the DMG
 trailer and block tables (`DiskImageGuards.cs`) are Filee's own too, so nothing reaches DiscUtils unchecked.
 `DiscUtils.Dmg` doesn't read run type 0 ("zero fill"), which hdiutil writes into its HFS+ disks beside type 2, so
-it reads the DMG through `UdifOverlay`: the block list with those runs relabelled type 2, same length. NTFS
+it reads the DMG through `UdifOverlay`: the block list with those runs relabelled type 2, same length.
+`DiscUtils.HfsPlus` 0.16.13 reads the BSD file mode two bytes early, so its attributes never mark a symbolic link
+and opening one follows it; `HfsPlusLinks` asks its directory entry instead (the Finder type "slnk"). NTFS
 stays on 7-Zip: `DiscUtils.Ntfs` walks its index blocks recursively from a cache, where an index pointing back at
 itself would overflow the stack without any read Filee could stop.
 
