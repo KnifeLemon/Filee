@@ -13,6 +13,10 @@
 //     length at 32). Every run must lie inside the file and fit the buffer DiscUtils allocates for it, nesting and
 //     sizes are capped, and run types DiscUtils lacks (LZFSE, LZMA) are sent to 7-Zip before any of them is read.
 //     Written from Apple's UDIF layout as hdiutil writes it.
+//   Zero fill: hdiutil marks the gaps of its HFS+ disks with run type 0, "zero fill", beside type 2 ("ignore", read
+//     as zeros too). DiscUtils.Dmg reads type 2 only, so it is given the file with those runs relabelled: UdifOverlay
+//     serves the property list with the type changed in the base64 text of each block table (same length), and
+//     everything else straight from the file.
 
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
@@ -104,7 +108,7 @@ internal static class UdifCheck
     /// <summary>The largest decompression buffer a block table may ask for: 64 MB (hdiutil uses 260 KB).</summary>
     private const long MaxBufferSectors = 131072;
 
-    private const uint Raw = 1, Zeros = 2, Ignored = 0, Adc = 0x80000004, Zlib = 0x80000005, Bzip2 = 0x80000006,
+    private const uint Raw = 1, Zeros = 2, ZeroFill = 0, Adc = 0x80000004, Zlib = 0x80000005, Bzip2 = 0x80000006,
         Lzfse = 0x80000007, Lzma = 0x80000008, Comment = 0x7FFFFFFE, Terminator = 0xFFFFFFFF;
 
     /// <summary>True for an encrypted DMG (FileVault's "encrcdsa" header or the older "cdsaencr" trailer).</summary>
@@ -116,17 +120,18 @@ internal static class UdifCheck
     }
 
     /// <summary>
-    /// False when the file has no UDIF trailer (a plain disk image named .dmg); throws when the trailer or its block
-    /// tables are damaged or use what DiscUtils does not read.
+    /// Null when the file has no UDIF trailer (a plain disk image named .dmg); otherwise what DiscUtils.Dmg is to read:
+    /// the file, or the file with its zero-fill runs relabelled. Throws when the trailer or its block tables are
+    /// damaged or use what DiscUtils does not read.
     /// </summary>
-    public static bool Check(Stream file, string archiveName)
+    public static Stream? Check(Stream file, string archiveName)
     {
         var length = file.Length;
         if (length < TrailerSize)
-            return false;
+            return null;
         var koly = DiskImagePartitions.ReadAt(file, length - TrailerSize, TrailerSize);
         if (!koly.AsSpan(0, 4).SequenceEqual("koly"u8))
-            return false;
+            return null;
         var dataForkOffset = BinaryPrimitives.ReadUInt64BigEndian(koly.AsSpan(24));
         var xmlOffset = BinaryPrimitives.ReadUInt64BigEndian(koly.AsSpan(216));
         var xmlLength = BinaryPrimitives.ReadUInt64BigEndian(koly.AsSpan(224));
@@ -145,21 +150,65 @@ internal static class UdifCheck
         var xml = DiskImagePartitions.ReadAt(file, (long)xmlOffset, (int)xmlLength);
         var tables = 0;
         long runs = 0;
+        var zeroFill = new List<(byte[] Table, List<int> Runs)>();
         foreach (var table in BlockTables(xml, archiveName))
         {
             if (++tables > MaxBlockTables)
                 throw ArchiveSafety.Oversized(archiveName, "it has more than " + MaxBlockTables + " block tables");
-            runs += CheckTable(table, sectors, length, archiveName);
+            var relabel = new List<int>();
+            runs += CheckTable(table, sectors, length, archiveName, relabel);
             if (runs > MaxRuns)
                 throw ArchiveSafety.Oversized(archiveName, "its block tables hold more than " + MaxRuns.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " runs");
+            if (relabel.Count > 0)
+                zeroFill.Add((table, relabel));
         }
         if (tables == 0)
             throw ArchiveSafety.Damaged(archiveName, "the block list holds no block tables");
-        return true;
+        return zeroFill.Count == 0 ? file : new UdifOverlay(file, (long)xmlOffset, Relabel(xml, zeroFill));
     }
 
-    /// <summary>One "mish" table: returns its run count.</summary>
-    private static long CheckTable(byte[] table, long diskSectors, long fileLength, string archiveName)
+    /// <summary>
+    /// The property list with the zero-fill runs of <paramref name="tables"/> made zero runs. Each table's base64 text
+    /// is found between &lt;data&gt; and &lt;/data&gt; (whitespace skipped, compared with the table read) and the
+    /// relabelled table's text is written over it character for character, so nothing moves.
+    /// </summary>
+    private static byte[] Relabel(byte[] xml, List<(byte[] Table, List<int> Runs)> tables)
+    {
+        var patched = (byte[])xml.Clone();
+        var from = 0;
+        foreach (var (table, runs) in tables)
+        {
+            var expected = Convert.ToBase64String(table);
+            while (true)
+            {
+                var open = xml.AsSpan(from).IndexOf("<data>"u8);
+                var close = open < 0 ? -1 : xml.AsSpan(from + open).IndexOf("</data>"u8);
+                if (close < 0)
+                    throw new NotSupportedException("DMG zero-fill runs in a block list Filee can't relabel");
+                var (start, end) = (from + open + 6, from + open + close);
+                from = end + 7;
+                var positions = new List<int>(expected.Length);
+                for (var i = start; i < end && positions.Count <= expected.Length; i++)
+                {
+                    if (xml[i] is not ((byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n'))
+                        positions.Add(i);
+                }
+                if (positions.Count != expected.Length || positions.Where((p, i) => xml[p] != expected[i]).Any())
+                    continue;
+                var copy = (byte[])table.Clone();
+                foreach (var run in runs)
+                    BinaryPrimitives.WriteUInt32BigEndian(copy.AsSpan(204 + run * 40), Zeros);
+                var relabelled = Convert.ToBase64String(copy);
+                for (var i = 0; i < positions.Count; i++)
+                    patched[positions[i]] = (byte)relabelled[i];
+                break;
+            }
+        }
+        return patched;
+    }
+
+    /// <summary>One "mish" table: returns its run count and adds its zero-fill runs to <paramref name="zeroFill"/>.</summary>
+    private static long CheckTable(byte[] table, long diskSectors, long fileLength, string archiveName, List<int> zeroFill)
     {
         if (table.Length < 204 || !table.AsSpan(0, 4).SequenceEqual("mish"u8))
             throw ArchiveSafety.Damaged(archiveName, "invalid block table");
@@ -192,6 +241,9 @@ internal static class UdifCheck
             {
                 case Zeros:
                     break;
+                case ZeroFill:
+                    zeroFill.Add(i);
+                    break;
                 case Raw:
                     if (offset < 0 || offset > fileLength || sectors > (fileLength - offset) / 512)
                         throw ArchiveSafety.Damaged(archiveName, "a run lies beyond the end of the file");
@@ -206,8 +258,6 @@ internal static class UdifCheck
                     throw new NotSupportedException("LZFSE-compressed DMG blocks");
                 case Lzma:
                     throw new NotSupportedException("LZMA-compressed DMG blocks");
-                case Ignored:
-                    throw new NotSupportedException("DMG runs of type 0");
                 default:
                     throw new NotSupportedException($"DMG runs of type 0x{type:X8}");
             }
@@ -265,4 +315,48 @@ internal static class UdifCheck
         }
         return tables;
     }
+}
+
+/// <summary>
+/// A DMG as DiscUtils.Dmg reads it: the file, with <paramref name="xml"/> (the property list relabelled, as long as
+/// the original) in place of the bytes at <paramref name="xmlOffset"/>. Read-only; the file stays open.
+/// </summary>
+internal sealed class UdifOverlay(Stream file, long xmlOffset, byte[] xml) : Stream
+{
+    private long _position;
+
+    public override bool CanRead => true;
+    public override bool CanSeek => true;
+    public override bool CanWrite => false;
+    public override long Length => file.Length;
+
+    public override long Position
+    {
+        get => _position;
+        set => _position = value >= 0 ? value : throw new ArgumentOutOfRangeException(nameof(value));
+    }
+
+    public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+    public override int Read(Span<byte> buffer)
+    {
+        file.Position = _position;
+        var read = file.Read(buffer);
+        var (start, end) = (Math.Max(_position, xmlOffset), Math.Min(_position + read, xmlOffset + xml.Length));
+        if (start < end)
+            xml.AsSpan((int)(start - xmlOffset), (int)(end - start)).CopyTo(buffer[(int)(start - _position)..]);
+        _position += read;
+        return read;
+    }
+
+    public override long Seek(long offset, SeekOrigin origin) => Position = origin switch
+    {
+        SeekOrigin.Begin => offset,
+        SeekOrigin.Current => _position + offset,
+        _ => file.Length + offset,
+    };
+
+    public override void Flush() { }
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }

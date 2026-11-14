@@ -69,16 +69,26 @@ public class ArchiveLongTailTests(EngineFixture fx) : IClassFixture<EngineFixtur
         return await new ArchiveExtractor(null).ExtractAsync(archive, format, scratch, Ct);
     }
 
-    private async Task AssertUnpacksAsync(string archive, string format, IReadOnlyList<TestEntry> entries)
+    /// <param name="recorded">The local time the tool that wrote the archive stored for an entry's time.</param>
+    private async Task AssertUnpacksAsync(string archive, string format, IReadOnlyList<TestEntry> entries,
+        Func<DateTime, DateTime>? recorded = null)
     {
         var folder = await UnpackAsync(archive, format);
         Assert.Equal(Expected(entries), Snapshot(folder));
         foreach (var entry in entries.Where(e => !e.IsFolder))
         {
             var time = File.GetLastWriteTime(Path.Combine(folder, entry.Name));
-            Assert.True(Math.Abs((time - entry.Time).TotalSeconds) <= 2, $"{entry.Name}: time {time} instead of {entry.Time}");
+            var expected = recorded?.Invoke(entry.Time) ?? entry.Time;
+            Assert.True(Math.Abs((time - expected).TotalSeconds) <= 2, $"{entry.Name}: time {time} instead of {expected}");
         }
     }
+
+    /// <summary>
+    /// The local time makecab stores: Windows' FileTimeToLocalFileTime, which applies today's offset from UTC rather
+    /// than the one in force on that date, so in a zone with summer time a May file is an hour off in November.
+    /// </summary>
+    private static DateTime MakecabTime(DateTime local) =>
+        DateTime.SpecifyKind(local.ToUniversalTime() + TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow), DateTimeKind.Local);
 
     private async Task<string> RefusedAsync(string archive, string format)
     {
@@ -188,7 +198,7 @@ public class ArchiveLongTailTests(EngineFixture fx) : IClassFixture<EngineFixtur
         foreach (var compression in new[] { "NONE", "MSZIP", "LZX 15", "LZX 21" })
         {
             var cab = await MakecabAsync(makecab, source, entries, compression);
-            await AssertUnpacksAsync(cab, "cab", entries);
+            await AssertUnpacksAsync(cab, "cab", entries, MakecabTime);
         }
 
         // Quantum: not decoded in-process; without 7-Zip that is said, with it 7-Zip unpacks it.

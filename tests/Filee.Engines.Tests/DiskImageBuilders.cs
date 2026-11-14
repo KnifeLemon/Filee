@@ -311,15 +311,16 @@ internal static class DiskImageBuilders
         {
             foreach (var entry in entries)
             {
-                var path = entry.Name.TrimEnd('/').Replace('/', '\\');
+                // DiscUtils paths use "\" on every system; Path.GetDirectoryName splits them on Windows only.
+                var name = entry.Name.TrimEnd('/');
+                var path = name.Replace('/', '\\');
                 if (entry.IsFolder)
                 {
                     fs.CreateDirectory(path);
                     continue;
                 }
-                var folder = Path.GetDirectoryName(path);
-                if (!string.IsNullOrEmpty(folder))
-                    fs.CreateDirectory(folder);
+                if (name.LastIndexOf('/') is var slash and > 0)
+                    fs.CreateDirectory(name[..slash].Replace('/', '\\'));
                 using (var file = fs.OpenFile(path, FileMode.Create, FileAccess.Write))
                     file.Write(entry.Data);
                 fs.SetLastWriteTime(path, entry.Time);
@@ -853,8 +854,9 @@ internal static class DiskImageBuilders
 
     /// <summary>
     /// A DMG (UDIF) of <paramref name="disk"/>: one block table, chunks of <paramref name="chunkSectors"/> sectors
-    /// stored as <paramref name="runs"/> says (in turn), all-zero chunks as zero runs, then the XML property list and
-    /// the "koly" trailer.
+    /// stored as <paramref name="runs"/> says (in turn), all-zero chunks as zero runs (zero fill, type 0, and
+    /// ignore, type 2, in turn, as hdiutil writes both), then the XML property list (base64 in lines of 52 like
+    /// hdiutil's) and the "koly" trailer.
     /// </summary>
     public static byte[] Dmg(byte[] disk, DmgRun[] runs, int chunkSectors = 520)
     {
@@ -864,7 +866,7 @@ internal static class DiskImageBuilders
         var data = new MemoryStream();
         var table = new MemoryStream();
         var runList = new List<(uint Type, long Start, long Count, long Offset, long Length)>();
-        var n = 0;
+        var (n, zeros) = (0, 0);
         for (long s = 0; s < sectors; s += chunkSectors)
         {
             var count = Math.Min(chunkSectors, sectors - s);
@@ -872,7 +874,7 @@ internal static class DiskImageBuilders
             var offset = data.Position;
             if (chunk.IndexOfAnyExcept((byte)0) < 0)
             {
-                runList.Add((2, s, count, offset, 0));
+                runList.Add((zeros++ % 2 == 0 ? 0u : 2u, s, count, offset, 0));
                 continue;
             }
             var kind = runs[n++ % runs.Length];
@@ -936,7 +938,7 @@ internal static class DiskImageBuilders
             				<string>whole disk (Filee : 0)</string>
             				<key>Data</key>
             				<data>
-            				{Convert.ToBase64String(mish)}
+            				{string.Join("\n\t\t\t\t", Convert.ToBase64String(mish).Chunk(52).Select(c => new string(c)))}
             				</data>
             				<key>ID</key>
             				<string>0</string>

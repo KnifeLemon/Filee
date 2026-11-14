@@ -3102,7 +3102,7 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
 | LHA / LZH | Filee (`LhaReader`: -lh0-, -lz4-, -lh4- to -lh7-); other methods by 7-Zip | — |
 | ARJ | Filee (`ArjReader`: methods 0–4); multi-volume archives and other methods by 7-Zip | — |
 | IMG (raw disk images) | Filee (`DiskImageReader`): GPT, Apple partition map or MBR with extended partitions (`DiskImagePartitions`), a folder `<number> <label>` per volume when there are several; FAT12/16/32 by Filee's own reader (`DiskImageFat`: long names and the lowercase flags), UDF and HFS+ by DiscUtils; a CD or DVD image named .img goes to the disc readers; NTFS, exFAT, APFS, HFSX, classic HFS and ext2/3/4 volumes send the image to 7-Zip; BitLocker and LUKS volumes are refused as encrypted | — |
-| DMG | Filee: DiscUtils.Dmg reads the UDIF blocks (raw, zero, zlib, bzip2, ADC) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); LZFSE and LZMA blocks and APFS volumes by 7-Zip; encrypted DMGs are refused | — |
+| DMG | Filee: DiscUtils.Dmg reads the UDIF blocks (raw, zero fill and ignore, zlib, bzip2, ADC) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); LZFSE and LZMA blocks and APFS volumes by 7-Zip; encrypted DMGs are refused | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
@@ -3264,7 +3264,9 @@ UDF, HFS+ and the UDIF block layer of DMG come from DiscUtils (`DiscUtils.Udf`, 
 Filee's own (`Archives/DiskImageFat.cs`, from Microsoft's FAT specification) because `DiscUtils.Fat` reads only 8.3
 names in capitals; the tests use `DiscUtils.Fat` as an independent FAT writer. The partition tables
 (`DiskImagePartitions.cs`: MBR and EBRs, GPT from the UEFI specification, Apple partition map) and the checks of the DMG
-trailer and block tables (`DiskImageGuards.cs`) are Filee's own too, so nothing reaches DiscUtils unchecked. NTFS
+trailer and block tables (`DiskImageGuards.cs`) are Filee's own too, so nothing reaches DiscUtils unchecked.
+`DiscUtils.Dmg` doesn't read run type 0 ("zero fill"), which hdiutil writes into its HFS+ disks beside type 2, so
+it reads the DMG through `UdifOverlay`: the block list with those runs relabelled type 2, same length. NTFS
 stays on 7-Zip: `DiscUtils.Ntfs` walks its index blocks recursively from a cache, where an index pointing back at
 itself would overflow the stack without any read Filee could stop.
 

@@ -136,8 +136,10 @@ public sealed class WordEquationLayoutTests : IDisposable
         var (three, x, root) = (Single(page, "3"), Ink(Single(page, "x")), Ink(signs[1]));
         Assert.Equal(20 * 0.6f, three.Size, 0.01f);
         Assert.True(Ink(three).Left < root.Left + root.Width / 2 && Ink(three).Bottom < root.Bottom - 2, $"{Ink(three)} / {root}");
-        // The body starts after the sign (an italic x leans a little back over it).
-        Assert.True(Single(page, "x").Positions[0].X >= root.Right - 1, $"{x} / {root}");
+        // The body starts after the sign where the two share a height (an italic x leans a little back over it). The
+        // sign may reach on at its top, under the start of the rule: STIX Two Math's does by about 2 pt here.
+        var beside = InkBetween(signs[1], x.Top, x.Bottom);
+        Assert.True(Single(page, "x").Positions[0].X >= beside.Right - 1, $"{x} / {beside} of {root}");
         Assert.True(x.Top > root.Top, $"{x} / {root}");
     }
 
@@ -438,6 +440,29 @@ public sealed class WordEquationLayoutTests : IDisposable
             var b = new SKRect(bounds[i].Left * scale, bounds[i].Top * scale, bounds[i].Right * scale, bounds[i].Bottom * scale);
             var placed = new SKRect(run.Positions[i].X + b.Left * run.ScaleX, run.Positions[i].Y + b.Top, run.Positions[i].X + b.Right * run.ScaleX, run.Positions[i].Y + b.Bottom);
             ink = ink.IsEmpty ? placed : SKRect.Union(ink, placed);
+        }
+        return ink;
+    }
+
+    /// <summary>The outlines of a run's glyphs on the page between the heights <paramref name="top"/> and <paramref name="bottom"/>.</summary>
+    private static SKRect InkBetween(GlyphRun run, float top, float bottom)
+    {
+        const float Large = 1000;
+        using var font = new SKFont(run.Font.Typeface, Large) { LinearMetrics = true, Hinting = SKFontHinting.None };
+        using var band = new SKPath();
+        band.AddRect(new SKRect(-1e5f, top, 1e5f, bottom));
+        var ink = SKRect.Empty;
+        for (var i = 0; i < run.Glyphs.Length; i++)
+        {
+            using var outline = font.GetGlyphPath(run.Glyphs[i]);
+            if (outline is null)
+                continue;
+            var scale = run.Size / Large;
+            outline.Transform(SKMatrix.CreateScaleTranslation(scale * run.ScaleX, scale, run.Positions[i].X, run.Positions[i].Y));
+            using var part = outline.Op(band, SKPathOp.Intersect);
+            if (part is null || part.IsEmpty)
+                continue;
+            ink = ink.IsEmpty ? part.TightBounds : SKRect.Union(ink, part.TightBounds);
         }
         return ink;
     }

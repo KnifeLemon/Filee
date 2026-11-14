@@ -690,13 +690,18 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(unsafePath, ArchiveSafety.IsUnsafePath(path));
 
     [Fact]
-    public void Entry_names_are_made_valid_windows_names_inside_the_root()
+    public void Entry_names_are_made_valid_file_names_inside_the_root()
     {
         var root = fx.NewFolder();
         Assert.Equal(Path.Combine(root, "폴더", "파일.txt"), ArchiveSafety.ResolveEntryPath(root, @"폴더\파일.txt", "x.alz"));
         Assert.Equal(Path.Combine(root, "a_b", "_CON.txt"), ArchiveSafety.ResolveEntryPath(root, "a|b/CON.txt", "x.alz"));
         Assert.Equal(Path.Combine(root, "file.txt_stream"), ArchiveSafety.ResolveEntryPath(root, "file.txt:stream", "x.alz")); // no NTFS streams
         Assert.Equal(Path.Combine(root, "dir", "file_"), ArchiveSafety.ResolveEntryPath(root, "./dir//file?", "x.alz"));
+        // macOS refuses noncharacters in names ("Illegal byte sequence"); a lone surrogate has no UTF-8 form.
+        Assert.Equal(Path.Combine(root, "__txt"), ArchiveSafety.ResolveEntryPath(root, "￿￾txt", "x.7z"));
+        Assert.Equal(Path.Combine(root, "a_b_c"), ArchiveSafety.ResolveEntryPath(root, "a﷐b\uD800c", "x.7z"));
+        Assert.Equal(Path.Combine(root, "__.txt"), ArchiveSafety.ResolveEntryPath(root, "\U0001FFFF.txt", "x.7z"));
+        Assert.Equal(Path.Combine(root, "\U0001F600.txt"), ArchiveSafety.ResolveEntryPath(root, "\U0001F600.txt", "x.7z"));
     }
 
     [Fact]

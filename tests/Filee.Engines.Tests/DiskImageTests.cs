@@ -170,7 +170,8 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData(new[] { DmgRun.Zlib, DmgRun.Raw, DmgRun.Bzip2, DmgRun.Adc })]
     public async Task Dmg_files_unpack_in_process(DmgRun[] runs)
     {
-        var entries = Entries();
+        // A file with zeros over whole chunks: those are stored as zero-fill (type 0) and ignore (type 2) runs.
+        List<TestEntry> entries = [.. Entries(), new("sparse.bin", [.. Noise(1_000, 7), .. new byte[700_000], .. Noise(1_000, 8)])];
         // A GPT disk (as hdiutil makes by default) and a bare volume (hdiutil -layout NONE).
         await AssertUnpacksAsync(Write("disk.dmg", Dmg(Gpt(("disk image", Fat(entries, 16))), runs)), "dmg", entries);
         await AssertUnpacksAsync(Write("volume.dmg", Dmg(Fat(entries, 12), runs)), "dmg", entries);
