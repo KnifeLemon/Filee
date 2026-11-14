@@ -33,7 +33,7 @@ public class TrashOriginalTests
 
     private static async Task<ConversionJob> Run(FakeTrash? trash, string source, Preset preset, ISourceFetcher? fetcher = null)
     {
-        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("fake", Edges)]), moveToTrash: trash?.Move);
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("fake", Edges)]), moveToTrash: trash is null ? null : trash.Move);
         var job = new ConversionJob([source], preset, "Test", fetcher);
         await queue.RunAsync(job);
         return job;
