@@ -458,10 +458,12 @@ public class PptxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
             .CreatePlanner(fx.Converters.Select(c => c.Id).ToArray());
         Assert.Equal("pptx-writer", Assert.Single(pandocFirst.Plan("md", "pptx")!.Steps).Converter.Id);
 
-        // Without Pandoc, Markdown reaches the other presentation formats through the writer and LibreOffice.
+        // Without Pandoc, Markdown reaches the other presentation formats through the writer and LibreOffice; ODP has
+        // a writer of its own.
         var noPandoc = new ConverterCatalog(fx.Converters.Where(c => c.Id != "pandoc")) { Priority = fx.Catalog.Priority }
             .CreatePlanner(["libreoffice"]);
-        Assert.Equal(["pptx-writer", "libreoffice"], noPandoc.Plan("md", "odp")!.Steps.Select(s => s.Converter.Id));
+        Assert.Equal(["pptx-writer", "libreoffice"], noPandoc.Plan("md", "ppt")!.Steps.Select(s => s.Converter.Id));
+        Assert.Equal(["odp-writer"], noPandoc.Plan("md", "odp")!.Steps.Select(s => s.Converter.Id));
 
         // Every other route is the one it was without the writer, except routes to other presentation formats that
         // had none (or went through Pandoc's slides).
