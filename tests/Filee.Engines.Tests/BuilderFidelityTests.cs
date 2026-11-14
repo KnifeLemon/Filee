@@ -78,18 +78,21 @@ public sealed class BuilderFidelityTests(EngineFixture fx) : IClassFixture<Engin
     }
 
     /// <summary>
-    /// Found by comparing the fuzz seed with LibreOffice: [MS-VSDX] FillPattern 3 is a grid, 6 horizontal lines and 7
-    /// vertical lines, but VisioReader's pattern table runs in another order (7 draws a grid).
+    /// Found by comparing the fuzz seed with LibreOffice: FillPattern 3 is a grid, 6 horizontal lines and 7 vertical
+    /// lines (the reader's table used to run in another order, and 7 drew a grid).
     /// </summary>
-    [Fact(Skip = "Reader gap: VisioReader.Patterns doesn't follow the [MS-VSDX] FillPattern table; left to the Visio reader's owner")]
+    [Fact]
     public void Visio_fill_patterns_follow_the_ms_vsdx_table()
     {
         var builder = new VsdxBuilder();
         string Box(int id, double x, int pattern) => VsdxBuilder.Shape(id, x, 1, 1, 1,
             VsdxBuilder.Rectangle(1, 1) + VsdxBuilder.Cell("FillForegnd", "#0000FF") + VsdxBuilder.Cell("FillPattern", pattern));
-        builder.Page(Box(1, 1, 3) + Box(2, 2.5, 6) + Box(3, 4, 7), 5, 2);
+        // The line patterns as LibreOffice 26.2 draws them: 2 and 16 / 22 rise to the right, 5 and 15 / 21 fall.
+        int[] patterns = [2, 3, 4, 5, 6, 7, 13, 14, 15, 16, 19, 20, 21, 22, 23];
+        builder.Page(string.Concat(patterns.Select((p, i) => Box(i + 1, 1 + 1.5 * i, p))), 1 + 1.5 * patterns.Length, 2);
         var deck = VisioReader.Read(builder.Save(Path.Combine(fx.NewFolder(), "patterns.vsdx")), Token);
-        Assert.Equal(["cross", "horz", "vert"], deck.Slides[0].Elements.OfType<SlideShape>().Select(s => Assert.IsType<PatternFill>(s.Fill).Preset));
+        Assert.Equal(["upDiag", "cross", "diagCross", "dnDiag", "horz", "vert", "dkHorz", "dkVert", "dkDnDiag", "dkUpDiag", "ltHorz", "ltVert", "ltDnDiag", "ltUpDiag", "smGrid"],
+            deck.Slides[0].Elements.OfType<SlideShape>().Select(s => Assert.IsType<PatternFill>(s.Fill).Preset));
     }
 
     /// <summary>
