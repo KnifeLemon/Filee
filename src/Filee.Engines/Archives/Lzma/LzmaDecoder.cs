@@ -6,6 +6,8 @@
 // so a header that claims 1.5 GiB for a 10 KB file costs 10 KB, and callers refuse dictionaries past their limit
 // before anything is allocated (see Lzma2Reader and XzReader).
 
+using System.Runtime.CompilerServices;
+
 namespace Filee.Engines.Archives.Lzma;
 
 /// <summary>The lc / lp / pb properties of an LZMA stream.</summary>
@@ -235,6 +237,8 @@ internal sealed class LzmaDecoder : LzmaModel
     /// </summary>
     public int Decode(RangeDecoder rc, Span<byte> output, bool allowEndMarker)
     {
+        // Range and code live in locals here and go back to rc around the multi-bit decoders (which keep their own).
+        rc.Load(out var range, out var code);
         var n = 0;
         if (_pending > 0)
             n = CopyMatch(output, 0, _pending);
@@ -244,26 +248,14 @@ internal sealed class LzmaDecoder : LzmaModel
             var posState = (int)_total & PbMask;
             var state2 = (State << 4) + posState;
 
-            if (rc.DecodeBit(ref IsMatch[state2]) == 0)
+            if (RangeDecoder.Bit(ref range, ref code, ref IsMatch[state2], rc) == 0)
             {
                 var previous = IsEmpty ? 0 : ByteAt(0);
                 var probs = Literal.AsSpan(LiteralBase(_total, previous), 0x300);
-                uint symbol = 1;
-                if (State >= LiteralStates)
-                {
-                    uint matchByte = ByteAt(Rep0);
-                    do
-                    {
-                        var matchBit = (matchByte >> 7) & 1;
-                        matchByte <<= 1;
-                        var bit = (uint)rc.DecodeBit(ref probs[(int)(((1 + matchBit) << 8) + symbol)]);
-                        symbol = (symbol << 1) | bit;
-                        if (matchBit != bit)
-                            break;
-                    } while (symbol < 0x100);
-                }
-                while (symbol < 0x100)
-                    symbol = (symbol << 1) | (uint)rc.DecodeBit(ref probs[(int)symbol]);
+                // After a match the byte at the last distance steers the first bits (see DecodeMatchedLiteral).
+                rc.Store(range, code);
+                var symbol = State >= LiteralStates ? rc.DecodeMatchedLiteral(probs, ByteAt(Rep0)) : rc.DecodeTree(probs, 8);
+                rc.Load(out range, out code);
                 Put((byte)symbol);
                 output[n++] = (byte)symbol;
                 State = AfterLiteral(State);
@@ -271,13 +263,13 @@ internal sealed class LzmaDecoder : LzmaModel
             }
 
             uint length;
-            if (rc.DecodeBit(ref IsRep[State]) != 0)
+            if (RangeDecoder.Bit(ref range, ref code, ref IsRep[State], rc) != 0)
             {
                 if (IsEmpty)
                     throw new InvalidDataException("the LZMA data repeats bytes before any were written");
-                if (rc.DecodeBit(ref IsRepG0[State]) == 0)
+                if (RangeDecoder.Bit(ref range, ref code, ref IsRepG0[State], rc) == 0)
                 {
-                    if (rc.DecodeBit(ref IsRep0Long[state2]) == 0)
+                    if (RangeDecoder.Bit(ref range, ref code, ref IsRep0Long[state2], rc) == 0)
                     {
                         // Short repeat: one byte from the last distance.
                         State = AfterShortRep(State);
@@ -290,13 +282,13 @@ internal sealed class LzmaDecoder : LzmaModel
                 else
                 {
                     uint distance;
-                    if (rc.DecodeBit(ref IsRepG1[State]) == 0)
+                    if (RangeDecoder.Bit(ref range, ref code, ref IsRepG1[State], rc) == 0)
                     {
                         distance = Rep1;
                     }
                     else
                     {
-                        if (rc.DecodeBit(ref IsRepG2[State]) == 0)
+                        if (RangeDecoder.Bit(ref range, ref code, ref IsRepG2[State], rc) == 0)
                         {
                             distance = Rep2;
                         }
@@ -310,7 +302,9 @@ internal sealed class LzmaDecoder : LzmaModel
                     Rep1 = Rep0;
                     Rep0 = distance;
                 }
+                rc.Store(range, code);
                 length = RepLength.Decode(rc, posState);
+                rc.Load(out range, out code);
                 State = AfterRep(State);
             }
             else
@@ -318,14 +312,17 @@ internal sealed class LzmaDecoder : LzmaModel
                 Rep3 = Rep2;
                 Rep2 = Rep1;
                 Rep1 = Rep0;
+                rc.Store(range, code);
                 length = MatchLength.Decode(rc, posState);
                 State = AfterMatch(State);
                 Rep0 = DecodeDistance(rc, length);
+                rc.Load(out range, out code);
                 if (Rep0 == 0xFFFFFFFF)
                 {
                     if (!allowEndMarker)
                         throw new InvalidDataException("the LZMA data has an end marker where none is allowed");
                     EndMarkerSeen = true;
+                    rc.Store(range, code);
                     return n;
                 }
             }
@@ -333,6 +330,7 @@ internal sealed class LzmaDecoder : LzmaModel
                 throw new InvalidDataException("the LZMA data refers to bytes before the start of the window");
             n = CopyMatch(output, n, (int)length + MatchMinLength);
         }
+        rc.Store(range, code);
         return n;
     }
 
@@ -356,6 +354,7 @@ internal sealed class LzmaDecoder : LzmaModel
         distance < _dictionary && (_full ? distance < (uint)_window.Length : distance < (uint)_pos);
 
     /// <summary>The byte <paramref name="distance"/> + 1 back.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte ByteAt(uint distance)
     {
         var index = _pos - (long)distance - 1;
@@ -364,36 +363,65 @@ internal sealed class LzmaDecoder : LzmaModel
         return _window[index];
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Put(byte b)
     {
         _window[_pos++] = b;
         _total++;
         if (_pos == _window.Length)
+            WindowEnd();
+    }
+
+    /// <summary>The write position reached the end of the window: grow it while it is below the dictionary, else wrap.</summary>
+    private void WindowEnd()
+    {
+        if ((uint)_window.Length < _dictionary)
         {
-            if ((uint)_window.Length < _dictionary)
-            {
-                // Still filling: grow (twice the size, up to the dictionary) instead of wrapping.
-                Array.Resize(ref _window, (int)Math.Min(_dictionary, (long)_window.Length * 2));
-            }
-            else
-            {
-                _pos = 0;
-                _full = true;
-            }
+            // Still filling: grow (twice the size, up to the dictionary) instead of wrapping.
+            Array.Resize(ref _window, (int)Math.Min(_dictionary, (long)_window.Length * 2));
+        }
+        else
+        {
+            _pos = 0;
+            _full = true;
         }
     }
 
-    /// <summary>Copies up to <paramref name="length"/> bytes from distance Rep0; what doesn't fit stays pending.</summary>
+    /// <summary>
+    /// Copies up to <paramref name="length"/> bytes from distance Rep0; what doesn't fit stays pending. Runs that reach
+    /// neither end of the window are copied in one go: as a block move when source and target don't overlap (or the
+    /// source lies after the target, where a forward copy reads every byte before it is overwritten), byte by byte when
+    /// the match repeats bytes it is still writing.
+    /// </summary>
     private int CopyMatch(Span<byte> output, int n, int length)
     {
         var count = Math.Min(length, output.Length - n);
         _pending = length - count;
-        var distance = Rep0;
-        for (var i = 0; i < count; i++)
+        var distance = (int)Rep0 + 1; // Rep0 is below the window size (IsValidDistance), which fits an int
+        while (count > 0)
         {
-            var b = ByteAt(distance);
-            Put(b);
-            output[n++] = b;
+            var window = _window;
+            var source = _pos - distance;
+            if (source < 0)
+                source += window.Length;
+            var chunk = Math.Min(count, Math.Min(window.Length - _pos, window.Length - source));
+            if (chunk >= 16 && (source > _pos || distance >= chunk))
+            {
+                window.AsSpan(source, chunk).CopyTo(window.AsSpan(_pos, chunk));
+                window.AsSpan(_pos, chunk).CopyTo(output.Slice(n, chunk));
+            }
+            else
+            {
+                var target = output.Slice(n, chunk);
+                for (var i = 0; i < target.Length; i++)
+                    target[i] = window[_pos + i] = window[source + i];
+            }
+            n += chunk;
+            count -= chunk;
+            _pos += chunk;
+            _total += chunk;
+            if (_pos == window.Length)
+                WindowEnd();
         }
         return n;
     }

@@ -1,14 +1,18 @@
 // Speed of the in-process archive readers next to the bundled 7-Zip on archives 7-Zip writes from generated files
-// (text that compresses well and noise that doesn't, in a few hundred files), and size and speed of Filee's own 7z
+// (text that compresses well and noise that doesn't, in a few hundred files), of Filee's own 7z reader on a solid 7z
+// of 100 files (next to 7-Zip and SharpCompress) and of its LZMA decoder alone, and size and speed of Filee's own 7z
 // writer next to 7-Zip's. Not part of a normal run: set FILEE_ARCHIVE_BENCHMARK=1 (and optionally
-// FILEE_ARCHIVE_BENCHMARK_MB, default 200 for the readers and 8 for the writer). Each prints a Markdown table.
+// FILEE_ARCHIVE_BENCHMARK_MB, default 200 for the readers, 32 for the 7z reader and the decoder and 8 for the
+// writer). Each prints a Markdown table.
 
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Filee.Core.Presets;
 using Filee.Engines.Archives;
+using Filee.Engines.Archives.Lzma;
 using Filee.Engines.Infrastructure;
+using SharpCompress.Archives.SevenZip;
 using static Filee.Engines.Tests.ArchiveBuilders;
 
 namespace Filee.Engines.Tests;
@@ -150,6 +154,111 @@ public class ArchiveSpeedTests(EngineFixture fx) : IClassFixture<EngineFixture>
         void Row(string writer, string level, long size, TimeSpan cpu) =>
             table.AppendLine(CultureInfo.InvariantCulture,
                 $"| {writer} | {level} | {size:N0} | {size * 100.0 / total:0.00}% | {cpu.TotalSeconds:0.00} s | {total / 1e6 / cpu.TotalSeconds:0.0} MB/s |");
+    }
+
+    [Fact]
+    public async Task Seven_zip_reader_on_a_solid_archive_of_100_files()
+    {
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK") == "1", "set FILEE_ARCHIVE_BENCHMARK=1");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        var megabytes = int.TryParse(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_MB"), out var mb) ? mb : 32;
+
+        // 100 files: prose, CSV and some noise, about the same size each.
+        var dir = fx.NewFolder();
+        var tree = Path.Combine(dir, "data");
+        var each = (int)(megabytes * (1L << 20) / 100);
+        long total = 0;
+        for (var i = 0; i < 100; i++)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(tree, $"folder{i % 5}")).FullName;
+            var bytes = (i % 5) switch
+            {
+                4 => Noise(each / 4, i),
+                3 => Encoding.UTF8.GetBytes(string.Join('\n', Enumerable.Range(i * 100_000, each / 24).Select(n => $"{n},{n % 97},{n * 31 % 1000}.5,값{n % 13}"))),
+                _ => LzmaTests.Prose(each + i),
+            };
+            await File.WriteAllBytesAsync(Path.Combine(folder, $"file{i:000}.txt"), bytes, TestContext.Current.CancellationToken);
+            total += bytes.Length;
+        }
+
+        var table = new StringBuilder();
+        table.AppendLine(CultureInfo.InvariantCulture, $"{total / 1e6:0.0} MB in 100 files, one solid block, 7-Zip {EngineVersions.Component("7zip")} single-threaded (-mmt=off), wall time, best of two");
+        table.AppendLine();
+        table.AppendLine("| Archive | Size | Filee | 7-Zip | SharpCompress | Filee / 7-Zip |");
+        table.AppendLine("|---|---:|---:|---:|---:|---:|");
+        foreach (var level in new[] { "-mx1", "-mx5", "-mx9" })
+        {
+            var archive = Path.Combine(dir, $"solid{level}.7z");
+            await PackAsync("a", "-t7z", level, "-ms=on", archive, tree);
+            var ours = await TimeAsync(dir, async scratch =>
+            {
+                await new ArchiveExtractor(null).ExtractAsync(archive, "7z", scratch, CancellationToken.None);
+                return scratch;
+            });
+            var theirs = await TimeAsync(dir, async scratch =>
+            {
+                await SevenZipAsync("x", "-y", "-mmt=off", "-bsp0", "-bb0", "-o" + scratch, "--", archive);
+                return scratch;
+            });
+            var library = await TimeAsync(dir, scratch =>
+            {
+                // What LibraryArchives did before: SharpCompress's solid reader, front to back.
+                using var file = File.OpenRead(archive);
+                using var opened = SevenZipArchive.Open(file, null);
+                using var reader = opened.ExtractAllEntries();
+                while (reader.MoveToNextEntry())
+                    if (!reader.Entry.IsDirectory)
+                        using (var data = reader.OpenEntryStream())
+                            data.CopyTo(Stream.Null);
+                return Task.FromResult(scratch);
+            });
+            table.AppendLine(CultureInfo.InvariantCulture,
+                $"| 7z {level} | {new FileInfo(archive).Length / 1e6:0.0} MB | {ours.TotalSeconds:0.00} s | {theirs.TotalSeconds:0.00} s | {library.TotalSeconds:0.00} s | {ours / theirs:0.00}× |");
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine(table.ToString());
+        if (Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_OUT") is { Length: > 0 } outFile)
+            await File.WriteAllTextAsync(outFile, table.ToString(), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task Lzma_decoder_next_to_7zip()
+    {
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK") == "1", "set FILEE_ARCHIVE_BENCHMARK=1");
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        var megabytes = int.TryParse(Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_MB"), out var mb) ? mb : 32;
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "input.bin");
+        byte[] data = [.. LzmaTests.Prose(megabytes << 19), .. Words(megabytes << 18), .. Noise(megabytes << 18, 3)];
+        await File.WriteAllBytesAsync(source, data, TestContext.Current.CancellationToken);
+
+        var table = new StringBuilder();
+        table.AppendLine(CultureInfo.InvariantCulture, $"{data.Length / 1e6:0.0} MB (prose, words, noise) as .xz from 7-Zip {EngineVersions.Component("7zip")}, CPU time of decoding, best of three, single-threaded");
+        table.AppendLine();
+        table.AppendLine("| 7-Zip level | Size | Filee | 7-Zip | Filee / 7-Zip |");
+        table.AppendLine("|---|---:|---:|---:|---:|");
+        foreach (var level in new[] { "-mx1", "-mx5", "-mx9" })
+        {
+            var xz = Path.Combine(dir, $"input{level}.xz");
+            await PackAsync("a", "-txz", level, xz, source);
+            var ours = TimeSpan.MaxValue;
+            var theirs = TimeSpan.MaxValue;
+            for (var run = 0; run < 3; run++)
+            {
+                var cpu = ProcessCpu();
+                using (var file = File.OpenRead(xz))
+                using (var reader = new XzReader(file, "input.xz"))
+                    Assert.Equal(data.Length, ArchiveFiles.CopyLimited(reader, Stream.Null, long.MaxValue, CancellationToken.None));
+                var time = ProcessCpu() - cpu;
+                ours = time < ours ? time : ours;
+                time = await SevenZipCpuAsync("t", "-mmt=off", xz);
+                theirs = time < theirs ? time : theirs;
+            }
+            table.AppendLine(CultureInfo.InvariantCulture,
+                $"| {level} | {new FileInfo(xz).Length / 1e6:0.0} MB | {data.Length / 1e6 / ours.TotalSeconds:0.0} MB/s | {data.Length / 1e6 / theirs.TotalSeconds:0.0} MB/s | {ours / theirs:0.00}× |");
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine(table.ToString());
+        if (Environment.GetEnvironmentVariable("FILEE_ARCHIVE_BENCHMARK_OUT") is { Length: > 0 } outFile)
+            await File.WriteAllTextAsync(outFile, table.ToString(), TestContext.Current.CancellationToken);
     }
 
     private static TimeSpan ProcessCpu()

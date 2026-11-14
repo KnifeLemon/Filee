@@ -69,7 +69,7 @@ internal sealed class RangeDecoder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private uint NextByte()
+    internal uint NextByte()
     {
         if (_position == _end)
             Refill();
@@ -95,6 +95,54 @@ internal sealed class RangeDecoder
             _range <<= 8;
             _code = _code << 8 | NextByte();
         }
+    }
+
+    /// <summary>
+    /// Hands range and code to a caller that keeps them in locals over many bits (<see cref="Bit"/>); it gives them back
+    /// with <see cref="Store"/> before calling any other method here.
+    /// </summary>
+    public void Load(out uint range, out uint code)
+    {
+        range = _range;
+        code = _code;
+    }
+
+    /// <summary>Takes range and code back from <see cref="Load"/>.</summary>
+    public void Store(uint range, uint code)
+    {
+        _range = range;
+        _code = code;
+    }
+
+    /// <summary>
+    /// <see cref="DecodeBit"/> on range and code held in the caller's locals, which the JIT keeps in registers: the
+    /// decoder's single-bit decisions (match or literal, which repeat) run through here.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int Bit(ref uint range, ref uint code, ref ushort probability, RangeDecoder rc)
+    {
+        var p = probability;
+        var bound = (range >> RangeCoder.ProbabilityBits) * p;
+        int bit;
+        if (code < bound)
+        {
+            range = bound;
+            probability = (ushort)(p + ((RangeCoder.ProbabilityOne - p) >> RangeCoder.MoveBits));
+            bit = 0;
+        }
+        else
+        {
+            range -= bound;
+            code -= bound;
+            probability = (ushort)(p - (p >> RangeCoder.MoveBits));
+            bit = 1;
+        }
+        if (range < RangeCoder.TopValue)
+        {
+            range <<= 8;
+            code = code << 8 | rc.NextByte();
+        }
+        return bit;
     }
 
     /// <summary>One bit with the adaptive probability <paramref name="probability"/> (of a zero).</summary>
@@ -139,13 +187,87 @@ internal sealed class RangeDecoder
         return result;
     }
 
-    /// <summary>A <paramref name="bits"/>-bit symbol from a binary tree of probabilities (index 1 is the root).</summary>
+    /// <summary>
+    /// A <paramref name="bits"/>-bit symbol from a binary tree of probabilities (index 1 is the root). Range and code
+    /// stay in locals for the whole symbol (the hot path of literals and lengths), not in the fields for every bit.
+    /// </summary>
     public uint DecodeTree(Span<ushort> probabilities, int bits)
     {
+        var range = _range;
+        var code = _code;
         uint m = 1;
-        for (var i = 0; i < bits; i++)
-            m = (m << 1) + (uint)DecodeBit(ref probabilities[(int)m]);
-        return m - (1u << bits);
+        var end = 1u << bits;
+        while (m < end)
+        {
+            ref var probability = ref probabilities[(int)m];
+            var p = probability;
+            var bound = (range >> RangeCoder.ProbabilityBits) * p;
+            if (code < bound)
+            {
+                range = bound;
+                probability = (ushort)(p + ((RangeCoder.ProbabilityOne - p) >> RangeCoder.MoveBits));
+                m <<= 1;
+            }
+            else
+            {
+                range -= bound;
+                code -= bound;
+                probability = (ushort)(p - (p >> RangeCoder.MoveBits));
+                m = (m << 1) + 1;
+            }
+            if (range < RangeCoder.TopValue)
+            {
+                range <<= 8;
+                code = code << 8 | NextByte();
+            }
+        }
+        _range = range;
+        _code = code;
+        return m - end;
+    }
+
+    /// <summary>
+    /// A literal after a match (the LZMA spec's "matched literal"): while its bits equal those of
+    /// <paramref name="matchByte"/>, the probabilities for that bit value are used; after the first difference, the
+    /// plain ones. <paramref name="probabilities"/> are the 0x300 of the literal's context.
+    /// </summary>
+    public uint DecodeMatchedLiteral(Span<ushort> probabilities, uint matchByte)
+    {
+        var range = _range;
+        var code = _code;
+        uint symbol = 1;
+        var offset = 0x100u;
+        while (symbol < 0x100)
+        {
+            matchByte <<= 1;
+            var index = offset + (matchByte & offset) + symbol;
+            ref var probability = ref probabilities[(int)index];
+            var p = probability;
+            var bound = (range >> RangeCoder.ProbabilityBits) * p;
+            if (code < bound)
+            {
+                range = bound;
+                probability = (ushort)(p + ((RangeCoder.ProbabilityOne - p) >> RangeCoder.MoveBits));
+                symbol <<= 1;
+                offset &= ~matchByte; // a 0 where the match byte has a 1: plain probabilities from here on
+            }
+            else
+            {
+                range -= bound;
+                code -= bound;
+                probability = (ushort)(p - (p >> RangeCoder.MoveBits));
+                symbol = (symbol << 1) + 1;
+                offset &= matchByte;
+            }
+            if (range < RangeCoder.TopValue)
+            {
+                range <<= 8;
+                code = code << 8 | NextByte();
+            }
+        }
+        _range = range;
+        _code = code;
+        return symbol - 0x100;
     }
 
     /// <summary>Like <see cref="DecodeTree"/>, least significant bit first.</summary>

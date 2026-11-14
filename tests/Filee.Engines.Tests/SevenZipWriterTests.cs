@@ -132,7 +132,7 @@ public class SevenZipWriterTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.Equal(Older, File.GetLastWriteTimeUtc(Path.Combine(target, "프로젝트 🚀", "a", "b", "c 深い", "d", "깊은 파일.txt")));
         Assert.Equal(Older, Directory.GetLastWriteTimeUtc(Path.Combine(target, "프로젝트 🚀", "a", "b", "c 深い", "d")));
 
-        // The engine hands a solid 7z to 7-Zip when it is there: the same tree comes out.
+        // The engine reads it in-process even with 7-Zip there (SevenZipReader): the same tree comes out.
         var engine = Directory.CreateDirectory(Path.Combine(dir, "engine")).FullName;
         var unpacked = await new ArchiveExtractor(SevenZip.Locate()).ExtractAsync(output, "7z", engine, Ct);
         Assert.Equal(Snapshot(tree), Snapshot(Path.Combine(unpacked, "프로젝트 🚀")));
@@ -198,8 +198,9 @@ public class SevenZipWriterTests(EngineFixture fx) : IClassFixture<EngineFixture
             Assert.Equal(["빈 폴더", "빈 폴더/안쪽", "빈 폴더/안쪽/zero.txt"], archive.Entries.Select(e => e.Key).Order(StringComparer.Ordinal));
             Assert.Equal(2, archive.Entries.Count(e => e.IsDirectory));
         }
-        // (The engine's in-process reader refuses this one, from 7-Zip just the same: SharpCompress calls a 7z whose
-        // only files are empty encrypted. Its reading is not this writer's concern.)
+        // The engine's in-process reader unpacks it (SharpCompress called a 7z whose only files are empty encrypted).
+        var unpacked = await new ArchiveExtractor(null).ExtractAsync(output, "7z", Directory.CreateDirectory(Path.Combine(dir, "x")).FullName, Ct);
+        Assert.Equal(0, new FileInfo(Path.Combine(unpacked, "빈 폴더", "안쪽", "zero.txt")).Length);
 
         var nothing = Path.Combine(dir, "nothing.7z");
         await using (var stream = File.Create(nothing))
