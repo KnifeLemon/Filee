@@ -3,6 +3,7 @@
 // (LZMA, BZip2, PPMd, Deflate64 … from 7-Zip or WinZip) is left to SharpCompress, before anything is written. Names
 // without the UTF-8 flag are read as UTF-8 when valid, else with the system's OEM code page, as in LibraryArchives.
 
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 
@@ -11,6 +12,31 @@ namespace Filee.Engines.Archives;
 /// <summary>ZIP through System.IO.Compression.</summary>
 internal static class ZipReader
 {
+    /// <summary>
+    /// True when the ZIP in <paramref name="stream"/> ends with its end-of-central-directory record and the comment
+    /// that record declares. A ZIP cut off before its end has no such record there; a search backwards would find the
+    /// record of a ZIP stored inside it (an APK inside an .xapk) instead, and SharpCompress would unpack that one.
+    /// </summary>
+    public static bool EndsWithDirectory(Stream stream)
+    {
+        const int recordSize = 22;
+        var length = stream.Length;
+        if (length < recordSize)
+            return false;
+        var span = (int)Math.Min(length, recordSize + ushort.MaxValue);
+        var tail = new byte[span];
+        stream.Position = length - span;
+        stream.ReadExactly(tail);
+        stream.Position = 0;
+        for (var i = span - recordSize; i >= 0; i--)
+        {
+            if (tail[i] == (byte)'P' && tail[i + 1] == (byte)'K' && tail[i + 2] == 5 && tail[i + 3] == 6
+                && i + recordSize + BinaryPrimitives.ReadUInt16LittleEndian(tail.AsSpan(i + 20)) == span)
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// Unpacks the ZIP in <paramref name="stream"/>; false (nothing written) when an entry needs SharpCompress or
     /// .NET cannot read the archive at all.

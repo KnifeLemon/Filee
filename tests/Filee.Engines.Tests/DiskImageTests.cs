@@ -328,7 +328,7 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
         File.WriteAllText(Path.Combine(source, "a.txt"), "apfs");
         var image = Path.Combine(fx.NewFolder(), "apfs.dmg");
         await RunAsync("/usr/bin/hdiutil", "create", "-quiet", "-srcfolder", source, "-fs", "APFS", "-format", "UDZO", image);
-        Assert.Contains("APFS", await RefusedAsync(image, "dmg"));
+        Assert.Contains("APFS", await NeedsSevenZipAsync(image, "dmg"));
     }
 
     private static async Task RunAsync(string tool, params string[] args)

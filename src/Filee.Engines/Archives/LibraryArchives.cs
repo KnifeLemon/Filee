@@ -4,7 +4,7 @@
 // 7-Zip's). When SharpCompress can't read such a 7z either, the method Filee's reader named is the error (only 7-Zip
 // unpacks it, see ArchiveExtractor.NeedsSevenZip). The archive is listed first and checked by ArchiveSafety; encrypted
 // archives and entries are refused, links are left out, sizes and (for ZIP and 7z) CRC-32s are checked as each file
-// is written.
+// is written. A ZIP whose directory isn't at its end (cut off) is refused as damaged before SharpCompress sees it.
 
 using System.Globalization;
 using System.Text;
@@ -32,6 +32,8 @@ internal static class LibraryArchives
             if (type == ArchiveType.Zip && ZipReader.TryExtract(file, name, folder, cancellationToken)
                 || TryExtractSevenZip(file, name, folder, cancellationToken, out unsupported))
                 return;
+            if (type == ArchiveType.Zip && !ZipReader.EndsWithDirectory(file))
+                throw CutOff(name);
         }
         // A file Filee opens itself: SharpCompress leaves the one it opens by path open when the archive can't be
         // read (a 7z with encrypted names), and the folder could not be cleared afterwards.
@@ -63,6 +65,8 @@ internal static class LibraryArchives
             throw unsupported ?? ArchiveSafety.NotAnArchive(name);
         if (type == ArchiveType.Zip && ZipReader.TryExtract(stream, name, folder, cancellationToken))
             return;
+        if (type == ArchiveType.Zip && !ZipReader.EndsWithDirectory(stream))
+            throw CutOff(name);
         stream.Position = 0;
         var options = Options(type);
         options.LeaveStreamOpen = true;
@@ -76,6 +80,9 @@ internal static class LibraryArchives
             throw unsupported;
         }
     }
+
+    /// <summary>A ZIP without its directory at the end (<see cref="ZipReader.EndsWithDirectory"/>), as when cut off.</summary>
+    private static Exception CutOff(string name) => ArchiveSafety.Damaged(name, "its directory at the end is missing");
 
     /// <summary>
     /// True when SharpCompress gave up on a 7z Filee's reader left to it: not for refusals (password, bombs, unsafe

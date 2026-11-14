@@ -81,6 +81,31 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
 
     // ───────── Formats ─────────
 
+    [Theory]
+    [InlineData("zip")]
+    [InlineData("jar")]
+    public async Task A_zip_cut_off_before_its_directory_is_refused_not_read_from_a_zip_inside_it(string format)
+    {
+        // A stored ZIP inside (an APK in a package, a JAR in a WAR): its end record lies in the first half, so a search
+        // backwards from the cut would find it and unpack the inner ZIP's entries as if they were the archive's.
+        using var inner = new MemoryStream();
+        using (var zip = new ZipArchive(inner, ZipArchiveMode.Create, leaveOpen: true))
+        using (var entry = zip.CreateEntry("inner.txt").Open())
+            entry.Write("inside"u8);
+        using var outer = new MemoryStream();
+        using (var zip = new ZipArchive(outer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var entry = zip.CreateEntry("first.zip", CompressionLevel.NoCompression).Open())
+                entry.Write(inner.ToArray());
+            using (var entry = zip.CreateEntry("last.bin", CompressionLevel.NoCompression).Open())
+                entry.Write(Enumerable.Range(0, 8192).Select(i => (byte)(i * 7 + 3)).ToArray());
+        }
+        var whole = outer.ToArray();
+        var cut = Write("cut." + format, whole[..(whole.Length / 2)]);
+
+        Assert.Contains("is damaged or incomplete", await RefusedAsync(cut, format));
+    }
+
     [Fact]
     public async Task Zip_with_utf8_and_cp949_names_unpacks_in_process()
     {
