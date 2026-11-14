@@ -479,7 +479,8 @@ public class PptxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 if (route?.Steps.Any(s => s.Converter is PptxWriterConverter) == true)
                 {
                     Assert.True(FormatRegistry.Get(to).Category == FormatCategory.Presentation, $"{from} → {to} goes through the PPTX writer");
-                    Assert.True(before is null || before.Steps.Any(s => s.To == "pptx" && s.Converter.Id == "pandoc"), $"{from} → {to}");
+                    // A PPT's own slides (translated, not laid out from a document) replace LibreOffice's PPT → PPTX.
+                    Assert.True(before is null || before.Steps.Any(s => s.To == "pptx" && s.Converter.Id == "pandoc") || from == "ppt", $"{from} → {to}");
                     continue;
                 }
                 // Equal costs: where two engines tie (the DOCX and ODT writers on a long route) either may be planned.
