@@ -1234,7 +1234,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(4).ToList());
         Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(null).ToList());
         var args = MediaEncoding.CropDetect("in.mp4", 6, 1, Hd);
-        Assert.Equal(("info", "6.000", "1.000"), (After(args, "-v"), After(args, "-ss"), After(args, "-t")));
+        Assert.Equal(("info", "6.000000", "1.000000"), (After(args, "-v"), After(args, "-ss"), After(args, "-t")));
         // A part of the range, not 24 of 255: the same black at 10 bits (#830 review).
         Assert.Contains("cropdetect=limit=0.094:", After(args, "-vf"));
     }

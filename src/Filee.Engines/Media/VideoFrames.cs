@@ -60,8 +60,8 @@ public static class VideoFrames
         var (ffmpeg, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
         var input = MediaInput.For(path);
         seconds = Math.Max(0, seconds);
-        var from = await KeyFrames.DecodeStartAsync(ffprobe, input, seconds, cancellationToken);
-        var arguments = MediaEncoding.FrameAt(input, seconds, from, output, maxHeight, null);
+        var seek = await KeyFrames.FindAsync(ffprobe, input, seconds, cancellationToken);
+        var arguments = MediaEncoding.FrameAt(input, seconds, seek, output, maxHeight, null);
         var result = await FfmpegRunner.RunAsync(ffmpeg, arguments, null, cancellationToken, FrameStall);
         return result.ExitCode == 0 && File.Exists(output) && new FileInfo(output).Length > 0;
     }
