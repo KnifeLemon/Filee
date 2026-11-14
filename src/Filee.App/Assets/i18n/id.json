@@ -281,7 +281,7 @@
   "engine.geo.name": "Data vektor geospasial (bawaan)",
   "engine.geo.description": "Data vektor geospasial: GeoJSON, KML, KMZ, GPX, Shapefile, dan CSV (garis bujur/lintang atau WKT) saling konversi.\nHasilnya adalah garis bujur/lintang WGS 84; Shapefile terproyeksi (UTM, Web Mercator, Lambert, Albers) otomatis dikonversi.",
   "engine.archive.name": "Arsip (bawaan)",
-  "engine.archive.description": "Mengekstrak ZIP, 7Z (termasuk solid), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO, dan lainnya, serta mengemas sendiri ke ZIP, 7Z, TAR.GZ, TAR.XZ, dan XZ.\nDengan 7-Zip, juga membuka disk DMG, IMG, dan UDF, mengemas TAR.BZ2 dan BZ2, serta menangani varian langka (CAB Quantum, ARJ multi-volume, metode 7Z seperti PPMd…).",
+  "engine.archive.description": "Mengekstrak ZIP, 7Z (termasuk solid), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO, dan lainnya, serta mengemas sendiri ke ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, dan XZ.\nDengan 7-Zip, juga membuka disk DMG, IMG, dan UDF, serta menangani varian langka (CAB Quantum, ARJ multi-volume, metode 7Z seperti PPMd…).",
   "engine.ebook.name": "E-book (bawaan)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2, dan komik (CBZ, CBR) ke PDF, EPUB, AZW3, MOBI, DOCX, dan teks.\nJuga dokumen ke EPUB, EPUB ke KEPUB untuk Kobo, dan PDF ke CBZ.",
   "engine.subtitle.name": "Subtitle (bawaan)",

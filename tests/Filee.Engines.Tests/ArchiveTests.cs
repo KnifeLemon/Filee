@@ -63,9 +63,8 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         if (ArchiveExtractor.SevenZipFormats.Contains(from))
             SkipWithout7Zip();
         var planner = fx.Catalog.CreatePlanner(["archive"]);
-        // Only TAR.BZ2 still needs 7-Zip to write.
-        string[] targets = SevenZipExe is null ? ["zip", "7z", "tar", "tgz", "txz", FormatRegistry.Folder] : ["zip", "7z", "tar", "tgz", "tbz2", "txz", FormatRegistry.Folder];
-        foreach (var to in targets)
+        // Every target is written in-process.
+        foreach (var to in new[] { "zip", "7z", "tar", "tgz", "tbz2", "txz", FormatRegistry.Folder })
         {
             var route = planner.Plan(from, to);
             Assert.NotNull(route);
@@ -80,10 +79,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Single(planner.Plan("lz", "gz")!.Steps);
         Assert.Single(planner.Plan("xz", "gz")!.Steps);
         Assert.Single(planner.Plan("gz", "xz")!.Steps); // Filee's own XZ writer
-        if (SevenZipExe is not null)
-            Assert.Single(planner.Plan("lzma", "bz2")!.Steps);
-        else
-            Assert.Null(planner.Plan("lzma", "bz2"));
+        Assert.Single(planner.Plan("lzma", "bz2")!.Steps); // and its own bzip2 writer
         Assert.Null(planner.Plan("zip", "gz"));  // several files do not fit into one .gz
         Assert.Null(planner.Plan("zip", "rar")); // RAR cannot be written
         Assert.Null(planner.Plan("lzo", "zip")); // no LZO reader
@@ -107,9 +103,8 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         ZipFile.CreateFromDirectory(tree, zip, CompressionLevel.Optimal, includeBaseDirectory: true, Encoding.UTF8);
 
         var current = zip;
-        // Every step is written in-process but TAR.BZ2, which needs 7-Zip.
-        string[] steps = SevenZipExe is null ? ["7z", "tgz", "tar", "txz", "zip"] : ["7z", "tgz", "tar", "tbz2", "txz", "zip"];
-        foreach (var target in steps)
+        // Every step is written in-process.
+        foreach (var target in new[] { "7z", "tgz", "tar", "tbz2", "txz", "zip" })
         {
             var job = await ConvertOkAsync(current, new Preset { TargetFormat = target });
             current = job.Outputs.Single();
@@ -145,14 +140,11 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Single_file_streams_convert_gz_xz_bz2()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var data = Words(50_000);
-        var csv = Path.Combine(dir, "data.csv");
-        await File.WriteAllBytesAsync(csv, data, Ct);
         var gz = Path.Combine(dir, "data.csv.gz");
-        await Run7zAsync("a", "-tgzip", gz, csv);
-        File.Delete(csv);
+        await using (var gzip = new GZipStream(File.Create(gz), CompressionLevel.Optimal))
+            await gzip.WriteAsync(data, Ct);
 
         var xz = (await ConvertOkAsync(gz, new Preset { TargetFormat = "xz" })).Outputs.Single();
         var bz2 = (await ConvertOkAsync(xz, new Preset { TargetFormat = "bz2" })).Outputs.Single();

@@ -281,7 +281,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "भू-स्थानिक वेक्टर डेटा: GeoJSON, KML, KMZ, GPX, Shapefile और CSV (देशांतर/अक्षांश या WKT) एक-दूसरे में।\nनतीजे WGS 84 देशांतर/अक्षांश में होते हैं। प्रोजेक्टेड Shapefile (UTM, Web Mercator, Lambert, Albers) कन्वर्ट किए जाते हैं।",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "ZIP, 7Z (सॉलिड भी), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO और अन्य को खोलता है, और खुद ZIP, 7Z, TAR.GZ, TAR.XZ और XZ में पैक करता है।\n7-Zip होने पर यह DMG, IMG और UDF डिस्क भी खोलता है, TAR.BZ2 और BZ2 में पैक करता है, और दुर्लभ प्रकार भी संभालता है (Quantum CAB, मल्टी-वॉल्यूम ARJ, PPMd जैसी 7Z विधियाँ…)।",
+  "engine.archive.description": "ZIP, 7Z (सॉलिड भी), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO और अन्य को खोलता है, और खुद ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 और XZ में पैक करता है।\n7-Zip होने पर यह DMG, IMG और UDF डिस्क भी खोलता है, और दुर्लभ प्रकार भी संभालता है (Quantum CAB, मल्टी-वॉल्यूम ARJ, PPMd जैसी 7Z विधियाँ…)।",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 और कॉमिक्स (CBZ, CBR) से PDF, EPUB, AZW3, MOBI, DOCX और टेक्स्ट।\nदस्तावेज़ों से EPUB, Kobo के लिए EPUB से KEPUB और PDF से CBZ भी।",
   "engine.subtitle.name": "Subtitles (built-in)",

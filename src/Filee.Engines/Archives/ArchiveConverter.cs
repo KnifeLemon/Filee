@@ -3,9 +3,10 @@
 // "Compress into one archive" for any files (IFileCombiner).
 // Reading is in-process for the common formats (SharpCompress, .NET and Filee's own readers, see ArchiveExtractor);
 // the bundled 7-Zip (engines/7zip, LGPL, separate process) reads DMG, IMG and UDF discs and is the
-// fallback for what the in-process readers can't. ZIP (and the packs), 7Z, TAR, TAR.GZ, TAR.XZ, GZ and XZ are
-// written in-process (7Z and XZ with Filee's own LZMA2 encoder, see SevenZipWriter and XzWriter), BZ2 (also inside
-// TARs) by 7-Zip. Without 7-Zip the engine stays available with the in-process edges only.
+// fallback for what the in-process readers can't. Every format is written in-process: ZIP (and the packs), 7Z, TAR,
+// TAR.GZ, TAR.BZ2, TAR.XZ, GZ, BZ2 and XZ (7Z and XZ with Filee's own LZMA2 encoder, BZ2 with its own bzip2 encoder,
+// see SevenZipWriter, XzWriter and Bzip2Writer). Without 7-Zip the engine stays available with the in-process
+// readers' edges.
 // See docs/ENGINES.md.
 
 using Filee.Core.Conversion;
@@ -48,7 +49,10 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
         }
     }
 
-    /// <summary>7-Zip already uses several threads; two jobs at once keep the disk busy without thrashing it.</summary>
+    /// <summary>
+    /// The bzip2 writer already uses several threads (and 7-Zip, when it unpacks); two jobs at once keep the disk busy
+    /// without thrashing it.
+    /// </summary>
     public int MaxParallelism => 2;
 
     /// <summary>Every edge with 7-Zip; without it, the formats read and written in-process.</summary>
@@ -128,7 +132,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
             var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
             if (output is null)
                 return [];
-            await new ArchivePacker(sevenZip).PackAsync(items, output, step.To, step.Preset.Archive.Level, scratch,
+            await new ArchivePacker().PackAsync(items, output, step.To, step.Preset.Archive.Level, scratch,
                 Scaled(progress, 0.5, 1), cancellationToken);
             progress?.Report(1);
             return [output];
@@ -175,13 +179,12 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
     public async Task CombineAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Preset preset,
         string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        var sevenZip = ArchivePacker.BuiltInFormats.Contains(format) ? null : Tool;
         // A pack made from its folder holds the folder's content, so its marker file is at the top.
         var entries = GamePacks.Formats.Contains(format) && inputPaths is [var folder] && Directory.Exists(folder)
             ? Directory.EnumerateFileSystemEntries(GamePacks.Root(folder, format)).Order(StringComparer.Ordinal)
                 .Select(path => new PackItem(path, Path.GetFileName(path))).ToList()
             : UniqueEntries(inputPaths);
-        await new ArchivePacker(sevenZip).PackAsync(entries, outputPath, format, preset.Archive.Level,
+        await new ArchivePacker().PackAsync(entries, outputPath, format, preset.Archive.Level,
             workDirectory, progress, cancellationToken);
         progress?.Report(1);
     }

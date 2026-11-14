@@ -281,7 +281,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "ข้อมูลเวกเตอร์เชิงพื้นที่: GeoJSON, KML, KMZ, GPX, Shapefile และ CSV (ลองจิจูด/ละติจูด หรือ WKT) สลับกันได้\nผลลัพธ์เป็นลองจิจูด/ละติจูด WGS 84 ส่วน Shapefile ที่มีพิกัดโปรเจกชัน (UTM, Web Mercator, Lambert, Albers) จะได้รับการแปลงค่า",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "แตกไฟล์ ZIP, 7Z (รวมถึงแบบ solid), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO และอื่นๆ และบีบอัดเป็น ZIP, 7Z, TAR.GZ, TAR.XZ และ XZ ได้เอง\nเมื่อมี 7-Zip จะเปิดดิสก์ DMG, IMG และ UDF ได้ด้วย บีบอัดเป็น TAR.BZ2 และ BZ2 และจัดการรูปแบบที่พบน้อย (CAB แบบ Quantum, ARJ หลายวอลุ่ม, วิธีบีบอัด 7Z อย่าง PPMd…)",
+  "engine.archive.description": "แตกไฟล์ ZIP, 7Z (รวมถึงแบบ solid), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO และอื่นๆ และบีบอัดเป็น ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 และ XZ ได้เอง\nเมื่อมี 7-Zip จะเปิดดิสก์ DMG, IMG และ UDF ได้ด้วย และจัดการรูปแบบที่พบน้อย (CAB แบบ Quantum, ARJ หลายวอลุ่ม, วิธีบีบอัด 7Z อย่าง PPMd…)",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 และหนังสือการ์ตูน (CBZ, CBR) เป็น PDF, EPUB, AZW3, MOBI, DOCX และข้อความ\nรวมถึงเอกสารเป็น EPUB, EPUB เป็น KEPUB สำหรับ Kobo และ PDF เป็น CBZ",
   "engine.subtitle.name": "Subtitles (built-in)",

@@ -281,7 +281,7 @@
   "engine.geo.name": "Vektor-Geodaten (integriert)",
   "engine.geo.description": "Vektor-Geodaten: Konvertiert GeoJSON, KML, KMZ, GPX, Shapefile und CSV (Längen-/Breitengrad oder WKT) untereinander.\nErgebnisse verwenden WGS-84-Längen- und Breitengrade. Projizierte Shapefiles (UTM, Web Mercator, Lambert, Albers) werden umgerechnet.",
   "engine.archive.name": "Archive (integriert)",
-  "engine.archive.description": "Entpackt ZIP, 7Z (auch solide), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO und weitere Formate und erstellt selbst ZIP, 7Z, TAR.GZ, TAR.XZ und XZ.\nMit 7-Zip öffnet es auch DMG-, IMG- und UDF-Abbilder, erstellt TAR.BZ2 und BZ2 und übernimmt seltene Varianten (Quantum-CAB, mehrteilige ARJ, 7Z-Methoden wie PPMd…).",
+  "engine.archive.description": "Entpackt ZIP, 7Z (auch solide), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO und weitere Formate und erstellt selbst ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 und XZ.\nMit 7-Zip öffnet es auch DMG-, IMG- und UDF-Abbilder und übernimmt seltene Varianten (Quantum-CAB, mehrteilige ARJ, 7Z-Methoden wie PPMd…).",
   "engine.ebook.name": "E-Books (integriert)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 und Comics (CBZ, CBR) in PDF, EPUB, AZW3, MOBI, DOCX und Text.\nAußerdem Dokumente in EPUB, EPUB in KEPUB für Kobo und PDF in CBZ.",
   "engine.subtitle.name": "Untertitel (integriert)",

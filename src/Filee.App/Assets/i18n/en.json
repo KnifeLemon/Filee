@@ -288,7 +288,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "Geospatial vector data: GeoJSON, KML, KMZ, GPX, Shapefile and CSV (longitude/latitude or WKT) into each other.\nResults are WGS 84 longitude/latitude; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted.",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "Extracts ZIP, 7Z (solid too), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO and more, and packs ZIP, 7Z, TAR.GZ, TAR.XZ and XZ by itself.\nWith 7-Zip it also opens DMG, IMG and UDF discs, packs TAR.BZ2 and BZ2, and handles rare variants (Quantum CAB, multi-volume ARJ, 7Z methods such as PPMd…).",
+  "engine.archive.description": "Extracts ZIP, 7Z (solid too), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO and more, and packs ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 and XZ by itself.\nWith 7-Zip it also opens DMG, IMG and UDF discs and handles rare variants (Quantum CAB, multi-volume ARJ, 7Z methods such as PPMd…).",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 and comics (CBZ, CBR) to PDF, EPUB, AZW3, MOBI, DOCX and text.\nAlso documents to EPUB, EPUB to KEPUB for Kobo and PDF to CBZ.",
   "engine.subtitle.name": "Subtitles (built-in)",

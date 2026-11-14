@@ -281,7 +281,7 @@
   "engine.geo.name": "Coğrafi vektör verisi (yerleşik)",
   "engine.geo.description": "Coğrafi vektör verisi: GeoJSON, KML, KMZ, GPX, Shapefile ve CSV (enlem/boylam veya WKT) arasında dönüştürme.\nSonuçlar WGS 84 enlem/boylamıdır; projeksiyonlu Shapefile'lar (UTM, Web Mercator, Lambert, Albers) dönüştürülür.",
   "engine.archive.name": "Arşivler (yerleşik)",
-  "engine.archive.description": "ZIP, 7Z (katı arşivler dahil), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO ve diğer arşivleri açar; ZIP, 7Z, TAR.GZ, TAR.XZ ve XZ arşivlerini kendisi oluşturur.\n7-Zip ile DMG, IMG ve UDF disklerini de açar, TAR.BZ2 ve BZ2 oluşturur ve nadir türleri de işler (Quantum CAB, çok parçalı ARJ, PPMd gibi 7Z yöntemleri…).",
+  "engine.archive.description": "ZIP, 7Z (katı arşivler dahil), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO ve diğer arşivleri açar; ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 ve XZ arşivlerini kendisi oluşturur.\n7-Zip ile DMG, IMG ve UDF disklerini de açar ve nadir türleri de işler (Quantum CAB, çok parçalı ARJ, PPMd gibi 7Z yöntemleri…).",
   "engine.ebook.name": "E-kitaplar (yerleşik)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 ve çizgi romanları (CBZ, CBR) PDF, EPUB, AZW3, MOBI, DOCX ve metne dönüştürür.\nAyrıca belgeler → EPUB, Kobo için EPUB → KEPUB ve PDF → CBZ.",
   "engine.subtitle.name": "Altyazılar (yerleşik)",

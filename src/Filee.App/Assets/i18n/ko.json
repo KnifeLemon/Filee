@@ -288,7 +288,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "지리 공간 벡터 데이터: GeoJSON, KML, KMZ, GPX, Shapefile, CSV(경도·위도 또는 WKT)를 서로 변환해요.\n결과는 WGS 84 경위도예요. Shapefile의 투영 좌표계(UTM, 웹 메르카토르, 람베르트, 알버스)는 변환해요.",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "ZIP, 7Z(솔리드 포함), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO 등을 풀고, ZIP·7Z·TAR.GZ·TAR.XZ·XZ로 직접 묶어요.\n7-Zip이 있으면 DMG·IMG·UDF 디스크도 열고 TAR.BZ2·BZ2로 묶으며, 드문 변형(Quantum CAB, 분할 ARJ, PPMd 같은 7Z 압축 방식…)도 처리해요.",
+  "engine.archive.description": "ZIP, 7Z(솔리드 포함), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO 등을 풀고, ZIP·7Z·TAR.GZ·TAR.BZ2·TAR.XZ·BZ2·XZ로 직접 묶어요.\n7-Zip이 있으면 DMG·IMG·UDF 디스크도 열고 드문 변형(Quantum CAB, 분할 ARJ, PPMd 같은 7Z 압축 방식…)도 처리해요.",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2, 만화책(CBZ, CBR)을 PDF, EPUB, AZW3, MOBI, DOCX, 텍스트로 바꿔요.\n문서는 EPUB으로, EPUB은 코보용 KEPUB으로, PDF는 CBZ로도 만들어요.",
   "engine.subtitle.name": "Subtitles (built-in)",
