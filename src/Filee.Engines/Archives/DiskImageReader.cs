@@ -299,10 +299,10 @@ internal static class DiskImageReader
         OperationCanceledException => null,
         _ when ArchiveSafety.IsRefusal(ex) => null,
         InvalidDataException when name.Length > 0 && ex.Message.Contains(name, StringComparison.Ordinal) => null,
-        InsufficientExecutionStackException => ArchiveSafety.Damaged(name, "its file system structures nest too deeply"),
-        OutOfMemoryException => ArchiveSafety.Damaged(name, "a file system structure is larger than the memory allows"),
+        InsufficientExecutionStackException => ArchiveSafety.Damaged(name, "its file system structures nest too deeply", ex),
+        OutOfMemoryException => ArchiveSafety.Damaged(name, "a file system structure is larger than the memory allows", ex),
         NotImplementedException or NotSupportedException => new NotSupportedException(ex.Message.TrimEnd('.'), ex),
-        _ => ArchiveSafety.Damaged(name, ex.Message.TrimEnd('.')),
+        _ => ArchiveSafety.Damaged(name, ex.Message.TrimEnd('.'), ex),
     };
 
     /// <summary>A library's file stream whose read errors become Filee's messages (write errors stay what they are).</summary>

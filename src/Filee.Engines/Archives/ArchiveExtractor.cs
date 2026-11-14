@@ -254,7 +254,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
             return new InvalidDataException(sevenZipWouldTry
                 ? $"{name} uses something Filee's built-in reader does not unpack ({ex.Message.TrimEnd('.')}); the bundled 7-Zip may, but it was not found."
                 : $"{name} could not be unpacked: {ex.Message}", ex);
-        return ArchiveSafety.Damaged(name, ex.Message.TrimEnd('.'));
+        return ArchiveSafety.Damaged(name, ex.Message.TrimEnd('.'), ex);
     }
 
     /// <summary>

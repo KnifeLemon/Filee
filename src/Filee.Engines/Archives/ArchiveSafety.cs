@@ -296,8 +296,9 @@ internal static class ArchiveSafety
     public static Exception NotAnArchive(string archiveName) =>
         new InvalidDataException($"{archiveName} is not a valid archive, or not the kind its extension says.");
 
-    public static Exception Damaged(string archiveName, string detail) =>
-        new InvalidDataException($"{archiveName} is damaged or incomplete ({detail}).");
+    /// <summary>A damaged archive; <paramref name="cause"/> is kept as the inner exception for the log.</summary>
+    public static Exception Damaged(string archiveName, string detail, Exception? cause = null) =>
+        new InvalidDataException($"{archiveName} is damaged or incomplete ({detail}).", cause);
 
     /// <summary>"1.4 GB" style size for messages.</summary>
     public static string FormatSize(long bytes)
