@@ -1,12 +1,11 @@
 // Unpacks a compressed single file (.gz, .bz2, .xz, .lzma, .Z, .zst and the outer layer of .tar.gz, .tar.bz2, .tar.xz
-// and .tar.Z) in-process: gzip with .NET's own decoder, bzip2, xz, LZMA and zstd with SharpCompress (MIT), Unix
-// compress with Filee's own UnixCompressStream. None of these formats declares a size it must keep (gzip's is the
+// and .tar.Z) in-process: gzip with .NET's own decoder, bzip2 and zstd with SharpCompress (MIT), xz, LZMA and Unix
+// compress with Filee's own decoders (XzReader, LzmaRawReader, UnixCompressStream). None of these formats declares a size it must keep (gzip's is the
 // size modulo 4 GiB), so what comes out is counted by UnpackBudget against bombs and a full drive.
 
 using System.IO.Compression;
+using Filee.Engines.Archives.Lzma;
 using SharpCompress.Compressors.BZip2;
-using SharpCompress.Compressors.LZMA;
-using SharpCompress.Compressors.Xz;
 using SharpCompress.Compressors.ZStandard;
 using SharpCompressMode = SharpCompress.Compressors.CompressionMode;
 
@@ -19,7 +18,10 @@ internal static class CompressedFile
     public static readonly IReadOnlySet<string> Formats =
         new HashSet<string> { "gz", "tgz", "bz2", "tbz2", "xz", "txz", "lzma", "z", "tz", "zst" };
 
-    /// <summary>The decoder allocates the whole dictionary up front; real files use at most a few hundred MiB.</summary>
+    /// <summary>
+    /// The largest dictionary a .lzma (or EGG LZMA) header may name: real files use at most a few hundred MiB. (Filee's
+    /// decoder grows its window with the output, SharpCompress's allocates it up front.)
+    /// </summary>
     internal const uint MaxLzmaDictionary = 1u << 30;
 
     /// <summary>
@@ -72,7 +74,7 @@ internal static class CompressedFile
                 return new BZip2Stream(new NonClosingStream(input), SharpCompressMode.Decompress, decompressConcatenated: true);
             case "xz":
             case "txz":
-                return new XZStream(new NonClosingStream(input));
+                return new XzReader(input, name);
             case "z":
             case "tz":
                 return new UnixCompressStream(new NonClosingStream(input));
@@ -89,7 +91,7 @@ internal static class CompressedFile
                         throw ArchiveSafety.Damaged(name, "the LZMA dictionary is larger than 1 GiB");
                     var size = BitConverter.ToInt64(header, 5);
                     declared = size;
-                    return new LzmaStream(header[..5], new NonClosingStream(input), input.Length - input.Position, size < 0 ? -1 : size);
+                    return new LzmaRawReader(input, LzmaProperties.FromByte(header[0])!.Value, BitConverter.ToUInt32(header, 1), size < 0 ? -1 : size);
                 }
             default:
                 throw new NotSupportedException($"{format} is not a compressed single file.");

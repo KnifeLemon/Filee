@@ -62,7 +62,7 @@ internal static class ComicBook
         }
         using (archive)
         {
-            if (archive.Entries.Any(e => e.IsEncrypted))
+            if (archive.Entries.Any(e => IsEncrypted(archive, e)))
                 throw new InvalidOperationException("The comic archive is password-protected.");
             if (archive.IsSolid || archive.Type == SharpCompress.Common.ArchiveType.SevenZip)
             {
@@ -99,13 +99,20 @@ internal static class ComicBook
             var name = Path.GetFileName(key.Replace('\\', '/'));
             if (entry.IsDirectory || key.Contains("__MACOSX", StringComparison.OrdinalIgnoreCase) || name.StartsWith('.') || !wanted(name))
                 return null;
-            if (entry.IsEncrypted)
+            if (IsEncrypted(archive, entry))
                 throw new InvalidOperationException("The comic archive is password-protected.");
             var target = Path.Combine(folder, $"{files.Count:00000}{Path.GetExtension(name).ToLowerInvariant()}");
             files.Add((key, target));
             return target;
         }
     }
+
+    /// <summary>
+    /// An encrypted entry. SharpCompress marks every empty 7z file (one without data) as encrypted, so for CB7 only
+    /// entries with data count.
+    /// </summary>
+    private static bool IsEncrypted(IArchive archive, SharpCompress.Common.IEntry entry) =>
+        entry.IsEncrypted && (archive.Type != SharpCompress.Common.ArchiveType.SevenZip || entry.Size > 0);
 
     /// <summary>One PDF page per picture, each as large as its picture (at its DPI, else 96 dpi).</summary>
     public static void ToPdf(IReadOnlyList<string> pages, string output, string workFolder, IProgress<double>? progress, CancellationToken cancellationToken)

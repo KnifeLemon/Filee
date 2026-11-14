@@ -1,8 +1,9 @@
-// Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG, and
-// the LZMA / LZMA2 / .xz decoder) and of TAR (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
+// Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG, 7z,
+// and the LZMA / LZMA2 / .xz decoder) and of TAR (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
 // repeated, and every input must unpack or be refused with InvalidDataException, in time. Same switches as DocumentFuzzTests: a short fixed run normally,
 // FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
 
+using System.Buffers.Binary;
 using System.Formats.Tar;
 using System.Globalization;
 using Filee.Core.Presets;
@@ -117,6 +118,61 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 ArchiveFiles.CopyLimited(reader, Stream.Null, long.MaxValue, CancellationToken.None,
                     budget: new UnpackBudget("fuzz.lzma", file.Length, scratch));
             });
+
+    /// <summary>
+    /// Filee's own 7z reader (SevenZipReader → SevenZipCoders): seeds from Filee's writer (LZMA2 blocks and the Copy
+    /// coder, packed header), the test builder's (LZMA and Copy, plain header) and one of only empty entries. The
+    /// second round goes past the signature header and puts the header CRCs right after each change, so changed headers
+    /// reach the parser instead of stopping at the checksum.
+    /// </summary>
+    [Fact]
+    public void Seven_zip_reader_unpacks_or_refuses_every_mutated_archive()
+    {
+        static byte[] Ours(ArchiveLevel level, long? blockLimit = null)
+        {
+            using var output = new MemoryStream();
+            var writer = new SevenZipWriter(output, level, cancellationToken: CancellationToken.None, blockLimit: blockLimit);
+            writer.AddFolder("폴더", KnownTime.ToUniversalTime(), 0x10);
+            writer.AddFile("폴더/a.txt", new MemoryStream(Words(6_000)), 6_000, KnownTime.ToUniversalTime(), 0x20);
+            writer.AddFile("b.bin", new MemoryStream(Noise(2_000, 4)), 2_000, null, 0x20);
+            writer.AddFile("빈.txt", new MemoryStream(), 0, null, 0x20);
+            writer.AddFile("c.txt", new MemoryStream(Words(3_000)), 3_000, null, 0x20);
+            writer.Finish();
+            return output.ToArray();
+        }
+
+        List<byte[]> seeds = [Ours(ArchiveLevel.Normal), Ours(ArchiveLevel.Fast, blockLimit: 4_000), Ours(ArchiveLevel.Store),
+            SevenZip(Seed()), SevenZip(Seed(), lzma: false), SevenZip([new("a/", null), new("a/b.txt", [])])];
+        Fuzz("7z", seeds, read: (input, scratch) => Read7z(input, scratch, fixCrcs: false));
+        Fuzz("7z", seeds, mutateFrom: 32, read: (input, scratch) => Read7z(input, scratch, fixCrcs: true));
+    }
+
+    /// <summary>Unpacks with SevenZipReader alone; a method it does not decode counts as refused.</summary>
+    private static void Read7z(string input, string scratch, bool fixCrcs)
+    {
+        if (fixCrcs)
+        {
+            var bytes = File.ReadAllBytes(input);
+            if (bytes.Length >= 32)
+            {
+                var offset = BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(12));
+                var size = BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(20));
+                if (offset <= (ulong)bytes.Length - 32 && size <= (ulong)bytes.Length - 32 - offset)
+                    BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), Crc32.Compute(bytes.AsSpan(32 + (int)offset, (int)size)));
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), Crc32.Compute(bytes.AsSpan(12, 20)));
+                File.WriteAllBytes(input, bytes);
+            }
+        }
+        using var file = File.OpenRead(input);
+        try
+        {
+            SevenZipReader.Extract(file, "fuzz.7z", scratch, CancellationToken.None);
+        }
+        catch (SevenZipUnsupportedException ex)
+        {
+            throw new InvalidDataException(ex.Message, ex);
+        }
+    }
 
     private static void DecodeXz(string input, string scratch)
     {
