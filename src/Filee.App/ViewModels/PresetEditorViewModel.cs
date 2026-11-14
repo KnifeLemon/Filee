@@ -399,6 +399,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _keepDates = _edit.Output.KeepDates;
         _zipResult = _edit.Output.ZipResult;
         _replaceOriginal = _edit.Output.ReplaceOriginal;
+        _trashOriginal = _edit.Output.TrashOriginalAfterConvert;
         _moveInsteadOfCopy = _edit.Output.MoveInsteadOfCopy;
     }
 
@@ -981,6 +982,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _zipResult;
     /// <summary>The result takes the original's place, which goes to the Recycle Bin / Trash (OutputRule.ReplaceOriginal).</summary>
     [ObservableProperty] private bool _replaceOriginal;
+    /// <summary>The original goes to the Recycle Bin / Trash after a conversion to another format (OutputRule.TrashOriginalAfterConvert, #1387).</summary>
+    [ObservableProperty] private bool _trashOriginal;
     /// <summary>Copy to folder: the files are moved instead of copied (OutputRule.MoveInsteadOfCopy, #856).</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(CopyHint), nameof(CopyAction))]
     private bool _moveInsteadOfCopy;
@@ -1550,6 +1553,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // Only for geospatial targets, where it is offered: a box ticked for Shapefile must not zip a later PNG.
         output.ZipResult = ShowZipResult && ZipResult;
         output.ReplaceOriginal = ShowReplaceOriginal && ReplaceOriginal;
+        output.TrashOriginalAfterConvert = ShowReplaceOriginal && TrashOriginal;
         output.MoveInsteadOfCopy = IsCopyToFolder && MoveInsteadOfCopy;
         return true;
     }

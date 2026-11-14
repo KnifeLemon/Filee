@@ -310,6 +310,8 @@ internal static class Cli
             preset = found.Clone();
         }
         preset = host.Store.Settings.WithDefaultOutput(preset);
+        // The command line never moves an original to the Trash, whatever the saved preset says (#1387).
+        preset.Output.TrashOriginalAfterConvert = false;
         if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model))
             preset.Translate.Model = host.Store.Settings.PreferredOllamaModel;
         if (options.Quality is { } quality)

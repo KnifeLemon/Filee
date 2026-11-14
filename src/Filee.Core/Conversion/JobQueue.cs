@@ -1008,6 +1008,8 @@ public sealed partial class JobQueue : IAsyncDisposable
             var mark = finalOutput ? Platform.MarkOfTheWeb.Read(file.SourcePath) : null;
             if (finalOutput && !zipResult && inputs.Count == 1)
                 inputs = [ReplaceOriginal(job, file, source.Id, inputs[0], copiedSource)];
+            if (finalOutput && !zipResult && !copiedSource)
+                TrashOriginal(job, file, source.Id, inputs);
 
             // A name the engine took but wrote nothing to is free again.
             final?.Release(except: inputs);
@@ -1342,6 +1344,39 @@ public sealed partial class JobQueue : IAsyncDisposable
             file.NoticeDetail = why.Detail;
             return result;
         }
+    }
+
+    /// <summary>
+    /// "Move the original to the Recycle Bin / Trash" (<see cref="OutputRule.TrashOriginalAfterConvert"/>, #1387): once
+    /// every result of <paramref name="file"/> is complete and none has the source's format, the source goes to the
+    /// Trash. A result of the source's own format is "Replace the original"'s, and a result at the source's own path
+    /// would be moved with it, so either leaves the source alone. When the Trash refuses, the source stays and the
+    /// file gets a note saying why; nothing is ever deleted for good.
+    /// </summary>
+    private void TrashOriginal(ConversionJob job, FileResult file, string sourceFormat, IReadOnlyList<string> outputs)
+    {
+        var source = file.SourcePath;
+        if (!job.Preset.Output.TrashOriginalAfterConvert || job.Fetcher is not null || file.OriginalInTrash
+            || outputs.Count == 0 || !File.Exists(source))
+            return;
+        foreach (var output in outputs)
+        {
+            if (string.Equals(Path.GetFullPath(output), Path.GetFullPath(source), Platform.FileSystemPaths.Comparison))
+                return;
+            if (Directory.Exists(output))
+                continue; // an output folder (Extract)
+            if (!File.Exists(output) || FormatRegistry.Detect(output)?.Id == sourceFormat)
+                return;
+        }
+
+        var refusal = _moveToTrash is null ? new Platform.TrashRefusal("trash.no_recycle_bin") : _moveToTrash(source);
+        file.OriginalInTrash = refusal is null;
+        if (refusal is null)
+            return;
+        _log.LogInformation("Kept the original {Source}: {Reason} {Detail}", source, refusal.ReasonKey, refusal.Detail);
+        file.NoticeKey = "notice.trash_original_kept";
+        file.NoticeReasonKey = refusal.ReasonKey;
+        file.NoticeDetail = refusal.Detail;
     }
 
     /// <summary>Extensions that only spell the same kind of file differently ("Replace the original" may swap them).</summary>
