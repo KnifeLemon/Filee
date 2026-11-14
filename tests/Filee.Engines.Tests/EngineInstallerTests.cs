@@ -632,6 +632,18 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
+    public void A_7zip_on_the_pc_is_never_shown_as_installed()
+    {
+        // 7-Zip is used only as Filee downloads it (or as the user picks it): without the download it is not
+        // installed, whatever the PATH or Program Files hold.
+        var sevenZip = Component("7zip", "zip", Zip(("7zz", "x")));
+        var installer = Installer(new FakeServer(new()), sevenZip);
+        var copy = installer.StatusOf(new EnginePackage("7zip", ["7zip"], 1, []));
+        Assert.Equal(EngineCopyStatus.NotInstalled, copy.Status);
+        Assert.False(copy.FromSystem);
+    }
+
+    [Fact]
     public async Task An_nsis_installer_brings_filees_7zip_first_when_the_pc_has_none()
     {
         // NSIS installers (Tesseract) are unpacked with 7-Zip: with none on the PC, the 7-Zip download is installed

@@ -100,7 +100,8 @@ the same on every PC. An external engine is looked for in this order:
 1. a copy the user picked in Settings → *Engines*;
 2. Filee's own copy (bundled or downloaded);
 3. a copy already on the computer: on `PATH`, in Homebrew's and the usual Unix folders, or where the LibreOffice,
-   calibre, Ghostscript, Tesseract and 7-Zip installers put it. Settings → *Engines* shows it as "Found on this PC", with a note when
+   calibre, Ghostscript and Tesseract installers put it. Not for 7-Zip: only Filee's download or the copy the user
+   picks is used, never one installed on the PC. Settings → *Engines* shows it as "Found on this PC", with a note when
    its version is older than the one Filee downloads.
 
 Where Filee has no download of an engine (FFmpeg, Ghostscript and Tesseract on macOS, LibreOffice, Ghostscript and
@@ -146,8 +147,8 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   Its fonts and resources are compiled into `gsdll64.dll`. The Microsoft C++ runtime it was built against
   (`vcruntime` component) is copied next to `gswin64c.exe`, so it runs on PCs without the VC++ Redistributable.
 - Tesseract is UB Mannheim's Windows build (the one Tesseract's documentation points to), published only as an NSIS
-  installer. It is never run: 7-Zip unpacks it (`nsis` kind; without a 7-Zip on the PC, Filee's 7-Zip download is
-  installed first and stays as the optional 7-Zip engine), and the training programs, manuals,
+  installer. It is never run: 7-Zip unpacks it (`nsis` kind; without Filee's or the user's 7-Zip, Filee's 7-Zip
+  download is installed first and stays as the optional 7-Zip engine; all of it in `EngineInstaller`'s NSIS part), and the training programs, manuals,
   installer files and bundled language data are removed (`TrimTesseract`, ~80 MB). The languages come from
   `tessdata_fast` 4.1.0, pinned like the engines in `Infrastructure/ocr-languages.json` (`traineddata` kind, one
   folder per language under `engines/ocr-languages`), and are downloaded the first time a preset uses one.
@@ -3137,9 +3138,9 @@ and junctions cannot add files outside the selected tree. Custom folder donut la
 The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) reads and writes every format in-process
 (`Archives/ArchiveExtractor.cs`, `Archives/ArchivePacker.cs`), so its routes are the same with or without 7-Zip.
 7-Zip is an optional engine for the long tail (Settings → *Engines*, package `7zip`; not bundled, not suggested):
-the 7-Zip console program, a separate process under the LGPL, looked up like the other optional engines (the copy
-the user chose, Filee's download in `engines/7zip`, then one on the PC: the PATH, `Program Files\7-Zip`; `7z.exe` on
-Windows, `7zz` elsewhere). Filee's download is the official x64 MSI unpacked with `msiexec /a` down to `7z.exe`,
+the 7-Zip console program, a separate process under the LGPL: the copy the user picks in Settings → *Engines*, else
+Filee's download in `engines/7zip` (`7z.exe` on Windows, `7zz` elsewhere), never a 7-Zip installed on the PC
+(`EngineEnvironment.UsesSystemCopy`: its version and switches are unknown, and the Engines page doesn't show it). Filee's download is the official x64 MSI unpacked with `msiexec /a` down to `7z.exe`,
 `7z.dll`, the licence and the readme on Windows, and 7-Zip's own `tar.xz` builds on Linux and macOS, pinned in
 `engines.json`. When it is there, 7-Zip is asked again when an in-process reader meets something it lacks (an
 unknown 7z or RAR method, a GNU sparse file, an interleaved ISO file, a Quantum CAB, an LHA method or ARJ volume
@@ -3227,7 +3228,8 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
 - **7-Zip hidden**: with the environment variable `FILEE_HIDE_7ZIP=1` Filee behaves as if 7-Zip weren't installed.
   `FILEE_HIDE_7ZIP=1 dotnet test tests/Filee.Engines.Tests --filter FullyQualifiedName~Filee.Engines.Tests.Archive`
   runs the archive tests that way; only those that need 7-Zip itself skip (it makes their input or is the
-  independent reader they compare with).
+  independent reader they compare with). CI runs them so on Linux x64 (`portable.yml`, "Archive tests without
+  7-Zip"), pull requests into builtin-engines included; the other legs fetch 7-Zip for the interop tests.
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG. Without
   7-Zip installed also (refused with the "install 7-Zip" error): NTFS, exFAT, APFS, HFSX, HFS and ext volumes in disk images, LZFSE- and LZMA-compressed DMGs, UDF discs

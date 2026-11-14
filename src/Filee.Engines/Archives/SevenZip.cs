@@ -1,8 +1,8 @@
 // Runs 7-Zip's console program (7z.exe + 7z.dll on Windows, 7zz elsewhere; GNU LGPL with the unRAR restriction,
 // used as a separate process) to list and unpack the rare archives Filee's own readers leave out, and turns its
-// messages into clear errors. 7-Zip is an optional engine (Settings → Engines): the copy the user chose, Filee's
-// download, or one already on the PC, in that order, like the other optional engines. Filee writes every archive
-// format itself and never asks 7-Zip to create one.
+// messages into clear errors. 7-Zip is an optional engine (Settings → Engines): the copy the user chose there, else
+// Filee's download. A 7-Zip installed on the PC is never used (unlike the other optional engines): its version and
+// switches are unknown. Filee writes every archive format itself and never asks 7-Zip to create one.
 
 using System.Globalization;
 using System.Text;
@@ -51,16 +51,16 @@ internal sealed class SevenZip(string executable)
     internal static string ProgramName => OperatingSystem.IsWindows() ? "7z.exe" : "7zz";
 
     /// <summary>
-    /// The 7-Zip the archive engine uses: the copy the user chose in Settings → Engines, Filee's download
-    /// (engines/7zip), then one on the PC (PATH, Program Files\7-Zip). Null when there is none or it is hidden.
+    /// The 7-Zip the archive engine uses: the copy the user chose in Settings → Engines, else Filee's download
+    /// (engines/7zip), never one installed on the PC (<see cref="EngineEnvironment.UsesSystemCopy"/>). Null when there
+    /// is none or it is hidden.
     /// </summary>
     public static SevenZip? Locate()
     {
         if (Environment.GetEnvironmentVariable(HideVariable) == "1")
             return null;
         var program = EngineEnvironment.OwnProgram("7zip", ProgramName)
-                      ?? EngineEnvironment.BundledProgram("7zip", ProgramName)
-                      ?? EngineEnvironment.SystemProgram("7zip", ProgramName);
+                      ?? EngineEnvironment.BundledProgram("7zip", ProgramName);
         return program is not null && File.Exists(program) ? new SevenZip(program) : null;
     }
 

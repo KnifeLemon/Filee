@@ -163,11 +163,7 @@ public sealed class EngineInstaller
         if (package.Components.Any(c => !_components.ContainsKey(c)))
             throw new PlatformNotSupportedException(EngineDownloads.UnavailableReason(package)
                 ?? $"The {package.Id} package is unavailable on this platform.");
-        // NSIS installers are unpacked with 7-Zip: without one, Filee's 7-Zip download comes first.
-        string[] helpers = package.Components.Any(c => _components[c].Kind == "nsis") && SevenZipForInstallers() is null
-                           && _components.ContainsKey(SevenZipComponent) && !package.Components.Contains(SevenZipComponent)
-            ? [SevenZipComponent]
-            : [];
+        var helpers = NsisHelpers(package);
         using var packageLock = LockPackage(package, helpers);
         ClearAside([.. helpers, .. package.Components]);
         var pending = helpers.Concat(package.Components)
@@ -654,10 +650,8 @@ public sealed class EngineInstaller
                     Replace(component.Id, staging);
                     break;
                 case "nsis":
-                    var sevenZip = SevenZipForInstallers()
-                                   ?? throw new InvalidOperationException($"{component.Id} is unpacked with 7-Zip, which is missing.");
                     Directory.CreateDirectory(staging);
-                    await sevenZip.ExtractAsync(file, staging, [], _root, cancellationToken);
+                    await UnpackNsisAsync(component, file, staging, cancellationToken);
                     TrimTesseract(staging);
                     Replace(component.Id, staging);
                     break;
@@ -757,11 +751,37 @@ public sealed class EngineInstaller
     /// (PFiles64\...): LibreOffice's folder with program/ and share/ (trimmed, with its C++ runtime copied into
     /// program/), calibre's folder with ebook-convert (it keeps its own C++ runtime in app/bin).
     /// </summary>
-    /// <summary>The component id of 7-Zip in engines.json, an optional engine that also unpacks NSIS installers.</summary>
+    // ── NSIS installers (Tesseract) ──
+    // Unpacked with 7-Zip for now; without one, Filee's 7-Zip download is installed first (and stays, as the optional
+    // engine). Everything about that is here: when Filee reads NSIS itself, set NsisNeedsSevenZip to false and unpack
+    // in UnpackNsisAsync.
+
+    /// <summary>NSIS installers are unpacked with 7-Zip (the one switch for Filee's own NSIS reader).</summary>
+    private const bool NsisNeedsSevenZip = true;
+
+    /// <summary>The component id of 7-Zip in engines.json.</summary>
     private const string SevenZipComponent = "7zip";
 
     /// <summary>How the 7-Zip the engines use is found (<see cref="Archives.SevenZip.Locate"/>); tests leave it out.</summary>
     internal Func<Archives.SevenZip?> LocateSevenZip { get; init; } = Archives.SevenZip.Locate;
+
+    /// <summary>
+    /// Components installed before <paramref name="package"/>'s own: Filee's 7-Zip when the package has an NSIS
+    /// installer and no 7-Zip is there to unpack it.
+    /// </summary>
+    private string[] NsisHelpers(EnginePackage package) =>
+        NsisNeedsSevenZip && package.Components.Any(c => _components[c].Kind == "nsis") && SevenZipForInstallers() is null
+        && _components.ContainsKey(SevenZipComponent) && !package.Components.Contains(SevenZipComponent)
+            ? [SevenZipComponent]
+            : [];
+
+    /// <summary>Unpacks an NSIS installer into <paramref name="staging"/> without running it.</summary>
+    private async Task UnpackNsisAsync(EngineComponent component, string file, string staging, CancellationToken cancellationToken)
+    {
+        var sevenZip = SevenZipForInstallers()
+                       ?? throw new InvalidOperationException($"{component.Id} is unpacked with 7-Zip, which is missing.");
+        await sevenZip.ExtractAsync(file, staging, [], _root, cancellationToken);
+    }
 
     /// <summary>The 7-Zip that unpacks installers: this installer's own download first, else the one the engines use.</summary>
     private Archives.SevenZip? SevenZipForInstallers() =>

@@ -87,6 +87,10 @@ public class OcrLanguageListTests
         foreach (var runtime in new[] { "win-x64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64" })
             Assert.True(EngineDownloads.ComponentsForRuntime(runtime).ContainsKey("7zip"), runtime);
         Assert.Equal(OperatingSystem.IsWindows() ? "7z.exe" : "7zz", Assert.Single(EngineEnvironment.OwnCopyPrograms["7zip"]));
+        // Only Filee's download or the user's chosen copy: a 7-Zip installed on the PC is never looked for.
+        Assert.False(EngineEnvironment.UsesSystemCopy("7zip"));
+        Assert.True(EngineEnvironment.UsesSystemCopy("pandoc"));
+        Assert.Null(EngineEnvironment.SystemCopyFolder("7zip"));
     }
 
     [Fact]

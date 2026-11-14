@@ -189,6 +189,19 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      # The archive tests once more as if 7-Zip weren't installed (it is an optional download): every archive route
+      # must work in-process, and only the tests that need 7-Zip itself skip. Linux x64 only, a few minutes; it runs
+      # for pull requests into builtin-engines too (ci.yml keeps the Linux legs there).
+      - name: Archive tests without 7-Zip
+        if: matrix.rid == 'linux-x64'
+        env:
+          FILEE_HIDE_7ZIP: '1'
+        run: |
+          dotnet test tests/Filee.Engines.Tests/Filee.Engines.Tests.csproj --no-build -c Release --logger trx `
+            --results-directory TestResults/linux-x64-without-7zip `
+            --filter 'FullyQualifiedName~Filee.Engines.Tests.Archive|FullyQualifiedName~SevenZip|FullyQualifiedName~DiskImage|FullyQualifiedName~LzmaTests|FullyQualifiedName~Bzip2Writer|FullyQualifiedName~FolderArchives|FullyQualifiedName~FolderIso|FullyQualifiedName~GamePack'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # Linux: rhwp from linux-native instead of the download (see the top).
       - name: Build portable package
         env:
