@@ -462,6 +462,13 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
   `setpts` and chained `atempo` for speed, `volume`, `color`/`anullsrc` for gaps, `concat`, the music as a second
   input (`atrim`, `volume`, `afade`, `adelay`, `amix`), then `fade`/`afade`. It is encoded with the preset's quality,
   size and codec.
+- Pictures, clips, the preview and Live Photos start at the frame shown at the time chosen (#1205):
+  `Engines/Media/KeyFrames` reads the packets before the time with ffprobe, without decoding, for the key frame to read
+  from, since FFmpeg's own `-ss` lands between key frames in MPEG-TS and MPEG-PS and skips the leading pictures of an
+  open group. A picture is trimmed at the file's own times (`-copyts`). What is encoded reads with `-copyts` and
+  `-itsoffset`, so that the first frame shown at or after the start is time 0, and is cut by `trim` in the stream's own
+  ticks; its progress comes from `-stats_enc_pre`. The file header of `KeyFrames.cs` lists the FFmpeg behaviours, and
+  the versions, that this allows for.
 
 ## Crop video
 

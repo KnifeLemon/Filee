@@ -154,13 +154,12 @@ internal static class LivePhotoWriter
         AudioStreamInfo? audio, MediaOptions options, string encoder, string toneMap, SeekPoint seek)
     {
         var (width, height) = ClipSize(video, options.MaxHeight > 0 ? Math.Min(options.MaxHeight, ShortSide) : ShortSide);
-        var start = seek.Time(clip.Start);
         List<string> args =
         [
-            .. MediaEncoding.Common, .. seek.Input, "-i", input, "-map", "0:V:0",
-            .. audio is null ? Array.Empty<string>() : ["-map", $"0:a:{audio.Ordinal}", "-af", $"atrim=start={start},asetpts={seek.Zero(clip.Start)}"],
+            .. MediaEncoding.Common, .. seek.EncodeInput, "-i", input, "-map", "0:V:0",
+            .. audio is null ? Array.Empty<string>() : ["-map", $"0:a:{audio.Ordinal}", "-af", $"atrim=start={seek.Clip(clip.Start)}"],
             "-t", Seconds(clip.Length),
-            "-vf", $"settb=AVTB,trim=start={start},setpts={seek.Zero(clip.Start)},{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
+            "-vf", $"{seek.VideoTrim(clip.Start)},{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
         ];
         var crf = Choose(options.Quality, encoder == "libx265" ? [22, 26, 30] : [18, 23, 28]);
         args.AddRange(encoder == "libx265"
@@ -178,7 +177,7 @@ internal static class LivePhotoWriter
                 "-ac", audio.Channels == 1 ? "1" : "2", "-ar", audio.SampleRate is 44100 or 48000 ? audio.SampleRate.ToString(CultureInfo.InvariantCulture) : "48000"]);
         }
         args.AddRange(["-sn", "-dn", "-map_chapters", "-1", "-map_metadata", "0", "-metadata", "major_brand=", "-metadata", "minor_version=",
-            "-metadata", "compatible_brands=", "-max_muxing_queue_size", "4096", "-f", muxer, "-progress", "pipe:1", output]);
+            "-metadata", "compatible_brands=", "-max_muxing_queue_size", "4096", "-f", muxer, .. MediaEncoding.FrameProgress, output]);
         return args;
     }
 
@@ -193,8 +192,8 @@ internal static class LivePhotoWriter
         var square = Math.Abs(video.SampleAspect - 1) > 0.01 && video.SampleAspect > 0 ? "scale=w='trunc(iw*sar/2)*2':h=ih,setsar=1," : "";
         return
         [
-            .. MediaEncoding.Common, .. seek.Input, "-i", input, "-map", "0:V:0",
-            "-vf", $"settb=AVTB,trim=start={seek.Time(start)},setpts={seek.Zero(start)},{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
+            .. MediaEncoding.Common, .. seek.EncodeInput, "-i", input, "-map", "0:V:0",
+            "-vf", $"{seek.VideoTrim(start)},{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
             "-frames:v", "1", "-fps_mode", "passthrough", "-update", "1", "-c:v", "png", "-f", "image2", "-progress", "pipe:1", output,
         ];
     }

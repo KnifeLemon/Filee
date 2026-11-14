@@ -238,10 +238,12 @@ jobs:
         run: dotnet test tests/Filee.Engines.Tests -c Release --no-build --filter "FullyQualifiedName~ExactSeekTests"
 
       # Again with the FFmpeg Filee installs (engines.json), which it finds in engines/ before the system's: FFmpeg's
-      # seeking and timing differ between versions, and Ubuntu's is 6.1.
+      # seeking and timing differ between versions, and Ubuntu's is 6.1. FILEE_TEST_FFMPEG_FOLDER fails the tests if
+      # they find another FFmpeg.
       - name: Test exact seeks with Filee's FFmpeg
         env:
           FILEE_TEST_FFMPEG: required
+          FILEE_TEST_FFMPEG_FOLDER: ${{ github.workspace }}/engines/ffmpeg
         run: |
           set -euo pipefail
           read -r url sha256 < <(jq -r '.platforms."linux-x64".components.ffmpeg | "\(.url) \(.sha256)"' src/Filee.Engines/Infrastructure/engines.json)

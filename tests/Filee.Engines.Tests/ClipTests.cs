@@ -31,7 +31,7 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void A_fast_clip_copies_every_stream_from_the_key_frame_before_the_start()
     {
         // In a file without an index, the copy starts at the key frame KeyFrames found before the start: 63.2 s.
-        var args = MediaEncoding.ClipCopy("in.ts", "out.mp4", "mp4", new ClipRange(65.3, 95.3), new SeekPoint(63.2, 1.4, 63.2), new MediaOptions(),
+        var args = MediaEncoding.ClipCopy("in.ts", "out.mp4", "mp4", new ClipRange(65.3, 95.3), new SeekPoint(63.2, 1.4, 63.2, 65.3), new MediaOptions(),
             Movie);
 
         // Positions in the source, read before the input: FFmpeg seeks instead of decoding up to the start.
@@ -98,21 +98,20 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void An_exact_clip_is_encoded_with_the_presets_video_options()
     {
         var options = new MediaOptions { Quality = MediaQuality.High, MaxHeight = 720 };
-        // Read from the key frame at 10 s to the end, in a file whose times start at 1.5 s.
+        // Read from the key frame at 10 s of a file whose times start at 1.5 s, the frame at 12.5 s time 0 (a move of
+        // the input's timestamps, so the encoder and the muxer count from it), the ends cut by trims in the time base's
+        // ticks.
         var args = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", options, Movie, "work", clip: new ClipRange(12.5, 42.5),
-            clipSeek: new SeekPoint(10, 1.5, 12.5)).Single().Arguments;
+            clipSeek: new SeekPoint(10, 1.5, 12.5, 12.5, 1 / 15360.0)).Single().Arguments;
 
-        Assert.Equal("10.000000", After(args, "-ss"));
-        Assert.Equal("42.500000", After(args, "-to"));
-        Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
-        Assert.True(IndexOf(args, "-copyts") < IndexOf(args, "-i"));
-        // Cut at both ends in the file's own time (1.5 + 12.5 s, 1.5 + 42.5 s), sound and picture alike, and the start
-        // made time 0 by an output offset (setpts in FFmpeg 7.0 to 8.0 drops frame durations, and the last frame).
-        Assert.StartsWith("settb=AVTB,trim=start=14:end=44,", After(args, "-vf"));
-        Assert.DoesNotContain("setpts", After(args, "-vf"));
-        Assert.Equal("atrim=start=14:end=44", After(args, "-af"));
-        Assert.Equal("-14", After(args, "-output_ts_offset"));
-        Assert.True(IndexOf(args, "-output_ts_offset") > IndexOf(args, "-i"));
+        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "10.000000", "-itsoffset", "-14", "-i", "in.mp4"],
+            args.SkipWhile(a => a != "-copyts").Take(8));
+        Assert.DoesNotContain("-to", args); // the trims end every stream
+        Assert.StartsWith("trim=start_pts=0:end_pts=460800,", After(args, "-vf"));
+        Assert.Equal("atrim=start=0:end=29.999999", After(args, "-af"));
+        // Progress as each picture's time: -progress counts from its first report with -copyts.
+        Assert.Equal("frame_time={t}", After(args, "-stats_enc_pre_fmt:v:0"));
+        Assert.DoesNotContain("-progress", args);
         // Encoded although the video could be copied (H.264 in MP4): only an encode cuts at any frame.
         Assert.Equal("libx264", After(args, "-c:v"));
         Assert.Contains("720", After(args, "-vf"));
@@ -141,11 +140,12 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         // Read from the key frame at 60 s, the frames before 61.25 s (in the file's own time) dropped before they are
         // scaled.
-        var args = MediaEncoding.FrameAt("in.mp4", 61.25, new SeekPoint(60, 0.5, 61.25), "frame.jpg", 96, null);
+        var args = MediaEncoding.FrameAt("in.mp4", 61.25, new SeekPoint(60, 0.5, 61.25, 61.25), "frame.jpg", 96, null);
         Assert.Equal("60.000000", After(args, "-ss"));
         Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
         Assert.Contains("-copyts", args);
-        Assert.StartsWith("settb=AVTB,trim=start=61.75,", After(args, "-vf"));
+        // In microseconds, a microsecond early: a frame read that close to the time counts as shown at it.
+        Assert.StartsWith("settb=AVTB,trim=start=61.749999,", After(args, "-vf"));
         Assert.Equal("1", After(args, "-frames:v"));
         Assert.Equal("mjpeg", After(args, "-c:v"));
         Assert.Contains("min(ih,96)", After(args, "-vf"));
@@ -368,20 +368,21 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var graph = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30");
 
         // From the first part to the last, seeking before the input.
-        Assert.Equal(["-ss", "10.000000", "-to", "40.000000", "-i", "in.mp4"], graph.Inputs);
+        Assert.Equal(["-ss", "10.000000", "-i", "in.mp4"], graph.Inputs);
         Assert.Equal(10 + 2 + 5, graph.Length);
         var filter = graph.Filter;
         Assert.Contains("[0:V:0]split=2[vs0][vs1];", filter);
         Assert.Contains("[0:a:0]asplit=2[as0][as1];", filter);
-        // The parts are cut out of what was read: their times count from the first part's start, in microseconds.
-        Assert.Contains("[vs0]trim=start=0:end=10,setpts=PTS-STARTPTS,fps=30,scale=1920:1080,setsar=1,format=yuv420p[v0]", filter);
-        Assert.Contains("[vs1]trim=start=20:end=30,setpts=(PTS-STARTPTS)/2,", filter);
-        Assert.Contains("[as0]atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0.5,", filter);
-        Assert.Contains("[as1]atrim=start=20:end=30,asetpts=PTS-STARTPTS,atempo=2,", filter);
-        // From a key frame KeyFrames found: read from it, the parts in the file's own time.
-        var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10));
-        Assert.Equal(["-copyts", "-ss", "9.000000", "-to", "40.000000", "-i", "in.mp4"], seeked.Inputs);
-        Assert.Contains("[vs1]trim=start=32:end=42,", seeked.Filter);
+        // The parts are cut out of what was read: their times count from the first part's start, in microseconds (a
+        // microsecond early), and each part's picture and sound start where the part does.
+        Assert.Contains("[vs0]trim=start=0:end=9.999999,setpts=PTS-0/TB,fps=30,scale=1920:1080,setsar=1,format=yuv420p[v0]", filter);
+        Assert.Contains("[vs1]trim=start=19.999999:end=29.999999,setpts=(PTS-19.999999/TB)/2,", filter);
+        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0.5,", filter);
+        Assert.Contains("[as1]atrim=start=19.999999:end=29.999999,asetpts=PTS-19.999999/TB,atempo=2,", filter);
+        // From a key frame KeyFrames found: read from it, the first part's first frame time 0, video cut in ticks.
+        var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10, 10, 1 / 15360.0));
+        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "9.000000", "-itsoffset", "-12", "-i", "in.mp4"], seeked.Inputs);
+        Assert.Contains("[vs1]trim=start_pts=307200:end_pts=460800,setpts=(PTS-19.999999/TB)/2,", seeked.Filter);
         // The pause: black and silence as long as the part played.
         Assert.Contains("color=c=black:s=1920x1080:r=30:d=2,setsar=1,format=yuv420p[v1]", filter);
         Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=2[a1]", filter);
@@ -694,10 +695,10 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         edit.Music = new ClipMusic { Path = "song.mp3", Offset = 2.5, From = 30, Length = 100, Volume = 0.5 };
         var graph = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30");
 
-        Assert.Equal(["-ss", "10.000000", "-to", "40.000000", "-i", "in.mp4", "-ss", "30.000000", "-i", "song.mp3"], graph.Inputs);
+        Assert.Equal(["-ss", "10.000000", "-i", "in.mp4", "-ss", "30.000000", "-i", "song.mp3"], graph.Inputs);
         Assert.True(graph.HasAudio);
         var filter = graph.Filter;
-        Assert.Contains("[as0]atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0,", filter); // muted: silent, still there
+        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0,", filter); // muted: silent, still there
         // 17 s of clip, from 2.5 s: 14.5 s of music, faded a second at its ends, 2.5 s late.
         Assert.Contains("[1:a:0]atrim=duration=14.5,asetpts=PTS-STARTPTS,volume=0.5,afade=t=in:st=0:d=1,afade=t=out:st=13.5:d=1,adelay=2500:all=1,", filter);
         var nextTrack = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30", musicTrack: 1).Filter;
@@ -867,9 +868,9 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var args = MediaEncoding.ClipSoundArguments("in.mp3", "out.mp3", "mp3", edit, new MediaOptions(), Song);
 
         Assert.Equal("65.300000", After(args, "-ss"));
-        Assert.Equal("95.300000", After(args, "-to"));
         Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
         var graph = After(args, "-filter_complex");
+        Assert.Contains("atrim=start=0:end=29.999999", graph); // the trim ends the sound at the clip's end
         Assert.Contains("[0:a:0]", graph);
         Assert.Contains("afade=t=out", graph);
         Assert.DoesNotContain("[0:V:0]", graph);

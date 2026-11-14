@@ -54,9 +54,9 @@ internal static partial class MediaEncoding
         var sourceParts = edit.Parts.Where(p => !p.Blank).ToList();
         if (sourceParts.Count == 0)
             throw new InvalidOperationException("The clip has no part of the video.");
+        // Each part's trims end its streams, and FFmpeg stops reading once every output has ended.
         var at = seek ?? SeekPoint.Plain(sourceParts[0].Start);
-        var to = sourceParts[^1].End;
-        List<string> inputs = [.. at.Input, "-to", ClipRange.Ffmpeg(to), "-i", input];
+        List<string> inputs = [.. at.EncodeInput, "-i", input];
         if (song is not null)
             inputs.AddRange(["-ss", ClipRange.Ffmpeg(song.From), "-i", song.Path]);
 
@@ -91,15 +91,17 @@ internal static partial class MediaEncoding
                     graph.Append($"anullsrc=r=48000:cl=stereo,atrim=duration={length}[a{i}];");
                 continue;
             }
-            var start = at.Time(part.Start);
-            var end = at.Time(part.End);
+            var start = at.Clip(part.Start);
+            var end = at.Clip(part.End);
             var speed = part.PlaySpeed;
-            var setpts = speed == 1 ? "setpts=PTS-STARTPTS" : $"setpts=(PTS-STARTPTS)/{Seconds(speed)}";
+            // Picture and sound alike from the part's start, not each from its own first frame: sound that starts later
+            // keeps its place.
+            var setpts = speed == 1 ? $"setpts=PTS-{start}/TB" : $"setpts=(PTS-{start}/TB)/{Seconds(speed)}";
             if (video)
-                graph.Append($"[vs{source}]trim=start={start}:end={end},{setpts},{picture}[v{i}];");
+                graph.Append($"[vs{source}]{at.VideoTrim(part.Start, part.End)},{setpts},{picture}[v{i}];");
             if (audio)
             {
-                graph.Append($"[as{source}]atrim=start={start}:end={end},asetpts=PTS-STARTPTS");
+                graph.Append($"[as{source}]atrim=start={start}:end={end},asetpts=PTS-{start}/TB");
                 foreach (var tempo in Tempo(speed))
                     graph.Append($",atempo={Seconds(tempo)}");
                 if (part.PlayVolume != 1)
@@ -181,7 +183,7 @@ internal static partial class MediaEncoding
             args.Add("-an");
         args.AddRange(MetadataArguments());
         args.AddRange(ContainerArguments(target));
-        args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
+        args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, .. seek is null ? ["-progress", "pipe:1"] : FrameProgress, output]);
         return args;
     }
 

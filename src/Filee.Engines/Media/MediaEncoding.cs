@@ -285,14 +285,11 @@ internal static partial class MediaEncoding
             : clip is not null || SingleAudioTargets.Contains(target) ? [.. info.AudioTracks.Take(1)]
             : info.AudioTracks;
 
-        // A clip: read from the key frame found before its start (KeyFrames) to its end, and cut at both ends by trims
-        // in the file's own time, sound and picture alike, so its first and last frames are exact. Its start becomes
-        // time 0 by an output offset: setpts in FFmpeg 7.0 to 8.0 drops frame durations, and the last frame with them.
+        // A clip: read from the key frame found before its start (KeyFrames), its first frame time 0, and cut at both
+        // ends by trims, sound and picture alike, so its first and last frames are exact.
         var seek = clip is { } range ? clipSeek ?? SeekPoint.Plain(range.Start) : (SeekPoint?)null;
-        var cut = clip is { } part && seek is { } at ? $"settb=AVTB,trim=start={at.Time(part.Start)}:end={at.Time(part.End)}," : "";
-        string[] read = clip is { } window && seek is { } point ? [.. point.Input, "-to", ClipRange.Ffmpeg(window.End)] : [];
-        string[] zero = clip is { } first && seek is { } origin ? origin.Offset(first.Start) : [];
-        List<string> args = [.. Common, .. read, "-i", input, .. zero, "-map", "0:V:0"];
+        var cut = clip is { } part && seek is { } at ? at.VideoTrim(part.Start, part.End) + "," : "";
+        List<string> args = [.. Common, .. seek?.EncodeInput ?? [], "-i", input, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
         // Subtitle tracks stay switchable (#789), with their language tags (FFmpeg copies stream tags with each stream). A
@@ -331,7 +328,7 @@ internal static partial class MediaEncoding
         if (tracks.Count == 0)
             args.Add("-an");
         else if (clip is { } sound && seek is { } from)
-            args.AddRange(["-af", $"atrim=start={from.Time(sound.Start)}:end={from.Time(sound.End)}"]);
+            args.AddRange(["-af", $"atrim=start={from.Clip(sound.Start)}:end={from.Clip(sound.End)}"]);
         for (var i = 0; i < tracks.Count; i++)
         {
             // Each track on its own: copied where the container takes it, else encoded for its own channel count. A
@@ -349,7 +346,7 @@ internal static partial class MediaEncoding
         args.AddRange(MetadataArguments());
         args.AddRange(ContainerArguments(target));
         // Sparse or late-starting streams (subtitles-like audio) otherwise fail with "too many packets buffered".
-        args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
+        args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, .. clip is null ? ["-progress", "pipe:1"] : FrameProgress, output]);
         return args;
     }
 
@@ -537,6 +534,13 @@ internal static partial class MediaEncoding
     /// the file is read from its very first packet.
     /// </summary>
     internal static string[] SeekTo(double from) => from > 0 ? ["-ss", ClipRange.Ffmpeg(from)] : [];
+
+    /// <summary>
+    /// Progress as the time of each picture encoded (<see cref="FfmpegRunner.FrameTimeKey"/>), for runs that read with
+    /// <c>-copyts</c>: there FFmpeg's <c>-progress</c> counts from its first report, not from 0, and falls short.
+    /// </summary>
+    internal static readonly string[] FrameProgress =
+        ["-stats_enc_pre:v:0", "pipe:1", "-stats_enc_pre_fmt:v:0", FfmpegRunner.FrameTimeKey + "={t}"];
 
     /// <summary>
     /// One frame at <paramref name="seconds"/> as a JPEG at most <paramref name="maxHeight"/> pixels high (square
