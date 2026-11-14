@@ -67,11 +67,16 @@ internal sealed class VisioReader
     /// <summary>The first bytes of a compound file (binary .vsd).</summary>
     private static readonly byte[] CompoundFile = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 
-    /// <summary>Visio's fill patterns 2–24 as the slide model's pattern names.</summary>
+    /// <summary>
+    /// Visio's fill patterns 2–24 as the slide model's pattern names, in FillPattern order: 2 lines rising to the right,
+    /// 3 a grid, 4 a diagonal grid, 5 lines falling to the right, 6 horizontal and 7 vertical lines, 8–12 dot screens
+    /// from dark to light, 13–16 heavy horizontal, vertical, falling and rising lines, 17 and 18 dense checks, 19–22 the
+    /// same lines thin, 23 a small grid, 24 a dense diagonal pattern.
+    /// </summary>
     private static readonly string[] Patterns =
     [
-        "pct50", "horz", "vert", "upDiag", "dnDiag", "cross", "diagCross", "ltHorz", "ltVert", "ltUpDiag", "ltDnDiag", "smGrid",
-        "pct75", "narHorz", "narVert", "dkUpDiag", "dkDnDiag", "smCheck", "pct25", "dkHorz", "dkVert", "pct10", "pct5",
+        "upDiag", "cross", "diagCross", "dnDiag", "horz", "vert", "pct80", "pct70", "pct30", "pct20", "pct10",
+        "dkHorz", "dkVert", "dkDnDiag", "dkUpDiag", "smCheck", "trellis", "ltHorz", "ltVert", "ltDnDiag", "ltUpDiag", "smGrid", "dotDmnd",
     ];
 
     /// <summary>Arrowhead sizes 0–6 (very small to colossal) in points.</summary>
