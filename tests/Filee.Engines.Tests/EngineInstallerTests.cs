@@ -117,6 +117,71 @@ public sealed class EngineInstallerTests : IDisposable
     private EngineInstaller Installer(FakeServer server, params EngineComponent[] components) =>
         new(new HttpClient(server), _root, components.ToDictionary(c => c.Id));
 
+    private static Uri Mirror(EngineComponent component) => new($"https://mirror.test/{component.Sha256}/{component.Id}");
+
+    private EngineInstaller MirroredInstaller(FakeServer server, params EngineComponent[] components) =>
+        new(new HttpClient(server), _root, components.ToDictionary(c => c.Id), mirror: Mirror);
+
+    [Fact]
+    public async Task A_download_whose_url_is_gone_comes_from_filees_mirror()
+    {
+        // LibreOffice's "stable" folder dropped the pinned version (#1474): the URL answers 404.
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var server = new FakeServer(new() { [Mirror(component).ToString()] = archive });
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+
+        await MirroredInstaller(server, component).InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "tool", "tool.exe")));
+        Assert.Equal([component.Url, Mirror(component).ToString()], server.Requests);
+    }
+
+    [Fact]
+    public async Task A_download_that_doesnt_match_its_pin_is_taken_from_the_mirror_and_checked_again()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+
+        // The site now serves another file under the pinned name: the mirror has the pinned one.
+        var replaced = new FakeServer(new() { [component.Url] = Zip(("tool.exe", "other")), [Mirror(component).ToString()] = archive });
+        await MirroredInstaller(replaced, component).InstallAsync(package, null, TestContext.Current.CancellationToken);
+        Assert.True(File.Exists(Path.Combine(_root, "tool", "tool.exe")));
+
+        // A mirror can't hand out anything else either: the same SHA-256 is checked, and the first error is reported.
+        EngineInstaller.DeleteFolder(_root);
+        var both = new FakeServer(new() { [component.Url] = Zip(("tool.exe", "other")), [Mirror(component).ToString()] = Zip(("tool.exe", "evil")) });
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            MirroredInstaller(both, component).InstallAsync(package, null, TestContext.Current.CancellationToken));
+        Assert.Contains("checksum mismatch", error.Message, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(_root, "tool")));
+    }
+
+    [Fact]
+    public async Task When_the_url_and_the_mirror_both_fail_the_urls_error_is_reported()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var server = new FakeServer([]);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            MirroredInstaller(server, component).InstallAsync(package, null, TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
+        Assert.Equal([component.Url, Mirror(component).ToString()], server.Requests);
+    }
+
+    [Fact]
+    public void The_mirror_files_each_download_under_its_sha256_and_name()
+    {
+        var libreOffice = EngineDownloads.ComponentsForRuntime("win-x64")["libreoffice"];
+
+        Assert.Equal($"https://dl.filee.sh/engines/{libreOffice.Sha256.ToLowerInvariant()}/{EngineDownloads.FileName(libreOffice)}",
+            EngineDownloads.MirrorUrl(libreOffice).ToString());
+    }
+
     [Fact]
     public async Task Zip_engines_are_verified_unpacked_without_their_top_folder_and_reported()
     {
