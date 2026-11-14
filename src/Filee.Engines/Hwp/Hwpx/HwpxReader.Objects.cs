@@ -466,7 +466,10 @@ internal sealed partial class HwpxReader
                 "IN_FRONT_OF_TEXT" => "IN_FRONT_OF_TEXT",
                 _ => "TOP_AND_BOTTOM",
             },
-            AllowOverlap: Flag(pos, "allowOverlap"));
+            AllowOverlap: Flag(pos, "allowOverlap"))
+        {
+            TextFlow = Attr(element, "textFlow") is ("LEFT_ONLY" or "RIGHT_ONLY" or "LARGEST_ONLY") and var flow ? flow : "BOTH_SIDES",
+        };
     }
 
     /// <summary>Outline of a drawing object; its width is in HWPUNIT (a width of 0 is 한글's thinnest line).</summary>

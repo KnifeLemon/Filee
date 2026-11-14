@@ -21,8 +21,12 @@
 // grey scale, black and white, transparency); their other effects (shadow, glow, soft edge, reflection) are left out.
 // A caption goes its gap below, above or beside the object (as wide as the object, or its own width beside it).
 //
-// Text wrap: lines on 한글's stored layout already leave the room 한글 left for the objects beside or above them.
-// Wrapping text that is laid out anew around objects is not done yet.
+// Text wrap: lines on 한글's stored layout already leave the room 한글 left for the objects beside or above them. Lines
+// laid out anew go around them (PageComposer.Room): below an object text goes above and below (TOP_AND_BOTTOM), and
+// beside one it goes around (SQUARE; Word's tight and through wraps too) on both sides, its left or right side only or
+// its wider side (TextFlow), a row of text taking a part in each stretch. Each keeps its distance from the text (its
+// outer margin: 한글 outMargin, Word distT / distB / distL / distR); a tight or through wrap's polygon narrows a line
+// to the outline's width at the line's height. Objects behind or in front of the text leave it as it is.
 //
 // Pictures are decoded only when their codec reports at most DocumentLimits.MaxPicturePixels (Image), also those whose
 // header PictureSize can't read (an ICO or other container holding a larger picture).
@@ -49,7 +53,63 @@ internal readonly record struct AnchorFrame(SKRect Paper, SKRect Page, SKRect Co
 /// <param name="Sequence">Its place in the document, for objects of one z-order.</param>
 internal sealed record PlacedObject(HInline Object, SKRect Area, string Wrap, int Order, int Sequence)
 {
+    private const float Epsilon = 0.01f;
+
     public bool Behind => Wrap == "BEHIND_TEXT";
+
+    /// <summary>The sides of it text goes on (HAnchor.TextFlow).</summary>
+    public string Flow { get; init; } = "BOTH_SIDES";
+
+    /// <summary>The distance it keeps from the text around it on each side, in points.</summary>
+    public SKRect Distance { get; init; }
+
+    /// <summary>Its wrap polygon on the page (HAnchor.WrapPolygon), or null.</summary>
+    public SKPoint[]? Outline { get; init; }
+
+    private SKRect? _bounds;
+
+    /// <summary>The room it keeps text out of: its outline's box (else its area) with its distance around it.</summary>
+    public SKRect Bounds => _bounds ??= Room();
+
+    private SKRect Room()
+    {
+        var box = Area;
+        if (Outline is { Length: > 0 } outline)
+            box = new SKRect(outline.Min(p => p.X), outline.Min(p => p.Y), outline.Max(p => p.X), outline.Max(p => p.Y));
+        return new SKRect(box.Left - Distance.Left, box.Top - Distance.Top, box.Right + Distance.Right, box.Bottom + Distance.Bottom);
+    }
+
+    /// <summary>
+    /// How far across the object keeps text out of the band from <paramref name="top"/> to <paramref name="bottom"/>:
+    /// its bounds' sides, or with an outline the outline's widest part in the band (its distance added); null when the
+    /// band passes above or below it.
+    /// </summary>
+    public (float Left, float Right)? Across(float top, float bottom)
+    {
+        var bounds = Bounds;
+        if (bounds.Top >= bottom - Epsilon || bounds.Bottom <= top + Epsilon)
+            return null;
+        if (Outline is not { Length: >= 3 } outline)
+            return (bounds.Left, bounds.Right);
+        // The outline's edges clipped to the band, widened by the distance above and below the object.
+        var (from, to) = (top - Distance.Bottom, bottom + Distance.Top);
+        var (left, right) = (float.PositiveInfinity, float.NegativeInfinity);
+        for (var i = 0; i < outline.Length; i++)
+        {
+            var (a, b) = (outline[i], outline[(i + 1) % outline.Length]);
+            if (Math.Max(a.Y, b.Y) < from || Math.Min(a.Y, b.Y) > to)
+                continue;
+            float x0 = a.X, x1 = b.X;
+            if (Math.Abs(b.Y - a.Y) > Epsilon)
+            {
+                var t0 = Math.Clamp((from - a.Y) / (b.Y - a.Y), 0, 1);
+                var t1 = Math.Clamp((to - a.Y) / (b.Y - a.Y), 0, 1);
+                (x0, x1) = (a.X + (b.X - a.X) * t0, a.X + (b.X - a.X) * t1);
+            }
+            (left, right) = (Math.Min(left, Math.Min(x0, x1)), Math.Max(right, Math.Max(x0, x1)));
+        }
+        return left <= right ? (left - Distance.Left, right + Distance.Right) : null;
+    }
 }
 
 internal static class FloatingObjects
@@ -120,6 +180,67 @@ internal static class FloatingObjects
             yield return (ZOrder(item), piece, anchor.Wrap == "BEHIND_TEXT");
         }
     }
+
+    /// <summary>An object placed at <paramref name="area"/> on its page by its anchor, with what text wrap needs of it.</summary>
+    public static PlacedObject Placed(HInline item, HAnchor anchor, SKRect area, int sequence)
+    {
+        var margin = item is HObject floating ? floating.OuterMargin : default;
+        static float Points(int hwpunit) => Math.Max(0, hwpunit / 100f);
+        SKPoint[]? outline = null;
+        if (anchor is { Wrap: "SQUARE", WrapPolygon: { Count: >= 3 } polygon })
+            outline = [.. polygon.Select(p => new SKPoint(area.Left + (float)p.X * area.Width, area.Top + (float)p.Y * area.Height))];
+        return new PlacedObject(item, area, anchor.Wrap, ZOrder(item), sequence)
+        {
+            Flow = anchor.TextFlow,
+            Distance = new SKRect(Points(margin.Left), Points(margin.Top), Points(margin.Right), Points(margin.Bottom)),
+            Outline = outline,
+        };
+    }
+
+    /// <summary>
+    /// The stretches between <paramref name="left"/> and <paramref name="right"/>, left to right, that a line from
+    /// <paramref name="top"/> down <paramref name="height"/> has beside the objects text goes around beside them
+    /// (SQUARE), on the sides each lets text go: both, its left or right only, or its wider side within the edges.
+    /// Null when none of them is beside the line.
+    /// </summary>
+    /// <param name="objects">Objects by the top of their bounds (others are passed over).</param>
+    /// <param name="below">Where the first of the objects beside the line ends (its bounds' bottom).</param>
+    public static List<(float Start, float End)>? Beside(IReadOnlyList<PlacedObject> objects, float left, float right, float top, float height,
+        out float below)
+    {
+        below = float.PositiveInfinity;
+        List<(float Start, float End)>? spans = null;
+        foreach (var item in objects)
+        {
+            if (item.Bounds.Top >= top + height - Epsilon)
+                break;
+            if (item.Wrap != "SQUARE" || item.Across(top, top + height) is not var (start, end) || end <= left + Epsilon || start >= right - Epsilon)
+                continue;
+            spans ??= [(left, right)];
+            below = Math.Min(below, item.Bounds.Bottom);
+            var (cutFrom, cutTo) = item.Flow switch
+            {
+                "LEFT_ONLY" => (start, float.PositiveInfinity),
+                "RIGHT_ONLY" => (float.NegativeInfinity, end),
+                "LARGEST_ONLY" => start - left >= right - end ? (start, float.PositiveInfinity) : (float.NegativeInfinity, end),
+                _ => (start, end),
+            };
+            for (var i = spans.Count - 1; i >= 0; i--)
+            {
+                var (from, to) = spans[i];
+                if (cutTo <= from || cutFrom >= to)
+                    continue;
+                spans.RemoveAt(i);
+                if (cutTo < to)
+                    spans.Insert(i, (cutTo, to));
+                if (cutFrom > from)
+                    spans.Insert(i, (from, cutFrom));
+            }
+        }
+        return spans;
+    }
+
+    private const float Epsilon = 0.01f;
 
     /// <summary>An object's z-order (higher in front); 0 when it has none.</summary>
     public static int ZOrder(HInline item) => item switch
