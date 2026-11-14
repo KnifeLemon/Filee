@@ -52,9 +52,9 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// and the planner keeps the edge it met first, this engine's (registered before LibreOffice). Moving LibreOffice up
     /// the list keeps LibreOffice.
     /// </summary>
-    private static readonly string[] Slides = ["pptx", "pptm", "potx", "ppsx"];
+    private static string[] Slides => SlideFormats.Decks;
 
-    private static readonly string[] SlideTargets = ["pdf", "png", "jpg"];
+    private static string[] SlideTargets => SlideFormats.Targets;
 
     /// <summary>Pixels of one slide picture at most; a larger picture is drawn at a lower resolution.</summary>
     private const long MaxSlidePixels = 200_000_000;
@@ -93,7 +93,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     public string? FirstUnsupported(string sourcePath, string sourceFormat)
     {
         if (Slides.Contains(sourceFormat))
-            return SlideCapabilities.FirstUnsupported(sourcePath);
+            return SlideFormats.FirstUnsupported(sourcePath, sourceFormat);
         if (sourceFormat == "hwp")
             return HwpUnsupported(sourcePath);
         if (DocumentReaders.Checked(sourceFormat))
@@ -231,7 +231,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// <summary>A deck → one PDF, or a picture per slide (the PDF options' page range and resolution, then the image options).</summary>
     private static async Task<IReadOnlyList<string>> ConvertSlidesAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        var deck = await Task.Run(() => PptxSlideReader.Read(step.InputPath, cancellationToken: cancellationToken), cancellationToken);
+        var deck = await Task.Run(() => SlideFormats.Read(step.InputPath, step.From, cancellationToken), cancellationToken);
         progress?.Report(0.2);
         var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
         if (step.To == "pdf")

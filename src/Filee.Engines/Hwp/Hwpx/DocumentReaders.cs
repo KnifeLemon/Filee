@@ -13,10 +13,12 @@ using Filee.Engines.Hwp.Hwpx.Markup;
 using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Odf.Draw;
 using Filee.Engines.Ofd;
 using Filee.Engines.Office;
 using Filee.Engines.Office.Sheets;
 using Filee.Engines.Pdf;
+using Filee.Engines.Slides;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -54,6 +56,10 @@ internal static class DocumentReaders
         ["potx"] = PptxReader.Read,
         ["potm"] = PptxReader.Read,
         ["ppsx"] = PptxReader.Read,
+        // OpenDocument presentations: each slide's text and pictures in reading order, a section per slide (SlideDeckText).
+        ["odp"] = ReadSlides,
+        ["otp"] = ReadSlides,
+        ["fodp"] = ReadSlides,
         ["pdf"] = PdfDocumentReader.Read,
         ["ofd"] = OfdReader.Read,
         ["hwpx"] = HwpxReader.Read,
@@ -151,6 +157,8 @@ internal static class DocumentReaders
             return await ReadWithPandocAsync(path, pandocReader, workDirectory, media, cancellationToken);
         throw new NotSupportedException($"There is no document reader for {format.ToUpperInvariant()} files.");
     }
+
+    private static HDocument ReadSlides(string path, string mediaFolder) => SlideDeckText.Build(OdfDrawReader.Read(path), mediaFolder);
 
     // ───────────────────────── Pandoc ─────────────────────────
 
