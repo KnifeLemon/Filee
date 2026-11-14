@@ -277,7 +277,7 @@
 "engine.geo.name": "Dati vettoriali geospaziali (integrato)",
 "engine.geo.description": "Dati vettoriali geospaziali: GeoJSON, KML, KMZ, GPX, Shapefile e CSV (longitudine/latitudine o WKT) convertibili tra loro.\nI risultati sono in longitudine/latitudine WGS 84; gli Shapefile proiettati (UTM, Web Mercator, Lambert, Albers) vengono convertiti.",
 "engine.archive.name": "Archivi (integrato)",
-"engine.archive.description": "Estrae ZIP, 7Z (anche solidi), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO e altri, e crea da sé ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 e XZ.\nCon 7-Zip apre anche i dischi DMG, IMG e UDF e gestisce le varianti rare (CAB Quantum, ARJ multivolume, metodi 7Z come PPMd…).",
+"engine.archive.description": "Estrae ZIP, 7Z (anche solidi), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO, UDF, IMG, DMG e altri, e crea da sé ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 e XZ.\nCon 7-Zip gestisce anche le varianti rare (CAB Quantum, ARJ multivolume, metodi 7Z come PPMd, immagini disco NTFS o APFS…).",
 "engine.ebook.name": "E-book (integrato)",
 "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 e fumetti (CBZ, CBR) in PDF, EPUB, AZW3, MOBI, DOCX e testo.\nAnche documenti in EPUB, EPUB in KEPUB per Kobo e PDF in CBZ.",
 "engine.subtitle.name": "Sottotitoli (integrato)",

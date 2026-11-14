@@ -285,7 +285,7 @@
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "Données géospatiales vectorielles : GeoJSON, KML, KMZ, GPX, Shapefile et CSV (longitude/latitude ou WKT) entre eux.\nLes résultats sont en longitude/latitude WGS 84 ; les Shapefiles projetés (UTM, Web Mercator, Lambert, Albers) sont convertis.",
   "engine.archive.name": "Archives (built-in)",
-  "engine.archive.description": "Extrait ZIP, 7Z (solides compris), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO et plus, et crée lui-même des archives ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 et XZ.\nAvec 7-Zip, il ouvre aussi les disques DMG, IMG et UDF et prend en charge les variantes rares (CAB Quantum, ARJ multivolume, méthodes 7Z comme PPMd…).",
+  "engine.archive.description": "Extrait ZIP, 7Z (solides compris), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO, UDF, IMG, DMG et plus, et crée lui-même des archives ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 et XZ.\nAvec 7-Zip, il prend aussi en charge les variantes rares (CAB Quantum, ARJ multivolume, méthodes 7Z comme PPMd, images disque NTFS ou APFS…).",
   "engine.ebook.name": "E-books (built-in)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 et bandes dessinées (CBZ, CBR) en PDF, EPUB, AZW3, MOBI, DOCX et texte.\nAussi des documents en EPUB, EPUB en KEPUB pour Kobo et PDF en CBZ.",
   "engine.subtitle.name": "Subtitles (built-in)",

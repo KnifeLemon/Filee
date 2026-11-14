@@ -285,7 +285,7 @@
   "engine.geo.name": "Dados geoespaciais vetoriais (motor integrado)",
   "engine.geo.description": "Converte dados geoespaciais vetoriais entre GeoJSON, KML, KMZ, GPX, Shapefile e CSV (longitude/latitude ou WKT).\nOs resultados usam longitude/latitude WGS 84; os ficheiros Shapefile com coordenadas projetadas (UTM, Web Mercator, Lambert, Albers) são convertidos.",
   "engine.archive.name": "Ficheiros comprimidos (motor integrado)",
-  "engine.archive.description": "Extrai ZIP, 7Z (incluindo sólidos), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO e outros, e comprime por si próprio para ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 e XZ.\nCom o 7-Zip, também abre discos DMG, IMG e UDF e trata variantes raras (CAB Quantum, ARJ em vários volumes, métodos 7Z como PPMd…).",
+  "engine.archive.description": "Extrai ZIP, 7Z (incluindo sólidos), RAR, TAR, XZ, LZMA, CAB, LHA, ARJ, ISO, UDF, IMG, DMG e outros, e comprime por si próprio para ZIP, 7Z, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2 e XZ.\nCom o 7-Zip, também trata variantes raras (CAB Quantum, ARJ em vários volumes, métodos 7Z como PPMd, imagens de disco NTFS ou APFS…).",
   "engine.ebook.name": "Livros digitais (motor integrado)",
   "engine.ebook.description": "EPUB, MOBI, AZW3, FB2 e banda desenhada (CBZ, CBR) para PDF, EPUB, AZW3, MOBI, DOCX e texto.\nTambém converte documentos para EPUB, EPUB para KEPUB do Kobo e PDF para CBZ.",
   "engine.subtitle.name": "Legendas (motor integrado)",
