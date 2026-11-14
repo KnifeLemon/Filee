@@ -1,6 +1,6 @@
 // Unpacks every archive format Filee reads into a folder: the bundled 7-Zip for most of them, Filee's own readers for
-// ALZ, EGG and lzip. Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads are unpacked stage by stage until the
-// files appear. Every stage is checked first (encryption, paths leaving the folder, disk space) and links are removed.
+// ALZ, EGG, lzip and Garry's Mod addons (GMA). Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads are unpacked stage
+// by stage until the files appear. Every stage is checked first (encryption, paths leaving the folder, disk space) and links are removed.
 // A single compressed stream (.gz, .bz2 …) is written by Filee as 7-Zip decodes it, so it can't fill the drive. The
 // archive's Mark of the Web goes onto the unpacked files.
 
@@ -25,7 +25,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     ];
 
     /// <summary>Formats read by Filee's own code (lzip still needs 7-Zip's LZMA decoder).</summary>
-    public static readonly IReadOnlyList<string> BuiltInFormats = ["alz", "egg", "lz", "tlz"];
+    public static readonly IReadOnlyList<string> BuiltInFormats = ["alz", "egg", "lz", "tlz", "gma"];
 
     /// <summary>Everything that can be unpacked.</summary>
     public static IEnumerable<string> ReadableFormats => SevenZipFormats.Concat(BuiltInFormats);
@@ -83,6 +83,10 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
                 break;
             case "egg":
                 await EggReader.ExtractAsync(archive, folder, sevenZip, scratchRoot, cancellationToken);
+                PassOnMark(archive, folder);
+                break;
+            case "gma":
+                await Task.Run(() => Gma.Extract(archive, folder, cancellationToken), cancellationToken);
                 PassOnMark(archive, folder);
                 break;
             case "lz":

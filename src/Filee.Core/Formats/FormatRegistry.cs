@@ -355,6 +355,9 @@ public static class FormatRegistry
         new("mcworld", "Minecraft world", FormatCategory.Archive, ["mcworld"]),
         new("mctemplate", "Minecraft world template", FormatCategory.Archive, ["mctemplate"]),
         new("mrpack", "Modrinth modpack", FormatCategory.Archive, ["mrpack"]),
+        // Garry's Mod addons (Steam Workshop), unpacked by Filee with an addon.json for their title, description, type
+        // and tags.
+        new("gma", "Garry's Mod addon (GMA)", FormatCategory.Archive, ["gma"], Writable: false),
         new("cab", "CAB", FormatCategory.Archive, ["cab"], Writable: false),
         new("cpio", "CPIO", FormatCategory.Archive, ["cpio"], Writable: false),
         new("deb", "DEB", FormatCategory.Archive, ["deb"], Writable: false),
