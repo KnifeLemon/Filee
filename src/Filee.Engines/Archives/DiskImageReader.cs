@@ -1,7 +1,7 @@
 // Unpacks disk images in-process: raw disk images (.img), Apple disk images (.dmg, UDIF) and UDF discs (.iso).
 //
-//   Disk: a DMG's blocks are read through DiscUtils.Dmg (raw, zero, zlib, bzip2 and ADC runs) once UdifCheck has
-//     passed its trailer and block tables; a .img is the disk itself. A .img that is really a CD or DVD image (ISO
+//   Disk: a DMG's blocks are read through DiscUtils.Dmg (raw, zero, zlib, bzip2 and ADC runs; hdiutil's zero-fill
+//     runs relabelled as zero runs) once UdifCheck has passed its trailer and block tables; a .img is the disk itself. A .img that is really a CD or DVD image (ISO
 //     9660 or UDF at sector 16) goes to the disc readers.
 //   Partitions: GPT, Apple partition map or MBR (DiskImagePartitions), or one volume over the whole disk.
 //   File systems: FAT12/16/32 by Filee's own reader (DiskImageFat: long names), UDF through DiscUtils.Udf (UDF 1.02 to
@@ -50,9 +50,9 @@ internal static class DiskImageReader
         {
             if (UdifCheck.IsEncrypted(file))
                 throw ArchiveSafety.Encrypted(name);
-            if (UdifCheck.Check(file, name))
+            if (UdifCheck.Check(file, name) is { } udif)
             {
-                using var disk = Library(name, () => new DiscUtils.Dmg.Disk(file, Ownership.None));
+                using var disk = Library(name, () => new DiscUtils.Dmg.Disk(udif, Ownership.None));
                 var content = Library(name, () => disk.Content);
                 // A guard of its own that never runs out: it only turns DiscUtils.Dmg's errors into Filee's, the
                 // volumes' guard above it counts.
@@ -299,10 +299,10 @@ internal static class DiskImageReader
         OperationCanceledException => null,
         _ when ArchiveSafety.IsRefusal(ex) => null,
         InvalidDataException when name.Length > 0 && ex.Message.Contains(name, StringComparison.Ordinal) => null,
-        InsufficientExecutionStackException => ArchiveSafety.Damaged(name, "its file system structures nest too deeply"),
-        OutOfMemoryException => ArchiveSafety.Damaged(name, "a file system structure is larger than the memory allows"),
+        InsufficientExecutionStackException => ArchiveSafety.Damaged(name, "its file system structures nest too deeply", ex),
+        OutOfMemoryException => ArchiveSafety.Damaged(name, "a file system structure is larger than the memory allows", ex),
         NotImplementedException or NotSupportedException => new NotSupportedException(ex.Message.TrimEnd('.'), ex),
-        _ => ArchiveSafety.Damaged(name, ex.Message.TrimEnd('.')),
+        _ => ArchiveSafety.Damaged(name, ex.Message.TrimEnd('.'), ex),
     };
 
     /// <summary>A library's file stream whose read errors become Filee's messages (write errors stay what they are).</summary>

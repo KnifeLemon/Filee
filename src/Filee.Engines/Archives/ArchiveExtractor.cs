@@ -259,7 +259,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
             return sevenZipWouldTry
                 ? new ConversionRefusedException(NeedsSevenZip, ex.Message.TrimEnd('.'))
                 : new InvalidDataException($"{name} could not be unpacked: {ex.Message}", ex);
-        return ArchiveSafety.Damaged(name, ex.Message.TrimEnd('.'));
+        return ArchiveSafety.Damaged(name, ex.Message.TrimEnd('.'), ex);
     }
 
     /// <summary>

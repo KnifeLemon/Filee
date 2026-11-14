@@ -22,9 +22,11 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → DOCX** |
 | **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → ODT** (OpenDocument text, LibreOffice Writer) |
 | **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
+| **ODP writer** | built in | **PPTX (+ PPTM/POTX/POTM/PPSX), PPT → ODP** with masters, shapes, pictures, tables, lists and speaker notes; **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → ODP slides** laid out as the PPTX writer lays them out (see [ODP writer](#odp-writer)); a deck with what the slide model leaves out (charts without a picture, effects, 3D) keeps LibreOffice's route |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
+| **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
 | Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
@@ -39,9 +41,9 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs** (in-process); "Compress into one archive" for any files |
-| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
+| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
-| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
+| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
@@ -1690,7 +1692,8 @@ in-process into the slide model, written from OpenDocument 1.3 Part 3 (`Odf/Draw
 presentations to PDF, PNG and JPG through the [slide renderer](#filee-renderer-slides) (the Filee renderer,
 `Slides/SlideFormats.cs`), drawings to PDF, SVG and PNG through the [drawing engine](#drawings-visio-odg).
 Presentations also reach DOCX, ODT, HWPX and text, a section per slide (`Slides/SlideDeckText.cs`: text frames,
-pictures and table cells in reading order). ODP → PPTX stays with LibreOffice.
+pictures and table cells in reading order). ODP → PPTX stays with LibreOffice; PowerPoint decks and documents reach
+ODP through the [ODP writer](#odp-writer).
 
 - `OdfDrawPackage.cs`: a package through `DocumentPackage`, a flat file through `SafeXml` (up to 256 MB); the mimetype
   must be a presentation or a drawing (or their templates); encrypted packages are refused as for ODT;
@@ -1782,8 +1785,9 @@ engine makes pages (`DocumentLimits.MaxPages`, 20,000); more is refused with `er
 **Routes.** The writer has two edges per source format: PPTX itself at cost 8 (as the DOCX and ODT writers), below
 Pandoc's slides (20) even with Pandoc first in the engine order, and `DirectOnly`, so no document → PDF takes the
 shortcut through slides and LibreOffice's PPTX → PDF (which costs 0 when LibreOffice is chosen for presentations);
-and PPTX as a step towards ODP, PPT and the other presentation formats at 25 (LibreOffice's fallback cost), taken
-only where nothing else reaches them (without Pandoc, Markdown → ODP). PDF keeps its picture slides, the PowerPoint
+and PPTX as a step towards PPT and the other presentation formats at 25 (LibreOffice's fallback cost), taken
+only where nothing else reaches them. ODP has a writer of its own, which lays documents out with these rules
+([ODP writer](#odp-writer)). PDF keeps its picture slides, the PowerPoint
 variants the Office Open XML engine. `tests/Filee.Engines.Tests/PptxWriterTests.cs` checks the slide rules, the title
 slide, levels, tables, pictures, code, notes, continuation slides, the Open XML SDK validator, Filee's own PPTX
 reader reading every deck back, that every other route keeps its cost, and hostile documents.
@@ -1791,6 +1795,66 @@ reader reading every deck back, that every other route keeps its cost, and hosti
 Not yet: two-column layouts (Pandoc's `::: columns`), "Picture with Caption" slides, incremental lists, a table of
 contents slide, slide numbers and footers, syntax highlighting of code, and a reference deck (template) to take the
 look from.
+
+## ODP writer
+
+`Odf/Draw/OdpWriter*.cs` writes OpenDocument presentations (ODF 1.3) from the slide model, the one the
+[slide renderer](#filee-renderer-slides) draws, so ODP output needs no LibreOffice (`Office/OdpWriterConverter.cs`,
+engine `odp-writer`). The counterpart of the [ODP / ODG reader](#odp--odg-reader): a written file reads back into the
+same model, which the tests check shape by shape and as pictures.
+
+- **Sources.** PowerPoint decks (PPTX, PPTM, POTX, POTM, PPSX; PPT as the [PPT reader](#ppt-reader) translates it)
+  through `PptxSlideReader`, with their speaker notes (`PptxNotes.cs`: the notes slide's body text). Every other format
+  `DocumentReaders` reads is laid out on slides by the [PPTX writer](#pptx-writer) first (a slide per heading, Pandoc's
+  rules, notes from `::: notes`), then written as the same deck, so both writers give the same slides.
+- **Package** (`Odf/OdfPackageWriter.cs`): `mimetype` first, stored and without an extra field; `content.xml`,
+  `styles.xml`, `meta.xml` (title), the pictures, and `META-INF/manifest.xml` listing every part with its media type.
+  Written through a temporary file and moved into place.
+- **Masters.** The shapes every slide of a group starts with alike (the master's and layout's own shapes, which the
+  model repeats on each slide) become that group's `style:master-page`, behind its slides on the background-objects
+  layer; the group's most common background is the master's, a slide with another one keeps its own. Each master has
+  Impress's title and outline placeholders and presentation styles, and a notes page. The page layout is the deck's
+  slide size.
+- **Shapes** are `draw:custom-shape` with their outlines as `draw:enhanced-path` in a `svg:viewBox` of the box in
+  1/100 pt (every preset and custom geometry the readers resolve, so nothing depends on a preset table; `draw:type`
+  names a plain rectangle or ellipse), outlines without fill or line (`F`, `S`) and the lighter and darker parts of 3D
+  presets (LibreOffice's `H`–`K`), the geometry's text area as `draw:text-areas`. A straight line without fill is a
+  `draw:line`; pictures in a plain box are `draw:frame` with `draw:image`; tables are `table:table` in a frame
+  (column widths, row heights, spans, covered cells, cell fills, borders, insets, anchoring); groups are `draw:g`.
+  Placement is `svg:x / svg:y / svg:width / svg:height`, or `draw:transform` (rotate, translate) for a turned box; a
+  mirrored shape is mirrored top to bottom (`draw:mirror-vertical`, a left-to-right mirror being that and half a turn).
+- **Fills and lines:** solid with opacity; gradients as `draw:gradient` (linear, axial, radial, rectangular: the outer
+  colours with a border, more stops also as LibreOffice's `loext:gradient-stop`), uneven transparency as
+  `draw:opacity`; picture fills as `draw:fill-image`, stretched or tiled; line patterns as `draw:hatch`, dotted ones as
+  their blended colour. Lines with width (0 a hairline), colour, transparency, dashes (`draw:stroke-dash` in multiples
+  of the width), caps, joins and arrowheads (`draw:marker`, named by kind as Impress names them).
+- **Pictures:** PNG, JPEG, GIF, BMP, TIFF, EMF and WMF as they are, others as PNG, each stored once; a cropped,
+  recoloured or mirrored picture is drawn out once into a PNG (at its own resolution, at most 4096 px a side) as the
+  renderer draws it, so every reader shows the same.
+- **Text:** paragraphs with an automatic style (alignment, indents, spacing, the source's line height, tab stops, right
+  to left as `rl-tb`) and the mark's character format, spans where a run differs (fonts, size, bold, italic,
+  underline, strike, super- and subscript, colour, highlight, letter spacing), links, page number and count. A
+  paragraph that starts with a bullet (a symbol and a tab or space) or a number in a known form (`1.`, `2)`, `(c)`,
+  `iv.`, `B.`) becomes an item of a `text:list`: the label is the level's bullet character or number format, its size
+  `text:bullet-relative-size`, its colour and font the level's, the number the item's `text:start-value`; levels are
+  the frame's distinct indents. Frames: insets, anchoring, horizontal centring, wrapping, vertical text (`tb-rl`),
+  columns and turned text (`draw:text-rotate-angle`).
+- **Routes.** Its edges cost 8, as the PPTX writer's, below LibreOffice's fallback (25), and are `DirectOnly`. Deck
+  edges are checked with the renderer's capability check (charts without a picture, effects, 3D, WordArt, …), so such
+  a deck keeps LibreOffice's route where it is installed. OpenDocument presentations (ODP, OTP, FODP) are not
+  sources: ODP → PPTX and the template formats stay with LibreOffice.
+- **Hostile input:** the model comes from the bounded readers; the writer caps the XML it makes (512 million
+  characters), group nesting (`MaxNestingDepth`) and the pictures' bytes (`MaxPackageBytes`), refused with
+  `error.document_too_complex`; non-finite boxes and turns are left out, coordinates cut at ±10 km, characters XML
+  can't hold (control characters, unpaired surrogates) dropped; cancelling stops it between slides and shapes.
+- Tests: `OdpWriterTests` (decks built in code by `SlideDeckBuilder`: the package rules, the round trip through the
+  reader with boxes, text and pictures at 48 dpi compared, lists, masters, notes, fills and lines, routes, PPTX and
+  Markdown conversions, hostile models).
+
+Not yet: shapes as placeholders (`presentation:class`; the model doesn't say which shapes were), the preset name and
+adjust handles of a shape (its outline is written, not the formula), shadows and other effects, charts, SmartArt as
+anything but its drawing, animations and transitions, compound lines, ODG output, OTP and FODP output. Checked against
+Filee's own reader; not yet opened in LibreOffice by the tests.
 
 ## PDF reader
 
@@ -2017,6 +2081,87 @@ editable**: there are no text boxes to change, the PDF's layout is not rebuilt. 
   format (a test checks that every other pair of formats keeps its route).
 
 Password-protected PDFs fail with the same message as PDF → DOCX.
+
+## PDF → PostScript and EPS
+
+`Pdf/PostScript/` writes PostScript LanguageLevel 3 and EPS from a PDF without Ghostscript (engine `pdf-ps`,
+`Pdf/PdfPostScriptConverter.cs`). A PostScript file holds the preset's pages; an EPS holds one page, so a PDF gives one
+EPS per page (`_p{n}`, as PDF → PNG names them) whose `%%BoundingBox` is the page's crop box. PostScript, EPS and
+PostScript-based AI → PDF stay with Ghostscript: reading PostScript takes a PostScript interpreter.
+
+The PDF is read with PDFsharp, each content stream with `Pdf/PdfContentLexer.cs` (shared with the font subsetter), and
+translated operator by operator (`PsTranslator.cs`) into short procedures named like the PDF operators (`m`, `l`,
+`re`, `F`, `S`, `q`, `cm`, …, defined in `FileeDict`, `PsProlog.cs`). Only Filee's own procedures and operators are
+written; operands are numbers, strings and names Filee made, so nothing of a content stream or a font program reaches
+the PostScript as code. The files are Clean7Bit ASCII with DSC comments: `%%Page`, `%%PageBoundingBox`, each page in
+save / restore with its size set by `setpagedevice` (not in EPS), the crop box clipped and the page turned as /Rotate
+says (UserUnit scales it).
+
+- **Graphics state**: q / Q (unbalanced Q ignored as viewers do), cm, line width, caps, joins, miter limit, dashes,
+  flatness, the ExtGState entries that have a PostScript counterpart (also stroke adjustment and overprint). PDF keeps
+  a fill and a stroke colour, PostScript one: the translator remembers which colour the PostScript state holds
+  (restored with it by grestore) and sets the other before each painting operator. Paths, `W` / `W*` clipping after the
+  painting operator (a stroked clip path isn't cut by its own clip).
+- **Colour**: every colour becomes a device colour: gray, RGB and CMYK as they are, ICC-based spaces by their number of
+  components (no colour management, as viewers without it), CalGray / CalRGB as gray / RGB, Lab converted to sRGB,
+  Indexed looked up, Separation and DeviceN through their tint transforms (`PdfFunction.cs` evaluates sampled,
+  exponential, stitching and PostScript calculator functions; the colorant None paints nothing, All paints gray).
+- **Text**: every glyph is placed at its PDF position with `xshow` (character and word spacing, horizontal scaling,
+  rise, TJ adjustments and the text matrix computed by Filee), so the fonts only have to draw the right glyph: a
+  font of Filee's own whose code N draws glyph `/aN`. Embedded TrueType becomes a Type 42 font (subset to the drawn
+  glyphs with their IDs kept, `sfnts` split at tables and glyphs); embedded Type 1 and CFF (Type1C, CIDFontType0C,
+  OpenType) become Type 1 fonts of Filee's own built from the interpreted outlines (`Type1Font.cs`: subroutines, flex,
+  hint replacement and seac accents of Type 1 charstrings, `Fonts/Cff/Type2Interpreter.cs` for CFF), without hints;
+  the font program itself is never copied. Type 0 fonts (Identity-H or an embedded CMap) have their glyphs spread over
+  base fonts of 256 glyphs each (Type 42 fonts share one copy of the TrueType tables), so neither CIDFonts nor CMaps
+  are needed. Type 3 fonts become PostScript Type 3 fonts whose glyph procedures are the glyph streams translated like
+  page content (d0 → setcharwidth, d1 → setcachedevice, colours ignored after d1). Fonts that aren't embedded become
+  the closest standard font (Helvetica, Times, Courier with bold and italic, Symbol, ZapfDingbats), re-encoded with the
+  PDF's glyph names. Text rendering modes fill, stroke, fill and stroke and invisible are drawn; stroked glyphs are
+  stroked in user space.
+- **Pictures** (`PsImages.cs`): image XObjects and inline images. Flate, LZW, RunLength and the ASCII filters (with PNG
+  and TIFF predictors) are decoded by Filee with limits, the data padded or cut to the size the picture needs and
+  deflated again; JPEG and CCITT fax data go to PostScript as they are, with PostScript's own filters. Device and
+  Indexed spaces stay; a one-component Separation picture becomes an Indexed one with the converted tints; 16-bit
+  pictures become 8-bit. Stencil masks become `imagemask`, colour-key masks ImageType 4, explicit masks and soft masks
+  that are only opaque or transparent ImageType 3. The data a page reads follows its image as ASCII85 and is read
+  through a filter that is flushed to its end afterwards, so no picture data can ever be read as PostScript.
+- **Shadings and patterns** (`PsShadings.cs`): `sh` becomes `shfill`; function-based, axial, radial and mesh shadings
+  (mesh data up to 64 KB) keep their geometry; in a device space their functions stay (exponential and stitching ones
+  as they are, the others sampled, PostScript has no calculator functions), in any other space function and colour
+  conversion are sampled together. Tiling patterns (coloured and uncoloured) and shading patterns become `makepattern`
+  in the page's default space; pattern cells and Type 3 glyphs keep picture data in strings (up to 64 KB).
+- **Forms, annotations, layers**: form XObjects inline (Matrix, BBox clip, nested up to 24 deep), annotation appearance
+  streams of annotations that print (not hidden), placed on their rectangles (PDF 32000 12.5.5), optional content off
+  in the default configuration left out (marked content and XObjects with /OC, OCMDs with their visibility policy).
+
+**Pages PostScript can't hold** are drawn as pictures: PDFium renders the page (300 dpi, or the preset's render DPI when
+higher, at most 600 and 40 megapixels; Flate, or JPEG when that is less than half the size of a large page) and the
+file's result says so (`notice.ps_pages_as_pictures`; the app's log names the page and the reason). That is a page
+with transparency (constant alpha below 1, a soft mask in the graphics state, a blend mode other than Normal, a soft
+mask on a picture with partial transparency, a transparent annotation), text used as a clipping path (render modes 4–7),
+pictures PostScript can't decode (JBIG2, JPEG 2000, Lab and DeviceN pictures), fonts the writer can't place
+(vertical writing, predefined CMaps, CID fonts that aren't embedded), a damaged content stream, and a page past the
+limits below. A PDF PDFsharp can't open at all has every page drawn as a picture, when PDFium can draw it.
+
+**Limits** (hostile input): streams unpack to at most 64 MB (`DocumentLimits.MaxPartBytes`; a picture to the size
+it needs), pictures of at most `MaxPicturePixels`, 4,000,000 operators per page (forms counted every time they are
+drawn), forms, patterns and glyphs nested 24 deep, q nested 200 deep, arrays and dictionaries in content 32 deep,
+200,000 different glyphs per file, sample tables of 4 M samples, calculator functions of 20,000 operators and 100,000
+steps per evaluation, `DocumentLimits.MaxPages` pages. A limit makes the page a picture; a PDF neither PDFsharp nor
+PDFium reads fails.
+
+**Routes.** The edges cost 8, below Ghostscript's 10, so the writer wins with the default engine order (Ghostscript
+still does PDF → PS / EPS when it is moved above the writer); SVG, images and documents reach EPS through PDF as
+before. `tests/Filee.Engines.Tests/PdfPostScriptTests.cs` checks the routes (every route not ending in PS or EPS keeps
+its cost), the files (7-bit, DSC, short lines), EPS bounding boxes, the notice, hostile content, fonts and functions,
+and, where Ghostscript is installed, that Ghostscript renders Filee's PostScript like PDFium renders the PDF (pages
+built in code with paths, every kind of font, pictures, shadings, patterns, turned pages, annotations, layers,
+transparency; drawn at 300 dpi and compared at 100 dpi, SSIM ≥ 0.98, also against Ghostscript's own rendering of the PDF).
+
+Not yet: EPS bounding boxes tight around the drawing (eps2write's), an EPS preview (TIFF / WMF), transparency
+flattened as vectors rather than a picture of the page, vertical text, keeping fonts' hints and spot colours as
+separations.
 
 ## PDF compression
 
@@ -3030,7 +3175,7 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
 | LHA / LZH | Filee (`LhaReader`: -lh0-, -lz4-, -lh4- to -lh7-); other methods by 7-Zip | — |
 | ARJ | Filee (`ArjReader`: methods 0–4); multi-volume archives and other methods by 7-Zip | — |
 | IMG (raw disk images) | Filee (`DiskImageReader`): GPT, Apple partition map or MBR with extended partitions (`DiskImagePartitions`), a folder `<number> <label>` per volume when there are several; FAT12/16/32 by Filee's own reader (`DiskImageFat`: long names and the lowercase flags), UDF and HFS+ by DiscUtils; a CD or DVD image named .img goes to the disc readers; NTFS, exFAT, APFS, HFSX, classic HFS and ext2/3/4 volumes send the image to 7-Zip; BitLocker and LUKS volumes are refused as encrypted | — |
-| DMG | Filee: DiscUtils.Dmg reads the UDIF blocks (raw, zero, zlib, bzip2, ADC) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); LZFSE and LZMA blocks and APFS volumes by 7-Zip; encrypted DMGs are refused | — |
+| DMG | Filee: DiscUtils.Dmg reads the UDIF blocks (raw, zero fill and ignore, zlib, bzip2, ADC) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); LZFSE and LZMA blocks and APFS volumes by 7-Zip; encrypted DMGs are refused | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
@@ -3193,7 +3338,9 @@ UDF, HFS+ and the UDIF block layer of DMG come from DiscUtils (`DiscUtils.Udf`, 
 Filee's own (`Archives/DiskImageFat.cs`, from Microsoft's FAT specification) because `DiscUtils.Fat` reads only 8.3
 names in capitals; the tests use `DiscUtils.Fat` as an independent FAT writer. The partition tables
 (`DiskImagePartitions.cs`: MBR and EBRs, GPT from the UEFI specification, Apple partition map) and the checks of the DMG
-trailer and block tables (`DiskImageGuards.cs`) are Filee's own too, so nothing reaches DiscUtils unchecked. NTFS
+trailer and block tables (`DiskImageGuards.cs`) are Filee's own too, so nothing reaches DiscUtils unchecked.
+`DiscUtils.Dmg` doesn't read run type 0 ("zero fill"), which hdiutil writes into its HFS+ disks beside type 2, so
+it reads the DMG through `UdifOverlay`: the block list with those runs relabelled type 2, same length. NTFS
 stays on 7-Zip: `DiscUtils.Ntfs` walks its index blocks recursively from a cache, where an index pointing back at
 itself would overflow the stack without any read Filee could stop.
 

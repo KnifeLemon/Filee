@@ -296,8 +296,9 @@ internal static class ArchiveSafety
     public static Exception NotAnArchive(string archiveName) =>
         new InvalidDataException($"{archiveName} is not a valid archive, or not the kind its extension says.");
 
-    public static Exception Damaged(string archiveName, string detail) =>
-        new InvalidDataException($"{archiveName} is damaged or incomplete ({detail}).");
+    /// <summary>A damaged archive; <paramref name="cause"/> is kept as the inner exception for the log.</summary>
+    public static Exception Damaged(string archiveName, string detail, Exception? cause = null) =>
+        new InvalidDataException($"{archiveName} is damaged or incomplete ({detail}).", cause);
 
     /// <summary>"1.4 GB" style size for messages.</summary>
     public static string FormatSize(long bytes)
@@ -315,10 +316,28 @@ internal static class ArchiveSafety
             : value.ToString(value < 10 ? "0.0" : "0", CultureInfo.InvariantCulture) + " " + units[unit];
     }
 
-    /// <summary>One path segment made valid on Windows: invalid characters become "_", device names get a prefix.</summary>
+    /// <summary>
+    /// One path segment made valid on Windows and macOS: invalid characters become "_" (macOS also refuses names
+    /// with noncharacters such as U+FFFF, and a lone surrogate has no UTF-8 form), device names get a prefix.
+    /// </summary>
     private static string SanitizeSegment(string segment)
     {
-        var chars = segment.Select(c => InvalidNameChars.Contains(c) || char.IsControl(c) ? '_' : c).ToArray();
+        var chars = segment.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            var c = chars[i];
+            if (char.IsHighSurrogate(c) && i + 1 < chars.Length && char.IsLowSurrogate(chars[i + 1]))
+            {
+                // U+1FFFE, U+1FFFF … U+10FFFF: the last two code points of every plane are noncharacters.
+                if ((char.ConvertToUtf32(c, chars[i + 1]) & 0xFFFE) == 0xFFFE)
+                    chars[i] = chars[i + 1] = '_';
+                i++;
+            }
+            else if (InvalidNameChars.Contains(c) || char.IsControl(c) || char.IsSurrogate(c) || c is (>= '﷐' and <= '﷯') or '￾' or '￿')
+            {
+                chars[i] = '_';
+            }
+        }
         var name = new string(chars).TrimEnd('.', ' ');
         if (name.Length == 0)
             return "_";
