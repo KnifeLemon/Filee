@@ -7,7 +7,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 |---|---|---|
 | ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
-| Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
+| Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there), **Obsidian boards (JSON Canvas `.canvas`) → SVG** (→ PDF, PNG, … from there) **and Markdown** (→ DOCX, HTML, TXT, … from there), **Gerber PCB layers → SVG** (RS-274X / X2, see [below](#gerber-pcb-layers); → PDF, PNG, DXF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
@@ -27,6 +27,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
+| G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
@@ -422,6 +423,23 @@ in it also builds the package (artifact `windows-arm64-package`).
   every font whole (13 MB for one line of Korean). SVG → images is rendered at its final size: the preset's DPI, at
   least 1024 px on the long edge, or exactly the preset's resize target. External files next to the SVG are
   loaded; nothing is fetched from the network and scripts don't run.
+- **Obsidian Canvas** (`.canvas`, JSON Canvas 1.0, read only; `Vector/Canvas/`) is read by Filee itself and drawn as
+  SVG in the look of Obsidian's light theme: groups as tinted frames with their label above, lines as curves from
+  side to side with their arrow heads and labels, then the cards in the file's z-order. Text cards show their
+  Markdown simply (headings, bold, italic, strikethrough, highlights, code, lists and task lists, quotes, tables,
+  links and `[[internal links]]`), laid out with the typefaces the CAD text uses (a CJK font for the letters the
+  sans-serif one lacks) and clipped to the card. File cards show a note (`.md`) or a picture (PNG, JPEG, GIF, BMP,
+  WebP, AVIF, SVG) only when it is in the canvas's folder or below (vault paths from above it are looked for there
+  without their first folders; `..`, absolute paths, other computers and URLs are never looked at), otherwise their
+  name; link cards show their address and nothing is fetched. Pictures are checked before decoding (50 MB, 100
+  megapixels), decoded by the reader of their extension, shrunk to at most 2048 px and embedded (at most 200 a
+  board). Presets 1–6 are Obsidian's light-theme colours, `#RRGGBB` is taken as it is. → **Markdown** lists the
+  cards group by group, top to bottom, the cards' headings moved below their group's, pictures copied beside it
+  (`_files`), and the lines at the end (`A → B: label`); it costs 15, so PDF and pictures are the drawing. Files are
+  checked before layout (32 MB, 10,000 cards, 20,000 lines, coordinates within ±1,000,000, a board at most 200,000
+  px a side, 100,000 characters a card, an SVG of at most 96 MB): a `.canvas` without a `nodes` or `edges` array is
+  refused as not a canvas, one without cards as empty, a damaged one with a clear error. Cards of an unknown type and
+  lines to a missing card are left out, as Obsidian does.
 - **ICNS** files are written with every size iconutil makes (16–1024 px, PNG), the picture centred on a transparent
   square; reading takes the largest image (PNG, JPEG 2000 or the old RLE + mask entries).
 - **Illustrator** files saved with "Create PDF compatible file" (the default since Illustrator 9) are PDFs and need
@@ -1277,6 +1295,96 @@ and writes the files; Filee's own renderer draws them with SkiaSharp (one drawin
 - **Limits**: 1 000 000 drawn primitives, block nesting depth 16, 10 000 MINSERT cells, 2 000 000 hatch pattern
   segments in total; beyond that the drawing is cut short with a warning in the log. Damaged or truncated files fail
   with "The file is not a valid DWG/DXF drawing or is damaged: …".
+
+## Gerber PCB layers
+
+Built in (`Filee.Engines/Vector/Gerber`), read only. A Gerber file (RS-274X, Gerber X2 and X3, "The Gerber Layer
+Format Specification" published by Ucamco) is one layer of a printed circuit board as KiCad, Eagle, Altium, EasyEDA and
+other PCB programs write it for board makers: copper, solder mask, silkscreen, paste, board outline. Extensions:
+`.gbr`, `.ger`, and the Protel-style per-layer ones (`.gtl`/`.gbl` copper, `.gto`/`.gbo` silkscreen, `.gts`/`.gbs`
+solder mask, `.gtp`/`.gbp` paste, `.gko`/`.gm1` outline). The layer becomes an SVG at its real size, and the
+vector engine takes it to PDF (vector), PNG, JPG, … and DXF / DWG (outlines) from there. Category CAD, so it is on the
+CAD donut (PDF, PNG, SVG, DXF, DWG) and in the CAD field.
+
+- **Read**: coordinate format (FS: leading or trailing zeros omitted, absolute or incremental) and units (MO,
+  G70/G71); standard apertures C, R, O, P with round holes (and the rectangular holes of older files); aperture
+  macros (AM) with variables, expressions and every primitive (circle, vector and centre lines, the old lower-left
+  line, outline, polygon, moiré, thermal; exposure off erases within the macro, rotation about the macro's origin);
+  linear and circular draws (G01/G02/G03, single- and multi-quadrant G74/G75, a full circle when a multi-quadrant arc
+  ends where it starts), moves and flashes (D01/D02/D03, also the deprecated modal form and G54/G55 prefixes);
+  regions with several contours, arcs and cut-ins (G36/G37); polarity (LPD/LPC); aperture mirroring, rotation and
+  scaling (LM/LR/LS, also on draws); aperture blocks (AB, nested) and step and repeat (SR; copies are added in order,
+  so a later copy's clear objects erase earlier copies, as tracespace and the specification have it); a negative image
+  (IPNEG); and the file function attribute (`%TF.FileFunction…*%`, also KiCad's `G04 #@! TF.FileFunction…` comments).
+- **Not read**: other attributes; the deprecated image transforms IR, MI, OF, SF, AS, IJ, KO (the real files met only
+  write their neutral values, `OFA0B0`, `SFA1B1`, `MIA0B0`); RS-274-D files without embedded apertures (they fail
+  with a reason). Draws with a non-circular aperture sweep its convex outline; arcs with one (not allowed) are drawn
+  as wide as its short side. Drill files (Excellon `.drl`) are another format and not read here.
+- **Look**: KiCad's default colours on its dark board background (`#001023`), by the layer's role: top copper red,
+  bottom copper blue, inner layers green, orange, cyan, pink …, silkscreen pale yellow (top) or pink (bottom), solder
+  mask purple (top) or cyan (bottom), paste grey or teal, board outline and unknown layers light grey. The role comes
+  from the file function, else from the name (KiCad's `-F_Cu`, `-B.SilkS`, `-Edge_Cuts`, `-In2_Cu` …, then the
+  Protel extension). The dark background keeps every role legible (silkscreen and outlines are pale) and is what
+  designers see in KiCad and Gerber viewers. 2 mm margin around the drawing.
+- **Polarity without masks**: an SVG mask would be rasterised in a PDF by Skia, so clear objects are applied as
+  geometry. Each dark object that a later clear object overlaps is replaced by its outline minus what stays clear
+  (the clear object minus the dark objects drawn after it, so a hole that is filled again leaves no anti-aliasing
+  seam), with Skia's path operations; a coarse grid finds the overlaps. The SVG is transparent where copper is cleared
+  and the PDF stays vector. Past 1 000 000 overlaps or 4 000 000 outline points, or if Skia can't resolve an outline,
+  clear objects are painted in the background colour instead, which looks the same. Apertures, blocks and
+  step-and-repeat copies are defined once and placed with `<use>`.
+- **Limits**, checked before the memory is used: files up to 256 MB, 2 000 000 objects, 10 000 000 segments written,
+  3 000 000 shapes placed and 50 000 000 segments drawn once every block flash and step-and-repeat copy is counted
+  with its contents (copies are one `<use>` each in the SVG, so a panel of a large board passes, while blocks flashed
+  inside blocks can't multiply without end: a block's reference depth, not only its lexical nesting, is held to 8);
+  100 000 apertures and opened blocks, 10 000 step-and-repeat copies; every size (coordinates, aperture and macro
+  parameters, scale, step) within 100 m and the whole drawing within 10 m a side; 500 000 macro primitives over all
+  apertures, and per macro 10 000 primitives, 100 000 outline points, 100 moiré rings, expressions up to 4 096
+  characters nested 64 deep. Numbers too long for their field fail as damaged, not as an overflow. Finding the clear /
+  dark overlaps is itself budgeted (grid entries visited, cancellation checked), falling back to background painting,
+  so a file with many objects piled on one spot can't stall the reader. Text that
+  holds a NUL byte (a GIMP brush, which also uses `.gbr`), a file without Gerber commands, an undefined aperture or
+  macro, a malformed number or command, and a layer that draws nothing fail with an `InvalidDataException` saying so.
+  A file that stops early (no `M02`) keeps what was read.
+- **Checked against** gerbv 2.10 and tracespace's fixtures: every board layer of tracespace's KiCad and Eagle boards
+  and gerbv's example boards (Eagle, OrCAD, Mentor, Protel, KiCad) render like gerbv's, apart from anti-aliasing
+  along thin lines; where the shapes differ, the specification and tracespace agree with Filee (single-quadrant arcs, rotated macro circles, `x` in macro expressions,
+  LS on draws, polarity inside step and repeat).
+
+## G-code (3D printers, CNC)
+
+`Filee.Engines/Gcode` reads the G-code a slicer (PrusaSlicer, Cura, OrcaSlicer, Bambu Studio, SuperSlicer …) writes for
+a 3D printer, or a CAM program for a CNC machine, and draws its toolpath. Extensions: `.gcode`, `.gco` and `.ngc`
+(LinuxCNC). Left out: `.nc`, also NetCDF ([#562](https://github.com/KnifeLemon/Filee/issues/562)); `.tap`, also a
+cassette image of old home computers; `.g`, also ANTLR grammars and GAP (RepRapFirmware's macros seldom have a toolpath
+to draw). G-code is a read-only CAD format (fields: 3D models and CAD).
+
+- **Read**: G0 / G1, G2 / G3 arcs (I J K or R, in the G17 / G18 / G19 plane; helical when the third axis moves), G20 /
+  G21, G90 / G91, M82 / M83 (after either, G90 / G91 no longer change the extruder's mode: Klipper's don't, Marlin's do,
+  and a slicer that writes M83 never relies on G90 to undo it), G92, G28, modal moves (a line of coordinates goes on with the last move, as CAM programs
+  write it), N line numbers, `*` checksums, `;` and `( )` comments. Klipper and RepRapFirmware commands (`SET_…`,
+  `EXCLUDE_OBJECT_…`, `if`, expressions in braces) are skipped. Cutter compensation (G41 / G42), tool length (G43)
+  and work offsets (G54 …) aren't applied: the programmed path is drawn. A line with any other G code (dwell, G10,
+  bed levelling G29, probing G30 / G38.x, G53, canned cycles G81 …) is not a move, whatever coordinates it carries.
+- **Printer or CNC**: a file that extrudes (E grows on a move) is a printer's: its extruding moves are drawn wide, every
+  other move as thin blue travel. A file that never extrudes is a CNC machine's: G1 / G2 / G3 are cuts, G0 rapids are
+  thin red lines. In a print with layer comments (`;LAYER_CHANGE`, `;LAYER:n`), the start G-code before the first
+  layer (the purge line at the edge of the bed) and the moves after the last extrusion (parking) are not drawn.
+- **Drawing**: at its real size in millimetres, framed on the extrusion or cuts, coloured by height from dark violet
+  (low) to orange (high) in 24 bands, drawn from the lowest band up so higher layers cover the travel under them. The
+  line is the nozzle's width (`; nozzle_diameter` of PrusaSlicer and OrcaSlicer, else 0.4 mm, × 1.1). The preset's
+  **G-code view** (`GcodeOptions.View`) draws it from above or isometric (from the front left, above the bed). SVG is
+  written as text; PDF and pictures are drawn with SkiaSharp directly, which is several times faster than reading a
+  large SVG back. Segments that a later one covers exactly are left out (a straight wall seen from above).
+- **Slicer's preview**: with the view set to it, a picture is the largest preview the slicer saved in the file
+  (`; thumbnail begin WxH LENGTH` … `; thumbnail end`, also `thumbnail_JPG` and `thumbnail_QOI`; the format is told by
+  the data, since Cura plug-ins write JPG under the PNG header). A file without one gets the toolpath from above, with
+  a notice. SVG and PDF always show the toolpath.
+- **Limits**: files up to 1 GB; 12 million points after points closer than 0.02 mm are merged (a 300 MB print keeps
+  about 6 million); lines are read up to 4096 characters (the rest of a longer comment is skipped); arcs in 5° segments (72 for a full circle)
+  segments; a coordinate past 1 km fails as damaged. A thumbnail is read up to 4096 × 4096 pixels and 32 MB of base64,
+  its header checked before it is decoded. Binary G-code (`.bgcode`) renamed `.gcode` fails with a message saying so.
+  A 35 MB PrusaSlicer file (1.3 million lines) takes about 9 s to PNG with 320 MB of memory.
 
 ## 3D models
 

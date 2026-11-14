@@ -91,6 +91,9 @@ public static class FormatRegistry
         // Tajima embroidery designs: the stitches drawn as lines (issue #397).
         new("dst", "DST", FormatCategory.Vector, ["dst"], Writable: false),
         new("odg", "ODG", FormatCategory.Vector, ["odg"]),
+        // Obsidian's visual boards (JSON Canvas 1.0): cards, groups and the lines between them, read by Filee itself and
+        // drawn as SVG (then PDF and pictures), or their text as Markdown. A .canvas that isn't one is refused.
+        new("canvas", "Obsidian Canvas", FormatCategory.Vector, ["canvas"], Writable: false),
         new("fodg", "FODG", FormatCategory.Vector, ["fodg"], Writable: false),
 
         // PDF
@@ -366,6 +369,14 @@ public static class FormatRegistry
         // CAD
         new("dwg", "DWG", FormatCategory.Cad, ["dwg"]),
         new("dxf", "DXF", FormatCategory.Cad, ["dxf"]),
+        // PCB layers (RS-274X / Gerber X2): generic, Protel-style per-layer and board-outline extensions. GIMP brushes
+        // also use .gbr; the reader tells them apart and says so.
+        new("gerber", "Gerber", FormatCategory.Cad,
+            ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"], Writable: false),
+        // Toolpaths of 3D printers (slicers) and CNC machines, read only and drawn as a picture. ".nc" stays out (also
+        // NetCDF, #562, #244), and so do ".tap" (also cassette images) and ".g" (also ANTLR and GAP; RepRapFirmware's
+        // macros seldom have a toolpath).
+        new("gcode", "G-code", FormatCategory.Cad, ["gcode", "gco", "ngc"], Writable: false),
 
         // Fonts
         new("ttf", "TTF", FormatCategory.Font, ["ttf"]),
