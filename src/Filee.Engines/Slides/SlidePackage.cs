@@ -1,10 +1,12 @@
 // The parts of an Office Open XML package as the slide reader reads them: XML parts through DocumentPackage (sizes,
 // inflate ratio, XML depth and element counts limited), relationships resolved to part names, binary parts (pictures)
-// up to the part limit. Damaged XML is invalid data naming the part.
+// up to the part limit. Damaged XML is invalid data naming the part. A PowerPoint 97–2003 deck (a compound file) is
+// opened as the PPTX package it translates to (Office/Ppt), in memory.
 
 using System.Xml;
 using System.Xml.Linq;
 using Filee.Engines.Documents;
+using Filee.Engines.Office.Ppt;
 
 namespace Filee.Engines.Slides;
 
@@ -24,8 +26,17 @@ internal sealed class SlidePackage : IDisposable
 
     private SlidePackage(DocumentPackage package) => _package = package;
 
-    public static SlidePackage Open(string path, DocumentLimits? limits = null) =>
-        new(DocumentPackage.Open(path, limits, () => new InvalidDataException("The file is not a PowerPoint presentation (not a ZIP package). It may be damaged.")));
+    public static SlidePackage Open(string path, DocumentLimits? limits = null)
+    {
+        static Exception NotAPackage() => new InvalidDataException("The file is not a PowerPoint presentation (not a ZIP package). It may be damaged.");
+        if (!CompoundFile.HasSignature(path))
+            return new(DocumentPackage.Open(path, limits, NotAPackage));
+        var package = PptReader.ToPptx(path, limits ?? DocumentLimits.Default, out var dropped);
+        return new(DocumentPackage.Open(package, limits, NotAPackage)) { Dropped = dropped };
+    }
+
+    /// <summary>For a PowerPoint 97–2003 deck: what its translation left out that would show on a slide.</summary>
+    public string? Dropped { get; private init; }
 
     public DocumentLimits Limits => _package.Limits;
 

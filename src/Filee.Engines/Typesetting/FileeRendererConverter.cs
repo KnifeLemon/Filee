@@ -3,8 +3,9 @@
 // HTML, e-books, CSV / TSV tables, OFD, and Pandoc's formats when Pandoc is there) → PDF in one step, read, laid out and
 // written in-process. The default document → PDF engine; turned off in Settings → Engines, the engine is unavailable and
 // those files go through the HWPX writer and rhwp again.
-// Slide decks (SlideFormats: PPTX, PPTM, POTX, POTM, PPSX) → PDF, PNG and JPG go through Filee's slide renderer
-// (Slides/): a page or a picture per slide. Spreadsheets (sheet print), other presentations and PDF keep their own routes.
+// Slide decks (SlideFormats: PPTX, PPTM, POTX, POTM, PPSX, and PPT through the PPTX package it translates to) → PDF,
+// PNG and JPG go through Filee's slide renderer (Slides/): a page or a picture per slide. Spreadsheets (sheet print),
+// other presentations and PDF keep their own routes.
 //
 // Settings → Engines → "When LibreOffice is installed" still holds: with LibreOffice there and chosen for Word documents,
 // presentations or spreadsheets, the engine leaves those files to it (its edge would win on cost otherwise).
