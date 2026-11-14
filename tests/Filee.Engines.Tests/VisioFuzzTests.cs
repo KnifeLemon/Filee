@@ -1,7 +1,7 @@
 // Mutation fuzzing of the Visio reader (Visio/VisioReader) and the slide renderer drawing what it read: the seed is a
 // drawing written in code (VsdxBuilder) with what costs the reader the most (masters and their inheritance, style
 // chains, every geometry row kind, NURBS and polyline data, groups, text with character and paragraph rows, a
-// background page, layers and a picture). DocumentFuzzer changes the package, and every input must be read or refused
+// background page, layers, a picture, a theme with variants, gradients, shadows, text backgrounds and rounding). DocumentFuzzer changes the package, and every input must be read or refused
 // with InvalidDataException / ConversionRefusedException, in time and on a 1 MB stack. Run by FuzzHarness: a short
 // fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep
 // failing inputs.
@@ -35,7 +35,12 @@ public class VisioFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     /// <summary>A drawing with every kind of thing the reader reads.</summary>
     internal static byte[] Seed()
     {
-        var builder = new VsdxBuilder();
+        var builder = new VsdxBuilder { Theme = VisioThemeTests.Theme };
+        builder.StyleSheets += "<StyleSheet ID='2' NameU='Theme' LineStyle='0' FillStyle='0' TextStyle='0'>" + Cell("FillForegnd", "Themed") +
+                               Cell("FillPattern", "Themed") + Cell("LineColor", "Themed") + Cell("LineWeight", "Themed") + Cell("LinePattern", "Themed") +
+                               Cell("QuickStyleFillColor", 100) + Cell("QuickStyleFillMatrix", 101) + Cell("QuickStyleLineMatrix", 2) +
+                               Cell("QuickStyleEffectsMatrix", 2) + Cell("VariationColorIndex", 65534) +
+                               "<Section N='Character'><Row IX='0'>" + Cell("Font", "Themed") + Cell("Color", "Themed") + "</Row></Section></StyleSheet>";
         builder.StyleSheets += "<StyleSheet ID='1' NameU='Blue' LineStyle='0' FillStyle='0' TextStyle='0'>" + Cell("FillForegnd", "4") +
                                Cell("FillPattern", 7) + Cell("LinePattern", 2) + "</StyleSheet>";
         var master = builder.Master(
@@ -65,7 +70,12 @@ public class VisioFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             $"<Shape ID='2' Type='Shape' Master='{master}' MasterShape='5'>" + Cell("PinX", 3) + Cell("PinY", 2) + Cell("Width", 1.5) + "</Shape>" +
             $"<Shape ID='3' Type='Group' Master='{master}' MasterShape='6'>" + Cell("PinX", 2) + Cell("PinY", 0.5) + "</Shape>" +
             Shape(4, 3, 1, 1, 0.5, "<ForeignData ForeignType='Bitmap'><Rel r:id='rId1' xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'/></ForeignData>", "Type='Foreign'") +
-            Shape(5, 2, 2.5, 1, 0, Geometry(Row("MoveTo", 1, ("X", 0), ("Y", 0)) + Row("LineTo", 2, ("X", 1), ("Y", 0))) + Cell("EndArrow", 4) + Cell("LayerMember", "0")),
+            Shape(5, 2, 2.5, 1, 0, Geometry(Row("MoveTo", 1, ("X", 0), ("Y", 0)) + Row("LineTo", 2, ("X", 1), ("Y", 0))) + Cell("EndArrow", 4) + Cell("LayerMember", "0")) +
+            Shape(6, 1, 2.5, 1, 0.5, Rectangle(1, 0.5) + Cell("Rounding", 0.1) + Cell("ShdwPattern", 1) + Cell("TextBkgnd", 3) + TextBlock("theme"),
+                "Type='Shape' LineStyle='2' FillStyle='2' TextStyle='2'") +
+            Shape(7, 3, 2.5, 1, 0.5, Rectangle(1, 0.5) + Cell("FillGradientEnabled", 1) + Cell("FillGradientAngle", 0.7) +
+                "<Section N='FillGradient'><Row IX='0'>" + Cell("GradientStopColor", "#FF0000") + Cell("GradientStopPosition", 0) + "</Row>" +
+                "<Row IX='1'>" + Cell("GradientStopColor", "Themed") + Cell("GradientStopPosition", 1) + "</Row></Section>"),
             4, 3, layers, backPage: background, pictures: new Dictionary<string, string> { ["rId1"] = media });
         return builder.ToBytes();
     }
