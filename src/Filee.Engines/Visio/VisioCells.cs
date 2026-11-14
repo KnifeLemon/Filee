@@ -4,7 +4,8 @@
 // - A sheet's cells (Cell N/V), sections (Section N/IX: Geometry, Character, Paragraph, Layer, Field, ...) and their rows
 //   (Row T/IX, Del) are indexed once. Only stored values (V) are used, never formulas (F): Visio stores a cell's value
 //   with every formula, inherited ones included (F="Inh"), so plain values cover what was drawn. A value Filee can't
-//   take (a theme reference stored as "Themed", a damaged number) is passed over and the inherited one used.
+//   take (a damaged number) is passed over and the inherited one used; "Themed" is resolved through the theme
+//   (VisioTheme) by the readers that ask for it.
 // - Inheritance (VisioCellChain): the shape's own cell, then its master shape's (and that master shape's master's, for
 //   masters built on masters), then the style sheets of the cell's kind (LineStyle for line cells, FillStyle for fill
 //   cells, TextStyle for text block, character and paragraph cells) along their parent chain. A shape whose own style
@@ -190,20 +191,21 @@ internal sealed class VisioCellChain
     private static readonly HashSet<string> LineCells = new(StringComparer.Ordinal)
     {
         "LineWeight", "LineColor", "LinePattern", "Rounding", "EndArrowSize", "BeginArrow", "EndArrow", "LineCap", "BeginArrowSize",
-        "LineColorTrans", "CompoundType",
+        "LineColorTrans", "CompoundType", "QuickStyleLineColor", "QuickStyleLineMatrix",
     };
 
     private static readonly HashSet<string> FillCells = new(StringComparer.Ordinal)
     {
         "FillForegnd", "FillBkgnd", "FillPattern", "ShdwForegnd", "ShdwBkgnd", "ShdwPattern", "FillForegndTrans", "FillBkgndTrans",
         "ShdwForegndTrans", "ShdwBkgndTrans", "ShapeShdwType", "ShapeShdwOffsetX", "ShapeShdwOffsetY", "ShapeShdwObliqueAngle",
-        "ShapeShdwScaleFactor", "ShapeShdwBlur", "ShapeShdwShow",
+        "ShapeShdwScaleFactor", "ShapeShdwBlur", "ShapeShdwShow", "QuickStyleFillColor", "QuickStyleFillMatrix", "QuickStyleShadowColor",
+        "QuickStyleEffectsMatrix", "FillGradientEnabled", "FillGradientDir", "FillGradientAngle", "VariationColorIndex", "VariationStyleIndex",
     };
 
     private static readonly HashSet<string> TextCells = new(StringComparer.Ordinal)
     {
         "LeftMargin", "RightMargin", "TopMargin", "BottomMargin", "VerticalAlign", "TextBkgnd", "DefaultTabStop", "TextDirection",
-        "TextBkgndTrans",
+        "TextBkgndTrans", "QuickStyleFontColor", "QuickStyleFontMatrix",
     };
 
     private readonly IReadOnlyList<VisioSheet>[] _styles;

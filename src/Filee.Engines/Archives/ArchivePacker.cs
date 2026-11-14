@@ -1,7 +1,7 @@
-// Writes archives. ZIP (and the game packs that are ZIPs, see GamePacks), 7Z, TAR, TAR.GZ, TAR.XZ and single-file
-// GZ / XZ are written in-process (System.IO.Compression / System.Formats.Tar, and Filee's own SevenZipWriter and
-// XzWriter), so file names are exactly what Filee chooses: UTF-8 in ZIP (with the language encoding flag), UTF-16 in
-// 7Z, PAX headers in TAR. TAR.BZ2 and single-file BZ2 are written by the bundled 7-Zip.
+// Writes archives, all in-process: ZIP (and the game packs that are ZIPs, see GamePacks), 7Z, TAR, TAR.GZ, TAR.BZ2,
+// TAR.XZ and single-file GZ / BZ2 / XZ (System.IO.Compression / System.Formats.Tar, and Filee's own SevenZipWriter,
+// Bzip2Writer and XzWriter), so file names are exactly what Filee chooses: UTF-8 in ZIP (with the language encoding
+// flag), UTF-16 in 7Z, PAX headers in TAR.
 
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -15,11 +15,11 @@ namespace Filee.Engines.Archives;
 internal sealed record PackItem(string SourcePath, string EntryName);
 
 /// <summary>Creates archives from files and folders.</summary>
-internal sealed class ArchivePacker(SevenZip? sevenZip)
+internal sealed class ArchivePacker
 {
-    /// <summary>Formats written without 7-Zip.</summary>
+    /// <summary>Formats written without 7-Zip (all that Filee writes).</summary>
     public static readonly IReadOnlySet<string> BuiltInFormats =
-        new HashSet<string>(["zip", "7z", "tar", "tgz", "txz", "gz", "xz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
+        new HashSet<string>(["zip", "7z", "tar", "tgz", "tbz2", "txz", "gz", "bz2", "xz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Formats that hold exactly one file, without name or folders.</summary>
     public static readonly IReadOnlySet<string> SingleFileFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "gz", "bz2", "xz" };
@@ -44,24 +44,10 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
                     break;
                 case "tar":
                 case "tgz":
+                case "tbz2":
                 case "txz":
                     await Task.Run(() => WriteTar(items, temp, format, level, progress, cancellationToken), cancellationToken);
                     break;
-                case "tbz2":
-                    {
-                        // 7-Zip compresses a single stream; the TAR is written first, in the work folder.
-                        var tar = Path.Combine(workDirectory, $"pack-{Guid.NewGuid():N}.tar");
-                        try
-                        {
-                            await Task.Run(() => WriteTar(items, tar, "tar", level, Scaled(progress, 0, 0.3), cancellationToken), cancellationToken);
-                            await RunSevenZipAsync("bzip2", [tar], temp, level, workDirectory, progress, 0.3, cancellationToken);
-                        }
-                        finally
-                        {
-                            ArchiveFiles.TryDeleteFile(tar);
-                        }
-                        break;
-                    }
                 case "7z":
                     await Task.Run(() => WriteSevenZip(items, temp, level, progress, cancellationToken), cancellationToken);
                     break;
@@ -71,12 +57,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
                     if (items.Count != 1 || !File.Exists(items[0].SourcePath))
                         throw new InvalidOperationException(
                             $"A .{format} file holds a single file. Choose TAR.{format.ToUpperInvariant()} to compress several files or folders.");
-                    if (format is "gz" or "xz")
-                    {
-                        await Task.Run(() => WriteSingle(items[0].SourcePath, temp, format, level, progress, cancellationToken), cancellationToken);
-                        break;
-                    }
-                    await RunSevenZipAsync("bzip2", await NamedAsAsync(items, workDirectory, cancellationToken), temp, level, workDirectory, progress, 0, cancellationToken);
+                    await Task.Run(() => WriteSingle(items[0].SourcePath, temp, format, level, progress, cancellationToken), cancellationToken);
                     break;
                 default:
                     throw new NotSupportedException($"Filee cannot write {format} archives.");
@@ -87,74 +68,6 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         {
             ArchiveFiles.TryDeleteFile(temp);
         }
-    }
-
-    private async Task RunSevenZipAsync(string type, IReadOnlyList<string> paths, string archive, ArchiveLevel level,
-        string workDirectory, IProgress<double>? progress, double from, CancellationToken cancellationToken)
-    {
-        if (sevenZip is null)
-            throw new InvalidOperationException("7-Zip was not found (engines/7zip).");
-        // 7-Zip reports nothing while it works: estimate from the amount of data (~40 MB/s at normal level).
-        var bytes = paths.Sum(TotalSize);
-        var typical = TimeSpan.FromSeconds(Math.Max(0.5, bytes / 40e6));
-        using (ProgressEstimate.Start(progress, typical, Math.Max(from, 0.05), 0.95))
-            await sevenZip.AddAsync(archive, type, level, paths, workDirectory, cancellationToken);
-    }
-
-    /// <summary>
-    /// Paths 7-Zip can take as they are: it stores each under its own file name, so items whose entry name differs
-    /// (a renamed duplicate) are copied under that name into the work folder first.
-    /// </summary>
-    private static async Task<IReadOnlyList<string>> NamedAsAsync(IReadOnlyList<PackItem> items, string workDirectory, CancellationToken cancellationToken)
-    {
-        var paths = new List<string>();
-        foreach (var item in items)
-        {
-            // 7-Zip follows junctions inside directories. Always stage folders through the link-skipping copy.
-            if (!Directory.Exists(item.SourcePath) && string.Equals(Path.GetFileName(item.SourcePath), item.EntryName, StringComparison.Ordinal))
-            {
-                paths.Add(item.SourcePath);
-                continue;
-            }
-            var folder = Path.Combine(workDirectory, "rename-" + Guid.NewGuid().ToString("N")[..8]);
-            Directory.CreateDirectory(folder);
-            var copy = Path.Combine(folder, item.EntryName);
-            if (Directory.Exists(item.SourcePath))
-                await CopyFolderAsync(new DirectoryInfo(item.SourcePath), copy, cancellationToken);
-            else
-                await CopyFileAsync(item.SourcePath, copy, cancellationToken);
-            paths.Add(copy);
-        }
-        return paths;
-    }
-
-    private static async Task CopyFileAsync(string source, string target, CancellationToken cancellationToken)
-    {
-        await using (var from = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-        await using (var to = new FileStream(target, FileMode.CreateNew, FileAccess.Write))
-            await from.CopyToAsync(to, cancellationToken);
-        File.SetLastWriteTimeUtc(target, File.GetLastWriteTimeUtc(source));
-    }
-
-    /// <summary>Copies a folder tree without following links.</summary>
-    private static async Task CopyFolderAsync(DirectoryInfo source, string target, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (source.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            throw new IOException($"Cannot pack a linked folder: {source.FullName}");
-        Directory.CreateDirectory(target);
-        foreach (var info in source.EnumerateFileSystemInfos())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (info.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                continue;
-            var destination = Path.Combine(target, info.Name);
-            if (info is DirectoryInfo dir)
-                await CopyFolderAsync(dir, destination, cancellationToken);
-            else
-                await CopyFileAsync(info.FullName, destination, cancellationToken);
-        }
-        Directory.SetLastWriteTimeUtc(target, source.LastWriteTimeUtc);
     }
 
     private static void WriteZip(IReadOnlyList<PackItem> items, string path, ArchiveLevel level, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -262,7 +175,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         return (uint)attributes | SevenZipWriter.UnixExtension | (mode << 16);
     }
 
-    /// <summary>One file as a .gz or .xz, its time kept on the archive.</summary>
+    /// <summary>One file as a .gz, .bz2 or .xz, its time kept on the archive.</summary>
     private static void WriteSingle(string source, string path, string format, ArchiveLevel level, IProgress<double>? progress,
         CancellationToken cancellationToken)
     {
@@ -277,6 +190,12 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
                 using var xz = new XzWriter(file, level, input.Length, cancellationToken, leaveOpen: true);
                 ArchiveFiles.CopyLimited(input, xz, long.MaxValue, cancellationToken, Report);
                 xz.Finish();
+            }
+            else if (format == "bz2")
+            {
+                using var bzip2 = new Bzip2Writer(file, level, cancellationToken, leaveOpen: true);
+                ArchiveFiles.CopyLimited(input, bzip2, long.MaxValue, cancellationToken, Report);
+                bzip2.Finish();
             }
             else
             {
@@ -296,8 +215,8 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
     };
 
     /// <summary>
-    /// Writes a PAX TAR (UTF-8 names, times): plain for "tar", gzip-compressed for "tgz", xz-compressed for "txz"
-    /// (at <paramref name="level"/>; a plain TAR ignores it).
+    /// Writes a PAX TAR (UTF-8 names, times): plain for "tar", gzip-compressed for "tgz", bzip2-compressed for "tbz2",
+    /// xz-compressed for "txz" (at <paramref name="level"/>; a plain TAR ignores it).
     /// </summary>
     private static void WriteTar(IReadOnlyList<PackItem> items, string path, string format, ArchiveLevel level,
         IProgress<double>? progress, CancellationToken cancellationToken)
@@ -308,9 +227,11 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
 
         using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16);
         XzWriter? xz = null;
+        Bzip2Writer? bzip2 = null;
         using (var stream = format switch
         {
             "tgz" => new GZipStream(file, GzipLevel(level), leaveOpen: true),
+            "tbz2" => bzip2 = new Bzip2Writer(file, level, cancellationToken, leaveOpen: true),
             // A PAX TAR adds about 1.5 KB of headers per entry; the estimate only sizes the dictionary.
             "txz" => xz = new XzWriter(file, level, bytes + files.Count * 1536L + 1024, cancellationToken, leaveOpen: true),
             _ => (Stream)new NonClosingStream(file),
@@ -318,6 +239,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         {
             WriteTarEntries(files, stream, counter, cancellationToken);
             xz?.Finish();
+            bzip2?.Finish();
         }
     }
 
@@ -397,11 +319,6 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         }
     }
 
-    private static long TotalSize(string path) =>
-        File.Exists(path) ? new FileInfo(path).Length
-        : Directory.Exists(path) ? new DirectoryInfo(path).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length)
-        : 0;
-
     /// <summary>ZIP stores DOS times (local, 1980–2107).</summary>
     private static DateTimeOffset ZipTime(DateTimeOffset time)
     {
@@ -410,9 +327,6 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
             : local.Year > 2107 ? new DateTimeOffset(2107, 12, 31, 0, 0, 0, local.Offset)
             : local;
     }
-
-    private static IProgress<double>? Scaled(IProgress<double>? progress, double from, double to) =>
-        progress is null ? null : new Progress<double>(p => progress.Report(from + (to - from) * p));
 
     /// <summary>Turns bytes written into a 0..1 progress value.</summary>
     private sealed class ByteCounter(long total, IProgress<double>? progress)

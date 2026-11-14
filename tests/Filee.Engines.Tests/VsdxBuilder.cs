@@ -1,6 +1,6 @@
 // Builds Visio drawings (.vsdx, [MS-VSDX]) in code for the Visio reader's tests and fuzz seeds: the document part with
-// its colours, face names and style sheets, pages (with page sheets, background pages and layers), masters, and
-// pictures, from XML strings of shapes. Nothing is read from disk.
+// its colours, face names and style sheets, pages (with page sheets, background pages and layers), masters, pictures
+// and a theme, from XML strings of shapes. Nothing is read from disk.
 //
 // The package is laid out as Visio saves one, so other readers (LibreOffice's) draw it the same way: every part has its
 // content type, a master's PageSheet has cells (an empty one made LibreOffice skip the master's shapes), a shape without
@@ -38,6 +38,9 @@ internal sealed class VsdxBuilder
 
     /// <summary>The document's colour table (ColorEntry elements).</summary>
     public string Colors { get; set; } = "<ColorEntry IX='0' RGB='#000000'/><ColorEntry IX='1' RGB='#FFFFFF'/><ColorEntry IX='2' RGB='#FF0000'/>";
+
+    /// <summary>The theme part (a DrawingML a:theme), related from the document; null for none.</summary>
+    public string? Theme { get; set; }
 
     public static string N(double value) => value.ToString("R", CultureInfo.InvariantCulture);
 
@@ -140,13 +143,17 @@ internal sealed class VsdxBuilder
                 string.Concat(_pages.Select(p => $"<Override PartName='/visio/pages/page{p.Id + 1}.xml' ContentType='application/vnd.ms-visio.page+xml'/>")) +
                 "<Override PartName='/visio/masters/masters.xml' ContentType='application/vnd.ms-visio.masters+xml'/>" +
                 string.Concat(_masters.Select(m => $"<Override PartName='/visio/masters/master{m.Id}.xml' ContentType='application/vnd.ms-visio.master+xml'/>")) +
+                (Theme is null ? "" : "<Override PartName='/visio/theme/theme1.xml' ContentType='application/vnd.openxmlformats-officedocument.theme+xml'/>") +
                 "</Types>");
             Write("_rels/.rels", Relationships([("rId1", "visio/document.xml", $"{RelationshipTypes}/document")]));
             Write("visio/document.xml",
                 $"<?xml version='1.0' encoding='UTF-8'?><VisioDocument xmlns='{Namespace}' xmlns:r='{R}'><DocumentSettings/>" +
                 $"<Colors>{Colors}</Colors><FaceNames><FaceName NameU='Calibri'/></FaceNames><StyleSheets>{StyleSheets}</StyleSheets></VisioDocument>");
             Write("visio/_rels/document.xml.rels", Relationships([("rId1", "pages/pages.xml", $"{RelationshipTypes}/pages"),
-                ("rId2", "masters/masters.xml", $"{RelationshipTypes}/masters")]));
+                ("rId2", "masters/masters.xml", $"{RelationshipTypes}/masters"),
+                .. Theme is null ? [] : new[] { ("rId3", "theme/theme1.xml", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme") }]));
+            if (Theme is not null)
+                Write("visio/theme/theme1.xml", Theme);
 
             var pages = new StringBuilder($"<?xml version='1.0' encoding='UTF-8'?><Pages xmlns='{Namespace}' xmlns:r='{R}'>");
             foreach (var page in _pages)

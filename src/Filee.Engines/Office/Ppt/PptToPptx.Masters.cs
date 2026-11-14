@@ -211,7 +211,7 @@ internal sealed partial class PptToPptx
     {
         _cancellationToken.ThrowIfCancellationRequested();
         var main = variant.Main;
-        var sheet = new Sheet(variant.Part, main.Styles);
+        var sheet = new Sheet(variant.Part, main.Styles) { Scheme = variant.Scheme };
         var tree = new StringBuilder(PresentationPackage.TreeStart);
         var background = main.Container is { } container ? WriteDrawing(tree, container, sheet) : null;
         var xml = new StringBuilder($"<p:sldMaster {Namespaces}><p:cSld>");
@@ -237,7 +237,7 @@ internal sealed partial class PptToPptx
 
     private void WriteLayout(Variant variant, Layout layout)
     {
-        var sheet = new Sheet(layout.Part, variant.Main.Styles);
+        var sheet = new Sheet(layout.Part, variant.Main.Styles) { Scheme = variant.Scheme };
         var tree = new StringBuilder(PresentationPackage.TreeStart);
         var xml = new StringBuilder($"<p:sldLayout {Namespaces}");
         if (layout.Title is { } title)
@@ -265,7 +265,7 @@ internal sealed partial class PptToPptx
 
     private void WriteSlide(PlannedSlide slide, int number)
     {
-        var sheet = new Sheet($"ppt/slides/slide{number}.xml", slide.Variant.Main.Styles) { Outline = slide.Entry.Texts };
+        var sheet = new Sheet($"ppt/slides/slide{number}.xml", slide.Variant.Main.Styles) { Outline = slide.Entry.Texts, Scheme = slide.Variant.Scheme };
         sheet.Relationship("slideLayout", slide.Layout.Part);
         var tree = new StringBuilder(PresentationPackage.TreeStart);
         var background = WriteDrawing(tree, slide.Container, sheet);
@@ -292,7 +292,7 @@ internal sealed partial class PptToPptx
     {
         if (shape is null)
             return null;
-        var fill = FillXml(Properties(shape, defaults: true), sheet);
+        var fill = FillXml(Properties(shape, defaults: true), sheet, shape);
         return fill is null or "<a:noFill/>" ? null : $"<p:bg><p:bgPr>{fill}<a:effectLst/></p:bgPr></p:bg>";
     }
 

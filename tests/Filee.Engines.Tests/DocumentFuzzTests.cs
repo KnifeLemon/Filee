@@ -1,10 +1,10 @@
 // Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX, HWP, DOC, and the older e-book
-// formats CHM, PDB, TCR, RB, SNB with the LZX decoder on its own): seeds are written in code, DocumentFuzzer
-// (packages), HwpFuzzer (HWP records and compound files), DocFuzzer (DOC streams) or BinaryFuzzer (binary containers)
-// changes them, and every input must be read or refused with InvalidDataException / ConversionRefusedException, in
-// time. The loop is FuzzHarness's: a short, fixed run normally, FILEE_FUZZ_SECONDS for a longer random one,
-// FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs. Readers added later keep their own fuzz file
-// (OdtFuzzTests, RtfFuzzTests, ...) on the same harness.
+// formats CHM, PDB, TCR, RB, SNB with the LZX decoder on its own) and of the PostScript writer's PDF translation:
+// seeds are written in code, DocumentFuzzer (packages), HwpFuzzer (HWP records and compound files), DocFuzzer (DOC
+// streams), BinaryFuzzer (binary containers) or PdfStreamFuzzer (PDF streams) changes them, and every input must be
+// read or refused with InvalidDataException / ConversionRefusedException, in time. The loop is FuzzHarness's: a short,
+// fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep
+// failing inputs. Readers added later keep their own fuzz file (OdtFuzzTests, RtfFuzzTests, ...) on the same harness.
 
 using System.Globalization;
 using Filee.Engines.Ebooks;
@@ -61,6 +61,19 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void HwpReader_reads_or_refuses_every_mutated_file() =>
         Fuzz("hwp", "hwp", HwpSeeds(), (path, media) => HwpReader.ReadForLayout(path, media), (seed, random) => new HwpFuzzer(seed, random).Next);
+
+    /// <summary>
+    /// The PostScript writer (PDF → PS): PDFs built in code whose streams PdfStreamFuzzer changes; a page it can't
+    /// translate is left empty here (in use it becomes a picture), so only the translation is fuzzed.
+    /// </summary>
+    [Fact]
+    public void PostScriptWriter_translates_or_refuses_every_mutated_pdf() =>
+        Fuzz("pdf-ps", "pdf", PostScriptSeeds(), (path, media) =>
+        {
+            Directory.CreateDirectory(media);
+            var writer = new Filee.Engines.Pdf.PostScript.PdfToPostScript(path, 150, null, CancellationToken.None) { RasterFallback = false };
+            writer.Write([.. Enumerable.Range(0, Math.Min(writer.PageCount, 4))], Path.Combine(media, "out.ps"), eps: false, media);
+        }, (seed, random) => new PdfStreamFuzzer(seed, random).Next);
 
     /// <summary>The slide reader, the slide capability check and the slide renderer on mutated decks.</summary>
     [Fact]
@@ -199,6 +212,14 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                         "&a;", "&nbsp;", "<section>", "</para>", "<![CDATA[x]]>"]));
 
     // ───────────────────────── Seeds ─────────────────────────
+
+    /// <summary>The PostScript writer's samples with fonts of every kind, pictures, shadings and patterns.</summary>
+    private List<byte[]> PostScriptSeeds()
+    {
+        var folder = fx.NewFolder();
+        return [.. ((string[])["text-truetype", "text-type1", "text-cff", "text-type3", "images", "shadings", "patterns"])
+            .Select(name => File.ReadAllBytes(PostScriptSamples.Make(name, folder)))];
+    }
 
     /// <summary>
     /// DOC files built in code: plain text in 8-bit pieces, and one with what the reader turns into more than text:

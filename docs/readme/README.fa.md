@@ -167,7 +167,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | از | به |
 |---|---|
 | **تصاویر**: JPG، PNG، WEBP، AVIF، TIFF، BMP، GIF، APNG، ICO، ICNS، JPEG XL، JPEG 2000، PSD/PSB، TGA، PPM، HEIC، QOI، DDS، PCX، MNG، CUR، …؛<br>خواندن GIMP XCF، فایل خام دوربین (CR2، CR3، NEF، ARW، DNG، …)، DICOM، OpenEXR، HDR، FITS، JPEG XR (ویندوز)، Live Photo آیفون (LIVP) | به هر یک از این قالب‌ها (HEIC⁵)، PDF، SVG (وکتور شده)، تغییر ابعاد، سیاه‌وسفید؛<br>Live/Motion Photo (آیفون، اندروید) → ویدیوی درون آن (MP4، MOV⁵)، و تبدیل ویدیو → Live Photo (آیفون) یا Motion Photo (اندروید)⁵، آزمایشی |
-| **وکتور**: SVG، SVGZ، EMF، WMF، AI<br>EPS، PS¹<br>CDR، VSD، CGM، ODG، FODG² | PDF (وکتور)، PNG و سایر تصاویر،<br>SVG ↔ SVGZ، SVG → DXF/DWG، PDF → EPS/PS¹، SVG → EMF، WMF، ODG² |
+| **وکتور**: SVG، SVGZ، EMF، WMF، AI<br>EPS، PS¹<br>CDR، VSD، CGM، ODG، FODG² | PDF (وکتور)، PNG و سایر تصاویر،<br>SVG ↔ SVGZ، SVG → DXF/DWG، PDF → EPS/PS، SVG → EMF، WMF، ODG² |
 | **PDF** | DOCX، HWPX، TXT، PNG، JPG، TIFF، CBZ، PPTX (تصویر هر صفحه)، SVG²؛<br>ادغام (با انتخاب ترتیب)، تقسیم، محدوده صفحات، فشرده‌سازی (کاهش حجم PDF) |
 | **اسناد**: DOCX، DOCM، DOTX، EML، پیام Outlook MSG؛<br>خواندن OFD (فاکتورهای الکترونیکی و اسناد رسمی چینی)<br>DOC، ODT، FODT، OTT، RTF، WPS، WPD، Pages، ClarisWorks، MacWrite، T602، …² | PDF، DOCX، HWPX، EPUB، TXT، HTML؛<br>MSG → EML<br>ODT، FODT، OTT² |
 | **صفحات گسترده**: XLSX، XLSM، XLS، XLT، ODS، CSV، TSV<br>OTS، FODS، Numbers، ET² | PDF، XLSX، ODS، CSV، TSV، JSON، HWPX، HTML<br>XLT، OTS² |

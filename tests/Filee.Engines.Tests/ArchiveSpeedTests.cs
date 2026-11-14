@@ -139,7 +139,7 @@ public class ArchiveSpeedTests(EngineFixture fx) : IClassFixture<EngineFixture>
         {
             var ours = Path.Combine(dir, $"filee-{level}.7z");
             var cpu = ProcessCpu();
-            await new ArchivePacker(null).PackAsync([new PackItem(tree, "data")], ours, "7z", level, dir, null, CancellationToken.None);
+            await new ArchivePacker().PackAsync([new PackItem(tree, "data")], ours, "7z", level, dir, null, CancellationToken.None);
             Row("Filee", level.ToString(), new FileInfo(ours).Length, ProcessCpu() - cpu);
             await SevenZipAsync("t", ours);
 

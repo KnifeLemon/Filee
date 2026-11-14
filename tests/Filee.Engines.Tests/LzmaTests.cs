@@ -221,7 +221,7 @@ public class LzmaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         File.SetLastWriteTimeUtc(single, KnownTime.ToUniversalTime());
         var output = Path.Combine(dir, "out." + (format == "txz" ? "tar.xz" : "txt.xz"));
         PackItem[] items = format == "txz" ? [new(tree, "트리"), new(single, "본문.txt")] : [new(single, "본문.txt")];
-        await new ArchivePacker(null).PackAsync(items, output, format, ArchiveLevel.Normal, dir, null, Ct);
+        await new ArchivePacker().PackAsync(items, output, format, ArchiveLevel.Normal, dir, null, Ct);
 
         var target = Directory.CreateDirectory(Path.Combine(dir, "unpacked")).FullName;
         var unpacked = await new ArchiveExtractor(null).ExtractAsync(output, format, target, Ct);
@@ -254,7 +254,7 @@ public class LzmaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var cancel = new CancellationTokenSource();
         var progress = new SyncProgress(p => { if (p > 0.1) cancel.Cancel(); });
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new ArchivePacker(null).PackAsync([new PackItem(source, "big.bin")], output, "xz", ArchiveLevel.Normal, dir, progress, cancel.Token));
+            new ArchivePacker().PackAsync([new PackItem(source, "big.bin")], output, "xz", ArchiveLevel.Normal, dir, progress, cancel.Token));
         Assert.False(File.Exists(output));
         Assert.Equal(["big.bin"], Directory.GetFiles(dir).Select(Path.GetFileName));
     }
