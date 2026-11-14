@@ -117,22 +117,43 @@ internal sealed class PptBuilder
     // ───────────────────────── Shapes ─────────────────────────
 
     /// <summary>A property table (OfficeArtFOPT) of simple properties.</summary>
-    public static byte[] Fopt(params (int Pid, uint Value)[] properties) =>
-        Atom(0xF00B, [.. properties.SelectMany(p => Bytes((ushort)p.Pid, p.Value))], properties.Length, 3);
+    public static byte[] Fopt(params (int Pid, uint Value)[] properties) => Fopt(properties, []);
+
+    /// <summary>A property table of simple and complex properties (the complex data after all entries, in order).</summary>
+    public static byte[] Fopt((int Pid, uint Value)[] properties, (int Pid, byte[] Data)[] complex) =>
+        Atom(0xF00B, [
+            .. properties.SelectMany(p => Bytes((ushort)p.Pid, p.Value)),
+            .. complex.SelectMany(c => Bytes((ushort)(c.Pid | 0x8000), (uint)c.Data.Length)),
+            .. complex.SelectMany(c => c.Data),
+        ], properties.Length + complex.Length, 3);
+
+    /// <summary>An IMsoArray (nElems, nElemsAlloc, cbElem) of <paramref name="elements"/>, each <paramref name="size"/> bytes (0xFFF0: 4).</summary>
+    public static byte[] MsoArray(ushort size, params byte[][] elements) =>
+        Bytes([(ushort)elements.Length, (ushort)elements.Length, size, .. elements.Cast<object>()]);
+
+    /// <summary>pVertices with 16-bit coordinates.</summary>
+    public static byte[] Vertices(params (int X, int Y)[] points) =>
+        MsoArray(0xFFF0, [.. points.Select(p => Bytes((ushort)p.X, (ushort)p.Y))]);
+
+    /// <summary>pSegmentInfo: MSOPATHINFO values.</summary>
+    public static byte[] Segments(params ushort[] segments) => MsoArray(2, [.. segments.Select(s => Bytes(s))]);
+
+    /// <summary>A UTF-16 string property (gtextUNICODE, gtextFont) with its terminating zero.</summary>
+    public static byte[] Unicode(string text) => Encoding.Unicode.GetBytes(text + "\0");
 
     /// <summary>
     /// A shape (OfficeArtSpContainer): MSOSPT <paramref name="type"/>, anchored at (left, top, right, bottom) in master
     /// units; a child anchor when it is in a group.
     /// </summary>
     public static byte[] Shape(int spid, int type, (int Left, int Top, int Right, int Bottom) anchor, (int Pid, uint Value)[]? properties = null,
-        byte[]? clientData = null, byte[]? text = null, bool child = false, uint flags = 0)
+        byte[]? clientData = null, byte[]? text = null, bool child = false, uint flags = 0, (int Pid, byte[] Data)[]? complex = null)
     {
         var parts = new List<byte[]>
         {
             Atom(0xF00A, Bytes(spid, 0x200u | 0x800u | (child ? 0x2u : 0) | flags), type, 2),
         };
-        if (properties is { Length: > 0 })
-            parts.Add(Fopt(properties));
+        if (properties is { Length: > 0 } || complex is { Length: > 0 })
+            parts.Add(Fopt(properties ?? [], complex ?? []));
         parts.Add(child
             ? Atom(0xF00F, Bytes(anchor.Left, anchor.Top, anchor.Right, anchor.Bottom))
             : Atom(0xF010, Bytes((short)anchor.Top, (short)anchor.Left, (short)anchor.Right, (short)anchor.Bottom)));
