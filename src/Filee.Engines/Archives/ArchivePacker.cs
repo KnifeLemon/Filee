@@ -1,7 +1,7 @@
-// Writes archives. ZIP (and the game packs that are ZIPs, see GamePacks), TAR, TAR.GZ, TAR.XZ and single-file GZ / XZ
-// are written in-process (System.IO.Compression / System.Formats.Tar, and Filee's own XzWriter), so file names are
-// exactly what Filee chooses: UTF-8 in ZIP (with the language encoding flag), PAX headers in TAR. 7Z, TAR.BZ2 and
-// single-file BZ2 are written by the bundled 7-Zip.
+// Writes archives. ZIP (and the game packs that are ZIPs, see GamePacks), 7Z, TAR, TAR.GZ, TAR.XZ and single-file
+// GZ / XZ are written in-process (System.IO.Compression / System.Formats.Tar, and Filee's own SevenZipWriter and
+// XzWriter), so file names are exactly what Filee chooses: UTF-8 in ZIP (with the language encoding flag), UTF-16 in
+// 7Z, PAX headers in TAR. TAR.BZ2 and single-file BZ2 are written by the bundled 7-Zip.
 
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -19,7 +19,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
 {
     /// <summary>Formats written without 7-Zip.</summary>
     public static readonly IReadOnlySet<string> BuiltInFormats =
-        new HashSet<string>(["zip", "tar", "tgz", "txz", "gz", "xz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
+        new HashSet<string>(["zip", "7z", "tar", "tgz", "txz", "gz", "xz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Formats that hold exactly one file, without name or folders.</summary>
     public static readonly IReadOnlySet<string> SingleFileFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "gz", "bz2", "xz" };
@@ -63,7 +63,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
                         break;
                     }
                 case "7z":
-                    await RunSevenZipAsync("7z", await NamedAsAsync(items, workDirectory, cancellationToken), temp, level, workDirectory, progress, 0, cancellationToken);
+                    await Task.Run(() => WriteSevenZip(items, temp, level, progress, cancellationToken), cancellationToken);
                     break;
                 case "gz":
                 case "bz2":
@@ -186,6 +186,80 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
             using var target = entry.Open();
             ArchiveFiles.CopyLimited(source, target, long.MaxValue, cancellationToken, counter.Add);
         }
+    }
+
+    /// <summary>
+    /// A 7z archive (SevenZipWriter): folders first, then the files grouped by extension, so similar data shares a
+    /// solid block and the dictionary.
+    /// </summary>
+    private static void WriteSevenZip(IReadOnlyList<PackItem> items, string path, ArchiveLevel level, IProgress<double>? progress,
+        CancellationToken cancellationToken)
+    {
+        var files = Expand(items).ToList();
+        if (files.Count > ArchiveSafety.EntryLimit)
+            throw new InvalidOperationException(
+                $"A 7z archive Filee writes holds at most {ArchiveSafety.EntryLimit:N0} files and folders; there are {files.Count:N0}.");
+        var bytes = files.Sum(f => f.Length);
+        var counter = new ByteCounter(bytes, progress);
+        var ordered = files.Where(f => f.IsFolder)
+            .Concat(files.Where(f => !f.IsFolder)
+                .OrderBy(f => Path.GetExtension(f.EntryName), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(f => f.EntryName, StringComparer.Ordinal));
+
+        using var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1 << 16);
+        var writer = new SevenZipWriter(file, level, bytes, cancellationToken);
+        foreach (var item in ordered)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // 7z keeps times to 100 ns, so they are read again here: a folder listing can lag behind on NTFS.
+            if (item.IsFolder)
+            {
+                writer.AddFolder(item.EntryName, FreshTime(() => Directory.GetLastWriteTimeUtc(item.Path), item.Modified),
+                    SevenZipAttributes(item.Path, folder: true));
+                continue;
+            }
+            using var source = new FileStream(item.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16);
+            writer.AddFile(item.EntryName, source, source.Length, FreshTime(() => File.GetLastWriteTimeUtc(source.SafeFileHandle), item.Modified),
+                SevenZipAttributes(item.Path, folder: false), counter.Add);
+        }
+        writer.Finish();
+    }
+
+    private static DateTime FreshTime(Func<DateTime> read, DateTimeOffset listed)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return listed.UtcDateTime;
+        }
+    }
+
+    /// <summary>
+    /// 7z attributes: the Windows ones that matter (read-only, hidden, system, archive, directory) and the Unix mode in
+    /// the high 16 bits: the file's own off Windows, rw-r--r-- / rwxr-xr-x on Windows (as the TAR writer).
+    /// </summary>
+    private static uint SevenZipAttributes(string path, bool folder)
+    {
+        const FileAttributes kept = FileAttributes.ReadOnly | FileAttributes.Hidden | FileAttributes.System | FileAttributes.Archive;
+        var attributes = folder ? FileAttributes.Directory : 0;
+        var mode = folder ? 0x1EDu : 0x1A4u; // 0755, 0644
+        try
+        {
+            attributes |= File.GetAttributes(path) & kept;
+            if (!OperatingSystem.IsWindows())
+                mode = (uint)File.GetUnixFileMode(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Gone or locked since it was listed: the defaults.
+        }
+        if (attributes.HasFlag(FileAttributes.ReadOnly))
+            mode &= ~0x92u; // no write bits
+        mode |= folder ? 0x4000u : 0x8000u; // S_IFDIR / S_IFREG
+        return (uint)attributes | SevenZipWriter.UnixExtension | (mode << 16);
     }
 
     /// <summary>One file as a .gz or .xz, its time kept on the archive.</summary>

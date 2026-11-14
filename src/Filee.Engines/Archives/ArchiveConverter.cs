@@ -3,9 +3,9 @@
 // "Compress into one archive" for any files (IFileCombiner).
 // Reading is in-process for the common formats (SharpCompress, .NET and Filee's own readers, see ArchiveExtractor);
 // the bundled 7-Zip (engines/7zip, LGPL, separate process) reads CAB, DMG, IMG, LHA, ARJ and UDF discs and is the
-// fallback for what the in-process readers can't. ZIP (and the packs), TAR, TAR.GZ, TAR.XZ, GZ and XZ are written
-// in-process (XZ with Filee's own LZMA2 encoder, see XzWriter), 7Z and BZ2 (also inside TARs) by 7-Zip. Without
-// 7-Zip the engine stays available with the in-process edges only.
+// fallback for what the in-process readers can't. ZIP (and the packs), 7Z, TAR, TAR.GZ, TAR.XZ, GZ and XZ are
+// written in-process (7Z and XZ with Filee's own LZMA2 encoder, see SevenZipWriter and XzWriter), BZ2 (also inside
+// TARs) by 7-Zip. Without 7-Zip the engine stays available with the in-process edges only.
 // See docs/ENGINES.md.
 
 using Filee.Core.Conversion;
@@ -32,7 +32,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
     private bool _located;
 
     public string Id => "archive";
-    public string DisplayName => "Archives (7-Zip)";
+    public string DisplayName => "Archives (built-in)";
 
     /// <summary>The bundled 7-Zip, looked for once (and again on every status check), or null.</summary>
     private SevenZip? Tool

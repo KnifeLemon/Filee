@@ -1,8 +1,9 @@
 // Archive engine: conversions between archive formats (names incl. Korean, folders, contents and times survive),
 // Extract to a folder, "Compress into one archive", Filee's own ALZ / EGG / lzip / bzip2 readers, and the safety
 // checks (zip slip, links, passwords). Tests that need the bundled 7-Zip (to make their input, or for a format only
-// it reads or writes) skip when engines/7zip is missing (pwsh build/fetch-engines.ps1 -Only 7zip) or hidden with
-// FILEE_HIDE_7ZIP=1; everything else runs in-process. ArchiveInProcessTests covers the in-process readers.
+// it reads or writes: BZ2) skip when engines/7zip is missing (pwsh build/fetch-engines.ps1 -Only 7zip) or hidden with
+// FILEE_HIDE_7ZIP=1; everything else runs in-process. ArchiveInProcessTests covers the in-process readers,
+// SevenZipWriterTests and LzmaTests Filee's own 7z and XZ writers.
 
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -62,7 +63,8 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         if (ArchiveExtractor.SevenZipFormats.Contains(from))
             SkipWithout7Zip();
         var planner = fx.Catalog.CreatePlanner(["archive"]);
-        string[] targets = SevenZipExe is null ? ["zip", "tar", "tgz", FormatRegistry.Folder] : ["zip", "7z", "tar", "tgz", "tbz2", "txz", FormatRegistry.Folder];
+        // Only TAR.BZ2 still needs 7-Zip to write.
+        string[] targets = SevenZipExe is null ? ["zip", "7z", "tar", "tgz", "txz", FormatRegistry.Folder] : ["zip", "7z", "tar", "tgz", "tbz2", "txz", FormatRegistry.Folder];
         foreach (var to in targets)
         {
             var route = planner.Plan(from, to);
@@ -77,11 +79,11 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var planner = fx.Catalog.CreatePlanner(["archive"]);
         Assert.Single(planner.Plan("lz", "gz")!.Steps);
         Assert.Single(planner.Plan("xz", "gz")!.Steps);
+        Assert.Single(planner.Plan("gz", "xz")!.Steps); // Filee's own XZ writer
         if (SevenZipExe is not null)
-        {
-            Assert.Single(planner.Plan("gz", "xz")!.Steps);
             Assert.Single(planner.Plan("lzma", "bz2")!.Steps);
-        }
+        else
+            Assert.Null(planner.Plan("lzma", "bz2"));
         Assert.Null(planner.Plan("zip", "gz"));  // several files do not fit into one .gz
         Assert.Null(planner.Plan("zip", "rar")); // RAR cannot be written
         Assert.Null(planner.Plan("lzo", "zip")); // no LZO reader
@@ -98,7 +100,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Zip_7z_tgz_tar_zip_round_trip_keeps_names_folders_contents_and_times()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var tree = MakeTree(dir, "프로젝트");
         var expected = Snapshot(tree);
@@ -106,7 +107,9 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         ZipFile.CreateFromDirectory(tree, zip, CompressionLevel.Optimal, includeBaseDirectory: true, Encoding.UTF8);
 
         var current = zip;
-        foreach (var target in new[] { "7z", "tgz", "tar", "tbz2", "txz", "zip" })
+        // Every step is written in-process but TAR.BZ2, which needs 7-Zip.
+        string[] steps = SevenZipExe is null ? ["7z", "tgz", "tar", "txz", "zip"] : ["7z", "tgz", "tar", "tbz2", "txz", "zip"];
+        foreach (var target in steps)
         {
             var job = await ConvertOkAsync(current, new Preset { TargetFormat = target });
             current = job.Outputs.Single();
@@ -117,18 +120,15 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var check = Path.Combine(dir, "check");
         ZipFile.ExtractToDirectory(current, check);
         Assert.Equal(expected, Snapshot(Path.Combine(check, "프로젝트")));
+        // No step goes through 7-Zip's ZIP time conversion any more (it used the current UTC offset, an hour off in
+        // daylight saving time), so the time comes back as it was, within ZIP's two seconds.
         var time = File.GetLastWriteTime(Path.Combine(check, "프로젝트", "readme.txt"));
-        // 7-Zip turns a ZIP's local times into UTC with Windows' current offset, which in a time zone with daylight
-        // saving time can be an hour off .NET's offset for that date (seen on a Pacific-time CI runner).
-        var off = Math.Abs((time - KnownTime).TotalSeconds);
-        var dstHour = TimeZoneInfo.Local.SupportsDaylightSavingTime && Math.Abs(off - 3600) <= 2;
-        Assert.True(off <= 2 || dstHour, $"time {time} instead of {KnownTime}");
+        Assert.True(Math.Abs((time - KnownTime).TotalSeconds) <= 2, $"time {time} instead of {KnownTime}");
     }
 
     [Fact]
     public async Task Store_and_maximum_levels_are_applied()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var text = Path.Combine(dir, "big.txt");
         await File.WriteAllBytesAsync(text, Words(300_000), Ct);
@@ -538,7 +538,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("txz")]
     public async Task Combine_into_other_archive_formats(string format)
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var one = Path.Combine(dir, "하나.txt");
         var two = Path.Combine(Directory.CreateDirectory(Path.Combine(dir, "sub")).FullName, "하나.txt");
