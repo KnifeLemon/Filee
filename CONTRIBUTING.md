@@ -34,8 +34,18 @@ dotnet test Filee.slnx -c Release
 pwsh build/build-portable.ps1 -Runtime linux-x64
 ```
 
-Use the matching runtime on a Mac or ARM64 Linux machine. A Mac also needs dmgbuild for the disk image
-(`python3 -m pip install dmgbuild==1.6.7`). Magick.NET has no ImageMagick library for Intel Macs: there,
+Use the matching runtime on a Mac or ARM64 Linux machine. A Mac also needs dmgbuild for the disk image. Homebrew's
+Python refuses `pip install` outside a virtual environment (PEP 668), so install it into one and run the build from
+a shell where that environment is active:
+
+```sh
+python3 -m venv ~/.venvs/filee-dmg
+source ~/.venvs/filee-dmg/bin/activate
+python3 -m pip install -r installer/macos/dmg/requirements.txt
+```
+
+`build-portable.ps1` checks for it with `python3 -c 'import dmgbuild'`, so a pipx install isn't found.
+Magick.NET has no ImageMagick library for Intel Macs: there,
 put Filee's own next to each build after building, e.g.
 `pwsh build/fetch-magick-native.ps1 -Runtime osx-x64 -Destination src/Filee.App/bin/Debug/net10.0`. Packaging runs on Linux/macOS so archives retain
 executable permissions. Each archive contains the app, CLI, rhwp, 7-Zip, installation instructions and per-user

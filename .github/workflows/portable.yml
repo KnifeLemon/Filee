@@ -148,7 +148,7 @@ jobs:
 
       - name: Disk image tool
         if: runner.os == 'macOS'
-        run: python3 -m pip install dmgbuild==1.6.7
+        run: python3 -m pip install -r installer/macos/dmg/requirements.txt
 
       - name: Linux desktop dependencies
         if: runner.os == 'Linux'
