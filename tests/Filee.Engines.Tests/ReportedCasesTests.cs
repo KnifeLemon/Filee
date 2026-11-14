@@ -15,6 +15,7 @@ using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Office;
 using Filee.Engines.Office.Sheets;
 using Filee.Engines.Rendering;
@@ -145,6 +146,55 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Contains("Coverheader", Text(pages[0]));
         Assert.DoesNotContain("Runningheader", Text(pages[0]));
         Assert.Contains("Runningheader", Text(pages[1]));
+    }
+
+    [Fact]
+    public async Task Issue1152_page_x_of_y_in_a_first_page_header_table_counts_every_page()
+    {
+        // The Doc Ref table of a first-page header: "Page 1 of 2" where Word last saved two pages, in a three-page
+        // document. The HWPX writer keeps Word's text there (rhwp leaves such a number blank); the renderer counts.
+        var docx = Docx(P(R("first")) + PageBreak + P(R("second")) + PageBreak + P(R("third")));
+        var cell = P(R("Page ") + Field("PAGE", "1") + R(" of ") + Field("NUMPAGES", "2"));
+        var first = docx.Header("<w:tbl><w:tblPr><w:tblW w:w=\"4000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid>" +
+            $"<w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr>{cell}</w:tc></w:tr></w:tbl>" + P(""));
+        docx.SectionProperties = $"<w:headerReference w:type=\"first\" r:id=\"{first}\"/>{DefaultPage}<w:titlePg/>";
+        var path = docx.Save(Path.Combine(fx.NewFolder(), "case.docx"));
+
+        var pages = await ComposeAsync(path, "docx");
+
+        Assert.Equal(3, pages.Count);
+        Assert.Contains("Page1of3", Text(pages[0]));
+        var document = DocxReader.Read(path, fx.NewFolder());
+        var header = Assert.IsType<List<HBlock>>(Assert.Single(document.Sections).FirstPageHeader);
+        var fields = Assert.IsType<HTable>(header[0]).Rows[0].Cells[0].Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HField>().ToList();
+        Assert.Equal(["1", "2"], fields.Select(f => f.Stored));
+        var hwpx = Path.Combine(fx.NewFolder(), "case.hwpx");
+        HwpxWriter.Write(document, hwpx);
+        using var zip = ZipFile.OpenRead(hwpx);
+        using var section = new StreamReader(zip.GetEntry("Contents/section0.xml")!.Open());
+        Assert.Contains("Page 1 of 2", await section.ReadToEndAsync(Token), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Issue1152_table_of_contents_entries_are_not_drawn_as_blue_links()
+    {
+        // Word writes each entry of a table of contents as a link in the Hyperlink character style (blue, underlined),
+        // yet draws it in the TOC style's black, as LibreOffice does; a link in the text stays blue.
+        const string Hyperlink = "<w:style w:type=\"character\" w:styleId=\"Hyperlink\"><w:name w:val=\"Hyperlink\"/><w:rPr><w:color w:val=\"0000FF\"/><w:u w:val=\"single\"/></w:rPr></w:style>";
+        static string Entry(string text, string anchor) =>
+            $"<w:hyperlink w:anchor=\"{anchor}\" w:history=\"1\">{R(text, "<w:rStyle w:val=\"Hyperlink\"/><w:noProof/>")}</w:hyperlink>";
+        var toc = P("<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> TOC \\o \"1-3\" \\h \\z \\u </w:instrText></w:r>" +
+                    "<w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>" + Entry("Introduction", "_Toc1")) +
+                  P(Entry("Results", "_Toc2") + "<w:r><w:fldChar w:fldCharType=\"end\"/></w:r>");
+        var docx = Docx(toc + P(Entry("Elsewhere", "_Toc1")));
+        docx.Styles = NotoStyles + Hyperlink;
+
+        var page = Single(await DocxAsync(docx));
+
+        SKColor ColorOf(string word) => Glyphs(page).First(g => g.Char == word[0] && Lines(page).Any(l => l.Text == word && MathF.Round(g.Y, 1) == l.Y)).Run.Color;
+        Assert.Equal(SKColors.Black, ColorOf("Introduction"));
+        Assert.Equal(SKColors.Black, ColorOf("Results"));
+        Assert.Equal(new SKColor(0, 0, 0xFF), ColorOf("Elsewhere"));
     }
 
     [Fact]
@@ -411,6 +461,30 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Null(renderer.FirstUnsupported(plain, "docx"));
     }
 
+    [Fact]
+    public void Issue1180_text_in_a_document_that_names_no_font_is_in_times_new_roman()
+    {
+        // A worksheet whose styles and defaults name no font at all: Word draws it in Times New Roman, the renderer
+        // drew it in its own sans serif, wider, and the pages ran over. A theme or named font still wins.
+        const string Bare = """
+            <w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>
+            <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="normal"/></w:style>
+            """;
+        var docx = new DocxBuilder { Styles = Bare }.Paragraph(P(R("Student Name")) + P(R("UID", "<w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>")));
+        var themed = new DocxBuilder { Styles = Bare.Replace("<w:sz ", "<w:rFonts w:asciiTheme=\"minorHAnsi\" w:hAnsiTheme=\"minorHAnsi\"/><w:sz ", StringComparison.Ordinal) }.Paragraph(P(R("Body")));
+
+        var plain = DocxReader.Read(docx.Save(Path.Combine(fx.NewFolder(), "bare.docx")), fx.NewFolder());
+        var theme = DocxReader.Read(themed.Save(Path.Combine(fx.NewFolder(), "themed.docx")), fx.NewFolder());
+
+        var texts = Assert.Single(plain.Sections).Blocks.OfType<HParagraph>().Select(p => p.Inlines.OfType<HText>().Single()).ToList();
+        Assert.Equal("Times New Roman", texts[0].Format.Font);
+        Assert.Equal("Times New Roman", texts[0].Format.Layout?.WordFonts?.Ascii);
+        Assert.Equal("Times New Roman", texts[0].Format.Layout?.WordFonts?.ComplexScript);
+        Assert.Equal("Arial", texts[1].Format.Font);
+        var body = Assert.Single(theme.Sections).Blocks.OfType<HParagraph>().Single().Inlines.OfType<HText>().Single();
+        Assert.NotEqual("Times New Roman", body.Format.Font);
+    }
+
     // ───────────────────────── Word: fixes that came with the main merge (#1194, #355, #1237) ─────────────────────────
 
     [Fact]
@@ -427,6 +501,31 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         var single = LineHeight(RepositoryFonts.Latin, 10);
         Assert.Equal(single, Pitch(tight), 0.1f);
         Assert.Equal(single + 10, Pitch(loose), 0.1f);
+    }
+
+    [Fact]
+    public async Task Issue1194_a_page_break_at_the_end_of_a_paragraph_leaves_no_empty_line_on_the_next_page()
+    {
+        // Each chapter of the report starts after a paragraph holding only a page break. Word keeps that paragraph's
+        // mark on the old page; the renderer put it on the new one, an empty line and 10 pt above every chapter.
+        var styles = NotoStyles.Replace("<w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>",
+            "<w:spacing w:after=\"200\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>", StringComparison.Ordinal);
+        Assert.NotEqual(NotoStyles, styles);
+        const string Break = "<w:r><w:br w:type=\"page\"/></w:r>";
+        var own = new DocxBuilder { Styles = styles, SectionProperties = DefaultPage }.Paragraph(P(R("Chapter 1")) + P(Break) + P(R("Chapter 2")));
+        var ending = new DocxBuilder { Styles = styles, SectionProperties = DefaultPage }.Paragraph(P(R("Chapter 1") + Break) + P(R("Chapter 2")));
+        var property = new DocxBuilder { Styles = styles, SectionProperties = DefaultPage }.Paragraph(P(R("Chapter 1")) + P(R("Chapter 2"), "<w:pageBreakBefore/>"));
+        var middle = new DocxBuilder { Styles = styles, SectionProperties = DefaultPage }.Paragraph(P(R("Chapter 1") + Break + R("Chapter 2")));
+
+        var expected = Lines((await DocxAsync(property))[1]).Single().Y;
+        foreach (var docx in new[] { own, ending, middle })
+        {
+            var pages = await DocxAsync(docx);
+            Assert.Equal(2, pages.Count);
+            var line = Assert.Single(Lines(pages[1]));
+            Assert.Equal("Chapter2", line.Text);
+            Assert.Equal(expected, line.Y, 0.1f);
+        }
     }
 
     [Fact]
@@ -461,6 +560,32 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Equal(new SKColor(0xFF, 0, 0), Runs(page).First(r => r.Text.Contains("Warning", StringComparison.Ordinal)).Color);
         Assert.Equal(new SKColor(0, 0, 0xFF), Runs(page).First(r => r.Text.Contains("Note", StringComparison.Ordinal)).Color);
         Assert.Equal(SKColors.Black, Runs(page).First(r => r.Text.Contains("Plain", StringComparison.Ordinal)).Color);
+    }
+
+    [Fact]
+    public async Task Issue1313_a_frame_sits_where_its_page_position_puts_it()
+    {
+        // The form's verification code: a paragraph in a frame (w:framePr) 492 pt from the left and 720 pt from the top
+        // of the page, 84 × 98 pt, centred. It came out under the signature in the text, in the middle of the page.
+        var frame = "<w:framePr w:w=\"1680\" w:h=\"1961\" w:hRule=\"exact\" w:wrap=\"none\" w:vAnchor=\"page\" w:hAnchor=\"page\" w:x=\"9840\" w:y=\"14400\" w:anchorLock=\"1\"/><w:jc w:val=\"center\"/>";
+        var docx = Docx(P(R("Signature")) + P(R("Code"), frame) + P(R("Check"), frame) + P(R("After")));
+
+        var page = Single(await DocxAsync(docx));
+
+        var lines = Lines(page);
+        var signature = lines.Single(l => l.Text == "Signature");
+        var after = lines.Single(l => l.Text == "After");
+        Assert.Equal(LineHeight(RepositoryFonts.Latin, 10), after.Y - signature.Y, 0.5f);
+        var codeLine = lines.Single(l => l.Text == "Code");
+        var code = Glyphs(page).Where(g => g.Text.Length > 0 && MathF.Round(g.Y, 1) == codeLine.Y).ToList();
+        Assert.Equal(4, code.Count);
+        Assert.InRange(codeLine.Y, 720, 720 + 98);
+        Assert.InRange(code.Min(g => g.X), 492, 492 + 84);
+        Assert.InRange(code.Max(g => g.X), 492, 492 + 84);
+        // Centred in the frame, the two paragraphs one under the other.
+        Assert.InRange((code.Min(g => g.X) + code.Max(g => g.X)) / 2, 492 + 42 - 12, 492 + 42 + 12);
+        var check = lines.Single(l => l.Text == "Check");
+        Assert.True(check.Y > code[0].Y && check.Y < 720 + 98, $"second line at {check.Y}");
     }
 
     // ───────────────────────── Word: right-to-left documents (#202, #216, #620) ─────────────────────────

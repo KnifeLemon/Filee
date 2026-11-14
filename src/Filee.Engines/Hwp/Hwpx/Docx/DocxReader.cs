@@ -61,6 +61,12 @@ internal sealed partial class DocxReader
     /// <summary>Reading the header for the first page only, which becomes a text box (see <see cref="HSection.FirstPageHeader"/>).</summary>
     private bool _inFirstPageHeader;
 
+    /// <summary>
+    /// The block list whose next block starts a new page: a paragraph ended right after its page break, and Word keeps
+    /// such a paragraph's mark on the old page.
+    /// </summary>
+    private List<HBlock>? _pageBreakFor;
+
     /// <summary>Table cells, text boxes and notes around the blocks being read (see <see cref="ReadNestedBlocks"/>).</summary>
     private int _depth;
 
@@ -205,6 +211,7 @@ internal sealed partial class DocxReader
     {
         var main = _part;
         LoadStyles(RelatedPart(main, "/styles"));
+        DefaultFonts();
         var theme = RelatedPart(main, "/theme");
         LoadTheme(theme);
         LoadThemeColors(theme);
@@ -647,7 +654,11 @@ internal sealed partial class DocxReader
 
     private void ReadBlock(XElement element, List<HBlock> output)
     {
-        if (element.Name == W + "p")
+        var count = output.Count;
+        var pageBreak = ReferenceEquals(_pageBreakFor, output);
+        if (element.Name == W + "p" && PageFrame(element) is { } frame)
+            ReadFramed(element, frame, output);
+        else if (element.Name == W + "p")
             ReadParagraph(element, output);
         else if (element.Name == W + "tbl")
         {
@@ -655,7 +666,113 @@ internal sealed partial class DocxReader
             output.Add(ReadTable(element));
             _tableDepth--;
         }
+        if (pageBreak && output.Count > count)
+        {
+            if (ReferenceEquals(_pageBreakFor, output))
+                _pageBreakFor = null;
+            switch (output[count])
+            {
+                case HParagraph paragraph:
+                    paragraph.PageBreakBefore = true;
+                    break;
+                case HTable table:
+                    table.PageBreakBefore = true;
+                    break;
+            }
+        }
     }
+
+    // ───────────────────────── Frames ─────────────────────────
+
+    /// <summary>The frame paragraphs are being read into, while the next paragraph with the same w:framePr joins it.</summary>
+    private (XElement Properties, HTextBox Box, List<HBlock> Output, int Count)? _frame;
+
+    /// <summary>
+    /// The w:framePr of a paragraph Word sets in a frame of a given size at a place on the page or within the margins
+    /// (a verification code at the bottom of a form); null for other paragraphs, drop caps and frames that move with
+    /// the text, which stay in the text.
+    /// </summary>
+    private static XElement? PageFrame(XElement paragraph)
+    {
+        var frame = paragraph.Element(W + "pPr")?.Element(W + "framePr");
+        if (frame is null || Attr(frame, "dropCap") is "drop" or "margin" || Attr(frame, "vAnchor") is not ("page" or "margin")
+            || Twips(frame, "w") is not > 0 || Twips(frame, "h") is not (> 0 or < 0))
+            return null;
+        return frame;
+    }
+
+    /// <summary>
+    /// A paragraph in a frame: a box without border or padding at the frame's place, floating at the paragraph before
+    /// it (the frame takes no room in the text). Consecutive paragraphs with the same frame share the box.
+    /// </summary>
+    private void ReadFramed(XElement paragraph, XElement properties, List<HBlock> output)
+    {
+        HTextBox box;
+        if (_frame is { } open && ReferenceEquals(open.Output, output) && open.Count == output.Count && XNode.DeepEquals(open.Properties, properties))
+        {
+            box = open.Box;
+        }
+        else
+        {
+            var height = Math.Abs(Twips(properties, "h") ?? 0);
+            box = new TextBoxBuilder(HwpxUnits.FromTwips(Twips(properties, "w") ?? 0), HwpxUnits.FromTwips(height), FrameAnchor(properties))
+            {
+                Line = HBorder.None,
+                Padding = new HInsets(0, 0, 0, 0),
+            }.Build();
+            if (output.LastOrDefault() is HParagraph host)
+            {
+                host.Inlines.Add(box);
+            }
+            else
+            {
+                var empty = new HParagraph();
+                empty.Inlines.Add(box);
+                output.Add(empty);
+            }
+        }
+        _textBoxDepth++;
+        try
+        {
+            ReadParagraph(paragraph, box.Blocks);
+        }
+        finally
+        {
+            _textBoxDepth--;
+        }
+        _frame = (properties, box, output, output.Count);
+    }
+
+    /// <summary>Where w:framePr puts its frame: x/xAlign from the page, margin or column, y/yAlign from the page or margin.</summary>
+    private static HAnchor FrameAnchor(XElement frame) => new(
+        HorizontalRelativeTo: Attr(frame, "hAnchor") switch
+        {
+            "page" => "PAPER",
+            "margin" => "PAGE",
+            _ => "COLUMN",
+        },
+        HorizontalAlign: Attr(frame, "xAlign") switch
+        {
+            "center" => "CENTER",
+            "right" or "outside" => "RIGHT",
+            _ => "LEFT",
+        },
+        HorizontalOffset: Attr(frame, "xAlign") is null ? HwpxUnits.FromTwips(Twips(frame, "x") ?? 0) : 0,
+        VerticalRelativeTo: Attr(frame, "vAnchor") == "page" ? "PAPER" : "PAGE",
+        VerticalAlign: Attr(frame, "yAlign") switch
+        {
+            "center" => "CENTER",
+            "bottom" or "outside" => "BOTTOM",
+            _ => "TOP",
+        },
+        VerticalOffset: Attr(frame, "yAlign") is null ? HwpxUnits.FromTwips(Twips(frame, "y") ?? 0) : 0,
+        Wrap: Attr(frame, "wrap") switch
+        {
+            "through" => "IN_FRONT_OF_TEXT",
+            "none" or "notBeside" => "TOP_AND_BOTTOM",
+            _ => "SQUARE",
+        },
+        AllowOverlap: true);
 
     // ───────────────────────── Paragraphs ─────────────────────────
 
@@ -672,6 +789,7 @@ internal sealed partial class DocxReader
         private readonly int _heading;
         private readonly HListRef? _list;
         private readonly ParaProps _props;
+        private bool _pageBroken;
         private readonly Stack<List<HInline>> _sinks = new();
 
         public ParagraphBuilder(DocxReader reader, List<HBlock> output, ParaProps props, RunProps mark, XElement? pPr)
@@ -727,7 +845,7 @@ internal sealed partial class DocxReader
                 _sinks.Clear();
             }
             if (page)
-                Current.PageBreakBefore = true;
+                Current.PageBreakBefore = _pageBroken = true;
             else
                 Current.ColumnBreakBefore = true;
         }
@@ -743,7 +861,18 @@ internal sealed partial class DocxReader
             _sinks.Clear();
         }
 
-        public void Finish() => Emit();
+        /// <param name="endsSection">The paragraph holds a section's properties (its section ends here).</param>
+        public void Finish(bool endsSection = false)
+        {
+            // Word keeps the mark of a paragraph that ends right after a page break on the old page: the new page starts
+            // with the next paragraph, not with an empty line and the paragraph's space after.
+            if (_pageBroken && Current.Inlines.Count == 0 && Current.List is not { Numbered: true } && !endsSection)
+            {
+                _reader._pageBreakFor = _output;
+                return;
+            }
+            Emit();
+        }
 
         private void Emit()
         {
@@ -771,7 +900,7 @@ internal sealed partial class DocxReader
         // Run formatting starts from the paragraph style, not from the paragraph mark's direct formatting.
         var styleRun = ParagraphStyle(Val(pPr?.Element(W + "pStyle")) ?? _defaultParagraphStyle).Run;
         ParagraphContent(p.Elements(), builder, styleRun);
-        builder.Finish();
+        builder.Finish(endsSection: pPr?.Element(W + "sectPr") is not null);
     }
 
     private void ParagraphContent(IEnumerable<XElement> elements, ParagraphBuilder builder, RunProps styleRun)
@@ -884,6 +1013,10 @@ internal sealed partial class DocxReader
                     // Text typed in Wingdings & co. ("þ" for ☑) becomes the Unicode characters it shows.
                     foreach (var text in SymbolFonts.Runs(child.Value, format))
                         builder.Add(text);
+                }
+                else if (StoredResult() is { } stored && stored.Stored!.Length < 32)
+                {
+                    stored.Stored += child.Value;
                 }
                 break;
             case "tab" or "ptab":
@@ -1123,10 +1256,25 @@ internal sealed partial class DocxReader
         public bool Result;
         public bool Suppress;
         public string? Target;
+
+        /// <summary>The page number field whose result text is kept as <see cref="HField.Stored"/>.</summary>
+        public HField? Stored;
+
+        /// <summary>A table of contents (TOC): its entries don't take the Hyperlink character style's look.</summary>
+        public bool TableOfContents;
     }
+
+    /// <summary>Text is in the entries of a table of contents.</summary>
+    private bool InTableOfContents => _fields.Any(f => f.Result && f.TableOfContents);
 
     /// <summary>Field result text is shown unless we are inside an instruction or a field we replace (PAGE ...).</summary>
     private bool ShowsText() => _fields.All(f => f.Result && !f.Suppress);
+
+    /// <summary>The page number whose result text is being read, when only that field hides it.</summary>
+    private HField? StoredResult() =>
+        _fields.Count > 0 && _fields[^1] is { Result: true, Stored: { } stored } && _fields.Take(_fields.Count - 1).All(f => f.Result && !f.Suppress)
+            ? stored
+            : null;
 
     private void FieldChar(XElement fldChar, ParagraphBuilder builder, HCharFormat format)
     {
@@ -1165,7 +1313,17 @@ internal sealed partial class DocxReader
         switch (words.FirstOrDefault()?.ToUpperInvariant())
         {
             case "PAGE" or "NUMPAGES" or "SECTIONPAGES" when _inFirstPageHeader && _tableDepth > 0:
-                // rhwp leaves a page number in a table in a text box blank: Word's result, which comes next, stays.
+                {
+                    // rhwp leaves a page number in a table in a text box blank: the HWPX writer writes Word's result,
+                    // which comes next, as text. The layout engine counts the pages, as for any other page number.
+                    var number = new HField(words[0].Equals("PAGE", StringComparison.OrdinalIgnoreCase) ? HFieldKind.PageNumber : HFieldKind.TotalPages, format) { Stored = "" };
+                    builder.Add(number);
+                    field.Stored = number;
+                    field.Suppress = true;
+                    break;
+                }
+            case "TOC":
+                field.TableOfContents = true;
                 break;
             case "HYPERLINK":
                 {

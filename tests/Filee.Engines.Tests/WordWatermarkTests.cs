@@ -78,6 +78,24 @@ public sealed class WordWatermarkTests : IDisposable
     }
 
     [Fact]
+    public void A_hidden_wordart_shape_is_left_out()
+    {
+        // A form kept a spare copy of its WordArt as a hidden 50 pt shape at the top left (visibility:hidden), next to
+        // the one it shows; Word draws only the visible one (#1313).
+        string Shape(string id, string visibility) =>
+            $"<v:shape id=\"{id}\" style=\"position:absolute;margin-left:0;margin-top:0;width:50pt;height:50pt;z-index:251658240;visibility:{visibility}\" " +
+            "coordsize=\"21600,21600\" o:spt=\"100\" path=\"m,l,m,21600r,m21600,10800l,10800e\"><v:path textpathok=\"t\"/>" +
+            $"<v:textpath on=\"t\" fitshape=\"t\" style=\"font-family:&quot;Calibri&quot;;font-size:1in\" string=\"{id}\"/></v:shape>";
+        var body = $"<w:p><w:r><w:pict {Office}>{Shape("Spare", "hidden")}{Shape("Shown", "visible")}</w:pict></w:r></w:p>";
+
+        var document = Read(new DocxBuilder().Paragraph(body));
+
+        var boxes = document.Sections[0].Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HTextBox>().ToList();
+        var text = Assert.IsType<HText>(Assert.Single(Assert.IsType<HParagraph>(Assert.Single(Assert.Single(boxes).Blocks)).Inlines));
+        Assert.Equal("Shown", text.Text);
+    }
+
+    [Fact]
     public void A_picture_watermark_keeps_its_washout()
     {
         var vml = Read(WithHeader(PictureHeader("gain=\"19661f\" blacklevel=\"22938f\"")), picture: true);

@@ -577,6 +577,12 @@ internal sealed class HField(HFieldKind kind, HCharFormat format) : HInline
 
     /// <summary>The number's OWPML format (DIGIT, LATIN_CAPITAL, ROMAN_SMALL, ...); null for digits. Read for layout only.</summary>
     public string? NumberFormat { get; init; }
+
+    /// <summary>
+    /// The number Word last saved for the field, which the HWPX writer writes as text instead of the field (rhwp leaves
+    /// a page number in a table in a text box blank); null when it writes the field. The layout engine always counts.
+    /// </summary>
+    public string? Stored { get; set; }
 }
 
 /// <summary>

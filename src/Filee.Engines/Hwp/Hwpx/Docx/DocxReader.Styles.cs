@@ -305,6 +305,23 @@ internal sealed partial class DocxReader
     private (string? Latin, string? EastAsian) _minorFont, _majorFont;
     private string? _minorComplexFont, _majorComplexFont;
 
+    /// <summary>
+    /// Word draws text whose styles and document defaults name no font in Times New Roman (Latin and complex script
+    /// characters); East Asian text keeps the font of its language.
+    /// </summary>
+    private void DefaultFonts()
+    {
+        var run = _defaultRun;
+        if (run.Ascii is not null || run.AsciiTheme is not null || run.AsciiOnly is not null || run.AsciiOnlyTheme is not null
+            || run.HighAnsi is not null || run.HighAnsiTheme is not null)
+            return;
+        run.Ascii = run.AsciiOnly = run.HighAnsi = WordDefaultFont;
+        if (run.ComplexScript is null && run.ComplexScriptTheme is null)
+            run.ComplexScript = WordDefaultFont;
+    }
+
+    private const string WordDefaultFont = "Times New Roman";
+
     private void LoadStyles(Part? part)
     {
         var root = part?.Xml.Root;
@@ -492,7 +509,10 @@ internal sealed partial class DocxReader
     private RunProps RunProperties(XElement? rPr, RunProps paragraphRun)
     {
         var run = paragraphRun.Clone();
-        if (Val(rPr?.Element(W + "rStyle")) is { } characterStyle && _styles.TryGetValue(characterStyle, out var style))
+        // Word and LibreOffice draw the entries of a table of contents in the TOC styles' look, though Word gives each
+        // entry's link the Hyperlink character style (blue, underlined).
+        if (Val(rPr?.Element(W + "rStyle")) is { } characterStyle && _styles.TryGetValue(characterStyle, out var style)
+            && !(InTableOfContents && (style.Id == "Hyperlink" || string.Equals(style.Name, "Hyperlink", StringComparison.OrdinalIgnoreCase))))
         {
             // Character styles only carry run properties; apply their chain on top of the paragraph's.
             var chain = new List<Style>();
