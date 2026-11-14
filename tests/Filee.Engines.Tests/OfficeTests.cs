@@ -372,28 +372,32 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("xlsx", "hwpx", "hwpx-writer")]
     [InlineData("csv", "hwpx", "hwpx-writer")]
     [InlineData("pptx", "hwpx", "hwpx-writer")]
-    [InlineData("xlsx", "pdf", "hwpx-writer,rhwp")]
+    [InlineData("xlsx", "pdf", "sheet-print")]
     [InlineData("csv", "pdf", "hwpx-writer,rhwp")]
     [InlineData("pptx", "pdf", "hwpx-writer,rhwp")]
     [InlineData("docx", "pdf", "hwpx-writer,rhwp")]
     [InlineData("odt", "pdf", "hwpx-writer,rhwp")]
     [InlineData("odt", "docx", "docx-writer")]
     [InlineData("docx", "odt", "odt-writer")]
+    [InlineData("doc", "pdf", "hwpx-writer,rhwp")]
+    [InlineData("doc", "docx", "docx-writer")]
+    [InlineData("doc", "odt", "odt-writer")]
+    [InlineData("doc", "hwpx", "hwpx-writer")]
+    [InlineData("dot", "docx", "docx-writer")]
+    [InlineData("wps", "pdf", "hwpx-writer,rhwp")]
     public void Office_files_convert_without_optional_engines(string from, string to, string engines)
     {
         Assert.Equal(engines.Split(','), BuiltInPlanner("rhwp").Plan(from, to)!.Steps.Select(s => s.Converter.Id));
-        // Built-in conversions win even when LibreOffice is installed, except presentations → PDF, which LibreOffice
-        // lays out like PowerPoint (Settings → Engines, on by default; see LibreOfficeRouteTests).
+        // Built-in conversions win even when LibreOffice is installed, presentations → PDF too since "Use LibreOffice
+        // for presentations" is off by default (Settings → Engines; turning it on is in LibreOfficeRouteTests).
         var withLibreOffice = fx.Catalog.CreatePlanner(["libreoffice", "rhwp"]).Plan(from, to)!.Steps;
-        if (from == "pptx" && to == "pdf")
-            Assert.Equal("libreoffice", Assert.Single(withLibreOffice).Converter.Id);
-        else
-            Assert.DoesNotContain(withLibreOffice, s => s.Converter.Id == "libreoffice");
+        Assert.DoesNotContain(withLibreOffice, s => s.Converter.Id == "libreoffice");
     }
 
+    // PPT is read by Filee now (Office/Ppt); Keynote and Publisher still need LibreOffice.
     [Theory]
-    [InlineData("doc", "pdf")]
-    [InlineData("ppt", "pdf")]
+    [InlineData("key", "pdf")]
+    [InlineData("pub", "pdf")]
     public void Rare_formats_need_libreoffice(string from, string to)
     {
         Assert.Null(BuiltInPlanner("rhwp").Plan(from, to));

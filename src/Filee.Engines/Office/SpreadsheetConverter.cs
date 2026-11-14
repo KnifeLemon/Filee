@@ -1,7 +1,7 @@
 // Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice (XLS / XLT and the XLSM / XLTX
 // variants are read, not written).
-// XLSX / XLS / ODS / CSV / TSV → PDF, HWPX and HTML go through the HWPX writer (sheets become 한글 tables), see
-// HwpxConverter and SheetDocument.
+// XLSX / XLS / ODS → PDF are printed by SheetPrintConverter; CSV / TSV → PDF and every sheet → HWPX and HTML go
+// through the HWPX writer (sheets become 한글 tables), see HwpxConverter and SheetDocument.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
@@ -41,7 +41,7 @@ public sealed class SpreadsheetConverter : IConverter
             return outputs;
         }, cancellationToken);
 
-    /// <summary>Writes a workbook as the step's XLSX, ODS, CSV or TSV (also PdfTablesConverter's output).</summary>
+    /// <summary>Writes a workbook as the step's XLSX, ODS, CSV or TSV (also the output of PdfTablesConverter and DocumentTablesConverter).</summary>
     internal static List<string> Write(Workbook book, ConversionStep step)
     {
         var outputs = new List<string>();

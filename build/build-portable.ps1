@@ -1,5 +1,7 @@
 # Builds the Linux or macOS portable package (tar.gz + SHA256SUMS) on its own operating system. macOS also gets a
-# disk image (Filee.app next to an Applications link, to drag it there), signed and notarized as the app is.
+# disk image (the signed Filee.app next to an Applications link, to drag it there, on the background and window
+# layout of installer/macos/dmg, built with dmgbuild: python3 -m pip install dmgbuild==1.6.7). The image itself is not
+# signed, and neither it nor the app is notarized here.
 #
 # Linux packages must run on Ubuntu 22.04 (glibc 2.35). rhwp's Linux release needs a newer glibc, so CI builds it from
 # source on Ubuntu 22.04 (build/build-native.py) and passes it in:
@@ -7,10 +9,11 @@
 #                           download pinned in engines.json
 # Without it (local builds) the package uses the download, which needs a newer glibc.
 #
-# macOS packages must run on macOS 13 (LSMinimumSystemVersion). Magick.NET's own macOS ImageMagick library needs macOS
-# 14 (Apple silicon) or 15 (Intel), so it is replaced by the same Magick.Native release built for macOS 13
-# (.github/workflows/magick-native-macos.yml), pinned below. Every Mach-O file is then checked against
-# LSMinimumSystemVersion (build/check-macho-minos.py) before signing.
+# macOS packages must run on macOS 13 (LSMinimumSystemVersion). Magick.NET's own macOS ImageMagick library needs a
+# newer macOS, and Magick.NET 15 has none for Intel Macs, so the same Magick.Native release built for macOS 13
+# (.github/workflows/magick-native-macos.yml, pinned in build/fetch-magick-native.ps1) replaces it on Apple silicon and
+# is added on Intel. Every Mach-O file is then checked against LSMinimumSystemVersion (build/check-macho-minos.py)
+# before signing.
 [CmdletBinding()]
 param(
     [ValidateSet('linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')][string]$Runtime,
@@ -30,6 +33,10 @@ if (-not $Runtime) {
 }
 if (($Runtime.StartsWith('osx-') -and -not $IsMacOS) -or ($Runtime.StartsWith('linux-') -and -not $IsLinux)) {
     throw "Build $Runtime on its native operating system."
+}
+if ($Runtime.StartsWith('osx-')) {
+    python3 -c 'import dmgbuild' 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'The disk image needs dmgbuild: python3 -m pip install dmgbuild==1.6.7' }
 }
 if ($RhwpOverride -and -not $Runtime.StartsWith('linux-')) {
     throw '-RhwpOverride is for Linux packages.'
@@ -57,17 +64,6 @@ $diskImage = Join-Path $OutputDir "$packageName.dmg"
 $sums = Join-Path $OutputDir "$packageName-SHA256SUMS.txt"
 if ((Test-Path -LiteralPath $archive) -or (Test-Path -LiteralPath $sums) -or (Test-Path -LiteralPath $diskImage)) {
     throw "Package $packageName already exists. Use another output folder or version."
-}
-# Magick.Native for Magick.NET 14.17.2 built for macOS 13 (#600). A Magick.NET update needs a new build and new pins.
-$magickNative = @{
-    'osx-arm64' = @{
-        url = 'https://dl.filee.sh/engines/magick-native/2026.927.1314/Magick.Native-Q8-arm64.dll.dylib'
-        sha256 = '2299d76696d6c78dfbe856fc00118fbe30d684299524bbce328cc76003aa9c02'
-    }
-    'osx-x64' = @{
-        url = 'https://dl.filee.sh/engines/magick-native/2026.927.1314/Magick.Native-Q8-x64.dll.dylib'
-        sha256 = '11f5e26da1bc67bab6e3c0fdd0375bb756ac2db273356cd0e8f76248137fc5f6'
-    }
 }
 $stage = Join-Path $root ('build/.cache/portable/' + [Guid]::NewGuid().ToString('N'))
 $package = Join-Path $stage $packageName
@@ -109,27 +105,15 @@ foreach ($notice in @('LICENSE', 'THIRD-PARTY-NOTICES.md')) {
 }
 
 if ($Runtime.StartsWith('osx-')) {
-    $pin = $magickNative[$Runtime]
+    if (-not (Test-Path -LiteralPath (Join-Path $publish 'Magick.NET-Q8-AnyCPU.dll') -PathType Leaf)) {
+        throw 'Publish did not produce Magick.NET-Q8-AnyCPU.dll'
+    }
+    # Magick.NET 15 ships the Apple silicon library only: replaced there, added on Intel.
     $library = Join-Path $publish "Magick.Native-Q8-$($Runtime.Substring(4)).dll.dylib"
-    if (-not (Test-Path -LiteralPath $library -PathType Leaf)) { throw "Publish did not produce $(Split-Path $library -Leaf)" }
-    if ($pin.sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw "A pinned Magick.Native download is missing for $Runtime." }
-    $cache = Join-Path $root 'build/.cache/portable-downloads'
-    $cached = Join-Path $cache "$($pin.sha256).dylib"
-    if (-not (Test-Path -LiteralPath $cached)) {
-        New-Item -ItemType Directory -Force -Path $cache | Out-Null
-        $download = "$cached.$([Guid]::NewGuid().ToString('N')).partial"
-        Invoke-WebRequest -Uri $pin.url -OutFile $download
-        if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $pin.sha256) {
-            Remove-Item -LiteralPath $download
-            throw "Checksum mismatch for Magick.Native ($Runtime)."
-        }
-        Move-Item -LiteralPath $download -Destination $cached
+    if ($Runtime -eq 'osx-arm64' -and -not (Test-Path -LiteralPath $library -PathType Leaf)) {
+        throw "Publish did not produce $(Split-Path $library -Leaf)"
     }
-    if ((Get-FileHash -LiteralPath $cached -Algorithm SHA256).Hash -ne $pin.sha256) {
-        throw "Cached Magick.Native checksum mismatch: $cached"
-    }
-    Copy-Item -LiteralPath $cached -Destination $library -Force
-    Write-Host "Magick.Native for macOS 13 from $($pin.url)"
+    & (Join-Path $PSScriptRoot 'fetch-magick-native.ps1') -Runtime $Runtime -Destination $publish
     Invoke-Checked 'Check minimum macOS' { python3 (Join-Path $PSScriptRoot 'check-macho-minos.py') $publish }
 
     $contents = Join-Path $appBundle 'Contents'
@@ -183,23 +167,26 @@ else {
     Copy-Item -LiteralPath (Join-Path $root 'installer/linux/INSTALL.txt') -Destination $package
     Copy-Item -LiteralPath (Join-Path $root 'installer/linux/kwin') -Destination $package -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'installer/linux/gnome') -Destination $package -Recurse
+    Copy-Item -LiteralPath (Join-Path $root 'installer/linux/hyprland') -Destination $package -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'docs/GNOME-WAYLAND.md') -Destination $package
 }
 Invoke-Checked 'Installer permissions' { chmod +x (Join-Path $package 'install.sh') (Join-Path $package 'uninstall.sh') }
+# Keep the marker outside the signed macOS bundle. The install scripts keep installed copies separate.
+New-Item -ItemType File -Path (Join-Path $package 'filee.portable') | Out-Null
 $temporaryArchive = "$archive.$([Guid]::NewGuid().ToString('N')).partial"
 Invoke-Checked 'Create tar.gz' { tar -czf $temporaryArchive -C $stage $packageName }
 Move-Item -LiteralPath $temporaryArchive -Destination $archive
 $packages = @($archive)
 if ($Runtime.StartsWith('osx-')) {
-    # The same signed Filee.app, next to a link to /Applications to drag it onto. ditto keeps the signature's
-    # extended attributes. install.sh (in the tar.gz) is still the way to get the filee command.
-    $volume = Join-Path $stage 'dmg'
-    New-Item -ItemType Directory -Path $volume | Out-Null
-    Invoke-Checked 'Copy app for the disk image' { ditto $appBundle (Join-Path $volume 'Filee.app') }
-    Invoke-Checked 'Applications link' { ln -s /Applications (Join-Path $volume 'Applications') }
-    Copy-Item -LiteralPath (Join-Path $root 'installer/macos/INSTALL.txt') -Destination $volume
+    # The same signed Filee.app, next to a link to /Applications to drag it onto, on the background and window
+    # layout of installer/macos/dmg/settings.py. dmgbuild copies the app with ditto, which keeps the signature's
+    # extended attributes; settings.py checks the copies. install.sh (in the tar.gz) is still the way to get the filee
+    # command.
     $temporaryImage = "$diskImage.$([Guid]::NewGuid().ToString('N')).partial.dmg"
-    Invoke-Checked 'Create dmg' { hdiutil create -volname Filee -srcfolder $volume -fs HFS+ -format UDZO -ov $temporaryImage | Out-Null }
+    $dmgFolder = Join-Path $root 'installer/macos/dmg'
+    Invoke-Checked 'Create dmg' {
+        python3 -m dmgbuild -s (Join-Path $dmgFolder 'settings.py') -D "app=$appBundle" -D "dir=$dmgFolder" Filee $temporaryImage | Out-Null
+    }
     Move-Item -LiteralPath $temporaryImage -Destination $diskImage
     $packages += $diskImage
 }

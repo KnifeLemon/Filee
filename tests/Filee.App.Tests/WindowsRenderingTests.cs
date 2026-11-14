@@ -26,8 +26,20 @@ public class WindowsRenderingTests
         Assert.Equal(expected, WindowsRendering.Normalize(value));
 
     [Theory]
+    [InlineData(null, Architecture.Arm64, "gpu")]
+    [InlineData("", Architecture.Arm64, "gpu")]
+    [InlineData(null, Architecture.X64, null)]
+    [InlineData("", Architecture.X64, null)]
+    [InlineData("auto", Architecture.Arm64, null)]
+    [InlineData(" Vulkan ", Architecture.Arm64, "vulkan")]
+    [InlineData("software", Architecture.Arm64, "software")]
+    [InlineData("gpu", Architecture.X64, "gpu")]
+    public void Unset_means_gpu_on_ARM64_and_other_values_stay_as_asked(string? value, Architecture architecture, string? expected) =>
+        Assert.Equal(expected, WindowsRendering.Choose(value, architecture));
+
+    [Theory]
     [InlineData(null)]
-    [InlineData("vulkan")]
+    [InlineData("opengl")]
     public void Unset_and_unknown_values_keep_Avalonias_defaults(string? choice)
     {
         var defaults = new Win32PlatformOptions();
@@ -71,6 +83,16 @@ public class WindowsRenderingTests
         Assert.Equal([Win32RenderingMode.Software], options.RenderingMode);
     }
 
+    [Theory]
+    [InlineData("vulkan", Win32RenderingMode.Vulkan)]
+    [InlineData("wgl", Win32RenderingMode.Wgl)]
+    public void Vulkan_and_wgl_fall_back_to_software(string choice, Win32RenderingMode mode)
+    {
+        var options = WindowsRendering.Options(choice, adapters: null);
+        Assert.Equal([mode, Win32RenderingMode.Software], options.RenderingMode);
+        Assert.Equal(new Win32PlatformOptions().CompositionMode, options.CompositionMode);
+    }
+
     [Fact]
     public void Every_documented_choice_changes_something()
     {
@@ -79,8 +101,39 @@ public class WindowsRenderingTests
         {
             var options = WindowsRendering.Options(choice, adapters: null);
             Assert.False(options.RenderingMode.SequenceEqual(defaults.RenderingMode)
-                         && options.CompositionMode.SequenceEqual(defaults.CompositionMode), choice);
+                         && options.CompositionMode.SequenceEqual(defaults.CompositionMode)
+                         && options.GraphicsAdapterSelectionCallback is null, choice);
         }
+    }
+
+    [Fact]
+    public void Gpu_picks_the_adapter_past_the_basic_render_driver_on_every_architecture()
+    {
+        var reported = new List<string>();
+        var options = WindowsRendering.Options("gpu", reported.Add);
+        Assert.Equal(new Win32PlatformOptions().RenderingMode, options.RenderingMode);
+        var chosen = options.GraphicsAdapterSelectionCallback!(
+        [
+            new PlatformGraphicsDeviceAdapterDescription { Description = "microsoft basic render driver" },
+            new PlatformGraphicsDeviceAdapterDescription { Description = "qualcomm(r) adreno(tm) x1-85 gpu" },
+        ]);
+        Assert.Equal(1, chosen);
+        Assert.Equal(["[0] microsoft basic render driver, [1] qualcomm(r) adreno(tm) x1-85 gpu (used)"], reported);
+        // Without a log to tell, it still picks.
+        Assert.Equal(1, WindowsRendering.Options("gpu", adapters: null).GraphicsAdapterSelectionCallback!(
+        [
+            new PlatformGraphicsDeviceAdapterDescription { Description = "Microsoft Basic Render Driver" },
+            new PlatformGraphicsDeviceAdapterDescription { Description = "qualcomm(r) adreno(tm) x1-85 gpu" },
+        ]));
+    }
+
+    [Fact]
+    public void Gpu_keeps_the_first_adapter_when_only_software_ones_are_there()
+    {
+        Assert.Equal(0, WindowsRendering.Hardware([]));
+        Assert.Equal(0, WindowsRendering.Hardware(["microsoft basic render driver"]));
+        Assert.Equal(0, WindowsRendering.Hardware(["intel(r) uhd graphics", "nvidia geforce rtx 4060 laptop gpu"]));
+        Assert.Equal(1, WindowsRendering.Hardware([null, "qualcomm(r) adreno(tm) x1-85 gpu"]));
     }
 
     [Fact]
@@ -135,9 +188,12 @@ public class WindowsRenderingTests
     public void The_log_line_says_what_was_asked()
     {
         Assert.StartsWith("Rendering: ", WindowsRendering.Describe(null));
-        Assert.EndsWith("(FILEE_RENDERING not set)", WindowsRendering.Describe(null));
         Assert.EndsWith("(FILEE_RENDERING=software)", WindowsRendering.Describe(" Software"));
+        Assert.EndsWith("(FILEE_RENDERING=vulkan)", WindowsRendering.Describe("Vulkan"));
         Assert.EndsWith("(FILEE_RENDERING=opengl is unknown and ignored)", WindowsRendering.Describe("opengl"));
+        Assert.EndsWith("(FILEE_RENDERING not set)", WindowsRendering.Describe(null, Architecture.X64));
+        Assert.EndsWith("(FILEE_RENDERING not set, gpu on ARM64)", WindowsRendering.Describe(null, Architecture.Arm64));
+        Assert.EndsWith("(FILEE_RENDERING=auto)", WindowsRendering.Describe(" Auto", Architecture.Arm64));
     }
 }
 

@@ -190,7 +190,7 @@
       <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
     </Style>
     <Style Selector="ToggleButton.extchip:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource AccentStrongBrush}" />
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
     </Style>
   </UserControl.Styles>
 
@@ -324,7 +324,10 @@
                            CenterSubtitle="{Binding CenterSubtitle}"
                            OuterRadius="{Binding OuterRadius}"
                            HoleRatio="{Binding HoleRatio, Converter={x:Static vm:ToolbarConverters.Percent}}"
-                           SliceOpacity="{Binding SliceOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}" />
+                           SliceOpacity="{Binding SliceOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}"
+                           ShowCaptions="{Binding ShowCaptions}"
+                           LabelScale="{Binding LabelScale, Converter={x:Static vm:ToolbarConverters.Percent}}"
+                           DefaultShow="{Binding DefaultShow}" />
             </StackPanel>
           </Border>
           <TextBlock Classes="caption danger" Text="{Binding Message}" HorizontalAlignment="Center" />
@@ -334,6 +337,21 @@
               <StackPanel>
                 <TextBlock Classes="label" Text="{DynamicResource toolbar.name}" />
                 <TextBox Text="{Binding ProfileName}" AutomationProperties.Name="{DynamicResource toolbar.name}" />
+              </StackPanel>
+
+              <!-- This donut's slice labels: what they show when a preset doesn't say, and how large they are. -->
+              <StackPanel>
+                <TextBlock Classes="label" Text="{DynamicResource toolbar.slice_labels}" />
+                <ComboBox x:Name="SliceLabelsChoice" ItemsSource="{Binding SliceLabelChoices}" SelectedItem="{Binding SliceLabels}"
+                          HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource toolbar.slice_labels}" />
+              </StackPanel>
+              <StackPanel>
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="caption" VerticalAlignment="Center" Text="{Binding LabelScaleText}" />
+                  <TextBlock Classes="label" Text="{DynamicResource toolbar.label_scale}" />
+                </DockPanel>
+                <Slider x:Name="LabelScaleSlider" Minimum="80" Maximum="160" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10"
+                        Value="{Binding LabelScale}" AutomationProperties.Name="{DynamicResource toolbar.label_scale}" />
               </StackPanel>
 
               <!-- The label wraps (a ToggleSwitch header doesn't), so it sits next to a bare switch. -->
@@ -428,7 +446,7 @@
               <StackPanel x:Name="ProfileActions" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                 <Button Content="{DynamicResource toolbar.reset_profile}" Command="{Binding ResetProfileCommand}"
                         IsVisible="{Binding CanReset}" />
-                <Button Content="{DynamicResource toolbar.delete_profile}" Command="{Binding DeleteProfileCommand}"
+                <Button Classes="danger" Content="{DynamicResource toolbar.delete_profile}" Command="{Binding DeleteProfileCommand}"
                         IsVisible="{Binding CanDelete}" />
               </StackPanel>
             </StackPanel>
@@ -449,6 +467,30 @@
                 <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.opacity}" />
                 <Slider Grid.Column="1" Minimum="10" Maximum="100" Value="{Binding SliceOpacity}" AutomationProperties.Name="{DynamicResource toolbar.opacity}" />
               </Grid>
+              <!-- The ring a group fans out: longer labels than the ones above, so each sits over its slider. -->
+              <StackPanel>
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="caption" VerticalAlignment="Center" Text="{Binding GroupRingSizeText}" />
+                  <TextBlock Classes="label" Text="{DynamicResource toolbar.ring_size}" TextWrapping="Wrap" />
+                </DockPanel>
+                <Slider x:Name="RingSizeSlider" Minimum="75" Maximum="150" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10"
+                        Value="{Binding GroupRingSize}" AutomationProperties.Name="{DynamicResource toolbar.ring_size}" />
+              </StackPanel>
+              <StackPanel>
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="caption" VerticalAlignment="Center" Text="{Binding GroupRingSpreadText}" />
+                  <TextBlock Classes="label" Text="{DynamicResource toolbar.ring_spread}" TextWrapping="Wrap" />
+                </DockPanel>
+                <Slider x:Name="RingSpreadSlider" Minimum="100" Maximum="300" TickFrequency="10" IsSnapToTickEnabled="True" SmallChange="10" LargeChange="50"
+                        Value="{Binding GroupRingSpread}" AutomationProperties.Name="{DynamicResource toolbar.ring_spread}" />
+              </StackPanel>
+              <!-- Longer than the labels above in most languages: it wraps next to a bare switch, as the mixed one. -->
+              <DockPanel>
+                <ToggleSwitch x:Name="CaptionsToggle" DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0"
+                              Margin="12,0,0,0" VerticalAlignment="Center" IsChecked="{Binding ShowCaptions}"
+                              AutomationProperties.Name="{DynamicResource toolbar.captions}" />
+                <TextBlock Classes="label" Text="{DynamicResource toolbar.captions}" TextWrapping="Wrap" VerticalAlignment="Center" />
+              </DockPanel>
             </StackPanel>
           </Border>
         </StackPanel>
@@ -472,6 +514,9 @@
                 <TextBlock Text="{DynamicResource toolbar.new_group}" />
               </StackPanel>
             </Button>
+            <Button x:Name="NewFolderCopyButton" Margin="0,0,0,6" Padding="6,6"
+                    Command="{Binding NewFolderCopyCommand}" Content="{DynamicResource presets.copy_to_folder}"
+                    ToolTip.Tip="{DynamicResource presets.copy_hint}" />
           </WrapPanel>
           <TextBox x:Name="PaletteSearchBox" Classes="search clearButton" Text="{Binding PaletteSearch}" Watermark="{DynamicResource common.search}">
             <TextBox.InnerLeftContent>

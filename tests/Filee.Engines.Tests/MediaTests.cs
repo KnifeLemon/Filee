@@ -157,6 +157,150 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
+    [Theory]
+    [InlineData("ch01_20261005150000.mp4", true, false)]
+    [InlineData("ch01_20261005150000.mp4", true, true)]
+    [InlineData("hiv00000.mp4", false, false)]
+    [InlineData("hiv00000.mp4", false, true)]
+    [InlineData("ch01.264", true, true)]
+    public async Task A_hikvision_recording_converts_to_mp4_with_its_sound(string name, bool imkhHeader, bool muLaw)
+    {
+        // iVMS-4200 / NVR exports (IMKH header) and SD-card recordings (no header) are MPEG program streams with
+        // G.711 sound. Without the header, FFmpeg reads mu-law sound as MP2 and fails, unless Filee adds the header.
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var h264 = await MakeClipAsync(folder, "camera.h264", size: "160x120", audio: false,
+            extra: ["-c:v", "libx264", "-g", "25", "-bsf:v", "h264_metadata=aud=insert"]);
+        var g711 = Path.Combine(folder, "camera.g711");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi",
+            "-i", "sine=frequency=440:sample_rate=8000:duration=2", "-ac", "1", "-f", muLaw ? "mulaw" : "alaw", g711]);
+        var recording = Path.Combine(folder, name);
+        await File.WriteAllBytesAsync(recording, HikvisionRecording.Write(
+            await File.ReadAllBytesAsync(h264, TestContext.Current.CancellationToken),
+            await File.ReadAllBytesAsync(g711, TestContext.Current.CancellationToken), muLaw, imkhHeader),
+            TestContext.Current.CancellationToken);
+
+        var probed = await ProbeAsync(await ConvertAsync(recording, "mp4"));
+        var video = probed.Video;
+        Assert.NotNull(video);
+        Assert.Equal(("h264", 160, 120, 50), (video.Codec, video.Width, video.Height, video.Frames));
+        Assert.Equal("aac", probed.Audio?.Codec);
+        Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
+    [Fact]
+    public void Flic_animations_are_read_but_never_written()
+    {
+        // #940: Autodesk Animator's FLIC, read by FFmpeg's flic demuxer; FFmpeg has no FLIC encoder, so never a target.
+        var route = Planner().Plan("flc", "gif");
+        Assert.NotNull(route);
+        Assert.Equal("ffmpeg", Assert.Single(route.Steps).Converter.Id);
+        Assert.Null(Planner().Plan("mp4", "flc"));
+    }
+
+    [Theory]
+    [InlineData("intro.flc", "gif")]
+    [InlineData("intro.flc", "mp4")]
+    [InlineData("intro.fli", "gif")]
+    public async Task A_flic_animation_converts_whole(string name, string target)
+    {
+        // FFmpeg has no FLIC encoder, so the animation is put together here the way Autodesk Animator writes it: ten
+        // frames at 10 per second.
+        SkipUnlessInstalled();
+        var flic = await MakeFlicAsync(name);
+
+        var probed = await ProbeAsync(await ConvertAsync(flic, target));
+
+        Assert.Equal((64, 48), (probed.Video!.Width, probed.Video.Height));
+        Assert.True(probed.Video.Frames >= 10, $"{probed.Video.Frames} frames");
+        Assert.InRange(probed.Duration, 0.9, 1.2);
+    }
+
+    [Fact]
+    public async Task A_fli_palette_of_six_bits_keeps_its_colours()
+    {
+        // Animator's FLI keeps its palette in 6 bits (0-63): full red and blue must stay full, not come out dark.
+        SkipUnlessInstalled();
+        var still = await ConvertAsync(await MakeFlicAsync("intro.fli"), "png");
+
+        using var png = new ImageMagick.MagickImage(still);
+        using var pixels = png.GetPixels();
+        Assert.Equal(ImageMagick.MagickColors.Red, pixels.GetPixel(0, 24)!.ToColor());
+        Assert.Equal(ImageMagick.MagickColors.Blue, pixels.GetPixel(63, 24)!.ToColor());
+    }
+
+    private async Task<string> MakeFlicAsync(string name)
+    {
+        var path = Path.Combine(fx.NewFolder(), name);
+        await File.WriteAllBytesAsync(path, Flic.Animation(name.EndsWith(".fli", StringComparison.Ordinal), 64, 48, frames: 10),
+            TestContext.Current.CancellationToken);
+        return path;
+    }
+
+    /// <summary>Autodesk Animator's FLIC, as far as FFmpeg's flic demuxer and decoder read it.</summary>
+    private static class Flic
+    {
+        /// <summary>
+        /// The 128-byte header, then one frame chunk per picture: the first holds the palette (1 red, 2 blue), each one
+        /// its pixels uncompressed (a red bar growing from the left over blue). FLI (Animator) keeps the palette in 6 bits
+        /// and the speed in 1/70 s, FLC (Animator Pro) in 8 bits and milliseconds; both play at 10 frames a second here.
+        /// </summary>
+        public static byte[] Animation(bool fli, int width, int height, int frames)
+        {
+            var body = new MemoryStream();
+            for (var n = 0; n < frames; n++)
+            {
+                var chunks = new MemoryStream();
+                var count = 1;
+                if (n == 0)
+                {
+                    var full = fli ? (byte)63 : (byte)255;
+                    // One packet: skip no colours, change 256 (written as 0); three bytes per colour.
+                    var palette = new byte[4 + 256 * 3];
+                    BinaryPrimitives.WriteUInt16LittleEndian(palette, 1);
+                    palette[4 + 3] = full;
+                    palette[4 + 6 + 2] = full;
+                    Chunk(chunks, fli ? (ushort)11 : (ushort)4, palette); // COLOR_64 / COLOR_256
+                    count++;
+                }
+                var pixels = new byte[width * height];
+                for (var y = 0; y < height; y++)
+                    for (var x = 0; x < width; x++)
+                        pixels[y * width + x] = x < (n + 1) * width / (frames + 1) ? (byte)1 : (byte)2;
+                Chunk(chunks, 16, pixels); // COPY
+
+                var frame = new byte[16];
+                BinaryPrimitives.WriteUInt32LittleEndian(frame, (uint)(16 + chunks.Length));
+                BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(4), 0xF1FA);
+                BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(6), (ushort)count);
+                body.Write(frame);
+                chunks.WriteTo(body);
+            }
+
+            var header = new byte[128];
+            BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)(header.Length + body.Length));
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(4), fli ? (ushort)0xAF11 : (ushort)0xAF12);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(6), (ushort)frames);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(8), (ushort)width);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(10), (ushort)height);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(12), 8); // bits per pixel
+            if (fli)
+                BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(16), 7);
+            else
+                BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(16), 100);
+            return [.. header, .. body.ToArray()];
+        }
+
+        private static void Chunk(MemoryStream output, ushort type, byte[] data)
+        {
+            Span<byte> head = stackalloc byte[6];
+            BinaryPrimitives.WriteUInt32LittleEndian(head, (uint)(6 + data.Length));
+            BinaryPrimitives.WriteUInt16LittleEndian(head[4..], type);
+            output.Write(head);
+            output.Write(data);
+        }
+    }
+
     [Fact]
     public async Task A_self_contained_m4s_converts_and_a_bare_dash_segment_is_refused()
     {
@@ -218,6 +362,178 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.InRange(probed.Duration, 1.7, 2.4);
             if (target == "m4a")
                 Assert.Equal("aac", audio.Codec);
+        }
+    }
+
+    [Theory]
+    [InlineData("xm")]
+    [InlineData("it")]
+    [InlineData("s3m")]
+    public void Tracker_modules_go_to_every_audio_target_in_one_ffmpeg_step(string module)
+    {
+        // #1376: read through FFmpeg's libopenmpt demuxer; never a target.
+        foreach (var target in MediaEncoding.AudioTargets.Keys)
+        {
+            var route = Planner().Plan(module, target);
+            Assert.True(route is not null, target);
+            Assert.Equal("ffmpeg", Assert.Single(route.Steps).Converter.Id);
+        }
+        Assert.DoesNotContain(new FfmpegConverter().Edges, e => e.To == module);
+        Assert.Contains(module, FfmpegConverter.TrackerModules);
+    }
+
+    [Fact]
+    public void Tracker_modules_need_an_ffmpeg_with_libopenmpt_or_libmodplug()
+    {
+        var demuxers = FfmpegConverter.ParseDemuxers("""
+            Formats:
+             D.. = Demuxing supported
+             .E. = Muxing supported
+             ..d = Is a device
+             ---
+             D   aac             raw ADTS AAC (Advanced Audio Coding)
+             D d dshow           DirectShow capture
+             D   libopenmpt      Tracker formats (libopenmpt)
+             D   mov,mp4,m4a,3gp,3g2,mj2 QuickTime / MOV
+            """);
+        Assert.Equal(["3g2", "3gp", "aac", "dshow", "libopenmpt", "m4a", "mj2", "mov", "mp4"], demuxers.Order(StringComparer.Ordinal));
+        Assert.True(FfmpegConverter.ReadsTrackerModules(demuxers));
+        Assert.True(FfmpegConverter.ReadsTrackerModules(new HashSet<string> { "libmodplug" }));
+        // Homebrew's FFmpeg: neither library.
+        Assert.False(FfmpegConverter.ReadsTrackerModules(new HashSet<string> { "aac", "mov", "mp4" }));
+        // A list that can't be read leaves the decision to FFmpeg.
+        Assert.True(FfmpegConverter.ReadsTrackerModules(null));
+    }
+
+    [Fact]
+    public async Task A_fasttracker_xm_module_converts_to_audio()
+    {
+        SkipUnlessInstalled();
+        var module = Path.Combine(fx.NewFolder(), "song.xm");
+        await File.WriteAllBytesAsync(module, MakeXm(), TestContext.Current.CancellationToken);
+
+        if (!FfmpegConverter.ReadsTrackerModules(await FfmpegConverter.DemuxersOfAsync(Tools!.Value.Ffmpeg)))
+        {
+            // An FFmpeg built without libopenmpt: Filee's message, not FFmpeg's "Invalid data found".
+            var job = await fx.ConvertAsync([module], new Preset { TargetFormat = "wav" });
+            var file = Assert.Single(job.Files);
+            Assert.Equal((FileState.Failed, "error.tracker_needs_openmpt"), (file.State, file.ErrorKey));
+            return;
+        }
+        foreach (var target in new[] { "wav", "mp3", "flac" })
+        {
+            var output = await ConvertAsync(module, target);
+            var probed = await ProbeAsync(output);
+            Assert.NotNull(probed.Audio);
+            // 16 rows at speed 6 and 125 BPM: 16 × 0.12 s.
+            Assert.InRange(probed.Duration, 1.5, 2.6);
+            // The note on the first row is heard, so the song is not rendered as silence.
+            if (target == "wav")
+                Assert.Contains((await File.ReadAllBytesAsync(output, TestContext.Current.CancellationToken)).Skip(1024), b => b != 0);
+        }
+    }
+
+    /// <summary>
+    /// A FastTracker 2 module (XM 1.04): two channels, one 16-row pattern with a C-4 on its first row, played by one
+    /// instrument whose sample is a short 8-bit square wave.
+    /// </summary>
+    private static byte[] MakeXm()
+    {
+        using var stream = new MemoryStream();
+        using var w = new BinaryWriter(stream);
+        static byte[] Text(string text, int length) => [.. Encoding.ASCII.GetBytes(text.PadRight(length))];
+
+        w.Write(Text("Extended Module: ", 17));
+        w.Write(Text("Filee test", 20));
+        w.Write((byte)0x1A);
+        w.Write(Text("Filee", 20));
+        w.Write((ushort)0x0104);
+        w.Write(276u); // header size, counted from this field: 20 bytes of fields + the 256-entry order table
+        w.Write((ushort)1); // song length (orders)
+        w.Write((ushort)0); // restart position
+        w.Write((ushort)2); // channels
+        w.Write((ushort)1); // patterns
+        w.Write((ushort)1); // instruments
+        w.Write((ushort)1); // linear frequency table
+        w.Write((ushort)6); // speed (ticks per row)
+        w.Write((ushort)125); // BPM
+        w.Write(new byte[256]); // order table: pattern 0
+
+        // Pattern 0, packed: a note byte with bit 7 set says which fields follow, 0x80 is an empty cell.
+        var rows = new List<byte> { 0x83, 49, 1, 0x80 }; // C-4 with instrument 1, then an empty channel
+        for (var row = 1; row < 16; row++)
+            rows.AddRange([0x80, 0x80]);
+        w.Write(9u); // pattern header size
+        w.Write((byte)0); // packing type
+        w.Write((ushort)16); // rows
+        w.Write((ushort)rows.Count);
+        w.Write(rows.ToArray());
+
+        // Instrument 1 with one sample: no envelopes, every note on sample 0.
+        w.Write(263u); // instrument header size
+        w.Write(Text("square", 22));
+        w.Write((byte)0); // type
+        w.Write((ushort)1); // samples
+        w.Write(40u); // sample header size
+        w.Write(new byte[96 + 48 + 48]); // note → sample map, volume and panning envelope points
+        w.Write(new byte[14]); // envelope counts, sustain and loop points, envelope types, vibrato
+        w.Write((ushort)0); // fadeout
+        w.Write(new byte[22]); // reserved
+
+        // The sample: 4000 bytes of 8-bit delta-coded square wave, played once at 8363 Hz (about half a second).
+        const int length = 4000;
+        w.Write((uint)length);
+        w.Write(0u); // loop start
+        w.Write(0u); // loop length
+        w.Write((byte)64); // volume
+        w.Write((sbyte)0); // finetune
+        w.Write((byte)0); // no loop, 8-bit
+        w.Write((byte)128); // panning
+        w.Write((sbyte)0); // relative note
+        w.Write((byte)0); // reserved
+        w.Write(Text("square", 22));
+        sbyte previous = 0;
+        for (var i = 0; i < length; i++)
+        {
+            var value = (sbyte)(i / 16 % 2 == 0 ? 64 : -64);
+            w.Write(unchecked((sbyte)(value - previous)));
+            previous = value;
+        }
+        w.Flush();
+        return stream.ToArray();
+    }
+
+    [Fact]
+    public async Task A_quicktime_named_movie_converts_like_a_mov()
+    {
+        // #1283: FFmpeg probes the content, so the .quicktime name only has to reach the MOV routes; a MOV output is
+        // written as .mov.
+        SkipUnlessInstalled();
+        var movie = await MakeClipAsync(fx.NewFolder(), "clip.quicktime", size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac", "-f", "mov"]);
+
+        foreach (var target in new[] { "mp4", "mov", "mp3" })
+        {
+            var probed = await ProbeAsync(await ConvertAsync(movie, target));
+            Assert.InRange(probed.Duration, 1.7, 2.4);
+            Assert.Equal(target != "mp3", probed.Video is not null);
+        }
+    }
+
+    [Fact]
+    public async Task An_mpg4_named_video_converts_like_an_mp4()
+    {
+        // #1397: FFmpeg probes the content, so the .mpg4 name only has to reach the MP4 routes; an MP4 output is written
+        // as .mp4.
+        SkipUnlessInstalled();
+        var video = await MakeClipAsync(fx.NewFolder(), "reel.mpg4", size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac", "-f", "mp4"]);
+
+        foreach (var target in new[] { "mp4", "mov", "mp3" })
+        {
+            var output = await ConvertAsync(video, target);
+            Assert.Equal("." + target, Path.GetExtension(output));
+            var probed = await ProbeAsync(output);
+            Assert.InRange(probed.Duration, 1.7, 2.4);
+            Assert.Equal(target != "mp3", probed.Video is not null);
         }
     }
 
@@ -604,6 +920,300 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static string After(IReadOnlyList<string> args, string option) => args[args.ToList().IndexOf(option) + 1];
 
     [Fact]
+    public void Crop_video_encodes_the_frame_cut_first_and_copies_the_sound()
+    {
+        // #830: the box before the scale filter; the video can't be copied then.
+        var crop = MediaEncoding.CropFilter(Hd, new CropBox(1920, 800, 0, 140));
+        Assert.Equal("crop=1920:800:0:140,", crop);
+        var info = new MediaInfo(TimeSpan.FromSeconds(10), Hd with { Codec = "h264", PixelFormat = "yuv420p" }, new AudioStreamInfo(2, 48000, "aac"), null);
+        var copied = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", new MediaOptions(), info, "work").Single().Arguments;
+        Assert.Equal("copy", After(copied, "-c:v"));
+        var cropped = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", new MediaOptions(), info, "work", crop: crop).Single().Arguments;
+        Assert.Equal("libx264", After(cropped, "-c:v"));
+        Assert.StartsWith(crop + "scale=", After(cropped, "-vf"));
+        Assert.Equal("copy", After(cropped, "-c:a"));
+
+        // An MKV keeps its subtitles and fonts.
+        var episode = info with { SubtitleStreams = [new SubtitleStreamInfo(2, "ass", "kor")], HasAttachments = true };
+        var mkv = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), episode, "work", crop: crop).Single().Arguments;
+        Assert.Contains("0:2", mkv);
+        Assert.Contains("0:t", mkv);
+        Assert.Equal(("copy", "copy"), (After(mkv, "-c:s:0"), After(mkv, "-c:t")));
+
+        // Anamorphic pixels are made square first, as cropdetect saw them.
+        var dv = new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97);
+        Assert.StartsWith(MediaEncoding.SquarePixels(dv) + "crop=", MediaEncoding.CropFilter(dv, new CropBox(640, 360, 0, 60)));
+    }
+
+    /// <summary>A Blu-ray rip: Korean SRT, English ASS, a Korean PGS track and the fonts of the ASS track.</summary>
+    private static readonly MediaInfo Episode = new(TimeSpan.FromSeconds(10), Hd with { Codec = "h264", PixelFormat = "yuv420p" },
+        new AudioStreamInfo(2, 48000, "aac"), null,
+        [new SubtitleStreamInfo(2, "subrip", "kor"), new SubtitleStreamInfo(3, "ass", "eng"), new SubtitleStreamInfo(4, "hdmv_pgs_subtitle", "kor")],
+        HasAttachments: true);
+
+    /// <summary>The streams mapped from the input, in order.</summary>
+    private static List<string> Mapped(IReadOnlyList<string> args) =>
+        [.. args.Select((arg, i) => (arg, i)).Where(a => a.arg == "-map").Select(a => args[a.i + 1])];
+
+    [Fact]
+    public void An_mkv_keeps_every_subtitle_track_and_its_fonts()
+    {
+        // #789: for every conversion, not only a crop; the video is copied here.
+        var args = Args("mkv", info: Episode);
+        Assert.Equal(["0:V:0", "0:a:0", "0:2", "0:3", "0:4", "0:t"], Mapped(args));
+        Assert.Equal(("copy", "copy", "copy", "copy"), (After(args, "-c:s:0"), After(args, "-c:s:1"), After(args, "-c:s:2"), After(args, "-c:t")));
+        Assert.Equal("copy", After(args, "-c:v"));
+
+        // Timed text from an MP4 isn't a Matroska codec: it becomes SRT. A file without attachments maps none (FFmpeg
+        // refuses a specifier that matches nothing).
+        var phone = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "mov_text", "eng")], HasAttachments = false };
+        var fromMp4 = Args("mkv", info: phone);
+        Assert.Equal("srt", After(fromMp4, "-c:s:0"));
+        Assert.DoesNotContain("0:t", fromMp4);
+    }
+
+    [Fact]
+    public void Mp4_and_mov_keep_the_text_subtitles_as_timed_text()
+    {
+        foreach (var target in new[] { "mp4", "m4v", "mov" })
+        {
+            var args = Args(target, info: Episode);
+            // The PGS track (0:4) and the fonts can't go in.
+            Assert.Equal(["0:V:0", "0:a:0", "0:2", "0:3"], Mapped(args));
+            Assert.Equal(("mov_text", "mov_text"), (After(args, "-c:s:0"), After(args, "-c:s:1")));
+            Assert.DoesNotContain("-c:s:2", args);
+            Assert.DoesNotContain("-c:t", args);
+            Assert.True(MediaEncoding.LeavesOutPictureSubtitles(target, Episode));
+        }
+
+        // Timed text already is timed text.
+        var phone = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "mov_text", "eng")] };
+        Assert.Equal("copy", After(Args("mp4", info: phone), "-c:s:0"));
+        Assert.False(MediaEncoding.LeavesOutPictureSubtitles("mp4", phone));
+    }
+
+    [Fact]
+    public void Webm_keeps_the_text_subtitles_as_webvtt()
+    {
+        var args = Args("webm", info: Episode);
+        Assert.Equal(["0:V:0", "0:a:0", "0:2", "0:3"], Mapped(args));
+        Assert.Equal(("webvtt", "webvtt"), (After(args, "-c:s:0"), After(args, "-c:s:1")));
+        Assert.True(MediaEncoding.LeavesOutPictureSubtitles("webm", Episode));
+        var web = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "webvtt", "eng")] };
+        Assert.Equal("copy", After(Args("webm", info: web), "-c:s:0"));
+    }
+
+    [Fact]
+    public void Other_targets_and_clips_keep_no_subtitles()
+    {
+        foreach (var target in new[] { "avi", "flv", "ts", "wmv", "mpg", "ogv" })
+        {
+            var args = Args(target, info: Episode);
+            Assert.Equal(["0:V:0", "0:a:0"], Mapped(args));
+            Assert.DoesNotContain(args, a => a.StartsWith("-c:s", StringComparison.Ordinal));
+            // Nothing to say either: these never kept subtitles.
+            Assert.False(MediaEncoding.LeavesOutPictureSubtitles(target, Episode));
+        }
+        Assert.False(MediaEncoding.LeavesOutPictureSubtitles("mkv", Episode));
+
+        // A clip: the input is seeked, and subtitle timing after the seek isn't proven.
+        var clip = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), Episode, "work", clip: new ClipRange(2, 5)).Single().Arguments;
+        Assert.Equal(["0:V:0", "0:a:0"], Mapped(clip));
+
+        // Captions and TTML are left out as before: no decoder, or no proof of their timing.
+        var captions = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "eia_608", null), new SubtitleStreamInfo(3, "ttml", "eng")] };
+        Assert.Equal(["0:V:0", "0:a:0"], Mapped(Args("mp4", info: captions)));
+        Assert.False(MediaEncoding.LeavesOutPictureSubtitles("mp4", captions));
+    }
+
+    [Fact]
+    public void A_retry_without_subtitles_maps_none()
+    {
+        var mapped = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), Episode, "work");
+        Assert.True(MediaEncoding.MapsSubtitles(mapped));
+        var without = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), Episode, "work", subtitles: false);
+        Assert.False(MediaEncoding.MapsSubtitles(without));
+        Assert.Equal(["0:V:0", "0:a:0"], Mapped(without.Single().Arguments));
+        Assert.False(MediaEncoding.MapsSubtitles(MediaEncoding.Plan("in.mkv", "out.avi", "avi", new MediaOptions(), Episode, "work")));
+    }
+
+    [Fact]
+    public void Only_ffmpeg_failures_that_may_be_the_subtitles_are_retried_without_them()
+    {
+        var none = CancellationToken.None;
+        Assert.True(FfmpegConverter.RetriesWithoutSubtitles(
+            new InvalidOperationException("FFmpeg failed (exit code -22): Could not find tag for codec ttf in stream #2"), none));
+        Assert.True(FfmpegConverter.RetriesWithoutSubtitles(new InvalidOperationException("FFmpeg did not write any output."), none));
+
+        // The output can't be written: the same again without subtitles.
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(
+            new InvalidOperationException("FFmpeg failed (exit code -28): Error writing trailer: No space left on device"), none));
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(
+            new InvalidOperationException("FFmpeg failed (exit code -13): out.mp4: Permission denied"), none));
+        // A stall, a cancellation or a refusal isn't FFmpeg failing over a track.
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new TimeoutException("FFmpeg stopped responding"), none));
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new OperationCanceledException(), none));
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new ConversionRefusedException("error.over_size_limit"), none));
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new InvalidOperationException("FFmpeg failed"), cancelled.Token));
+    }
+
+    [Fact]
+    public async Task A_conversion_that_fails_with_subtitles_runs_once_more_without_them()
+    {
+        var output = Path.Combine(fx.NewFolder(), "out.mp4");
+        var logger = new HardwareEncodingTests.ListLogger();
+        List<bool> runs = [];
+        Task FailWithSubtitles(bool subtitles)
+        {
+            runs.Add(subtitles);
+            if (!subtitles)
+                return Task.CompletedTask;
+            File.WriteAllText(output, "half-written");
+            throw new InvalidOperationException("FFmpeg failed (exit code -22): Subtitle codec 94213 is not supported");
+        }
+
+        Assert.True(await FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, FailWithSubtitles, output, logger, CancellationToken.None));
+        Assert.Equal([true, false], runs);
+        Assert.False(File.Exists(output)); // the partial output is gone before the retry
+        Assert.Contains("Subtitle codec 94213", Assert.Single(logger.Entries).Message);
+
+        // Nothing mapped: one run, its error as it is.
+        runs.Clear();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(false, FailWithSubtitles, output, logger, CancellationToken.None));
+        Assert.Contains("94213", error.Message);
+        Assert.Equal([true], runs);
+
+        // Success the first time, and a retry that fails too (its error is the one reported).
+        Assert.False(await FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, _ => Task.CompletedTask, output, logger, CancellationToken.None));
+        error = await Assert.ThrowsAsync<InvalidOperationException>(() => FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true,
+            subtitles => throw new InvalidOperationException(subtitles ? "with" : "without"), output, logger, CancellationToken.None));
+        Assert.Equal("without", error.Message);
+
+        // A full disk isn't retried.
+        runs.Clear();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, subtitles =>
+        {
+            runs.Add(subtitles);
+            throw new InvalidOperationException("FFmpeg failed (exit code -28): No space left on device");
+        }, output, logger, CancellationToken.None));
+        Assert.Equal([true], runs);
+    }
+
+    [Fact]
+    public async Task A_subtitle_track_ffmpeg_refuses_is_left_out_on_the_retry()
+    {
+        SkipUnlessInstalled();
+        // A track the container can't take, forced: stream 2 of this MKV is a font, planned as if it were an SRT track,
+        // so the MP4 muxer refuses it as a subtitle the way it would refuse a track it has no tag for.
+        var folder = fx.NewFolder();
+        var font = Path.Combine(folder, "Sub Font.ttf");
+        await File.WriteAllBytesAsync(font, Enumerable.Range(0, 2048).Select(i => (byte)i).ToArray(), TestContext.Current.CancellationToken);
+        var source = await MakeClipAsync(folder, "episode.mkv", seconds: 1, size: "160x120", extra:
+            ["-c:v", "libx264", "-c:a", "aac", "-attach", font, "-metadata:s:t", "mimetype=application/x-truetype-font"]);
+        var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, source, CancellationToken.None) with
+        {
+            SubtitleStreams = [new SubtitleStreamInfo(2, "subrip", "kor")],
+        };
+        var output = Path.Combine(folder, "episode.mp4");
+        var logger = new HardwareEncodingTests.ListLogger();
+
+        var left = await FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, subtitles => FfmpegConverter.RunPassAsync(Tools!.Value.Ffmpeg,
+            MediaEncoding.Plan(source, output, "mp4", new MediaOptions(), info, folder, subtitles: subtitles).Single(), info.Duration, null, 0,
+            CancellationToken.None), output, logger, CancellationToken.None);
+
+        Assert.True(left);
+        Assert.Single(logger.Entries);
+        var probed = await ProbeAsync(output);
+        Assert.Equal(["video", "audio"], probed.Streams.Select(s => s.Type));
+    }
+
+    [Fact]
+    public void A_ratio_is_the_largest_centred_box_that_fits()
+    {
+        Assert.Equal(new CropBox(1080, 1080, 420, 0), MediaEncoding.RatioBox(Hd, 1, 1));
+        Assert.Equal(new CropBox(606, 1080, 656, 0), MediaEncoding.RatioBox(Hd, 9, 16));
+        Assert.Equal(new CropBox(1920, 822, 0, 128), MediaEncoding.RatioBox(Hd, 21, 9));
+        // Already 16:9: nothing to crop.
+        Assert.True(MediaEncoding.IsWholeFrame(MediaEncoding.RatioBox(Hd, 16, 9), Hd));
+        // Upright and with square pixels: a portrait phone video, an anamorphic DV one (shown 640 × 480).
+        Assert.Equal(new CropBox(1080, 1080, 0, 420), MediaEncoding.RatioBox(Hd with { Rotation = 90 }, 1, 1));
+        var dv = new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97);
+        Assert.True(MediaEncoding.IsWholeFrame(MediaEncoding.RatioBox(dv, 4, 3), dv));
+    }
+
+    [Fact]
+    public void Cropdetect_ends_each_stretch_with_its_largest_box_and_the_largest_stretch_wins()
+    {
+        string Line(string crop) => $"[Parsed_cropdetect_1 @ 0000] x1:0 x2:1919 y1:140 y2:939 w:1920 h:800 x:0 y:140 pts:1 t:0.04 limit:0.09 crop={crop}";
+        string[] lines =
+        [
+            "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'in.mp4':",
+            Line("1280:540:320:270"), Line("1921:801:1:141"),
+            // A black frame: no size.
+            Line("-1904:-1072:1912:1080"),
+            "[out#0/null @ 0000] video:1kB audio:0kB",
+        ];
+        Assert.Equal(new CropBox(1920, 800, 0, 140), MediaEncoding.FinalCrop(lines));
+        Assert.Null(MediaEncoding.FinalCrop(["no crop here", Line("-16:-16:8:8")]));
+        Assert.True(MediaEncoding.HasCropLine(["no crop here", Line("-16:-16:8:8")]));
+        Assert.False(MediaEncoding.HasCropLine(["no crop here"]));
+
+        // A dark stretch finds a smaller box: the largest one is the picture.
+        Assert.Equal(new CropBox(1920, 800, 0, 140),
+            MediaEncoding.LargestCrop([new CropBox(1280, 540, 320, 270), null, new CropBox(1920, 800, 0, 140), new CropBox(1600, 700, 160, 190)]));
+        Assert.Null(MediaEncoding.LargestCrop([null, null]));
+        // A video dark all through: a box too small to be the picture.
+        Assert.True(MediaEncoding.IsTooSmall(new CropBox(400, 800, 760, 140), Hd));
+        Assert.False(MediaEncoding.IsTooSmall(new CropBox(1440, 800, 240, 140), Hd));
+    }
+
+    [Fact]
+    public void A_crop_keeps_an_hevc_or_av1_source_in_its_codec_where_it_can()
+    {
+        var hevc = Hd with { Codec = "hevc" };
+        HashSet<string> all = ["libx264", "libx265", "libsvtav1"];
+        Assert.Equal(VideoCodec.Hevc, MediaEncoding.CropOptions("mp4", new MediaOptions(), hevc, all).VideoCodec);
+        Assert.Equal(VideoCodec.Av1, MediaEncoding.CropOptions("mkv", new MediaOptions(), Hd with { Codec = "av1" }, all).VideoCodec);
+        // WebM holds no HEVC; an FFmpeg without x265; a codec the preset chose; an H.264 source.
+        Assert.Equal(VideoCodec.Default, MediaEncoding.CropOptions("webm", new MediaOptions(), hevc, all).VideoCodec);
+        Assert.Equal(VideoCodec.Default, MediaEncoding.CropOptions("mp4", new MediaOptions(), hevc, new HashSet<string> { "libx264" }).VideoCodec);
+        Assert.Equal(VideoCodec.Av1, MediaEncoding.CropOptions("mp4", new MediaOptions { VideoCodec = VideoCodec.Av1 }, hevc, all).VideoCodec);
+        Assert.Equal(VideoCodec.Default, MediaEncoding.CropOptions("mp4", new MediaOptions(), Hd with { Codec = "h264" }, all).VideoCodec);
+        // The preset itself is left as it is.
+        var options = new MediaOptions();
+        MediaEncoding.CropOptions("mp4", options, hevc, all);
+        Assert.Equal(VideoCodec.Default, options.VideoCodec);
+    }
+
+    [Fact]
+    public void Cropdetect_reads_a_few_stretches_of_a_long_video_and_the_start_of_a_short_one()
+    {
+        Assert.Equal([(6.0, 1.0), (18.0, 1.0), (30.0, 1.0), (42.0, 1.0), (54.0, 1.0)], MediaEncoding.CropDetectStretches(60).ToList());
+        Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(4).ToList());
+        Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(null).ToList());
+        var args = MediaEncoding.CropDetect("in.mp4", 6, 1, Hd);
+        Assert.Equal(("info", "6.000", "1.000"), (After(args, "-v"), After(args, "-ss"), After(args, "-t")));
+        // A part of the range, not 24 of 255: the same black at 10 bits (#830 review).
+        Assert.Contains("cropdetect=limit=0.094:", After(args, "-vf"));
+    }
+
+    [Fact]
+    public void A_box_as_large_as_the_picture_is_no_black_bars()
+    {
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(1920, 1080, 0, 0), Hd));
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(1918, 1080, 0, 0), Hd));
+        Assert.False(MediaEncoding.IsWholeFrame(new CropBox(1920, 800, 0, 140), Hd));
+        // A portrait phone video: upright, the width and height change places.
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(1080, 1920, 0, 0), Hd with { Rotation = 90 }));
+        Assert.False(MediaEncoding.IsWholeFrame(new CropBox(1080, 1920, 0, 0), Hd));
+        // Anamorphic DV: 720 × 480 shown 4:3, as 640 × 480 with square pixels.
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(640, 480, 0, 0), new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97)));
+    }
+
+    [Fact]
     public void Audio_targets_map_the_track_the_probe_chose()
     {
         var info = new MediaInfo(TimeSpan.FromSeconds(1), null, new AudioStreamInfo(1, 44100, "aac", 1), null);
@@ -761,6 +1371,41 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(new VideoStreamInfo(1, 1, 1, 0, 0, PixelFormat: "p010le").IsHighBitDepth);
         Assert.True(new VideoStreamInfo(1, 1, 1, 0, 0, PixelFormat: "yuv422p12le").IsHighBitDepth);
         Assert.False(new VideoStreamInfo(1, 1, 1, 0, 0, PixelFormat: "yuvj420p").IsHighBitDepth);
+    }
+
+    [Fact]
+    public void Transparent_sources_keep_their_alpha_in_webm()
+    {
+        MediaInfo Source(string codec, string pixelFormat) =>
+            new(TimeSpan.FromSeconds(10), new VideoStreamInfo(640, 360, 1, 0, 30, codec, pixelFormat), null, null);
+
+        // ProRes 4444, QuickTime Animation, APNG and GIF (#1198): VP9 writes the alpha plane, alt-ref frames off.
+        foreach (var (codec, format) in new[] { ("prores", "yuva444p12le"), ("qtrle", "argb"), ("apng", "rgba"), ("gif", "bgra") })
+        {
+            var webm = Args("webm", info: Source(codec, format));
+            Assert.Equal(("libvpx-vp9", "yuva420p", "0"), (After(webm, "-c:v"), After(webm, "-pix_fmt"), After(webm, "-auto-alt-ref")));
+        }
+
+        // Opaque sources are encoded as before.
+        foreach (var format in new[] { "yuv420p", "yuv444p10le", "rgb24", "bgr0", "pal8" })
+        {
+            var webm = Args("webm", info: Source("h264", format));
+            Assert.Equal("yuv420p", After(webm, "-pix_fmt"));
+            Assert.DoesNotContain("-auto-alt-ref", webm);
+        }
+
+        // Only VP9 is asked to keep it: AV1 in WebM (10 bits for 12-bit ProRes) and H.264 in MP4 stay without alpha.
+        var prores = Source("prores", "yuva444p12le");
+        var av1 = Args("webm", new MediaOptions { VideoCodec = VideoCodec.Av1 }, prores);
+        Assert.Equal(("libsvtav1", "yuv420p10le"), (After(av1, "-c:v"), After(av1, "-pix_fmt")));
+        Assert.DoesNotContain("-auto-alt-ref", av1);
+        Assert.Equal("yuv420p", After(Args("mp4", info: prores), "-pix_fmt"));
+
+        // A still picture is still shown on black.
+        var picture = new MediaInfo(null, new VideoStreamInfo(640, 360, 1, 0, 25, "png", "rgba"), null, null);
+        var still = MediaEncoding.PlanStill("in.png", "out.webm", "webm", new MediaOptions(), picture).Single().Arguments;
+        Assert.Equal("yuv420p", After(still, "-pix_fmt"));
+        Assert.DoesNotContain("-auto-alt-ref", still);
     }
 
     [Fact]
@@ -964,6 +1609,77 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     // ───────────────────────── Real conversions ─────────────────────────
 
+    /// <summary>A 2-second video of one colour with a tone, <paramref name="pad"/> (a pad filter) adding black bars.</summary>
+    private static async Task<string> MakeBarsAsync(string folder, string name, string size, string? pad,
+        string encoder = "libx264", string pixelFormat = "yuv420p")
+    {
+        var path = Path.Combine(folder, name);
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", $"color=c=0x3366cc:size={size}:rate=25:duration=2" + (pad is null ? "" : "," + pad) + $",format={pixelFormat}",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2",
+            "-c:v", encoder, "-pix_fmt", pixelFormat, "-c:a", "aac", "-shortest", path]);
+        return path;
+    }
+
+    private async Task<ConversionJob> CropAsync(string input, string frame) =>
+        await fx.ConvertAsync([input], new Preset { TargetFormat = BuiltInData.SameAsSource, Media = { CropFrame = frame } });
+
+    [Fact]
+    public async Task Crop_video_auto_removes_the_black_bars_and_keeps_the_sound()
+    {
+        SkipUnlessInstalled();
+        // #830: a 4:3 picture letterboxed into a 3:4 frame.
+        var video = await MakeBarsAsync(fx.NewFolder(), "boxed.mp4", "240x180", "pad=240:320:0:70:black");
+        var job = await CropAsync(video, VideoCrop.Auto);
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var output = Assert.Single(job.Outputs);
+        Assert.Equal(".mp4", Path.GetExtension(output));
+        var probed = await ProbeAsync(output);
+        Assert.Equal((240, 180), (probed.Video!.Width, probed.Video.Height));
+        Assert.Equal("aac", probed.Audio?.Codec);
+        Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
+    [Fact]
+    public async Task Crop_video_to_a_ratio_keeps_the_middle_as_large_as_fits()
+    {
+        SkipUnlessInstalled();
+        var video = await MakeBarsAsync(fx.NewFolder(), "wide.mp4", "320x240", null);
+        var square = await ProbeAsync(Assert.Single((await CropAsync(video, "1:1")).Outputs));
+        Assert.Equal((240, 240), (square.Video!.Width, square.Video.Height));
+        var portrait = await ProbeAsync(Assert.Single((await CropAsync(video, "9:16")).Outputs));
+        Assert.Equal((134, 240), (portrait.Video!.Width, portrait.Video.Height));
+
+        // Already 4:3: refused, rather than encoded again as it was.
+        var same = Assert.Single((await CropAsync(video, "4:3")).Files);
+        Assert.Equal((FileState.Failed, "error.crop_same_frame"), (same.State, same.ErrorKey));
+    }
+
+    [Fact]
+    public async Task Crop_video_auto_finds_the_bars_of_a_10_bit_hevc_video_and_keeps_its_codec()
+    {
+        SkipUnlessInstalled();
+        // #830 review: cropdetect's limit at 10 bits, and the crop stays HEVC with its 10 bits.
+        var video = await MakeBarsAsync(fx.NewFolder(), "deep.mkv", "240x180", "pad=240:320:0:70:black", "libx265", "yuv420p10le");
+        var job = await CropAsync(video, VideoCrop.Auto);
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var probed = await ProbeAsync(Assert.Single(job.Outputs));
+        Assert.Equal((240, 180), (probed.Video!.Width, probed.Video.Height));
+        Assert.Equal(("hevc", "yuv420p10le"), (probed.Video.Codec, probed.Video.PixelFormat));
+    }
+
+    [Fact]
+    public async Task Crop_video_auto_refuses_a_video_without_black_bars()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var video = await MakeBarsAsync(folder, "plain.mp4", "320x240", null);
+        var job = await CropAsync(video, VideoCrop.Auto);
+        var file = Assert.Single(job.Files);
+        Assert.Equal((FileState.Failed, "error.no_black_bars"), (file.State, file.ErrorKey));
+        Assert.Equal(["plain.mp4"], Directory.GetFiles(folder).Select(Path.GetFileName));
+    }
+
     /// <summary>Writes a test clip with FFmpeg: moving test pattern (+ a 440 Hz tone unless <paramref name="audio"/> is false).</summary>
     private static async Task<string> MakeClipAsync(string folder, string name, double seconds = 2, string size = "320x240", int fps = 25,
         bool audio = true, int channels = 2, params string[] extra)
@@ -1005,7 +1721,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         public Track? Audio => Streams.FirstOrDefault(s => s.Type == "audio");
     }
 
-    private sealed record Track(string Type, string Codec, int Width, int Height, int Channels, int SampleRate, long BitRate, bool Cover, int Frames);
+    private sealed record Track(string Type, string Codec, int Width, int Height, int Channels, int SampleRate, long BitRate, bool Cover, int Frames, string PixelFormat = "");
 
     private static async Task<Probed> ProbeAsync(string path)
     {
@@ -1020,7 +1736,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
             S(s, "codec_type"), S(s, "codec_name"), (int)N(s, "width"), (int)N(s, "height"), (int)N(s, "channels"),
             (int)N(s, "sample_rate"), N(s, "bit_rate"),
             s.TryGetProperty("disposition", out var d) && d.TryGetProperty("attached_pic", out var a) && a.GetInt32() == 1,
-            (int)N(s, "nb_read_frames"))).ToList();
+            (int)N(s, "nb_read_frames"), S(s, "pix_fmt"))).ToList();
         var duration = double.TryParse(S(json.RootElement.GetProperty("format"), "duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out var d2) ? d2 : 0;
         return new Probed(duration, streams);
     }
@@ -1065,6 +1781,38 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(Decoded(spec.AudioCodec), probed.Audio?.Codec);
         Assert.Equal((320, 240), (probed.Video!.Width, probed.Video.Height));
         Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
+    [Theory]
+    [InlineData("mp4", "mov_text")]
+    [InlineData("mov", "mov_text")]
+    [InlineData("webm", "webvtt")]
+    public async Task An_mkv_with_srt_subtitles_keeps_them_as_a_switchable_track(string target, string codec)
+    {
+        SkipUnlessInstalled();
+        // #789: an MKV with a Korean SRT track, made here.
+        var folder = fx.NewFolder();
+        var srt = Path.Combine(folder, "episode.srt");
+        await File.WriteAllTextAsync(srt, "1\r\n00:00:00,500 --> 00:00:01,500\r\n안녕하세요\r\n\r\n", TestContext.Current.CancellationToken);
+        var source = Path.Combine(folder, "episode.mkv");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=25:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-i", srt,
+            "-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-c:a", "aac", "-c:s", "srt", "-metadata:s:s:0", "language=kor", source]);
+
+        var output = await ConvertAsync(source, target);
+
+        var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, output, CancellationToken.None);
+        var track = Assert.Single(info.Subtitles);
+        Assert.Equal((codec, "kor"), (track.Codec, track.Language));
+        // The cue still starts half a second in. Timed text fills the gap before it with an empty 2-byte sample.
+        var packets = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "s:0", "-show_entries", "packet=pts_time,size", "-of", "csv=p=0", output],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        var cue = packets.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split(','))
+            .First(p => int.Parse(p[1], CultureInfo.InvariantCulture) > 2);
+        Assert.InRange(double.Parse(cue[0], CultureInfo.InvariantCulture), 0.45, 0.55);
     }
 
     [Fact]

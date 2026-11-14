@@ -4,6 +4,7 @@ using Filee.Core.Conversion;
 using Filee.Engines.Archives;
 using Filee.Engines.Cad;
 using Filee.Engines.Data;
+using Filee.Engines.Drawings;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
 using Filee.Engines.Fonts;
@@ -14,10 +15,12 @@ using Filee.Engines.Icns;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using Filee.Engines.Media;
+using Filee.Engines.Metadata;
 using Filee.Engines.Models3D;
 using Filee.Engines.Ocr;
 using Filee.Engines.Office;
 using Filee.Engines.Pdf;
+using Filee.Engines.Signed;
 using Filee.Engines.Subtitles;
 using Filee.Engines.Text;
 using Filee.Engines.Typesetting;
@@ -40,17 +43,20 @@ public static class EngineRegistry
     /// its container repacked.
     /// </param>
     public static IReadOnlyList<IConverter> CreateAll(EngineEnvironment env, ILoggerFactory? loggers = null) =>
-    [
+        SheetPrintConverter.WithFallback([
         new MagickImageConverter(),
+        new FolderIsoConverter(),
         new PdfSharpConverter(),
         new PdfiumConverter(),
         new RhwpConverter(),
         new HwpTextConverter(),
         new MarkdownConverter(),
         new SpreadsheetConverter(),
+        new SheetPrintConverter(),
         new OoxmlConverter(),
         new HwpxConverter(),
         new FileeRendererConverter(),
+        new Translation.TranslatorConverter(loggers?.CreateLogger<Translation.TranslatorConverter>()),
         new ArchiveConverter(),
         new VectorConverter(),
         new IcnsConverter(),
@@ -63,14 +69,20 @@ public static class EngineRegistry
         new PdfSlidesConverter(),
         new PdfTablesConverter(),
         new PdfPostScriptConverter(loggers?.CreateLogger<PdfPostScriptConverter>()),
+        new DocumentTablesConverter(),
         new EmlConverter(),
+        new P7mConverter(),
         new DataConverter(),
         new SubtitleConverter(),
         new WicImageConverter(),
         new WhisperConverter(loggers?.CreateLogger<WhisperConverter>()),
+        new ExifToolConverter(),
+        new Upscale.UpscalerConverter(),
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
+        new DrawingConverter(),
         new ModelConverter(),
+        new ImageTo3DConverter(),
         new GeoConverter(),
         new EbookConverter(),
         new PandocConverter(),
@@ -79,7 +91,7 @@ public static class EngineRegistry
         new TesseractConverter(),
         new CalibreConverter(),
         new LibreOfficeConverter(env, loggers?.CreateLogger<LibreOfficeConverter>()),
-    ];
+    ]);
 
     /// <summary>Finds the PDF merger among the converters.</summary>
     public static IPdfMerger? FindPdfMerger(IEnumerable<IConverter> converters) =>

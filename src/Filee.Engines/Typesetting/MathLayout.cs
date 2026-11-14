@@ -9,9 +9,14 @@
 //
 // Structure (sizes as fractions of the equation's size): scripts at 0.7 of their base, raised to 0.42 or lowered by
 // 0.18 (further for taller bases); fractions on the math axis (0.27 above the baseline) with a rule of 0.05; roots with
-// a drawn radical sign over their body; brackets of LEFT … RIGHT drawn to the height of their content; sums, products
-// and unions at 1.4 with their limits above and below, integrals at 1.6 with them to the right; matrices, cases and
-// piles centred on the axis; accents drawn over (or under) their content.
+// a radical sign over their body; brackets of LEFT … RIGHT as tall as their content; sums, products and unions at 1.4
+// with their limits above and below, integrals at 1.6 with them to the right; matrices, cases and piles centred on the
+// axis, the lines of a Word equation array lined up at their & marks; accents drawn over (or under) their content.
+//
+// Brackets and radical signs come from a math font when one is installed (Cambria Math, STIX Two Math, Latin Modern
+// Math ...: a font with an OpenType MATH table, see MathTable): the glyph itself, a taller variant of it, or for taller
+// content an assembly of its parts, as Word draws them. Without one, a bracket no taller than a letter is the text
+// font's own, and taller ones are drawn: round brackets and braces heavy in the middle and thin at the ends.
 
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Rendering;
@@ -37,12 +42,22 @@ internal sealed class EquationBox(float width, float ascent, float descent, Acti
 internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 {
     private const float ScriptScale = 0.7f;
-    private const float Axis = 0.27f;
+
+    /// <summary>The math axis (fraction bars, the middle of brackets and equation arrays) above the baseline, of the size.</summary>
+    internal const float Axis = 0.27f;
+
     private const float Rule = 0.05f;
     private const float Gap = 0.12f;
 
     /// <summary>한글's equation fonts first, then common serif fonts.</summary>
     private static readonly string[] Families = ["HancomEQN", "HYhwpEQ", "Times New Roman", "Liberation Serif", "Tinos", "Noto Serif", "DejaVu Serif"];
+
+    /// <summary>Fonts with an OpenType MATH table for brackets and radical signs: Word's first, then common free ones.</summary>
+    private static readonly string[] MathFamilies =
+    [
+        "Cambria Math", "STIX Two Math", "Latin Modern Math", "STIX Math", "XITS Math", "Libertinus Math", "TeX Gyre Termes Math",
+        "TeX Gyre Pagella Math", "DejaVu Math TeX Gyre", "Asana Math", "Noto Sans Math",
+    ];
 
     private static readonly HashSet<string> Relations =
     [
@@ -52,7 +67,16 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     private static readonly HashSet<string> Binary = ["+", "-", "−", "±", "∓", "×", "÷", "·", "∘", "∪", "∩", "∧", "∨", "⊕", "⊖", "⊗", "⊙", "∗", "⋆", "⊔", "⊓", "\\", "/"];
 
+    /// <summary>
+    /// Levels laid out, above what the readers build (EquationParser.MaxDepth, OmmlReader.MaxDepth): content deeper
+    /// than this is left out rather than recursed into, as a stack overflow would end the app.
+    /// </summary>
+    private const int MaxDepth = 256;
+
     private readonly Dictionary<FontStyle, ResolvedFont?> _primary = [];
+    private (PageFont Font, MathTable Table)? _mathFont;
+    private bool _mathFontLooked;
+    private int _depth;
 
     /// <summary>The style text takes: italic Latin letters unless upright (rm), bold when asked.</summary>
     private readonly record struct Style(float Size, SKColor Color, bool Upright, bool Bold)
@@ -63,7 +87,39 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     /// <summary>Lays out <paramref name="node"/> at <paramref name="size"/> points in <paramref name="color"/>.</summary>
     public EquationBox Layout(MathNode node, float size, SKColor color) => Lay(node, new Style(size, color, false, false));
 
-    private EquationBox Lay(MathNode node, Style style) => node switch
+    /// <summary>
+    /// Lays out the lines of an equation array as <see cref="Layout"/> does, with where each line's baseline is (down
+    /// from the array's) in <paramref name="baselines"/>.
+    /// </summary>
+    public EquationBox Lines(MathPile pile, float size, SKColor color, List<float> baselines) =>
+        Pile(pile.Rows, pile.Align, new Style(size, color, false, false), baselines);
+
+    /// <summary>
+    /// The width <paramref name="node"/> takes as an item in the middle of a row, operators with the room on their
+    /// sides (for breaking a long equation into lines).
+    /// </summary>
+    public float ItemWidth(MathNode node, float size)
+    {
+        var (before, after) = Spacing(node, new MathText("x"), size);
+        return before + Layout(node, size, SKColors.Black).Width + after;
+    }
+
+    private EquationBox Lay(MathNode node, Style style)
+    {
+        if (_depth >= MaxDepth)
+            return EquationBox.Empty;
+        _depth++;
+        try
+        {
+            return LayNode(node, style);
+        }
+        finally
+        {
+            _depth--;
+        }
+    }
+
+    private EquationBox LayNode(MathNode node, Style style) => node switch
     {
         MathRow row => Row(row.Items, style),
         MathText text => Text(text.Text, style, italic: !style.Upright && text.Text.All(char.IsAsciiLetter)),
@@ -101,6 +157,21 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
             return font;
         font = Families.Select(f => fonts.Find(f, style)).FirstOrDefault(f => f is not null) ?? fonts.Resolve("serif", style);
         return _primary[style] = font;
+    }
+
+    /// <summary>The installed math font brackets and radical signs are drawn from; null when there is none.</summary>
+    internal (PageFont Font, MathTable Table)? MathFont()
+    {
+        if (_mathFontLooked)
+            return _mathFont;
+        _mathFontLooked = true;
+        foreach (var family in MathFamilies)
+        {
+            // Another name can find a font without the table (Cambria Math → Caladea): only a MATH table counts.
+            if (fonts.Find(family, FontStyle.Regular) is { Face.Cff2: false } found && MathTable.Of(found.Font) is { } table)
+                return _mathFont = (found.Font, table);
+        }
+        return null;
     }
 
     /// <summary>A run of text in the equation's fonts (with fallback for characters they lack).</summary>
@@ -148,13 +219,62 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         });
     }
 
+    /// <summary>
+    /// A glyph of the math font stretched to a height: its glyphs with their origins
+    /// (y up from the bottom of their outlines), the widest advance and the height of the outlines.
+    /// </summary>
+    private sealed record Stretched(PageFont Font, float Size, string Text, ushort[] Glyphs, SKPoint[] Origins, float Width, float Height)
+    {
+        /// <summary>Drawn with the bottom of its outlines <paramref name="bottom"/> points above the baseline.</summary>
+        public EquationBox Box(float x, float bottom, SKColor color) => new(x + Width, bottom + Height, -bottom, (page, left, baseline, scale) =>
+            page.DrawGlyphs(new GlyphRun(Font, Size, Glyphs, [.. Origins.Select(o => new SKPoint(left + (x + o.X) * scale, baseline - bottom - o.Y))], Text, new int[Glyphs.Length])
+            {
+                Color = color,
+                ScaleX = scale,
+            }));
+    }
+
+    /// <summary><paramref name="character"/> from the math font at least <paramref name="height"/> tall; null without one.</summary>
+    private Stretched? Stretch(string character, float height, float size)
+    {
+        if (character.Length == 0 || !(size > 0) || MathFont() is not var (font, table))
+            return null;
+        using var measure = new SKFont(font.Typeface, table.UnitsPerEm) { LinearMetrics = true, Hinting = SKFontHinting.None };
+        var glyph = measure.GetGlyph(char.ConvertToUtf32(character, 0));
+        if (glyph == 0)
+            return null;
+        float InkHeight(ushort g)
+        {
+            Span<float> width = stackalloc float[1];
+            Span<SKRect> bounds = stackalloc SKRect[1];
+            measure.GetGlyphWidths([g], width, bounds);
+            return bounds[0].Height;
+        }
+        var parts = table.Stretch(glyph, height * table.UnitsPerEm / size, InkHeight);
+        var glyphs = parts.Select(p => p.Glyph).ToArray();
+        var widths = new float[glyphs.Length];
+        var outlines = new SKRect[glyphs.Length];
+        measure.GetGlyphWidths(glyphs, widths, outlines);
+        // Each part's outline starts where the assembly puts it (Skia's bounds run downwards).
+        var unit = size / table.UnitsPerEm;
+        var origins = new SKPoint[glyphs.Length];
+        float top = 0;
+        for (var i = 0; i < glyphs.Length; i++)
+        {
+            var originY = parts[i].Bottom + outlines[i].Bottom;
+            origins[i] = new SKPoint(0, originY * unit);
+            top = Math.Max(top, originY - outlines[i].Top);
+        }
+        return new Stretched(font, size, character, glyphs, origins, widths.DefaultIfEmpty(0).Max() * unit, top * unit);
+    }
+
     // ───────────────────────── Rows ─────────────────────────
 
-    private EquationBox Row(IReadOnlyList<MathNode> items, Style style)
+    /// <param name="previous">The item before the row (a part of a line after an alignment mark), for its spacing.</param>
+    private EquationBox Row(IReadOnlyList<MathNode> items, Style style, MathNode? previous = null)
     {
         var parts = new List<(float X, EquationBox Box)>();
         float x = 0;
-        MathNode? previous = null;
         foreach (var item in items)
         {
             var box = Lay(item, style);
@@ -254,6 +374,13 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     {
         var body = Lay(root.Body, style);
         var size = style.Size;
+        if (MathFont() is var (_, table))
+        {
+            var unit = size / table.UnitsPerEm;
+            var (thickness, clearance) = (Math.Max(0.4f, table.RadicalRuleThickness * unit), Math.Max(0, table.RadicalVerticalGap * unit));
+            if (Stretch("√", body.Height + clearance + thickness, size) is { } surd)
+                return Radical(root, body, surd, thickness, clearance, table, style);
+        }
         var rule = Math.Max(0.4f, size * Rule);
         var gap = size * 0.1f;
         var ascent = Math.Max(body.Ascent, size * 0.7f) + gap + rule;
@@ -279,6 +406,42 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
             parts.Add((0, -(ascent - descent) * 0.45f - index.Descent - size * 0.05f, index));
         var height = index is null ? ascent : Math.Max(ascent, (ascent - descent) * 0.45f + size * 0.05f + index.Height);
         return Place(width, height, descent, [.. parts]);
+    }
+
+    /// <summary>
+    /// A root with the math font's radical sign: the rule on top of the sign, the room the sign has beyond the gap
+    /// shared above and below the body, and the index kerned in at the height the font asks.
+    /// </summary>
+    private EquationBox Radical(MathRoot root, EquationBox body, Stretched surd, float thickness, float gap, MathTable table, Style style)
+    {
+        var size = style.Size;
+        var unit = size / table.UnitsPerEm;
+        var extra = Math.Max(0, surd.Height - (body.Height + gap + thickness));
+        var ruleTop = body.Ascent + gap + extra / 2 + thickness;
+        var bottom = ruleTop - surd.Height;
+        var index = root.Index is null ? null : Lay(root.Index, style.Smaller(0.6f));
+        float surdX = 0, indexRaise = 0;
+        if (index is not null)
+        {
+            surdX = Math.Max(0, table.RadicalKernBeforeDegree * unit + index.Width + table.RadicalKernAfterDegree * unit);
+            indexRaise = bottom + surd.Height * table.RadicalDegreeBottomRaisePercent / 100f;
+        }
+        var bodyX = surdX + surd.Width;
+        var width = bodyX + body.Width + size * 0.05f;
+        var rule = new EquationBox(width, 0, 0, Drawn((canvas, x, y) =>
+        {
+            using var fill = new SKPaint { Color = style.Color, IsAntialias = true };
+            // A hair into the sign so no seam shows where they meet.
+            canvas.DrawRect(SKRect.Create(x + bodyX - thickness / 2, y - ruleTop, width - bodyX + thickness / 2, thickness), fill);
+        }));
+        var parts = new List<(float, float, EquationBox)> { (0, 0, surd.Box(surdX, bottom, style.Color)), (0, 0, rule), (bodyX, 0, body) };
+        var ascent = ruleTop + Math.Max(0, table.RadicalExtraAscender * unit);
+        if (index is not null)
+        {
+            parts.Add((Math.Max(0, table.RadicalKernBeforeDegree * unit), -indexRaise - index.Descent, index));
+            ascent = Math.Max(ascent, indexRaise + index.Descent + index.Ascent);
+        }
+        return Place(width, ascent, Math.Max(body.Descent, -bottom), [.. parts]);
     }
 
     // ───────────────────────── Scripts and limits ─────────────────────────
@@ -340,10 +503,19 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         // Centred on the math axis.
         var shift = (glyph.Ascent - glyph.Descent) / 2 - size * Axis;
         var symbol = Place(glyph.Width, glyph.Ascent - shift, glyph.Descent + shift, (0, shift, glyph));
-        var small = style.Smaller(ScriptScale);
-        var lower = big.Lower is null ? null : Lay(big.Lower, small);
-        var upper = big.Upper is null ? null : Lay(big.Upper, small);
-        var box = integral ? Scripts(symbol, big.Lower, big.Upper, style, italicBase: true) : Limits(symbol, upper, lower, size * 0.08f);
+        EquationBox box;
+        if (integral)
+        {
+            box = Scripts(symbol, big.Lower, big.Upper, style, italicBase: true);
+        }
+        else
+        {
+            // Laid out here only: an integral lays its limits out as scripts, and doing both doubled the work per level.
+            var small = style.Smaller(ScriptScale);
+            var lower = big.Lower is null ? null : Lay(big.Lower, small);
+            var upper = big.Upper is null ? null : Lay(big.Upper, small);
+            box = Limits(symbol, upper, lower, size * 0.08f);
+        }
         return Place(box.Width + size * 0.05f, box.Ascent, box.Descent, (0, 0, box));
     }
 
@@ -358,10 +530,15 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     // ───────────────────────── Grids ─────────────────────────
 
     /// <summary>Rows of cells in columns: centred (or to one side) and the whole centred on the math axis.</summary>
-    private EquationBox Grid(IReadOnlyList<IReadOnlyList<MathNode>> rows, Style style, string align, float columnGap)
+    private EquationBox Grid(IReadOnlyList<IReadOnlyList<MathNode>> rows, Style style, string align, float columnGap) =>
+        Grid([.. rows.Select(r => r.Select(c => Lay(c, style)).ToList())], style, _ => align, _ => columnGap);
+
+    /// <summary>Laid out cells in columns, each column aligned as <paramref name="align"/> says, with its gap after it.</summary>
+    /// <param name="baselines">Collects each row's baseline (down from the grid's), or null.</param>
+    private static EquationBox Grid(List<List<EquationBox>> cells, Style style, Func<int, string> align, Func<int, float> gapAfter,
+        List<float>? baselines = null)
     {
         var size = style.Size;
-        var cells = rows.Select(r => r.Select(c => Lay(c, style)).ToList()).ToList();
         var columns = cells.Count == 0 ? 0 : cells.Max(r => r.Count);
         var widths = new float[columns];
         foreach (var row in cells)
@@ -377,22 +554,23 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         for (var r = 0; r < cells.Count; r++)
         {
             y += ascents[r];
+            baselines?.Add(y);
             float x = 0;
             for (var c = 0; c < cells[r].Count; c++)
             {
                 var box = cells[r][c];
-                var offset = align switch
+                var offset = align(c) switch
                 {
                     "lpile" => 0,
                     "rpile" => widths[c] - box.Width,
                     _ => (widths[c] - box.Width) / 2,
                 };
                 parts.Add((x + offset, y, box));
-                x += widths[c] + columnGap;
+                x += widths[c] + gapAfter(c);
             }
             y += descents[r] + rowGap;
         }
-        var width = widths.Sum() + columnGap * Math.Max(0, columns - 1);
+        var width = widths.Sum() + Enumerable.Range(0, Math.Max(0, columns - 1)).Sum(gapAfter);
         return Place(width, -top, height + top, [.. parts]);
     }
 
@@ -410,29 +588,73 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     private EquationBox Cases(MathCases cases, Style style) => Brackets("{", Grid(cases.Rows, style, "lpile", style.Size * 0.8f), "", style);
 
-    private EquationBox Pile(IReadOnlyList<MathNode> rows, string align, Style style) =>
-        Grid([.. rows.Select(r => (IReadOnlyList<MathNode>)[r])], style, align, 0);
+    /// <summary>
+    /// Lines stacked. A Word equation array's lines with alignment marks (&amp;) are lined up at them: the odd marks are
+    /// alignment points (what comes before ends there, what follows starts there), the even ones start a new column a
+    /// space further on, as in Word.
+    /// </summary>
+    private EquationBox Pile(IReadOnlyList<MathNode> rows, string align, Style style, List<float>? baselines = null)
+    {
+        var lines = rows.Select(Segments).ToList();
+        if (lines.All(l => l.Count <= 1))
+            return Grid([.. rows.Select(r => new List<EquationBox> { Lay(r, style) })], style, _ => align, _ => 0, baselines);
+        var cells = lines.Select(segments => segments.Select((segment, i) =>
+            Row(segment, style, i > 0 && segments[i - 1] is [.., var last] ? last : null)).ToList()).ToList();
+        return Grid(cells, style, c => c % 2 == 0 ? "rpile" : "lpile", c => c % 2 == 1 ? style.Size : 0, baselines);
+    }
+
+    /// <summary>The items of a line between its alignment marks.</summary>
+    private static List<List<MathNode>> Segments(MathNode line)
+    {
+        var segments = new List<List<MathNode>> { new() };
+        foreach (var item in line is MathRow row ? row.Items : [line])
+        {
+            if (item is MathAlign)
+                segments.Add([]);
+            else
+                segments[^1].Add(item);
+        }
+        return segments;
+    }
 
     // ───────────────────────── Brackets and accents ─────────────────────────
 
-    /// <summary>The body between brackets drawn as tall as it is (at least as a letter), centred on the math axis.</summary>
+    /// <summary>The body between brackets as tall as it is (at least as a letter), centred on the math axis.</summary>
     private EquationBox Brackets(string left, EquationBox body, string right, Style style)
     {
         var size = style.Size;
         var axis = size * Axis;
         var half = Math.Max(Math.Max(body.Ascent - axis, body.Descent + axis), size * 0.5f) + size * 0.05f;
-        var (top, bottom) = (-(axis + half), -(axis - half));
-        var leftWidth = BracketWidth(left, size, half);
-        var rightWidth = BracketWidth(right, size, half);
+        var (leftBox, rightBox) = (Delimiter(left, half, style, closing: false), Delimiter(right, half, style, closing: true));
         var pad = size * 0.05f;
-        var width = leftWidth + pad + body.Width + pad + rightWidth;
-        var stroke = Math.Max(0.5f, size * 0.06f);
-        var parts = new List<(float, float, EquationBox)> { (leftWidth + pad, 0, body) };
-        if (left.Length > 0)
-            parts.Add((0, 0, new EquationBox(leftWidth, 0, 0, Drawn((canvas, x, y) => Bracket(canvas, left, x, y + top, y + bottom, leftWidth, stroke, style.Color, false)))));
-        if (right.Length > 0)
-            parts.Add((width - rightWidth, 0, new EquationBox(rightWidth, 0, 0, Drawn((canvas, x, y) => Bracket(canvas, right, x, y + top, y + bottom, rightWidth, stroke, style.Color, true)))));
-        return Place(width, Math.Max(body.Ascent, -top), Math.Max(body.Descent, bottom), [.. parts]);
+        var width = leftBox.Width + pad + body.Width + pad + rightBox.Width;
+        return Place(width, Math.Max(body.Ascent, Math.Max(leftBox.Ascent, rightBox.Ascent)), Math.Max(body.Descent, Math.Max(leftBox.Descent, rightBox.Descent)),
+            (0, 0, leftBox), (leftBox.Width + pad, 0, body), (width - rightBox.Width, 0, rightBox));
+    }
+
+    /// <summary>
+    /// One bracket reaching <paramref name="half"/> above and below the axis: from the math font, else the text font's
+    /// own for content no taller than a letter, else drawn.
+    /// </summary>
+    private EquationBox Delimiter(string bracket, float half, Style style, bool closing)
+    {
+        if (bracket.Length == 0)
+            return EquationBox.Empty;
+        var size = style.Size;
+        var axis = size * Axis;
+        var character = bracket switch
+        {
+            "<" or "〈" => "⟨",
+            ">" or "〉" => "⟩",
+            _ => bracket,
+        };
+        if (Stretch(character, half * 2, size) is { } glyph)
+            return glyph.Box(0, axis - glyph.Height / 2, style.Color);
+        if (half <= size * 0.6f && Text(bracket, style, italic: false) is { Width: > 0 } text)
+            return text;
+        var width = BracketWidth(bracket, size, half);
+        var (top, bottom) = (-(axis + half), -(axis - half));
+        return new EquationBox(width, axis + half, half - axis, Drawn((canvas, x, y) => Bracket(canvas, bracket, x, y + top, y + bottom, width, size, style.Color, closing)));
     }
 
     private static float BracketWidth(string bracket, float size, float half) => bracket switch
@@ -443,18 +665,23 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         _ => size * 0.3f + half * 0.05f,
     };
 
-    /// <summary>A bracket from <paramref name="top"/> to <paramref name="bottom"/> in a box <paramref name="width"/> wide.</summary>
-    private static void Bracket(SKCanvas canvas, string bracket, float x, float top, float bottom, float width, float stroke, SKColor color, bool closing)
+    /// <summary>
+    /// A bracket drawn from <paramref name="top"/> to <paramref name="bottom"/> in a box <paramref name="width"/>
+    /// wide, with a text bracket's weight: round brackets and braces swell in the middle of each arm.
+    /// </summary>
+    private static void Bracket(SKCanvas canvas, string bracket, float x, float top, float bottom, float width, float size, SKColor color, bool closing)
     {
-        using var pen = Pen(color, stroke);
+        var (stem, hair) = (Math.Max(0.6f, size * 0.075f), Math.Max(0.25f, size * 0.02f));
         using var path = new SKPath();
         var (inner, outer) = closing ? (x + width * 0.25f, x + width * 0.75f) : (x + width * 0.75f, x + width * 0.25f);
         var middle = (top + bottom) / 2;
+        var lobes = 0;
         switch (bracket)
         {
             case "(" or ")":
                 path.MoveTo(inner, top);
                 path.QuadTo(outer - (inner - outer) * 0.3f, middle, inner, bottom);
+                lobes = 1;
                 break;
             case "[" or "]":
                 path.MoveTo(inner, top);
@@ -483,6 +710,7 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
                     path.QuadTo(center, middle, center, middle + q * 0.5f);
                     path.LineTo(center, bottom - q * 0.5f);
                     path.QuadTo(center, bottom, inner, bottom);
+                    lobes = 2;
                     break;
                 }
             case "⟨" or "⟩" or "<" or ">" or "〈" or "〉":
@@ -501,11 +729,60 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
                 path.LineTo(x + width / 2, bottom);
                 break;
         }
+        if (lobes > 0)
+        {
+            using var fill = new SKPaint { Color = color, IsAntialias = true };
+            using var shape = Tapered(path, hair, stem, lobes);
+            canvas.DrawPath(shape, fill);
+            return;
+        }
+        using var pen = Pen(color, stem * 0.8f);
+        pen.StrokeCap = SKStrokeCap.Butt;
+        pen.StrokeJoin = SKStrokeJoin.Miter;
         canvas.DrawPath(path, pen);
+    }
+
+    /// <summary>
+    /// The outline of a stroke along <paramref name="centre"/> (one contour) whose width goes from
+    /// <paramref name="thin"/> at the ends to <paramref name="thick"/> in the middle of each of its
+    /// <paramref name="lobes"/> equal lengths, and back.
+    /// </summary>
+    private static SKPath Tapered(SKPath centre, float thin, float thick, int lobes)
+    {
+        var outline = new SKPath();
+        using var measure = new SKPathMeasure(centre, false);
+        var length = measure.Length;
+        if (!(length > 0))
+            return outline;
+        var steps = Math.Clamp((int)(length / 0.25f), 32, 400);
+        var (left, right) = (new SKPoint[steps + 1], new SKPoint[steps + 1]);
+        for (var i = 0; i <= steps; i++)
+        {
+            measure.GetPositionAndTangent(length * i / steps, out var point, out var tangent);
+            var along = (float)i / steps * lobes;
+            var swell = i == steps ? 0 : MathF.Sin(MathF.PI * (along - MathF.Floor(along)));
+            var half = (thin + (thick - thin) * swell) / 2;
+            var normal = new SKPoint(-tangent.Y * half, tangent.X * half);
+            (left[i], right[i]) = (point + normal, point - normal);
+        }
+        outline.MoveTo(left[0]);
+        for (var i = 1; i <= steps; i++)
+            outline.LineTo(left[i]);
+        for (var i = steps; i >= 0; i--)
+            outline.LineTo(right[i]);
+        outline.Close();
+        return outline;
     }
 
     private EquationBox Accent(string command, EquationBox body, Style style)
     {
+        // Word's bars (m:bar) arrive as OVERLINE and UNDERLINE.
+        command = command switch
+        {
+            "OVERLINE" or "overline" => "bar",
+            "UNDERLINE" or "underline" => "under",
+            _ => command,
+        };
         var size = style.Size;
         var stroke = Math.Max(0.4f, size * 0.05f);
         var top = Math.Max(body.Ascent, size * 0.7f) + size * 0.08f;

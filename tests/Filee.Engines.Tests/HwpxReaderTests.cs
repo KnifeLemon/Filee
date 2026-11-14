@@ -12,6 +12,7 @@ using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Pptx;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Office.Sheets;
 using ImageMagick;
 using static Filee.Engines.Tests.DocxBuilder;
@@ -584,6 +585,64 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
             .SelectMany(p => p.Inlines).OfType<HImage>().First().Caption); // the converters' model doesn't keep it
     }
 
+    [Fact]
+    public void Read_for_layout_the_page_number_is_the_sections_own_and_not_a_footer_paragraph()
+    {
+        var folder = fx.NewFolder();
+        var path = HangulStylePackage(folder);
+
+        var layout = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media-layout"));
+        var read = HwpxReader.Read(path, Path.Combine(folder, "media"));
+
+        var number = layout.Sections[0].PageNumber!;
+        Assert.Equal(("BOTTOM_CENTER", "DIGIT", "-"), (number.Position, number.NumberFormat, number.Side));
+        Assert.DoesNotContain(layout.Sections[0].Footers.SelectMany(f => f.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines), i => i is HField);
+        Assert.Contains(read.Sections[0].Footers.SelectMany(f => f.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines), i => i is HField);
+        Assert.Equal(3, layout.Sections[1].StartPageNumber); // a new number in the section's first paragraph starts it
+    }
+
+    [Fact]
+    public void Form_controls_are_laid_out_as_boxes_with_their_text()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "controls.hwpx");
+        File.Copy(HangulStylePackage(folder), path);
+        static string Control(string name, string attributes, string inner = "") =>
+            $"<hp:{name} {attributes} name=\"C\" foreColor=\"#0000FF\" backColor=\"#F0F0F0\" groupName=\"\" tabStop=\"1\" editable=\"1\" tabOrder=\"1\" enabled=\"1\" " +
+            "borderTypeIDRef=\"0\" drawFrame=\"1\" printable=\"1\" command=\"\"><hp:formCharPr charPrIDRef=\"0\" followContext=\"0\" autoSz=\"0\" wordWrap=\"0\"/>" + inner +
+            "<hp:sz width=\"7087\" widthRelTo=\"ABSOLUTE\" height=\"1984\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" +
+            "<hp:pos treatAsChar=\"1\" affectLSpacing=\"0\" flowWithText=\"1\" allowOverlap=\"1\" holdAnchorAndSO=\"0\" vertRelTo=\"PARA\" horzRelTo=\"COLUMN\" vertAlign=\"TOP\" horzAlign=\"LEFT\" vertOffset=\"0\" horzOffset=\"0\"/>" +
+            $"<hp:outMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/></hp:{name}>";
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            // After the "줄 간격" paragraph's text: a button, a check box and an edit box with a password character.
+            xml = xml.Replace("<hp:t>줄 간격</hp:t>", "<hp:t>줄 간격</hp:t>" +
+                Control("btn", "caption=\"확인\" value=\"UNCHECKED\"") +
+                Control("checkBtn", "caption=\"동의\" value=\"UNCHECKED\" backStyle=\"TRANSPARENT\"") +
+                Control("edit", "multiLine=\"0\" passwordChar=\"X\" maxLength=\"10\"", "<hp:text>1234</hp:text>"), StringComparison.Ordinal);
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml);
+        }
+
+        var boxes = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media")).Sections[0].Blocks.OfType<HParagraph>()
+            .SelectMany(p => p.Inlines).OfType<HTextBox>().Where(b => b.Width == 7087).ToList(); // the package's own text box is in a group
+
+        Assert.Equal(3, boxes.Count);
+        Assert.All(boxes, b => Assert.Equal((7087, 1984, (HAnchor?)null, 85), (b.Width, b.Height, b.Anchor, b.BaseLine)));
+        var button = Assert.IsType<HParagraph>(Assert.Single(boxes[0].Blocks));
+        Assert.Equal((HAlign.Center, "확인", "#0000FF", "#F0F0F0"), (button.Format.Align, Text(boxes[0].Blocks), ((HText)button.Inlines[0]).Format.Color, boxes[0].Fill));
+        Assert.NotEqual(HBorderStyle.None, boxes[0].Line.Style);
+        var check = Assert.IsType<HParagraph>(Assert.Single(boxes[1].Blocks));
+        Assert.Equal(HShapeKind.Rectangle, Assert.IsType<HShape>(check.Inlines[0]).Kind); // the square is drawn, not text
+        Assert.Equal((" 동의", (string?)null, HBorderStyle.None), (Text(boxes[1].Blocks), boxes[1].Fill, boxes[1].Line.Style));
+        Assert.Equal("XXXX", Text(boxes[2].Blocks));
+    }
+
     private static HParagraph ParagraphOf(IEnumerable<HInline> inlines)
     {
         var paragraph = new HParagraph();
@@ -906,6 +965,104 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
             stream.Write(Png(color, 40, 20));
         }
         return path;
+    }
+
+    /// <summary>A document of the kind with a picture, and how to read it under a limit.</summary>
+    private Func<UnpackLimit, HDocument> WithPicture(string kind)
+    {
+        var dir = fx.NewFolder();
+        var media = Path.Combine(dir, "media");
+        switch (kind)
+        {
+            case "docx":
+                var docx = new DocxBuilder();
+                docx.Paragraph(P(InlinePicture(docx.Image(Png(MagickColors.Teal)), 914400, 457200)));
+                var word = docx.Save(Path.Combine(dir, "a.docx"));
+                return limit => DocxReader.Read(word, media, limit);
+            case "pptx":
+                var pptx = new PptxBuilder();
+                pptx.Slide(pptx.Picture(pptx.Image(Png(MagickColors.Teal)), 0, 0, 914400, 457200));
+                var slides = pptx.Save(Path.Combine(dir, "a.pptx"));
+                return limit => PptxReader.Read(slides, media, limit);
+            default:
+                var hwpx = HangulStylePackage(dir);
+                return limit => HwpxReader.Read(hwpx, media, limit);
+        }
+    }
+
+    [Theory]
+    [InlineData("docx")]
+    [InlineData("hwpx")]
+    [InlineData("pptx")]
+    public void Pictures_past_the_unpack_limit_refuse_the_document(string kind)
+    {
+        var read = WithPicture(kind);
+
+        Assert.NotEmpty(AllInlines(read(new UnpackLimit(10_000_000)).Sections.SelectMany(s => s.Blocks)).OfType<HImage>());
+        var error = Assert.Throws<ConversionRefusedException>(() => read(new UnpackLimit(10)));
+        Assert.Equal("error.document_too_large", error.ErrorKey);
+    }
+
+    [Fact]
+    public void The_unpack_limit_counts_all_of_a_documents_pictures()
+    {
+        var one = Png(MagickColors.Teal);
+        var two = Png(MagickColors.Coral);
+        var docx = new DocxBuilder();
+        docx.Paragraph(P(InlinePicture(docx.Image(one), 914400, 457200) + InlinePicture(docx.Image(two), 914400, 457200)));
+        var dir = fx.NewFolder();
+        var path = docx.Save(Path.Combine(dir, "a.docx"));
+
+        DocxReader.Read(path, Path.Combine(dir, "both"), new UnpackLimit(one.Length + two.Length));
+        var limit = new UnpackLimit(one.Length + two.Length - 1);
+        Assert.Throws<ConversionRefusedException>(() => DocxReader.Read(path, Path.Combine(dir, "less"), limit));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_bomb_stops_at_the_unpack_limit_whatever_its_header_says(bool lying)
+    {
+        const int Unpacked = 5_000_000;
+        const int Limit = 100_000;
+        var dir = fx.NewFolder();
+        var path = Path.Combine(dir, "bomb.zip");
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            using var stream = zip.CreateEntry("BinData/bomb.png").Open();
+            stream.Write(new byte[Unpacked]);
+        }
+        if (lying)
+        {
+            // The central directory's uncompressed size, at 24 bytes into its record, says one byte.
+            var bytes = File.ReadAllBytes(path);
+            var record = bytes.AsSpan().IndexOf("PK\u0001\u0002"u8);
+            BitConverter.TryWriteBytes(bytes.AsSpan(record + 24), 1);
+            File.WriteAllBytes(path, bytes);
+        }
+        var target = Path.Combine(dir, "bomb.png");
+        using var bomb = ZipFile.OpenRead(path);
+
+        var limit = new UnpackLimit(Limit);
+        if (lying)
+            limit.Extract(bomb.Entries[0], target); // the entry's stream ends where its header says
+        else
+            Assert.Equal("error.document_too_large", Assert.Throws<ConversionRefusedException>(() => limit.Extract(bomb.Entries[0], target)).ErrorKey);
+
+        Assert.True(!File.Exists(target) || new FileInfo(target).Length <= Limit);
+    }
+
+    [Fact]
+    public void A_document_may_unpack_to_two_gigabytes_or_twice_its_size()
+    {
+        var small = Path.Combine(fx.NewFolder(), "small.docx");
+        File.WriteAllBytes(small, new byte[10]);
+        Assert.Equal(2048L * 1024 * 1024, Filee.Engines.Office.PackageRepacker.MaxUnpacked(small));
+
+        var large = Path.Combine(fx.NewFolder(), "large.docx");
+        using (var file = File.Create(large))
+            file.SetLength(3L * 1024 * 1024 * 1024);
+        Assert.Equal(6L * 1024 * 1024 * 1024, Filee.Engines.Office.PackageRepacker.MaxUnpacked(large));
     }
 
     private sealed class FixedPath(string path) : IOutputAllocator

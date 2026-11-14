@@ -6,6 +6,13 @@
 //
 // The content is read by PdfContentLexer rather than PDFsharp's ContentReader, which turns hex strings that start
 // with FE FF into UTF-16 text and so loses the codes of a two-byte font.
+//
+// The file is untrusted, so the walk is bounded and never refuses the job: a stream past a limit counts as one that
+// didn't parse, and the fonts of its resources stay whole. Each stream is read once into the font names it selects,
+// the codes it shows with each and the forms it draws; drawing it again with other resources only resolves those
+// names again. Forms are followed from a work stack rather than by recursion, at most MaxDepth deep, and arrays and
+// dictionaries in a stream nest at most PdfContentLexer.MaxDepth deep. A document is bounded by MaxStreams,
+// MaxContentBytes decoded and MaxWork names and codes resolved.
 
 using PdfSharp.Pdf;
 using Name = Filee.Engines.Pdf.PdfContentLexer.Name;
@@ -16,15 +23,39 @@ namespace Filee.Engines.Pdf;
 /// <summary>The codes each font draws, and the fonts whose use can't be followed.</summary>
 internal sealed class PdfFontUses
 {
-    /// <summary>Forms followed per document at most, against forms drawing each other many times over.</summary>
-    private const int MaxStreams = 20_000;
+    /// <summary>Streams followed per document at most (one drawn with other resources counts again).</summary>
+    internal const int MaxStreams = 20_000;
 
+    /// <summary>Forms drawing forms (and patterns, soft masks, Type 3 glyphs) followed this deep at most.</summary>
+    internal const int MaxDepth = 32;
+
+    /// <summary>Decoded content read per document at most.</summary>
+    internal const long MaxContentBytes = 512L << 20;
+
+    /// <summary>Font names, codes and form names resolved per document at most, against a big form drawn many times.</summary>
+    internal const long MaxWork = 50_000_000;
+
+    /// <summary>Names and codes one stream may hold; real pages hold a few thousand.</summary>
+    internal const int MaxStreamSize = 1_000_000;
+
+    /// <summary>Names and codes kept of forms that may be drawn again with other resources.</summary>
+    private const long MaxKept = 4_000_000;
+
+    private readonly CancellationToken _cancellationToken;
     private readonly Dictionary<PdfDictionary, HashSet<int>> _codes = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<PdfDictionary> _read = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<PdfDictionary> _failed = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<PdfDictionary> _unsure = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<(PdfDictionary, PdfDictionary?)> _walked = [];
+    private readonly HashSet<PdfDictionary> _resourcesRead = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<PdfDictionary, Content> _kept = new(ReferenceEqualityComparer.Instance);
+    private readonly Stack<(PdfDictionary Stream, PdfDictionary? Resources, int Depth)> _pending = new();
     private int _streams;
+    private long _bytes;
+    private long _work;
+    private long _keptSize;
+
+    private PdfFontUses(CancellationToken cancellationToken) => _cancellationToken = cancellationToken;
 
     /// <summary>Character codes drawn with each font (two-byte codes for Type 0 fonts).</summary>
     public IReadOnlyDictionary<PdfDictionary, HashSet<int>> Codes => _codes;
@@ -34,13 +65,14 @@ internal sealed class PdfFontUses
 
     public static PdfFontUses Find(PdfDocument document, CancellationToken cancellationToken)
     {
-        var uses = new PdfFontUses();
+        var uses = new PdfFontUses(cancellationToken);
         foreach (var page in document.Pages)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var resources = page.Elements.GetDictionary("/Resources");
             uses.WalkPage(page, resources);
             uses.WalkAnnotations(page, resources);
+            uses.Drain();
         }
         uses.CheckListings(document);
         return uses;
@@ -51,6 +83,8 @@ internal sealed class PdfFontUses
         byte[] content;
         try
         {
+            if (_bytes >= MaxContentBytes)
+                throw new InvalidDataException("The document's content streams are too large to follow.");
             using var stream = new MemoryStream();
             foreach (var part in Parts(page.Elements["/Contents"]))
                 stream.Write(part.Stream.UnfilteredValue);
@@ -61,7 +95,7 @@ internal sealed class PdfFontUses
             Fail(resources);
             return;
         }
-        Walk(content, resources);
+        Apply(Lex(content), resources, depth: 0);
     }
 
     private static IEnumerable<PdfDictionary> Parts(PdfItem? contents) => PdfCompressor.Resolve(contents) switch
@@ -84,13 +118,13 @@ internal sealed class PdfFontUses
                 switch (PdfCompressor.Resolve(appearances.Elements[key]))
                 {
                     case PdfDictionary { Stream: not null } form:
-                        WalkStream(form, pageResources);
+                        _pending.Push((form, pageResources, 1));
                         break;
                     case PdfDictionary states:
                         foreach (var state in states.Elements.Keys)
                         {
                             if (PdfCompressor.Resolve(states.Elements[state]) is PdfDictionary { Stream: not null } stateForm)
-                                WalkStream(stateForm, pageResources);
+                                _pending.Push((stateForm, pageResources, 1));
                         }
                         break;
                 }
@@ -98,107 +132,111 @@ internal sealed class PdfFontUses
         }
     }
 
-    /// <summary>A form, pattern, soft mask group or Type 3 glyph: its own resources, else the ones it is drawn with.</summary>
-    private void WalkStream(PdfDictionary stream, PdfDictionary? inherited)
+    /// <summary>Follows the forms, patterns, soft masks and Type 3 glyphs that the streams read so far draw.</summary>
+    private void Drain()
     {
-        var resources = stream.Elements.GetDictionary("/Resources") ?? inherited;
+        while (_pending.TryPop(out var next))
+        {
+            _cancellationToken.ThrowIfCancellationRequested();
+            WalkStream(next.Stream, next.Resources, next.Depth);
+        }
+    }
+
+    /// <summary>A form, pattern, soft mask group or Type 3 glyph: its own resources, else the ones it is drawn with.</summary>
+    private void WalkStream(PdfDictionary stream, PdfDictionary? inherited, int depth)
+    {
+        var own = stream.Elements.GetDictionary("/Resources");
+        var resources = own ?? inherited;
         if (!_walked.Add((stream, resources)))
             return;
-        if (++_streams > MaxStreams)
+        if (depth > MaxDepth || ++_streams > MaxStreams)
         {
             Fail(resources);
             return;
         }
-        byte[] content;
+        Apply(Read(stream, keep: own is null), resources, depth);
+    }
+
+    /// <summary>
+    /// A stream's content. With <paramref name="keep"/> it is kept for the next time the stream is drawn: only a stream
+    /// without resources of its own can be drawn again with other ones (the walk skips one drawn again with the same).
+    /// </summary>
+    private Content Read(PdfDictionary stream, bool keep)
+    {
+        if (_kept.TryGetValue(stream, out var kept))
+            return kept;
+        Content content;
         try
         {
-            content = stream.Stream.UnfilteredValue;
+            content = _bytes >= MaxContentBytes ? Content.Unreadable : Lex(stream.Stream.UnfilteredValue);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Fail(resources);
-            return;
+            content = Content.Unreadable;
         }
-        Walk(content, resources);
+        if (keep && _keptSize + content.Size <= MaxKept)
+        {
+            _kept[stream] = content;
+            _keptSize += content.Size;
+        }
+        return content;
     }
 
-    private void Walk(byte[] content, PdfDictionary? resources)
+    private Content Lex(byte[] data)
+    {
+        _bytes += data.Length;
+        return _bytes > MaxContentBytes ? Content.Unreadable : Content.Read(data, _cancellationToken);
+    }
+
+    /// <summary>Resolves a stream's font and form names in <paramref name="resources"/>.</summary>
+    private void Apply(Content content, PdfDictionary? resources, int depth)
     {
         var fonts = resources is null ? null : PdfCompressor.Resolve(resources.Elements["/Font"]) as PdfDictionary;
         if (fonts is not null)
             _read.Add(fonts);
         // Patterns and soft masks can draw text wherever they are used: read them all.
-        if (resources is not null)
+        if (resources is not null && _resourcesRead.Add(resources))
         {
             foreach (var pattern in Values(resources, "/Pattern"))
             {
                 if (pattern.Stream is not null)
-                    WalkStream(pattern, resources);
+                    _pending.Push((pattern, resources, depth + 1));
             }
             foreach (var state in Values(resources, "/ExtGState"))
             {
                 if (PdfCompressor.Resolve(state.Elements["/SMask"]) is PdfDictionary mask && PdfCompressor.Resolve(mask.Elements["/G"]) is PdfDictionary { Stream: not null } group)
-                    WalkStream(group, resources);
+                    _pending.Push((group, resources, depth + 1));
             }
         }
-
-        var lexer = new PdfContentLexer(content);
-        var operands = new List<object?>();
-        var saved = new Stack<PdfDictionary?>();
-        PdfDictionary? font = null;
-        try
-        {
-            while (lexer.Next() is { } token)
-            {
-                if (token is not Operator op)
-                {
-                    operands.Add(token);
-                    continue;
-                }
-                switch (op.Name)
-                {
-                    case "q":
-                        saved.Push(font);
-                        break;
-                    case "Q":
-                        if (saved.Count > 0)
-                            font = saved.Pop();
-                        break;
-                    case "Tf" when operands.Count >= 2 && operands[^2] is Name name:
-                        font = fonts is null ? null : PdfCompressor.Resolve(fonts.Elements["/" + name.Value]) as PdfDictionary;
-                        if (font is not null && font.Elements.GetName("/Subtype") == "/Type3")
-                            WalkType3(font, resources);
-                        break;
-                    case "Tj" or "'" when operands.Count >= 1 && operands[^1] is byte[] text:
-                        Show(font, text);
-                        break;
-                    case "\"" when operands.Count >= 3 && operands[^1] is byte[] text:
-                        Show(font, text);
-                        break;
-                    case "TJ" when operands.Count >= 1 && operands[^1] is List<object?> array:
-                        foreach (var part in array.OfType<byte[]>())
-                            Show(font, part);
-                        break;
-                    case "Do" when operands.Count >= 1 && operands[^1] is Name name:
-                        if (resources?.Elements.GetDictionary("/XObject") is { } xobjects
-                            && PdfCompressor.Resolve(xobjects.Elements["/" + name.Value]) is PdfDictionary { Stream: not null } xobject
-                            && xobject.Elements.GetName("/Subtype") == "/Form")
-                            WalkStream(xobject, resources);
-                        break;
-                    case "BI":
-                        lexer.SkipInlineImage();
-                        break;
-                }
-                operands.Clear();
-            }
-        }
-        catch (InvalidDataException)
+        if (content.Failed)
+            Fail(resources);
+        _work += content.Size;
+        if (_work > MaxWork)
         {
             Fail(resources);
+            return;
+        }
+
+        foreach (var (name, shown) in content.Fonts)
+        {
+            if (fonts is null || PdfCompressor.Resolve(fonts.Elements["/" + name]) is not PdfDictionary font)
+                continue;
+            if (font.Elements.GetName("/Subtype") == "/Type3")
+                WalkType3(font, resources, depth);
+            Show(font, shown);
+        }
+        if (content.Forms.Count > 0 && resources?.Elements.GetDictionary("/XObject") is { } xobjects)
+        {
+            foreach (var name in content.Forms)
+            {
+                if (PdfCompressor.Resolve(xobjects.Elements["/" + name]) is PdfDictionary { Stream: not null } xobject
+                    && xobject.Elements.GetName("/Subtype") == "/Form")
+                    _pending.Push((xobject, resources, depth + 1));
+            }
         }
     }
 
-    private void WalkType3(PdfDictionary font, PdfDictionary? resources)
+    private void WalkType3(PdfDictionary font, PdfDictionary? resources, int depth)
     {
         if (PdfCompressor.Resolve(font.Elements["/CharProcs"]) is not PdfDictionary procs)
             return;
@@ -206,27 +244,25 @@ internal sealed class PdfFontUses
         foreach (var key in procs.Elements.Keys)
         {
             if (PdfCompressor.Resolve(procs.Elements[key]) is PdfDictionary { Stream: not null } glyph)
-                WalkStream(glyph, own);
+                _pending.Push((glyph, own, depth + 1));
         }
     }
 
-    private void Show(PdfDictionary? font, byte[] text)
+    private void Show(PdfDictionary font, Shown shown)
     {
-        if (font is null)
+        if (!shown.Any)
             return;
         if (!_codes.TryGetValue(font, out var codes))
             _codes[font] = codes = [];
         if (font.Elements.GetName("/Subtype") == "/Type0")
         {
-            if (text.Length % 2 != 0)
+            if (shown.Odd)
                 _unsure.Add(font);
-            for (var i = 0; i + 1 < text.Length; i += 2)
-                codes.Add(text[i] << 8 | text[i + 1]);
+            codes.UnionWith(shown.Pairs);
         }
         else
         {
-            foreach (var b in text)
-                codes.Add(b);
+            codes.UnionWith(shown.Bytes);
         }
     }
 
@@ -286,4 +322,126 @@ internal sealed class PdfFontUses
         PdfCompressor.Resolve(resources.Elements[key]) is PdfDictionary group
             ? group.Elements.Values.Select(PdfCompressor.Resolve).OfType<PdfDictionary>()
             : [];
+
+    /// <summary>The codes a stream shows with one font name, as single bytes and as two-byte pairs: the font decides which.</summary>
+    private sealed class Shown
+    {
+        public HashSet<int> Bytes { get; } = [];
+        public HashSet<int> Pairs { get; } = [];
+
+        /// <summary>A string was shown.</summary>
+        public bool Any { get; private set; }
+
+        /// <summary>A string of odd length was shown, which a two-byte font can't read whole.</summary>
+        public bool Odd { get; private set; }
+
+        /// <summary>Adds a string's codes; returns how many are new.</summary>
+        public int Add(byte[] text)
+        {
+            Any = true;
+            var added = 0;
+            foreach (var b in text)
+                added += Bytes.Add(b) ? 1 : 0;
+            if (text.Length % 2 != 0)
+                Odd = true;
+            for (var i = 0; i + 1 < text.Length; i += 2)
+                added += Pairs.Add(text[i] << 8 | text[i + 1]) ? 1 : 0;
+            return added;
+        }
+    }
+
+    /// <summary>What one content stream does with fonts and forms, by resource name.</summary>
+    private sealed class Content
+    {
+        /// <summary>Operands kept before an operator: none of the operators read here takes more.</summary>
+        private const int MaxOperands = 16;
+
+        /// <summary>A stream that couldn't be decoded, or past a limit: its resources' fonts stay whole.</summary>
+        public static readonly Content Unreadable = new() { Failed = true };
+
+        /// <summary>Every font name set with Tf, with the codes shown while it was set.</summary>
+        public Dictionary<string, Shown> Fonts { get; } = [];
+
+        /// <summary>Every XObject name drawn with Do.</summary>
+        public HashSet<string> Forms { get; } = [];
+
+        /// <summary>The stream broke off or ran past a limit; what came before stays.</summary>
+        public bool Failed { get; private set; }
+
+        /// <summary>Names and codes held: what resolving them costs.</summary>
+        public long Size { get; private set; }
+
+        public static Content Read(byte[] data, CancellationToken cancellationToken)
+        {
+            var content = new Content();
+            var lexer = new PdfContentLexer(data);
+            var operands = new List<object?>();
+            var saved = new Stack<Shown?>();
+            Shown? font = null;
+            var tokens = 0;
+            try
+            {
+                while (lexer.Next() is { } token)
+                {
+                    if (++tokens % 65_536 == 0)
+                        cancellationToken.ThrowIfCancellationRequested();
+                    if (token is not Operator op)
+                    {
+                        if (operands.Count == MaxOperands)
+                            operands.RemoveAt(0);
+                        operands.Add(token);
+                        continue;
+                    }
+                    switch (op.Name)
+                    {
+                        case "q":
+                            saved.Push(font);
+                            break;
+                        case "Q":
+                            if (saved.Count > 0)
+                                font = saved.Pop();
+                            break;
+                        case "Tf" when operands.Count >= 2 && operands[^2] is Name name:
+                            if (!content.Fonts.TryGetValue(name.Value, out font))
+                            {
+                                content.Fonts[name.Value] = font = new Shown();
+                                content.Size++;
+                            }
+                            break;
+                        case "Tj" or "'" when operands.Count >= 1 && operands[^1] is byte[] text:
+                            content.Show(font, text);
+                            break;
+                        case "\"" when operands.Count >= 3 && operands[^1] is byte[] text:
+                            content.Show(font, text);
+                            break;
+                        case "TJ" when operands.Count >= 1 && operands[^1] is List<object?> array:
+                            foreach (var part in array.OfType<byte[]>())
+                                content.Show(font, part);
+                            break;
+                        case "Do" when operands.Count >= 1 && operands[^1] is Name name:
+                            if (content.Forms.Add(name.Value))
+                                content.Size++;
+                            break;
+                        case "BI":
+                            lexer.SkipInlineImage();
+                            break;
+                    }
+                    operands.Clear();
+                    if (content.Size > MaxStreamSize)
+                        throw new InvalidDataException("The content stream uses too many fonts, codes or forms.");
+                }
+            }
+            catch (InvalidDataException)
+            {
+                content.Failed = true;
+            }
+            return content;
+        }
+
+        private void Show(Shown? font, byte[] text)
+        {
+            if (font is not null)
+                Size += font.Add(text);
+        }
+    }
 }

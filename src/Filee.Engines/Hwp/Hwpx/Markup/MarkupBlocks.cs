@@ -55,6 +55,41 @@ internal static class MarkupBlocks
         }
     }
 
+    /// <summary>A one-column table whose rows are code lines: a code block as MarkdownReader reads it (one shaded box).</summary>
+    public static bool IsCodeBox(HTable table) =>
+        table.ColumnCount == 1 && table.Rows.Count > 0
+        && table.Rows.All(row => row.Cells is [{ Blocks: [HParagraph { Role: HBlockRole.Code }] }]);
+
+    /// <summary>
+    /// Turns the code boxes at the top level of <paramref name="document"/> back into code lines, which the markup
+    /// writers write as code blocks (a box would become a one-column table).
+    /// </summary>
+    public static void OpenCodeBoxes(HDocument document)
+    {
+        foreach (var section in document.Sections)
+        {
+            var blocks = section.Blocks;
+            for (var i = 0; i < blocks.Count; i++)
+            {
+                if (blocks[i] is not HTable table || !IsCodeBox(table))
+                    continue;
+                var lines = new List<HBlock>();
+                if (i > 0 && IsCode(blocks[i - 1]))
+                    lines.Add(new HParagraph());
+                foreach (var row in table.Rows)
+                {
+                    var line = (HParagraph)row.Cells[0].Blocks[0];
+                    var paragraph = new HParagraph { Format = table.Indent > 0 ? new HParaFormat(Left: table.Indent) : default, Role = HBlockRole.Code };
+                    paragraph.Inlines.Add(new HText(string.Concat(line.Inlines.OfType<HText>().Select(t => t.Text)), Code));
+                    lines.Add(paragraph);
+                }
+                blocks.RemoveAt(i);
+                blocks.InsertRange(i, lines);
+                i += lines.Count - 1;
+            }
+        }
+    }
+
     /// <summary>
     /// An empty paragraph between two code blocks, so they stay two blocks (the writers join consecutive code lines).
     /// </summary>
@@ -118,6 +153,49 @@ internal static class MarkupBlocks
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Refuses a table of more than <see cref="DocumentLimits.MaxParagraphs"/> cells (rows × columns), before its grid
+    /// or its cells are made: the writers lay a table out as that grid.
+    /// </summary>
+    public static void TableArea(long rows, long columns, DocumentLimits limits)
+    {
+        if (rows * Math.Max(1, columns) > limits.MaxParagraphs)
+            throw DocumentLimits.Exceeded($"A table has more than {DocumentLimits.Count(limits.MaxParagraphs)} cells.");
+    }
+
+    /// <summary>
+    /// Row spans cut at the table's last row: a cell can't reach below the table, and a span written as 10,000 over
+    /// three rows would make the writers mark thousands of rows as taken.
+    /// </summary>
+    public static void ClampRowSpans(HTable table)
+    {
+        for (var r = 0; r < table.Rows.Count; r++)
+            foreach (var cell in table.Rows[r].Cells)
+                cell.RowSpan = Math.Clamp(cell.RowSpan, 1, table.Rows.Count - r);
+    }
+
+    /// <summary>
+    /// The pieces of <paramref name="line"/> between <paramref name="separator"/>s, at most <paramref name="limit"/>
+    /// of them (the last one is cut there too): a long run of separators costs only the pieces kept.
+    /// </summary>
+    public static List<string> Split(string line, char separator, int limit)
+    {
+        var parts = new List<string>();
+        var start = 0;
+        while (parts.Count < limit)
+        {
+            var at = line.IndexOf(separator, start);
+            if (at < 0)
+            {
+                parts.Add(line[start..]);
+                break;
+            }
+            parts.Add(line[start..at]);
+            start = at + 1;
+        }
+        return parts;
     }
 
     /// <summary>Lines of <paramref name="text"/> (at least one).</summary>

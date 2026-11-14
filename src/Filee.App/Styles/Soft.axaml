@@ -19,6 +19,7 @@
           <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1F1E1D" />
           <SolidColorBrush x:Key="TextSecondaryBrush" Color="#6B6A66" />
           <SolidColorBrush x:Key="DangerBrush" Color="#C73A39" />
+          <SolidColorBrush x:Key="DangerFaintBrush" Color="#1AC73A39" />
           <SolidColorBrush x:Key="SuccessBrush" Color="#0F7A5A" />
           <SolidColorBrush x:Key="WarningBrush" Color="#9A5B0C" />
           <BoxShadows x:Key="CardShadow">0 1 3 0 #12000000, 0 6 18 0 #0D000000</BoxShadows>
@@ -26,7 +27,7 @@
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#2E7F77DD" />
           <SolidColorBrush x:Key="AccentFaintBrush" Color="#177F77DD" />
           <SolidColorBrush x:Key="AccentStrongBrush" Color="#5F59A6" />
-          <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="OnAccentBrush" Color="#16141A" />
           <!-- Plain buttons: the surface with a thin border, so only a disabled control is a flat grey (#524).
                ThemeService gives them a theme's own surface (Material You, theme.json). -->
 
@@ -45,6 +46,7 @@
           <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F1EFE8" />
           <SolidColorBrush x:Key="TextSecondaryBrush" Color="#AEACA4" />
           <SolidColorBrush x:Key="DangerBrush" Color="#F09595" />
+          <SolidColorBrush x:Key="DangerFaintBrush" Color="#26F09595" />
           <SolidColorBrush x:Key="SuccessBrush" Color="#5DCAA5" />
           <SolidColorBrush x:Key="WarningBrush" Color="#EF9F27" />
           <BoxShadows x:Key="CardShadow">0 1 3 0 #40000000, 0 8 24 0 #33000000</BoxShadows>
@@ -52,7 +54,7 @@
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#2E7F77DD" />
           <SolidColorBrush x:Key="AccentFaintBrush" Color="#177F77DD" />
           <SolidColorBrush x:Key="AccentStrongBrush" Color="#5F59A6" />
-          <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="OnAccentBrush" Color="#16141A" />
           <SolidColorBrush x:Key="ButtonBackground" Color="#262624" />
           <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#31312E" />
           <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#3A3A36" />
@@ -191,6 +193,13 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
+  <!-- Delete / remove buttons (a cross or a bin): a faint red background and a red icon on hover and press, instead of
+       the grey every other button gets. Add Classes="danger" next to the button's own classes. -->
+  <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource DangerFaintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+  </Style>
 
   <Style Selector="ProgressBar.soft">
     <Setter Property="CornerRadius" Value="999" />
@@ -200,6 +209,20 @@
 
   <Style Selector="TextBox, ComboBox, NumericUpDown">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+  </Style>
+  <!-- The up and down chevrons of a number box (ButtonSpinner): Avalonia's template gives their background no corners,
+       so the hover and press square ignored the Softness. It takes the small radius, inset a little so it also sits
+       inside the box's own rounded corners. -->
+  <Style Selector="ButtonSpinner /template/ RepeatButton /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+    <Setter Property="Margin" Value="2" />
+  </Style>
+  <!-- The selection is filled with the accent: selected text takes the label that reads on it, not the text's own colour. -->
+  <Style Selector="TextBox">
+    <Setter Property="SelectionForegroundBrush" Value="{DynamicResource OnAccentBrush}" />
+  </Style>
+  <Style Selector="SelectableTextBlock">
+    <Setter Property="SelectionForegroundBrush" Value="{DynamicResource OnAccentBrush}" />
   </Style>
 
   <!-- ───────── Navigation list ───────── -->
@@ -237,7 +260,8 @@
   <Style Selector="Border.navpane">
     <Setter Property="Transitions">
       <Transitions>
-        <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="{StaticResource SoftEase}" />
+        <!-- A plain ease-out: SoftEase overshoots, which on Width would shrink the pane past its target and bounce back. -->
+        <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="CubicEaseOut" />
       </Transitions>
     </Setter>
   </Style>
@@ -250,16 +274,9 @@
   <Style Selector="StackPanel.navheader">
     <Setter Property="Margin" Value="8,0,0,20" />
   </Style>
-  <Style Selector="Border.navpane.collapsed Button.navtoggle">
-    <Setter Property="HorizontalContentAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Border.navpane.collapsed StackPanel.navheader">
-    <Setter Property="Margin" Value="0,0,0,20" />
-    <Setter Property="HorizontalAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Border.navpane.collapsed StackPanel.navitem">
-    <Setter Property="HorizontalAlignment" Value="Center" />
-  </Style>
+  <!-- The content stays left-aligned while collapsed instead of switching to centre: the switch happens in the same
+       frame the width animation starts, so the icons would jump to the middle of the still-wide pane and slide back.
+       Left-aligned, the rail's icons sit within 1.5px of its centre anyway. -->
 
   <!-- Generic rounded list items (profiles, presets) -->
   <Style Selector="ListBox.soft">
@@ -291,6 +308,20 @@
        hovered row ends before it and a short dropdown keeps its full width. -->
   <Style Selector="ComboBox /template/ ScrollViewer">
     <Setter Property="AllowAutoHide" Value="False" />
+  </Style>
+  <!-- The chevron points down while the list is closed and flips to point up while it is open (the ComboBox has the
+       :dropdownopen state exactly then). "none" -> rotate(180deg) is animated as a transform, so it turns smoothly. A plain
+       ease-out is used rather than SoftEase, whose overshoot would swing the chevron past 180 degrees and back. -->
+  <Style Selector="ComboBox /template/ PathIcon#DropDownGlyph">
+    <Setter Property="RenderTransform" Value="none" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="ComboBox:dropdownopen /template/ PathIcon#DropDownGlyph">
+    <Setter Property="RenderTransform" Value="rotate(180deg)" />
   </Style>
 
 
@@ -366,7 +397,7 @@
     <Setter Property="Width" Value="8" />
     <Setter Property="Height" Value="28" />
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
-    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentThumbBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBrush}" />
     <Setter Property="BorderThickness" Value="1.5" />
     <Setter Property="VerticalAlignment" Value="Center" />
@@ -381,6 +412,15 @@
   </Style>
   <Style Selector="Window.material-you Slider:horizontal /template/ Thumb#PART_Thumb:pressed">
     <Setter Property="RenderTransform" Value="scale(1.4, 1.15)" />
+  </Style>
+
+  <!-- Search box cross (TextBox.clearButton): turns the accent colour on hover and press, never a filled square, instead of
+       Fluent's default blue. Fluent's clear button is a plain Button (theme FluentTextBoxButton) whose only template part is a
+       ContentPresenter named PART_ContentPresenter; its :pointerover and :pressed styles paint that presenter. -->
+  <Style Selector="Window.material-you TextBox /template/ Button:pointerover /template/ ContentPresenter#PART_ContentPresenter, Window.material-you TextBox /template/ Button:pressed /template/ ContentPresenter#PART_ContentPresenter, Window.material-you TextBox Button:pointerover /template/ ContentPresenter#PART_ContentPresenter, Window.material-you TextBox Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
   </Style>
 
   <!-- ToggleButtons (Filter chips / Modifier keys) -->
@@ -404,7 +444,7 @@
     <Setter Property="Foreground" Value="{DynamicResource AccentStrongBrush}" />
   </Style>
 
-  <!-- ToggleSwitch: M3 track, knob and hover color -->
+  <!-- ToggleSwitch: M3 track, knob and hover color. No hover scale on the control itself: its label is part of it, so the text would grow with the switch. -->
   <Style Selector="Window.material-you ToggleSwitch">
     <Setter Property="Transitions">
       <Transitions>
@@ -412,11 +452,9 @@
       </Transitions>
     </Setter>
   </Style>
-  <Style Selector="Window.material-you ToggleSwitch:pointerover">
-    <Setter Property="RenderTransform" Value="scale(1.02)" />
-  </Style>
+  <!-- The track keeps Avalonia's own corners (a full pill, like the outline behind it). It used to take SoftRadiusPill, so
+       with a low Softness the "on" fill turned square inside a round outline. -->
   <Style Selector="Window.material-you ToggleSwitch /template/ Border#SwitchKnobBounds">
-    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
     <Setter Property="Transitions">
       <Transitions>
         <BrushTransition Property="Background" Duration="0:0:0.18" />
@@ -432,9 +470,11 @@
     <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
   </Style>
+  <!-- On + hover: the same accent as the Save button's hover (the accent, a little darker), not AccentStrong, which is
+       the dark navy / pale lavender "on container" colour of the palette. -->
   <Style Selector="Window.material-you ToggleSwitch:checked:pointerover /template/ Border#SwitchKnobBounds">
-    <Setter Property="Background" Value="{DynamicResource AccentStrongBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
   </Style>
   <Style Selector="Window.material-you ToggleSwitch:checked /template/ Ellipse#SwitchKnob">
     <Setter Property="Fill" Value="{DynamicResource OnAccentBrush}" />
@@ -589,7 +629,7 @@
   </Style>
 
   <!-- ───────── Reduced motion: remove every transition and animation above ───────── -->
-  <Style Selector="Window.reduced-motion :is(Button), Window.reduced-motion :is(ToggleButton), Window.reduced-motion Border.chip, Window.reduced-motion ListBoxItem, Window.reduced-motion Slider /template/ Thumb#PART_Thumb, Window.reduced-motion ToggleSwitch, Window.reduced-motion ToggleSwitch /template/ Border#SwitchKnobBounds, Window.reduced-motion ToggleSwitch /template/ Ellipse#SwitchKnob, Window.reduced-motion CheckBox /template/ Border#NormalRectangle, Window.reduced-motion CheckBox /template/ Path#CheckGlyph, Window.reduced-motion Button.choice-card, Window.reduced-motion Button.preset-pill, Window.reduced-motion Border.navpane, Window.reduced-motion ListBox.nav PathIcon.navicon">
+  <Style Selector="Window.reduced-motion :is(Button), Window.reduced-motion :is(ToggleButton), Window.reduced-motion Border.chip, Window.reduced-motion ListBoxItem, Window.reduced-motion Slider /template/ Thumb#PART_Thumb, Window.reduced-motion ToggleSwitch, Window.reduced-motion ToggleSwitch /template/ Border#SwitchKnobBounds, Window.reduced-motion ToggleSwitch /template/ Ellipse#SwitchKnob, Window.reduced-motion CheckBox /template/ Border#NormalRectangle, Window.reduced-motion CheckBox /template/ Path#CheckGlyph, Window.reduced-motion Button.choice-card, Window.reduced-motion Button.preset-pill, Window.reduced-motion Border.navpane, Window.reduced-motion ListBox.nav PathIcon.navicon, Window.reduced-motion ComboBox /template/ PathIcon#DropDownGlyph">
     <Setter Property="Transitions" Value="{x:Null}" />
   </Style>
   <Style Selector="Window.reduced-motion Button:pressed, Window.reduced-motion ToggleButton:pressed, Window.reduced-motion Border.chip:pointerover, Window.reduced-motion ListBox.nav ListBoxItem:pointerover PathIcon.navicon, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pointerover, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pressed, Window.reduced-motion ToggleSwitch:pointerover, Window.reduced-motion Button.choice-card:pointerover, Window.reduced-motion Button.preset-pill:pointerover, Window.reduced-motion Button.preset-pill:pressed">

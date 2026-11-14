@@ -166,18 +166,56 @@ internal sealed partial class NotebookReader
         // Lines bound the blocks Markdig makes (table cells aside, which are counted after): check before parsing.
         CheckLines(MarkupBlocks.LineCount(source));
         if (cell.TryGetProperty("attachments", out var attachments) && attachments.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var attachment in attachments.EnumerateObject())
-            {
-                if (Picture(attachment.Value) is { } file)
-                    source = source.Replace("attachment:" + attachment.Name, new Uri(file).AbsoluteUri, StringComparison.Ordinal);
-            }
-        }
-        var blocks = MarkdownReader.Read(source, _baseFolder).Sections.SelectMany(s => s.Blocks).ToList();
+            source = Attachments(source, attachments);
+        // The attachments are written to the media folder, outside the notebook's own: allowed as well.
+        var blocks = MarkdownReader.Read(source, _baseFolder, null, _media).Sections.SelectMany(s => s.Blocks).ToList();
         MarkupBlocks.Count(blocks, _budget);
         if (blocks.Count > 0 && MarkupBlocks.IsCode(blocks[0]))
             MarkupBlocks.SeparateCode(_blocks, _budget);
         _blocks.AddRange(blocks);
+    }
+
+    /// <summary>
+    /// The source with its "attachment:name" links pointing at the attachments' pictures, written to the media folder.
+    /// One pass over the source, and only attachments the source links to are written (a replace per attachment would
+    /// read the whole source once for each of thousands of attachments).
+    /// </summary>
+    private string Attachments(string source, JsonElement attachments)
+    {
+        const string Scheme = "attachment:";
+        static int TokenEnd(string text, int start)
+        {
+            var end = start;
+            while (end < text.Length && !char.IsWhiteSpace(text[end]) && text[end] is not (')' or '"' or '\'' or '>' or ']'))
+                end++;
+            return end;
+        }
+
+        var linked = new HashSet<string>(StringComparer.Ordinal);
+        for (var at = source.IndexOf(Scheme, StringComparison.Ordinal); at >= 0; at = source.IndexOf(Scheme, at + 1, StringComparison.Ordinal))
+            linked.Add(source[(at + Scheme.Length)..TokenEnd(source, at + Scheme.Length)]);
+        if (linked.Count == 0)
+            return source;
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var attachment in attachments.EnumerateObject())
+        {
+            if (linked.Contains(attachment.Name) && !files.ContainsKey(attachment.Name) && Picture(attachment.Value) is { } file)
+                files[attachment.Name] = new Uri(file).AbsoluteUri;
+        }
+        if (files.Count == 0)
+            return source;
+        var sb = new StringBuilder(source.Length);
+        var copied = 0;
+        for (var at = source.IndexOf(Scheme, StringComparison.Ordinal); at >= 0; at = source.IndexOf(Scheme, at + 1, StringComparison.Ordinal))
+        {
+            var end = TokenEnd(source, at + Scheme.Length);
+            if (!files.TryGetValue(source[(at + Scheme.Length)..end], out var uri))
+                continue;
+            sb.Append(source, copied, at - copied).Append(uri);
+            copied = end;
+            at = end - 1;
+        }
+        return sb.Append(source, copied, source.Length - copied).ToString();
     }
 
     private void Code(string source)

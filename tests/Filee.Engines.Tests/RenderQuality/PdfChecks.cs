@@ -68,9 +68,10 @@ internal static class PdfChecks
     /// <summary>
     /// Share of neighbouring glyphs on a line whose advances overlap by more than <paramref name="tolerance"/> em (a
     /// share, so documents of any length compare). Marks and other glyphs without an advance are left out: they sit on
-    /// their base by design. Kerning deeper than the tolerance counts too.
+    /// their base by design. Kerning deeper than the tolerance counts too, unless <paramref name="kerning"/> gives the
+    /// pair's own kerning (in em, positive = closer): then only an overlap deeper than the font asks for counts.
     /// </summary>
-    public static CheckResult OverlappingGlyphs(byte[] pdf, double tolerance = 0.05)
+    public static CheckResult OverlappingGlyphs(byte[] pdf, double tolerance = 0.05, Func<Letter, Letter, double>? kerning = null)
     {
         int count = 0, pairs = 0;
         var examples = new List<string>();
@@ -87,7 +88,7 @@ internal static class PdfChecks
                 var next = glyphs[i];
                 var overlap = Math.Max(previous.StartBaseLine.X, previous.EndBaseLine.X) - Math.Min(next.StartBaseLine.X, next.EndBaseLine.X);
                 var em = Math.Max(PdfLines.Size(previous), PdfLines.Size(next));
-                if (overlap <= tolerance * em)
+                if (overlap <= tolerance * em || kerning is not null && overlap <= (tolerance + kerning(previous, next)) * em)
                     continue;
                 count++;
                 if (examples.Count < Examples)

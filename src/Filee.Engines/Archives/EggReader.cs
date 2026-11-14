@@ -55,6 +55,7 @@ internal static class EggReader
             archiveName, stream.Length, targetDirectory);
 
         var folders = new List<(string Path, DateTime? Modified)>();
+        var unique = new UniquePaths();
         foreach (var entry in entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -67,7 +68,7 @@ internal static class EggReader
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            path = ArchiveFiles.UniquePath(path);
+            path = unique.Get(path);
             using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16))
             {
                 foreach (var block in entry.Blocks)

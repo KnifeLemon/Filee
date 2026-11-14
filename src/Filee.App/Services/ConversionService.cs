@@ -29,6 +29,9 @@ public sealed class ConversionService
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
     private readonly WebDownloader _downloader;
+    private readonly ToastLifetime<JobViewModel> _toastLifetime;
+    private readonly HashSet<JobViewModel> _visibleToasts = [];
+    private readonly HashSet<JobViewModel> _feedbackAfterDismiss = [];
     private readonly ILogger<ConversionService>? _log;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, JobViewModel> _byId = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<ConversionJob>> _waiting = new();
@@ -48,6 +51,7 @@ public sealed class ConversionService
         _loc = loc;
         _platform = platform;
         _downloader = downloader;
+        _toastLifetime = new ToastLifetime<JobViewModel>(Remove, (action, delay) => ScheduleToastDismissal(action, delay));
         _queue.JobUpdated += OnJobUpdated;
         _queue.JobFinished += OnJobFinished;
     }
@@ -55,8 +59,11 @@ public sealed class ConversionService
     /// <summary>All jobs that are running or finished recently, newest first. UI thread only.</summary>
     public ObservableCollection<JobViewModel> Jobs { get; } = [];
 
-    /// <summary>The subset shown in the toast window. UI thread only.</summary>
+    /// <summary>Requested toast cards, including those waiting for screen space. UI thread only.</summary>
     public ObservableCollection<JobViewModel> ToastJobs { get; } = [];
+
+    internal Func<Action, TimeSpan, IDisposable> ScheduleToastDismissal { get; set; } =
+        (action, delay) => DispatcherTimer.RunOnce(action, delay);
 
     /// <summary>
     /// Raised once (UI thread) when the user has had a few successful conversions and the toast has gone: time to
@@ -77,24 +84,32 @@ public sealed class ConversionService
     public JobViewModel? Start(IReadOnlyList<string> files, Preset preset, bool showInToast = true, WebDrop? web = null,
         bool toClipboard = false)
     {
-        if (files.Count == 0 || preset.IsGroup || preset.IsTool)
+        if (files.Count == 0 || preset.IsGroup || preset.IsTool && !preset.IsCopyToFolder || preset.IsCopyToFolder && preset.Output.AskEveryTime)
         {
             web?.Dispose();
             return null;
         }
         // A preset on "Default" saves where Settings > General says (read now, so a changed default applies at once).
         preset = _store.Settings.WithDefaultOutput(preset);
+        if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model) && !string.IsNullOrWhiteSpace(_store.Settings.PreferredOllamaModel))
+        {
+            preset = preset.Clone();
+            preset.Translate.Model = _store.Settings.PreferredOllamaModel;
+        }
         WebDropFetcher? fetcher = null;
         if (web is not null)
         {
             var options = BrowserDropOptions();
-            if (web.SaveOnlyConverted is { } only)
+            if (preset.IsCopyToFolder)
+                options = options with { SaveOnlyConverted = true };
+            else if (web.SaveOnlyConverted is { } only)
                 options = options with { SaveOnlyConverted = only };
             fetcher = web.CreateFetcher(options, _downloader);
             // "Next to the source" is the download folder, also when the original is only kept until converted.
             preset = fetcher.Apply(preset);
         }
-        var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset), fetcher);
+        var folders = files.Where(Directory.Exists).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
+        var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset), fetcher, folders);
         if (toClipboard)
         {
             _clipboardJobs[job.Id] = 0;
@@ -108,6 +123,24 @@ public sealed class ConversionService
         if (showInToast)
             ToastJobs.Insert(0, vm);
         return vm;
+    }
+
+    /// <summary>The existing save picker, before creating a job; cancellation releases browser data.</summary>
+    internal async Task<JobViewModel?> AskThenStartAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web,
+        Func<Preset, bool, Task<Preset?>> choose, bool toClipboard = false)
+    {
+        try
+        {
+            var running = _store.Settings.WithDefaultOutput(preset);
+            var one = AskedLocation.MakesOneResult(running, files.Count)
+                && !(running.IsCopyToFolder && Directory.Exists(files[0]));
+            if (await choose(running, one) is not { } asked)
+                return null;
+            var job = Start(files, asked, web: web, toClipboard: toClipboard);
+            web = null;
+            return job;
+        }
+        finally { web?.Dispose(); }
     }
 
     /// <summary>
@@ -142,9 +175,10 @@ public sealed class ConversionService
     }
 
     /// <summary>
-    /// Saves a browser drop's files for a tool (the crop overlay), which needs them on disk before anything else
-    /// happens: always into the download folder, as the tool shows and keeps working on the original. Files that can't
-    /// be saved are left out (<paramref name="failed"/> hears why). The drop is done afterwards.
+    /// Saves a browser drop's files for a tool (the crop overlay) or the Home page's list, which need them on disk before
+    /// anything else happens: always into the download folder, as the tool shows and keeps working on the original, and
+    /// the list's conversions save next to them. Files that can't be saved are left out (<paramref name="failed"/> hears
+    /// why). The drop is done afterwards.
     /// </summary>
     public async Task<IReadOnlyList<string>> SaveBrowserFilesAsync(WebDrop web, Action<string, Exception> failed)
     {
@@ -176,7 +210,7 @@ public sealed class ConversionService
     {
         var settings = _store.Settings.BrowserDrops;
         var folder = string.IsNullOrWhiteSpace(settings.Folder) ? _platform.DownloadsFolder : settings.Folder.Trim();
-        return new WebDropOptions(folder, settings.SaveOnlyConverted);
+        return new WebDropOptions(folder, settings.SaveOnlyConverted, settings.AllowLocalNetwork);
     }
 
     /// <summary>True when a source file (or folder) is still where it was.</summary>
@@ -219,7 +253,19 @@ public sealed class ConversionService
     public void ShowInToast(JobViewModel vm)
     {
         if (Jobs.Contains(vm) && !ToastJobs.Contains(vm))
+        {
+            // A completed donut-ring job may already have a cleanup timer; queueing it pauses that timer.
+            _toastLifetime.SetVisible(vm, false);
             ToastJobs.Insert(0, vm);
+        }
+    }
+
+    /// <summary>The toast reports real layout visibility; waiting and hidden cards spend no dismissal time.</summary>
+    internal void SetToastVisible(JobViewModel vm, bool visible)
+    {
+        if (visible) _visibleToasts.Add(vm);
+        else _visibleToasts.Remove(vm);
+        _toastLifetime.SetVisible(vm, visible);
     }
 
     private void OnJobUpdated(object? sender, ConversionJob job)
@@ -247,9 +293,9 @@ public sealed class ConversionService
                 return;
             vm.Refresh();
             var keep = vm.HasErrors ? KeepErrors : KeepSuccess;
-            DispatcherTimer.RunOnce(() => Remove(vm), keep);
+            _toastLifetime.Finished(vm, keep, _visibleToasts.Contains(vm) || !ToastJobs.Contains(vm));
             if (!vm.HasErrors && CountSuccess(job))
-                DispatcherTimer.RunOnce(() => FeedbackDue?.Invoke(this, EventArgs.Empty), keep + TimeSpan.FromSeconds(1));
+                _feedbackAfterDismiss.Add(vm);
         });
     }
 
@@ -290,10 +336,14 @@ public sealed class ConversionService
 
     private void Remove(JobViewModel vm)
     {
+        _toastLifetime.Forget(vm);
+        _visibleToasts.Remove(vm);
         Jobs.Remove(vm);
         ToastJobs.Remove(vm);
         _byId.TryRemove(vm.Job.Id, out _);
         _watchJobs.TryRemove(vm.Job.Id, out _);
         _clipboardJobs.TryRemove(vm.Job.Id, out _);
+        if (_feedbackAfterDismiss.Remove(vm))
+            DispatcherTimer.RunOnce(() => FeedbackDue?.Invoke(this, EventArgs.Empty), TimeSpan.FromSeconds(1));
     }
 }

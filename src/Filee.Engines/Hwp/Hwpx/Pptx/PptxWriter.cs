@@ -51,9 +51,10 @@ internal sealed partial class PptxWriter
     private PptxWriter(HDocument document) => _document = document;
 
     /// <summary>Writes <paramref name="document"/> as a .pptx file (replaced atomically).</summary>
-    public static void Write(HDocument document, string outputPath)
+    public static void Write(HDocument document, string outputPath, CancellationToken cancellationToken = default)
     {
-        var writer = new PptxWriter(document);
+        Nesting.Limit(document); // the writer recurses per table and text box level
+        var writer = new PptxWriter(document) { _token = cancellationToken };
         var pages = writer.Pages();
         using var package = new PresentationPackage(outputPath);
         writer._package = package;

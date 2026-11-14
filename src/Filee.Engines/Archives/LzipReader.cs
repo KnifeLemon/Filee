@@ -38,7 +38,9 @@ internal static class LzipReader
                     byte[] properties = [0x5D, .. BitConverter.GetBytes(dictionary)];
                     var packed = member.Size - HeaderSize - TrailerSize;
                     var crc = new Crc32();
-                    using (var decoder = new LzmaStream(properties, new BoundedStream(input, packed), packed, member.DataSize))
+                    // Decoded to the end marker, not to the trailer's size: data longer than the trailer says is
+                    // refused as such (CopyLimited) instead of being cut off there.
+                    using (var decoder = new LzmaStream(properties, new BoundedStream(input, packed), packed, -1))
                     using (var checkedOutput = new CrcStream(new NonClosingStream(output), crc))
                     {
                         if (ArchiveFiles.CopyLimited(decoder, checkedOutput, member.DataSize, cancellationToken, budget: budget) != member.DataSize)

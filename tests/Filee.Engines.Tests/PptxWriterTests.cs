@@ -479,7 +479,8 @@ public class PptxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 if (route?.Steps.Any(s => s.Converter is PptxWriterConverter) == true)
                 {
                     Assert.True(FormatRegistry.Get(to).Category == FormatCategory.Presentation, $"{from} → {to} goes through the PPTX writer");
-                    Assert.True(before is null || before.Steps.Any(s => s.To == "pptx" && s.Converter.Id == "pandoc"), $"{from} → {to}");
+                    // A PPT's own slides (translated, not laid out from a document) replace LibreOffice's PPT → PPTX.
+                    Assert.True(before is null || before.Steps.Any(s => s.To == "pptx" && s.Converter.Id == "pandoc") || from == "ppt", $"{from} → {to}");
                     continue;
                 }
                 // Equal costs: where two engines tie (the DOCX and ODT writers on a long route) either may be planned.
@@ -539,7 +540,7 @@ public class PptxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         section.Blocks.Add(holder);
         document.Sections.Add(section);
         var pptx = Path.Combine(folder, "hostile.pptx");
-        PptxWriter.Write(document, pptx);
+        PptxWriter.Write(document, pptx, TestContext.Current.CancellationToken);
         Valid(pptx);
         Assert.Contains("depth 29", string.Concat(Read(pptx).Select(s => s.Xml.InnerText)));
 
@@ -557,7 +558,7 @@ public class PptxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
         many.Sections.Add(blocks);
         var refused = Path.Combine(folder, "many.pptx");
-        var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(many, refused));
+        var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(many, refused, TestContext.Current.CancellationToken));
         Assert.Equal(DocumentLimits.ErrorKey, error.ErrorKey);
         Assert.False(File.Exists(refused));
     }

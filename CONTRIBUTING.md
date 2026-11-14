@@ -34,7 +34,10 @@ dotnet test Filee.slnx -c Release
 pwsh build/build-portable.ps1 -Runtime linux-x64
 ```
 
-Use the matching runtime on a Mac or ARM64 Linux machine. Packaging runs on Linux/macOS so archives retain
+Use the matching runtime on a Mac or ARM64 Linux machine. A Mac also needs dmgbuild for the disk image
+(`python3 -m pip install dmgbuild==1.6.7`). Magick.NET has no ImageMagick library for Intel Macs: there,
+put Filee's own next to each build after building, e.g.
+`pwsh build/fetch-magick-native.ps1 -Runtime osx-x64 -Destination src/Filee.App/bin/Debug/net10.0`. Packaging runs on Linux/macOS so archives retain
 executable permissions. Each archive contains the app, CLI, rhwp, 7-Zip, installation instructions and per-user
 install/uninstall scripts. `Filee-<version>-<rid>-SHA256SUMS.txt` verifies the archive. macOS bundles use
 `com.filee.app` and a development ad-hoc signature by default; public distribution still needs Developer ID signing
@@ -78,6 +81,8 @@ keep macOS marked as a preview until it is notarized.
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. In short:
 
 - **New file format or engine** → `src/Filee.Engines`, see [docs/ADDING-A-CONVERTER.md](docs/ADDING-A-CONVERTER.md).
+  Which formats and tools are shown by default, and which new output formats come in, is in
+  [docs/FORMAT-RULES.md](docs/FORMAT-RULES.md).
 - **New language** → `src/Filee.App/Assets/i18n`, see [docs/ADDING-A-LANGUAGE.md](docs/ADDING-A-LANGUAGE.md).
 - **UI** → `src/Filee.App/Views` (XAML) + `ViewModels` (CommunityToolkit.Mvvm).
 - **Domain rules** (routes, output names, settings) → `src/Filee.Core` — no UI or OS code here.
@@ -121,14 +126,25 @@ Then, on a PC signed in to SimplySign Desktop (Certum's cloud certificate; its k
 the Windows files and add them to the draft:
 
 ```
-pwsh build/sign-release.ps1 -Version X.Y.Z -CertificateThumbprint <sha1>
+pwsh build/sign-release.ps1 -Version X.Y.Z -CertificateThumbprint <sha1> -UpdateKey <private key file>
 ```
 
 It signs every unsigned program in the build and the Setup program, packs and signs `Filee-X.Y.Z-win-Setup.exe`, zips
-the portable copy, checks the signed Setup in a sandbox install and uploads the files with their SHA-256 sums. It also
-copies them to the download mirror `https://dl.filee.sh/X.Y.Z/` (Cloudflare R2; needs `npx wrangler login` once),
-which the Microsoft Store listing points at because GitHub's download links redirect. Look over the draft and publish
-it (or pass `-Publish`). `build/sign-windows.ps1` signs any folder or file on its own.
+the portable copy, checks the signed Setup in a sandbox install and uploads the files with their SHA-256 sums. It signs
+every `SHA256SUMS` file of the release (Windows, Linux and macOS) with Filee's update key and uploads the `.sig` files
+next to them (`build/sign-checksums.ps1`; it asks for the key's passphrase). It also copies the Windows files to the
+download mirror `https://dl.filee.sh/X.Y.Z/` (Cloudflare R2; needs `npx wrangler login` once), which the Microsoft
+Store listing points at because GitHub's download links redirect. Look over the draft and publish it (or pass
+`-Publish`). `build/sign-windows.ps1` signs any folder or file on its own.
+
+The update key is made once with `pwsh build/new-update-key.ps1 -PrivateKeyPath <file outside the repository>`. Its
+public half goes into `FileeUpdatePublicKey` in `Directory.Build.props`; official builds (`-p:FileeRelease=true`)
+then refuse an update whose checksum file isn't signed with it, so `sign-release.ps1` stops without `-UpdateKey` (or
+`FILEE_UPDATE_KEY`) and won't publish a draft with an unsigned checksum file. Keep the private key and a backup off
+the repository: copies that carry the public key can only be updated with releases signed by it.
+`FileeExpectedPublisher` and `FileeExpectedIssuer` name the code signing certificate the Windows installer must be
+signed with; before a renewed certificate comes from another certificate authority, release a build that lists both
+issuers.
 
 ### "What's new" slides for a release
 

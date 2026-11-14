@@ -55,12 +55,19 @@ internal sealed partial class OdtWriter
     private AutomaticStyles _styles;
     private int _pageLayouts;
 
-    private OdtWriter() => _styles = _contentStyles;
+    private readonly CancellationToken _token;
 
-    /// <summary>Writes <paramref name="document"/> as an .odt file (replaced atomically).</summary>
-    public static void Write(HDocument document, string outputPath)
+    private OdtWriter(CancellationToken token)
     {
-        var writer = new OdtWriter();
+        _styles = _contentStyles;
+        _token = token;
+    }
+
+    /// <summary>Writes <paramref name="document"/> as an .odt file (replaced atomically, through a temporary file of its own).</summary>
+    public static void Write(HDocument document, string outputPath, CancellationToken cancellationToken = default)
+    {
+        Nesting.Limit(document); // the writer recurses per table, text box and note level
+        var writer = new OdtWriter(cancellationToken);
         var body = writer.Body(document);
         writer.WritePackage(document, body, outputPath);
     }
@@ -135,10 +142,9 @@ internal sealed partial class OdtWriter
             manifest.Append($"<manifest:file-entry manifest:full-path=\"{path}\" manifest:media-type=\"{PictureTypes[extension]}\"/>");
         manifest.Append("</manifest:manifest>");
 
-        var temp = outputPath + ".tmp";
-        using (var file = File.Create(temp))
-        using (var zip = new ZipArchive(file, ZipArchiveMode.Create))
+        WriterTempFile.Write(outputPath, file =>
         {
+            using var zip = new ZipArchive(file, ZipArchiveMode.Create, leaveOpen: true);
             // OpenDocument rule: "mimetype" first and stored uncompressed, so the type can be read at a fixed offset.
             WriteText(zip, "mimetype", Odf.MimeType, CompressionLevel.NoCompression);
             WriteText(zip, "content.xml", content);
@@ -146,6 +152,7 @@ internal sealed partial class OdtWriter
             WriteText(zip, "meta.xml", meta);
             foreach (var (source, (path, extension)) in _media)
             {
+                _token.ThrowIfCancellationRequested();
                 using var target = zip.CreateEntry(path, CompressionLevel.Optimal).Open();
                 if (string.Equals(Path.GetExtension(source).TrimStart('.'), extension, StringComparison.OrdinalIgnoreCase)
                     || (extension == "jpg" && Path.GetExtension(source).Equals(".jpeg", StringComparison.OrdinalIgnoreCase)))
@@ -162,8 +169,7 @@ internal sealed partial class OdtWriter
                 }
             }
             WriteText(zip, "META-INF/manifest.xml", manifest.ToString());
-        }
-        File.Move(temp, outputPath, overwrite: true);
+        });
     }
 
     private static void WriteText(ZipArchive zip, string name, string text, CompressionLevel level = CompressionLevel.Optimal)

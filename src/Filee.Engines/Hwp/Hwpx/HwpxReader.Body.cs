@@ -14,8 +14,19 @@ namespace Filee.Engines.Hwp.Hwpx;
 
 internal sealed partial class HwpxReader
 {
+    /// <summary>The pictures of the document's OLE objects, read against one budget (Binary/OlePreview.cs).</summary>
+    private Binary.OlePreview.Budget OlePreviews => _olePreviews ??= new Binary.OlePreview.Budget(Package.Limits);
+
+    private Binary.OlePreview.Budget? _olePreviews;
+
     /// <summary>Fields (fieldBegin … fieldEnd) open in the current paragraph list; hyperlinks may span paragraphs.</summary>
     private List<OpenField> _fields = [];
+
+    /// <summary>Fields begun while <see cref="Nesting.MaxDepth"/> others were open, which are not tracked.</summary>
+    private int _untrackedFields;
+
+    /// <summary>Paragraph lists (cells, notes, text boxes ...) around the one being read.</summary>
+    private int _depth;
 
     /// <summary>Highlighter colour between hp:markpenBegin and hp:markpenEnd.</summary>
     private string? _markpen;
@@ -35,16 +46,22 @@ internal sealed partial class HwpxReader
     /// <summary>Text that is in the file but not on the printed page: tracked deletions, and for layout click-here guides.</summary>
     private bool Hidden => _deleted || _fields.Exists(f => f.Guide);
 
-    /// <summary>Paragraphs and tables of a paragraph list (cell, header, footer, note, text box, caption).</summary>
+    /// <summary>
+    /// Paragraphs and tables of a paragraph list (cell, header, footer, note, text box, caption). Lists nested deeper
+    /// than <see cref="Nesting.MaxDepth"/> give their text only, as plain paragraphs.
+    /// </summary>
     private List<HBlock> ReadSubList(XElement? subList)
     {
         var blocks = new List<HBlock>();
         if (subList is null)
             return blocks;
         using var level = _budget.Enter();
+        if (_depth >= Nesting.MaxDepth)
+            return Nesting.PlainParagraphs(subList, "p", "t");
         // Fields, highlighting and tracked deletions do not reach into or out of a nested paragraph list.
-        var (fields, markpen, deleted) = (_fields, _markpen, _deleted);
-        (_fields, _markpen, _deleted) = ([], null, false);
+        var (fields, untracked, markpen, deleted) = (_fields, _untrackedFields, _markpen, _deleted);
+        (_fields, _untrackedFields, _markpen, _deleted) = ([], 0, null, false);
+        _depth++;
         try
         {
             foreach (var element in Elements(subList))
@@ -57,7 +74,8 @@ internal sealed partial class HwpxReader
         }
         finally
         {
-            (_fields, _markpen, _deleted) = (fields, markpen, deleted);
+            (_fields, _untrackedFields, _markpen, _deleted) = (fields, untracked, markpen, deleted);
+            _depth--;
         }
         return blocks;
     }
@@ -106,6 +124,7 @@ internal sealed partial class HwpxReader
 
         public void Add(HInline inline)
         {
+            Settle();
             Sink.Add(inline);
             // The layout's text has a character for each of these (Typesetting/ParagraphText.cs).
             if (inline is HTab or HLineBreak or HImage { Anchor: null } or HShape { Anchor: null } or HTextBox { Anchor: null } or HEquation)
@@ -138,7 +157,7 @@ internal sealed partial class HwpxReader
                     starts.Add(_model);
                     continue;
                 }
-                var index = _anchors.FindLastIndex(a => a.Hangul <= position);
+                var index = LastAnchorAtOrBefore(position);
                 if (index < 0 || position > _hangul)
                     return null;
                 var anchor = _anchors[index];
@@ -150,7 +169,36 @@ internal sealed partial class HwpxReader
             return starts;
         }
 
+        /// <summary>
+        /// The index of the last anchor at or before <paramref name="position"/>, -1 when none is. Anchors are added in
+        /// order and counts are never negative, so their positions only grow.
+        /// </summary>
+        private int LastAnchorAtOrBefore(int position)
+        {
+            var (low, high) = (0, _anchors.Count);
+            while (low < high)
+            {
+                var middle = (low + high) >>> 1;
+                if (_anchors[middle].Hangul <= position)
+                    low = middle + 1;
+                else
+                    high = middle;
+            }
+            return low - 1;
+        }
+
         private readonly record struct Anchor(int Hangul, int Model, bool Text);
+
+        /// <summary>
+        /// The sink whose last inline is text still being joined: its text is <see cref="_joined"/> and its format
+        /// <see cref="_joinedFormat"/>, written into the inline by <see cref="Settle"/> before anything else touches the
+        /// paragraph. Joining in a builder keeps a run of many small texts (each hp:nbSpace is one) linear.
+        /// </summary>
+        private List<HInline>? _joining;
+        private readonly System.Text.StringBuilder _joined = new();
+        private HCharFormat _joinedFormat;
+
+        private bool Joins(HCharFormat before, HCharFormat format) => _keepLayoutRuns ? before.SameLayout(format) : before == format;
 
         /// <summary>Adds text, joined to the previous text when it has the same format.</summary>
         public void AddText(string text, HCharFormat format)
@@ -159,15 +207,43 @@ internal sealed partial class HwpxReader
                 return;
             _model += text.Length;
             var sink = Sink;
+            if (_joining is not null && ReferenceEquals(_joining, sink) && Joins(_joinedFormat, format))
+            {
+                _joined.Append(text);
+                _joinedFormat = format;
+                return;
+            }
+            Settle();
             // Text joins the run before it, not an equation (which is text too).
-            if (sink.Count > 0 && sink[^1] is HText last and not HEquation && (_keepLayoutRuns ? last.Format.SameLayout(format) : last.Format == format))
-                sink[^1] = new HText(last.Text + text, format);
+            if (sink.Count > 0 && sink[^1] is HText last and not HEquation && Joins(last.Format, format))
+            {
+                _joined.Clear().Append(last.Text).Append(text);
+                _joinedFormat = format;
+                _joining = sink;
+            }
             else
                 sink.Add(new HText(text, format));
         }
 
+        /// <summary>Writes the text being joined into its inline.</summary>
+        private void Settle()
+        {
+            if (_joining is null)
+                return;
+            _joining[^1] = new HText(_joined.ToString(), _joinedFormat);
+            _joining = null;
+            _joined.Clear();
+        }
+
         public void OpenLink(string target)
         {
+            Settle();
+            // Links in links beyond the limit keep their text in the link around them.
+            if (_sinks.Count >= Nesting.MaxDepth)
+            {
+                _sinks.Push(Sink);
+                return;
+            }
             var link = new HLink(target);
             Sink.Add(link);
             _sinks.Push(link.Content);
@@ -181,6 +257,7 @@ internal sealed partial class HwpxReader
 
         public void Table(HTable table)
         {
+            Settle();
             // Breaks and column changes have no place on a table, so they keep an empty paragraph in front of it.
             if (HasContent || Current.PageBreakBefore || Current.ColumnBreakBefore || Current.ColumnsChange is not null)
             {
@@ -203,6 +280,7 @@ internal sealed partial class HwpxReader
 
         public void Finish()
         {
+            Settle();
             if (!_afterTable || HasContent)
                 Emit();
         }
@@ -211,12 +289,14 @@ internal sealed partial class HwpxReader
 
         private void Emit()
         {
+            Settle();
             Current.MarkFormat = MarkFormat;
             _output.Add(Current);
         }
 
         private HParagraph NewParagraph(HListRef? list)
         {
+            Settle();
             Current = new HParagraph { Format = _format, HeadingLevel = _heading, List = list };
             _sinks.Clear();
             // A hyperlink that started in an earlier paragraph (or before a table) continues here.
@@ -469,7 +549,14 @@ internal sealed partial class HwpxReader
                 }
                 break;
             case "newNum" when section is not null:
-                if (Attr(control, "numType") == "PAGE" && !section.StartNumberSet)
+                if (Attr(control, "numType") != "PAGE")
+                    break;
+                // Read for layout, a new number past the section's first paragraph numbers its own page on.
+                if (_forLayout && section.Current.Blocks.Count > 0)
+                {
+                    builder.Current.NewPageNumber = Math.Max(1, Int(control, "num", 1));
+                }
+                else if (!section.StartNumberSet)
                 {
                     section.Current.StartPageNumber = Math.Max(1, Int(control, "num", 1));
                     section.StartNumberSet = true;
@@ -480,7 +567,7 @@ internal sealed partial class HwpxReader
                 break;
             case "pageHiding" when _forLayout:
                 builder.Current.PageHiding = new HPageHiding(Flag(control, "hideHeader"), Flag(control, "hideFooter"), Flag(control, "hideMasterPage"),
-                    Flag(control, "hideBorder"), Flag(control, "hideFill"));
+                    Flag(control, "hideBorder"), Flag(control, "hideFill"), Flag(control, "hidePageNum"));
                 break;
             default:
                 Skip(control); // hidden comments, index marks, page hiding, page number control, ...
@@ -539,9 +626,15 @@ internal sealed partial class HwpxReader
                     builder.Add(new HBookmark(name));
                 break;
         }
-        // Other fields (click-here, date, file name, ...) keep their result text, which follows until fieldEnd. Every
-        // paragraph reopens the links of the open fields, so their number is limited.
+        // Every paragraph opens the links of all open fields again, so fields begun without an end must not pile up:
+        // past the budget's limit the document is refused (the untracked count below is a backstop).
         _budget.Fields(_fields.Count + 1);
+        if (_fields.Count >= Nesting.MaxDepth)
+        {
+            _untrackedFields++;
+            return;
+        }
+        // Other fields (click-here, date, file name, ...) keep their result text, which follows until fieldEnd.
         var guide = _forLayout && Attr(control, "type") == "CLICK_HERE" && Attr(control, "dirty") is "0" or "false";
         _fields.Add(new OpenField(Attr(control, "id"), target, guide));
         if (target is not null)
@@ -551,7 +644,12 @@ internal sealed partial class HwpxReader
     private void FieldEnd(XElement control, ParagraphBuilder builder)
     {
         var id = Attr(control, "beginIDRef");
-        var index = _fields.FindLastIndex(f => id is null || f.Id == id);
+        var index = id is null && _untrackedFields > 0 ? -1 : _fields.FindLastIndex(f => id is null || f.Id == id);
+        if (index < 0 && _untrackedFields > 0)
+        {
+            _untrackedFields--;
+            return;
+        }
         if (index < 0)
             index = _fields.Count - 1;
         if (index < 0)

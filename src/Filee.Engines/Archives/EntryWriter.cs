@@ -9,6 +9,7 @@ namespace Filee.Engines.Archives;
 internal sealed class EntryWriter(string root, UnpackBudget budget, CancellationToken cancellationToken)
 {
     private readonly List<(string Path, DateTime? Modified)> _folders = [];
+    private readonly UniquePaths _unique = new();
 
     /// <summary>Entry path (as <see cref="Key"/> spells it) → the file written for it, for hard links.</summary>
     private readonly Dictionary<string, string> _files = new(StringComparer.Ordinal);
@@ -80,7 +81,7 @@ internal sealed class EntryWriter(string root, UnpackBudget budget, Cancellation
             throw ArchiveSafety.Damaged(ArchiveName, "an entry has no name");
         var path = ArchiveSafety.ResolveEntryPath(root, name, ArchiveName);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        return ArchiveFiles.UniquePath(path);
+        return _unique.Get(path);
     }
 
     private static void SetTime(string path, DateTime? modified)

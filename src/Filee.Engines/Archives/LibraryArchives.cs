@@ -1,12 +1,12 @@
-// Unpacks ZIP (and JAR, WBPZ …), 7z and RAR 4 / 5 in-process with SharpCompress (MIT; its RAR decoder only unpacks,
-// under the same unRAR terms as 7-Zip's); ZIPs with only stored and Deflate entries go to .NET's faster reader
-// (ZipReader). The archive is listed first and checked by ArchiveSafety; encrypted archives and entries are refused,
+// Unpacks ZIP (and JAR, WBPZ …), 7z and RAR 4 / 5 in-process. 7z goes to Filee's own SevenZipReader, ZIPs with only
+// stored and Deflate entries to .NET's faster reader (ZipReader); the rest, and 7z archives with a method Filee has no
+// decoder for (PPMd, ARM64 …), to SharpCompress (MIT; its RAR decoder only unpacks, under the same unRAR terms as
+// 7-Zip's). The archive is listed first and checked by ArchiveSafety; encrypted archives and entries are refused,
 // links are left out, sizes and (for ZIP and 7z) CRC-32s are checked as each file is written.
 
 using System.Globalization;
 using System.Text;
 using SharpCompress.Archives;
-using SharpCompress.Archives.SevenZip;
 using SharpCompress.Common;
 using SharpCompress.Common.Rar;
 using SharpCompress.Readers;
@@ -23,15 +23,19 @@ internal static class LibraryArchives
         var parts = Volumes(archive);
         var length = parts.Sum(p => p.Length);
         var type = TypeOf(archive);
-        if (type == ArchiveType.Zip && parts.Count == 1)
+        if (parts.Count == 1)
         {
             using var file = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
-            if (ZipReader.TryExtract(file, name, folder, cancellationToken))
+            if (type == ArchiveType.Zip && ZipReader.TryExtract(file, name, folder, cancellationToken)
+                || TryExtractSevenZip(file, name, folder, cancellationToken))
                 return;
         }
-        using var opened = Open(name, () => parts.Count > 1
+        // A file Filee opens itself: SharpCompress leaves the one it opens by path open when the archive can't be
+        // read (a 7z with encrypted names), and the folder could not be cleared afterwards.
+        using var single = parts.Count > 1 ? null : new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
+        using var opened = Open(name, () => single is null
             ? ArchiveFactory.Open(parts, Options(type))
-            : ArchiveFactory.Open(archive, Options(type)));
+            : ArchiveFactory.Open(single, Options(type)));
         Extract(opened, name, length, folder, cancellationToken);
     }
 
@@ -39,6 +43,9 @@ internal static class LibraryArchives
     public static void Extract(Stream stream, string name, string folder, CancellationToken cancellationToken)
     {
         ArchiveType? type = null;
+        stream.Position = 0;
+        if (TryExtractSevenZip(stream, name, folder, cancellationToken))
+            return;
         stream.Position = 0;
         var isArchive = ArchiveFactory.IsArchive(stream, out type, ReaderOptions.DefaultBufferSize);
         stream.Position = 0;
@@ -53,6 +60,26 @@ internal static class LibraryArchives
         Extract(opened, name, stream.Length, folder, cancellationToken);
     }
 
+    /// <summary>
+    /// Unpacks a 7z with Filee's own reader; false (nothing written) when it is no 7z or uses a method Filee has no
+    /// decoder for, which SharpCompress may have.
+    /// </summary>
+    private static bool TryExtractSevenZip(Stream stream, string name, string folder, CancellationToken cancellationToken)
+    {
+        stream.Position = 0;
+        if (!SevenZipReader.HasSignature(stream))
+            return false;
+        try
+        {
+            SevenZipReader.Extract(stream, name, folder, cancellationToken);
+            return true;
+        }
+        catch (SevenZipUnsupportedException)
+        {
+            return false;
+        }
+    }
+
     private static void Extract(IArchive archive, string name, long length, string folder, CancellationToken cancellationToken)
     {
         List<IArchiveEntry> entries;
@@ -64,7 +91,9 @@ internal static class LibraryArchives
         {
             throw ArchiveSafety.Encrypted(name);
         }
-        if (archive is SevenZipArchive { IsEncrypted: true } || entries.Any(e => Encrypted(archive, e)))
+        // Not SevenZipArchive.IsEncrypted: SharpCompress sets it for any 7z with empty files. An AES coder is refused
+        // by SevenZipReader before a 7z gets here.
+        if (entries.Any(e => Encrypted(archive, e)))
             throw ArchiveSafety.Encrypted(name);
         if (!archive.IsComplete)
             throw ArchiveSafety.Damaged(name, "a volume is missing");
@@ -99,27 +128,8 @@ internal static class LibraryArchives
     }
 
     /// <summary>
-    /// True for a 7z with several files in one solid block. SharpCompress 1.0 decodes such a block from its start
-    /// again for every file (the time grows with the square of the file count), so the bundled 7-Zip unpacks these
-    /// when it is there.
-    /// </summary>
-    public static bool IsSolidSevenZip(string archive)
-    {
-        try
-        {
-            using var opened = SevenZipArchive.Open(archive, null);
-            return opened.IsSolid && opened.Entries.Count(e => !e.IsDirectory && e.Size > 0) > 1;
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or InvalidFormatException or ArchiveException
-                                       or ArgumentException or CryptographicException or IOException or NotSupportedException)
-        {
-            return false; // the in-process reader gives the right message
-        }
-    }
-
-    /// <summary>
     /// An encrypted entry. SharpCompress marks every empty 7z file (one without data stream) as encrypted, so for 7z
-    /// only entries with data count; the archive's own flag covers the rest.
+    /// only entries with data count.
     /// </summary>
     private static bool Encrypted(IArchive archive, IEntry entry) =>
         entry.IsEncrypted && (archive.Type != ArchiveType.SevenZip || entry.Size > 0);

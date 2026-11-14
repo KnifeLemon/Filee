@@ -1,3 +1,5 @@
+// Punctuation and letter widths for rhwp (issues #237 and #1262).
+
 // Punctuation widths for rhwp (issue #237). rhwp lays text out with width tables of its own: Korean fonts and common
 // Latin fonts have real ones, every other font (SimSun, Microsoft YaHei, KaiTi, MS Mincho, Noto Serif CJK SC, …) gets
 // a guess in which quotes, dashes and CJK punctuation are half a character wide (‘ ’ 0.3). In Chinese and Japanese
@@ -6,9 +8,19 @@
 //
 // In the copy rhwp renders, such characters get a run of their own whose character shape adds letter spacing up to
 // the font's real width. rhwp's letter spacing is a percentage of the character's own width, so 100 % doubles it.
+//
+// Letters (issue #1262, rhwp#8143). rhwp's width tables stop at ASCII and Latin-1 (plus punctuation, math and CJK):
+// every other letter — Cyrillic, Greek, Polish, Turkish or Vietnamese letters beyond Latin-1, Armenian, Georgian —
+// is laid out at a fixed half-em whatever the font, so "Привет" came out with its letters on top of each other. A
+// document with such text goes through LibreOffice when that is installed; without it, rhwp draws it, and the letters
+// get the same treatment as the punctuation: a run of their own whose letter spacing takes the half-em up (or down)
+// to the font's real advance, in steps of 5 % so that neighbouring letters of about the same width share a run.
+// The font that sets the width is the one rhwp draws the letter with: LATIN for Latin Extended (U+0100–024F,
+// U+1E00–1EFF), HANGUL for every other script — in Chinese and Japanese text, the East Asian font.
 
 using System.Globalization;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Hwp;
 
@@ -22,6 +34,20 @@ internal static partial class RhwpInput
 
     private static readonly string[] Slots = ["hangul", "latin", "hanja", "japanese", "other", "symbol", "user"];
 
+    /// <summary>rhwp's width for a letter outside its tables, in em (rhwp#8143), whatever the font.</summary>
+    private const double UnmeasuredLetterGuess = 0.5;
+
+    /// <summary>Letter spacing of such a letter is rounded to a multiple of this, in percent.</summary>
+    private const int LetterSpacingStep = 5;
+
+    /// <summary>
+    /// The language slots rhwp draws such a letter with, the right one first (measured with a different font in each
+    /// slot, rhwp 0.8.7): Latin Extended letters come from LATIN, Cyrillic, Greek, Armenian, Georgian and the rest
+    /// from HANGUL. OTHER is not used. The second slot only asks when the first one's font gives no width.
+    /// </summary>
+    private static string[] LetterSlots(char c) =>
+        c is >= '\u0100' and <= '\u024F' or >= '\u1E00' and <= '\u1EFF' ? new[] { "LATIN", "HANGUL" } : new[] { "HANGUL", "LATIN" };
+
     private static Dictionary<char, (string, double)> BuildGuesses()
     {
         var guesses = new Dictionary<char, (string, double)>
@@ -29,7 +55,7 @@ internal static partial class RhwpInput
             ['‘'] = ("HANGUL", 0.3),
             ['’'] = ("HANGUL", 0.3),
         };
-        foreach (var c in "“”—―–‥…•※‰′")
+        foreach (var c in "“”—―–‥…•※‰′℃")
             guesses[c] = ("HANGUL", 0.5);
         foreach (var c in "、。〃々〇〈〉《》「」『』【】〔〕〖〗〝〞")
             guesses[c] = ("SYMBOL", 0.5);
@@ -71,7 +97,32 @@ internal static partial class RhwpInput
                     result = Math.Clamp((int)Math.Round(real / guess.Guess * (100 + current)) - 100, -50, 500);
                 }
             }
+            else if (char.IsLetter(c) && ComplexScripts.IsUnmeasuredLetter(c) && shapes.TryGetValue(id, out var letterShape))
+            {
+                result = LetterSpacing(letterShape, c);
+            }
             return spacings[(id, c)] = result;
+        }
+
+        // The letter spacing that brings a letter rhwp has no width for to the advance its font gives it, or null
+        // when the guess is already right (within a step) or no installed font tells.
+        int? LetterSpacing(XElement shape, char c)
+        {
+            foreach (var slot in LetterSlots(c))
+            {
+                var attribute = slot.ToLowerInvariant();
+                var fontId = (string?)Child(shape, "fontRef")?.Attribute(attribute);
+                var face = fontId is not null && faces.TryGetValue(slot, out var list) ? list.GetValueOrDefault(fontId) : null;
+                var font = face is { Length: > 0 } ? lookup(face) : null;
+                if (font is { Usable: true, Advance: { } advance } && advance(c) is { } real && real > 0)
+                {
+                    var current = Number(Child(shape, "spacing"), attribute) ?? 0;
+                    var exact = real / UnmeasuredLetterGuess * (100 + current) - 100;
+                    var stepped = Math.Clamp((int)Math.Round(exact / LetterSpacingStep) * LetterSpacingStep, -50, 200);
+                    return Math.Abs(stepped - current) < LetterSpacingStep ? null : stepped;
+                }
+            }
+            return null;
         }
 
         string Widened(string id, int spacing)

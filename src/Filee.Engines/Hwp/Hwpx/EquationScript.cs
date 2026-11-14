@@ -83,7 +83,10 @@ internal sealed record MathStyled(string Command, MathNode Body) : MathNode;
 /// <summary>A space: a normal one (~, <c>Width</c> 1) or a quarter of one (`, 0.25).</summary>
 internal sealed record MathSpace(double Width = 1) : MathNode;
 
-/// <summary>An alignment mark (&amp;) of a Word equation array: the cell boundary of cases, nothing elsewhere.</summary>
+/// <summary>
+/// An alignment mark (&amp;) of a Word equation array: the cell boundary of cases, where MathLayout lines up the lines of
+/// a pile; the script and linear text leave it out.
+/// </summary>
 internal sealed record MathAlign : MathNode;
 
 /// <summary>Width, height and baseline (from the top) of laid out math.</summary>
@@ -103,6 +106,95 @@ internal static class EquationScript
     private const double MatrixColumnGap = 0.8;
     private const double MatrixRowGap = 0.3;
     private const double Axis = 0.25;
+
+    // ───────────────────────── Depth ─────────────────────────
+
+    // The walks below (and MathLayout's) recurse once per level of the tree. The readers bound how deep a tree gets:
+    // EquationParser keeps a script deeper than its MaxDepth as text, OmmlReader Word math deeper than its MaxDepth.
+
+    /// <summary>Whether <paramref name="node"/> has more than <paramref name="levels"/> levels; walks without recursion.</summary>
+    public static bool Deeper(MathNode node, int levels)
+    {
+        var pending = new Stack<(MathNode Node, int Depth)>();
+        pending.Push((node, 1));
+        while (pending.TryPop(out var item))
+        {
+            if (item.Depth > levels)
+                return true;
+            foreach (var child in Children(item.Node))
+                pending.Push((child, item.Depth + 1));
+        }
+        return false;
+    }
+
+    private static IEnumerable<MathNode> Children(MathNode node)
+    {
+        var children = node switch
+        {
+            MathRow row => (IEnumerable<MathNode?>)row.Items,
+            MathFraction fraction => [fraction.Numerator, fraction.Denominator],
+            MathRoot root => [root.Index, root.Body],
+            MathScripts scripts => [scripts.Base, scripts.Sub, scripts.Sup],
+            MathBigOperator big => [big.Lower, big.Upper],
+            MathLimit limit => [limit.Lower],
+            MathMatrix matrix => matrix.Rows.SelectMany(r => r),
+            MathCases cases => cases.Rows.SelectMany(r => r),
+            MathPile pile => pile.Rows,
+            MathBrackets brackets => [brackets.Body],
+            MathAccent accent => [accent.Body],
+            MathStyled styled => [styled.Body],
+            _ => [],
+        };
+        return children.OfType<MathNode>();
+    }
+
+    // ───────────────────────── Lines ─────────────────────────
+
+    /// <summary>
+    /// An equation wider than <paramref name="width"/> cut into lines before its + - = signs, as Word breaks a long one
+    /// (rhwp draws an equation on one line, past the margin). What doesn't fit or has no such sign stays as it is.
+    /// </summary>
+    /// <param name="width">Width of a line, 0 when it isn't known.</param>
+    /// <param name="drawn">
+    /// The width another renderer draws an item at (Filee's own, MathLayout), in the same units: lines then fit both it
+    /// and rhwp.
+    /// </param>
+    public static IReadOnlyList<MathNode> BreakLines(MathNode equation, double width, double size, Func<MathNode, double>? drawn = null)
+    {
+        var inner = equation;
+        while (inner is MathRow { Items: [MathRow only] })
+            inner = only;
+        double Width(MathNode node) => drawn is null ? Measure(node, size).Width : Math.Max(Measure(node, size).Width, drawn(node));
+        if (width <= 0 || inner is not MathRow { Items.Count: > 1 } row || Width(row) <= width)
+            return [equation];
+
+        var lines = new List<MathNode>();
+        var line = new List<MathNode>();
+        var lineWidth = 0.0;
+        var pending = new List<MathNode>(); // the items since the last sign
+        var pendingWidth = 0.0;
+        void Flush()
+        {
+            if (line.Count > 0 && lineWidth + pendingWidth > width)
+            {
+                lines.Add(new MathRow(line));
+                (line, lineWidth) = ([], 0);
+            }
+            line.AddRange(pending);
+            lineWidth += pendingWidth;
+            (pending, pendingWidth) = ([], 0);
+        }
+        foreach (var item in row.Items)
+        {
+            if (item is MathSymbol { Text: "+" or "-" or "=" } && pending.Count > 0)
+                Flush();
+            pending.Add(item);
+            pendingWidth += Width(item);
+        }
+        Flush();
+        lines.Add(new MathRow(line));
+        return lines;
+    }
 
     // ───────────────────────── Script ─────────────────────────
 

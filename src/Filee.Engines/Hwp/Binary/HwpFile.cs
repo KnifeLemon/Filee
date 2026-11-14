@@ -153,51 +153,19 @@ internal sealed class HwpFile : IDisposable
     /// <summary>The document has summary information (its title may still be empty).</summary>
     public bool HasSummary => _cfb.Exists("\u0005HwpSummaryInformation");
 
-    /// <summary>
-    /// The document's title from its summary information (an OLE property set stream: a header, the offset of its
-    /// first section, then property id / offset pairs; the title is property 2, a UTF-16 or code page string). Null
-    /// when there is none or the stream is damaged.
-    /// </summary>
+    /// <summary>The document's title from its summary information (<see cref="PropertySet"/>); null when there is none.</summary>
     public string? Title()
     {
         if (!HasSummary)
             return null;
-        byte[]? bytes;
         try
         {
-            bytes = _cfb.Read("\u0005HwpSummaryInformation");
+            return PropertySet.Title(_cfb.Read("\u0005HwpSummaryInformation"));
         }
         catch (InvalidDataException)
         {
             return null;
         }
-        if (bytes is null || bytes.Length < 48)
-            return null;
-        var section = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(44));
-        if (section > bytes.Length - 8)
-            return null;
-        var count = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan((int)section + 4));
-        for (var i = 0L; i < count && section + 8 + i * 8 + 8 <= bytes.Length; i++)
-        {
-            var entry = (int)(section + 8 + i * 8);
-            if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(entry)) != 2)
-                continue;
-            var offset = section + (long)BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(entry + 4));
-            if (offset > bytes.Length - 8)
-                return null;
-            var type = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan((int)offset));
-            var length = (long)BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan((int)offset + 4));
-            var start = (int)offset + 8;
-            var text = type switch
-            {
-                0x1F when length * 2 <= bytes.Length - start => Encoding.Unicode.GetString(bytes, start, (int)length * 2),
-                0x1E when length <= bytes.Length - start => Encoding.Latin1.GetString(bytes, start, (int)length),
-                _ => null,
-            };
-            text = text?.TrimEnd('\0').Trim();
-            return string.IsNullOrEmpty(text) ? null : text;
-        }
-        return null;
     }
 
     /// <summary>

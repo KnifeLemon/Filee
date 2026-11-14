@@ -33,9 +33,11 @@ internal static class CffSubsetter
     /// <summary>
     /// The font with only <paramref name="glyphs"/> (plus .notdef and the glyphs their accents draw) left drawable.
     /// </summary>
-    /// <exception cref="InvalidDataException">The font is damaged or laid out in a way this can't rewrite.</exception>
+    /// <exception cref="InvalidDataException">
+    /// The font is damaged, laid out in a way this can't rewrite, or its glyphs run past the interpreter's budgets.
+    /// </exception>
     /// <exception cref="NotSupportedException">The font is CFF2 or uses Type 1 charstrings.</exception>
-    public static byte[] Subset(byte[] cff, IEnumerable<int> glyphs)
+    public static byte[] Subset(byte[] cff, IEnumerable<int> glyphs, CancellationToken cancellationToken = default)
     {
         var font = CffFont.Parse(cff);
         var interpreter = new Type2Interpreter(font);
@@ -57,6 +59,8 @@ internal static class CffSubsetter
             var glyph = pending.Pop();
             if (glyph < 0 || glyph >= font.GlyphCount || !run.Add(glyph))
                 continue;
+            if (run.Count % 64 == 0)
+                cancellationToken.ThrowIfCancellationRequested();
             kept.Add(glyph);
             interpreter.Run(glyph);
         }

@@ -75,32 +75,35 @@ internal static class PdfLines
     public static string Text(byte[] pdf)
     {
         using var document = PdfDocument.Open(pdf);
+        return string.Concat(document.GetPages().Select(Text));
+    }
+
+    /// <summary>The text of one page in content order, each /ActualText span replacing its glyphs.</summary>
+    public static string Text(Page page)
+    {
         var result = new StringBuilder();
-        foreach (var page in document.GetPages())
+        var spans = new Dictionary<Letter, MarkedContentElement>(ReferenceEqualityComparer.Instance);
+        void Walk(IEnumerable<MarkedContentElement> elements)
         {
-            var spans = new Dictionary<Letter, MarkedContentElement>(ReferenceEqualityComparer.Instance);
-            void Walk(IEnumerable<MarkedContentElement> elements)
+            foreach (var element in elements)
             {
-                foreach (var element in elements)
+                if (element.ActualText is null)
                 {
-                    if (element.ActualText is null)
-                    {
-                        Walk(element.Children);
-                        continue;
-                    }
-                    foreach (var letter in All(element))
-                        spans.TryAdd(letter, element);
+                    Walk(element.Children);
+                    continue;
                 }
+                foreach (var letter in All(element))
+                    spans.TryAdd(letter, element);
             }
-            Walk(page.GetMarkedContents());
-            var done = new HashSet<MarkedContentElement>(ReferenceEqualityComparer.Instance);
-            foreach (var letter in page.Letters)
-            {
-                if (!spans.TryGetValue(letter, out var span))
-                    result.Append(letter.Value);
-                else if (done.Add(span))
-                    result.Append(span.ActualText);
-            }
+        }
+        Walk(page.GetMarkedContents());
+        var done = new HashSet<MarkedContentElement>(ReferenceEqualityComparer.Instance);
+        foreach (var letter in page.Letters)
+        {
+            if (!spans.TryGetValue(letter, out var span))
+                result.Append(letter.Value);
+            else if (done.Add(span))
+                result.Append(span.ActualText);
         }
         return result.ToString();
 

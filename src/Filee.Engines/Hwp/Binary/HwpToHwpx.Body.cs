@@ -246,39 +246,69 @@ internal sealed partial class HwpToHwpx
 
         private static bool IsExtended(char c) => c is (char)1 or (char)2 or (char)3 or (char)11 or (char)12 or (>= (char)14 and <= (char)18) or (>= (char)21 and <= (char)23);
 
+        // Positions only grow while the text is written, so the shapes and ranges are walked with cursors instead of
+        // being searched from the start for every character (a hostile paragraph has a million of each). A position
+        // before the last one starts the walk again.
+        private int _shapeNext;
+        private int _shapePosition = -1;
+        private uint _shapeFound;
+
+        /// <summary>The character shape at <paramref name="position"/>: the last of the shapes before the first that starts after it.</summary>
         private uint ShapeAt(int position)
         {
-            var shape = data.Shapes.Count > 0 ? data.Shapes[0].Shape : 0;
-            foreach (var (start, id) in data.Shapes)
-            {
-                if (start > position)
-                    break;
-                shape = id;
-            }
-            return shape;
+            var shapes = data.Shapes;
+            if (shapes.Count == 0)
+                return 0;
+            if (position < _shapePosition)
+                _shapeNext = 0;
+            _shapePosition = position;
+            if (_shapeNext == 0)
+                _shapeFound = shapes[0].Shape;
+            while (_shapeNext < shapes.Count && shapes[_shapeNext].Position <= position)
+                _shapeFound = shapes[_shapeNext++].Shape;
+            return _shapeFound;
         }
+
+        /// <summary>The highlighter ranges by where they end and by where they start (in record order where those are equal).</summary>
+        private List<(int Start, int End, uint Tag)>? _rangeEnds;
+        private List<(int Start, int End, uint Tag)>? _rangeStarts;
+        private int _rangeEndNext;
+        private int _rangeStartNext;
+        private int _rangePosition = -1;
 
         /// <summary>Highlighter (형광펜) ranges: type 2 in the top byte, the colour in the rest.</summary>
         private void Ranges(int position)
         {
-            foreach (var (start, end, tag) in data.Ranges)
+            if (data.Ranges.Count == 0)
+                return;
+            if (_rangeEnds is null || _rangeStarts is null)
             {
-                if (tag >> 24 != 2 || start == end)
-                    continue;
-                if (end == position && start < position)
-                {
-                    Text(Math.Max(0, position - 1));
-                    Flush();
-                    writer.Empty(Hp, "markpenEnd");
-                }
+                var marks = data.Ranges.Where(r => r.Tag >> 24 == 2 && r.Start != r.End).ToList();
+                _rangeEnds = marks.Where(r => r.Start < r.End).OrderBy(r => r.End).ToList();
+                _rangeStarts = marks.OrderBy(r => r.Start).ToList();
             }
-            foreach (var (start, end, tag) in data.Ranges)
+            if (position <= _rangePosition)
+                (_rangeEndNext, _rangeStartNext) = (0, 0);
+            _rangePosition = position;
+
+            while (_rangeEndNext < _rangeEnds.Count && _rangeEnds[_rangeEndNext].End < position)
+                _rangeEndNext++;
+            for (; _rangeEndNext < _rangeEnds.Count && _rangeEnds[_rangeEndNext].End == position; _rangeEndNext++)
             {
-                if (tag >> 24 != 2 || start == end || start != position || position >= data.Text.Length)
+                Text(Math.Max(0, position - 1));
+                Flush();
+                writer.Empty(Hp, "markpenEnd");
+            }
+
+            while (_rangeStartNext < _rangeStarts.Count && _rangeStarts[_rangeStartNext].Start < position)
+                _rangeStartNext++;
+            for (; _rangeStartNext < _rangeStarts.Count && _rangeStarts[_rangeStartNext].Start == position; _rangeStartNext++)
+            {
+                if (position >= data.Text.Length)
                     continue;
                 Text(position);
                 Flush();
-                writer.Empty(Hp, "markpenBegin", ("color", Color(tag & 0xFFFFFF)));
+                writer.Empty(Hp, "markpenBegin", ("color", Color(_rangeStarts[_rangeStartNext].Tag & 0xFFFFFF)));
             }
         }
 
@@ -342,7 +372,8 @@ internal sealed partial class HwpToHwpx
             var width = position + 2 < text.Length ? text[position + 1] | (text[position + 2] << 16) : 0;
             var leader = position + 3 < text.Length ? text[position + 3] & 0xFF : 0;
             var type = position + 3 < text.Length ? text[position + 3] >> 8 : 0;
-            writer.Empty(Hp, "tab", ("width", width), ("leader", leader), ("type", type + 1));
+            // The kind is stored as HWPX numbers it (1 = left), as in the HWPX 한글 saves for the same file.
+            writer.Empty(Hp, "tab", ("width", width), ("leader", leader), ("type", type));
         }
 
         private void FieldEnd(int position)

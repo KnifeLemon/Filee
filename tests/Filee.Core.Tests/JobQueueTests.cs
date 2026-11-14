@@ -1,4 +1,5 @@
 using Filee.Core.Conversion;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 
 namespace Filee.Core.Tests;
@@ -26,6 +27,90 @@ public class JobQueueTests
         Assert.True(File.Exists(Path.Combine(dir.Path, "a.png")));
         Assert.True(File.Exists(Path.Combine(dir.Path, "b.png")));
         Assert.Equal(1, job.Progress);
+    }
+
+    [Fact]
+    public async Task An_output_converted_from_a_file_from_the_internet_keeps_its_mark_of_the_web()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        using var dir = new TempDir();
+        var marked = dir.File("a.jpg");
+        var plain = dir.File("b.jpg");
+        var mark = MarkOfTheWeb.Internet(new Uri("https://example.com/a.jpg"));
+        Assert.SkipUnless(MarkOfTheWeb.TryWrite(marked, mark), "The temp drive holds no NTFS streams.");
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("magick", new ConversionEdge("jpg", "png"))]));
+
+        var job = await Run(queue, [marked, plain], new Preset { TargetFormat = "png" });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal(mark, MarkOfTheWeb.Read(Path.Combine(dir.Path, "a.png")));
+        Assert.Null(MarkOfTheWeb.Read(Path.Combine(dir.Path, "b.png")));
+    }
+
+    [Fact]
+    public async Task An_archive_packed_from_a_file_from_the_internet_has_its_mark_of_the_web()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        using var dir = new TempDir();
+        var plain = dir.File("plain.txt");
+        var marked = dir.File("marked.txt");
+        var mark = MarkOfTheWeb.Internet(new Uri("https://example.com/marked.txt"));
+        Assert.SkipUnless(MarkOfTheWeb.TryWrite(marked, mark), "The temp drive holds no NTFS streams.");
+        var folder = Directory.CreateDirectory(Path.Combine(dir.Path, "folder", "inner")).Parent!.FullName;
+        Assert.True(MarkOfTheWeb.TryWrite(WriteFile(Path.Combine(folder, "inner", "deep.txt")), mark));
+        await using var queue = new JobQueue(new ConverterCatalog([]), combiner: new FakeCombiner());
+        var preset = new Preset { TargetFormat = "zip", Archive = { CombineIntoOne = true } };
+
+        // The marked file comes second, and the archive is named after the first.
+        var mixed = await Run(queue, [plain, marked], preset);
+        Assert.Equal(JobState.Completed, mixed.State);
+        Assert.Equal(mark, MarkOfTheWeb.Read(mixed.Outputs.Single()));
+
+        var fromFolder = await Run(queue, [folder], preset);
+        Assert.Equal(mark, MarkOfTheWeb.Read(fromFolder.Outputs.Single()));
+
+        var unmarked = await Run(queue, [dir.File("other.txt")], preset);
+        Assert.Null(MarkOfTheWeb.Read(unmarked.Outputs.Single()));
+
+        static string WriteFile(string path)
+        {
+            File.WriteAllText(path, "x");
+            return path;
+        }
+    }
+
+    [Fact]
+    public async Task A_link_in_a_folder_being_packed_gives_the_archive_no_mark_of_the_web()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        using var dir = new TempDir();
+        using var outside = new TempDir();
+        Assert.SkipUnless(MarkOfTheWeb.TryWrite(outside.File("elsewhere.txt"), MarkOfTheWeb.Internet()), "The temp drive holds no NTFS streams.");
+        var folder = Directory.CreateDirectory(Path.Combine(dir.Path, "folder")).FullName;
+        dir.File(Path.Combine("folder", "here.txt"));
+        var link = Path.Combine(folder, "link");
+        // A junction: unlike a symbolic link, it takes no privilege, and the packer leaves both out alike.
+        using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, outside.Path])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        await mklink.WaitForExitAsync(TestContext.Current.CancellationToken);
+        Assert.SkipUnless(mklink.ExitCode == 0, "This drive can't hold a junction.");
+        try
+        {
+            await using var queue = new JobQueue(new ConverterCatalog([]), combiner: new FakeCombiner());
+
+            var job = await Run(queue, [folder], new Preset { TargetFormat = "zip", Archive = { CombineIntoOne = true } });
+
+            Assert.Equal(JobState.Completed, job.State);
+            Assert.Null(MarkOfTheWeb.Read(job.Outputs.Single()));
+        }
+        finally
+        {
+            Directory.Delete(link); // the link only, before the folders are deleted
+        }
     }
 
     [Fact]
@@ -560,6 +645,178 @@ public class JobQueueTests
         var merged = Path.Combine(dir.Path, "1_merged.pdf");
         Assert.Equal("1.pdf|2.pdf|3.pdf", File.ReadAllText(merged));
         Assert.Equal(second, merger.Inputs[1]); // existing PDFs are merged as-is
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Source_bookmarks_pair_original_names_with_direct_and_converted_pdfs(bool sourceBookmarks)
+    {
+        using var dir = new TempDir();
+        var pdf = dir.File("report.pdf");
+        var image = dir.File("photo.jpg");
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("pdf", new ConversionEdge("jpg", "pdf"))]), merger);
+
+        var job = await Run(queue, [pdf, image], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { MergeIntoSingle = true, SourceBookmarks = sourceBookmarks },
+            Output = { FileNamePattern = "{name}_merged" }
+        });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal(sourceBookmarks, merger.SourceBookmarks);
+        Assert.Equal(new PdfMergeInput(pdf, "report.pdf"), merger.MergeInputs[0]);
+        var converted = merger.MergeInputs[1];
+        Assert.Equal("photo.jpg", converted.SourceName);
+        Assert.Equal("photo.pdf", Path.GetFileName(converted.PdfPath));
+        Assert.NotEqual(image, converted.PdfPath);
+        Assert.StartsWith(JobQueue.DefaultWorkRoot + Path.DirectorySeparatorChar, converted.PdfPath);
+        Assert.Equal(2, merger.MergeInputs.Count);
+    }
+
+    [Fact]
+    public async Task Source_bookmarks_skip_failed_slots_without_shifting_names()
+    {
+        using var dir = new TempDir();
+        var first = dir.File("first.jpg");
+        var broken = dir.File("broken.png");
+        var last = dir.File("last.jpg");
+        var merger = new FakeMerger();
+        var catalog = new ConverterCatalog([
+            new FakeConverter("pdf", new ConversionEdge("jpg", "pdf")),
+            new FakeConverter("broken", new ConversionEdge("png", "pdf")) { Throw = true }
+        ]);
+        await using var queue = new JobQueue(catalog, merger);
+
+        var job = await Run(queue, [first, broken, last],
+            new Preset { TargetFormat = "pdf", Pdf = { MergeIntoSingle = true, SourceBookmarks = true } });
+
+        Assert.Equal(FileState.Failed, job.Files[1].State);
+        Assert.Equal(["first.jpg", "last.jpg"], merger.MergeInputs.Select(input => input.SourceName));
+        Assert.Equal(["first.pdf", "last.pdf"], merger.MergeInputs.Select(input => Path.GetFileName(input.PdfPath)));
+        Assert.True(merger.SourceBookmarks);
+    }
+
+    // The queue converts at most ProcessorCount files at once. A and enough held files fill every worker but B's,
+    // so the last file can start only after B's whole run, its slot included, is over, and before A is released.
+    [Fact]
+    public async Task Source_bookmarks_keep_input_order_when_conversions_finish_in_reverse()
+    {
+        Assert.SkipWhen(Environment.ProcessorCount < 2, "Needs two files converting at once.");
+        using var dir = new TempDir();
+        var first = dir.File("a.jpg");
+        var second = dir.File("b.jpg");
+        var held = Enumerable.Range(0, Environment.ProcessorCount - 2).Select(i => dir.File($"held-{i:D3}.jpg")).ToList();
+        var last = dir.File("z.jpg");
+        string[] files = [first, second, .. held, last];
+        var converter = new ReversePdfConverter(first, second, last);
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([converter]), merger);
+        var job = new ConversionJob(files,
+            new Preset { TargetFormat = "pdf", Pdf = { MergeIntoSingle = true, SourceBookmarks = true } }, "Test");
+        var running = queue.RunAsync(job);
+
+        try
+        {
+            await converter.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await converter.LastStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.False(converter.FirstCompleted.Task.IsCompleted);
+        }
+        finally
+        {
+            converter.Release.TrySetResult();
+            await running.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.True(converter.FirstCompleted.Task.IsCompletedSuccessfully);
+        Assert.Equal(files.Select(Path.GetFileName), merger.MergeInputs.Select(input => input.SourceName));
+        Assert.Equal(files.Select(f => Path.ChangeExtension(Path.GetFileName(f), ".pdf")),
+            merger.MergeInputs.Select(input => Path.GetFileName(input.PdfPath)));
+        Assert.True(merger.SourceBookmarks);
+    }
+
+    [Fact]
+    public async Task Source_bookmarks_keep_duplicate_basenames_and_repeated_inputs()
+    {
+        using var dir = new TempDir();
+        Directory.CreateDirectory(Path.Combine(dir.Path, "one"));
+        Directory.CreateDirectory(Path.Combine(dir.Path, "two"));
+        var first = dir.File(Path.Combine("one", "report.pdf"));
+        var second = dir.File(Path.Combine("two", "report.pdf"));
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([]), merger);
+
+        var job = await Run(queue, [first, second, first], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { MergeIntoSingle = true, SourceBookmarks = true },
+            Output = { FileNamePattern = "{name}_merged" }
+        });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal([
+            new PdfMergeInput(first, "report.pdf"),
+            new PdfMergeInput(second, "report.pdf"),
+            new PdfMergeInput(first, "report.pdf")
+        ], merger.MergeInputs);
+        Assert.True(merger.SourceBookmarks);
+    }
+
+    [Theory]
+    [InlineData("pdf", false, 2)]
+    [InlineData("png", true, 2)]
+    [InlineData("mp4", true, 2)]
+    [InlineData("docx", true, 2)]
+    [InlineData("zip", true, 2)]
+    [InlineData("pdf", true, 1)]
+    public async Task Source_bookmarks_are_not_applied_without_an_actual_pdf_merge(string target, bool merge, int count)
+    {
+        using var dir = new TempDir();
+        var sources = Enumerable.Range(0, count).Select(i => dir.File($"{i}.jpg")).ToArray();
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("writer", new ConversionEdge("jpg", target))]), merger);
+
+        var job = await Run(queue, sources,
+            new Preset { TargetFormat = target, Pdf = { MergeIntoSingle = merge, SourceBookmarks = true } });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal(count, job.Outputs.Count());
+        Assert.Empty(merger.MergeInputs);
+        Assert.Null(merger.SourceBookmarks);
+    }
+
+    private sealed class ReversePdfConverter(string first, string second, string last) : IConverter
+    {
+        private readonly FakeConverter _writer = new("reverse", new ConversionEdge("jpg", "pdf"));
+        public string Id => _writer.Id;
+        public string DisplayName => _writer.DisplayName;
+        public IReadOnlyList<ConversionEdge> Edges => _writer.Edges;
+        public int MaxParallelism => 0;
+        public TaskCompletionSource FirstStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource LastStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public EngineStatus GetStatus() => EngineStatus.Available();
+
+        public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+        {
+            // B runs straight through; the last file signals it got a worker; A and the held files wait.
+            if (step.InputPath == last)
+                LastStarted.TrySetResult();
+            else if (step.InputPath != second)
+            {
+                if (step.InputPath == first)
+                    FirstStarted.TrySetResult();
+                await Release.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            }
+            var outputs = await _writer.ConvertAsync(step, progress, cancellationToken);
+            if (step.InputPath == first)
+                FirstCompleted.TrySetResult();
+            return outputs;
+        }
     }
 
     [Fact]

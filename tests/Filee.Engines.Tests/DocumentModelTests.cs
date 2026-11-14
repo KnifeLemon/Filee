@@ -590,12 +590,14 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(new HBorder(HBorderStyle.Solid, 8 / 8.0 * 25.4 / 72, "#FF0000"), border.Borders.Top);
         Assert.Equal(HBorderStyle.None, border.Borders.Bottom.Style);
         Assert.Equal((HBorderStyle.Dash, "#DDEEFF", 400, true), (border.Between!.Value.Style, border.Fill, border.Offsets.Top, border.Connect));
-        Assert.Equal(new HLineBreaking(HLatinBreak.BreakWord, Kinsoku: false, OverflowPunctuation: false, CompressPunctuation: true, AutoSpaceLatin: false, AutoSpaceDigits: false),
+        Assert.Equal(new HLineBreaking(HLatinBreak.BreakWord, Kinsoku: false, OverflowPunctuation: false, CompressPunctuation: true, AutoSpaceLatin: false, AutoSpaceDigits: false,
+            SpreadEastAsian: true),
             paragraphs[0].Format.Layout!.Breaking);
 
         // Word's defaults when nothing is said.
         Assert.Equal(HParaBorder.None, paragraphs[1].Format.Layout!.Border);
-        Assert.Equal(new HLineBreaking(HLatinBreak.KeepWord, Kinsoku: true, OverflowPunctuation: true, CompressPunctuation: false, AutoSpaceLatin: true, AutoSpaceDigits: true),
+        Assert.Equal(new HLineBreaking(HLatinBreak.KeepWord, Kinsoku: true, OverflowPunctuation: true, CompressPunctuation: false, AutoSpaceLatin: true, AutoSpaceDigits: true,
+            SpreadEastAsian: true),
             paragraphs[1].Format.Layout!.Breaking);
     }
 
@@ -619,7 +621,11 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var inlines = Paragraphs(document).SelectMany(p => p.Inlines).ToList();
 
         var read = inlines.OfType<HImage>().Single();
-        Assert.Equal(new HCrop(0.1, 0, 0.25, 0.05), read.Crop);
+        // The reader cuts the edges off a copy of the picture (so the writers keep the crop), and the model
+        // has no crop left to apply: 40 × 20 less 10 % and 25 % across, 0 % and 5 % down.
+        Assert.Null(read.Crop);
+        using (var cropped = new MagickImage(read.Path))
+            Assert.Equal((26u, 19u), (cropped.Width, cropped.Height));
         Assert.Equal((new HTransform(90, FlipHorizontal: true), 251660288), (read.Transform, read.ZOrder));
         Assert.Equal(new HTransform(-30), inlines.OfType<HShape>().Single().Transform);
         Assert.Equal([true, false], document.Sections[0].Blocks.OfType<HTable>().Single().Rows.Select(r => r.CantSplit));

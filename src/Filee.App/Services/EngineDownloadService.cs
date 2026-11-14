@@ -18,6 +18,8 @@ public enum EnginePackageStatus
     NotInstalled,
     Queued,
     Downloading,
+    /// <summary>Copying and checking files the user brought (Install from downloaded files, #447).</summary>
+    Copying,
     Unpacking,
     Installed,
     Failed,
@@ -66,7 +68,7 @@ public sealed partial class EnginePackageState : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsInstalled), nameof(IsBusy), nameof(CanInstall), nameof(CanRemove),
-        nameof(UsesOwnCopy), nameof(CanUseOwnCopy), nameof(ShowsCopyFolder), nameof(CanUpdate))]
+        nameof(UsesOwnCopy), nameof(CanUseOwnCopy), nameof(ShowsCopyFolder), nameof(CanUpdate), nameof(HasOfflineMenu), nameof(CanInstallFromFiles))]
     private EnginePackageStatus _status;
 
     /// <summary>
@@ -74,7 +76,7 @@ public sealed partial class EnginePackageState : ObservableObject
     /// update): <see cref="CanUpdate"/> offers the new one.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CanUpdate))]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CanUpdate), nameof(CanInstallFromFiles))]
     private bool _isOutdated;
 
     /// <summary>The version Filee downloads now, e.g. "8.0" for FFmpeg (the package's main component).</summary>
@@ -89,7 +91,7 @@ public sealed partial class EnginePackageState : ObservableObject
 
     /// <summary>The copy in use was found on the PC (PATH, Program Files), not chosen by the user.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CanInstall), nameof(UsesOwnCopy), nameof(CanUseOwnCopy))]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(CanInstall), nameof(UsesOwnCopy), nameof(CanUseOwnCopy), nameof(CanInstallFromFiles))]
     private bool _fromSystem;
 
     /// <summary>"Update recommended: 7.1 here, Filee is tested with 9.0" for an older copy, else null.</summary>
@@ -121,15 +123,26 @@ public sealed partial class EnginePackageState : ObservableObject
     public bool ShowsCopyFolder => Status == EnginePackageStatus.OwnCopy;
     public bool CanUseOwnCopy => Status is EnginePackageStatus.NotInstalled or EnginePackageStatus.Failed or EnginePackageStatus.Installed
                                  || (Status == EnginePackageStatus.OwnCopy && FromSystem);
-    public bool IsBusy => Status is EnginePackageStatus.Queued or EnginePackageStatus.Downloading or EnginePackageStatus.Unpacking;
+    public bool IsBusy => Status is EnginePackageStatus.Queued or EnginePackageStatus.Downloading or EnginePackageStatus.Copying
+        or EnginePackageStatus.Unpacking;
     /// <summary>Also when a copy on the PC is used: Filee's download is the tested version and wins once installed.</summary>
     public bool CanInstall => EngineDownloads.CanDownload(Package) && (Status is EnginePackageStatus.NotInstalled or EnginePackageStatus.Failed
                               || (Status == EnginePackageStatus.OwnCopy && FromSystem));
+
+    /// <summary>
+    /// The card's "Offline" menu (#447): install from files downloaded elsewhere, save the files for a computer without
+    /// internet, copy the download links. Only for packages Filee downloads here, and not while one is busy.
+    /// </summary>
+    public bool HasOfflineMenu => EngineDownloads.CanDownload(Package) && !IsBusy;
+
+    /// <summary>The files can be installed where Install or Update would download them.</summary>
+    public bool CanInstallFromFiles => CanInstall || CanUpdate;
 
     public string StatusText => Status switch
     {
         EnginePackageStatus.Queued => _loc["engines.state.queued"],
         EnginePackageStatus.Downloading => _loc.Format("engines.state.downloading", (int)Progress),
+        EnginePackageStatus.Copying => _loc.Format("engines.state.copying", (int)Progress),
         EnginePackageStatus.Unpacking => _loc["engines.state.unpacking"],
         EnginePackageStatus.Installed => IsOutdated ? _loc.Format("engines.state.update_available", Version ?? "") : _loc["engines.state.installed"],
         EnginePackageStatus.OwnCopy => _loc[FromSystem ? "engines.state.system_copy" : "engines.state.own_copy"],
@@ -183,16 +196,21 @@ public sealed class EngineDownloadService
     /// <summary>Downloads and unpacks one package; tests swap it to hold an install open.</summary>
     internal Func<EnginePackage, IProgress<EngineInstallProgress>, CancellationToken, Task> InstallPackage { get; set; }
 
+    /// <summary>Installs one package from the user's files (<see cref="EngineInstaller.InstallFromFilesAsync"/>); tests swap it.</summary>
+    internal Func<EnginePackage, IReadOnlyList<string>, IProgress<EngineInstallProgress>, CancellationToken, Task> InstallPackageFromFiles { get; set; }
+
+    /// <summary>Saves one package's downloads in a folder (<see cref="EngineInstaller.SaveFilesAsync"/>); tests swap it.</summary>
+    internal Func<EnginePackage, string, IProgress<EngineInstallProgress>, CancellationToken, Task> SavePackageFiles { get; set; }
+
     public EngineDownloadService(ConverterCatalog catalog, ILocalizer loc, ILogger<EngineDownloadService> logger)
     {
         _catalog = catalog;
         _logger = logger;
         _loc = loc;
-        // Redirects are followed by the installer (mirrors may use plain HTTP; files are verified by SHA-256).
-        var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Filee/{typeof(EngineDownloadService).Assembly.GetName().Version}");
-        _installer = new EngineInstaller(http, logger: logger);
+        _installer = new EngineInstaller(EngineInstaller.CreateHttpClient(Timeout.InfiniteTimeSpan), logger: logger);
         InstallPackage = _installer.InstallAsync;
+        InstallPackageFromFiles = _installer.InstallFromFilesAsync;
+        SavePackageFiles = _installer.SaveFilesAsync;
         Packages = EngineDownloads.Packages.Select(p => new EnginePackageState(p, loc)).ToList();
         if (loc is LocalizationService localization)
             localization.LanguageChanged += (_, _) => Packages.ToList().ForEach(p => p.Relocalize());
@@ -218,23 +236,24 @@ public sealed class EngineDownloadService
     }
 
     /// <summary>
-    /// In the order the engines look: the user's own copy, Filee's download, a copy on the PC. A copy Filee didn't
-    /// download gets its version checked in the background (<see cref="EnginePackageState.UpdateNote"/>).
+    /// The copy the engines use (<see cref="EngineInstaller.StatusOf"/>). A copy Filee didn't download gets its
+    /// version checked in the background (<see cref="EnginePackageState.UpdateNote"/>).
     /// </summary>
     private EnginePackageStatus StatusOf(EnginePackageState state)
     {
-        var id = state.Package.Id;
-        var own = EngineEnvironment.OwnCopyFolder(id);
-        var system = own is null && !_installer.IsInstalled(state.Package) ? EngineEnvironment.SystemCopyFolder(id) : null;
-        state.OwnCopyFolder = own ?? system;
-        state.FromSystem = system is not null;
+        var copy = _installer.StatusOf(state.Package);
+        state.OwnCopyFolder = copy.Folder;
+        state.FromSystem = copy.FromSystem;
         state.UpdateNote = null;
-        state.IsOutdated = state.OwnCopyFolder is null && _installer.IsInstalled(state.Package) && !_installer.IsUpToDate(state.Package);
-        if (state.OwnCopyFolder is { } folder)
+        state.IsOutdated = copy.Outdated;
+        if (copy.Folder is { } folder)
             _ = CheckVersionAsync(state, folder);
-        return state.OwnCopyFolder is not null ? EnginePackageStatus.OwnCopy
-            : _installer.IsInstalled(state.Package) ? EnginePackageStatus.Installed
-            : EnginePackageStatus.NotInstalled;
+        return copy.Status switch
+        {
+            EngineCopyStatus.OwnCopy => EnginePackageStatus.OwnCopy,
+            EngineCopyStatus.Installed => EnginePackageStatus.Installed,
+            _ => EnginePackageStatus.NotInstalled,
+        };
     }
 
     /// <summary>Runs the copy's version check off the UI thread (it starts the program once) and notes an old one.</summary>
@@ -253,12 +272,69 @@ public sealed class EngineDownloadService
 
     /// <summary>
     /// Downloads and installs a package, or the new version of an outdated one; packages queue up and install one
-    /// after another.
+    /// after another. With <paramref name="files"/> the downloads are taken from those files or folders instead (#447).
     /// </summary>
-    public async Task InstallAsync(EnginePackageState state)
+    public async Task InstallAsync(EnginePackageState state, IReadOnlyList<string>? files = null)
     {
         if (!state.CanInstall && !state.CanUpdate)
             return;
+        try
+        {
+            await RunQueuedAsync(state, (progress, token) => files is null
+                ? InstallPackage(state.Package, progress, token)
+                : InstallPackageFromFiles(state.Package, files, progress, token));
+            state.Status = EnginePackageStatus.Installed;
+            _catalog.Refresh();
+            if (state.Package.ConverterIds.Contains("libreoffice"))
+                WarmUpInBackground(TimeSpan.Zero);
+        }
+        catch (OperationCanceledException)
+        {
+            state.Status = StatusOf(state);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Installing engine package {Package} failed", state.Package.Id);
+            state.Error = ErrorText(_loc, ex);
+            state.Status = EnginePackageStatus.Failed;
+        }
+    }
+
+    /// <summary>
+    /// Saves a package's downloads in <paramref name="folder"/> for a computer without internet (#447), in the same
+    /// queue as installs, with the card showing the download. What is installed stays as it was. Returns null when the
+    /// files are saved (<c>Saved</c>), else the reason when it failed (null when it was cancelled).
+    /// </summary>
+    public async Task<(bool Saved, string? Error)> SaveFilesAsync(EnginePackageState state, string folder)
+    {
+        if (state.IsBusy || !EngineDownloads.CanDownload(state.Package))
+            return (false, null);
+        try
+        {
+            await RunQueuedAsync(state, (progress, token) => SavePackageFiles(state.Package, folder, progress, token));
+            return (true, null);
+        }
+        catch (OperationCanceledException)
+        {
+            return (false, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Saving the files of engine package {Package} failed", state.Package.Id);
+            return (false, ErrorText(_loc, ex));
+        }
+        finally
+        {
+            state.Status = StatusOf(state);
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> for a package when the packages before it have finished, with its progress on the
+    /// package's card. Its errors are the caller's.
+    /// </summary>
+    private async Task RunQueuedAsync(EnginePackageState state, Func<IProgress<EngineInstallProgress>, CancellationToken, Task> work)
+    {
         using var cancellation = new CancellationTokenSource();
         state.Cancellation = cancellation;
         state.Error = null;
@@ -276,7 +352,12 @@ public sealed class EngineDownloadService
                 {
                     if (!state.IsBusy)
                         return;
-                    state.Status = p.Stage == EngineInstallStage.Downloading ? EnginePackageStatus.Downloading : EnginePackageStatus.Unpacking;
+                    state.Status = p.Stage switch
+                    {
+                        EngineInstallStage.Downloading => EnginePackageStatus.Downloading,
+                        EngineInstallStage.Copying => EnginePackageStatus.Copying,
+                        _ => EnginePackageStatus.Unpacking,
+                    };
                     state.Progress = p.Fraction * 100;
                     if (p.Stage == EngineInstallStage.Downloading && p.BytesTotal > 0)
                     {
@@ -288,26 +369,12 @@ public sealed class EngineDownloadService
                         state.ProgressDetail = "";
                     }
                 });
-                await Task.Run(() => InstallPackage(state.Package, progress, cancellation.Token), cancellation.Token);
+                await Task.Run(() => work(progress, cancellation.Token), cancellation.Token);
             }
             finally
             {
                 _oneAtATime.Release();
             }
-            state.Status = EnginePackageStatus.Installed;
-            _catalog.Refresh();
-            if (state.Package.ConverterIds.Contains("libreoffice"))
-                WarmUpInBackground(TimeSpan.Zero);
-        }
-        catch (OperationCanceledException)
-        {
-            state.Status = StatusOf(state);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Installing engine package {Package} failed", state.Package.Id);
-            state.Error = ErrorText(_loc, ex);
-            state.Status = EnginePackageStatus.Failed;
         }
         finally
         {
@@ -316,9 +383,13 @@ public sealed class EngineDownloadService
         }
     }
 
-    /// <summary>The reason on the Engines card: an installer's error.* reason in the user's language (#527).</summary>
+    /// <summary>
+    /// The reason on the Engines card: an installer's error.* reason in the user's language (#527), also when another
+    /// Filee holds the package (#963).
+    /// </summary>
     internal static string ErrorText(ILocalizer loc, Exception ex) =>
         ex is HttpRequestException ? ex.Message
+        : ex.GetBaseException() is EngineBusyException ? loc["error.engine_busy"]
         : ex.GetBaseException() is ConversionRefusedException refused ? FailureText.Reason(loc, refused.ErrorKey, refused.Detail)
         : ex.GetBaseException().Message;
 
@@ -356,23 +427,31 @@ public sealed class EngineDownloadService
         });
     }
 
-    /// <summary>Removes a package. Returns false when its files are in use (a conversion is running).</summary>
-    public bool Uninstall(EnginePackageState state)
+    /// <summary>
+    /// Removes a package. Returns null when it's gone, else the key of the reason: its files are in use (a conversion
+    /// is running), or another Filee is installing or removing it (#963).
+    /// </summary>
+    public string? Uninstall(EnginePackageState state)
     {
         if (state.IsBusy)
-            return false;
+            return "engines.remove_failed";
         try
         {
             _installer.Uninstall(state.Package);
             state.Status = EnginePackageStatus.NotInstalled;
             _catalog.Refresh();
-            return true;
+            return null;
+        }
+        catch (EngineBusyException ex)
+        {
+            _logger.LogWarning(ex, "Removing engine package {Package} failed", state.Package.Id);
+            return "error.engine_busy";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning(ex, "Removing engine package {Package} failed", state.Package.Id);
             RefreshStatus();
-            return false;
+            return "engines.remove_failed";
         }
     }
 }

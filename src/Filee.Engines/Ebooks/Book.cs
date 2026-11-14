@@ -2,7 +2,9 @@
 // language, cover). Every e-book reader produces a Book and every e-book writer consumes one.
 
 using System.IO.Compression;
+using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 
 namespace Filee.Engines.Ebooks;
@@ -73,24 +75,59 @@ internal static class EbookFiles
         "This book is protected with DRM (copy protection), so it cannot be converted. Filee does not remove DRM; " +
         "open it in the reading app it was bought for.";
 
+    /// <summary>More entries than this are refused: a book has a few per chapter and picture.</summary>
+    private const int MaxEntries = 100_000;
+
+    /// <summary>Largest entry unpacked: far more than a picture or chapter, enough for a video clip of an EPUB 3 book.</summary>
+    private const long MaxEntryBytes = 1024L * 1024 * 1024;
+
+    /// <summary>Everything unpacked from one book: comics and fixed-layout books of high resolution scans reach about 1 GB.</summary>
+    private const long MaxTotalBytes = 2048L * 1024 * 1024;
+
     /// <summary>
     /// Unpacks a ZIP into <paramref name="folder"/>. Entries that would land outside it ("../", absolute paths)
-    /// are skipped, so a crafted archive cannot write anywhere else.
+    /// are skipped, so a crafted archive cannot write anywhere else. Sizes are checked while unpacking (a lying
+    /// header does not help a zip bomb): past the limits above the book is refused.
     /// </summary>
-    public static void Extract(ZipArchive zip, string folder)
+    public static void Extract(ZipArchive zip, string folder) => Extract(zip, folder, MaxEntryBytes, MaxTotalBytes);
+
+    /// <summary><see cref="Extract(ZipArchive, string)"/> with smaller limits (for tests).</summary>
+    internal static void Extract(ZipArchive zip, string folder, long maxEntryBytes, long maxTotalBytes)
     {
+        if (zip.Entries.Count > MaxEntries)
+            throw new ConversionRefusedException("error.document_too_large", $"over {MaxEntries} entries");
         var root = Path.GetFullPath(folder) + Path.DirectorySeparatorChar;
         Directory.CreateDirectory(root);
+        var buffer = new byte[81920];
+        long total = 0;
         foreach (var entry in zip.Entries)
         {
             if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
                 continue;
             if (SafePath(root, entry.FullName) is not { } target)
                 continue;
+            if (entry.Length > maxEntryBytes)
+                throw TooLarge(entry, "over " + BoundedXml.Size(maxEntryBytes));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            entry.ExtractToFile(target, overwrite: true);
+            using var source = entry.Open();
+            using var output = File.Create(target);
+            long written = 0;
+            int count;
+            while ((count = source.Read(buffer)) > 0)
+            {
+                written += count;
+                total += count;
+                if (written > maxEntryBytes)
+                    throw TooLarge(entry, "over " + BoundedXml.Size(maxEntryBytes));
+                if (total > maxTotalBytes)
+                    throw TooLarge(entry, "the book unpacks to over " + BoundedXml.Size(maxTotalBytes));
+                output.Write(buffer, 0, count);
+            }
         }
     }
+
+    private static ConversionRefusedException TooLarge(ZipArchiveEntry entry, string reason) =>
+        new("error.document_too_large", $"{entry.FullName}: {reason}");
 
     /// <summary>A path inside <paramref name="root"/> for an archive entry name, or null if it would escape.</summary>
     public static string? SafePath(string root, string entryName)

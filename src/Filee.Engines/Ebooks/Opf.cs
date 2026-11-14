@@ -3,6 +3,7 @@
 
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -81,9 +82,9 @@ internal sealed class OpfPackage
     public static string RootFile(string bookFolder)
     {
         var container = System.IO.Path.Combine(bookFolder, "META-INF", "container.xml");
-        if (File.Exists(container))
+        if (File.Exists(container) && LoadContainer(container) is { } document)
         {
-            var rootFile = LoadXml(container).Descendants().FirstOrDefault(e => e.Name.LocalName == "rootfile"
+            var rootFile = document.Descendants().FirstOrDefault(e => e.Name.LocalName == "rootfile"
                 && ((string?)e.Attribute("media-type") ?? "application/oebps-package+xml") == "application/oebps-package+xml");
             if ((string?)rootFile?.Attribute("full-path") is { } fullPath && EbookFiles.SafePath(bookFolder, Uri.UnescapeDataString(fullPath)) is { } path && File.Exists(path))
                 return path;
@@ -93,16 +94,25 @@ internal sealed class OpfPackage
                ?? throw new InvalidDataException("This is not a valid EPUB file: it has no package document (content.opf).");
     }
 
+    /// <summary>container.xml, or null when it is not well-formed (the book is then searched for its package).</summary>
+    private static XDocument? LoadContainer(string path)
+    {
+        try
+        {
+            return LoadXml(path);
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Loads XML without resolving external DTDs (no network access, no XXE); entity declarations inside the file
-    /// are still allowed because some generators declare &amp;nbsp; and friends.
+    /// are still allowed because some generators declare &amp;nbsp; and friends. Size and depth are limited
+    /// (<see cref="BoundedXml"/>).
     /// </summary>
-    public static XDocument LoadXml(string path)
-    {
-        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null };
-        using var reader = XmlReader.Create(path, settings);
-        return XDocument.Load(reader);
-    }
+    public static XDocument LoadXml(string path) => BoundedXml.File(path, LoadOptions.None, DtdProcessing.Ignore);
 
     private static IEnumerable<XElement> Elements(XElement parent, string localName) =>
         parent.Elements().Where(e => e.Name.LocalName == localName);

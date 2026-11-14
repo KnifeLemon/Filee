@@ -1,5 +1,6 @@
-// Workbook → HDocument: every non-empty sheet becomes a section with one table, so XLSX / CSV → HWPX works directly
-// and XLSX / CSV → PDF goes through the HWPX writer and rhwp, without Excel or LibreOffice.
+// Workbook → HDocument: every non-empty sheet becomes a section with one table, so XLSX / CSV → HWPX, DOCX and ODT
+// work directly and CSV / TSV → PDF goes through the HWPX writer and rhwp. XLSX, XLS and ODS → PDF are printed with
+// Excel's page logic instead (SheetPrintConverter).
 //
 // Layout choices, since a sheet has no page of its own: A4 with narrow margins, landscape when the columns are much
 // wider than a portrait page, columns (and text) scaled down to fit the width like "Fit all columns on one page",

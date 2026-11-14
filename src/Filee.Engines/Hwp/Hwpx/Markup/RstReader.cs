@@ -12,7 +12,9 @@
 //  * inline: **strong**, *emphasis*, ``literals``, `interpreted text` (italic, as docutils shows a title reference),
 //    the roles :sub: :sup: :code: :literal: :emphasis: :strong: :math: (others keep their text), `links <url>`_,
 //    standalone URLs and backslash escapes, with reST's rules for where inline markup may start and end.
-// Nested quotes, lists and directives count against DocumentLimits' nesting depth.
+// Nested quotes, lists and directives count against DocumentLimits' nesting depth. A table's cells are counted before
+// anything is made of them, a footnote referenced more than once is read once (MarkupNotes bounds what the writers
+// make of it), and a substitution's text counts at every use.
 
 using System.Globalization;
 using System.Text;
@@ -30,6 +32,7 @@ internal sealed partial class RstReader
 
     private readonly string _baseFolder;
     private readonly DocumentBudget _budget;
+    private readonly CancellationToken _cancellationToken;
     private readonly Dictionary<string, string> _targets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (string? Text, string? Image)> _substitutions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<HBlock>> _footnotes = new(StringComparer.Ordinal);
@@ -37,18 +40,22 @@ internal sealed partial class RstReader
     private readonly List<(string Label, HNote Note)> _references = [];
     private readonly List<(string Style, HParagraph Heading)> _headings = [];
 
-    private RstReader(string baseFolder, DocumentLimits limits)
+    /// <summary>Characters substitutions have put in so far (|name| with replace:: text, at every use).</summary>
+    private long _substituted;
+
+    private RstReader(string baseFolder, DocumentLimits limits, CancellationToken cancellationToken)
     {
         _baseFolder = baseFolder;
         _budget = new DocumentBudget(limits);
+        _cancellationToken = cancellationToken;
     }
 
     public static HDocument Read(string path, string media) =>
         Read(MarkupBlocks.ReadText(path, DocumentLimits.Default, "reStructuredText"), Path.GetDirectoryName(Path.GetFullPath(path))!, DocumentLimits.Default);
 
-    internal static HDocument Read(string text, string baseFolder, DocumentLimits limits)
+    internal static HDocument Read(string text, string baseFolder, DocumentLimits limits, CancellationToken cancellationToken = default)
     {
-        var reader = new RstReader(baseFolder, limits);
+        var reader = new RstReader(baseFolder, limits, cancellationToken);
         var lines = MarkupBlocks.Lines(text).Split('\n').Select(ExpandTabs).ToList();
         reader.Definitions(lines);
         var section = new HSection();
@@ -63,6 +70,7 @@ internal sealed partial class RstReader
             if (blocks is not null)
                 note.Blocks.AddRange(blocks);
         }
+        MarkupNotes.Check(section.Blocks, limits, cancellationToken);
 
         var title = reader.Levels(section.Blocks);
         var document = new HDocument { Title = title };
@@ -124,13 +132,18 @@ internal sealed partial class RstReader
     {
         for (var i = 0; i < lines.Count; i++)
         {
+            if (i % 1024 == 0)
+                _cancellationToken.ThrowIfCancellationRequested();
             if (Target().Match(lines[i]) is { Success: true } target)
             {
-                var url = target.Groups[2].Value;
-                // A target's URL may go on on the indented lines below.
-                for (var k = i + 1; k < lines.Count && lines[k].Length > 0 && char.IsWhiteSpace(lines[k][0]) && lines[k].Trim().Length > 0; k++)
-                    url += lines[k].Trim();
-                _targets.TryAdd(Name(target.Groups[1].Value.Trim('`')), url);
+                // A target's URL may go on on the lines below that are indented further; they belong to it.
+                var url = new StringBuilder(target.Groups[2].Value);
+                var indent = Indent(lines[i]);
+                var k = i + 1;
+                for (; k < lines.Count && !Blank(lines[k]) && Indent(lines[k]) > indent; k++)
+                    url.Append(lines[k].AsSpan().Trim());
+                _targets.TryAdd(Name(target.Groups[1].Value.Trim('`')), url.ToString());
+                i = k - 1;
             }
             else if (Substitution().Match(lines[i]) is { Success: true } substitution)
             {
@@ -202,6 +215,7 @@ internal sealed partial class RstReader
         var literalNext = false;
         for (var i = 0; i < lines.Count;)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var line = lines[i];
             if (Blank(line))
             {
@@ -295,15 +309,22 @@ internal sealed partial class RstReader
             if (line.StartsWith("| ", StringComparison.Ordinal) || line == "|")
             {
                 // A line block: its lines stay lines.
-                var text = new List<string>();
+                var text = new StringBuilder();
+                var count = 0;
                 for (; i < lines.Count && (lines[i].StartsWith("| ", StringComparison.Ordinal) || lines[i] == "|" || (!Blank(lines[i]) && Indent(lines[i]) > 0)); i++)
                 {
                     if (lines[i].StartsWith('|'))
-                        text.Add(lines[i].Length > 2 ? lines[i][2..] : "");
-                    else if (text.Count > 0)
-                        text[^1] += " " + lines[i].Trim();
+                    {
+                        if (count++ > 0)
+                            text.Append('\n');
+                        text.Append(lines[i].Length > 2 ? lines[i].AsSpan(2) : "");
+                    }
+                    else if (count > 0)
+                    {
+                        text.Append(' ').Append(lines[i].AsSpan().Trim());
+                    }
                 }
-                output.Add(Paragraph(string.Join("\n", text), indent, lineBreaks: true));
+                output.Add(Paragraph(text.ToString(), indent, lineBreaks: true));
                 continue;
             }
             if (line.StartsWith(">>> ", StringComparison.Ordinal))
@@ -624,39 +645,80 @@ internal sealed partial class RstReader
         var table = new HTable { Indent = indent };
         var top = lines[0];
         var columns = new List<int>();
-        for (var c = 0; c < top.Length; c++)
+        for (var c = 0; c < top.Length && columns.Count <= _budget.Limits.MaxTableColumns; c++)
             if (top[c] == '+')
                 columns.Add(c);
         if (columns.Count < 2)
             return Fallback(table, lines);
-        if (columns.Count - 1 > _budget.Limits.MaxTableColumns)
-            columns = columns.Take(_budget.Limits.MaxTableColumns + 1).ToList();
+        var width = columns.Count - 1;
 
         // Row borders: lines with a "+" on a column line and a segment of "-" or "=" (a border under a cell that spans
-        // rows starts with "|" and is blank across that cell).
-        bool Segment(string line, int c, char rule) =>
-            Enumerable.Range(columns[c] + 1, columns[c + 1] - columns[c] - 1).All(x => x < line.Length && line[x] == rule);
-        bool IsBorder(string line) =>
-            columns.Any(x => x < line.Length && line[x] == '+')
-            && Enumerable.Range(0, columns.Count - 1).Any(c => Segment(line, c, '-') || Segment(line, c, '='));
+        // rows starts with "|" and is blank across that cell). A column only counts where the line reaches it, so a
+        // line costs its own length, however wide the top border is.
+        var emptySegment = Enumerable.Range(0, width).Any(c => columns[c + 1] == columns[c] + 1);
+        bool Segment(string line, int c, char rule)
+        {
+            for (var x = columns[c] + 1; x < columns[c + 1]; x++)
+                if (line[x] != rule)
+                    return false;
+            return true;
+        }
+        (bool Border, bool Header) Kind(string line)
+        {
+            var plus = false;
+            for (var c = 0; c <= width && columns[c] < line.Length && !plus; c++)
+                plus = line[columns[c]] == '+';
+            if (!plus)
+                return (false, false);
+            if (emptySegment)
+                return (true, true);
+            var (border, header) = (false, false);
+            for (var c = 0; c < width && columns[c + 1] <= line.Length && !header; c++)
+            {
+                if (Segment(line, c, '='))
+                    border = header = true;
+                else if (!border && Segment(line, c, '-'))
+                    border = true;
+            }
+            return (border, header);
+        }
         var borders = new List<int>();
+        var header = -1;
         for (var r = 0; r < lines.Count; r++)
-            if (IsBorder(lines[r]))
+        {
+            if (r % 1024 == 0)
+                _cancellationToken.ThrowIfCancellationRequested();
+            var kind = Kind(lines[r]);
+            if (kind.Border)
                 borders.Add(r);
-        var header = lines.FindIndex(l => IsBorder(l) && Enumerable.Range(0, columns.Count - 1).Any(c => Segment(l, c, '=')));
+            if (kind.Header && header < 0)
+                header = r;
+        }
         var rows = borders.Count - 1;
         if (rows < 1)
             return Fallback(table, lines);
-        var width = columns.Count - 1;
+        // The grid is counted before it is allocated: a wide top border over many short "+-+" lines is no table.
+        MarkupBlocks.TableArea(rows, width, _budget.Limits);
         var taken = new bool[rows, width];
-        var grid = new List<HRow>();
-        for (var r = 0; r < rows; r++)
-            grid.Add(new HRow { Header = header > borders[r] });
 
         char At(int line, int column) => line < lines.Count && column < lines[line].Length ? lines[line][column] : ' ';
 
+        // Blank where the line stops: only the characters the line has are looked at.
+        bool BlankAcross(int line, int from, int to)
+        {
+            var text = lines[line];
+            for (var x = from; x < Math.Min(to, text.Length); x++)
+                if (text[x] != ' ')
+                    return false;
+            return true;
+        }
+
+        // The cells first, then their text: the lines the cells take are counted before any is cut out.
+        var cells = new List<(int Row, int Column, int RowSpan, int ColSpan)>();
+        long cellLines = 0;
         for (var r = 0; r < rows; r++)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             for (var c = 0; c < width; c++)
             {
                 if (taken[r, c])
@@ -668,33 +730,44 @@ internal sealed partial class RstReader
                     colSpan++;
                 // Rows: on while the border under the cell is blank across its columns.
                 var rowSpan = 1;
-                while (r + rowSpan < rows && Enumerable.Range(columns[c] + 1, columns[c + colSpan] - columns[c] - 1).All(x => At(borders[r + rowSpan], x) == ' '))
+                while (r + rowSpan < rows && BlankAcross(borders[r + rowSpan], columns[c] + 1, columns[c + colSpan]))
                     rowSpan++;
                 for (var rr = r; rr < r + rowSpan; rr++)
                     for (var cc = c; cc < c + colSpan; cc++)
                         taken[rr, cc] = true;
-                var text = new List<string>();
-                for (var l = firstLine; l < borders[r + rowSpan]; l++)
-                {
-                    var line = lines[l];
-                    var from = Math.Min(columns[c] + 1, line.Length);
-                    var to = Math.Min(columns[c + colSpan], line.Length);
-                    text.Add(to > from ? line[from..to] : "");
-                }
-                var cell = new HCell { Column = c, RowSpan = rowSpan, ColSpan = colSpan };
-                var common = text.Where(t => !Blank(t)).Select(Indent).DefaultIfEmpty(0).Min();
-                using (_budget.Enter())
-                    Blocks(Dedent(text.Select(t => t.TrimEnd()), common), cell.Blocks, 0, 0, sections: false);
-                if (grid[r].Header)
-                    foreach (var paragraph in cell.Blocks.OfType<HParagraph>())
-                        Bold(paragraph.Inlines);
-                if (cell.Blocks.Count == 0)
-                {
-                    _budget.Paragraph();
-                    cell.Blocks.Add(new HParagraph());
-                }
-                grid[r].Cells.Add(cell);
+                cells.Add((r, c, rowSpan, colSpan));
+                cellLines += borders[r + rowSpan] - firstLine;
+                if (cellLines > _budget.Limits.MaxParagraphs)
+                    throw DocumentLimits.Exceeded($"A table has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} lines of cell text.");
             }
+        }
+
+        var grid = new List<HRow>();
+        for (var r = 0; r < rows; r++)
+            grid.Add(new HRow { Header = header > borders[r] });
+        foreach (var (r, c, rowSpan, colSpan) in cells)
+        {
+            var text = new List<string>();
+            for (var l = borders[r] + 1; l < borders[r + rowSpan]; l++)
+            {
+                var line = lines[l];
+                var from = Math.Min(columns[c] + 1, line.Length);
+                var to = Math.Min(columns[c + colSpan], line.Length);
+                text.Add(to > from ? line[from..to] : "");
+            }
+            var cell = new HCell { Column = c, RowSpan = rowSpan, ColSpan = colSpan };
+            var common = text.Where(t => !Blank(t)).Select(Indent).DefaultIfEmpty(0).Min();
+            using (_budget.Enter())
+                Blocks(Dedent(text.Select(t => t.TrimEnd()), common), cell.Blocks, 0, 0, sections: false);
+            if (grid[r].Header)
+                foreach (var paragraph in cell.Blocks.OfType<HParagraph>())
+                    Bold(paragraph.Inlines);
+            if (cell.Blocks.Count == 0)
+            {
+                _budget.Paragraph();
+                cell.Blocks.Add(new HParagraph());
+            }
+            grid[r].Cells.Add(cell);
         }
         table.Rows.AddRange(grid.Where(row => row.Cells.Count > 0));
         table.ColumnCount = width;
@@ -729,12 +802,25 @@ internal sealed partial class RstReader
             spans.Add((start, c));
         }
         spans = spans.Take(_budget.Limits.MaxTableColumns).ToList();
-        var rows = new List<List<string>>();
+        var rows = new List<string[]>();
+        // The last row's cells while lines without a first column go on with it.
+        StringBuilder?[]? more = null;
+        void Close()
+        {
+            if (more is null)
+                return;
+            for (var c = 0; c < more.Length; c++)
+                if (more[c] is { } sb)
+                    rows[^1][c] = sb.ToString();
+            more = null;
+        }
         var borders = 1;
         var header = 0;
         var j = i + 1;
         for (; j < lines.Count; j++)
         {
+            if (j % 1024 == 0)
+                _cancellationToken.ThrowIfCancellationRequested();
             var line = lines[j];
             if (SimpleTableBorder().IsMatch(line))
             {
@@ -751,13 +837,27 @@ internal sealed partial class RstReader
                 continue;
             if (line.Length > spans[0].Start && spans[0].End > spans[0].Start && line[..Math.Min(spans[0].End, line.Length)].Trim().Length == 0 && rows.Count > 0)
             {
-                // A line with nothing in the first column goes on with the row above.
-                for (var c = 0; c < spans.Count; c++)
-                    rows[^1][c] = (rows[^1][c] + " " + Slice(line, spans, c)).Trim();
+                // A line with nothing in the first column goes on with the row above (only the columns it reaches).
+                more ??= new StringBuilder?[spans.Count];
+                for (var c = 0; c < spans.Count && spans[c].Start < line.Length; c++)
+                {
+                    var piece = Slice(line, spans, c);
+                    if (piece.Length == 0)
+                        continue;
+                    var sb = more[c] ??= new StringBuilder(rows[^1][c]);
+                    (sb.Length > 0 ? sb.Append(' ') : sb).Append(piece);
+                }
                 continue;
             }
-            rows.Add([.. Enumerable.Range(0, spans.Count).Select(c => Slice(line, spans, c))]);
+            Close();
+            // The cells are counted before they are made: a wide border over many short lines is no table.
+            MarkupBlocks.TableArea(rows.Count + 1L, spans.Count, _budget.Limits);
+            var cells = new string[spans.Count];
+            for (var c = 0; c < cells.Length; c++)
+                cells[c] = Slice(line, spans, c);
+            rows.Add(cells);
         }
+        Close();
         _budget.Object();
         var table = new HTable { Indent = indent, ColumnCount = Math.Max(1, spans.Count) };
         for (var r = 0; r < rows.Count; r++)
@@ -815,6 +915,7 @@ internal sealed partial class RstReader
             }
         }
         var limit = _budget.Limits.MaxTableColumns;
+        MarkupBlocks.TableArea(rows.Count, rows.Count == 0 ? 1 : rows.Max(r => Math.Min(r.Count, limit)), _budget.Limits);
         for (var r = 0; r < rows.Count; r++)
         {
             var row = new HRow { Header = r < headerRows };
@@ -904,6 +1005,7 @@ internal sealed partial class RstReader
 
     private HParagraph Paragraph(string text, int indent, bool lineBreaks = false)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         _budget.Paragraph();
         var paragraph = new HParagraph { Format = indent > 0 ? new HParaFormat(Left: indent) : default };
         var sink = new InlineSink(paragraph.Inlines);
@@ -1016,6 +1118,10 @@ internal sealed partial class RstReader
                     }
                     else if (substitution.Text is { } replacement)
                     {
+                        // The text is copied at every use: a long one used thousands of times is counted.
+                        _substituted += replacement.Length;
+                        if (_substituted > _budget.Limits.MaxPartBytes)
+                            throw DocumentLimits.Exceeded($"Substitutions put in more than {DocumentLimits.Megabytes(_budget.Limits.MaxPartBytes)} of text.");
                         sink.Text(replacement, format);
                     }
                     i = after;

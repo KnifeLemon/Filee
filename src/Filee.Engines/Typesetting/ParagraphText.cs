@@ -7,13 +7,18 @@
 //   paragraph has a hanging indent (the text then starts at the indent, as in 한글 and Word) and a space otherwise.
 // - A picture laid out like a character (no anchor) is U+FFFC, which the layout gives the picture's size. Page number
 //   and total pages fields are the text the page composer gives them, and a note reference its number, raised. Both
-//   are text the model doesn't count (Insertions), so 한글's stored line starts are moved past them.
+//   are text the model doesn't count (Insertions), so 한글's stored line starts are moved past them. A note's own
+//   number goes where its text has it (Word's w:footnoteRef), else the composer puts it in front as a marker.
 // - Floating objects, text boxes and shapes belong to a later layout milestone and are left out; an equation is drawn
 //   as its linear text.
 // - 한글's language slots: each character takes the font, 장평, 자간, relative size and 글자 위치 of its slot
 //   (FontSlots.Hwp); a slot without a font takes the format's Latin font (영문, 외국어, 사용자) or East Asian font
 //   (한글, 한자, 일어, 기호). Word's run fonts: the character's run font (FontSlots.Word), its scale (w:w), absolute
-//   letter spacing (w:spacing) and raise (w:position).
+//   letter spacing (w:spacing) and raise (w:position). Characters in the complex-script font (Arabic, Hebrew, Thai,
+//   the Indic scripts, and every character of a w:cs or w:rtl run) take the complex-script size, bold and italic
+//   (w:szCs, w:bCs, w:iCs) as Word draws them.
+// - Explicit directions (HDirectionMark, Word w:dir and w:bdo) are the Unicode embedding and override controls
+//   (U+202A–U+202E), text the model doesn't count; BidiAlgorithm reads them and the shaper draws nothing for them.
 
 using System.Globalization;
 using System.Text;
@@ -94,16 +99,10 @@ internal sealed class ParagraphText
 
     /// <summary>
     /// Text the model doesn't count (a field's text, a note's number): where it goes in the model's count (the count
-    /// HLineLayout.Starts are in, the list marker left out) and how long it is.
+    /// HLineLayout.Starts are in, the list marker left out) and how long it is; in the model's order. A model position
+    /// is at the text position after the list marker and the text inserted before it.
     /// </summary>
     public IReadOnlyList<(int Position, int Length)> Insertions { get; }
-
-    /// <summary>
-    /// The text position of model position <paramref name="position"/>: after the list marker of
-    /// <paramref name="marker"/> characters and the inserted text before it.
-    /// </summary>
-    public int FromModel(int position, int marker) =>
-        position + marker + Insertions.Where(i => i.Position < position).Sum(i => i.Length);
 
     public string Text { get; }
 
@@ -116,7 +115,9 @@ internal sealed class ParagraphText
     /// <param name="marker">The list item's number or bullet, or null.</param>
     /// <param name="fields">The text of a page number or total pages field; null leaves fields out.</param>
     /// <param name="notes">The number a note reference shows; null leaves note references out.</param>
-    public static ParagraphText From(HParagraph paragraph, string? marker = null, Func<HField, string>? fields = null, Func<HNote, string>? notes = null)
+    /// <param name="noteNumber">In a note's text, its number, put where the text has it (HNoteNumber); null leaves it out.</param>
+    public static ParagraphText From(HParagraph paragraph, string? marker = null, Func<HField, string>? fields = null, Func<HNote, string>? notes = null,
+        string? noteNumber = null)
     {
         var text = new StringBuilder();
         var spans = new List<TextSpan>();
@@ -179,6 +180,13 @@ internal sealed class ParagraphText
                         if (fields is not null)
                             Insert(fields(field), field.Format, link);
                         break;
+                    case HNoteNumber number:
+                        if (noteNumber is not null)
+                            Insert(noteNumber, number.Format, link);
+                        break;
+                    case HDirectionMark mark:
+                        Insert(DirectionControl(mark.Kind), spans.Count > 0 ? spans[^1].Format : paragraph.MarkFormat, link);
+                        break;
                     case HNote note when notes is not null:
                         references[text.Length] = note;
                         var around = note.Format ?? (spans.Count > 0 ? spans[^1].Format : paragraph.MarkFormat);
@@ -198,6 +206,32 @@ internal sealed class ParagraphText
         }
         Inlines(paragraph.Inlines, null);
         return new ParagraphText(text.ToString(), spans, bookmarks, pictures, references, insertions, floating);
+    }
+
+    /// <summary>The Unicode control that starts or ends an explicit direction.</summary>
+    private static string DirectionControl(HDirectionKind kind) => kind switch
+    {
+        HDirectionKind.LeftToRight => "\u202A", // LRE
+        HDirectionKind.RightToLeft => "\u202B", // RLE
+        HDirectionKind.OverrideLeftToRight => "\u202D", // LRO
+        HDirectionKind.OverrideRightToLeft => "\u202E", // RLO
+        _ => "\u202C", // PDF
+    };
+
+    /// <summary>
+    /// Per UTF-16 index, whether the character is in a right-to-left run (Word w:rtl, RTF \rtlch); null when no run is.
+    /// </summary>
+    public bool[]? RightToLeftRuns()
+    {
+        bool[]? result = null;
+        foreach (var span in Spans)
+        {
+            if (span.Format.Layout?.RightToLeft != true)
+                continue;
+            result ??= new bool[Text.Length];
+            Array.Fill(result, true, span.Start, span.Length);
+        }
+        return result;
     }
 
     /// <summary>
@@ -243,7 +277,8 @@ internal sealed class ParagraphText
         var result = new List<(int, int, TextStyle)>();
         if (format.Layout?.WordFonts is { } word)
         {
-            foreach (var run in FontSlots.WordRuns(Text, span.Start, span.Length, FontSlots.Hint(word.Hint)))
+            var complexScript = format.Layout.ComplexScript == true || format.Layout.RightToLeft == true;
+            foreach (var run in FontSlots.WordRuns(Text, span.Start, span.Length, FontSlots.Hint(word.Hint), complexScript))
                 result.Add((run.Start, run.Length, WordStyle(format, word, run.Slot, language)));
         }
         else
@@ -282,6 +317,16 @@ internal sealed class ParagraphText
     internal static TextStyle WordStyle(HCharFormat format, HWordFonts fonts, WordFontSlot slot, string language)
     {
         var family = fonts.Font(slot) ?? (slot == WordFontSlot.EastAsia ? format.EastAsianFont ?? format.Font : format.Font);
+        if (slot == WordFontSlot.ComplexScript && format.Layout is { } layout)
+        {
+            // Complex-script characters have their own size, bold and italic in Word (w:szCs, w:bCs, w:iCs).
+            format = format with
+            {
+                Size = layout.ComplexSize ?? format.Size,
+                Bold = layout.ComplexBold ?? format.Bold,
+                Italic = layout.ComplexItalic ?? format.Italic,
+            };
+        }
         var fontSize = (format.Size ?? DefaultSize * 100) / 100f;
         var scale = (format.Layout?.Scale ?? 100) / 100f;
         var spacing = format.Layout?.LetterSpacing is { } absolute ? absolute / 100f : (format.Spacing ?? 0) / 100f * fontSize;

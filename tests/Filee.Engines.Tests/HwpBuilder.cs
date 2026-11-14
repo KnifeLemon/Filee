@@ -165,7 +165,7 @@ internal sealed class HwpBuilder
             ("BodyText/Section0", SectionBytes ?? Pack(Section.SelectMany(r => r).ToArray(), compressed)),
         };
         streams.AddRange(Streams.Select(s => (s.Key, s.Value)));
-        return Cfb(streams);
+        return Cfb(streams, EditFat, EditDirectory, DeclaredSizes);
     }
 
     /// <summary>Raw deflate, as HWP compresses its streams.</summary>
@@ -179,8 +179,19 @@ internal sealed class HwpBuilder
         return output.ToArray();
     }
 
-    private byte[] Cfb(List<(string Path, byte[] Data)> streams)
+    /// <summary>
+    /// A compound file (version 3, 512-byte sectors) holding <paramref name="streams"/> by path, with the storages their
+    /// paths name; the hooks edit the allocation table, the directory and declared stream sizes.
+    /// </summary>
+    /// <param name="standard">
+    /// Laid out as the specification asks, for other programs to open (LibreOffice): streams under 4096 bytes in the
+    /// mini stream, and the members of each storage in name order. Otherwise every stream is in regular sectors (the
+    /// cutoff is 0) and members are in the order given, which Filee's reader takes and the hooks rely on.
+    /// </param>
+    internal static byte[] Cfb(List<(string Path, byte[] Data)> streams, Action<uint[], IReadOnlyDictionary<string, uint>>? editFat = null,
+        Action<byte[]>? editDirectory = null, IReadOnlyDictionary<string, long>? declaredSizes = null, bool standard = false)
     {
+        const int MiniSector = 64, Cutoff = 4096;
         // Directory: the root, every storage, every stream.
         var entries = new List<(string Name, int Type, string Path)> { ("Root Entry", 5, "") };
         foreach (var (path, _) in streams)
@@ -195,9 +206,26 @@ internal sealed class HwpBuilder
             entries.Add((parts[^1], 2, path));
         }
 
-        // Sectors: FAT, directory, then each stream (no mini stream: the cutoff is 0).
+        // Small streams go into the mini stream (64-byte sectors in the root entry's stream) when standard.
+        bool InMini(byte[] data) => standard && data.Length < Cutoff;
+        var miniStarts = new Dictionary<string, uint>();
+        var miniStream = new List<byte>();
+        var miniFatEntries = new List<uint>();
+        foreach (var (path, data) in streams.Where(s => InMini(s.Data)))
+        {
+            var count = (data.Length + MiniSector - 1) / MiniSector;
+            miniStarts[path] = count == 0 ? EndOfChain : (uint)miniFatEntries.Count;
+            for (var i = 0; i < count; i++)
+                miniFatEntries.Add(i + 1 < count ? (uint)(miniFatEntries.Count + 1) : EndOfChain);
+            miniStream.AddRange(data);
+            miniStream.AddRange(new byte[count * MiniSector - data.Length]);
+        }
+        var miniFatSectors = (miniFatEntries.Count * 4 + Sector - 1) / Sector;
+        var miniStreamSectors = (miniStream.Count + Sector - 1) / Sector;
+
+        // Sectors: FAT, directory, mini FAT, mini stream, then each other stream.
         var directorySectors = (entries.Count * 128 + Sector - 1) / Sector;
-        var dataSectors = streams.Sum(s => Math.Max(1, (s.Data.Length + Sector - 1) / Sector));
+        var dataSectors = miniFatSectors + miniStreamSectors + streams.Where(s => !InMini(s.Data)).Sum(s => Math.Max(1, (s.Data.Length + Sector - 1) / Sector));
         var fatSectors = 1;
         while (fatSectors * (Sector / 4) < fatSectors + directorySectors + dataSectors)
             fatSectors++;
@@ -206,16 +234,22 @@ internal sealed class HwpBuilder
         for (var i = 0; i < fatSectors; i++)
             fat[i] = FatSector;
         Chain(fat, fatSectors, directorySectors);
-        var starts = new Dictionary<string, uint>();
         var next = fatSectors + directorySectors;
-        foreach (var (path, data) in streams)
+        var miniFatStart = miniFatSectors > 0 ? (uint)next : EndOfChain;
+        Chain(fat, next, miniFatSectors);
+        next += miniFatSectors;
+        var miniStreamStart = miniStreamSectors > 0 ? (uint)next : EndOfChain;
+        Chain(fat, next, miniStreamSectors);
+        next += miniStreamSectors;
+        var starts = new Dictionary<string, uint>();
+        foreach (var (path, data) in streams.Where(s => !InMini(s.Data)))
         {
             var count = Math.Max(1, (data.Length + Sector - 1) / Sector);
             starts[path] = (uint)next;
             Chain(fat, next, count);
             next += count;
         }
-        EditFat?.Invoke(fat, starts);
+        editFat?.Invoke(fat, starts);
 
         var directory = new byte[directorySectors * Sector];
         for (var i = 0; i < entries.Count; i++)
@@ -229,23 +263,29 @@ internal sealed class HwpBuilder
             // Members of a storage: the first is its child, the others a chain of right siblings.
             var folder = path.Contains('/') ? path[..path.LastIndexOf('/')] : "";
             var siblings = entries.Select((e, index) => (e, index)).Where(x => x.index > 0 && Parent(x.e.Path) == folder).Select(x => x.index).ToList();
+            // A red-black tree in name order (shorter names first, then without case) as a chain of right children.
+            if (standard)
+                siblings = [.. siblings.OrderBy(x => entries[x].Name.Length).ThenBy(x => entries[x].Name.ToUpperInvariant(), StringComparer.Ordinal)];
             var position = siblings.IndexOf(i);
             BinaryPrimitives.WriteUInt32LittleEndian(entry[68..], Free);
             BinaryPrimitives.WriteUInt32LittleEndian(entry[72..], position >= 0 && position + 1 < siblings.Count ? (uint)siblings[position + 1] : Free);
             var children = entries.Select((e, index) => (e, index)).Where(x => x.index > 0 && Parent(x.e.Path) == path && type != 2).Select(x => x.index).ToList();
+            if (standard)
+                children = [.. children.OrderBy(x => entries[x].Name.Length).ThenBy(x => entries[x].Name.ToUpperInvariant(), StringComparer.Ordinal)];
             BinaryPrimitives.WriteUInt32LittleEndian(entry[76..], children.Count > 0 ? (uint)children[0] : Free);
             if (type == 2)
             {
                 var data = streams.First(s => s.Path == path).Data;
-                BinaryPrimitives.WriteUInt32LittleEndian(entry[116..], starts[path]);
-                BinaryPrimitives.WriteUInt64LittleEndian(entry[120..], (ulong)(DeclaredSizes.TryGetValue(path, out var size) ? size : data.Length));
+                BinaryPrimitives.WriteUInt32LittleEndian(entry[116..], InMini(data) ? miniStarts[path] : starts[path]);
+                BinaryPrimitives.WriteUInt64LittleEndian(entry[120..], (ulong)(declaredSizes is not null && declaredSizes.TryGetValue(path, out var size) ? size : data.Length));
             }
-            else
+            else if (type == 5)
             {
-                BinaryPrimitives.WriteUInt32LittleEndian(entry[116..], type == 5 ? EndOfChain : 0);
+                BinaryPrimitives.WriteUInt32LittleEndian(entry[116..], miniStreamStart);
+                BinaryPrimitives.WriteUInt64LittleEndian(entry[120..], (ulong)miniStream.Count);
             }
         }
-        EditDirectory?.Invoke(directory);
+        editDirectory?.Invoke(directory);
 
         var file = new byte[(total + 1) * Sector];
         var head = file.AsSpan(0, Sector);
@@ -257,15 +297,22 @@ internal sealed class HwpBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(head[32..], 6);
         BinaryPrimitives.WriteUInt32LittleEndian(head[44..], (uint)fatSectors);
         BinaryPrimitives.WriteUInt32LittleEndian(head[48..], (uint)fatSectors);
-        BinaryPrimitives.WriteUInt32LittleEndian(head[56..], 0); // mini stream cutoff: every stream in regular sectors
-        BinaryPrimitives.WriteUInt32LittleEndian(head[60..], EndOfChain);
+        // Mini stream cutoff: 4096 when standard, else 0 (every stream in regular sectors).
+        BinaryPrimitives.WriteUInt32LittleEndian(head[56..], standard ? (uint)Cutoff : 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(head[60..], miniFatStart);
+        BinaryPrimitives.WriteUInt32LittleEndian(head[64..], (uint)miniFatSectors);
         BinaryPrimitives.WriteUInt32LittleEndian(head[68..], EndOfChain);
         for (var i = 0; i < 109; i++)
             BinaryPrimitives.WriteUInt32LittleEndian(head[(76 + i * 4)..], i < fatSectors ? (uint)i : Free);
         for (var i = 0; i < fat.Length; i++)
             BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(Sector + i * 4), fat[i]);
         directory.CopyTo(file, (fatSectors + 1) * Sector);
-        foreach (var (path, data) in streams)
+        for (var i = 0; i < miniFatEntries.Count; i++)
+            BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan((int)(miniFatStart + 1) * Sector + i * 4), miniFatEntries[i]);
+        for (var i = miniFatEntries.Count; i < miniFatSectors * Sector / 4; i++)
+            BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan((int)(miniFatStart + 1) * Sector + i * 4), Free);
+        miniStream.CopyTo(file, miniStreamSectors > 0 ? (int)(miniStreamStart + 1) * Sector : 0);
+        foreach (var (path, data) in streams.Where(s => !InMini(s.Data)))
             data.CopyTo(file, (starts[path] + 1) * Sector);
         return file;
     }

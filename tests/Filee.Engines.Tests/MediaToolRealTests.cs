@@ -247,6 +247,101 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("aac", probed.Audio!.Codec);
     }
 
+    // ───────────────────────── Music under merged videos (#1402) ─────────────────────────
+
+    /// <summary>How long a file's stream of <paramref name="selector"/> (<c>a:0</c>, <c>v:0</c>) is, in seconds.</summary>
+    private static async Task<double> StreamSecondsAsync(string path, string selector)
+    {
+        var result = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-select_streams", selector, "-show_entries", "stream=duration", "-of", "csv=p=0", path],
+            TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        return double.Parse(result.StandardOutput.Trim(), CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>The mean loudness of a file's sound from <paramref name="from"/> for <paramref name="seconds"/>, in dB; -∞ where it has none.</summary>
+    private static async Task<double> LoudnessAsync(string path, double from, double seconds)
+    {
+        var result = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-ss", Text(from), "-t", Text(seconds), "-i", path, "-map", "0:a:0", "-af", "volumedetect", "-f", "null", "-"],
+            TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        var match = System.Text.RegularExpressions.Regex.Match(result.StandardError, @"mean_volume: (-?[\d.]+) dB");
+        return match.Success ? double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : double.NegativeInfinity;
+    }
+
+    [Fact]
+    public async Task Songs_play_in_order_under_copied_videos_and_stop_when_the_last_one_ends()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        string[] h264 = ["-c:v", "libx264", "-pix_fmt", "yuv420p"];
+        var first = await MakeClipAsync(folder, "a.mp4", 2, audio: false, extra: h264);
+        var second = await MakeClipAsync(folder, "b.mp4", 2, audio: false, extra: h264);
+        // A loud song, then a quiet one: their order shows in the loudness.
+        var loud = await MakeToneAsync(folder, "1 loud.mp3", 1);
+        var quiet = await MakeToneAsync(folder, "2 quiet.wav", 1, extra: ["-af", "volume=0.1"]);
+
+        var output = await RunAsync([first, loud, second, quiet], BuiltIn("merge-videos"));
+
+        Assert.Equal(Path.Combine(folder, "a_merged.mp4"), output);
+        var probed = await ProbeAsync(output);
+        Assert.InRange(probed.Duration, 3.8, 4.3);
+        Assert.Equal("aac", probed.Audio!.Codec);
+        Assert.InRange(await StreamSecondsAsync(output, "a:0"), 1.8, 2.3); // no loop: the music ends with the last song
+        var a = await LoudnessAsync(output, 0.2, 0.6);
+        var b = await LoudnessAsync(output, 1.2, 0.6);
+        Assert.True(a - b > 12, $"loud {a} dB, quiet {b} dB");
+        // The pictures were copied, not encoded again.
+        var firstPackets = await PacketHashesAsync(first);
+        Assert.Equal(firstPackets.Skip(1), (await PacketHashesAsync(output)).Take(firstPackets.Count).Skip(1));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Looped_songs_repeat_until_the_videos_end_and_fade_out_there(bool copied)
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        // Of one size the videos are copied; of different sizes encoded, the other way music is put under them.
+        string[] h264 = ["-c:v", "libx264", "-pix_fmt", "yuv420p"];
+        var first = await MakeClipAsync(folder, "a.mp4", 2, audio: false, extra: h264);
+        var second = await MakeClipAsync(folder, "b.mp4", 2, size: copied ? "320x240" : "640x360", audio: false, extra: h264);
+        var song = await MakeToneAsync(folder, "song.mp3", 0.6);
+        var jingle = await MakeToneAsync(folder, "jingle.m4a", 0.4, extra: ["-c:a", "aac"]);
+        var preset = BuiltIn("merge-videos").Clone();
+        preset.Media.LoopMusic = true;
+
+        var output = await RunAsync([first, second, song, jingle], preset);
+
+        var probed = await ProbeAsync(output);
+        Assert.InRange(probed.Duration, 3.8, 4.3); // never longer than the videos
+        Assert.InRange(await StreamSecondsAsync(output, "a:0"), 3.8, 4.3);
+        var middle = await LoudnessAsync(output, 2.6, 0.3); // the third time round
+        var end = await LoudnessAsync(output, 3.85, 0.1);
+        Assert.True(middle > -30, $"{middle} dB: the music should still play");
+        Assert.True(middle - end > 6, $"middle {middle} dB, end {end} dB: the music should fade out");
+    }
+
+    [Fact]
+    public async Task A_song_longer_than_the_video_is_cut_where_the_video_ends()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        string[] h264 = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"];
+        var first = await MakeClipAsync(folder, "a.mp4", 1.5, extra: h264);
+        var second = await MakeClipAsync(folder, "b.mp4", 1.5, extra: h264);
+        var song = await MakeToneAsync(folder, "long.flac", 10);
+
+        var output = await RunAsync([song, first, second], BuiltIn("merge-videos"));
+
+        Assert.Equal(Path.Combine(folder, "a_merged.mp4"), output);
+        var probed = await ProbeAsync(output);
+        Assert.InRange(probed.Duration, 2.8, 3.3);
+        Assert.InRange(await StreamSecondsAsync(output, "a:0"), 2.8, 3.3);
+    }
+
     // ───────────────────────── Merge audio ─────────────────────────
 
     [Fact]

@@ -10,7 +10,7 @@ using Filee.Engines.Infrastructure;
 namespace Filee.Engines.Office;
 
 /// <summary>Writes DOCX files with the built-in WordprocessingML writer.</summary>
-public sealed class DocxWriterConverter : IConverter
+public sealed class DocxWriterConverter : IConverter, ICapabilityCheck
 {
     /// <summary>Below Pandoc's and LibreOffice's direct edges (10 and more), so the built-in writer wins.</summary>
     private const int Cost = 8;
@@ -24,7 +24,10 @@ public sealed class DocxWriterConverter : IConverter
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
         DocumentReaders.BuiltInFormats.Where(f => !WordFormats.Contains(f))
-            .Select(f => new ConversionEdge(f, "docx", f == "pdf" ? Cost + DocumentReaders.PdfPenalty : Cost)).ToList();
+            .Select(f => new ConversionEdge(f, "docx", f == "pdf" ? Cost + DocumentReaders.PdfPenalty : Cost, Checked: DocumentReaders.Checked(f))).ToList();
+
+    /// <summary>A Word 6.0 / 95 or Works file with a .doc or .wps name, which the DOC reader doesn't read.</summary>
+    public string? FirstUnsupported(string sourcePath, string sourceFormat) => DocumentReaders.Unsupported(sourcePath, sourceFormat);
 
     public EngineStatus GetStatus() =>
         EngineStatus.Available(string.Join(", ", Edges.Select(e => e.From.ToUpperInvariant())) + " → DOCX", EngineVersions.BuiltIn);

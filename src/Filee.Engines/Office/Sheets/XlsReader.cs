@@ -1,8 +1,8 @@
 // XLS (Excel 97–2003, BIFF8, also .xlt and the older BIFF2–5) → Workbook without Excel or LibreOffice: the binary
 // records are read by ExcelDataReader (MIT), values are formatted with the same number formats as XLSX
 // (NumberFormatter), plus merged cells, column widths, row heights, hidden rows / columns / sheets and alignment.
-// ExcelDataReader exposes no fonts, fills or borders, so XLS cells keep the default look; widths and heights come
-// from the BIFF records themselves (XlsLayout).
+// Fonts, fills, borders and the full alignment (BIFF8), widths, heights and the page setup come from the BIFF records
+// themselves (XlsLayout), which ExcelDataReader doesn't expose.
 
 using System.Text;
 using ExcelDataReader;
@@ -26,13 +26,17 @@ internal static class XlsReader
             using var stream = File.OpenRead(path);
             using var reader = ExcelReaderFactory.CreateReader(stream);
             var formatter = new NumberFormatter(); // ExcelDataReader already turns 1904-based dates into DateTime
-            var layouts = XlsLayout.Read(path);
+            var layout = XlsLayout.Read(path);
             var book = new Workbook();
+            if (layout?.DefaultFontName is { } fontName)
+                book.DefaultFontName = fontName;
+            if (layout?.DefaultFontSize is { } fontSize)
+                book.DefaultFontSize = fontSize;
             var index = 0;
             do
             {
                 if (reader.VisibleState is null or "visible")
-                    book.Sheets.Add(ReadSheet(reader, formatter, layouts?.ElementAtOrDefault(index)));
+                    book.Sheets.Add(ReadSheet(reader, formatter, layout?.Sheets.ElementAtOrDefault(index), layout?.Styles ?? []));
                 index++;
             }
             while (reader.NextResult());
@@ -54,8 +58,9 @@ internal static class XlsReader
         }
     }
 
-    /// <param name="layout">Widths and heights from the BIFF records; null to use what ExcelDataReader reports.</param>
-    private static Worksheet ReadSheet(IExcelDataReader reader, NumberFormatter formatter, XlsLayout.Sheet? layout)
+    /// <param name="layout">Widths, heights, cell formats and the page setup from the BIFF records; null to use what ExcelDataReader reports.</param>
+    /// <param name="styles">Cell formats by XF index (BIFF8).</param>
+    private static Worksheet ReadSheet(IExcelDataReader reader, NumberFormatter formatter, XlsLayout.Sheet? layout, List<CellStyle> styles)
     {
         var sheet = new Worksheet(string.IsNullOrEmpty(reader.Name) ? "Sheet" : reader.Name);
         var heights = new Dictionary<int, double>();
@@ -66,13 +71,34 @@ internal static class XlsReader
             heights[row] = reader.RowHeight;
             for (var c = 0; c < reader.FieldCount; c++)
             {
-                if (Cell(reader, c, formatter) is { HasContent: true } cell)
+                var style = layout is not null && layout.Cells.TryGetValue((row, c), out var xf) && xf < styles.Count ? styles[xf] : null;
+                if (Cell(reader, c, formatter, style) is { HasContent: true } cell)
                     sheet.Set(row, c, cell);
             }
         }
 
         if (layout is not null)
         {
+            // Blank cells with a fill or borders (ExcelDataReader returns no value for them).
+            foreach (var ((r, c), xf) in layout.Cells)
+            {
+                if (xf < styles.Count && sheet.Get(r, c) is null && styles[xf] is { } blank && (blank.Fill is not null || blank.HasBorders))
+                    sheet.Set(r, c, new SheetCell("", blank));
+            }
+            sheet.PageSetup = layout.PageSetup;
+            sheet.PrintArea.AddRange(layout.PrintArea);
+            sheet.TitleRows = layout.TitleRows ?? sheet.TitleRows;
+            sheet.TitleColumns = layout.TitleColumns;
+            sheet.RowBreaks.UnionWith(layout.RowBreaks);
+            sheet.ColumnBreaks.UnionWith(layout.ColumnBreaks);
+            sheet.DefaultRowHeight = layout.DefaultRowHeight;
+            sheet.BaseColumnWidth = layout.BaseColumnWidth;
+            sheet.RightToLeft = layout.RightToLeft;
+            if (layout.DefaultColumnWidth is { } standard and > 0)
+            {
+                sheet.DefaultColumnWidth = standard;
+                sheet.HasDefaultColumnWidth = true;
+            }
             foreach (var (c, (width, hidden)) in layout.Columns)
             {
                 if (hidden)
@@ -86,6 +112,8 @@ internal static class XlsReader
                     sheet.HiddenRows.Add(r);
                 else if (custom)
                     sheet.RowHeights[r] = points;
+                else if (points > 0)
+                    sheet.AutoRowHeights[r] = points;
             }
         }
         else
@@ -119,12 +147,13 @@ internal static class XlsReader
         return sheet;
     }
 
-    private static SheetCell? Cell(IExcelDataReader reader, int column, NumberFormatter formatter)
+    /// <param name="own">The cell's format from its XF record, when the BIFF records were read.</param>
+    private static SheetCell? Cell(IExcelDataReader reader, int column, NumberFormatter formatter, CellStyle? own)
     {
         var value = reader.GetValue(column);
-        var style = Style(reader.GetCellStyle(column));
+        var style = own ?? Style(reader.GetCellStyle(column));
         if (reader.GetCellError(column) is { } error)
-            return new SheetCell(ErrorText(error), style);
+            return new SheetCell(ErrorText(error), style) { IsError = true };
 
         double number;
         switch (value)

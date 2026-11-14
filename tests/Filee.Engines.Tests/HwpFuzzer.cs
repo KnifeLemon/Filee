@@ -24,7 +24,7 @@ internal sealed class HwpFuzzer
     public HwpFuzzer(byte[] seed, Random random)
     {
         _random = random;
-        using var cfb = Filee.Engines.Hwp.Binary.CompoundFile.Open(new MemoryStream(seed));
+        using var cfb = Filee.Engines.Documents.CompoundFile.Open(new MemoryStream(seed));
         var header = cfb.Read("FileHeader")!;
         _version = BitConverter.ToUInt32(header, 32);
         _flags = BitConverter.ToUInt32(header, 36);

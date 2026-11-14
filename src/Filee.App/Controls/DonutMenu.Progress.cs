@@ -273,6 +273,7 @@ public sealed partial class DonutMenu
             using (context.PushOpacity(1 - collapseAll))
                 DrawSoftShadow(context, center, r2);
 
+            var labels = LabelPlan(Items!, center, r1, r2, i => (DonutGeometry.MidAngle(i, n), DonutGeometry.Span(n)), DonutScale, bold, regular);
             for (var i = 0; i < n; i++)
             {
                 var t = Math.Clamp((_collapseClock - i * CollapseStagger) / CollapseSeconds, 0, 1);
@@ -294,8 +295,8 @@ public sealed partial class DonutMenu
                     if (hot)
                         context.DrawGeometry(WithOpacity(AccentBrush, 0.8), null, wedge);
                     // Labels shrink with their slice instead of vanishing when the collapse starts.
-                    DrawLabel(context, Items![i], center, (r1 + r2) / 2, DonutGeometry.MidAngle(i, n),
-                        DonutGeometry.Span(n) * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot);
+                    DrawSliceLabel(context, labels[i], Items![i].IsEnabled, hot);
+                    DrawGroupMark(context, Items![i], center, r2, DonutGeometry.MidAngle(i, n), hot);
                 }
             }
 

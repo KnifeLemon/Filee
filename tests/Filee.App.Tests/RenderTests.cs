@@ -1,6 +1,7 @@
 // Renders real windows headlessly (Skia) to catch XAML / binding errors and to produce screenshots
 // in bin/.../screenshots for visual review.
 
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -17,6 +18,7 @@ using Filee.App.Views.Pages;
 using Filee.Core.Localization;
 using Filee.Core.Profiles;
 using Filee.Core.Settings;
+using Filee.Engines.Ocr;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.Tests;
@@ -25,6 +27,8 @@ public class RenderTests
 {
     public static TheoryData<string, string> Pages => new()
     {
+        { "home", "vi" }, { "general", "vi" }, { "triggers", "vi" }, { "toolbar", "vi" },
+        { "presets", "vi" }, { "theme", "vi" }, { "engines", "vi" }, { "about", "vi" }, { "watch", "vi" },
         { "home", "id" }, { "general", "id" }, { "triggers", "id" }, { "toolbar", "id" },
         { "presets", "id" }, { "theme", "id" }, { "engines", "id" }, { "about", "id" }, { "watch", "id" },
         { "home", "it" }, { "general", "it" }, { "triggers", "it" }, { "toolbar", "it" },
@@ -101,11 +105,20 @@ public class RenderTests
                     var menu = page.FindControl<ToggleSwitch>("ShowMenuBarIconSwitch")!;
                     Assert.Equal(supported, dock.IsVisible);
                     Assert.Equal(supported, menu.IsVisible);
+                    var colored = page.FindControl<ToggleSwitch>("ColoredMenuBarIconSwitch")!;
+                    Assert.Equal(supported, colored.IsVisible);
+                    Assert.False(colored.IsChecked);
                     Assert.False(dock.IsChecked);
                     Assert.True(menu.IsChecked);
                     Assert.Empty(platform.DockCalls);
                     if (supported)
                         Save(window, "page-general-icons-en.png");
+
+                    // Without a menu bar icon there is no icon colour to pick.
+                    vm.ShowMenuBarIcon = false;
+                    Pump();
+                    Assert.False(colored.IsVisible);
+                    vm.ShowMenuBarIcon = true;
                 }
                 finally
                 {
@@ -875,7 +888,7 @@ public class RenderTests
             var vm = AppHost.Get<RadialViewModel>();
             vm.Load([@"C:\gis\roads.shp", @"C:\gis\parcels.shp"], clickMode: true);
             vm.FitToThisDonut();
-            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx", "to-kmz"], vm.Presets.Select(p => p.Id));
+            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx"], vm.Presets.Select(p => p.Id));
             Assert.All(vm.Items, item => Assert.True(item.IsEnabled));
             var window = new RadialWindow { DataContext = vm };
             window.Show();
@@ -922,7 +935,7 @@ public class RenderTests
         window.DonutControl.SetExternalHighlight(1);
         Pump();
 
-        Assert.Equal(12, vm.Items.Count); // with "Trace to SVG", "Line art to SVG", "Edit pictures" and "Pixelate / blur"
+        Assert.Equal(7, vm.Items.Count); // conversions and Merge PDF after PDF; GIF follows WEBP
         Assert.Equal(title, vm.CenterTitle);
         Save(window, $"donut-images-{language}.png");
         window.Close();
@@ -1279,6 +1292,58 @@ public class RenderTests
     }
 
     [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    [InlineData("ko")]
+    public void A_maximum_box_may_leave_a_side_empty_never_enlarge_and_keep_its_pixels_under_a_size_limit(string language)
+    {
+        // #1270: at most 2300 px tall, the width free, smaller pictures as they are, a size limit met by quality alone.
+        TestServices.EnsureInitialized(language);
+        var loc = AppHost.Get<ILocalizer>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "jpg-70");
+        var vm = new PresetEditorViewModel(preset, loc);
+        vm.Resize = vm.ResizeModes.Single(r => r.Value == Filee.Core.Presets.ResizeMode.Custom);
+        vm.LockAspect = true;
+        vm.CustomWidth = null;
+        vm.CustomHeight = 2300;
+        vm.ShrinkOnly = true;
+        Assert.False(vm.HasImageMaxSize);
+        vm.ImageSizeUnit = vm.SizeUnits.Single(u => u.Value == FileSizeUnit.KB);
+        vm.ImageMaxSize = 300;
+        vm.MaxSizeKeepsPixels = true;
+        Assert.True(vm.HasImageMaxSize);
+        Assert.Null(vm.CustomSizeError);
+
+        var window = new PresetEditorWindow { DataContext = vm, Height = 900 };
+        window.Show();
+        Pump();
+        Save(window, $"preset-max-box-{language}.png");
+        // Without the lock both sides are needed: the save waits, with the reason under the boxes.
+        vm.LockAspect = false;
+        Pump();
+        Assert.NotNull(vm.CustomSizeError);
+        Assert.False(vm.IsValid);
+        Save(window, $"preset-max-box-missing-{language}.png");
+        window.Close();
+        Assert.False(vm.Apply());
+
+        vm.LockAspect = true;
+        Assert.True(vm.Apply());
+        var size = preset.Image.CustomSize!;
+        Assert.Equal((Filee.Core.Presets.CustomImageSize.FreeSide, 2300, true, true), (size.Width, size.Height, size.LockAspect, size.ShrinkOnly));
+        Assert.True(preset.Image.MaxSizeKeepsPixels);
+
+        // The empty side reads back empty.
+        var reloaded = new PresetEditorViewModel(preset, loc);
+        Assert.Equal(((int?)null, (int?)2300, true, true), (reloaded.CustomWidth, reloaded.CustomHeight, reloaded.ShrinkOnly, reloaded.MaxSizeKeepsPixels));
+
+        // Keeping the pixels means nothing without a maximum, and is not stored then.
+        reloaded.ImageMaxSize = 0;
+        Assert.True(reloaded.Apply());
+        Assert.False(preset.Image.MaxSizeKeepsPixels);
+    }
+
+    [AvaloniaTheory]
     [InlineData("en", false)]
     [InlineData("en", true)]
     [InlineData("de", false)]
@@ -1508,6 +1573,190 @@ public class RenderTests
 
     [AvaloniaTheory]
     [InlineData("en")]
+    [InlineData("zh-CN")]
+    public void Preset_editor_reads_and_saves_several_text_recognition_languages(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "searchable-pdf");
+        preset.Pdf.OcrLanguage = "chi_sim+eng";
+        var vm = new PresetEditorViewModel(preset, loc);
+        Assert.Equal("chi_sim", vm.OcrLanguage.Value);
+        Assert.Equal(["eng"], vm.MoreOcrLanguages.Select(l => l.Value));
+        Assert.True(vm.HasMoreOcrLanguages);
+        Assert.DoesNotContain(vm.OcrLanguagesToAdd, l => l.Value is "chi_sim" or "eng");
+        Assert.False(vm.AddOcrLanguageCommand.CanExecute(null));
+
+        var window = new PresetEditorWindow { DataContext = vm, Height = 1400 };
+        window.Show();
+        Pump();
+        Save(window, $"preset-ocr-languages-{language}.png");
+        window.Close();
+
+        // Unchanged, it is saved as it was.
+        Assert.True(vm.Apply());
+        Assert.Equal("chi_sim+eng", preset.Pdf.OcrLanguage);
+
+        // Added languages leave the list; one picked without pressing Add counts too.
+        vm.OcrLanguageToAdd = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+        Assert.True(vm.AddOcrLanguageCommand.CanExecute(null));
+        vm.AddOcrLanguageCommand.Execute(null);
+        Assert.Null(vm.OcrLanguageToAdd);
+        Assert.Equal(["eng", "deu"], vm.MoreOcrLanguages.Select(l => l.Value));
+        Assert.DoesNotContain(vm.OcrLanguagesToAdd, l => l.Value == "deu");
+        vm.OcrLanguageToAdd = vm.OcrLanguagesToAdd.Single(l => l.Value == "fra");
+        Assert.True(vm.Apply());
+        Assert.Equal("chi_sim+eng+deu+fra", preset.Pdf.OcrLanguage);
+
+        // An added language made the main one trades places with the old main one, which is not lost.
+        vm.OcrLanguage = vm.OcrLanguageChoices.Single(l => l.Value == "deu");
+        Assert.Equal(["eng", "chi_sim", "fra"], vm.MoreOcrLanguages.Select(l => l.Value));
+        Assert.DoesNotContain(vm.OcrLanguagesToAdd, l => l.Value is "chi_sim" or "deu");
+        Assert.True(vm.Apply());
+        Assert.Equal("deu+eng+chi_sim+fra", preset.Pdf.OcrLanguage);
+
+        // With the others removed, one code is left, as older settings have it.
+        vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages[0]);
+        vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages[0]);
+        vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages[0]);
+        Assert.False(vm.HasMoreOcrLanguages);
+        Assert.Contains(vm.OcrLanguagesToAdd, l => l.Value == "eng");
+        Assert.True(vm.Apply());
+        Assert.Equal("deu", preset.Pdf.OcrLanguage);
+
+        vm = new PresetEditorViewModel(preset, loc);
+        Assert.Equal("deu", vm.OcrLanguage.Value);
+        Assert.Empty(vm.MoreOcrLanguages);
+
+        // A code Filee doesn't list, in a preset from elsewhere, is left out.
+        preset.Pdf.OcrLanguage = "klingon";
+        Assert.Equal("eng", new PresetEditorViewModel(preset, loc).OcrLanguage.Value);
+    }
+
+    [AvaloniaFact]
+    public void Preset_editor_shows_the_download_of_a_language_vision_reads_when_tesseract_would_read_them_all()
+    {
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "searchable-pdf");
+        static bool VisionReads(string code) => code != "hin"; // a Mac, whatever this computer is
+        string? Download(string code) => OcrLanguages.IsInstalled(code) ? null
+            : loc.Format("presets.ocr_language_size", $"{OcrLanguages.Find(code)!.Size / 1_000_000.0:0.#} MB");
+        var afrikaans = Download("afr");
+        Assert.SkipWhen(afrikaans is null, "Afrikaans is downloaded on this computer");
+
+        // Only languages Vision reads: nothing to download for them, and the one it doesn't read shows its own.
+        preset.Pdf.OcrLanguage = "afr+swa";
+        var vm = new PresetEditorViewModel(preset, loc, null, VisionReads);
+        Assert.Null(vm.OcrLanguage.Detail);
+        Assert.Null(vm.MoreOcrLanguages.Single().Detail);
+        Assert.Equal(Download("hin"), vm.OcrLanguagesToAdd.Single(l => l.Value == "hin").Detail);
+
+        var window = new PresetEditorWindow { DataContext = vm, Height = 1400 };
+        window.Show();
+        Pump();
+        bool Shows(string? text) => window.GetVisualDescendants().OfType<TextBlock>().Any(t => t.IsEffectivelyVisible && t.Text == text);
+        Assert.False(Shows(afrikaans));
+
+        // Picked (it counts on saving) or added, it sends them all to Tesseract: the rows say so, while the window is open.
+        vm.OcrLanguageToAdd = vm.OcrLanguagesToAdd.Single(l => l.Value == "hin");
+        Pump();
+        Assert.Equal(afrikaans, vm.OcrLanguage.Detail);
+        Assert.True(Shows(afrikaans));
+        vm.AddOcrLanguageCommand.Execute(null);
+        Pump();
+        Assert.Equal(afrikaans, vm.OcrLanguage.Detail);
+        Assert.Equal(Download("swa"), vm.MoreOcrLanguages.Single(l => l.Value == "swa").Detail);
+
+        // Removed again, Vision reads them.
+        vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages.Single(l => l.Value == "hin"));
+        Pump();
+        Assert.Null(vm.OcrLanguage.Detail);
+        Assert.False(Shows(afrikaans));
+        window.Close();
+
+        // A preset saved with the mix shows them from the start, and off a Mac nothing changes.
+        preset.Pdf.OcrLanguage = "afr+hin";
+        Assert.Equal(afrikaans, new PresetEditorViewModel(preset, loc, null, VisionReads).OcrLanguage.Detail);
+        preset.Pdf.OcrLanguage = "afr";
+        Assert.Equal(afrikaans, new PresetEditorViewModel(preset, loc, null, _ => false).OcrLanguage.Detail);
+    }
+
+    [AvaloniaFact]
+    public void A_language_picked_but_not_added_stays_picked_while_the_lists_change()
+    {
+        // In a shown window: the combo box is what drops its selection when its items go.
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "searchable-pdf");
+
+        void Shown(Action<PresetEditorViewModel, ComboBox> act)
+        {
+            preset.Pdf.OcrLanguage = "chi_sim+eng";
+            var vm = new PresetEditorViewModel(preset, loc);
+            var window = new PresetEditorWindow { DataContext = vm, Height = 1400 };
+            window.Show();
+            Pump();
+            act(vm, window.GetVisualDescendants().OfType<ComboBox>().Single(c => ReferenceEquals(c.ItemsSource, vm.OcrLanguagesToAdd)));
+            Pump();
+            Assert.True(vm.Apply());
+            window.Close();
+        }
+
+        // Removing a row, the pick is kept and the removed language can be added again.
+        Shown((vm, box) =>
+        {
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+            Pump();
+            Assert.Equal("deu", vm.OcrLanguageToAdd?.Value);
+            vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages.Single());
+            Pump();
+            Assert.Equal("deu", vm.OcrLanguageToAdd?.Value);
+            Assert.Same(vm.OcrLanguageToAdd, box.SelectedItem);
+            Assert.Contains(vm.OcrLanguagesToAdd, l => l.Value == "eng");
+        });
+        Assert.Equal("chi_sim+deu", preset.Pdf.OcrLanguage);
+
+        // Another main language: the same.
+        Shown((vm, box) =>
+        {
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+            Pump();
+            vm.OcrLanguage = vm.OcrLanguageChoices.Single(l => l.Value == "fra");
+            Pump();
+            Assert.Same(vm.OcrLanguageToAdd, box.SelectedItem);
+            Assert.Equal("deu", vm.OcrLanguageToAdd?.Value);
+        });
+        Assert.Equal("fra+eng+deu", preset.Pdf.OcrLanguage);
+
+        // Adding what is picked and then picking on, each one counts once.
+        Shown((vm, box) =>
+        {
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+            Pump();
+            vm.AddOcrLanguageCommand.Execute(null);
+            Pump();
+            Assert.Null(box.SelectedItem);
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "ita");
+            Pump();
+        });
+        Assert.Equal("chi_sim+eng+deu+ita", preset.Pdf.OcrLanguage);
+
+        // The pick made the main language: it left the list, so nothing is picked any more.
+        Shown((vm, box) =>
+        {
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+            Pump();
+            vm.OcrLanguage = vm.OcrLanguageChoices.Single(l => l.Value == "deu");
+            Pump();
+            Assert.Null(vm.OcrLanguageToAdd);
+            Assert.Null(box.SelectedItem);
+        });
+        Assert.Equal("deu+eng", preset.Pdf.OcrLanguage);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
     [InlineData("ko")]
     [InlineData("pt-PT")]
     [InlineData("pt-BR")]
@@ -1608,6 +1857,7 @@ public class RenderTests
     public void Preset_editor_saves_every_frame_only_for_png_and_jpg()
     {
         TestServices.EnsureInitialized("en");
+        using var culture = new CultureScope("en-US"); // "100,000": numbers follow the regional format
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
 
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "jpg" };
@@ -1635,6 +1885,7 @@ public class RenderTests
     public void Preset_editor_shows_playback_speed_only_for_targets_that_keep_animations()
     {
         TestServices.EnsureInitialized("ko");
+        using var culture = new CultureScope("ko-KR"); // "0.25×": numbers follow the regional format
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "gif", Name = "Slow GIF" };
         var vm = new PresetEditorViewModel(preset, loc);
@@ -1648,7 +1899,7 @@ public class RenderTests
         Save(window, "preset-animation-speed-ko.png");
         window.Close();
 
-        foreach (var target in new[] { "webp", "apng", "mng", Filee.Core.Presets.BuiltInData.SameAsSource })
+        foreach (var target in new[] { "webp", "apng", "mng", "avif", Filee.Core.Presets.BuiltInData.SameAsSource })
         {
             vm.Target = vm.Targets.Single(t => t.Value == target);
             Assert.True(vm.ShowAnimationSpeed, target);
@@ -2352,7 +2603,7 @@ public class RenderTests
         Assert.Equal("Subtitle", vm.Target.Detail);
     }
 
-    /// <summary>The geospatial donut in the toolbar editor: GeoJSON, Shapefile, KML, CSV, GPX and KMZ for geo files.</summary>
+    /// <summary>The geospatial donut in the toolbar editor: GeoJSON, Shapefile, KML, CSV and GPX for geo files.</summary>
     [AvaloniaTheory]
     [InlineData("en")]
     [InlineData("ko")]
@@ -2362,7 +2613,7 @@ public class RenderTests
         {
             vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "geo");
             Pump();
-            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx", "to-kmz"], vm.SelectedProfile.Profile.PresetIds);
+            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx"], vm.SelectedProfile.Profile.PresetIds);
             Assert.Contains("shp", vm.ExtensionTags!.Tags.Select(t => t.Text.TrimStart('.')));
             Save(window, $"toolbar-geospatial-{language}.png");
         });
@@ -2786,6 +3037,16 @@ public class RenderTests
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         }
+    }
+
+    /// <summary>The regional format until disposed: numbers in labels follow it, not the UI language.</summary>
+    private sealed class CultureScope : IDisposable
+    {
+        private readonly CultureInfo _before = CultureInfo.CurrentCulture;
+
+        public CultureScope(string name) => CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(name);
+
+        public void Dispose() => CultureInfo.CurrentCulture = _before;
     }
 
     internal static void Save(TopLevel window, string name)

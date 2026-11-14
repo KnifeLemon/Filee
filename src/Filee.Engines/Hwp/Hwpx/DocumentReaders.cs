@@ -4,27 +4,28 @@
 
 using System.Globalization;
 using System.Text;
-using System.Text.Json.Nodes;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
 using Filee.Engines.Hwp.Binary;
+using Filee.Engines.Hwp.Hwpx.Doc;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Markup;
 using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Odf.Draw;
 using Filee.Engines.Ofd;
 using Filee.Engines.Office;
+using Filee.Engines.Office.Ppt;
 using Filee.Engines.Office.Sheets;
 using Filee.Engines.Pdf;
+using Filee.Engines.Slides;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
 /// <summary>Registry of document readers: format id → reader.</summary>
 internal static class DocumentReaders
 {
-    private static readonly TimeSpan PandocTimeout = TimeSpan.FromMinutes(2);
-
     /// <summary>
     /// Readers built into Filee: (input file, folder for extracted pictures) → document. Office Open XML variants
     /// (macro-enabled files, templates, slide shows) share the reader of their family.
@@ -35,6 +36,10 @@ internal static class DocumentReaders
         ["docm"] = DocxReader.Read,
         ["dotx"] = DocxReader.Read,
         ["dotm"] = DocxReader.Read,
+        // Word 97–2003 (and WPS Office's .wps, the same format): written out as the DOCX package DocxReader reads.
+        ["doc"] = DocReader.Read,
+        ["dot"] = DocReader.Read,
+        ["wps"] = DocReader.Read,
         ["odt"] = OdtReader.Read,
         ["txt"] = (path, _) => TextDocument(File.ReadAllBytes(path)),
         ["rtf"] = RtfReader.Read,
@@ -52,6 +57,12 @@ internal static class DocumentReaders
         ["potx"] = PptxReader.Read,
         ["potm"] = PptxReader.Read,
         ["ppsx"] = PptxReader.Read,
+        // PowerPoint 97–2003 (.ppt, .pps, .pot): written out as the PPTX package PptxReader reads.
+        ["ppt"] = PptReader.Read,
+        // OpenDocument presentations: each slide's text and pictures in reading order, a section per slide (SlideDeckText).
+        ["odp"] = ReadSlides,
+        ["otp"] = ReadSlides,
+        ["fodp"] = ReadSlides,
         ["pdf"] = PdfDocumentReader.Read,
         ["ofd"] = OfdReader.Read,
         ["hwpx"] = HwpxReader.Read,
@@ -106,6 +117,19 @@ internal static class DocumentReaders
         ["opml"] = "opml",
     };
 
+    /// <summary>
+    /// Formats whose built-in reader doesn't read every file of the format: their edges are checked
+    /// (<see cref="Filee.Core.Conversion.ConversionEdge.Checked"/>), so a Word 6.0 / 95, Microsoft Works or PowerPoint 95
+    /// file takes LibreOffice when it is installed.
+    /// </summary>
+    public static bool Checked(string format) =>
+        DocReader.Formats.Contains(format, StringComparer.OrdinalIgnoreCase) || string.Equals(format, PptReader.Format, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>What the built-in reader of <paramref name="format"/> doesn't read in the file, or null.</summary>
+    public static string? Unsupported(string path, string format) =>
+        string.Equals(format, PptReader.Format, StringComparison.OrdinalIgnoreCase) ? PptReader.Unsupported(path)
+        : Checked(format) ? DocReader.Unsupported(path) : null;
+
     /// <summary>Formats read without any optional engine.</summary>
     public static IEnumerable<string> BuiltInFormats => BuiltIn.Keys;
 
@@ -140,41 +164,17 @@ internal static class DocumentReaders
         throw new NotSupportedException($"There is no document reader for {format.ToUpperInvariant()} files.");
     }
 
+    private static HDocument ReadSlides(string path, string mediaFolder) => SlideDeckText.Build(OdfDrawReader.Read(path), mediaFolder);
+
     // ───────────────────────── Pandoc ─────────────────────────
 
     private static async Task<HDocument> ReadWithPandocAsync(string path, string pandocReader, string workDirectory, string media, CancellationToken cancellationToken)
     {
         var pandoc = PandocConverter.Locate() ?? throw new InvalidOperationException("Pandoc was not found.");
-        var json = Path.Combine(workDirectory, $"ast-{Guid.NewGuid():N}.json");
-        var inputFolder = Path.GetDirectoryName(Path.GetFullPath(path))!;
-
-        // Working directory = the input's folder, so relative image paths in HTML and LaTeX resolve.
-        var result = await ProcessRunner.RunAsync(pandoc,
-            [path, "-f", pandocReader, "-t", "json", "--extract-media=" + media, "-o", json],
-            PandocTimeout, cancellationToken, workingDirectory: inputFolder);
-        if (!File.Exists(json))
-            throw new InvalidOperationException($"Pandoc failed (exit {result.ExitCode}). {result.StandardError.Trim()}");
-        var ast = JsonNode.Parse(await File.ReadAllTextAsync(json, cancellationToken))
-                  ?? throw new InvalidDataException("Pandoc produced an empty document.");
-        return PandocAstReader.Read(ast, target => ResolveImage(target, inputFolder));
-    }
-
-    /// <summary>Images extracted by Pandoc have absolute paths; HTML may use paths relative to the input.</summary>
-    private static string? ResolveImage(string target, string inputFolder)
-    {
-        if (string.IsNullOrWhiteSpace(target) || target.Contains("://", StringComparison.Ordinal))
-            return null;
-        var path = Uri.UnescapeDataString(target);
-        foreach (var candidate in new[] { path, Path.Combine(inputFolder, path) })
-        {
-            try
-            {
-                if (File.Exists(candidate))
-                    return Path.GetFullPath(candidate);
-            }
-            catch (ArgumentException) { }
-        }
-        return null;
+        var input = Path.GetFullPath(path);
+        var ast = await PandocConverter.ReadAstAsync(pandoc, input, pandocReader, media, workDirectory, cancellationToken);
+        var inputFolder = Path.GetDirectoryName(input)!;
+        return PandocAstReader.Read(ast, target => PandocConverter.Picture(target, inputFolder, media));
     }
 
     // ───────────────────────── Plain text ─────────────────────────

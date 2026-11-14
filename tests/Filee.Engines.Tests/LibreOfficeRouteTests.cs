@@ -62,15 +62,29 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 
     [Theory]
-    [InlineData("docx")]
-    [InlineData("xlsx")]
-    public void Word_and_excel_go_the_built_in_way_unless_libreoffice_is_chosen(string from)
+    [InlineData("docx", "hwpx-writer,rhwp")]
+    [InlineData("xlsx", "sheet-print")]
+    [InlineData("xls", "sheet-print")]
+    [InlineData("ods", "sheet-print")]
+    public void Word_and_excel_go_the_built_in_way_unless_libreoffice_is_chosen(string from, string builtIn)
     {
         // Issue #66 (Chinese punctuation in DOCX) and #67 (Excel print setup): a choice in Settings → Engines.
-        Assert.Equal(["hwpx-writer", "rhwp"], Planner(slides: true).Plan(from, "pdf")!.Steps.Select(s => s.Converter.Id));
+        // Spreadsheets are printed by Filee's own print engine, which beats LibreOffice's fallback but not the choice.
+        Assert.Equal(builtIn.Split(','), Planner(slides: true).Plan(from, "pdf")!.Steps.Select(s => s.Converter.Id));
 
         var chosen = from == "docx" ? Planner(slides: true, documents: true) : Planner(slides: true, sheets: true);
         Assert.Equal("libreoffice", Assert.Single(chosen.Plan(from, "pdf")!.Steps).Converter.Id);
+    }
+
+    [Fact]
+    public void Rtf_goes_to_txt_through_libreoffice()
+    {
+        // Issue #1204: through Markdown, code copied from an IDE came out full of backticks.
+        var planner = Planner(slides: false);
+
+        Assert.Equal("libreoffice", Assert.Single(planner.Plan("rtf", "txt")!.Steps).Converter.Id);
+        Assert.Equal("pandoc", Assert.Single(planner.Plan("rtf", "md")!.Steps).Converter.Id);
+        Assert.DoesNotContain(planner.Plan("rtf", "epub")!.Steps, s => s.From == "rtf" && s.To == "txt"); // not a hop
     }
 
     [Theory]
@@ -78,7 +92,6 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
     [InlineData("txt")]
     [InlineData("md")]
     [InlineData("html")]
-    [InlineData("xlsx")]
     [InlineData("pptx")]
     [InlineData("hwpx")]
     public void Text_that_needs_shaping_goes_to_libreoffice_whatever_is_chosen(string from)
@@ -92,11 +105,22 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Assert.DoesNotContain(Planner(slides: false).Plan(from, "png", shaping: true)!.Steps, s => s.Converter.Id == "rhwp");
     }
 
+    [Theory]
+    [InlineData("xlsx")]
+    [InlineData("xls")]
+    [InlineData("ods")]
+    public void Sheets_with_text_that_needs_shaping_are_printed_by_filee(string from)
+    {
+        // The print engine shapes text with HarfBuzz: Arabic or Gujarati in a sheet needs no LibreOffice.
+        Assert.Equal("sheet-print", Assert.Single(Planner(slides: false).Plan(from, "pdf", shaping: true)!.Steps).Converter.Id);
+        Assert.Equal("libreoffice", Assert.Single(Planner(slides: false, sheets: true).Plan(from, "pdf", shaping: true)!.Steps).Converter.Id);
+    }
+
     [Fact]
     public void Each_choice_moves_only_its_own_formats()
     {
         var documents = Planner(slides: false, documents: true);
-        Assert.Equal(["hwpx-writer", "rhwp"], documents.Plan("xlsx", "pdf")!.Steps.Select(s => s.Converter.Id));
+        Assert.Equal(["sheet-print"], documents.Plan("xlsx", "pdf")!.Steps.Select(s => s.Converter.Id));
         Assert.Equal(["hwpx-writer", "rhwp"], documents.Plan("pptx", "pdf")!.Steps.Select(s => s.Converter.Id));
         Assert.Equal("rhwp", Assert.Single(documents.Plan("hwp", "pdf")!.Steps).Converter.Id);
         Assert.Equal(["hwpx-writer", "rhwp"], documents.Plan("md", "pdf")!.Steps.Select(s => s.Converter.Id));

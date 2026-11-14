@@ -6,7 +6,8 @@
 //
 // Split over partial files: this one walks the package and the text, OdtReader.Styles resolves formatting and
 // OdtReader.Objects reads tables, frames and shapes. The package is read within DocumentLimits (Documents/
-// DocumentPackage); encrypted (password-protected) packages are refused.
+// DocumentPackage), the model within DocumentBudget and a count of text characters (MaxPartBytes); encrypted
+// (password-protected) packages are refused.
 
 using System.IO.Compression;
 using System.Xml;
@@ -40,7 +41,10 @@ internal sealed partial class OdtReader
     private HColumns? _pendingColumns;
     private bool _breakAfter;
     private bool _inNote;
+    private bool _inLink;
     private int _cells;
+    private int _rows;
+    private long _characters;
 
     private OdtReader(DocumentPackage package, string mediaFolder)
     {
@@ -488,7 +492,11 @@ internal sealed partial class OdtReader
             switch (name.LocalName)
             {
                 case "s":
-                    output.Add(new HText(new string(' ', Math.Clamp(Int(Attr(element, Text + "c")) ?? 1, 1, MaxSpaces)), CharFormat(text)));
+                    {
+                        var spaces = Math.Clamp(Int(Attr(element, Text + "c")) ?? 1, 1, MaxSpaces);
+                        Characters(spaces);
+                        output.Add(new HText(new string(' ', spaces), CharFormat(text)));
+                    }
                     state.Space = false;
                     break;
                 case "tab":
@@ -505,10 +513,19 @@ internal sealed partial class OdtReader
                 case "a":
                     {
                         var inner = SpanProps(text, Attr(element, Text + "style-name"));
-                        if (Attr(element, XLink + "href") is { Length: > 0 } href)
+                        // Links don't nest: a link inside one is text of the outer link.
+                        if (!_inLink && Attr(element, XLink + "href") is { Length: > 0 } href)
                         {
                             var link = new HLink(href);
-                            Inlines(element, inner, link.Content, state);
+                            _inLink = true;
+                            try
+                            {
+                                Inlines(element, inner, link.Content, state);
+                            }
+                            finally
+                            {
+                                _inLink = false;
+                            }
                             output.Add(link);
                         }
                         else
@@ -550,7 +567,7 @@ internal sealed partial class OdtReader
         }
     }
 
-    private static void AddText(List<HInline> output, string value, TextProps text, TextState state)
+    private void AddText(List<HInline> output, string value, TextProps text, TextState state)
     {
         var sb = new System.Text.StringBuilder(value.Length);
         foreach (var ch in value)
@@ -567,33 +584,63 @@ internal sealed partial class OdtReader
                 state.Space = false;
             }
         }
-        if (sb.Length > 0)
-            output.Add(new HText(sb.ToString(), CharFormat(text)));
+        if (sb.Length == 0)
+            return;
+        Characters(sb.Length);
+        output.Add(new HText(sb.ToString(), CharFormat(text)));
     }
 
-    /// <summary>Joins neighbouring text of one format (ODF splits it at spaces, spans and soft page breaks).</summary>
-    private static void Merge(List<HInline> inlines)
+    /// <summary>
+    /// Counts characters of text against <see cref="DocumentLimits.MaxPartBytes"/>: text:s stands for up to
+    /// <see cref="MaxSpaces"/> of them, and repeated table cells read their text once per copy, so a small part can
+    /// hold far more text than its size.
+    /// </summary>
+    private void Characters(int count)
     {
-        for (var i = 0; i < inlines.Count; i++)
+        _characters += count;
+        if (_characters > _budget.Limits.MaxPartBytes)
+            throw DocumentLimits.Exceeded($"The document's text is longer than {DocumentLimits.Count(_budget.Limits.MaxPartBytes)} characters.");
+    }
+
+    /// <summary>
+    /// Joins neighbouring text of one format (ODF splits it at spaces, spans and soft page breaks) and drops empty
+    /// text, in one pass: each run of text is built once.
+    /// </summary>
+    internal static void Merge(List<HInline> inlines)
+    {
+        var merged = new List<HInline>(inlines.Count);
+        HText? first = null;
+        System.Text.StringBuilder? run = null;
+        void Close()
         {
-            if (inlines[i] is HLink link)
-            {
-                Merge(link.Content);
-                continue;
-            }
-            if (inlines[i] is not HText text || text is HEquation)
-                continue;
-            if (text.Text.Length == 0)
-            {
-                inlines.RemoveAt(i--);
-                continue;
-            }
-            if (i > 0 && inlines[i - 1] is HText previous and not HEquation && previous.Format.SameLayout(text.Format))
-            {
-                inlines[i - 1] = new HText(previous.Text + text.Text, previous.Format);
-                inlines.RemoveAt(i--);
-            }
+            if (first is not null)
+                merged.Add(run is null ? first : new HText(run.ToString(), first.Format));
+            first = null;
+            run = null;
         }
+        foreach (var inline in inlines)
+        {
+            if (inline is HText text and not HEquation)
+            {
+                if (text.Text.Length == 0)
+                    continue;
+                if (first is not null && first.Format.SameLayout(text.Format))
+                {
+                    (run ??= new System.Text.StringBuilder(first.Text)).Append(text.Text);
+                    continue;
+                }
+                Close();
+                first = text;
+                continue;
+            }
+            Close();
+            if (inline is HLink link)
+                Merge(link.Content);
+            merged.Add(inline);
+        }
+        Close();
+        inlines.Clear();
+        inlines.AddRange(merged);
     }
 
     private HNote? Note(XElement element, TextProps text)

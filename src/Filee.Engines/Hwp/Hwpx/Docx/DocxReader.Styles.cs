@@ -14,6 +14,39 @@ internal sealed partial class DocxReader
     /// </summary>
     private const double WordLineToHwpPercent = 130;
 
+    /// <summary>
+    /// Word's single line height (ascent, descent and line gap, percent of the font size) of the common Latin fonts, whose
+    /// lines are lower than 130%: a page of Calibri came out 6% too tall (#510). Their metric-compatible substitutes
+    /// (Carlito, Caladea, Liberation) have the same heights. Other fonts keep <see cref="WordLineToHwpPercent"/>.
+    /// </summary>
+    private static readonly Dictionary<string, double> SingleLineHeights = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Aptos"] = 122.1,
+        ["Aptos Display"] = 122.1,
+        ["Arial"] = 115,
+        ["Book Antiqua"] = 124.3,
+        ["Calibri"] = 122.1,
+        ["Calibri Light"] = 122.1,
+        ["Cambria"] = 117.2,
+        ["Candara"] = 122.1,
+        ["Caladea"] = 117.2,
+        ["Carlito"] = 122.1,
+        ["Century Gothic"] = 122.6,
+        ["Consolas"] = 117.1,
+        ["Constantia"] = 122.1,
+        ["Corbel"] = 122.1,
+        ["Courier New"] = 113.3,
+        ["Garamond"] = 112.5,
+        ["Georgia"] = 113.6,
+        ["Liberation Mono"] = 113.3,
+        ["Liberation Sans"] = 115,
+        ["Liberation Serif"] = 115,
+        ["Tahoma"] = 120.7,
+        ["Times New Roman"] = 115,
+        ["Trebuchet MS"] = 116.1,
+        ["Verdana"] = 121.5,
+    };
+
     // ───────────────────────── Property bags ─────────────────────────
 
     /// <summary>Paragraph properties; later layers (style → numbering → direct) override earlier ones.</summary>
@@ -30,10 +63,17 @@ internal sealed partial class DocxReader
 
         public string? LineRule;
         public bool? KeepNext, KeepLines, PageBreakBefore, WidowControl, SnapToGrid;
+
+        /// <summary>w:contextualSpacing: no space between neighbouring paragraphs of the same style (Word's list styles).</summary>
+        public bool? ContextualSpacing;
+
+        /// <summary>Style the paragraph uses (set when the paragraph is resolved, not read from w:pPr).</summary>
+        public string? StyleId;
         public int? OutlineLevel;
         public string? NumId;
         public int? Ilvl;
         public List<(int Position, string Kind, string Leader)> Tabs = [];
+        public XElement? BorderLeft, BorderRight, BorderTop, BorderBottom;
 
         /// <summary>Paragraph border edges (w:pBdr: top, left, bottom, right, between) with their distance to the text in points.</summary>
         public Dictionary<string, (HBorder Border, int Space)> Borders = [];
@@ -43,6 +83,12 @@ internal sealed partial class DocxReader
 
         /// <summary>East Asian typography switches (w:kinsoku, w:wordWrap, w:overflowPunct, w:topLinePunct, w:autoSpaceDE / DN).</summary>
         public bool? Kinsoku, WordWrap, OverflowPunct, TopLinePunct, AutoSpaceDE, AutoSpaceDN;
+
+        /// <summary>
+        /// w:bidi: a right-to-left paragraph. Its w:ind left / right and w:jc left / right then name the start (right) and
+        /// the end (left) side, as w:ind start / end and w:jc start / end always do.
+        /// </summary>
+        public bool? Bidi;
 
         public ParaProps Clone()
         {
@@ -91,10 +137,18 @@ internal sealed partial class DocxReader
                 if (Twips(spacing, "line") is { } line)
                     (Line, LineRule) = (line, Attr(spacing, "lineRule") ?? "auto");
             }
+            ContextualSpacing = Toggle(pPr, "contextualSpacing") ?? ContextualSpacing;
             KeepNext = Toggle(pPr, "keepNext") ?? KeepNext;
             KeepLines = Toggle(pPr, "keepLines") ?? KeepLines;
             PageBreakBefore = Toggle(pPr, "pageBreakBefore") ?? PageBreakBefore;
             WidowControl = Toggle(pPr, "widowControl") ?? WidowControl;
+            if (pPr.Element(W + "pBdr") is { } borders)
+            {
+                BorderLeft = borders.Element(W + "left") ?? BorderLeft;
+                BorderRight = borders.Element(W + "right") ?? BorderRight;
+                BorderTop = borders.Element(W + "top") ?? BorderTop;
+                BorderBottom = borders.Element(W + "bottom") ?? BorderBottom;
+            }
             SnapToGrid = Toggle(pPr, "snapToGrid") ?? SnapToGrid;
             Kinsoku = Toggle(pPr, "kinsoku") ?? Kinsoku;
             WordWrap = Toggle(pPr, "wordWrap") ?? WordWrap;
@@ -102,6 +156,7 @@ internal sealed partial class DocxReader
             TopLinePunct = Toggle(pPr, "topLinePunct") ?? TopLinePunct;
             AutoSpaceDE = Toggle(pPr, "autoSpaceDE") ?? AutoSpaceDE;
             AutoSpaceDN = Toggle(pPr, "autoSpaceDN") ?? AutoSpaceDN;
+            Bidi = Toggle(pPr, "bidi") ?? Bidi;
             foreach (var edge in pPr.Element(W + "pBdr")?.Elements() ?? [])
             {
                 var side = edge.Name.LocalName switch
@@ -150,6 +205,13 @@ internal sealed partial class DocxReader
         /// <summary>w:w (percent) and w:position (half points).</summary>
         public int? Scale, Position;
 
+        /// <summary>w:rtl (a right-to-left run) and w:cs (complex-script formatting for every character).</summary>
+        public bool? RightToLeft, ComplexScriptRun;
+
+        /// <summary>Complex-script formatting: w:bCs, w:iCs and w:szCs (half points).</summary>
+        public bool? BoldCs, ItalicCs;
+        public int? SizeCs;
+
         public RunProps Clone() => (RunProps)MemberwiseClone();
 
         public void Apply(XElement? rPr)
@@ -172,6 +234,12 @@ internal sealed partial class DocxReader
                 Shade = ShadingColor(shd);
             if (rPr.Element(W + "sz") is { } sz && int.TryParse(Val(sz), out var halfPoints))
                 Size = halfPoints;
+            if (rPr.Element(W + "szCs") is { } szCs && int.TryParse(Val(szCs), out var complexHalfPoints))
+                SizeCs = complexHalfPoints;
+            BoldCs = Toggle(rPr, "bCs") ?? BoldCs;
+            ItalicCs = Toggle(rPr, "iCs") ?? ItalicCs;
+            RightToLeft = Toggle(rPr, "rtl") ?? RightToLeft;
+            ComplexScriptRun = Toggle(rPr, "cs") ?? ComplexScriptRun;
             if (rPr.Element(W + "spacing") is { } spacing && int.TryParse(Val(spacing), out var twips))
                 Spacing = twips;
             if (rPr.Element(W + "w") is { } scale && int.TryParse(Val(scale), out var percent))
@@ -359,11 +427,43 @@ internal sealed partial class DocxReader
         return (para, run);
     }
 
-    /// <summary>Properties of a paragraph: defaults → style chain → list level → direct formatting.</summary>
+    /// <summary>
+    /// The w:pPr and w:rPr of the table style around the cell being read (and of its conditional formatting that
+    /// reaches the cell), or null outside tables, in text boxes and in notes.
+    /// </summary>
+    private (List<XElement> PPr, List<XElement> RPr)? _tableStyleLayer;
+
+    /// <summary>
+    /// Merged properties of a paragraph style. In a table cell the table style comes between the document defaults and
+    /// the paragraph style, as in Word: Table Grid's "no space after, single line" replaces the defaults' 8 pt and 1.08
+    /// lines, but a style that sets its own spacing (Normal included) keeps it.
+    /// </summary>
+    private (ParaProps Para, RunProps Run) ParagraphStyle(string? styleId)
+    {
+        if (_tableStyleLayer is not { } layer)
+            return ResolveStyle(styleId);
+        var para = _defaultPara.Clone();
+        var run = _defaultRun.Clone();
+        foreach (var pPr in layer.PPr)
+            para.Apply(pPr);
+        foreach (var rPr in layer.RPr)
+            run.Apply(rPr);
+        if (styleId is not null && _styles.TryGetValue(styleId, out var style))
+        {
+            foreach (var current in StyleChain(style))
+            {
+                para.Apply(current.PPr);
+                run.Apply(current.RPr);
+            }
+        }
+        return (para, run);
+    }
+
+    /// <summary>Properties of a paragraph: defaults → (table style →) style chain → list level → direct formatting.</summary>
     private (ParaProps Para, RunProps Mark) ParagraphProperties(XElement? pPr)
     {
         var styleId = Val(pPr?.Element(W + "pStyle")) ?? _defaultParagraphStyle;
-        var (para, run) = ResolveStyle(styleId);
+        var (para, run) = ParagraphStyle(styleId);
 
         var direct = new ParaProps();
         direct.Apply(pPr);
@@ -382,6 +482,7 @@ internal sealed partial class DocxReader
         para.Apply(pPr);
         para.NumId = numId;
         para.Ilvl = ilvl;
+        para.StyleId = styleId;
 
         run.Apply(pPr?.Element(W + "rPr"));
         return (para, run);
@@ -412,6 +513,29 @@ internal sealed partial class DocxReader
         var name = _styles.GetValueOrDefault(Val(pPr?.Element(W + "pStyle")) ?? "")?.Name ?? "";
         return name.StartsWith("heading ", StringComparison.OrdinalIgnoreCase) &&
                int.TryParse(name.AsSpan(8), out var byName) && byName is >= 1 and <= 9 ? byName : 0;
+    }
+
+    /// <summary>The lines of a paragraph's w:pBdr, or null when it has none ("nil" turns off a style's).</summary>
+    private static HBorders? ParagraphBorders(ParaProps p)
+    {
+        static HBorder Side(XElement? edge) => edge is null ? HBorder.None : Border(edge);
+        var borders = new HBorders(Side(p.BorderLeft), Side(p.BorderRight), Side(p.BorderTop), Side(p.BorderBottom));
+        return borders is { Left.Style: HBorderStyle.None, Right.Style: HBorderStyle.None, Top.Style: HBorderStyle.None, Bottom.Style: HBorderStyle.None }
+            ? null : borders;
+    }
+
+    /// <summary>
+    /// Paragraphs with the same borders and indents side by side share one box in Word: no line between them. With 한글's
+    /// own way of saying so (connect) rhwp drew no bottom line at all, so the lines inside the box are left out.
+    /// </summary>
+    private static void JoinBorders(HParagraph previous, HParagraph next)
+    {
+        if (previous.Format.Borders is not { } above || next.Format.Borders is not { } below
+            || above.Left != below.Left || above.Right != below.Right || above.Bottom != below.Bottom
+            || previous.Format.Left != next.Format.Left || previous.Format.Right != next.Format.Right)
+            return;
+        previous.Format = previous.Format with { Borders = above with { Bottom = HBorder.None } };
+        next.Format = next.Format with { Borders = below with { Top = HBorder.None } };
     }
 
     /// <param name="fontSize">Font size of the paragraph (half points): one character of the *Chars indents.</param>
@@ -449,6 +573,9 @@ internal sealed partial class DocxReader
             KeepWithNext: p.KeepNext ?? false,
             KeepLines: p.KeepLines ?? false,
             WidowOrphan: p.WidowControl ?? true,
+            // Left to right unless w:bidi says otherwise (null: left to the style, which is left to right).
+            RightToLeft: p.Bidi,
+            Borders: ParagraphBorders(p),
             // Word measures tab stops from the left margin, 한글 from the paragraph's left indent.
             Tabs: p.Tabs.Count == 0 ? null : p.Tabs
                 .Where(t => t.Kind is not ("bar" or "num") && t.Position > (left ?? 0))
@@ -501,7 +628,8 @@ internal sealed partial class DocxReader
             OverflowPunctuation: p.OverflowPunct ?? true,
             CompressPunctuation: p.TopLinePunct ?? false,
             AutoSpaceLatin: p.AutoSpaceDE ?? true,
-            AutoSpaceDigits: p.AutoSpaceDN ?? true);
+            AutoSpaceDigits: p.AutoSpaceDN ?? true,
+            SpreadEastAsian: true);
         return new HParaLayout(lineHeight, border, breaking, SnapToGrid: p.SnapToGrid ?? true);
     }
 
@@ -528,7 +656,15 @@ internal sealed partial class DocxReader
                 WordFonts: WordFonts(r),
                 Scale: r.Scale ?? 100,
                 LetterSpacing: HwpxUnits.FromTwips(r.Spacing ?? 0),
-                Position: (r.Position ?? 0) * 50));
+                Position: (r.Position ?? 0) * 50,
+                RightToLeft: r.RightToLeft == true ? true : null,
+                ComplexScript: r.ComplexScriptRun == true ? true : null,
+                // Word draws complex-script characters (Arabic, Hebrew, Thai, the Indic scripts ...) with w:szCs, w:bCs
+                // and w:iCs, not w:sz, w:b and w:i; set here where they differ from the run's. A run without w:szCs
+                // keeps its w:sz.
+                ComplexSize: r.SizeCs is { } complexSize ? Math.Clamp(complexSize, 2, 8192) * 50 : null,
+                ComplexBold: (r.BoldCs ?? false) != (r.Bold ?? false) ? r.BoldCs ?? false : null,
+                ComplexItalic: (r.ItalicCs ?? false) != (r.Italic ?? false) ? r.ItalicCs ?? false : null));
     }
 
     /// <summary>Word's four run fonts, theme references resolved.</summary>

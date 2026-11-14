@@ -1,18 +1,19 @@
-// Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX, HWP, and the older e-book
+// Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX, HWP, DOC, and the older e-book
 // formats CHM, PDB, TCR, RB, SNB with the LZX decoder on its own) and of the PostScript writer's PDF translation:
-// seeds are written in code, DocumentFuzzer (packages), HwpFuzzer (HWP records and compound files), BinaryFuzzer
-// (binary containers) or PdfStreamFuzzer (PDF streams) changes them, and every
-// input must be read or refused with InvalidDataException /
-// ConversionRefusedException, in time. In a normal test run each reader gets a short, fixed run (the same inputs every
-// time); the nightly fuzz workflow sets FILEE_FUZZ_SECONDS for a longer run with a new random seed, and
-// FILEE_FUZZ_OUT for a folder that keeps the inputs that failed. FILEE_FUZZ_SEED repeats a run.
+// seeds are written in code, DocumentFuzzer (packages), HwpFuzzer (HWP records and compound files), DocFuzzer (DOC
+// streams), BinaryFuzzer (binary containers) or PdfStreamFuzzer (PDF streams) changes them, and every input must be
+// read or refused with InvalidDataException / ConversionRefusedException, in time. The loop is FuzzHarness's: a short,
+// fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep
+// failing inputs. Readers added later keep their own fuzz file (OdtFuzzTests, RtfFuzzTests, ...) on the same harness.
 
 using System.Globalization;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Doc;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Markup;
+using Filee.Engines.Office.Sheets;
 using static Filee.Engines.Tests.DocxBuilder;
 
 namespace Filee.Engines.Tests;
@@ -23,8 +24,6 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     /// <summary>Inputs per reader in a normal test run.</summary>
     private const int QuickIterations = 50;
 
-    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
-
     [Fact]
     public void HwpxReader_reads_or_refuses_every_mutated_package() =>
         Fuzz("hwpx", "hwpx", HwpxSeeds(), (path, media) => HwpxReader.Read(path, media));
@@ -32,6 +31,28 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void HwpxReader_for_layout_reads_or_refuses_every_mutated_package() =>
         Fuzz("hwpx-layout", "hwpx", HwpxSeeds(), (path, media) => HwpxReader.ReadForLayout(path, media));
+
+    /// <summary>한글's equation script: the parser, the walks over its tree, and the layout and its drawing.</summary>
+    [Fact]
+    public void EquationParser_reads_every_mutated_script() =>
+        Fuzz("equation", "txt", [System.Text.Encoding.UTF8.GetBytes(EquationSeed)], (path, _) =>
+        {
+            var tree = EquationParser.Parse(File.ReadAllText(path));
+            EquationScript.Script(tree);
+            EquationScript.Linear(tree);
+            EquationScript.BreakLines(tree, 20_000, 1000);
+            using var shaper = new Typesetting.Shaper();
+            var box = new Typesetting.MathLayout(new Typesetting.FontResolver(), shaper).Layout(tree, 10, SkiaSharp.SKColors.Black);
+            box.Paint(new Rendering.PageContent(200, 200), 0, 0, 1);
+        }, FuzzHarness.Text(["{", "}", "{a over b}", " over ", " atop ", "sqrt ", "root 3 of ", "rm ", "it ", "bold ", "rmA", "^", "_", " sup ",
+                        " sub ", "#", "&", "~", "`", "\"x\"", "LEFT ( ", " RIGHT )", "LEFT . ", "matrix {", "pmatrix {", "cases {", "pile {",
+                        "SUM from ", " to ", "int _", "lim from ", "hat ", "vec ", "not ", "color {1 0 0} ", "binom ", "big ", "alpha",
+                        "LEQ", "<=", "->", "...", "1.5"]));
+
+    /// <summary>A script with each kind of structure the parser reads.</summary>
+    private const string EquationSeed =
+        "f(x)= {cases{x-2&(x>2)#x+3&(x LEQ2)}} + {a+b} over {sqrt {x ^{2} _{i}}} + root 3 of {rm A} + LEFT ( SUM from {i=1} to n i RIGHT ) " +
+        "+ int _0 ^1 x dx + lim from {x -> 0} pmatrix{1&0#0&1} + vec AB + hat x + \"if\" ~ x + a atop b + pile{a#b}";
 
     [Fact]
     public void DocxReader_reads_or_refuses_every_mutated_package() =>
@@ -54,10 +75,56 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             writer.Write([.. Enumerable.Range(0, Math.Min(writer.PageCount, 4))], Path.Combine(media, "out.ps"), eps: false, media);
         }, (seed, random) => new PdfStreamFuzzer(seed, random).Next);
 
+    /// <summary>The slide reader, the slide capability check and the slide renderer on mutated decks.</summary>
+    [Fact]
+    public void Slide_reader_reads_or_refuses_every_mutated_deck() =>
+        Fuzz("pptx-slides", "pptx", SlideSeeds(), (path, _) =>
+        {
+            Slides.SlideCapabilities.FirstUnsupported(path);
+            var deck = Slides.PptxSlideReader.Read(path);
+            using var shaper = new Typesetting.Shaper();
+            using var renderer = new Slides.SlideRenderer(new Typesetting.FontResolver(), shaper);
+            foreach (var slide in deck.Slides)
+            {
+                using var bitmap = renderer.Render(deck, slide).Render(12);
+            }
+        });
+
+    /// <summary>A deck with placeholders, preset and custom shapes, a connector, a picture, a table and a group.</summary>
+    private List<byte[]> SlideSeeds()
+    {
+        var deck = new SlideDeckBuilder();
+        var picture = deck.Media(SlideDeckBuilder.TestPicture(16, 10));
+        deck.Slide(deck.Placeholder("ctrTitle", SlideDeckBuilder.Paragraph("제목")) + deck.Placeholder("subTitle", SlideDeckBuilder.Paragraph("Subtitle"), 1),
+                SlideDeckBuilder.Layout.Title)
+            .Slide(deck.Shape("wedgeRoundRectCallout", 10, 10, 200, 100, paragraphs: SlideDeckBuilder.Paragraph("Callout")) +
+                   deck.Connector("bentConnector3", 220, 10, 100, 80, "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:tailEnd type=\"triangle\"/></a:ln>") +
+                   deck.Picture("rIdPic", 10, 200, 160, 100, "<a:srcRect l=\"10000\"/>") +
+                   deck.Table(300, 200, [80, 80], 30, [SlideDeckBuilder.Cell("A") + SlideDeckBuilder.Cell("B")]) +
+                   deck.Group(500, 10, 100, 100, 0.5, deck.Shape("star5", 0, 0, 200, 200, styled: true)), SlideDeckBuilder.Layout.Content,
+                pictures: new Dictionary<string, string> { ["rIdPic"] = picture });
+        var path = deck.Save(Path.Combine(fx.NewFolder(), "seed.pptx"));
+        return [File.ReadAllBytes(path)];
+    }
+
+    [Fact]
+    public void SheetPrinter_prints_or_refuses_every_mutated_xlsx() =>
+        Fuzz("xlsx-print", "xlsx", [File.ReadAllBytes(SheetPrintTests.RichXlsx(fx.NewFolder()))],
+            (path, _) => SheetPrinter.ToPdf(XlsxReader.Read(path), SheetPrintSource.Of(path)));
+
+    [Fact]
+    public void SheetPrinter_prints_or_refuses_every_mutated_ods() =>
+        Fuzz("ods-print", "ods", [File.ReadAllBytes(SheetPrintTests.RichOds(fx.NewFolder()))],
+            (path, _) => SheetPrinter.ToPdf(OdsReader.Read(path), SheetPrintSource.Of(path)));
+
+    [Fact]
+    public void DocReader_reads_or_refuses_every_mutated_file() =>
+        Fuzz("doc", "doc", DocSeeds(), (path, media) => DocReader.Read(path, media), (seed, random) => new DocFuzzer(seed, random).Next);
+
     [Fact]
     public void ChmReader_reads_or_refuses_every_mutated_file() =>
         Fuzz("chm", "chm", [LegacyEbookBuilders.Chm(), LegacyEbookBuilders.Chm(new LegacyEbookBuilders.ChmOptions(ResetFrames: 0, WindowBits: 15))],
-            Book(ChmReader.Read), Bytes);
+            Book(ChmReader.Read), FuzzHarness.Bytes);
 
     [Fact]
     public void LzxDecoder_decodes_or_refuses_every_mutated_stream()
@@ -68,19 +135,17 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             LzxEncoder.Compress(data, new LzxEncoder.Options(16, 2)).Data,
             LzxEncoder.Compress(data, new LzxEncoder.Options(16, 2, BlockSize: 7_000, Kinds: [LzxEncoder.BlockKind.Aligned, LzxEncoder.BlockKind.Uncompressed], E8FileSize: 1_000_000)).Data,
         ];
-        Fuzz("lzx", "lzx", seeds, (path, _) => LegacyEbookTests.Decode(File.ReadAllBytes(path), 16, 2, data.Length), Bytes);
+        Fuzz("lzx", "lzx", seeds, (path, _) => LegacyEbookTests.Decode(File.ReadAllBytes(path), 16, 2, data.Length), FuzzHarness.Bytes);
     }
 
     [Fact]
     public void Legacy_e_book_readers_read_or_refuse_every_mutated_file()
     {
-        Fuzz("pdb", "pdb", [LegacyEbookBuilders.PalmDoc(LegacyEbookBuilders.StoryText), LegacyEbookBuilders.Ztxt(LegacyEbookBuilders.StoryText)], Book(PdbReader.Read), Bytes);
-        Fuzz("tcr", "tcr", [LegacyEbookBuilders.Tcr(LegacyEbookBuilders.StoryText)], Book(TcrReader.Read), Bytes);
-        Fuzz("rb", "rb", [LegacyEbookBuilders.RocketBook()], Book(RocketBookReader.Read), Bytes);
-        Fuzz("snb", "snb", [LegacyEbookBuilders.Snb()], Book(SnbReader.Read), Bytes);
+        Fuzz("pdb", "pdb", [LegacyEbookBuilders.PalmDoc(LegacyEbookBuilders.StoryText), LegacyEbookBuilders.Ztxt(LegacyEbookBuilders.StoryText)], Book(PdbReader.Read), FuzzHarness.Bytes);
+        Fuzz("tcr", "tcr", [LegacyEbookBuilders.Tcr(LegacyEbookBuilders.StoryText)], Book(TcrReader.Read), FuzzHarness.Bytes);
+        Fuzz("rb", "rb", [LegacyEbookBuilders.RocketBook()], Book(RocketBookReader.Read), FuzzHarness.Bytes);
+        Fuzz("snb", "snb", [LegacyEbookBuilders.Snb()], Book(SnbReader.Read), FuzzHarness.Bytes);
     }
-
-    private static Func<byte[]> Bytes(byte[] seed, Random random) => new BinaryFuzzer(seed, random).Next;
 
     /// <summary>An e-book reader; a refusal for DRM (or an eReader book) counts as a refusal.</summary>
     private static Action<string, string> Book(Func<string, string, HDocument> read) => (path, media) =>
@@ -98,27 +163,27 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void NotebookReader_reads_or_refuses_every_mutated_notebook() =>
         Fuzz("ipynb", "ipynb", [System.Text.Encoding.UTF8.GetBytes(NotebookTests.Analysis())], (path, media) => NotebookReader.Read(path, media),
-            JsonMutator(["{", "}", "[", "]", ",", ":", "\"cells\"", "\"source\"", "\"outputs\"", "\"cell_type\": \"code\"", "\"cell_type\": \"markdown\"",
+            FuzzHarness.Json(["{", "}", "[", "]", ",", ":", "\"cells\"", "\"source\"", "\"outputs\"", "\"cell_type\": \"code\"", "\"cell_type\": \"markdown\"",
                   "\"output_type\": \"stream\"", "\"data\"", "\"image/png\"", "\"text/html\"", "\"attachments\"", "\"worksheets\"", "\\u001b[31m",
                   "\\n", "# ", "**", "![x](attachment:chart.png)", "<table><tr><td>", "1e999"]));
 
     [Fact]
     public void OpmlReader_reads_or_refuses_every_mutated_outline() =>
         Fuzz("opml", "opml", [System.Text.Encoding.UTF8.GetBytes(OpmlTests.Plan)], (path, media) => OpmlReader.Read(path, media),
-            XmlMutator(["<outline text=\"x\">", "</outline>", "<outline/>", " type=\"link\" url=\"", " type=\"rss\" xmlUrl=\"", " _note=\"",
+            FuzzHarness.Xml(["<outline text=\"x\">", "</outline>", "<outline/>", " type=\"link\" url=\"", " type=\"rss\" xmlUrl=\"", " _note=\"",
                          "&#10;", "&lt;b&gt;", "&amp;", "<!DOCTYPE opml [<!ENTITY a \"aaaa\">]>", "&a;", "<![CDATA[", "]]>", "<head>", "<body>"]));
 
     [Fact]
     public void TextileReader_reads_or_refuses_every_mutated_page() =>
         Fuzz("textile", "textile", [System.Text.Encoding.UTF8.GetBytes(TextileTests.Page)], (path, media) => TextileReader.Read(path, media),
-            TextMutator(["h1. ", "p. ", "bq. ", "bc. ", "bc.. ", "fn1. ", "###. ", "notextile. ", "* ", "** ", "# ", "|", "|_. ", "|\\2. ",
+            FuzzHarness.Text(["h1. ", "p. ", "bq. ", "bc. ", "bc.. ", "fn1. ", "###. ", "notextile. ", "* ", "** ", "# ", "|", "|_. ", "|\\2. ",
                          "|/3. ", "table. ", "\"text\":http://x", "[\"t\":u]", "!img.png!", "[1]", "*", "_", "-", "+", "^", "~", "@", "%", "==",
                          "??", "(class)", "{color:red}", "[en]", "&#42;", "<br>", "- term := def"]));
 
     [Fact]
     public void MediaWikiReader_reads_or_refuses_every_mutated_page() =>
         Fuzz("mediawiki", "wiki", [System.Text.Encoding.UTF8.GetBytes(MediaWikiTests.Page)], (path, media) => MediaWikiReader.Read(path, media),
-            TextMutator(["{|", "|}", "|-", "|+", "!", "!!", "||", "| colspan=\"99999\" |", "rowspan=\"2147483647\"", "{{", "}}", "[[", "]]",
+            FuzzHarness.Text(["{|", "|}", "|-", "|+", "!", "!!", "||", "| colspan=\"99999\" |", "rowspan=\"2147483647\"", "{{", "}}", "[[", "]]",
                          "[[File:x.png|thumb]]", "[http://x y]", "''", "'''", "'''''", "== ", " ==", "* ", "# ", ": ", "; ", "----", "<ref>",
                          "</ref>", "<ref name=\"a\" />", "<nowiki>", "</nowiki>", "<pre>", "</pre>", "<blockquote>", "</blockquote>",
                          "<!--", "-->", "<b>", "</b>", "<sup>", "&lt;", "__TOC__", "[[Category:x]]"]));
@@ -126,7 +191,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void RstReader_reads_or_refuses_every_mutated_document() =>
         Fuzz("rst", "rst", [System.Text.Encoding.UTF8.GetBytes(RstTests.Guide)], (path, media) => RstReader.Read(path, media),
-            TextMutator(["\n", "\n\n", "    ", "  ", "=====", "-----", "~~~~", "+---+---+", "+===+", "| a | b |", "===  ===", "- ", "* ", "#. ",
+            FuzzHarness.Text(["\n", "\n\n", "    ", "  ", "=====", "-----", "~~~~", "+---+---+", "+===+", "| a | b |", "===  ===", "- ", "* ", "#. ",
                          "1. ", "(a) ", "i) ", ".. ", ".. code-block:: python\n\n   ", ".. image:: x.png", ".. note::\n\n   ", ".. [#] ",
                          ".. _t: http://x", ".. |s| replace:: x", ".. list-table::\n   :header-rows: 1\n\n   * - a\n     - b", "::", "**", "*", "``", "`",
                          "`x <http://y>`__", "name_", "[#]_", "[1]_", "|s|", ":sub:`x`", "\\", ">>> ", "| ", ":field: "]));
@@ -134,7 +199,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void OrgReader_reads_or_refuses_every_mutated_file() =>
         Fuzz("org", "org", [System.Text.Encoding.UTF8.GetBytes(OrgTests.Notes)], (path, media) => OrgReader.Read(path, media),
-            TextMutator(["\n", "\n\n", "* ", "** ", "*** ", "- ", "  - ", "1. ", "+ ", "[X] ", " :: ", "#+BEGIN_SRC\n", "#+END_SRC\n",
+            FuzzHarness.Text(["\n", "\n\n", "* ", "** ", "*** ", "- ", "  - ", "1. ", "+ ", "[X] ", " :: ", "#+BEGIN_SRC\n", "#+END_SRC\n",
                          "#+BEGIN_QUOTE\n", "#+END_QUOTE\n", "#+TITLE: ", ": ", "| a | b |\n", "|---+---|\n", "-----", "[fn:1]", "[fn::x]",
                          "[[http://x][y]]", "[[file:x.png]]", "*", "/", "_", "+", "=", "~", "^{", "_{", "}", "\\\\", ":PROPERTIES:\n", ":END:\n",
                          "SCHEDULED: ", "\u200B"]));
@@ -142,18 +207,9 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void DocBookReader_reads_or_refuses_every_mutated_article() =>
         Fuzz("dbk", "dbk", [System.Text.Encoding.UTF8.GetBytes(DocBookTests.Article)], (path, media) => DocBookReader.Read(path, media),
-            XmlMutator(["c1", "c2", "c99", "-1", "2147483647", "1000000", "loweralpha", "upperroman", "bold", "strikethrough", "#use", "use",
+            FuzzHarness.Xml(["c1", "c2", "c99", "-1", "2147483647", "1000000", "loweralpha", "upperroman", "bold", "strikethrough", "#use", "use",
                         "https://example.invalid/", "x.png", "../../etc/passwd", "monospaced", "sect9", "<!DOCTYPE article [<!ENTITY a \"a\">]>",
                         "&a;", "&nbsp;", "<section>", "</para>", "<![CDATA[x]]>"]));
-
-    /// <summary>The mutator of a text format, with the format's own tokens.</summary>
-    private static Func<byte[], Random, Func<byte[]>> TextMutator(string[] tokens) => (seed, random) => new TextFuzzer(seed, random, tokens).Next;
-
-    /// <summary>The mutator of an XML format in one file: mostly the tree, sometimes the text.</summary>
-    private static Func<byte[], Random, Func<byte[]>> XmlMutator(string[] tokens) => (seed, random) => new XmlFuzzer(seed, random, tokens).Next;
-
-    /// <summary>The mutator of a JSON format: mostly the tree, sometimes the text.</summary>
-    private static Func<byte[], Random, Func<byte[]>> JsonMutator(string[] tokens) => (seed, random) => new JsonFuzzer(seed, random, tokens).Next;
 
     // ───────────────────────── Seeds ─────────────────────────
 
@@ -163,6 +219,42 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var folder = fx.NewFolder();
         return [.. ((string[])["text-truetype", "text-type1", "text-cff", "text-type3", "images", "shadings", "patterns"])
             .Select(name => File.ReadAllBytes(PostScriptSamples.Make(name, folder)))];
+    }
+
+    /// <summary>
+    /// DOC files built in code: plain text in 8-bit pieces, and one with what the reader turns into more than text:
+    /// styles, a list, a table with a nested table, a section with a header, notes, fields, a bookmark, an inline and a
+    /// floating picture and a text box.
+    /// </summary>
+    private static List<byte[]> DocSeeds()
+    {
+        var plain = new DocBuilder { Compressed = true };
+        plain.Paragraph(DocBuilder.R("Plain text, 8-bit")).Paragraph(DocBuilder.R("둘째 문단"));
+        return [plain.Build(), RichDoc().Build()];
+    }
+
+    internal static DocBuilder RichDoc()
+    {
+        var png = TinyPng(4, 3);
+        var builder = new DocBuilder { Title = "rich", FacingPages = true };
+        var list = builder.List(7, [new DocBuilder.Level(0, "\u0000.", 1, DocBuilder.Sprm(0x845E, (short)720)), new DocBuilder.Level(23, "\uF0B7", 1, null, DocBuilder.Sprm(0x4A4F, (ushort)1))]);
+        var single = DocBuilder.Brc80(4, 1);
+        var tap = (byte[])[.. DocBuilder.DefTable([-108, 2000, 4000], [1, 2]), .. DocBuilder.Sprm(0x9602, (short)108),
+            .. DocBuilder.Sprm(0xD605, single, single, single, single, single, single), .. DocBuilder.Sprm(0x3404, (byte)1)];
+        builder.Bookmark("top", 2)
+            .Paragraph(1, [], DocBuilder.R("제목"))
+            .Paragraph(0, [.. DocBuilder.Sprm(0x460B, (short)list)], DocBuilder.R("항목 "), DocBuilder.R("굵게", DocBuilder.Sprm(0x0835, (byte)1)))
+            .Row(tap, [DocBuilder.R("병합")], [])
+            .NestedRow(2, [.. DocBuilder.DefTable([0, 1000]), .. DocBuilder.Sprm(0x9602, (short)50)], [DocBuilder.R("안쪽")])
+            .Row([.. DocBuilder.DefTable([-108, 2000, 4000]), .. DocBuilder.Sprm(0x9602, (short)108)], [DocBuilder.R("칸")], [DocBuilder.R("칸")])
+            .Paragraph(DocBuilder.R("본문"), builder.Footnote("각주"), builder.Footnote("미주", endnote: true), builder.Picture(png, 720, 540),
+                builder.TextBox(2049, "글상자"), builder.FloatingPicture(2050, png, 0, 0, 720, 540),
+                DocBuilder.R("\u0013 HYPERLINK \\l \"top\" \u0014링크\u0015 \u0013 PAGE \u00141\u0015"))
+            .EndSection([.. DocBuilder.Sprm(0x500B, (ushort)1), .. DocBuilder.Sprm(0x300A, (byte)1)], DocBuilder.R("구역 끝"))
+            .Paragraph(DocBuilder.R("다음 구역"))
+            .Header(0, 1, DocBuilder.R("머리말 "), DocBuilder.R("\u0013 PAGE \u00141\u0015"))
+            .Header(0, 3, DocBuilder.R("꼬리말"));
+        return builder;
     }
 
     /// <summary>
@@ -183,7 +275,21 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // DOCX read and written as HWPX: what Filee's own writer makes.
         var written = Path.Combine(folder, "written.hwpx");
         HwpxWriter.Write(DocxReader.Read(RichDocx(folder), Path.Combine(folder, "media-docx")), written);
-        return [File.ReadAllBytes(hangul), File.ReadAllBytes(written)];
+        // The 한글-style package with the equation seed in place of its "x over y".
+        var equation = Path.Combine(folder, "equation.hwpx");
+        File.Copy(hangul, equation);
+        using (var zip = System.IO.Compression.ZipFile.Open(equation, System.IO.Compression.ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            Assert.Contains("<hp:script>x over y</hp:script>", xml, StringComparison.Ordinal);
+            using var writer = new StreamWriter(entry.Open());
+            writer.BaseStream.SetLength(0);
+            writer.Write(xml.Replace("<hp:script>x over y</hp:script>", $"<hp:script>{System.Security.SecurityElement.Escape(EquationSeed)}</hp:script>", StringComparison.Ordinal));
+        }
+        return [File.ReadAllBytes(hangul), File.ReadAllBytes(written), File.ReadAllBytes(equation)];
     }
 
     private List<byte[]> DocxSeeds()
@@ -313,65 +419,6 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     /// <param name="name">Names the kept inputs.</param>
     /// <param name="mutator">Makes the mutated inputs of one seed; ZIP packages (DocumentFuzzer) when null.</param>
-    private void Fuzz(string name, string extension, List<byte[]> seeds, Action<string, string> read, Func<byte[], Random, Func<byte[]>>? mutator = null)
-    {
-        var seconds = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SECONDS"), out var s) && s > 0 ? s : 0;
-        var seed = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SEED"), out var fixedSeed) ? fixedSeed
-            : seconds > 0 ? Environment.TickCount : 20261028;
-        var outFolder = Environment.GetEnvironmentVariable("FILEE_FUZZ_OUT") is { Length: > 0 } o ? o : null;
-        var keep = outFolder ?? fx.NewFolder();
-        var output = TestContext.Current.TestOutputHelper;
-        output?.WriteLine($"Seed {seed}, {(seconds > 0 ? seconds + " s" : QuickIterations + " inputs per seed package")}");
-
-        var random = new Random(seed);
-        var fuzzers = seeds.Select(bytes => mutator?.Invoke(bytes, random) ?? new DocumentFuzzer(bytes, random).Next).ToList();
-        var folder = fx.NewFolder();
-        // With an output folder the input being read lives there: a crash that ends the process (a stack overflow)
-        // leaves it behind for the report. A run that ends normally removes it.
-        var input = Path.Combine(outFolder ?? folder, $"running-{name}.{extension}");
-        var media = Path.Combine(folder, "media");
-
-        // Every seed itself reads without trouble.
-        foreach (var bytes in seeds)
-        {
-            File.WriteAllBytes(input, bytes);
-            Assert.Equal(DocumentFuzzer.Outcome.Read, DocumentFuzzer.Run(() => read(input, media), ReadTimeout));
-        }
-
-        var failures = new Dictionary<string, string>();
-        var (inputs, refused) = (0, 0);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        while (seconds > 0 ? stopwatch.Elapsed < TimeSpan.FromSeconds(seconds) : inputs < QuickIterations * seeds.Count)
-        {
-            var fuzzer = fuzzers[inputs % fuzzers.Count];
-            var bytes = fuzzer();
-            inputs++;
-            File.WriteAllBytes(input, bytes);
-            if (Directory.Exists(media))
-                Directory.Delete(media, recursive: true);
-            try
-            {
-                if (DocumentFuzzer.Run(() => read(input, media), ReadTimeout) == DocumentFuzzer.Outcome.Refused)
-                    refused++;
-            }
-            catch (DocumentFuzzer.FuzzFailure failure)
-            {
-                // One input per kind of failure (exception type and the frame it came from).
-                var frame = failure.InnerException?.StackTrace?.Split('\n').FirstOrDefault()?.Trim() ?? "";
-                var kind = $"{failure.InnerException?.GetType().Name ?? "Timeout"} {frame}";
-                if (!failures.ContainsKey(kind))
-                {
-                    var kept = Path.Combine(keep, $"{name}-{seed}-{inputs}.{extension}");
-                    File.WriteAllBytes(kept, bytes);
-                    failures[kind] = $"{failure.Message} (input {kept})\n{failure.InnerException}";
-                }
-                if (failure.InnerException is null)
-                    break; // a read that hangs keeps running; don't pile them up
-            }
-        }
-        output?.WriteLine($"{inputs} inputs, {refused} refused, {inputs - refused - failures.Count} read, {failures.Count} kinds of failure");
-        if (failures.Count == 0 || failures.Keys.All(k => !k.StartsWith("Timeout", StringComparison.Ordinal)))
-            File.Delete(input); // a read that still runs holds it open
-        Assert.True(failures.Count == 0, $"Seed {seed}: " + string.Join("\n\n", failures.Values));
-    }
+    private void Fuzz(string name, string extension, List<byte[]> seeds, Action<string, string> read, Func<byte[], Random, Func<byte[]>>? mutator = null) =>
+        new FuzzHarness(fx, QuickIterations, 20261028).Files(name, extension, seeds, mutator ?? FuzzHarness.Packages, read);
 }

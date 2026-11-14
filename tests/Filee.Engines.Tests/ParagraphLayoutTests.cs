@@ -128,6 +128,59 @@ public sealed class ParagraphLayoutTests : IDisposable
             Assert.True(line.Width > 200);
     }
 
+    [Fact]
+    public void Words_east_asian_breaking_splits_chinese_between_characters_and_keeps_korean_words()
+    {
+        var word = new HLineBreaking(NonLatin: HNonLatinBreak.KeepKoreanWord, Kinsoku: true);
+        var chinese = Layout(Paragraph("中文段落没有空格也会在任意两个汉字之间换行而不是整段当作一个词。", breaking: word), 105);
+        var korean = Layout(Paragraph(Hangul, breaking: word), 180);
+
+        Assert.True(chinese.Box.Lines.Count > 2);
+        Assert.All(chinese.Box.Lines.SkipLast(1), line => Assert.Equal(10, line.End - line.Start));
+        Assert.All(korean.Box.Lines.SkipLast(1), line => Assert.Equal(' ', korean.Text[line.End - 1]));
+    }
+
+    [Fact]
+    public void Formats_resolved_against_the_template_take_words_east_asian_breaking_unless_they_say_otherwise()
+    {
+        // Markdown, HTML, ODT, RTF ... leave line breaking to the template, whose 한글 어절 would keep Chinese whole.
+        var resolver = StyleResolver.FromTemplate();
+        var breaking = resolver.Paragraph(Paragraph("中文")).Layout!.Breaking!;
+        var own = resolver.Paragraph(Paragraph("中文", breaking: new HLineBreaking(NonLatin: HNonLatinBreak.KeepWord, Kinsoku: false))).Layout!.Breaking!;
+
+        Assert.Equal((HNonLatinBreak.KeepKoreanWord, true), (breaking.NonLatin, breaking.Kinsoku));
+        Assert.Equal((HNonLatinBreak.KeepWord, false), (own.NonLatin, own.Kinsoku));
+    }
+
+    [Theory]
+    [InlineData(false, "文文文文文文文文文")]
+    [InlineData(true, "文文文文文文文文文文。")]
+    public void A_full_stop_that_does_not_fit_hangs_past_the_line_when_punctuation_may_overflow(bool overflow, string firstLine)
+    {
+        // Ten full-width characters fill the line; the full stop after them goes past it.
+        var breaking = new HLineBreaking(NonLatin: HNonLatinBreak.KeepKoreanWord, Kinsoku: true, OverflowPunctuation: overflow);
+        var (box, text) = Layout(Paragraph(new string('文', 10) + "。" + new string('字', 5), breaking: breaking), 105);
+
+        Assert.Equal(firstLine, text[box.Lines[0].Start..box.Lines[0].End]);
+        Assert.Equal(2, box.Lines.Count);
+        Assert.NotEqual('。', text[box.Lines[1].Start]);
+    }
+
+    [Theory]
+    [InlineData("文文文文文文文文文文。文文文文", "文文文文文文文文文")]
+    [InlineData("文文文文文文文文文「文」文文文", "文文文文文文文文文")]
+    public void A_word_broken_inside_keeps_kinsoku(string paragraph, string firstLine)
+    {
+        // 한글's 어절 makes the whole run one word, longer than the line: it breaks where the East Asian rules allow.
+        var (box, text) = Layout(Paragraph(paragraph, breaking: new HLineBreaking(NonLatin: HNonLatinBreak.KeepWord, Kinsoku: true)), 105);
+        var plain = Layout(Paragraph(paragraph, breaking: new HLineBreaking(NonLatin: HNonLatinBreak.KeepWord)), 105);
+
+        Assert.Equal(firstLine, text[box.Lines[0].Start..box.Lines[0].End]);
+        Assert.Equal(paragraph, string.Concat(box.Lines.Select(l => text[l.Start..l.End])));
+        // Without kinsoku (한글's own paragraphs) the line is cut where it overflows, as before.
+        Assert.Equal(10, plain.Box.Lines[0].End);
+    }
+
     // ───────────────────────── Alignment and indents ─────────────────────────
 
     [Theory]

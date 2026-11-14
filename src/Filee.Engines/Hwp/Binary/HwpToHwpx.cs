@@ -67,8 +67,14 @@ internal sealed partial class HwpToHwpx
     /// <summary>The part being written.</summary>
     private XmlWriter _x = null!;
 
-    /// <summary>Embedded binaries by their BinData id.</summary>
+    /// <summary>Embedded binaries by the index of their BinData record (1-based), which pictures name.</summary>
     private readonly Dictionary<int, BinItem> _bins = [];
+
+    /// <summary>
+    /// The embedded binaries to write, one per stream: records that name the same stream share its item, so a stream
+    /// is read (and inflated) once however many records name it.
+    /// </summary>
+    private readonly Dictionary<(int Id, string Extension, bool Compressed, bool Picture), BinItem> _binStreams = [];
 
     /// <summary>Master page parts written so far: manifest id → XML.</summary>
     private readonly List<(string Id, byte[] Xml)> _masterPages = [];
@@ -86,17 +92,7 @@ internal sealed partial class HwpToHwpx
     public static void Write(HwpFile file, string output)
     {
         var writer = new HwpToHwpx(file);
-        var temp = output + ".tmp";
-        try
-        {
-            using (var stream = File.Create(temp))
-                writer.WritePackage(stream);
-            File.Move(temp, output, overwrite: true);
-        }
-        finally
-        {
-            File.Delete(temp);
-        }
+        OutputFile.Write(output, writer.WritePackage);
     }
 
     // ───────────────────────── Package ─────────────────────────
@@ -130,7 +126,7 @@ internal sealed partial class HwpToHwpx
         }
 
         var binaries = new List<BinItem>();
-        foreach (var bin in _bins.Values.OrderBy(b => b.Id))
+        foreach (var bin in _binStreams.Values.OrderBy(b => b.Id))
         {
             if (_file.BinData($"BIN{bin.Id:X4}.{bin.Extension}", bin.Compressed) is not { } bytes)
                 continue; // missing or damaged: pictures referring to it are left out by the reader

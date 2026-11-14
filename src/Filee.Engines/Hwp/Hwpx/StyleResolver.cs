@@ -5,8 +5,10 @@
 // the file: a paragraph starts from its style's paragraph shape (Normal, "Heading n", or the footnote style inside
 // notes), the members the model sets replace the style's, and list items get the indentation the writer gives them.
 // Character formats work the same way on the style's character shape, including links (blue and underlined unless
-// coloured) and the per-language slots the writer fills from Font / EastAsianFont / Spacing. Rendering detail the
-// source set (HParaLayout, HCharLayout) wins over the style's.
+// coloured) and the per-language slots the writer fills from Font / EastAsianFont / Spacing, and spaces as wide as the
+// font makes them (the writer turns 한글's "글꼴에 어울리는 빈칸" on). Rendering detail the source set (HParaLayout,
+// HCharLayout) wins over the style's. Lines break as Word breaks them, not by the template's 한글 어절 setting: Chinese
+// and Japanese text between any two characters with kinsoku, Korean between words; a source can say otherwise.
 
 using System.Xml;
 using System.Xml.Linq;
@@ -30,8 +32,18 @@ internal sealed class StyleResolver
     private readonly HwpxReader _shapes;
     private readonly HwpxWriter.TemplateStyles _styles;
 
+    /// <summary>
+    /// Line breaking of the formats resolved here (Word and the others that aren't 한글's) over the template's 어절, which
+    /// would keep a Chinese or Japanese sentence without spaces together as one word.
+    /// </summary>
+    private static readonly HParaLayout OtherFormats = new(Breaking: new HLineBreaking(NonLatin: HNonLatinBreak.KeepKoreanWord, Kinsoku: true));
+
     private StyleResolver(XElement head)
     {
+        // As the writer writes the template's character shapes (HwpxWriter.Header): spaces as wide as the font makes
+        // them, as in Word, not 한글's half a character.
+        foreach (var shape in head.Descendants(head.Name.Namespace + "charPr"))
+            shape.SetAttributeValue("useFontSpace", 1);
         _shapes = HwpxReader.ForHeader(head);
         _styles = HwpxWriter.FindStyles(head);
     }
@@ -106,7 +118,7 @@ internal sealed class StyleResolver
         }
 
         // The source's own line rule wins; else the one its writer-side spacing stands for; else the style's.
-        var layout = (format.Layout ?? new HParaLayout()).Over(shape.Layout);
+        var layout = (format.Layout ?? new HParaLayout()).Over(OtherFormats.Over(shape.Layout));
         if (format.Layout?.LineHeight is null && format.LineSpacing is { } spacing)
             layout = layout with { LineHeight = HLineHeight.From(spacing) };
         return resolved with { RightToLeft = format.RightToLeft ?? false, Layout = layout };

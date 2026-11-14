@@ -2,6 +2,7 @@
 // restriction, used as a separate process) to list, unpack and create archives, and turns its messages into clear
 // errors. 7-Zip installed on the system is never used.
 
+using System.Globalization;
 using System.Text;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
@@ -16,6 +17,9 @@ internal sealed record SevenZipEntry(string Path, bool IsFolder, long Size, bool
 {
     /// <summary>Unix mode or attribute string of the entry, used to spot links that carry no target field.</summary>
     public string? Mode { get; init; }
+
+    /// <summary>Modification time (UTC) when the listing gives one.</summary>
+    public DateTime? Modified { get; init; }
 
     /// <summary>True for symbolic links, which Filee never unpacks (they could point anywhere).</summary>
     public bool IsSymbolicLink => !string.IsNullOrEmpty(SymbolicLink)
@@ -62,11 +66,14 @@ internal sealed class SevenZip(string executable)
     /// <summary>
     /// Unpacks every entry of <paramref name="archive"/> except <paramref name="exclude"/> into
     /// <paramref name="outputDirectory"/>. Clashing names ("A.txt" and "a.txt" on Windows) are renamed, not overwritten.
+    /// On Windows the archive's Mark of the Web goes onto every unpacked file (-snz), as Explorer does.
     /// </summary>
     public async Task ExtractAsync(string archive, string outputDirectory, IReadOnlyCollection<string> exclude,
         string workDirectory, CancellationToken cancellationToken)
     {
         List<string> args = ["x", "-y", "-aou", "-sccUTF-8", "-scsUTF-8", "-bsp0", "-bb0", NoPassword, "-o" + Path.GetFullPath(outputDirectory)];
+        if (OperatingSystem.IsWindows())
+            args.Add("-snz");
         if (exclude.Count > 0)
         {
             // A list file keeps unusual names intact; -spd turns off wildcard matching so "*" in a name is literal.
@@ -80,6 +87,25 @@ internal sealed class SevenZip(string executable)
         if (result.ExitCode is 0 or 1 || result.ExitCode == 2 && OnlyLinkErrors(result))
             return;
         throw Failure(archive, result);
+    }
+
+    /// <summary>
+    /// Writes what a single-stream archive holds (.gz, .bz2, .xz …, or the .tar of a .tar.gz) to
+    /// <paramref name="destination"/> as 7-Zip unpacks it, and stops 7-Zip once more than <paramref name="maxBytes"/>
+    /// come out: their headers state no size, or one their author chose. Returns the number of bytes written.
+    /// </summary>
+    /// <param name="tooLarge">The error for more than <paramref name="maxBytes"/>; by default the lying-header one.</param>
+    public async Task<long> DecodeAsync(string archive, Stream destination, long maxBytes, Func<Exception>? tooLarge,
+        CancellationToken cancellationToken)
+    {
+        long written = 0;
+        var result = await ProcessRunner.RunWithOutputAsync(Executable,
+            ["x", "-so", "-sccUTF-8", "-bsp0", "-bb0", NoPassword, "--", Path.GetFullPath(archive)],
+            (output, ct) => written = ArchiveFiles.CopyLimited(output, destination, maxBytes, ct, tooLarge: tooLarge),
+            Timeout, cancellationToken);
+        if (result.ExitCode is not (0 or 1))
+            throw Failure(archive, result);
+        return written;
     }
 
     /// <summary>
@@ -157,10 +183,18 @@ internal sealed class SevenZip(string executable)
                 Field("Hard Link"))
             {
                 Mode = Field("Mode") ?? Field("Attributes"),
+                Modified = ParseTime(Field("Modified")),
             });
             fields = null;
         }
     }
+
+    /// <summary>7-Zip's "2026-11-04 16:45:59" (local time, sometimes with a fraction of a second) as UTC.</summary>
+    private static DateTime? ParseTime(string? value) =>
+        DateTime.TryParseExact(value, ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm:ss.FFFFFFF"], CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeLocal | DateTimeStyles.AdjustToUniversal, out var time)
+            ? time
+            : null;
 
     private Task<ProcessResult> RunAsync(IEnumerable<string> arguments, CancellationToken cancellationToken) =>
         ProcessRunner.RunAsync(Executable, arguments, Timeout, cancellationToken);

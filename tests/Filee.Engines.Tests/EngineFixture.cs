@@ -44,7 +44,7 @@ public sealed class EngineFixture : IDisposable
     public static string MakeImage(string folder, string name, MagickFormat format, uint width = 320, uint height = 200)
     {
         using var image = new MagickImage("gradient:#7F77DD-#1D9E75", width, height);
-        image.Alpha(AlphaOption.Set);
+        image.Alpha(AlphaAction.Set);
         // Punch a fully transparent 40×40 hole in the top-left corner (RGBA = 0).
         using (var pixels = image.GetPixels())
             pixels.SetArea(0, 0, 40, 40, new byte[40 * 40 * image.ChannelCount]);
@@ -64,9 +64,10 @@ public sealed class EngineFixture : IDisposable
         return path;
     }
 
-    public async Task<ConversionJob> ConvertAsync(IReadOnlyList<string> sources, Preset preset)
+    /// <param name="catalog">Other engines than <see cref="Catalog"/>, e.g. one of them set up differently.</param>
+    public async Task<ConversionJob> ConvertAsync(IReadOnlyList<string> sources, Preset preset, ConverterCatalog? catalog = null)
     {
-        await using var queue = new JobQueue(Catalog, EngineRegistry.FindPdfMerger(Converters),
+        await using var queue = new JobQueue(catalog ?? Catalog, EngineRegistry.FindPdfMerger(Converters),
             combiner: EngineRegistry.FindFileCombiner(Converters), tiffMerger: EngineRegistry.FindTiffMerger(Converters),
             mediaJoiner: EngineRegistry.FindMediaJoiner(Converters));
         var job = new ConversionJob(sources, preset, preset.Name);

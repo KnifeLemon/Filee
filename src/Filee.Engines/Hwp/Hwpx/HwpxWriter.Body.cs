@@ -44,7 +44,7 @@ internal sealed partial class HwpxWriter
         }
         if (secPr.Element(Hp + "visibility") is { } visibility)
         {
-            visibility.SetAttributeValue("hideFirstHeader", section.HideFirstHeader ? 1 : 0);
+            visibility.SetAttributeValue("hideFirstHeader", section.HideFirstHeader || section.FirstPageHeader is not null ? 1 : 0);
             visibility.SetAttributeValue("hideFirstFooter", section.HideFirstFooter ? 1 : 0);
         }
         secPr.Element(Hp + "startNum")?.SetAttributeValue("page", section.StartPageNumber ?? 0);
@@ -54,22 +54,55 @@ internal sealed partial class HwpxWriter
         var paperHeight = (int?)pagePr?.Attribute("height") ?? 84190;
         var landscape = (string?)pagePr?.Attribute("landscape") == "NARROWLY";
         var textWidth = Math.Max(2000, (landscape ? paperHeight : paperWidth) - Margin("left", 7200) - Margin("right", 7200) - Margin("gutter", 0));
+        _base = (_normalStyleId, _normalParaPrId, _normalCharPrId);
+
+        // The header area is as tall as the header, as in Word. rhwp also stops at the end of the area, which left out a
+        // table after an empty paragraph in a header with little room above the body (issue #1152).
+        if (section.HeaderMovesBody && section.Headers.Count > 0)
+            margin?.SetAttributeValue("header", Math.Max(Margin("header", 4250), section.Headers.Max(h => EstimateHeight(h.Blocks, textWidth))));
         _pageLeft = Margin("left", 7200) + Margin("gutter", 0);
         _pageTop = Margin("top", 4255) + Margin("header", 4250);
 
         var setup = new StringBuilder();
         setup.Append(Inner(secPr));
         setup.Append("<hp:ctrl>").Append(ColumnDefinition(section.Columns)).Append("</hp:ctrl>");
+        // rhwp goes by this control, not by startNum, for a section that restarts its page numbers.
+        if (section.StartPageNumber is { } startPage)
+            setup.Append($"<hp:ctrl><hp:newNum num=\"{startPage}\" numType=\"PAGE\"/></hp:ctrl>");
 
-        _base = (_normalStyleId, _normalParaPrId, _normalCharPrId);
         _width = textWidth;
         var controlId = 1;
+        var later = new Dictionary<HBlock, string>();
+        void Add(HHeaderFooter item, string control)
+        {
+            if (item.StartsAt is { } paragraph)
+                later[paragraph] = later.GetValueOrDefault(paragraph) + control;
+            else
+                setup.Append(control);
+        }
         foreach (var header in section.Headers)
-            setup.Append(HeaderFooter("header", header, controlId++, textWidth, Margin("header", 4250), "TOP"));
+            Add(header, HeaderFooter("header", header, controlId++, textWidth, Margin("header", 4250), "TOP"));
         foreach (var footer in section.Footers)
-            setup.Append(HeaderFooter("footer", footer, controlId++, textWidth, Margin("footer", 2240), "BOTTOM"));
+            Add(footer, HeaderFooter("footer", footer, controlId++, textWidth, Margin("footer", 2240), "BOTTOM"));
 
         _width = ColumnWidth(textWidth, section.Columns);
+
+        // 한글 has no header for the first page only: it is a text box at the header's place, anchored in the section's
+        // first paragraph, and the other header is hidden there. The text below goes around it, as Word moves the body.
+        if (section.FirstPageHeader is { } firstPageHeader)
+        {
+            var box = new HTextBox
+            {
+                Width = textWidth,
+                Height = EstimateHeight(firstPageHeader, textWidth),
+                Anchor = new HAnchor("PAPER", "LEFT", _pageLeft, "PAPER", "TOP", Margin("top", 4255), "TOP_AND_BOTTOM", true),
+                Line = HBorder.None,
+                Padding = new HInsets(0, 0, 0, 0),
+            };
+            box.Blocks.AddRange(firstPageHeader);
+            setup.Append(TextBox(box));
+        }
+
         var body = new StringBuilder(SectionOpenTag());
         var blocks = section.Blocks.Count == 0 || section.Blocks[0] is not HParagraph
             ? section.Blocks.Prepend(new HParagraph()).ToList()
@@ -78,7 +111,8 @@ internal sealed partial class HwpxWriter
         {
             if (blocks[i] is HParagraph { ColumnsChange: { } columns })
                 _width = ColumnWidth(textWidth, columns);
-            body.Append(Block(blocks[i], i == 0 ? $"<hp:run charPrIDRef=\"{_normalCharPrId}\">{setup}</hp:run>" : null));
+            var controls = (i == 0 ? setup.ToString() : "") + later.GetValueOrDefault(blocks[i]);
+            body.Append(Block(blocks[i], controls.Length > 0 ? $"<hp:run charPrIDRef=\"{_normalCharPrId}\">{controls}</hp:run>" : null));
         }
         return body.Append("</hs:sec>").ToString();
     }
@@ -350,37 +384,94 @@ internal sealed partial class HwpxWriter
     }
 
     /// <summary>
+    /// Grid positions (rows × columns) a table written by the document writers may have. Far above real tables; a
+    /// small file can declare a span of thousands of columns on each of thousands of rows, which every writer that
+    /// keeps a rectangular grid (ODT, the layout) would have to fill.
+    /// </summary>
+    internal const long MaxTableCells = 10_000_000;
+
+    /// <summary>
     /// Grid position of every cell: explicit cell columns (DOCX) or the next free position (Pandoc), skipping
-    /// positions covered by cells spanning rows from above.
+    /// positions covered by cells spanning rows from above. Spans are clamped to the table (its last row, and
+    /// <see cref="Documents.DocumentLimits.MaxTableColumns"/> columns) on the cells themselves, so every writer
+    /// reading them afterwards stays inside the grid; a table of more than <see cref="MaxTableCells"/> positions is
+    /// refused. Covered positions are tracked per column (the first row a cell placed so far leaves free), so a span
+    /// costs its columns, not its rows × columns.
     /// </summary>
     internal static (List<List<(HCell Cell, int Column)>> Placed, int Columns) PlaceCells(HTable table)
     {
-        var placed = new List<List<(HCell, int)>>();
-        var occupied = new HashSet<(int Row, int Column)>();
-        var columnCount = table.ColumnCount;
-        for (var r = 0; r < table.Rows.Count; r++)
+        var maxColumns = Documents.DocumentLimits.Default.MaxTableColumns;
+        var rows = table.Rows.Count;
+        var columnCount = Math.Clamp(table.ColumnCount, 0, maxColumns);
+        CheckTableSize(rows, columnCount);
+        var placed = new List<List<(HCell, int)>>(rows);
+        var freeFrom = new List<int>(); // per column: the first row no cell placed so far covers
+        // Within the row being placed: from a taken column, where the next free one may be (valid while jumpRow is
+        // that row). Keeps a search past many taken columns from being repeated cell after cell.
+        var jump = new List<int>();
+        var jumpRow = new List<int>();
+        long positions = 0;
+        for (var r = 0; r < rows; r++)
         {
             var row = new List<(HCell, int)>();
             var column = 0;
             foreach (var cell in table.Rows[r].Cells)
             {
                 if (cell.Column >= 0)
-                    column = cell.Column;
-                while (occupied.Contains((r, column)))
-                    column++;
-                for (var dr = 0; dr < cell.RowSpan; dr++)
+                    column = Math.Min(cell.Column, maxColumns - 1);
+                column = FirstFree(column, r);
+                var rowSpan = Math.Clamp(cell.RowSpan, 1, rows - r);
+                var colSpan = Math.Clamp(cell.ColSpan, 1, Math.Max(1, maxColumns - column));
+                (cell.RowSpan, cell.ColSpan) = (rowSpan, colSpan);
+                // Only cells running over each other cover more positions than the grid has.
+                positions += colSpan;
+                if (positions > MaxTableCells)
+                    throw TableTooLarge();
+                while (freeFrom.Count < column + colSpan)
                 {
-                    for (var dc = 0; dc < cell.ColSpan; dc++)
-                        occupied.Add((r + dr, column + dc));
+                    freeFrom.Add(0);
+                    jump.Add(0);
+                    jumpRow.Add(-1);
                 }
+                for (var c = column; c < column + colSpan; c++)
+                    freeFrom[c] = Math.Max(freeFrom[c], r + rowSpan);
                 row.Add((cell, column));
-                column += cell.ColSpan;
-                columnCount = Math.Max(columnCount, column);
+                column += colSpan;
+                if (column > columnCount)
+                {
+                    columnCount = column;
+                    CheckTableSize(rows, columnCount);
+                }
             }
             placed.Add(row);
         }
         return (placed, Math.Max(1, columnCount));
+
+        // The first column from `from` on that row r has free; follows (and then shortens) the jumps of this row.
+        int FirstFree(int from, int r)
+        {
+            var c = from;
+            while (c < freeFrom.Count && freeFrom[c] > r)
+                c = jumpRow[c] == r ? jump[c] : c + 1;
+            for (var at = from; at < c;)
+            {
+                var next = jumpRow[at] == r ? jump[at] : at + 1;
+                (jump[at], jumpRow[at]) = (c, r);
+                at = next;
+            }
+            return c;
+        }
     }
+
+    /// <summary>Refuses a table of more than <see cref="MaxTableCells"/> grid positions.</summary>
+    internal static void CheckTableSize(long rows, long columns)
+    {
+        if (rows * columns > MaxTableCells)
+            throw TableTooLarge();
+    }
+
+    private static Filee.Core.Conversion.ConversionRefusedException TableTooLarge() =>
+        Documents.DocumentLimits.Exceeded($"A table has more than {Documents.DocumentLimits.Count(MaxTableCells)} cells (rows × columns).");
 
     /// <summary>Column widths that fit <paramref name="available"/>: absolute (scaled down if too wide), relative or equal.</summary>
     internal static int[] ColumnWidths(HTable table, int columns, int available)

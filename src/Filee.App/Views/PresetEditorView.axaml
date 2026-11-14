@@ -5,6 +5,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels"
+             xmlns:upscale="using:Filee.Engines.Upscale"
+             xmlns:v="using:Filee.App.Views"
              x:Class="Filee.App.Views.PresetEditorView"
              x:DataType="vm:PresetEditorViewModel">
   <UserControl.Styles>
@@ -25,6 +27,15 @@
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
   </UserControl.Styles>
+  <UserControl.Resources>
+    <!-- An OCR language: its own name, and the size of its download while it needs one. -->
+    <DataTemplate x:Key="OcrLanguageItem" x:DataType="vm:IChoice">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding Detail}" Margin="12,0,0,0" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+      </DockPanel>
+    </DataTemplate>
+  </UserControl.Resources>
   <StackPanel Spacing="14">
     <!-- Name + target -->
     <Grid ColumnDefinitions="*,12,*">
@@ -34,9 +45,13 @@
         <TextBlock Classes="caption danger" Text="{Binding NameError}" IsVisible="{Binding NameError, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
       <StackPanel Grid.Column="2">
-        <TextBlock Classes="label" Text="{DynamicResource presets.target}" />
-        <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding Target}"
-                  IsEnabled="{Binding CanChangeTarget}"
+        <TextBlock Classes="label" Text="{DynamicResource presets.target}" IsVisible="{Binding ShowConversionOutput}" />
+        <TextBlock Classes="label" Text="{DynamicResource presets.copy_action}" IsVisible="{Binding IsCopyToFolder}" />
+        <ComboBox x:Name="CopyActionBox" ItemsSource="{Binding CopyActions}" SelectedItem="{Binding CopyAction}" IsVisible="{Binding IsCopyToFolder}"
+                  HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.copy_action}" />
+        <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding TargetSelection}"
+                  PlaceholderText="{Binding HiddenTarget}"
+                  IsEnabled="{Binding CanChangeTarget}" IsVisible="{Binding !IsCopyToFolder}"
                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.target}">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="vm:IChoice">
@@ -47,8 +62,12 @@
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
+        <TextBlock Classes="caption" Text="{Binding HiddenTargetNote}" TextWrapping="Wrap" IsVisible="{Binding HiddenTargetNote, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
     </Grid>
+
+    <!-- The slice on the donut: icon, short name, what it shows -->
+    <v:SliceLabelFieldsView DataContext="{Binding Labels}" />
 
     <!-- Live / Motion Photo of a video (JPG, HEIC): the kind on a row of its own, so its names are never cut off -->
     <Border x:Name="LivePhotoCard" Classes="card" IsVisible="{Binding ShowLivePhotoChoice}" Padding="14">
@@ -110,6 +129,11 @@
             <TextBlock Classes="label" Text="{DynamicResource presets.quality}" />
           </DockPanel>
           <Slider Minimum="1" Maximum="100" Value="{Binding Quality}" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource presets.quality}" />
+          <!-- #1353: a small window asks for the quality of the pictures dropped on the donut, with the size they come to. -->
+          <StackPanel Spacing="2" IsVisible="{Binding ShowAskCompressionImage}">
+            <CheckBox x:Name="AskCompressionImage" Content="{DynamicResource presets.ask_compression}" IsChecked="{Binding AskCompression}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.ask_compression_hint}" IsVisible="{Binding AskCompression}" />
+          </StackPanel>
         </StackPanel>
         <!-- File size range (#553, #662): both ends in one unit; the preset keeps megabytes. -->
         <StackPanel IsVisible="{Binding ShowQuality}" Spacing="4">
@@ -126,6 +150,9 @@
                       AutomationProperties.Name="{DynamicResource presets.size_unit}" />
           </Grid>
           <TextBlock Classes="caption danger" Text="{Binding SizeRangeError}" IsVisible="{Binding SizeRangeError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+          <!-- #1270: the picture keeps its size, only the quality goes down; without a maximum there is nothing to fit. -->
+          <CheckBox Name="MaxSizeKeepsPixels" Content="{DynamicResource presets.keep_pixels}" IsChecked="{Binding MaxSizeKeepsPixels}" IsEnabled="{Binding HasImageMaxSize}"
+                    ToolTip.Tip="{DynamicResource presets.keep_pixels_hint}" AutomationProperties.Name="{DynamicResource presets.keep_pixels}" />
         </StackPanel>
         <Grid ColumnDefinitions="*,12,*">
           <StackPanel>
@@ -148,10 +175,17 @@
                clipped a three-digit size to its first digit, so width and height each get the whole row. -->
           <StackPanel Grid.Column="2" IsVisible="{Binding ShowCustom}">
             <TextBlock Classes="label" Text="{DynamicResource presets.width}" />
-            <NumericUpDown Value="{Binding CustomWidth}" Minimum="16" Maximum="16384" Increment="10" FormatString="0" ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource presets.width}" />
+            <NumericUpDown Name="CustomWidth" Value="{Binding CustomWidth}" Minimum="16" Maximum="16384" Increment="10" FormatString="0" ShowButtonSpinner="False" HorizontalContentAlignment="Center"
+                           ToolTip.Tip="{DynamicResource presets.custom_size_empty_hint}" AutomationProperties.Name="{DynamicResource presets.width}" />
             <TextBlock Classes="label" Margin="0,8,0,0" Text="{DynamicResource presets.height}" />
-            <NumericUpDown Value="{Binding CustomHeight}" Minimum="16" Maximum="16384" Increment="10" FormatString="0" ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource presets.height}" />
+            <NumericUpDown Name="CustomHeight" Value="{Binding CustomHeight}" Minimum="16" Maximum="16384" Increment="10" FormatString="0" ShowButtonSpinner="False" HorizontalContentAlignment="Center"
+                           ToolTip.Tip="{DynamicResource presets.custom_size_empty_hint}" AutomationProperties.Name="{DynamicResource presets.height}" />
             <CheckBox Content="{DynamicResource presets.lock_aspect}" IsChecked="{Binding LockAspect}" Margin="0,8,0,0" AutomationProperties.Name="{DynamicResource presets.lock_aspect}" />
+            <!-- #1270: with the shape kept, the box can be a maximum that leaves smaller pictures as they are. -->
+            <CheckBox Name="ShrinkOnly" Content="{DynamicResource presets.never_enlarge}" IsChecked="{Binding ShrinkOnly}" IsVisible="{Binding LockAspect}"
+                      ToolTip.Tip="{DynamicResource presets.never_enlarge_hint}" AutomationProperties.Name="{DynamicResource presets.never_enlarge}" />
+            <TextBlock Classes="caption danger" Margin="0,4,0,0" TextWrapping="Wrap" Text="{Binding CustomSizeError}"
+                       IsVisible="{Binding CustomSizeError, Converter={x:Static ObjectConverters.IsNotNull}}" />
           </StackPanel>
           <StackPanel Grid.Column="2" IsVisible="{Binding ShowMinShortEdge}">
             <TextBlock Classes="label" Text="{DynamicResource presets.min_short_edge}" />
@@ -239,6 +273,76 @@
       </StackPanel>
     </Border>
 
+    <!-- Translation options -->
+    <Border x:Name="TranslateCard" Classes="card" IsVisible="{Binding ShowTranslate}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.group.translate}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.translate_hint}" />
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel Grid.Column="0">
+            <TextBlock Classes="label" Text="{DynamicResource presets.target_language}" />
+            <ComboBox ItemsSource="{Binding TranslationLanguageChoices}" SelectedItem="{Binding TargetLanguage}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.target_language}" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
+            <Button Classes="secondary" Command="{Binding TestTranslationCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsTestingTranslation}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="⚡" />
+                <TextBlock Text="{DynamicResource presets.test_connection}" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+        <Border IsVisible="{Binding TestTranslationResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                Background="{DynamicResource CardBackground}" CornerRadius="6" Padding="10,8">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="✓" Foreground="#10b981" FontWeight="Bold" IsVisible="{Binding !TestTranslationHasError}" />
+            <TextBlock Text="⚠" Foreground="#f59e0b" FontWeight="Bold" IsVisible="{Binding TestTranslationHasError}" />
+            <TextBlock Text="{Binding TestTranslationResult}" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
+    <!-- Upscale options -->
+    <Border x:Name="UpscaleCard" Classes="card" IsVisible="{Binding ShowUpscale}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource preset.upscale}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource engines.package.upscayl-bin.description}" />
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel Grid.Column="0" Spacing="4">
+            <TextBlock Classes="label" Text="{DynamicResource upscale.model}" />
+            <ComboBox ItemsSource="{Binding UpscaleModels}" SelectedItem="{Binding SelectedUpscaleModel}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="upscale:UpscaleModel">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                    <TextBlock Classes="caption" Text="{Binding License, StringFormat='({0})'}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Grid.Column="2" Spacing="4">
+            <DockPanel LastChildFill="False">
+              <TextBlock DockPanel.Dock="Left" Classes="label" Text="{DynamicResource upscale.scale}" />
+              <TextBlock DockPanel.Dock="Right" FontWeight="SemiBold" Text="{Binding UpscaleScale, StringFormat='{}{0}×'}" />
+            </DockPanel>
+            <Slider Minimum="2" Maximum="4" Value="{Binding UpscaleScale}" TickFrequency="1" IsSnapToTickEnabled="True" />
+          </StackPanel>
+        </Grid>
+        <Border Background="{DynamicResource CardBackground}" CornerRadius="6" Padding="10,8"
+                IsVisible="{Binding SelectedUpscaleModel, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <StackPanel Spacing="4">
+            <DockPanel LastChildFill="False">
+              <TextBlock DockPanel.Dock="Left" FontWeight="SemiBold" Text="{Binding SelectedUpscaleModel.Name}" />
+              <TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding SelectedUpscaleModel.Author}" />
+            </DockPanel>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding SelectedUpscaleModel.Description}" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
     <!-- Video & audio options -->
     <Border x:Name="MediaCard" Classes="card" IsVisible="{Binding ShowMedia}" Padding="14">
       <StackPanel Spacing="10">
@@ -252,6 +356,27 @@
           </Grid>
           <CheckBox Content="{DynamicResource presets.crossfade}" IsChecked="{Binding Crossfade}"
                     ToolTip.Tip="{DynamicResource presets.crossfade_hint}" />
+        </StackPanel>
+        <StackPanel IsVisible="{Binding ShowCropFrame}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.crop_frame}" />
+          <ComboBox ItemsSource="{Binding CropFrames}" SelectedItem="{Binding CropFrame}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.crop_frame}" />
+        </StackPanel>
+        <!-- Video → video: one video, or parts every so many seconds or minutes, or equal parts, copied as they are (#1259) -->
+        <StackPanel x:Name="VideoOutputPanel" Spacing="8" IsVisible="{Binding ShowVideoSplit}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.video_output}" />
+            <ComboBox x:Name="VideoOutput" ItemsSource="{Binding VideoOutputChoices}" SelectedItem="{Binding VideoOutput}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource presets.video_output}" />
+          </StackPanel>
+          <StackPanel Spacing="2" IsVisible="{Binding ShowVideoParts}">
+            <Grid ColumnDefinitions="*,12,*">
+              <NumericUpDown x:Name="VideoSplitSize" Value="{Binding VideoSplitSize}" Minimum="1" Maximum="86400" Increment="1" FormatString="0"
+                             AutomationProperties.Name="{DynamicResource presets.video_parts}" />
+              <ComboBox x:Name="VideoSplitKind" Grid.Column="2" ItemsSource="{Binding VideoSplitKinds}" SelectedItem="{Binding VideoSplitKind}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="{DynamicResource presets.video_parts}" />
+            </Grid>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.video_parts_hint}" />
+          </StackPanel>
         </StackPanel>
         <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowMediaQuality}">
           <StackPanel>
@@ -267,9 +392,13 @@
         <!-- Two per row, whichever apply to the target: hidden ones leave no gap. -->
         <UniformGrid Columns="2" ColumnSpacing="12" RowSpacing="10">
           <StackPanel IsVisible="{Binding ShowVideoMaxSize}">
-            <TextBlock Classes="label" Text="{DynamicResource presets.max_size}" />
-            <NumericUpDown Value="{Binding VideoMaxSizeMb}" Minimum="0" Maximum="4096" Increment="1" FormatString="0.#"
-                           ToolTip.Tip="{DynamicResource presets.max_size_hint_video}" AutomationProperties.Name="{DynamicResource presets.max_size}" />
+            <TextBlock Classes="label" Text="{DynamicResource presets.size_limit}" />
+            <Grid ColumnDefinitions="*,8,Auto">
+              <NumericUpDown Value="{Binding VideoMaxSize}" Minimum="0" Maximum="{Binding VideoSizeMaximum}" Increment="{Binding VideoSizeIncrement}" FormatString="{Binding VideoSizeFormat}"
+                             ToolTip.Tip="{DynamicResource presets.max_size_hint_video}" AutomationProperties.Name="{DynamicResource presets.size_limit}" />
+              <ComboBox Grid.Column="2" ItemsSource="{Binding VideoSizeUnits}" SelectedItem="{Binding VideoSizeUnitChoice}"
+                        AutomationProperties.Name="{DynamicResource presets.size_unit}" />
+            </Grid>
           </StackPanel>
           <StackPanel IsVisible="{Binding ShowVideoCodec}">
             <TextBlock Classes="label" Text="{DynamicResource presets.video_codec}" />
@@ -298,7 +427,21 @@
             <TextBlock Classes="label" Text="{DynamicResource presets.wav_format}" />
             <ComboBox ItemsSource="{Binding WavFormats}" SelectedItem="{Binding WavFormat}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.wav_format}" />
           </StackPanel>
+          <StackPanel IsVisible="{Binding ShowRingtone}">
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_start}" />
+            <NumericUpDown Value="{Binding RingtoneStart}" Minimum="0" Maximum="86400" Increment="1" FormatString="0.##" AutomationProperties.Name="{DynamicResource presets.ringtone_start}" />
+          </StackPanel>
+          <StackPanel IsVisible="{Binding ShowRingtone}">
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_length}" />
+            <NumericUpDown Value="{Binding RingtoneLength}" Minimum="1" Maximum="40" Increment="1" FormatString="0.##" AutomationProperties.Name="{DynamicResource presets.ringtone_length}" />
+          </StackPanel>
         </UniformGrid>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_hint}" IsVisible="{Binding ShowRingtone}" />
+        <!-- #1353: a small window asks for the quality or bitrate of the files dropped on the donut. -->
+        <StackPanel Spacing="2" IsVisible="{Binding ShowAskCompressionMedia}">
+          <CheckBox x:Name="AskCompressionMedia" Content="{DynamicResource presets.ask_compression}" IsChecked="{Binding AskCompression}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.ask_compression_hint}" IsVisible="{Binding AskCompression}" />
+        </StackPanel>
         <StackPanel Spacing="2" IsVisible="{Binding ShowHardwareEncoding}">
           <CheckBox Content="{DynamicResource presets.hardware_encoding}" IsChecked="{Binding HardwareEncoding}" />
           <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.hardware_encoding_hint}" />
@@ -397,8 +540,59 @@
       <StackPanel Spacing="10">
         <TextBlock Classes="h2" Text="{DynamicResource presets.group.pdf}" />
         <CheckBox Content="{DynamicResource presets.merge}" IsChecked="{Binding Merge}" IsVisible="{Binding ShowPdfBuild}" />
-        <CheckBox Content="{DynamicResource presets.split}" IsChecked="{Binding SplitPages}" IsVisible="{Binding ShowPdfSplit}" />
+        <CheckBox x:Name="SourceBookmarks" IsChecked="{Binding SourceBookmarks}" IsVisible="{Binding ShowSourceBookmarks}">
+          <TextBlock Text="{DynamicResource presets.source_bookmarks}" TextWrapping="Wrap" />
+        </CheckBox>
+        <!-- PDF → PDF: one PDF, one file per page, or several pages per file (#1259) -->
+        <StackPanel x:Name="PageOutputPanel" Spacing="8" IsVisible="{Binding ShowPdfSplit}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.page_output}" />
+            <ComboBox x:Name="PageOutput" ItemsSource="{Binding PageOutputChoices}" SelectedItem="{Binding PageOutput}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource presets.page_output}" />
+          </StackPanel>
+          <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowPageGroups}">
+            <NumericUpDown x:Name="GroupSize" Value="{Binding GroupSize}" Minimum="2" Maximum="9999" Increment="1" FormatString="0"
+                           AutomationProperties.Name="{DynamicResource pages.groups}" />
+            <ComboBox x:Name="GroupKind" Grid.Column="2" ItemsSource="{Binding GroupKinds}" SelectedItem="{Binding GroupKind}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource pages.groups}" />
+          </Grid>
+        </StackPanel>
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.document_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
+        <!-- "Pages per sheet" (#737): several pages on each sheet -->
+        <StackPanel Spacing="10" IsVisible="{Binding ShowSheets}">
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.pages_per_sheet}" />
+              <ComboBox ItemsSource="{Binding SheetLayouts}" SelectedItem="{Binding PagesPerSheet}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.pages_per_sheet}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_paper}" />
+              <ComboBox ItemsSource="{Binding SheetPapers}" SelectedItem="{Binding SheetPaper}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_paper}" />
+            </StackPanel>
+          </Grid>
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_orientation}" />
+              <ComboBox ItemsSource="{Binding SheetOrientations}" SelectedItem="{Binding SheetOrientation}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_orientation}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_order}" />
+              <ComboBox ItemsSource="{Binding SheetOrders}" SelectedItem="{Binding SheetOrder}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_order}" />
+            </StackPanel>
+          </Grid>
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_margin}" />
+              <NumericUpDown Value="{Binding SheetMarginMm}" Minimum="0" Maximum="50" Increment="1" FormatString="0" AutomationProperties.Name="{DynamicResource presets.sheet_margin}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_gap}" />
+              <NumericUpDown Value="{Binding SheetGapMm}" Minimum="0" Maximum="50" Increment="1" FormatString="0" AutomationProperties.Name="{DynamicResource presets.sheet_gap}" />
+            </StackPanel>
+          </Grid>
+          <CheckBox Content="{DynamicResource presets.sheet_borders}" IsChecked="{Binding SheetBorders}" />
+        </StackPanel>
         <!-- PDF → PDF: make the file smaller -->
         <StackPanel Spacing="2" IsVisible="{Binding ShowPdfCompression}">
           <Grid ColumnDefinitions="*,12,*">
@@ -408,6 +602,11 @@
             </StackPanel>
           </Grid>
           <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_compression_hint}" />
+          <!-- #1353: a small window asks for the level of the PDFs dropped on the donut, with the size they come to. -->
+          <StackPanel Spacing="2" Margin="0,6,0,0" IsVisible="{Binding ShowAskCompressionPdf}">
+            <CheckBox x:Name="AskCompressionPdf" Content="{DynamicResource presets.ask_compression}" IsChecked="{Binding AskCompression}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.ask_compression_hint}" IsVisible="{Binding AskCompression}" />
+          </StackPanel>
           <StackPanel Spacing="2" Margin="0,6,0,0" IsVisible="{Binding ShowPdfCompressionOptions}">
             <CheckBox Content="{DynamicResource presets.pdf_ghostscript}" IsChecked="{Binding CompressWithGhostscript}" />
             <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.pdf_ghostscript_hint}" />
@@ -422,18 +621,40 @@
             <StackPanel>
               <TextBlock Classes="label" Text="{DynamicResource presets.ocr_language}" />
               <ComboBox ItemsSource="{Binding OcrLanguageChoices}" SelectedItem="{Binding OcrLanguage}" HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.ocr_language}">
-                <ComboBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:IChoice">
-                    <DockPanel>
-                      <TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding Detail}" Margin="12,0,0,0" VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                    </DockPanel>
-                  </DataTemplate>
-                </ComboBox.ItemTemplate>
-              </ComboBox>
+                        HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.ocr_language}"
+                        ItemTemplate="{StaticResource OcrLanguageItem}" />
             </StackPanel>
           </Grid>
+          <!-- Text that mixes languages (#1123) -->
+          <StackPanel Spacing="4" Margin="28,6,0,0" IsVisible="{Binding Ocr}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.ocr_more_languages}" />
+            <ItemsControl ItemsSource="{Binding MoreOcrLanguages}" IsVisible="{Binding HasMoreOcrLanguages}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:IChoice">
+                  <DockPanel>
+                    <Button DockPanel.Dock="Right" Classes="icon danger" ToolTip.Tip="{DynamicResource presets.ocr_remove_language}" AutomationProperties.Name="{DynamicResource presets.ocr_remove_language}"
+                            Command="{Binding $parent[ItemsControl].((vm:PresetEditorViewModel)DataContext).RemoveOcrLanguageCommand}" CommandParameter="{Binding}">
+                      <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
+                    </Button>
+                    <TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding Detail}" Margin="12,0,4,0" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  </DockPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Grid ColumnDefinitions="*,8,Auto">
+              <ComboBox ItemsSource="{Binding OcrLanguagesToAdd}" SelectedItem="{Binding OcrLanguageToAdd}" HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" PlaceholderText="{DynamicResource presets.ocr_add_language}"
+                        AutomationProperties.Name="{DynamicResource presets.ocr_more_languages}" ItemTemplate="{StaticResource OcrLanguageItem}" />
+              <Button Grid.Column="2" Command="{Binding AddOcrLanguageCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" />
+                  <TextBlock Text="{DynamicResource group.add}" />
+                </StackPanel>
+              </Button>
+            </Grid>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ocr_languages_hint}" IsVisible="{Binding HasMoreOcrLanguages}" />
+          </StackPanel>
         </StackPanel>
         <StackPanel Spacing="2" IsVisible="{Binding ShowPdfCombine}">
           <CheckBox Content="{DynamicResource presets.combine_pages}" IsChecked="{Binding CombinePages}" />
@@ -472,9 +693,14 @@
           </StackPanel>
           <StackPanel Grid.Column="2">
             <TextBlock Classes="label" Text="{DynamicResource presets.page_range}" />
-            <TextBox Text="{Binding PageRange}" PlaceholderText="{DynamicResource presets.page_range_hint}" />
+            <TextBox Text="{Binding PageRange}" PlaceholderText="{DynamicResource presets.page_range_hint}"
+                     AutomationProperties.Name="{DynamicResource presets.page_range}" />
+            <!-- #981: a small window asks for the pages of each PDF dropped on the donut. -->
+            <CheckBox x:Name="AskPages" Margin="0,6,0,0" Content="{DynamicResource presets.ask_pages}" IsChecked="{Binding AskPageRange}"
+                      IsVisible="{Binding ShowAskPages}" />
           </StackPanel>
         </Grid>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ask_pages_hint}" IsVisible="{Binding ShowAskPagesHint}" />
         <CheckBox Content="{DynamicResource presets.pdfa}" IsChecked="{Binding PdfA}" IsVisible="{Binding ShowDocument}" />
         <!-- Finishing of every PDF the preset writes: watermark, page numbers, password -->
         <StackPanel Spacing="10" IsVisible="{Binding ShowPdfBuild}">
@@ -510,6 +736,8 @@
       </StackPanel>
     </Border>
 
+    <TextBlock Text="{Binding CopyHint}" IsVisible="{Binding IsCopyToFolder}" TextWrapping="Wrap" />
+
     <!-- Output -->
     <Border Classes="card" Padding="14">
       <StackPanel Spacing="10">
@@ -524,6 +752,8 @@
             <ComboBox ItemsSource="{Binding Conflicts}" SelectedItem="{Binding Conflict}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.conflict}" />
           </StackPanel>
         </Grid>
+        <TextBlock Classes="caption danger" Text="{Binding DestinationError}" TextWrapping="Wrap"
+                   IsVisible="{Binding DestinationError, Converter={x:Static ObjectConverters.IsNotNull}}" />
         <StackPanel IsVisible="{Binding ShowSubfolder}">
           <TextBlock Classes="label" Text="{DynamicResource presets.subfolder}" />
           <TextBox Text="{Binding SubfolderName}" PlaceholderText="converted" AutomationProperties.Name="{DynamicResource presets.subfolder}" />
@@ -537,16 +767,16 @@
             <TextBox Text="{Binding CustomFolder}" AutomationProperties.Name="{DynamicResource presets.custom_folder}" />
           </DockPanel>
         </StackPanel>
-        <StackPanel>
+        <StackPanel IsVisible="{Binding ShowConversionOutput}">
           <TextBlock Classes="label" Text="{DynamicResource presets.pattern}" />
           <TextBox Text="{Binding Pattern}" PlaceholderText="{}{name}" />
           <TextBlock Classes="caption" Text="{DynamicResource presets.pattern_hint}" Margin="2,4,0,0" />
         </StackPanel>
-        <CheckBox Content="{DynamicResource presets.keep_dates}" IsChecked="{Binding KeepDates}"
+        <CheckBox IsVisible="{Binding ShowConversionOutput}" Content="{DynamicResource presets.keep_dates}" IsChecked="{Binding KeepDates}"
                   ToolTip.Tip="{DynamicResource presets.keep_dates_hint}" />
         <CheckBox Content="{DynamicResource presets.zip_result}" IsChecked="{Binding ZipResult}" IsVisible="{Binding ShowZipResult}"
                   ToolTip.Tip="{DynamicResource presets.zip_result_hint}" />
-        <StackPanel>
+        <StackPanel IsVisible="{Binding ShowReplaceOriginal}">
           <CheckBox Content="{DynamicResource presets.replace_original}" IsChecked="{Binding ReplaceOriginal}" />
           <TextBlock Classes="caption" Text="{DynamicResource presets.replace_original_hint}" TextWrapping="Wrap"
                      IsVisible="{Binding ReplaceOriginal}" Margin="28,2,0,0" />

@@ -15,14 +15,23 @@
 // Drawing: pictures with their crop inside their inner margin, under their outline (EMF / WMF as vector drawing); rectangles (rounded by their corner ratio), ellipses, lines, polygons, curves and
 // arcs with their fill (a colour or a linear gradient) and outline (solid, dashed, dotted, dash-dot or double, at its
 // width), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
-// their padding, at the top, middle or bottom. Curves go smoothly through their points; arcs run counterclockwise
-// from their first axis point to the second. Text in a text box is not rotated, and pictures' effects (shadow, glow,
-// soft edge, reflection) are left out. A caption goes its gap below, above or beside the object (as wide as the
-// object, or its own width beside it).
+// their padding, at the top, middle or bottom, turned with the box (not mirrored). Curves go smoothly through their
+// points; arcs run counterclockwise from their first axis point to the second. WordArt (Word's watermarks) is a text
+// box whose text is stretched over the box and see-through (HTextArt). Pictures take their colour changes (washout,
+// grey scale, black and white, transparency); their other effects (shadow, glow, soft edge, reflection) are left out.
+// A caption goes its gap below, above or beside the object (as wide as the object, or its own width beside it).
 //
-// Text wrap: lines on 한글's stored layout already leave the room 한글 left for the objects beside or above them.
-// Wrapping text that is laid out anew around objects is not done yet.
+// Text wrap: lines on 한글's stored layout already leave the room 한글 left for the objects beside or above them. Lines
+// laid out anew go around them (PageComposer.Room): below an object text goes above and below (TOP_AND_BOTTOM), and
+// beside one it goes around (SQUARE; Word's tight and through wraps too) on both sides, its left or right side only or
+// its wider side (TextFlow), a row of text taking a part in each stretch. Each keeps its distance from the text (its
+// outer margin: 한글 outMargin, Word distT / distB / distL / distR); a tight or through wrap's polygon narrows a line
+// to the outline's width at the line's height. Objects behind or in front of the text leave it as it is.
+//
+// Pictures are decoded only when their codec reports at most DocumentLimits.MaxPicturePixels (Image), also those whose
+// header PictureSize can't read (an ICO or other container holding a larger picture).
 
+using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Metafiles;
 using Filee.Engines.Rendering;
@@ -44,7 +53,63 @@ internal readonly record struct AnchorFrame(SKRect Paper, SKRect Page, SKRect Co
 /// <param name="Sequence">Its place in the document, for objects of one z-order.</param>
 internal sealed record PlacedObject(HInline Object, SKRect Area, string Wrap, int Order, int Sequence)
 {
+    private const float Epsilon = 0.01f;
+
     public bool Behind => Wrap == "BEHIND_TEXT";
+
+    /// <summary>The sides of it text goes on (HAnchor.TextFlow).</summary>
+    public string Flow { get; init; } = "BOTH_SIDES";
+
+    /// <summary>The distance it keeps from the text around it on each side, in points.</summary>
+    public SKRect Distance { get; init; }
+
+    /// <summary>Its wrap polygon on the page (HAnchor.WrapPolygon), or null.</summary>
+    public SKPoint[]? Outline { get; init; }
+
+    private SKRect? _bounds;
+
+    /// <summary>The room it keeps text out of: its outline's box (else its area) with its distance around it.</summary>
+    public SKRect Bounds => _bounds ??= Room();
+
+    private SKRect Room()
+    {
+        var box = Area;
+        if (Outline is { Length: > 0 } outline)
+            box = new SKRect(outline.Min(p => p.X), outline.Min(p => p.Y), outline.Max(p => p.X), outline.Max(p => p.Y));
+        return new SKRect(box.Left - Distance.Left, box.Top - Distance.Top, box.Right + Distance.Right, box.Bottom + Distance.Bottom);
+    }
+
+    /// <summary>
+    /// How far across the object keeps text out of the band from <paramref name="top"/> to <paramref name="bottom"/>:
+    /// its bounds' sides, or with an outline the outline's widest part in the band (its distance added); null when the
+    /// band passes above or below it.
+    /// </summary>
+    public (float Left, float Right)? Across(float top, float bottom)
+    {
+        var bounds = Bounds;
+        if (bounds.Top >= bottom - Epsilon || bounds.Bottom <= top + Epsilon)
+            return null;
+        if (Outline is not { Length: >= 3 } outline)
+            return (bounds.Left, bounds.Right);
+        // The outline's edges clipped to the band, widened by the distance above and below the object.
+        var (from, to) = (top - Distance.Bottom, bottom + Distance.Top);
+        var (left, right) = (float.PositiveInfinity, float.NegativeInfinity);
+        for (var i = 0; i < outline.Length; i++)
+        {
+            var (a, b) = (outline[i], outline[(i + 1) % outline.Length]);
+            if (Math.Max(a.Y, b.Y) < from || Math.Min(a.Y, b.Y) > to)
+                continue;
+            float x0 = a.X, x1 = b.X;
+            if (Math.Abs(b.Y - a.Y) > Epsilon)
+            {
+                var t0 = Math.Clamp((from - a.Y) / (b.Y - a.Y), 0, 1);
+                var t1 = Math.Clamp((to - a.Y) / (b.Y - a.Y), 0, 1);
+                (x0, x1) = (a.X + (b.X - a.X) * t0, a.X + (b.X - a.X) * t1);
+            }
+            (left, right) = (Math.Min(left, Math.Min(x0, x1)), Math.Max(right, Math.Max(x0, x1)));
+        }
+        return left <= right ? (left - Distance.Left, right + Distance.Right) : null;
+    }
 }
 
 internal static class FloatingObjects
@@ -115,6 +180,67 @@ internal static class FloatingObjects
             yield return (ZOrder(item), piece, anchor.Wrap == "BEHIND_TEXT");
         }
     }
+
+    /// <summary>An object placed at <paramref name="area"/> on its page by its anchor, with what text wrap needs of it.</summary>
+    public static PlacedObject Placed(HInline item, HAnchor anchor, SKRect area, int sequence)
+    {
+        var margin = item is HObject floating ? floating.OuterMargin : default;
+        static float Points(int hwpunit) => Math.Max(0, hwpunit / 100f);
+        SKPoint[]? outline = null;
+        if (anchor is { Wrap: "SQUARE", WrapPolygon: { Count: >= 3 } polygon })
+            outline = [.. polygon.Select(p => new SKPoint(area.Left + (float)p.X * area.Width, area.Top + (float)p.Y * area.Height))];
+        return new PlacedObject(item, area, anchor.Wrap, ZOrder(item), sequence)
+        {
+            Flow = anchor.TextFlow,
+            Distance = new SKRect(Points(margin.Left), Points(margin.Top), Points(margin.Right), Points(margin.Bottom)),
+            Outline = outline,
+        };
+    }
+
+    /// <summary>
+    /// The stretches between <paramref name="left"/> and <paramref name="right"/>, left to right, that a line from
+    /// <paramref name="top"/> down <paramref name="height"/> has beside the objects text goes around beside them
+    /// (SQUARE), on the sides each lets text go: both, its left or right only, or its wider side within the edges.
+    /// Null when none of them is beside the line.
+    /// </summary>
+    /// <param name="objects">Objects by the top of their bounds (others are passed over).</param>
+    /// <param name="below">Where the first of the objects beside the line ends (its bounds' bottom).</param>
+    public static List<(float Start, float End)>? Beside(IReadOnlyList<PlacedObject> objects, float left, float right, float top, float height,
+        out float below)
+    {
+        below = float.PositiveInfinity;
+        List<(float Start, float End)>? spans = null;
+        foreach (var item in objects)
+        {
+            if (item.Bounds.Top >= top + height - Epsilon)
+                break;
+            if (item.Wrap != "SQUARE" || item.Across(top, top + height) is not var (start, end) || end <= left + Epsilon || start >= right - Epsilon)
+                continue;
+            spans ??= [(left, right)];
+            below = Math.Min(below, item.Bounds.Bottom);
+            var (cutFrom, cutTo) = item.Flow switch
+            {
+                "LEFT_ONLY" => (start, float.PositiveInfinity),
+                "RIGHT_ONLY" => (float.NegativeInfinity, end),
+                "LARGEST_ONLY" => start - left >= right - end ? (start, float.PositiveInfinity) : (float.NegativeInfinity, end),
+                _ => (start, end),
+            };
+            for (var i = spans.Count - 1; i >= 0; i--)
+            {
+                var (from, to) = spans[i];
+                if (cutTo <= from || cutFrom >= to)
+                    continue;
+                spans.RemoveAt(i);
+                if (cutTo < to)
+                    spans.Insert(i, (cutTo, to));
+                if (cutFrom > from)
+                    spans.Insert(i, (from, cutFrom));
+            }
+        }
+        return spans;
+    }
+
+    private const float Epsilon = 0.01f;
 
     /// <summary>An object's z-order (higher in front); 0 when it has none.</summary>
     public static int ZOrder(HInline item) => item switch
@@ -195,23 +321,109 @@ internal static class FloatingObjects
             case HTextBox box:
                 page.Draw(canvas => Transformed(canvas, box.Transform, area, () => Shape(canvas, box.Shape, box.Geometry, box.CornerRatio,
                     box.Fill, box.Gradient, box.Line, area, false, false)));
-                var padding = box.Padding;
-                var inner = new SKRect(area.Left + padding.Left / 100f, area.Top + padding.Top / 100f,
-                    area.Right - padding.Right / 100f, area.Bottom - padding.Bottom / 100f);
-                var pieces = stack(box.Blocks, Math.Max(1, inner.Width));
-                var height = pieces.Count == 0 ? 0 : pieces.Max(p => p.Top + p.Height - p.Below);
-                var top = inner.Top + box.VerticalAlign switch
-                {
-                    HVerticalAlign.Center => Math.Max(0, (inner.Height - height) / 2),
-                    HVerticalAlign.Bottom => Math.Max(0, inner.Height - height),
-                    _ => 0,
-                };
-                foreach (var piece in pieces)
-                    piece.Draw(page, inner.Left, top + piece.Top);
+                TextBoxText(page, box, area, stack);
                 break;
         }
         if (item is HObject { Caption: { } caption })
             Caption(page, caption, area, stack);
+    }
+
+    /// <summary>
+    /// Draws a text box's paragraphs inside its padding, turned with the box about its centre. WordArt that fits its box
+    /// is laid out with room for its lines whatever their length, then stretched so the lines' width and height fill the
+    /// box; WordArt's text is as see-through as its fill.
+    /// </summary>
+    private static void TextBoxText(PageContent page, HTextBox box, SKRect area, Func<IReadOnlyList<HBlock>, float, List<Piece>> stack)
+    {
+        var padding = box.Padding;
+        var inner = new SKRect(area.Left + padding.Left / 100f, area.Top + padding.Top / 100f,
+            area.Right - padding.Right / 100f, area.Bottom - padding.Bottom / 100f);
+        var art = box.TextArt;
+        var fit = art is { Fit: true };
+        var pieces = stack(box.Blocks, fit ? Math.Max(inner.Width, ArtWidth) : Math.Max(1, inner.Width));
+        var height = pieces.Count == 0 ? 0 : pieces.Max(p => p.Top + p.Height - p.Below);
+        var top = inner.Top + box.VerticalAlign switch
+        {
+            HVerticalAlign.Center => Math.Max(0, (inner.Height - height) / 2),
+            HVerticalAlign.Bottom => Math.Max(0, inner.Height - height),
+            _ => 0,
+        };
+        var text = new PageContent(page.Width, page.Height);
+        foreach (var piece in pieces)
+            piece.Draw(text, inner.Left, top + piece.Top);
+        var matrix = SKMatrix.Identity;
+        if (fit && pieces.Count > 0 && Across(text) is var (left, right))
+        {
+            var (upper, lower) = (top + pieces.Min(p => p.Top), top + height);
+            if (right - left > 0.01f && lower - upper > 0.01f)
+            {
+                matrix = SKMatrix.CreateTranslation(inner.Left, inner.Top)
+                    .PreConcat(SKMatrix.CreateScale(inner.Width / (right - left), inner.Height / (lower - upper)))
+                    .PreConcat(SKMatrix.CreateTranslation(-left, -upper));
+            }
+        }
+        if (box.Transform is { Rotation: not 0 } turned)
+            matrix = SKMatrix.CreateRotationDegrees((float)turned.Rotation, area.MidX, area.MidY).PreConcat(matrix);
+        if (art is { Opacity: < 1 } seeThrough)
+            text = Faded(text, seeThrough.Opacity);
+        page.Add(text, matrix);
+    }
+
+    /// <summary>The width WordArt that fits its box is laid out in, so that none of its lines wrap.</summary>
+    private const float ArtWidth = 20000;
+
+    /// <summary>How far the glyphs drawn on <paramref name="layer"/> reach across (with their advances); null for none.</summary>
+    private static (float Left, float Right)? Across(PageContent layer)
+    {
+        var (left, right) = (float.MaxValue, float.MinValue);
+        foreach (var item in layer.Items)
+        {
+            if (item is not GlyphItem { Run: { Glyphs.Length: > 0 } run })
+                continue;
+            using var font = new SKFont(run.Font.Typeface, run.Size) { ScaleX = run.ScaleX, LinearMetrics = true, Subpixel = true };
+            var widths = font.GetGlyphWidths(run.Glyphs);
+            for (var i = 0; i < run.Glyphs.Length; i++)
+            {
+                left = Math.Min(left, run.Positions[i].X);
+                right = Math.Max(right, run.Positions[i].X + widths[i]);
+            }
+        }
+        return left < right ? (left, right) : null;
+    }
+
+    /// <summary><paramref name="layer"/> drawn <paramref name="opacity"/> (0..1) opaque: its glyphs' colour and its other drawing.</summary>
+    private static PageContent Faded(PageContent layer, double opacity)
+    {
+        var alpha = (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
+        var faded = new PageContent(layer.Width, layer.Height);
+        foreach (var item in layer.Items)
+        {
+            switch (item)
+            {
+                case GlyphItem { Run: var run }:
+                    faded.DrawGlyphs(run with { Color = run.Color.WithAlpha((byte)(run.Color.Alpha * alpha / 255)) });
+                    break;
+                case DrawingItem { Drawing: var drawing }:
+                    faded.Draw(canvas =>
+                    {
+                        using var paint = new SKPaint { Color = SKColors.Black.WithAlpha(alpha) };
+                        canvas.SaveLayer(paint);
+                        drawing(canvas);
+                        canvas.Restore();
+                    });
+                    break;
+                case UrlLinkItem link:
+                    faded.LinkToUrl(link.Area, link.Url);
+                    break;
+                case DestinationLinkItem link:
+                    faded.LinkToDestination(link.Area, link.Name);
+                    break;
+                case DestinationItem destination:
+                    faded.Destination(destination.Point, destination.Name);
+                    break;
+            }
+        }
+        return faded;
     }
 
     /// <summary>
@@ -254,6 +466,26 @@ internal static class FloatingObjects
         canvas.Restore();
     }
 
+    /// <summary>
+    /// The picture in the file at <paramref name="path"/>, decoded when it is drawn; null when there is no such file, no
+    /// codec reads it, or the codec reports more than <see cref="DocumentLimits.MaxPicturePixels"/> (read from the
+    /// codec before anything is decoded, so a container whose header PictureSize can't read is held to it too).
+    /// </summary>
+    internal static SKImage? Image(string path)
+    {
+        if (!File.Exists(path))
+            return null;
+        using var data = SKData.Create(path);
+        if (data is null)
+            return null;
+        using (var codec = SKCodec.Create(data))
+        {
+            if (codec is null || (long)codec.Info.Width * codec.Info.Height > DocumentLimits.Default.MaxPicturePixels)
+                return null;
+        }
+        return SKImage.FromEncodedData(data);
+    }
+
     private static void Picture(SKCanvas canvas, HImage picture, SKRect area)
     {
         if (!File.Exists(picture.Path))
@@ -263,16 +495,60 @@ internal static class FloatingObjects
         {
             // EMF / WMF (clip art, OLE previews): replayed as vector drawing, so a PDF keeps its lines and text sharp.
             using var drawing = Metafile.TryLoad(picture.Path);
+            using var effects = EffectsPaint(picture.Effects);
+            if (effects is not null)
+                canvas.SaveLayer(area, effects);
             drawing?.Draw(canvas, area, (crop.Left, crop.Top, crop.Right, crop.Bottom));
+            if (effects is not null)
+                canvas.Restore();
             return;
         }
-        using var image = SKImage.FromEncodedData(picture.Path);
+        using var image = Image(picture.Path);
         if (image is null)
             return;
         var source = new SKRect(
             (float)(crop.Left * image.Width), (float)(crop.Top * image.Height),
             (float)((1 - crop.Right) * image.Width), (float)((1 - crop.Bottom) * image.Height));
-        canvas.DrawImage(image, source, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+        using var paint = EffectsPaint(picture.Effects);
+        canvas.DrawImage(image, source, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear), paint);
+    }
+
+    /// <summary>
+    /// A paint that draws a picture with its colour changes: grey scale (Rec. 709 luminance, also before black and
+    /// white), then contrast, brightness and the black and white threshold on each channel, and its opacity; null when
+    /// there are none.
+    /// </summary>
+    internal static SKPaint? EffectsPaint(HPictureEffects? effects)
+    {
+        if (effects is null || effects.IsEmpty)
+            return null;
+        SKColorFilter? filter = null;
+        if (effects.Grayscale || effects.BlackAndWhite is not null)
+        {
+            const float R = 0.2126f, G = 0.7152f, B = 0.0722f;
+            filter = SKColorFilter.CreateColorMatrix([R, G, B, 0, 0, R, G, B, 0, 0, R, G, B, 0, 0, 0, 0, 0, 1, 0]);
+        }
+        if (effects.Contrast != 1 || effects.Brightness != 0 || effects.BlackAndWhite is not null)
+        {
+            var table = new byte[256];
+            var same = new byte[256];
+            for (var i = 0; i < 256; i++)
+            {
+                var value = Math.Clamp((i / 255.0 - 0.5) * effects.Contrast + 0.5 + effects.Brightness, 0, 1);
+                if (effects.BlackAndWhite is { } threshold)
+                    value = value >= threshold ? 1 : 0;
+                table[i] = (byte)Math.Round(value * 255);
+                same[i] = (byte)i;
+            }
+            var tone = SKColorFilter.CreateTable(same, table, table, table);
+            filter = filter is null ? tone : SKColorFilter.CreateCompose(tone, filter);
+        }
+        return new SKPaint
+        {
+            Color = SKColors.Black.WithAlpha((byte)Math.Round(Math.Clamp(effects.Opacity, 0, 1) * 255)),
+            ColorFilter = filter,
+            IsAntialias = true,
+        };
     }
 
     private static void Shape(SKCanvas canvas, HShapeKind kind, HGeometry? geometry, int cornerRatio, string? fill, HGradient? gradient,

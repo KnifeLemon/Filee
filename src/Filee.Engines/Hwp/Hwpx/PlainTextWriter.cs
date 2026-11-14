@@ -12,6 +12,7 @@ internal static class PlainTextWriter
     /// <summary>The text of a document.</summary>
     public static string Write(HDocument document)
     {
+        Nesting.Limit(document);
         var sb = new StringBuilder();
         var notes = new List<string>();
         var numbers = new ListNumbers();

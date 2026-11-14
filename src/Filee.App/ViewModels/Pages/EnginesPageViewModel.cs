@@ -19,6 +19,7 @@ public sealed partial class EngineItemViewModel(IConverter converter, EngineStat
     [ObservableProperty] private bool _isDragging;
 
     public IConverter Converter { get; } = converter;
+    public bool IsTranslator => Converter.Id == "translator";
     /// <summary>Localized descriptive name, retaining the engine's technical name for unregistered engines.</summary>
     public string Name
     {
@@ -72,7 +73,10 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
         Reload();
     }
 
-    /// <summary>Presentations → PDF through LibreOffice when it is installed (App.ApplySettings re-checks the engines).</summary>
+    /// <summary>
+    /// Presentations → PDF through LibreOffice instead of the slide renderer when it is installed (App.ApplySettings
+    /// re-checks the engines).
+    /// </summary>
     [ObservableProperty] private bool _libreOfficeForSlides;
 
     /// <summary>Word documents → PDF through LibreOffice instead of the built-in route.</summary>
@@ -81,7 +85,7 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     /// <summary>Spreadsheets → PDF through LibreOffice instead of the built-in route.</summary>
     [ObservableProperty] private bool _libreOfficeForSheets;
 
-    /// <summary>Filee's own renderer (a preview) lays documents out to PDF.</summary>
+    /// <summary>Filee's own renderer lays documents and decks out to PDF (on by default).</summary>
     [ObservableProperty] private bool _useFileeRenderer;
 
     partial void OnUseFileeRendererChanged(bool value)
@@ -120,8 +124,18 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Cancel(EnginePackageState package) => _downloads.Cancel(package);
 
+    /// <summary>Installs a package from files the user downloaded elsewhere (#447); a failure shows on its card.</summary>
+    public Task InstallFromFilesAsync(EnginePackageState package, IReadOnlyList<string> files) => _downloads.InstallAsync(package, files);
+
+    /// <summary>Saves a package's downloads in <paramref name="folder"/> for a computer without internet (#447).</summary>
+    public Task<(bool Saved, string? Error)> SaveFilesAsync(EnginePackageState package, string folder) => _downloads.SaveFilesAsync(package, folder);
+
+    /// <summary>Name, URL and SHA-256 of each of a package's downloads, to fetch them elsewhere (#447).</summary>
+    public static string DownloadLinks(EnginePackageState package) => EngineDownloads.DownloadList(package.Package, EngineDownloads.Components);
+
     /// <summary>Removes a package (after the view asked for confirmation). False when its files are in use.</summary>
-    public bool Remove(EnginePackageState package) => _downloads.Uninstall(package);
+    /// <summary>Removes a package: null when it's gone, else the key of the reason (see <see cref="EngineDownloadService.Uninstall"/>).</summary>
+    public string? Remove(EnginePackageState package) => _downloads.Uninstall(package);
 
     /// <summary>
     /// Uses the user's own copy of a package from <paramref name="path"/> (a program they picked). Returns false when
@@ -161,12 +175,20 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void MoveDown(EngineItemViewModel item) => Move(item, +1);
 
+    /// <summary>The check can be over in a blink; the arrow on "Check again" keeps turning for at least this long so it reads as checking.</summary>
+    private static readonly TimeSpan MinimumRecheckTime = TimeSpan.FromMilliseconds(900);
+
     [RelayCommand]
-    private void Recheck()
+    private async Task Recheck()
     {
+        // With "Reduce animations" on there is no arrow turning, so there is nothing to hold the result back for.
+        var minimumSpin = Task.Delay(Motion.Enabled ? MinimumRecheckTime : TimeSpan.Zero);
         EngineEnvironment.ForgetSystemCopies(); // a tool installed meanwhile is found
         _downloads.RefreshStatus();
+        _ = Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
         _catalog.Refresh();
+        _ = _catalog.CheckInBackgroundAsync();
+        await minimumSpin;
     }
 
     private void Move(EngineItemViewModel item, int delta)

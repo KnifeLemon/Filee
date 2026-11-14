@@ -8,13 +8,15 @@
 //   \aNNN Windows-1252 char  \UXXXX Unicode char        \\ a backslash                      \- soft hyphen
 // <footnote id="…"> and <sidebar id="…"> blocks hold the notes; they go to the end of the book. Pictures are looked
 // up next to the file, in its "<name>_img" folder and in "images".
-// The markup becomes HTML for HtmlReader.
+// The markup becomes HTML for HtmlReader. Codes left open are closed and opened again at every paragraph and every
+// code closed out of order, so a small file can grow many times over: the HTML stops at the limit of one part.
 
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -29,7 +31,7 @@ internal static partial class PmlReader
             throw DocumentLimits.Exceeded($"The PML file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         var folder = Path.GetDirectoryName(Path.GetFullPath(path))!;
         var pictures = new[] { folder, Path.Combine(folder, Path.GetFileNameWithoutExtension(path) + "_img"), Path.Combine(folder, "images") };
-        var html = ToHtml(Decode(File.ReadAllBytes(path)), name => Picture(pictures, folder, name), cancellationToken);
+        var html = ToHtml(Decode(File.ReadAllBytes(path)), name => Picture(pictures, folder, name), cancellationToken, limits);
         var page = Path.Combine(EbookFiles.NewFolder(workFolder, "pml"), "book.html");
         File.WriteAllText(page, html, new UTF8Encoding(true));
         var media = Path.Combine(Path.GetDirectoryName(page)!, "~media");
@@ -59,23 +61,29 @@ internal static partial class PmlReader
         if (file.Length == 0)
             return null;
         foreach (var candidate in folders.Select(f => EbookFiles.SafePath(f, file)))
-            if (candidate is not null && File.Exists(candidate) && HtmlReader.InsideFolder(candidate, root))
+            if (candidate is not null && File.Exists(candidate) && DocumentFiles.Inside(candidate, root))
                 return Path.GetRelativePath(root, candidate).Replace('\\', '/');
         return null;
     }
 
-    /// <summary>The PML text as an HTML page.</summary>
-    internal static string ToHtml(string pml, Func<string, string?> picture, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// The PML text as an HTML page; refused with <see cref="DocumentLimits.Exceeded"/> once the page grows past
+    /// <see cref="DocumentLimits.MaxPartBytes"/> characters.
+    /// </summary>
+    internal static string ToHtml(string pml, Func<string, string?> picture, CancellationToken cancellationToken = default, DocumentLimits? limits = null)
     {
+        var maxChars = (limits ?? DocumentLimits.Default).MaxPartBytes;
         var notes = new List<(string Id, string Kind, string Text)>();
         pml = TakeNotes(pml, notes);
         var html = new StringBuilder("<html><head><meta charset=\"utf-8\"/></head><body>\n");
-        new Converter(html, picture, cancellationToken).Convert(pml);
+        new Converter(html, picture, maxChars, cancellationToken).Convert(pml);
         foreach (var (id, kind, text) in notes)
         {
             html.Append($"<div class=\"{kind}\"><p><a id=\"{Escape(id)}\"></a></p>\n");
-            new Converter(html, picture, cancellationToken).Convert(text);
+            new Converter(html, picture, maxChars, cancellationToken).Convert(text);
             html.Append("</div>\n");
+            if (html.Length > maxChars)
+                throw TooLarge(maxChars);
         }
         return html.Append("</body></html>\n").ToString();
     }
@@ -120,7 +128,10 @@ internal static partial class PmlReader
 
     private static string Escape(string text) => XhtmlWriter.Escape(text);
 
-    private sealed class Converter(StringBuilder html, Func<string, string?> picture, CancellationToken cancellationToken)
+    private static Exception TooLarge(long maxChars) =>
+        DocumentLimits.Exceeded($"The PML file grows to more than {DocumentLimits.Megabytes(maxChars)} of HTML.");
+
+    private sealed class Converter(StringBuilder html, Func<string, string?> picture, long maxChars, CancellationToken cancellationToken)
     {
         private static readonly Dictionary<string, (string Open, string Close)> Inline = new(StringComparer.Ordinal)
         {
@@ -351,12 +362,22 @@ internal static partial class PmlReader
             if (_hidden)
                 return;
             _line.Append(Escape(text));
+            CheckSize();
         }
 
         private void Markup(string markup)
         {
-            if (!_hidden)
-                _line.Append(markup);
+            if (_hidden)
+                return;
+            _line.Append(markup);
+            CheckSize();
+        }
+
+        /// <summary>Refuses the book once the page and the paragraph being built pass the limit.</summary>
+        private void CheckSize()
+        {
+            if (html.Length + (long)_line.Length > maxChars)
+                throw TooLarge(maxChars);
         }
 
         private void EndParagraph()
@@ -394,6 +415,7 @@ internal static partial class PmlReader
             // Inline codes stay open into the next paragraph.
             foreach (var code in _open)
                 _line.Append(Inline[code].Open);
+            CheckSize();
         }
     }
 

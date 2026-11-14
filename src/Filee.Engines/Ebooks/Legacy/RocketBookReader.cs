@@ -40,7 +40,7 @@ internal static class RocketBookReader
         var folder = EbookFiles.NewFolder(workFolder, "rb");
         var files = new List<(string Name, string Path)>();
         var info = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        long total = 0;
+        long total = 0, declared = 0;
         for (var i = 0; i < count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -56,7 +56,7 @@ internal static class RocketBookReader
             if ((flags & 2) != 0)
                 throw new InvalidOperationException(EbookFiles.DrmMessage);
             var raw = data.AsSpan((int)offset, (int)length);
-            var bytes = (flags & 1) != 0 ? Inflate(raw, name, limits) : raw.ToArray();
+            var bytes = (flags & 1) != 0 ? Inflate(raw, name, limits, ref declared, cancellationToken) : raw.ToArray();
             if ((total += bytes.Length) > limits.MaxPackageBytes)
                 throw DocumentLimits.Exceeded($"The RB file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
             if ((flags & 8) != 0)
@@ -87,8 +87,13 @@ internal static class RocketBookReader
         return new Book(document, metadata);
     }
 
-    /// <summary>A compressed file: chunk count, size, chunk sizes, then the zlib chunks.</summary>
-    private static byte[] Inflate(ReadOnlySpan<byte> raw, string name, DocumentLimits limits)
+    /// <summary>
+    /// A compressed file: chunk count, size, chunk sizes, then the zlib chunks. Each chunk holds 4 KB of the file (the
+    /// last one less), so a count beyond what the size needs is damage: empty chunks would never fill the size. The
+    /// sizes all files state count against the package limit before any is unpacked (the table may list one file many
+    /// times), which bounds the chunks of the whole book.
+    /// </summary>
+    private static byte[] Inflate(ReadOnlySpan<byte> raw, string name, DocumentLimits limits, ref long declared, CancellationToken cancellationToken)
     {
         if (raw.Length < 8)
             throw new InvalidDataException($"The file {name} of the RB file is damaged.");
@@ -96,12 +101,16 @@ internal static class RocketBookReader
         var size = BinaryPrimitives.ReadUInt32LittleEndian(raw[4..]);
         if (size > limits.MaxPartBytes)
             throw DocumentLimits.Exceeded($"The file {name} of the RB file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
-        if (8 + chunks * 4L > raw.Length)
+        if ((declared += size) > limits.MaxPackageBytes)
+            throw DocumentLimits.Exceeded($"The RB file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+        if (8 + chunks * 4L > raw.Length || chunks > (size + 4095L) / 4096 + 1)
             throw new InvalidDataException($"The file {name} of the RB file is damaged.");
         var output = new MemoryStream();
+        var buffer = new byte[MaxChunk + 1];
         var position = 8 + (int)chunks * 4;
         for (var i = 0; i < chunks; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var length = (int)BinaryPrimitives.ReadUInt32LittleEndian(raw[(8 + i * 4)..]);
             if (length < 0 || position + (long)length > raw.Length)
                 throw new InvalidDataException($"The file {name} of the RB file is damaged.");
@@ -110,7 +119,6 @@ internal static class RocketBookReader
             using var input = new MemoryStream(chunk);
             // zlib streams (78 xx), or bare deflate data.
             using Stream inflater = chunk is [0x78, _, ..] ? new ZLibStream(input, CompressionMode.Decompress) : new DeflateStream(input, CompressionMode.Decompress);
-            var buffer = new byte[MaxChunk + 1];
             var read = inflater.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
             if (read > MaxChunk)
                 throw DocumentLimits.Exceeded($"A chunk of the file {name} of the RB file unpacks to more than {MaxChunk / 1024} KB.");

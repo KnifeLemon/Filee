@@ -18,6 +18,7 @@ using System.Globalization;
 using System.Xml;
 using System.Xml.Linq;
 using Filee.Engines.Documents;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -49,6 +50,9 @@ internal sealed partial class HwpxReader
     /// <summary>The package says its stored line layouts were estimated by Filee.</summary>
     private bool _estimatedLines;
 
+    /// <summary>What the document's pictures may unpack to in all (<see cref="UnpackLimit.For"/>).</summary>
+    private readonly UnpackLimit? _unpack;
+
     /// <summary>Manifest item id → zip entry of embedded binaries (pictures).</summary>
     private readonly Dictionary<string, string> _binaryItems = new(StringComparer.Ordinal);
 
@@ -58,10 +62,11 @@ internal sealed partial class HwpxReader
     /// <summary>Elements the model cannot hold, by local name, with the number of times they were skipped.</summary>
     private readonly Dictionary<string, int> _skipped = new(StringComparer.Ordinal);
 
-    private HwpxReader(DocumentPackage? package, string mediaFolder, bool forLayout)
+    private HwpxReader(DocumentPackage? package, string mediaFolder, bool forLayout, UnpackLimit? unpack = null)
     {
         _package = package;
         _mediaFolder = mediaFolder;
+        _unpack = unpack;
         _forLayout = forLayout;
         _budget = new DocumentBudget(package?.Limits ?? DocumentLimits.Default);
     }
@@ -71,22 +76,26 @@ internal sealed partial class HwpxReader
     // ───────────────────────── Entry points ─────────────────────────
 
     /// <summary>Reads <paramref name="path"/>; embedded pictures are extracted into <paramref name="mediaFolder"/>.</summary>
-    public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, null);
+    public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, (IDictionary<string, int>?)null);
 
     /// <param name="skipped">Receives the elements that were skipped because the model has no equivalent (local name → count).</param>
     public static HDocument Read(string path, string mediaFolder, IDictionary<string, int>? skipped) =>
-        ReadPackage(path, mediaFolder, skipped, forLayout: false, DocumentLimits.Default);
+        ReadPackage(path, mediaFolder, skipped, forLayout: false, DocumentLimits.Default, UnpackLimit.For(path));
 
     /// <summary>Reads within other <paramref name="limits"/> than <see cref="DocumentLimits.Default"/> (for tests).</summary>
     internal static HDocument Read(string path, string mediaFolder, IDictionary<string, int>? skipped, DocumentLimits limits) =>
-        ReadPackage(path, mediaFolder, skipped, forLayout: false, limits);
+        ReadPackage(path, mediaFolder, skipped, forLayout: false, limits, UnpackLimit.For(path));
+
+    /// <summary><see cref="Read(string, string)"/> with another limit on what the pictures unpack to (for tests).</summary>
+    internal static HDocument Read(string path, string mediaFolder, UnpackLimit unpack) =>
+        ReadPackage(path, mediaFolder, null, forLayout: false, DocumentLimits.Default, unpack);
 
     /// <summary>
     /// Reads <paramref name="path"/> for the layout engine: like <see cref="Read(string, string, IDictionary{string, int}?)"/>,
     /// plus what only a renderer uses (runs apart by layout detail, polygons / curves / arcs, master pages).
     /// </summary>
     public static HDocument ReadForLayout(string path, string mediaFolder, IDictionary<string, int>? skipped = null, DocumentLimits? limits = null) =>
-        ReadPackage(path, mediaFolder, skipped, forLayout: true, limits ?? DocumentLimits.Default);
+        ReadPackage(path, mediaFolder, skipped, forLayout: true, limits ?? DocumentLimits.Default, UnpackLimit.For(path));
 
     /// <summary>A reader of header.xml alone, for its character and paragraph shapes (see <see cref="StyleResolver"/>).</summary>
     internal static HwpxReader ForHeader(XElement head)
@@ -96,11 +105,13 @@ internal sealed partial class HwpxReader
         return reader;
     }
 
-    private static HDocument ReadPackage(string path, string mediaFolder, IDictionary<string, int>? skipped, bool forLayout, DocumentLimits limits)
+    /// <summary>Reads on a thread with a large stack (<see cref="Nesting.OnLargeStack{T}"/>): the reader recurses per level.</summary>
+    private static HDocument ReadPackage(string path, string mediaFolder, IDictionary<string, int>? skipped, bool forLayout,
+        DocumentLimits limits, UnpackLimit unpack) => Nesting.OnLargeStack(() =>
     {
         using (var package = DocumentPackage.Open(path, limits, () => NotAPackage(path)))
         {
-            var reader = new HwpxReader(package, mediaFolder, forLayout);
+            var reader = new HwpxReader(package, mediaFolder, forLayout, unpack);
             var document = reader.ReadDocument();
             if (skipped is not null)
             {
@@ -109,7 +120,7 @@ internal sealed partial class HwpxReader
             }
             return document;
         }
-    }
+    });
 
     /// <summary>A clear message for files that are not a zip package: HWP 5.0 binaries and DRM-wrapped files.</summary>
     private static InvalidDataException NotAPackage(string path)
@@ -253,7 +264,7 @@ internal sealed partial class HwpxReader
         {
             Directory.CreateDirectory(_mediaFolder);
             path = Path.Combine(_mediaFolder, $"hwpx-media-{_media.Count + 1}{DocumentPackage.SafeExtension(entry.Name)}");
-            if (!Package.ExtractPicture(entry, path))
+            if (!Package.ExtractPicture(entry, path, _unpack))
                 path = null; // larger than any picture should be: left out
         }
         _media[itemId] = path;
@@ -266,7 +277,8 @@ internal sealed partial class HwpxReader
     /// State of the section being read. A secPr starts a 한글 section (구역); its first colPr gives the columns and
     /// later ones change them mid-page. Header, footer and page number controls may sit in any body paragraph.
     /// </summary>
-    private sealed class SectionState(HDocument document)
+    /// <param name="layoutPageNumber">Read for layout: the page number control as the section's own page number.</param>
+    private sealed class SectionState(HDocument document, Func<XElement, HPageNumber?>? layoutPageNumber = null)
     {
         public HSection? Section;
         public bool ColumnsSet;
@@ -292,6 +304,11 @@ internal sealed partial class HwpxReader
             if (Section is null || PageNumber is not { } control)
                 return;
             PageNumber = null;
+            if (layoutPageNumber is not null)
+            {
+                Section.PageNumber = layoutPageNumber(control);
+                return;
+            }
             var position = Attr(control, "pos") ?? "BOTTOM_CENTER";
             if (position == "NONE")
                 return;
@@ -321,9 +338,24 @@ internal sealed partial class HwpxReader
         }
     }
 
+    /// <summary>
+    /// An automatic page number for the layout engine: its position, number format and side characters, in the
+    /// character format of 한글's "쪽 번호" (Page Number) style, the one 한글 draws it in.
+    /// </summary>
+    private HPageNumber? LayoutPageNumber(XElement control)
+    {
+        var position = Attr(control, "pos") ?? "BOTTOM_CENTER";
+        if (position == "NONE")
+            return null;
+        var style = _styles.Values.FirstOrDefault(s => Attr(s, "engName") == "Page Number" || Attr(s, "name") == "쪽 번호");
+        return new HPageNumber(position, Attr(control, "formatType"),
+            Attr(control, "sideChar") is { Length: > 0 } side && side != "\0" ? side : null,
+            CharFormat(Attr(style, "charPrIDRef")));
+    }
+
     private void ReadSection(XElement root, HDocument document)
     {
-        var state = new SectionState(document);
+        var state = new SectionState(document, _forLayout ? LayoutPageNumber : null);
         foreach (var element in Elements(root))
         {
             if (element.Name.LocalName == "p")

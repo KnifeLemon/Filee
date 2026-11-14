@@ -1,6 +1,6 @@
 // HDocument → Markdown (the dialect MarkdownReader reads back: GitHub tables, ~sub~, ^sup^, footnotes): headings,
-// emphasis, code, lists, block quotes, pipe tables, links, pictures and footnotes. Used for e-books, PDF and HWP / HWPX
-// → MD, and TXTZ.
+// emphasis, code, lists, block quotes, pipe tables (with column alignment), links, pictures and footnotes. Used for
+// e-books, PDF and HWP / HWPX → MD, and TXTZ.
 
 using System.Text;
 
@@ -11,14 +11,24 @@ internal sealed class MarkdownWriter
     private readonly Func<string, string?> _imageTarget;
     private readonly List<string> _notes = [];
     private readonly ListNumbers _numbers = new();
+    private readonly Markup.MarkupWriteBudget _budget;
 
-    private MarkdownWriter(Func<string, string?> imageTarget) => _imageTarget = imageTarget;
+    private MarkdownWriter(Func<string, string?> imageTarget, Markup.MarkupWriteBudget? budget)
+    {
+        _imageTarget = imageTarget;
+        _budget = budget ?? new(Documents.DocumentLimits.Default);
+    }
 
     /// <summary>The Markdown text of a document.</summary>
     /// <param name="imageTarget">Maps a picture file to the path written into the Markdown, or null to leave it out.</param>
-    public static string Write(HDocument document, Func<string, string?> imageTarget)
+    /// <param name="budget">
+    /// The caps of the document this text is part of (a notebook's or outline's pieces count together), or null for a
+    /// document of its own.
+    /// </param>
+    public static string Write(HDocument document, Func<string, string?> imageTarget, Markup.MarkupWriteBudget? budget = null)
     {
-        var writer = new MarkdownWriter(imageTarget);
+        Nesting.Limit(document);
+        var writer = new MarkdownWriter(imageTarget, budget);
         var sb = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(document.Title))
             sb.Append("---\ntitle: \"").Append(document.Title.Replace("\"", "\\\"", StringComparison.Ordinal)).Append("\"\n---\n\n");
@@ -87,13 +97,13 @@ internal sealed class MarkdownWriter
             var marker = !list.Numbered ? "" : IsBullet(list) ? "- " : OrderedMarker(list);
             var continuation = linePrefix + indent + new string(' ', Math.Max(marker.Length, list.Numbered ? 0 : 4));
             sb.Append(list.Numbered ? linePrefix + indent + marker : continuation)
-              .Append(text.Replace("\n", "\n" + continuation, StringComparison.Ordinal)).Append('\n');
+              .Append(EscapeLineStarts(text).Replace("\n", "\n" + continuation, StringComparison.Ordinal)).Append('\n');
             // Items of one list stay together; a blank line ends the list.
             if (next is not HParagraph { List: not null })
                 sb.Append('\n');
             return;
         }
-        sb.Append(linePrefix).Append(EscapeLineStart(text).Replace("\n", "\n" + linePrefix, StringComparison.Ordinal)).Append("\n\n");
+        sb.Append(linePrefix).Append(EscapeLineStarts(text).Replace("\n", "\n" + linePrefix, StringComparison.Ordinal)).Append("\n\n");
     }
 
     private static bool IsBullet(HListRef list) =>
@@ -112,38 +122,83 @@ internal sealed class MarkdownWriter
     {
         if (table.Rows.Count == 0)
             return;
-        var columns = Math.Max(table.ColumnCount, table.Rows.Max(r => r.Cells.Sum(c => c.ColSpan)));
-        var grid = new List<string[]>();
-        var covered = new Dictionary<(int Row, int Column), bool>();
+        // The grid is counted before it is made, and spans are placed arithmetically (a column remembers the row it is
+        // free again from), so spans that are huge or overlap cost no more than the grid.
+        var columns = _budget.Columns(table);
+        _budget.Table(table.Rows.Count, columns);
+        var grid = new List<string[]>(table.Rows.Count);
+        var alignments = new ColumnAlignments(columns);
+        var cursor = new Markup.SpanCursor(table.Rows.Count, columns);
         for (var r = 0; r < table.Rows.Count; r++)
         {
             var cells = new string[columns];
-            var column = 0;
+            cursor.NextRow();
             foreach (var cell in table.Rows[r].Cells)
             {
-                while (column < columns && covered.ContainsKey((r, column)))
-                    column++;
-                if (column >= columns)
+                if (!cursor.Place(cell.RowSpan, cell.ColSpan, table.Rows.Count, out var column, out _, out _))
                     break;
-                // Header cells are bold by nature: no ** inside them.
+                if (cell.ColSpan <= 1)
+                    alignments.Add(column, cell);
+                // Header cells are bold by nature: no ** inside them. A cell is one line: its line breaks are <br>,
+                // which MarkdownReader and the usual Markdown renderers read as breaks.
                 var header = table.Rows[r].Header;
                 cells[column] = string.Join(" ", cell.Blocks.OfType<HParagraph>()
                         .Select(p => header ? p.Inlines.Select(i => i is HText t ? new HText(t.Text, t.Format with { Bold = null }) : i).ToList() : p.Inlines)
-                        .Select(inlines => Inlines(inlines).Replace("\\\n", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal)))
+                        .Select(inlines => Inlines(inlines).Replace(HardBreak, "<br>", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal)))
                     .Replace("|", "\\|", StringComparison.Ordinal);
-                for (var rr = r; rr < r + cell.RowSpan; rr++)
-                    for (var cc = column; cc < Math.Min(columns, column + cell.ColSpan); cc++)
-                        covered[(rr, cc)] = true;
-                column += cell.ColSpan;
             }
             grid.Add(cells);
         }
 
         sb.Append(prefix).Append("| ").AppendJoin(" | ", grid[0].Select(c => c ?? "")).Append(" |\n");
-        sb.Append(prefix).Append('|').Append(string.Concat(Enumerable.Repeat("---|", columns))).Append('\n');
+        sb.Append(prefix).Append('|');
+        for (var c = 0; c < columns; c++)
+            sb.Append(alignments.Delimiter(c)).Append('|');
+        sb.Append('\n');
         foreach (var row in grid.Skip(1))
             sb.Append(prefix).Append("| ").AppendJoin(" | ", row.Select(c => c ?? "")).Append(" |\n");
         sb.Append('\n');
+    }
+
+    /// <summary>
+    /// The alignment each column's cells share, written as the column's delimiter (":---:" centred, "---:" right). Left
+    /// is how Markdown shows a column anyway, so a left, justified or unaligned column stays "---" (documents read from
+    /// HWPX or Word align most cells left or justified; ":---" on every column would only be noise), and so does a
+    /// column whose cells differ. Cells spanning columns don't count.
+    /// </summary>
+    private sealed class ColumnAlignments(int columns)
+    {
+        private readonly HAlign?[] _align = new HAlign?[columns];
+        private readonly bool[] _seen = new bool[columns];
+        private readonly bool[] _mixed = new bool[columns];
+
+        public void Add(int column, HCell cell)
+        {
+            foreach (var paragraph in cell.Blocks.OfType<HParagraph>())
+            {
+                // An empty paragraph shows no alignment.
+                if (paragraph.Inlines.Count == 0)
+                    continue;
+                // Right to left, the model's Left is the start side: the right edge (HParaFormat.RightToLeft).
+                HAlign? align = (paragraph.Format.Align, paragraph.Format.RightToLeft is true) switch
+                {
+                    (HAlign.Center, _) => HAlign.Center,
+                    (HAlign.Right, false) or (HAlign.Left, true) => HAlign.Right,
+                    _ => null,
+                };
+                if (!_seen[column])
+                    (_seen[column], _align[column]) = (true, align);
+                else if (_align[column] != align)
+                    _mixed[column] = true;
+            }
+        }
+
+        public string Delimiter(int column) => _mixed[column] ? "---" : _align[column] switch
+        {
+            HAlign.Center => ":---:",
+            HAlign.Right => "---:",
+            _ => "---",
+        };
     }
 
     private string Inlines(List<HInline> inlines)
@@ -243,11 +298,25 @@ internal sealed class MarkdownWriter
         return sb.ToString();
     }
 
-    /// <summary>Text that would read as a heading, list item or quote at the start of a line is escaped.</summary>
+    /// <summary>
+    /// <see cref="EscapeLineStart"/> for every line of a paragraph (#1416): a line after a hard break can start a
+    /// heading, a list or a definition, or underline the lines above into a heading, as well as the first one.
+    /// </summary>
+    private static string EscapeLineStarts(string text) =>
+        text.Contains(HardBreak, StringComparison.Ordinal)
+            ? string.Join(HardBreak, text.Split(HardBreak).Select(EscapeLineStart))
+            : EscapeLineStart(text);
+
+    /// <summary>
+    /// Text that would read as a heading, list item, definition or rule (a heading's underline after other lines) at
+    /// the start of a line is escaped. Quotes, code fences and HTML are escaped with the text (<see cref="Escape"/>).
+    /// </summary>
     private static string EscapeLineStart(string text)
     {
         var trimmed = text.TrimStart();
-        if (trimmed.StartsWith('#') || trimmed.StartsWith("- ", StringComparison.Ordinal) || trimmed.StartsWith("+ ", StringComparison.Ordinal))
+        if (trimmed.StartsWith('#') || trimmed.StartsWith("- ", StringComparison.Ordinal) || trimmed.StartsWith("+ ", StringComparison.Ordinal)
+            || trimmed.StartsWith(": ", StringComparison.Ordinal) || trimmed is "+" or ":"
+            || (trimmed.Length > 0 && trimmed.All(c => c is '-' or ' ' or '\t')))
             return "\\" + trimmed;
         var digits = trimmed.TakeWhile(char.IsAsciiDigit).Count();
         if (digits > 0 && digits < trimmed.Length && trimmed[digits] is '.' or ')')

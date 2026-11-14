@@ -21,6 +21,17 @@ public class OutputPathResolverTests
     }
 
     [Fact]
+    public void A_krita_backup_is_named_after_the_drawing()
+    {
+        using var dir = new TempDir();
+        var source = dir.File("sketch.kra~");
+
+        var path = OutputPathResolver.Resolve(new OutputRule(), Tokens(source), "png", File.Exists);
+
+        Assert.Equal(Path.Combine(dir.Path, "sketch.png"), path);
+    }
+
+    [Fact]
     public void Two_part_extensions_are_one_extension()
     {
         using var dir = new TempDir();

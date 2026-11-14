@@ -35,6 +35,7 @@ public class FormatRegistryTests
     [InlineData("archive.7z.001", "split")]
     [InlineData("archive.zip.001", "split")]
     [InlineData("archive.tar.001", "split")]
+    [InlineData("sketch.kra~", "kra")] // Krita's backup of the previous save
     public void Detects_formats(string path, string id) => Assert.Equal(id, FormatRegistry.Detect(path)?.Id);
 
     [Fact]

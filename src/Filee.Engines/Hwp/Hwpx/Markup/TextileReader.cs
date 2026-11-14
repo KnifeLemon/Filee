@@ -22,39 +22,42 @@ internal sealed partial class TextileReader
 
     private readonly string _baseFolder;
     private readonly DocumentBudget _budget;
+    private readonly CancellationToken _cancellationToken;
     private readonly Dictionary<string, List<HNote>> _references = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<HBlock>> _footnotes = new(StringComparer.Ordinal);
 
     /// <summary>Numbers of the footnotes the text defines: only "[N]" with a definition is a reference.</summary>
     private readonly HashSet<string> _defined = new(StringComparer.Ordinal);
 
-    private TextileReader(string baseFolder, DocumentLimits limits)
+    private TextileReader(string baseFolder, DocumentLimits limits, CancellationToken cancellationToken)
     {
         _baseFolder = baseFolder;
         _budget = new DocumentBudget(limits);
+        _cancellationToken = cancellationToken;
     }
 
     public static HDocument Read(string path, string media) =>
         Read(MarkupBlocks.ReadText(path, DocumentLimits.Default, "Textile"), Path.GetDirectoryName(Path.GetFullPath(path))!, DocumentLimits.Default);
 
-    internal static HDocument Read(string text, string baseFolder, DocumentLimits limits)
+    internal static HDocument Read(string text, string baseFolder, DocumentLimits limits, CancellationToken cancellationToken = default)
     {
-        var reader = new TextileReader(baseFolder, limits);
+        var reader = new TextileReader(baseFolder, limits, cancellationToken);
         var lines = MarkupBlocks.Lines(text).Split('\n');
         foreach (var line in lines)
             if (line.StartsWith("fn", StringComparison.Ordinal) && Signature().Match(line) is { Success: true } definition)
                 reader._defined.Add(new string([.. definition.Groups[1].Value.Skip(2).TakeWhile(char.IsAsciiDigit)]));
         var section = new HSection();
         reader.Blocks(lines, section.Blocks);
-        // Footnote references get the text of their definitions; a reference without one stays text.
+        // Footnote references get the text of their definitions, read once and shared (MarkupNotes bounds what the
+        // writers make of a note referenced many times); a reference without one stays text.
         foreach (var (number, notes) in reader._references)
         {
+            if (!reader._footnotes.TryGetValue(number, out var blocks))
+                continue;
             foreach (var note in notes)
-            {
-                if (reader._footnotes.TryGetValue(number, out var blocks))
-                    note.Blocks.AddRange(blocks);
-            }
+                note.Blocks.AddRange(blocks);
         }
+        MarkupNotes.Check(section.Blocks, limits, cancellationToken);
         var document = new HDocument();
         document.Sections.Add(section);
         return document;
@@ -80,6 +83,7 @@ internal sealed partial class TextileReader
     {
         for (var i = 0; i < lines.Length;)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var line = lines[i];
             if (line.Trim().Length == 0)
             {
@@ -210,6 +214,7 @@ internal sealed partial class TextileReader
 
     private HParagraph Paragraph(string text, int indent)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         _budget.Paragraph();
         var paragraph = new HParagraph { Format = indent > 0 ? new HParaFormat(Left: indent) : default };
         var sink = new InlineSink(paragraph.Inlines);
@@ -280,7 +285,7 @@ internal sealed partial class TextileReader
             var row = new HRow();
             var width = 0;
             var allHeaders = true;
-            foreach (var part in line.Split('|'))
+            foreach (var part in MarkupBlocks.Split(line, '|', limit))
             {
                 if (width >= limit)
                     break;
@@ -321,6 +326,8 @@ internal sealed partial class TextileReader
             columns = Math.Max(columns, width);
         }
         table.ColumnCount = Math.Max(1, columns);
+        MarkupBlocks.TableArea(table.Rows.Count, table.ColumnCount, _budget.Limits);
+        MarkupBlocks.ClampRowSpans(table);
         return table;
     }
 

@@ -8,16 +8,20 @@
 //  * as a step towards other presentation formats (Markdown → PPTX → ODP / PPT through LibreOffice) it costs as much
 //    as a fallback (25), so it is only taken where nothing else reaches the target.
 // PDF keeps its picture slides (PdfSlidesConverter); the PowerPoint formats themselves are the OOXML engine's job.
+// PowerPoint 97–2003 (PPT) is the exception: its slides are written out as the PPTX package it translates to
+// (Office/Ppt), one edge at the writer's cost, checked so that a PowerPoint 95 file takes LibreOffice.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Odf.Draw;
+using Filee.Engines.Office.Ppt;
 
 namespace Filee.Engines.Office;
 
 /// <summary>Writes PPTX slides with the built-in PresentationML writer.</summary>
-public sealed class PptxWriterConverter : IConverter
+public sealed class PptxWriterConverter : IConverter, ICapabilityCheck
 {
     /// <summary>Below Pandoc's slides (20) even when Pandoc stands first in the engine order and this writer last (8 + 9).</summary>
     internal const int Cost = 8;
@@ -26,7 +30,7 @@ public sealed class PptxWriterConverter : IConverter
     internal const int StepCost = 25;
 
     /// <summary>Formats that don't become document slides: presentations already, and PDF (its picture slides).</summary>
-    private static readonly HashSet<string> NotSources = new(StringComparer.OrdinalIgnoreCase) { "pptx", "pptm", "potx", "potm", "ppsx", "pdf" };
+    private static readonly HashSet<string> NotSources = new(StringComparer.OrdinalIgnoreCase) { "pptx", "pptm", "potx", "potm", "ppsx", "pdf", PptReader.Format };
 
     private bool? _pandoc;
 
@@ -41,30 +45,44 @@ public sealed class PptxWriterConverter : IConverter
             var sources = Sources(_pandoc ??= PandocConverter.Locate() is not null).ToList();
             return
             [
-                .. sources.Select(from => new ConversionEdge(from, "pptx", Cost, DirectOnly: true)),
-                .. sources.Select(from => new ConversionEdge(from, "pptx", StepCost)),
+                .. sources.Select(from => new ConversionEdge(from, "pptx", Cost, DirectOnly: true, Checked: DocumentReaders.Checked(from))),
+                .. sources.Select(from => new ConversionEdge(from, "pptx", StepCost, Checked: DocumentReaders.Checked(from))),
+                new ConversionEdge(PptReader.Format, "pptx", Cost, Checked: true),
             ];
         }
     }
 
-    private static IEnumerable<string> Sources(bool pandoc) => DocumentReaders.Formats(pandoc).Where(f => !NotSources.Contains(f));
+    /// <summary>A Word 6.0 / 95 or Works file with a .doc or .wps name, which the DOC reader doesn't read.</summary>
+    public string? FirstUnsupported(string sourcePath, string sourceFormat) => DocumentReaders.Unsupported(sourcePath, sourceFormat);
+
+    private static IEnumerable<string> Sources(bool pandoc) => DocumentReaders.Formats(pandoc).Where(f => !NotSources.Contains(f))
+        // OpenDocument presentations are decks already: ODP → PPTX stays with LibreOffice.
+        .Where(f => !OdfDrawReader.Presentations.Contains(f));
 
     public EngineStatus GetStatus()
     {
         _pandoc = PandocConverter.Locate() is not null;
-        return EngineStatus.Available(string.Join(", ", Sources(_pandoc.Value).Select(f => f.ToUpperInvariant())) + " → PPTX", EngineVersions.BuiltIn);
+        return EngineStatus.Available(string.Join(", ", Sources(_pandoc.Value).Append(PptReader.Format).Select(f => f.ToUpperInvariant())) + " → PPTX", EngineVersions.BuiltIn);
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         progress?.Report(0.1);
+        if (step.From == PptReader.Format)
+        {
+            if (step.Output.Allocate("pptx") is not { } package)
+                return [];
+            await Task.Run(() => PptReader.ToPptx(step.InputPath, package, cancellationToken: cancellationToken), cancellationToken);
+            progress?.Report(1);
+            return [package];
+        }
         var document = await DocumentReaders.ReadAsync(step.InputPath, step.From, step.WorkDirectory, cancellationToken);
         progress?.Report(0.6);
 
         var output = step.Output.Allocate("pptx");
         if (output is null)
             return [];
-        await Task.Run(() => PptxWriter.Write(document, output), cancellationToken);
+        await Task.Run(() => PptxWriter.Write(document, output, cancellationToken), cancellationToken);
         progress?.Report(1);
         return [output];
     }

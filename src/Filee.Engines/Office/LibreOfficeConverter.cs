@@ -16,6 +16,11 @@
 //  * soffice reports no progress: ProgressEstimate keeps the progress ring moving while it runs.
 //  * Its ZIP reader refuses some containers other readers open (Tencent Docs exports, issue #141), saying only "source
 //    file could not be loaded": an Office Open XML / OpenDocument file is tried once more as a repacked copy.
+//  * Every worker profile runs no macros and updates no links (LibreOfficeProfile, applied before each start), so a
+//    document converts the same whatever the installation's defaults are and doesn't reach out to what it links to.
+//    LibreOffice gets a copy without links to pictures, objects or templates outside the document (LinkedContent),
+//    which the profile doesn't stop everywhere. A document with macros gets a notice that they weren't run.
+//  * Its DOCX import moves a footnote's number out of the text around it ("(1)" → "1()", issue #620): DocxNoteMarks.
 
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -90,6 +95,9 @@ public sealed class LibreOfficeConverter : IConverter
     public int MaxParallelism => Workers;
     public IReadOnlyList<ConversionEdge> Edges { get; private set; }
 
+    /// <summary>Whether a LibreOffice was found (when the engine was made or its status last checked).</summary>
+    internal bool Found => _soffice is not null;
+
     public EngineStatus GetStatus()
     {
         Locate();
@@ -111,9 +119,18 @@ public sealed class LibreOfficeConverter : IConverter
         {
             progress?.Report(0.1);
             var input = step.From == "pdf" && step.To == "svg" ? FirstPage(step) : step.InputPath;
+            if (LinkedContent.Strip(input, step.From, step.WorkDirectory, step.OriginalSourcePath) is { } unlinked)
+            {
+                _logger.LogInformation("{File}: links to content outside the document were taken out of the copy for LibreOffice", step.InputPath);
+                input = unlinked;
+            }
+            // Works on what is left after the links: its copy keeps every other part as it finds it.
+            if (RenderedTargets.Contains(step.To) && DocxNoteMarks.Reads(step.From)
+                && DocxNoteMarks.Prepare(input, step.WorkDirectory) is { } numbered)
+                input = numbered;
             var filter = FilterFor(step.From, step.To, step.Preset.Document.PdfA, FormatRegistry.ExtensionOf(step.InputPath));
             var (produced, result) = await ConvertOnceAsync(soffice, slot, filter, step.WorkDirectory, input, progress, cancellationToken);
-            if (produced is null && Repack(step.InputPath, step.WorkDirectory) is { } repacked)
+            if (produced is null && Repack(input, step.WorkDirectory) is { } repacked)
             {
                 _logger.LogInformation("{File}: LibreOffice could not load it, trying again with the ZIP container repacked", step.InputPath);
                 (produced, _) = await ConvertOnceAsync(soffice, slot, filter, step.WorkDirectory, repacked, progress, cancellationToken);
@@ -140,6 +157,11 @@ public sealed class LibreOfficeConverter : IConverter
             {
                 // Post-processing is an improvement, not a reason to discard LibreOffice's otherwise valid PDF.
                 _logger.LogInformation("{File}: could not check empty spreadsheet PDF pages: {Message}", step.InputPath, e.Message);
+            }
+            if (OfficeMacros.In(step.InputPath))
+            {
+                _logger.LogInformation("{File}: has macros, which LibreOffice did not run", step.InputPath);
+                step.Notice?.Invoke("notice.macros_not_run");
             }
 
             var target = step.Output.Allocate(step.To);
@@ -174,6 +196,36 @@ public sealed class LibreOfficeConverter : IConverter
         using (ProgressEstimate.Start(progress, TypicalDuration))
             result = await RunAsync(soffice, slot, filter, outDir, input, cancellationToken);
         return (Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0), result);
+    }
+
+    /// <summary>
+    /// A probe for <see cref="ProcessRunner"/>: true when the PDF output file exists,
+    /// has not changed size since the last call and ends with its %%EOF marker.
+    /// Non-PDF formats are deliberately not probed: a stable file size alone does not prove completion.
+    /// </summary>
+    internal static Func<bool> OutputComplete(string outDir)
+    {
+        long last = -1;
+        return () =>
+        {
+            if (!Directory.Exists(outDir))
+                return false;
+            var file = Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0);
+            if (file is null || !file.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                return false;
+            var length = new FileInfo(file).Length;
+            var steady = length == last;
+            last = length;
+            if (!steady || length == 0)
+                return false;
+
+            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var tail = new byte[(int)Math.Min(length, 1024)];
+            stream.Seek(-tail.Length, SeekOrigin.End);
+            stream.ReadExactly(tail);
+
+            return System.Text.Encoding.ASCII.GetString(tail).Contains("%%EOF", StringComparison.Ordinal);
+        };
     }
 
     /// <summary>
@@ -250,7 +302,7 @@ public sealed class LibreOfficeConverter : IConverter
                     Directory.CreateDirectory(folder);
                     var input = Path.Combine(folder, "warmup.txt");
                     await File.WriteAllTextAsync(input, "Filee", cancellationToken);
-                    await RunAsync(soffice, slot, FilterFor("txt", "pdf", pdfA: false), folder, input, cancellationToken);
+                    await RunAsync(soffice, slot, FilterFor("txt", "pdf", pdfA: false), folder, input, cancellationToken, probe: false);
                     prepared++;
                 }
                 finally
@@ -269,8 +321,11 @@ public sealed class LibreOfficeConverter : IConverter
 
     private string ProfileDirectory(int slot) => Path.Combine(_env.DataDirectory, "libreoffice-profiles", $"worker-{slot}");
 
-    /// <summary>LibreOffice has started with this profile before (it creates the "user" folder).</summary>
-    private bool IsPrepared(int slot) => Directory.Exists(Path.Combine(ProfileDirectory(slot), "user"));
+    /// <summary>
+    /// LibreOffice has started with this profile before: it creates user/config (the user folder itself already
+    /// holds the configuration <see cref="LibreOfficeProfile"/> writes before the first start).
+    /// </summary>
+    private bool IsPrepared(int slot) => Directory.Exists(Path.Combine(ProfileDirectory(slot), "user", "config"));
 
     private async Task<int> TakeProfileAsync(CancellationToken cancellationToken)
     {
@@ -286,17 +341,27 @@ public sealed class LibreOfficeConverter : IConverter
         _capacity.Release();
     }
 
-    private async Task<ProcessResult> RunAsync(string soffice, int slot, string filter, string outDir, string input, CancellationToken cancellationToken)
+    private async Task<ProcessResult> RunAsync(string soffice, int slot, string filter, string outDir, string input, CancellationToken cancellationToken,
+        bool probe = true)
     {
         var profileDir = ProfileDirectory(slot);
         Directory.CreateDirectory(profileDir);
+        LibreOfficeProfile.Apply(profileDir);
         var args = new List<string>
         {
             "--headless", "--norestore", "--nologo", "--nodefault", "--nolockcheck", "--nofirststartwizard",
             "-env:UserInstallation=" + new Uri(profileDir).AbsoluteUri,
         };
         args.AddRange(["--convert-to", filter, "--outdir", outDir, input]);
-        return await ProcessRunner.RunAsync(soffice, args, Timeout, cancellationToken);
+
+        // Only PDF has a completion marker we can verify here. Other formats may pause while being written,
+        // so a stable file size is not sufficient evidence that the conversion has finished.
+        var isPdf = filter.StartsWith("pdf:", StringComparison.OrdinalIgnoreCase);
+
+        // The probe ends a run whose soffice.bin keeps our pipes open after the document was converted (the warm-up
+        // converts nothing we need, so it runs without one).
+        return await ProcessRunner.RunAsync(soffice, args, Timeout, cancellationToken,
+            outputReady: probe && isPdf ? OutputComplete(outDir) : null);
     }
 
     /// <summary>Maps a target format to a LibreOffice <c>--convert-to</c> filter specification.</summary>
@@ -371,13 +436,19 @@ public sealed class LibreOfficeConverter : IConverter
         // what nothing else reads or writes (DOC, XLS, PPT, OpenDocument, DOCX output, ...).
         const int Fallback = 25;
         // Chosen in Settings → Engines: cheap enough to beat the built-in route even at the bottom of the engine list
-        // (its priority adds at most 9; PPTX → HWPX → PDF costs about 32).
+        // (its priority adds at most 9; PPTX → HWPX → PDF costs about 32). The slide renderer ties it (0 + 9) and leaves
+        // the decks to LibreOffice while it is chosen.
         const int Preferred = 0;
         // Word and spreadsheet sources the built-in route also reads: cheap enough to win for the file itself (10 + 9
         // against about 31 through the HWPX writer and rhwp), not as a hop for other formats, which the DOCX writer can
-        // turn into DOCX (Excel → DOCX → LibreOffice would cost 17 + 19).
+        // turn into DOCX (Excel → DOCX → LibreOffice would cost 17 + 19). The Filee renderer costs less (1 + 9): it
+        // leaves a chosen kind of file to LibreOffice itself (FileeRendererConverter.Edges).
         const int Chosen = 10;
         Add(Writer, [.. Writer, "txt", "html"], Fallback);
+        // RTF → TXT (#1204): the built-in routes read RTF through Pandoc, which makes a code span of every run in a
+        // monospace font (through Markdown, about 29) or loses the line breaks (through the HWPX writer, about 32).
+        // Direct only, so it stays the fallback as a step towards other formats.
+        edges.Add(new ConversionEdge("rtf", "txt", Chosen, DirectOnly: true));
         Add(Writer, ["pdf"], documents ? Chosen : Fallback);
         Add(Calc, [.. Calc, "html"], Fallback);
         Add(Calc, ["pdf"], sheets ? Chosen : Fallback);
@@ -399,6 +470,15 @@ public sealed class LibreOfficeConverter : IConverter
     /// The user's own LibreOffice when they chose one in Settings → Engines, else Filee's copy (engines/libreoffice),
     /// else a LibreOffice installed on the PC. Each conversion uses its own profile, so an open LibreOffice is untouched.
     /// </summary>
+    /// <summary>
+    /// True when a LibreOffice is there, where <see cref="Locate"/> looks: other engines leave a conversion the user
+    /// chose LibreOffice for to it (<see cref="Typesetting.FileeRendererConverter"/>).
+    /// </summary>
+    internal static bool Installed() =>
+        (EngineEnvironment.OwnProgram("libreoffice", "soffice.exe")
+            ?? EngineEnvironment.BundledProgram("libreoffice", "soffice.exe")
+            ?? EngineEnvironment.SystemProgram("libreoffice", "soffice.exe")) is not null;
+
     private void Locate()
     {
         _soffice = EngineEnvironment.OwnProgram("libreoffice", "soffice.exe")
