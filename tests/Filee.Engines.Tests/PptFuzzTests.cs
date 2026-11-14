@@ -1,5 +1,5 @@
 // Mutation fuzzing of the PowerPoint 97–2003 reader (Office/Ppt): the seeds are the rich deck of PptReaderTests and a
-// deck with a group, a picture and text runs, written in code. PptFuzzer changes their streams (the PowerPoint Document
+// deck with a group, a picture, text runs, freeforms, WordArt and a gradient, written in code. PptFuzzer changes their streams (the PowerPoint Document
 // stream most often: records, lengths, persist directory and user edit), and every input must be translated and read
 // by the slide renderer and the document reader, or refused with InvalidDataException / ConversionRefusedException, in
 // time and on a 1 MB stack. Run by FuzzHarness: a short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one,
@@ -28,7 +28,10 @@ public class PptFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 PptReader.Read(path, media);
             });
 
-    /// <summary>A slide with a group of a picture and a text box with runs, a line and an ellipse.</summary>
+    /// <summary>
+    /// A slide with a group of a picture and a text box with runs, a line, an ellipse, freeforms (lines, an arc, quadrants),
+    /// WordArt and a gradient with colours of its own.
+    /// </summary>
     private static PptBuilder SmallDeck()
     {
         var ppt = new PptBuilder();
@@ -41,6 +44,16 @@ public class PptFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                     [(2, Character(bold: true, size: 20, color: 0x123456)), (7, Character(color: 2))])), child: true)));
         slide.Shapes.Add(Shape(3003, 20, (0, 3000, 5000, 3000), [(0x01D0, 2), (0x01CE, 3)]));
         slide.Shapes.Add(Shape(3004, 3, (3000, 3000, 4000, 4000), [(0x0004, 90u << 16), (0x0181, 0x10000F0)]));
+        slide.Shapes.Add(PptShapeTests.Triangle(3005, (100, 2000, 900, 2800), 0xFF0000));
+        slide.Shapes.Add(Shape(3006, 0, (1000, 2000, 1800, 2800), [(0x0142, 100), (0x0143, 100), (0x023F, 0x00020002)], complex:
+        [
+            (0x0145, Vertices((0, 50), (0, 0), (100, 100), (100, 50), (0, 50), (50, 0), (100, 50))),
+            (0x0146, Segments(0x4000, 0xA504, 0xA702, 0xAA00, 0x6001, 0x8000)),
+        ]));
+        slide.Shapes.Add(Shape(3007, 144, (2000, 2000, 2800, 2400), [(0x00FF, 0x40004000), (0x0180, 5), (0x018C, 100)],
+            complex: [(0x00C0, Unicode("Art\rWork")), (0x00C5, Unicode("Arial"))]));
+        slide.Shapes.Add(Shape(3008, 1, (3000, 2000, 3800, 2800), [(0x0180, 7), (0x018B, 0xFFD30000), (0x018C, 50)],
+            complex: [(0x0197, MsoArray(8, Bytes(0xFFu, 0), Bytes(0xFF00u, 0x10000)))]));
         ppt.Slides.Add(slide);
         return ppt;
     }

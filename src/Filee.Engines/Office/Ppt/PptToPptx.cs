@@ -10,14 +10,14 @@
 //   a copy of its master whose theme holds that scheme, so its colours (scheme indexes, written as theme colours) come
 //   out as PowerPoint shows them. Each master has one layout of its own (title and body placeholders), and one for each
 //   title master on it, holding the title master's shapes.
-// - Slides and notes (PptToPptx.Shapes, .Text): the drawing's shapes in order (preset geometry, solid and picture
-//   fills, lines with dashes and arrowheads, pictures with crops, groups), placeholders (OEPlaceholderAtom) with their
-//   text from the slide list's outline or the shape's own text box, the background; notes pages as notes slides with
-//   their text.
+// - Slides and notes (PptToPptx.Shapes, .Text, .Geometry, .Fills): the drawing's shapes in order (preset
+//   and custom geometry, solid, picture, pattern and gradient fills, shadows, lines with dashes and arrowheads, pictures
+//   with crops, groups, WordArt), placeholders (OEPlaceholderAtom) with their text from the slide list's outline or the
+//   shape's own text box, the background; notes pages as notes slides with their text.
 //
-// Left for later (PPT-2): custom geometry (freeforms), WordArt, gradient and pattern fills (drawn in their first
-// colour), shadows, tables as tables (they are drawn as the group of shapes PowerPoint 97–2003 keeps them as),
-// headers and footers on slides, numbered lists, hyperlinks, animations, sounds, OLE objects other than their picture.
+// Left for later: adjust values of presets (they take their default shape), tables as tables (they are drawn as the
+// group of shapes PowerPoint 97–2003 keeps them as), headers and footers on slides, numbered lists, hyperlinks,
+// animations, sounds, OLE objects other than their picture.
 // What the translation leaves out that shows is in Dropped, which the capability check names.
 //
 // Hostile input: everything PptFile bounds, plus DocumentBudget for shapes (MaxObjects), paragraphs (MaxParagraphs)
@@ -229,6 +229,9 @@ internal sealed partial class PptToPptx
 
         /// <summary>The outline text of a slide's placeholders (OutlineTextRefAtom indexes into it).</summary>
         public List<List<OfficeArtRecord>> Outline { get; init; } = [];
+
+        /// <summary>The colour scheme the sheet is drawn in (RRGGBB), for colours Filee works out itself (pattern pictures).</summary>
+        public uint[] Scheme { get; init; } = DefaultScheme;
 
         private int _nextId = 2;
 

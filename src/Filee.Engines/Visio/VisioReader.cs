@@ -20,9 +20,16 @@
 //   and from the document's style sheets (document.xml StyleSheets) along their parents; colours by index from the
 //   document's colour table; fonts by name, or by index from its face names. Group members a master holds that the
 //   page doesn't list are drawn from the master.
-// Left for later (VSDX-2): theme colours and effects stored as "Themed" (the inherited or default value is used),
-// FillGradient sections, shadows, rounding, the full arrowhead table, layer subtleties (print flags, colours), text
-// backgrounds, and formulas beyond stored values.
+// - Themes (VisioTheme): a cell stored as "Themed" takes the theme's value through the shape's quick style cells:
+//   fill, line and text colours, fill styles (solid or gradient), line styles (colour, width, none), the body font.
+// - Gradients: the FillGradient section's stops (FillGradientEnabled), linear at FillGradientAngle or radial.
+// - Shadows (ShdwPattern): a copy of the outlines under the shape at the shape's or page's shadow offset, in
+//   ShdwForegnd; text backgrounds (TextBkgnd) behind the text block; corners rounded by Rounding; layers that don't
+//   print (Print 0) are left out like hidden ones.
+// - FirstUnsupported reads the drawing and names what it doesn't draw, so such a drawing keeps LibreOffice: theme
+//   effects (soft shadows, glow, ...), Foreign objects without a picture Filee can draw, binary .vsd.
+// Left for later: the full arrowhead table, InfiniteLine rows, hyperlinks, formulas beyond stored values, oblique
+// shadows (drawn as plain offsets).
 //
 // Hostile input: parts through DocumentPackage (sizes, inflate ratio, XML depth and elements); DocumentBudget for
 // shapes (each counted every time it is drawn, a background page's shapes once per page on it), paragraphs and group
@@ -103,8 +110,35 @@ internal sealed class VisioReader
         return new VisioReader(package, cancellationToken).ReadDrawing();
     }
 
-    /// <summary>"binary Visio (VSD)" for a compound file (Visio 2003–2010), which the reader leaves to LibreOffice; else null.</summary>
-    public static string? FirstUnsupported(string path) => IsCompoundFile(path) ? "binary Visio (VSD)" : null;
+    /// <summary>
+    /// "binary Visio (VSD)" for a compound file (Visio 2003–2010), which the reader leaves to LibreOffice; else the first
+    /// thing in the drawing the reader doesn't draw, or null.
+    /// </summary>
+    public static string? FirstUnsupported(string path) => FirstUnsupported(path, CancellationToken.None);
+
+    /// <inheritdoc cref="FirstUnsupported(string)"/>
+    public static string? FirstUnsupported(string path, CancellationToken cancellationToken)
+    {
+        if (IsCompoundFile(path))
+            return "binary Visio (VSD)";
+        try
+        {
+            using var package = VisioPackage.Open(path);
+            var reader = new VisioReader(package, cancellationToken);
+            reader.ReadDrawing();
+            return reader.Dropped;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or ConversionRefusedException or System.Xml.XmlException)
+        {
+            // A damaged or hostile file: the conversion stops with the reader's own message.
+            return null;
+        }
+    }
+
+    /// <summary>The first thing read that the slide model doesn't draw, or null.</summary>
+    private string? Dropped { get; set; }
+
+    private void Drop(string feature) => Dropped ??= feature;
 
     private static bool IsCompoundFile(string path)
     {
@@ -216,11 +250,13 @@ internal sealed class VisioReader
         var hidden = new HashSet<int>();
         foreach (var row in page.Sheet.Section("Layer")?.Rows.Values ?? Enumerable.Empty<VisioRow>())
         {
-            if (row.Cells.TryGetValue("Visible", out var visible) && VisioValues.Flag((string?)visible.Attribute("V")) == false)
+            // Hidden layers, and layers that don't print (a PDF or picture is the drawing printed).
+            if (row.Cells.TryGetValue("Visible", out var visible) && VisioValues.Flag((string?)visible.Attribute("V")) == false
+                || row.Cells.TryGetValue("Print", out var print) && VisioValues.Flag((string?)print.Attribute("V")) == false)
                 hidden.Add(row.Index);
         }
         // The page's top meets the deck's top: its y = height (inches, y up) is at 0.
-        var context = new PageContext(page.Part, page.Unit, hidden);
+        var context = new PageContext(page.Part, page.Unit, hidden, ThemeOf(page.Part), page.Sheet);
         var frame = new Parent(0, page.Height);
         foreach (var shape in contents.Element(V + "Shapes")?.Elements(V + "Shape") ?? [])
         {
@@ -229,8 +265,21 @@ internal sealed class VisioReader
         }
     }
 
-    /// <summary>What every shape of a page shares: the part, points per drawing inch and the hidden layers.</summary>
-    private sealed record PageContext(string Part, double Unit, HashSet<int> HiddenLayers);
+    /// <summary>The theme of a page: its own, else the document's; null without one.</summary>
+    private VisioTheme? ThemeOf(string page)
+    {
+        var part = _package.TargetOfType(page, "/theme") ?? _package.TargetOfType(_documentPart!, "/theme");
+        if (part is null)
+            return null;
+        if (!_themes.TryGetValue(part, out var theme))
+            _themes[part] = theme = VisioTheme.From(_package.Part(part));
+        return theme;
+    }
+
+    private readonly Dictionary<string, VisioTheme?> _themes = new(StringComparer.Ordinal);
+
+    /// <summary>What every shape of a page shares: the part, points per drawing inch, the hidden layers, the theme and the page sheet.</summary>
+    private sealed record PageContext(string Part, double Unit, HashSet<int> HiddenLayers, VisioTheme? Theme, VisioSheet Sheet);
 
     /// <summary>A parent's coordinates: x from <paramref name="Left"/>, y down from <paramref name="Top"/> (inches, y up).</summary>
     private readonly record struct Parent(double Left, double Top);
@@ -386,7 +435,7 @@ internal sealed class VisioReader
                 ChildBounds = new SKRect(0, 0, boxWidth, boxHeight),
             };
             var box = new SKRect(0, 0, boxWidth, boxHeight);
-            if (Shape(chain, frame, type, box, withText: false) is { } own)
+            if (Shape(chain, frame, type, box, page, withText: false) is { } own)
                 group.Children.Add(own);
             var inner = new Parent(frame.Left, frame.Top);
             foreach (var child in children)
@@ -394,17 +443,50 @@ internal sealed class VisioReader
                 if (Element(child, childPart!, inner, page) is { } element)
                     group.Children.Add(element);
             }
-            if (Shape(chain, frame, null, box, withText: true, withGeometry: false) is { } text)
+            if (Shape(chain, frame, null, box, page, withText: true, withGeometry: false) is { } text)
                 group.Children.Add(text);
             return group;
         }
 
-        if (Shape(chain, frame, type, bounds, withText: true) is not { } result)
+        if (Shape(chain, frame, type, bounds, page, withText: true) is not { } result)
             return null;
-        result.Rotation = rotation;
-        result.FlipHorizontal = flipX;
-        result.FlipVertical = flipY;
-        return result;
+        // A shadow or a text background: the shape's pieces in a group of its box, turned and mirrored as one.
+        var shadow = Shadow(chain, result, page);
+        var textBackground = result.Text is { } frameText ? TextBackground(chain, frameText, page) : null;
+        if (shadow is null && textBackground is null)
+        {
+            result.Rotation = rotation;
+            result.FlipHorizontal = flipX;
+            result.FlipVertical = flipY;
+            return result;
+        }
+        var whole = new SlideGroup
+        {
+            Bounds = bounds,
+            Rotation = rotation,
+            FlipHorizontal = flipX,
+            FlipVertical = flipY,
+            ChildBounds = new SKRect(0, 0, boxWidth, boxHeight),
+        };
+        result.Bounds = new SKRect(0, 0, boxWidth, boxHeight);
+        if (shadow is not null)
+        {
+            shadow.Bounds = result.Bounds;
+            whole.Children.Add(shadow);
+        }
+        if (textBackground is not null)
+        {
+            var text = result.Text;
+            result.Text = null;
+            whole.Children.Add(result);
+            whole.Children.Add(textBackground);
+            whole.Children.Add(new SlideShape { Bounds = result.Bounds, Text = text });
+        }
+        else
+        {
+            whole.Children.Add(result);
+        }
+        return whole;
     }
 
     /// <summary>A group's members: its own, else those of the first master shape that has some.</summary>
@@ -438,7 +520,7 @@ internal sealed class VisioReader
     }
 
     /// <summary>A shape's outlines, fill, line, picture and text in <paramref name="bounds"/>; null when it draws nothing.</summary>
-    private SlideShape? Shape(VisioCellChain chain, VisioFrame frame, string? type, SKRect bounds, bool withText, bool withGeometry = true)
+    private SlideShape? Shape(VisioCellChain chain, VisioFrame frame, string? type, SKRect bounds, PageContext page, bool withText, bool withGeometry = true)
     {
         var shape = new SlideShape { Bounds = bounds };
         if (withGeometry && type == "Foreign" && Picture(chain, frame) is var (fill, path))
@@ -449,16 +531,19 @@ internal sealed class VisioReader
         }
         else if (withGeometry)
         {
+            if (type == "Foreign")
+                Drop("embedded objects without a picture Filee can draw");
             var paths = _geometry.Paths(chain, frame);
             if (paths.Count > 0)
             {
-                shape.Paths = paths;
-                shape.Fill = paths.Any(p => p.Fill != PathFill.None) ? Fill(chain) : null;
-                shape.Line = paths.Any(p => p.Stroke) ? Line(chain) : null;
+                shape.Paths = Rounded(chain, paths, frame);
+                shape.Fill = shape.Paths.Any(p => p.Fill != PathFill.None) ? Fill(chain, page) : null;
+                shape.Line = shape.Paths.Any(p => p.Stroke) ? Line(chain, page) : null;
             }
+            ThemeEffects(chain, page);
         }
         if (withText)
-            shape.Text = TextFrame(chain, frame);
+            shape.Text = TextFrame(chain, frame, page);
         var draws = shape.Fill is not null || shape.Line is not null || shape.Text is { IsEmpty: false };
         if (!draws)
         {
@@ -471,32 +556,118 @@ internal sealed class VisioReader
 
     // ───────────────────────── Fill and line ─────────────────────────
 
-    private SKColor? Color(VisioCellChain chain, string name) =>
-        chain.Find(name, v => VisioValues.Color(v, _colors) is not null) is { } found ? VisioValues.Color(found.Value, _colors) : null;
+    private static bool IsThemed(string value) => value.Trim().Equals(VisioTheme.Themed, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Colour cell <paramref name="name"/>: its value, or for "Themed" the theme's colour that quick style cell
+    /// <paramref name="quick"/> picks; null when neither gives one.
+    /// </summary>
+    private SKColor? Color(VisioCellChain chain, string name, PageContext page, string quick, int quickDefault)
+    {
+        if (chain.Find(name, v => VisioValues.Color(v, _colors) is not null || IsThemed(v)) is not { } found)
+            return null;
+        if (!IsThemed(found.Value))
+            return VisioValues.Color(found.Value, _colors);
+        // Without a theme, the stored value under the theme's.
+        return page.Theme is { } theme
+            ? theme.Color(Quick(chain, quick, quickDefault), Variant(chain, "VariationColorIndex", page))
+            : chain.Find(name, v => VisioValues.Color(v, _colors) is not null) is { } stored ? VisioValues.Color(stored.Value, _colors) : null;
+    }
+
+    /// <summary>A quick style cell's index (QuickStyleFillColor, QuickStyleLineMatrix, ...).</summary>
+    private static int Quick(VisioCellChain chain, string name, int fallback) => (int)Math.Clamp(chain.Number(name, fallback), 0, 1000);
+
+    /// <summary>A variation index (VariationColorIndex, VariationStyleIndex): the shape's, or the page's for 65534.</summary>
+    private static int Variant(VisioCellChain chain, string name, PageContext page)
+    {
+        var value = (int)Math.Clamp(chain.Number(name, 65534), 0, 65535);
+        if (value < 65534)
+            return value;
+        return page.Sheet.Cells.TryGetValue(name, out var cell) && VisioValues.Number((string?)cell.Attribute("V")) is { } own ? (int)Math.Clamp(own, 0, 3) : 0;
+    }
+
+    /// <summary>
+    /// A number cell; <paramref name="themed"/> when the theme gives it ("Themed"), and then the stored value under the
+    /// theme's, for drawings without a theme.
+    /// </summary>
+    private static double Number(VisioCellChain chain, string name, double fallback, out bool themed)
+    {
+        themed = chain.Find(name, v => VisioValues.IsNumber(v) || IsThemed(v)) is { } found && IsThemed(found.Value);
+        return chain.Number(name, fallback);
+    }
 
     private static SKColor Transparent(SKColor color, double transparency) =>
-        color.WithAlpha((byte)Math.Round(255 * (1 - Math.Clamp(transparency, 0, 1))));
+        color.WithAlpha((byte)Math.Round(color.Alpha * (1 - Math.Clamp(transparency, 0, 1))));
 
-    private SlideFill? Fill(VisioCellChain chain)
+    private SlideFill? Fill(VisioCellChain chain, PageContext page)
     {
-        var pattern = (int)Math.Clamp(chain.Number("FillPattern", 1), -1, 1000);
+        var pattern = (int)Math.Clamp(Number(chain, "FillPattern", 1, out var themedPattern), -1, 1000);
+        var foreground = Transparent(Color(chain, "FillForegnd", page, "QuickStyleFillColor", 100) ?? SKColors.White, chain.Number("FillForegndTrans", 0));
+        // The theme's fill style: solid, gradient or none, in the quick style colour.
+        if (themedPattern && page.Theme is { } theme)
+        {
+            var style = theme.FillStyle(Quick(chain, "QuickStyleFillMatrix", 1), Variant(chain, "VariationStyleIndex", page));
+            return style is null ? null : theme.Fill(style, foreground);
+        }
         if (pattern <= 0)
             return null;
-        var foreground = Transparent(Color(chain, "FillForegnd") ?? SKColors.White, chain.Number("FillForegndTrans", 0));
-        // Gradients (25–40) and Visio 2013 gradient fills are left for later: their first colour stands for them.
+        if (chain.Flag("FillGradientEnabled") && Gradient(chain, foreground) is { } gradient)
+            return gradient;
+        // The gradient patterns (25–40) stand as their foreground colour.
         if (pattern == 1 || pattern > Patterns.Length + 1)
             return new SolidFill(foreground);
-        var background = Transparent(Color(chain, "FillBkgnd") ?? SKColors.White, chain.Number("FillBkgndTrans", 0));
+        var background = Transparent(Color(chain, "FillBkgnd", page, "QuickStyleFillColor", 100) ?? SKColors.White, chain.Number("FillBkgndTrans", 0));
         return new PatternFill(Patterns[pattern - 2], foreground, background);
     }
 
-    private SlideLine? Line(VisioCellChain chain)
+    /// <summary>
+    /// A Visio 2013 gradient: the FillGradient section's stops (GradientStopColor, GradientStopColorTrans,
+    /// GradientStopPosition), linear at FillGradientAngle (clockwise from left to right, as DrawingML's) or, for the
+    /// other directions, radial from the middle; null without two stops.
+    /// </summary>
+    private SlideFill? Gradient(VisioCellChain chain, SKColor foreground)
     {
-        var pattern = (int)Math.Clamp(chain.Number("LinePattern", 1), -1, 1000);
+        var stops = new List<GradientStop>();
+        foreach (var index in chain.RowIndexes("FillGradient").Take(64))
+        {
+            var colour = chain.RowCell("FillGradient", index, "GradientStopColor", v => VisioValues.Color(v, _colors) is not null || IsThemed(v)) is { } value
+                ? IsThemed(value) ? foreground : VisioValues.Color(value, _colors)!.Value
+                : foreground;
+            double Number(string name, double fallback) =>
+                chain.RowCell("FillGradient", index, name, VisioValues.IsNumber) is { } v ? VisioValues.Number(v)!.Value : fallback;
+            stops.Add(new GradientStop((float)Math.Clamp(Number("GradientStopPosition", 0), 0, 1),
+                Transparent(colour, Number("GradientStopColorTrans", 0))));
+        }
+        if (stops.Count < 2)
+            return null;
+        stops.Sort((a, b) => a.Position.CompareTo(b.Position));
+        if ((int)chain.Number("FillGradientDir", 0) != 0)
+            return new GradientFill(stops, GradientShape.Circle, 0, false, new SKRect(0.5f, 0.5f, 0.5f, 0.5f));
+        var angle = (float)(chain.Number("FillGradientAngle", Math.PI / 2) * 180 / Math.PI % 360);
+        return new GradientFill(stops, GradientShape.Linear, angle < 0 ? angle + 360 : angle, false, SKRect.Empty);
+    }
+
+    private SlideLine? Line(VisioCellChain chain, PageContext page)
+    {
+        var pattern = (int)Math.Clamp(Number(chain, "LinePattern", 1, out var themedPattern), -1, 1000);
+        var weight = Number(chain, "LineWeight", 0.01, out var themedWeight) * 72;
+        var color = Color(chain, "LineColor", page, "QuickStyleLineColor", 100) ?? SKColors.Black;
+        if (page.Theme is { } theme && theme.LineStyle(Quick(chain, "QuickStyleLineMatrix", 1), Variant(chain, "VariationStyleIndex", page)) is { } style)
+        {
+            var (themeColor, themeWidth, drawn) = theme.Line(style, color);
+            if (themedPattern && !drawn)
+                return null;
+            if (chain.Find("LineColor", v => VisioValues.Color(v, _colors) is not null || IsThemed(v)) is { } found && IsThemed(found.Value))
+                color = themeColor;
+            if (themedWeight && themeWidth is { } width)
+                weight = width;
+        }
+        if (themedPattern && page.Theme is not null)
+            pattern = 1;
         if (pattern <= 0)
             return null;
-        var color = Transparent(Color(chain, "LineColor") ?? SKColors.Black, chain.Number("LineColorTrans", 0));
-        var width = (float)Math.Clamp(chain.Number("LineWeight", 0.01) * 72, 0, 1000);
+        color = Transparent(color, chain.Number("LineColorTrans", 0));
+        var lineWidth = (float)Math.Clamp(weight, 0, 1000);
         float[]? dash = pattern switch
         {
             1 => null,
@@ -517,8 +688,98 @@ internal sealed class VisioReader
             2 => SKStrokeCap.Square,
             _ => SKStrokeCap.Round,
         };
-        return new SlideLine(new SolidFill(color), width, dash, cap, SKStrokeJoin.Round,
-            Arrow(chain, "BeginArrow", "BeginArrowSize", width), Arrow(chain, "EndArrow", "EndArrowSize", width));
+        return new SlideLine(new SolidFill(color), lineWidth, dash, cap, SKStrokeJoin.Round,
+            Arrow(chain, "BeginArrow", "BeginArrowSize", lineWidth), Arrow(chain, "EndArrow", "EndArrowSize", lineWidth));
+    }
+
+    /// <summary>Outlines with their corners rounded by the Rounding cell (a radius in inches); as they are without one.</summary>
+    private static IReadOnlyList<SlidePath> Rounded(VisioCellChain chain, List<SlidePath> paths, VisioFrame frame)
+    {
+        var radius = (float)Math.Clamp(chain.Number("Rounding", 0) * frame.Unit, 0, 100_000);
+        if (radius < 0.01f)
+            return paths;
+        using var effect = SKPathEffect.CreateCorner(radius);
+        using var paint = new SKPaint { PathEffect = effect, Style = SKPaintStyle.Fill };
+        var result = new List<SlidePath>(paths.Count);
+        foreach (var path in paths)
+        {
+            var rounded = new SKPath();
+            if (paint.GetFillPath(path.Path, rounded))
+            {
+                rounded.FillType = path.Path.FillType;
+                path.Path.Dispose();
+                result.Add(path with { Path = rounded });
+            }
+            else
+            {
+                rounded.Dispose();
+                result.Add(path);
+            }
+        }
+        return result;
+    }
+
+    // ───────────────────────── Shadows, text backgrounds, theme effects ─────────────────────────
+
+    /// <summary>
+    /// The shape's shadow (ShdwPattern above 0): its outlines again, offset by ShapeShdwOffsetX / Y (or the page's
+    /// ShdwOffsetX / Y), filled and outlined in ShdwForegnd; null without one.
+    /// </summary>
+    private SlideShape? Shadow(VisioCellChain chain, SlideShape shape, PageContext page)
+    {
+        if (shape.IsPicture || shape.Paths.Count == 0 || (int)Math.Clamp(Number(chain, "ShdwPattern", 0, out _), 0, 1000) <= 0)
+            return null;
+        double PageCell(string name, double fallback) =>
+            page.Sheet.Cells.TryGetValue(name, out var cell) && VisioValues.Number((string?)cell.Attribute("V")) is { } value ? value : fallback;
+        var own = (int)chain.Number("ShapeShdwType", 0) != 0;
+        var dx = own && chain.NumberFrom("ShapeShdwOffsetX", 0) is { } x ? x : PageCell("ShdwOffsetX", 0.125);
+        var dy = own && chain.NumberFrom("ShapeShdwOffsetY", 0) is { } y ? y : PageCell("ShdwOffsetY", -0.125);
+        var color = Transparent(Color(chain, "ShdwForegnd", page, "QuickStyleShadowColor", 0) ?? new SKColor(0x80, 0x80, 0x80),
+            chain.Number("ShdwForegndTrans", 0));
+        var (offsetX, offsetY) = ((float)Math.Clamp(dx * page.Unit, -10_000, 10_000), (float)Math.Clamp(-dy * page.Unit, -10_000, 10_000));
+        var paths = shape.Paths.Select(p =>
+        {
+            var copy = new SKPath(p.Path);
+            copy.Offset(offsetX, offsetY);
+            return p with { Path = copy };
+        }).ToList();
+        return new SlideShape
+        {
+            Bounds = shape.Bounds,
+            Paths = paths,
+            Fill = shape.Fill is null ? null : new SolidFill(color),
+            Line = shape.Line is null ? null : shape.Line with { Fill = new SolidFill(color), Head = LineEnd.None, Tail = LineEnd.None },
+        };
+    }
+
+    /// <summary>The text block's background (TextBkgnd: 0 none, n the colour n − 1, or #RRGGBB) as a filled rectangle; null without one.</summary>
+    private SlideShape? TextBackground(VisioCellChain chain, SlideTextFrame text, PageContext page)
+    {
+        if (text.Area is not { } area || chain.Text("TextBkgnd") is not { } value)
+            return null;
+        SKColor? color = VisioValues.Number(value) is { } index
+            ? index >= 1 ? VisioValues.Color(((int)Math.Min(index, 10_000) - 1).ToString(CultureInfo.InvariantCulture), _colors) : null
+            : IsThemed(value) ? page.Theme?.Color(1, 0) : VisioValues.Color(value, _colors);
+        if (color is not { } fill)
+            return null;
+        var path = new SKPath();
+        path.AddRect(new SKRect(0, 0, area.Width, area.Height));
+        return new SlideShape
+        {
+            Bounds = area,
+            Rotation = text.Rotation,
+            Paths = [new SlidePath(path, PathFill.Normal, Stroke: false)],
+            Fill = new SolidFill(Transparent(fill, chain.Number("TextBkgndTrans", 0))),
+        };
+    }
+
+    /// <summary>Names theme effects (soft shadows, glow, reflection, ...) a shape takes from its theme, which aren't drawn.</summary>
+    private void ThemeEffects(VisioCellChain chain, PageContext page)
+    {
+        if (Dropped is not null || page.Theme is not { } theme || Quick(chain, "QuickStyleEffectsMatrix", 0) is not (> 0 and var matrix))
+            return;
+        if (theme.HasEffects(matrix, Variant(chain, "VariationStyleIndex", page)))
+            Drop("theme effects (shadows, glow, reflection)");
     }
 
     /// <summary>A few basic arrowheads for Visio's arrow numbers (the full table is left for later).</summary>
@@ -567,7 +828,7 @@ internal sealed class VisioReader
 
     // ───────────────────────── Text ─────────────────────────
 
-    private SlideTextFrame? TextFrame(VisioCellChain chain, VisioFrame frame)
+    private SlideTextFrame? TextFrame(VisioCellChain chain, VisioFrame frame, PageContext page)
     {
         if (chain.Flag("HideText"))
             return null;
@@ -583,7 +844,7 @@ internal sealed class VisioReader
         {
             index = characterRows.Contains(index) ? index : 0;
             if (!runs.TryGetValue(index, out var run))
-                runs[index] = run = Run(chain, index);
+                runs[index] = run = Run(chain, index, page);
             return run;
         }
         VisioParagraph ParagraphAt(int index)
@@ -638,14 +899,18 @@ internal sealed class VisioReader
     private static string Hex(SKColor color) => $"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}";
 
     /// <summary>Character row <paramref name="index"/> as a run format.</summary>
-    private VisioRun Run(VisioCellChain chain, int index)
+    private VisioRun Run(VisioCellChain chain, int index, PageContext page)
     {
         double Number(string name, double fallback) =>
             chain.RowCell("Character", index, name, VisioValues.IsNumber) is { } value ? VisioValues.Number(value)!.Value : fallback;
-        var font = chain.RowCell("Character", index, "Font", v => FontName(v) is not null) is { } fontValue ? FontName(fontValue) : null;
+        var font = chain.RowCell("Character", index, "Font", v => FontName(v) is not null || IsThemed(v)) is { } fontValue
+            ? IsThemed(fontValue) ? page.Theme?.MinorFont : FontName(fontValue)
+            : null;
         font ??= "Calibri";
-        var color = chain.RowCell("Character", index, "Color", v => VisioValues.Color(v, _colors) is not null) is { } colorValue
-            ? VisioValues.Color(colorValue, _colors)!.Value
+        var color = chain.RowCell("Character", index, "Color", v => VisioValues.Color(v, _colors) is not null || IsThemed(v)) is { } colorValue
+            ? IsThemed(colorValue)
+                ? page.Theme?.Color(Quick(chain, "QuickStyleFontColor", 0), Variant(chain, "VariationColorIndex", page)) ?? SKColors.Black
+                : VisioValues.Color(colorValue, _colors)!.Value
             : SKColors.Black;
         var style = (int)Math.Clamp(Number("Style", 0), 0, 255);
         var size = (int)Math.Clamp(Math.Round(Number("Size", 1.0 / 6) * 7200), 100, 400_000);
