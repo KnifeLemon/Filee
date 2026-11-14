@@ -162,7 +162,7 @@ Per annullare, rimuovi le voci in Sicurezza di Windows → Controllo app e brows
 | Da | A |
 |---|---|
 | **Immagini**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR, …;<br>GIMP XCF, RAW fotocamera (CR2, CR3, NEF, ARW, DNG, …), DICOM, OpenEXR, HDR, FITS, JPEG XR (Windows), lettura Live Photo iPhone (LIVP) | uno qualsiasi di questi (HEIC⁵), PDF, SVG (vettorializzato), ridimensionato, scala di grigi;<br>Live/Motion Photo (iPhone, Android) → il loro video (MP4, MOV⁵), e un video → Live Photo (iPhone) o Motion Photo (Android)⁵, sperimentale |
-| **Vettoriali**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (vettoriale), PNG e altre immagini,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
+| **Vettoriali**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (vettoriale), PNG e altre immagini,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX (un'immagine per ogni pagina), SVG²;<br>unione (nell'ordine che scegli prima), divisione, intervalli di pagine, compressione (PDF più piccoli) |
 | **Documenti**: DOCX, DOCM, DOTX, EML, Outlook MSG;<br>lettura OFD (fatture elettroniche cinesi, documenti ufficiali)<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>ODT, FODT, OTT² |
 | **Fogli di calcolo**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |
