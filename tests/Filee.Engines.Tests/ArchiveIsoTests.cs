@@ -61,6 +61,9 @@ public sealed class ArchiveIsoTests : IDisposable
     [InlineData("egg")]
     [InlineData("jar")]
     [InlineData("zxp")]
+    [InlineData("nupkg")]
+    [InlineData("apks")]
+    [InlineData("aab")]
     public async Task Archives_become_iso_with_nested_unicode_files_and_empty_directories(string format)
     {
         var input = Path.Combine(_root, "sample." + FormatRegistry.Get(format).PrimaryExtension);
@@ -74,7 +77,7 @@ public sealed class ArchiveIsoTests : IDisposable
             Directory.CreateDirectory(Path.Combine(tree, "nested"));
             Directory.CreateDirectory(Path.Combine(tree, "empty"));
             File.WriteAllText(Path.Combine(tree, "nested", "한글.txt"), "contents");
-            await new ArchiveConverter().CombineAsync(Directory.GetFileSystemEntries(tree), input, format is "jar" or "zxp" ? "zip" : format,
+            await new ArchiveConverter().CombineAsync(Directory.GetFileSystemEntries(tree), input, format is "jar" or "zxp" or "nupkg" or "apks" or "aab" ? "zip" : format,
                 new Preset(), _root, null, TestContext.Current.CancellationToken);
         }
         var original = File.ReadAllBytes(input);

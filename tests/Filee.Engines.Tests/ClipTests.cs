@@ -163,7 +163,8 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // RealMedia is read, not written: its clips are MP4.
         Assert.Equal("mp4", ClipTool.TargetFor("rm", planner));
         Assert.True(ClipTool.CanCut("rm", planner));
-        Assert.False(ClipTool.CanCut("mp3", planner));
+        Assert.True(ClipTool.CanCut("mp3", planner)); // a sound is cut in its own format
+        Assert.False(ClipTool.CanCut("png", planner));
     }
 
     // ───────────────────────── Real clips ─────────────────────────
@@ -830,5 +831,153 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var result = await ProcessRunner.RunAsync(Tools.Value.Ffmpeg, args, TimeSpan.FromMinutes(1), CancellationToken.None);
         Assert.True(result.ExitCode == 0, result.StandardError);
         Assert.InRange(new FileInfo(wav).Length, 3 * 48000 * 4 * 0.95, 3 * 48000 * 4 * 1.05);
+    }
+
+    // ───────────────────────── Sounds ─────────────────────────
+
+    private static readonly MediaInfo Song = new(TimeSpan.FromMinutes(4), null, new AudioStreamInfo(2, 44100, "mp3"), null);
+
+    [Fact]
+    public void A_clip_of_a_sound_is_one_filter_graph_of_sound_only_written_in_the_sounds_format()
+    {
+        var edit = ClipEdit.Of(new ClipRange(65.3, 95.3));
+        edit.FadeOut = 2;
+
+        var args = MediaEncoding.ClipSoundArguments("in.mp3", "out.mp3", "mp3", edit, new MediaOptions(), Song);
+
+        Assert.Equal("65.300", After(args, "-ss"));
+        Assert.Equal("95.300", After(args, "-to"));
+        Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
+        var graph = After(args, "-filter_complex");
+        Assert.Contains("[0:a:0]", graph);
+        Assert.Contains("afade=t=out", graph);
+        Assert.DoesNotContain("[0:V:0]", graph);
+        Assert.DoesNotContain("trim=start", graph.Replace("atrim=start", ""));
+        Assert.Equal("[a]", After(args, "-map"));
+        Assert.Equal("libmp3lame", After(args, "-c:a"));
+        Assert.Equal("mp3", After(args, "-f"));
+        Assert.DoesNotContain("-c:v", args);
+        Assert.Equal("out.mp3", args[^1]);
+    }
+
+    [Fact]
+    public void A_clip_of_a_sound_takes_the_sound_track_the_probe_chose_and_keeps_the_cover()
+    {
+        var info = Song with { Audio = new AudioStreamInfo(2, 44100, "mp3", 1), CoverStreamIndex = 2 };
+
+        var args = MediaEncoding.ClipSoundArguments("in.mp3", "out.m4a", "m4a", ClipEdit.Of(new ClipRange(0, 20)), new MediaOptions(), info);
+
+        Assert.Contains("[0:a:1]", After(args, "-filter_complex"));
+        Assert.Equal("aac", After(args, "-c:a"));
+        Assert.Equal("ipod", After(args, "-f"));
+        Assert.Equal("0:2", args[args.ToList().LastIndexOf("-map") + 1]);
+        Assert.Equal("attached_pic", After(args, "-disposition:v:0"));
+    }
+
+    [Fact]
+    public void A_clip_of_a_sound_needs_sound_and_a_target_ffmpeg_writes()
+    {
+        var silent = new MediaInfo(TimeSpan.FromMinutes(1), null, null, null);
+
+        Assert.Throws<InvalidOperationException>(() => MediaEncoding.ClipSoundArguments("in.mp3", "out.mp3", "mp3", ClipEdit.Of(new ClipRange(0, 5)), new MediaOptions(), silent));
+        Assert.Throws<NotSupportedException>(() => MediaEncoding.ClipSoundArguments("in.mp3", "out.ape", "ape", ClipEdit.Of(new ClipRange(0, 5)), new MediaOptions(), Song));
+    }
+
+    [Fact]
+    public void The_sound_preview_of_a_sound_has_no_picture_to_size()
+    {
+        var args = MediaEncoding.ClipPreviewAudio("in.mp3", ClipEdit.Of(new ClipRange(10, 40)), null);
+
+        Assert.Equal("[a]", After(args, "-map"));
+        Assert.Equal("wav", After(args, "-f"));
+        Assert.DoesNotContain("[0:V:0]", After(args, "-filter_complex"));
+    }
+
+    /// <summary>A sound of the given length: a tone, as the format of the file name (WAV, MP3, FLAC, …).</summary>
+    private static async Task<string> MakeSoundAsync(string folder, string name, int seconds)
+    {
+        var path = Path.Combine(folder, name);
+        var result = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", $"sine=frequency=440:sample_rate=44100:duration={seconds}", "-ac", "2", path],
+            TimeSpan.FromMinutes(2), CancellationToken.None);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        return path;
+    }
+
+    private static async Task<(double Duration, string? AudioCodec, bool HasPicture)> ProbeSoundAsync(string path)
+    {
+        var result = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path], TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(result.ExitCode == 0, $"ffprobe {path}: {result.StandardError}");
+        using var json = JsonDocument.Parse(result.StandardOutput);
+        var streams = json.RootElement.GetProperty("streams").EnumerateArray().ToList();
+        var audio = streams.FirstOrDefault(s => s.GetProperty("codec_type").GetString() == "audio");
+        var duration = double.Parse(json.RootElement.GetProperty("format").GetProperty("duration").GetString()!, CultureInfo.InvariantCulture);
+        return (duration, audio.ValueKind == JsonValueKind.Object ? audio.GetProperty("codec_name").GetString() : null,
+            streams.Any(s => s.GetProperty("codec_type").GetString() == "video"));
+    }
+
+    [Fact]
+    public async Task A_clip_of_a_sound_is_cut_through_the_job_queue_in_the_sounds_format()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var source = await MakeSoundAsync(folder, "song.mp3", 20);
+        var tool = BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+
+        var job = await fx.ConvertAsync([source], ClipTool.ConversionOf(tool, "mp3", new ClipRange(5, 12)));
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var output = Assert.Single(job.Outputs);
+        Assert.Equal(".mp3", Path.GetExtension(output));
+        var (duration, codec, picture) = await ProbeSoundAsync(output);
+        Assert.Equal("mp3", codec);
+        Assert.False(picture);
+        Assert.InRange(duration, 6.7, 7.4);
+        Assert.True(File.Exists(source));
+    }
+
+    [Fact]
+    public async Task A_clip_of_a_sound_with_two_parts_and_a_fade_is_as_long_as_its_parts()
+    {
+        SkipUnlessInstalled();
+        var source = await MakeSoundAsync(fx.NewFolder(), "take.wav", 30);
+        var edit = new ClipEdit { Parts = [new ClipPart { Start = 2, End = 6 }, new ClipPart { Start = 10, End = 13, Volume = 0.5 }], FadeOut = 1 };
+        var tool = BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+
+        var job = await fx.ConvertAsync([source], ClipTool.ConversionOf(tool, "wav", edit));
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var (duration, codec, _) = await ProbeSoundAsync(Assert.Single(job.Outputs));
+        Assert.StartsWith("pcm", codec);
+        Assert.InRange(duration, 6.7, 7.4);
+    }
+
+    [Fact]
+    public async Task The_window_reads_a_sound_without_a_picture_and_plays_it_with_the_clock()
+    {
+        SkipUnlessInstalled();
+        var source = await MakeSoundAsync(fx.NewFolder(), "song.mp3", 6);
+
+        var summary = await VideoFrames.ProbeAsync(source, CancellationToken.None);
+        Assert.False(summary.HasPicture);
+        Assert.InRange(summary.Duration, 5.5, 6.5);
+
+        var played = new List<(int Width, int Height, double Seconds)>();
+        ClipPreview.PlayerVolume = 0;
+        try
+        {
+            await ClipPreview.PlayAsync(source, ClipEdit.Of(new ClipRange(1, 2.5)), 90,
+                (pixels, width, height, seconds) => { lock (played) played.Add((width, height, seconds)); }, CancellationToken.None);
+        }
+        finally
+        {
+            ClipPreview.PlayerVolume = null;
+        }
+
+        Assert.NotEmpty(played);
+        Assert.All(played, p => Assert.Equal((0, 0), (p.Width, p.Height)));
+        Assert.InRange(played[^1].Seconds, 1.0, 1.6);
+        Assert.True(played.Zip(played.Skip(1)).All(pair => pair.Second.Seconds >= pair.First.Seconds));
     }
 }

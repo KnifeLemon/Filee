@@ -658,7 +658,7 @@ public static class BuiltInData
         new()
         {
             Id = RingtoneId, NameKey = "preset.iphone_ringtone", TargetFormat = "m4r",
-            Media = { RingtoneStart = 0, RingtoneLength = MediaOptions.DefaultRingtoneLength },
+            Media = { RingtoneStart = 0, RingtoneLength = MediaOptions.DefaultRingtoneLength, AskRingtonePart = true },
         },
 
         // Archives

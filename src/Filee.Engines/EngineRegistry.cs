@@ -82,6 +82,7 @@ public static class EngineRegistry
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
         new DrawingConverter(),
+        new Gcode.GcodeConverter(loggers?.CreateLogger<Gcode.GcodeConverter>()),
         new ModelConverter(),
         new ImageTo3DConverter(),
         new GeoConverter(),
@@ -91,6 +92,7 @@ public static class EngineRegistry
         new VisionConverter(), // before Tesseract: a Mac's OCR step (Tesseract reads the languages Vision doesn't)
         new TesseractConverter(),
         new CalibreConverter(),
+        new WeasyPrintConverter(),
         new LibreOfficeConverter(env, loggers?.CreateLogger<LibreOfficeConverter>()),
     ]);
 

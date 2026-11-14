@@ -466,6 +466,21 @@ public sealed class RadialController(
             return;
         }
 
+        // "Ask every time" for the ringtone's part (#1291): the "Cut a clip" window opens on the sounds; other files convert
+        // from the start of the preset's part.
+        if (AskedRingtone.Asks(preset) && web is null && sources.Any(AskedRingtone.IsSound))
+        {
+            KeepKeyboard(); // for the clip window
+            var near = _window?.Position;
+            Close(animate: false);
+            var sounds = sources.Where(AskedRingtone.IsSound).ToList();
+            var rest = sources.Where(file => !AskedRingtone.IsSound(file)).ToList();
+            if (rest.Count > 0)
+                conversions.Start(rest, AskedRingtone.Apply(preset, preset.Media.RingtoneStart, preset.Media.RingtoneLength));
+            windows.ShowRingtoneWindow(sounds, preset, near);
+            return;
+        }
+
         // "Ask every time" (#521): the save dialog first; the toast shows the job, the donut has closed for the dialog.
         // shortcut: files from a browser aren't asked about, they save into the download folder as "next to the source".
         if (preset.Output.AskEveryTime && (web is null || preset.IsCopyToFolder))

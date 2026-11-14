@@ -33,7 +33,7 @@ internal static class LivePhotoWriter
     {
         var options = step.Preset.Media;
         var apple = options.LivePhoto == LivePhotoKind.Apple;
-        var input = Path.GetFullPath(step.InputPath);
+        var input = MediaInput.For(step.InputPath, step.From, step.WorkDirectory, step.Notice);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, ct);
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         var clip = Clip(options, info.Duration?.TotalSeconds);

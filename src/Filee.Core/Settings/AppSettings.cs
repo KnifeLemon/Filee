@@ -170,7 +170,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 91;
+    public const int CurrentSchemaVersion = 97;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -287,7 +287,7 @@ public sealed class AppSettings
 
     /// <summary>
     /// With LibreOffice installed, presentations (PPTX, PPT, ODP) → PDF go through it instead of Filee's slide renderer.
-    /// Off by default since schema 91, which turned it off once for everyone: the slide renderer keeps backgrounds and
+    /// Off by default since schema 97, which turned it off once for everyone: the slide renderer keeps backgrounds and
     /// shape positions, which the route it used to replace (HWPX writer and rhwp) lost.
     /// </summary>
     public bool LibreOfficeForSlides { get; set; }
@@ -296,7 +296,7 @@ public sealed class AppSettings
     public string? PreferredOllamaModel { get; set; }
 
     /// <summary>
-    /// Settings before schema 90 only: HWP / HWPX → PDF through LibreOffice and H2Orestart instead of rhwp. LibreOffice
+    /// Settings before schema 96 only: HWP / HWPX → PDF through LibreOffice and H2Orestart instead of rhwp. LibreOffice
     /// no longer opens HWP; the migration turns <see cref="FileeRenderer"/> on for whoever chose this (the other way
     /// around rhwp) and clears it, so it is never written again.
     /// </summary>
@@ -305,7 +305,7 @@ public sealed class AppSettings
 
     /// <summary>
     /// Filee's own renderer lays HWP, HWPX, documents read into Filee's document model and PowerPoint decks out to PDF
-    /// (on by default; schema 91 turned it on once for everyone). Off, they go through the HWPX writer and rhwp. Files
+    /// (on by default; schema 97 turned it on once for everyone). Off, they go through the HWPX writer and rhwp. Files
     /// with what it doesn't draw yet keep that route either way.
     /// </summary>
     public bool FileeRenderer { get; set; } = true;
@@ -350,6 +350,14 @@ public sealed class AppSettings
     /// once. A Filee from before it skips the property, so it needs no schema step.
     /// </summary>
     public WindowBounds? MainWindow { get; set; }
+
+    /// <summary>
+    /// Where the Donut toolbar page's donut on screen was dragged to: its centre against the main window's top-left
+    /// corner, in screen pixels (points on macOS) (<see cref="WindowBounds.X"/>, <see cref="WindowBounds.Y"/>), so it
+    /// opens there beside the window again. Null until it has been dragged, and again once it is dropped onto the
+    /// window. A Filee from before it skips the property, so it needs no schema step.
+    /// </summary>
+    public WindowBounds? DonutPreviewPlace { get; set; }
 
     /// <summary>
     /// The fields turned off on the Fields page (ids of <see cref="Formats.FormatFields.All"/>): a format that belongs only to

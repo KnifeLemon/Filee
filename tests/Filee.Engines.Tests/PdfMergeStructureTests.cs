@@ -263,12 +263,12 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
     private static void MergeFiles(IReadOnlyList<string> inputs, string output, CancellationToken ct,
         PdfMergeStructure.Limits? limits = null) =>
         PdfSharpConverter.Merge(inputs.Select(path => new PdfMergeInput(path, Path.GetFileName(path))).ToArray(),
-            output, false, ct, limits);
+            output, false, null, ct, limits);
 
     private string MergeSources(IReadOnlyList<PdfMergeInput> inputs, bool enabled = true, PdfMergeStructure.Limits? limits = null)
     {
         var output = Path.Combine(fx.NewFolder(), "merged.pdf");
-        PdfSharpConverter.Merge(inputs, output, enabled, TestContext.Current.CancellationToken, limits);
+        PdfSharpConverter.Merge(inputs, output, enabled, null, TestContext.Current.CancellationToken, limits);
         return output;
     }
 
@@ -604,7 +604,7 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         using var cts = new CancellationTokenSource();
         TimeSpan? cancelled = null;
         var clock = Stopwatch.StartNew();
-        Assert.Throws<OperationCanceledException>(() => PdfSharpConverter.Merge([new(source, "a.pdf")], output, true,
+        Assert.Throws<OperationCanceledException>(() => PdfSharpConverter.Merge([new(source, "a.pdf")], output, true, null,
             cts.Token, new() { BeforeCarry = () => { cancelled = clock.Elapsed; cts.Cancel(); } }));
         Assert.NotNull(cancelled);
         Assert.True(clock.Elapsed - cancelled.Value < TimeSpan.FromSeconds(1));
