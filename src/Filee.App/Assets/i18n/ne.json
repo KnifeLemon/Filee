@@ -86,6 +86,7 @@
   "donut.empty": "प्रिसेटहरू यहाँ तान्नुहोस्",
   "donut.same_format": "उही ढाँचा",
   "donut.group_caption": "{0} को समूह",
+  "donut.folder_icon_browse": "आइकन ब्राउज़ गर्नुहोस्",
   "donut.flip_to_back": "{0} पछाडि",
   "donut.flip_to_front": "{0} अगाडि",
   "toast.converting": "{0} → {1}",
@@ -104,6 +105,7 @@
   "download.badge": "{0}/s · {1}",
   "download.badge_files": "{0} · {2} मध्ये {1} फाइलहरू",
   "error.unsupported_source": "यो फाइल प्रकार समर्थित छैन",
+  "error.folder_icon_platform": "फोल्डर आइकन Windows मा मात्र फेरिन्छ",
   "error.empty_file": "फाइल खाली छ (० बाइट)। दायाँ-क्लिक मेनुमा “नयाँ” बाट सिर्जना गरिएको फाइल सम्बन्धित एपमा खोलेर सुरक्षित नगरेसम्म खाली रहन्छ",
   "error.p7m_unreadable": "यो Filee ले खोल्न सक्ने हस्ताक्षरित .p7m फाइल होइन, वा बिग्रिएको छ",
   "error.p7m_detached": "यो .p7m मा हस्ताक्षर मात्र छ, हस्ताक्षरित फाइल छैन। बरु यसले हस्ताक्षर गरेको फाइल रूपान्तरण गर्नुहोस्",
@@ -1782,6 +1784,7 @@
   "engine.iso.description": "फोल्डर वा अभिलेखको सामग्रीबाट ISO छवि बनाउँछ र Unicode नाम तथा खाली फोल्डरहरू सुरक्षित राख्छ।",
   "preset.iso_image": "ISO छवि",
   "profile.folders": "फोल्डरहरू",
+  "preset.folder_icon": "फोल्डर आइकन परिवर्तन गर्नुहोस्",
 
   "preset.upscale": "छविको गुणस्तर बढाउनुहोस्",
   "preset.upscale.donut": "अपस्केल",

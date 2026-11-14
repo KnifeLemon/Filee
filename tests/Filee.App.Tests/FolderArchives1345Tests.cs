@@ -23,7 +23,7 @@ public sealed class FolderArchives1345Tests
             var loc = AppHost.Get<ILocalizer>();
             var radial = new RadialViewModel(store, loc, AppHost.Get<PresetAvailability>());
             radial.Load([folder], clickMode: false);
-            Assert.Equal(["to-iso", "to-zip", "zip-all"], radial.Items.Select(item => item.Id));
+            Assert.Equal(["tool-folder-icon", "to-iso", "to-zip", "zip-all"], radial.Items.Select(item => item.Id));
             var archiveAvailable = new Filee.Engines.Archives.ArchiveConverter().GetStatus().IsAvailable;
             foreach (var id in new[] { "to-zip", "zip-all" })
             {

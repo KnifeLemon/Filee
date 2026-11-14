@@ -76,6 +76,7 @@ public static class BuiltInData
         .. BackgroundPresets(),
         .. MetadataPresets(),
         .. UpscalePresets(),
+        .. FolderIconPresets(),
         new()
         {
             Id = "tool-sheet-studio", NameKey = "preset.sheet_studio", TargetFormat = "pdf",
@@ -375,6 +376,23 @@ public static class BuiltInData
         {
             Id = UpscaleId, NameKey = "preset.upscale", TargetFormat = SameAsSource,
             Kind = PresetKind.Tool, Tool = Preset.UpscaleTool, Output = { FileNamePattern = "{name}_upscaled" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Change folder icon" tool (settings schema 95): on the folders donut, Windows only.</summary>
+    public const string FolderIconId = "tool-folder-icon";
+
+    /// <summary>
+    /// "Change folder icon" (settings schema 95): the picture comes from the donut's ring (out of the folder itself) or
+    /// from the tool's file picker, goes into the folder as an .ico, and the folder's desktop.ini records it. The first
+    /// slice of the folders donut, before the ISO one.
+    /// </summary>
+    public static List<Preset> FolderIconPresets() =>
+    [
+        new()
+        {
+            Id = FolderIconId, NameKey = "preset.folder_icon", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.FolderIconTool,
         },
     ];
 
@@ -796,7 +814,7 @@ public static class BuiltInData
             Id = "folders",
             NameKey = "profile.folders",
             Extensions = [],
-            PresetIds = ["to-iso", "to-zip", "zip-all"],
+            PresetIds = ["tool-folder-icon", "to-iso", "to-zip", "zip-all"],
             BackPresetIds = [],
         };
         profiles.Insert(profiles.FindIndex(p => p.Id == "archives") + 1, folders);

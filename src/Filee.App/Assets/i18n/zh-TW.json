@@ -90,6 +90,7 @@
   "donut.empty": "把預設拖到這裡",
   "donut.same_format": "同格式",
   "donut.group_caption": "群組 · {0} 個項目",
+  "donut.folder_icon_browse": "瀏覽選擇圖示",
   "donut.flip_to_back": "{0} 背面",
   "donut.flip_to_front": "{0} 正面",
 
@@ -110,6 +111,7 @@
   "download.badge_files": "{0} · 第 {1}/{2} 個檔案",
 
   "error.unsupported_source": "不支援此檔案類型",
+  "error.folder_icon_platform": "資料夾圖示僅在 Windows 上變更",
   "error.empty_file": "檔案是空的（0 位元組）。用右鍵選單「新增」建立的檔案，要在對應的應用程式中開啟並儲存後才有內容",
   "error.p7m_unreadable": "這不是 Filee 能開啟的已簽署 .p7m 檔案，或檔案已損壞",
   "error.p7m_detached": "這個 .p7m 只包含簽章，沒有被簽署的檔案。請轉換它所簽署的檔案",
@@ -1802,6 +1804,7 @@
   "engine.iso.description": "從資料夾或壓縮檔內容建立 ISO 映像，保留 Unicode 名稱和空資料夾。",
   "preset.iso_image": "ISO 映像",
   "profile.folders": "資料夾",
+  "preset.folder_icon": "變更資料夾圖示",
 
   "preset.upscale": "放大圖像畫質",
   "preset.upscale.donut": "超解析度放大",

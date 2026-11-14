@@ -514,7 +514,7 @@ public sealed partial class DonutMenu
                 var hot = k == subHover && expanded && item.IsEnabled;
                 if (hot)
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82), null, wedge);
-                DrawSliceLabel(context, labels[k], item.IsEnabled, hot);
+                DrawSliceContent(context, item, labels[k], center, inner, outer, mid, hot);
             }
         }
     }

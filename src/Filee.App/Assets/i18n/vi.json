@@ -90,6 +90,7 @@
   "donut.empty": "Kéo cấu hình sẵn vào đây",
   "donut.same_format": "Cùng định dạng",
   "donut.group_caption": "Nhóm {0} mục",
+  "donut.folder_icon_browse": "Chọn biểu tượng",
   "donut.flip_to_back": "{0} mặt sau",
   "donut.flip_to_front": "{0} mặt trước",
 
@@ -110,6 +111,7 @@
   "download.badge_files": "{0} · {1}/{2} tệp",
 
   "error.unsupported_source": "Loại tệp này không được hỗ trợ",
+  "error.folder_icon_platform": "Thay đổi biểu tượng thư mục trên Windows",
   "error.empty_file": "Tệp trống (0 byte). Tệp tạo bằng “Mới” trong menu chuột phải sẽ trống cho đến khi bạn mở nó trong ứng dụng tương ứng và lưu lại",
   "error.p7m_unreadable": "Đây không phải tệp .p7m đã ký mà Filee mở được, hoặc tệp bị hỏng",
   "error.p7m_detached": "Tệp .p7m này chỉ chứa chữ ký, không chứa tệp đã ký. Hãy chuyển đổi tệp mà nó ký",
@@ -1802,6 +1804,7 @@
   "engine.iso.description": "Tạo ảnh ISO từ thư mục hoặc nội dung tệp nén, giữ nguyên tên Unicode và thư mục trống.",
   "preset.iso_image": "Ảnh ISO",
   "profile.folders": "Thư mục",
+  "preset.folder_icon": "Đổi biểu tượng thư mục",
 
   "preset.upscale": "Nâng cao chất lượng ảnh",
   "preset.upscale.donut": "Nâng độ nét",
