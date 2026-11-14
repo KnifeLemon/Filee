@@ -1193,9 +1193,13 @@ internal static class SettingsMigrations
         // v99: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put.
         if (from < 99)
             changed |= LearnExtensions(profiles, out _, ["cxlog"]);
-        // v100: Source engine models (.mdl) learn the 3D models donut; custom claims stay put.
+        // v100: Source engine models (.mdl) and studiomdl data (.smd) learn the 3D models donut and "SMD" joins the 3D
+        //       models in the palette after glTF; custom claims stay put.
         if (from < 100)
-            changed |= LearnExtensions(profiles, out _, ["mdl"]);
+        {
+            changed |= AddSourcePresets(presets);
+            changed |= LearnExtensions(profiles, out _, ["mdl", "smd"]);
+        }
         return changed;
     }
 
@@ -1267,6 +1271,20 @@ internal static class SettingsMigrations
             at = presets.FindIndex(p => p.Id == "to-tar");
         presets.Insert(at < 0 ? presets.Count : at + 1, BuiltInData.GamePackPresets().Single(p => p.Id == "to-gma"));
         return true;
+    }
+
+    /// <summary>"SMD" after the last 3D model preset of the library (glTF), or at the end.</summary>
+    private static bool AddSourcePresets(List<Preset> presets)
+    {
+        var changed = false;
+        foreach (var preset in BuiltInData.SourceModelPresets().Where(p => presets.All(existing => existing.Id != p.Id)))
+        {
+            var models = BuiltInData.ModelPresets().Select(p => p.Id).ToHashSet();
+            var last = presets.FindLastIndex(p => models.Contains(p.Id));
+            presets.Insert(last < 0 ? presets.Count : last + 1, preset);
+            changed = true;
+        }
+        return changed;
     }
 
     private static bool AddCropVideo(List<Preset> presets)

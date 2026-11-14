@@ -422,6 +422,8 @@ public static class FormatRegistry
         // Source engine models (Garry's Mod and other Source games), read with the .vvd and .vtx beside them and their
         // textures from the "materials" folder above them.
         new("mdl", "Source model (MDL)", FormatCategory.Model3D, ["mdl"], Writable: false),
+        // Studiomdl data, the text the Source engine's model compiler reads (from an MDL with its bones and weights).
+        new("smd", "Studiomdl data (SMD)", FormatCategory.Model3D, ["smd"]),
 
         // Geospatial vector data (CSV with coordinates is a Data format and reaches these through the geo engine)
         new("geojson", "GeoJSON", FormatCategory.Geo, ["geojson"]),
