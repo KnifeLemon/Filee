@@ -325,7 +325,10 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // An FLV whose sound starts before its first key frame is shown.
         "sound.flv" => ("30", "128x32", ["-c:v", "libx264", "-g", "45", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p", "-c:a", "aac",
             "-ar", "44100"]),
-        "25fps.mp4" => ("25", "128x32", Mp4),
+        "60fps.mp4" => ("60", "128x32", ["-c:v", "libx264", "-g", "90", "-pix_fmt", "yuv420p"]),
+        // B-frames decoded 0.4 s before they are shown, far longer than FFmpeg's 3/23 s margin.
+        "5fps.ts" => ("5", "128x32", ["-c:v", "libx264", "-g", "10", "-bf", "3", "-x264-params", "scenecut=0:b-pyramid=normal", "-pix_fmt", "yuv420p",
+            "-f", "mpegts"]),
         _ => throw new ArgumentException(name, nameof(name)),
     };
 
@@ -483,13 +486,15 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Theory]
     // A TS: from the key frame found; a seek to the start itself landed between key frames, and the decoder skipped on.
     [InlineData("30fps.ts", "ts", 60, 90)]
+    // B-frames decoded 0.4 s before they are shown, far longer than FFmpeg's 3/23 s margin.
+    [InlineData("5fps.ts", "ts", 25, 35)]
     // MP4 and MKV with B-frames: from the key frame FFmpeg's own index lands on, not a group earlier.
     [InlineData("30fps.mp4", "mp4", 60, 85)]
     [InlineData("bframes.mkv", "mkv", 80, 88)]
     public async Task A_copied_clip_starts_at_the_key_frame_shown_last_before_the_start(string name, string target, int start, int end)
     {
         SkipUnlessInstalled();
-        var video = await VideoAsync(name, 4);
+        var video = await VideoAsync(name, name == "5fps.ts" ? 10 : 4);
         var frames = await FramesAsync(video);
         var key = frames[..(start + 1)].Last(f => f.Key).Number;
         Assert.True(key < start, $"frame {start} of {name} is a key frame itself; the test needs one between key frames");
@@ -523,18 +528,18 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Theory]
-    [InlineData(1)]
-    [InlineData(7)]
-    [InlineData(20)]
-    public async Task A_live_photo_of_a_25_fps_video_shows_the_movies_frame_at_the_still_time(int cover)
+    [InlineData("60fps.mp4", 20, 1)]
+    [InlineData("60fps.mp4", 23, 2)]
+    [InlineData("60fps.mp4", 23, 20)]
+    public async Task A_live_photo_shows_the_movies_frame_at_the_still_time(string name, int start, int cover)
     {
         SkipUnlessInstalled();
         // The movie and its photo pick frames by 30 fps timing from the same time 0: counted from the file's own times,
-        // the photo's timing fell between other frames than the movie's.
-        var video = await VideoAsync("25fps.mp4", 4);
+        // the photo's timing fell between other frames than the movie's in a video not at 30 fps.
+        var video = await VideoAsync(name, 4);
         var frames = await FramesAsync(video);
         var preset = new Preset { TargetFormat = "jpg", Media = { LivePhoto = LivePhotoKind.Apple } };
-        preset.Media.LivePhotoStart = frames[20].Time;
+        preset.Media.LivePhotoStart = frames[start].Time;
         preset.Media.LivePhotoLength = 1.5;
         preset.Media.LivePhotoCover = cover / 30.0;
 

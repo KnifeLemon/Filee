@@ -143,13 +143,9 @@ internal static class KeyFrames
             {
                 return SeekPoint.Plain(seconds);
             }
+            // A copy keeps what the seek lands on, from where -ss says (packets shown before it are left out).
             if (start is { } found)
-            {
-                // A copy keeps what the seek lands on: from the key frame's own decode time, so no frame of the group
-                // before it comes along without the frames it needs.
-                var copy = unindexed ? Choose(json, origin, seconds, how with { Reordered = false }, from <= 0) ?? found : seconds;
-                return new SeekPoint(found, origin, copy);
-            }
+                return new SeekPoint(found, origin, unindexed ? found : seconds);
             // Before the first key frame (the time is in its leading pictures, or there are none): from the start.
             if (from <= 0)
                 return new SeekPoint(0, origin, unindexed ? 0 : seconds);
