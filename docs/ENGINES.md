@@ -26,6 +26,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
+| **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
 | Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
@@ -39,10 +40,10 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
-| Archives | built in (SharpCompress, .NET and Filee's own readers and writers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip**: DMG, IMG, UDF discs, and the rare kinds the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.XZ, XZ, the packs** (in-process), **TAR.BZ2, BZ2** (7-Zip); "Compress into one archive" for any files |
+| Archives | built in (SharpCompress, .NET and Filee's own readers and writers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip**: DMG, IMG, UDF discs, and the rare kinds the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs** (in-process); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
-| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
+| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
@@ -2076,6 +2077,87 @@ editable**: there are no text boxes to change, the PDF's layout is not rebuilt. 
 
 Password-protected PDFs fail with the same message as PDF → DOCX.
 
+## PDF → PostScript and EPS
+
+`Pdf/PostScript/` writes PostScript LanguageLevel 3 and EPS from a PDF without Ghostscript (engine `pdf-ps`,
+`Pdf/PdfPostScriptConverter.cs`). A PostScript file holds the preset's pages; an EPS holds one page, so a PDF gives one
+EPS per page (`_p{n}`, as PDF → PNG names them) whose `%%BoundingBox` is the page's crop box. PostScript, EPS and
+PostScript-based AI → PDF stay with Ghostscript: reading PostScript takes a PostScript interpreter.
+
+The PDF is read with PDFsharp, each content stream with `Pdf/PdfContentLexer.cs` (shared with the font subsetter), and
+translated operator by operator (`PsTranslator.cs`) into short procedures named like the PDF operators (`m`, `l`,
+`re`, `F`, `S`, `q`, `cm`, …, defined in `FileeDict`, `PsProlog.cs`). Only Filee's own procedures and operators are
+written; operands are numbers, strings and names Filee made, so nothing of a content stream or a font program reaches
+the PostScript as code. The files are Clean7Bit ASCII with DSC comments: `%%Page`, `%%PageBoundingBox`, each page in
+save / restore with its size set by `setpagedevice` (not in EPS), the crop box clipped and the page turned as /Rotate
+says (UserUnit scales it).
+
+- **Graphics state**: q / Q (unbalanced Q ignored as viewers do), cm, line width, caps, joins, miter limit, dashes,
+  flatness, the ExtGState entries that have a PostScript counterpart (also stroke adjustment and overprint). PDF keeps
+  a fill and a stroke colour, PostScript one: the translator remembers which colour the PostScript state holds
+  (restored with it by grestore) and sets the other before each painting operator. Paths, `W` / `W*` clipping after the
+  painting operator (a stroked clip path isn't cut by its own clip).
+- **Colour**: every colour becomes a device colour: gray, RGB and CMYK as they are, ICC-based spaces by their number of
+  components (no colour management, as viewers without it), CalGray / CalRGB as gray / RGB, Lab converted to sRGB,
+  Indexed looked up, Separation and DeviceN through their tint transforms (`PdfFunction.cs` evaluates sampled,
+  exponential, stitching and PostScript calculator functions; the colorant None paints nothing, All paints gray).
+- **Text**: every glyph is placed at its PDF position with `xshow` (character and word spacing, horizontal scaling,
+  rise, TJ adjustments and the text matrix computed by Filee), so the fonts only have to draw the right glyph: a
+  font of Filee's own whose code N draws glyph `/aN`. Embedded TrueType becomes a Type 42 font (subset to the drawn
+  glyphs with their IDs kept, `sfnts` split at tables and glyphs); embedded Type 1 and CFF (Type1C, CIDFontType0C,
+  OpenType) become Type 1 fonts of Filee's own built from the interpreted outlines (`Type1Font.cs`: subroutines, flex,
+  hint replacement and seac accents of Type 1 charstrings, `Fonts/Cff/Type2Interpreter.cs` for CFF), without hints;
+  the font program itself is never copied. Type 0 fonts (Identity-H or an embedded CMap) have their glyphs spread over
+  base fonts of 256 glyphs each (Type 42 fonts share one copy of the TrueType tables), so neither CIDFonts nor CMaps
+  are needed. Type 3 fonts become PostScript Type 3 fonts whose glyph procedures are the glyph streams translated like
+  page content (d0 → setcharwidth, d1 → setcachedevice, colours ignored after d1). Fonts that aren't embedded become
+  the closest standard font (Helvetica, Times, Courier with bold and italic, Symbol, ZapfDingbats), re-encoded with the
+  PDF's glyph names. Text rendering modes fill, stroke, fill and stroke and invisible are drawn; stroked glyphs are
+  stroked in user space.
+- **Pictures** (`PsImages.cs`): image XObjects and inline images. Flate, LZW, RunLength and the ASCII filters (with PNG
+  and TIFF predictors) are decoded by Filee with limits, the data padded or cut to the size the picture needs and
+  deflated again; JPEG and CCITT fax data go to PostScript as they are, with PostScript's own filters. Device and
+  Indexed spaces stay; a one-component Separation picture becomes an Indexed one with the converted tints; 16-bit
+  pictures become 8-bit. Stencil masks become `imagemask`, colour-key masks ImageType 4, explicit masks and soft masks
+  that are only opaque or transparent ImageType 3. The data a page reads follows its image as ASCII85 and is read
+  through a filter that is flushed to its end afterwards, so no picture data can ever be read as PostScript.
+- **Shadings and patterns** (`PsShadings.cs`): `sh` becomes `shfill`; function-based, axial, radial and mesh shadings
+  (mesh data up to 64 KB) keep their geometry; in a device space their functions stay (exponential and stitching ones
+  as they are, the others sampled, PostScript has no calculator functions), in any other space function and colour
+  conversion are sampled together. Tiling patterns (coloured and uncoloured) and shading patterns become `makepattern`
+  in the page's default space; pattern cells and Type 3 glyphs keep picture data in strings (up to 64 KB).
+- **Forms, annotations, layers**: form XObjects inline (Matrix, BBox clip, nested up to 24 deep), annotation appearance
+  streams of annotations that print (not hidden), placed on their rectangles (PDF 32000 12.5.5), optional content off
+  in the default configuration left out (marked content and XObjects with /OC, OCMDs with their visibility policy).
+
+**Pages PostScript can't hold** are drawn as pictures: PDFium renders the page (300 dpi, or the preset's render DPI when
+higher, at most 600 and 40 megapixels; Flate, or JPEG when that is less than half the size of a large page) and the
+file's result says so (`notice.ps_pages_as_pictures`; the app's log names the page and the reason). That is a page
+with transparency (constant alpha below 1, a soft mask in the graphics state, a blend mode other than Normal, a soft
+mask on a picture with partial transparency, a transparent annotation), text used as a clipping path (render modes 4–7),
+pictures PostScript can't decode (JBIG2, JPEG 2000, Lab and DeviceN pictures), fonts the writer can't place
+(vertical writing, predefined CMaps, CID fonts that aren't embedded), a damaged content stream, and a page past the
+limits below. A PDF PDFsharp can't open at all has every page drawn as a picture, when PDFium can draw it.
+
+**Limits** (hostile input): streams unpack to at most 64 MB (`DocumentLimits.MaxPartBytes`; a picture to the size
+it needs), pictures of at most `MaxPicturePixels`, 4,000,000 operators per page (forms counted every time they are
+drawn), forms, patterns and glyphs nested 24 deep, q nested 200 deep, arrays and dictionaries in content 32 deep,
+200,000 different glyphs per file, sample tables of 4 M samples, calculator functions of 20,000 operators and 100,000
+steps per evaluation, `DocumentLimits.MaxPages` pages. A limit makes the page a picture; a PDF neither PDFsharp nor
+PDFium reads fails.
+
+**Routes.** The edges cost 8, below Ghostscript's 10, so the writer wins with the default engine order (Ghostscript
+still does PDF → PS / EPS when it is moved above the writer); SVG, images and documents reach EPS through PDF as
+before. `tests/Filee.Engines.Tests/PdfPostScriptTests.cs` checks the routes (every route not ending in PS or EPS keeps
+its cost), the files (7-bit, DSC, short lines), EPS bounding boxes, the notice, hostile content, fonts and functions,
+and, where Ghostscript is installed, that Ghostscript renders Filee's PostScript like PDFium renders the PDF (pages
+built in code with paths, every kind of font, pictures, shadings, patterns, turned pages, annotations, layers,
+transparency; drawn at 300 dpi and compared at 100 dpi, SSIM ≥ 0.98, also against Ghostscript's own rendering of the PDF).
+
+Not yet: EPS bounding boxes tight around the drawing (eps2write's), an EPS preview (TIFF / WMF), transparency
+flattened as vectors rather than a picture of the page, vertical text, keeping fonts' hints and spot colours as
+separations.
+
 ## PDF compression
 
 "Compress PDF" (and any PDF → PDF preset with *Compress* set, also with a page range or split into files) makes a
@@ -3054,7 +3136,7 @@ process, LGPL) for the long tail. In-process comes first (`Archives/ArchiveExtra
 nobody else does, and is asked again when an in-process reader meets something it lacks (an unknown 7z or RAR
 method, a GNU sparse file, an interleaved ISO file, a Quantum CAB, an LHA method or ARJ volume Filee doesn't read) or
 damage it can't get past. Two kinds prefer 7-Zip when it is there: ISO images with a UDF file system, and 7z archives
-with a method Filee doesn't decode (PPMd, ARM64, …; see below). Deliberate refusals (password,
+with a method Filee doesn't decode (PPMd, RISC-V, …; see below). Deliberate refusals (password,
 paths leaving the folder, bombs, entry floods) are final and never retried. Without 7-Zip the engine stays available
 with the in-process edges only (Settings → *Engines* shows "built in" instead of "built in + 7-Zip …").
 
@@ -3062,12 +3144,12 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
 |---|---|---|
 | ZIP, JAR, WBPZ, ZXP | .NET (System.IO.Compression) when every entry is stored or Deflate, else SharpCompress (MIT: Deflate64, BZip2, LZMA, PPMd and the old methods); names without the UTF-8 flag as UTF-8 when valid, else the system's OEM code page (CP949 on Korean Windows), as 7-Zip does | in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
 | Minecraft MCPACK, MCADDON, MCWORLD, MCTEMPLATE; Modrinth MRPACK | as ZIP (they are ZIPs) | ZIP in-process, with the marker file at the top (see below) |
-| 7Z | Filee (`SevenZipReader`: Copy, LZMA, LZMA2, BCJ, BCJ2, Delta, Deflate, BZip2; solid blocks decoded once, see below); other methods (PPMd, ARM64 …) by 7-Zip when it is there, else SharpCompress | in-process (Filee's `SevenZipWriter`, LZMA2): UTF-16 names, times, attributes, empty folders |
+| 7Z | Filee (`SevenZipReader`: Copy, LZMA, LZMA2, BCJ, BCJ2, ARM64, ARM, ARMT, PPC, SPARC, IA64, Delta, Deflate, BZip2; solid blocks decoded once, see below); other methods (PPMd, RISC-V …) by 7-Zip when it is there, else SharpCompress | in-process (Filee's `SevenZipWriter`, LZMA2): UTF-16 names, times, attributes, empty folders |
 | RAR 4 / 5 | SharpCompress (only unpacks, under the unRAR terms, see THIRD-PARTY-NOTICES), with the other volumes (`.part2.rar`, `.r00`) | — |
 | TAR | .NET's System.Formats.Tar (ustar, PAX, GNU, V7): tells symbolic from hard links | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
-| TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z, TAR.LZ, TAR.7Z | in two stages: the outer layer as below, then the TAR | TAR.GZ and TAR.XZ in-process; TAR.BZ2: TAR in-process, compressed by 7-Zip |
+| TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z, TAR.LZ, TAR.7Z | in two stages: the outer layer as below, then the TAR | TAR.GZ, TAR.BZ2 and TAR.XZ in-process |
 | GZ | .NET's gzip decoder (CRC-32 checked) | in-process (GZipStream); one file only |
-| BZ2 | SharpCompress | 7-Zip; one file only |
+| BZ2 | SharpCompress | in-process (Filee's `Bzip2Writer`); one file only |
 | XZ | Filee (`XzReader`) | in-process (Filee's `XzWriter`); one file only |
 | LZMA (`.lzma`) | Filee (`LzmaRawReader`) | — |
 | Z (Unix compress) | Filee (`UnixCompressStream`: LZW, 9–16-bit codes, block mode with table clears) | — |
@@ -3091,7 +3173,8 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   would receive files, is a link or junction) or skip. Inside one archive, names that clash on Windows ("A.txt" and
   "a.txt") become `a_1.txt`, as 7-Zip names them.
 - **Archive → archive** unpacks into the job's temp folder and packs everything into the target. `Preset.Archive.Level`
-  maps to Store / Fastest / Optimal / SmallestSize in-process and to 7-Zip's `-mx0/1/5/9`.
+  maps to Store / Fastest / Optimal / SmallestSize for ZIP and GZ, and to the levels of Filee's own 7Z, XZ and BZ2
+  encoders (bzip2 has no stored blocks: Store packs as Fast).
 - **Game packs** (#824, #898, the Games field): Minecraft and Modrinth read a marker file at the top of the ZIP
   (`manifest.json` in a pack, `level.dat` in a world or template, `modrinth.index.json` in a modpack). A pack made from
   an archive or a folder whose only top folder holds the marker gets that folder's content, not the folder
@@ -3103,8 +3186,7 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   Nothing writes `.zxp`: Adobe's apps install only packages signed with the developer's certificate (ZXPSignCmd).
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
-  file with the output pattern; files with the same name become `name (2).ext`. ZIP, 7Z, TAR, TAR.GZ, TAR.XZ, GZ and XZ
-  need no 7-Zip.
+  file with the output pattern; files with the same name become `name (2).ext`. No target needs 7-Zip.
 - **Safety** (`Archives/ArchiveSafety.cs`, the same for every reader): every archive is listed first and checked
   before anything is written. Encrypted entries or archives stop with "password-protected"; entries (or hard links)
   with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is written);
@@ -3133,7 +3215,7 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG. Without
   7-Zip also: DMG, IMG, UDF-only discs, Quantum CABs and cabinet sets, LHA methods other than -lh0-, -lz4- and -lh4- to
   -lh7-, multi-volume ARJ, GNU sparse files in TARs, interleaved ISO files, the El Torito boot image of an ISO (7-Zip
-  shows it as `[BOOT]`; Filee's ISO reader leaves it out), and BZ2 / TAR.BZ2 output.
+  shows it as `[BOOT]`; Filee's ISO reader leaves it out).
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
   `unalz` Rust crate, EggDotNet and unegg (MIT). ALZip's bzip2 has no `BZh` header, starts every block with `DLZ\x01`
   instead of the block magic, CRC and randomised bit, and ends with `DLZ\x02` (`Archives/Bzip2Decoder.cs`). The .Z,
@@ -3147,17 +3229,19 @@ with the in-process edges only (Settings → *Engines* shows "built in" instead 
   files must unpack or be refused with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
   `FILEE_ARCHIVE_BENCHMARK=1`: the in-process readers next to 7-Zip).
 
-### Filee's own 7z, xz, CAB, LHA and ARJ code
+### Filee's own 7z, xz, bzip2, CAB, LHA and ARJ code
 
-Written from the formats' own descriptions (7zFormat.txt, the .xz file format 1.2.1, lzma-specification.txt,
-[MS-CAB], the LHA and ARJ header layouts), not from other projects' code:
+Written from the formats' own descriptions (7zFormat.txt, the .xz file format 1.2.1, lzma-specification.txt, the
+bzip2 format, [MS-CAB], the LHA and ARJ header layouts), not from other projects' code:
 
 - **7z reading** (`SevenZipReader.cs`, `SevenZipCoders.cs`): the signature header, packed (encoded) headers, pack,
   unpack and substream info, names, empty files and folders, times and attributes; files are unpacked in their order,
   so a solid block is decoded once from start to end. Coders: Copy, LZMA and LZMA2 (Filee's decoder, `Archives/Lzma`),
-  BCJ, BCJ2 and Delta (written there), Deflate (.NET) and BZip2 (SharpCompress). File and folder CRCs are checked and
+  BCJ, BCJ2, the branch filters for ARM64, ARM, ARM Thumb, PowerPC, SPARC and IA-64 (7-Zip picks ARM64 or ARMT
+  itself for programs built for those processors) and Delta (written there), Deflate (.NET) and BZip2
+  (SharpCompress). File and folder CRCs are checked and
   every coder's output must have the size the header names. AES (an encrypted folder or header) is refused as
-  password-protected. A method Filee doesn't decode (PPMd, ARM64 and the other branch filters, Deflate64) is found
+  password-protected. A method Filee doesn't decode (PPMd, the RISC-V filter, Deflate64, Swap) is found
   before anything is written (`NeedsOtherDecoder`): 7-Zip unpacks such an archive when it is there, else SharpCompress
   does (slowly for a solid one: it decodes the block again for every file). Headers over 512 MiB, more files than the
   entry limit, counts the header has no room for, packed streams outside the file, dictionaries over 1.5 GiB and
@@ -3172,6 +3256,17 @@ Written from the formats' own descriptions (7zFormat.txt, the .xz file format 1.
   file for Store (as 7-Zip's `-mx0`), UTF-16 names, times and attributes, the header packed with LZMA when that is
   smaller. xz: one stream with a CRC64 check and one LZMA2 block. At Normal the results are about 1 % larger than
   7-Zip's `-mx5`; the encoder runs on one thread, so a large folder takes longer than with 7-Zip.
+- **bzip2 writing** (`Bzip2Writer.cs`, `Bzip2BlockEncoder.cs`, `Bzip2Sort.cs`): "BZh9" streams of 900,000-byte
+  blocks, for .bz2 and .tar.bz2 (the TAR is compressed while it is written). The first run-length step and the block
+  CRC on the way in; per block the Burrows-Wheeler transform (the block turned to its smallest rotation, whose
+  suffix array, by induced sorting, orders the rotations: linear in the block size for any data), move-to-front with
+  RUNA / RUNB zero runs, and two to six Huffman tables (17 bits at most) chosen per group of 50 symbols and refined
+  once at Fast, four times at Normal, six at Maximum. Blocks are encoded on up to four threads (half the logical
+  processors) and written in order; each block in flight holds about 20 MB while it is sorted. On a 30 MB mixed sample
+  (text, CSV, x86 code, noise) Normal is 0.1 % larger than 7-Zip's `-mx5` and took 1.7 times as long as 7-Zip with
+  all its threads (2.5 s against 1.5 s; one thread each: 5.3 s against 7.8 s, the PC busy); `-mx9` (7-Zip tries
+  splitting blocks) is 2.5 % smaller and six times slower than Filee's Maximum. Every output unpacks with Filee's own
+  decoder, SharpCompress and 7-Zip (`Bzip2WriterTests`, with a round-trip fuzz target).
 - **CAB** (`CabReader.cs`): folders and data blocks with their reserve areas and checksums; stored, MSZIP (Filee's
   inflater, keeping the 32 KB history from block to block) and LZX (the CHM reader's decoder, windows 2^15–2^21);
   a folder is decoded once and shared out to its files. Quantum, cabinet sets spanning several files and LZX blocks of
@@ -3184,7 +3279,7 @@ Written from the formats' own descriptions (7zFormat.txt, the .xz file format 1.
   decoder) and 4 ("fastest"); encrypted entries are refused, multi-volume archives and other methods go to 7-Zip.
 - Every reader lists and checks the whole archive first (`ArchiveSafety.CheckListing`) and writes through the same
   entry paths and `UnpackBudget` as the others. Tests: `SevenZipReaderTests` (also 7-Zip's own archives with every
-  coder chain, when 7-Zip is there), `SevenZipWriterTests`, `LzmaTests` (also `xz` and 7-Zip on Filee's files, when
+  coder chain, when 7-Zip is there), `SevenZipWriterTests`, `Bzip2WriterTests`, `LzmaTests` (also `xz` and 7-Zip on Filee's files, when
   installed), `ArchiveLongTailTests` (CAB, LHA and ARJ built in code by `ArchiveFormatBuilders`, cross-checked with
   7-Zip, Windows `makecab` and Bandizip where they are installed) and the 7z, xz, LZMA, CAB, LHA and ARJ targets of
   `ArchiveFuzzTests`.

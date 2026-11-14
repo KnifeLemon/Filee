@@ -165,7 +165,7 @@ Setup-এর ফাইলের নামের ক্ষেত্রেও এ�
 | উৎস ফরম্যাট | লক্ষ্য ফরম্যাট |
 |---|---|
 | **ছবি**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR, …;<br>GIMP XCF, ক্যামেরা RAW (CR2, CR3, NEF, ARW, DNG, …), DICOM, OpenEXR, HDR, FITS, JPEG XR (Windows), iPhone Live Photo (LIVP) পাঠযোগ্য | এগুলোর যেকোনোটি (HEIC⁵), PDF, SVG (ট্রেস করা), আকার পরিবর্তিত, গ্রেস্কেল;<br>Live/Motion Photo (iPhone, Android) → সেগুলোর ভিডিও (MP4, MOV⁵), এবং ভিডিও → Live Photo (iPhone) বা Motion Photo (Android)⁵, পরীক্ষামূলক |
-| **ভেক্টর**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (ভেক্টর), PNG এবং অন্যান্য ছবি,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
+| **ভেক্টর**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (ভেক্টর), PNG এবং অন্যান্য ছবি,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX (প্রতি পৃষ্ঠার একটি ছবি), SVG²;<br>একত্রিত (আপনার বাছাই করা ক্রমে), বিভক্ত, পৃষ্ঠার পরিসর, সংকোচন (ছোট আকারের PDF) |
 | **নথি**: DOCX, DOCM, DOTX, EML, Outlook MSG;<br>OFD (চীনা ই-চালান, সরকারি নথি) পাঠযোগ্য<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>ODT, FODT, OTT² |
 | **স্প্রেডশিট**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |

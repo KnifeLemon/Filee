@@ -145,7 +145,7 @@ internal static class SevenZipReader
     }
 
     /// <summary>
-    /// True for a 7z file whose header can be read and that uses a method Filee does not decode (PPMd, ARM64 …), so the
+    /// True for a 7z file whose header can be read and that uses a method Filee does not decode (PPMd, RISC-V …), so the
     /// bundled 7-Zip should unpack it. False for anything else, damage included: the in-process reader gives the reason.
     /// </summary>
     public static bool NeedsOtherDecoder(string archive)

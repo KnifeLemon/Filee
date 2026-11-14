@@ -1,11 +1,10 @@
 // Filee's own 7z reader (Archives/SevenZipReader, SevenZipCoders): archives from Filee's 7z writer and from the bundled
-// 7-Zip (levels, solid on and off, LZMA, Copy, BCJ, BCJ2, Delta, Deflate, BZip2, plain headers; skipped when 7-Zip is
-// missing) unpack byte for byte without 7-Zip; empty files and folders, an archive of only empty files, Unicode names
+// 7-Zip (levels, solid on and off, LZMA, Copy, BCJ, BCJ2, the ARM64 / ARM / ARMT / PPC / SPARC / IA64 branch filters,
+// Delta, Deflate, BZip2, plain headers; skipped when 7-Zip is missing) unpack byte for byte without 7-Zip; empty files and folders, an archive of only empty files, Unicode names
 // and times; PPMd is handed on; encrypted archives are refused; damaged input and hostile headers (huge counts, sizes,
 // dictionaries) are refused quickly; cancellation stops it. The mutation fuzz target is in ArchiveFuzzTests.
 
 using System.Buffers.Binary;
-using System.Runtime.InteropServices;
 using System.Text;
 using Filee.Core.Presets;
 using Filee.Engines.Archives;
@@ -117,7 +116,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
         var dir = fx.NewFolder();
         var tree = MakeSourceTree(dir);
         var output = Path.Combine(dir, "out.7z");
-        await new ArchivePacker(null).PackAsync([new PackItem(tree, "자료 🚀")], output, "7z", level, dir, null, Ct);
+        await new ArchivePacker().PackAsync([new PackItem(tree, "자료 🚀")], output, "7z", level, dir, null, Ct);
         Assert.False(SevenZipReader.NeedsOtherDecoder(output));
 
         foreach (var unpacked in new[] { ReadOwn(output, dir), await UnpackAsync(output, dir) })
@@ -166,7 +165,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
         Directory.CreateDirectory(Path.Combine(dir, "top", "empty"));
 
         var ours = Path.Combine(dir, "ours.7z");
-        await new ArchivePacker(null).PackAsync([new PackItem(Path.Combine(dir, "top"), "top")], ours, "7z", ArchiveLevel.Normal, dir, null, Ct);
+        await new ArchivePacker().PackAsync([new PackItem(Path.Combine(dir, "top"), "top")], ours, "7z", ArchiveLevel.Normal, dir, null, Ct);
         List<string> archives = [ours, Write(dir, "built.7z", SevenZip([new("top/", null), new("top/inner/zero.txt", []), new("top/also-zero.bin", [])]))];
         if (SevenZipExe is not null)
         {
@@ -232,6 +231,12 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
     [InlineData("-m0=LZMA -mx5")]
     [InlineData("-mf=BCJ")]
     [InlineData("-mf=BCJ2")]
+    [InlineData("-mf=ARM64")]
+    [InlineData("-mf=ARM")]
+    [InlineData("-mf=ARMT")]
+    [InlineData("-mf=PPC")]
+    [InlineData("-mf=SPARC")]
+    [InlineData("-mf=IA64")]
     [InlineData("-mf=Delta:4")]
     [InlineData("-m0=Deflate")]
     [InlineData("-m0=BZip2")]
@@ -242,12 +247,10 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
         var dir = fx.NewFolder();
         var tree = MakeSourceTree(dir, switches.Contains("-mmt=4") ? 3_000_000 : 150_000);
-        // A real x86-64 program (7-Zip's own: 7z.dll on Windows, the 7zz binary elsewhere) for the x86 exe filter 7-Zip
-        // picks by extension. On ARM64 machines 7-Zip's binary would make it pick its ARM64 filter, which Filee leaves to
-        // 7-Zip, so there the sample stays plain data.
+        // A real program (7-Zip's own: 7z.dll on Windows, the 7zz binary elsewhere) for the exe filter 7-Zip picks by
+        // its header: BCJ / BCJ2 for x86, ARM64 on ARM64 machines.
         var program = Path.Combine(Path.GetDirectoryName(SevenZipExe)!, "7z.dll");
-        if (RuntimeInformation.OSArchitecture == Architecture.X64)
-            File.Copy(File.Exists(program) ? program : SevenZipExe!, Path.Combine(tree, "a", "tool.dll"));
+        File.Copy(File.Exists(program) ? program : SevenZipExe!, Path.Combine(tree, "a", "tool.dll"));
         var output = Path.Combine(dir, "theirs.7z");
         await Run7zAsync(["a", "-t7z", .. switches.Split(' '), output, tree]);
         TestContext.Current.TestOutputHelper?.WriteLine($"{switches}: {Methods(output)}");
@@ -276,6 +279,167 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
             Assert.Contains(filter, Methods(output));
             Assert.Equal(Snapshot(source), Snapshot(Path.Combine(ReadOwn(output, dir), "code")));
         }
+    }
+
+    /// <summary>
+    /// Bytes that look like code for <paramref name="filter"/> to its branch converter: many call (and ARM64 ADRP)
+    /// instructions with near targets between other words.
+    /// </summary>
+    internal static byte[] BranchLike(string filter, int length, int seed)
+    {
+        var random = new Random(seed);
+        var bytes = new byte[length];
+        random.NextBytes(bytes);
+        var span = bytes.AsSpan();
+        switch (filter)
+        {
+            case "ARM":
+                for (var i = 0; i + 4 <= length; i += 4)
+                {
+                    if (random.Next(3) == 0)
+                        bytes[i + 3] = 0xEB;
+                }
+                break;
+            case "ARMT":
+                for (var i = 0; i + 4 <= length; i += 2)
+                {
+                    if (random.Next(3) != 0)
+                        continue;
+                    bytes[i + 1] = (byte)(0xF0 | (bytes[i + 1] & 7));
+                    bytes[i + 3] = (byte)(0xF8 | (bytes[i + 3] & 7));
+                    i += 2;
+                }
+                break;
+            case "ARM64":
+                for (var i = 0; i + 4 <= length; i += 4)
+                {
+                    var word = BinaryPrimitives.ReadUInt32LittleEndian(span[i..]);
+                    switch (random.Next(6))
+                    {
+                        case 0:
+                        case 1:
+                            word = 0x94000000 | (word & 0x03FFFFFF); // BL
+                            break;
+                        case 2:
+                            {
+                                // ADRP within ±512 MiB (converted) …
+                                var page = (uint)random.Next(-0x20000, 0x20000) & 0x1FFFFF;
+                                word = 0x90000000 | ((page & 3) << 29) | ((page >> 2) << 5) | (word & 0x1F);
+                                break;
+                            }
+                        case 3:
+                            word = 0x90000000 | (word & 0x60FFFFFF) | 0x00800000; // … and beyond (left alone)
+                            break;
+                    }
+                    BinaryPrimitives.WriteUInt32LittleEndian(span[i..], word);
+                }
+                break;
+            case "PPC":
+                for (var i = 0; i + 4 <= length; i += 4)
+                {
+                    if (random.Next(3) == 0)
+                        BinaryPrimitives.WriteUInt32BigEndian(span[i..], 0x48000001 | ((uint)random.Next() & 0x03FFFFFC));
+                }
+                break;
+            case "SPARC":
+                for (var i = 0; i + 4 <= length; i += 4)
+                {
+                    var choice = random.Next(4);
+                    if (choice < 2)
+                        BinaryPrimitives.WriteUInt32BigEndian(span[i..], (choice == 0 ? 0x40000000u : 0x7FC00000u) | ((uint)random.Next() & 0x3FFFFF));
+                }
+                break;
+            case "IA64":
+                byte[] templates = [0x10, 0x11, 0x12, 0x13, 0x16, 0x17, 0x18, 0x19, 0x1C, 0x1D];
+                for (var i = 0; i + 16 <= length; i += 16)
+                {
+                    var bundle = BinaryPrimitives.ReadUInt128LittleEndian(span[i..]);
+                    bundle = (bundle & ~(UInt128)0x1F) | templates[random.Next(templates.Length)];
+                    for (var slot = 0; slot < 3; slot++)
+                    {
+                        if (random.Next(3) == 0)
+                            continue;
+                        var shift = 5 + 41 * slot;
+                        var instruction = (ulong)(bundle >> shift) & ((1UL << 41) - 1);
+                        instruction = (instruction & ~(0xFUL << 37) & ~(0x7UL << 9)) | (0x5UL << 37); // IP-relative branch
+                        bundle = (bundle & ~((UInt128)((1UL << 41) - 1) << shift)) | (UInt128)instruction << shift;
+                    }
+                    BinaryPrimitives.WriteUInt128LittleEndian(span[i..], bundle);
+                }
+                break;
+        }
+        return bytes;
+    }
+
+    [Theory]
+    [InlineData("ARM")]
+    [InlineData("ARMT")]
+    [InlineData("ARM64")]
+    [InlineData("PPC")]
+    [InlineData("SPARC")]
+    [InlineData("IA64")]
+    public async Task The_branch_filters_for_other_processors_change_the_data_and_are_undone(string filter)
+    {
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        var dir = fx.NewFolder();
+        var source = Directory.CreateDirectory(Path.Combine(dir, "code")).FullName;
+        // Odd sizes, so instructions fall on the converter's buffer edges and a short tail is left at the end.
+        for (var i = 0; i < 5; i++)
+            File.WriteAllBytes(Path.Combine(source, $"part{i}.bin"), BranchLike(filter, 70_001 + i * 12_347, i));
+
+        var packed = Path.Combine(dir, filter + ".7z");
+        await Run7zAsync("a", "-t7z", "-mf=" + filter, "-mx1", packed, source);
+        Assert.Contains(filter, Methods(packed));
+        Assert.False(SevenZipReader.NeedsOtherDecoder(packed));
+        Assert.Equal(Snapshot(source), Snapshot(Path.Combine(ReadOwn(packed, dir), "code")));
+
+        // Stored after the filter, the packed stream is the filtered data: it shows the filter did convert.
+        var one = Path.Combine(source, "part0.bin");
+        var stored = Path.Combine(dir, filter + "-stored.7z");
+        await Run7zAsync("a", "-t7z", "-m0=Copy", "-mf=" + filter, stored, one);
+        Assert.Contains(filter, Methods(stored));
+        var original = await File.ReadAllBytesAsync(one, Ct);
+        var filtered = (await File.ReadAllBytesAsync(stored, Ct)).AsSpan(32, original.Length);
+        var changed = 0;
+        for (var i = 0; i < original.Length; i++)
+            changed += filtered[i] != original[i] ? 1 : 0;
+        Assert.True(changed > original.Length / 50, $"{filter} changed only {changed} bytes");
+        Assert.Equal(original, await File.ReadAllBytesAsync(Path.Combine(ReadOwn(stored, dir), "part0.bin"), Ct));
+    }
+
+    /// <summary>A small Windows program header (PE, for <paramref name="machine"/>) followed by <paramref name="code"/>.</summary>
+    private static byte[] Program(ushort machine, byte[] code)
+    {
+        var header = new byte[64 + 4 + 20 + 0xF0 + 40];
+        header[0] = (byte)'M';
+        header[1] = (byte)'Z';
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(0x3C), 64);
+        "PE\0\0"u8.CopyTo(header.AsSpan(64));
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(68), machine);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(70), 1);      // sections
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(84), 0xF0);   // optional header size
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(86), 0x2022); // DLL, executable
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(88), 0x20B);  // PE32+
+        return [.. header, .. code];
+    }
+
+    [Fact]
+    public async Task Programs_for_arm_machines_get_7zips_arm_filters_by_themselves_and_unpack_without_it()
+    {
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
+        var dir = fx.NewFolder();
+        var source = Directory.CreateDirectory(Path.Combine(dir, "apps")).FullName;
+        File.WriteAllBytes(Path.Combine(source, "arm64.dll"), Program(0xAA64, BranchLike("ARM64", 300_000, 1)));
+        File.WriteAllBytes(Path.Combine(source, "thumb.dll"), Program(0x01C4, BranchLike("ARMT", 200_002, 2)));
+        File.WriteAllBytes(Path.Combine(source, "readme.txt"), LzmaTests.Prose(20_000));
+        var output = Path.Combine(dir, "apps.7z");
+        await Run7zAsync("a", "-t7z", output, source);
+        var methods = Methods(output);
+        Assert.Contains("ARM64", methods);
+        Assert.Contains("ARMT", methods);
+        Assert.False(SevenZipReader.NeedsOtherDecoder(output));
+        Assert.Equal(Snapshot(source), Snapshot(Path.Combine(ReadOwn(output, dir), "apps")));
+        Assert.Equal(Snapshot(source), Snapshot(Path.Combine(await UnpackAsync(output, dir), "apps")));
     }
 
     [Fact]
@@ -335,7 +499,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
         var dir = fx.NewFolder();
         var tree = MakeSourceTree(dir);
         var output = Path.Combine(dir, "good.7z");
-        await new ArchivePacker(null).PackAsync([new PackItem(tree, "t")], output, "7z", ArchiveLevel.Normal, dir, null, Ct);
+        await new ArchivePacker().PackAsync([new PackItem(tree, "t")], output, "7z", ArchiveLevel.Normal, dir, null, Ct);
         var good = await File.ReadAllBytesAsync(output, Ct);
 
         var packed = (byte[])good.Clone();
@@ -466,7 +630,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
         var tree = Directory.CreateDirectory(Path.Combine(dir, "zeros")).FullName;
         File.WriteAllBytes(Path.Combine(tree, "z.bin"), new byte[4 << 20]);
         var output = Path.Combine(dir, "zeros.7z");
-        await new ArchivePacker(null).PackAsync([new PackItem(tree, "zeros")], output, "7z", ArchiveLevel.Normal, dir, null, Ct);
+        await new ArchivePacker().PackAsync([new PackItem(tree, "zeros")], output, "7z", ArchiveLevel.Normal, dir, null, Ct);
         ArchiveSafety.TestLimits.Value = (1 << 20, 10, ArchiveSafety.MaxEntries);
         try
         {
@@ -487,7 +651,7 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
         for (var i = 0; i < 8; i++)
             File.WriteAllBytes(Path.Combine(tree, $"f{i}.txt"), LzmaTests.Prose(1_000_000 + i));
         var output = Path.Combine(dir, "big.7z");
-        await new ArchivePacker(null).PackAsync([new PackItem(tree, "big")], output, "7z", ArchiveLevel.Fast, dir, null, Ct);
+        await new ArchivePacker().PackAsync([new PackItem(tree, "big")], output, "7z", ArchiveLevel.Fast, dir, null, Ct);
 
         using var cancel = new CancellationTokenSource();
         await using var file = new CancelAfterStream(File.OpenRead(output), 64 << 10, cancel);

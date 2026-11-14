@@ -16,7 +16,8 @@ internal sealed class Bzip2Decoder
     private const int GroupSize = 50;
     private const int MaxSelectors = 18002;
 
-    private static readonly uint[] BlockCrcTable = CreateBlockCrcTable();
+    /// <summary>bzip2's block CRC table (see <see cref="CreateBlockCrcTable"/>), shared with Bzip2Writer.</summary>
+    internal static readonly uint[] BlockCrcTable = CreateBlockCrcTable();
 
     private readonly Stream _input;
     private readonly Stream _output;
