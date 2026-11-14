@@ -7,6 +7,9 @@
 // picture says which frame it is. The real tests run only when FFmpeg is installed.
 
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -151,11 +154,11 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_look_reads_packets_between_times_of_the_file_itself()
     {
-        // In the file's own time (it starts at 1.5 s), half a second past the time; from 0, from its first
+        // In the file's own time (it starts at 1.5 s), a tenth of a second past the time; from 0, from its first
         // packet, as the key frame at its start may be decoded before the file's start time.
         var args = KeyFrames.Arguments("in.ts", 1.5, 3, 5);
-        Assert.Equal("4.500000%7.000000", args[args.IndexOf("-read_intervals") + 1]);
-        Assert.Equal("%7.000000", KeyFrames.Arguments("in.ts", 1.5, 0, 5)[args.IndexOf("-read_intervals") + 1]);
+        Assert.Equal("4.500000%6.600000", args[args.IndexOf("-read_intervals") + 1]);
+        Assert.Equal("%6.600000", KeyFrames.Arguments("in.ts", 1.5, 0, 5)[args.IndexOf("-read_intervals") + 1]);
         Assert.Equal("V:0", args[args.IndexOf("-select_streams") + 1]);
         Assert.Equal("in.ts", args[^1]);
     }
@@ -163,17 +166,21 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_seek_point_names_times_as_the_files_own_timestamps_or_as_before()
     {
-        // Read from the key frame at 60 s of a file whose times start at 1.4 s; the first frame at or after 61.25 s is
-        // shown at 61.2667 s, and becomes time 0 of what is encoded.
-        var exact = new SeekPoint(60, 1.4, 62, 61.2667, 1 / 90000.0);
+        // Read from the key frame at 60 s of a file whose times start at 1.4 s, for 61.25 s: what is encoded is moved
+        // back to a microsecond before it, so nothing kept is below 0.
+        var exact = new SeekPoint(60, 1.4, 62, 61.25, (1, 90000));
         Assert.Equal(["-copyts", "-ss", "60.000000"], exact.Input);
         Assert.Equal("62.649999", exact.Time(61.25)); // a microsecond early: a frame read that close counts
-        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "60.000000", "-itsoffset", "-62.6667"], exact.EncodeInput);
+        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "60.000000", "-itsoffset", "-62.649999"], exact.EncodeInput);
         Assert.Equal("0", exact.Clip(61.25));
-        Assert.Equal("1.733299", exact.Clip(63));
-        // Trims in the stream's own ticks: the first frame at or after each time.
-        Assert.Equal("trim=start_pts=0:end_pts=155997", exact.VideoTrim(61.25, 63));
-        Assert.Equal("trim=start_pts=0", exact.VideoTrim(61.2667));
+        Assert.Equal("1.75", exact.Clip(63));
+        // Trims in the stream's own ticks, moved as FFmpeg rounds the move: the first frame at or after each time.
+        Assert.Equal("trim=start_pts=0:end_pts=157500", exact.VideoTrim(61.25, 63));
+        // A time base finer than a microsecond (MP4 at 10 MHz): the move is a whole number of its ticks.
+        Assert.Equal("trim=start_pts=0:end_pts=17500001", (exact with { Tick = (1, 10_000_000) }).VideoTrim(61.25, 63));
+        // FFmpeg rounds the move 1.00135 s to 90121.5 ticks, and up (in doubles, 90121.49999…): the frame at tick
+        // 90122, the first at or after 1.001351 s, is tick 0 once moved, and kept.
+        Assert.Equal("trim=start_pts=0", new SeekPoint(0, 0, 0, 1.001351, (1, 90000)).VideoTrim(1.001351));
         // Without the file's start time, as Filee seeked before: straight to the time, counting from there.
         var plain = SeekPoint.Plain(61.25);
         Assert.Equal(["-ss", "61.250000"], plain.Input);
@@ -192,9 +199,9 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var clip = ClipEdit.Of(new ClipRange(12.5, 20));
         var hd = new VideoStreamInfo(1920, 1080, 1, 0, 30, "h264", "yuv420p");
         var args = await ClipPreview.PreviewSoundArgumentsAsync("ffprobe", "in.ts", clip, hd, new AudioStreamInfo(2, 48000, "aac"), Ct,
-            new SeekPoint(10, 1.4, 10, 12.5, 1 / 90000.0));
-        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "10.000000", "-itsoffset", "-13.9"], args.SkipWhile(a => a != "-copyts").Take(6));
-        Assert.Contains("atrim=start=0:end=7.499999", args[args.IndexOf("-filter_complex") + 1]);
+            new SeekPoint(10, 1.4, 10, 12.5, (1, 90000)));
+        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "10.000000", "-itsoffset", "-13.899999"], args.SkipWhile(a => a != "-copyts").Take(6));
+        Assert.Contains("atrim=start=0:end=7.5", args[args.IndexOf("-filter_complex") + 1]);
     }
 
     [Fact]
@@ -340,6 +347,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         "30fps.mkv" => ("30", "128x32", ["-c:v", "libx264", "-g", "45", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p"]),
         // Frames 10 ms off the 1/30 s grid an encoder counts in.
         "offgrid.mp4" => ("30", "128x32", [.. Mp4, "-output_ts_offset", "0.01"]),
+        // A time base finer than a microsecond: a frame is shown 333,333 or 333,334 ticks after the one before.
+        "10mhz.mp4" => ("30", "128x32", [.. Mp4, "-video_track_timescale", "10000000"]),
         // An AVI counts in whole frames.
         "mjpeg.avi" => ("30", "128x32", ["-c:v", "mjpeg", "-q:v", "3"]),
         // B-frames decoded 0.4 s before they are shown, far longer than FFmpeg's 3/23 s margin.
@@ -350,7 +359,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     public static TheoryData<string> Videos =>
         ["30fps.mp4", "2997fps.mp4", "15fps.mp4", "30fps.ts", "15fps.ts", "soundfirst.ts", "dvd.vob", "opengop.mp4", "opengop.ts", "bframes.avi",
-            "bframes.mkv", "sound.flv"];
+            "bframes.mkv", "sound.flv", "10mhz.mp4"];
 
     private async Task<string> VideoAsync(string name, double seconds = 3)
     {
@@ -428,6 +437,11 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("opengop.ts", 53, 83)] // decoded long before shown: an end counted from the first frame was a frame late
     [InlineData("15fps.mp4", 26, 41)]
     [InlineData("bframes.avi", 40, 70)]
+    // Key frames with a decode time only: a clip timed from the first frame's display time had none to go by.
+    [InlineData("dvd.vob", 40, 70)]
+    // A time base finer than the microseconds the move is given in: frame 41 is shown at 1.3666667 s, which ffprobe
+    // names 1.366667 s, so a move to that time would put the frame before 0.
+    [InlineData("10mhz.mp4", 41, 70)]
     public async Task An_exact_clip_starts_and_ends_with_the_chosen_frames(string name, int first, int end)
     {
         SkipUnlessInstalled();
@@ -633,7 +647,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task An_exact_clips_progress_reaches_its_length()
     {
         SkipUnlessInstalled();
-        // With -copyts, FFmpeg's -progress counted from its first report: a clip ended its progress well short of 1.
+        // With -copyts, FFmpeg's -progress counted from its first report: a clip ended its progress well short of 1,
+        // and mixed with each picture's time it went back and forth.
         var video = await VideoAsync("30fps.ts", 4);
         var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, video, Ct);
         var range = new ClipRange(0.7, 3.7);
@@ -641,18 +656,27 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var output = Path.Combine(fx.NewFolder(), "clip.mp4");
         var args = MediaEncoding.Plan(video, output, "mp4", new MediaOptions(), info, fx.NewFolder(), clip: range, clipSeek: seek).Single().Arguments;
         var reached = 0.0;
+        List<double> back = [];
 
-        var result = await FfmpegRunner.RunAsync(Tools!.Value.Ffmpeg, args, seconds => reached = Math.Max(reached, seconds), Ct);
+        var result = await FfmpegRunner.RunAsync(Tools!.Value.Ffmpeg, args, seconds =>
+        {
+            if (seconds < reached - 0.05)
+                back.Add(seconds);
+            reached = Math.Max(reached, seconds);
+        }, Ct);
 
         Assert.True(result.ExitCode == 0, result.StandardError);
         Assert.InRange(reached, range.Length - 0.1, range.Length + 0.05);
+        Assert.Empty(back);
     }
 
-    [Fact]
-    public async Task Playback_in_the_window_starts_with_the_frame_it_showed()
+    [Theory]
+    [InlineData("soundfirst.ts")]
+    [InlineData("dvd.vob")]
+    public async Task Playback_in_the_window_starts_with_the_frame_it_showed(string name)
     {
         SkipUnlessInstalled();
-        var video = await VideoAsync("soundfirst.ts", 4);
+        var video = await VideoAsync(name, 4);
         var frames = await FramesAsync(video);
         var edit = ClipEdit.Of(new ClipRange(frames[40].Time, frames[70].Time));
 
@@ -707,11 +731,13 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.All(numbers.Zip(numbers.Skip(1)), pair => Assert.Equal(2, pair.Second - pair.First));
     }
 
-    [Fact]
-    public async Task A_live_photo_of_an_mpeg_ts_file_shows_the_frame_its_times_point_at()
+    [Theory]
+    [InlineData("soundfirst.ts")]
+    [InlineData("dvd.vob")]
+    public async Task A_live_photo_of_a_file_without_an_index_shows_the_frame_its_times_point_at(string name)
     {
         SkipUnlessInstalled();
-        var video = await VideoAsync("soundfirst.ts", 4);
+        var video = await VideoAsync(name, 4);
         var frames = await FramesAsync(video);
         var preset = new Preset { TargetFormat = "jpg", Media = { LivePhoto = LivePhotoKind.Apple } };
         preset.Media.LivePhotoStart = frames[40].Time;
@@ -725,5 +751,95 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var movie = Assert.Single(job.Outputs, p => p.EndsWith(".mov", StringComparison.Ordinal));
         Assert.Equal(50, await NumberOfPictureAsync(photo));
         Assert.Equal(Enumerable.Range(40, 30), (await FramesAsync(movie)).Select(f => f.Number));
+    }
+
+    [Fact]
+    public async Task Sound_between_the_start_and_the_first_frame_after_it_is_kept()
+    {
+        SkipUnlessInstalled();
+        // At 5 fps, frame 10 is shown at 2 s; the beep sounds at 1.95 s, and the clip starts at 1.9 s. Timed from the
+        // first frame, the clip's sound began at 2 s and the beep was gone.
+        var picture = await NumberedAsync("5fps.mp4", "5", 4, Mp4);
+        var sound = Path.Combine(fx.NewFolder(), "beep.m4a");
+        var beep = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            [.. MediaEncoding.Common, "-f", "lavfi", "-i", "aevalsrc='if(between(t\\,1.95\\,2.1)\\,0.8*sin(2*PI*1000*t)\\,0)':s=48000:d=4",
+                "-c:a", "aac", sound], TimeSpan.FromMinutes(1), Ct);
+        Assert.True(beep.ExitCode == 0, beep.StandardError);
+        var video = Path.Combine(fx.NewFolder(), "beep.mp4");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            [.. MediaEncoding.Common, "-i", picture, "-i", sound, "-map", "0:v", "-map", "1:a", "-c", "copy", video], TimeSpan.FromMinutes(1), Ct);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        var edit = ClipEdit.Of(new ClipRange(1.9, 3));
+        edit.Parts[0].Volume = 0.9;
+
+        foreach (var clip in new[] { await CutAsync(video, ClipEdit.Of(new ClipRange(1.9, 3)), exact: true), await CutAsync(video, edit, exact: true) })
+        {
+            Assert.InRange(await BeepAsync(clip), 0.03, 0.08);
+            Assert.Equal(Enumerable.Range(10, 5), (await FramesAsync(clip)).Select(f => f.Number));
+        }
+    }
+
+    [Fact]
+    public async Task An_edit_whose_parts_lie_far_apart_runs_on_while_ffmpeg_reads_between_them()
+    {
+        SkipUnlessInstalled();
+        // Between the parts no picture reaches the encoder, so the time of each one (the progress of a run with
+        // -copyts) is silent for as long as FFmpeg reads there; FFmpeg's own -progress shows it is still working. The
+        // video comes over a socket that pauses between the parts, three times the stall limit, as a long read would
+        // (after 12 s of it: FFmpeg reads the first seconds before it starts).
+        var video = await VideoAsync("30fps.ts", 20);
+        var bytes = await File.ReadAllBytesAsync(video, Ct);
+        var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, video, Ct);
+        var edit = new ClipEdit
+        {
+            Parts = [new ClipPart { Start = 0.2, End = 0.5 }, new ClipPart { Start = 15, End = 15.3 }],
+        };
+        edit.Parts[0].Volume = 0.9;
+        var seek = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, video, 0.2, Ct);
+        Assert.Equal(0, seek.From); // nothing to seek: a socket can't
+        var stall = TimeSpan.FromSeconds(1);
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            var serving = ServeAsync(listener, bytes, pauseAt: bytes.Length * 3 / 5 / 188 * 188, pause: stall * 3);
+            var output = Path.Combine(fx.NewFolder(), "clip.mp4");
+            var args = MediaEncoding.ClipEditArguments($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/video.ts", output, "mp4",
+                edit, new MediaOptions(), info, seek: seek);
+
+            var result = await FfmpegRunner.RunAsync(Tools!.Value.Ffmpeg, args, null, Ct, stall);
+
+            Assert.True(result.ExitCode == 0, result.StandardError);
+            await serving;
+            var frames = await FramesAsync(video);
+            var want = edit.Parts.SelectMany(part => frames.Where(f => f.Time >= part.Start - 0.000001 && f.Time < part.End - 0.000001))
+                .Select(f => f.Number);
+            Assert.Equal(want, (await FramesAsync(output)).Select(f => f.Number));
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Answers one HTTP request with <paramref name="bytes"/>, stopping for <paramref name="pause"/> after
+    /// <paramref name="pauseAt"/> of them.
+    /// </summary>
+    private async Task ServeAsync(TcpListener listener, byte[] bytes, int pauseAt, TimeSpan pause)
+    {
+        using var client = await listener.AcceptTcpClientAsync(Ct);
+        var stream = client.GetStream();
+        var request = new byte[8192];
+        var read = 0;
+        while (!Encoding.ASCII.GetString(request, 0, read).Contains("\r\n\r\n", StringComparison.Ordinal)
+            && await stream.ReadAsync(request.AsMemory(read), Ct) is > 0 and var count)
+            read += count;
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(
+            $"HTTP/1.0 200 OK\r\nContent-Type: video/mp2t\r\nContent-Length: {bytes.Length}\r\n\r\n"), Ct);
+        await stream.WriteAsync(bytes.AsMemory(0, pauseAt), Ct);
+        await stream.FlushAsync(Ct);
+        await Task.Delay(pause, Ct);
+        await stream.WriteAsync(bytes.AsMemory(pauseAt), Ct);
     }
 }

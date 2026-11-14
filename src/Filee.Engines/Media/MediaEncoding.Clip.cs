@@ -27,7 +27,7 @@ internal static partial class MediaEncoding
     /// The graph that plays <paramref name="edit"/> of <paramref name="input"/>: its picture <paramref name="width"/> ×
     /// <paramref name="height"/> at <paramref name="fps"/> frames per second, its sound 48 kHz stereo: the video's own
     /// (when <paramref name="audio"/>; muted parts silent) with the clip's music mixed under it. The video is read once,
-    /// from the first part to the last: <c>-ss</c> / <c>-to</c> before <c>-i</c>, the parts cut out of it with
+    /// from the first part on: <c>-ss</c> before <c>-i</c> (see <paramref name="seek"/>), the parts cut out of it with
     /// <c>trim</c>, so a clip late in a long video starts at once. The music is the second input, read from where it
     /// starts playing.
     /// </summary>

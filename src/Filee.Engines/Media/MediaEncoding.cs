@@ -537,10 +537,12 @@ internal static partial class MediaEncoding
 
     /// <summary>
     /// Progress as the time of each picture encoded (<see cref="FfmpegRunner.FrameTimeKey"/>), for runs that read with
-    /// <c>-copyts</c>: there FFmpeg's <c>-progress</c> counts from its first report, not from 0, and falls short.
+    /// <c>-copyts</c>: there FFmpeg's <c>-progress</c> counts from its first report, not from 0, and falls short. Its
+    /// lines still show the run is working while it reads past pictures it doesn't keep (the stall watch of
+    /// <see cref="FfmpegRunner.RunAsync"/>), and are otherwise ignored.
     /// </summary>
     internal static readonly string[] FrameProgress =
-        ["-stats_enc_pre:v:0", "pipe:1", "-stats_enc_pre_fmt:v:0", FfmpegRunner.FrameTimeKey + "={t}"];
+        ["-progress", "pipe:1", "-stats_enc_pre:v:0", "pipe:1", "-stats_enc_pre_fmt:v:0", FfmpegRunner.FrameTimeKey + "={t}"];
 
     /// <summary>
     /// One frame at <paramref name="seconds"/> as a JPEG at most <paramref name="maxHeight"/> pixels high (square

@@ -466,9 +466,9 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
   `Engines/Media/KeyFrames` reads the packets before the time with ffprobe, without decoding, for the key frame to read
   from, since FFmpeg's own `-ss` lands between key frames in MPEG-TS and MPEG-PS and skips the leading pictures of an
   open group. A picture is trimmed at the file's own times (`-copyts`). What is encoded reads with `-copyts` and
-  `-itsoffset`, so that the first frame shown at or after the start is time 0, and is cut by `trim` in the stream's own
-  ticks; its progress comes from `-stats_enc_pre`. The file header of `KeyFrames.cs` lists the FFmpeg behaviours, and
-  the versions, that this allows for.
+  `-itsoffset`, moved back to a microsecond before the start so nothing kept is below time 0, and its picture is cut by
+  `trim` in the stream's own ticks; its progress comes from `-stats_enc_pre`, with `-progress` to show it is working
+  between parts. The file header of `KeyFrames.cs` lists the FFmpeg behaviours, and the versions, that this allows for.
 
 ## Crop video
 

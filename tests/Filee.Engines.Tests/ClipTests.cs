@@ -98,20 +98,20 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void An_exact_clip_is_encoded_with_the_presets_video_options()
     {
         var options = new MediaOptions { Quality = MediaQuality.High, MaxHeight = 720 };
-        // Read from the key frame at 10 s of a file whose times start at 1.5 s, the frame at 12.5 s time 0 (a move of
-        // the input's timestamps, so the encoder and the muxer count from it), the ends cut by trims in the time base's
-        // ticks.
+        // Read from the key frame at 10 s of a file whose times start at 1.5 s, moved back to a microsecond before
+        // 12.5 s (so the encoder and the muxer count from there), the ends cut by trims in the time base's ticks.
         var args = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", options, Movie, "work", clip: new ClipRange(12.5, 42.5),
-            clipSeek: new SeekPoint(10, 1.5, 12.5, 12.5, 1 / 15360.0)).Single().Arguments;
+            clipSeek: new SeekPoint(10, 1.5, 12.5, 12.5, (1, 15360))).Single().Arguments;
 
-        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "10.000000", "-itsoffset", "-14", "-i", "in.mp4"],
+        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "10.000000", "-itsoffset", "-13.999999", "-i", "in.mp4"],
             args.SkipWhile(a => a != "-copyts").Take(8));
         Assert.DoesNotContain("-to", args); // the trims end every stream
         Assert.StartsWith("trim=start_pts=0:end_pts=460800,", After(args, "-vf"));
-        Assert.Equal("atrim=start=0:end=29.999999", After(args, "-af"));
-        // Progress as each picture's time: -progress counts from its first report with -copyts.
+        Assert.Equal("atrim=start=0:end=30", After(args, "-af"));
+        // Progress as each picture's time: -progress counts from its first report with -copyts, and only shows the run
+        // is working.
         Assert.Equal("frame_time={t}", After(args, "-stats_enc_pre_fmt:v:0"));
-        Assert.DoesNotContain("-progress", args);
+        Assert.Equal("pipe:1", After(args, "-progress"));
         // Encoded although the video could be copied (H.264 in MP4): only an encode cuts at any frame.
         Assert.Equal("libx264", After(args, "-c:v"));
         Assert.Contains("720", After(args, "-vf"));
@@ -379,10 +379,10 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains("[vs1]trim=start=19.999999:end=29.999999,setpts=(PTS-19.999999/TB)/2,", filter);
         Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0.5,", filter);
         Assert.Contains("[as1]atrim=start=19.999999:end=29.999999,asetpts=PTS-19.999999/TB,atempo=2,", filter);
-        // From a key frame KeyFrames found: read from it, the first part's first frame time 0, video cut in ticks.
-        var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10, 10, 1 / 15360.0));
-        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "9.000000", "-itsoffset", "-12", "-i", "in.mp4"], seeked.Inputs);
-        Assert.Contains("[vs1]trim=start_pts=307200:end_pts=460800,setpts=(PTS-19.999999/TB)/2,", seeked.Filter);
+        // From a key frame KeyFrames found: read from it, moved back to just before the first part, video cut in ticks.
+        var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10, 10, (1, 15360)));
+        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "9.000000", "-itsoffset", "-11.999999", "-i", "in.mp4"], seeked.Inputs);
+        Assert.Contains("[vs1]trim=start_pts=307200:end_pts=460800,setpts=(PTS-20/TB)/2,", seeked.Filter);
         // The pause: black and silence as long as the part played.
         Assert.Contains("color=c=black:s=1920x1080:r=30:d=2,setsar=1,format=yuv420p[v1]", filter);
         Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=2[a1]", filter);
