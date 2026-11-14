@@ -21,6 +21,19 @@ public partial class MainWindow : Window
         InitializeComponent();
         Motion.Track(this);
         UiZoom.Track(this);
+        PropertyChanged += (_, e) =>
+        {
+            // Once its normal size is in (some systems report the state first).
+            if (e.Property == WindowStateProperty && WindowState == WindowState.Normal && WidthOwed is not null)
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (WindowState == WindowState.Normal && WidthOwed is { } width)
+                    {
+                        WidthOwed = null;
+                        Width = width;
+                    }
+                }, DispatcherPriority.Background);
+        };
     }
 
     private async void OnOpenGitHub(object? sender, RoutedEventArgs e)
@@ -95,6 +108,42 @@ public partial class MainWindow : Window
     // Posted: shutting down closes this window again, which must not happen inside its own Closing handler.
     private static void Quit() => Dispatcher.UIThread.Post(() =>
         (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown());
+
+    /// <summary>
+    /// Where the window was, and how large, before Settings → Donut toolbar moved it over for a moment to make room for
+    /// the donut on screen: what closing it remembers instead (<see cref="WindowService"/>). Null while it is where the
+    /// user put it.
+    /// </summary>
+    internal (PixelPoint Position, Size ClientSize)? RestPlace { get; set; }
+
+    /// <summary>
+    /// Where it landed, moved over (null while it is on its way): moved by the user since, it stays where they put it,
+    /// and closing remembers that rather than <see cref="RestPlace"/>'s place.
+    /// </summary>
+    internal PixelPoint? Landed { get; set; }
+
+    /// <summary>
+    /// Its own width, while it is maximized or minimized after Settings → Donut toolbar made it narrower and was left
+    /// meanwhile: it gets it back once it is a normal window again, and closing remembers it.
+    /// </summary>
+    internal double? WidthOwed { get; set; }
+
+    /// <summary>Where it was sent, moving over (null on its way back).</summary>
+    internal PixelPoint? SlidTo { get; set; }
+
+    /// <summary>
+    /// Still where it moved over to: where it landed, or where it was sent (an X11 window reports its new place only
+    /// once the window manager has moved it).
+    /// </summary>
+    internal bool StillWhereItSlid => Landed is { } at && IsNear(Position, at) || SlidTo is { } to && IsNear(Position, to);
+
+    /// <summary>
+    /// The place closing remembers: where it was before it moved over, unless the user moved it since.
+    /// </summary>
+    internal PixelPoint PlaceToRemember => RestPlace is { } rest && (Landed is null || StillWhereItSlid) ? rest.Position : Position;
+
+    /// <summary>Within 2 pixels (a window manager may nudge a window it moved).</summary>
+    internal static bool IsNear(PixelPoint a, PixelPoint b) => Math.Abs(a.X - b.X) <= 2 && Math.Abs(a.Y - b.Y) <= 2;
 
     /// <summary>
     /// Leaves Filee in the tray: hides the window at once, then closes it for real, so its pages, visuals and images

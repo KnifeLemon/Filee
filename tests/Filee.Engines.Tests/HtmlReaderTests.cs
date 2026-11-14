@@ -14,7 +14,7 @@ namespace Filee.Engines.Tests;
 public class HtmlReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     /// <summary>Only engines that ship with the app (or run in-process).</summary>
-    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice", "calibre"];
+    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice", "calibre", "weasyprint"];
 
     private HtmlContent Parse(string html, string? folder = null)
     {

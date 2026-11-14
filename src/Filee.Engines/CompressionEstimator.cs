@@ -91,7 +91,7 @@ public sealed class CompressionEstimator : IDisposable
                         if (!ffprobeLooked)
                             (ffprobe, ffprobeLooked) = (FfmpegConverter.Locate()?.Ffprobe, true);
                         if (ffprobe is not null)
-                            entry.Media = await MediaInfo.ProbeAsync(ffprobe, path, cancellationToken);
+                            entry.Media = await MediaInfo.ProbeAsync(ffprobe, MediaInput.For(path), cancellationToken);
                         break;
                 }
             }

@@ -63,7 +63,7 @@ public sealed partial class UpscalerEngine
         Directory.CreateDirectory(workDirectory);
 
         var from = ReadFormat(fromFormat, inputPath);
-        using var images = ImageReader.Read(inputPath, from, preset);
+        using var images = ImageReader.Read(inputPath, from, preset, cancellationToken);
         var animation = ImageEncoder.KeepsAnimation(from, toFormat);
         var frames = ImageEncoder.SelectFrames(images, from, toFormat);
         if (frames.Count == 0)

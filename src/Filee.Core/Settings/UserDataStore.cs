@@ -118,6 +118,14 @@ public sealed class UserDataStore
     }
 
     /// <summary>
+    /// Remembers the donut's look (<see cref="AppSettings.Donut"/>: size, hole, opacity, output format, group ring) and
+    /// where its preview was dragged (<see cref="AppSettings.DonutPreviewPlace"/>), quietly as
+    /// <see cref="SaveUiScale"/>: the donut reads its look each time it opens, and the theme, triggers and integration
+    /// that <see cref="SettingsChanged"/> applies again haven't changed.
+    /// </summary>
+    public void SaveDonutLook() => Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
+
+    /// <summary>
     /// Remembers where the main window was (<see cref="AppSettings.MainWindow"/>), quietly as <see cref="SaveUiScale"/>:
     /// nothing else depends on it.
     /// </summary>
@@ -464,26 +472,26 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 21)
             InsertBefore(settings.EnginePriority, "wic", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
 
-        // v89: Unhwp is gone; the built-in "hwp-text" engine (HWP / HWPX → TXT, Markdown, HTML) takes its place in the
-        //      order, so every other engine keeps its rank. (Built-in engines branch; was schema 58 there before main
-        //      took 58–88. May be renumbered again if another change takes it first.)
-        if (settings.SchemaVersion < 89)
+        // v95: Unhwp is gone; the built-in "hwp-text" engine (HWP / HWPX → TXT, Markdown, HTML) takes its place in the
+        //      order, so every other engine keeps its rank. (Built-in engines branch; was schema 58, then 89, there
+        //      before main took 58–94. May be renumbered again if another change takes it first.)
+        if (settings.SchemaVersion < 95)
             ReplaceEngine(settings.EnginePriority, "unhwp", "hwp-text");
 
-        // v90: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
-        //      around rhwp gets the other way around rhwp, Filee's renderer. (Built-in engines branch; was schema 59 there.
-        //      May be renumbered again if another change takes it first.)
-        if (settings.SchemaVersion < 90 && settings.LibreOfficeForHwp == true)
+        // v96: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
+        //      around rhwp gets the other way around rhwp, Filee's renderer. (Built-in engines branch; was schema 59, then
+        //      90, there. May be renumbered again if another change takes it first.)
+        if (settings.SchemaVersion < 96 && settings.LibreOfficeForHwp == true)
             settings.FileeRenderer = true;
         settings.LibreOfficeForHwp = null;
 
-        // v91: Filee's renderer is the default document → PDF engine, and its slide renderer draws presentations. The
+        // v97: Filee's renderer is the default document → PDF engine, and its slide renderer draws presentations. The
         //      renderer is turned on for everyone (it was a preview of unreleased builds, so an "off" there was no
         //      choice against a default), and "Use LibreOffice for presentations", on by default since it beat the
         //      HWPX writer and rhwp, is turned off once so decks reach the slide renderer; whoever turns it back on
         //      keeps it. The other LibreOffice switches were off by default and stay as the user set them.
-        //      (Built-in engines branch. May be renumbered if another change takes it first.)
-        if (settings.SchemaVersion < 91)
+        //      (Built-in engines branch; was schema 91 there. May be renumbered if another change takes it first.)
+        if (settings.SchemaVersion < 97)
         {
             settings.FileeRenderer = true;
             settings.LibreOfficeForSlides = false;
@@ -1162,6 +1170,30 @@ internal static class SettingsMigrations
         //      be renumbered if another change takes it first.)
         if (from < 87)
             changed |= LearnExtensions(profiles, out _, ["ino", "pde"]);
+        // v88: NuGet packages (.nupkg, .snupkg, #1465), split-APK containers (.apks, .xapk, .apkm) and Android App
+        //      Bundles (.aab, #1464) learn the archives donut; custom claims stay put. (Schema 88 may be renumbered if
+        //      another change takes it first.)
+        if (from < 88)
+            changed |= LearnExtensions(profiles, out _, ["nupkg", "snupkg", "apks", "xapk", "apkm", "aab"]);
+        // v89: KuGou lyrics (.krc, #1296) learn the subtitles donut; custom claims stay put. (Schema 89 may be renumbered
+        //      if another change takes it first.)
+        if (from < 89)
+            changed |= LearnExtensions(profiles, out _, ["krc"]);
+        // v90: Wisenet WAVE / Nx Witness exports (.nov) learn the video donut; custom claims stay put.
+        if (from < 90)
+            changed |= LearnExtensions(profiles, out _, ["nov"]);
+        // v91: Gerber PCB layers learn the CAD donut; custom claims stay put.
+        if (from < 91)
+            changed |= LearnExtensions(profiles, out _, ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"]);
+        // v92: Obsidian's boards (.canvas, JSON Canvas) learn the vector donut; custom claims stay put.
+        if (from < 92)
+            changed |= LearnExtensions(profiles, out _, ["canvas"]);
+        // v93: G-code toolpaths (.gcode, .gco, .ngc) learn the CAD donut; custom claims stay put.
+        if (from < 93)
+            changed |= LearnExtensions(profiles, out _, ["gcode", "gco", "ngc"]);
+        // v94: Valve textures (.vtf) learn the images donut; custom claims stay put.
+        if (from < 94)
+            changed |= LearnExtensions(profiles, out _, ["vtf"]);
         return changed;
     }
 

@@ -189,6 +189,7 @@ public sealed class RoutePlanner
                     || (edge.ImageSourcesOnly && !imageSource) || (edge.NotForImageSources && imageSource)
                     || (edge.Unshaped && shaping)
                     || (edge.Checked && (withoutChecked || node != from))
+                    || (edge.Sources is { } sources && !sources.Contains(from))
                     || (edge.DirectOnly && (node != from || edge.To != to)))
                     continue;
                 var next = cost + edgeCost;

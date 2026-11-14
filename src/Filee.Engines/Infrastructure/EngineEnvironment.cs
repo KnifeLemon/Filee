@@ -3,7 +3,7 @@
 // engines (FFmpeg, calibre, Pandoc, Ghostscript, LibreOffice, Tesseract …) are looked up in this order: a copy the
 // user chose in Settings → Engines (OwnCopies), Filee's own copy (installer or download, the tested version), then one
 // already on the PC (on the PATH or where its installer puts it), so nobody has to download a second FFmpeg they
-// already have. 7-Zip skips the last step (UsesSystemCopy).
+// already have. WeasyPrint, rhwp and 7-Zip skip the last step (UsesSystemCopy).
 
 using System.Collections.Concurrent;
 using System.Runtime.Versioning;
@@ -90,6 +90,7 @@ public sealed class EngineEnvironment(string dataDirectory)
         ["ghostscript"] = [windows ? "gswin64c.exe" : "gs"],
         ["ffmpeg"] = windows ? ["ffmpeg.exe", "ffprobe.exe"] : ["ffmpeg", "ffprobe"],
         ["calibre"] = [windows ? "ebook-convert.exe" : "ebook-convert"],
+        ["weasyprint"] = [windows ? "weasyprint.exe" : "weasyprint"],
         ["rhwp"] = [windows ? "rhwp.exe" : "rhwp"],
         ["7zip"] = [windows ? "7z.exe" : "7zz"],
         ["tesseract"] = [windows ? "tesseract.exe" : "tesseract"],
@@ -149,18 +150,27 @@ public sealed class EngineEnvironment(string dataDirectory)
     /// <summary>
     /// The folder of a copy of package <paramref name="id"/> already on the PC: on the PATH (also the user's and the
     /// machine's PATH as saved, so a tool installed after Filee started is found, e.g. Scoop's shims) or where its
-    /// installer puts it (LibreOffice, calibre, Ghostscript under Program Files). Cached until
-    /// <see cref="ForgetSystemCopies"/>.
+    /// installer puts it (LibreOffice, calibre, Ghostscript under Program Files). Never for the engines Filee doesn't
+    /// take from the PC (<see cref="NeverFromSystem"/>). Cached until <see cref="ForgetSystemCopies"/>, or
+    /// <see cref="ForgetSystemCopy"/> for this package.
     /// </summary>
     public static string? SystemCopyFolder(string id) =>
         SearchSystem && UsesSystemCopy(id) ? SystemCopies.GetOrAdd(id, FindOnSystem) : null;
 
     /// <summary>
-    /// False for packages Filee never takes from the PC: 7-Zip, whose installed version and switches are unknown, is
-    /// used only as Filee downloads it or as the user picks it in Settings → Engines (so the Engines page never shows
-    /// a 7-Zip on the PC as installed).
+    /// False for packages Filee never takes from the PC (<see cref="NeverFromSystem"/>). 7-Zip, whose installed version
+    /// and switches are unknown, is used only as Filee downloads it or as the user picks it in Settings → Engines (so the
+    /// Engines page never shows a 7-Zip on the PC as installed).
     /// </summary>
-    public static bool UsesSystemCopy(string id) => id != "7zip";
+    public static bool UsesSystemCopy(string id) => !NeverFromSystem.Contains(id);
+
+    /// <summary>
+    /// Engines never taken from the PC: WeasyPrint, used only as Filee's copy or one the user picked (an old copy on
+    /// the PATH may not know --allowed-protocols, #1403), rhwp, used only as Filee's bundled copy, and 7-Zip (see
+    /// <see cref="UsesSystemCopy"/>). Settings → Engines doesn't report a copy of these found on the PC either, since it
+    /// would never be used.
+    /// </summary>
+    private static readonly HashSet<string> NeverFromSystem = ["weasyprint", "rhwp", "7zip"];
 
     /// <summary>A program of the copy of package <paramref name="id"/> on the PC, or null.</summary>
     public static string? SystemProgram(string id, string program) =>
@@ -172,6 +182,12 @@ public sealed class EngineEnvironment(string dataDirectory)
         SystemCopies.Clear();
         ReachableShares.Clear();
     }
+
+    /// <summary>
+    /// Searches the PC again for package <paramref name="id"/> only (after Filee's download of it was removed): the
+    /// other packages keep what was found, and each network share keeps its answer.
+    /// </summary>
+    public static void ForgetSystemCopy(string id) => SystemCopies.TryRemove(id, out _);
 
     private static string? FindOnSystem(string id) =>
         SystemFolders(id).Where(IsReachable).Select(folder => FolderWithPrograms(id, folder)).FirstOrDefault(found => found is not null);

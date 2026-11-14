@@ -18,6 +18,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     [ObservableProperty] private IReadOnlyList<DonutItem> _items = [];
     [ObservableProperty] private string _centerTitle = "";
     [ObservableProperty] private string? _centerSubtitle;
+    [ObservableProperty] private string? _centerNotice;
+    private bool _singleInput;
 
     /// <summary>The job the progress ring shows, for the download badge above it; null when the ring shows none.</summary>
     [ObservableProperty] private JobViewModel? _progressJob;
@@ -25,13 +27,13 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     [ObservableProperty] private double _holeRatio = 0.42;
     [ObservableProperty] private double _sliceOpacity = 0.96;
 
-    /// <summary>The output format under the slices' names (Settings → Donut toolbar → Appearance).</summary>
+    /// <summary>The output format under the slices' names (Settings → Donut toolbar → Edit Donut Size).</summary>
     [ObservableProperty] private bool _showCaptions = true;
 
-    /// <summary>How large a group's ring is (Appearance → Group ring size).</summary>
+    /// <summary>How large a group's ring is (Edit Donut Size → Group ring size).</summary>
     [ObservableProperty] private double _groupRingSize = 1;
 
-    /// <summary>How wide a group's ring spreads (Appearance → Group ring spread).</summary>
+    /// <summary>How wide a group's ring spreads (Edit Donut Size → Group ring spread).</summary>
     [ObservableProperty] private double _groupRingSpread = 1;
 
     /// <summary>
@@ -151,6 +153,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         IsClickMode = true;
         IsConnectMode = true;
         Files = [];
+        CenterNotice = null;
         DonutOpacity = 1;
         HitBackground = "Transparent";
         ApplyAppearance();
@@ -186,6 +189,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         IsClickMode = false;
         IsConnectMode = false;
         Files = [];
+        CenterNotice = null;
         ApplyAppearance();
         ReserveSubRing = store.Profiles.Any(profile => HasGroups(profile.PresetIds.Concat(profile.BackPresetIds ?? [])));
         _loads++;
@@ -204,18 +208,22 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// </summary>
     public void Load(IReadOnlyList<string> files, bool clickMode, bool backFace = false)
     {
+        _example = null;
         IsClickMode = clickMode;
         IsConnectMode = false;
         Files = files;
+        CenterNotice = null;
         DonutOpacity = 1;
         HitBackground = "Transparent";
         ApplyAppearance();
+        _checked = true;
 
         // A Shapefile selected with its .dbf, .shx, ... picks the donut of the .shp, not the one for unknown files, and
         // counts as one file.
         var folders = files.Where(Directory.Exists).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
         var mainFiles = CompanionFiles.WithoutCompanions(files.Where(p => !folders.Contains(p)).ToList()).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
         var counted = files.Where(p => folders.Contains(p) || mainFiles.Contains(p)).ToList();
+        _singleInput = counted.Count == 1;
         var foldersOnly = counted.Count > 0 && counted.All(folders.Contains);
         var profile = (foldersOnly ? store.Profiles.FirstOrDefault(p => p.Id == "folders") : null)
             ?? ProfileSelector.Select(store.Profiles, counted);
@@ -225,9 +233,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         // A turned-off field still shows the formats of the dropped files' own fields (FORMAT-RULES rule 4): a font file
         // offers font conversions with Fonts off. The front takes this local, not _off, which holds the last load's set
         // until the line after it.
-        var off = store.Settings.TurnedOffFields
-            .Except(formats.SelectMany(FormatFields.Of).Select(field => field.Id), StringComparer.OrdinalIgnoreCase)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var off = TurnedOffBesides(store.Settings.TurnedOffFields, formats);
         LabelScale = ToolbarProfile.ClampLabelScale(profile?.LabelScale ?? 1);
         DefaultShow = profile?.LabelShow ?? LabelShow.Auto;
         // Both faces follow the same rule: a slice that can't convert these files is greyed out and says why.
@@ -257,6 +263,126 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     }
 
     /// <summary>
+    /// Fills the donut as <paramref name="profile"/> opens for one of its files (two different ones for a mixed
+    /// profile, a folder for Folders), on the front or the back: the Donut toolbar page shows it on screen, at its real
+    /// size, while the donut is adjusted or a group edited. The turned-off fields are left out as <see cref="Load"/>
+    /// leaves them out. Nothing converts from it.
+    /// </summary>
+    public void LoadPreview(ToolbarProfile profile, bool backFace)
+    {
+        _example = null;
+        IsClickMode = false;
+        IsConnectMode = false;
+        Files = [];
+        DonutOpacity = 1;
+        HitBackground = "Transparent";
+        ApplyLook(profile);
+        var formats = PreviewFormats(profile);
+        var off = TurnedOffBesides(store.Settings.TurnedOffFields, formats);
+        _checked = formats.Count > 0;
+        _front = BuildFace(profile.PresetIds, formats, off);
+        (_back, _backIds, _formats, _off) = (null, [.. profile.BackPresetIds ?? []], formats, off);
+        var load = ++_loads;
+        if (backFace)
+            ShowFace(BackFace().Items.Count > 0); // asked for its back (a group held open there): shown, greyed or not
+        else
+        {
+            ShowFace(back: false, checkBack: false);
+            // As Load: the back is checked once the front is on screen, for the flip, leaving the slices shown as they
+            // are (an example ring may have replaced the top one by then).
+            if (_backIds.Count > 0)
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (load == _loads && _back is null)
+                        ShowFlip(IsBackFace);
+                }, DispatcherPriority.Background);
+        }
+        ReserveSubRing = _front.Items.Any(item => item.IsGroup) || HasGroups(_backIds);
+        CenterTitle = formats.Count == 1
+            ? loc.Format("donut.files_same", 1, formats[0].DisplayName)
+            : formats.Count > 1 ? loc.Format("donut.files_mixed", formats.Count) : loc.DisplayName(profile);
+        CenterSubtitle = null;
+    }
+
+    /// <summary>
+    /// The files <see cref="LoadPreview"/> fills a profile's donut for: one of its first format; two different ones for
+    /// a mixed profile (its first two extensions may share one); a folder for Folders. A profile with none (the mixed
+    /// profile that takes anything) has none.
+    /// </summary>
+    internal static List<FileFormat> PreviewFormats(ToolbarProfile profile)
+    {
+        var formats = new List<FileFormat>();
+        if (profile.Id == "folders")
+            formats.Add(FormatRegistry.FindById(FormatRegistry.Folder)!);
+        else
+            foreach (var extension in profile.Extensions)
+            {
+                if (formats.Count == (profile.IsFallback ? 2 : 1))
+                    break;
+                if (ProfileSelector.DetectFormats(["preview." + extension]).FirstOrDefault() is { } format && !formats.Contains(format))
+                    formats.Add(format);
+            }
+        return formats;
+    }
+
+    /// <summary>
+    /// The fields left out for files of <paramref name="formats"/>: those turned off, except the files' own (a font
+    /// file offers font conversions with Fonts off, FORMAT-RULES rule 4).
+    /// </summary>
+    internal static HashSet<string> TurnedOffBesides(IEnumerable<string> turnedOff, IEnumerable<FileFormat> formats) =>
+        turnedOff.Except(formats.SelectMany(FormatFields.Of).Select(field => field.Id), StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The id of the example group <see cref="ShowExampleGroup"/> hangs off the top slice.</summary>
+    public const string ExampleGroupId = "filee-example-group";
+
+    /// <summary>
+    /// For a donut with no group, while its ring settings are adjusted: the top slice fans out an example ring of four
+    /// formats, and the centre says so (<paramref name="title"/>, <paramref name="subtitle"/>). Nothing converts here.
+    /// </summary>
+    public void ShowExampleGroup(string title, string subtitle)
+    {
+        _example = (title, subtitle);
+        ShowExample(title, subtitle);
+    }
+
+    // The example ring shown (flipped, the other face shows it too), until the donut is filled again.
+    private (string Title, string Subtitle)? _example;
+
+    private void ShowExample(string title, string subtitle)
+    {
+        if (Items.Count == 0)
+            return;
+        var top = Items[0];
+        Items =
+        [
+            new DonutItem
+            {
+                Id = ExampleGroupId,
+                Label = top.Label,
+                FullName = top.FullName,
+                IconKey = top.IconKey,
+                Show = top.Show,
+                Direction = top.Direction,
+                Children = new[] { "JPG", "PNG", "WebP", "HEIC" }.Select(name => new DonutItem { Id = ExampleGroupId + "-" + name, Label = name }).ToList(),
+            },
+            .. Items.Skip(1),
+        ];
+        ReserveSubRing = true;
+        (CenterTitle, CenterSubtitle) = (title, subtitle);
+    }
+
+    /// <summary>
+    /// The donut's look from the settings and <paramref name="profile"/>'s labels, while it is previewed.
+    /// </summary>
+    public void ApplyLook(ToolbarProfile profile)
+    {
+        ApplyAppearance();
+        LabelScale = ToolbarProfile.ClampLabelScale(profile.LabelScale);
+        DefaultShow = profile.LabelShow ?? LabelShow.Auto;
+    }
+
+    /// <summary>
     /// Shows the other face (at the start of the donut's flip). Returns false, changing nothing, when it has no slice
     /// for these files (<see cref="CanFlip"/>).
     /// </summary>
@@ -267,7 +393,10 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         if (!CanFlip)
             return false;
         ShowFace(!IsBackFace);
+        CenterNotice = null;
         CenterSubtitle = IsClickMode ? loc["donut.close_hint"] : null;
+        if (_example is { } example)
+            ShowExample(example.Title, example.Subtitle);
         return true;
     }
 
@@ -282,6 +411,12 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             _subPresets = face.SubPresets;
             Items = face.Items;
         }
+        ShowFlip(back, checkBack);
+    }
+
+    /// <summary>Whether, and how, the face shown flips to the other (<see cref="CanFlip"/>, the hint).</summary>
+    private void ShowFlip(bool back, bool checkBack = true)
+    {
         var other = back ? _front : checkBack ? BackFace() : _back;
         // The front was already shown, even when every slice was disabled. Do not strand the user on the back face.
         CanFlip = back ? _front.Items.Count > 0 : other?.IsUsable == true;
@@ -294,6 +429,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
 
     /// <summary>The back face's slices for the files, checked now if they weren't yet.</summary>
     private Face BackFace() => _back ??= BuildFace(_backIds, _formats, _off);
+
+    // Slices are judged against the files (LoadPreview for a profile without extensions has none to judge against).
+    private bool _checked = true;
 
     private bool HasGroups(IEnumerable<string> presetIds) => presetIds.Any(id => store.FindPreset(id)?.IsGroup == true);
 
@@ -326,7 +464,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
 
         DonutItem ItemOf(Preset p, bool caption = true)
         {
-            var reason = availability.Check(p, formats);
+            var reason = _checked ? availability.Check(p, formats) : null;
             return new DonutItem
             {
                 Id = p.Id,
@@ -344,6 +482,12 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                 IconKey = SliceIcons.For(p),
                 Show = p.Show,
                 Direction = p.Direction,
+                OrdinaryConversionNotice = reason is not null ? null : availability.OrdinaryConversionFor(p, formats) switch
+                {
+                    OrdinaryConversion.All => loc[_singleInput ? "donut.ordinary_conversion.single" : "donut.ordinary_conversion.all"],
+                    OrdinaryConversion.Some => loc["donut.ordinary_conversion.some"],
+                    _ => null,
+                },
             };
         }
 
@@ -375,6 +519,10 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// <summary>Updates the centre hint for the emphasised slice (and slice <paramref name="sub"/> of its group's ring).</summary>
     public void ShowHint(int index, int sub, bool centerHot)
     {
+        var item = !centerHot && index >= 0 && index < Items.Count ? Items[index] : null;
+        if (item?.Children is { } ring)
+            item = sub >= 0 && sub < ring.Count ? ring[sub] : null;
+        CenterNotice = item is { IsEnabled: true, IsGroup: false } ? item.OrdinaryConversionNotice : null;
         if (centerHot)
             CenterSubtitle = loc["donut.cancel"];
         else if (index >= 0 && index < Items.Count && Items[index].Children is { Count: > 0 } children &&

@@ -73,7 +73,7 @@ Fixes for two advisories, [GHSA-gw2f-hq9g-3jc2](https://github.com/KnifeLemon/Fi
 - **OCR in several languages:** a preset's OCR can read more than one language at once, for scans that mix them (Simplified Chinese and English, for example).
 - **Subtitles and transcripts to TXT:** subtitle files (SRT, ASS, WebVTT, SAMI, LRC, TTML and more) convert to plain text with one line per cue and no times. With *Generate subtitles (Whisper)* turned on, a TXT preset turns speech in a video or sound file into text.
 - **Animated AVIF:** animated GIF, WebP, APNG and MNG keep every frame in AVIF, and an animated AVIF converts as an animation. With the FFmpeg engine installed, writing is much faster and can be cancelled.
-- **Show output format** (*Settings → Donut toolbar → Appearance*; by @lightscape-jm): turn it off to show only the slice names. It's on by default.
+- **Show output format** (*Settings → Donut toolbar → Edit Donut Size*; by @lightscape-jm): turn it off to show only the slice names. It's on by default.
 - **New languages:** বাংলা (Bengali, by @fluentmoheshwar) and فارسی (Persian, by @nimazerobit).
 - **Engines page** (by @adnan-bhaldar): dragging an engine card is animated, with an outlined slot and a smaller copy that follows the pointer, and only the drag handle shows the move cursor. It follows *Reduce animations*.
 - **Settings → General** (by @adnan-bhaldar): the Settings folder card says what Filee keeps there, and each button of the Presets and toolbars card has an icon and a short description. *Clear history* and *Clear* on the Triggers page use the danger style.

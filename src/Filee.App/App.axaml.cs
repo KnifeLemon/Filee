@@ -231,6 +231,7 @@ public partial class App : Application
         desktop.Exit += (_, _) =>
         {
             UiZoom.Flush();
+            DonutLookSave.Flush();
             watchdog.Dispose();
             AppHost.Get<MemoryTrimmer>().Dispose();
             AppHost.Get<TriggerService>().Dispose();

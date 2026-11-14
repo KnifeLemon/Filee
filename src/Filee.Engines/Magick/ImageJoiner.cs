@@ -80,7 +80,7 @@ internal static class ImageJoiner
             for (var i = 0; i < inputs.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var picture = Read(inputs[i], reading, options);
+                var picture = Read(inputs[i], reading, options, cancellationToken);
                 sizes[i] = (picture.Width, picture.Height);
                 density ??= picture.Density;
                 var pixels = (long)picture.Width * picture.Height;
@@ -99,7 +99,7 @@ internal static class ImageJoiner
             for (var i = 0; i < inputs.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                using var picture = kept[i] ?? Read(inputs[i], reading, options);
+                using var picture = kept[i] ?? Read(inputs[i], reading, options, cancellationToken);
                 kept[i] = null;
                 var place = layout.Pictures[i];
                 if (picture.Width != place.Width || picture.Height != place.Height)
@@ -118,8 +118,8 @@ internal static class ImageJoiner
             ImageEncoder.ApplyOptions(merged, rest, format);
             cancellationToken.ThrowIfCancellationRequested();
             ImageEncoder.WriteImage(merged, outputPath, format);
-            // A PDN (lossless, written by Filee) isn't fitted, like an animation: the queue refuses one too large.
-            if ((options.MaxSizeMb > 0 || options.MinSizeMb > 0) && format != "pdn")
+            // A PDN, XCF or VTF (written by Filee) isn't fitted, like an animation: the queue refuses one too large.
+            if ((options.MaxSizeMb > 0 || options.MinSizeMb > 0) && format is not ("pdn" or "xcf" or "vtf"))
                 ImageEncoder.FitToSize(merged, outputPath, ImageEncoder.OutputFormat(format, rest).Format, SizeLimit.Bytes(options.MaxSizeMb),
                     SizeLimit.MinimumBytes(options.MinSizeMb), options.MaxSizeKeepsPixels);
             if (format == "cur")
@@ -137,9 +137,10 @@ internal static class ImageJoiner
     /// One picture as it looks: the first page or frame (an icon's largest size), turned by its EXIF orientation and the
     /// preset, in sRGB so photos with different colour profiles match.
     /// </summary>
-    private static IMagickImage<byte> Read((string Path, string Format) input, Preset reading, ImageOptions options)
+    private static IMagickImage<byte> Read((string Path, string Format) input, Preset reading, ImageOptions options,
+        CancellationToken cancellationToken)
     {
-        using var images = ImageReader.Read(input.Path, input.Format, reading);
+        using var images = ImageReader.Read(input.Path, input.Format, reading, cancellationToken);
         if (images.Count == 0)
             throw new InvalidOperationException("The picture has no image in it.");
         var picture = ImageEncoder.SelectFrames(images, input.Format, "png")[0].Clone();

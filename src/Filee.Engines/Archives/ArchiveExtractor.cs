@@ -35,16 +35,17 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     /// <summary>Formats Filee reads (all in-process; 7-Zip, when installed, only as a fallback).</summary>
     public static readonly IReadOnlyList<string> BuiltInFormats =
     [
-        "zip", "jar", "zxp", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tlz", "gz", "bz2", "xz", "lzma", "z",
-        "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split", "cab", "lha", "arj", "dmg", "img",
+        "zip", "jar", "zxp", "nupkg", "apks", "aab", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tlz", "gz", "bz2",
+        "xz", "lzma", "z", "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split", "cab", "lha", "arj", "dmg", "img",
         "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
 
     /// <summary>Formats 7-Zip can read too, so it may try again after an in-process reader gave up.</summary>
     private static readonly HashSet<string> SevenZipAlsoReads =
     [
-        "zip", "jar", "zxp", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz", "lzma", "z", "cpio",
-        "deb", "rpm", "iso", "split", "cab", "lha", "arj", "dmg", "img", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
+        "zip", "jar", "zxp", "nupkg", "apks", "aab", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz",
+        "lzma", "z", "cpio", "deb", "rpm", "iso", "split", "cab", "lha", "arj", "dmg", "img", "mcpack", "mcaddon", "mcworld",
+        "mctemplate", "mrpack",
     ];
 
     /// <summary>A TAR inside a compressed stream (or a 7z): unpacking the outer layer yields one .tar file.</summary>
@@ -185,6 +186,9 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
             case "zip":
             case "jar":
             case "zxp":
+            case "nupkg":
+            case "apks":
+            case "aab":
             case "mcpack":
             case "mcaddon":
             case "mcworld":

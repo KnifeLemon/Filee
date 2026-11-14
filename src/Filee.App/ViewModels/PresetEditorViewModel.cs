@@ -208,6 +208,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         CadVersions = Enum.GetValues<CadVersion>().Select(v => new Choice<CadVersion>(v,
             v == Core.Presets.CadVersion.SameAsSource ? loc["presets.cad_version.same"] : "AutoCAD " + v.ToString()["AutoCad".Length..])).ToList();
         CadColorChoices = Enum.GetValues<CadColors>().Select(v => new Choice<CadColors>(v, loc[$"presets.cad_colors.{v}"])).ToList();
+        GcodeViews = Enum.GetValues<GcodeView>().Select(v => new Choice<GcodeView>(v, loc[$"presets.gcode_view.{v}"])).ToList();
+        // G-code belongs to the 3D and CAD fields only: with both off, its card is left out like its files' slots.
+        _gcodeShown = turnedOff is null || FormatFields.IsShown("gcode", turnedOff);
         // A speed set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
         AnimationSpeeds = [.. ImageOptions.AnimationSpeeds.Append(_edit.Image.PlaybackSpeed).Distinct().Order()
             .Select(s => new Choice<double>(s, s == 1 ? loc["presets.animation_speed.original"] : SpeedLabel(s)))];
@@ -323,6 +326,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _livePhotoCover = _edit.Media.LivePhotoCover;
         _ringtoneStart = _edit.Media.RingtoneStart;
         _ringtoneLength = _edit.Media.RingtoneLength;
+        _askRingtonePart = _edit.Media.AskRingtonePart;
         _frameInterval = _edit.Media.FrameInterval > 0 ? _edit.Media.FrameInterval : 1;
         _isSlideshow = _edit.Media.Slideshow;
         _slideSeconds = _edit.Media.SlideDuration;
@@ -330,6 +334,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _traceMode = TraceModes.First(m => m.Value == _edit.Trace.Mode);
         _cadVersion = CadVersions.First(v => v.Value == _edit.Cad.Version);
         _cadColors = CadColorChoices.FirstOrDefault(c => c.Value == _edit.Cad.Colors) ?? CadColorChoices[0];
+        _gcodeView = GcodeViews.FirstOrDefault(v => v.Value == _edit.Gcode.View) ?? GcodeViews[0];
         _animationSpeed = AnimationSpeeds.First(s => s.Value == _edit.Image.PlaybackSpeed);
         _traceColors = Math.Clamp(_edit.Trace.Colors, TracingOptions.MinColors, TracingOptions.MaxColors);
         _traceDetail = Math.Clamp(_edit.Trace.Detail, 0, 100);
@@ -371,6 +376,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _icoSizes = string.Join(", ", _edit.Image.IcoSizes);
         _merge = _edit.Pdf.MergeIntoSingle;
         _sourceBookmarks = _edit.Pdf.SourceBookmarks;
+        _normalizeMergePaper = _edit.Pdf.NormalizeMergePaper;
+        _mergePaper = SheetPapers.First(c => c.Value == _edit.Pdf.MergePaper);
+        _mergeOrientation = SheetOrientations.First(c => c.Value == _edit.Pdf.MergeOrientation);
         _marginMm = _edit.Pdf.MarginMm;
         _renderDpi = _edit.Pdf.RenderDpi;
         _pageRange = _edit.Pdf.PageRange;
@@ -514,6 +522,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>The colours a drawing is drawn in: as drawn, black and white, grayscale (CadOptions.Colors, #411).</summary>
     public IReadOnlyList<Choice<CadColors>> CadColorChoices { get; }
 
+    /// <summary>What a G-code file shows: from above, isometric, the slicer's preview (GcodeOptions.View).</summary>
+    public IReadOnlyList<Choice<GcodeView>> GcodeViews { get; }
+
+    private readonly bool _gcodeShown;
+
     /// <summary>Playback speeds of animations, 0.25× to 4× (ImageOptions.AnimationSpeed).</summary>
     public IReadOnlyList<Choice<double>> AnimationSpeeds { get; }
 
@@ -528,7 +541,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
-        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
+        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowMergePaper), nameof(ShowMergePaperSettings),
+        nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
         nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowAskCompressionImage), nameof(ShowAskCompressionMedia), nameof(ShowAskCompressionPdf),
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
@@ -536,7 +550,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec), nameof(ShowRingtone),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
-        nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
+        nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowGcode), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
         nameof(ShowImageSize), nameof(SizeRangeError), nameof(CustomSizeError), nameof(IsValid))]
     private Choice<string> _target;
@@ -600,6 +614,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>M4R (iPhone ringtone): where the ringtone starts in the sound, and how long it is (at most 40 s).</summary>
     [ObservableProperty] private double _ringtoneStart;
     [ObservableProperty] private double _ringtoneLength;
+
+    /// <summary>"Ask every time" for the ringtone's part, in the Cut a clip window (MediaOptions.AskRingtonePart, #1291).</summary>
+    [ObservableProperty] private bool _askRingtonePart;
 
     /// <summary>The clip's video codec: H.264, or HEVC for smaller files (MediaOptions.VideoCodec).</summary>
     public IReadOnlyList<Choice<VideoCodec>> LivePhotoCodecs =>
@@ -808,9 +825,20 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _webpLossless;
     [ObservableProperty] private bool _multiPageTiff;
     [ObservableProperty] private string _icoSizes;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowSourceBookmarks), nameof(ShowAskCompressionPdf))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowSourceBookmarks),
+        nameof(ShowMergePaper), nameof(ShowMergePaperSettings), nameof(ShowAskCompressionPdf))]
     private bool _merge;
     [ObservableProperty] private bool _sourceBookmarks;
+
+    /// <summary>Fit all merged pages to one paper without changing the image or N-up page settings.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowMergePaperSettings))]
+    private bool _normalizeMergePaper;
+
+    /// <summary>The shared paper of the merged PDF, retained while its controls are hidden.</summary>
+    [ObservableProperty] private Choice<PdfSheetPaper> _mergePaper;
+
+    /// <summary>The shared orientation of the merged PDF, chosen once when automatic.</summary>
+    [ObservableProperty] private Choice<PdfSheetOrientation> _mergeOrientation;
     [ObservableProperty] private double _marginMm;
     [ObservableProperty] private int _renderDpi;
     [ObservableProperty] private string _pageRange;
@@ -1035,6 +1063,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private int _traceColors;
     [ObservableProperty] private Choice<CadVersion> _cadVersion;
     [ObservableProperty] private Choice<CadColors> _cadColors;
+    [ObservableProperty] private Choice<GcodeView> _gcodeView;
     [ObservableProperty] private int _traceDetail;
     [ObservableProperty] private Choice<double> _animationSpeed;
 
@@ -1093,6 +1122,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     partial void OnSheetPaperChanged(Choice<PdfSheetPaper>? oldValue, Choice<PdfSheetPaper> newValue) => Choices.Restore(oldValue, newValue, v => SheetPaper = v);
     partial void OnSheetOrientationChanged(Choice<PdfSheetOrientation>? oldValue, Choice<PdfSheetOrientation> newValue) =>
         Choices.Restore(oldValue, newValue, v => SheetOrientation = v);
+    partial void OnMergePaperChanged(Choice<PdfSheetPaper>? oldValue, Choice<PdfSheetPaper> newValue) =>
+        Choices.Restore(oldValue, newValue, v => MergePaper = v);
+    partial void OnMergeOrientationChanged(Choice<PdfSheetOrientation>? oldValue, Choice<PdfSheetOrientation> newValue) =>
+        Choices.Restore(oldValue, newValue, v => MergeOrientation = v);
     partial void OnSheetOrderChanged(Choice<PdfSheetOrder>? oldValue, Choice<PdfSheetOrder> newValue) => Choices.Restore(oldValue, newValue, v => SheetOrder = v);
     partial void OnAudioBitrateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioBitrate = v);
     partial void OnAudioChannelsChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioChannels = v);
@@ -1102,6 +1135,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     partial void OnTraceModeChanged(Choice<TracingMode>? oldValue, Choice<TracingMode> newValue) => Choices.Restore(oldValue, newValue, v => TraceMode = v);
     partial void OnCadVersionChanged(Choice<CadVersion>? oldValue, Choice<CadVersion> newValue) => Choices.Restore(oldValue, newValue, v => CadVersion = v);
     partial void OnCadColorsChanged(Choice<CadColors>? oldValue, Choice<CadColors> newValue) => Choices.Restore(oldValue, newValue, v => CadColors = v);
+    partial void OnGcodeViewChanged(Choice<GcodeView>? oldValue, Choice<GcodeView> newValue) => Choices.Restore(oldValue, newValue, v => GcodeView = v);
     partial void OnCompressionLevelChanged(Choice<PdfCompression>? oldValue, Choice<PdfCompression> newValue) =>
         Choices.Restore(oldValue, newValue, v => CompressionLevel = v);
     partial void OnAnimationSpeedChanged(Choice<double>? oldValue, Choice<double> newValue) =>
@@ -1145,6 +1179,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowZipResult => TargetCategory == FormatCategory.Geo;
     public bool ShowPdfBuild => TargetId == "pdf";
     public bool ShowSourceBookmarks => ShowPdfBuild && Merge;
+
+    /// <summary>The merge paper option is offered only for a merged PDF.</summary>
+    public bool ShowMergePaper => ShowPdfBuild && Merge;
+
+    /// <summary>The shared paper and orientation are shown only while fitting is enabled.</summary>
+    public bool ShowMergePaperSettings => ShowMergePaper && NormalizeMergePaper;
 
     /// <summary>Page size and margin of a PDF built from pictures; not with text recognition (<see cref="Recognizes"/>).</summary>
     public bool ShowPageSize => ShowPdfBuild && !Recognizes;
@@ -1254,6 +1294,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>The colours, for the targets a DWG or DXF is drawn into: PDF, SVG and pictures.</summary>
     public bool ShowCadColors => !IsTool && (TargetId is "pdf" or "svg" || TargetCategory == FormatCategory.Image);
+
+    /// <summary>The G-code view, for the targets a toolpath is drawn into, while the 3D or CAD field is on.</summary>
+    public bool ShowGcode => _gcodeShown && ShowCadColors;
     public bool ShowTraceColors => TraceMode.Value == TracingMode.Color;
     public bool ShowPercent => Resize.Value == ResizeMode.Percent;
     public bool ShowLongEdge => Resize.Value == ResizeMode.LongEdge;
@@ -1359,6 +1402,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var pdf = _original.Pdf;
         pdf.MergeIntoSingle = Merge;
         pdf.SourceBookmarks = SourceBookmarks;
+        pdf.NormalizeMergePaper = NormalizeMergePaper;
+        pdf.MergePaper = MergePaper.Value;
+        pdf.MergeOrientation = MergeOrientation.Value;
         pdf.PageSize = PageSize.Value;
         pdf.MarginMm = Math.Clamp(MarginMm, 0, 100);
         pdf.RenderDpi = Math.Clamp(RenderDpi, 36, 1200);
@@ -1468,6 +1514,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.LivePhotoCover = Seconds(LivePhotoCover, 1.5, 0, MediaOptions.MaxLivePhotoLength);
         media.RingtoneStart = Seconds(RingtoneStart, 0, 0, 24 * 3600);
         media.RingtoneLength = Seconds(RingtoneLength, MediaOptions.DefaultRingtoneLength, MediaOptions.MinRingtoneLength, MediaOptions.MaxRingtoneLength);
+        media.AskRingtonePart = ShowRingtone && AskRingtonePart;
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = TargetId != "iso" && CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;
@@ -1477,6 +1524,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // black and white chosen for PDF and left behind by a DWG target.
         _original.Cad.Version = ShowCad ? CadVersion.Value : default;
         _original.Cad.Colors = ShowCadColors ? CadColors.Value : default;
+        // A view kept while the card is hidden by the field switches: turning them on again shows it unchanged.
+        _original.Gcode.View = ShowCadColors ? GcodeView.Value : default;
         _original.Translate.TargetLanguage = TargetLanguage.Value;
         _original.Translate.Enabled = ShowTranslate;
         if (ShowUpscale)
