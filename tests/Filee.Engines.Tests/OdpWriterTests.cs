@@ -25,6 +25,7 @@ public sealed class OdpWriterTests(EngineFixture fx) : IClassFixture<EngineFixtu
     private static readonly XNamespace Style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
     private static readonly XNamespace Text = "urn:oasis:names:tc:opendocument:xmlns:text:1.0";
     private static readonly XNamespace Draw = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
+    private static readonly XNamespace Fo = "urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0";
     private static readonly XNamespace Presentation = "urn:oasis:names:tc:opendocument:xmlns:presentation:1.0";
     private static readonly XNamespace Manifest = "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0";
 
@@ -245,6 +246,11 @@ public sealed class OdpWriterTests(EngineFixture fx) : IClassFixture<EngineFixtu
         var styles = content.Descendants(Text + "list-style").ToList();
         Assert.Contains(styles, s => s.Descendants(Text + "list-level-style-bullet").Any(l => (string?)l.Attribute(Text + "bullet-char") == "•"));
         Assert.Contains(styles, s => s.Descendants(Text + "list-level-style-number").Any(l => (string?)l.Attribute(Style + "num-format") == "1" && (string?)l.Attribute(Style + "num-suffix") == "."));
+        // Impress sizes the label by fo:font-size in the level's text properties and adds text:space-before to the
+        // paragraph's margin, which already holds the indent.
+        var levels = styles.SelectMany(s => s.Elements()).ToList();
+        Assert.All(levels, l => Assert.EndsWith("%", (string?)l.Element(Style + "text-properties")?.Attribute(Fo + "font-size")));
+        Assert.All(levels, l => Assert.Equal("0pt", (string?)l.Element(Style + "list-level-properties")?.Attribute(Text + "space-before")));
 
         // The right-to-left paragraph is written so, and comes back so.
         var rtl = content.Descendants(Style + "paragraph-properties").Where(p => (string?)p.Attribute(Style + "writing-mode") == "rl-tb");
@@ -334,7 +340,13 @@ public sealed class OdpWriterTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Box(280, new PatternFill("dnDiag", SKColors.Black, SKColors.Yellow),
             new SlideLine(new SolidFill(SKColors.Green), 4, [3, 1], SKStrokeCap.Round, SKStrokeJoin.Miter, new LineEnd(LineEndKind.Oval, 3, 3), new LineEnd(LineEndKind.Stealth, 5, 5)));
 
-        var back = OdfDrawReader.Read(Write(deck, fx.NewFolder()), cancellationToken: Token);
+        var odp = Write(deck, fx.NewFolder());
+        // Angles carry their unit: LibreOffice reads a bare number as degrees in files it didn't write.
+        var named = Part(odp, "styles.xml").Descendants().Concat(Part(odp, "content.xml").Descendants()).ToList();
+        Assert.Equal("0deg", named.Where(e => e.Name == Draw + "gradient" && (string?)e.Attribute(Draw + "style") == "linear").Select(e => (string?)e.Attribute(Draw + "angle")).Single());
+        Assert.Equal("135deg", named.Where(e => e.Name == Draw + "hatch").Select(e => (string?)e.Attribute(Draw + "rotation")).Single());
+
+        var back = OdfDrawReader.Read(odp, cancellationToken: Token);
         var shapes = back.Slides[0].Elements.OfType<SlideShape>().ToList();
         Assert.Equal(new SKColor(0xEC, 0xEF, 0xF1), Assert.IsType<SolidFill>(back.Slides[0].Background).Color);
         Assert.Equal(new SKColor(0x10, 0x20, 0x30, 0x80), Assert.IsType<SolidFill>(shapes[0].Fill).Color);

@@ -5,8 +5,10 @@
 // The slide model has bullets and numbers already in the text (a label, then a tab to the hanging indent or a space).
 // A paragraph that starts so with a symbol, or with a number in a known form (1. 2) (3) a. B) iv.), is written as an
 // item of a text:list instead: the label becomes the level's bullet character or number format, its size a share of
-// the text's (text:bullet-relative-size), its colour and font the level's text properties, the number the item's
-// text:start-value. Levels are the frame's distinct indents of such paragraphs, smallest first.
+// the text's (text:bullet-relative-size, and fo:font-size as a share in the level's text properties, which is what
+// Impress reads), its colour and font the level's text properties, the number the item's text:start-value. Levels are
+// the frame's distinct indents of such paragraphs, smallest first. The paragraph's margins carry the indent; the level's
+// text:space-before stays 0 because Impress adds it to the paragraph's left margin.
 
 using System.Globalization;
 using System.Text;
@@ -154,10 +156,11 @@ internal sealed partial class OdpWriter
     /// <summary>The list style of one paragraph's level: its bullet or number, the label's size, colour and font, and the indent.</summary>
     private static string ListLevel(Label label, int level, HParagraph paragraph)
     {
-        var left = paragraph.Format.Left ?? 0;
         var firstLine = paragraph.Format.FirstLine ?? 0;
         var textSize = paragraph.MarkFormat.Size ?? label.Format.Size;
-        var relative = label.Format.Size is { } size && textSize is > 0 ? $" text:bullet-relative-size=\"{Percent(Math.Clamp(size / (double)textSize.Value, 0.01, 10))}\"" : "";
+        // Without fo:font-size in the level's text properties Impress draws the label at a fraction of the text's size.
+        var share = textSize is > 0 ? Percent(label.Format.Size is { } size ? Math.Clamp(size / (double)textSize.Value, 0.01, 10) : 1) : null;
+        var relative = share is null ? "" : $" text:bullet-relative-size=\"{share}\"";
         var number = N(level + 1);
         var sb = new StringBuilder();
         if (label.NumberFormat is { } format)
@@ -173,13 +176,16 @@ internal sealed partial class OdpWriter
         {
             sb.Append($"<text:list-level-style-bullet text:level=\"{number}\" text:bullet-char=\"{OdfXml.Escape(label.Text)}\"{relative}>");
         }
-        // The label starts at the first line's indent; the text after it at the paragraph's.
+        // The label starts at the first line's indent, the text after it at the paragraph's: both from the paragraph's
+        // margins (Impress adds text:space-before to them, so it stays 0).
         var width = Math.Max(0, -firstLine);
-        sb.Append($"<style:list-level-properties text:space-before=\"{Pt((left + Math.Min(firstLine, 0)) / 100.0)}\" text:min-label-width=\"{Pt(width / 100.0)}\"/>");
+        sb.Append($"<style:list-level-properties text:space-before=\"0pt\" text:min-label-width=\"{Pt(width / 100.0)}\"/>");
         var properties = new StringBuilder();
         if (label.Format.Font is { } font)
             properties.Append($" fo:font-family=\"{Family(font)}\"");
         properties.Append(OdfNames.Color(label.Format.Color) is { } color ? $" fo:color=\"{color}\"" : " style:use-window-font-color=\"true\"");
+        if (share is not null)
+            properties.Append($" fo:font-size=\"{share}\"");
         sb.Append($"<style:text-properties{properties}/>");
         sb.Append(label.NumberFormat is null ? "</text:list-level-style-bullet>" : "</text:list-level-style-number>");
         return sb.ToString();

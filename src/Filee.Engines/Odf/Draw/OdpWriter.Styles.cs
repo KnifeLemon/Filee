@@ -177,10 +177,11 @@ internal sealed partial class OdpWriter
             center = $" draw:cx=\"{Percent(Math.Clamp(cx, 0, 1))}\" draw:cy=\"{Percent(Math.Clamp(cy, 0, 1))}\"";
             extra = stops.Count > (border > 0 ? 3 : 2);
         }
+        // With its unit: LibreOffice reads a bare number as degrees in files it didn't write (tenths in its own).
         angle = (angle % 360 + 360) % 360;
-        var tenths = ((int)Math.Round(angle * 10) % 3600).ToString(CultureInfo.InvariantCulture);
+        var degrees = (Math.Round(angle * 10) % 3600 / 10).ToString("0.#", CultureInfo.InvariantCulture) + "deg";
         var attributes = $" draw:style=\"{style}\"{center} draw:start-color=\"{Hex(start)}\" draw:end-color=\"{Hex(end)}\"" +
-                         $" draw:start-intensity=\"100%\" draw:end-intensity=\"100%\" draw:angle=\"{tenths}\" draw:border=\"{Percent(border)}\"";
+                         $" draw:start-intensity=\"100%\" draw:end-intensity=\"100%\" draw:angle=\"{degrees}\" draw:border=\"{Percent(border)}\"";
         var content = new StringBuilder();
         if (extra)
         {
@@ -197,7 +198,7 @@ internal sealed partial class OdpWriter
         if (alphas is [var alpha])
             return result + Opacity(alpha);
         var opacity = _named.Add("opacity", "Transparency", $" draw:style=\"{style}\"{center} draw:start=\"{Percent(start.Alpha / 255.0)}\" draw:end=\"{Percent(end.Alpha / 255.0)}\"" +
-                                                             $" draw:angle=\"{tenths}\" draw:border=\"{Percent(border)}\"");
+                                                             $" draw:angle=\"{degrees}\" draw:border=\"{Percent(border)}\"");
         return result + $" draw:opacity-name=\"{opacity}\"";
     }
 
@@ -210,11 +211,12 @@ internal sealed partial class OdpWriter
         var crossed = preset.Contains("Cross", StringComparison.OrdinalIgnoreCase) || preset.Contains("Grid", StringComparison.OrdinalIgnoreCase)
                       || preset.Contains("Check", StringComparison.OrdinalIgnoreCase) || preset.Contains("Dmnd", StringComparison.OrdinalIgnoreCase)
                       || preset is "plaid" or "trellis" or "weave";
-        int? rotation = preset.Contains("UpDiag", StringComparison.OrdinalIgnoreCase) ? 450
-            : preset.Contains("DnDiag", StringComparison.OrdinalIgnoreCase) ? 1350
+        // Degrees, written with their unit like the gradient's angle.
+        int? rotation = preset.Contains("UpDiag", StringComparison.OrdinalIgnoreCase) ? 45
+            : preset.Contains("DnDiag", StringComparison.OrdinalIgnoreCase) ? 135
             : preset.Contains("Horz", StringComparison.OrdinalIgnoreCase) ? 0
-            : preset.Contains("Vert", StringComparison.OrdinalIgnoreCase) ? 900
-            : preset.Contains("diag", StringComparison.OrdinalIgnoreCase) || preset is "trellis" or "solidDmnd" or "openDmnd" or "dotDmnd" ? 450
+            : preset.Contains("Vert", StringComparison.OrdinalIgnoreCase) ? 90
+            : preset.Contains("diag", StringComparison.OrdinalIgnoreCase) || preset is "trellis" or "solidDmnd" or "openDmnd" or "dotDmnd" ? 45
             : crossed ? 0
             : null;
         if (rotation is null)
@@ -231,7 +233,7 @@ internal sealed partial class OdpWriter
         var distance = preset.StartsWith("nar", StringComparison.Ordinal) || preset.StartsWith("dk", StringComparison.Ordinal) ? 2
             : preset.StartsWith("wd", StringComparison.Ordinal) || preset.StartsWith("lg", StringComparison.Ordinal) ? 6
             : 4;
-        var name = _named.Add("hatch", "Hatch", $" draw:style=\"{(crossed ? "double" : "single")}\" draw:color=\"{Hex(pattern.Foreground)}\" draw:distance=\"{Pt(distance)}\" draw:rotation=\"{N(rotation.Value)}\"");
+        var name = _named.Add("hatch", "Hatch", $" draw:style=\"{(crossed ? "double" : "single")}\" draw:color=\"{Hex(pattern.Foreground)}\" draw:distance=\"{Pt(distance)}\" draw:rotation=\"{N(rotation.Value)}deg\"");
         var solid = pattern.Background.Alpha > 0;
         return $" draw:fill=\"hatch\" draw:fill-hatch-name=\"{name}\" draw:fill-hatch-solid=\"{(solid ? "true" : "false")}\"" +
                (solid ? $" draw:fill-color=\"{Hex(pattern.Background)}\"" : "");
