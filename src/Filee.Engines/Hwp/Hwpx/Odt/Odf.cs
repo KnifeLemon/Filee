@@ -1,5 +1,5 @@
-// Names and units shared by the ODT reader and writer (OpenDocument 1.3): the namespaces, lengths as ODF writes them
-// ("2.5cm", "0.5in", "12pt") in HWPUNIT, colours, and the number formats of lists and notes.
+// Names and units shared by the ODT reader and writer and the ODP / ODG reader (OpenDocument 1.3): the namespaces, lengths
+// as ODF writes them ("2.5cm", "0.5in", "12pt") in HWPUNIT, colours, and the number formats of lists and notes.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -11,6 +11,12 @@ internal static class Odf
     public const string MimeType = "application/vnd.oasis.opendocument.text";
     public const string TemplateMimeType = "application/vnd.oasis.opendocument.text-template";
     public const string Version = "1.3";
+
+    /// <summary>Presentations (Impress) and drawings (Draw), and their templates: draw:page documents (Odf/Draw).</summary>
+    public const string PresentationMimeType = "application/vnd.oasis.opendocument.presentation";
+    public const string PresentationTemplateMimeType = "application/vnd.oasis.opendocument.presentation-template";
+    public const string GraphicsMimeType = "application/vnd.oasis.opendocument.graphics";
+    public const string GraphicsTemplateMimeType = "application/vnd.oasis.opendocument.graphics-template";
 
     public static readonly XNamespace Office = "urn:oasis:names:tc:opendocument:xmlns:office:1.0";
     public static readonly XNamespace Style = "urn:oasis:names:tc:opendocument:xmlns:style:1.0";
@@ -24,6 +30,11 @@ internal static class Odf
     public static readonly XNamespace Meta = "urn:oasis:names:tc:opendocument:xmlns:meta:1.0";
     public static readonly XNamespace Manifest = "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0";
     public static readonly XNamespace MathMl = "http://www.w3.org/1998/Math/MathML";
+
+    // Presentations and drawings (Odf/Draw): placeholders and master items, 3D scenes, charts in embedded objects.
+    public static readonly XNamespace Presentation = "urn:oasis:names:tc:opendocument:xmlns:presentation:1.0";
+    public static readonly XNamespace Dr3d = "urn:oasis:names:tc:opendocument:xmlns:dr3d:1.0";
+    public static readonly XNamespace Chart = "urn:oasis:names:tc:opendocument:xmlns:chart:1.0";
 
     /// <summary>The namespaces of every part Filee writes, declared on the root element.</summary>
     public const string Namespaces =
