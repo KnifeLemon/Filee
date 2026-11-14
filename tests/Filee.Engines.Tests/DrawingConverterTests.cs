@@ -1,5 +1,5 @@
-// SVG output of the slide renderer (SlideOutput.ToSvg) and the drawing converter (Drawings/), which has no formats of
-// its own yet: it is tried with a test format whose reader is the PPTX slide reader. Decks are written in code.
+// SVG output of the slide renderer (SlideOutput.ToSvg) and the drawing converter (Drawings/), tried with a test format
+// whose reader is the PPTX slide reader (OdfDrawTests try its ODG / FODG formats). Decks are written in code.
 
 using System.Xml.Linq;
 using Filee.Core.Conversion;
@@ -110,11 +110,11 @@ public sealed class DrawingConverterTests : IDisposable
     // ───────────────────────── Converter ─────────────────────────
 
     [Fact]
-    public void The_drawing_engine_is_registered_without_formats_yet()
+    public void The_drawing_engine_is_registered_with_its_formats()
     {
         var engine = Assert.Single(EngineRegistry.CreateAll(new Infrastructure.EngineEnvironment(_folder)).OfType<DrawingConverter>());
         Assert.Equal("drawing", engine.Id);
-        Assert.Empty(engine.Edges);
+        Assert.Equal(["odg", "fodg"], engine.Edges.Select(e => e.From).Distinct());
         Assert.True(engine.GetStatus().IsAvailable);
         Assert.Null(engine.FirstUnsupported(Path.Combine(_folder, "a.odg"), "odg"));
     }
