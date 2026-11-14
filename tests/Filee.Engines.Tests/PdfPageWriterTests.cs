@@ -168,6 +168,28 @@ public sealed class PdfPageWriterTests : IDisposable
     }
 
     [Fact]
+    public void A_glyph_no_character_maps_to_reads_as_the_text_it_was_drawn_for()
+    {
+        // Noto Sans CJK's locl swaps the digits after a Latin letter for glyphs the cmap doesn't reach, so Skia wrote
+        // "H1" as H and U+0000 (with /ActualText, which PdfPig and many viewers ignore). Here the glyph of "a" stands in
+        // for such a glyph: the text has no "a", so the subset's cmap doesn't lead to it.
+        using var face = PageFont.FromFile(Path.Combine(AppContext.BaseDirectory, "Fonts", "FileeTest-TrueType.ttf"));
+        var (h, a, i) = (face.Typeface.GetGlyph('H'), face.Typeface.GetGlyph('a'), face.Typeface.GetGlyph('i'));
+        var page = new PageContent(300, 100);
+        page.DrawGlyphs(new GlyphRun(face, 20, [h, a], [new(10, 40), new(30, 40)], "H1", [0, 1]));
+        // A glyph drawn for two different texts gets neither.
+        page.DrawGlyphs(new GlyphRun(face, 20, [i], [new(10, 80)], "2", [0]));
+        page.DrawGlyphs(new GlyphRun(face, 20, [i], [new(40, 80)], "3", [0]));
+
+        var pdf = Write([page]);
+
+        using var document = PdfPigDocument.Open(pdf);
+        var words = document.GetPage(1).GetWords().Select(w => w.Text).ToList();
+        Assert.Equal("H1", words[0]);
+        Assert.DoesNotContain(words, w => w.Contains('2') || w.Contains('3'));
+    }
+
+    [Fact]
     public void Right_to_left_runs_are_written_in_logical_order()
     {
         using var face = PageFont.FromFile(Path.Combine(AppContext.BaseDirectory, "Fonts", "FileeTest-TrueType.ttf"));
