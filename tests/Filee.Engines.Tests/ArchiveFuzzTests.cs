@@ -1,5 +1,5 @@
-// Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG, and
-// the LZMA / LZMA2 / .xz decoder) and of TAR (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
+// Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG, CAB,
+// LHA, ARJ, and the LZMA / LZMA2 / .xz decoder) and of TAR (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
 // repeated, and every input must unpack or be refused with InvalidDataException, in time. Same switches as DocumentFuzzTests: a short fixed run normally,
 // FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
 
@@ -78,6 +78,26 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var egg = Path.Combine(folder, "seed.egg");
         WriteEgg(egg, [new("a.txt", false, new EggBlock(Words(2000), 1)), new("b.txt", false, new EggBlock(Words(2000), 4, EggLzma(RawLzma(Words(2000), endMarker: false))))]);
         Fuzz("egg", [File.ReadAllBytes(egg)]);
+    }
+
+    /// <summary>
+    /// CAB: stored, MSZIP (.NET's deflate, and fixed codes reaching into earlier blocks), LZX uncompressed blocks; with
+    /// and without reserved areas and checksums (without, damage reaches the decoders instead of the checksum check).
+    /// </summary>
+    [Fact]
+    public void Cab_reader_unpacks_or_refuses_every_mutated_cabinet()
+    {
+        var files = Seed().Where(e => !e.IsFolder).ToList();
+        Fuzz("cab", [Cab(files, CabCompression.None, 2, reserve: true), Cab(files, CabCompression.Mszip, checksums: false),
+            Cab(files, CabCompression.MszipHistory, 2, checksums: false), Cab(files, CabCompression.LzxStored, checksums: false)]);
+    }
+
+    /// <summary>LHA: every header level, stored and the static Huffman methods; ARJ: stored, methods 1 and 4.</summary>
+    [Fact]
+    public void Lha_and_arj_readers_unpack_or_refuse_every_mutated_archive()
+    {
+        Fuzz("lha", [Lzh(Seed(), "-lh5-", 0), Lzh(Seed(), "-lh6-", 1), Lzh(Seed(), "-lh7-", 2), Lzh(Seed(), "-lh0-", 3)]);
+        Fuzz("arj", [Arj(Seed(), 0), Arj(Seed(), 1), Arj(Seed(), 4)]);
     }
 
     /// <summary>
