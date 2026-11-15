@@ -690,6 +690,62 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task A_copy_whose_key_frame_no_seek_lands_on_keeps_it_where_it_is_decoded_before_it_is_shown()
+    {
+        SkipUnlessInstalled();
+        // An MKV whose index names only its first and last key frames: every -ss between lands on frame 0 (with one
+        // name alone, FFmpeg reads the file to find the others), so the copy reads from there
+        // and keeps from the key frame on. With B-frames that key frame is decoded before it is shown, and kept from
+        // the time shown, it was dropped and the copy began at the next one, or had no pictures at all.
+        var video = await NumberedAsync("sparse.mkv", "30", 4,
+            ["-c:v", "libx264", "-g", "30", "-bf", "2", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p"]);
+        VoidCuesBetweenFirstAndLast(video);
+        var frames = await FramesAsync(video);
+        var key = frames.FindIndex(1, f => f.Key);
+
+        var numbers = (await FramesAsync(await CutAsync(video, ClipEdit.Of(new ClipRange(frames[key].Time, frames[key + 20].Time)),
+            exact: false, target: "mkv"))).Select(f => f.Number).ToList();
+
+        Assert.Equal(frames[key].Number, numbers[0]);
+        Assert.Equal(Enumerable.Range(frames[key].Number, numbers.Count), numbers);
+        Assert.InRange(numbers.Count, 20, 24);
+    }
+
+    /// <summary>
+    /// Leaves only the first and last CuePoints of a Matroska file's last Cues element, the others turned into Void
+    /// elements of the same size, so a seek between them finds no key frame after the first.
+    /// </summary>
+    private static void VoidCuesBetweenFirstAndLast(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        (long Value, int Length) Vint(int at)
+        {
+            var length = 1;
+            for (var mask = 0x80; (bytes[at] & mask) == 0; mask >>= 1)
+                length++;
+            long value = bytes[at] & ((0x80 >> (length - 1)) - 1);
+            for (var i = 1; i < length; i++)
+                value = (value << 8) | bytes[at + i];
+            return (value, length);
+        }
+        var cues = bytes.AsSpan().LastIndexOf((ReadOnlySpan<byte>)[0x1C, 0x53, 0xBB, 0x6B]);
+        Assert.True(cues > 0, "No Cues element.");
+        var (size, sizeLength) = Vint(cues + 4);
+        var points = new List<int>();
+        for (var at = cues + 4 + sizeLength; at < cues + 4 + sizeLength + size;)
+        {
+            var (length, lengthSize) = Vint(at + 1);
+            if (bytes[at] == 0xBB)
+                points.Add(at);
+            at += 1 + lengthSize + (int)length;
+        }
+        Assert.True(points.Count > 2, "Too few CuePoints.");
+        foreach (var at in points[1..^1])
+            bytes[at] = 0xEC;
+        File.WriteAllBytes(path, bytes);
+    }
+
+    [Fact]
     public async Task Times_between_frames_of_an_avi_start_and_end_clips_with_the_frames_shown_then()
     {
         SkipUnlessInstalled();

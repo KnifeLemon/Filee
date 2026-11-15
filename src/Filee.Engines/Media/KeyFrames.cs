@@ -62,8 +62,8 @@ namespace Filee.Engines.Media;
 /// <param name="KeyShown">When that key frame is shown, in seconds from the file's start; null when unknown.</param>
 /// <param name="CopyAfter">
 /// Where a copy starts when no <c>-ss</c> lands it on the key frame (<see cref="KeyFrames.CopyStartAsync"/>): read from
-/// the file's start and kept from that time on (an output <c>-ss</c>), in seconds from the file's start; null
-/// otherwise.
+/// the file's start and kept from the key frame on (an output <c>-ss</c> at its decode time), in seconds from the
+/// file's start; null otherwise.
 /// </param>
 /// <param name="CopyTo">
 /// Where a copy ends (<see cref="KeyFrames.CopyEndAsync"/>): the first time at or after the end where no frame decoded
@@ -346,8 +346,9 @@ internal static class KeyFrames
                 return seek with { CopyFrom = (lo + hi) / 2 };
         }
         // No -ss up to the start lands on it: from the last that lands before it, kept from the key frame on (a copy
-        // waits for a key frame there).
-        return seek with { CopyFrom = below is { } early && early <= latest ? early : 0, CopyAfter = seek.KeyShown ?? key };
+        // waits for a key frame there). By its decode time: a copy's output -ss drops a packet decoded before it, so
+        // with B-frames one at the time it is shown dropped the key frame itself and the copy waited for the next.
+        return seek with { CopyFrom = below is { } early && early <= latest ? early : 0, CopyAfter = key };
     }
 
     /// <summary>

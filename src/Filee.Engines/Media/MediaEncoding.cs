@@ -422,11 +422,12 @@ internal static partial class MediaEncoding
         // it, it is always left out.
         var end = Math.Max((seek.CopyTo ?? clip.End) - 0.0001, seek.CopyFrom + 0.00001);
         // Where no -ss up to the start lands it on the key frame (a WMV's index): read from the last that lands before
-        // it, kept from the key frame on, in the file's own times.
+        // it, kept from the key frame on, in the file's own times: a tenth of a millisecond before its decode time, as
+        // one written to the microsecond can fall just past it.
         string[] times = seek.CopyAfter is null ? [] : ["-copyts"];
         var (args, spec) = CopyStreams(input, target, [.. times, .. SeekTo(seek.CopyFrom), "-to", ClipRange.Ffmpeg(end)], options, info);
         if (seek.CopyAfter is { } after)
-            args.InsertRange(args.IndexOf("-i") + 2, ["-ss", ((seek.Origin ?? 0) + after).ToString("0.000000", CultureInfo.InvariantCulture)]);
+            args.InsertRange(args.IndexOf("-i") + 2, ["-ss", ((seek.Origin ?? 0) + after - 0.0001).ToString("0.000000", CultureInfo.InvariantCulture)]);
         if (seek.CopyFrames is { } frames)
             args.InsertRange(args.IndexOf("-i") + 2, ["-frames:v", frames.ToString(CultureInfo.InvariantCulture)]);
         args.AddRange(ContainerArguments(target));
