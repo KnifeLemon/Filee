@@ -1,0 +1,41 @@
+{
+  "version": "2.5.0",
+  "slides": [
+    {
+      "id": "gallery",
+      "media": "gallery.webp", "poster": 38,
+      "title": "whats_new.2_5_0.gallery.title",
+      "text": "whats_new.2_5_0.gallery.text"
+    },
+    {
+      "id": "share",
+      "media": "share.webp",
+      "title": "whats_new.2_5_0.share.title",
+      "text": "whats_new.2_5_0.share.text"
+    },
+    {
+      "id": "trash",
+      "media": "trash.webp", "poster": 20,
+      "title": "whats_new.2_5_0.trash.title",
+      "text": "whats_new.2_5_0.trash.text"
+    },
+    {
+      "id": "formats",
+      "media": "formats.webp",
+      "title": "whats_new.2_5_0.formats.title",
+      "text": "whats_new.2_5_0.formats.text"
+    },
+    {
+      "id": "mongolian",
+      "media": "mongolian.webp",
+      "title": "whats_new.2_5_0.mongolian.title",
+      "text": "whats_new.2_5_0.mongolian.text"
+    },
+    {
+      "id": "more",
+      "media": "more.webp",
+      "title": "whats_new.2_5_0.more.title",
+      "text": "whats_new.2_5_0.more.text"
+    }
+  ]
+}
