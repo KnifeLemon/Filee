@@ -28,6 +28,13 @@ internal sealed partial class FileeJsonContext : JsonSerializerContext;
 public sealed class PresetBundle
 {
     public int SchemaVersion { get; set; } = 1;
+
+    /// <summary>
+    /// The settings schema (<see cref="AppSettings.CurrentSchemaVersion"/>) of the Filee that wrote the bundle; null in
+    /// bundles from before it was written. Tells a later Filee which migrations a bundle's presets still need, and the
+    /// preset gallery's check that a bundle doesn't come from a newer Filee than the one checking it.
+    /// </summary>
+    public int? SettingsSchema { get; set; }
     public List<Preset> Presets { get; set; } = [];
     public List<ToolbarProfile> Profiles { get; set; } = [];
 }
