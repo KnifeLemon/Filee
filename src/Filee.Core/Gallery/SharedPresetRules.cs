@@ -346,6 +346,7 @@ internal static class SharedPresetRules
             ("zipResult", Flag),
             ("onlyIfSmaller", Flag),
             ("replaceOriginal", Flag),
+            ("trashOriginalAfterConvert", new LeftOutRule("only the owner of a PC turns this on, on their own PC")),
             ("moveInsteadOfCopy", Flag))));
 
     /// <summary>The fields of one toolbar profile (a donut).</summary>
