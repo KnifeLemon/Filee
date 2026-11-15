@@ -289,6 +289,8 @@ public sealed class UserDataStore
         {
             // A path to a picture in someone else's bundle is not one of ours to open (a network share, say).
             preset.Image.ForgetBackdropPictures();
+            // Sending originals to the Recycle Bin / Trash is on only where this user ticked it on this PC (#1387).
+            preset.Output.TrashOriginalAfterConvert = false;
             Presets.RemoveAll(p => p.Id == preset.Id);
             Presets.Add(preset);
         }

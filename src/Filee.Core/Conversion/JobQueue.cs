@@ -32,6 +32,8 @@ public sealed partial class JobQueue : IAsyncDisposable
     private readonly Task _worker;
     private readonly Func<string, Platform.TrashRefusal?>? _moveToTrash;
     private int _busy;
+    /// <summary>The jobs that wait in the queue or run: "Move the original to the Trash" keeps a source another one still lists (#1387).</summary>
+    private readonly List<ConversionJob> _live = [];
 
     /// <param name="catalog">Converters and their priority.</param>
     /// <param name="pdfMerger">Used by "Merge into one PDF" presets.</param>
@@ -72,6 +74,8 @@ public sealed partial class JobQueue : IAsyncDisposable
     {
         var job = new ConversionJob(sources, preset, presetDisplayName, fetcher, folderSources);
         Interlocked.Increment(ref _busy); // until the worker is done with it
+        lock (_live)
+            _live.Add(job);
         _channel.Writer.TryWrite(job);
         JobUpdated?.Invoke(this, job);
         return job;
@@ -81,12 +85,19 @@ public sealed partial class JobQueue : IAsyncDisposable
     public async Task RunAsync(ConversionJob job)
     {
         Interlocked.Increment(ref _busy);
+        lock (_live)
+        {
+            if (!_live.Contains(job))
+                _live.Add(job);
+        }
         try
         {
             await RunJobAsync(job);
         }
         finally
         {
+            lock (_live)
+                _live.Remove(job);
             Interlocked.Decrement(ref _busy);
         }
     }
@@ -1346,6 +1357,15 @@ public sealed partial class JobQueue : IAsyncDisposable
         }
     }
 
+    /// <summary>True while another queued or running job still has <paramref name="source"/> to convert.</summary>
+    private bool UsedByAnotherJob(ConversionJob job, string source)
+    {
+        lock (_live)
+            return _live.Any(other => !ReferenceEquals(other, job) && other.Files.Any(f =>
+                (f.State is FileState.Pending or FileState.Running)
+                && string.Equals(f.SourcePath, source, Platform.FileSystemPaths.Comparison)));
+    }
+
     /// <summary>
     /// "Move the original to the Recycle Bin / Trash" (<see cref="OutputRule.TrashOriginalAfterConvert"/>, #1387): once
     /// every result of <paramref name="file"/> is complete and none has the source's format, the source goes to the
@@ -1367,6 +1387,14 @@ public sealed partial class JobQueue : IAsyncDisposable
                 continue; // an output folder (Extract)
             if (!File.Exists(output) || FormatRegistry.Detect(output)?.Id == sourceFormat)
                 return;
+        }
+
+        // The same file dropped on two presets is two jobs: once this one has moved it, the other would fail as not found.
+        if (UsedByAnotherJob(job, source))
+        {
+            _log.LogInformation("Kept the original {Source}: another conversion still uses it", source);
+            file.NoticeKey = "notice.trash_original_busy";
+            return;
         }
 
         var refusal = _moveToTrash is null ? new Platform.TrashRefusal("trash.no_recycle_bin") : _moveToTrash(source);
@@ -1449,6 +1477,8 @@ public sealed partial class JobQueue : IAsyncDisposable
             }
             finally
             {
+                lock (_live)
+                    _live.Remove(job);
                 Interlocked.Decrement(ref _busy);
             }
         }

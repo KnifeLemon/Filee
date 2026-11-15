@@ -297,9 +297,9 @@ public class RecentConversionTests
             Assert.False(undone.CanUndo);
             Assert.Equal("Undone: the results are in the Recycle Bin / Trash", undone.UndoneText);
 
-            // "Replace the original" sent the originals there first: the card says they're there too.
+            // "Replace the original" or "Move the original to the Recycle Bin / Trash" sent the originals there first: the card says they're there too.
             entry.OriginalsInTrash = true;
-            Assert.Equal("Undone: the results are in the Recycle Bin / Trash, and so are the originals they replaced",
+            Assert.Equal("Undone: the results are in the Recycle Bin / Trash, and so are the originals",
                 new HistoryItemViewModel(entry, loc, platform, store: store).UndoneText);
 
             // A result written again since (an edit, another conversion over it) is never moved.

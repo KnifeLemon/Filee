@@ -3,7 +3,9 @@
 
 using Filee.Core.Conversion;
 using Filee.Core.Platform;
+using System.Text.Json;
 using Filee.Core.Presets;
+using Filee.Core.Settings;
 using Filee.Core.Watching;
 
 namespace Filee.Core.Tests;
@@ -257,9 +259,130 @@ public class TrashOriginalTests
     }
 
     [Fact]
-    public void Survives_a_preset_round_trip()
+    public void An_export_leaves_it_out_and_keeps_it_on_this_pcs_preset()
     {
-        Assert.True(Trashing().Clone().Output.TrashOriginalAfterConvert);
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        var mine = store.Presets.First(p => !p.IsGroup && !p.IsTool);
+        mine.Output.TrashOriginalAfterConvert = true;
+        var bundle = Path.Combine(dir.Path, "bundle.json");
+
+        store.Export(bundle);
+
+        Assert.True(mine.Output.TrashOriginalAfterConvert);
+        Assert.False(mine.ForSharing().Output.TrashOriginalAfterConvert);
+        using var other = new TempDir();
+        var target = new UserDataStore(other.Path);
+        target.Load();
+        target.Import(bundle);
+        Assert.All(target.Presets, p => Assert.False(p.Output.TrashOriginalAfterConvert));
+        Assert.DoesNotContain("\"trashOriginalAfterConvert\":true", File.ReadAllText(bundle).Replace(" ", ""), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void An_imported_bundle_never_turns_it_on_not_even_for_a_preset_it_replaces()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        var builtIn = store.Presets.First(p => !p.IsGroup && !p.IsTool);
+        var theirs = builtIn.Clone();
+        theirs.Output.TrashOriginalAfterConvert = true;
+        var added = new Preset { Id = "from-a-friend", Name = "From a friend", TargetFormat = "png", Output = { TrashOriginalAfterConvert = true } };
+        var bundle = Path.Combine(dir.Path, "bundle.json");
+        File.WriteAllText(bundle, JsonSerializer.Serialize(new PresetBundle { Presets = [theirs, added] }, FileeJsonContext.Default.PresetBundle));
+
+        store.Import(bundle);
+
+        Assert.False(store.Presets.Single(p => p.Id == builtIn.Id).Output.TrashOriginalAfterConvert);
+        Assert.False(store.Presets.Single(p => p.Id == "from-a-friend").Output.TrashOriginalAfterConvert);
+    }
+
+    [Fact]
+    public void Survives_saving_and_loading_the_library()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        var mine = store.Presets.First(p => !p.IsGroup && !p.IsTool);
+        Assert.False(mine.Output.TrashOriginalAfterConvert);
+        mine.Output.TrashOriginalAfterConvert = true;
+        store.SaveLibrary();
+
+        var reloaded = new UserDataStore(dir.Path);
+        reloaded.Load();
+
+        Assert.True(reloaded.Presets.Single(p => p.Id == mine.Id).Output.TrashOriginalAfterConvert);
+        Assert.All(reloaded.Presets.Where(p => p.Id != mine.Id), p => Assert.False(p.Output.TrashOriginalAfterConvert));
+    }
+
+    [Fact]
+    public async Task An_extracted_archive_goes_to_the_trash()
+    {
+        // Extract's result is a folder: the option promises "after converting", so the archive goes once it is out.
+        using var dir = new TempDir();
+        using var bin = new TempDir();
+        var archive = dir.File("photos.zip");
+        var trash = new FakeTrash(bin.Path);
+        await using var queue = new JobQueue(
+            new ConverterCatalog([new FakeConverter("fake", new ConversionEdge("zip", "folder")) { OutputIsFolder = true }]), moveToTrash: trash.Move);
+        var job = new ConversionJob([archive], Trashing("folder"), "Extract");
+
+        await queue.RunAsync(job);
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.True(Directory.Exists(Assert.Single(job.Outputs)));
+        Assert.Equal([archive], trash.Moved);
+        Assert.False(File.Exists(archive));
+        Assert.True(File.Exists(Path.Combine(bin.Path, "photos.zip")));
+    }
+
+    [Fact]
+    public async Task A_video_saved_as_a_folder_of_frames_goes_to_the_trash()
+    {
+        using var dir = new TempDir();
+        using var bin = new TempDir();
+        var clip = dir.File("clip.mp4");
+        var trash = new FakeTrash(bin.Path);
+        await using var queue = new JobQueue(
+            new ConverterCatalog([new FakeConverter("fake", new ConversionEdge("mp4", "jpg")) { OutputIsFolder = true }]), moveToTrash: trash.Move);
+        var job = new ConversionJob([clip], Trashing("jpg"), "Frames");
+
+        await queue.RunAsync(job);
+
+        Assert.True(Directory.Exists(Assert.Single(job.Outputs)));
+        Assert.Equal([clip], trash.Moved);
+    }
+
+    [Fact]
+    public async Task A_source_another_job_still_has_to_convert_is_kept_until_that_one_is_done()
+    {
+        // The same file dropped on two presets in a row: the first must not take it away from the second.
+        using var dir = new TempDir();
+        using var bin = new TempDir();
+        var source = dir.File("report.docx");
+        var trash = new FakeTrash(bin.Path);
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("fake", new ConversionEdge("docx", "pdf"))]), moveToTrash: trash.Move);
+        var finished = new TaskCompletionSource();
+        var count = 0;
+        queue.JobFinished += (_, _) =>
+        {
+            if (Interlocked.Increment(ref count) == 2)
+                finished.TrySetResult();
+        };
+
+        var first = queue.Enqueue([source], Trashing("pdf"), "First");
+        var second = queue.Enqueue([source], Trashing("pdf"), "Second");
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // Both converted. The first left the source for the second, which was the last one to need it.
+        Assert.Equal(FileState.Done, first.Files[0].State);
+        Assert.Equal(FileState.Done, second.Files[0].State);
+        Assert.Equal("notice.trash_original_busy", first.Files[0].NoticeKey);
+        Assert.False(first.Files[0].OriginalInTrash);
+        Assert.True(second.Files[0].OriginalInTrash);
+        Assert.Equal([source], trash.Moved);
     }
 
     /// <summary>A browser drop whose files are already on disk.</summary>
