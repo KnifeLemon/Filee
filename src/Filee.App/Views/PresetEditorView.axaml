@@ -37,6 +37,9 @@
     </DataTemplate>
   </UserControl.Resources>
   <StackPanel Spacing="14">
+    <!-- A preset installed from the preset gallery says so: it keeps the settings it was shared with (#1530). -->
+    <TextBlock x:Name="GalleryNote" Classes="caption" TextWrapping="Wrap" Text="{Binding GalleryNote}"
+               IsVisible="{Binding GalleryNote, Converter={x:Static ObjectConverters.IsNotNull}}" />
     <!-- Name + target -->
     <Grid ColumnDefinitions="*,12,*">
       <StackPanel>
