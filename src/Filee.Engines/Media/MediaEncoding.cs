@@ -418,11 +418,23 @@ internal static partial class MediaEncoding
         // A copy keeps what lies between the key frame and -ss, so a clip shorter than the 3/23 s -ss lies past the key
         // frame ends there (FFmpeg refuses an end before -ss, and the clip was encoded instead).
         var end = seek.CopyTo ?? Math.Max(clip.End, seek.CopyFrom + 0.00001);
-        // Where no -ss lands it on the key frame (a WMV's index): read from the start, kept from the key frame on.
-        var (args, spec) = CopyStreams(input, target, [.. seek.CopyAfter is null ? SeekTo(seek.CopyFrom) : [], "-to", ClipRange.Ffmpeg(end)],
-            options, info);
+        // Where no -ss up to the start lands it on the key frame (a WMV's index): read from the last that lands before
+        // it, kept from the key frame on, in the file's own times.
+        string[] times = seek.CopyAfter is null ? [] : ["-copyts"];
+        var (args, spec) = CopyStreams(input, target, [.. times, .. SeekTo(seek.CopyFrom), "-to", ClipRange.Ffmpeg(end)], options, info);
         if (seek.CopyAfter is { } after)
-            args.InsertRange(args.IndexOf("-i") + 2, ["-ss", ClipRange.Ffmpeg(after)]);
+        {
+            var at = ((seek.Origin ?? 0) + after).ToString("0.000000", CultureInfo.InvariantCulture);
+            args.InsertRange(args.IndexOf("-i") + 2, ["-ss", at]);
+            // The sound cut there to the sample: its packets, kept from there, started up to a quarter of a second off
+            // (a WMV stamps them by when they are sent).
+            if (!options.RemoveAudio && info.Audio is { } sound && args.IndexOf("copy") is var c and > 0 && args[c - 1] == "-c")
+            {
+                args[c - 1] = "-c:v";
+                args.InsertRange(c + 1, ["-af", $"atrim=start={at}",
+                    .. AudioCodecArguments(target, spec.AudioCodec, options, sound, inVideo: true)]);
+            }
+        }
         args.AddRange(ContainerArguments(target));
         args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;

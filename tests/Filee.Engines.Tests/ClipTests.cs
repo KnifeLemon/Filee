@@ -378,10 +378,10 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // picture nearest it, or a quarter into it where two frames come in each picture; its pictures end at its
         // length.
         Assert.Contains("[vs0]trim=start=0:end=9.999999,settb=AVTB,setpts=PTS-(STARTPTS-(round((STARTPTS*TB-0)*30/1))*1/(30*TB)),"
-            + "fps=30,scale=1920:1080,setsar=1,format=yuv420p,trim=duration=10[v0]", filter);
+            + "fps=30:start_time=0,scale=1920:1080,setsar=1,format=yuv420p,trim=duration=10[v0]", filter);
         Assert.Contains("[vs1]trim=start=19.999999:end=29.999999,settb=AVTB,"
             + "setpts=(PTS-(STARTPTS-(round((STARTPTS*TB-19.999999)*30/2)+0.25)*2/(30*TB)))/2,", filter);
-        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0.5,", filter);
+        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,aresample=first_pts=0,volume=0.5,", filter);
         Assert.Contains("[as1]atrim=start=19.999999:end=29.999999,asetpts=PTS-19.999999/TB,aresample=first_pts=0,atempo=2,", filter);
         // From a key frame KeyFrames found: read from it, moved back to just before the first part, video cut in ticks.
         var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10, 10, (1, 15360)));
@@ -778,7 +778,8 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(["-ss", "10.000000", "-i", "in.mp4", "-ss", "30.000000", "-i", "song.mp3"], graph.Inputs);
         Assert.True(graph.HasAudio);
         var filter = graph.Filter;
-        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0,", filter); // muted: silent, still there
+        // Muted: silent, still there.
+        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,aresample=first_pts=0,volume=0,", filter);
         // 17 s of clip, from 2.5 s: 14.5 s of music, faded a second at its ends, 2.5 s late.
         Assert.Contains("[1:a:0]atrim=duration=14.5,asetpts=PTS-STARTPTS,volume=0.5,afade=t=in:st=0:d=1,afade=t=out:st=13.5:d=1,adelay=2500:all=1,", filter);
         var nextTrack = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30", musicTrack: 1).Filter;

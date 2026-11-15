@@ -395,6 +395,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         "frag.mp4" => ("30", "128x32", [.. Mp4, "-movflags", "frag_keyframe+empty_moov"]),
         // ASF's index names one key frame a second: the one at or before that second.
         "30fps.wmv" => ("30", "128x32", ["-c:v", "wmv2", "-g", "45", "-q:v", "3"]),
+        "sound.wmv" => ("30", "128x32", ["-c:v", "wmv2", "-g", "45", "-q:v", "3", "-c:a", "wmav2"]),
         // MPEG-1 in a program stream: some key frames carry a decode time only.
         "mpeg1.mpg" => ("25", "720x480", ["-c:v", "mpeg1video", "-g", "15", "-bf", "2", "-q:v", "4", "-f", "mpeg"]),
         // Every second frame shown 4 ms late, as a camera's frames come a little off its rate.
@@ -424,7 +425,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var (rate, size, codec) = VideoOf(name);
         // With sound, an MPEG-TS file starts with it, and its frames are shown at times that aren't round.
-        return await NumberedAsync(name, rate, seconds, codec, beepFrame: name == "soundfirst.ts" ? 50 : null, tone: name == "sound.flv",
+        return await NumberedAsync(name, rate, seconds, codec, beepFrame: name is "soundfirst.ts" or "sound.wmv" ? 50 : null, tone: name == "sound.flv",
             size: size);
     }
 
@@ -562,6 +563,24 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     /// <summary>When the beep starts in <paramref name="path"/>'s sound, in seconds.</summary>
+    /// <summary>
+    /// The beep's time after the first frame shown, both in the file's own timestamps as a player has them: a copy's
+    /// sound may start before its first frame.
+    /// </summary>
+    private async Task<double> BeepAfterFirstFrameAsync(string path)
+    {
+        var result = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-v", "info", "-copyts", "-i", path, "-map", "0:a:0", "-af", "silencedetect=n=-30dB:d=0.01", "-f", "null", "-"],
+            TimeSpan.FromMinutes(1), Ct);
+        var line = result.StandardError.Split('\n').First(l => l.Contains("silence_end:", StringComparison.Ordinal));
+        var beep = double.Parse(line[(line.IndexOf("silence_end:", StringComparison.Ordinal) + 12)..].Trim().Split(' ')[0], CultureInfo.InvariantCulture);
+        var probed = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "V:0", "-show_entries", "frame=best_effort_timestamp_time", "-of", "csv=p=0", path], TimeSpan.FromMinutes(1), Ct);
+        return beep - probed.StandardOutput.Split('\n').Select(l => l.Trim().TrimEnd(','))
+            .Where(t => double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+            .Min(t => double.Parse(t, CultureInfo.InvariantCulture));
+    }
+
     private async Task<double> BeepAsync(string path)
     {
         var result = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
@@ -595,6 +614,10 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     // Key frames without a display time: passed over, a group early, where the one found is shown before the start.
     [InlineData("bframes.avi", "avi", 40, 70)]
     [InlineData("mpeg1.mpg", "mpg", 22, 40)]
+    // Ends after which FFmpeg's cut by decode time left a gap: an AVI's frames without a time to be shown at, and a
+    // program stream whose times FFmpeg makes up after the copy's seek.
+    [InlineData("bframes.avi", "avi", 33, 63)]
+    [InlineData("mpeg1.mpg", "mpg", 22, 52)]
     public async Task A_copied_clip_starts_at_the_key_frame_shown_last_before_the_start(string name, string target, int start, int end)
     {
         SkipUnlessInstalled();
@@ -609,6 +632,26 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var numbers = (await FramesAsync(clip)).Select(f => f.Number).ToList();
         Assert.Equal(Enumerable.Range(key, numbers.Count), numbers);
         Assert.InRange(numbers[^1], end - 1, end + 5);
+    }
+
+    [Fact]
+    public async Task A_copy_whose_key_frame_no_seek_before_the_start_lands_on_ends_at_its_end()
+    {
+        SkipUnlessInstalled();
+        // A WMV's index lands a seek on its second key frame only from the next whole second on, past this short clip's
+        // end: the copy read to there. Read from before it and kept from the key frame on, it ends at its own end.
+        var video = await VideoAsync("sound.wmv", 4);
+        var frames = await FramesAsync(video);
+        var key = frames.FindIndex(1, f => f.Key);
+        var clip = await CutAsync(video, ClipEdit.Of(new ClipRange(frames[key].Time, frames[key + 25].Time)), exact: false, target: "wmv");
+
+        var numbers = (await FramesAsync(clip)).Select(f => f.Number).ToList();
+
+        Assert.Equal(Enumerable.Range(frames[key].Number, numbers.Count), numbers);
+        Assert.InRange(numbers.Count, 24, 28);
+        // Its sound where it is against the key frame in the file.
+        var beep = await BeepAfterFirstFrameAsync(video) - (frames[key].Time - frames[0].Time);
+        Assert.InRange(await BeepAfterFirstFrameAsync(clip), beep - 0.03, beep + 0.03);
     }
 
     [Fact]
@@ -980,6 +1023,12 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var numbers = (await FramesAsync(await CutAsync(video, edit, exact: true))).Select(f => f.Number).ToList();
 
         Assert.Equal([.. Enumerable.Range(0, 30).Select(k => 40 + k / 4), .. Enumerable.Range(60, 10)], numbers);
+        // From 0.4 of a frame before frame 40: 1.6 pictures before it, which show it, as the window does for that time
+        // (fps left them out, and the part was two pictures short of its sound).
+        edit.Parts[0].Start = frames[40].Time - (frames[40].Time - frames[39].Time) * 0.4;
+        edit.Parts[0].End = frames[40].Time + 0.25;
+        var between = (await FramesAsync(await CutAsync(video, edit, exact: true))).Select(f => f.Number).ToList();
+        Assert.Equal([40, 40, .. Enumerable.Range(0, 30).Select(k => 40 + k / 4), .. Enumerable.Range(60, 10)], between);
     }
 
     /// <summary>A 4 s MP4, 30 frames a second, whose sound ends at 2 s.</summary>
@@ -1023,14 +1072,16 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Theory]
-    [InlineData(0.0, 0.0, 0.5)]
-    [InlineData(0.3, 0.0, 0.2)]
-    [InlineData(0.0, 0.4, 0.9)]
-    public async Task The_music_of_an_edit_is_heard_where_its_file_has_it(double from, double offset, double beep)
+    [InlineData(0.0, 0.0, 0.5, false)]
+    [InlineData(0.3, 0.0, 0.2, false)]
+    [InlineData(0.0, 0.4, 0.9, false)]
+    [InlineData(0.0, 0.0, 0.5, true)]
+    public async Task The_music_of_an_edit_is_heard_where_its_file_has_it(double from, double offset, double beep, bool soundLater)
     {
         SkipUnlessInstalled();
-        // An AAC file beeping 0.5 s in: -ss 0 dropped its first 1,024 samples a second time, 23 ms early.
-        var video = await VideoAsync("30fps.mp4");
+        // An AAC file beeping 0.5 s in: -ss 0 dropped its first 1,024 samples a second time, 23 ms early. Under a video
+        // whose own sound starts 0.3 s after its pictures, amix started the music where that sound did, 0.3 s late.
+        var video = soundLater ? await SoundLaterAsync() : await VideoAsync("30fps.mp4");
         var frames = await FramesAsync(video);
         var music = Path.Combine(fx.NewFolder(), "music.m4a");
         var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,

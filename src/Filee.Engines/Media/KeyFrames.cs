@@ -342,12 +342,11 @@ internal static class KeyFrames
             if (await LandsAsync(ss).ConfigureAwait(false))
                 return seek with { CopyFrom = ss };
         }
-        // Where both land before it, later; where both land after it, earlier: up to the longest look.
-        for (var step = 0.25; above is null && below is { } low && step <= LastReach; step *= 2)
-        {
-            if (await LandsAsync(low + step).ConfigureAwait(false))
-                return seek with { CopyFrom = low + step };
-        }
+        // Where both land before it, later, but not past the start (a copy reads to its end from there); where both
+        // land after it, earlier: up to the longest look.
+        var latest = Math.Max(seek.CopyFrom, seek.Start);
+        if (above is null && below is { } before && before < latest)
+            above = latest + 1e-4;
         for (var step = 0.25; below is null && above is { } high && high > 0 && step <= LastReach; step *= 2)
         {
             if (await LandsAsync(Math.Max(0, high - step)).ConfigureAwait(false))
@@ -358,8 +357,9 @@ internal static class KeyFrames
             if (await LandsAsync((lo + hi) / 2).ConfigureAwait(false))
                 return seek with { CopyFrom = (lo + hi) / 2 };
         }
-        // No -ss lands on it: from the start, kept from the key frame on (a copy waits for a key frame there).
-        return seek with { CopyAfter = seek.KeyShown ?? key };
+        // No -ss up to the start lands on it: from the last that lands before it, kept from the key frame on (a copy
+        // waits for a key frame there).
+        return seek with { CopyFrom = below is { } early && early <= latest ? early : 0, CopyAfter = seek.KeyShown ?? key };
     }
 
     /// <summary>
@@ -410,32 +410,63 @@ internal static class KeyFrames
         if (seek.Origin is not { } origin || await FormatAsync(ffprobe, input, cancellationToken).ConfigureAwait(false) is not var (_, _, how, _)
             || how.Raw || !how.Reordered)
             return seek;
+        // Read as the copy reads, from where it starts, where FFmpeg makes up times after a seek (MPEG-PS); else from
+        // a little before the end.
+        var from = how.Unindexed ? seek.CopyFrom : Math.Max(0, end - 2);
         var json = await RunAsync(ffprobe,
-            ["-hide_banner", "-v", "error", "-select_streams", "V:0", "-read_intervals", Absolute(origin + Math.Max(0, end - 2)) + "%" + Absolute(origin + end + 4),
-                "-show_entries", "packet=pts_time,dts_time", "-print_format", "json", input],
+            ["-hide_banner", "-v", "error", "-select_streams", "V:0", "-read_intervals", Absolute(origin + from) + "%" + Absolute(origin + end + 4),
+                "-show_entries", "packet=pts_time,dts_time,pos", "-print_format", "json", input],
             cancellationToken).ConfigureAwait(false);
         if (json is null)
             return seek;
         try
         {
-            using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("packets", out var packets) || packets.ValueKind != JsonValueKind.Array)
-                return seek;
-            List<(double Shown, double Decoded)> list = [];
-            foreach (var packet in packets.EnumerateArray())
+            List<(double? Shown, double Decoded, string? Position)> list = [];
+            using (var document = JsonDocument.Parse(json))
             {
-                if (Time(packet, "pts_time") is { } pts && Time(packet, "dts_time") is { } dts)
-                    list.Add((pts - origin, dts - origin));
+                if (!document.RootElement.TryGetProperty("packets", out var packets) || packets.ValueKind != JsonValueKind.Array)
+                    return seek;
+                foreach (var packet in packets.EnumerateArray())
+                {
+                    if (Time(packet, "dts_time") is { } dts)
+                        list.Add((Time(packet, "pts_time") - origin, dts - origin,
+                            packet.TryGetProperty("pos", out var pos) ? pos.GetString() : null));
+                }
             }
+            // A packet without a time to be shown at (an AVI's key and P-frames): the time its frame is shown when
+            // decoded, joined by its place in the file; else no later than the longest wait between decoding and
+            // showing.
+            if (list.Any(p => p.Shown is null) && !how.Unindexed
+                && await RunAsync(ffprobe,
+                    ["-hide_banner", "-v", "error", "-select_streams", "V:0", "-read_intervals", Absolute(origin + from) + "%" + Absolute(origin + end + 4),
+                        "-show_entries", "frame=best_effort_timestamp_time,pkt_pos", "-print_format", "json", input],
+                    cancellationToken).ConfigureAwait(false) is { } decodedJson)
+            {
+                using var document = JsonDocument.Parse(decodedJson);
+                Dictionary<string, double> shownAt = [];
+                if (document.RootElement.TryGetProperty("frames", out var frames) && frames.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var frame in frames.EnumerateArray())
+                    {
+                        if (frame.TryGetProperty("pkt_pos", out var pos) && pos.GetString() is { } at && Time(frame, "best_effort_timestamp_time") is { } t)
+                            shownAt[at] = t - origin;
+                    }
+                }
+                list = [.. list.Select(p => p.Shown is null && p.Position is { } at && shownAt.TryGetValue(at, out var t) ? (t, p.Decoded, p.Position) : p)];
+            }
+            var wait = list.Where(p => p.Shown is not null).Select(p => p.Shown!.Value - p.Decoded).DefaultIfEmpty(0).Max();
+            if (list.Any(p => p.Shown is null) && wait <= 0)
+                return seek;
+            var times = list.Select(p => (Shown: p.Shown ?? p.Decoded + wait, p.Decoded)).ToList();
             // FFmpeg keeps the packets decoded before the cut: from the end on, the first cut (the end, or a packet's
             // decode time, which it then leaves out) after which no frame shown before the last one kept is missing.
-            foreach (var cut in list.Select(p => p.Decoded).Where(t => t > end + 5e-7).Prepend(end).Distinct().Order())
+            foreach (var cut in times.Select(p => p.Decoded).Where(t => t > end + 5e-7).Prepend(end).Distinct().Order())
             {
-                var kept = list.Where(p => p.Decoded < cut - 5e-7).ToList();
+                var kept = times.Where(p => p.Decoded < cut - 5e-7).ToList();
                 if (kept.Count == 0)
                     return seek;
                 var last = kept.Max(p => p.Shown);
-                if (!list.Any(p => p.Decoded >= cut - 5e-7 && p.Shown < last - 5e-7))
+                if (!times.Any(p => p.Decoded >= cut - 5e-7 && p.Shown < last - 5e-7))
                     return Math.Abs(cut - end) < 5e-7 ? seek : seek with { CopyTo = cut };
             }
         }

@@ -87,7 +87,9 @@ internal static partial class MediaEncoding
             graph.Append(';');
         }
 
-        var picture = $"fps={fps},scale={width}:{height},setsar=1,format={pixelFormat}";
+        // From the part's start: where its first frame is a picture or more in (a part from between frames played
+        // slower), the pictures before show it, as the window does for the start; fps left them out.
+        var picture = $"fps={fps}:start_time=0,scale={width}:{height},setsar=1,format={pixelFormat}";
         var source = 0;
         var heard = 0;
         for (var i = 0; i < edit.Parts.Count; i++)
@@ -122,10 +124,9 @@ internal static partial class MediaEncoding
             else if (audio)
             {
                 graph.Append($"[as{heard}]atrim=start={start}:end={end},asetpts=PTS-{start}/TB");
-                // atempo starts its sound at the time of the first sample, not that time played faster or slower:
-                // sound that starts after the part does is led in by silence first, which is.
-                if (speed != 1)
-                    graph.Append(",aresample=first_pts=0");
+                // Sound that starts after the part does is led in by silence: atempo starts its sound at the time of
+                // the first sample, not that time played faster or slower, and amix put the music's start there.
+                graph.Append(",aresample=first_pts=0");
                 foreach (var tempo in Tempo(speed))
                     graph.Append($",atempo={Seconds(tempo)}");
                 if (part.PlayVolume != 1)
