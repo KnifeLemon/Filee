@@ -70,12 +70,16 @@ namespace Filee.Engines.Media;
 /// Where a copy ends (<see cref="KeyFrames.CopyEndAsync"/>): the first time at or after the end where no frame decoded
 /// before it is shown after it; null for the end itself.
 /// </param>
+/// <param name="CopyFrames">
+/// How many video packets a copy keeps, where its end can't be given as a time (an AVI's key and P-frames have no time
+/// to be shown at, and FFmpeg's end stops only at a frame that has one); null otherwise.
+/// </param>
 /// <param name="Raw">
 /// A stream without a container, read from its start: FFmpeg makes its times up after <c>-itsoffset</c>, so what is cut
 /// is moved to 0 by <see cref="ToZero"/> instead.
 /// </param>
 internal readonly record struct SeekPoint(double From, double? Origin, double CopyFrom, double Start, (long Num, long Den)? Tick = null,
-    double? Key = null, double? KeyShown = null, double? CopyAfter = null, double? CopyTo = null, bool Raw = false)
+    double? Key = null, double? KeyShown = null, double? CopyAfter = null, double? CopyTo = null, bool Raw = false, int? CopyFrames = null)
 {
     /// <summary>
     /// Seeking straight to <paramref name="seconds"/> as FFmpeg does by itself, with times counted from there.
@@ -410,18 +414,19 @@ internal static class KeyFrames
         if (seek.Origin is not { } origin || await FormatAsync(ffprobe, input, cancellationToken).ConfigureAwait(false) is not var (_, _, how, _)
             || how.Raw || !how.Reordered)
             return seek;
-        // Read as the copy reads, from where it starts, where FFmpeg makes up times after a seek (MPEG-PS); else from
-        // a little before the end.
-        var from = how.Unindexed ? seek.CopyFrom : Math.Max(0, end - 2);
+        // From the key frame the copy starts at where its packets are counted (an AVI), else a little before the end.
+        var from = Math.Max(0, end - 2);
+        if (seek.Key is { } key && !how.Unindexed && how.Reordered)
+            from = Math.Min(from, key);
         var json = await RunAsync(ffprobe,
             ["-hide_banner", "-v", "error", "-select_streams", "V:0", "-read_intervals", Absolute(origin + from) + "%" + Absolute(origin + end + 4),
-                "-show_entries", "packet=pts_time,dts_time,pos", "-print_format", "json", input],
+                "-show_entries", "packet=pts_time,dts_time", "-print_format", "json", input],
             cancellationToken).ConfigureAwait(false);
         if (json is null)
             return seek;
         try
         {
-            List<(double? Shown, double Decoded, string? Position)> list = [];
+            List<(double? Shown, double Decoded)> list = [];
             using (var document = JsonDocument.Parse(json))
             {
                 if (!document.RootElement.TryGetProperty("packets", out var packets) || packets.ValueKind != JsonValueKind.Array)
@@ -429,30 +434,20 @@ internal static class KeyFrames
                 foreach (var packet in packets.EnumerateArray())
                 {
                     if (Time(packet, "dts_time") is { } dts)
-                        list.Add((Time(packet, "pts_time") - origin, dts - origin,
-                            packet.TryGetProperty("pos", out var pos) ? pos.GetString() : null));
+                        list.Add((Time(packet, "pts_time") - origin, dts - origin));
                 }
             }
-            // A packet without a time to be shown at (an AVI's key and P-frames): the time its frame is shown when
-            // decoded, joined by its place in the file; else no later than the longest wait between decoding and
-            // showing.
-            if (list.Any(p => p.Shown is null) && !how.Unindexed
-                && await RunAsync(ffprobe,
-                    ["-hide_banner", "-v", "error", "-select_streams", "V:0", "-read_intervals", Absolute(origin + from) + "%" + Absolute(origin + end + 4),
-                        "-show_entries", "frame=best_effort_timestamp_time,pkt_pos", "-print_format", "json", input],
-                    cancellationToken).ConfigureAwait(false) is { } decodedJson)
+            // An AVI shows its B-frames when they are decoded and gives its key and P-frames no time to be shown at,
+            // so FFmpeg's end, which stops at a frame shown from it on, kept such a frame decoded after the end and
+            // left out the B-frames shown before it. Just before one of those, every B-frame shown before the one
+            // kept last is kept: before the second from the end on, so those shown before the end, decoded after the
+            // first, are too. Given as a count of the packets from the key frame, and its time for the sound.
+            if (!how.Unindexed && list.Any(p => p.Shown is null))
             {
-                using var document = JsonDocument.Parse(decodedJson);
-                Dictionary<string, double> shownAt = [];
-                if (document.RootElement.TryGetProperty("frames", out var frames) && frames.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var frame in frames.EnumerateArray())
-                    {
-                        if (frame.TryGetProperty("pkt_pos", out var pos) && pos.GetString() is { } at && Time(frame, "best_effort_timestamp_time") is { } t)
-                            shownAt[at] = t - origin;
-                    }
-                }
-                list = [.. list.Select(p => p.Shown is null && p.Position is { } at && shownAt.TryGetValue(at, out var t) ? (t, p.Decoded, p.Position) : p)];
+                var anchors = list.Where(p => p.Shown is null && p.Decoded >= end - 5e-7).Select(p => p.Decoded).Take(2).ToList();
+                return anchors.Count == 2 && seek.Key is { } first
+                    ? seek with { CopyTo = anchors[1], CopyFrames = list.Count(p => p.Decoded >= first - 5e-7 && p.Decoded < anchors[1] - 5e-7) }
+                    : seek;
             }
             var wait = list.Where(p => p.Shown is not null).Select(p => p.Shown!.Value - p.Decoded).DefaultIfEmpty(0).Max();
             if (list.Any(p => p.Shown is null) && wait <= 0)

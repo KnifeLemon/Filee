@@ -36,7 +36,8 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         // Positions in the source, read before the input: FFmpeg seeks instead of decoding up to the start.
         Assert.Equal("63.200000", After(args, "-ss"));
-        Assert.Equal("95.300000", After(args, "-to"));
+        // A tenth of a millisecond before the end, so a frame decoded at the end itself is always left out.
+        Assert.Equal("95.299900", After(args, "-to"));
         Assert.DoesNotContain("-copyts", args); // a copy keeps FFmpeg's own timing
         Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
         Assert.True(IndexOf(args, "-to") < IndexOf(args, "-i"));

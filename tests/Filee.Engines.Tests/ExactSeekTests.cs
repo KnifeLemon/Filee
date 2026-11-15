@@ -265,6 +265,13 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(350 % 256, await NumberOfPictureAsync(jpg));
         var clip = await CutAsync(video, ClipEdit.Of(new ClipRange(14, 15)), exact: true);
         Assert.Equal(Enumerable.Range(350, 25).Select(n => n % 256), (await FramesAsync(clip)).Select(f => f.Number));
+        // And it starts at 0, a second long: FFmpeg makes a raw stream's times up after -itsoffset, so nothing moved
+        // them.
+        var probed = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "V:0", "-show_entries", "stream=start_time,duration", "-of", "csv=p=0", clip], TimeSpan.FromMinutes(1), Ct);
+        var times = probed.StandardOutput.Trim().Split(',').Select(t => double.Parse(t, CultureInfo.InvariantCulture)).ToArray();
+        Assert.InRange(times[0], 0, 0.05);
+        Assert.InRange(times[1], 0.95, 1.05);
     }
 
     // ───────────────────────── Numbered videos ─────────────────────────
@@ -559,7 +566,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var silent = ClipEdit.Of(new ClipRange(0, all[60].Time));
         silent.Parts[0].Volume = 0.9;
         var picture = await CutAsync(soundFirst, silent, exact: true, removeAudio: true);
-        Assert.Equal(Enumerable.Range(0, 60), (await FramesAsync(picture)).Select(f => f.Number));
+        // Frame 0 is shown 0.02 s in, nearest the second picture: the first shows it too.
+        Assert.Equal([0, .. Enumerable.Range(0, 60)], (await FramesAsync(picture)).Select(f => f.Number));
     }
 
     /// <summary>When the beep starts in <paramref name="path"/>'s sound, in seconds.</summary>
@@ -668,7 +676,9 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(Enumerable.Range(41, 30), (await FramesAsync(await CutAsync(video, ClipEdit.Of(range), exact: true))).Select(f => f.Number));
         var edit = ClipEdit.Of(range);
         edit.Parts[0].Volume = 0.9;
-        Assert.Equal(Enumerable.Range(41, 30), (await FramesAsync(await CutAsync(video, edit, exact: true))).Select(f => f.Number));
+        // Edited, each frame at the picture nearest its time from the start: frame 41, 0.7 of a frame in, at the
+        // second, the first showing it too; 30 pictures, as long as the part.
+        Assert.Equal([41, .. Enumerable.Range(41, 29)], (await FramesAsync(await CutAsync(video, edit, exact: true))).Select(f => f.Number));
         Assert.Equal(41, await FirstPlayedAsync(video, ClipEdit.Of(range)));
     }
 
@@ -705,8 +715,11 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 edit.Parts[0].Speed = speed;
                 var numbers = (await FramesAsync(await CutAsync(video, edit, exact: true))).Select(f => f.Number).ToList();
                 // Played at half speed, each frame twice; faster, every second, third or fourth frame; at 1.5 times,
-                // only the first frame is sure (the others are those nearest their times).
-                var expected = speed == 0.5 ? Enumerable.Range(0, 60).Select(k => i + k / 2).ToList()
+                // only the first frame is sure (the others are those nearest their times). From 0.4 of a frame before
+                // it at half speed, its picture is the second, and the first shows it too, as the window does; an AVI
+                // counts in whole frames, so its move to the part's start rounds that 0.4 away.
+                var expected = speed == 0.5
+                    ? [.. before > 0 && !name.EndsWith(".avi", StringComparison.Ordinal) ? [i] : Array.Empty<int>(), .. Enumerable.Range(0, 60).Select(k => i + k / 2)]
                     : speed == Math.Floor(speed) ? Enumerable.Range(0, (int)Math.Ceiling(30 / speed)).Select(k => i + k * (int)speed).ToList()
                     : [i];
                 var same = Math.Min(numbers.Count, expected.Count) - (speed > 2 ? 1 : 0);
@@ -767,6 +780,19 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // The sound starts 1 s into the video and beeps at 1.5 s; from 0.5 s, the beep is 1 s into the clip, played
         // at that speed. Each part's sound counted from its own first sample beeped at 0.5 s; faster or slower, the
         // silence before it was left as long as it is in the video (atempo itself plays the beep up to 40 ms early).
+        var video = await SoundOneSecondInAsync();
+        var edit = ClipEdit.Of(new ClipRange(0.5, 2.8));
+        edit.Parts[0].Volume = 0.9;
+        edit.Parts[0].Speed = speed;
+
+        Assert.InRange(await BeepAsync(await CutAsync(video, edit, exact: true)), 1 / speed - 0.06, 1 / speed + 0.04);
+        if (speed == 1)
+            Assert.InRange(await BeepAsync(await CutAsync(video, ClipEdit.Of(new ClipRange(0.5, 2.8)), exact: true)), 0.98, 1.04);
+    }
+
+    /// <summary>A 3 s MP4, 30 frames a second, whose sound starts 1 s in and beeps at 1.5 s.</summary>
+    private async Task<string> SoundOneSecondInAsync()
+    {
         var picture = await VideoAsync("30fps.mp4");
         var sound = Path.Combine(fx.NewFolder(), "beep.m4a");
         var beep = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
@@ -778,13 +804,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
             [.. MediaEncoding.Common, "-i", picture, "-itsoffset", "1", "-i", sound, "-map", "0:v", "-map", "1:a", "-c", "copy", video],
             TimeSpan.FromMinutes(1), Ct);
         Assert.True(made.ExitCode == 0, made.StandardError);
-        var edit = ClipEdit.Of(new ClipRange(0.5, 2.8));
-        edit.Parts[0].Volume = 0.9;
-        edit.Parts[0].Speed = speed;
-
-        Assert.InRange(await BeepAsync(await CutAsync(video, edit, exact: true)), 1 / speed - 0.06, 1 / speed + 0.04);
-        if (speed == 1)
-            Assert.InRange(await BeepAsync(await CutAsync(video, ClipEdit.Of(new ClipRange(0.5, 2.8)), exact: true)), 0.98, 1.04);
+        return video;
     }
 
     [Fact]
@@ -1080,8 +1100,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         SkipUnlessInstalled();
         // An AAC file beeping 0.5 s in: -ss 0 dropped its first 1,024 samples a second time, 23 ms early. Under a video
-        // whose own sound starts 0.3 s after its pictures, amix started the music where that sound did, 0.3 s late.
-        var video = soundLater ? await SoundLaterAsync() : await VideoAsync("30fps.mp4");
+        // whose own sound starts 1 s in, after the part does, amix started the music where that sound did, 0.67 s late.
+        var video = soundLater ? await SoundOneSecondInAsync() : await VideoAsync("30fps.mp4");
         var frames = await FramesAsync(video);
         var music = Path.Combine(fx.NewFolder(), "music.m4a");
         var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
