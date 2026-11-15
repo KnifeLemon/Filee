@@ -95,6 +95,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **ویندوز ۱۰ و ۱۱**: فایل `Filee-<version>-win-Setup.exe` را اجرا کنید، یا نسخه پرتابل `win-Portable.zip` را از حالت فشرده خارج کرده و `Filee.exe` را اجرا نمایید.
+  - روی رایانه‌های Windows on ARM (در Settings → System → About عبارت «ARM-based processor» دیده می‌شود)، به‌جای آن `win-arm64-Setup.exe` یا `win-arm64-Portable.zip` را بگیرید: به‌صورت بومی اجرا می‌شود، نه با شبیه‌سازی x64.
   - نصاب Filee نرم‌افزار اختصاصی خود آن است، به زبان‌های مختلف برنامه ارائه می‌شود و به برنامه دیگری نیاز ندارد.
   - می‌تواند منوی راست‌کلیک Explorer، اجرا در هنگام ورود به سیستم، دستور `filee` و موتورهای اختیاری را اضافه کند.
   - برای نصب بی‌صدا از سوئیچ‌های Inno Setup استفاده کنید (`/VERYSILENT /SUPPRESSMSGBOXES`).
