@@ -11,8 +11,9 @@ namespace Filee.Engines.Magick;
 
 /// <summary>
 /// Converts between PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, APNG, MNG, QOI,
-/// DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster and MIFF, and reads HEIC, XCF, camera RAW, DICOM,
-/// Photo CD, OpenEXR, Radiance HDR, FITS and (on Windows) EMF/WMF.
+/// DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster and MIFF, reads and writes Paint.NET's PDN and GIMP's XCF
+/// (Filee's own readers and writers, keeping layers between PDN, XCF and PSD), and reads HEIC, camera RAW, DICOM,
+/// Photo CD, OpenEXR, Radiance HDR, FITS, animated cursors (ANI) and (on Windows) EMF/WMF.
 /// </summary>
 public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransformer, IImageJoiner
 {
@@ -29,9 +30,17 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
     internal Func<(string Ffmpeg, string Ffprobe)?> LocateFfmpeg { get; init; } = FfmpegConverter.Locate;
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
-        (from source in ImageEncoder.Sources
-         from target in ImageEncoder.Writable
-         select ImageEncoder.Edge(source, target)).ToList();
+    [
+        .. from source in ImageEncoder.Sources
+           from target in ImageEncoder.Writable
+           select ImageEncoder.Edge(source, target),
+        // Paint.NET's and GIMP's own files, written by Filee (PaintNetWriter, XcfWriter); layers are kept between them
+        // and PSD.
+        .. ImageEncoder.Sources.Where(source => source != "pdn").Select(source => ImageEncoder.Edge(source, "pdn")),
+        .. ImageEncoder.Sources.Where(source => source != "xcf").Select(source => ImageEncoder.Edge(source, "xcf")),
+        // Valve's texture for the Source engine (Garry's Mod and others), written by Filee (VtfWriter).
+        .. ImageEncoder.Sources.Where(source => source != "vtf").Select(source => ImageEncoder.Edge(source, "vtf")),
+    ];
 
     public EngineStatus GetStatus() =>
         EngineStatus.Available(MagickNET.ImageMagickVersion,
@@ -77,7 +86,7 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
 
     public bool CanRead(string format) => ImageEncoder.Sources.Contains(format);
 
-    public bool CanWrite(string format) => ImageEncoder.Writable.Contains(format);
+    public bool CanWrite(string format) => format is "pdn" or "xcf" or "vtf" || ImageEncoder.Writable.Contains(format);
 
     /// <summary>"Merge images": the pictures one under another or side by side in one image (<see cref="ImageJoiner"/>).</summary>
     public Task JoinAsync(IReadOnlyList<(string Path, string Format)> inputs, string outputPath, string format,
@@ -87,17 +96,45 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(async () =>
         {
+            // An animated cursor as CUR is its first frame as stored, every size and the hotspot, unless the preset
+            // changes it; then the hotspot follows the picture into the converted cursor (below).
+            if (step.From == "ani" && step.To == "cur" && Ani.KeptAsItIs(step.Preset.Image) && Ani.SaveFirstCursor(step, progress) is { } cursor)
+                return cursor;
             // FITS → TIFF keeps the file's depth (16 or 32 bits), which the Q8 build can't: Filee writes it.
             if (step.From == "fits" && step.To == "tiff")
                 return FitsRendering.WriteTiff(step, progress, cancellationToken);
             // A program's icon as ICO is the icon itself, with the sizes drawn for it, unless the preset changes it.
             if (step.From == FormatRegistry.Program && step.To == "ico" && ProgramIcon.KeptAsItIs(step.Preset.Image))
                 return ProgramIcon.Save(step, progress);
+            // A Paint.NET file as PSD keeps its layers, unless the preset changes the picture.
+            if (step.From == "pdn" && step.To is "psd" or "psb" && PaintNet.KeepsLayers(step.Preset.Image))
+                return PaintNet.SaveLayered(step, progress, cancellationToken);
+            // A PSD as a Paint.NET file keeps its layers too.
+            if (step.From is "psd" or "psb" && step.To == "pdn" && PaintNet.KeepsLayers(step.Preset.Image))
+                return PaintNetWriter.SaveLayered(step, progress, cancellationToken);
+            // A GIMP file keeps its layers as PSD or Paint.NET, and those keep theirs as a GIMP file.
+            if (step.From == "xcf" && step.To is "psd" or "psb" && PaintNet.KeepsLayers(step.Preset.Image))
+                return Xcf.SaveLayeredPsd(step, progress, cancellationToken);
+            if (step.From == "xcf" && step.To == "pdn" && PaintNet.KeepsLayers(step.Preset.Image))
+                return Xcf.SaveLayeredPdn(step, progress, cancellationToken);
+            if (step.From == "pdn" && step.To == "xcf" && PaintNet.KeepsLayers(step.Preset.Image))
+                return XcfWriter.SaveFromPdn(step, progress, cancellationToken);
+            if (step.From is "psd" or "psb" && step.To == "xcf" && PaintNet.KeepsLayers(step.Preset.Image))
+                return XcfWriter.SaveFromPsd(step, progress, cancellationToken);
             // Animated PNGs are often saved as .png: read them as APNG, so they stay animated as GIF or WebP. An AVIF is an
             // animation only when it is an image sequence.
             var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : AvifSequence.SourceFormat(step.From, step.InputPath);
-            using var images = ImageReader.Read(step.InputPath, from, step.Preset);
-            return await WriteAsync(images, from, step, progress, cancellationToken, LocateFfmpeg);
+            using var images = ImageReader.Read(step.InputPath, from, step.Preset, cancellationToken);
+            var written = await WriteAsync(images, from, step, progress, cancellationToken, LocateFfmpeg);
+            // From a cursor, the hotspot follows the picture into the new one (every CUR is already a cursor, its
+            // hotspot at the top left).
+            if (step.To == "cur" && from is "cur" or "ani" && CursorFile.HotspotFollows(step.Preset.Image)
+                && (from == "ani" ? Ani.Hotspot(step.InputPath) : CursorFile.Hotspot(step.InputPath)) is { } hotspot)
+            {
+                foreach (var path in written)
+                    CursorFile.Write(path, hotspot, step.Preset.Image);
+            }
+            return written;
         }, cancellationToken);
 
     /// <summary>

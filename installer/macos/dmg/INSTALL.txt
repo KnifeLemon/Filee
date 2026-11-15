@@ -1,0 +1,18 @@
+Install or update Filee
+Drag Filee onto Applications. To update, drag the new version onto Applications
+and replace the old one; there is no need to remove it first.
+
+First launch
+This build is not notarized. If macOS blocks the first launch, open
+System Settings > Privacy & Security and click Open Anyway. Only open a build
+whose source and checksum you trust.
+
+Permissions
+Allow Filee in System Settings > Privacy & Security > Accessibility for global
+gestures. After an update, macOS may still list Filee switched on while gestures
+wait for the permission: select Filee there, remove it with the - button, then
+add Filee.app again with + and switch it on.
+Allow Finder under Automation when using a selection shortcut.
+
+The filee command and portable mode come with the tar.gz package (install.sh),
+not with this disk image. Requires macOS 13 or later.

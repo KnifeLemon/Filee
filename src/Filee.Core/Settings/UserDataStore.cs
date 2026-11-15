@@ -118,6 +118,14 @@ public sealed class UserDataStore
     }
 
     /// <summary>
+    /// Remembers the donut's look (<see cref="AppSettings.Donut"/>: size, hole, opacity, output format, group ring) and
+    /// where its preview was dragged (<see cref="AppSettings.DonutPreviewPlace"/>), quietly as
+    /// <see cref="SaveUiScale"/>: the donut reads its look each time it opens, and the theme, triggers and integration
+    /// that <see cref="SettingsChanged"/> applies again haven't changed.
+    /// </summary>
+    public void SaveDonutLook() => Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
+
+    /// <summary>
     /// Remembers where the main window was (<see cref="AppSettings.MainWindow"/>), quietly as <see cref="SaveUiScale"/>:
     /// nothing else depends on it.
     /// </summary>
@@ -260,8 +268,12 @@ public sealed class UserDataStore
     /// Exports presets and profiles to a shareable JSON file, without PDF passwords or paths to one's own pictures.
     /// </summary>
     public void Export(string path) =>
-        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.ForSharing())], Profiles = Profiles },
-            FileeJsonContext.Default.PresetBundle);
+        Write(path, new PresetBundle
+        {
+            SettingsSchema = AppSettings.CurrentSchemaVersion,
+            Presets = [.. Presets.Select(p => p.ForSharing())],
+            Profiles = Profiles,
+        }, FileeJsonContext.Default.PresetBundle);
 
     /// <summary>
     /// Imports presets and profiles from a bundle. Items with an existing id are replaced, new ones added.
@@ -277,6 +289,8 @@ public sealed class UserDataStore
         {
             // A path to a picture in someone else's bundle is not one of ours to open (a network share, say).
             preset.Image.ForgetBackdropPictures();
+            // Sending originals to the Recycle Bin / Trash is on only where this user ticked it on this PC (#1387).
+            preset.Output.TrashOriginalAfterConvert = false;
             Presets.RemoveAll(p => p.Id == preset.Id);
             Presets.Add(preset);
         }
@@ -1128,6 +1142,40 @@ internal static class SettingsMigrations
             foreach (var id in new[] { "to-zip", "zip-all" })
                 if (presets.Any(p => p.Id == id)) { folders.PresetIds.Add(id); changed = true; }
         }
+        // v85: Windows animated cursors (.ani, #1365) learn the images donut; custom claims stay put.
+        if (from < 85)
+            changed |= LearnExtensions(profiles, out _, ["ani"]);
+        // v86: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put.
+        if (from < 86)
+            changed |= LearnExtensions(profiles, out _, ["pdn"]);
+        // v87: Arduino and Processing sketches (.ino, .pde) learn the text donut; custom claims stay put. (Schema 87 may
+        //      be renumbered if another change takes it first.)
+        if (from < 87)
+            changed |= LearnExtensions(profiles, out _, ["ino", "pde"]);
+        // v88: NuGet packages (.nupkg, .snupkg, #1465), split-APK containers (.apks, .xapk, .apkm) and Android App
+        //      Bundles (.aab, #1464) learn the archives donut; custom claims stay put. (Schema 88 may be renumbered if
+        //      another change takes it first.)
+        if (from < 88)
+            changed |= LearnExtensions(profiles, out _, ["nupkg", "snupkg", "apks", "xapk", "apkm", "aab"]);
+        // v89: KuGou lyrics (.krc, #1296) learn the subtitles donut; custom claims stay put. (Schema 89 may be renumbered
+        //      if another change takes it first.)
+        if (from < 89)
+            changed |= LearnExtensions(profiles, out _, ["krc"]);
+        // v90: Wisenet WAVE / Nx Witness exports (.nov) learn the video donut; custom claims stay put.
+        if (from < 90)
+            changed |= LearnExtensions(profiles, out _, ["nov"]);
+        // v91: Gerber PCB layers learn the CAD donut; custom claims stay put.
+        if (from < 91)
+            changed |= LearnExtensions(profiles, out _, ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"]);
+        // v92: Obsidian's boards (.canvas, JSON Canvas) learn the vector donut; custom claims stay put.
+        if (from < 92)
+            changed |= LearnExtensions(profiles, out _, ["canvas"]);
+        // v93: G-code toolpaths (.gcode, .gco, .ngc) learn the CAD donut; custom claims stay put.
+        if (from < 93)
+            changed |= LearnExtensions(profiles, out _, ["gcode", "gco", "ngc"]);
+        // v94: Valve textures (.vtf) learn the images donut; custom claims stay put.
+        if (from < 94)
+            changed |= LearnExtensions(profiles, out _, ["vtf"]);
         return changed;
     }
 

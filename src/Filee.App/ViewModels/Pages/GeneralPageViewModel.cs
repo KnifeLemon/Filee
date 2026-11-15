@@ -7,6 +7,7 @@ using Filee.Core.Localization;
 using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
+using Filee.Core.Web;
 using Microsoft.Extensions.Logging;
 
 namespace Filee.App.ViewModels.Pages;
@@ -56,6 +57,7 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         _browserFolder = store.Settings.BrowserDrops.Folder;
         _saveOnlyConverted = store.Settings.BrowserDrops.SaveOnlyConverted;
         _allowLocalNetwork = store.Settings.BrowserDrops.AllowLocalNetwork;
+        _proxy = store.Settings.Proxy ?? "";
         _zipGeoResults = store.Settings.ZipGeoResults;
         CloseChoices = Enum.GetValues<CloseAction>().Select(v => new Choice<CloseAction>(v, loc[$"general.close.{v}"])).ToList();
         _closeChoice = CloseChoices.First(c => c.Value == store.Settings.CloseAction);
@@ -124,6 +126,19 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     partial void OnSaveOnlyConvertedChanged(bool value) => Save(s => s.BrowserDrops.SaveOnlyConverted = value);
 
     partial void OnAllowLocalNetworkChanged(bool value) => Save(s => s.BrowserDrops.AllowLocalNetwork = value);
+
+    /// <summary>The proxy for Filee's downloads as typed. Saved whenever it is empty or an address.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ProxyInvalid))]
+    private string _proxy;
+
+    /// <summary>What is typed isn't a proxy address; the last one that was stays in use.</summary>
+    public bool ProxyInvalid => !ProxySetting.TryParse(Proxy, out _);
+
+    partial void OnProxyChanged(string value)
+    {
+        if (ProxySetting.TryParse(value, out _))
+            Save(s => s.Proxy = string.IsNullOrWhiteSpace(value) ? null : value.Trim());
+    }
 
     /// <summary>What closing the main window does; its "Don't ask again" also sets it.</summary>
     public IReadOnlyList<Choice<CloseAction>> CloseChoices { get; }

@@ -240,7 +240,8 @@ public partial class BackFaceTests
             Profile(back, "pdf").PresetIds);
         Assert.Equal(["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"],
             Profile(back, "pdf").BackPresetIds);
-        Assert.Equal(["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg", "trace-line-art"], Profile(back, "images").PresetIds);
+        Assert.Equal(["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "merge-pdf", "trace-svg", "trace-line-art"],
+            Profile(back, "images").PresetIds);
         Assert.Equal(["tool-crop", "rotate", "remove-background", "trim-transparent", "merge-images", "compress-image", "half-size",
             "tool-image-edit", "remove-metadata", "zip-all"], Profile(back, "images").BackPresetIds);
         Assert.Equal(["to-mp4", "mp4-720", "mp4-hevc", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "caption-video"],

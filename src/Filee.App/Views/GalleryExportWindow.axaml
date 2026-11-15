@@ -1,0 +1,93 @@
+<!-- "Export for the gallery" (#1530), from the Presets page: tick presets (and choose a donut), see what the gallery's
+     check says, save preset.json and open the submission form. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.GalleryExportWindow"
+        x:DataType="vm:GalleryExportViewModel"
+        Title="{DynamicResource gallery.export_title}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="760" Height="600" MinWidth="560" MinHeight="460"
+        WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <Style Selector="Border.warnings">
+      <Setter Property="Background" Value="{DynamicResource WarningFaintBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+      <Setter Property="Padding" Value="12,10" />
+    </Style>
+    <Style Selector="Border.problems">
+      <Setter Property="Background" Value="{DynamicResource StatusDangerFaintBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+      <Setter Property="Padding" Value="12,10" />
+    </Style>
+  </Window.Styles>
+  <DockPanel Margin="22,18,22,16">
+    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,14">
+      <TextBlock Classes="h2" Text="{DynamicResource gallery.export_title}" />
+      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource gallery.export_lead}" />
+    </StackPanel>
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,14,0,0">
+      <Button x:Name="SubmitButton" Command="{Binding OpenFormCommand}" AutomationProperties.Name="{DynamicResource gallery.export_submit}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.GitHub}" />
+          <TextBlock Text="{DynamicResource gallery.export_submit}" />
+        </StackPanel>
+      </Button>
+      <Button x:Name="SaveButton" Classes="accent" Command="{Binding SaveCommand}" AutomationProperties.Name="{DynamicResource gallery.export_save}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Upload}" />
+          <TextBlock Text="{DynamicResource gallery.export_save}" />
+        </StackPanel>
+      </Button>
+    </StackPanel>
+    <Grid ColumnDefinitions="*,18,*">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Classes="label" Text="{DynamicResource gallery.export_presets}" />
+        <ListBox x:Name="PresetList" Classes="soft" ItemsSource="{Binding Presets}"
+                 AutomationProperties.Name="{DynamicResource gallery.export_presets}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:GalleryExportChoice">
+              <CheckBox IsChecked="{Binding IsChosen}" AutomationProperties.Name="{Binding Name}">
+                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+              </CheckBox>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+      <ScrollViewer Grid.Column="2" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="10">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource gallery.export_donut}" />
+            <ComboBox ItemsSource="{Binding Donuts}" SelectedItem="{Binding Donut}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource gallery.export_donut}" />
+          </StackPanel>
+          <TextBlock x:Name="Status" Text="{Binding Status}" TextWrapping="Wrap" FontWeight="SemiBold" />
+          <Border Classes="problems" IsVisible="{Binding HasProblems}">
+            <ItemsControl ItemsSource="{Binding Problems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock Classes="caption" Text="{Binding StringFormat='• {0}'}" TextWrapping="Wrap" Margin="0,1" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+          <Border Classes="warnings" IsVisible="{Binding HasWarnings}">
+            <StackPanel Spacing="6">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Alert}" />
+                <TextBlock Text="{DynamicResource gallery.export_warnings}" FontWeight="SemiBold" TextWrapping="Wrap" />
+              </StackPanel>
+              <ItemsControl ItemsSource="{Binding Warnings}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PresetGalleryWarning">
+                    <TextBlock Text="{Binding Text, StringFormat='• {0}'}" TextWrapping="Wrap" Margin="0,1" Classes.danger="{Binding IsHigh}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</Window>

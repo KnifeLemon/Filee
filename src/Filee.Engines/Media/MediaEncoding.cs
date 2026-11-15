@@ -1100,6 +1100,31 @@ internal static partial class MediaEncoding
     /// <summary>Bitrate for a stereo pair scaled to the channel count (mono gets half, 5.1 three times as much).</summary>
     private static int Scaled(int stereoKbps, int channels) => stereoKbps * Math.Clamp(channels, 1, 8) / 2;
 
+    /// <summary>
+    /// The bitrate in kbit/s <see cref="AudioCodecArguments"/> gives one track of <paramref name="channels"/>, for the
+    /// size the compression window estimates (#1353); a VBR level counts at its usual average. Null for lossless and
+    /// PCM codecs, whose size follows the sound itself.
+    /// </summary>
+    internal static int? AudioKbps(string codec, MediaOptions options, int channels)
+    {
+        var quality = options.Quality;
+        var requested = options.AudioBitrateKbps;
+        channels = channels > 0 ? channels : 2;
+        return codec switch
+        {
+            "aac" => Math.Clamp(requested > 0 ? requested : Scaled(Choose(quality, 256, 192, 128), channels), 16, 256 * channels),
+            "libopus" => Math.Clamp(requested > 0 ? requested : Scaled(Choose(quality, 160, 128, 64), channels), 6, 256 * channels),
+            "libmp3lame" => requested > 0 ? Snap(requested, Mp3Bitrates) : Choose(quality, 245, 190, 130),
+            "libvorbis" => requested > 0 ? requested : Choose(quality, 192, 128, 96),
+            "wmav2" => requested > 0 ? requested : Choose(quality, 192, 128, 96),
+            "mp2" => Snap(requested > 0 ? requested : Choose(quality, 320, 224, 160), Mp2Bitrates),
+            "ac3" => requested > 0 ? Snap(requested, Ac3Bitrates) : channels > 2 ? 448 : 192,
+            "eac3" => requested > 0 ? requested : Scaled(Choose(quality, 256, 192, 128), channels),
+            "libopencore_amrnb" => 12,
+            _ => null,
+        };
+    }
+
     private static string[] Bitrate(int kbps, int min, int max) => ["-b:a", Text(Math.Clamp(kbps, min, Math.Max(min, max))) + "k"];
 
     /// <summary>The largest allowed bitrate not above <paramref name="kbps"/> (the smallest one if all are above).</summary>

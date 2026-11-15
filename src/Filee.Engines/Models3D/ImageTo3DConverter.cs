@@ -64,7 +64,7 @@ public sealed class ImageTo3DConverter : IConverter
         {
             progress?.Report(0.1);
             Model3D model;
-            using (var images = ImageReader.Read(step.InputPath, step.From, step.Preset))
+            using (var images = ImageReader.Read(step.InputPath, step.From, step.Preset, cancellationToken))
             {
                 var picture = ImageEncoder.SelectFrames(images, step.From, "png").FirstOrDefault()
                     ?? throw new InvalidDataException("The file holds no picture.");

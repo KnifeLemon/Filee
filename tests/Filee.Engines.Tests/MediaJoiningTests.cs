@@ -116,6 +116,92 @@ public class MediaJoiningTests
         Assert.Contains("-an", args);
     }
 
+    // ───────────────────────── Music under videos (#1402) ─────────────────────────
+
+    private static (string, MediaInfo) Song(string name, double seconds, int track = 0) =>
+        (name, Clip(audio: new AudioStreamInfo(2, 44100, "mp3", track), seconds: seconds));
+
+    [Fact]
+    public void Songs_play_one_after_another_under_the_videos_and_stop_with_them()
+    {
+        var (music, prepare) = MediaJoining.PlanMusic([Song("a.mp3", 4), Song("b.flac", 5, track: 1)], 12, loop: false, "work/music.flac");
+        Assert.Null(prepare);
+        Assert.Equal([("a.mp3", 0), ("b.flac", 1)], music.Files);
+        Assert.False(music.Repeat);
+        Assert.False(music.Cut); // 9 s of songs under 12 s of video: they end on their own
+
+        var clip = Clip(PhoneVideo, new AudioStreamInfo(2, 48000, "aac"), seconds: 6);
+        var args = MediaJoining.EncodeVideos([("x.mp4", clip), ("y.mp4", clip)], "out.mp4", new MediaOptions(), "libx264", "work", music);
+
+        var inputs = args.Select((a, i) => (a, i)).Where(p => p.a == "-i").Select(p => args[p.i + 1]).ToList();
+        Assert.Equal(["x.mp4", "y.mp4", "a.mp3", "b.flac"], inputs);
+        var graph = After(args, "-filter_complex");
+        Assert.Contains("concat=n=2:v=1:a=1[v][va]", graph);
+        Assert.Contains("[2:a:0]aresample=48000", graph);
+        Assert.Contains("[3:a:1]aresample=48000", graph);
+        Assert.Contains("[m0][m1]concat=n=2:v=0:a=1,atrim=duration=12,asetpts=PTS-STARTPTS,volume=0.6[m]", graph);
+        Assert.DoesNotContain("afade", graph);
+        Assert.Contains("[va][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]", graph);
+        Assert.Equal("[a]", args[args.LastIndexOf("-map") + 1]);
+        Assert.DoesNotContain("-stream_loop", args);
+    }
+
+    [Fact]
+    public void Songs_longer_than_the_videos_are_cut_with_a_fade_and_play_as_recorded_over_silent_videos()
+    {
+        var (music, _) = MediaJoining.PlanMusic([Song("long.mp3", 300)], 8, loop: false, "work/music.flac");
+        Assert.True(music.Cut);
+
+        var args = MediaJoining.EncodeVideos([("x.mp4", Clip(PhoneVideo, seconds: 8))], "out.mp4", new MediaOptions(), "libx264", "work", music);
+
+        var graph = After(args, "-filter_complex");
+        Assert.Contains("concat=n=1:v=1:a=0[v];", graph);
+        Assert.Contains("[1:a:0]aresample=48000", graph);
+        // No sound to go under: no volume, and the music is the sound.
+        Assert.EndsWith("[m0]atrim=duration=8,asetpts=PTS-STARTPTS,afade=t=out:st=7:d=1[a]", graph);
+        Assert.DoesNotContain("-an", args);
+        Assert.Equal("aac", After(args, "-c:a"));
+    }
+
+    [Fact]
+    public void Looped_songs_become_one_file_that_repeats_until_the_videos_end()
+    {
+        var (music, prepare) = MediaJoining.PlanMusic([Song("a.mp3", 2), Song("b.mp3", 3)], 20, loop: true, "work/music.flac");
+
+        Assert.NotNull(prepare);
+        Assert.Equal("work/music.flac", prepare[^1]);
+        Assert.Equal("flac", After(prepare, "-c:a"));
+        Assert.Contains("[m0][m1]concat=n=2:v=0:a=1,atrim=duration=20,asetpts=PTS-STARTPTS[a]", After(prepare, "-filter_complex"));
+        Assert.Equal([("work/music.flac", 0)], music.Files);
+        Assert.True(music.Repeat && music.Cut);
+
+        var clip = Clip(PhoneVideo, new AudioStreamInfo(2, 48000, "aac"), seconds: 10);
+        var args = MediaJoining.CopyVideos("clips.txt", "out.mp4", clip, music, new MediaOptions(), "work");
+        var loop = args.IndexOf("-stream_loop");
+        Assert.Equal(["-stream_loop", "-1", "-i", "work/music.flac"], args.Skip(loop).Take(4));
+        var graph = After(args, "-filter_complex");
+        Assert.Contains("[0:a:0]aresample=48000", graph);
+        Assert.Contains("[1:a:0]aresample=48000", graph);
+        Assert.Contains("[m0]atrim=duration=20,asetpts=PTS-STARTPTS,volume=0.6,afade=t=out:st=19:d=1[m]", graph);
+        // The pictures are still copied; only the sound is encoded.
+        Assert.Equal("copy", After(args, "-c:v"));
+        Assert.Equal("aac", After(args, "-c:a"));
+        Assert.Equal(["0:V:0", "[a]"], args.Select((a, i) => (a, i)).Where(p => p.a == "-map").Select(p => args[p.i + 1]));
+    }
+
+    [Fact]
+    public void Loop_music_long_enough_already_plays_once_and_a_song_without_sound_is_refused()
+    {
+        var (music, prepare) = MediaJoining.PlanMusic([Song("a.mp3", 30)], 20, loop: true, "work/music.flac");
+        Assert.Null(prepare);
+        Assert.False(music.Repeat);
+        Assert.True(music.Cut);
+        // A length FFmpeg can't tell: prepared to repeat, so it lasts in any case.
+        Assert.NotNull(MediaJoining.PlanMusic([("a.mp3", new MediaInfo(null, null, new AudioStreamInfo(2, 44100, "mp3"), null))], 20,
+            loop: true, "work/music.flac").Prepare);
+        Assert.Throws<InvalidOperationException>(() => MediaJoining.PlanMusic([("a.mp3", Clip(seconds: 3))], 20, loop: false, "m.flac"));
+    }
+
     [Fact]
     public void A_frame_never_gets_taller_than_the_preset_allows()
     {

@@ -1,0 +1,41 @@
+<!--
+  The donut on screen at its real size while Settings → Donut toolbar adjusts it (Edit Donut Size) or edits a group:
+  borderless and transparent, as the live donut is (RadialWindow), drawn by the same control with the same settings. It
+  can be tried (a group opens under the pointer, it flips), but nothing converts from it.
+
+  ShowActivated=False: the sliders keep the keyboard. Not Topmost, unlike the live donut: a click on the main window
+  brings that in front of it, so Done is never stuck under it.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:Filee.App.Controls"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.DonutPreviewWindow"
+        x:DataType="vm:RadialViewModel"
+        Title="Filee Donut"
+        WindowDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        CanResize="False"
+        SizeToContent="WidthAndHeight">
+  <c:DonutMenu x:Name="Donut"
+               Items="{Binding Items}"
+               CenterTitle="{Binding CenterTitle}"
+               CenterSubtitle="{Binding CenterSubtitle}"
+               OuterRadius="{Binding OuterRadius}"
+               HoleRatio="{Binding HoleRatio}"
+               SliceOpacity="{Binding SliceOpacity}"
+               ShowCaptions="{Binding ShowCaptions}"
+               LabelScale="{Binding LabelScale}"
+               DefaultShow="{Binding DefaultShow}"
+               GroupRingSize="{Binding GroupRingSize}"
+               GroupRingSpread="{Binding GroupRingSpread}"
+               ReserveSubRing="{Binding ReserveSubRing}"
+               CanFlip="{Binding CanFlip}"
+               CenterHint="{Binding FlipHint}"
+               CenterHintWheel="{Binding FlipHintWheel}"
+               FlipKey="{Binding FlipKey}"
+               FlipWithWheel="{Binding FlipWithWheel}" />
+</Window>

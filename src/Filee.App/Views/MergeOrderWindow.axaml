@@ -1,7 +1,7 @@
 <!-- Merge order: shown before files merge into one PDF, video or image from the donut (RadialController, issue #268).
      Merge starts the conversion in the order shown; Cancel or closing the window starts nothing. Pictures merged into
-     one image (#645) also get their layout here, below the list. The smallest size still shows a whole row of cards
-     under the hint, which runs longest in Arabic. -->
+     one image (#645) also get their layout here, below the list, and videos their music (#1402). The smallest size
+     still shows a whole row of cards under the hint, which runs longest in Arabic. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
@@ -101,6 +101,18 @@
           <ComboBoxItem Content="{DynamicResource merge.sort_custom}" />
         </ComboBox>
       </DockPanel>
+      <!-- "Merge videos": songs to play under them, which go into the list, and whether they repeat. -->
+      <Border x:Name="MergeMusic" DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="14,12" CornerRadius="10"
+              Background="{DynamicResource SurfaceAltBrush}" IsVisible="{Binding MergesVideos}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource merge.music_hint}" />
+          <WrapPanel Classes="layout">
+            <Button x:Name="AddMusic" Content="{DynamicResource merge.add_music}" Click="OnAddMusic" />
+            <CheckBox x:Name="LoopMusic" Content="{DynamicResource merge.loop_music}" IsChecked="{Binding LoopMusic}"
+                      IsEnabled="{Binding HasMusic}" ToolTip.Tip="{DynamicResource merge.loop_music_tip}" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
       <!-- "Merge images": how the pictures are laid out. -->
       <Border x:Name="MergeLayout" DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="14,12" CornerRadius="10"
               Background="{DynamicResource SurfaceAltBrush}" IsVisible="{Binding MergesImages}">

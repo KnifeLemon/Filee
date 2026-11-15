@@ -3,7 +3,8 @@
 // Unhwp's Markdown links pictures as "assets/<id>" without writing them: Filee takes each picture from the document
 // (GetResourceData) and puts it into a "<name>_files" folder next to the Markdown file (MarkdownPictures), or embeds
 // it in the HTML page as a data: URI, so the page stays one file. Pictures it can't provide are left out instead of
-// becoming broken links; "Leave out pictures" (DocumentOptions.LeaveOutPictures) leaves out all of them.
+// becoming broken links; "Leave out pictures" (DocumentOptions.LeaveOutPictures) leaves out all of them. Unhwp skips the
+// line breaks inside HWPX paragraphs; UnhwpLineBreaks keeps them.
 
 using System.Text.RegularExpressions;
 using Filee.Core.Conversion;
@@ -77,18 +78,21 @@ public sealed class UnhwpConverter : IConverter
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>
         {
-            using var document = Parse(step.InputPath);
+            // Unhwp skips the line breaks inside HWPX paragraphs: it reads a copy where they are a character of the text.
+            var marked = step.From == "hwpx" ? UnhwpLineBreaks.Mark(step.InputPath, step.WorkDirectory) : null;
+            using var document = Parse(marked?.Path ?? step.InputPath);
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(0.5);
 
             var path = step.Output.Allocate(step.To);
             if (path is null)
                 return [];
+            var mark = marked?.Mark;
             var content = step.To switch
             {
-                "txt" => document.ToText(),
-                "md" => WriteMarkdown(document, step, path),
-                "html" => ToHtml(Pictures(document.ToMarkdown(new MarkdownOptions()), document, step.WorkDirectory, DataUri),
+                "txt" => mark is { } m ? UnhwpLineBreaks.Text(document.ToText(), m) : document.ToText(),
+                "md" => WriteMarkdown(document, step, path, mark),
+                "html" => ToHtml(Pictures(LineBreaks(document.ToMarkdown(new MarkdownOptions()), mark, html: true), document, step.WorkDirectory, DataUri),
                     document.Title ?? Path.GetFileNameWithoutExtension(step.InputPath)),
                 _ => throw new NotSupportedException(step.To),
             };
@@ -113,9 +117,12 @@ public sealed class UnhwpConverter : IConverter
         }
     }
 
-    private static string WriteMarkdown(UnhwpDocument document, ConversionStep step, string output)
+    private static string LineBreaks(string markdown, char? mark, bool html) =>
+        mark is { } m ? UnhwpLineBreaks.Markdown(markdown, m, html) : markdown;
+
+    private static string WriteMarkdown(UnhwpDocument document, ConversionStep step, string output, char? mark)
     {
-        var markdown = document.ToMarkdown(new MarkdownOptions { IncludeFrontmatter = false });
+        var markdown = LineBreaks(document.ToMarkdown(new MarkdownOptions { IncludeFrontmatter = false }), mark, html: false);
         Func<string, string?> link = step.Preset.Document.LeaveOutPictures
             ? _ => null
             : new MarkdownPictures(output, step.Output, step.WorkDirectory).Add;

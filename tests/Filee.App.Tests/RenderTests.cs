@@ -495,8 +495,11 @@ public class RenderTests
             Assert.Equal(16m, editor.VideoMaxSizeMb);
             editor.VideoMaxSizeMb = 25;
             Assert.True(editor.Apply());
-            Assert.Equal(25, added[^1].Media.MaxSizeMb);
+            Assert.Equal(16, added[^1].Media.MaxSizeMb); // Edits stay separate until the page saves successfully.
+            page.SaveCommand.Execute(null);
+            Assert.Equal(25, page.SelectedPreset!.Preset.Media.MaxSizeMb);
             Assert.Equal(16, whatsapp.Media.MaxSizeMb);
+            editor = page.Editor!;
 
             // Not where nothing could fit it: VOB and DV have a fixed bitrate.
             editor.Target = editor.Targets.Single(t => t.Value == "vob");
@@ -512,7 +515,8 @@ public class RenderTests
             Assert.True(editor.ShowQuality);
             editor.ImageMaxSize = 1.5m;
             Assert.True(editor.Apply());
-            Assert.Equal((0.0, 1.5), (added[^1].Media.MaxSizeMb, added[^1].Image.MaxSizeMb));
+            page.SaveCommand.Execute(null);
+            Assert.Equal((0.0, 1.5), (page.SelectedPreset!.Preset.Media.MaxSizeMb, page.SelectedPreset.Preset.Image.MaxSizeMb));
 
             var window = new MainWindow { DataContext = vm, Width = 1180, Height = 900 };
             window.Show();
@@ -526,7 +530,7 @@ public class RenderTests
         finally
         {
             foreach (var preset in added)
-                store.Presets.Remove(preset);
+                store.Presets.RemoveAll(p => p.Id == preset.Id);
             store.SaveLibrary();
         }
     }
@@ -935,7 +939,7 @@ public class RenderTests
         window.DonutControl.SetExternalHighlight(1);
         Pump();
 
-        Assert.Equal(6, vm.Items.Count); // conversions only; GIF follows WEBP
+        Assert.Equal(7, vm.Items.Count); // conversions and Merge PDF after PDF; GIF follows WEBP
         Assert.Equal(title, vm.CenterTitle);
         Save(window, $"donut-images-{language}.png");
         window.Close();
@@ -2393,6 +2397,66 @@ public class RenderTests
         Assert.False(vm.ShowCad);
         Assert.True(vm.Apply());
         Assert.Equal(Filee.Core.Presets.CadVersion.AutoCad2018, preset.Cad.Version);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en", false)]
+    [InlineData("en", true)]
+    [InlineData("fr", false)]
+    [InlineData("ar", false)]
+    public void Preset_editor_offers_the_g_code_view_for_pictures_svg_and_pdf_while_its_fields_are_on(string language, bool dark)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        var loc = AppHost.Get<ILocalizer>();
+        var preset = AppHost.Get<UserDataStore>().FindPreset("to-png")!.Clone();
+        var vm = new PresetEditorViewModel(preset, loc, new HashSet<string> { "model3d" });
+        Assert.True(vm.ShowGcode); // CAD is still on
+        Assert.Equal(Filee.Core.Presets.GcodeView.Top, vm.GcodeView.Value);
+        Assert.Equal(Enum.GetValues<Filee.Core.Presets.GcodeView>().Select(v => loc[$"presets.gcode_view.{v}"]), vm.GcodeViews.Select(v => v.Label));
+
+        vm.GcodeView = vm.GcodeViews.Single(v => v.Value == Filee.Core.Presets.GcodeView.Thumbnail);
+        if (dark)
+            theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
+        try
+        {
+            var window = new PresetEditorWindow { DataContext = vm, Height = 900 };
+            window.Show();
+            Pump();
+            var card = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "GcodeCard");
+            Assert.True(card.IsEffectivelyVisible);
+            card.BringIntoView();
+            Pump();
+            Save(window, $"preset-gcode-view-{language}{(dark ? "-dark" : "")}.png");
+            window.Close();
+        }
+        finally
+        {
+            if (dark)
+                theme.Apply(new ThemeSettings(), language);
+        }
+        Assert.True(vm.Apply());
+        Assert.Equal(Filee.Core.Presets.GcodeView.Thumbnail, preset.Gcode.View);
+        Assert.Equal(Filee.Core.Presets.GcodeView.Thumbnail, new PresetEditorViewModel(preset, loc).GcodeView.Value);
+
+        // SVG and PDF take it too; DWG doesn't show it, and doesn't keep it.
+        foreach (var target in (string[])["svg", "pdf", "jpg"])
+        {
+            vm.Target = vm.Targets.Single(t => t.Value == target);
+            Assert.True(vm.ShowGcode, target);
+        }
+        vm.Target = vm.Targets.Single(t => t.Value == "dwg");
+        Assert.False(vm.ShowGcode);
+        Assert.True(vm.Apply());
+        Assert.Equal(Filee.Core.Presets.GcodeView.Top, preset.Gcode.View);
+
+        // With both of G-code's fields off, the card is left out, as its files' slots are; the view chosen stays.
+        preset.TargetFormat = "png";
+        preset.Gcode.View = Filee.Core.Presets.GcodeView.Isometric;
+        var off = new PresetEditorViewModel(preset, loc, new HashSet<string> { "model3d", "cad" });
+        Assert.False(off.ShowGcode);
+        Assert.True(off.Apply());
+        Assert.Equal(Filee.Core.Presets.GcodeView.Isometric, preset.Gcode.View);
     }
 
     [AvaloniaTheory]

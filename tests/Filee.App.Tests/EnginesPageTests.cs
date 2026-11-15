@@ -233,8 +233,12 @@ public class EnginesPageTests
             window.Close();
         }
 
-        var downloads = new EngineDownloadService(AppHost.Get<ConverterCatalog>(), AppHost.Get<ILocalizer>(), NullLogger<EngineDownloadService>.Instance);
-        var state = downloads.Packages.First(p => p.HasOfflineMenu && p.CanInstallFromFiles && !p.Package.ConverterIds.Contains("libreoffice"));
+        // An engines folder of the test's: the card is read again from disk after installing (#867).
+        var root = Directory.CreateTempSubdirectory("filee-engines-").FullName;
+        var downloads = new EngineDownloadService(AppHost.Get<ConverterCatalog>(), AppHost.Get<ILocalizer>(), NullLogger<EngineDownloadService>.Instance,
+            new EngineInstaller(new HttpClient(), root));
+        var state = downloads.Packages.First(p => p.HasOfflineMenu && p.CanInstallFromFiles && !p.Package.ConverterIds.Contains("libreoffice")
+            && p.Package.Components.All(c => EngineDownloads.Components[c].Kind is not ("oxt" or "ncnn-param" or "ncnn-bin")));
         var before = state.Status;
         var seen = new List<EnginePackageStatus>();
         state.PropertyChanged += (_, e) =>
@@ -261,16 +265,28 @@ public class EnginesPageTests
 
         // Installing from files goes through the same queue and ends installed.
         IReadOnlyList<string>? from = null;
-        downloads.InstallPackageFromFiles = async (_, files, progress, token) =>
+        downloads.InstallPackageFromFiles = async (package, files, progress, token) =>
         {
             from = files;
             progress.Report(new EngineInstallProgress(EngineInstallStage.Copying, state.Package.Components[0], 0.5, 5, 10));
             await Task.Delay(200, token);
+            foreach (var id in package.Components) // what the installer leaves: each component's marker
+            {
+                Directory.CreateDirectory(Path.Combine(root, id));
+                File.WriteAllText(Path.Combine(root, id, ".filee-component"), EngineDownloads.Components[id].Sha256);
+            }
         };
-        Wait(downloads.InstallAsync(state, ["tool.zip"]));
-        Assert.Equal(["tool.zip"], from);
-        Assert.Contains(EnginePackageStatus.Copying, seen);
-        Assert.Equal(EnginePackageStatus.Installed, state.Status);
+        try
+        {
+            Wait(downloads.InstallAsync(state, ["tool.zip"]));
+            Assert.Equal(["tool.zip"], from);
+            Assert.Contains(EnginePackageStatus.Copying, seen);
+            Assert.Equal(EnginePackageStatus.Installed, state.Status);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
     }
 
     private static T Wait<T>(Task<T> task)

@@ -20,6 +20,7 @@ internal sealed record CliOptions
     public FileSortOrder? Sort { get; set; }
     public int? Quality { get; set; }
     public string? Pages { get; set; }
+    public Filee.Core.Presets.IsoFileSystem? IsoFileSystem { get; set; }
 
     /// <summary>--split-every: PDF → PDF in files of this many pages (#1259).</summary>
     public int? SplitEvery { get; set; }
@@ -78,6 +79,12 @@ internal sealed record CliOptions
 
             switch (arg.ToLowerInvariant())
             {
+                case "--iso-filesystem":
+                    var filesystem = Value()?.ToLowerInvariant();
+                    if (filesystem == "joliet") options.IsoFileSystem = Filee.Core.Presets.IsoFileSystem.Joliet;
+                    else if (filesystem == "udf201") options.IsoFileSystem = Filee.Core.Presets.IsoFileSystem.Udf201;
+                    else options.Error ??= "--iso-filesystem must be joliet or udf201.";
+                    break;
                 case "-t" or "--to":
                     options.To = Value();
                     break;
@@ -209,6 +216,10 @@ internal sealed record CliOptions
                 "Use either --split-every or --split-parts.",
             "watch" when options.Inputs.Count != 1 => "Give exactly one folder to watch.",
             "watch" when options.Sort is not null => "--sort only works with 'filee convert'.",
+            "presets" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() != "check" =>
+                $"Unknown presets command '{options.Inputs[0]}'. Use 'filee presets' or 'filee presets check <folder>'.",
+            "presets" when options.Inputs.Count == 1 => "Give the folder of the shared preset to check, e.g. 'filee presets check presets/my-preset'.",
+            "presets" when options.Inputs.Count > 2 => "Give one folder at a time.",
             "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() is not ("install" or "remove" or "download") =>
                 $"Unknown engines command '{options.Inputs[0]}'. Use 'filee engines', 'filee engines install <id>', 'filee engines download <id> -o <folder>' or 'filee engines remove <id>'.",
             "engines" when options.Inputs.Count == 1 => $"Give the engine to {options.Inputs[0].ToLowerInvariant()}, e.g. 'filee engines {options.Inputs[0].ToLowerInvariant()} pandoc'.",

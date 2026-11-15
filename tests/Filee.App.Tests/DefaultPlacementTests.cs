@@ -20,6 +20,8 @@ public class DefaultPlacementTests(ITestOutputHelper output)
 {
     // Keys deliberately exclude face and order. Remove an entry when it no longer applies.
     private static readonly (string Donut, string Preset, string Reason)[] KnownGenericOnly = [];
+    private static readonly Lazy<Report> SharedReport = new(CreateReport);
+    private static int _reportBuilds;
 
     private enum Placement { Unusable, AsNamed, Generic, PlatformLimited }
 
@@ -46,7 +48,7 @@ public class DefaultPlacementTests(ITestOutputHelper output)
     [AvaloniaFact]
     public void Every_default_slot_runs_on_some_input_of_its_donut()
     {
-        var report = ClassifyAll();
+        var report = ReportForTest();
         var failures = report.Slots.Where(s => !s.Runnable).Select(s =>
             $"{s.Slot.Label} runs on none of [{string.Join(", ", s.Inputs.Select(i => i.Input.Id))}]; reasons: "
             + string.Join("; ", s.Inputs.Select(i => $"{i.Input.Id}={i.Reason}")));
@@ -56,7 +58,7 @@ public class DefaultPlacementTests(ITestOutputHelper output)
     [AvaloniaFact]
     public void No_default_slot_runs_only_as_a_generic_conversion()
     {
-        var report = ClassifyAll();
+        var report = ReportForTest();
         var genericOnly = report.Slots.Where(s => !s.Slot.Donut.IsFallback && s.GenericOnly).ToList();
         var failures = new List<string>();
         foreach (var slot in genericOnly)
@@ -77,10 +79,10 @@ public class DefaultPlacementTests(ITestOutputHelper output)
     [AvaloniaFact]
     public void No_default_slot_requests_two_special_jobs()
     {
-        var report = ClassifyAll();
+        var report = ReportForTest();
         var failures = report.Slots.Where(s => Requested(s.Preset).Count > 1)
             .Select(s => $"{s.Slot.Label} requests {string.Join(", ", Requested(s.Preset))}");
-        Assert.True(!failures.Any(), string.Join("\n", failures));
+        Assert.True(!failures.Any(), string.Join("\n", failures) + report.Diagnostics);
     }
 
     [AvaloniaFact]
@@ -96,8 +98,9 @@ public class DefaultPlacementTests(ITestOutputHelper output)
     [AvaloniaFact]
     public void Placement_report()
     {
-        var report = ClassifyAll();
+        var report = ReportForTest();
         output.WriteLine(report.Diagnostics);
+        output.WriteLine($"Shared report builds: {_reportBuilds}");
         var reported = new List<string>();
         foreach (var donut in report.Donuts)
         {
@@ -110,6 +113,9 @@ public class DefaultPlacementTests(ITestOutputHelper output)
             foreach (var slot in slots.Where(s => !s.GenericOnly && s.Inputs.Any(i => i.Placement == Placement.Generic)))
                 output.WriteLine($"  Partly generic: {slot.Slot.Label}; inputs "
                     + string.Join(", ", slot.Inputs.Where(i => i.Placement == Placement.Generic).Select(i => i.Input.Id)));
+            foreach (var slot in slots.Where(s => s.Preset.Pdf.CombinePages))
+                foreach (var input in slot.Inputs)
+                    output.WriteLine($"  Long image: {slot.Slot.Label}; input={input.Input.Id}; {input.Placement}");
             foreach (var slot in slots.Where(s => s.Inputs.Any(i => i.Placement == Placement.PlatformLimited)))
                 output.WriteLine($"  Platform-limited: {slot.Slot.Label}; inputs "
                     + string.Join(", ", slot.Inputs.Where(i => i.Placement == Placement.PlatformLimited).Select(i => i.Input.Id)));
@@ -129,16 +135,58 @@ public class DefaultPlacementTests(ITestOutputHelper output)
         var catalog = AppHost.Get<ConverterCatalog>();
         var loc = AppHost.Get<ILocalizer>();
         var availability = Availability(catalog, loc);
+        var planner = catalog.CreatePlanner(catalog.All.Select(c => c.Id).ToArray());
         var packageReason = loc.Format("engine.reason.needs_package", AllEnginesPackage(catalog, loc).Name);
         Placement Class(string preset, string input) =>
-            Classify(presets[preset], FormatRegistry.Get(input), availability, loc, packageReason).Placement;
+            Classify(presets[preset], FormatRegistry.Get(input), availability, planner, loc, packageReason).Placement;
 
         Assert.Equal(Placement.AsNamed, Class("extract-frames-png", "mp4"));
         Assert.Equal(Placement.Generic, Class("extract-frames-png", "png"));
         Assert.Equal(Placement.AsNamed, Class("extract-motion", "jpg"));
         Assert.Equal(Placement.Generic, Class("extract-motion", "png"));
+        Assert.Contains(nameof(PdfOptions.CombinePages), Requested(presets["pdf-long-image"]));
+        foreach (var input in new[] { "pdf", "docx", "pptx", "hwp", "hwpx" })
+            Assert.Equal(Placement.AsNamed, Class("pdf-long-image", input));
+        Assert.Equal(Placement.Generic, Class("pdf-long-image", "png"));
+        Assert.Equal(Placement.Generic, Class("pdf-long-image", "pub"));
         Assert.Empty(Requested(presets["to-png"]));
         Assert.Equal(Placement.AsNamed, Class("to-png", "png"));
+    }
+
+    [AvaloniaFact]
+    public void Long_image_follows_the_selected_route()
+    {
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<ILocalizer>();
+        var preset = new Preset { TargetFormat = "png", Pdf = new() { CombinePages = true } };
+        var office = new FakeConverter("office", [new ConversionEdge("docx", "pdf", Cost: 10)]);
+        var pdfium = new FakeConverter("pdfium", [
+            new ConversionEdge("pdf", "png", Cost: 10), new("pdf", "tiff", Cost: 10),
+        ]);
+        var paged = new ConverterCatalog([office, pdfium]);
+        Placement Class(ConverterCatalog catalog, Preset value, string input)
+        {
+            var planner = catalog.CreatePlanner(catalog.All.Select(c => c.Id).ToArray());
+            var packageReason = loc.Format("engine.reason.needs_package", AllEnginesPackage(catalog, loc).Name);
+            return Classify(value, FormatRegistry.Get(input), Availability(catalog, loc), planner, loc, packageReason).Placement;
+        }
+
+        Assert.Equal(Placement.AsNamed, Class(paged, preset, "docx"));
+        var direct = new ConverterCatalog([
+            office, pdfium, new FakeConverter("direct", [new ConversionEdge("docx", "png", Cost: 1)]),
+        ]);
+        var directPlanner = direct.CreatePlanner(direct.All.Select(c => c.Id).ToArray());
+        var route = Assert.IsType<Route>(directPlanner.Plan("docx", "png"));
+        var step = Assert.Single(route.Steps);
+        Assert.Equal("direct", step.Converter.Id);
+        Assert.Equal("docx", step.From);
+        Assert.Equal("png", step.To);
+        Assert.Equal(Placement.Generic, Class(direct, preset, "docx"));
+        var multipage = new Preset { TargetFormat = "tiff", Pdf = new() { CombinePages = true } };
+        Assert.Equal(Placement.Generic, Class(paged, multipage, "pdf"));
+        preset.Pdf.CombinePages = false;
+        Assert.Empty(Requested(preset));
+        Assert.False(CombinesPagesOf(preset, FormatRegistry.Get("docx"), directPlanner));
     }
 
     [AvaloniaFact]
@@ -189,8 +237,31 @@ public class DefaultPlacementTests(ITestOutputHelper output)
     [AvaloniaFact]
     public void Graph_fingerprint_is_stable_during_the_run()
     {
-        var report = ClassifyAll(); // Each traversal compares its own before/after fingerprint.
+        TestServices.EnsureInitialized("en");
+        var catalog = AppHost.Get<ConverterCatalog>();
+        ToolbarProfile[] probe = [new() { Id = "probe", Extensions = ["png"], PresetIds = ["to-png"] }];
+        var report = ClassifyAll(probe);
+        Assert.Equal(GraphFingerprint(catalog), report.Fingerprint);
         output.WriteLine(report.Diagnostics);
+        var originalPriority = catalog.Priority;
+        try
+        {
+            Assert.Throws<Xunit.Sdk.TrueException>(() => ClassifyAll(probe,
+                c => c.Priority = [.. originalPriority, c.All[0].Id]));
+        }
+        finally
+        {
+            catalog.Priority = originalPriority;
+        }
+    }
+
+    [AvaloniaFact]
+    public void Placement_report_is_computed_once()
+    {
+        var first = ReportForTest();
+        var second = ReportForTest();
+        Assert.Same(first, second);
+        Assert.Equal(1, _reportBuilds);
     }
 
     // The Folders donut has no extensions: what it gets is a folder.
@@ -232,11 +303,25 @@ public class DefaultPlacementTests(ITestOutputHelper output)
             jobs.Add(nameof(Preset.JoinsIntoOneMedia));
         if (preset.JoinsImages)
             jobs.Add(nameof(Preset.JoinsImages));
+        if (preset.Pdf.CombinePages)
+            jobs.Add(nameof(PdfOptions.CombinePages));
         return jobs;
     }
 
+    private static bool CombinesPagesOf(Preset preset, FileFormat input, RoutePlanner planner)
+    {
+        if (!preset.Pdf.CombinePages)
+            return false;
+        var target = preset.TargetFormat == BuiltInData.SameAsSource ? input.Id : preset.TargetFormat;
+        var route = planner.Plan(input.Id, target, preset.SavesFramesOf(input.Id),
+            motionPhoto: preset.ExtractsMotionOf(input.Id), livePhoto: preset.MakesLivePhotoOf(input.Id),
+            ocr: preset.RecognizesTextOf(input.Id), translate: preset.TranslatesDocument(input.Id));
+        return route?.Steps.Any(step => step.Converter.Id == "pdfium" && step.From == "pdf"
+            && step.To is not ("tiff" or "gif" or "apng" or "mng")) == true;
+    }
+
     private static InputResult Classify(Preset preset, FileFormat input, PresetAvailability availability,
-        ILocalizer loc, string packageReason)
+        RoutePlanner planner, ILocalizer loc, string packageReason)
     {
         var reason = availability.Check(preset, [input]);
         if (reason == loc["engine.reason.unsupported_platform"])
@@ -253,6 +338,7 @@ public class DefaultPlacementTests(ITestOutputHelper output)
             // Availability already checks the source categories for the two joins.
             nameof(Preset.JoinsIntoOneMedia) => preset.JoinsIntoOneMedia,
             nameof(Preset.JoinsImages) => preset.JoinsImages,
+            nameof(PdfOptions.CombinePages) => CombinesPagesOf(preset, input, planner),
             _ => throw new InvalidOperationException(job),
         });
         return new(input, asNamed ? Placement.AsNamed : Placement.Generic, reason);
@@ -266,7 +352,20 @@ public class DefaultPlacementTests(ITestOutputHelper output)
         new(catalog, loc, [AllEnginesPackage(catalog, loc)],
             () => catalog.CreatePlanner(catalog.All.Select(c => c.Id).ToArray()));
 
-    private static Report ClassifyAll()
+    private static Report ReportForTest()
+    {
+        TestServices.EnsureInitialized("en");
+        return SharedReport.Value;
+    }
+
+    private static Report CreateReport()
+    {
+        _reportBuilds++;
+        return ClassifyAll();
+    }
+
+    private static Report ClassifyAll(IReadOnlyList<ToolbarProfile>? donuts = null,
+        Action<ConverterCatalog>? afterSnapshot = null)
     {
         TestServices.EnsureInitialized("en");
         var catalog = AppHost.Get<ConverterCatalog>();
@@ -277,17 +376,20 @@ public class DefaultPlacementTests(ITestOutputHelper output)
         var availability = Availability(catalog, loc);
         var packageReason = loc.Format("engine.reason.needs_package", AllEnginesPackage(catalog, loc).Name);
         var presets = BuiltInData.CreatePresets().ToDictionary(p => p.Id);
-        var donuts = BuiltInData.CreateProfiles();
+        donuts ??= BuiltInData.CreateProfiles();
         var environment = EnvironmentSignature(catalog);
         var before = GraphFingerprint(catalog);
+        afterSnapshot?.Invoke(catalog);
+        var planner = catalog.CreatePlanner(catalog.All.Select(c => c.Id).ToArray());
         var classified = new List<ClassifiedSlot>();
         foreach (var donut in donuts)
             foreach (var slot in Slots(donut, presets))
             {
-                Assert.True(presets.ContainsKey(slot.Id), $"{slot.Label} is not a known preset");
+                Assert.True(presets.ContainsKey(slot.Id),
+                    $"{slot.Label} is not a known preset\nGraph fingerprint: {before}\n{environment}");
                 var preset = presets[slot.Id];
                 classified.Add(new(slot, preset, InputsOf(donut)
-                    .Select(input => Classify(preset, input, availability, loc, packageReason)).ToList()));
+                    .Select(input => Classify(preset, input, availability, planner, loc, packageReason)).ToList()));
             }
         var after = GraphFingerprint(catalog);
         Assert.True(before == after, $"Graph changed during ClassifyAll: {before} -> {after}\n{environment}");

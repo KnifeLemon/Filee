@@ -1,6 +1,7 @@
 // Built-in vector graphics: SVG/SVGZ → PDF (vector) and → raster images with Svg.Skia and SkiaSharp, SVG ↔ SVGZ,
-// SVG → DXF (ACadSharp), raster images → SVG (tracing) and Illustrator files → PDF. Other vector formats reach PNG,
-// JPG, … through PDF and PDFium.
+// SVG → DXF (ACadSharp), raster images → SVG (tracing), Illustrator files → PDF, and Obsidian's boards (JSON Canvas)
+// → SVG and Markdown; embroidery (DST), plot (HP-GL) and Gerber PCB files are drawn as SVG first. Other vector formats
+// reach PNG, JPG, … through PDF and PDFium.
 
 using System.IO.Compression;
 using System.Text;
@@ -8,6 +9,8 @@ using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
+using Filee.Engines.Text;
+using Filee.Engines.Vector.Canvas;
 using Filee.Engines.Vector.Tracing;
 
 namespace Filee.Engines.Vector;
@@ -45,6 +48,12 @@ public sealed class VectorConverter : IConverter, IImageTransformer
         new("dst", "svg"),
         // HP-GL plot files: their pen moves as lines (HpglPlot), PDF / PNG / ... from there.
         new("plt", "svg"),
+        // Gerber PCB layers: drawn in the layer's colour (GerberSvg), PDF / PNG / DXF / ... from there.
+        new("gerber", "svg"),
+        // Obsidian's boards (JSON Canvas): drawn as SVG (PDF, PNG, … from there), or their text as Markdown (DOCX, HTML,
+        // TXT, … from there). Markdown costs more, so PDF and pictures are the board's drawing, not its text.
+        new("canvas", "svg"),
+        new("canvas", "md", 15),
         // Raster images are traced (other raster formats through PNG, e.g. ICNS; never vector files or documents).
         .. ImageEncoder.Readable.Select(source => new ConversionEdge(source, "svg", TraceCost, ImageSourcesOnly: true)),
     ];
@@ -60,6 +69,9 @@ public sealed class VectorConverter : IConverter, IImageTransformer
             ("svgz", "svg") => await Task.Run(() => Decompress(step), cancellationToken),
             ("dst", "svg") => await Task.Run(() => Embroidery(step), cancellationToken),
             ("plt", "svg") => await Task.Run(() => Plot(step), cancellationToken),
+            ("gerber", "svg") => await Task.Run(() => PcbLayer(step, cancellationToken), cancellationToken),
+            ("canvas", "svg") => await Task.Run(() => CanvasDrawing(step, cancellationToken), cancellationToken),
+            ("canvas", "md") => await Task.Run(() => CanvasText(step, cancellationToken), cancellationToken),
             (_, "svg") => await Task.Run(() => RasterTracing.Run(step, progress, cancellationToken), cancellationToken),
             (_, "dxf") => await Task.Run(() => ToDxf(step, cancellationToken), cancellationToken),
             (_, "pdf") => await Task.Run(() => ToPdf(step, cancellationToken), cancellationToken),
@@ -86,6 +98,43 @@ public sealed class VectorConverter : IConverter, IImageTransformer
         if (output is null)
             return [];
         File.WriteAllText(output, svg, new UTF8Encoding(false));
+        return [output];
+    }
+
+    private static IReadOnlyList<string> PcbLayer(ConversionStep step, CancellationToken ct)
+    {
+        if (new FileInfo(step.InputPath).Length > Gerber.GerberReader.MaxFileBytes)
+            throw new InvalidDataException($"The Gerber file is larger than {Gerber.GerberReader.MaxFileBytes / (1024 * 1024)} MB.");
+        // The board background is for the pictures; on the way to DXF / DWG it would become an outline around the board.
+        var background = step.Preset.TargetFormat is not ("dxf" or "dwg");
+        var svg = Gerber.GerberSvg.ToSvg(File.ReadAllBytes(step.InputPath), step.InputPath, background, ct);
+        var output = step.Output.Allocate("svg");
+        if (output is null)
+            return [];
+        File.WriteAllText(output, svg, new UTF8Encoding(false));
+        return [output];
+    }
+
+    private static IReadOnlyList<string> CanvasDrawing(ConversionStep step, CancellationToken ct)
+    {
+        var svg = CanvasRenderer.Render(step.InputPath, ct);
+        var output = step.Output.Allocate("svg");
+        if (output is null)
+            return [];
+        File.WriteAllText(output, svg, new UTF8Encoding(false));
+        return [output];
+    }
+
+    private static IReadOnlyList<string> CanvasText(ConversionStep step, CancellationToken ct)
+    {
+        var canvas = JsonCanvas.Read(step.InputPath, ct);
+        var output = step.Output.Allocate("md");
+        if (output is null)
+            return [];
+        var files = new CanvasFiles(Path.GetDirectoryName(Path.GetFullPath(step.InputPath))!);
+        var markdown = CanvasMarkdown.Write(canvas, FormatRegistry.NameWithoutExtension(step.InputPath), files,
+            new MarkdownPictures(output, step.Output, step.WorkDirectory), ct);
+        File.WriteAllText(output, markdown, new UTF8Encoding(false));
         return [output];
     }
 
