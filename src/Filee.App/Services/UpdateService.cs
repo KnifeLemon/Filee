@@ -971,9 +971,43 @@ public sealed partial class UpdateService : ObservableObject
     internal static string ExtractLinuxArchive(string archivePath, string destinationDirectory) =>
         ExtractUnixArchive(archivePath, destinationDirectory, "Filee", "filee-cli");
 
-    /// <summary>Extracts a macOS release archive and requires a complete Filee application bundle.</summary>
-    internal static string ExtractMacArchive(string archivePath, string destinationDirectory) =>
-        ExtractUnixArchive(archivePath, destinationDirectory, Path.Combine("Filee.app", "Contents", "MacOS", "Filee"), null);
+    /// <summary>
+    /// Extracts a macOS release archive after validating every entry with the managed reader. The system tar extractor
+    /// is required here because macOS code signatures for the managed assemblies are stored in extended attributes.
+    /// </summary>
+    internal static string ExtractMacArchive(string archivePath, string destinationDirectory)
+    {
+        var validationDirectory = Path.Combine(destinationDirectory, ".validation-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // Keep the same path, link, and payload checks used by Linux before handing the archive to tar.
+            ExtractUnixArchive(archivePath, validationDirectory, Path.Combine("Filee.app", "Contents", "MacOS", "Filee"), null);
+        }
+        finally
+        {
+            if (Directory.Exists(validationDirectory))
+                Directory.Delete(validationDirectory, recursive: true);
+        }
+
+        Directory.CreateDirectory(destinationDirectory);
+        var tar = new ProcessStartInfo("/usr/bin/tar")
+        {
+            UseShellExecute = false,
+            RedirectStandardError = true,
+        };
+        tar.ArgumentList.Add("-xzf");
+        tar.ArgumentList.Add(archivePath);
+        tar.ArgumentList.Add("-C");
+        tar.ArgumentList.Add(destinationDirectory);
+
+        using var process = Process.Start(tar) ?? throw new InvalidDataException("Could not start the macOS tar extractor.");
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+            throw new InvalidDataException($"macOS archive extraction failed: {error.Trim()}");
+
+        return ValidateExtractedUnixPayload(destinationDirectory, Path.Combine("Filee.app", "Contents", "MacOS", "Filee"), null);
+    }
 
     private static string ExtractUnixArchive(string archivePath, string destinationDirectory, string executablePath, string? cliPath)
     {
@@ -1126,7 +1160,12 @@ public sealed partial class UpdateService : ObservableObject
             }
         }
 
-        var rootTrimmed = Path.TrimEndingDirectorySeparator(fullDestRoot);
+        return ValidateExtractedUnixPayload(fullDestRoot, executablePath, cliPath);
+    }
+
+    private static string ValidateExtractedUnixPayload(string destinationDirectory, string executablePath, string? cliPath)
+    {
+        var rootTrimmed = Path.TrimEndingDirectorySeparator(Path.GetFullPath(destinationDirectory));
         string payloadDir;
         if (File.Exists(Path.Combine(rootTrimmed, "install.sh")))
         {

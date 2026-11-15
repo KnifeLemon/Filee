@@ -40,6 +40,10 @@ is_filee_bundle() {
     [ -d "$1" ] && [ ! -L "$1" ] && [ -x "$1/Contents/MacOS/Filee" ] && [ "$(bundle_id "$1")" = 'com.filee.app' ]
 }
 
+has_valid_signature() {
+    /usr/bin/codesign --verify --deep --strict "$1" >/dev/null 2>&1
+}
+
 if ! is_filee_bundle "$source_dir/Filee.app"; then
     printf '%s\n' "Payload validation failed: $source_dir/Filee.app is not a Filee application bundle." >&2
     exit 1
@@ -57,12 +61,13 @@ if [ "$upgrade" = true ]; then
     fi
 
     parent_dir=$(dirname -- "$install_dir")
-    # /Applications is normally root-owned. Run precisely this verified script and target through AppleScript arguments,
-    # not a concatenated shell command, so paths cannot change what receives administrator rights.
+    # /Applications is normally root-owned. The privileged shell first copies the payload into a root-owned workspace,
+    # verifies both bundles there, and performs the swap itself. No payload script runs with administrator privileges.
     if [ ! -w "$parent_dir" ]; then
-        exec /usr/bin/osascript - "$source_dir/install.sh" "$install_dir" <<'APPLESCRIPT'
+        exec /usr/bin/osascript - "$source_dir" "$install_dir" <<'APPLESCRIPT'
 on run argv
-  do shell script (quoted form of item 1 of argv) & " --upgrade " & (quoted form of item 2 of argv) with administrator privileges
+  set rootCommand to "set -eu; work_dir=$(/usr/bin/mktemp -d /private/tmp/filee-update.XXXXXX); cleanup() { /bin/rm -rf -- \"$work_dir\"; }; trap cleanup EXIT HUP INT TERM; /usr/bin/ditto \"$1\" \"$work_dir/payload\"; source_app=\"$work_dir/payload/Filee.app\"; staged_app=\"$work_dir/staged.app\"; previous_app=\"$work_dir/previous.app\"; source_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$source_app/Contents/Info.plist\" 2>/dev/null || true); target_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$2/Contents/Info.plist\" 2>/dev/null || true); [ -d \"$source_app\" ] && [ ! -L \"$source_app\" ] && [ -x \"$source_app/Contents/MacOS/Filee\" ] && [ \"$source_id\" = com.filee.app ] && [ -d \"$2\" ] && [ ! -L \"$2\" ] && [ -x \"$2/Contents/MacOS/Filee\" ] && [ \"$target_id\" = com.filee.app ] && /usr/bin/codesign --verify --deep --strict \"$source_app\" || exit 1; /usr/bin/ditto \"$source_app\" \"$staged_app\"; /usr/bin/codesign --verify --deep --strict \"$staged_app\"; /bin/mv \"$2\" \"$previous_app\"; if ! /bin/mv \"$staged_app\" \"$2\"; then /bin/mv \"$previous_app\" \"$2\" || true; exit 1; fi; /usr/bin/xattr -dr com.apple.quarantine \"$2\" 2>/dev/null || true"
+  do shell script "/bin/sh -c " & quoted form of rootCommand & " filee-root-update " & (quoted form of item 1 of argv) & " " & (quoted form of item 2 of argv) with administrator privileges
 end run
 APPLESCRIPT
     fi
@@ -76,6 +81,10 @@ APPLESCRIPT
     /usr/bin/ditto "$source_dir/Filee.app" "$staged_app"
     if ! is_filee_bundle "$staged_app"; then
         printf '%s\n' 'Staged payload validation failed.' >&2
+        exit 1
+    fi
+    if ! has_valid_signature "$staged_app"; then
+        printf '%s\n' 'Staged payload signature verification failed; the existing Filee app was not changed.' >&2
         exit 1
     fi
     if ! mv "$install_dir" "$previous_app"; then
