@@ -22,6 +22,9 @@
 // - Floating pictures in headers and footers (#1152): rhwp's way with them left out what comes after them; see
 //   GroupFloatingHeaderPictures.
 //
+// - Centred and bottom-aligned text boxes (#1352): without stored lines rhwp took their text as 0 high and drew it
+//   below where it belongs (a slide title over its subtitle); see RhwpInput.TextBoxes.
+//
 // rhwp's equation fonts are Latin Modern Math, STIX Two and Times New Roman; without the first two or Arial Unicode MS
 // (which Office installs) ∪ ∈ ⊂ ∘ ∼ came out empty, so Cambria Math (part of Windows) is asked for then.
 
@@ -111,6 +114,8 @@ internal static partial class RhwpInput
                     changed[name] = xml;
                     changed["Contents/header.xml"] = header;
                 }
+                if (AlignTextBoxes(xml, header, lookup))
+                    changed[name] = xml;
             }
             if (changed.Count == 0)
                 return null;

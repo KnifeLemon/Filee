@@ -170,7 +170,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 84;
+    public const int CurrentSchemaVersion = 94;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -183,6 +183,13 @@ public sealed class AppSettings
     public bool ContextMenuEnabled { get; set; } = true;
 
     public bool CheckForUpdates { get; set; } = true;
+
+    /// <summary>
+    /// The proxy Filee's downloads go through (Settings → General → Network), such as <c>http://127.0.0.1:7890</c> or
+    /// <c>socks5://host:1080</c>; see <see cref="Web.ProxySetting"/>. Null or empty: the system proxy and HTTPS_PROXY.
+    /// Missing in older settings, which reads as empty, so it needs no schema step.
+    /// </summary>
+    public string? Proxy { get; set; }
 
     /// <summary>What closing the main window does. A value from a newer Filee reads as <see cref="CloseAction.Ask"/>.</summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<CloseAction>))]
@@ -333,6 +340,14 @@ public sealed class AppSettings
     /// once. A Filee from before it skips the property, so it needs no schema step.
     /// </summary>
     public WindowBounds? MainWindow { get; set; }
+
+    /// <summary>
+    /// Where the Donut toolbar page's donut on screen was dragged to: its centre against the main window's top-left
+    /// corner, in screen pixels (points on macOS) (<see cref="WindowBounds.X"/>, <see cref="WindowBounds.Y"/>), so it
+    /// opens there beside the window again. Null until it has been dragged, and again once it is dropped onto the
+    /// window. A Filee from before it skips the property, so it needs no schema step.
+    /// </summary>
+    public WindowBounds? DonutPreviewPlace { get; set; }
 
     /// <summary>
     /// The fields turned off on the Fields page (ids of <see cref="Formats.FormatFields.All"/>): a format that belongs only to

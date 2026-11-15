@@ -181,6 +181,33 @@ internal static partial class MediaEncoding
     }
 
     /// <summary>
+    /// The arguments that write <paramref name="edit"/> of the sound <paramref name="input"/> (no picture) as
+    /// <paramref name="target"/>: the parts through one filter graph, the picture of the file's cover kept where the
+    /// format holds one, encoded with the preset's quality and bitrate. The sound is mixed to 48 kHz stereo by the graph.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The file has no sound.</exception>
+    /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
+    internal static List<string> ClipSoundArguments(string input, string output, string target, ClipEdit edit, MediaOptions options,
+        MediaInfo info, int musicTrack = 0)
+    {
+        var audio = info.Audio ?? throw new InvalidOperationException("The file has no audio track.");
+        if (!AudioTargets.TryGetValue(target, out var spec))
+            throw new NotSupportedException($"FFmpeg cannot write '{target}'.");
+        var graph = ClipGraphOf(input, edit, audio: true, width: 0, height: 0, fps: "1", video: false, music: true,
+            audioTrack: audio.Ordinal, musicTrack: musicTrack);
+        List<string> args = [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[a]"];
+        if (info.CoverStreamIndex is { } cover && CoverTargets.Contains(target))
+            args.AddRange(["-map", $"0:{cover}", "-c:v", "copy", "-disposition:v:0", "attached_pic"]);
+        var codec = AudioEncoder(target, spec.AudioCodec, options);
+        args.AddRange(AudioCodecArguments(target, codec, options, audio, inVideo: false));
+        args.AddRange(ChannelAndRateArguments(target, codec, options, audio.SampleRate));
+        args.AddRange(MetadataArguments());
+        args.AddRange(ContainerArguments(target));
+        args.AddRange(["-f", spec.Muxer, "-progress", "pipe:1", output]);
+        return args;
+    }
+
+    /// <summary>
     /// The arguments that play <paramref name="edit"/> in the clip window: its pictures <paramref name="height"/>
     /// pixels high as raw BGRA frames at <paramref name="fps"/> on stdout.
     /// </summary>
@@ -194,13 +221,15 @@ internal static partial class MediaEncoding
     }
 
     /// <summary>The arguments that play the sound of <paramref name="edit"/>: a WAV stream on stdout (for ffplay).</summary>
+    /// <param name="video">The video's picture stream; null for a sound.</param>
     /// <param name="hasAudio">The video has sound of its own (else only the music plays).</param>
     /// <param name="audioTrack">The selected audio track's ordinal in the input file.</param>
     /// <param name="musicTrack">The music file's audio track ordinal.</param>
-    internal static List<string> ClipPreviewAudio(string input, ClipEdit edit, VideoStreamInfo video, bool hasAudio = true, int audioTrack = 0,
+    internal static List<string> ClipPreviewAudio(string input, ClipEdit edit, VideoStreamInfo? video, bool hasAudio = true, int audioTrack = 0,
         int musicTrack = 0)
     {
-        var (width, height) = ClipSize(video, 90);
+        // A sound has no picture: the graph has none either, so any size will do.
+        var (width, height) = video is null ? (2, 2) : ClipSize(video, 90);
         var graph = ClipGraphOf(input, edit, hasAudio, width, height, "10", video: false, audioTrack: audioTrack, musicTrack: musicTrack);
         return [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[a]", "-c:a", "pcm_s16le", "-f", "wav", "pipe:1"];
     }

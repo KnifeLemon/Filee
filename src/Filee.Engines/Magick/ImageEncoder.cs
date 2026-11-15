@@ -12,17 +12,19 @@ internal static class ImageEncoder
 {
     /// <summary>
     /// Image formats ImageMagick can read (see <see cref="ImageReader"/> for RAW, layered and metafile sources).
-    /// Camera RAW is decoded by LibRaw; XCF, HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF
+    /// Camera RAW is decoded by LibRaw; HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF
     /// are Windows metafiles, which ImageMagick renders through GDI+ on Windows only (<see cref="Metafiles"/>). APNG is
     /// read and written by Filee's own <see cref="Apng"/> (its frames decoded and encoded by ImageMagick); FITS is read
-    /// by Filee's own <see cref="Fits"/> and written to TIFF by <see cref="FitsRendering"/>.
+    /// by Filee's own <see cref="Fits"/> and written to TIFF by <see cref="FitsRendering"/>. ANI (an animated cursor) is
+    /// read by Filee's own <see cref="Ani"/>, its frames decoded by ImageMagick. GIMP's XCF is read and written by Filee's
+    /// own <see cref="Xcf"/> and <see cref="XcfWriter"/>.
     /// </summary>
     public static readonly string[] Readable =
     [
         "png", "jpg", "webp", "tiff", "bmp", "gif", "ico", "avif", "heic",
         "jxl", "jp2", "psd", "psb", "tga", "ppm", "xcf", "raw",
         "apng", "mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff",
-        "dcm", "pcd", "exr", "hdr", "fits",
+        "dcm", "pcd", "exr", "hdr", "fits", "ani",
     ];
 
     /// <summary>Vector metafiles ImageMagick rasterizes (Windows only: it uses GDI+).</summary>
@@ -39,15 +41,19 @@ internal static class ImageEncoder
         "apng", "mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff",
     ];
 
-    /// <summary>Formats that store several frames/pages in one file.</summary>
-    private static readonly HashSet<string> MultiFrame = ["tiff", "gif", "apng", "mng"];
+    /// <summary>
+    /// Formats that store several frames/pages in one file. A Valve texture (VTF) is an animated texture with them
+    /// (<see cref="VtfWriter"/>).
+    /// </summary>
+    private static readonly HashSet<string> MultiFrame = ["tiff", "gif", "apng", "mng", "vtf"];
 
     /// <summary>
-    /// Formats whose frames are an animation; an AVIF only when it is an image sequence (<see cref="AvifSequence"/>).
+    /// Formats whose frames are an animation; an AVIF only when it is an image sequence (<see cref="AvifSequence"/>), and
+    /// an animated cursor (<see cref="Ani"/>), read only.
     /// Between these, all frames are kept with their timing (an animated GIF becomes an animated WebP, JPEG XL or AVIF
     /// and the other way round); any other target gets the first frame.
     /// </summary>
-    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl", AvifSequence.Format];
+    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl", AvifSequence.Format, "ani"];
 
     /// <summary>
     /// The edge an image engine offers from a picture in <paramref name="source"/> to <paramref name="target"/>. GIF
@@ -90,9 +96,10 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Packages of a picture and more, of which the picture is read (<see cref="ImageReader"/>): an iPhone LIVP, a Krita
-    /// KRA, the icon of a Windows program or library (<see cref="ProgramIcon"/>).
+    /// KRA, a Paint.NET PDN (<see cref="PaintNet"/>), a Valve texture (VTF, <see cref="Vtf"/>), the icon of a Windows
+    /// program or library (<see cref="ProgramIcon"/>).
     /// </summary>
-    public static readonly string[] Packages = ["livp", "kra", FormatRegistry.Program];
+    public static readonly string[] Packages = ["livp", "kra", "pdn", "vtf", FormatRegistry.Program];
 
     /// <summary>
     /// Every format ImageMagick reads as input: the raster formats, the picture of <see cref="Packages"/> and, on
@@ -161,7 +168,7 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Chooses which frames of a (possibly multi-frame) source are converted.
-    /// ICO, CUR, DDS, a program's icon: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL, AVIF): every frame
+    /// ICO, CUR, DDS, a program's icon: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL, AVIF, ANI): every frame
     /// for an animated or TIFF target, else the first frame.
     /// PSD/PSB: the composite (frame 0; any further frames are layers). Otherwise: all frames/pages.
     /// </summary>
@@ -184,13 +191,16 @@ internal static class ImageEncoder
 
     /// <summary>
     /// The longest side a format stores: JPEG 65,535 px (65,500 keeps clear of encoder rounding), WebP 16,383 px,
-    /// AVIF 16,384 px. Other formats take more than any image Filee makes.
+    /// AVIF 16,384 px, Paint.NET 65,535 px, GIMP 524,288 px. Other formats take more than any image Filee makes.
     /// </summary>
     public static double MaxSide(string targetFormat) => targetFormat switch
     {
         "jpg" or "jpeg" => 65_500,
         "webp" => 16_383,
         "avif" => 16_384,
+        "pdn" => PaintNetWriter.MaxSide,
+        "xcf" => XcfWriter.MaxSide,
+        "vtf" => VtfWriter.MaxSide,
         _ => double.PositiveInfinity,
     };
 
@@ -463,6 +473,30 @@ internal static class ImageEncoder
         ImageOptions? options = null, string? sourcePath = null, bool animation = false)
     {
         var written = new List<string>();
+        if (targetFormat is "pdn" or "xcf")
+        {
+            // Paint.NET's and GIMP's own files, written by Filee (PaintNetWriter, XcfWriter): one picture per file, as
+            // one layer.
+            for (var i = 0; i < frames.Count; i++)
+            {
+                var layered = output.Allocate(targetFormat, frames.Count > 1 ? $"_p{i + 1}" : null);
+                if (layered is null)
+                    continue;
+                WriteImage(frames[i], layered, targetFormat);
+                written.Add(layered);
+            }
+            return written;
+        }
+        if (targetFormat == "vtf")
+        {
+            // Valve's texture, written by Filee (VtfWriter): every frame in one file, an animated texture for several.
+            var vtf = output.Allocate("vtf");
+            if (vtf is null)
+                return written;
+            VtfWriter.Write(frames, vtf);
+            written.Add(vtf);
+            return written;
+        }
         var (format, extension) = OutputFormat(targetFormat, options ?? new ImageOptions(), sourcePath);
 
         if (targetFormat == "apng")
@@ -500,6 +534,9 @@ internal static class ImageEncoder
             // Animations and multi-page files written above aren't fitted: the queue refuses them when they're too large.
             if (options is { MaxSizeMb: > 0 } or { MinSizeMb: > 0 })
                 FitToSize(frames[i], path, format, SizeLimit.Bytes(options.MaxSizeMb), SizeLimit.MinimumBytes(options.MinSizeMb), options.MaxSizeKeepsPixels);
+            // ImageMagick writes a CUR as an icon: made a cursor, its hotspot at the top left (CursorFile).
+            if (targetFormat == "cur")
+                CursorFile.Write(path);
             written.Add(path);
         }
         return written;
@@ -590,11 +627,21 @@ internal static class ImageEncoder
         }
     }
 
-    /// <summary>Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>).</summary>
+    /// <summary>
+    /// Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>, Paint.NET's PDN through
+    /// <see cref="PaintNetWriter"/>, GIMP's XCF through <see cref="XcfWriter"/>, a Valve texture through
+    /// <see cref="VtfWriter"/>).
+    /// </summary>
     public static void WriteImage(IMagickImage<byte> image, string path, string targetFormat)
     {
         if (targetFormat == "apng")
             Apng.Write([image], path);
+        else if (targetFormat == "pdn")
+            PaintNetWriter.Write(image, path);
+        else if (targetFormat == "xcf")
+            XcfWriter.Write(image, path);
+        else if (targetFormat == "vtf")
+            VtfWriter.Write([image], path);
         else
             image.Write(path, ToMagickFormat(targetFormat));
     }

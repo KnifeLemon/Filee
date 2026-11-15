@@ -91,6 +91,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **Windows 10/11**: Jalankan `Filee-<version>-win-Setup.exe`, atau ekstrak `win-Portable.zip` lalu jalankan `Filee.exe`.
+  - Di PC Windows on ARM (Settings → System → About menampilkan "ARM-based processor"), gunakan `win-arm64-Setup.exe` atau `win-arm64-Portable.zip`: berjalan secara native, bukan lewat emulasi x64.
   - Installer bawaan Filee mendukung berbagai bahasa dan tidak memerlukan dependensi tambahan di PC.
   - Opsi instalasi mencakup: integrasi menu klik kanan Explorer, jalan otomatis saat login (*start at sign-in*), perintah CLI `filee`, serta engine opsional.
   - Untuk instalasi senyap (*silent install*), gunakan opsi bawaan Inno Setup (`/VERYSILENT /SUPPRESSMSGBOXES`).

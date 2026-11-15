@@ -42,6 +42,8 @@ public static class FormatRegistry
         new("dds", "DDS", FormatCategory.Image, ["dds"]),
         new("pcx", "PCX", FormatCategory.Image, ["pcx"]),
         new("cur", "CUR", FormatCategory.Image, ["cur"]),
+        // Windows animated cursor (#1365), read by Filee: every step with its time, or the first one as a picture.
+        new("ani", "Animated cursor (ANI)", FormatCategory.Image, ["ani"], Writable: false),
         new("xpm", "XPM", FormatCategory.Image, ["xpm"]),
         new("xbm", "XBM", FormatCategory.Image, ["xbm"]),
         new("wbmp", "WBMP", FormatCategory.Image, ["wbmp"]),
@@ -59,10 +61,16 @@ public static class FormatRegistry
         new("fits", "FITS", FormatCategory.Image, ["fits", "fts"], Writable: false),
         // Read on Windows only, with its own codec (HDR screenshots of Windows are JPEG XR).
         new("jxr", "JPEG XR", FormatCategory.Image, ["jxr", "wdp", "hdp"], Writable: false),
-        new("xcf", "XCF", FormatCategory.Image, ["xcf"], Writable: false),
+        // GIMP's own file, read and written by Filee: layers merged for other pictures, kept between XCF, PDN and PSD.
+        new("xcf", "GIMP (XCF)", FormatCategory.Image, ["xcf"]),
         // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it. ".kra~" is the
         // backup Krita keeps of the previous save, the same file under another name (#1077).
         new("kra", "Krita (KRA)", FormatCategory.Image, ["kra", "kra~"], Writable: false),
+        // Paint.NET's own file, read and written by Filee: layers merged for other pictures, kept between PDN and PSD.
+        new("pdn", "Paint.NET (PDN)", FormatCategory.Image, ["pdn"]),
+        // Valve's texture for the Source engine (Garry's Mod, Counter-Strike: Source, Team Fortress 2), read and written by
+        // Filee: DXT1 or DXT5 with every mipmap, the frames of an animated texture.
+        new("vtf", "Valve Texture (VTF)", FormatCategory.Image, ["vtf"]),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
         // A Windows program or library (#1188), read as its icon: the picture Explorer shows for the file.
@@ -86,6 +94,9 @@ public static class FormatRegistry
         // Tajima embroidery designs: the stitches drawn as lines (issue #397).
         new("dst", "DST", FormatCategory.Vector, ["dst"], Writable: false),
         new("odg", "ODG", FormatCategory.Vector, ["odg"]),
+        // Obsidian's visual boards (JSON Canvas 1.0): cards, groups and the lines between them, read by Filee itself and
+        // drawn as SVG (then PDF and pictures), or their text as Markdown. A .canvas that isn't one is refused.
+        new("canvas", "Obsidian Canvas", FormatCategory.Vector, ["canvas"], Writable: false),
         new("fodg", "FODG", FormatCategory.Vector, ["fodg"], Writable: false),
 
         // PDF
@@ -155,12 +166,12 @@ public static class FormatRegistry
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
 
         // Plain text / markup
-        // Text logs, source code, database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
+        // Text logs, source code (Arduino and Processing sketches too), database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
         // text, never executed, compiled or translated (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660,
         // #864, #828, #980, #997, #854, #1176).
         new("txt", "TXT", FormatCategory.Text,
             ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
-             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java"]),
+             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java", "ino", "pde"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
         // A web page saved with its pictures in one MIME file (Chrome, Edge, Word); read as the page it holds.
@@ -254,6 +265,9 @@ public static class FormatRegistry
         // Dahua and similar DVR / NVR recordings (#594): FFmpeg's dhav demuxer reads them (H.264 / H.265 video, often
         // with G.711 or AAC sound).
         new("dav", "DAV", FormatCategory.Video, ["dav"], Writable: false),
+        // Wisenet WAVE / Nx Witness exports: a layout file whose camera recordings are Matroska streams, read by FFmpeg
+        // from inside the file (NovExport). Password-protected exports are encrypted and refused.
+        new("nov", "NOV", FormatCategory.Video, ["nov"], Writable: false),
         // Bink Video, the game cutscene format of RAD Game Tools (#751): FFmpeg's bink demuxer reads it. Never a target.
         new("bik", "BIK", FormatCategory.Video, ["bik"], Writable: false),
         // FLIC, the animations of Autodesk Animator (.fli) and Animator Pro (.flc), also in DOS games and pixel-art tools
@@ -327,6 +341,12 @@ public static class FormatRegistry
         // Adobe extension packages for After Effects, Premiere Pro, Photoshop … (#1382): signed ZIPs. Never a target,
         // since installing one needs the signature its developer makes with Adobe's ZXPSignCmd.
         new("zxp", "ZXP (Adobe extension)", FormatCategory.Archive, ["zxp"], Writable: false),
+        // NuGet packages and their symbol packages (#1465), split-APK containers from bundletool, SAI, APKMirror and
+        // APKPure, and Android App Bundles (#1464): all ZIPs. Never a target, since NuGet, Android and the stores need
+        // a package signed (and laid out) by its developer's tools.
+        new("nupkg", "NUPKG (NuGet package)", FormatCategory.Archive, ["nupkg", "snupkg"], Writable: false),
+        new("apks", "APKS (Android split APKs)", FormatCategory.Archive, ["apks", "xapk", "apkm"], Writable: false),
+        new("aab", "AAB (Android App Bundle)", FormatCategory.Archive, ["aab"], Writable: false),
         // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
         // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
         // the top.
@@ -352,6 +372,14 @@ public static class FormatRegistry
         // CAD
         new("dwg", "DWG", FormatCategory.Cad, ["dwg"]),
         new("dxf", "DXF", FormatCategory.Cad, ["dxf"]),
+        // PCB layers (RS-274X / Gerber X2): generic, Protel-style per-layer and board-outline extensions. GIMP brushes
+        // also use .gbr; the reader tells them apart and says so.
+        new("gerber", "Gerber", FormatCategory.Cad,
+            ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"], Writable: false),
+        // Toolpaths of 3D printers (slicers) and CNC machines, read only and drawn as a picture. ".nc" stays out (also
+        // NetCDF, #562, #244), and so do ".tap" (also cassette images) and ".g" (also ANTLR and GAP; RepRapFirmware's
+        // macros seldom have a toolpath).
+        new("gcode", "G-code", FormatCategory.Cad, ["gcode", "gco", "ngc"], Writable: false),
 
         // Fonts
         new("ttf", "TTF", FormatCategory.Font, ["ttf"]),
@@ -368,6 +396,7 @@ public static class FormatRegistry
         new("vtt", "WebVTT", FormatCategory.Subtitle, ["vtt"]),
         new("smi", "SAMI", FormatCategory.Subtitle, ["smi", "sami"]),
         new("lrc", "LRC", FormatCategory.Subtitle, ["lrc"]),
+        new("krc", "KRC", FormatCategory.Subtitle, ["krc"], Writable: false),
         new("ttml", "TTML", FormatCategory.Subtitle, ["ttml", "dfxp"]),
         new("sub", "MicroDVD", FormatCategory.Subtitle, ["sub"]),
         new("scc", "SCC", FormatCategory.Subtitle, ["scc"], Writable: false),

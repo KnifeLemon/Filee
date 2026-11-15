@@ -25,6 +25,7 @@
             │   · E-mail · Signed files · Data · E-books · CAD · Fonts · Subtitles · 3D models   │
             │ Bundled: rhwp (HWP→PDF, HWP↔HWPX) · 7-Zip (archives) · Unhwp · Markdig             │
             │ Optional: FFmpeg · LibreOffice + H2Orestart · calibre · Ghostscript · Pandoc       │
+            │   · WeasyPrint                                                                     │
             └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,7 +67,8 @@
    named destinations and page-backed AcroForm fields. Fields with colliding names get a file-position prefix.
    "Compress into one archive" packs the dropped files, unconverted, with the archive engine (`IFileCombiner`).
    "Merge videos", "Merge audio" and "Video from images" join the files, in the order picked in the merge order
-   window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first. Like the
+   window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first, and audio
+   files dropped with videos are music under them (added in the same window, which also offers "Loop music"). Like the
    other one-file jobs, the output follows "subfolder only for several files", and a join that fails or is cancelled
    is undone by the job's allocator, which deletes only paths that were the job's own.
    "Merge images" puts the pictures, in the order picked in the same window (with their layout: one under another or
@@ -122,7 +124,10 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   private, carrier-grade NAT, link-local, unique local, multicast, `localhost` and `.local` names, IPv4 inside IPv6)
   is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
   `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
-  nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
+  nowhere. A connection to the user's proxy isn't checked, including the CONNECT tunnel the handler opens to an
+  https site through a proxy on this computer (`127.0.0.1:7890`); the names and numbers in the address still are.
+  The proxy is Settings → General → Network (`ProxySetting`, which never sends local addresses through it) or the
+  system's.
   "Allow links to this computer and the local network" (Settings → General, `BrowserDropSettings.AllowLocalNetwork`,
   off by default, read for each drop) lifts this for an intranet or a NAS. Those downloads go through an `HttpClient`
   of their own, so a pooled connection to a local address never serves a drop that may not go there.
@@ -174,6 +179,31 @@ Shortcuts), so gestures with different modifiers open different sets of slices (
 keeps it until files enter, `ShowForFiles` takes it for the selection and clipboard shortcuts, and
 `RadialViewModel.Load` opens the front instead when the back has no slice for the files. The flip key and the wheel
 turn it over from there. Thunar's shortcut on Linux goes through the context-menu action, which always opens the front.
+
+The editor's donut is laid out at its real size and drawn smaller (a `Viewbox` that only shrinks) when its column is
+narrower, so names wrap and icons show as on the donut itself. Clicking a group slice opens it in the editor
+(`ToolbarPageViewModel.OpenGroup`): the donut then shows and edits the group's members with the same drag and drop, the
+palette offers what the group doesn't hold and no groups (`Placed`, shared with the search and the judging), and the ✎
+still opens each preset's own editor. *Edit Donut Size* (`IsAdjustingLook`) swaps the editor for the size, look and
+label settings. While either is open, `DonutPreviewWindow` shows the donut on screen beside the main window at its real
+size, filled by a `RadialViewModel` of its own as the donut opens for the profile's files (`LoadPreview`, with the
+turned-off fields left out); it follows every change and converts nothing. It holds a group open
+(`DonutMenu.HeldGroupId`, by preset id, so a flip or a reload keeps it): the one open in the editor, or, once a ring
+setting changes, the one picked under the ring sliders (*Group shown*, offered with two or more) or clicked on it, the
+first until then; a donut with none fans an example ring off its top slice (`RadialViewModel.ShowExampleGroup`). Where
+it goes is `DonutPreviewPlacement` (pure, in screen pixels at each screen's own scaling): where it was last dragged
+(`AppSettings.DonutPreviewPlace`, against the main window) if all of it is on a screen there and clear of the window;
+beside the main window, on a screen as tall as the donut; on another screen; beside it past its screen's edges; else the
+main window moves over, narrower down to its minimum width if it must, and back when the donut goes
+(`MainWindow.RestPlace` keeps where it was, so closing meanwhile remembers that). Beside the window its facing edge
+stays put as a slider grows it, and it is placed again when it no longer fits, when the window is resized, moved or
+maximized. With no room at all (a screen too small for both, or a window that can't move: maximized) it goes over the
+start side of the main window (its navigation and profile list), never over Done, owned by the main window so it stays
+above it; otherwise it isn't Topmost or owned, unlike the live donut: a click on the main window brings that in front of
+it. Dragged by its middle, it is the user's until the button is up (released, or seen up since: a window manager's move
+may keep the release); dropped onto the main window, it moves back off it. The look sliders change the settings at once
+and write them once the slider rests (`DonutLookSave`, as `UiZoom` does), with `UserDataStore.SaveDonutLook`, which
+doesn't raise `SettingsChanged`: re-applying the theme for every pixel a slider moved made them stick.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
@@ -361,7 +391,8 @@ THIRD-PARTY-NOTICES.md), keyed by their MDI names and grouped for the picker. `P
 unset for the default: a built-in preset's own (by id), else its tool's; plain format conversions have none.
 `Preset.ShortName` replaces the name on the donut and its rings (`DonutName` / `RingName`); the centre hint always
 names the slice in full (`DonutItem.FullName`). The preset and group editors share `SliceLabelFields` (Icon with
-`IconPickerFlyout`, Short name, Show); the Toolbar page sets each donut's Slice labels and Label scale.
+`IconPickerFlyout`, Short name, Show); the Toolbar page's Edit Donut Size panel sets each donut's Slice labels and
+Label scale.
 
 ## Crop overlay and PDF page editor
 
@@ -408,6 +439,11 @@ has the read-only attribute; the source's bytes and attributes are left alone.
 
 The Cut a clip tool (`tool-clip`, first on the back of the video donut) opens `Views/ClipWindow` instead of running a
 job. The window only chooses the clip; writing it is an ordinary conversion.
+
+It also opens on sounds (#1291): the timeline is then the waveform (`ClipTimeline.Waveform`) in place of the picture strip,
+and the picture, thumbnails and sequence pictures are skipped (`ClipWindowViewModel.HasPicture`). In *ringtone mode*
+(`ShowRingtoneWindow`, from the donut for a preset with `AskRingtonePart`) only the part is chosen: the editing tools are
+hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
 
 - `Core/Presets/ClipCutter` does every edit without the window: the parts of the clip (start, end, speed, volume,
   mute), gaps left by Delete, the blade, edge trims that take back or cut away, music on A2, fades, Remove silence and
@@ -576,6 +612,34 @@ installed yet; the slides introduce the installed one. The demo animations are r
   retried after restart. Removing a rule's state file also forgets its results.
   The tray app runs one per rule (`WatchFolderService`, Settings → Watch folders, conversions in the toast and
   history); `filee watch` runs one on its own, with a stable `cli` rule identity across command restarts.
+
+## Preset gallery
+
+Presets shared by users live in the `KnifeLemon/Filee-Presets` repository and on filee.sh (#1530); the app reads
+them, it never uploads.
+
+- `Filee.Core/Gallery/SharedPresetRules` is the allow-list: every field a shared preset.json (a `PresetBundle`) may
+  have, with its range, and the fields left out (folders of one's own, passwords, picture and sound paths, metadata
+  naming people, places or owners), which may only be empty. A field added to `Preset` fails the check until it is
+  listed there (`PresetGalleryCheckTests` compares the list with the model). Settings that touch the installer's files
+  pass with a warning (`SharedPresetWarnings`, codes shared with the gallery's repository and filee.sh); the window
+  shows them and asks for a tick before installing a preset with a high one.
+- `SharedBundleCheck` checks a preset.json against it, as JSON first (unknown fields, types, ranges, links, personal
+  paths) and then as presets (kinds, tools, targets, references), and derives what meta.json needs.
+  `SharedPresetFolderCheck` checks a whole submission folder, pictures included (`GalleryImageHeader` reads their
+  header before anything decodes them). `filee presets check <folder> [--json]` runs it, with SkiaSharp decoding each
+  picture; the gallery's CI calls it.
+- `GalleryInstaller` checks the downloaded file's SHA-256 and the rules again, then adds its presets and donut under
+  new ids (" (2)" on a name the library has); nothing is ever replaced, unlike Settings → General → Import.
+  `GalleryExport` builds the preset.json "Export for the gallery…" saves (Presets page).
+- The app's `PresetGalleryWindow` (from the Presets page) reads `index.json` through `PresetGalleryClient`, only while
+  it is open, with the proxy setting, time and size limits, and falls back to the repository on GitHub when filee.sh
+  can't be reached. Paths in the index are relative to the URL it came from; Install uses the entry's counted
+  `download` link. Pictures are cached in the work folder's `gallery/` (64 MB, 30 days). A preset is written in one
+  main `language` and optionally more (`titleByLang`, `descriptionByLang`): the window shows the app language's texts
+  when the preset has them, else the main ones with a badge naming their language, lists the presets in the app's
+  language first and can hide the rest ("Only in my language"). Pictures follow the app language on their own
+  (`imagesByLang`).
 
 ## Platform code
 

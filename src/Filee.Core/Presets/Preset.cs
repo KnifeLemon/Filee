@@ -126,6 +126,9 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
+    /// <summary>Options used when a G-code toolpath becomes a PDF, SVG or picture.</summary>
+    public GcodeOptions Gcode { get; set; } = new();
+
     /// <summary>Options used for offline AI translation.</summary>
     public TranslateOptions Translate { get; set; } = new();
 
@@ -145,6 +148,14 @@ public sealed class Preset
 
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
+
+    /// <summary>
+    /// "Ask every time" for the compression (#1353): files dropped on the donut open a small window first, where the
+    /// picture quality, the video quality, the audio bitrate or the PDF level is chosen with the size it will roughly
+    /// come to (<see cref="AskedCompression"/>). Off by default; watch folders and the command line use the preset's
+    /// own values.
+    /// </summary>
+    public bool AskCompression { get; set; }
 
     /// <summary>
     /// The icon its donut slice shows: the key of one of the app's slice icons, <see cref="NoIcon"/> for none, or null
@@ -171,6 +182,12 @@ public sealed class Preset
     /// </summary>
     [JsonConverter(typeof(LabelDirectionJsonConverter))]
     public LabelDirection? Direction { get; set; }
+
+    /// <summary>
+    /// The preset gallery entry (its id on filee.sh) this preset was installed from, so the editor can say so; null for
+    /// every other preset. Never shared (<see cref="ForSharing"/>).
+    /// </summary>
+    public string? Gallery { get; set; }
 
     /// <summary>A conversion or a group. A kind this version doesn't know (from a newer Filee) is read as a group.</summary>
     [JsonConverter(typeof(PresetKindJsonConverter))]
@@ -372,10 +389,11 @@ public sealed class Preset
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
-    /// set by the clip window on the conversion it starts): the file is a video. Other files convert as usual.
+    /// set by the clip window on the conversion it starts): the file is a video or a sound. Other files convert as usual.
     /// </summary>
     public bool CutsClipOf(string sourceFormat) =>
-        Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+        Media.Clip is { Parts.Count: > 0 }
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file splits it into parts by stream copy
@@ -410,12 +428,19 @@ public sealed class Preset
     }
 
     /// <summary>
-    /// A copy fit to leave this computer (an exported bundle): no PDF password and no path to a file of one's own
-    /// (Add background's picture, which would tell where one's files are).
+    /// A copy fit to leave this computer (an exported bundle): no PDF password, no path to a file of one's own
+    /// (Add background's picture, which would tell where one's files are), and without "Move the original to the Recycle
+    /// Bin / Trash", which is on only where its owner ticked it on their own PC (#1387).
     /// </summary>
     public Preset ForSharing()
     {
         var copy = WithoutPassword(mark: false);
+        if (copy.Gallery is not null || copy.Output.TrashOriginalAfterConvert)
+        {
+            copy = ReferenceEquals(copy, this) ? Clone() : copy;
+            copy.Gallery = null;
+            copy.Output.TrashOriginalAfterConvert = false;
+        }
         if (copy.Image.Backdrop?.Picture is null && copy.Image.BackdropLook?.Picture is null)
             return copy;
         copy = ReferenceEquals(copy, this) ? Clone() : copy;
@@ -436,6 +461,7 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
+        Gcode = Gcode.Clone(),
         Translate = Translate.Clone(),
         Upscale = Upscale.Clone(),
         Metadata = Metadata?.Clone(),
@@ -444,7 +470,9 @@ public sealed class Preset
         ShortName = ShortName,
         Show = Show,
         Direction = Direction,
+        AskCompression = AskCompression,
         Kind = Kind,
+        Gallery = Gallery,
         Tool = Tool,
         SubPresetIds = [.. SubPresetIds],
     };
@@ -1197,7 +1225,7 @@ public enum PdfRotation
     Rotate180,
 }
 
-/// <summary>The paper "Pages per sheet" puts the pages on (<see cref="PdfOptions.PagesPerSheet"/>).</summary>
+/// <summary>The paper for "Pages per sheet" or for fitting merged pages to one size.</summary>
 public enum PdfSheetPaper
 {
     A4,
@@ -1207,7 +1235,7 @@ public enum PdfSheetPaper
     SameAsFirstPage,
 }
 
-/// <summary>Which way a sheet of "Pages per sheet" stands.</summary>
+/// <summary>Which way a sheet of "Pages per sheet" or a merged PDF stands.</summary>
 public enum PdfSheetOrientation
 {
     /// <summary>Whichever fits the first page larger.</summary>
@@ -1233,6 +1261,17 @@ public sealed class PdfOptions
 
     /// <summary>Add a bookmark for each original source file when merging several files into one PDF.</summary>
     public bool SourceBookmarks { get; set; }
+
+    /// <summary>Fit every merged page to one paper size after input conversions and before PDF finishing.</summary>
+    public bool NormalizeMergePaper { get; set; }
+
+    /// <summary>With <see cref="NormalizeMergePaper"/>: the paper, independent of image and N-up page settings.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetPaper>))]
+    public PdfSheetPaper MergePaper { get; set; } = PdfSheetPaper.A4;
+
+    /// <summary>With <see cref="NormalizeMergePaper"/>: the orientation, chosen once from the first imported page.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetOrientation>))]
+    public PdfSheetOrientation MergeOrientation { get; set; } = PdfSheetOrientation.Auto;
 
     public PdfPageSize PageSize { get; set; } = PdfPageSize.FitImage;
 
@@ -1558,6 +1597,12 @@ public sealed class MediaOptions
     public double RingtoneLength { get; set; } = DefaultRingtoneLength;
 
     /// <summary>
+    /// M4R (iPhone ringtone): ask for the part of each sound every time, in the "Cut a clip" window (#1291), instead
+    /// of using <see cref="RingtoneStart"/> and <see cref="RingtoneLength"/>.
+    /// </summary>
+    public bool AskRingtonePart { get; set; }
+
+    /// <summary>
     /// The part of a sound of <paramref name="sourceSeconds"/> (null when unknown) that becomes the ringtone: where it
     /// starts and how long it is. A hand-edited preset file may hold anything, so both are brought within their limits:
     /// the length to 1–40 s and, when the sound's length is known, the window to the sound: a start past its end moves
@@ -1624,9 +1669,17 @@ public sealed class MediaOptions
 
     /// <summary>
     /// MP4 or M4A: every dropped video (or audio file) goes, in order and without gaps, into one file named after the
-    /// first. Clips that share codecs and picture size are copied; others are encoded to match the first.
+    /// first. Clips that share codecs and picture size are copied; others are encoded to match the first. Audio files
+    /// dropped with videos into MP4 become music under them (<see cref="LoopMusic"/>).
     /// </summary>
     public bool JoinIntoOne { get; set; }
+
+    /// <summary>
+    /// With <see cref="JoinIntoOne"/> into MP4 (#1402): the audio files among the videos are music, played one after
+    /// another under them; this repeats that music from the start until the videos end, where it fades out. Off: the
+    /// music stops when the last song ends. The music never plays past the videos either way.
+    /// </summary>
+    public bool LoopMusic { get; set; }
 
     /// <summary>
     /// MP4: the dropped pictures become one 1080p video, each shown for <see cref="SlideSeconds"/>, fitted in with
@@ -1775,12 +1828,23 @@ public enum ArchiveLevel
 /// <summary>Archive options.</summary>
 public sealed class ArchiveOptions
 {
+    /// <summary>Filesystem used for ISO creation; absent values retain Joliet.</summary>
+    public IsoFileSystem IsoFileSystem { get; set; }
     /// <summary>Put all dropped files into one archive instead of one archive per file.</summary>
     public bool CombineIntoOne { get; set; }
 
     public ArchiveLevel Level { get; set; } = ArchiveLevel.Normal;
 
     public ArchiveOptions Clone() => (ArchiveOptions)MemberwiseClone();
+}
+
+/// <summary>Filesystems available when creating a disc image.</summary>
+public enum IsoFileSystem
+{
+    /// <summary>ISO 9660 with Joliet, the existing default.</summary>
+    Joliet,
+    /// <summary>Universal Disk Format revision 2.01.</summary>
+    Udf201,
 }
 
 /// <summary>How a raster image is traced.</summary>
@@ -1856,6 +1920,30 @@ public sealed class CadOptions
     public CadColors Colors { get; set; }
 
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
+}
+
+/// <summary>What a G-code file (3D printer or CNC) shows when it becomes a picture, an SVG or a PDF.</summary>
+public enum GcodeView
+{
+    /// <summary>The toolpath seen from above.</summary>
+    Top,
+    /// <summary>The toolpath seen from the front left corner, above the bed, so the height of the print shows.</summary>
+    Isometric,
+    /// <summary>
+    /// The preview the slicer saved in the file (PrusaSlicer, Cura, OrcaSlicer, Bambu Studio …), for pictures; the
+    /// toolpath from above for SVG and PDF, and for a file without one.
+    /// </summary>
+    Thumbnail,
+}
+
+/// <summary>Options for G-code files drawn into a PDF, SVG or picture.</summary>
+public sealed class GcodeOptions
+{
+    /// <summary>A choice from a newer Filee reads as <see cref="GcodeView.Top"/>.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<GcodeView>))]
+    public GcodeView View { get; set; }
+
+    public GcodeOptions Clone() => (GcodeOptions)MemberwiseClone();
 }
 
 /// <summary>Options for offline AI document translation.</summary>

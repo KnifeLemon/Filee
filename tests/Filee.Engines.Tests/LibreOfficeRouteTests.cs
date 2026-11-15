@@ -13,7 +13,8 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
     private RoutePlanner Planner(bool slides, bool hwpToPdf, bool documents = false, bool sheets = false)
     {
         var libreOffice = new InstalledLibreOffice(LibreOfficeConverter.BuildEdges(hwp: true, slides, hwpToPdf, documents, sheets));
-        var converters = fx.Converters.Where(c => c.Id != "libreoffice").Append(libreOffice).ToList();
+        // WeasyPrint, which takes HTML, Markdown and e-mails to PDF when installed, has its own tests (WeasyPrintTests).
+        var converters = fx.Converters.Where(c => c.Id is not ("libreoffice" or "weasyprint")).Append(libreOffice).ToList();
         var priority = new AppSettings().EnginePriority;
         return new RoutePlanner(converters, c => Math.Min(priority.IndexOf(c.Id) is >= 0 and var i ? i : priority.Count, 9));
     }
@@ -56,6 +57,17 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
 
         var chosen = from == "docx" ? Planner(slides: true, hwpToPdf: false, documents: true) : Planner(slides: true, hwpToPdf: false, sheets: true);
         Assert.Equal("libreoffice", Assert.Single(chosen.Plan(from, "pdf")!.Steps).Converter.Id);
+    }
+
+    [Fact]
+    public void Rtf_goes_to_txt_through_libreoffice()
+    {
+        // Issue #1204: through Markdown, code copied from an IDE came out full of backticks.
+        var planner = Planner(slides: false, hwpToPdf: false);
+
+        Assert.Equal("libreoffice", Assert.Single(planner.Plan("rtf", "txt")!.Steps).Converter.Id);
+        Assert.Equal("pandoc", Assert.Single(planner.Plan("rtf", "md")!.Steps).Converter.Id);
+        Assert.DoesNotContain(planner.Plan("rtf", "epub")!.Steps, s => s.From == "rtf" && s.To == "txt"); // not a hop
     }
 
     [Theory]

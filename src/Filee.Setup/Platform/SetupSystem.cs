@@ -101,10 +101,25 @@ public class WindowsSetupSystem(SetupLog log, bool seeOtherAccounts = false) : I
 
     public virtual string? RegisterExplorerMenu(string installFolder, bool removeFirst)
     {
-        if (removeFirst)
+        // An update that switched the install between x64 and ARM64 finds the other architecture's package, which
+        // Windows can't update into this one.
+        if (removeFirst || RegisteredForOtherArchitecture())
             UnregisterExplorerMenu();
         var package = Path.Combine(installFolder, ExplorerMenuPackage.PackageFileName);
         return RunPowerShell(errorFile => ExplorerMenuRegistration.BuildAddScript(package, installFolder, errorFile));
+    }
+
+    private static bool RegisteredForOtherArchitecture()
+    {
+        try
+        {
+            return ExplorerMenuRegistration.Find() is { } package
+                   && ExplorerMenuRegistration.IsOtherArchitecture(package, ExplorerMenuRegistration.BuildArchitecture);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return false;
+        }
     }
 
     public virtual void UnregisterExplorerMenu()

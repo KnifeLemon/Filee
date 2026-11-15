@@ -13,11 +13,13 @@
 
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q8-AnyCPU" />
-    <PackageReference Include="DiscUtils.Iso9660" />
+    <PackageReference Include="LTRData.DiscUtils.Iso9660" />
+    <PackageReference Include="LTRData.DiscUtils.Udf" />
     <PackageReference Include="PDFsharp" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="PDFtoImage" />
     <PackageReference Include="Unhwp" />
+    <PackageReference Include="System.Formats.Nrbf" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="ExcelNumberFormat" />
     <PackageReference Include="Svg.Skia" />

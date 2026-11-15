@@ -129,13 +129,13 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 progress, cancellationToken);
         if (step.To == "heic")
             return await HeicWriter.ConvertAsync(ffmpeg, step, progress, cancellationToken);
-        var input = Path.GetFullPath(step.InputPath);
+        var input = MediaInput.For(step.InputPath, step.From, step.WorkDirectory, step.Notice);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken);
         progress?.Report(0.02);
 
         if (step.FrameSequence)
             return await FrameSequenceWriter.ConvertAsync(ffmpeg, step, input, info, progress, cancellationToken);
-        if (step.Preset.CutsClipOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
+        if (step.Preset.CutsClipOf(step.From) && (MediaEncoding.VideoTargets.ContainsKey(step.To) || MediaEncoding.AudioTargets.ContainsKey(step.To)))
             return await CutClipAsync(ffmpeg, ffprobe, step, input, info, progress, cancellationToken);
         if (step.Preset.SplitsVideoOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
             return await SplitAsync(ffmpeg, step, input, info, progress, cancellationToken);
@@ -345,8 +345,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             var clips = new List<(string Path, MediaInfo Info)>();
             for (var i = 0; i < inputPaths.Count; i++)
             {
-                var path = Path.GetFullPath(inputPaths[i]);
-                await RequireTrackerDemuxerAsync(ffmpeg, FormatRegistry.Detect(path)?.Id);
+                var clipFormat = FormatRegistry.Detect(inputPaths[i])?.Id;
+                await RequireTrackerDemuxerAsync(ffmpeg, clipFormat);
+                var path = MediaInput.For(inputPaths[i], clipFormat, scratch);
                 clips.Add((path, await MediaInfo.ProbeAsync(ffprobe, path, cancellationToken)));
                 progress?.Report(0.05 * (i + 1) / inputPaths.Count);
             }
@@ -366,16 +367,39 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                     throw new InvalidOperationException($"{Path.GetFileName(silent)} has no sound.");
                 args = MediaJoining.EncodeAudio(clips, outputPath, media, scratch);
             }
-            else if (MediaJoining.CanCopyVideos([.. clips.Select(c => c.Info)], media))
-            {
-                var list = Path.Combine(scratch, "clips.txt");
-                await File.WriteAllTextAsync(list, MediaJoining.ConcatList(clips.Select(c => c.Path)), cancellationToken);
-                args = MediaJoining.CopyVideos(list, outputPath, clips[0].Info);
-            }
             else
             {
-                var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, await EncodersOfAsync(ffmpeg));
-                args = MediaJoining.EncodeVideos(clips, outputPath, media, encoder, scratch);
+                // Files without pictures are the music (#1402), in their order, under the videos in theirs.
+                var songs = clips.Where(c => c.Info.Video is null).ToList();
+                var videos = clips.Where(c => c.Info.Video is not null).ToList();
+                if (videos.Count == 0)
+                    throw new InvalidOperationException("There is no video to put the music under.");
+                JoinMusic? music = null;
+                if (songs.Count > 0)
+                {
+                    if (videos.FirstOrDefault(c => c.Info.Duration is not { TotalSeconds: > 0 }) is { Path: { } unknown })
+                        throw new InvalidOperationException($"FFmpeg can't tell how long {Path.GetFileName(unknown)} is, so the music can't be fitted to it.");
+                    var seconds = videos.Sum(c => c.Info.Duration!.Value.TotalSeconds);
+                    duration = TimeSpan.FromSeconds(seconds);
+                    (music, var prepare) = MediaJoining.PlanMusic(songs, seconds, media.LoopMusic, Path.Combine(scratch, "music.flac"));
+                    if (prepare is not null)
+                    {
+                        // Songs that repeat become one file first: a few percent, decoding sound is quick.
+                        await RunJoinPassAsync(ffmpeg, prepare, duration, progress, start, start + 0.05, cancellationToken);
+                        start += 0.05;
+                    }
+                }
+                if (MediaJoining.CanCopyVideos([.. videos.Select(c => c.Info)], media))
+                {
+                    var list = Path.Combine(scratch, "clips.txt");
+                    await File.WriteAllTextAsync(list, MediaJoining.ConcatList(videos.Select(c => c.Path)), cancellationToken);
+                    args = MediaJoining.CopyVideos(list, outputPath, videos[0].Info, music, media, scratch);
+                }
+                else
+                {
+                    var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, await EncodersOfAsync(ffmpeg));
+                    args = MediaJoining.EncodeVideos(videos, outputPath, media, encoder, scratch, music);
+                }
             }
         }
 
@@ -429,8 +453,14 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     private async Task<IReadOnlyList<string>> CutClipAsync(string ffmpeg, string ffprobe, ConversionStep step, string input, MediaInfo info,
         IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        if (info.Video is null)
-            throw new InvalidOperationException("The file has no video stream.");
+        // A sound target is written by the sound clip, whatever the file holds besides the sound (an audiobook's chapter
+        // pictures are a real video track): the graph leaves the picture out anyway.
+        if (info.Video is null || !MediaEncoding.VideoTargets.ContainsKey(step.To))
+        {
+            if (info.Audio is null || !MediaEncoding.AudioTargets.ContainsKey(step.To))
+                throw new InvalidOperationException("The file has no video stream.");
+            return await CutSoundClipAsync(ffmpeg, ffprobe, step, input, info, progress, cancellationToken);
+        }
         var media = step.Preset.Media;
         var edit = media.Clip!.Clamped(info.Duration?.TotalSeconds);
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
@@ -489,6 +519,35 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, encoders: encoders, hardware: encoder, clip: clip);
             await RunWithFallbackAsync(Plan(hardware), hardware, Plan,
                 planned => RunPassesAsync(ffmpeg, planned, output, duration, progress, cancellationToken), output, _logger, cancellationToken);
+        }
+        catch
+        {
+            TryDelete(output);
+            throw;
+        }
+        progress?.Report(1);
+        return [output];
+    }
+
+    /// <summary>
+    /// "Cut a clip" of a sound (an MP3, a recording): the parts, volumes, speeds, fades and music the window made, always
+    /// encoded through one filter graph (a sound takes moments to encode, and the cut is exact), written in the sound's
+    /// own format.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> CutSoundClipAsync(string ffmpeg, string ffprobe, ConversionStep step, string input, MediaInfo info,
+        IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        var media = step.Preset.Media;
+        var edit = media.Clip!.Clamped(info.Duration?.TotalSeconds);
+        var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
+        if (output is null)
+            return [];
+        try
+        {
+            var musicTrack = edit.Music is { } song
+                ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken) : 0;
+            var pass = new FfmpegPass(MediaEncoding.ClipSoundArguments(input, output, step.To, edit, media, info, musicTrack), 1);
+            await RunPassesAsync(ffmpeg, [pass], output, TimeSpan.FromSeconds(edit.Length), progress, cancellationToken);
         }
         catch
         {

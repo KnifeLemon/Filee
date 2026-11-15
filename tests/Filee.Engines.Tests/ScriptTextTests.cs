@@ -14,6 +14,7 @@ public class ScriptTextTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("init.lua", "local greeting = \"hello\" print(greeting)")]
     [InlineData("shop.dbml", "Table customers { id integer [primary key] }")]
     [InlineData("Hello.java", "class Hello { }")]
+    [InlineData("Blink.ino", "void setup() { pinMode(LED_BUILTIN, OUTPUT); }")]
     public async Task The_code_becomes_a_pdf_of_its_text(string name, string code)
     {
         var available = fx.Converters.Where(c => fx.Catalog.StatusOf(c).IsAvailable).Select(c => c.Id).ToHashSet();

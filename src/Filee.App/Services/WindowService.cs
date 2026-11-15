@@ -184,14 +184,16 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
 
     /// <summary>
     /// Reviews the order of a merge (<paramref name="preset"/>, when given, names the button). For "Merge images" the
-    /// layout is chosen too and written into <paramref name="preset"/>. Closing or cancelling starts no conversion.
+    /// layout is chosen too, for "Merge videos" the music, and written into <paramref name="preset"/>. Closing or
+    /// cancelling starts no conversion.
     /// <paramref name="keepOrder"/>: the files start in the order given (see <see cref="MergeOrderViewModel"/>).
     /// </summary>
     public async Task<IReadOnlyList<string>?> ChooseMergeOrderAsync(IReadOnlyList<string> files, Preset? preset = null, bool keepOrder = false)
     {
         _mergeOrder?.Close();
         var images = preset is { JoinsImages: true };
-        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder, loc);
+        var videos = preset is { JoinsIntoOneMedia: true, TargetFormat: "mp4", Media.Slideshow: false };
+        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder, loc, videos ? preset!.Media : null);
         var dialog = new MergeOrderWindow { DataContext = vm };
         if (preset is not null)
             dialog.StartMerge.Content = loc.DisplayName(preset);
@@ -200,6 +202,12 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             // Room for the layout below the list.
             dialog.Height = 690;
             dialog.MinHeight = 590;
+        }
+        else if (videos)
+        {
+            // Room for the music below the list.
+            dialog.Height = 640;
+            dialog.MinHeight = 580;
         }
         PrepareWindow(dialog);
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -214,6 +222,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         await closed.Task;
         if (dialog.Result is not null && images)
             vm.ApplyTo(preset!.Image);
+        if (dialog.Result is not null && videos)
+            vm.ApplyTo(preset!.Media);
         vm.Dispose();
         return dialog.Result;
     }
@@ -245,6 +255,54 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         dialog.Show();
         dialog.Activate();
         await closed.Task;
+        return dialog.Result;
+    }
+
+    private AskCompressionWindow? _askCompression;
+
+    internal AskCompressionWindow? AskCompression => _askCompression;
+
+    /// <summary>
+    /// "Choose the compression" (#1353) for the files dropped on <paramref name="preset"/>: the setting of each kind
+    /// among them and the size they will roughly come to, read from the files while the window is open. Null when
+    /// cancelled.
+    /// </summary>
+    public async Task<CompressionAnswer?> AskCompressionAsync(IReadOnlyList<string> files, Preset preset)
+    {
+        _askCompression?.Close();
+        var asked = files.Where(f => AskedCompression.KindOf(preset, f) is not null).ToList();
+        var sourceBytes = asked.Sum(f => File.Exists(f) ? new FileInfo(f).Length : 0);
+        var logger = services.GetService<ILogger<WindowService>>();
+        using var closing = new CancellationTokenSource();
+        var reading = Filee.Engines.CompressionEstimator.ReadAsync(asked, preset, logger, closing.Token);
+        using var vm = new AskCompressionViewModel(preset, asked, sourceBytes,
+            async (choice, ct) => await (await reading).EstimateAsync(choice, ct), loc);
+        var dialog = new AskCompressionWindow { DataContext = vm };
+        dialog.StartCompression.Content = loc.DisplayName(preset);
+        PrepareWindow(dialog);
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialog.Closed += (_, _) =>
+        {
+            if (_askCompression == dialog) _askCompression = null;
+            closed.TrySetResult();
+        };
+        _askCompression = dialog;
+        dialog.Show();
+        dialog.Activate();
+        await closed.Task;
+        // The pictures read for the estimate are let go once it is no longer shown, after the estimate under way ends.
+        vm.Dispose();
+        await closing.CancelAsync();
+        try
+        {
+            var estimator = await reading;
+            await Task.Run(estimator.Dispose);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (ex is not OperationCanceledException)
+                logger?.LogInformation(ex, "Reading the files for the compression estimate failed");
+        }
         return dialog.Result;
     }
 
@@ -362,22 +420,35 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     }
 
     /// <summary>
-    /// Opens the "Cut a clip" window on the videos among the files. Each clip is written by an ordinary conversion,
+    /// Opens the "Cut a clip" window on the videos and sounds among the files. Each clip is written by an ordinary conversion,
     /// shown in the toast.
     /// </summary>
-    public void ShowClipWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null)
+    public void ShowClipWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null) =>
+        ShowClipWindow(files, preset, near, ringtone: false);
+
+    /// <summary>
+    /// Opens the "Cut a clip" window on the sounds among the files to choose the part that becomes an iPhone ringtone
+    /// (<see cref="MediaOptions.AskRingtonePart"/>, #1291). Its Save starts an ordinary M4R conversion of that part.
+    /// </summary>
+    public void ShowRingtoneWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null) =>
+        ShowClipWindow(files, preset, near, ringtone: true);
+
+    private void ShowClipWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near, bool ringtone)
     {
-        var videos = files.Where(f => FormatRegistry.Detect(f)?.Category == FormatCategory.Video).ToList();
+        var catalog = services.GetRequiredService<ConverterCatalog>();
+        var cutters = catalog.CreatePlanner();
+        var videos = files.Where(f => FormatRegistry.Detect(f) is { } format
+            && (ringtone ? format.Category == FormatCategory.Audio
+                : format.Category is FormatCategory.Video or FormatCategory.Audio && ClipTool.CanCut(format.Id, cutters))).ToList();
         if (videos.Count == 0)
             return;
         _clipWindow?.Close();
         var store = services.GetRequiredService<UserDataStore>();
-        var catalog = services.GetRequiredService<ConverterCatalog>();
         var conversions = services.GetRequiredService<ConversionService>();
         var log = services.GetService<ILogger<ClipWindowViewModel>>();
         var vm = new ClipWindowViewModel(videos, preset, loc, store, new FfmpegFrameSource(),
             path => ClipTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? ClipTool.FallbackTarget, catalog.CreatePlanner()),
-            (path, conversion) => conversions.Start([path], conversion), log);
+            (path, conversion) => conversions.Start([path], conversion), log, ringtone);
         var win = new ClipWindow { DataContext = vm };
         win.PositionOnScreen(near);
         win.Closed += (_, _) =>
@@ -781,6 +852,104 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
 
     internal WhatsNewWindow? WhatsNew => _whatsNew;
 
+    private PresetGalleryWindow? _gallery;
+    private GalleryExportWindow? _galleryExport;
+
+    internal GalleryExportWindow? GalleryExport => _galleryExport;
+
+    /// <summary>
+    /// Opens "Export for the gallery" (#1530) with <paramref name="selected"/> ticked; a second call brings the open one
+    /// to the front.
+    /// </summary>
+    public void ShowGalleryExport(Preset? selected)
+    {
+        if (_galleryExport is not null)
+        {
+            _galleryExport.Activate();
+            return;
+        }
+        GalleryExportWindow? window = null;
+        var vm = new GalleryExportViewModel(services.GetRequiredService<UserDataStore>(), loc, selected,
+            async uri =>
+            {
+                if (window is not null)
+                    await window.Launcher.LaunchUriAsync(uri);
+            },
+            async () =>
+            {
+                if (window is null)
+                    return null;
+                var file = await window.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+                {
+                    SuggestedFileName = "preset.json",
+                    DefaultExtension = "json",
+                    FileTypeChoices = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }],
+                });
+                return file?.TryGetLocalPath();
+            });
+        window = new GalleryExportWindow { DataContext = vm };
+        PrepareWindow(window);
+        window.Closed += (_, _) =>
+        {
+            if (_galleryExport == window)
+                _galleryExport = null;
+            trimmer.Request();
+        };
+        _galleryExport = window;
+        if (_main is { IsVisible: true } main && main.WindowState != WindowState.Minimized)
+            window.Show(main);
+        else
+        {
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            window.Show();
+        }
+        window.Activate();
+    }
+
+    internal PresetGalleryWindow? Gallery => _gallery;
+
+    /// <summary>
+    /// Opens the preset gallery (#1530), centred on the main window; a second call brings the open one to the front.
+    /// filee.sh is contacted from now until it closes. <paramref name="installed"/> is told after each install.
+    /// </summary>
+    public void ShowPresetGallery(Action<Filee.Core.Gallery.GalleryInstallResult>? installed = null)
+    {
+        if (_gallery is not null)
+        {
+            _gallery.Activate();
+            return;
+        }
+        var client = new PresetGalleryClient();
+        PresetGalleryWindow? window = null;
+        var vm = new PresetGalleryViewModel(client, services.GetRequiredService<UserDataStore>(), loc, PresetGalleryViewModel.CurrentVersion,
+            async uri =>
+            {
+                if (window is not null)
+                    await window.Launcher.LaunchUriAsync(uri);
+            },
+            installed);
+        window = new PresetGalleryWindow { DataContext = vm };
+        PrepareWindow(window);
+        window.Closed += (_, _) =>
+        {
+            if (_gallery == window)
+                _gallery = null;
+            vm.Dispose();
+            client.Dispose();
+            trimmer.Request();
+        };
+        _gallery = window;
+        if (_main is { IsVisible: true } main && main.WindowState != WindowState.Minimized)
+            window.Show(main);
+        else
+        {
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            window.Show();
+        }
+        window.Activate();
+        _ = vm.LoadAsync();
+    }
+
     /// <summary>Opens the optional-engine choice (first run); a second call brings the open window to front.</summary>
     /// <summary>
     /// Shows the engine choice. With <paramref name="install"/> (packages picked in the installer) the downloads start
@@ -1116,7 +1285,9 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         public static MainWindowPlacement Of(MainWindow window, MainWindowViewModel vm, MainWindowPlacement? last) =>
             window.WindowState switch
             {
-                WindowState.Normal => new(window.Position, window.ClientSize, false, vm.SelectedItem.Key),
+                WindowState.Normal => new(window.PlaceToRemember,
+                    window.RestPlace?.ClientSize ?? (window.WidthOwed is { } width ? window.ClientSize.WithWidth(width) : window.ClientSize),
+                    false, vm.SelectedItem.Key),
                 WindowState.Maximized => (last ?? new(null, null, false, "")) with { Maximized = true, Page = vm.SelectedItem.Key },
                 _ => (last ?? new(null, null, false, "")) with { Page = vm.SelectedItem.Key },
             };

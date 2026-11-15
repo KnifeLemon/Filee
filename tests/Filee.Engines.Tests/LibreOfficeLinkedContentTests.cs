@@ -178,6 +178,27 @@ public class LibreOfficeLinkedContentTests(EngineFixture fx) : IClassFixture<Eng
     }
 
     [Fact]
+    public void Html_references_to_the_pages_own_elements_stay_in_the_copy()
+    {
+        var folder = fx.NewFolder();
+        var html = Path.Combine(folder, "page.html");
+        File.WriteAllText(html, """
+            <html><head><style>.a { fill: url(#g) } .b { fill: url(../outside/x.svg#g) }</style></head><body>
+            <svg><defs><linearGradient id="g" xlink:href="#base"/><symbol id="s"/></defs><use href="#s"/><use href="other.svg#s"/>
+            <rect style="fill: url(#g)"/></svg><img src="../outside/x.png"></body></html>
+            """);
+
+        var text = File.ReadAllText(LinkedContent.Strip(html, "html", folder)!);
+
+        Assert.Contains("<use href=\"#s\"/>", text);
+        Assert.Contains("xlink:href=\"#base\"", text);
+        Assert.Contains(".a { fill: url(#g) }", text);
+        Assert.Contains("style=\"fill: url(#g)\"", text);
+        foreach (var gone in new[] { "outside", "other.svg" })
+            Assert.DoesNotContain(gone, text);
+    }
+
+    [Fact]
     public void Html_pictures_inside_the_page_folder_go_into_the_copy()
     {
         var folder = fx.NewFolder();

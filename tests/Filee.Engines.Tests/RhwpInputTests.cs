@@ -1,5 +1,5 @@
 // What Filee fixes in an HWPX copy before rhwp renders it (issue #65: an exam paper written in 한글 2022; issue #49:
-// a table floating in a table cell of an HWP file).
+// a table floating in a table cell of an HWP file; issue #1352: a slide title aligned to the bottom of its box).
 
 using System.IO.Compression;
 using System.Text;
@@ -7,6 +7,8 @@ using System.Xml.Linq;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Hwp;
+using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Pptx;
 using UglyToad.PdfPig;
 
 namespace Filee.Engines.Tests;
@@ -205,6 +207,74 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
             "--fallback-sans", "Noto Sans",
             "--fallback-mono", "Noto Sans Mono",
         ], RhwpInput.PdfOptions(Lookup));
+    }
+
+    [Fact]
+    public void Bottom_aligned_and_centred_text_boxes_get_their_room_as_top_margin()
+    {
+        // Issue #1352: rhwp took the text of a text box without stored lines as 0 high, so a bottom-aligned title (the
+        // Title Slide layout's) was drawn a line below its box, over the subtitle, and a centred one half a line low.
+        var dir = fx.NewFolder();
+        static InstalledFont? HalfEm(string face) => new(true, _ => true, _ => 0.5);
+        var copy = RhwpInput.Prepare(TitleSlideHwpx(dir), dir, HalfEm);
+
+        Assert.NotNull(copy);
+        var boxes = Section(copy).Descendants(Hp + "drawText").ToDictionary(
+            d => string.Concat(d.Descendants(Hp + "t").Select(t => t.Value)),
+            d => (Align: (string)d.Element(Hp + "subList")!.Attribute("vertAlign")!, Margin: d.Element(Hp + "textMargin")!,
+                Height: (int)d.Parent!.Element(Hp + "sz")!.Attribute("height")!));
+        Assert.All(boxes.Values, b => Assert.Equal("TOP", b.Align));
+
+        // One line of 60 pt (6000) ends at the bottom margin; the centred 44 pt line has as much room above as below.
+        var title = boxes["My Name is Ali"];
+        Assert.Equal(title.Height - (int)title.Margin.Attribute("bottom")!, (int)title.Margin.Attribute("top")! + 6000);
+        var centred = boxes["Centred"];
+        var below = centred.Height - (int)centred.Margin.Attribute("bottom")! - (int)centred.Margin.Attribute("top")! - 4400;
+        Assert.InRange((int)centred.Margin.Attribute("top")! - 360 - below, -1, 1);
+        Assert.Equal(360, (int)boxes["I am a Software Engineering Student"].Margin.Attribute("top")!); // top-aligned: as it was
+
+        Assert.Null(RhwpInput.Prepare(copy, dir, HalfEm)); // nothing left to do
+    }
+
+    [Fact]
+    public async Task The_title_of_a_title_slide_stays_above_its_subtitle_in_the_pdf()
+    {
+        var rhwp = fx.Converters.Single(c => c.Id == "rhwp");
+        Assert.SkipUnless(fx.Catalog.StatusOf(rhwp).IsAvailable, "rhwp not found (pwsh build/fetch-engines.ps1 -Only rhwp)");
+        var dir = fx.NewFolder();
+        var pdf = Path.Combine(dir, "title.pdf");
+
+        await rhwp.ConvertAsync(new ConversionStep(TitleSlideHwpx(dir), "hwpx", "pdf", new Preset(), new HwpxAssert.FixedPath(pdf), dir), null, TestContext.Current.CancellationToken);
+
+        using var document = PdfDocument.Open(pdf);
+        var page = document.GetPage(1);
+        var words = page.GetWords().ToDictionary(w => w.Text, w => w.BoundingBox);
+        // PDF coordinates grow upwards. Before the fix the title's line was drawn over the subtitle's.
+        Assert.True(words["Ali"].Bottom > words["Student"].Top, "the title ends above the subtitle");
+        // The title's box ends at 3509963 EMU of 6858000: the baseline of its last line sits just above that.
+        var boxBottom = page.Height * (1 - 3509963.0 / 6858000);
+        Assert.InRange(words["Ali"].Bottom, boxBottom, boxBottom + 30);
+    }
+
+    /// <summary>
+    /// PowerPoint's Title Slide in an HWPX of Filee's PPTX reader: "My Name is Ali" at 60 pt aligned to the bottom of its
+    /// box, "I am a Software Engineering Student" in the box below, aligned to the top; then a slide whose title
+    /// "Centred" is centred in the box it takes from the master.
+    /// </summary>
+    private string TitleSlideHwpx(string dir)
+    {
+        static string Box(int id, string placeholder, long y, long height, string anchor, int size, string text) =>
+            $"<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"{placeholder}\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"{placeholder}\"/></p:nvPr></p:nvSpPr>" +
+            $"<p:spPr><a:xfrm><a:off x=\"1524000\" y=\"{y}\"/><a:ext cx=\"9144000\" cy=\"{height}\"/></a:xfrm></p:spPr>" +
+            $"<p:txBody><a:bodyPr anchor=\"{anchor}\"/><a:lstStyle/><a:p><a:pPr algn=\"ctr\"><a:buNone/></a:pPr><a:r><a:rPr lang=\"en-US\" sz=\"{size}\"/><a:t>{text}</a:t></a:r></a:p></p:txBody></p:sp>";
+        var pptx = new PptxBuilder();
+        pptx.Slide(Box(20, "ctrTitle", 1122363, 2387600, "b", 6000, "My Name is Ali") +
+                   Box(21, "subTitle", 3602038, 1655762, "t", 2400, "I am a Software Engineering Student"));
+        pptx.Slide(pptx.Title("Centred"));
+        var source = PptxReader.Read(pptx.Save(Path.Combine(dir, "title.pptx")), Path.Combine(dir, "pptx-media"));
+        var hwpx = Path.Combine(dir, "title.hwpx");
+        HwpxWriter.Write(source, hwpx);
+        return hwpx;
     }
 
     /// <summary>

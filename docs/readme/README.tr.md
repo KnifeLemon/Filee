@@ -93,6 +93,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **Windows 10/11**: `Filee-<sürüm>-win-Setup.exe` dosyasını çalıştırın veya `win-Portable.zip` arşivini açıp `Filee.exe` dosyasını başlatın.
+  - Windows on ARM bilgisayarda (Ayarlar → Sistem → Hakkında bölümünde "ARM tabanlı işlemci" yazar) bunun yerine `win-arm64-Setup.exe` veya `win-arm64-Portable.zip` dosyasını alın: x64 öykünmesi olmadan yerel olarak çalışır.
   - Kurulum sihirbazı, Filee'nin kendi dillerini içeren yerel yükleyicisidir ve bilgisayarda başka hiçbir şeye ihtiyaç duymaz.
   - Dosya Gezgini menüsünü, oturum açılışında başlatmayı, `filee` komutunu ve isteğe bağlı motorları ekleyebilir.
   - Sessiz kurulumlar Inno Setup anahtarlarını destekler (`/VERYSILENT /SUPPRESSMSGBOXES`).
