@@ -136,7 +136,7 @@ public sealed class Uninstaller(SetupContext context)
         if (deleteSettings)
         {
             Log.Info($"Deleting the settings in {context.Paths.SettingsFolder}");
-            FileSwap.DeleteTree(context.Paths.SettingsFolder, System, Log);
+            FileSwap.DeleteTree(context.Paths.SettingsFolder, System, Log, userFolder: true);
         }
 
         releaseUninstaller?.Invoke();

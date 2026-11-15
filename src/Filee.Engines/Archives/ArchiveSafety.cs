@@ -11,6 +11,12 @@ internal static class ArchiveSafety
     /// <summary>More entries than this are refused: real archives stay far below, "entry bombs" do not.</summary>
     public const int MaxEntries = 1_000_000;
 
+    /// <summary>
+    /// Deepest folder nesting of an entry path. Real archives nest a few dozen folders; tens of thousands fit in one
+    /// name, and the folders are walked level by level after unpacking (links removed, moved into place).
+    /// </summary>
+    public const int MaxPathDepth = 512;
+
     /// <summary>Space that must stay free on the drive after unpacking.</summary>
     private const long Reserve = 64L * 1024 * 1024;
 
@@ -36,6 +42,18 @@ internal static class ArchiveSafety
         return entryPath.Split('/', '\\').Any(part => part == "..");
     }
 
+    /// <summary>True if an entry path has more than <see cref="MaxPathDepth"/> names (folders and the file).</summary>
+    public static bool IsTooDeep(string entryPath)
+    {
+        var names = 0;
+        foreach (var part in entryPath.Split('/', '\\'))
+        {
+            if (part is not ("" or ".") && ++names > MaxPathDepth)
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// Refuses a 7-Zip listing with encrypted entries, entries or hard links pointing outside the target folder,
     /// too many entries, or more data than the drive of <paramref name="targetDirectory"/> can hold.
@@ -50,6 +68,8 @@ internal static class ArchiveSafety
                 throw Encrypted(archiveName);
             if (IsUnsafePath(entry.Path) || entry.HardLink is { Length: > 0 } link && IsUnsafePath(link))
                 throw Unsafe(archiveName, entry.Path);
+            if (IsTooDeep(entry.Path) || entry.HardLink is { Length: > 0 } target && IsTooDeep(target))
+                throw TooDeep(archiveName);
         }
         EnsureRoom(entries.Where(e => !e.IsFolder).Sum(e => e.Size), targetDirectory, archiveName);
     }
@@ -112,6 +132,8 @@ internal static class ArchiveSafety
     {
         if (IsUnsafePath(entryName))
             throw Unsafe(archiveName, entryName);
+        if (IsTooDeep(entryName))
+            throw TooDeep(archiveName);
         var parts = entryName.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
             .Where(part => part != ".")
             .Select(SanitizeSegment)
@@ -153,6 +175,9 @@ internal static class ArchiveSafety
 
     public static Exception Unsafe(string archiveName, string entry) =>
         new InvalidDataException($"{archiveName} was not unpacked: the entry \"{entry}\" points outside the target folder.");
+
+    public static Exception TooDeep(string archiveName) =>
+        new InvalidDataException($"{archiveName} was not unpacked: an entry is nested in more than {MaxPathDepth} folders.");
 
     public static Exception Damaged(string archiveName, string detail) =>
         new InvalidDataException($"{archiveName} is damaged or incomplete ({detail}).");

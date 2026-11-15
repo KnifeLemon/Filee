@@ -125,6 +125,7 @@ public sealed class OoxmlConverter : IConverter
 
         // Relationships to removed parts, by source part (the workbook's sheet list refers to them by id).
         var removedIds = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var limit = UnpackLimit.For(input);
         using (var file = File.Create(output))
         using (var zip = new ZipArchive(file, ZipArchiveMode.Create))
         {
@@ -151,7 +152,7 @@ public sealed class OoxmlConverter : IConverter
                 }
                 else
                 {
-                    Copy(entry, zip);
+                    Copy(entry, zip, limit);
                 }
             }
         }
@@ -261,10 +262,9 @@ public sealed class OoxmlConverter : IConverter
         xml.Save(stream, SaveOptions.DisableFormatting);
     }
 
-    private static void Copy(ZipArchiveEntry entry, ZipArchive zip)
+    private static void Copy(ZipArchiveEntry entry, ZipArchive zip, UnpackLimit limit)
     {
-        using var source = entry.Open();
         using var target = zip.CreateEntry(entry.FullName, CompressionLevel.Optimal).Open();
-        source.CopyTo(target);
+        limit.Copy(entry, target);
     }
 }

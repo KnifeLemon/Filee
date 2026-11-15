@@ -57,6 +57,8 @@ internal static class Program
             return PortableStartupFailure.Show(message);
         }
         using var portableScope = portable;
+        // ImageMagick reads its policy once, at its first use; the app also calls it directly (crop, previews).
+        Filee.Engines.Magick.MagickSecurity.Initialize();
         Options = CommandLine.Parse(args);
         PreloadedStore = null;
         Log = StartupDiagnostics.CreateEarlyLogger(Path.Combine(UserDataStore.DefaultDirectory, "logs"), out var earlyStoreLogger);

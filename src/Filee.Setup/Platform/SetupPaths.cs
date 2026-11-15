@@ -13,6 +13,10 @@ namespace Filee.Setup.Platform;
 /// <param name="LocalAppData">%LocalAppData%: downloaded engines (LocalAppData\Filee\engines), Filee 1.1's Velopack copy.</param>
 /// <param name="Temp">Setup's temporary files.</param>
 /// <param name="SystemFolder">System32 (the Microsoft C++ runtime, if installed).</param>
+/// <param name="SystemTemp">
+/// %SystemRoot%\Temp: where an elevated uninstaller puts its copy. Standard users may create folders in it but can't
+/// rename or delete what an administrator made there, unlike in their own %TEMP%.
+/// </param>
 public sealed record SetupPaths(
     string ProgramFiles,
     string UserPrograms,
@@ -23,7 +27,8 @@ public sealed record SetupPaths(
     string AppData,
     string LocalAppData,
     string Temp,
-    string SystemFolder)
+    string SystemFolder,
+    string SystemTemp)
 {
     /// <summary>Filee's settings folder (UserDataStore.DefaultDirectory without FILEE_DATA_DIR).</summary>
     public string SettingsFolder => Path.Combine(AppData, "Filee");
@@ -55,7 +60,8 @@ public sealed record SetupPaths(
             Folder(Environment.SpecialFolder.ApplicationData),
             localAppData,
             Path.GetTempPath(),
-            Environment.SystemDirectory);
+            Environment.SystemDirectory,
+            Path.Combine(Folder(Environment.SpecialFolder.Windows), "Temp"));
     }
 
     /// <summary>Every folder inside <paramref name="root"/> (System32 stays the real one: it is only read).</summary>
@@ -73,6 +79,7 @@ public sealed record SetupPaths(
             Sub("AppData"),
             Sub("LocalAppData"),
             Sub("Temp"),
-            Environment.SystemDirectory);
+            Environment.SystemDirectory,
+            Sub(Path.Combine("Windows", "Temp")));
     }
 }

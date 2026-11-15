@@ -11,6 +11,29 @@ namespace Filee.Engines.Tests;
 public class PdfBlankPagesTests
 {
     [Fact]
+    public void A_page_nested_too_deeply_for_the_content_parser_is_read_as_not_blank_instead_of_overflowing_the_stack()
+    {
+        // A million "[" in a row: PDFsharp's ContentReader would recurse once per bracket and kill the process.
+        using var document = new PdfDocument();
+        var page = document.AddPage();
+        var content = new PdfDictionary(document);
+        document.Internals.AddObject(content);
+        content.CreateStream(Enumerable.Repeat((byte)'[', 1_000_000).ToArray());
+        page.Elements["/Contents"] = content.Reference;
+
+        Assert.Throws<InvalidDataException>(() => PdfContentNesting.Check(page));
+        Assert.False(PdfBlankPages.IsBlank(page));
+        Assert.Empty(PdfPictureUses.Find(document));
+    }
+
+    [Fact]
+    public void Ordinary_content_passes_the_nesting_check()
+    {
+        var content = "q [1 2] 0 d /P <</MCID 0>> BDC (a [ ( b) Tj EMC BI /W 1 /H 1 ID [[ EI Q"u8.ToArray();
+        Assert.Same(content, PdfContentNesting.Checked(content));
+    }
+
+    [Fact]
     public void Removes_only_pages_without_any_painting_operation()
     {
         var path = Path.Combine(Path.GetTempPath(), $"filee-blank-pages-{Guid.NewGuid():N}.pdf");

@@ -763,7 +763,11 @@ have no semibold) instead of the app's embedded Noto fonts.
   update Setup starts Filee with `--background --whats-new`, so the slides show once in the app as well.
 
 - **Build** (`build/build-installer.ps1`): Setup is published as one self-contained, trimmed file
-  (`-p:FileeSetupPublish=true`), so it runs on Windows 10 1809+ x64 without .NET. `build/tools/make-setup.cs` appends
+  (`-p:FileeSetupPublish=true`), so it runs on Windows 10 1809+ x64 without .NET. Skia and HarfBuzz are resources of
+  `Filee.Setup.dll` rather than files .NET unpacks at start: `NativeLibraries` writes them into a new folder of its
+  own before the window opens (elevated, one in `%SystemRoot%\Temp` only administrators can change) and loads them by
+  full path; other libraries come from System32 only. Setup draws in software, so ANGLE isn't carried.
+  `build/tools/make-setup.cs` appends
   the app's publish folder as the payload: `[program][LZMA streams of all files][manifest JSON][72-byte trailer]`
   (`SetupPayload`): ~48 MB segments compressed in parallel with SharpCompress's LZMA (48 MB dictionary), programs
   first through the x86 branch filter (`X86Filter`, from the LZMA SDK) as 7-Zip and Inno Setup do. The manifest lists
