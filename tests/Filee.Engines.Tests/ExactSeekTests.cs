@@ -358,6 +358,10 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         "sound.flv" => ("30", "128x32", ["-c:v", "libx264", "-g", "45", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p", "-c:a", "aac",
             "-ar", "44100"]),
         "60fps.mp4" => ("60", "128x32", ["-c:v", "libx264", "-g", "90", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p"]),
+        "120fps.mp4" => ("120", "128x32", ["-c:v", "libx264", "-g", "180", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p"]),
+        // Every second frame shown 4 ms late, as a camera's frames come a little off its rate.
+        "jitter.mp4" => ("30", "128x32", [.. Mp4, "-vf", "settb=1/90000,setpts=PTS+mod(N\\,2)*0.004/TB", "-fps_mode", "passthrough",
+            "-enc_time_base", "1/90000", "-video_track_timescale", "90000"]),
         // Matroska counts in milliseconds: frame 53 is shown at 1.767 s, after its time 1.7666… on a 1/30 s grid.
         "30fps.mkv" => ("30", "128x32", ["-c:v", "libx264", "-g", "45", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p"]),
         // Frames 10 ms off the 1/30 s grid an encoder counts in.
@@ -584,11 +588,15 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("30fps.mp4", 3.0)]
     [InlineData("30fps.mp4", 4.0)]
     [InlineData("mjpeg.avi", 1.5)]
+    [InlineData("jitter.mp4", 1.0)]
+    [InlineData("jitter.mp4", 2.0)]
     public async Task An_edited_clip_starts_with_the_frame_shown_at_or_just_before_a_frames_time(string name, double speed)
     {
         SkipUnlessInstalled();
         // An AVI counts in whole frames: the move of the start by a microsecond's fraction, cut short to a whole tick,
-        // put the first two frames on the same tick, and only the later one was kept.
+        // put the first two frames on the same tick, and only the later one was kept. Frames a little off their rate
+        // keep their pictures too: with the first frame put most of the way into its picture, a frame 4 ms late took
+        // the next picture, and its neighbour's was shown twice.
         var video = await VideoAsync(name, 4);
         var frames = await FramesAsync(video);
         List<string> wrong = [];
@@ -753,6 +761,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("30fps.mp4", 2)]
     [InlineData("mjpeg.avi", 1)]
     [InlineData("mjpeg.avi", 2)]
+    [InlineData("120fps.mp4", 4)]
     public async Task Playback_from_between_two_frames_starts_with_the_later_one_as_the_window_shows(string name, double speed)
     {
         SkipUnlessInstalled();
@@ -984,18 +993,30 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in ffprobe is a Unix script.");
         // A TS whose ffprobe lists no key frame within 32 s before the time: FFmpeg seeks to the time itself, still
         // with the file's own timestamps, which keep its sound and pictures together (see the file header).
-        var ffprobe = StandIn("ffprobe", """
+        // The clip window's next picture is looked for in the furthest look at once.
+        var folder = fx.NewFolder();
+        var calls = Path.Combine(folder, "calls.log");
+        var ffprobe = StandIn("ffprobe", $$$"""
             #!/bin/sh
+            echo "$*" >> '{{{calls}}}'
             case "$*" in
             *-read_intervals*) echo '{"packets":[{"pts_time":"30.000000","dts_time":"29.900000","flags":"__"}]}';;
             *) echo '{"streams":[{"codec_type":"video","has_b_frames":0,"time_base":"1/90000"}],"format":{"format_name":"mpegts","start_time":"1.400000"}}';;
             esac
 
             """);
+        var video = Path.Combine(folder, "far.ts");
 
-        var seek = await KeyFrames.FindAsync(ffprobe, Path.Combine(fx.NewFolder(), "far.ts"), 40, Ct);
+        var seek = await KeyFrames.FindAsync(ffprobe, video, 40, Ct);
+        var lookedFirst = (await File.ReadAllLinesAsync(calls, Ct)).Length;
+        var next = await KeyFrames.FindAsync(ffprobe, video, 40.1, Ct);
+        var lines = await File.ReadAllLinesAsync(calls, Ct);
 
         Assert.Equal(SeekPoint.Plain(40) with { Origin = 1.4, Tick = (1, 90000) }, seek);
+        Assert.Equal(SeekPoint.Plain(40.1) with { Origin = 1.4, Tick = (1, 90000) }, next);
+        Assert.Equal(4, lookedFirst); // the format, then 2, 8 and 32 s of packets
+        var at = lines[lookedFirst..].Select(line => line.IndexOf("-read_intervals", StringComparison.Ordinal) is >= 0 and var i ? line.Substring(i, 25) : line);
+        Assert.Equal(["-read_intervals 9.500000%"], at);
     }
 
     [Fact]
@@ -1072,6 +1093,31 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         Assert.Equal(0, before.Origin);
         Assert.True(after.Origin > 1, $"start time {after.Origin}");
+    }
+
+    [Fact]
+    public async Task A_file_read_through_a_protocol_and_replaced_is_looked_at_again()
+    {
+        SkipUnlessInstalled();
+        // A Hikvision recording is read as concat:header|file (MediaInput): its file is what may be written over.
+        var folder = fx.NewFolder();
+        var header = Path.Combine(folder, "header");
+        await File.WriteAllBytesAsync(header, [], Ct);
+        var path = Path.Combine(folder, "rec.ts");
+        File.Copy(await VideoAsync("30fps.ts"), path);
+        var input = $"concat:{header}|{path}";
+        var before = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, input, 1, Ct);
+        var later = Path.Combine(folder, "later.ts");
+        var moved = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            [.. MediaEncoding.Common, "-i", path, "-c", "copy", "-output_ts_offset", "100", "-f", "mpegts", later], TimeSpan.FromMinutes(1), Ct);
+        Assert.True(moved.ExitCode == 0, moved.StandardError);
+        File.Copy(later, path, overwrite: true);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(1));
+
+        var after = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, input, 1, Ct);
+
+        Assert.True(before.Origin is > 1 and < 2, $"start time {before.Origin}");
+        Assert.True(after.Origin > 100, $"start time {after.Origin}");
     }
 
     [Theory]

@@ -181,10 +181,10 @@ internal static class KeyFrames
     /// </summary>
     private static readonly TimeSpan LookTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>The start time and format of files looked at lately, by path, size and change time.</summary>
+    /// <summary>The start time and format of inputs looked at lately, by input and its files' size and time.</summary>
     private static readonly ConcurrentDictionary<string, (double Origin, Seeking How, (long Num, long Den)? Tick)> Formats = new();
 
-    /// <summary>The reach that last found a key frame in each of those files.</summary>
+    /// <summary>The reach of the last look in each of those inputs that found a key frame, or found none.</summary>
     private static readonly ConcurrentDictionary<string, double> Reaches = new();
 
     /// <summary>
@@ -236,7 +236,11 @@ internal static class KeyFrames
             if (from <= 0)
                 return new SeekPoint(0, origin, unindexed ? 0 : seconds, seconds, tick);
             if (reach >= LastReach)
+            {
+                // Its next picture is most likely as far from a key frame: one look, not three, before giving up.
+                Reaches[file] = LastReach;
                 return SeekPoint.Plain(seconds) with { Origin = origin, Tick = tick };
+            }
         }
     }
 
@@ -250,8 +254,11 @@ internal static class KeyFrames
         var key = input;
         try
         {
-            if (File.Exists(input) && new FileInfo(input) is var file)
-                key = string.Create(CultureInfo.InvariantCulture, $"{input}|{file.Length}|{file.LastWriteTimeUtc.Ticks}");
+            foreach (var path in FilesIn(input))
+            {
+                if (File.Exists(path) && new FileInfo(path) is var file)
+                    key += string.Create(CultureInfo.InvariantCulture, $"|{file.Length}|{file.LastWriteTimeUtc.Ticks}");
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
@@ -301,6 +308,15 @@ internal static class KeyFrames
             return null;
         }
     }
+
+    /// <summary>
+    /// The files <paramref name="input"/> reads: itself, or those a protocol URL of <see cref="MediaInput"/> names (a
+    /// .nov export's recording through <c>subfile</c>, a Hikvision recording after its header through <c>concat</c>).
+    /// </summary>
+    private static string[] FilesIn(string input) =>
+        input.StartsWith("subfile,", StringComparison.Ordinal) && input.IndexOf(",,:", StringComparison.Ordinal) is >= 0 and var at
+            ? [input[(at + 3)..]]
+            : input.StartsWith("concat:", StringComparison.Ordinal) ? input["concat:".Length..].Split('|') : [input];
 
     /// <summary>ffprobe's output, or null when it couldn't run or failed.</summary>
     private static async Task<string?> RunAsync(string ffprobe, IReadOnlyList<string> arguments, CancellationToken cancellationToken)

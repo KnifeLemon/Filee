@@ -20,9 +20,6 @@ internal sealed record ClipGraph(IReadOnlyList<string> Inputs, string Filter, bo
 
 internal static partial class MediaEncoding
 {
-    /// <summary>How far into its picture each part's first frame is put (see <see cref="ClipGraphOf"/>).</summary>
-    private const string FirstFrameAt = "0.4";
-
     /// <summary>Sample rate and layout every part's sound is brought to, so the parts join.</summary>
     private const string ClipAudioFormat = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
 
@@ -47,8 +44,9 @@ internal static partial class MediaEncoding
     /// <param name="music">The clip's music is mixed in (the preset keeps sound).</param>
     /// <param name="audioTrack">The selected audio track's ordinal in the input file.</param>
     /// <param name="musicTrack">The music file's audio track ordinal.</param>
+    /// <param name="frameRate">The video's frames per second (0 when unknown: taken as <paramref name="fps"/>).</param>
     internal static ClipGraph ClipGraphOf(string input, ClipEdit edit, bool audio, int width, int height, string fps, string pixelFormat = "yuv420p",
-        bool video = true, bool music = true, int audioTrack = 0, int musicTrack = 0, SeekPoint? seek = null)
+        bool video = true, bool music = true, int audioTrack = 0, int musicTrack = 0, SeekPoint? seek = null, double frameRate = 0)
     {
         var song = music ? edit.Music : null;
         var sound = audio || song is not null;
@@ -98,12 +96,15 @@ internal static partial class MediaEncoding
             var end = at.Clip(part.End);
             var speed = part.PlaySpeed;
             // The part's first frame goes in the picture nearest its time from the part's start, as the sound starts
-            // there, and 0.4 of a picture into it: fps keeps the last frame it rounds to each picture, so a frame up to
-            // 0.1 of a picture after a picture's time (shown at it, give or take its timing) is the one it keeps. From
-            // its own time, the frame after the first replaced it where it followed within half a picture (a part
-            // played 3 or 4 times as fast, a preview of fewer pictures a second than the video's). In microseconds:
-            // setpts cuts a time short to its tick, a whole frame in an AVI, and put two frames on one.
-            var from = $"(STARTPTS-(round((STARTPTS*TB-{start})*{fps}/{Seconds(speed)})+{FirstFrameAt})*{Seconds(speed)}/({fps}*TB))";
+            // there. fps keeps the last frame it rounds to each picture: where frames come closer than a picture (a
+            // part played faster, a preview of fewer pictures a second than the video's), the first is put far enough
+            // into its picture that the next rounds to the one after, half a frame's room each side; elsewhere it is
+            // put at the picture's time, half a picture's room each side for frames shown a little early or late. In
+            // microseconds: setpts cuts a time short to its tick, a whole frame in an AVI, and put two frames on one.
+            var rate = Rate(fps);
+            var dense = (frameRate > 0 ? frameRate : rate) * speed / rate;
+            var into = dense > 1 ? $"+{Seconds(0.5 - 0.5 / dense)}" : "";
+            var from = $"(STARTPTS-(round((STARTPTS*TB-{start})*{fps}/{Seconds(speed)}){into})*{Seconds(speed)}/({fps}*TB))";
             var setpts = speed == 1 ? $"settb=AVTB,setpts=PTS-{from}" : $"settb=AVTB,setpts=(PTS-{from})/{Seconds(speed)}";
             if (video)
                 graph.Append($"[vs{source}]{at.VideoTrim(part.Start, part.End)},{setpts},{picture}[v{i}];");
@@ -173,7 +174,7 @@ internal static partial class MediaEncoding
         var tenBit = video.IsHighBitDepth && encoder is "libx265" or "libsvtav1" or "libaom-av1";
         // "Remove audio" leaves the clip silent, music and all.
         var graph = ClipGraphOf(input, edit, !options.RemoveAudio && info.Audio is not null, width, height, fps, tenBit ? "yuv420p10le" : "yuv420p",
-            music: !options.RemoveAudio, audioTrack: info.Audio?.Ordinal ?? 0, musicTrack: musicTrack, seek: seek);
+            music: !options.RemoveAudio, audioTrack: info.Audio?.Ordinal ?? 0, musicTrack: musicTrack, seek: seek, frameRate: video.FrameRate);
         var audio = graph.HasAudio;
         var pal = IsPal(video.FrameRate);
         var filter = target is "vob" or "dv"
@@ -233,7 +234,7 @@ internal static partial class MediaEncoding
         (width, frameHeight) = ClipSize(video, height);
         // Pictures only: FFmpeg refuses a graph with a sound output nothing takes, the music's included.
         var graph = ClipGraphOf(input, edit, false, width, frameHeight, fps.ToString(CultureInfo.InvariantCulture), "bgra", music: false,
-            seek: seek);
+            seek: seek, frameRate: video.FrameRate);
         return [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1"];
     }
 
@@ -302,5 +303,10 @@ internal static partial class MediaEncoding
     }
 
     /// <summary>A number as FFmpeg's filters read it: up to three decimals, a point, no thousands separator.</summary>
+    /// <summary>Frames per second of an fps filter's rate (<c>30</c>, <c>30000/1001</c>).</summary>
+    private static double Rate(string fps) => fps.Split('/') is [var num, var den]
+        ? double.Parse(num, CultureInfo.InvariantCulture) / double.Parse(den, CultureInfo.InvariantCulture)
+        : double.Parse(fps, CultureInfo.InvariantCulture);
+
     private static string Seconds(double value) => Math.Round(Math.Max(0, value), 3).ToString("0.###", CultureInfo.InvariantCulture);
 }
