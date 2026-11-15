@@ -1872,8 +1872,6 @@
   "gallery.format.all": "Tutti i formati",
   "gallery.filter.tag": "Tag",
   "gallery.tag.all": "Tutti i tag",
-  "gallery.filter.language": "Lingua",
-  "gallery.language.all": "Tutte le lingue",
   "gallery.loading": "Caricamento dei preset da filee.sh…",
   "gallery.failed": "Impossibile raggiungere filee.sh. Controlla la connessione a Internet e il proxy in Impostazioni → Generali, poi riprova.",
   "gallery.empty": "Nessun preset corrisponde alla ricerca e ai filtri.",
@@ -1934,5 +1932,7 @@
   "gallery.export_saved": "Salvato.",
   "gallery.export_submit": "Apri il modulo di invio",
   "gallery.export_none": "Spunta almeno un preset o scegli una barra donut.",
-  "gallery.export_warnings": "La galleria mostrerà questi avvisi:"
+  "gallery.export_warnings": "La galleria mostrerà questi avvisi:",
+  "gallery.only_my_language": "Solo nella mia lingua",
+  "gallery.written_in": "Scritto in {0}"
 }

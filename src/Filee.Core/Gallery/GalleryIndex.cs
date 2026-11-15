@@ -28,7 +28,38 @@ public sealed record GalleryEntry
     public string Description { get; init; } = "";
     public string Author { get; init; } = "";
     public IReadOnlyList<string> Tags { get; init; } = [];
+    /// <summary>The languages the preset supports (has a title in): its main language first.</summary>
     public IReadOnlyList<string> Languages { get; init; } = [];
+
+    /// <summary>The language <see cref="Title"/> and <see cref="Description"/> are written in (an app language code).</summary>
+    public string Language { get; init; } = "";
+
+    /// <summary>The title in other languages ("ko" → its title).</summary>
+    public IReadOnlyDictionary<string, string> TitleByLang { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>The description in other languages; a language without one shows <see cref="Description"/>.</summary>
+    public IReadOnlyDictionary<string, string> DescriptionByLang { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// True when the preset is written in <paramref name="language"/>: its main language or one with a title of its own,
+    /// matched exactly, else by the base language ("pt" for "pt-PT") when there is no exact one.
+    /// </summary>
+    public bool Supports(string language) => TitleIn(language) is not null;
+
+    /// <summary>The title for someone using Filee in <paramref name="language"/>; null when the preset isn't written in it.</summary>
+    public string? TitleIn(string language) =>
+        Language == language ? Title
+        : TitleByLang.GetValueOrDefault(language) is { } exact ? exact
+        : Language == Base(language) ? Title
+        : TitleByLang.GetValueOrDefault(Base(language));
+
+    /// <summary>The description for <paramref name="language"/> (its own, else the main one); null as <see cref="TitleIn"/>.</summary>
+    public string? DescriptionIn(string language) =>
+        TitleIn(language) is null ? null
+        : Language == language ? Description
+        : DescriptionByLang.GetValueOrDefault(language) ?? (Language == Base(language) ? Description : DescriptionByLang.GetValueOrDefault(Base(language))) ?? Description;
+
+    private static string Base(string language) => language.Split('-')[0];
     public IReadOnlyList<string> Kinds { get; init; } = [];
     public IReadOnlyList<string> FormatsFrom { get; init; } = [];
     public IReadOnlyList<string> FormatsTo { get; init; } = [];
@@ -153,6 +184,12 @@ public sealed partial record GalleryIndex(int Version, DateTimeOffset Generated,
                 if (Text(thumbs, set.Name, 200) is { } path && IsThumb(path))
                     thumbByLang[set.Name] = path;
         var download = Text(item, "download", 200);
+        var titles = Texts(item, "titleByLang", 60);
+        var descriptions = Texts(item, "descriptionByLang", 600);
+        var listed = List(item, "languages", SharedPresetFolderCheck.Languages.Count, 16);
+        // An index from before "language" names the main language first in "languages".
+        var language = Text(item, "language", 16) is { Length: > 0 } main && IsLanguage(main) ? main : listed.FirstOrDefault() ?? "";
+        List<string> languages = [.. new[] { language }.Concat(listed).Concat(titles.Keys).Where(l => l.Length > 0).Distinct(StringComparer.Ordinal)];
         var formats = item.TryGetProperty("formats", out var f) && f.ValueKind == JsonValueKind.Object ? f : default;
         var stats = item.TryGetProperty("stats", out var s) && s.ValueKind == JsonValueKind.Object ? s : default;
         return new GalleryEntry
@@ -160,9 +197,12 @@ public sealed partial record GalleryIndex(int Version, DateTimeOffset Generated,
             Id = id,
             Title = title,
             Description = Text(item, "description", 600),
+            Language = language,
+            TitleByLang = titles,
+            DescriptionByLang = descriptions,
             Author = Text(item, "author", 39),
             Tags = List(item, "tags", 6, 24),
-            Languages = List(item, "languages", 10, 16),
+            Languages = languages,
             Kinds = List(item, "kinds", 3, 16).Where(SharedPresetFolderCheck.Kinds.Contains).ToList(),
             FormatsFrom = formats.ValueKind == JsonValueKind.Object ? List(formats, "from", 1000, 32) : [],
             FormatsTo = formats.ValueKind == JsonValueKind.Object ? List(formats, "to", 1000, 32) : [],
@@ -255,6 +295,18 @@ public sealed partial record GalleryIndex(int Version, DateTimeOffset Generated,
             .Where(text => text.Length is > 0 && text.Length <= maxLength && !text.Any(char.IsControl))
             .Distinct(StringComparer.Ordinal)
             .Take(maxCount)];
+    }
+
+    /// <summary>Texts per app language ("ko" → text), each cleaned and cut like <see cref="Text"/>.</summary>
+    private static Dictionary<string, string> Texts(JsonElement item, string name, int max)
+    {
+        var texts = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!item.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Object)
+            return texts;
+        foreach (var entry in value.EnumerateObject().Where(e => SharedPresetFolderCheck.Languages.Contains(e.Name)).Take(SharedPresetFolderCheck.Languages.Count))
+            if (Text(value, entry.Name, max).Trim() is { Length: > 0 } text)
+                texts[entry.Name] = text;
+        return texts;
     }
 
     private static double Number(JsonElement item, string name) =>

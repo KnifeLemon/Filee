@@ -1895,8 +1895,6 @@
   "gallery.format.all": "Tous les formats",
   "gallery.filter.tag": "Étiquette",
   "gallery.tag.all": "Toutes les étiquettes",
-  "gallery.filter.language": "Langue",
-  "gallery.language.all": "Toutes les langues",
   "gallery.loading": "Chargement des préréglages depuis filee.sh…",
   "gallery.failed": "Impossible de joindre filee.sh. Vérifiez la connexion Internet et le proxy dans Paramètres → Général, puis réessayez.",
   "gallery.empty": "Aucun préréglage ne correspond à la recherche et aux filtres.",
@@ -1957,5 +1955,7 @@
   "gallery.export_saved": "Enregistré.",
   "gallery.export_submit": "Ouvrir le formulaire de soumission",
   "gallery.export_none": "Cochez au moins un préréglage ou choisissez un menu circulaire.",
-  "gallery.export_warnings": "La galerie affichera ces avertissements :"
+  "gallery.export_warnings": "La galerie affichera ces avertissements :",
+  "gallery.only_my_language": "Seulement dans ma langue",
+  "gallery.written_in": "Rédigé en {0}"
 }

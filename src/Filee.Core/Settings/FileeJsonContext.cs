@@ -35,6 +35,12 @@ public sealed class PresetBundle
     /// preset gallery's check that a bundle doesn't come from a newer Filee than the one checking it.
     /// </summary>
     public int? SettingsSchema { get; set; }
+
+    /// <summary>
+    /// The app language the bundle was made in ("ko"), written by "Export for the gallery": the language its names are
+    /// in, which the gallery's submission takes as the preset's main language. Null in other exports.
+    /// </summary>
+    public string? Language { get; set; }
     public List<Preset> Presets { get; set; } = [];
     public List<ToolbarProfile> Profiles { get; set; } = [];
 }

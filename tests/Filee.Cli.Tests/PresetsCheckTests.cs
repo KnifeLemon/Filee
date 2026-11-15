@@ -113,6 +113,7 @@ public sealed class PresetsCheckTests : IDisposable
         Assert.Equal("2.5.0", derived.GetProperty("minVersion").GetString());
         Assert.Equal(64, derived.GetProperty("sha256").GetString()!.Length);
         Assert.Empty(json.RootElement.GetProperty("errors").EnumerateArray());
+        Assert.Empty(derived.GetProperty("languages").EnumerateArray()); // no meta.json
     }
 
     [Fact]

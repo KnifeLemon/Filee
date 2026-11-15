@@ -1875,8 +1875,6 @@
   "gallery.format.all": "सबै ढाँचा",
   "gallery.filter.tag": "ट्याग",
   "gallery.tag.all": "सबै ट्याग",
-  "gallery.filter.language": "भाषा",
-  "gallery.language.all": "सबै भाषा",
   "gallery.loading": "filee.sh बाट प्रिसेटहरू लोड हुँदैछन्…",
   "gallery.failed": "filee.sh सँग जडान हुन सकेन। इन्टरनेट जडान र सेटिङहरू → सामान्यमा प्रोक्सी जाँच गरेर फेरि प्रयास गर्नुहोस्।",
   "gallery.empty": "खोज र फिल्टरसँग मिल्ने कुनै प्रिसेट छैन।",
@@ -1937,5 +1935,7 @@
   "gallery.export_saved": "सेभ भयो।",
   "gallery.export_submit": "पेस गर्ने फारम खोल्नुहोस्",
   "gallery.export_none": "कम्तीमा एउटा प्रिसेट छान्नुहोस् वा डोनट टुलबार छान्नुहोस्।",
-  "gallery.export_warnings": "ग्यालरीले यी चेतावनीहरू देखाउनेछ:"
+  "gallery.export_warnings": "ग्यालरीले यी चेतावनीहरू देखाउनेछ:",
+  "gallery.only_my_language": "मेरो भाषामा मात्र",
+  "gallery.written_in": "{0} मा लेखिएको"
 }

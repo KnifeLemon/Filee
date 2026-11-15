@@ -1873,8 +1873,6 @@
   "gallery.format.all": "Semua format",
   "gallery.filter.tag": "Tag",
   "gallery.tag.all": "Semua tag",
-  "gallery.filter.language": "Bahasa",
-  "gallery.language.all": "Semua bahasa",
   "gallery.loading": "Memuat preset dari filee.sh…",
   "gallery.failed": "Tidak dapat menghubungi filee.sh. Periksa koneksi internet dan proxy di Pengaturan → Umum, lalu coba lagi.",
   "gallery.empty": "Tidak ada preset yang cocok dengan pencarian dan filter.",
@@ -1935,5 +1933,7 @@
   "gallery.export_saved": "Tersimpan.",
   "gallery.export_submit": "Buka formulir pengiriman",
   "gallery.export_none": "Centang setidaknya satu preset atau pilih toolbar donut.",
-  "gallery.export_warnings": "Galeri akan menampilkan peringatan berikut:"
+  "gallery.export_warnings": "Galeri akan menampilkan peringatan berikut:",
+  "gallery.only_my_language": "Hanya dalam bahasa saya",
+  "gallery.written_in": "Ditulis dalam {0}"
 }

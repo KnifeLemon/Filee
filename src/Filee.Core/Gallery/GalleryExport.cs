@@ -16,9 +16,11 @@ public static class GalleryExport
 {
     /// <summary>
     /// The bundle of <paramref name="chosen"/> and <paramref name="profile"/> (with the presets their groups and slices
-    /// need, in <paramref name="library"/>'s order), as an export writes it, and its check.
+    /// need, in <paramref name="library"/>'s order), as an export writes it, and its check. <paramref name="language"/> is
+    /// the app language the names are in, the preset's main language in the gallery.
     /// </summary>
-    public static GalleryExportFile Build(IReadOnlyList<Preset> library, IEnumerable<Preset> chosen, ToolbarProfile? profile)
+    public static GalleryExportFile Build(IReadOnlyList<Preset> library, IEnumerable<Preset> chosen, ToolbarProfile? profile,
+        string? language = null)
     {
         var ids = chosen.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         if (profile is not null)
@@ -29,6 +31,7 @@ public static class GalleryExport
         var json = JsonSerializer.SerializeToUtf8Bytes(new PresetBundle
         {
             SettingsSchema = AppSettings.CurrentSchemaVersion,
+            Language = language is not null && SharedPresetFolderCheck.Languages.Contains(language) ? language : null,
             Presets = [.. presets.Select(p => p.ForSharing())],
             Profiles = profile is null ? [] : [profile.Clone()],
         }, FileeJsonContext.Default.PresetBundle);

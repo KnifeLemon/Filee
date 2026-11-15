@@ -256,12 +256,13 @@ public sealed class PresetGalleryTests : IDisposable
         vm.Format = vm.Formats.Single(f => f.Value == "pdf");
         Assert.Equal(["Scans to one small PDF"], vm.Cards.Select(c => c.Title));
         vm.Format = vm.Formats[0];
-        vm.Language = vm.Languages.Single(l => l.Value == "ko");
-        Assert.Equal(2, vm.Cards.Count);
+        // The Korean donut isn't written in English: shown, after the others, unless only English ones are wanted.
+        vm.OnlyMyLanguage = true;
+        Assert.Equal(["Scans to one small PDF", "Instagram-ready JPG"], vm.Cards.Select(c => c.Title));
         vm.Tag = vm.Tags.Single(t => t.Value == "images");
-        Assert.Equal(["Photo desk donut"], vm.Cards.Select(c => c.Title));
+        Assert.Equal(["Instagram-ready JPG"], vm.Cards.Select(c => c.Title));
         vm.Tag = vm.Tags[0];
-        vm.Language = vm.Languages[0];
+        vm.OnlyMyLanguage = false;
         vm.Search = "tester-sca";
         Assert.Equal(["Scans to one small PDF"], vm.Cards.Select(c => c.Title));
         vm.Search = "nothing like this";
@@ -558,6 +559,55 @@ public sealed class PresetGalleryTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Presets_in_the_apps_language_come_first_in_it_and_the_others_carry_their_language()
+    {
+        TestServices.EnsureInitialized("en");
+        var gallery = new FakeGallery();
+        var korean = Share(gallery, "korean-first", "한국어 프리셋", Bundle([Insta()]), SKColors.SkyBlue, ["convert"], ["jpg"], [], [], hot: 9);
+        korean["language"] = "ko";
+        korean["titleByLang"] = new JsonObject { ["en"] = "Korean preset in English" };
+        korean["descriptionByLang"] = new JsonObject { ["en"] = "An English description of the Korean preset." };
+        var japanese = Share(gallery, "japanese-only", "日本語のプリセット", Bundle([Insta()]), SKColors.Gold, ["convert"], ["jpg"], [], [], hot: 8);
+        japanese["language"] = "ja";
+        var arabic = Share(gallery, "arabic-only", "إعداد مسبق عربي", Bundle([Insta()]), SKColors.Teal, ["convert"], ["jpg"], [], [], hot: 1);
+        arabic["language"] = "ar";
+        var english = Share(gallery, "english-only", "English preset", Bundle([Insta()]), SKColors.Pink, ["convert"], ["jpg"], [], [], hot: 2);
+        english["language"] = "en";
+        Publish(gallery, korean, japanese, arabic, english);
+        var localization = AppHost.Get<LocalizationService>();
+        var (vm, client, _, _) = Open(gallery, Store());
+        using var _client = client;
+        try
+        {
+            // English first (hot 9, then 2), the others after by their score.
+            Assert.Equal(["Korean preset in English", "English preset", "日本語のプリセット", "إعداد مسبق عربي"], vm.Cards.Select(c => c.Title));
+            var japaneseCard = vm.Cards.Single(c => c.Entry.Id == "japanese-only");
+            Assert.Equal("日本語", japaneseCard.Text.Badge);
+            Assert.Null(vm.Cards[0].Text.Badge);
+            Assert.Equal(Avalonia.Media.FlowDirection.RightToLeft, vm.Cards.Single(c => c.Entry.Id == "arabic-only").Text.Direction);
+            Assert.Contains("日本語", japaneseCard.AutomationName);
+            vm.Search = "한국어";
+            Assert.Equal(["Korean preset in English"], vm.Cards.Select(c => c.Title)); // the main title matches too
+            vm.Search = "";
+            vm.Selected = vm.Cards[0];
+            Assert.Equal("An English description of the Korean preset.", vm.Detail!.Description);
+
+            localization.SetLanguage("ko");
+            Assert.Equal(["한국어 프리셋", "日本語のプリセット", "English preset", "إعداد مسبق عربي"], vm.Cards.Select(c => c.Title));
+            Assert.Equal("English", vm.Cards.Single(c => c.Entry.Id == "english-only").Text.Badge);
+            Assert.Equal("한국어 프리셋", vm.Detail!.Title);
+            Assert.Null(vm.Detail.Text.Badge);
+            vm.OnlyMyLanguage = true;
+            Assert.Equal(["한국어 프리셋"], vm.Cards.Select(c => c.Title));
+        }
+        finally
+        {
+            vm.Dispose();
+            TestServices.EnsureInitialized("en");
+        }
+    }
+
+    [AvaloniaFact]
     public void The_validator_knows_every_language_of_the_app()
     {
         Assert.Equal(LocalizationService.Languages.Select(l => l.Code).Order(StringComparer.Ordinal),
@@ -581,6 +631,8 @@ public sealed class PresetGalleryTests : IDisposable
         vm.SaveCommand.Execute(null);
         ClipWindowTests.WaitFor(() => vm.Status == AppHost.Get<ILocalizer>()["gallery.export_saved"]);
         Assert.True(SharedBundleCheck.Check(File.ReadAllBytes(path)).Ok);
+        // The names are in the app's language: the gallery takes it as the preset's main language.
+        Assert.Equal("en", System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(path)).RootElement.GetProperty("language").GetString());
         Assert.Equal(AppHost.Get<ILocalizer>()["gallery.export_saved"], vm.Status);
 
         // A folder of one's own can't be shared: listed, and Save waits.

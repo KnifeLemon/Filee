@@ -1875,8 +1875,6 @@
   "gallery.format.all": "Todos los formatos",
   "gallery.filter.tag": "Etiqueta",
   "gallery.tag.all": "Todas las etiquetas",
-  "gallery.filter.language": "Idioma",
-  "gallery.language.all": "Todos los idiomas",
   "gallery.loading": "Cargando ajustes desde filee.sh…",
   "gallery.failed": "No se pudo conectar con filee.sh. Revisa la conexión a internet y el proxy en Ajustes → General, y vuelve a intentarlo.",
   "gallery.empty": "Ningún ajuste coincide con la búsqueda y los filtros.",
@@ -1937,5 +1935,7 @@
   "gallery.export_saved": "Guardado.",
   "gallery.export_submit": "Abrir el formulario de envío",
   "gallery.export_none": "Marca al menos un ajuste o elige un menú circular.",
-  "gallery.export_warnings": "La galería mostrará estas advertencias:"
+  "gallery.export_warnings": "La galería mostrará estas advertencias:",
+  "gallery.only_my_language": "Solo en mi idioma",
+  "gallery.written_in": "Escrito en {0}"
 }

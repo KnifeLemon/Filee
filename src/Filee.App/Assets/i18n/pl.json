@@ -1895,8 +1895,6 @@
   "gallery.format.all": "Wszystkie formaty",
   "gallery.filter.tag": "Tag",
   "gallery.tag.all": "Wszystkie tagi",
-  "gallery.filter.language": "Język",
-  "gallery.language.all": "Wszystkie języki",
   "gallery.loading": "Wczytywanie ustawień z filee.sh…",
   "gallery.failed": "Nie można połączyć się z filee.sh. Sprawdź połączenie z internetem i serwer proxy w Ustawienia → Ogólne, a potem spróbuj ponownie.",
   "gallery.empty": "Żadne ustawienie nie pasuje do wyszukiwania i filtrów.",
@@ -1957,5 +1955,7 @@
   "gallery.export_saved": "Zapisano.",
   "gallery.export_submit": "Otwórz formularz zgłoszenia",
   "gallery.export_none": "Zaznacz co najmniej jedno ustawienie lub wybierz pasek-pierścień.",
-  "gallery.export_warnings": "Galeria pokaże te ostrzeżenia:"
+  "gallery.export_warnings": "Galeria pokaże te ostrzeżenia:",
+  "gallery.only_my_language": "Tylko w moim języku",
+  "gallery.written_in": "Język: {0}"
 }

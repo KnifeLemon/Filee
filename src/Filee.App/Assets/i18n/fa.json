@@ -1871,8 +1871,6 @@
   "gallery.format.all": "همه فرمت‌ها",
   "gallery.filter.tag": "برچسب",
   "gallery.tag.all": "همه برچسب‌ها",
-  "gallery.filter.language": "زبان",
-  "gallery.language.all": "همه زبان‌ها",
   "gallery.loading": "در حال بارگیری پیش‌تنظیم‌ها از filee.sh…",
   "gallery.failed": "اتصال به filee.sh ممکن نشد. اتصال اینترنت و پراکسی را در تنظیمات ← عمومی بررسی کنید و دوباره تلاش کنید.",
   "gallery.empty": "هیچ پیش‌تنظیمی با جست‌وجو و فیلترها جور نیست.",
@@ -1933,5 +1931,7 @@
   "gallery.export_saved": "ذخیره شد.",
   "gallery.export_submit": "باز کردن فرم ارسال",
   "gallery.export_none": "دست‌کم یک پیش‌تنظیم را علامت بزنید یا یک نوار ابزار دونات انتخاب کنید.",
-  "gallery.export_warnings": "گالری این هشدارها را نشان می‌دهد:"
+  "gallery.export_warnings": "گالری این هشدارها را نشان می‌دهد:",
+  "gallery.only_my_language": "فقط به زبان من",
+  "gallery.written_in": "نوشته‌شده به {0}"
 }

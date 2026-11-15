@@ -1895,8 +1895,6 @@
   "gallery.format.all": "Tất cả định dạng",
   "gallery.filter.tag": "Thẻ",
   "gallery.tag.all": "Tất cả thẻ",
-  "gallery.filter.language": "Ngôn ngữ",
-  "gallery.language.all": "Tất cả ngôn ngữ",
   "gallery.loading": "Đang tải cấu hình sẵn từ filee.sh…",
   "gallery.failed": "Không thể kết nối với filee.sh. Hãy kiểm tra kết nối Internet và proxy trong Cài đặt → Chung, rồi thử lại.",
   "gallery.empty": "Không có cấu hình sẵn nào khớp với tìm kiếm và bộ lọc.",
@@ -1957,5 +1955,7 @@
   "gallery.export_saved": "Đã lưu.",
   "gallery.export_submit": "Mở biểu mẫu gửi",
   "gallery.export_none": "Hãy đánh dấu ít nhất một cấu hình sẵn hoặc chọn một thanh công cụ vòng tròn.",
-  "gallery.export_warnings": "Thư viện sẽ hiện các cảnh báo này:"
+  "gallery.export_warnings": "Thư viện sẽ hiện các cảnh báo này:",
+  "gallery.only_my_language": "Chỉ bằng ngôn ngữ của tôi",
+  "gallery.written_in": "Viết bằng {0}"
 }

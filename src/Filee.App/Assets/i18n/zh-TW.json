@@ -1895,8 +1895,6 @@
   "gallery.format.all": "所有格式",
   "gallery.filter.tag": "標籤",
   "gallery.tag.all": "所有標籤",
-  "gallery.filter.language": "語言",
-  "gallery.language.all": "所有語言",
   "gallery.loading": "正在從 filee.sh 載入預設…",
   "gallery.failed": "無法連線到 filee.sh。請檢查網路連線以及 設定 → 一般 中的 Proxy，然後再試一次。",
   "gallery.empty": "沒有符合搜尋與篩選條件的預設。",
@@ -1957,5 +1955,7 @@
   "gallery.export_saved": "已儲存。",
   "gallery.export_submit": "開啟提交表單",
   "gallery.export_none": "請至少勾選一個預設或選擇一個環形工具列。",
-  "gallery.export_warnings": "預設廣場將顯示以下提醒："
+  "gallery.export_warnings": "預設廣場將顯示以下提醒：",
+  "gallery.only_my_language": "只看我的語言",
+  "gallery.written_in": "以{0}撰寫"
 }

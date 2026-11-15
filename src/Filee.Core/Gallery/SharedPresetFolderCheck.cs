@@ -103,7 +103,11 @@ public static partial class SharedPresetFolderCheck
 
         var metaFile = new FileInfo(Path.Combine(root.FullName, MetaName));
         if (metaFile.Exists && !metaFile.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            CheckMeta(metaFile, result.Derived, result);
+        {
+            // The languages the preset is written in come from meta.json, not preset.json.
+            if (CheckMeta(metaFile, result.Derived, result) is { } languages && result.Derived is { } derived)
+                result.Derived = derived with { Languages = languages };
+        }
 
         if (!hasImages)
             result.Add("images.missing", ImagesFolder + "/", "", $"is missing: a shared preset needs {MinImages} to {MaxImages} pictures (1 is the cover)");
@@ -250,16 +254,23 @@ public static partial class SharedPresetFolderCheck
             result.Add("images.decode", name, "", $"decodes as {decoded.Width} x {decoded.Height}, not the {info.Width} x {info.Height} its header says");
     }
 
+    // Before MetaFields, which uses them (static fields start in the order they are written).
+    private static readonly StringRule Title = new(60, text => text.Trim().Length >= 3 ? null : "must be 3 to 60 characters long");
+    private static readonly StringRule Description = new(600, text => text.Trim().Length >= 10 ? null : "must be 10 to 600 characters long");
+
     /// <summary>The fields of meta.json (see the gallery's SPEC), each optional here: the CI fills some in.</summary>
     private static readonly ObjectRule MetaFields = new(new Dictionary<string, ValueRule>(StringComparer.Ordinal)
     {
         ["id"] = new StringRule(48, text => !Slug().IsMatch(text) ? "must be 3 to 48 of a-z, 0-9 and '-'"
             : ReservedSlugs.Contains(text) ? "is reserved for the site's own pages" : null),
-        ["title"] = new StringRule(60, text => text.Trim().Length >= 3 ? null : "must be 3 to 60 characters long"),
-        ["description"] = new StringRule(600, text => text.Trim().Length >= 10 ? null : "must be 10 to 600 characters long"),
+        ["title"] = Title,
+        ["description"] = Description,
+        ["language"] = new StringRule(16, AppLanguage),
+        ["titleByLang"] = new MapRule(Languages.Count, AppLanguage, _ => Title),
+        ["descriptionByLang"] = new MapRule(Languages.Count, AppLanguage, _ => Description),
         ["author"] = new StringRule(39, text => Login().IsMatch(text) ? null : "is not a GitHub login"),
         ["tags"] = new ListRule(new StringRule(24, text => Tag().IsMatch(text) ? null : "must be lowercase a-z, 0-9 and '-'"), 6),
-        ["languages"] = new ListRule(new StringRule(16, SharedText.LanguageCode), 10),
+        ["languages"] = new ListRule(new StringRule(16, AppLanguage), Languages.Count),
         ["kinds"] = new ListRule(new EnumRule(Kinds), Kinds.Count),
         ["formats"] = new ObjectRule(new Dictionary<string, ValueRule>(StringComparer.Ordinal)
         {
@@ -278,6 +289,9 @@ public static partial class SharedPresetFolderCheck
         }), SharedPresetWarnings.All.Count),
     });
 
+    private static string? AppLanguage(string code) =>
+        Languages.Contains(code) ? null : $"is not a language of Filee's ({string.Join(", ", Languages)})";
+
     private static string? Timestamp(string text) =>
         DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out _) ? null : "is not a date and time like 2026-11-15T00:00:00Z";
 
@@ -290,12 +304,13 @@ public static partial class SharedPresetFolderCheck
     [GeneratedRegex(@"^[a-z0-9][a-z0-9\-]{0,23}$", RegexOptions.CultureInvariant)]
     private static partial Regex Tag();
 
-    private static void CheckMeta(FileInfo file, PresetCheckDerived? derived, PresetCheckResult result)
+    /// <summary>Checks meta.json; returns the languages the preset is written in, or null when that can't be told.</summary>
+    private static List<string>? CheckMeta(FileInfo file, PresetCheckDerived? derived, PresetCheckResult result)
     {
         if (file.Length > MaxMetaBytes)
         {
             result.Add("meta.too_large", MetaName, "", $"is {file.Length:N0} bytes; at most {MaxMetaBytes:N0}");
-            return;
+            return null;
         }
         JsonDocument document;
         try
@@ -305,7 +320,7 @@ public static partial class SharedPresetFolderCheck
         catch (JsonException ex)
         {
             result.Add("meta.invalid_json", MetaName, "", "is not valid JSON: " + ex.Message.Split('\n')[0]);
-            return;
+            return null;
         }
         using (document)
         {
@@ -313,13 +328,16 @@ public static partial class SharedPresetFolderCheck
             if (root.ValueKind != JsonValueKind.Object)
             {
                 result.Add("meta.invalid_json", MetaName, "", "must be a JSON object");
-                return;
+                return null;
             }
             var before = result.Errors.Count;
             new SharedBundleCheck.Walker(result, MetaName).Check(root, MetaFields, "");
+            if (result.Errors.Count != before)
+                return null;
+            var languages = WrittenIn(root, result);
             // What the CI derived from preset.json must still be what preset.json is.
-            if (derived is null || result.Errors.Count != before)
-                return;
+            if (derived is null)
+                return languages;
             if (root.TryGetProperty("kinds", out var kinds) && !SameSet(kinds, derived.Kinds))
                 result.Add("meta.derived_mismatch", MetaName, "kinds", $"must be [{string.Join(", ", derived.Kinds)}], as preset.json is");
             if (root.TryGetProperty("formats", out var formats))
@@ -335,7 +353,34 @@ public static partial class SharedPresetFolderCheck
                 result.Add("meta.derived_mismatch", MetaName, "warnings", $"must be [{string.Join(", ", derived.Warnings.Select(w => w.Code))}], as preset.json is");
             if (root.TryGetProperty("minVersion", out var min) && Version.Parse(min.GetString()!) < Version.Parse(derived.MinVersion))
                 result.Add("meta.derived_mismatch", MetaName, "minVersion", $"must be at least {derived.MinVersion}, the first Filee that can install it");
+            return languages;
         }
+    }
+
+    /// <summary>
+    /// The languages a preset is written in: <c>language</c> (an old meta.json's first of <c>languages</c>) and every
+    /// language <c>titleByLang</c> has a title in. A description needs its language's title; <c>languages</c>, when
+    /// given with <c>language</c>, must be exactly these.
+    /// </summary>
+    private static List<string>? WrittenIn(JsonElement root, PresetCheckResult result)
+    {
+        var listed = root.TryGetProperty("languages", out var l) ? l.EnumerateArray().Select(e => e.GetString()!).ToList() : null;
+        var main = root.TryGetProperty("language", out var m) ? m.GetString()! : listed?.FirstOrDefault();
+        if (main is null)
+        {
+            result.Add("meta.language_missing", MetaName, "language", "is missing: the language the title and description are written in");
+            return null;
+        }
+        var titled = root.TryGetProperty("titleByLang", out var t) ? t.EnumerateObject().Select(p => p.Name).ToList() : [];
+        if (titled.Contains(main))
+            result.Add("field.value", MetaName, $"titleByLang.{main}", "is the main language; its title is \"title\"");
+        if (root.TryGetProperty("descriptionByLang", out var d))
+            foreach (var language in d.EnumerateObject().Select(p => p.Name).Where(n => n != main && !titled.Contains(n)))
+                result.Add("field.value", MetaName, $"descriptionByLang.{language}", "has no title in titleByLang, so the preset isn't shown in that language");
+        List<string> languages = [main, .. titled.Where(c => c != main).Order(StringComparer.Ordinal)];
+        if (root.TryGetProperty("language", out _) && listed is not null && !listed.ToHashSet(StringComparer.Ordinal).SetEquals(languages))
+            result.Add("meta.derived_mismatch", MetaName, "languages", $"must be [{string.Join(", ", languages)}]: language and every language titleByLang has");
+        return languages;
     }
 
     private static bool SameSet(JsonElement list, IReadOnlyList<string> expected) =>

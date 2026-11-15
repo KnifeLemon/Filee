@@ -40,6 +40,17 @@
       <Setter Property="Padding" Value="8,2" />
       <Setter Property="Margin" Value="0,0,4,4" />
     </Style>
+    <!-- The language a preset is written in, when it isn't the app's. -->
+    <Style Selector="Border.language">
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Border.language > TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
     <Style Selector="Border.tag > TextBlock">
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
@@ -83,8 +94,9 @@
                 AutomationProperties.Name="{DynamicResource gallery.filter.format}" ToolTip.Tip="{DynamicResource gallery.filter.format}" />
       <ComboBox ItemsSource="{Binding Tags}" SelectedItem="{Binding Tag}" MinWidth="120" MaxDropDownHeight="360"
                 AutomationProperties.Name="{DynamicResource gallery.filter.tag}" ToolTip.Tip="{DynamicResource gallery.filter.tag}" />
-      <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" MinWidth="130" MaxDropDownHeight="360"
-                AutomationProperties.Name="{DynamicResource gallery.filter.language}" ToolTip.Tip="{DynamicResource gallery.filter.language}" />
+      <!-- Presets written in the app's language always come first; this hides the others. -->
+      <CheckBox x:Name="OnlyMyLanguage" IsChecked="{Binding OnlyMyLanguage}" VerticalAlignment="Center"
+                Content="{DynamicResource gallery.only_my_language}" AutomationProperties.Name="{DynamicResource gallery.only_my_language}" />
     </WrapPanel>
 
     <TextBlock DockPanel.Dock="Bottom" Classes="caption" Margin="0,8,0,0" Text="{Binding NewerText}"
@@ -118,7 +130,12 @@
                     <Image Source="{Binding Thumb}" Stretch="UniformToFill" />
                   </Border>
                   <StackPanel Margin="10,8,10,10" Spacing="2">
-                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                               FlowDirection="{Binding Text.Direction}" />
+                    <Border Classes="language" IsVisible="{Binding Text.HasBadge}" ToolTip.Tip="{Binding Text.BadgeText}"
+                            AutomationProperties.Name="{Binding Text.BadgeText}">
+                      <TextBlock Text="{Binding Text.Badge}" />
+                    </Border>
                     <TextBlock Classes="caption" Text="{Binding Byline}" TextTrimming="CharacterEllipsis" />
                     <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding HasStats}" Margin="0,2,0,0">
                       <StackPanel Orientation="Horizontal" Spacing="4">
@@ -224,12 +241,16 @@
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
-                      <TextBlock Classes="h2" Text="{Binding Title}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                      <TextBlock Classes="h2" Text="{Binding Title}" TextWrapping="Wrap" Margin="0,4,0,0" FlowDirection="{Binding Text.Direction}" />
+                      <Border Classes="language" IsVisible="{Binding Text.HasBadge}" ToolTip.Tip="{Binding Text.BadgeText}"
+                              AutomationProperties.Name="{Binding Text.BadgeText}">
+                        <TextBlock Text="{Binding Text.Badge}" />
+                      </Border>
                       <StackPanel Spacing="2">
                         <TextBlock Classes="caption" Text="{Binding Byline}" />
                         <TextBlock Classes="caption" Text="{Binding Stats}" IsVisible="{Binding HasStats}" />
                       </StackPanel>
-                      <TextBlock Text="{Binding Description}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FlowDirection="{Binding Text.Direction}" />
                       <ItemsControl ItemsSource="{Binding Tags}">
                         <ItemsControl.ItemsPanel>
                           <ItemsPanelTemplate>

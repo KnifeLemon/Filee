@@ -1875,8 +1875,6 @@
   "gallery.format.all": "すべての形式",
   "gallery.filter.tag": "タグ",
   "gallery.tag.all": "すべてのタグ",
-  "gallery.filter.language": "言語",
-  "gallery.language.all": "すべての言語",
   "gallery.loading": "filee.sh からプリセットを読み込んでいます…",
   "gallery.failed": "filee.sh に接続できません。インターネット接続と「設定」→「一般」のプロキシを確認してから、もう一度お試しください。",
   "gallery.empty": "検索とフィルターに合うプリセットはありません。",
@@ -1937,5 +1935,7 @@
   "gallery.export_saved": "保存しました。",
   "gallery.export_submit": "投稿フォームを開く",
   "gallery.export_none": "プリセットを 1 つ以上選ぶか、ドーナツメニューを選んでください。",
-  "gallery.export_warnings": "ギャラリーには次の注意が表示されます:"
+  "gallery.export_warnings": "ギャラリーには次の注意が表示されます:",
+  "gallery.only_my_language": "自分の言語のみ",
+  "gallery.written_in": "{0}で書かれています"
 }
