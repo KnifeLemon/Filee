@@ -1915,6 +1915,7 @@
   "gallery.option.file_name": "Nome file: {0}",
   "gallery.warnings_title": "Prima di installare",
   "gallery.warning.replaces_original": "Sostituisce i file originali: il risultato prende il loro posto e gli originali vanno nel Cestino.",
+  "gallery.warning.trashes_original": "Sposta i file originali nel Cestino quando il risultato in un altro formato è completo.",
   "gallery.warning.moves_original": "Sposta i file originali in una cartella invece di copiarli.",
   "gallery.warning.overwrites_existing": "Sovrascrive un file che ha già il nome del risultato invece di aggiungere un numero.",
   "gallery.warning.copies_to_folder": "Copia i file in una cartella. Scegli la cartella nel preset dopo l'installazione.",

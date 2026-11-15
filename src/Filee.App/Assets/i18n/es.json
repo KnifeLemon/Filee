@@ -1918,6 +1918,7 @@
   "gallery.option.file_name": "Nombre de archivo: {0}",
   "gallery.warnings_title": "Antes de instalar",
   "gallery.warning.replaces_original": "Reemplaza tus archivos originales: el resultado ocupa su lugar y los originales van a la Papelera.",
+  "gallery.warning.trashes_original": "Mueve tus archivos originales a la Papelera cuando su resultado en otro formato está completo.",
   "gallery.warning.moves_original": "Mueve tus archivos originales a una carpeta en lugar de copiarlos.",
   "gallery.warning.overwrites_existing": "Sobrescribe un archivo que ya tiene el nombre del resultado en lugar de añadir un número.",
   "gallery.warning.copies_to_folder": "Copia archivos a una carpeta. Elige la carpeta en el ajuste después de instalarlo.",

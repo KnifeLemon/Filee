@@ -1916,6 +1916,7 @@
   "gallery.option.file_name": "Dateiname: {0}",
   "gallery.warnings_title": "Vor dem Installieren",
   "gallery.warning.replaces_original": "Ersetzt deine Originaldateien: Das Ergebnis tritt an ihre Stelle, die Originale kommen in den Papierkorb.",
+  "gallery.warning.trashes_original": "Verschiebt deine Originaldateien in den Papierkorb, sobald ihr Ergebnis in einem anderen Format fertig ist.",
   "gallery.warning.moves_original": "Verschiebt deine Originaldateien in einen Ordner, statt sie zu kopieren.",
   "gallery.warning.overwrites_existing": "Überschreibt eine Datei, die schon den Namen des Ergebnisses hat, statt eine Nummer anzuhängen.",
   "gallery.warning.copies_to_folder": "Kopiert Dateien in einen Ordner. Wähle den Ordner nach dem Installieren in der Vorlage.",

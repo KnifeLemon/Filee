@@ -1938,6 +1938,7 @@
   "gallery.option.file_name": "Tên tệp: {0}",
   "gallery.warnings_title": "Trước khi cài đặt",
   "gallery.warning.replaces_original": "Thay thế tệp gốc: kết quả nằm vào chỗ của chúng và tệp gốc được chuyển vào Thùng rác.",
+  "gallery.warning.trashes_original": "Chuyển tệp gốc vào Thùng rác khi kết quả ở định dạng khác đã hoàn tất.",
   "gallery.warning.moves_original": "Di chuyển tệp gốc vào một thư mục thay vì sao chép.",
   "gallery.warning.overwrites_existing": "Ghi đè tệp đã có tên giống kết quả thay vì thêm số.",
   "gallery.warning.copies_to_folder": "Sao chép tệp vào một thư mục. Hãy chọn thư mục trong cấu hình sẵn sau khi cài đặt.",

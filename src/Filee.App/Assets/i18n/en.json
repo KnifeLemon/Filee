@@ -1938,6 +1938,7 @@
   "gallery.option.file_name": "File name: {0}",
   "gallery.warnings_title": "Before you install",
   "gallery.warning.replaces_original": "Replaces your original files: the result takes their place and the originals go to the Recycle Bin / Trash.",
+  "gallery.warning.trashes_original": "Moves your original files to the Recycle Bin / Trash once their result in another format is complete.",
   "gallery.warning.moves_original": "Moves your original files into a folder instead of copying them.",
   "gallery.warning.overwrites_existing": "Overwrites a file that already has the result's name instead of adding a number.",
   "gallery.warning.copies_to_folder": "Copies files into a folder. Choose the folder in the preset after installing.",

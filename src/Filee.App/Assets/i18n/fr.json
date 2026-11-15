@@ -1938,6 +1938,7 @@
   "gallery.option.file_name": "Nom de fichier : {0}",
   "gallery.warnings_title": "Avant d'installer",
   "gallery.warning.replaces_original": "Remplace vos fichiers d'origine : le résultat prend leur place et les originaux vont dans la Corbeille.",
+  "gallery.warning.trashes_original": "Déplace vos fichiers d'origine dans la Corbeille une fois leur résultat dans un autre format terminé.",
   "gallery.warning.moves_original": "Déplace vos fichiers d'origine dans un dossier au lieu de les copier.",
   "gallery.warning.overwrites_existing": "Écrase un fichier qui porte déjà le nom du résultat au lieu d'ajouter un numéro.",
   "gallery.warning.copies_to_folder": "Copie des fichiers dans un dossier. Choisissez le dossier dans le préréglage après l'installation.",

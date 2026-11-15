@@ -1938,6 +1938,7 @@
   "gallery.option.file_name": "파일 이름: {0}",
   "gallery.warnings_title": "설치하기 전에 확인하세요",
   "gallery.warning.replaces_original": "원본 파일을 바꿔요: 결과가 원본 자리에 놓이고 원본은 휴지통으로 가요.",
+  "gallery.warning.trashes_original": "다른 형식으로 된 결과가 완성되면 원본 파일을 휴지통으로 옮겨요.",
   "gallery.warning.moves_original": "원본 파일을 복사하지 않고 폴더로 옮겨요.",
   "gallery.warning.overwrites_existing": "결과와 이름이 같은 파일이 있으면 번호를 붙이지 않고 덮어써요.",
   "gallery.warning.copies_to_folder": "파일을 폴더에 복사해요. 설치한 뒤 프리셋에서 폴더를 골라 주세요.",

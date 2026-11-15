@@ -96,6 +96,7 @@ public sealed class PresetGalleryCheckTests
         Assert.Empty(WarningCodes(Kept()));
         Assert.Equal(["strips_metadata"], WarningCodes(GalleryFiles.Photo()));
         Assert.Equal(["replaces_original"], WarningCodes(Kept(p => p.Output.ReplaceOriginal = true)));
+        Assert.Equal(["trashes_original"], WarningCodes(Kept(p => p.Output.TrashOriginalAfterConvert = true)));
         Assert.Equal(["overwrites_existing"], WarningCodes(Kept(p => p.Output.Conflict = ConflictPolicy.Overwrite)));
         Assert.Equal(["edits_metadata", "strips_metadata"], WarningCodes(Kept(p => p.Metadata = new MetadataEdits
         {
@@ -110,7 +111,7 @@ public sealed class PresetGalleryCheckTests
             TargetFormat = "docx",
             Translate = { Enabled = true, Model = "llama3.1:8b" },
         }));
-        Assert.Equal(["high", "high", "medium", "medium", "medium", "medium", "info", "info"], SharedPresetWarnings.All.Select(w => w.Severity));
+        Assert.Equal(["high", "high", "high", "medium", "medium", "medium", "medium", "info", "info"], SharedPresetWarnings.All.Select(w => w.Severity));
     }
 
     [Theory]
@@ -178,7 +179,7 @@ public sealed class PresetGalleryCheckTests
         var leftOut = SharedPresetRules.Paths(SharedPresetRules.PresetFields).Where(p => p.LeftOut).Select(p => p.Path).ToHashSet();
         Assert.Equal(["gallery", "image.backdrop.picture", "image.backdrop.pictureLength", "image.backdrop.pictureWritten",
             "image.backdropLook.picture", "image.backdropLook.pictureLength", "image.backdropLook.pictureWritten",
-            "media.clip.music.path", "output.customFolder", "output.keepFoldersFrom", "output.trashOriginalAfterConvert", "pdf.password"], leftOut.Order());
+            "media.clip.music.path", "output.customFolder", "output.keepFoldersFrom", "pdf.password"], leftOut.Order());
     }
 
     /// <summary>The allow-list has every field of <paramref name="type"/>, but none inside a field it leaves out.</summary>
@@ -210,7 +211,6 @@ public sealed class PresetGalleryCheckTests
     [Theory]
     [InlineData("output.customFolder", "\"C:/Users/me/Pictures\"", "output.customFolder")]
     [InlineData("output.keepFoldersFrom", "\"D:/Inbox\"", "output.keepFoldersFrom")]
-    [InlineData("output.trashOriginalAfterConvert", "true", "output.trashOriginalAfterConvert")]
     [InlineData("pdf.password", "\"hunter2\"", "pdf.password")]
     [InlineData("image.backdrop", "{\"kind\":\"Picture\",\"picture\":\"C:/bg.png\"}", "image.backdrop.picture")]
     [InlineData("media.clip", "{\"music\":{\"path\":\"/home/me/song.mp3\"}}", "media.clip.music.path")]

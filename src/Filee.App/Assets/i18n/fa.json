@@ -1914,6 +1914,7 @@
   "gallery.option.file_name": "نام فایل: {0}",
   "gallery.warnings_title": "پیش از نصب",
   "gallery.warning.replaces_original": "فایل‌های اصلی شما را جایگزین می‌کند: نتیجه جای آن‌ها را می‌گیرد و فایل‌های اصلی به سطل بازیافت می‌روند.",
+  "gallery.warning.trashes_original": "فایل‌های اصلی شما را پس از کامل شدن نتیجه در قالبی دیگر به سطل بازیافت می‌برد.",
   "gallery.warning.moves_original": "فایل‌های اصلی شما را به‌جای کپی کردن به یک پوشه منتقل می‌کند.",
   "gallery.warning.overwrites_existing": "فایلی را که از قبل هم‌نام نتیجه است، به‌جای افزودن شماره، بازنویسی می‌کند.",
   "gallery.warning.copies_to_folder": "فایل‌ها را در یک پوشه کپی می‌کند. پس از نصب، پوشه را در پیش‌تنظیم انتخاب کنید.",

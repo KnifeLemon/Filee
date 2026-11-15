@@ -1918,6 +1918,7 @@
   "gallery.option.file_name": "ชื่อไฟล์: {0}",
   "gallery.warnings_title": "ก่อนติดตั้ง",
   "gallery.warning.replaces_original": "แทนที่ไฟล์ต้นฉบับ: ผลลัพธ์จะอยู่แทนที่ และไฟล์ต้นฉบับจะไปอยู่ในถังรีไซเคิล",
+  "gallery.warning.trashes_original": "ย้ายไฟล์ต้นฉบับไปที่ถังรีไซเคิลเมื่อผลลัพธ์ในรูปแบบอื่นเสร็จสมบูรณ์",
   "gallery.warning.moves_original": "ย้ายไฟล์ต้นฉบับไปยังโฟลเดอร์แทนการคัดลอก",
   "gallery.warning.overwrites_existing": "เขียนทับไฟล์ที่มีชื่อเดียวกับผลลัพธ์แทนการเติมหมายเลข",
   "gallery.warning.copies_to_folder": "คัดลอกไฟล์ไปยังโฟลเดอร์ เลือกโฟลเดอร์ในพรีเซ็ตหลังติดตั้ง",

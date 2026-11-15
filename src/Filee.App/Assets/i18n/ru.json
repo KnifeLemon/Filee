@@ -1938,6 +1938,7 @@
   "gallery.option.file_name": "Имя файла: {0}",
   "gallery.warnings_title": "Перед установкой",
   "gallery.warning.replaces_original": "Заменяет исходные файлы: результат занимает их место, а исходные файлы попадают в корзину.",
+  "gallery.warning.trashes_original": "Перемещает исходные файлы в корзину, когда результат в другом формате готов.",
   "gallery.warning.moves_original": "Перемещает исходные файлы в папку вместо копирования.",
   "gallery.warning.overwrites_existing": "Перезаписывает файл с таким же именем, как у результата, вместо добавления номера.",
   "gallery.warning.copies_to_folder": "Копирует файлы в папку. После установки выберите папку в пресете.",

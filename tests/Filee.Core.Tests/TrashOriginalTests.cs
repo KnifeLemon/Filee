@@ -1,9 +1,9 @@
 // "Move the original to the Recycle Bin / Trash after converting" (#1387): the original goes once its result in another
 // format is complete, or stays, with a note saying why.
 
+using System.Text.Json;
 using Filee.Core.Conversion;
 using Filee.Core.Platform;
-using System.Text.Json;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Core.Watching;

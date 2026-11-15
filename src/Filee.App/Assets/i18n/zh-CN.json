@@ -1938,6 +1938,7 @@
   "gallery.option.file_name": "文件名：{0}",
   "gallery.warnings_title": "安装前请注意",
   "gallery.warning.replaces_original": "替换原始文件：结果会放在原文件的位置，原文件移到回收站。",
+  "gallery.warning.trashes_original": "另一种格式的结果完成后，把原始文件移到回收站。",
   "gallery.warning.moves_original": "将原始文件移动到文件夹，而不是复制。",
   "gallery.warning.overwrites_existing": "如果已有与结果同名的文件，会直接覆盖，而不是添加编号。",
   "gallery.warning.copies_to_folder": "将文件复制到文件夹。安装后请在预设中选择文件夹。",

@@ -1918,6 +1918,7 @@
   "gallery.option.file_name": "ファイル名: {0}",
   "gallery.warnings_title": "インストールする前に",
   "gallery.warning.replaces_original": "元のファイルを置き換えます: 結果が元の場所に入り、元のファイルはごみ箱に移動します。",
+  "gallery.warning.trashes_original": "別の形式の結果ができあがると、元のファイルをごみ箱に移動します。",
   "gallery.warning.moves_original": "元のファイルをコピーせず、フォルダーに移動します。",
   "gallery.warning.overwrites_existing": "結果と同じ名前のファイルがあると、番号を付けずに上書きします。",
   "gallery.warning.copies_to_folder": "ファイルをフォルダーにコピーします。インストール後にプリセットでフォルダーを選んでください。",

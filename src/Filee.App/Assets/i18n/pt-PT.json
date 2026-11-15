@@ -1938,6 +1938,7 @@
   "gallery.option.file_name": "Nome do ficheiro: {0}",
   "gallery.warnings_title": "Antes de instalar",
   "gallery.warning.replaces_original": "Substitui os teus ficheiros originais: o resultado fica no lugar deles e os originais vão para a Reciclagem.",
+  "gallery.warning.trashes_original": "Move os teus ficheiros originais para a Reciclagem quando o resultado noutro formato fica pronto.",
   "gallery.warning.moves_original": "Move os teus ficheiros originais para uma pasta em vez de os copiar.",
   "gallery.warning.overwrites_existing": "Substitui um ficheiro que já tem o nome do resultado em vez de acrescentar um número.",
   "gallery.warning.copies_to_folder": "Copia ficheiros para uma pasta. Escolhe a pasta na predefinição depois de instalar.",

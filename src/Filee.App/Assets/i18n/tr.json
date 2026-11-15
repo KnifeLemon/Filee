@@ -1916,6 +1916,7 @@
   "gallery.option.file_name": "Dosya adı: {0}",
   "gallery.warnings_title": "Kurmadan önce",
   "gallery.warning.replaces_original": "Orijinal dosyalarınızı değiştirir: sonuç onların yerine geçer, orijinaller Geri Dönüşüm Kutusu'na / Çöp Kutusu'na gider.",
+  "gallery.warning.trashes_original": "Başka biçimdeki sonucu tamamlanınca orijinal dosyalarınızı Geri Dönüşüm Kutusu'na / Çöp Kutusu'na taşır.",
   "gallery.warning.moves_original": "Orijinal dosyalarınızı kopyalamak yerine bir klasöre taşır.",
   "gallery.warning.overwrites_existing": "Sonuçla aynı adı taşıyan bir dosyayı numara eklemek yerine üzerine yazar.",
   "gallery.warning.copies_to_folder": "Dosyaları bir klasöre kopyalar. Kurduktan sonra klasörü ön ayarda seçin.",

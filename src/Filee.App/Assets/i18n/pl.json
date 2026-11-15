@@ -1938,6 +1938,7 @@
   "gallery.option.file_name": "Nazwa pliku: {0}",
   "gallery.warnings_title": "Przed instalacją",
   "gallery.warning.replaces_original": "Zastępuje oryginalne pliki: wynik zajmuje ich miejsce, a oryginały trafiają do Kosza.",
+  "gallery.warning.trashes_original": "Przenosi oryginalne pliki do Kosza, gdy ich wynik w innym formacie jest gotowy.",
   "gallery.warning.moves_original": "Przenosi oryginalne pliki do folderu zamiast je kopiować.",
   "gallery.warning.overwrites_existing": "Nadpisuje plik o nazwie wyniku zamiast dodać numer.",
   "gallery.warning.copies_to_folder": "Kopiuje pliki do folderu. Po instalacji wybierz folder w ustawieniu.",

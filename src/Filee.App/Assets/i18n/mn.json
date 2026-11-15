@@ -1914,6 +1914,7 @@
   "gallery.option.file_name": "Файлын нэр: {0}",
   "gallery.warnings_title": "Суулгахаас өмнө",
   "gallery.warning.replaces_original": "Таны эх файлуудыг солино: үр дүн нь тэдгээрийн оронд орж, эх файлууд хогийн саванд очно.",
+  "gallery.warning.trashes_original": "Өөр форматтай үр дүн нь бэлэн болмогц таны эх файлуудыг хогийн сав руу зөөнө.",
   "gallery.warning.moves_original": "Таны эх файлуудыг хуулахын оронд хавтас руу зөөнө.",
   "gallery.warning.overwrites_existing": "Үр дүнтэй ижил нэртэй файл байвал дугаар нэмэхийн оронд дээр нь бичнэ.",
   "gallery.warning.copies_to_folder": "Файлуудыг хавтас руу хуулна. Суулгасны дараа урьдчилсан тохиргоонд хавтсаа сонгоно уу.",

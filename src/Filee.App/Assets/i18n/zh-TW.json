@@ -1938,6 +1938,7 @@
   "gallery.option.file_name": "檔名：{0}",
   "gallery.warnings_title": "安裝前請注意",
   "gallery.warning.replaces_original": "取代原始檔案：結果會放在原檔案的位置，原檔案移到資源回收筒。",
+  "gallery.warning.trashes_original": "另一種格式的結果完成後，把原始檔案移到資源回收筒。",
   "gallery.warning.moves_original": "將原始檔案移到資料夾，而不是複製。",
   "gallery.warning.overwrites_existing": "如果已有與結果同名的檔案，會直接覆寫，而不是加上編號。",
   "gallery.warning.copies_to_folder": "將檔案複製到資料夾。安裝後請在預設中選擇資料夾。",

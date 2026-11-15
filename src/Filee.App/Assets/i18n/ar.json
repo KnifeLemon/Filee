@@ -1917,6 +1917,7 @@
   "gallery.option.file_name": "اسم الملف: {0}",
   "gallery.warnings_title": "قبل التثبيت",
   "gallery.warning.replaces_original": "يستبدل ملفاتك الأصلية: تحل النتيجة محلها وتنتقل الملفات الأصلية إلى سلة المحذوفات.",
+  "gallery.warning.trashes_original": "ينقل ملفاتك الأصلية إلى سلة المحذوفات بعد اكتمال نتيجتها بتنسيق آخر.",
   "gallery.warning.moves_original": "ينقل ملفاتك الأصلية إلى مجلد بدلًا من نسخها.",
   "gallery.warning.overwrites_existing": "يكتب فوق ملف يحمل اسم النتيجة نفسه بدلًا من إضافة رقم.",
   "gallery.warning.copies_to_folder": "ينسخ الملفات إلى مجلد. اختر المجلد في الإعداد المسبق بعد التثبيت.",

@@ -1916,6 +1916,7 @@
   "gallery.option.file_name": "Nama file: {0}",
   "gallery.warnings_title": "Sebelum memasang",
   "gallery.warning.replaces_original": "Mengganti file asli Anda: hasilnya menempati tempat file asli, dan file asli dipindahkan ke Recycle Bin / Sampah.",
+  "gallery.warning.trashes_original": "Memindahkan file asli Anda ke Recycle Bin / Sampah setelah hasilnya dalam format lain selesai.",
   "gallery.warning.moves_original": "Memindahkan file asli Anda ke folder alih-alih menyalinnya.",
   "gallery.warning.overwrites_existing": "Menimpa file yang sudah bernama sama dengan hasilnya alih-alih menambahkan nomor.",
   "gallery.warning.copies_to_folder": "Menyalin file ke sebuah folder. Pilih foldernya di preset setelah dipasang.",
