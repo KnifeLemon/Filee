@@ -301,6 +301,7 @@ internal static class SharedPresetRules
             ("copyAudioWhenPossible", Flag),
             ("removeMetadata", Flag))),
         ("archive", Obj(
+            ("isoFileSystem", Enum<IsoFileSystem>()),
             ("combineIntoOne", Flag),
             ("level", Enum<ArchiveLevel>()))),
         ("trace", Obj(

@@ -9,7 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup Label="ISO creation">
-    <PackageVersion Include="DiscUtils.Iso9660" Version="0.16.13" />
+    <PackageVersion Include="LTRData.DiscUtils.Iso9660" Version="1.0.90" />
+    <PackageVersion Include="LTRData.DiscUtils.Udf" Version="1.0.90" />
   </ItemGroup>
   <ItemGroup Label="UI">
     <PackageVersion Include="Avalonia" Version="$(AvaloniaVersion)" />
