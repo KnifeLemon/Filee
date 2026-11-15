@@ -268,8 +268,12 @@ public sealed class UserDataStore
     /// Exports presets and profiles to a shareable JSON file, without PDF passwords or paths to one's own pictures.
     /// </summary>
     public void Export(string path) =>
-        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.ForSharing())], Profiles = Profiles },
-            FileeJsonContext.Default.PresetBundle);
+        Write(path, new PresetBundle
+        {
+            SettingsSchema = AppSettings.CurrentSchemaVersion,
+            Presets = [.. Presets.Select(p => p.ForSharing())],
+            Profiles = Profiles,
+        }, FileeJsonContext.Default.PresetBundle);
 
     /// <summary>
     /// Imports presets and profiles from a bundle. Items with an existing id are replaced, new ones added.
@@ -285,6 +289,8 @@ public sealed class UserDataStore
         {
             // A path to a picture in someone else's bundle is not one of ours to open (a network share, say).
             preset.Image.ForgetBackdropPictures();
+            // Sending originals to the Recycle Bin / Trash is on only where this user ticked it on this PC (#1387).
+            preset.Output.TrashOriginalAfterConvert = false;
             Presets.RemoveAll(p => p.Id == preset.Id);
             Presets.Add(preset);
         }

@@ -214,7 +214,8 @@ app, the command line and Setup for win-arm64, the Explorer menu DLL for ARM64 (
 -Architecture arm64`, packaged as `arm64`), and ARM64 builds of the bundled engines (`fetch-engines.ps1 -Runtime
 win-arm64`). The engines the app downloads stay x64: on Windows 11 on ARM, which runs them under emulation, the app
 offers the win-x64 downloads (`EngineDownloads.DownloadRuntime`); Windows 10 on ARM can't run them and gets none.
-Setup's engine list is made when it is packed (`build/tools/make-setup.cs`), so the ARM64 Setup offers the x64 one.
+Setup's engine list is made when it is packed (`build/tools/make-setup.cs --runtime=win-arm64`, also on the x64 PC
+that signs the release): the x64 downloads, without the packages the ARM64 app has none of (the upscaler).
 
 - **7-Zip**: the official ARM64 installer of the version engines.json pins, a 7z self-extracting archive unpacked by
   the x64 7-Zip (Windows' `tar.exe` can't undo its ARM64 executable filter).
@@ -227,7 +228,12 @@ Setup's engine list is made when it is packed (`build/tools/make-setup.cs`), so 
 
 `UnhwpConverter` reports Unhwp as available where its library loads, so a build without it shows the engine as not
 available on this platform. CI's `build (win-arm64)` job builds and tests on Windows 11 ARM64; once both pins are filled
-in it also builds the package (artifact `windows-arm64-package`).
+in it also builds the package (artifact `windows-arm64-package`). Releases ship it next to the x64 files: the release
+workflow's `windows-arm64` job builds and tests it the same way and keeps it unsigned for `build/sign-release.ps1`
+(see [Releasing](../CONTRIBUTING.md#releasing-maintainers)), and the in-app updater of an ARM64 build takes
+`-win-arm64-Setup.exe` (an x64 build keeps to the x64 Setup, also on Windows on ARM). Both are in the one Windows
+`Filee-<version>-SHA256SUMS.txt`: Filee 2.4.0 and older take the last Windows-looking SHA256SUMS file of a release,
+so a separate ARM64 one would break their updates.
 
 ## Images and vector graphics
 
@@ -1875,15 +1881,21 @@ safely extracts them into its temporary work folder, then writes their contents 
 Password-protected archives fail with a clear message.
 
 CLI: `filee convert "path/to/folder" --to iso` or `filee convert "backup.zip" --to iso`.
-DiscUtils.Iso9660 writes ISO 9660 with Joliet in-process, preserving Unicode BMP names and empty directories.
-There are no filesystem or compression options. ISO writing needs no external program; archive reading uses
-the existing extraction engine. Images are data discs, not bootable clones. UDF is not included.
+LTRData DiscUtils writes ISO 9660 with Joliet (the default) or UDF 2.01 in-process. Choose the filesystem in the ISO
+preset, or use `--iso-filesystem udf201` with `--to iso` in the CLI (`--iso-filesystem joliet` selects the default).
+No new donut slice is added. Existing presets retain Joliet without a schema migration. Images are data discs,
+not bootable clones. Archive reading still uses the existing extraction engine.
 
-Individual names must fit 62 UTF-16 characters, leaving room for DiscUtils' version suffix; relative disc paths
+UDF supports approximately 234 GiB per file and 8 TiB per partition. The library encodes filenames in OSTA compressed
+Unicode (up to 254 bytes before the file identifier prefix); names outside its supported range are refused before replacing the
+destination. Source permissions, extended attributes and per-file timestamps are not imported into UDF images.
+UDF is revision 2.01 only; there are no revision, compression or boot options.
+
+For Joliet, individual names must fit 62 UTF-16 characters, leaving room for DiscUtils' version suffix; relative disc paths
 must fit 240 characters. Control characters, semicolons, backslashes, `*`, `:`, `?` and supplementary Unicode
 characters are rejected clearly. Individual files must be smaller than 4 GiB. Drive roots and symbolic links/junctions
-are refused. Timestamps are clamped to 1900-2155 in the image;
-source timestamps are unchanged. On Windows, a marked input file transfers Mark of the Web to the image.
+are refused for both filesystems. Joliet timestamps are clamped to 1900-2155 in the image;
+source timestamps are unchanged. On Windows, a marked input file transfers Mark of the Web to either image type.
 
 File contents are streamed, progress reports bytes written, and cancellation is checked during enumeration and
 streaming. A previous destination inside the source is excluded. A new image replaces its destination only after

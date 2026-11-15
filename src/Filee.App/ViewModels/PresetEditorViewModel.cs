@@ -116,6 +116,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private readonly Preset _edit;
     private readonly ILocalizer _loc;
 
+    /// <summary>"From the preset gallery (…)" for a preset installed from there (#1530); null for every other.</summary>
+    public string? GalleryNote { get; }
+
     public PresetEditorViewModel(Preset preset, ILocalizer loc, IReadOnlySet<string>? turnedOff = null, bool folderInput = false)
         : this(preset, loc, turnedOff, null, folderInput)
     {
@@ -130,6 +133,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _loc = loc;
         FolderInput = folderInput || preset.TargetFormat == "iso";
         Labels = new SliceLabelFields(preset, loc);
+        GalleryNote = preset.Gallery is { } gallery ? loc.Format("presets.from_gallery", gallery) : null;
 
         // ~150 formats in registry order, which groups them by category; the category is shown next to each name
         // and typing the first letters of a name jumps to it.
@@ -202,6 +206,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         SampleRates = Steps(SampleRateSteps, _edit.Media.AudioSampleRate,
             r => r == 0 ? loc["presets.sample_rate.source"] : $"{r / 1000.0:0.##} kHz");
         WavFormats = Enum.GetValues<WavSampleFormat>().Select(v => new Choice<WavSampleFormat>(v, loc[$"presets.wav_format.{v}"])).ToList();
+        IsoFileSystems = Enum.GetValues<IsoFileSystem>().Select(v => new Choice<IsoFileSystem>(v, v == Core.Presets.IsoFileSystem.Joliet ? "ISO 9660 + Joliet" : "UDF 2.01")).ToList();
         ArchiveLevels = Enum.GetValues<ArchiveLevel>().Select(v => new Choice<ArchiveLevel>(v, loc[$"presets.archive_level.{v}"])).ToList();
         TraceModes = Enum.GetValues<TracingMode>().Select(v => new Choice<TracingMode>(v, loc[$"presets.trace_mode.{v}"])).ToList();
         // Version names stay as AutoCAD calls them, in every language.
@@ -316,6 +321,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _upscaleScale = _edit.Upscale.Scale > 0 ? _edit.Upscale.Scale : 4;
         _selectedUpscaleModel = UpscaleModels.FirstOrDefault(m => string.Equals(m.Id, _edit.Upscale.Model, StringComparison.OrdinalIgnoreCase))
             ?? UpscaleModels.FirstOrDefault();
+        _isoFileSystem = IsoFileSystems.First(v => v.Value == _edit.Archive.IsoFileSystem);
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -399,6 +405,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _keepDates = _edit.Output.KeepDates;
         _zipResult = _edit.Output.ZipResult;
         _replaceOriginal = _edit.Output.ReplaceOriginal;
+        _trashOriginal = _edit.Output.TrashOriginalAfterConvert;
         _moveInsteadOfCopy = _edit.Output.MoveInsteadOfCopy;
     }
 
@@ -513,6 +520,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<int>> AudioChannelChoices { get; }
     public IReadOnlyList<Choice<int>> SampleRates { get; }
     public IReadOnlyList<Choice<WavSampleFormat>> WavFormats { get; }
+    public IReadOnlyList<Choice<IsoFileSystem>> IsoFileSystems { get; }
     public IReadOnlyList<Choice<ArchiveLevel>> ArchiveLevels { get; }
     public IReadOnlyList<Choice<TracingMode>> TraceModes { get; }
 
@@ -549,7 +557,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowVideoSplit), nameof(ShowVideoParts),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec), nameof(ShowRingtone),
-        nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
+        nameof(ShowIso), nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
         nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowGcode), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
         nameof(ShowImageSize), nameof(SizeRangeError), nameof(CustomSizeError), nameof(IsValid))]
@@ -981,6 +989,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _zipResult;
     /// <summary>The result takes the original's place, which goes to the Recycle Bin / Trash (OutputRule.ReplaceOriginal).</summary>
     [ObservableProperty] private bool _replaceOriginal;
+    /// <summary>The original goes to the Recycle Bin / Trash after a conversion to another format (OutputRule.TrashOriginalAfterConvert, #1387).</summary>
+    [ObservableProperty] private bool _trashOriginal;
     /// <summary>Copy to folder: the files are moved instead of copied (OutputRule.MoveInsteadOfCopy, #856).</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(CopyHint), nameof(CopyAction))]
     private bool _moveInsteadOfCopy;
@@ -1040,6 +1050,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _caption;
     /// <summary>Language spoken in the audio for Whisper transcription (MediaOptions.SpokenLanguage).</summary>
     [ObservableProperty] private Choice<string> _spokenLanguage;
+    [ObservableProperty] private Choice<IsoFileSystem> _isoFileSystem;
+
+    partial void OnIsoFileSystemChanged(Choice<IsoFileSystem>? oldValue, Choice<IsoFileSystem> newValue) =>
+        Choices.Restore(oldValue, newValue, value => IsoFileSystem = value);
     [ObservableProperty] private Choice<ArchiveLevel> _archiveLevel;
     [ObservableProperty] private bool _combineIntoOne;
     [ObservableProperty] private bool _saveEveryFrame;
@@ -1268,6 +1282,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         && !ShowCropFrame;
     public bool ShowVideoParts => ShowVideoSplit && VideoOutput.Value;
     /// <summary>ISO creation has no archive compression settings.</summary>
+    public bool ShowIso => TargetId == "iso";
     public bool ShowArchive => TargetCategory == FormatCategory.Archive && TargetId != "iso";
     public bool ShowArchiveOptions => ShowArchive && TargetId != FormatRegistry.Folder;
     /// <summary>"Extract" has nothing to set; a line says what it does instead.</summary>
@@ -1515,6 +1530,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.RingtoneStart = Seconds(RingtoneStart, 0, 0, 24 * 3600);
         media.RingtoneLength = Seconds(RingtoneLength, MediaOptions.DefaultRingtoneLength, MediaOptions.MinRingtoneLength, MediaOptions.MaxRingtoneLength);
         media.AskRingtonePart = ShowRingtone && AskRingtonePart;
+        _original.Archive.IsoFileSystem = IsoFileSystem.Value;
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = TargetId != "iso" && CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;
@@ -1550,6 +1566,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // Only for geospatial targets, where it is offered: a box ticked for Shapefile must not zip a later PNG.
         output.ZipResult = ShowZipResult && ZipResult;
         output.ReplaceOriginal = ShowReplaceOriginal && ReplaceOriginal;
+        output.TrashOriginalAfterConvert = ShowReplaceOriginal && TrashOriginal;
         output.MoveInsteadOfCopy = IsCopyToFolder && MoveInsteadOfCopy;
         return true;
     }

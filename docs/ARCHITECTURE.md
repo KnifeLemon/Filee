@@ -613,6 +613,34 @@ installed yet; the slides introduce the installed one. The demo animations are r
   The tray app runs one per rule (`WatchFolderService`, Settings → Watch folders, conversions in the toast and
   history); `filee watch` runs one on its own, with a stable `cli` rule identity across command restarts.
 
+## Preset gallery
+
+Presets shared by users live in the `KnifeLemon/Filee-Presets` repository and on filee.sh (#1530); the app reads
+them, it never uploads.
+
+- `Filee.Core/Gallery/SharedPresetRules` is the allow-list: every field a shared preset.json (a `PresetBundle`) may
+  have, with its range, and the fields left out (folders of one's own, passwords, picture and sound paths, metadata
+  naming people, places or owners), which may only be empty. A field added to `Preset` fails the check until it is
+  listed there (`PresetGalleryCheckTests` compares the list with the model). Settings that touch the installer's files
+  pass with a warning (`SharedPresetWarnings`, codes shared with the gallery's repository and filee.sh); the window
+  shows them and asks for a tick before installing a preset with a high one.
+- `SharedBundleCheck` checks a preset.json against it, as JSON first (unknown fields, types, ranges, links, personal
+  paths) and then as presets (kinds, tools, targets, references), and derives what meta.json needs.
+  `SharedPresetFolderCheck` checks a whole submission folder, pictures included (`GalleryImageHeader` reads their
+  header before anything decodes them). `filee presets check <folder> [--json]` runs it, with SkiaSharp decoding each
+  picture; the gallery's CI calls it.
+- `GalleryInstaller` checks the downloaded file's SHA-256 and the rules again, then adds its presets and donut under
+  new ids (" (2)" on a name the library has); nothing is ever replaced, unlike Settings → General → Import.
+  `GalleryExport` builds the preset.json "Export for the gallery…" saves (Presets page).
+- The app's `PresetGalleryWindow` (from the Presets page) reads `index.json` through `PresetGalleryClient`, only while
+  it is open, with the proxy setting, time and size limits, and falls back to the repository on GitHub when filee.sh
+  can't be reached. Paths in the index are relative to the URL it came from; Install uses the entry's counted
+  `download` link. Pictures are cached in the work folder's `gallery/` (64 MB, 30 days). A preset is written in one
+  main `language` and optionally more (`titleByLang`, `descriptionByLang`): the window shows the app language's texts
+  when the preset has them, else the main ones with a badge naming their language, lists the presets in the app's
+  language first and can hide the rest ("Only in my language"). Pictures follow the app language on their own
+  (`imagesByLang`).
+
 ## Platform code
 
 Everything OS-specific goes through `IPlatformServices` (`Filee.Core/Platform`). Windows lives in

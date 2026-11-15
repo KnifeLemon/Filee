@@ -1,5 +1,6 @@
 using System.Formats.Tar;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Text;
 using Filee.Engines.Infrastructure;
 
@@ -65,6 +66,26 @@ public sealed class PortableEngineTests : IDisposable
     {
         Assert.Equal(downloads, EngineDownloads.DownloadRuntime(runtime, build));
         Assert.Empty(EngineDownloads.ComponentsForRuntime("win-arm64"));
+    }
+
+    [Fact]
+    public void The_ARM64_Setup_packed_on_an_x64_PC_offers_what_the_ARM64_app_downloads()
+    {
+        static IEnumerable<string> Names(IEnumerable<EnginePackage> packages) => packages.Select(p => p.Id + ":" + string.Join(',', p.Components));
+        Assert.Equal(Names(EngineDownloads.Packages), Names(EngineDownloads.PackagesFor(RuntimeInformation.ProcessArchitecture)));
+        var arm64 = EngineDownloads.PackagesFor(Architecture.Arm64).Single(p => p.Id == "upscayl-bin");
+        var x64 = EngineDownloads.PackagesFor(Architecture.X64).Single(p => p.Id == "upscayl-bin");
+        if (OperatingSystem.IsWindows())
+        {
+            // The ARM64 app offers no upscaler download on Windows, so its Setup must not either.
+            Assert.Empty(arm64.Components);
+            Assert.False(EngineDownloads.CanDownload(arm64));
+            Assert.Contains("vcomp14", x64.Components);
+        }
+        else
+        {
+            Assert.Equal(x64.Components, arm64.Components);
+        }
     }
 
     [Theory]

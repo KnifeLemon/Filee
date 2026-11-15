@@ -1,7 +1,8 @@
-// The "filee" commands: convert, watch, formats, presets, engines. Writes results for people (one line per file) or, with
-// --json, one JSON document for other programs; while it runs, convert --json writes events to stderr and watch --json
-// to stdout, one JSON object per line. Exit codes: 0 nothing failed (skipped files included), 1 some failed or were
-// cancelled, 2 wrong arguments or a missing input, 3 nothing to convert.
+// The "filee" commands: convert, watch, formats, presets ('presets check' for the preset gallery), engines. Writes
+// results for people (one line per file) or, with --json, one JSON document for other programs; while it runs,
+// convert --json writes events to stderr and watch --json to stdout, one JSON object per line. Exit codes: 0 nothing
+// failed (skipped files included), 1 some failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to
+// convert.
 
 using System.Text.Json;
 using Filee.Core.Conversion;
@@ -40,6 +41,9 @@ internal static class Cli
             case "version":
                 output.WriteLine($"filee {Help.Version}");
                 return Success;
+            // Checks files only: no settings, no engines.
+            case "presets" when options.Inputs.Count > 0:
+                return PresetsCheckCommand.Run(options, output, errors);
         }
 
         await using var host = (createHost ?? (() => CliHost.Create()))();
@@ -310,6 +314,17 @@ internal static class Cli
             preset = found.Clone();
         }
         preset = host.Store.Settings.WithDefaultOutput(preset);
+        if (options.IsoFileSystem is { } filesystem)
+        {
+            if (preset.TargetFormat != "iso")
+            {
+                errors.WriteLine("filee: --iso-filesystem requires an ISO target.");
+                return null;
+            }
+            preset.Archive.IsoFileSystem = filesystem;
+        }
+        // The command line never moves an original to the Trash, whatever the saved preset says (#1387).
+        preset.Output.TrashOriginalAfterConvert = false;
         if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model))
             preset.Translate.Model = host.Store.Settings.PreferredOllamaModel;
         if (options.Quality is { } quality)

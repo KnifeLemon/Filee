@@ -93,6 +93,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **Windows 10/11** 執行 `Filee-<version>-win-Setup.exe`，或解壓縮 `win-Portable.zip` 後執行 `Filee.exe`。
+  - Windows on ARM 電腦（設定 → 系統 → 關於中顯示「ARM 型處理器」）請改用 `win-arm64-Setup.exe` 或 `win-arm64-Portable.zip`，它以原生方式執行，不經過 x64 模擬。
   - 安裝程式是 Filee 自己的，使用與 Filee 相同的語言，電腦上無需另外安裝任何元件。
   - 安裝時可以新增檔案總管選單、登入時啟動、`filee` 命令和可選引擎。
   - 靜默安裝沿用 Inno Setup 的參數（`/VERYSILENT /SUPPRESSMSGBOXES`）。
