@@ -159,7 +159,7 @@ internal static class LivePhotoWriter
             .. MediaEncoding.Common, .. seek.EncodeInput, "-i", input, "-map", "0:V:0",
             .. audio is null ? Array.Empty<string>() : ["-map", $"0:a:{audio.Ordinal}", "-af", $"atrim=start={seek.Clip(clip.Start)}"],
             "-t", Seconds(clip.Length),
-            "-vf", $"{seek.VideoTrim(clip.Start)}{seek.ToZero},{FirstFrame(video)}{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
+            "-vf", $"{seek.VideoTrim(clip.Start)},{FirstFrame(video)}{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
         ];
         var crf = Choose(options.Quality, encoder == "libx265" ? [22, 26, 30] : [18, 23, 28]);
         args.AddRange(encoder == "libx265"
@@ -193,7 +193,7 @@ internal static class LivePhotoWriter
         return
         [
             .. MediaEncoding.Common, .. seek.EncodeInput, "-i", input, "-map", "0:V:0",
-            "-vf", $"{seek.VideoTrim(start)}{seek.ToZero},{FirstFrame(video)}{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
+            "-vf", $"{seek.VideoTrim(start)},{FirstFrame(video)}{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
             "-frames:v", "1", "-fps_mode", "passthrough", "-update", "1", "-c:v", "png", "-f", "image2", "-progress", "pipe:1", output,
         ];
     }

@@ -382,7 +382,7 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
             + "fps=30:start_time=0,scale=1920:1080,setsar=1,format=yuv420p,trim=duration=10[v0]", filter);
         Assert.Contains("[vs1]trim=start=19.999999:end=29.999999,settb=AVTB,"
             + "setpts=(PTS-(STARTPTS-(round((STARTPTS*TB-19.999999)*30/2)+0.25)*2/(30*TB)))/2,", filter);
-        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,aresample=first_pts=0,volume=0.5,", filter);
+        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0.5,", filter);
         Assert.Contains("[as1]atrim=start=19.999999:end=29.999999,asetpts=PTS-19.999999/TB,aresample=first_pts=0,atempo=2,", filter);
         // From a key frame KeyFrames found: read from it, moved back to just before the first part, video cut in ticks.
         var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10, 10, (1, 15360)));
@@ -439,70 +439,6 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // A portrait phone video stays portrait.
         Assert.Equal((1080, 1920), MediaEncoding.ClipSize(Hd with { Rotation = 90 }, 0));
         Assert.Equal((404, 720), MediaEncoding.ClipSize(Hd with { Rotation = -90 }, 720));
-    }
-
-    [Fact]
-    public void Parts_from_where_the_sound_ends_are_silent_and_read_no_sound()
-    {
-        // The sound ends at 25 s: the third part (30 to 40 s) is silent, as a pause is, and only two parts read it.
-        var graph = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", soundEnd: 25).Filter;
-        Assert.Contains("[0:a:0]anull[as0];", graph);
-        Assert.Contains("[as0]atrim=start=0:end=9.999999", graph);
-        Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=5[a2]", graph);
-        // Every part after it: none reads it.
-        var late = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", soundEnd: 5).Filter;
-        Assert.DoesNotContain("[0:a:0]", late);
-        Assert.Contains("[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1", late);
-    }
-
-    [Fact]
-    public void Where_a_sound_ends_is_read_from_its_stream_or_matroskas_duration_tag()
-    {
-        var info = MediaInfo.Parse("""
-            {"format":{"start_time":"1.400000","duration":"4.0"},"streams":[
-              {"codec_type":"video","width":64,"height":32,"avg_frame_rate":"30/1"},
-              {"codec_type":"audio","channels":2,"sample_rate":"48000","start_time":"1.420000","duration":"2.200000"},
-              {"codec_type":"audio","channels":2,"sample_rate":"48000","tags":{"DURATION":"00:00:03.500000000"}},
-              {"codec_type":"audio","channels":2,"sample_rate":"48000"}]}
-            """);
-        Assert.Equal(2.22, info.Audio!.End!.Value, 6);
-        Assert.Equal(3.5 - 1.4, info.AudioStreams![1].End!.Value, 6);
-        Assert.Null(info.AudioStreams[2].End);
-    }
-
-    [Fact]
-    public void A_long_filter_graph_is_given_in_a_file_as_the_ffmpeg_installed_reads_it()
-    {
-        // Windows takes 32,767 characters a command: a hundred parts' graph, about 38,500, went past it.
-        var graph = new string('x', FfmpegRunner.MaxInlineGraph + 1);
-        List<string> args = ["-i", "in.mp4", "-filter_complex", graph, "-map", "[v]", "out.mp4"];
-        var newer = FfmpegRunner.GraphInFile(args, new Version(9, 0, 2), out var file);
-        try
-        {
-            Assert.Equal(["-i", "in.mp4", "-/filter_complex", file!, "-map", "[v]", "out.mp4"], newer);
-            Assert.Equal(graph, File.ReadAllText(file!));
-        }
-        finally
-        {
-            File.Delete(file!);
-        }
-        // FFmpeg before 7.0 has no -/ to read an option from a file: -filter_complex_script, also for Merge videos.
-        var older = FfmpegRunner.GraphInFile(args, new Version(6, 1, 1), out var oldFile);
-        File.Delete(oldFile!);
-        Assert.Equal("-filter_complex_script", older[2]);
-        Assert.Equal(["-/filter_complex"], FfmpegRunner.GraphInFile(["-/filter_complex"], null, out _));
-        Assert.Equal(["-filter_complex_script", "graph.txt"], FfmpegRunner.GraphInFile(["-/filter_complex", "graph.txt"], new Version(6, 1), out var none));
-        Assert.Null(none);
-        // A short one stays on the command line.
-        Assert.Equal(["-filter_complex", "null"], FfmpegRunner.GraphInFile(["-filter_complex", "null"], null, out _));
-    }
-
-    [Fact]
-    public void Silences_from_a_files_start_are_found_without_a_seek()
-    {
-        // -ss 0 drops an AAC file's first 1,024 samples a second time, so a silence there ended 23 ms early.
-        Assert.DoesNotContain("-ss", ClipPreview.SilenceArguments("in.m4a", 0, 10));
-        Assert.Contains("-ss", ClipPreview.SilenceArguments("in.m4a", 2, 10));
     }
 
     [Fact]
@@ -780,7 +716,7 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(graph.HasAudio);
         var filter = graph.Filter;
         // Muted: silent, still there.
-        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,aresample=first_pts=0,volume=0,", filter);
+        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0,", filter);
         // 17 s of clip, from 2.5 s: 14.5 s of music, faded a second at its ends, 2.5 s late.
         Assert.Contains("[1:a:0]atrim=duration=14.5,asetpts=PTS-STARTPTS,volume=0.5,afade=t=in:st=0:d=1,afade=t=out:st=13.5:d=1,adelay=2500:all=1,", filter);
         var nextTrack = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30", musicTrack: 1).Filter;

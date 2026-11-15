@@ -26,8 +26,7 @@
 // a copy's -ss is checked where FFmpeg's own copy lands, and its end, which FFmpeg cuts by decode time, is put where no
 // frame shown before the last one kept is missing. A key frame ffprobe gives no time to be shown at is shown no later
 // than the longest wait between decoding and showing seen near it, or, where nothing near it is shown at a time of its
-// own (AVI), as FFmpeg decodes it. A raw stream's times are FFmpeg's count from where it starts reading: it is read
-// from its start.
+// own (AVI), as FFmpeg decodes it.
 
 using System.Collections.Concurrent;
 using System.ComponentModel;
@@ -74,12 +73,8 @@ namespace Filee.Engines.Media;
 /// How many video packets a copy keeps, where its end can't be given as a time (an AVI's key and P-frames have no time
 /// to be shown at, and FFmpeg's end stops only at a frame that has one); null otherwise.
 /// </param>
-/// <param name="Raw">
-/// A stream without a container, read from its start: FFmpeg makes its times up after <c>-itsoffset</c>, so what is cut
-/// is moved to 0 by <see cref="ToZero"/> instead.
-/// </param>
 internal readonly record struct SeekPoint(double From, double? Origin, double CopyFrom, double Start, (long Num, long Den)? Tick = null,
-    double? Key = null, double? KeyShown = null, double? CopyAfter = null, double? CopyTo = null, bool Raw = false, int? CopyFrames = null)
+    double? Key = null, double? KeyShown = null, double? CopyAfter = null, double? CopyTo = null, int? CopyFrames = null)
 {
     /// <summary>
     /// Seeking straight to <paramref name="seconds"/> as FFmpeg does by itself, with times counted from there.
@@ -126,7 +121,7 @@ internal readonly record struct SeekPoint(double From, double? Origin, double Co
     /// <c>-itsoffset</c>): to a microsecond before <see cref="Start"/>, so a frame shown there stays at or after 0 once
     /// FFmpeg rounds the move to the stream's ticks; forward, where the file's own time there is below 0.
     /// </summary>
-    private long Shift => !Raw && Origin is { } origin && (long)Math.Floor((origin + Start) * 1_000_000) - 1 is var shift
+    private long Shift => Origin is { } origin && (long)Math.Floor((origin + Start) * 1_000_000) - 1 is var shift
         ? origin + Start < 0 ? shift : Math.Max(0, shift)
         : 0;
 
@@ -162,12 +157,6 @@ internal readonly record struct SeekPoint(double From, double? Origin, double Co
         return Math.Max(0, (long)at - moved);
     }
 
-    /// <summary>
-    /// After the cut of what is encoded (<see cref="VideoTrim"/>): for a raw stream, the move to time 0 that
-    /// <see cref="EncodeInput"/> can't make; nothing otherwise.
-    /// </summary>
-    public string ToZero => Raw ? ",setpts=PTS-STARTPTS" : "";
-
     private static string Number(double seconds, bool signed = false) =>
         (signed ? seconds : Math.Max(0, seconds)).ToString("0.######", CultureInfo.InvariantCulture);
 }
@@ -178,8 +167,7 @@ internal readonly record struct SeekPoint(double From, double? Origin, double Co
 /// By the time a key frame is shown, with no margin for B-frames (MOV, MP4, MXF, NUT).
 /// </param>
 /// <param name="Reordered">A stream has B-frames, so its frames are decoded before they are shown.</param>
-/// <param name="Raw">A stream without a container, whose times FFmpeg makes up from where it starts reading.</param>
-internal readonly record struct Seeking(bool Unindexed, bool ByShownTime, bool Reordered, bool Raw = false);
+internal readonly record struct Seeking(bool Unindexed, bool ByShownTime, bool Reordered);
 
 /// <summary>Finds where reading has to start for an exact frame (see the file header).</summary>
 internal static class KeyFrames
@@ -258,10 +246,6 @@ internal static class KeyFrames
         seconds = double.IsFinite(seconds) ? Math.Max(0, seconds) : 0;
         if (await FormatAsync(ffprobe, input, cancellationToken).ConfigureAwait(false) is not var (file, origin, how, tick))
             return SeekPoint.Plain(seconds);
-        // A raw stream is read from its start, where its times are its own: any -ss landed on a byte, from which FFmpeg
-        // counted anew (the picture was any frame, a clip started with the stream's first).
-        if (how.Raw)
-            return new SeekPoint(0, 0, 0, seconds, Raw: true);
         var unindexed = how.Unindexed;
         // The clip window looks at one file again and again: start where the last look found a key frame.
         var first = Reaches.TryGetValue(file, out var known) ? known : unindexed ? UnindexedReach : FirstReach;
@@ -310,21 +294,6 @@ internal static class KeyFrames
     }
 
     /// <summary>
-    /// Where reading the sound of a video starts for <paramref name="seconds"/>: in the file's own times, cut by
-    /// <c>atrim</c> as what is encoded is (<see cref="SeekPoint.Clip"/>), from a second before (a seek in an MPEG-TS can
-    /// land a little after the time, and any sound packet decodes). FFmpeg 6.0 to 7.1 put time 0 elsewhere after a seek
-    /// in a TS whose sound starts after its picture: the waveform, silences and a sound clip of it were a third of a
-    /// second late. A file without a video (a sound) or without times of its own is read as before.
-    /// </summary>
-    public static async Task<SeekPoint> SoundAsync(string ffprobe, string input, double seconds, CancellationToken cancellationToken)
-    {
-        seconds = double.IsFinite(seconds) ? Math.Max(0, seconds) : 0;
-        return await FormatAsync(ffprobe, input, cancellationToken).ConfigureAwait(false) is var (_, origin, how, tick) && !how.Raw && tick is not null
-            ? new SeekPoint(Math.Max(0, seconds - 1), origin, seconds, seconds)
-            : SeekPoint.Plain(seconds);
-    }
-
-    /// <summary>
     /// <paramref name="seek"/> with the copy's <c>-ss</c> (<see cref="SeekPoint.CopyFrom"/>) where FFmpeg's seek lands
     /// a copy on the key frame found, as FFmpeg itself shows: each demuxer seeks its own way, so the start time can
     /// land a copy elsewhere. An MP4 lands on the last key frame decoded by then, the next one in an open group of
@@ -338,7 +307,7 @@ internal static class KeyFrames
         CancellationToken cancellationToken)
     {
         if (seek.Origin is not { } origin || seek.Key is not { } key
-            || await FormatAsync(ffprobe, input, cancellationToken).ConfigureAwait(false) is not var (_, _, how, _) || how.Unindexed || how.Raw)
+            || await FormatAsync(ffprobe, input, cancellationToken).ConfigureAwait(false) is not var (_, _, how, _) || how.Unindexed)
             return seek;
         double? below = null, above = null;
         async Task<bool> LandsAsync(double ss)
@@ -427,7 +396,7 @@ internal static class KeyFrames
     public static async Task<SeekPoint> CopyEndAsync(string ffprobe, string input, SeekPoint seek, double end, CancellationToken cancellationToken)
     {
         if (seek.Origin is not { } origin || await FormatAsync(ffprobe, input, cancellationToken).ConfigureAwait(false) is not var (_, _, how, _)
-            || how.Raw || !how.Reordered)
+            || !how.Reordered)
             return seek;
         // From the key frame the copy starts at where its packets are counted (an AVI), else a little before the end.
         var from = Math.Max(0, end - 2);
@@ -517,13 +486,13 @@ internal static class KeyFrames
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("format", out var format))
+            // A stream without timestamps (FFmpeg makes them up from where it starts reading) has no start time either,
+            // or reports 0 all the same.
+            if (!document.RootElement.TryGetProperty("format", out var format) || Time(format, "start_time") is not { } origin)
                 return null;
             var names = format.TryGetProperty("format_name", out var name) && name.GetString() is { } text ? text.Split(',') : [];
-            // A stream without timestamps has no start time (or reports 0 all the same): FFmpeg makes its times up from
-            // where it starts reading, so it is read from the start, where they are the stream's own.
-            var raw = names.Any(RawStreams.Contains) || Time(format, "start_time") is null;
-            var origin = raw ? 0 : Time(format, "start_time")!.Value;
+            if (names.Any(RawStreams.Contains))
+                return null;
             List<JsonElement> streams = document.RootElement.TryGetProperty("streams", out var list) && list.ValueKind == JsonValueKind.Array
                 ? [.. list.EnumerateArray()] : [];
             // FFmpeg seeks early when any stream is decoded before it is shown, not only the video it reads.
@@ -538,7 +507,7 @@ internal static class KeyFrames
                 && long.TryParse(d, NumberStyles.None, CultureInfo.InvariantCulture, out var den) && num > 0 && den > 0
                 ? (num, den) : ((long, long)?)null;
             (double Origin, Seeking How, (long Num, long Den)? Tick) found = (origin,
-                new Seeking(names.Any(Unindexed.Contains), names.Any(ByShownTime.Contains), reordered, raw), raw ? null : tick);
+                new Seeking(names.Any(Unindexed.Contains), names.Any(ByShownTime.Contains), reordered), tick);
             // A clip window looks at one file again and again; a queue of conversions goes through many once each.
             if (Formats.Count > 64)
             {

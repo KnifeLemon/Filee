@@ -288,7 +288,7 @@ internal static partial class MediaEncoding
         // A clip: read from the key frame found before its start (KeyFrames), its first frame time 0, and cut at both
         // ends by trims, sound and picture alike, so its first and last frames are exact.
         var seek = clip is { } range ? clipSeek ?? SeekPoint.Plain(range.Start) : (SeekPoint?)null;
-        var cut = clip is { } part && seek is { } at ? at.VideoTrim(part.Start, part.End) + at.ToZero + "," : "";
+        var cut = clip is { } part && seek is { } at ? at.VideoTrim(part.Start, part.End) + "," : "";
         List<string> args = [.. Common, .. seek?.EncodeInput ?? [], "-i", input, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
@@ -324,11 +324,6 @@ internal static partial class MediaEncoding
             args.AddRange(VideoCodecArguments(target, VideoEncoder(target, spec.VideoCodec!, options.VideoCodec, encoders), options.Quality, video, pal,
                 alpha: video.HasAlpha));
         }
-
-        // A clip keeps each frame at its own time: FFmpeg 6.1's default filled a VFR video's gaps with copies (60, 60).
-        // A DVD or DV clip is brought to its constant rate by its filter.
-        if (clip is not null && target is not ("vob" or "dv"))
-            args.AddRange(["-fps_mode:v:0", "passthrough"]);
 
         if (tracks.Count == 0)
             args.Add("-an");
@@ -907,7 +902,7 @@ internal static partial class MediaEncoding
         var ringtone = RingtoneRange(target, options, info);
         List<string> args = [.. Common];
         if (ringtone is { } part)
-            args.AddRange(SeekTo(part.Start));
+            args.AddRange(["-ss", ClipRange.Ffmpeg(part.Start)]);
         args.AddRange(["-i", input]);
         // Ogg: the tags, and the picture as a comment, come from a metadata file (input 1) instead of the source.
         if (extras?.MetadataFile is { } metadata)

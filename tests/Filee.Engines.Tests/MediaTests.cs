@@ -1596,8 +1596,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(new VideoStreamInfo(1920, 1080, 1, -90, 30000 / 1001.0, "h264"), info.Video);
         Assert.Equal(9 / 16.0, info.Video!.DisplayAspect, 3);
         Assert.Equal(1920, info.Video.DisplayHeight);
-        // With where its sound ends, as the stream says.
-        Assert.Equal(new AudioStreamInfo(2, 48000, "aac", End: 12.5), info.Audio);
+        Assert.Equal(new AudioStreamInfo(2, 48000, "aac"), info.Audio);
         Assert.Equal(2, info.CoverStreamIndex);
         Assert.Equal([new SubtitleStreamInfo(3, "subrip", "kor")], info.Subtitles);
 

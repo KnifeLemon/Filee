@@ -470,8 +470,7 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
   `trim` in the stream's own ticks; its progress comes from `-stats_enc_pre`, with `-progress` to show it is working
   between parts. A copy's `-ss` is checked where FFmpeg's own copy lands, since each demuxer seeks its own way (an MP4
   by decode time, a WMV by a key frame a second), and its end is put where no frame shown before its last is missing.
-  A raw stream (`.h264`, `.m2v`, `.m4v`), whose times FFmpeg makes up from where it starts reading, is read from its
-  start. The file header of `KeyFrames.cs` lists the FFmpeg behaviours, and the versions, that this allows for.
+  The file header of `KeyFrames.cs` lists the FFmpeg behaviours, and the versions, that this allows for.
 
 ## Crop video
 

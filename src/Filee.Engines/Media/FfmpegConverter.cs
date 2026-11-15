@@ -552,9 +552,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         {
             var musicTrack = edit.Music is { } song
                 ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken) : 0;
-            // A video's sound in its own times (KeyFrames.SoundAsync); a sound's as before.
-            var seek = info.Video is null ? (SeekPoint?)null : await KeyFrames.SoundAsync(ffprobe, input, edit.Start, cancellationToken);
-            var pass = new FfmpegPass(MediaEncoding.ClipSoundArguments(input, output, step.To, edit, media, info, musicTrack, seek), 1);
+            var pass = new FfmpegPass(MediaEncoding.ClipSoundArguments(input, output, step.To, edit, media, info, musicTrack), 1);
             await RunPassesAsync(ffmpeg, [pass], output, TimeSpan.FromSeconds(edit.Length), progress, cancellationToken);
         }
         catch

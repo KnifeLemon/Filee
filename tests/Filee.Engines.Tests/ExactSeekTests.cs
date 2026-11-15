@@ -252,26 +252,16 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("raw.h264", "libx264", false)]
     [InlineData("raw.m2v", "mpeg2video", true)]
     [InlineData("raw.m4v", "mpeg4", true, "m4v")] // its demuxer reports a start time of 0 all the same
-    public async Task A_stream_without_timestamps_is_read_from_its_start(string name, string codec, bool picture, string? format = null)
+    public async Task A_stream_without_timestamps_is_seeked_as_before(string name, string codec, bool picture, string? format = null)
     {
         SkipUnlessInstalled();
-        _ = picture;
-        // FFmpeg makes up a raw stream's timestamps from wherever it starts reading: after a seek, the picture at 14 s
-        // was another frame (raw H.264: none at all, and a clip had no picture). From the start, its times are its own.
+        // FFmpeg makes up a raw stream's timestamps from wherever it starts reading, so no time in it can be named:
+        // read as its own times, the MPEG-2 stream's picture at 14 s was missing. (FFmpeg's own seek finds no picture
+        // in a raw H.264 stream at all.)
         var video = await NumberedAsync(name, "25", 20, ["-c:v", codec, "-g", "25", .. format is null ? Array.Empty<string>() : ["-f", format]]);
-        Assert.Equal(new SeekPoint(0, 0, 0, 14, Raw: true), await KeyFrames.FindAsync(Tools!.Value.Ffprobe, video, 14, Ct));
-        var jpg = Path.Combine(fx.NewFolder(), "14.jpg");
-        Assert.True(await VideoFrames.WriteFrameAsync(video, 14, jpg, Height, Ct));
-        Assert.Equal(350 % 256, await NumberOfPictureAsync(jpg));
-        var clip = await CutAsync(video, ClipEdit.Of(new ClipRange(14, 15)), exact: true);
-        Assert.Equal(Enumerable.Range(350, 25).Select(n => n % 256), (await FramesAsync(clip)).Select(f => f.Number));
-        // And it starts at 0, a second long: FFmpeg makes a raw stream's times up after -itsoffset, so nothing moved
-        // them.
-        var probed = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
-            ["-v", "error", "-select_streams", "V:0", "-show_entries", "stream=start_time,duration", "-of", "csv=p=0", clip], TimeSpan.FromMinutes(1), Ct);
-        var times = probed.StandardOutput.Trim().Split(',').Select(t => double.Parse(t, CultureInfo.InvariantCulture)).ToArray();
-        Assert.InRange(times[0], 0, 0.05);
-        Assert.InRange(times[1], 0.95, 1.05);
+        Assert.Equal(SeekPoint.Plain(14), await KeyFrames.FindAsync(Tools!.Value.Ffprobe, video, 14, Ct));
+        if (picture)
+            Assert.True(await VideoFrames.WriteFrameAsync(video, 14, Path.Combine(fx.NewFolder(), "14.jpg"), Height, Ct));
     }
 
     // ───────────────────────── Numbered videos ─────────────────────────
@@ -390,7 +380,6 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         "opengop.ts" => ("30", "128x32", ["-c:v", "libx265", "-x265-params", "log-level=error:keyint=45", "-pix_fmt", "yuv420p", "-f", "mpegts"]),
         "bframes.avi" => ("30", "128x32", ["-c:v", "mpeg4", "-bf", "2", "-g", "32", "-q:v", "3"]),
         // Every seventh frame left out, the others at their own times.
-        "vfr.mp4" => ("30", "128x32", [.. Mp4, "-vf", "select='not(eq(mod(n\\,7)\\,3))'", "-fps_mode", "passthrough"]),
         "sound.avi" => ("30", "128x32", ["-c:v", "mpeg4", "-bf", "2", "-g", "32", "-q:v", "3", "-c:a", "pcm_s16le"]),
         "bframes.mkv" => ("30", "128x32", ["-c:v", "libx264", "-g", "32", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p"]),
         // B-frames decoded 2/15 s before they are shown, longer than FFmpeg's 3/23 s margin.
@@ -846,41 +835,6 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
-    public async Task An_exact_clip_of_a_vfr_video_keeps_each_frame_once()
-    {
-        SkipUnlessInstalled();
-        // FFmpeg 6.1's default timing filled the gaps of a video with frames left out by copies of the one before.
-        var video = await VideoAsync("vfr.mp4");
-        var frames = await FramesAsync(video);
-
-        var clip = await CutAsync(video, ClipEdit.Of(new ClipRange(frames[30].Time, frames[60].Time)), exact: true);
-
-        Assert.Equal(frames[30..60].Select(f => f.Number), (await FramesAsync(clip)).Select(f => f.Number));
-    }
-
-    [Fact]
-    public async Task The_waveform_silences_and_a_sound_clip_of_a_ts_whose_sound_starts_later_are_in_its_time()
-    {
-        SkipUnlessInstalled();
-        // A TS whose sound starts 0.3 s after its pictures and beeps in frame 50: FFmpeg 6.0 to 7.1 put time 0 elsewhere
-        // after a seek there, and the three were a third of a second late.
-        var video = await SoundLaterAsync();
-        var frames = await FramesAsync(video);
-        var (from, end) = (frames[40].Time, frames[100].Time);
-        var beep = frames[50].Time - from;
-
-        var loud = await ClipPreview.ReadLoudnessAsync(video, from, end, 400, fx.NewFolder(), Ct);
-        var silences = await ClipPreview.FindSilencesAsync(video, from, end, Ct);
-        var tool = BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
-        var job = await fx.ConvertAsync([video], ClipTool.ConversionOf(tool, "m4a", ClipEdit.Of(new ClipRange(from, end))));
-
-        Assert.InRange(Array.FindIndex(loud, v => v > 0.5f) * (end - from) / 400, beep - 0.02, beep + 0.02);
-        Assert.InRange(silences.First(r => r.Start > from + 0.01).Start, frames[51].Time - 0.03, frames[51].Time + 0.03);
-        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
-        Assert.InRange(await BeepAsync(Assert.Single(job.Outputs)), beep - 0.02, beep + 0.02);
-    }
-
-    [Fact]
     public async Task The_last_frame_of_an_mpeg_ts_file_is_there_at_the_windows_last_time()
     {
         SkipUnlessInstalled();
@@ -1122,70 +1076,6 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         edit.Parts[0].End = frames[40].Time + 0.25;
         var between = (await FramesAsync(await CutAsync(video, edit, exact: true))).Select(f => f.Number).ToList();
         Assert.Equal([40, 40, .. Enumerable.Range(0, 30).Select(k => 40 + k / 4), .. Enumerable.Range(60, 10)], between);
-    }
-
-    /// <summary>A 4 s MP4, 30 frames a second, whose sound ends at 2 s.</summary>
-    private async Task<string> SoundEndsAsync()
-    {
-        var pictures = await VideoAsync("30fps.mp4", 4);
-        var video = Path.Combine(fx.NewFolder(), "soundends.mp4");
-        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
-            [.. MediaEncoding.Common, "-i", pictures, "-f", "lavfi", "-i", "sine=frequency=500:d=2", "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-                "-c:a", "aac", video], TimeSpan.FromMinutes(1), Ct);
-        Assert.True(made.ExitCode == 0, made.StandardError);
-        return video;
-    }
-
-    [Fact]
-    public async Task Parts_after_the_sound_has_ended_are_silent()
-    {
-        SkipUnlessInstalled();
-        // FFmpeg was asked for sound where there was none to read, and failed (exit 234): for a part after the sound,
-        // and for an edit of nothing else.
-        var video = await SoundEndsAsync();
-        var frames = await FramesAsync(video);
-        var both = new ClipEdit
-        {
-            Parts =
-            [
-                new ClipPart { Start = frames[30].Time, End = frames[45].Time, Volume = 0.9 },
-                new ClipPart { Start = frames[75].Time, End = frames[90].Time, Volume = 0.9 },
-            ],
-        };
-        var after = ClipEdit.Of(new ClipRange(frames[75].Time, frames[90].Time));
-        after.Parts[0].Volume = 0.9;
-
-        var mixed = await CutAsync(video, both, exact: true);
-        var silent = await CutAsync(video, after, exact: true);
-
-        Assert.Equal([.. Enumerable.Range(30, 15), .. Enumerable.Range(75, 15)], (await FramesAsync(mixed)).Select(f => f.Number));
-        Assert.Equal(Enumerable.Range(75, 15), (await FramesAsync(silent)).Select(f => f.Number));
-        var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, silent, Ct);
-        Assert.NotNull(info.Audio); // a silent track, as the pause of an edit has
-    }
-
-    [Theory]
-    [InlineData(0.0, 0.0, 0.5, false)]
-    [InlineData(0.3, 0.0, 0.2, false)]
-    [InlineData(0.0, 0.4, 0.9, false)]
-    [InlineData(0.0, 0.0, 0.5, true)]
-    public async Task The_music_of_an_edit_is_heard_where_its_file_has_it(double from, double offset, double beep, bool soundLater)
-    {
-        SkipUnlessInstalled();
-        // An AAC file beeping 0.5 s in: -ss 0 dropped its first 1,024 samples a second time, 23 ms early. Under a video
-        // whose own sound starts 1 s in, after the part does, amix started the music where that sound did, 0.67 s late.
-        var video = soundLater ? await SoundOneSecondInAsync() : await VideoAsync("30fps.mp4");
-        var frames = await FramesAsync(video);
-        var music = Path.Combine(fx.NewFolder(), "music.m4a");
-        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
-            [.. MediaEncoding.Common, "-f", "lavfi", "-i", "aevalsrc='if(between(t\\,0.5\\,0.53)\\,0.8*sin(2*PI*1000*t)\\,0)':s=44100:d=3",
-                "-c:a", "aac", music], TimeSpan.FromMinutes(1), Ct);
-        Assert.True(made.ExitCode == 0, made.StandardError);
-        var edit = ClipEdit.Of(new ClipRange(frames[10].Time, frames[70].Time));
-        edit.Parts[0].Volume = 0;
-        edit.Music = new ClipMusic { Path = music, From = from, Offset = offset, Length = 3, Volume = 1, Fade = false };
-
-        Assert.InRange(await BeepAsync(await CutAsync(video, edit, exact: true)), beep - 0.01, beep + 0.01);
     }
 
     [Theory]

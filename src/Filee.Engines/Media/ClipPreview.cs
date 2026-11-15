@@ -180,7 +180,7 @@ public static partial class ClipPreview
     {
         var musicTrack = clip.Music is { } song
             ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken).ConfigureAwait(false) : 0;
-        return MediaEncoding.ClipPreviewAudio(input, clip, video, audio is not null, audio?.Ordinal ?? 0, musicTrack, seek, audio?.End);
+        return MediaEncoding.ClipPreviewAudio(input, clip, video, audio is not null, audio?.Ordinal ?? 0, musicTrack, seek);
     }
 
     /// <summary>
@@ -211,22 +211,13 @@ public static partial class ClipPreview
         var samples = Path.Combine(workFolder, Guid.NewGuid().ToString("N") + ".f32");
         try
         {
-            // A video's sound in its own times, cut by atrim (KeyFrames.SoundAsync); a sound's as before.
-            var seek = await KeyFrames.SoundAsync(tools.Ffprobe, input, start, cancellationToken).ConfigureAwait(false);
             List<string> args = [.. MediaEncoding.Common];
-            if (seek.Origin is null)
-            {
-                if (start > 0)
-                    args.AddRange(["-ss", ClipRange.Ffmpeg(start)]);
-                if (end > start)
-                    args.AddRange(["-to", ClipRange.Ffmpeg(end)]);
-            }
-            else
-                args.AddRange(seek.EncodeInput);
-            args.AddRange(["-i", input, "-map", $"0:a:{track}"]);
-            if (seek.Origin is not null)
-                args.AddRange(["-af", $"atrim=start={seek.Clip(start)}" + (end > start ? $":end={seek.Clip(end)}" : "")]);
-            args.AddRange(["-ac", "1", "-ar", PeakRate.ToString(CultureInfo.InvariantCulture), "-c:a", "pcm_f32le", "-f", "f32le", samples]);
+            if (start > 0)
+                args.AddRange(["-ss", ClipRange.Ffmpeg(start)]);
+            if (end > start)
+                args.AddRange(["-to", ClipRange.Ffmpeg(end)]);
+            args.AddRange(["-i", input, "-map", $"0:a:{track}", "-ac", "1", "-ar", PeakRate.ToString(CultureInfo.InvariantCulture),
+                "-c:a", "pcm_f32le", "-f", "f32le", samples]);
             var result = await FfmpegRunner.RunAsync(tools.Ffmpeg, args, null, cancellationToken);
             if (result.ExitCode != 0 || !File.Exists(samples))
                 return []; // no sound
@@ -265,8 +256,7 @@ public static partial class ClipPreview
     {
         var input = MediaInput.For(path);
         var track = await MediaInfo.AudioTrackAsync(tools.Ffprobe, input, cancellationToken).ConfigureAwait(false);
-        var seek = await KeyFrames.SoundAsync(tools.Ffprobe, input, start, cancellationToken).ConfigureAwait(false);
-        var result = await ProcessRunner.RunAsync(tools.Ffmpeg, SilenceArguments(input, seek, end, track), TimeSpan.FromMinutes(10), cancellationToken);
+        var result = await ProcessRunner.RunAsync(tools.Ffmpeg, SilenceArguments(input, start, end, track), TimeSpan.FromMinutes(10), cancellationToken);
         if (result.ExitCode != 0)
             throw new InvalidOperationException("FFmpeg failed: " + FfmpegRunner.Summarize(result.StandardError));
         return ParseSilences(result.StandardError, start, end);
@@ -275,22 +265,11 @@ public static partial class ClipPreview
     /// <summary>FFmpeg's silencedetect over <paramref name="start"/> to <paramref name="end"/> of the video, reported on stderr.</summary>
     /// <param name="audioTrack">The selected audio track's ordinal in the input file.</param>
     internal static List<string> SilenceArguments(string input, double start, double end, int audioTrack = 0) =>
-        SilenceArguments(input, SeekPoint.Plain(start), end, audioTrack);
-
-    /// <summary>
-    /// FFmpeg's silencedetect from <paramref name="seek"/>'s start to <paramref name="end"/>: a video's sound in its own
-    /// times, cut by atrim (<see cref="KeyFrames.SoundAsync"/>), its times then counting from the start as before.
-    /// </summary>
-    internal static List<string> SilenceArguments(string input, SeekPoint seek, double end, int audioTrack = 0)
-    {
-        var detect = $"silencedetect=noise={SilenceThreshold.ToString(CultureInfo.InvariantCulture)}dB:d={ClipCutter.MinSilence.ToString(CultureInfo.InvariantCulture)}";
-        // No -ss at 0: FFmpeg's seek there drops an AAC file's first 1,024 samples a second time.
-        return seek.Origin is null
-            ? ["-hide_banner", "-nostdin", "-nostats", "-v", "info", .. MediaEncoding.SeekTo(seek.Start), "-to", ClipRange.Ffmpeg(end), "-i", input,
-                "-map", $"0:a:{audioTrack}", "-af", detect, "-f", "null", "-"]
-            : ["-hide_banner", "-nostdin", "-nostats", "-v", "info", .. seek.EncodeInput, "-i", input, "-map", $"0:a:{audioTrack}",
-                "-af", $"atrim=start={seek.Clip(seek.Start)}:end={seek.Clip(end)},{detect}", "-f", "null", "-"];
-    }
+    [
+        "-hide_banner", "-nostdin", "-nostats", "-v", "info", "-ss", ClipRange.Ffmpeg(start), "-to", ClipRange.Ffmpeg(end), "-i", input,
+        "-map", $"0:a:{audioTrack}", "-af", $"silencedetect=noise={SilenceThreshold.ToString(CultureInfo.InvariantCulture)}dB:d={ClipCutter.MinSilence.ToString(CultureInfo.InvariantCulture)}",
+        "-f", "null", "-",
+    ];
 
     /// <summary>
     /// The silences silencedetect reported (<c>silence_start: 1.5</c> … <c>silence_end: 3.25</c>), in seconds of the
@@ -358,8 +337,6 @@ public static partial class ClipPreview
 
     private static Process Start(string executable, IReadOnlyList<string> arguments, bool stdin)
     {
-        // A long edit's graph goes into a file (FfmpegRunner.GraphInFile), deleted once the process has gone.
-        arguments = FfmpegRunner.GraphInFile(arguments, CopyVersions.Installed("ffmpeg", Path.GetDirectoryName(executable) ?? ""), out var graph);
         var psi = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
@@ -371,25 +348,9 @@ public static partial class ClipPreview
         };
         foreach (var argument in arguments)
             psi.ArgumentList.Add(argument);
-        var process = new Process { StartInfo = psi, EnableRaisingEvents = graph is not null };
-        void Forget()
-        {
-            try
-            {
-                if (graph is not null)
-                    File.Delete(graph);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-            }
-        }
-        if (graph is not null)
-            process.Exited += (_, _) => Forget();
+        var process = new Process { StartInfo = psi };
         if (!process.Start())
-        {
-            Forget();
             throw new InvalidOperationException($"Could not start {executable}.");
-        }
         // Nobody reads the messages: drained, so a chatty process never blocks on a full pipe.
         process.ErrorDataReceived += (_, _) => { };
         process.BeginErrorReadLine();

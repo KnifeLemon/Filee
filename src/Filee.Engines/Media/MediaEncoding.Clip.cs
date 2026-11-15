@@ -45,13 +45,8 @@ internal static partial class MediaEncoding
     /// <param name="audioTrack">The selected audio track's ordinal in the input file.</param>
     /// <param name="musicTrack">The music file's audio track ordinal.</param>
     /// <param name="frameRate">The video's frames per second (0 when unknown: taken as <paramref name="fps"/>).</param>
-    /// <param name="soundEnd">
-    /// Where the video's sound ends, in seconds from its start (<see cref="AudioStreamInfo.End"/>); parts from there on
-    /// are silent, as FFmpeg has no sound to give them. Null when unknown.
-    /// </param>
     internal static ClipGraph ClipGraphOf(string input, ClipEdit edit, bool audio, int width, int height, string fps, string pixelFormat = "yuv420p",
-        bool video = true, bool music = true, int audioTrack = 0, int musicTrack = 0, SeekPoint? seek = null, double frameRate = 0,
-        double? soundEnd = null)
+        bool video = true, bool music = true, int audioTrack = 0, int musicTrack = 0, SeekPoint? seek = null, double frameRate = 0)
     {
         var song = music ? edit.Music : null;
         var sound = audio || song is not null;
@@ -63,9 +58,8 @@ internal static partial class MediaEncoding
         // Each part's trims end its streams, and FFmpeg stops reading once every output has ended.
         var at = seek ?? SeekPoint.Plain(sourceParts[0].Start);
         List<string> inputs = [.. at.EncodeInput, "-i", input];
-        // No -ss at 0: FFmpeg's seek there drops an AAC file's first 1,024 samples a second time.
         if (song is not null)
-            inputs.AddRange([.. SeekTo(song.From), "-i", song.Path]);
+            inputs.AddRange(["-ss", ClipRange.Ffmpeg(song.From), "-i", song.Path]);
 
         var graph = new StringBuilder();
         var n = sourceParts.Count;
@@ -76,13 +70,10 @@ internal static partial class MediaEncoding
                 graph.Append($"[vs{k}]");
             graph.Append(';');
         }
-        // A part from where the sound has ended on gets silence: asked for, FFmpeg found no sound to read and failed.
-        bool Sounding(ClipPart part) => soundEnd is not { } ends || part.Start < ends - SeekPoint.Tolerance;
-        var sounding = audio ? sourceParts.Count(Sounding) : 0;
-        if (sounding > 0)
+        if (audio)
         {
-            graph.Append($"[0:a:{audioTrack}]").Append(sounding > 1 ? $"asplit={sounding}" : "anull");
-            for (var k = 0; k < sounding; k++)
+            graph.Append($"[0:a:{audioTrack}]").Append(n > 1 ? $"asplit={n}" : "anull");
+            for (var k = 0; k < n; k++)
                 graph.Append($"[as{k}]");
             graph.Append(';');
         }
@@ -91,7 +82,6 @@ internal static partial class MediaEncoding
         // slower), the pictures before show it, as the window does for the start; fps left them out.
         var picture = $"fps={fps}:start_time=0,scale={width}:{height},setsar=1,format={pixelFormat}";
         var source = 0;
-        var heard = 0;
         for (var i = 0; i < edit.Parts.Count; i++)
         {
             var part = edit.Parts[i];
@@ -119,20 +109,18 @@ internal static partial class MediaEncoding
             var setpts = speed == 1 ? $"settb=AVTB,setpts=PTS-{from}" : $"settb=AVTB,setpts=(PTS-{from})/{Seconds(speed)}";
             if (video)
                 graph.Append($"[vs{source}]{at.VideoTrim(part.Start, part.End)},{setpts},{picture},trim=duration={length}[v{i}];");
-            if (audio && !Sounding(part))
-                graph.Append($"anullsrc=r=48000:cl=stereo,atrim=duration={length}[a{i}];");
-            else if (audio)
+            if (audio)
             {
-                graph.Append($"[as{heard}]atrim=start={start}:end={end},asetpts=PTS-{start}/TB");
-                // Sound that starts after the part does is led in by silence: atempo starts its sound at the time of
-                // the first sample, not that time played faster or slower, and amix put the music's start there.
-                graph.Append(",aresample=first_pts=0");
+                graph.Append($"[as{source}]atrim=start={start}:end={end},asetpts=PTS-{start}/TB");
+                // atempo starts its sound at the time of the first sample, not that time played faster or slower:
+                // sound that starts after the part does is led in by silence first, which is.
+                if (speed != 1)
+                    graph.Append(",aresample=first_pts=0");
                 foreach (var tempo in Tempo(speed))
                     graph.Append($",atempo={Seconds(tempo)}");
                 if (part.PlayVolume != 1)
                     graph.Append($",volume={Seconds(part.PlayVolume)}");
                 graph.Append($",{ClipAudioFormat}[a{i}];");
-                heard++;
             }
             source++;
         }
@@ -191,8 +179,7 @@ internal static partial class MediaEncoding
         var tenBit = video.IsHighBitDepth && encoder is "libx265" or "libsvtav1" or "libaom-av1";
         // "Remove audio" leaves the clip silent, music and all.
         var graph = ClipGraphOf(input, edit, !options.RemoveAudio && info.Audio is not null, width, height, fps, tenBit ? "yuv420p10le" : "yuv420p",
-            music: !options.RemoveAudio, audioTrack: info.Audio?.Ordinal ?? 0, musicTrack: musicTrack, seek: seek, frameRate: video.FrameRate,
-            soundEnd: info.Audio?.End);
+            music: !options.RemoveAudio, audioTrack: info.Audio?.Ordinal ?? 0, musicTrack: musicTrack, seek: seek, frameRate: video.FrameRate);
         var audio = graph.HasAudio;
         var pal = IsPal(video.FrameRate);
         var filter = target is "vob" or "dv"
@@ -219,19 +206,16 @@ internal static partial class MediaEncoding
     /// <paramref name="target"/>: the parts through one filter graph, the picture of the file's cover kept where the
     /// format holds one, encoded with the preset's quality and bitrate. The sound is mixed to 48 kHz stereo by the graph.
     /// </summary>
-    /// <param name="seek">
-    /// Where reading a video's sound starts, in its own times (<see cref="KeyFrames.SoundAsync"/>); null as before.
-    /// </param>
     /// <exception cref="InvalidOperationException">The file has no sound.</exception>
     /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
     internal static List<string> ClipSoundArguments(string input, string output, string target, ClipEdit edit, MediaOptions options,
-        MediaInfo info, int musicTrack = 0, SeekPoint? seek = null)
+        MediaInfo info, int musicTrack = 0)
     {
         var audio = info.Audio ?? throw new InvalidOperationException("The file has no audio track.");
         if (!AudioTargets.TryGetValue(target, out var spec))
             throw new NotSupportedException($"FFmpeg cannot write '{target}'.");
         var graph = ClipGraphOf(input, edit, audio: true, width: 0, height: 0, fps: "1", video: false, music: true,
-            audioTrack: audio.Ordinal, musicTrack: musicTrack, soundEnd: audio.End, seek: seek);
+            audioTrack: audio.Ordinal, musicTrack: musicTrack);
         List<string> args = [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[a]"];
         if (info.CoverStreamIndex is { } cover && CoverTargets.Contains(target))
             args.AddRange(["-map", $"0:{cover}", "-c:v", "copy", "-disposition:v:0", "attached_pic"]);
@@ -265,14 +249,13 @@ internal static partial class MediaEncoding
     /// <param name="audioTrack">The selected audio track's ordinal in the input file.</param>
     /// <param name="musicTrack">The music file's audio track ordinal.</param>
     /// <param name="seek">Where reading the video starts (<see cref="ClipGraphOf"/>), as for its pictures.</param>
-    /// <param name="soundEnd">Where the video's sound ends (<see cref="ClipGraphOf"/>).</param>
     internal static List<string> ClipPreviewAudio(string input, ClipEdit edit, VideoStreamInfo? video, bool hasAudio = true, int audioTrack = 0,
-        int musicTrack = 0, SeekPoint? seek = null, double? soundEnd = null)
+        int musicTrack = 0, SeekPoint? seek = null)
     {
         // A sound has no picture: the graph has none either, so any size will do.
         var (width, height) = video is null ? (2, 2) : ClipSize(video, 90);
         var graph = ClipGraphOf(input, edit, hasAudio, width, height, "10", video: false, audioTrack: audioTrack, musicTrack: musicTrack,
-            seek: seek, soundEnd: soundEnd);
+            seek: seek);
         return [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[a]", "-c:a", "pcm_s16le", "-f", "wav", "pipe:1"];
     }
 
