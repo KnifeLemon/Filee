@@ -325,6 +325,11 @@ internal static partial class MediaEncoding
                 alpha: video.HasAlpha));
         }
 
+        // A clip keeps each frame at its own time: FFmpeg 6.1's default filled a VFR video's gaps with copies (60, 60).
+        // A DVD or DV clip is brought to its constant rate by its filter.
+        if (clip is not null && target is not ("vob" or "dv"))
+            args.AddRange(["-fps_mode:v:0", "passthrough"]);
+
         if (tracks.Count == 0)
             args.Add("-an");
         else if (clip is { } sound && seek is { } from)

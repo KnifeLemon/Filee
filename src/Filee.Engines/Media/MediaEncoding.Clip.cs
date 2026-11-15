@@ -219,16 +219,19 @@ internal static partial class MediaEncoding
     /// <paramref name="target"/>: the parts through one filter graph, the picture of the file's cover kept where the
     /// format holds one, encoded with the preset's quality and bitrate. The sound is mixed to 48 kHz stereo by the graph.
     /// </summary>
+    /// <param name="seek">
+    /// Where reading a video's sound starts, in its own times (<see cref="KeyFrames.SoundAsync"/>); null as before.
+    /// </param>
     /// <exception cref="InvalidOperationException">The file has no sound.</exception>
     /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
     internal static List<string> ClipSoundArguments(string input, string output, string target, ClipEdit edit, MediaOptions options,
-        MediaInfo info, int musicTrack = 0)
+        MediaInfo info, int musicTrack = 0, SeekPoint? seek = null)
     {
         var audio = info.Audio ?? throw new InvalidOperationException("The file has no audio track.");
         if (!AudioTargets.TryGetValue(target, out var spec))
             throw new NotSupportedException($"FFmpeg cannot write '{target}'.");
         var graph = ClipGraphOf(input, edit, audio: true, width: 0, height: 0, fps: "1", video: false, music: true,
-            audioTrack: audio.Ordinal, musicTrack: musicTrack, soundEnd: audio.End);
+            audioTrack: audio.Ordinal, musicTrack: musicTrack, soundEnd: audio.End, seek: seek);
         List<string> args = [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[a]"];
         if (info.CoverStreamIndex is { } cover && CoverTargets.Contains(target))
             args.AddRange(["-map", $"0:{cover}", "-c:v", "copy", "-disposition:v:0", "attached_pic"]);

@@ -389,6 +389,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
             "-pix_fmt", "yuv420p"]),
         "opengop.ts" => ("30", "128x32", ["-c:v", "libx265", "-x265-params", "log-level=error:keyint=45", "-pix_fmt", "yuv420p", "-f", "mpegts"]),
         "bframes.avi" => ("30", "128x32", ["-c:v", "mpeg4", "-bf", "2", "-g", "32", "-q:v", "3"]),
+        // Every seventh frame left out, the others at their own times.
+        "vfr.mp4" => ("30", "128x32", [.. Mp4, "-vf", "select='not(eq(mod(n\\,7)\\,3))'", "-fps_mode", "passthrough"]),
         "sound.avi" => ("30", "128x32", ["-c:v", "mpeg4", "-bf", "2", "-g", "32", "-q:v", "3", "-c:a", "pcm_s16le"]),
         "bframes.mkv" => ("30", "128x32", ["-c:v", "libx264", "-g", "32", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p"]),
         // B-frames decoded 2/15 s before they are shown, longer than FFmpeg's 3/23 s margin.
@@ -841,6 +843,41 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
             TimeSpan.FromMinutes(1), Ct);
         Assert.True(made.ExitCode == 0, made.StandardError);
         return video;
+    }
+
+    [Fact]
+    public async Task An_exact_clip_of_a_vfr_video_keeps_each_frame_once()
+    {
+        SkipUnlessInstalled();
+        // FFmpeg 6.1's default timing filled the gaps of a video with frames left out by copies of the one before.
+        var video = await VideoAsync("vfr.mp4");
+        var frames = await FramesAsync(video);
+
+        var clip = await CutAsync(video, ClipEdit.Of(new ClipRange(frames[30].Time, frames[60].Time)), exact: true);
+
+        Assert.Equal(frames[30..60].Select(f => f.Number), (await FramesAsync(clip)).Select(f => f.Number));
+    }
+
+    [Fact]
+    public async Task The_waveform_silences_and_a_sound_clip_of_a_ts_whose_sound_starts_later_are_in_its_time()
+    {
+        SkipUnlessInstalled();
+        // A TS whose sound starts 0.3 s after its pictures and beeps in frame 50: FFmpeg 6.0 to 7.1 put time 0 elsewhere
+        // after a seek there, and the three were a third of a second late.
+        var video = await SoundLaterAsync();
+        var frames = await FramesAsync(video);
+        var (from, end) = (frames[40].Time, frames[100].Time);
+        var beep = frames[50].Time - from;
+
+        var loud = await ClipPreview.ReadLoudnessAsync(video, from, end, 400, fx.NewFolder(), Ct);
+        var silences = await ClipPreview.FindSilencesAsync(video, from, end, Ct);
+        var tool = BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+        var job = await fx.ConvertAsync([video], ClipTool.ConversionOf(tool, "m4a", ClipEdit.Of(new ClipRange(from, end))));
+
+        Assert.InRange(Array.FindIndex(loud, v => v > 0.5f) * (end - from) / 400, beep - 0.02, beep + 0.02);
+        Assert.InRange(silences.First(r => r.Start > from + 0.01).Start, frames[51].Time - 0.03, frames[51].Time + 0.03);
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        Assert.InRange(await BeepAsync(Assert.Single(job.Outputs)), beep - 0.02, beep + 0.02);
     }
 
     [Fact]

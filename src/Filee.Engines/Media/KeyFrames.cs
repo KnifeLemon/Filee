@@ -310,6 +310,21 @@ internal static class KeyFrames
     }
 
     /// <summary>
+    /// Where reading the sound of a video starts for <paramref name="seconds"/>: in the file's own times, cut by
+    /// <c>atrim</c> as what is encoded is (<see cref="SeekPoint.Clip"/>), from a second before (a seek in an MPEG-TS can
+    /// land a little after the time, and any sound packet decodes). FFmpeg 6.0 to 7.1 put time 0 elsewhere after a seek
+    /// in a TS whose sound starts after its picture: the waveform, silences and a sound clip of it were a third of a
+    /// second late. A file without a video (a sound) or without times of its own is read as before.
+    /// </summary>
+    public static async Task<SeekPoint> SoundAsync(string ffprobe, string input, double seconds, CancellationToken cancellationToken)
+    {
+        seconds = double.IsFinite(seconds) ? Math.Max(0, seconds) : 0;
+        return await FormatAsync(ffprobe, input, cancellationToken).ConfigureAwait(false) is var (_, origin, how, tick) && !how.Raw && tick is not null
+            ? new SeekPoint(Math.Max(0, seconds - 1), origin, seconds, seconds)
+            : SeekPoint.Plain(seconds);
+    }
+
+    /// <summary>
     /// <paramref name="seek"/> with the copy's <c>-ss</c> (<see cref="SeekPoint.CopyFrom"/>) where FFmpeg's seek lands
     /// a copy on the key frame found, as FFmpeg itself shows: each demuxer seeks its own way, so the start time can
     /// land a copy elsewhere. An MP4 lands on the last key frame decoded by then, the next one in an open group of
