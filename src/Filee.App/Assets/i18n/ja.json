@@ -877,6 +877,8 @@
   "presets.duplicate": "複製",
   "presets.delete": "削除",
   "presets.save": "保存",
+  "presets.saved": "保存しました",
+  "presets.save_failed": "プリセットを保存できませんでした: {0}",
   "presets.revert": "元に戻す",
   "presets.name": "名前",
   "presets.icon": "アイコン",

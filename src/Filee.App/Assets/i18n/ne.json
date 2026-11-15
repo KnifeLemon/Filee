@@ -873,6 +873,8 @@
   "presets.duplicate": "प्रतिलिपि बनाउनुहोस्",
   "presets.delete": "हटाउनुहोस्",
   "presets.save": "सुरक्षित गर्नुहोस्",
+  "presets.saved": "सुरक्षित गरियो",
+  "presets.save_failed": "प्रिसेटहरू सुरक्षित गर्न सकिएन: {0}",
   "presets.revert": "पहिलेको जस्तै बनाउनुहोस्",
   "presets.name": "नाम",
   "presets.icon": "आइकन",

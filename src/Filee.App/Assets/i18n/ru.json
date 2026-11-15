@@ -892,6 +892,8 @@
   "presets.duplicate": "Дублировать",
   "presets.delete": "Удалить",
   "presets.save": "Сохранить",
+  "presets.saved": "Сохранено",
+  "presets.save_failed": "Не удалось сохранить предустановки: {0}",
   "presets.revert": "Отменить изменения",
   "presets.name": "Название",
   "presets.icon": "Значок",

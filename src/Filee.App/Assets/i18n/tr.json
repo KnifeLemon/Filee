@@ -873,6 +873,8 @@
   "presets.duplicate": "Çoğalt",
   "presets.delete": "Sil",
   "presets.save": "Kaydet",
+  "presets.saved": "Kaydedildi",
+  "presets.save_failed": "Ön ayarlar kaydedilemedi: {0}",
   "presets.revert": "Geri al",
   "presets.name": "Ad",
   "presets.icon": "Simge",

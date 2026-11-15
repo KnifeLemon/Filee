@@ -876,6 +876,8 @@
 "presets.duplicate": "Duplica",
 "presets.delete": "Elimina",
 "presets.save": "Salva",
+"presets.saved": "Salvato",
+"presets.save_failed": "Impossibile salvare le preimpostazioni: {0}",
 "presets.revert": "Annulla modifiche",
 "presets.name": "Nome",
 "presets.icon": "Icona",

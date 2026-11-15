@@ -892,6 +892,8 @@
   "presets.duplicate": "Duplikuj",
   "presets.delete": "Usuń",
   "presets.save": "Zapisz",
+  "presets.saved": "Zapisano",
+  "presets.save_failed": "Nie udało się zapisać ustawień wstępnych: {0}",
   "presets.revert": "Cofnij",
   "presets.name": "Nazwa",
   "presets.icon": "Ikona",

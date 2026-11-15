@@ -873,6 +873,8 @@
   "presets.duplicate": "Duplicar",
   "presets.delete": "Eliminar",
   "presets.save": "Guardar",
+  "presets.saved": "Guardado",
+  "presets.save_failed": "No se pudieron guardar los ajustes preestablecidos: {0}",
   "presets.revert": "Revertir",
   "presets.name": "Nombre",
   "presets.icon": "Icono",

@@ -872,6 +872,8 @@
   "presets.duplicate": "تکثیر",
   "presets.delete": "حذف",
   "presets.save": "ذخیره",
+  "presets.saved": "ذخیره شد",
+  "presets.save_failed": "ذخیرهٔ پیش‌تنظیم‌ها ممکن نشد: {0}",
   "presets.revert": "بازگردانی",
   "presets.name": "نام",
   "presets.icon": "آیکون",
