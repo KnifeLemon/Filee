@@ -347,6 +347,7 @@ internal static class SharedPresetRules
             ("zipResult", Flag),
             ("onlyIfSmaller", Flag),
             ("replaceOriginal", Flag),
+            ("trashOriginalAfterConvert", Flag),
             ("moveInsteadOfCopy", Flag))));
 
     /// <summary>The fields of one toolbar profile (a donut).</summary>

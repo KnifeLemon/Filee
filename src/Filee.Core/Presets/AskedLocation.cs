@@ -75,6 +75,7 @@ public static class AskedLocation
         copy.Output.SubfolderOnlyForSeveralFiles = false;
         // The place the user picked is where the result goes, not back over the original.
         copy.Output.ReplaceOriginal = false;
+        copy.Output.TrashOriginalAfterConvert = false;
         return copy;
     }
 }

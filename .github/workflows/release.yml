@@ -2,10 +2,14 @@
 # Trigger: push a tag like v1.0.0  (git tag v1.0.0 && git push origin v1.0.0)
 #
 # Output (build/build-installer.ps1): Filee-<version>-win-Setup.exe (Filee's own installer, src/Filee.Setup),
-# Filee-<version>-win-Portable.zip and Filee-<version>-SHA256SUMS.txt.
+# Filee-<version>-win-Portable.zip and Filee-<version>-SHA256SUMS.txt for x64, and for Windows on ARM64 (#236), built
+# and tested on an ARM64 runner, Filee-<version>-win-arm64-Setup.exe and -win-arm64-Portable.zip. Their hashes go into
+# the same Filee-<version>-SHA256SUMS.txt (sign-release.ps1): Filee 2.4.0 and older take the last Windows-looking
+# SHA256SUMS file of a release, so a separate ARM64 one would break their updates.
 # The release is a draft with the Linux and macOS packages: the Windows files are signed on a PC signed in to Certum's
-# SimplySign cloud (its key needs a phone token), so this run keeps the tested, unsigned build as the artifact
-# windows-unsigned, and build/sign-release.ps1 signs it, packs Setup again, uploads the Windows files and publishes.
+# SimplySign cloud (its key needs a phone token), so this run keeps the tested, unsigned builds as the artifacts
+# windows-unsigned and windows-arm64-unsigned, and build/sign-release.ps1 signs them, packs both Setups again, uploads
+# the Windows files and publishes. The draft waits for both Windows builds, so a release never lacks one of them.
 # The SHA256SUMS files are signed there too, with the update key that never leaves that PC: it uploads a .sig next to
 # every SHA256SUMS file of the release (the Linux and macOS ones drafted here as well), and official builds refuse an
 # update without one.
@@ -109,6 +113,106 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # Windows on ARM64, built and tested natively like CI's build (win-arm64) job: the app, Setup, the Explorer menu DLL,
+  # 7-Zip, rhwp and Unhwp's library are ARM64 builds (rhwp and Unhwp from the pins in build/fetch-engines.ps1).
+  windows-arm64:
+    needs: portable
+    runs-on: windows-11-arm
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Version from tag
+        id: version
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          "value=$version" >> $env:GITHUB_OUTPUT
+
+      # CI builds without them (and skips their tests); a release doesn't.
+      - name: ARM64 pins
+        run: |
+          $missing = @(./build/fetch-engines.ps1 -Runtime win-arm64 -MissingPins)
+          if ($missing) { throw "Not pinned for win-arm64: $($missing -join ', ') (build/fetch-engines.ps1)." }
+
+      - name: Fonts
+        run: ./build/fetch-fonts.ps1
+
+      # Unhwp's library goes next to the test programs through the build.
+      - name: Fetch engines for engine tests
+        run: ./build/fetch-engines.ps1 -Runtime win-arm64 -Only pandoc,7zip,rhwp,unhwp
+
+      - name: Build
+        run: |
+          dotnet build Filee.slnx -c Release "-p:UnhwpNativeLibrary=$((Resolve-Path engines/unhwp/unhwp.dll).Path)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The x64 Zig toolchain CI's build job saves; it cross-compiles the ARM64 DLL under x64 emulation.
+      - name: Restore Zig toolchain
+        uses: actions/cache/restore@v5
+        with:
+          path: build/.cache/zig-x86_64-windows-0.16.0
+          key: zig-0.16.0-x86_64-windows
+
+      - name: Build Explorer menu extension
+        timeout-minutes: 30
+        run: ./build/build-explorer-menu.ps1 -Architecture arm64 -Version ${{ steps.version.outputs.value }}
+
+      - name: Test UI on its own
+        run: dotnet test tests/Filee.App.Tests --no-build -c Release --blame-crash --blame-hang-timeout 5m --logger "console;verbosity=normal" --results-directory TestResults/app
+
+      - name: Test
+        run: dotnet test Filee.slnx --no-build -c Release --filter "FullyQualifiedName!~Filee.App.Tests" --logger "trx" --results-directory TestResults
+
+      # Setup around a stub app, installed, updated and uninstalled in a sandbox: the PC that signs the release is
+      # x64 and can't run the ARM64 Setup.
+      - name: Check the installer
+        run: ./build/build-installer.ps1 -CheckOnly -Runtime win-arm64
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-windows-arm64
+          path: TestResults/
+          if-no-files-found: ignore
+
+      - name: Build installer and portable zip
+        run: ./build/build-installer.ps1 -Version ${{ steps.version.outputs.value }} -Runtime win-arm64 -Portable
+
+      # Laid out like windows-unsigned, for build/sign-release.ps1.
+      - name: Keep the unsigned Windows ARM64 build
+        run: |
+          New-Item -ItemType Directory -Force -Path unsigned | Out-Null
+          Move-Item publish/win-arm64 unsigned/app
+          Copy-Item build/.cache/setup/Filee.Setup.exe unsigned/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-arm64-unsigned
+          path: unsigned/
+          if-no-files-found: error
+          retention-days: 30
+
+  draft:
+    needs: [portable, windows, windows-arm64]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          "value=$version" >> $env:GITHUB_OUTPUT
+
       - name: Download Linux and macOS packages
         uses: actions/download-artifact@v8
         with:
@@ -122,8 +226,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = '${{ steps.version.outputs.value }}'
-          # Linux and macOS only: build/sign-release.ps1 adds the signed Windows files.
-          $windows = "Filee-$version-win-Setup.exe", "Filee-$version-win-Portable.zip", "Filee-$version-SHA256SUMS.txt"
+          # Linux and macOS only: build/sign-release.ps1 adds the signed Windows files. The ARM64 build's own sums file
+          # never ships (its hashes go into Filee-<version>-SHA256SUMS.txt).
+          $windows = "Filee-$version-win-Setup.exe", "Filee-$version-win-Portable.zip", "Filee-$version-SHA256SUMS.txt",
+            "Filee-$version-win-arm64-Setup.exe", "Filee-$version-win-arm64-Portable.zip", "Filee-$version-win-arm64-SHA256SUMS.txt"
           $files = Get-ChildItem Releases -File -Filter "Filee-$version-*" | Where-Object Name -notin $windows | ForEach-Object FullName
           # "## 1.4.0" up to the next "## " heading of CHANGELOG.md, without the heading itself.
           $changes = ''
