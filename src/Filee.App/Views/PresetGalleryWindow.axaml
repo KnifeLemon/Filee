@@ -1,0 +1,303 @@
+<!-- "Preset gallery" (#1530): presets other people shared on filee.sh, opened from the Presets page. The cards on the
+     left are a list (arrow keys move through them, a screen reader reads each one's title, author and counts); the one
+     chosen shows on the right with its pictures, what it does, Install and Comments. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.PresetGalleryWindow"
+        x:DataType="vm:PresetGalleryViewModel"
+        Title="{DynamicResource gallery.title}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="1100" Height="740" MinWidth="780" MinHeight="540"
+        WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <Style Selector="ListBox.gallery">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.gallery ListBoxItem" x:DataType="vm:PresetGalleryCardViewModel">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,0,12,12" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+      <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+    </Style>
+    <Style Selector="ListBox.gallery ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="Border.galleryCard">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.picture">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.tag">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="8,2" />
+      <Setter Property="Margin" Value="0,0,4,4" />
+    </Style>
+    <!-- The language a preset is written in, when it isn't the app's. -->
+    <Style Selector="Border.language">
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Border.language > TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.tag > TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    </Style>
+    <!-- What the chosen preset does to the user's files: amber, red when it can replace, move or overwrite them. -->
+    <Style Selector="Border.warnings">
+      <Setter Property="Background" Value="{DynamicResource WarningFaintBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+      <Setter Property="Padding" Value="12,10" />
+    </Style>
+    <Style Selector="Border.warnings.high">
+      <Setter Property="Background" Value="{DynamicResource StatusDangerFaintBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="WrapPanel.filters > :is(Control)">
+      <Setter Property="Margin" Value="0,0,8,8" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel Margin="22,18,22,14">
+    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,14">
+      <TextBlock Classes="h1" Text="{DynamicResource gallery.title}" />
+      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource gallery.lead}" />
+    </StackPanel>
+
+    <WrapPanel DockPanel.Dock="Top" Classes="filters" Margin="0,0,0,6">
+      <TextBox x:Name="SearchBox" Classes="search clearButton" Width="230" Text="{Binding Search}" PlaceholderText="{DynamicResource common.search}"
+               AutomationProperties.Name="{DynamicResource common.search}">
+        <TextBox.InnerLeftContent>
+          <PathIcon Width="14" Height="14" Margin="10,0,0,0" Data="{StaticResource Icon.Search}" Foreground="{DynamicResource TextSecondaryBrush}" />
+        </TextBox.InnerLeftContent>
+      </TextBox>
+      <ComboBox ItemsSource="{Binding Sorts}" SelectedItem="{Binding Sort}" MinWidth="110" AutomationProperties.Name="{DynamicResource gallery.sort}"
+                ToolTip.Tip="{DynamicResource gallery.sort}" />
+      <ComboBox ItemsSource="{Binding Periods}" SelectedItem="{Binding Period}" MinWidth="130" IsVisible="{Binding ShowPeriods}"
+                AutomationProperties.Name="{DynamicResource gallery.period}" ToolTip.Tip="{DynamicResource gallery.period}" />
+      <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" MinWidth="130" AutomationProperties.Name="{DynamicResource gallery.filter.kind}"
+                ToolTip.Tip="{DynamicResource gallery.filter.kind}" />
+      <ComboBox ItemsSource="{Binding Formats}" SelectedItem="{Binding Format}" MinWidth="130" MaxDropDownHeight="360"
+                AutomationProperties.Name="{DynamicResource gallery.filter.format}" ToolTip.Tip="{DynamicResource gallery.filter.format}" />
+      <ComboBox ItemsSource="{Binding Tags}" SelectedItem="{Binding Tag}" MinWidth="120" MaxDropDownHeight="360"
+                AutomationProperties.Name="{DynamicResource gallery.filter.tag}" ToolTip.Tip="{DynamicResource gallery.filter.tag}" />
+      <!-- Presets written in the app's language always come first; this hides the others. -->
+      <CheckBox x:Name="OnlyMyLanguage" IsChecked="{Binding OnlyMyLanguage}" VerticalAlignment="Center"
+                Content="{DynamicResource gallery.only_my_language}" AutomationProperties.Name="{DynamicResource gallery.only_my_language}" />
+    </WrapPanel>
+
+    <TextBlock DockPanel.Dock="Bottom" Classes="caption" Margin="0,8,0,0" Text="{Binding NewerText}"
+               IsVisible="{Binding NewerText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+    <Grid ColumnDefinitions="*,18,400">
+      <Panel>
+        <StackPanel IsVisible="{Binding IsLoading}" Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="360">
+          <ProgressBar Classes="soft" IsIndeterminate="True" Width="220" />
+          <TextBlock Classes="muted" TextAlignment="Center" TextWrapping="Wrap" Text="{DynamicResource gallery.loading}" />
+        </StackPanel>
+        <StackPanel IsVisible="{Binding IsFailed}" Spacing="12" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="420">
+          <TextBlock TextAlignment="Center" TextWrapping="Wrap" Text="{DynamicResource gallery.failed}" />
+          <Button x:Name="RetryButton" HorizontalAlignment="Center" Content="{DynamicResource common.retry}" Command="{Binding LoadCommand}" />
+        </StackPanel>
+        <TextBlock IsVisible="{Binding IsEmpty}" Classes="muted" Text="{Binding EmptyText}" TextWrapping="Wrap"
+                   VerticalAlignment="Center" HorizontalAlignment="Center" />
+        <ListBox x:Name="CardList" Classes="gallery" ItemsSource="{Binding Cards}" SelectedItem="{Binding Selected}"
+                 IsVisible="{Binding IsReady}" AutomationProperties.Name="{DynamicResource gallery.title}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel />
+            </ItemsPanelTemplate>
+          </ListBox.ItemsPanel>
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:PresetGalleryCardViewModel">
+              <Border Classes="galleryCard" Width="210">
+                <StackPanel>
+                  <Border Classes="picture" Height="118">
+                    <Image Source="{Binding Thumb}" Stretch="UniformToFill" />
+                  </Border>
+                  <StackPanel Margin="10,8,10,10" Spacing="2">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                               FlowDirection="{Binding Text.Direction}" />
+                    <Border Classes="language" IsVisible="{Binding Text.HasBadge}" ToolTip.Tip="{Binding Text.BadgeText}"
+                            AutomationProperties.Name="{Binding Text.BadgeText}">
+                      <TextBlock Text="{Binding Text.Badge}" />
+                    </Border>
+                    <TextBlock Classes="caption" Text="{Binding Byline}" TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding HasStats}" Margin="0,2,0,0">
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <PathIcon Width="11" Height="11" Data="{StaticResource Icon.Heart}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Classes="caption" Text="{Binding Likes}" />
+                      </StackPanel>
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <PathIcon Width="11" Height="11" Data="{StaticResource Icon.Download}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Classes="caption" Text="{Binding Downloads}" />
+                      </StackPanel>
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{Binding Tags}" Margin="0,4,0,0">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <WrapPanel />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                          <Border Classes="tag">
+                            <TextBlock Text="{Binding}" />
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Panel>
+
+      <Border Grid.Column="2" Classes="card" Padding="0">
+        <Panel>
+          <TextBlock Classes="muted" Margin="18" TextWrapping="Wrap" Text="{DynamicResource gallery.select}"
+                     IsVisible="{Binding !HasSelection}" />
+          <ContentControl x:Name="DetailView" Content="{Binding Detail}" IsVisible="{Binding HasSelection}">
+            <ContentControl.ContentTemplate>
+              <DataTemplate x:DataType="vm:PresetGalleryDetailViewModel">
+                <DockPanel>
+                  <StackPanel DockPanel.Dock="Bottom" Margin="18,10,18,16" Spacing="8">
+                    <Border x:Name="WarningPanel" Classes="warnings" Classes.high="{Binding HasHighWarnings}" IsVisible="{Binding HasWarnings}">
+                      <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Alert}" />
+                          <TextBlock Text="{DynamicResource gallery.warnings_title}" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding Warnings}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PresetGalleryWarning">
+                              <TextBlock Text="{Binding Text, StringFormat='• {0}'}" TextWrapping="Wrap" Margin="0,1"
+                                         Classes.danger="{Binding IsHigh}" FontWeight="{Binding IsHigh, Converter={x:Static vm:GalleryConverters.Emphasis}}" />
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <CheckBox x:Name="AcceptRisk" IsVisible="{Binding HasHighWarnings}" IsChecked="{Binding WarningsAccepted}"
+                                  AutomationProperties.Name="{DynamicResource gallery.accept_risk}">
+                          <TextBlock TextWrapping="Wrap" Text="{DynamicResource gallery.accept_risk}" />
+                        </CheckBox>
+                      </StackPanel>
+                    </Border>
+                    <TextBlock Text="{Binding InstallMessage}" TextWrapping="Wrap" FontWeight="SemiBold"
+                               IsVisible="{Binding InstallMessage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                      <Button x:Name="CommentsButton" Command="{Binding OpenCommentsCommand}" IsVisible="{Binding HasComments}"
+                              AutomationProperties.Name="{DynamicResource gallery.comments}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.GitHub}" />
+                          <TextBlock Text="{DynamicResource gallery.comments}" />
+                        </StackPanel>
+                      </Button>
+                      <Button x:Name="InstallButton" Classes="accent" Command="{Binding InstallCommand}"
+                              AutomationProperties.Name="{DynamicResource gallery.install}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Download}" />
+                          <TextBlock Text="{DynamicResource gallery.install}" />
+                        </StackPanel>
+                      </Button>
+                    </StackPanel>
+                  </StackPanel>
+                  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="18,18,18,6" Spacing="8">
+                      <Border Classes="picture" Height="206" CornerRadius="{DynamicResource SoftRadiusSmall}">
+                        <Image Source="{Binding ShownImage.Bitmap}" Stretch="Uniform"
+                               AutomationProperties.Name="{Binding ShownImage.Name}" />
+                      </Border>
+                      <ItemsControl ItemsSource="{Binding Images}" IsVisible="{Binding HasSeveralImages}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <WrapPanel />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:PresetGalleryImageViewModel">
+                            <Button Padding="0" Margin="0,0,6,0" Background="Transparent"
+                                    Command="{Binding $parent[ItemsControl].((vm:PresetGalleryDetailViewModel)DataContext).ShowImageCommand}"
+                                    CommandParameter="{Binding}" AutomationProperties.Name="{Binding Name}" ToolTip.Tip="{Binding Name}">
+                              <Border Classes="picture" Width="72" Height="44" CornerRadius="6">
+                                <Image Source="{Binding Bitmap}" Stretch="UniformToFill" />
+                              </Border>
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBlock Classes="h2" Text="{Binding Title}" TextWrapping="Wrap" Margin="0,4,0,0" FlowDirection="{Binding Text.Direction}" />
+                      <Border Classes="language" IsVisible="{Binding Text.HasBadge}" ToolTip.Tip="{Binding Text.BadgeText}"
+                              AutomationProperties.Name="{Binding Text.BadgeText}">
+                        <TextBlock Text="{Binding Text.Badge}" />
+                      </Border>
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="caption" Text="{Binding Byline}" />
+                        <TextBlock Classes="caption" Text="{Binding Stats}" IsVisible="{Binding HasStats}" />
+                      </StackPanel>
+                      <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FlowDirection="{Binding Text.Direction}" />
+                      <ItemsControl ItemsSource="{Binding Tags}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <WrapPanel />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="x:String">
+                            <Border Classes="tag">
+                              <TextBlock Text="{Binding}" />
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBlock Classes="label" Text="{DynamicResource gallery.what}" Margin="0,6,0,0" />
+                      <TextBlock Classes="caption" Text="{Binding SummaryNote}" TextWrapping="Wrap"
+                                 IsVisible="{Binding SummaryNote, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                      <ItemsControl ItemsSource="{Binding Presets}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Spacing="8" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:PresetGallerySummary">
+                            <StackPanel Spacing="1">
+                              <TextBlock TextWrapping="Wrap">
+                                <Run Text="{Binding Name}" FontWeight="SemiBold" />
+                                <Run Text="  " />
+                                <Run Text="{Binding What}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                              </TextBlock>
+                              <TextBlock Classes="caption" Text="{Binding Options}" TextWrapping="Wrap" IsVisible="{Binding HasOptions}" />
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBlock Classes="caption" Text="{Binding Donut}" TextWrapping="Wrap"
+                                 IsVisible="{Binding Donut, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                      <TextBlock Classes="caption" Text="{Binding License}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                    </StackPanel>
+                  </ScrollViewer>
+                </DockPanel>
+              </DataTemplate>
+            </ContentControl.ContentTemplate>
+          </ContentControl>
+        </Panel>
+      </Border>
+    </Grid>
+  </DockPanel>
+</Window>
