@@ -374,15 +374,18 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains("[0:V:0]split=2[vs0][vs1];", filter);
         Assert.Contains("[0:a:0]asplit=2[as0][as1];", filter);
         // The parts are cut out of what was read: their times count from the first part's start, in microseconds (a
-        // microsecond early), and each part's picture and sound start where the part does.
-        Assert.Contains("[vs0]trim=start=0:end=9.999999,setpts=PTS-0/TB,fps=30,scale=1920:1080,setsar=1,format=yuv420p[v0]", filter);
-        Assert.Contains("[vs1]trim=start=19.999999:end=29.999999,setpts=(PTS-19.999999/TB)/2,", filter);
+        // microsecond early), and each part's picture and sound start where the part does, its first frame 0.4 into
+        // the picture nearest it.
+        Assert.Contains("[vs0]trim=start=0:end=9.999999,settb=AVTB,setpts=PTS-(STARTPTS-(round((STARTPTS*TB-0)*30/1)+0.4)*1/(30*TB)),"
+            + "fps=30,scale=1920:1080,setsar=1,format=yuv420p[v0]", filter);
+        Assert.Contains("[vs1]trim=start=19.999999:end=29.999999,settb=AVTB,"
+            + "setpts=(PTS-(STARTPTS-(round((STARTPTS*TB-19.999999)*30/2)+0.4)*2/(30*TB)))/2,", filter);
         Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0.5,", filter);
         Assert.Contains("[as1]atrim=start=19.999999:end=29.999999,asetpts=PTS-19.999999/TB,atempo=2,", filter);
         // From a key frame KeyFrames found: read from it, moved back to just before the first part, video cut in ticks.
         var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10, 10, (1, 15360)));
         Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "9.000000", "-itsoffset", "-11.999999", "-i", "in.mp4"], seeked.Inputs);
-        Assert.Contains("[vs1]trim=start_pts=307200:end_pts=460800,setpts=(PTS-20/TB)/2,", seeked.Filter);
+        Assert.Contains("[vs1]trim=start_pts=307200:end_pts=460800,settb=AVTB,setpts=(PTS-(STARTPTS-(round((STARTPTS*TB-20)*30/2)", seeked.Filter);
         // The pause: black and silence as long as the part played.
         Assert.Contains("color=c=black:s=1920x1080:r=30:d=2,setsar=1,format=yuv420p[v1]", filter);
         Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=2[a1]", filter);

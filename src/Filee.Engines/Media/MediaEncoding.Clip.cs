@@ -20,6 +20,9 @@ internal sealed record ClipGraph(IReadOnlyList<string> Inputs, string Filter, bo
 
 internal static partial class MediaEncoding
 {
+    /// <summary>How far into its picture each part's first frame is put (see <see cref="ClipGraphOf"/>).</summary>
+    private const string FirstFrameAt = "0.4";
+
     /// <summary>Sample rate and layout every part's sound is brought to, so the parts join.</summary>
     private const string ClipAudioFormat = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
 
@@ -44,14 +47,8 @@ internal static partial class MediaEncoding
     /// <param name="music">The clip's music is mixed in (the preset keeps sound).</param>
     /// <param name="audioTrack">The selected audio track's ordinal in the input file.</param>
     /// <param name="musicTrack">The music file's audio track ordinal.</param>
-    /// <param name="snap">
-    /// Each part's first frame is moved to a quarter of a picture past the picture nearest it (the preview's, fewer a
-    /// second than the video's frames): <c>fps</c> keeps the last frame it rounds to each picture, so the frame after
-    /// the first, unless it follows within a quarter of a picture (100 frames a second), now rounds to the next one.
-    /// Where the first frame began a little after the part's start, the frame after it replaced it.
-    /// </param>
     internal static ClipGraph ClipGraphOf(string input, ClipEdit edit, bool audio, int width, int height, string fps, string pixelFormat = "yuv420p",
-        bool video = true, bool music = true, int audioTrack = 0, int musicTrack = 0, SeekPoint? seek = null, bool snap = false)
+        bool video = true, bool music = true, int audioTrack = 0, int musicTrack = 0, SeekPoint? seek = null)
     {
         var song = music ? edit.Music : null;
         var sound = audio || song is not null;
@@ -100,12 +97,14 @@ internal static partial class MediaEncoding
             var start = at.Clip(part.Start);
             var end = at.Clip(part.End);
             var speed = part.PlaySpeed;
-            // Picture and sound alike from the part's start, not each from its own first frame: sound that starts later
-            // keeps its place.
-            var from = snap
-                ? $"(STARTPTS-(round((STARTPTS*TB-{start})*{fps}/{Seconds(speed)})+0.25)*{Seconds(speed)}/({fps}*TB))"
-                : $"{start}/TB";
-            var setpts = speed == 1 ? $"setpts=PTS-{from}" : $"setpts=(PTS-{from})/{Seconds(speed)}";
+            // The part's first frame goes in the picture nearest its time from the part's start, as the sound starts
+            // there, and 0.4 of a picture into it: fps keeps the last frame it rounds to each picture, so a frame up to
+            // 0.1 of a picture after a picture's time (shown at it, give or take its timing) is the one it keeps. From
+            // its own time, the frame after the first replaced it where it followed within half a picture (a part
+            // played 3 or 4 times as fast, a preview of fewer pictures a second than the video's). In microseconds:
+            // setpts cuts a time short to its tick, a whole frame in an AVI, and put two frames on one.
+            var from = $"(STARTPTS-(round((STARTPTS*TB-{start})*{fps}/{Seconds(speed)})+{FirstFrameAt})*{Seconds(speed)}/({fps}*TB))";
+            var setpts = speed == 1 ? $"settb=AVTB,setpts=PTS-{from}" : $"settb=AVTB,setpts=(PTS-{from})/{Seconds(speed)}";
             if (video)
                 graph.Append($"[vs{source}]{at.VideoTrim(part.Start, part.End)},{setpts},{picture}[v{i}];");
             if (audio)
@@ -234,7 +233,7 @@ internal static partial class MediaEncoding
         (width, frameHeight) = ClipSize(video, height);
         // Pictures only: FFmpeg refuses a graph with a sound output nothing takes, the music's included.
         var graph = ClipGraphOf(input, edit, false, width, frameHeight, fps.ToString(CultureInfo.InvariantCulture), "bgra", music: false,
-            seek: seek, snap: true);
+            seek: seek);
         return [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1"];
     }
 

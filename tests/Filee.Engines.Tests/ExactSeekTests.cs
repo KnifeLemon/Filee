@@ -574,6 +574,47 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(41, await FirstPlayedAsync(video, ClipEdit.Of(range)));
     }
 
+    [Theory]
+    [InlineData("mjpeg.avi", 1.0)]
+    [InlineData("mjpeg.avi", 2.0)]
+    [InlineData("mjpeg.avi", 0.5)]
+    [InlineData("30fps.mp4", 2.0)]
+    [InlineData("30fps.mp4", 0.5)]
+    [InlineData("soundfirst.ts", 2.0)]
+    [InlineData("30fps.mp4", 3.0)]
+    [InlineData("30fps.mp4", 4.0)]
+    [InlineData("mjpeg.avi", 1.5)]
+    public async Task An_edited_clip_starts_with_the_frame_shown_at_or_just_before_a_frames_time(string name, double speed)
+    {
+        SkipUnlessInstalled();
+        // An AVI counts in whole frames: the move of the start by a microsecond's fraction, cut short to a whole tick,
+        // put the first two frames on the same tick, and only the later one was kept.
+        var video = await VideoAsync(name, 4);
+        var frames = await FramesAsync(video);
+        List<string> wrong = [];
+        for (var i = 40; i < 46; i++)
+        {
+            foreach (var before in new[] { 0.0, 0.4 })
+            {
+                var start = frames[i].Time - (frames[i].Time - frames[i - 1].Time) * before;
+                var edit = ClipEdit.Of(new ClipRange(start, frames[i + 30].Time));
+                edit.Parts[0].Volume = 0.9;
+                edit.Parts[0].Speed = speed;
+                var numbers = (await FramesAsync(await CutAsync(video, edit, exact: true))).Select(f => f.Number).ToList();
+                // Played at half speed, each frame twice; faster, every second, third or fourth frame; at 1.5 times,
+                // only the first frame is sure (the others are those nearest their times).
+                var expected = speed == 0.5 ? Enumerable.Range(0, 60).Select(k => i + k / 2).ToList()
+                    : speed == Math.Floor(speed) ? Enumerable.Range(0, (int)Math.Ceiling(30 / speed)).Select(k => i + k * (int)speed).ToList()
+                    : [i];
+                var same = Math.Min(numbers.Count, expected.Count) - (speed > 2 ? 1 : 0);
+                if (numbers.Count == 0 || !numbers.Take(same).SequenceEqual(expected.Take(same))
+                    || (speed == Math.Floor(speed) || speed == 0.5) && Math.Abs(numbers.Count - expected.Count) > (speed > 2 ? 1 : 0))
+                    wrong.Add($"{start:0.000000} s: {string.Join(",", numbers.Take(6))}… ({numbers.Count}) instead of {string.Join(",", expected.Take(6))}… ({expected.Count})");
+            }
+        }
+        Assert.True(wrong.Count == 0, string.Join("; ", wrong));
+    }
+
     [Fact]
     public async Task An_exact_clip_from_between_a_frames_grid_time_and_its_own_starts_with_it()
     {
@@ -651,8 +692,11 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(frames[^1].Number, await NumberOfPictureAsync(output));
     }
 
-    [Fact]
-    public async Task An_exact_clips_progress_reaches_its_length()
+    [Theory]
+    [InlineData("exact")]
+    [InlineData("edited")]
+    [InlineData("live photo")]
+    public async Task A_clips_progress_reaches_its_length(string kind)
     {
         SkipUnlessInstalled();
         // With -copyts, FFmpeg's -progress counted from its first report: a clip ended its progress well short of 1,
@@ -663,8 +707,16 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, video, Ct);
         var range = new ClipRange(0.7, 3.7);
         var seek = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, video, range.Start, Ct);
-        var output = Path.Combine(fx.NewFolder(), "clip.mp4");
-        var args = MediaEncoding.Plan(video, output, "mp4", new MediaOptions(), info, fx.NewFolder(), clip: range, clipSeek: seek).Single().Arguments;
+        var output = Path.Combine(fx.NewFolder(), kind == "live photo" ? "clip.mov" : "clip.mp4");
+        var edit = ClipEdit.Of(range);
+        edit.Parts[0].Volume = 0.9;
+        var args = kind switch
+        {
+            "exact" => MediaEncoding.Plan(video, output, "mp4", new MediaOptions(), info, fx.NewFolder(), clip: range, clipSeek: seek).Single().Arguments,
+            "edited" => MediaEncoding.ClipEditArguments(video, output, "mp4", edit.Clamped(info.Duration?.TotalSeconds), new MediaOptions(), info, seek: seek),
+            _ => LivePhotoWriter.ClipArguments(video, output, "mov", new LivePhotoClip(range.Start, range.Length, 0), info.Video!, info.Audio,
+                new MediaOptions(), "libx264", "", seek),
+        };
         var reached = 0.0;
         List<double> back = [];
 
@@ -699,6 +751,8 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("2997fps.mp4", 1)]
     [InlineData("60fps.mp4", 1)]
     [InlineData("30fps.mp4", 2)]
+    [InlineData("mjpeg.avi", 1)]
+    [InlineData("mjpeg.avi", 2)]
     public async Task Playback_from_between_two_frames_starts_with_the_later_one_as_the_window_shows(string name, double speed)
     {
         SkipUnlessInstalled();
@@ -962,6 +1016,45 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var seek = await KeyFrames.FindAsync(ffprobe, Path.Combine(fx.NewFolder(), "covered.mp4"), 1.5, Ct);
 
         Assert.Equal((1L, 15360L), seek.Tick);
+    }
+
+    [Fact]
+    public async Task A_file_looked_at_again_is_read_from_its_last_reach_with_its_format_kept()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in ffprobe is a Unix script.");
+        // A TS whose only key frame is at 30 s (31.4 s in its own time): the first look at 40 s reads 2, 8 and then 32
+        // s of packets before it finds it. The clip window looks at the next frame next, from 32 s before it at once,
+        // and asks for the file's format only the first time.
+        var folder = fx.NewFolder();
+        var calls = Path.Combine(folder, "calls.log");
+        var ffprobe = StandIn("ffprobe", $$$"""
+            #!/bin/sh
+            echo "$*" >> '{{{calls}}}'
+            case "$*" in
+            *-read_intervals*)
+                from=$(echo "$*" | sed -n 's/.*-read_intervals \([0-9.]*\)%.*/\1/p')
+                if awk "BEGIN { exit !(\"$from\" + 0 <= 31.4) }"; then
+                    echo '{"packets":[{"pts_time":"31.400000","dts_time":"31.400000","flags":"K__"}]}'
+                else
+                    echo '{"packets":[{"pts_time":"38.000000","dts_time":"38.000000","flags":"__"}]}'
+                fi;;
+            *) echo '{"streams":[{"codec_type":"video","has_b_frames":0,"time_base":"1/90000"}],"format":{"format_name":"mpegts","start_time":"1.400000"}}';;
+            esac
+
+            """);
+        var video = Path.Combine(folder, "long.ts");
+        await File.WriteAllTextAsync(video, "", Ct);
+
+        var first = await KeyFrames.FindAsync(ffprobe, video, 40, Ct);
+        var lookedFirst = (await File.ReadAllLinesAsync(calls, Ct)).Length;
+        var next = await KeyFrames.FindAsync(ffprobe, video, 40.1, Ct);
+        var lines = await File.ReadAllLinesAsync(calls, Ct);
+
+        Assert.Equal(30, first.From, 6);
+        Assert.Equal(30, next.From, 6);
+        Assert.Equal(4, lookedFirst); // the format, then 2, 8 and 32 s of packets
+        var at = lines[lookedFirst..].Select(line => line.IndexOf("-read_intervals", StringComparison.Ordinal) is >= 0 and var i ? line.Substring(i, 25) : line);
+        Assert.Equal(["-read_intervals 9.500000%"], at);
     }
 
     [Fact]
