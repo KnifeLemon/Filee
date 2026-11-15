@@ -137,6 +137,7 @@ Fixes for three advisories: [GHSA-x2fp-2ch7-5fvx](https://github.com/KnifeLemon/
 - **Donut** (by @Stamina9, #1374): a donut whose front has only unavailable slices can flip back to it from the back.
 - **Settings pages** (#1327): a page that fails to open shows a short note instead of leaving the previous page on screen, and the log has the details.
 - **Sidebar** (by @dal1wg, #1453): collapsing it no longer overshoots and shakes.
+- **Camera RAW** (by @Marouane-elfadli, #1545): mid and dark tones are no longer too dark; LibRaw's tone curve is turned into sRGB when the file is read.
 
 ## 2.4.1
 
