@@ -14,6 +14,148 @@ change, a language may repeat; a language without lines shows the English ones):
 - `recommended`: bug fixes. The card shows once per version.
 - `optional`: new features only. No card, the sidebar button only.
 
+## 2.5.0
+
+<!-- update
+level: required
+ko: 보안 수정: 설치 프로그램의 권한 문제, 조작된 문서·압축 파일로 메모리·디스크를 고갈시키는 문제를 막았어요
+ko: 프리셋 갤러리: 다른 사람이 공유한 프리셋을 둘러보고 설치하거나 내 프리셋을 공유해요 (설정 → 프리셋)
+ko: Windows ARM64(Snapdragon 등)용 설치 파일과 포터블 ZIP이 따로 나와요
+ko: 새 형식: VTF, Gerber, JSON Canvas, G-code, Wisenet .nov, KuGou .krc, .nupkg·.apks·.aab, GIMP .xcf, Paint.NET .pdn, .ani, .xm, .osm, .ino·.pde 등
+ko: 새 언어: 몽골어
+ko: 변환한 뒤 원본을 휴지통으로 옮기는 옵션, 압축 정도를 매번 고르기, PDF/A 프리셋, PDF·동영상을 여러 개로 나누기
+ko: 소리 파일 자르기와 아이폰 벨소리(M4R), 동영상 합치기에 음악 넣기, 이미지 도넛에 PDF 합치기
+ko: 폴더를 다시 ZIP으로 묶고, 포터블 모드, 다운로드 프록시, Filee Connect(휴대폰과 주고받기)가 생겼어요
+ko: HWPX 줄바꿈, PPTX 제목 위치, Word 표 스타일, PDF/A 링크 등 여러 문제를 고쳤어요
+en: Security fixes: the installer no longer lets other programs abuse its admin rights, and crafted documents and archives can no longer exhaust memory or disk
+en: Preset gallery: browse and install presets other people shared, or share your own (Settings → Presets)
+en: Native Windows on ARM64 Setup and Portable ZIP
+en: New formats: VTF, Gerber, JSON Canvas, G-code, Wisenet .nov, KuGou .krc, .nupkg/.apks/.aab, GIMP .xcf, Paint.NET .pdn, .ani, .xm, .osm, .ino/.pde and more
+en: New language: Mongolian
+en: Move the original to the Trash after converting, choose the compression each time, a PDF/A preset, and splitting PDFs and videos into parts
+en: Cut sounds and make iPhone ringtones (M4R), music under Merge videos, and Merge PDF on the images donut
+en: Folders zip again, plus portable mode, a proxy for Filee's downloads and Filee Connect for your phone
+en: Fixes for HWPX line breaks, PPTX titles, Word table styles, PDF/A links and more
+zh: 安全修复：安装程序不再能被其他程序利用其管理员权限，构造的文档和压缩包也无法再耗尽内存或磁盘
+zh: 预设库：浏览并安装别人分享的预设，也可以分享自己的预设（设置 → 预设）
+zh: 提供原生 Windows ARM64 安装程序和便携版 ZIP
+zh: 新格式：VTF、Gerber、JSON Canvas、G-code、Wisenet .nov、酷狗 .krc、.nupkg/.apks/.aab、GIMP .xcf、Paint.NET .pdn、.ani、.xm、.osm、.ino/.pde 等
+zh: 新语言：蒙古语
+zh: 转换后把原文件移到回收站、每次选择压缩程度、PDF/A 预设，以及把 PDF 和视频拆分成多个部分
+zh: 剪辑音频并制作 iPhone 铃声（M4R），合并视频时加入音乐，图片圆环上也有合并 PDF
+zh: 文件夹可以重新压缩为 ZIP，并新增便携模式、下载代理和 Filee Connect（与手机互传）
+zh: 修复了 HWPX 换行、PPTX 标题位置、Word 表格样式、PDF/A 链接等问题
+-->
+
+### Security
+
+Fixes for three advisories: [GHSA-x2fp-2ch7-5fvx](https://github.com/KnifeLemon/Filee/security/advisories/GHSA-x2fp-2ch7-5fvx) and [GHSA-vq2m-qq38-mxx3](https://github.com/KnifeLemon/Filee/security/advisories/GHSA-vq2m-qq38-mxx3) (reported by @1ceS1amese, thank you), and [GHSA-vcp3-99h4-v3wx](https://github.com/KnifeLemon/Filee/security/advisories/GHSA-vcp3-99h4-v3wx) (found in our own review). Please update.
+
+- **Setup and uninstall with admin rights:** when Setup or the uninstaller removes folders in your user profile, it no longer follows links or junctions placed there, so it can't be made to delete files elsewhere. The uninstaller now asks for admin rights before copying itself, and runs that copy only from a folder ordinary programs can't write to. The graphics libraries Setup loads are unpacked to a fresh folder each run and loaded by their full path.
+- **Files built to use up memory, disk or time:** spreadsheets, HWPX documents, MOBI e-books, deeply nested archives, re-zipped office files and PDF page contents that expand to far too much are now refused with a clear message instead of slowing Filee down or ending it. Pictures are read only by the image formats Filee needs.
+
+### Preset gallery
+
+- **Presets other people made, ready to install** (#1530): **Settings → Presets → Preset gallery** shows presets shared on [filee.sh/presets](https://filee.sh/presets), each with pictures of what it does. Sort them by Hot, Best (today, this week, … all time) or New, and filter by kind, format and tag. Presets written in your language come first, and *Only in my language* hides the rest.
+- **Installing only adds.** A preset from the gallery comes in as a new preset next to yours and never replaces one. A shared donut opens only for files none of your donuts takes. Filee contacts filee.sh only while the gallery window is open.
+- **Warnings before you install:** a preset that replaces your originals, moves them or sends them to the Trash, overwrites files, writes or removes metadata, copies into a folder or needs a particular translation model says so first. One that replaces, moves or trashes your originals waits until you tick that you understand.
+- **Share your own:** **Export for the gallery…** on the same page checks the presets you tick the way the gallery checks them and saves a `preset.json`. Send it with 1 to 4 pictures through the submission form it opens. Passwords, folders, your own pictures and sounds, and names or places written into metadata are never part of a shared preset. Everything in the gallery is CC0: free to use, change and share, and the gallery still shows who shared it.
+
+### Windows on ARM
+
+- **Native ARM64 downloads** (#236): the release page now has `Filee-2.5.0-win-arm64-Setup.exe` and `Filee-2.5.0-win-arm64-Portable.zip` next to the x64 files. They run natively on Snapdragon and other ARM PCs instead of under x64 emulation. An ARM64 install updates itself with the ARM64 Setup. An x64 install on an ARM PC stays x64: install the ARM64 Setup once to switch.
+
+### New tools and features
+
+- **Move the original to the Trash** (preset editor, output card; by @adnan-bhaldar, #1387): after a conversion to another format is complete, the original goes to the Recycle Bin / Trash, where you can restore it. It's off by default and never deletes for good. If the Trash refuses (a network drive, a file in use), the original stays and the result says so.
+- **Choose the compression each time** (by @Ugoyo, #1353): the four Compress tools can ask for the level when you drop files, with the size the files will roughly come to ("About 30.0 MB (70% smaller)"). It's on for them in new installs; elsewhere turn on *Ask every time* under the setting in the preset editor.
+- **PDF/A (archival)** (#1367): a new preset in the palette makes a PDF/A-2b of a PDF, or of anything Filee turns into PDF. The PDF/A box of a preset now works on every route, not only when LibreOffice writes the PDF. It needs Ghostscript; without it the result says the PDF isn't PDF/A. Links and markup that only lack the print flag are kept (by @SeoJCalive).
+- **Split PDFs and videos into parts** (#1259): *Choose pages* and the PDF card have *Several pages per file*, every N pages or N equal parts. A video can be saved as *Several parts*, every N seconds or minutes or N equal parts, by stream copy, so it takes seconds and nothing is re-encoded (a part ends at a key frame). The command line has `--split-every` and `--split-parts`.
+- **Merge PDF:** *Use one paper size for all merged pages* fits every page to A4, Letter, A3 or the first page's size, centred and still vector (by @SeoJCalive). *Add a bookmark per source file* puts each file's bookmarks under its name (by @SeoJCalive). **Merge PDF** is back on the images donut's front, next to PDF, for new installs and *Reset to default* (#1413).
+- **PDF to XLSX on the PDF donut** (#1187, #1343): new installs and *Reset to default* get **XLSX** next to DOCX. Existing libraries can drag the XLSX chip onto the PDF donut in *Settings → Donut toolbar*.
+- **Edit PDF pages** (#860): select several pages with Ctrl or Shift, drag them, *Insert PDF* before or after the selection and *Replace with PDF*.
+- **Word and web page tables to XLSX, ODS and CSV:** each table of a DOCX, HTML or MHTML file becomes its own sheet, with merged cells, borders and real numbers and dates (part of #1016).
+- **Spreadsheet Print Studio:** *One PDF per sheet* writes a PDF for each sheet instead of one combined file (#1249).
+- **Cut a clip on sounds** (by @adnan-bhaldar, #1291): MP3, WAV, FLAC, M4A and other sound files open in Cut a clip with their waveform, with pieces, volume, speed, fades and music as for video.
+- **iPhone ringtones** (by @adnan-bhaldar, #1291): an **iPhone ringtone** preset in the palette makes an M4R of at most 40 seconds, and it opens Cut a clip to choose the part.
+- **Music in Merge videos** (#1402): drop songs with the videos, or use *Add music…* in the merge order window. They play one after another under the videos, and *Loop music* repeats them until the video ends.
+- **Subtitles stay in converted videos** (#789): embedded subtitle tracks come along into MKV, MP4, MOV and WebM, with their language tags. Picture subtitles (Blu-ray, DVD) that MP4, MOV or WebM can't hold are left out with a note.
+- **Picture sizes** (#1270): *Never enlarge* makes width × height a maximum box, one side can be left empty with *Keep aspect ratio*, and *Keep the size, lower only the quality* fits a size limit without scaling the picture down.
+- **Folders zip again** (by @Feraris20, #1345): the folders donut offers ZIP and One ZIP next to ISO again, and the folder preset editor 7Z and the TAR formats. A folders donut you changed is left as it is.
+- **UDF 2.01 for ISO images** (by @Feraris20, #1443): a choice next to Joliet in the ISO preset and `--iso-filesystem udf201`, for long names and files over 4 GB.
+- **Portable mode** (by @Feraris20, #1196): the portable ZIP, and a copy made with Setup's `/PORTABLE=1`, keep settings, presets, history, engines and logs in a `data` folder next to Filee. On its first start it offers to copy your existing data and leaves the original alone.
+- **Proxy for Filee's downloads** (*Settings → General → Network*, #879): engine downloads, update checks, OCR languages and links dragged from a browser go through it, and other programs keep their own connection. `http`, `https`, `socks4` and `socks5` work, with a user name and password if needed.
+- **Engines without internet** (#447): every engine card Filee can download has *Offline*, with *Install from downloaded files…*, *Save the files for another computer…* and *Copy download links*, and the command line has `filee engines download` and `filee engines install --from`.
+- **Engines page** (by @lightscape-jm, #867, and @adnan-bhaldar): every working engine is **Ready**, with a line saying which copy Filee uses and where, and status pills and dots have colours.
+- **WeasyPrint** (Windows; by @Ugoyo, #1403): an optional engine in *Settings → Engines* that prints HTML, Markdown and e-mails to PDF as a browser does. It loads only pictures beside the document.
+- **Filee Connect** (by @rohitLovesKrishna): send text and files between Filee and a phone on the same Wi-Fi, through a QR code or a PIN, with nothing going through the internet. New installs open it with Ctrl + Alt + click where there is no file (Option + Shift + click on macOS); others add the gesture *Modifier + mouse click (Filee Connect)* in *Settings → Shortcuts*.
+- **Donut labels** (by @lightscape-jm, #870, #871, #872): names stay inside their slice and are shortened with "…" rather than run over. Slices can show icons (*Show*: Auto, Icon & text, Text only, Icon only), a group's ring grows with the donut, and its names follow the curve.
+- **Donut toolbar editor** (by @lightscape-jm, #873): *Edit Donut Size* shows the real donut on screen while you move the sliders, the sliders no longer stick, and groups open like folders.
+- **A gesture per face** (#195): each gesture in *Settings → Shortcuts* can open the donut on its front or its back (*Opens on*), for example Ctrl + drag for the front and Ctrl + Shift + drag for the back.
+- **Use the system font** (*Settings → Theme*, #1065): draw Filee in Segoe UI, San Francisco or your Linux desktop's font.
+- **Translate:** Ukrainian, Persian, Vietnamese and Bengali are target languages (#1344).
+- **Save button feedback** (*Settings → Presets*; by @Feraris20, #1505): a green tick after saving or a red cross when it fails, with the reason beside it.
+- **Notifications** (by @Feraris20): error messages can be selected, scrolled and copied with a Copy button. Notifications that don't fit wait their turn with an "N more" count.
+- **Extraction presets** (by @SeoJCalive, #1091): the donut centre and the Available presets tooltip say when a preset will only do an ordinary conversion for these files.
+- **New language:** Монгол (Mongolian, by @xGARIDx), in the app and in Setup.
+- **macOS:** the menu bar icon is one colour that follows the menu bar, like the system icons; *Show the menu bar icon in colour* brings the old one back (#724). The disk image window shows where to drag Filee (by @SeoJCalive).
+- **Linux:** a [Yazi](https://github.com/sxyazi/yazi) plugin in `installer/linux/yazi` converts from the terminal file manager (by @manish0467). INSTALL.txt lists the Arch Linux packages (by @manish0467).
+- **xplorer²** counts as a file manager for gestures (#1424).
+
+### New formats
+
+- **Valve textures (VTF)** (by @ltsammy, #1478): read and write the textures of Source engine games (Garry's Mod, Counter-Strike: Source, Team Fortress 2), so a PNG becomes a texture with a drag.
+- **Gerber PCB layers** (by @Ugoyo): copper, mask, silkscreen and outline layers become SVG, vector PDF, pictures and DXF/DWG at their real size.
+- **JSON Canvas** (Obsidian `.canvas`; by @Ugoyo): boards become SVG, PDF and pictures in Obsidian's look, and Markdown of their text.
+- **G-code** (`.gcode`, `.gco`, `.ngc`; by @Ugoyo): the toolpath of a 3D print or CNC job from above or isometric, or the slicer's preview picture.
+- **GIMP `.xcf` and Paint.NET `.pdn`** (by @Ugoyo): read and written by Filee itself, merged as GIMP and Paint.NET show them, with layers kept between XCF, PDN and PSD.
+- **Windows animated cursors (`.ani`)** (by @Ugoyo, #1365) become animated GIF, APNG or WebP, or their first frame.
+- **Security camera recordings** (by @Ugoyo): Wisenet WAVE / Nx Witness exports (`.nov`; password-protected ones are refused with a clear message) and Hikvision SD-card recordings with mu-law sound.
+- **KuGou lyrics (`.krc`)** (by @cre8ive-marketing, #1296) convert to LRC, SRT and the other subtitle formats.
+- **Packages read like ZIP:** NuGet (`.nupkg`, `.snupkg`), Android split APKs (`.apks`, `.xapk`, `.apkm`) and App Bundles (`.aab`) (#1464, #1465), and Adobe extensions (`.zxp`, #1382). They extract or convert to other archives.
+- **Tracker music** (`.xm`, `.it`, `.s3m`, #1376) converts to every audio format through FFmpeg.
+- **OpenStreetMap XML (`.osm`, #713)** becomes KML, KMZ, Shapefile, GeoJSON, GPX and CSV, with areas and multipolygons.
+- **Program icons** (#1188): a Windows `.exe` or `.dll` converts to its icon (ICO with every size, or PNG and the other pictures). Programs are only read, never run.
+- **Arduino and Processing sketches (`.ino`, `.pde`)** (by @Ugoyo) convert like text.
+- **Other names:** `.quicktime` opens as MOV (#1283), `.mpg4` as MP4 (#1397), and Insta360 `.insp` photos as JPEG (#711).
+
+### Word, HWPX, PowerPoint and PDF
+
+- **HWPX to TXT, Markdown and HTML** (#1416): line breaks inside a paragraph are kept, with their indentation, so code no longer ends up on one line.
+- **PowerPoint to PDF without LibreOffice** (#1352): titles aligned to the bottom or the middle of their box (the Title Slide layout) stay in it instead of dropping onto the subtitle.
+- **Word to PDF and HWPX with table styles** (#1152): cells take the table style's spacing, so rows are no longer twice as tall, and banded-row lines and the bottom line of merged cells appear.
+- **RTF to TXT** (by @yavuzmeteafsar, #1204): with LibreOffice installed it goes straight through LibreOffice, so code keeps its indentation and blank lines.
+- **Missing fonts** (#1422, #1423): *Get fonts* opens Microsoft's pages for Aptos and DengXian instead of a Google Fonts search that finds nothing.
+- **Merge PDF** (by @SeoJCalive): links whose target leaves out trailing values are kept, and a long destination name is written once instead of at every link.
+
+### Fixes
+
+- **LibreOffice downloads and the engine mirror** from 2.4.1 are in this version too (#1474).
+- **Ollama for Translate** (#1364): an Ollama started with `OLLAMA_HOST` on another local port is found, and a busy Ollama no longer shows as not available. An `OLLAMA_HOST` on another computer is ignored on purpose, since documents stay on this one.
+- **CUR files** (by @Ugoyo): every picture converted to CUR is now a real cursor with its hotspot, not an icon named `.cur`.
+- **Metadata** (#1288): a field of an XMP list that ExifTool read only partly is no longer offered for editing, and the location notice says Remove location can't check the unread entries.
+- **Donut** (by @Stamina9, #1374): a donut whose front has only unavailable slices can flip back to it from the back.
+- **Settings pages** (#1327): a page that fails to open shows a short note instead of leaving the previous page on screen, and the log has the details.
+- **Sidebar** (by @dal1wg, #1453): collapsing it no longer overshoots and shakes.
+- **Camera RAW** (by @Marouane-elfadli, #1545): mid and dark tones are no longer too dark; LibRaw's tone curve is turned into sRGB when the file is read.
+
+## 2.4.1
+
+<!-- update
+level: recommended
+ko: LibreOffice 엔진을 받을 때 "404 (Not Found)"로 실패하던 문제를 고쳤어요
+ko: 엔진 다운로드 주소가 사라져도 Filee 미러에서 받아요
+en: Fixed the LibreOffice engine download failing with "404 (Not Found)"
+en: Engine downloads now come from Filee's mirror when their own link stops working
+zh: 修复了下载 LibreOffice 引擎时出现 "404 (Not Found)" 的问题
+zh: 引擎的下载链接失效时，改从 Filee 的镜像下载
+-->
+
+A fix for engine downloads, on top of 2.4.0.
+
+- **LibreOffice downloads again** (#1474). LibreOffice took version 26.2.6 out of its "stable" download folder when 26.2.7 came out, so installing LibreOffice in **Settings → Engines** failed with *"Response status code does not indicate success: 404 (Not Found)"* on Windows and macOS. Filee now downloads the same 26.2.6 build from LibreOffice's permanent archive.
+- **A backup for every engine download.** When an engine's own download link stops working, times out or serves a different file, Filee now takes the same file from its own mirror (`dl.filee.sh`). Every file is still checked against the checksum Filee was built with, so the mirror can only ever hand out that exact file.
+
 ## 2.4.0
 
 <!-- update
