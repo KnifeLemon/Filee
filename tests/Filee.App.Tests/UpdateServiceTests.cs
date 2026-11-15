@@ -614,6 +614,7 @@ public class UpdateServiceTests
         var userBundle = Path.Combine(home, "Applications", "Filee.app", "Contents", "MacOS");
         Assert.True(UpdateService.IsMacInstalled(userBundle, home));
         Assert.True(UpdateService.IsMacInstalled("/Applications/Filee.app/Contents/MacOS", home));
+        Assert.True(UpdateService.IsMacInstalled(@"C:\Users\Filee\Applications\Filee.app\Contents\MacOS", @"C:\Users\Filee"));
         Assert.False(UpdateService.IsMacInstalled(Path.Combine(home, "Desktop", "Filee.app", "Contents", "MacOS"), home));
     }
 
@@ -716,6 +717,22 @@ public class UpdateServiceTests
 
         Assert.Equal(Path.Combine(destFolder, root), payloadDir);
         Assert.True(File.Exists(Path.Combine(payloadDir, "Filee.app", "Contents", "MacOS", "Filee")));
+        Assert.Empty(Directory.GetDirectories(destFolder, ".validation-*"));
+    }
+
+    [Fact]
+    public void ExtractMacArchive_rejects_unsafe_entries_before_system_extraction()
+    {
+        var folder = TempFolder();
+        var archiveFile = Path.Combine(folder, "traversal.tar.gz");
+        var destFolder = Path.Combine(folder, "extracted");
+        File.WriteAllBytes(archiveFile, CreateTarGz(writer =>
+        {
+            AddFileEntry(writer, "../outside", "must not extract");
+        }));
+
+        Assert.Throws<InvalidDataException>(() => UpdateService.ExtractMacArchive(archiveFile, destFolder));
+        Assert.False(File.Exists(Path.Combine(folder, "outside")));
     }
 
     [Fact]
