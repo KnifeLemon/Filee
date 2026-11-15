@@ -27,7 +27,9 @@
   <PropertyGroup Condition="'$(FileeSetupPublish)' == 'true'">
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- No native library is left for .NET to unpack at start (into %TEMP%\.net, a folder the user can change, which
+         it reuses): Setup carries Skia and HarfBuzz itself (EmbedSetupNatives below, Platform/NativeLibraries.cs). -->
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>full</TrimMode>
@@ -69,6 +71,32 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Filee.Setup.Tests" />
   </ItemGroup>
+
+  <!--
+    The publish keeps Setup one file without .NET's own unpacking of native libraries: Skia and HarfBuzz go into
+    Filee.Setup.dll as resources, which NativeLibraries writes into a folder of its own and loads by full path. They
+    leave the publish and its deps.json, so .NET neither unpacks nor looks for them. ANGLE (av_libglesv2.dll) is left
+    out: Setup draws in software (Program.BuildAvaloniaApp).
+  -->
+  <Target Name="EmbedSetupNatives" AfterTargets="ResolvePackageAssets" Condition="'$(FileeSetupPublish)' == 'true'">
+    <ItemGroup>
+      <_SetupNative Include="@(NativeCopyLocalItems)" Condition="'%(Filename)%(Extension)' == 'libSkiaSharp.dll' or '%(Filename)%(Extension)' == 'libHarfBuzzSharp.dll'" />
+      <EmbeddedResource Include="@(_SetupNative)" LogicalName="native.%(Filename)%(Extension)" WithCulture="false" Type="Non-Resx" />
+      <NativeCopyLocalItems Condition="'%(Filename)%(Extension)' == 'libSkiaSharp.dll' or '%(Filename)%(Extension)' == 'libHarfBuzzSharp.dll' or '%(Filename)%(Extension)' == 'av_libglesv2.dll'">
+        <CopyToPublishDirectory>false</CopyToPublishDirectory>
+      </NativeCopyLocalItems>
+    </ItemGroup>
+    <Error Condition="'@(_SetupNative->Count())' != '2'" Text="Expected libSkiaSharp.dll and libHarfBuzzSharp.dll among the native libraries, found: @(_SetupNative->'%(Filename)%(Extension)')" />
+  </Target>
+
+  <!-- A library that doesn't go into the single file lands next to Setup.exe, and build-installer.ps1 only takes the
+       exe: a new native library has to be carried like Skia above. -->
+  <Target Name="CheckSetupIsOneFile" AfterTargets="Publish" Condition="'$(FileeSetupPublish)' == 'true'">
+    <ItemGroup>
+      <_SetupLeftOut Include="$(PublishDir)*.dll" />
+    </ItemGroup>
+    <Error Condition="'@(_SetupLeftOut)' != ''" Text="Setup must publish as one file; next to it: @(_SetupLeftOut->'%(Filename)%(Extension)')" />
+  </Target>
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
