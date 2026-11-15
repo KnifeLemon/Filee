@@ -374,7 +374,8 @@ public class TrashOriginalTests
 
         var first = queue.Enqueue([source], Trashing("pdf"), "First");
         var second = queue.Enqueue([source], Trashing("pdf"), "Second");
-        await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
 
         // Both converted. The first left the source for the second, which was the last one to need it.
         Assert.Equal(FileState.Done, first.Files[0].State);
