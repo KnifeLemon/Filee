@@ -1,6 +1,4 @@
 {
-  "error.iso_udf_name": "Les noms UDF doivent être en Unicode valide, sans barre oblique, barre oblique inverse ni caractère nul, et ne peuvent pas être . ou ... La limite est de 254 caractères Latin-1, ou de 127 unités UTF-16 si un caractère dépasse Latin-1.",
-  "presets.iso_filesystem": "Système de fichiers ISO",
   "app.name": "Filee",
   "app.tagline": "Glissez, déposez, c'est converti.",
 
@@ -1164,6 +1162,7 @@
   "presets.audio_codec.aac": "AAC",
   "presets.audio_codec.alac": "ALAC (sans perte)",
   "presets.group.archive": "Archive",
+  "presets.iso_filesystem": "Système de fichiers ISO",
   "presets.archive_level": "Compression",
   "presets.archive_level.Store": "Aucune (stockage seul)",
   "presets.archive_level.Fast": "Rapide",
@@ -1799,6 +1798,7 @@
   "error.iso_link": "La création ISO ne suit pas les liens symboliques ni les jonctions. Sélectionnez un dossier original sans éléments liés.",
   "error.iso_name": "Les noms Joliet sont limités à 62 caractères Unicode BMP, sans caractères de contrôle, points-virgules ni barres obliques inverses ni *, : ou ?. Les chemins relatifs sont limités à 240 caractères. Pour des noms plus longs ou des fichiers plus volumineux, choisissez UDF 2.01 dans l’option de système de fichiers ISO du préréglage.",
   "error.iso_file_size": "Pour créer une ISO, chaque fichier doit faire moins de 4 GiB. Pour des noms plus longs ou des fichiers plus volumineux, choisissez UDF 2.01 dans l’option de système de fichiers ISO du préréglage.",
+  "error.iso_udf_name": "Les noms UDF doivent être en Unicode valide, sans barre oblique, barre oblique inverse ni caractère nul, et ne peuvent pas être . ou ... La limite est de 254 caractères Latin-1, ou de 127 unités UTF-16 si un caractère dépasse Latin-1.",
   "error.iso_changed": "La création ISO s’est arrêtée avant l’écriture de toutes les données. Un fichier source a peut-être changé pendant la conversion.",
   "engine.iso.name": "ISO",
   "engine.iso.description": "Crée des images ISO à partir de dossiers ou du contenu des archives, en conservant les noms Unicode et les dossiers vides.",

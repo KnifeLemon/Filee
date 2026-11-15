@@ -1,6 +1,4 @@
 {
-  "error.iso_udf_name": "Nazwy UDF muszą być poprawnym tekstem Unicode, bez ukośników, odwrotnych ukośników i znaków zerowych, i nie mogą być . ani ... Limit wynosi 254 znaki Latin-1 lub 127 jednostek UTF-16, jeśli występuje znak spoza Latin-1.",
-  "presets.iso_filesystem": "System plików ISO",
   "app.name": "Filee",
   "app.tagline": "Przeciągnij, upuść, gotowe.",
 
@@ -1164,6 +1162,7 @@
   "presets.audio_codec.aac": "AAC",
   "presets.audio_codec.alac": "ALAC (bezstratny)",
   "presets.group.archive": "Archiwum",
+  "presets.iso_filesystem": "System plików ISO",
   "presets.archive_level": "Kompresja",
   "presets.archive_level.Store": "Brak (tylko zapis)",
   "presets.archive_level.Fast": "Szybka",
@@ -1799,6 +1798,7 @@
   "error.iso_link": "Tworzenie ISO nie podąża za dowiązaniami symbolicznymi ani punktami połączeń. Wybierz oryginalny folder bez dowiązanych elementów.",
   "error.iso_name": "Nazwy Joliet mogą mieć najwyżej 62 znaki Unicode BMP i nie mogą zawierać znaków sterujących, średników ani ukośników odwrotnych ani *, : lub ?. Ścieżki względne mogą mieć najwyżej 240 znaków. Dla dłuższych nazw lub większych plików wybierz UDF 2.01 w opcji systemu plików ISO ustawienia wstępnego.",
   "error.iso_file_size": "Aby utworzyć ISO, każdy plik musi być mniejszy niż 4 GiB. Dla dłuższych nazw lub większych plików wybierz UDF 2.01 w opcji systemu plików ISO ustawienia wstępnego.",
+  "error.iso_udf_name": "Nazwy UDF muszą być poprawnym tekstem Unicode, bez ukośników, odwrotnych ukośników i znaków zerowych, i nie mogą być . ani ... Limit wynosi 254 znaki Latin-1 lub 127 jednostek UTF-16, jeśli występuje znak spoza Latin-1.",
   "error.iso_changed": "Tworzenie ISO zatrzymało się przed zapisaniem wszystkich danych. Plik źródłowy mógł się zmienić podczas konwersji.",
   "engine.iso.name": "ISO",
   "engine.iso.description": "Tworzy obrazy ISO z folderów lub zawartości archiwów, zachowując nazwy Unicode i puste foldery.",

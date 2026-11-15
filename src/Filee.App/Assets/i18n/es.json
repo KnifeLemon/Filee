@@ -1,6 +1,4 @@
 {
-  "error.iso_udf_name": "Los nombres UDF deben ser Unicode válido, sin barras, barras inversas ni caracteres nulos, y no pueden ser . ni ... El límite es de 254 caracteres Latin-1, o 127 unidades UTF-16 si hay algún carácter fuera de Latin-1.",
-  "presets.iso_filesystem": "Sistema de archivos ISO",
   "app.name": "Filee",
   "app.tagline": "Arrastra, suelta y convierte.",
   "fields.title": "Áreas",
@@ -1149,6 +1147,7 @@
   "presets.audio_codec.aac": "AAC",
   "presets.audio_codec.alac": "ALAC (sin pérdida)",
   "presets.group.archive": "Archivo comprimido",
+  "presets.iso_filesystem": "Sistema de archivos ISO",
   "presets.archive_level": "Compresión",
   "presets.archive_level.Store": "Ninguna (solo almacenar)",
   "presets.archive_level.Fast": "Rápida",
@@ -1779,6 +1778,7 @@
   "error.iso_link": "La creación de ISO no sigue enlaces simbólicos ni uniones de directorios. Selecciona una carpeta original sin entradas enlazadas.",
   "error.iso_name": "Los nombres Joliet deben tener como máximo 62 caracteres Unicode BMP, sin caracteres de control, puntos y coma ni barras inversas ni *, : o ?. Las rutas relativas no deben superar los 240 caracteres. Para nombres más largos o archivos más grandes, selecciona UDF 2.01 en la opción de sistema de archivos ISO del preajuste.",
   "error.iso_file_size": "Para crear una ISO, cada archivo debe ocupar menos de 4 GiB. Para nombres más largos o archivos más grandes, selecciona UDF 2.01 en la opción de sistema de archivos ISO del preajuste.",
+  "error.iso_udf_name": "Los nombres UDF deben ser Unicode válido, sin barras, barras inversas ni caracteres nulos, y no pueden ser . ni ... El límite es de 254 caracteres Latin-1, o 127 unidades UTF-16 si hay algún carácter fuera de Latin-1.",
   "error.iso_changed": "La creación de ISO se detuvo antes de escribir todos los datos. Es posible que un archivo de origen haya cambiado durante la conversión.",
   "engine.iso.name": "ISO",
   "engine.iso.description": "Crea imágenes ISO a partir de carpetas o del contenido de archivos comprimidos, conservando los nombres Unicode y las carpetas vacías.",
