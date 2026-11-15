@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Decides what the change needs. The workflow always runs, so the required build check always reports: a job
-  # skipped by its condition counts as passed for the branch rules.
+  # Decides what the change needs. The workflow always runs, so the required `build` check (the gate job below)
+  # always reports: a job skipped by its condition counts as passed for the branch rules.
   # - code: anything besides documentation and repository metadata. When the file list can't be read, everything runs.
   # - macos: the macOS packages and tests. macOS runners are few and queue, so a pull request runs them only when it
   #   touches macOS files, code that branches on macOS, the projects, packages or build scripts, or carries the
@@ -59,7 +59,7 @@ jobs:
             while read -r id sha; do
               [ -z "$id" ] && continue
               built=$(gh api "repos/$REPO/actions/runs/$id/jobs" \
-                --jq '[.jobs[] | select(.name == "build / build (win-x64)" and .conclusion == "success")] | length') || built=0
+                --jq '[.jobs[] | select(.name == "windows / build (win-x64)" and .conclusion == "success")] | length') || built=0
               if [ "$built" != 0 ]; then base=$sha; break; fi
             done <<< "$runs"
             if [ -z "$base" ]; then everything "No earlier main run that built"; fi
@@ -108,12 +108,27 @@ jobs:
       macos: ${{ needs.changes.outputs.macos != 'false' }}
 
   # Both Windows builds (x64 and ARM64) are in build.yml, so they show up under this one job.
-  build:
+  windows:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     uses: ./.github/workflows/build.yml
 
-  # The metadata writer on Linux, with the Perl ExifTool pinned in engines.json (the build above is its Windows side).
+  # The required check. It always runs, so a docs-only change (windows skipped) passes and a failed or
+  # cancelled Windows build fails it.
+  build:
+    needs: [changes, windows]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Windows builds passed or were not needed
+        run: |
+          case "${{ needs.windows.result }}" in
+            success|skipped) ;;
+            *) echo "Windows builds: ${{ needs.windows.result }}"; exit 1 ;;
+          esac
+
+  # The metadata writer on Linux, with the Perl ExifTool pinned in engines.json (the Windows builds above are its Windows side).
   metadata-linux:
     name: metadata (linux-x64)
     needs: changes

@@ -1,5 +1,5 @@
-# The Windows builds and tests of CI: x64 and ARM64. ci.yml calls this file as the `build` job (like portable.yml), so
-# GitHub shows both jobs under `build`. Whether it runs at all is decided in ci.yml (the changes job).
+# The Windows builds and tests of CI: x64 and ARM64. ci.yml calls this file as the `windows` job (like portable.yml), so
+# GitHub shows both jobs under `windows`. Whether it runs at all is decided in ci.yml (the changes job).
 name: Build
 
 on:
