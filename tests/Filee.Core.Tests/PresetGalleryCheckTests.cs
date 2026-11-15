@@ -96,7 +96,10 @@ public sealed class PresetGalleryCheckTests
         Assert.Empty(WarningCodes(Kept()));
         Assert.Equal(["strips_metadata"], WarningCodes(GalleryFiles.Photo()));
         Assert.Equal(["replaces_original"], WarningCodes(Kept(p => p.Output.ReplaceOriginal = true)));
-        Assert.Equal(["trashes_original"], WarningCodes(Kept(p => p.Output.TrashOriginalAfterConvert = true)));
+        // An export leaves "Move the original to the Recycle Bin / Trash" out (Preset.ForSharing), so only a preset.json
+        // written by hand carries it.
+        Assert.Equal(["trashes_original"], Check(GalleryFiles.With(p => p["output"]!["trashOriginalAfterConvert"] = true, Kept()))
+            .Derived!.Warnings.Select(w => w.Code));
         Assert.Equal(["overwrites_existing"], WarningCodes(Kept(p => p.Output.Conflict = ConflictPolicy.Overwrite)));
         Assert.Equal(["edits_metadata", "strips_metadata"], WarningCodes(Kept(p => p.Metadata = new MetadataEdits
         {
