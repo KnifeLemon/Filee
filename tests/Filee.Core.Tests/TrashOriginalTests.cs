@@ -1,9 +1,9 @@
 // "Move the original to the Recycle Bin / Trash after converting" (#1387): the original goes once its result in another
 // format is complete, or stays, with a note saying why.
 
+using System.Text.Json;
 using Filee.Core.Conversion;
 using Filee.Core.Platform;
-using System.Text.Json;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Core.Watching;
@@ -374,7 +374,8 @@ public class TrashOriginalTests
 
         var first = queue.Enqueue([source], Trashing("pdf"), "First");
         var second = queue.Enqueue([source], Trashing("pdf"), "Second");
-        await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
 
         // Both converted. The first left the source for the second, which was the last one to need it.
         Assert.Equal(FileState.Done, first.Files[0].State);
