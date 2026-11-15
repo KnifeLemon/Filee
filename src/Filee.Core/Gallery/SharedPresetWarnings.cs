@@ -1,8 +1,8 @@
-// The warnings of a shared preset (#1530): settings the gallery allows that touch the installer's files (replacing or
-// moving originals, overwriting files, writing or removing metadata, a fixed AI model, edits drawn into every file). The
-// check derives them from preset.json; the gallery's CI copies the codes into meta.json and index.json for the site,
-// and the app derives them again from the file it installs, never trusting the index. The codes are a contract with
-// the site and the gallery's repository: add new ones, never rename one.
+// The warnings of a shared preset (#1530): settings the gallery allows that touch the installer's files (replacing,
+// trashing or moving originals, overwriting files, writing or removing metadata, a fixed AI model, edits drawn into
+// every file). The check derives them from preset.json; the gallery's CI copies the codes into meta.json and index.json
+// for the site, and the app derives them again from the file it installs, never trusting the index. The codes are a
+// contract with the site and the gallery's repository: add new ones, never rename one.
 
 using Filee.Core.Presets;
 
@@ -16,6 +16,7 @@ public static class SharedPresetWarnings
     public static readonly IReadOnlyList<(string Code, string Severity, string Message)> All =
     [
         ("replaces_original", High, "Replaces the original files: the result takes their place and the originals go to the Recycle Bin / Trash."),
+        ("trashes_original", High, "Moves the original files to the Recycle Bin / Trash once their result in another format is complete."),
         ("moves_original", High, "Moves the original files into a folder instead of copying them."),
         ("overwrites_existing", Medium, "Overwrites a file that already has the result's name instead of adding a number."),
         ("copies_to_folder", Medium, "Copies files into a folder; you choose the folder after installing."),
@@ -50,6 +51,8 @@ public static class SharedPresetWarnings
         var output = preset.Output;
         if (output.ReplaceOriginal)
             yield return "replaces_original";
+        if (output.TrashOriginalAfterConvert)
+            yield return "trashes_original";
         if (preset.IsCopyToFolder && output.MoveInsteadOfCopy)
             yield return "moves_original";
         if (output.Conflict == ConflictPolicy.Overwrite)

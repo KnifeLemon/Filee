@@ -919,6 +919,20 @@ public sealed class CliTests : IDisposable
     }
 
     [Fact]
+    public async Task The_command_line_never_moves_an_original_to_the_trash()
+    {
+        // A preset saved in the app with "Move the original to the Recycle Bin / Trash" (#1387) runs here without it.
+        AddPresets(new Preset { Id = "trashing", Name = "Trashing", TargetFormat = "jpg", Output = { TrashOriginalAfterConvert = true } });
+        var png = Png("a.png");
+
+        var (code, _, errors) = await Run("convert", png, "--preset", "trashing");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.True(File.Exists(Path.Combine(_folder, "a.jpg")), errors);
+        Assert.True(File.Exists(png));
+    }
+
+    [Fact]
     public async Task A_group_is_never_run_listed_or_in_the_way_of_a_conversion_of_the_same_name()
     {
         AddPresets(
