@@ -78,6 +78,13 @@ internal sealed partial class HwpxReader
         private readonly HListRef? _list;
         private bool _afterTable;
 
+        // Text joined to the HText at _joinedAt in _joinedSink, kept in a StringBuilder until something else is
+        // added there: joining strings one piece at a time costs the square of the run's length (a run of a
+        // hundred thousand hp:nbSpace elements).
+        private StringBuilder? _joined;
+        private List<HInline>? _joinedSink;
+        private int _joinedAt;
+
         public ParagraphBuilder(List<HBlock> output, List<OpenField> fields, HParaFormat format, int heading, HListRef? list)
         {
             _output = output;
@@ -103,10 +110,28 @@ internal sealed partial class HwpxReader
             if (text.Length == 0)
                 return;
             var sink = Sink;
-            if (sink.Count > 0 && sink[^1] is HText last && last.Format == format)
-                sink[^1] = new HText(last.Text + text, format);
-            else
+            if (sink.Count == 0 || sink[^1] is not HText last || last.Format != format)
+            {
                 sink.Add(new HText(text, format));
+                return;
+            }
+            if (_joined is null || !ReferenceEquals(_joinedSink, sink) || _joinedAt != sink.Count - 1)
+            {
+                FinishJoin();
+                (_joined, _joinedSink, _joinedAt) = (new StringBuilder(last.Text), sink, sink.Count - 1);
+            }
+            _joined.Append(text);
+            // The text is written to the HText when the paragraph is finished (FinishJoin).
+        }
+
+        /// <summary>Writes the text joined so far to its HText.</summary>
+        private void FinishJoin()
+        {
+            if (_joined is null || _joinedSink is null)
+                return;
+            var last = (HText)_joinedSink[_joinedAt];
+            _joinedSink[_joinedAt] = new HText(_joined.ToString(), last.Format);
+            (_joined, _joinedSink) = (null, null);
         }
 
         public void OpenLink(string target)
@@ -130,6 +155,7 @@ internal sealed partial class HwpxReader
 
         public void Table(HTable table)
         {
+            FinishJoin();
             // Breaks and column changes have no place on a table, so they keep an empty paragraph in front of it.
             if (HasContent || Current.PageBreakBefore || Current.ColumnBreakBefore || Current.ColumnsChange is not null)
                 Emit();
@@ -141,6 +167,7 @@ internal sealed partial class HwpxReader
 
         public void Finish()
         {
+            FinishJoin();
             if (!_afterTable || HasContent)
                 Emit();
         }
@@ -502,7 +529,7 @@ internal sealed partial class HwpxReader
 
     private HTable Table(XElement tbl)
     {
-        var table = new HTable { ColumnCount = Math.Max(0, Int(tbl, "colCnt")) };
+        var table = new HTable { ColumnCount = Math.Clamp(Int(tbl, "colCnt"), 0, HwpxWriter.MaxTableColumns) };
         var pos = Child(tbl, "pos");
         if (pos is not null && !Flag(pos, "treatAsChar"))
         {
@@ -535,13 +562,14 @@ internal sealed partial class HwpxReader
                 var span = Part("cellSpan");
                 var size = Part("cellSz");
                 var subList = Child(tc, "subList");
+                // Addresses and spans past the widest table written (HwpxWriter.MaxTableColumns) are cut there.
                 var cell = new HCell
                 {
-                    Column = address is null ? -1 : Math.Max(0, Int(address, "colAddr")),
-                    ColSpan = Math.Max(1, Int(span, "colSpan", 1)),
+                    Column = address is null ? -1 : Math.Clamp(Int(address, "colAddr"), 0, HwpxWriter.MaxTableColumns - 1),
                     RowSpan = Math.Max(1, Int(span, "rowSpan", 1)),
                     VerticalAlign = VerticalAlign(Attr(subList, "vertAlign")),
                 };
+                cell.ColSpan = Math.Clamp(Int(span, "colSpan", 1), 1, HwpxWriter.MaxTableColumns - Math.Max(0, cell.Column));
                 if (BorderFill(Attr(tc, "borderFillIDRef")) is { } borderFill)
                     (cell.Borders, cell.Fill) = borderFill;
                 cell.Blocks.AddRange(ReadSubList(subList));

@@ -112,16 +112,20 @@ internal sealed class MarkdownWriter
     {
         if (table.Rows.Count == 0)
             return;
-        var columns = Math.Max(table.ColumnCount, table.Rows.Max(r => r.Cells.Sum(c => c.ColSpan)));
+        HwpxWriter.PlaceCells(table); // cuts the spans to the table, refuses tables past its size limit
+        var columns = (int)Math.Min(HwpxWriter.MaxTableColumns, Math.Max(table.ColumnCount, table.Rows.Max(r => r.Cells.Sum(c => (long)c.ColSpan))));
+        if ((long)columns * table.Rows.Count > HwpxWriter.MaxTableCells)
+            throw HwpxWriter.TableTooLarge();
         var grid = new List<string[]>();
-        var covered = new Dictionary<(int Row, int Column), bool>();
+        // Per column, the first row not covered by a cell spanning rows from above (or from the left in this row).
+        var freeFrom = new int[columns];
         for (var r = 0; r < table.Rows.Count; r++)
         {
             var cells = new string[columns];
             var column = 0;
             foreach (var cell in table.Rows[r].Cells)
             {
-                while (column < columns && covered.ContainsKey((r, column)))
+                while (column < columns && freeFrom[column] > r)
                     column++;
                 if (column >= columns)
                     break;
@@ -131,9 +135,8 @@ internal sealed class MarkdownWriter
                         .Select(p => header ? p.Inlines.Select(i => i is HText t ? new HText(t.Text, t.Format with { Bold = null }) : i).ToList() : p.Inlines)
                         .Select(inlines => Inlines(inlines).Replace("\\\n", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal)))
                     .Replace("|", "\\|", StringComparison.Ordinal);
-                for (var rr = r; rr < r + cell.RowSpan; rr++)
-                    for (var cc = column; cc < Math.Min(columns, column + cell.ColSpan); cc++)
-                        covered[(rr, cc)] = true;
+                for (var cc = column; cc < Math.Min(columns, column + cell.ColSpan); cc++)
+                    freeFrom[cc] = Math.Max(freeFrom[cc], r + cell.RowSpan);
                 column += cell.ColSpan;
             }
             grid.Add(cells);
