@@ -203,6 +203,33 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Camera_raw_tone_table_turns_the_bt709_curve_into_srgb()
+    {
+        var table = RawTone.Bt709ToSrgbTable();
+
+        // #1545: 18 % grey is written as 104 and 1 % as 11; as sRGB they are 118 and 25.
+        Assert.InRange(table[104], 117, 119);
+        Assert.InRange(table[11], 24, 26);
+        Assert.Equal(0, table[0]);
+        Assert.Equal(255, table[255]);
+        for (var i = 1; i < table.Length; i++)
+            Assert.True(table[i] >= table[i - 1], "the curve never goes down at " + i);
+    }
+
+    [Fact]
+    public void Camera_raw_tones_are_applied_to_the_pixels()
+    {
+        using var images = new MagickImageCollection { new MagickImage(new MagickColor("#686868"), 4, 4) };
+
+        RawTone.ToSrgb(images);
+
+        var pixel = Pixel(images[0], 1, 1);
+        Assert.InRange(pixel.R, 117, 119);
+        Assert.Equal(pixel.R, pixel.G);
+        Assert.Equal(pixel.R, pixel.B);
+    }
+
+    [Fact]
     public async Task Windows_metafiles_are_rendered_at_the_preset_dpi()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "EMF/WMF are read through GDI+ on Windows only.");

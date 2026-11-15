@@ -52,6 +52,7 @@ internal sealed class PdfPictureUses
             CSequence? content = null;
             try
             {
+                PdfContentNesting.Check(page);
                 content = ContentReader.ReadContent(page);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -168,7 +169,7 @@ internal sealed class PdfPictureUses
         CSequence content;
         try
         {
-            content = ContentReader.ReadContent(form.Stream.UnfilteredValue);
+            content = ContentReader.ReadContent(PdfContentNesting.Checked(form.Stream.UnfilteredValue));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

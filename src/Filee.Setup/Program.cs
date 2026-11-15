@@ -4,8 +4,9 @@
 // Rights: the program starts without administrator rights (asInvoker). An install for all users starts itself again
 // with them (one UAC prompt) and waits; the elevated copy writes what to start at the end into a file, and this
 // unelevated one starts Filee as the signed-in user: Filee must not run elevated (Windows blocks drag and drop from
-// Explorer into elevated windows). The uninstaller first copies itself to %TEMP% and runs from there (with
-// administrator rights when needed), so the install folder can be deleted.
+// Explorer into elevated windows). The uninstaller first copies itself out of the install folder and runs from there,
+// so the install folder can be deleted. One for all users asks for administrator rights before that, from the install
+// folder, and the elevated one makes the copy where standard users can't change it (see CopyUninstaller).
 
 using System.ComponentModel;
 using System.Diagnostics;
@@ -34,6 +35,8 @@ internal static class Program
     {
         if (!OperatingSystem.IsWindows())
             return ExitInitFailed;
+        // Before anything loads a native library: Windows' own only from System32 (see NativeLibraries).
+        NativeLibraries.Guard();
         // Never hold a folder Setup may delete (the install folder) as the current directory.
         Environment.CurrentDirectory = Environment.SystemDirectory;
         NativeMethods.QuietErrors();
@@ -91,6 +94,7 @@ internal static class Program
         finally
         {
             payload?.Dispose();
+            NativeLibraries.RemoveAfterExit(log);
         }
     }
 
@@ -152,7 +156,7 @@ internal static class Program
             {
                 LogFile = log.File,
             };
-            RunWindow(model, texts, options.Ui == SetupUi.Silent);
+            RunWindow(model, texts, options.Ui == SetupUi.Silent, paths, log);
             result = model.Result;
             exitCode = model.ExitCode;
             launch = options.Ui == SetupUi.Silent ? result?.Launch : model.Launch;
@@ -210,20 +214,26 @@ internal static class Program
             texts.SetLanguage(language);
         var needsAdmin = record.Scope == InstallScope.Machine && sandbox is null && !NativeMethods.IsElevated();
 
-        // Phase 1: running from the install folder, which can't be deleted while this runs. Copy to %TEMP% and wait.
+        // Phase 1: running from the install folder, which can't be deleted while this runs. Copy out of it and wait.
         var exeFolder = Path.TrimEndingDirectorySeparator(Path.GetDirectoryName(exe)!);
         if (exeFolder.Equals(folder, StringComparison.OrdinalIgnoreCase))
         {
-            var temp = Path.Combine(paths.Temp, $"Filee-Uninstall-{Guid.NewGuid():N}");
-            Directory.CreateDirectory(temp);
-            var copy = Path.Combine(temp, SetupNames.UninstallerExe);
-            File.Copy(exe, copy);
-            var childArgs = args.Where(a => !HasName(a, "/DIR") && !HasName(a, "/LOG") && !HasName(a, "/UNINSTALL") && !HasName(a, "/FIRSTPHASE"))
-                .Concat(["/UNINSTALL", $"/DIR={folder}", $"/LOG={log.File}", $"/FIRSTPHASE={Environment.ProcessId}"]);
+            // Administrator rights first, for this file: only administrators can change an install for all users, so
+            // the prompt is never answered for a file another program of this user has put there. The elevated one
+            // makes the copy, and its copy waits for this one to end too: both run from the uninstall.exe it deletes.
+            if (needsAdmin)
+                return RunElevated(exe, [.. args.Where(a => !HasName(a, "/FIRSTPHASE")), $"/FIRSTPHASE={Environment.ProcessId}"], log, launchFile: null);
+            var copy = CopyUninstaller(exe, paths, NativeMethods.IsElevated());
+            var temp = Path.GetDirectoryName(copy)!;
             log.Info($"Continuing from {copy}");
-            // Waits for the copy, or for its word that only this uninstall.exe is left (it then deletes it).
+            // Waits for the copy, or for its word that only uninstall.exe is left (it then deletes it).
             var released = Path.Combine(temp, ReleasedFile);
-            var code = RunAndWait(copy, childArgs, elevated: needsAdmin, log, until: () => File.Exists(released));
+            int code;
+            // Held open without write or delete sharing while it starts, on top of the folder's rights: nothing can
+            // change the copy between here and its start.
+            using (new FileStream(copy, FileMode.Open, FileAccess.Read, FileShare.Read))
+                code = RunAndWait(copy, SecondPhaseArgs(args, folder, log.File, [Environment.ProcessId, .. options.FirstPhase]), elevated: false, log,
+                    until: () => File.Exists(released));
             if (code == ExitCancelled)
                 TryDeleteFolder(temp);
             return code;
@@ -231,12 +241,13 @@ internal static class Program
         if (needsAdmin)
             return RunElevated(exe, args, log, launchFile: null);
 
-        // Phase 2: from a copy in %TEMP%.
-        var fromTemp = Path.GetFileName(exeFolder).StartsWith("Filee-Uninstall-", StringComparison.OrdinalIgnoreCase);
-        var trash = fromTemp ? Path.Combine(exeFolder, "trash") : Path.Combine(paths.Temp, $"Filee-Uninstall-{Guid.NewGuid():N}");
+        // Phase 2: from the copy.
+        var fromTemp = Path.GetFileName(exeFolder).StartsWith(CopyFolderPrefix, StringComparison.OrdinalIgnoreCase);
+        // In the copy's folder, the files still in use are out of reach for standard users too until the restart.
+        var trash = fromTemp ? Path.Combine(exeFolder, "trash") : Path.Combine(paths.Temp, $"{CopyFolderPrefix}{Guid.NewGuid():N}");
         var runner = new SetupRunner(context, null, null, folder, record, trash)
         {
-            ReleaseFirstPhase = options.FirstPhase is { } first && fromTemp ? () => ReleaseFirstPhase(exeFolder, first, log) : null,
+            ReleaseFirstPhase = options.FirstPhase.Count > 0 && fromTemp ? () => ReleaseFirstPhase(exeFolder, options.FirstPhase, log) : null,
         };
         int exitCode;
         if (options.Ui == SetupUi.VerySilent)
@@ -253,7 +264,7 @@ internal static class Program
                 LogFile = log.File,
                 SettingsFolder = paths.SettingsFolder,
             };
-            RunWindow(model, texts, options.Ui == SetupUi.Silent);
+            RunWindow(model, texts, options.Ui == SetupUi.Silent, paths, log);
             exitCode = model.ExitCode;
             if (exitCode == 1 && options.IsSilent)
                 Tell(options, model.ErrorText, NativeMethods.MB_ICONERROR);
@@ -273,23 +284,86 @@ internal static class Program
     /// <summary>Written by the uninstaller's copy when only uninstall.exe is left (see <see cref="Uninstaller.Run"/>).</summary>
     private const string ReleasedFile = "released";
 
-    /// <summary>Tells the uninstaller in the install folder that it may end, and waits until it has.</summary>
-    private static void ReleaseFirstPhase(string temp, int processId, SetupLog log)
+    /// <summary>The name of the uninstaller copy's folder, followed by a new GUID: the copy knows itself by it.</summary>
+    internal const string CopyFolderPrefix = "Filee-Uninstall-";
+
+    /// <summary>
+    /// The rights of an elevated uninstaller's copy folder: SYSTEM and administrators only, nothing inherited from the
+    /// parent (in %SystemRoot%\Temp users may add files to what is below). The OWNER RIGHTS entry takes away what an
+    /// owner may otherwise always do, change these rights, should Windows make the signed-in user the owner rather
+    /// than Administrators.
+    /// </summary>
+    internal const string AdminOnlyFolder = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;OW)";
+
+    /// <summary>
+    /// Copies the uninstaller into a new folder and returns the copy. An elevated one goes to %SystemRoot%\Temp with
+    /// <see cref="AdminOnlyFolder"/>: in the user's %TEMP% any program of theirs could swap the copy before it starts
+    /// with administrator rights, and even a folder they can't open could be renamed away and replaced there, since
+    /// %TEMP% lets them delete what is in it. Without administrator rights there is nothing to guard.
+    /// </summary>
+    internal static string CopyUninstaller(string exe, SetupPaths paths, bool elevated)
     {
+        var parent = elevated ? paths.SystemTemp : paths.Temp;
+        Directory.CreateDirectory(parent);
+        var temp = Path.Combine(parent, $"{CopyFolderPrefix}{Guid.NewGuid():N}");
+        NativeMethods.CreateNewFolder(temp, elevated ? AdminOnlyFolder : null);
+        var copy = Path.Combine(temp, SetupNames.UninstallerExe);
+        File.Copy(exe, copy);
+        return copy;
+    }
+
+    /// <summary>The copy's command line. <paramref name="firstPhase"/>: the uninstallers in the install folder that wait for it.</summary>
+    internal static IEnumerable<string> SecondPhaseArgs(string[] args, string folder, string? logFile, IEnumerable<int> firstPhase) =>
+        args.Where(a => !HasName(a, "/DIR") && !HasName(a, "/LOG") && !HasName(a, "/UNINSTALL") && !HasName(a, "/FIRSTPHASE"))
+            .Concat(["/UNINSTALL", $"/DIR={folder}", $"/LOG={logFile}", $"/FIRSTPHASE={string.Join(',', firstPhase)}"]);
+
+    /// <summary>
+    /// Tells the uninstallers in the install folder that they may end, and waits until they have: the elevated one
+    /// ends on the word, and then the unelevated one that waited for it.
+    /// </summary>
+    private static void ReleaseFirstPhase(string temp, IReadOnlyList<int> processIds, SetupLog log)
+    {
+        // Looked up before the word, while they all still run and wait for it.
+        var first = new List<Process>();
+        foreach (var id in processIds)
+        {
+            try
+            {
+                first.Add(Process.GetProcessById(id));
+            }
+            catch (ArgumentException)
+            {
+                // Ended already.
+            }
+        }
         try
         {
-            using var first = Process.GetProcessById(processId);
+            if (first.Count == 0)
+                return;
             File.WriteAllText(Path.Combine(temp, ReleasedFile), "0");
-            if (!first.WaitForExit(TimeSpan.FromSeconds(30)))
-                log.Warn("The first uninstaller did not end");
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+            foreach (var process in first)
+            {
+                try
+                {
+                    var left = deadline - DateTime.UtcNow;
+                    if (!process.WaitForExit(left > TimeSpan.Zero ? left : TimeSpan.Zero))
+                        log.Warn($"The first uninstaller (process {process.Id}) did not end");
+                }
+                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+                {
+                    log.Warn($"Could not wait for the first uninstaller (process {process.Id}): {ex.Message}");
+                }
+            }
         }
-        catch (ArgumentException)
-        {
-            // Ended already.
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             log.Warn($"Could not release the first uninstaller: {ex.Message}");
+        }
+        finally
+        {
+            foreach (var process in first)
+                process.Dispose();
         }
     }
 
@@ -302,18 +376,30 @@ internal static class Program
             new SandboxSetupSystem(log, paths.SettingsFolder), paths, log, Sandbox: true);
     }
 
-    private static void RunWindow(SetupViewModel model, SetupTexts texts, bool silent)
+    private static void RunWindow(SetupViewModel model, SetupTexts texts, bool silent, SetupPaths paths, SetupLog log)
     {
+        // Skia and HarfBuzz: from a folder of this run's own, where only administrators can change them when this one
+        // is elevated.
+        NativeLibraries.Unpack(paths, NativeMethods.IsElevated(), log);
         App.Model = model;
         App.Texts = texts;
         App.Silent = silent;
         BuildAvaloniaApp().StartWithClassicDesktopLifetime([]);
     }
 
-    /// <summary>Also used by the XAML previewer and the tests' headless platform (with their own builder).</summary>
+    /// <summary>
+    /// Also used by the XAML previewer (the tests have their own, headless, builder). Software rendering: Setup's one
+    /// small window doesn't need the GPU, and without ANGLE there is no av_libglesv2.dll to carry (see
+    /// NativeLibraries). The redirection surface keeps the window's transparency.
+    /// </summary>
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            .With(new Win32PlatformOptions
+            {
+                RenderingMode = [Win32RenderingMode.Software],
+                CompositionMode = [Win32CompositionMode.RedirectionSurface],
+            })
             .LogToTrace();
 
     /// <summary>
@@ -349,9 +435,12 @@ internal static class Program
     /// <param name="until">Stops waiting early when true (checked every 100 ms); the exit code is then 0.</param>
     private static int RunAndWait(string exe, IEnumerable<string> args, bool elevated, SetupLog log, Func<bool>? until = null)
     {
+        // Only the prompt for administrator rights needs the shell. Otherwise CreateProcess starts exactly this file:
+        // the shell would look up how to open it, also in the user's own part of the registry, which an elevated
+        // uninstaller must not follow.
         var info = new ProcessStartInfo(exe, SetupOptions.Join(args))
         {
-            UseShellExecute = true,
+            UseShellExecute = elevated,
             WorkingDirectory = Environment.SystemDirectory,
         };
         if (elevated)

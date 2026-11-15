@@ -1,5 +1,6 @@
 // Win32 functions Setup calls (source-generated P/Invoke, trim- and AOT-safe).
 
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
@@ -293,6 +294,53 @@ internal static partial class NativeMethods
 
     public static void BroadcastEnvironmentChange() =>
         SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", SMTO_ABORTIFHUNG, 5000, out _);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SecurityAttributes
+    {
+        public int Length;
+        public nint SecurityDescriptor;
+        public int InheritHandle;
+    }
+
+    [LibraryImport("advapi32.dll", EntryPoint = "ConvertStringSecurityDescriptorToSecurityDescriptorW", SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ConvertStringSecurityDescriptorToSecurityDescriptor(string sddl, uint revision, out nint descriptor, nint size);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateDirectoryW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool CreateDirectory(string path, SecurityAttributes* attributes);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial nint LocalFree(nint memory);
+
+    /// <summary>
+    /// Creates a new folder, with the security of <paramref name="sddl"/> from the start when given (else the inherited
+    /// one). Unlike Directory.CreateDirectory it fails when something is there already, so the folder is always this
+    /// process's own and never one somebody else made first.
+    /// </summary>
+    /// <exception cref="Win32Exception">The folder exists or can't be created.</exception>
+    public static unsafe void CreateNewFolder(string path, string? sddl)
+    {
+        nint descriptor = 0;
+        if (sddl is not null && !ConvertStringSecurityDescriptorToSecurityDescriptor(sddl, 1, out descriptor, 0))
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        try
+        {
+            var attributes = new SecurityAttributes { Length = sizeof(SecurityAttributes), SecurityDescriptor = descriptor };
+            if (!CreateDirectory(path, sddl is null ? null : &attributes))
+            {
+                var error = Marshal.GetLastPInvokeError();
+                throw new Win32Exception(error, $"Could not create {path}: {new Win32Exception(error).Message}");
+            }
+        }
+        finally
+        {
+            if (descriptor != 0)
+                LocalFree(descriptor);
+        }
+    }
 
     /// <summary>The Windows display language, e.g. "ko-KR" (with InvariantGlobalization .NET can't tell).</summary>
     public static unsafe string UiLanguage()

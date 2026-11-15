@@ -62,7 +62,7 @@ internal static partial class TableSheets
     private static Dictionary<int, int> LongestLines(HTable table)
     {
         var longest = new Dictionary<int, int>();
-        foreach (var (cell, _, column) in Grid(table))
+        foreach (var (cell, _, column, _, _) in Grid(table))
         {
             if (cell.ColSpan > 1)
                 continue;
@@ -83,28 +83,40 @@ internal static partial class TableSheets
         return width;
     }
 
-    /// <summary>Every cell of the table with its grid row (0-based within the table) and column, row spans skipped.</summary>
-    private static IEnumerable<(HCell Cell, int Row, int Column)> Grid(HTable table, int skip = 0)
+    /// <summary>
+    /// Every cell of the table with its grid row (0-based within the table), column and the rows and columns it covers,
+    /// row spans skipped. Spans end at the table's last row and at <see cref="HwpxWriter.MaxTableColumns"/>.
+    /// </summary>
+    /// <exception cref="Filee.Core.Conversion.ConversionRefusedException">The cells cover more than <see cref="HwpxWriter.MaxTableCells"/> positions.</exception>
+    private static IEnumerable<(HCell Cell, int Row, int Column, int Rows, int Columns)> Grid(HTable table, int skip = 0)
     {
-        var taken = new HashSet<(int, int)>();
+        // Per column, the first row not covered by a cell spanning rows from above (or from the left in this row).
+        var freeFrom = new List<int>();
         var rowCount = table.Rows.Count - skip;
         var row = 0;
+        long covered = 0;
         foreach (var source in table.Rows.Skip(skip))
         {
             var column = 0;
             foreach (var cell in source.Cells)
             {
                 if (cell.Column >= 0)
-                    column = cell.Column;
-                while (taken.Contains((row, column)))
+                    column = Math.Min(cell.Column, HwpxWriter.MaxTableColumns);
+                while (column < freeFrom.Count && freeFrom[column] > row)
                     column++;
+                if (column >= HwpxWriter.MaxTableColumns)
+                    throw HwpxWriter.TableTooLarge();
                 // An HTML rowspan may claim more rows than the table has; the merge ends at its last row.
                 var rows = Math.Clamp(cell.RowSpan, 1, Math.Max(1, rowCount - row));
-                var columns = Math.Max(1, cell.ColSpan);
-                for (var r = row; r < row + rows; r++)
-                    for (var c = column; c < column + columns; c++)
-                        taken.Add((r, c));
-                yield return (cell, row, column);
+                var columns = Math.Clamp(cell.ColSpan, 1, HwpxWriter.MaxTableColumns - column);
+                covered += (long)rows * columns;
+                if (covered > HwpxWriter.MaxTableCells)
+                    throw HwpxWriter.TableTooLarge();
+                while (freeFrom.Count < column + columns)
+                    freeFrom.Add(0);
+                for (var c = column; c < column + columns; c++)
+                    freeFrom[c] = Math.Max(freeFrom[c], row + rows);
+                yield return (cell, row, column, rows, columns);
                 column += columns;
             }
             row++;
@@ -134,13 +146,11 @@ internal static partial class TableSheets
         }
         var next = top + Math.Max(0, table.Rows.Count - skip);
         var defaults = table.Borders ?? HBorders.Grid;
-        foreach (var (cell, row, column) in Grid(table, skip))
+        foreach (var (cell, row, column, rows, columns) in Grid(table, skip))
         {
             var style = StyleOf(cell, drawn ? null : cell.Borders ?? defaults);
             var at = top + row;
             sheet.Set(at, column, Shown(Text(cell), style));
-            var rows = Math.Clamp(cell.RowSpan, 1, Math.Max(1, next - at));
-            var columns = Math.Max(1, cell.ColSpan);
             for (var r = at; r < at + rows; r++)
                 for (var c = column; c < column + columns; c++)
                     if (r != at || c != column)
