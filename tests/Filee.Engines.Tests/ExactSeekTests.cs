@@ -224,13 +224,14 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Theory]
     [InlineData("raw.h264", "libx264", false)]
     [InlineData("raw.m2v", "mpeg2video", true)]
-    public async Task A_stream_without_timestamps_is_seeked_as_before(string name, string codec, bool picture)
+    [InlineData("raw.m4v", "mpeg4", true, "m4v")] // its demuxer reports a start time of 0 all the same
+    public async Task A_stream_without_timestamps_is_seeked_as_before(string name, string codec, bool picture, string? format = null)
     {
         SkipUnlessInstalled();
         // FFmpeg makes up a raw stream's timestamps from wherever it starts reading, so no time in it can be named:
         // read as its own times, the MPEG-2 stream's picture at 14 s was missing. (FFmpeg's own seek finds no picture
         // in a raw H.264 stream at all.)
-        var video = await NumberedAsync(name, "25", 20, ["-c:v", codec, "-g", "25"]);
+        var video = await NumberedAsync(name, "25", 20, ["-c:v", codec, "-g", "25", .. format is null ? Array.Empty<string>() : ["-f", format]]);
         Assert.Equal(SeekPoint.Plain(14), await KeyFrames.FindAsync(Tools!.Value.Ffprobe, video, 14, Ct));
         if (picture)
             Assert.True(await VideoFrames.WriteFrameAsync(video, 14, Path.Combine(fx.NewFolder(), "14.jpg"), Height, Ct));
@@ -373,12 +374,14 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // B-frames decoded 0.4 s before they are shown, far longer than FFmpeg's 3/23 s margin.
         "5fps.ts" => ("5", "128x32", ["-c:v", "libx264", "-g", "10", "-bf", "3", "-x264-params", "scenecut=0:b-pyramid=normal", "-pix_fmt", "yuv420p",
             "-f", "mpegts"]),
+        // Recorded just before its 26.5 h clock wraps round, at frame 70: FFmpeg gives its times from -2.32 s.
+        "wrap.ts" => ("30", "128x32", [.. Ts, "-output_ts_offset", "95440"]),
         _ => throw new ArgumentException(name, nameof(name)),
     };
 
     public static TheoryData<string> Videos =>
         ["30fps.mp4", "2997fps.mp4", "15fps.mp4", "30fps.ts", "15fps.ts", "soundfirst.ts", "dvd.vob", "opengop.mp4", "opengop.ts", "bframes.avi",
-            "bframes.mkv", "sound.flv", "10mhz.mp4"];
+            "bframes.mkv", "sound.flv", "10mhz.mp4", "wrap.ts"];
 
     private async Task<string> VideoAsync(string name, double seconds = 3)
     {
@@ -461,6 +464,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     // A time base finer than the microseconds the move is given in: frame 41 is shown at 1.3666667 s, which ffprobe
     // names 1.366667 s, so a move to that time would put the frame before 0.
     [InlineData("10mhz.mp4", 41, 70)]
+    [InlineData("wrap.ts", 40, 70)] // across the wrap of its clock
     public async Task An_exact_clip_starts_and_ends_with_the_chosen_frames(string name, int first, int end)
     {
         SkipUnlessInstalled();
@@ -544,6 +548,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     // At and just after a key frame: FFmpeg seeks 3/23 s early here, which landed a whole group of pictures early.
     [InlineData("bframes.mkv", "mkv", 64, 80)]
     [InlineData("bframes.mkv", "mkv", 66, 80)]
+    [InlineData("wrap.ts", "ts", 50, 80)]
     public async Task A_copied_clip_starts_at_the_key_frame_shown_last_before_the_start(string name, string target, int start, int end)
     {
         SkipUnlessInstalled();
@@ -590,6 +595,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("mjpeg.avi", 1.5)]
     [InlineData("jitter.mp4", 1.0)]
     [InlineData("jitter.mp4", 2.0)]
+    [InlineData("wrap.ts", 1.0)]
     public async Task An_edited_clip_starts_with_the_frame_shown_at_or_just_before_a_frames_time(string name, double speed)
     {
         SkipUnlessInstalled();
@@ -662,12 +668,16 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(1, starts["C"], 2);
     }
 
-    [Fact]
-    public async Task Sound_that_starts_after_the_picture_keeps_its_place_in_an_edited_clip()
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(2.0)]
+    [InlineData(0.5)]
+    public async Task Sound_that_starts_after_the_picture_keeps_its_place_in_an_edited_clip(double speed)
     {
         SkipUnlessInstalled();
-        // The sound starts 1 s into the video and beeps at 1.5 s; from 0.5 s, the beep is 1 s into the clip. Each
-        // part's sound counted from its own first sample beeped at 0.5 s.
+        // The sound starts 1 s into the video and beeps at 1.5 s; from 0.5 s, the beep is 1 s into the clip, played
+        // at that speed. Each part's sound counted from its own first sample beeped at 0.5 s; faster or slower, the
+        // silence before it was left as long as it is in the video (atempo itself plays the beep up to 40 ms early).
         var picture = await VideoAsync("30fps.mp4");
         var sound = Path.Combine(fx.NewFolder(), "beep.m4a");
         var beep = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
@@ -681,9 +691,11 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(made.ExitCode == 0, made.StandardError);
         var edit = ClipEdit.Of(new ClipRange(0.5, 2.8));
         edit.Parts[0].Volume = 0.9;
+        edit.Parts[0].Speed = speed;
 
-        Assert.InRange(await BeepAsync(await CutAsync(video, edit, exact: true)), 0.98, 1.04);
-        Assert.InRange(await BeepAsync(await CutAsync(video, ClipEdit.Of(new ClipRange(0.5, 2.8)), exact: true)), 0.98, 1.04);
+        Assert.InRange(await BeepAsync(await CutAsync(video, edit, exact: true)), 1 / speed - 0.06, 1 / speed + 0.04);
+        if (speed == 1)
+            Assert.InRange(await BeepAsync(await CutAsync(video, ClipEdit.Of(new ClipRange(0.5, 2.8)), exact: true)), 0.98, 1.04);
     }
 
     [Fact]
@@ -743,6 +755,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Theory]
     [InlineData("soundfirst.ts")]
     [InlineData("dvd.vob")]
+    [InlineData("wrap.ts")]
     public async Task Playback_in_the_window_starts_with_the_frame_it_showed(string name)
     {
         SkipUnlessInstalled();
@@ -897,6 +910,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Theory]
     [InlineData("soundfirst.ts")]
     [InlineData("dvd.vob")]
+    [InlineData("wrap.ts")]
     public async Task A_live_photo_of_a_file_without_an_index_shows_the_frame_its_times_point_at(string name)
     {
         SkipUnlessInstalled();
@@ -1095,17 +1109,20 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(after.Origin > 1, $"start time {after.Origin}");
     }
 
-    [Fact]
-    public async Task A_file_read_through_a_protocol_and_replaced_is_looked_at_again()
+    [Theory]
+    [InlineData("concat")]
+    [InlineData("subfile")]
+    public async Task A_file_read_through_a_protocol_and_replaced_is_looked_at_again(string protocol)
     {
         SkipUnlessInstalled();
-        // A Hikvision recording is read as concat:header|file (MediaInput): its file is what may be written over.
+        // A Hikvision recording is read as concat:header|file, a .nov export's as subfile,…:file (MediaInput): the
+        // file is what may be written over.
         var folder = fx.NewFolder();
         var header = Path.Combine(folder, "header");
         await File.WriteAllBytesAsync(header, [], Ct);
         var path = Path.Combine(folder, "rec.ts");
         File.Copy(await VideoAsync("30fps.ts"), path);
-        var input = $"concat:{header}|{path}";
+        var input = protocol == "concat" ? $"concat:{header}|{path}" : $"subfile,,start,0,end,0,,:{path}";
         var before = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, input, 1, Ct);
         var later = Path.Combine(folder, "later.ts");
         var moved = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,

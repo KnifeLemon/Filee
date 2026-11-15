@@ -552,12 +552,13 @@ internal static partial class MediaEncoding
     /// pixels, turned upright): the timeline and the large picture of the clip window. Reading starts at
     /// <paramref name="seek"/> (<see cref="KeyFrames.FindAsync"/>), and the frames before the time are dropped before
     /// they are scaled, counted in microseconds (<c>settb=AVTB</c>; an AVI counts in frames), so the picture is the
-    /// first frame shown at or after the time, as a clip from there starts with.
+    /// first frame shown at or after the time, as a clip from there starts with. Its time is then made 0: FFmpeg drops
+    /// a picture written before 0, as in a file whose own times start there.
     /// </summary>
     internal static List<string> FrameAt(string input, double seconds, SeekPoint seek, string output, int maxHeight, VideoStreamInfo? video) =>
     [
         .. Common, .. seek.Input, "-i", input, "-map", "0:V:0",
-        "-vf", $"settb=AVTB,trim=start={seek.Time(seconds)},"
+        "-vf", $"settb=AVTB,trim=start={seek.Time(seconds)},setpts=PTS-STARTPTS,"
             + (video is null ? "" : SquarePixels(video)) + $"scale=w=-2:h='trunc(min(ih,{Math.Max(16, maxHeight)})/2)*2'",
         "-frames:v", "1", "-update", "1", "-c:v", "mjpeg", "-q:v", "3", "-f", "image2", output,
     ];

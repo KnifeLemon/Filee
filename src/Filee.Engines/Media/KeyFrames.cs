@@ -72,10 +72,12 @@ internal readonly record struct SeekPoint(double From, double? Origin, double Co
 
     /// <summary>
     /// <paramref name="seconds"/> from the file's start as a picture's timestamps (<see cref="Input"/>) read it, less
-    /// the <see cref="Tolerance"/>: to the microsecond, never below 0.
+    /// the <see cref="Tolerance"/>: to the microsecond, below 0 only in a file whose own times start below 0 (an
+    /// MPEG-TS recorded just before its clock wraps round).
     /// </summary>
-    public string Time(double seconds) =>
-        Number(Origin is { } origin ? origin + seconds - Tolerance : seconds - From - Tolerance);
+    public string Time(double seconds) => Origin is { } origin
+        ? Number(origin + seconds - Tolerance, signed: true)
+        : Number(seconds - From - Tolerance);
 
     /// <summary>
     /// The input options of what is encoded (a clip, its playback, a Live Photo): with the file's own timestamps, moved
@@ -86,16 +88,18 @@ internal readonly record struct SeekPoint(double From, double? Origin, double Co
     /// </summary>
     public string[] EncodeInput => Origin is not null
         ? ["-copyts", "-noaccurate_seek", .. MediaEncoding.SeekTo(From),
-            .. Shift > 0 ? ["-itsoffset", "-" + (Shift / 1_000_000.0).ToString("0.000000", CultureInfo.InvariantCulture)]
+            .. Shift != 0 ? ["-itsoffset", (-Shift / 1_000_000.0).ToString("0.000000", CultureInfo.InvariantCulture)]
                 : Array.Empty<string>()]
         : MediaEncoding.SeekTo(From);
 
     /// <summary>
     /// How far <see cref="EncodeInput"/> moves the file's timestamps back, in whole microseconds (as FFmpeg reads
     /// <c>-itsoffset</c>): to a microsecond before <see cref="Start"/>, so a frame shown there stays at or after 0 once
-    /// FFmpeg rounds the move to the stream's ticks.
+    /// FFmpeg rounds the move to the stream's ticks; forward, where the file's own time there is below 0.
     /// </summary>
-    private long Shift => Origin is { } origin ? Math.Max(0, (long)Math.Floor((origin + Start) * 1_000_000) - 1) : 0;
+    private long Shift => Origin is { } origin && (long)Math.Floor((origin + Start) * 1_000_000) - 1 is var shift
+        ? origin + Start < 0 ? shift : Math.Max(0, shift)
+        : 0;
 
     /// <summary>
     /// <paramref name="seconds"/> from the file's start as what is encoded (<see cref="EncodeInput"/>) reads it, less
@@ -123,12 +127,14 @@ internal readonly record struct SeekPoint(double From, double? Origin, double Co
     private long Ticks(double origin, double seconds, (long Num, long Den) tick)
     {
         var scale = (Int128)tick.Num * 1_000_000;
-        var moved = (long)(((Int128)Shift * tick.Den + scale / 2) / scale);
+        var ticks = (Int128)Shift * tick.Den;
+        var moved = (long)((ticks + (ticks < 0 ? -scale / 2 : scale / 2)) / scale);
         var at = Math.Ceiling((origin + seconds - Tolerance) * tick.Den / tick.Num);
         return Math.Max(0, (long)at - moved);
     }
 
-    private static string Number(double seconds) => Math.Max(0, seconds).ToString("0.######", CultureInfo.InvariantCulture);
+    private static string Number(double seconds, bool signed = false) =>
+        (signed ? seconds : Math.Max(0, seconds)).ToString("0.######", CultureInfo.InvariantCulture);
 }
 
 /// <summary>How FFmpeg seeks a file (see the file header of <see cref="KeyFrames"/>).</summary>
@@ -169,6 +175,14 @@ internal static class KeyFrames
     /// and MP4, MXF, NUT, and the security cameras' DHAV and DVD-Video read as a disc.
     /// </summary>
     private static readonly HashSet<string> ByShownTime = ["mov", "mxf", "nut", "dhav", "dvdvideo"];
+
+    /// <summary>
+    /// Elementary streams without a container (<c>format_name</c> as ffprobe gives it), whose timestamps FFmpeg makes
+    /// up from where it starts reading: some report a start time all the same (MPEG-4 Part 2's <c>m4v</c> one of 0).
+    /// </summary>
+    private static readonly HashSet<string> RawStreams =
+        ["m4v", "h261", "h263", "h264", "hevc", "vvc", "evc", "mpegvideo", "cavsvideo", "avs2", "avs3", "dirac", "vc1", "obu", "mjpeg",
+            "mjpeg_2000"];
 
     /// <summary>
     /// How much earlier than <c>-ss</c> FFmpeg seeks a video with B-frames in other formats, in seconds.
@@ -279,6 +293,8 @@ internal static class KeyFrames
             if (!document.RootElement.TryGetProperty("format", out var format) || Time(format, "start_time") is not { } origin)
                 return null;
             var names = format.TryGetProperty("format_name", out var name) && name.GetString() is { } text ? text.Split(',') : [];
+            if (names.Any(RawStreams.Contains))
+                return null;
             List<JsonElement> streams = document.RootElement.TryGetProperty("streams", out var list) && list.ValueKind == JsonValueKind.Array
                 ? [.. list.EnumerateArray()] : [];
             // FFmpeg seeks early when any stream is decoded before it is shown, not only the video it reads.

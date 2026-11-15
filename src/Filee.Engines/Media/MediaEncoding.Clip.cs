@@ -111,6 +111,10 @@ internal static partial class MediaEncoding
             if (audio)
             {
                 graph.Append($"[as{source}]atrim=start={start}:end={end},asetpts=PTS-{start}/TB");
+                // atempo starts its sound at the time of the first sample, not that time played faster or slower:
+                // sound that starts after the part does is led in by silence first, which is.
+                if (speed != 1)
+                    graph.Append(",aresample=first_pts=0");
                 foreach (var tempo in Tempo(speed))
                     graph.Append($",atempo={Seconds(tempo)}");
                 if (part.PlayVolume != 1)

@@ -381,7 +381,7 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains("[vs1]trim=start=19.999999:end=29.999999,settb=AVTB,"
             + "setpts=(PTS-(STARTPTS-(round((STARTPTS*TB-19.999999)*30/2)+0.25)*2/(30*TB)))/2,", filter);
         Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0.5,", filter);
-        Assert.Contains("[as1]atrim=start=19.999999:end=29.999999,asetpts=PTS-19.999999/TB,atempo=2,", filter);
+        Assert.Contains("[as1]atrim=start=19.999999:end=29.999999,asetpts=PTS-19.999999/TB,aresample=first_pts=0,atempo=2,", filter);
         // From a key frame KeyFrames found: read from it, moved back to just before the first part, video cut in ticks.
         var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10, 10, (1, 15360)));
         Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "9.000000", "-itsoffset", "-11.999999", "-i", "in.mp4"], seeked.Inputs);
@@ -437,6 +437,16 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // A portrait phone video stays portrait.
         Assert.Equal((1080, 1920), MediaEncoding.ClipSize(Hd with { Rotation = 90 }, 0));
         Assert.Equal((404, 720), MediaEncoding.ClipSize(Hd with { Rotation = -90 }, 720));
+    }
+
+    [Fact]
+    public void A_clip_of_a_video_faster_than_its_rate_places_each_parts_first_frame_for_the_video()
+    {
+        // 240 frames a second, encoded at 120: two frames come in each picture, and the first is put a quarter into it.
+        var fast = new MediaInfo(TimeSpan.FromSeconds(60), new VideoStreamInfo(1920, 1080, 1, 0, 240, "h264", "yuv420p"), null, null);
+        var args = MediaEncoding.ClipEditArguments("in.mp4", "out.mp4", "mp4", ClipEdit.Of(new ClipRange(5, 9)), new MediaOptions(), fast);
+
+        Assert.Contains("*120/1)+0.25)*1/(120*TB))", After(args, "-filter_complex"));
     }
 
     [Fact]
