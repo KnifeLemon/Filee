@@ -183,6 +183,12 @@ public sealed class Preset
     [JsonConverter(typeof(LabelDirectionJsonConverter))]
     public LabelDirection? Direction { get; set; }
 
+    /// <summary>
+    /// The preset gallery entry (its id on filee.sh) this preset was installed from, so the editor can say so; null for
+    /// every other preset. Never shared (<see cref="ForSharing"/>).
+    /// </summary>
+    public string? Gallery { get; set; }
+
     /// <summary>A conversion or a group. A kind this version doesn't know (from a newer Filee) is read as a group.</summary>
     [JsonConverter(typeof(PresetKindJsonConverter))]
     public PresetKind Kind { get; set; } = PresetKind.Convert;
@@ -428,6 +434,11 @@ public sealed class Preset
     public Preset ForSharing()
     {
         var copy = WithoutPassword(mark: false);
+        if (copy.Gallery is not null)
+        {
+            copy = ReferenceEquals(copy, this) ? Clone() : copy;
+            copy.Gallery = null;
+        }
         if (copy.Image.Backdrop?.Picture is null && copy.Image.BackdropLook?.Picture is null)
             return copy;
         copy = ReferenceEquals(copy, this) ? Clone() : copy;
@@ -459,6 +470,7 @@ public sealed class Preset
         Direction = Direction,
         AskCompression = AskCompression,
         Kind = Kind,
+        Gallery = Gallery,
         Tool = Tool,
         SubPresetIds = [.. SubPresetIds],
     };

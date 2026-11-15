@@ -116,6 +116,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private readonly Preset _edit;
     private readonly ILocalizer _loc;
 
+    /// <summary>"From the preset gallery (…)" for a preset installed from there (#1530); null for every other.</summary>
+    public string? GalleryNote { get; }
+
     public PresetEditorViewModel(Preset preset, ILocalizer loc, IReadOnlySet<string>? turnedOff = null, bool folderInput = false)
         : this(preset, loc, turnedOff, null, folderInput)
     {
@@ -130,6 +133,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _loc = loc;
         FolderInput = folderInput || preset.TargetFormat == "iso";
         Labels = new SliceLabelFields(preset, loc);
+        GalleryNote = preset.Gallery is { } gallery ? loc.Format("presets.from_gallery", gallery) : null;
 
         // ~150 formats in registry order, which groups them by category; the category is shown next to each name
         // and typing the first letters of a name jumps to it.
