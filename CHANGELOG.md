@@ -17,7 +17,8 @@ change, a language may repeat; a language without lines shows the English ones):
 ## 2.5.0
 
 <!-- update
-level: recommended
+level: required
+ko: 보안 수정: 설치 프로그램의 권한 문제, 조작된 문서·압축 파일로 메모리·디스크를 고갈시키는 문제를 막았어요
 ko: 프리셋 갤러리: 다른 사람이 공유한 프리셋을 둘러보고 설치하거나 내 프리셋을 공유해요 (설정 → 프리셋)
 ko: Windows ARM64(Snapdragon 등)용 설치 파일과 포터블 ZIP이 따로 나와요
 ko: 새 형식: VTF, Gerber, JSON Canvas, G-code, Wisenet .nov, KuGou .krc, .nupkg·.apks·.aab, GIMP .xcf, Paint.NET .pdn, .ani, .xm, .osm, .ino·.pde 등
@@ -26,6 +27,7 @@ ko: 변환한 뒤 원본을 휴지통으로 옮기는 옵션, 압축 정도를 �
 ko: 소리 파일 자르기와 아이폰 벨소리(M4R), 동영상 합치기에 음악 넣기, 이미지 도넛에 PDF 합치기
 ko: 폴더를 다시 ZIP으로 묶고, 포터블 모드, 다운로드 프록시, Filee Connect(휴대폰과 주고받기)가 생겼어요
 ko: HWPX 줄바꿈, PPTX 제목 위치, Word 표 스타일, PDF/A 링크 등 여러 문제를 고쳤어요
+en: Security fixes: the installer no longer lets other programs abuse its admin rights, and crafted documents and archives can no longer exhaust memory or disk
 en: Preset gallery: browse and install presets other people shared, or share your own (Settings → Presets)
 en: Native Windows on ARM64 Setup and Portable ZIP
 en: New formats: VTF, Gerber, JSON Canvas, G-code, Wisenet .nov, KuGou .krc, .nupkg/.apks/.aab, GIMP .xcf, Paint.NET .pdn, .ani, .xm, .osm, .ino/.pde and more
@@ -34,6 +36,7 @@ en: Move the original to the Trash after converting, choose the compression each
 en: Cut sounds and make iPhone ringtones (M4R), music under Merge videos, and Merge PDF on the images donut
 en: Folders zip again, plus portable mode, a proxy for Filee's downloads and Filee Connect for your phone
 en: Fixes for HWPX line breaks, PPTX titles, Word table styles, PDF/A links and more
+zh: 安全修复：安装程序不再能被其他程序利用其管理员权限，构造的文档和压缩包也无法再耗尽内存或磁盘
 zh: 预设库：浏览并安装别人分享的预设，也可以分享自己的预设（设置 → 预设）
 zh: 提供原生 Windows ARM64 安装程序和便携版 ZIP
 zh: 新格式：VTF、Gerber、JSON Canvas、G-code、Wisenet .nov、酷狗 .krc、.nupkg/.apks/.aab、GIMP .xcf、Paint.NET .pdn、.ani、.xm、.osm、.ino/.pde 等
@@ -43,6 +46,13 @@ zh: 剪辑音频并制作 iPhone 铃声（M4R），合并视频时加入音乐�
 zh: 文件夹可以重新压缩为 ZIP，并新增便携模式、下载代理和 Filee Connect（与手机互传）
 zh: 修复了 HWPX 换行、PPTX 标题位置、Word 表格样式、PDF/A 链接等问题
 -->
+
+### Security
+
+Fixes for three advisories: [GHSA-x2fp-2ch7-5fvx](https://github.com/KnifeLemon/Filee/security/advisories/GHSA-x2fp-2ch7-5fvx) and [GHSA-vq2m-qq38-mxx3](https://github.com/KnifeLemon/Filee/security/advisories/GHSA-vq2m-qq38-mxx3) (reported by @1ceS1amese, thank you), and [GHSA-vcp3-99h4-v3wx](https://github.com/KnifeLemon/Filee/security/advisories/GHSA-vcp3-99h4-v3wx) (found in our own review). Please update.
+
+- **Setup and uninstall with admin rights:** when Setup or the uninstaller removes folders in your user profile, it no longer follows links or junctions placed there, so it can't be made to delete files elsewhere. The uninstaller now asks for admin rights before copying itself, and runs that copy only from a folder ordinary programs can't write to. The graphics libraries Setup loads are unpacked to a fresh folder each run and loaded by their full path.
+- **Files built to use up memory, disk or time:** spreadsheets, HWPX documents, MOBI e-books, deeply nested archives, re-zipped office files and PDF page contents that expand to far too much are now refused with a clear message instead of slowing Filee down or ending it. Pictures are read only by the image formats Filee needs.
 
 ### Preset gallery
 
