@@ -266,6 +266,49 @@ public sealed class PresetGalleryFolderTests : IDisposable
     }
 
     [Fact]
+    public void A_meta_json_with_its_languages_passes_and_says_which_they_are()
+    {
+        var meta = Meta();
+        meta.Remove("languages");
+        meta["language"] = "ko";
+        meta["titleByLang"] = new JsonObject { ["en"] = "Instagram-ready JPG", ["ja"] = "インスタ用 JPG" };
+        meta["descriptionByLang"] = new JsonObject { ["en"] = "Resizes photos to 1080 px for posting." };
+        var result = SharedPresetFolderCheck.Check(Folder(Cover, ("meta.json", GalleryFiles.Bytes(meta))));
+        Assert.True(result.Ok, string.Join("\n", result.Errors));
+        Assert.Equal(["ko", "en", "ja"], result.Derived!.Languages);
+
+        meta["languages"] = new JsonArray("ko", "en", "ja");
+        Assert.True(SharedPresetFolderCheck.Check(Folder(Cover, ("meta.json", GalleryFiles.Bytes(meta)))).Ok);
+    }
+
+    [Fact]
+    public void An_old_meta_json_with_languages_only_takes_the_first()
+    {
+        var result = SharedPresetFolderCheck.Check(Folder(Cover, ("meta.json", GalleryFiles.Bytes(Meta()))));
+        Assert.True(result.Ok, string.Join("\n", result.Errors));
+        Assert.Equal(["en"], result.Derived!.Languages);
+    }
+
+    [Theory]
+    [InlineData("{\"language\":\"xx\"}", "field.value", "language")]
+    [InlineData("{\"language\":\"en\",\"titleByLang\":{\"xx\":\"Title\"}}", "field.value", "titleByLang.xx")]
+    [InlineData("{\"language\":\"en\",\"titleByLang\":{\"ko\":\"Hi\"}}", "field.value", "titleByLang.ko")]
+    [InlineData("{\"language\":\"en\",\"titleByLang\":{\"ko\":\"see https://evil.example\"}}", "text.url", "titleByLang.ko")]
+    [InlineData("{\"language\":\"en\",\"titleByLang\":{\"en\":\"Main again\"}}", "field.value", "titleByLang.en")]
+    [InlineData("{\"language\":\"en\",\"descriptionByLang\":{\"ko\":\"A description without a title.\"}}", "field.value", "descriptionByLang.ko")]
+    [InlineData("{\"language\":\"en\",\"languages\":[\"en\",\"ko\"]}", "meta.derived_mismatch", "languages")]
+    [InlineData("{\"languages\":[]}", "meta.language_missing", "language")]
+    public void Wrong_languages_in_meta_json_fail(string patch, string code, string path)
+    {
+        var meta = Meta();
+        meta.Remove("languages");
+        foreach (var (key, value) in JsonNode.Parse(patch)!.AsObject().ToList())
+            meta[key] = value?.DeepClone();
+        var result = SharedPresetFolderCheck.Check(Folder(Cover, ("meta.json", GalleryFiles.Bytes(meta))));
+        Assert.Contains(result.Errors, e => e.Code == code && e.File == "meta.json" && e.Path == path);
+    }
+
+    [Fact]
     public void A_broken_meta_json_fails()
     {
         AssertFails(SharedPresetFolderCheck.Check(Folder(Cover, ("meta.json", "{"u8.ToArray()))), "meta.invalid_json");

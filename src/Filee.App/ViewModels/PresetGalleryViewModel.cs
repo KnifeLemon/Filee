@@ -77,16 +77,21 @@ public sealed partial class PresetGalleryViewModel : ObservableObject, IDisposab
         _format = Formats[0];
         Tags = [new(Any, loc["gallery.tag.all"])];
         _tag = Tags[0];
-        Languages = [new(Any, loc["gallery.language.all"])];
-        _language = Languages[0];
         _loc.LanguageChanged += OnUiLanguageChanged;
     }
 
-    /// <summary>The app's language changed while the window is open: pictures in that language, where a preset has them.</summary>
+    /// <summary>
+    /// The app's language changed while the window is open: titles, descriptions and pictures in that language where a
+    /// preset has them, and the presets written in it first.
+    /// </summary>
     private void OnUiLanguageChanged(object? sender, EventArgs e)
     {
         if (State != GalleryState.Ready)
             return;
+        foreach (var card in _all)
+            card.ShowLanguage();
+        Detail?.ShowLanguage();
+        Refresh();
         _ = LoadThumbsAsync();
         _ = Detail?.LoadImagesAsync();
     }
@@ -116,7 +121,6 @@ public sealed partial class PresetGalleryViewModel : ObservableObject, IDisposab
     public IReadOnlyList<Choice<string>> Kinds { get; }
     public ObservableCollection<Choice<string>> Formats { get; }
     public ObservableCollection<Choice<string>> Tags { get; }
-    public ObservableCollection<Choice<string>> Languages { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowPeriods))]
@@ -130,8 +134,10 @@ public sealed partial class PresetGalleryViewModel : ObservableObject, IDisposab
     [ObservableProperty] private Choice<string> _kind;
     [ObservableProperty] private Choice<string> _format;
     [ObservableProperty] private Choice<string> _tag;
-    [ObservableProperty] private Choice<string> _language;
     [ObservableProperty] private string _search = "";
+
+    /// <summary>Only the presets written in the app's language (off: those come first, the others after).</summary>
+    [ObservableProperty] private bool _onlyMyLanguage;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection))]
@@ -150,7 +156,7 @@ public sealed partial class PresetGalleryViewModel : ObservableObject, IDisposab
     partial void OnKindChanged(Choice<string> value) => Refresh();
     partial void OnFormatChanged(Choice<string> value) => Refresh();
     partial void OnTagChanged(Choice<string> value) => Refresh();
-    partial void OnLanguageChanged(Choice<string> value) => Refresh();
+    partial void OnOnlyMyLanguageChanged(bool value) => Refresh();
     partial void OnSearchChanged(string value) => Refresh();
 
     partial void OnSelectedChanged(PresetGalleryCardViewModel? value)
@@ -196,7 +202,6 @@ public sealed partial class PresetGalleryViewModel : ObservableObject, IDisposab
         NewerText = newer == 0 ? null : _loc.Format("gallery.newer", newer);
         Fill(Formats, _all.SelectMany(c => c.Entry.FormatsFrom.Concat(c.Entry.FormatsTo)), id => FormatLabels.NameOf(_loc, id) ?? id.ToUpperInvariant());
         Fill(Tags, _all.SelectMany(c => c.Entry.Tags), tag => tag);
-        Fill(Languages, _all.SelectMany(c => c.Entry.Languages), LanguageName);
         State = GalleryState.Ready;
         Refresh();
         _ = LoadThumbsAsync();
@@ -211,36 +216,26 @@ public sealed partial class PresetGalleryViewModel : ObservableObject, IDisposab
             list.Add(value);
     }
 
-    private static string LanguageName(string code)
-    {
-        try
-        {
-            var culture = CultureInfo.GetCultureInfo(code);
-            return culture.EnglishName == code || culture.NativeName.Length == 0 ? code : culture.NativeName;
-        }
-        catch (CultureNotFoundException)
-        {
-            return code;
-        }
-    }
-
     /// <summary>Applies the filters and the order to the list.</summary>
     private void Refresh()
     {
         if (State != GalleryState.Ready)
             return;
         var query = Search.Trim();
+        var language = _loc.Language;
         var cards = _all.Where(c =>
             (Kind.Value == Any || c.Entry.Kinds.Contains(Kind.Value))
             && (Format.Value == Any || c.Entry.FormatsFrom.Contains(Format.Value) || c.Entry.FormatsTo.Contains(Format.Value))
             && (Tag.Value == Any || c.Entry.Tags.Contains(Tag.Value))
-            && (Language.Value == Any || c.Entry.Languages.Contains(Language.Value))
+            && (!OnlyMyLanguage || c.Entry.Supports(language))
             && (query.Length == 0 || c.Matches(query)));
+        // Presets written in the app's language first, then the chosen order.
+        var mine = cards.OrderByDescending(c => c.Entry.Supports(language));
         var sorted = Sort.Value switch
         {
-            GallerySort.Hot => cards.OrderByDescending(c => c.Entry.Stats.Hot),
-            GallerySort.Best => cards.OrderByDescending(c => c.Entry.Stats.BestOf(Period.Value)).ThenByDescending(c => c.Entry.Stats.Likes),
-            _ => cards.OrderByDescending(c => c.Entry.Created),
+            GallerySort.Hot => mine.ThenByDescending(c => c.Entry.Stats.Hot),
+            GallerySort.Best => mine.ThenByDescending(c => c.Entry.Stats.BestOf(Period.Value)).ThenByDescending(c => c.Entry.Stats.Likes),
+            _ => mine.ThenByDescending(c => c.Entry.Created),
         };
         var ordered = sorted.ThenByDescending(c => c.Entry.Created).ThenBy(c => c.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
 
@@ -316,11 +311,20 @@ public sealed partial class PresetGalleryCardViewModel : ObservableObject, IDisp
         Byline = entry.Author.Length == 0 ? "" : loc.Format("gallery.by", entry.Author);
         Likes = loc.Format("gallery.likes", entry.Stats.Likes.ToString("N0", CultureInfo.CurrentCulture));
         Downloads = loc.Format("gallery.downloads", entry.Stats.Downloads.ToString("N0", CultureInfo.CurrentCulture));
-        AutomationName = string.Join(", ", new[] { entry.Title, Byline, entry.HasStats ? Likes : "", entry.HasStats ? Downloads : "" }.Where(s => s.Length > 0));
+        _text = GalleryText.Of(entry, loc);
     }
 
     public GalleryEntry Entry { get; }
-    public string Title => Entry.Title;
+
+    /// <summary>The title, description and language badge for the app's language (<see cref="GalleryText"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(AutomationName))]
+    private GalleryText _text;
+
+    public string Title => Text.Title;
+
+    /// <summary>Shows the texts for the app's language anew (it changed while the window is open).</summary>
+    public void ShowLanguage() => Text = GalleryText.Of(Entry, _loc);
     public string Byline { get; }
     public IReadOnlyList<string> Tags => Entry.Tags;
     public bool HasStats => Entry.HasStats;
@@ -328,13 +332,16 @@ public sealed partial class PresetGalleryCardViewModel : ObservableObject, IDisp
     public string Downloads { get; }
 
     /// <summary>What a screen reader says for the card.</summary>
-    public string AutomationName { get; }
+    public string AutomationName => string.Join(", ",
+        new[] { Text.Title, Text.BadgeText ?? "", Byline, Entry.HasStats ? Likes : "", Entry.HasStats ? Downloads : "" }.Where(s => s.Length > 0));
 
     [ObservableProperty] private Bitmap? _thumb;
 
-    /// <summary>True when the query is in the title, description, author or a tag.</summary>
+    /// <summary>True when the query is in the title or description shown or the main ones, the author or a tag.</summary>
     public bool Matches(string query) =>
-        Entry.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+        Text.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+        || Text.Description.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+        || Entry.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)
         || Entry.Description.Contains(query, StringComparison.CurrentCultureIgnoreCase)
         || Entry.Author.Contains(query, StringComparison.CurrentCultureIgnoreCase)
         || Entry.Tags.Any(t => t.Contains(query, StringComparison.CurrentCultureIgnoreCase));
@@ -377,6 +384,28 @@ public sealed partial class PresetGalleryCardViewModel : ObservableObject, IDisp
         Thumb?.Dispose();
         Thumb = null;
     }
+}
+
+/// <summary>
+/// The title and description of a shared preset as someone using Filee in the app's language sees them: in that language
+/// when the preset is written in it; otherwise the main ones, with a badge naming their language in itself ("English",
+/// "日本語") and that language's reading direction.
+/// </summary>
+public sealed record GalleryText(string Title, string Description, string? Badge, string? BadgeText, Avalonia.Media.FlowDirection Direction)
+{
+    public bool HasBadge => Badge is not null;
+
+    public static GalleryText Of(GalleryEntry entry, ILocalizer loc)
+    {
+        if (entry.TitleIn(loc.Language) is { } title)
+            return new GalleryText(title, entry.DescriptionIn(loc.Language) ?? entry.Description, null, null, DirectionOf(loc.Language));
+        var name = LocalizationService.Languages.FirstOrDefault(l => l.Code == entry.Language).NativeName;
+        return new GalleryText(entry.Title, entry.Description, name, name is null ? null : loc.Format("gallery.written_in", name),
+            entry.Language.Length == 0 ? DirectionOf(loc.Language) : DirectionOf(entry.Language));
+    }
+
+    private static Avalonia.Media.FlowDirection DirectionOf(string language) =>
+        SoftPalette.IsRightToLeft(language) ? Avalonia.Media.FlowDirection.RightToLeft : Avalonia.Media.FlowDirection.LeftToRight;
 }
 
 /// <summary>A picture of the chosen preset, with what a screen reader says for it.</summary>
@@ -430,6 +459,7 @@ public sealed partial class PresetGalleryDetailViewModel : ObservableObject, IDi
         _cancel = CancellationTokenSource.CreateLinkedTokenSource(closing);
         Byline = entry.Author.Length == 0 ? "" : loc.Format("gallery.by", entry.Author);
         License = loc.Format("gallery.license", entry.Author.Length == 0 ? "?" : entry.Author);
+        _text = GalleryText.Of(entry, loc);
         Stats = entry.HasStats
             ? string.Join(" · ", loc.Format("gallery.likes", entry.Stats.Likes.ToString("N0", CultureInfo.CurrentCulture)),
                 loc.Format("gallery.downloads", entry.Stats.Downloads.ToString("N0", CultureInfo.CurrentCulture)))
@@ -437,9 +467,17 @@ public sealed partial class PresetGalleryDetailViewModel : ObservableObject, IDi
     }
 
     public GalleryEntry Entry { get; }
-    public string Title => Entry.Title;
+    /// <summary>The title, description and language badge for the app's language (<see cref="GalleryText"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(Description))]
+    private GalleryText _text;
+
+    public string Title => Text.Title;
     public string Byline { get; }
-    public string Description => Entry.Description;
+    public string Description => Text.Description;
+
+    /// <summary>Shows the texts for the app's language anew (it changed while the window is open).</summary>
+    public void ShowLanguage() => Text = GalleryText.Of(Entry, _loc);
     public IReadOnlyList<string> Tags => Entry.Tags;
     public string Stats { get; }
     public bool HasStats => Stats.Length > 0;

@@ -1895,8 +1895,6 @@
   "gallery.format.all": "Todos os formatos",
   "gallery.filter.tag": "Etiqueta",
   "gallery.tag.all": "Todas as etiquetas",
-  "gallery.filter.language": "Idioma",
-  "gallery.language.all": "Todos os idiomas",
   "gallery.loading": "A carregar predefinições do filee.sh…",
   "gallery.failed": "Não foi possível contactar o filee.sh. Verifica a ligação à Internet e o proxy em Definições → Geral e tenta novamente.",
   "gallery.empty": "Nenhuma predefinição corresponde à pesquisa e aos filtros.",
@@ -1957,5 +1955,7 @@
   "gallery.export_saved": "Guardado.",
   "gallery.export_submit": "Abrir o formulário de submissão",
   "gallery.export_none": "Marca pelo menos uma predefinição ou escolhe uma barra circular.",
-  "gallery.export_warnings": "A galeria vai mostrar estes avisos:"
+  "gallery.export_warnings": "A galeria vai mostrar estes avisos:",
+  "gallery.only_my_language": "Só no meu idioma",
+  "gallery.written_in": "Escrito em {0}"
 }

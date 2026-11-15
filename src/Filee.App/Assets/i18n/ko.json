@@ -1895,8 +1895,6 @@
   "gallery.format.all": "모든 형식",
   "gallery.filter.tag": "태그",
   "gallery.tag.all": "모든 태그",
-  "gallery.filter.language": "언어",
-  "gallery.language.all": "모든 언어",
   "gallery.loading": "filee.sh에서 프리셋을 불러오는 중…",
   "gallery.failed": "filee.sh에 연결할 수 없어요. 인터넷 연결과 설정 → 일반의 프록시를 확인한 뒤 다시 시도해 주세요.",
   "gallery.empty": "검색어와 필터에 맞는 프리셋이 없어요.",
@@ -1957,5 +1955,7 @@
   "gallery.export_saved": "저장했어요.",
   "gallery.export_submit": "제출 양식 열기",
   "gallery.export_none": "프리셋을 하나 이상 고르거나 원형 툴바를 골라 주세요.",
-  "gallery.export_warnings": "갤러리에 이런 경고가 표시돼요:"
+  "gallery.export_warnings": "갤러리에 이런 경고가 표시돼요:",
+  "gallery.only_my_language": "내 언어로 된 것만",
+  "gallery.written_in": "{0}(으)로 작성됨"
 }

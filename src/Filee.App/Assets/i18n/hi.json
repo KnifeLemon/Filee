@@ -1875,8 +1875,6 @@
   "gallery.format.all": "सभी फ़ॉर्मैट",
   "gallery.filter.tag": "टैग",
   "gallery.tag.all": "सभी टैग",
-  "gallery.filter.language": "भाषा",
-  "gallery.language.all": "सभी भाषाएँ",
   "gallery.loading": "filee.sh से प्रीसेट लोड हो रहे हैं…",
   "gallery.failed": "filee.sh से कनेक्ट नहीं हो सका। इंटरनेट कनेक्शन और सेटिंग्स → सामान्य में प्रॉक्सी जाँचें, फिर दोबारा कोशिश करें।",
   "gallery.empty": "खोज और फ़िल्टर से मेल खाने वाला कोई प्रीसेट नहीं है।",
@@ -1937,5 +1935,7 @@
   "gallery.export_saved": "सहेज लिया गया।",
   "gallery.export_submit": "सबमिशन फ़ॉर्म खोलें",
   "gallery.export_none": "कम से कम एक प्रीसेट चुनें या एक डोनट टूलबार चुनें।",
-  "gallery.export_warnings": "गैलरी ये चेतावनियाँ दिखाएगी:"
+  "gallery.export_warnings": "गैलरी ये चेतावनियाँ दिखाएगी:",
+  "gallery.only_my_language": "सिर्फ़ मेरी भाषा में",
+  "gallery.written_in": "{0} में लिखा गया"
 }

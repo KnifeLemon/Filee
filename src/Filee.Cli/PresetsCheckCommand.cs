@@ -72,6 +72,7 @@ internal static class PresetsCheckCommand
             json.WriteNumber("presets", derived.Presets);
             json.WriteNumber("profiles", derived.Profiles);
             json.WriteString("sha256", derived.Sha256);
+            WriteList(json, "languages", derived.Languages);
             json.WriteStartArray("warnings");
             foreach (var warning in derived.Warnings)
             {

@@ -1873,8 +1873,6 @@
   "gallery.format.all": "Tüm biçimler",
   "gallery.filter.tag": "Etiket",
   "gallery.tag.all": "Tüm etiketler",
-  "gallery.filter.language": "Dil",
-  "gallery.language.all": "Tüm diller",
   "gallery.loading": "Ön ayarlar filee.sh'den yükleniyor…",
   "gallery.failed": "filee.sh'ye ulaşılamadı. İnternet bağlantısını ve Ayarlar → Genel'deki proxy'yi kontrol edip yeniden deneyin.",
   "gallery.empty": "Aramaya ve filtrelere uyan ön ayar yok.",
@@ -1935,5 +1933,7 @@
   "gallery.export_saved": "Kaydedildi.",
   "gallery.export_submit": "Gönderim formunu aç",
   "gallery.export_none": "En az bir ön ayar işaretleyin veya bir halka araç çubuğu seçin.",
-  "gallery.export_warnings": "Galeri şu uyarıları gösterecek:"
+  "gallery.export_warnings": "Galeri şu uyarıları gösterecek:",
+  "gallery.only_my_language": "Yalnızca benim dilimde",
+  "gallery.written_in": "Dil: {0}"
 }

@@ -364,6 +364,7 @@ internal static class SharedPresetRules
     public static readonly ObjectRule BundleFields = Obj(
         ("schemaVersion", new IntRule(1, 1)),
         ("settingsSchema", new IntRule(1, Settings.AppSettings.CurrentSchemaVersion) { Nullable = true }),
+        ("language", new StringRule(16, code => SharedPresetFolderCheck.Languages.Contains(code) ? null : "is not a language of Filee's") { Nullable = true }),
         ("presets", new ListRule(PresetFields, MaxPresets)),
         ("profiles", new ListRule(ProfileFields, MaxProfiles)));
 

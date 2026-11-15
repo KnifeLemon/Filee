@@ -32,6 +32,12 @@ public sealed record PresetCheckDerived(
 {
     /// <summary>The settings that touch the installer's files, most serious first (<see cref="SharedPresetWarnings"/>).</summary>
     public IReadOnlyList<PresetCheckWarning> Warnings { get; init; } = [];
+
+    /// <summary>
+    /// The languages the preset is written in, from meta.json: its main <c>language</c> first, then every language with
+    /// a title of its own (<c>titleByLang</c>); empty without meta.json.
+    /// </summary>
+    public IReadOnlyList<string> Languages { get; init; } = [];
 }
 
 /// <summary>

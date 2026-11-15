@@ -1895,8 +1895,6 @@
   "gallery.format.all": "Все форматы",
   "gallery.filter.tag": "Тег",
   "gallery.tag.all": "Все теги",
-  "gallery.filter.language": "Язык",
-  "gallery.language.all": "Все языки",
   "gallery.loading": "Загрузка пресетов с filee.sh…",
   "gallery.failed": "Не удалось подключиться к filee.sh. Проверьте подключение к интернету и прокси в разделе «Настройки → Общие» и повторите попытку.",
   "gallery.empty": "Нет пресетов, подходящих под поиск и фильтры.",
@@ -1957,5 +1955,7 @@
   "gallery.export_saved": "Сохранено.",
   "gallery.export_submit": "Открыть форму отправки",
   "gallery.export_none": "Отметьте хотя бы один пресет или выберите круговое меню.",
-  "gallery.export_warnings": "В галерее будут показаны такие предупреждения:"
+  "gallery.export_warnings": "В галерее будут показаны такие предупреждения:",
+  "gallery.only_my_language": "Только на моём языке",
+  "gallery.written_in": "Язык: {0}"
 }

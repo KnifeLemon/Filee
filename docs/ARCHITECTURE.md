@@ -635,7 +635,11 @@ them, it never uploads.
 - The app's `PresetGalleryWindow` (from the Presets page) reads `index.json` through `PresetGalleryClient`, only while
   it is open, with the proxy setting, time and size limits, and falls back to the repository on GitHub when filee.sh
   can't be reached. Paths in the index are relative to the URL it came from; Install uses the entry's counted
-  `download` link. Pictures are cached in the work folder's `gallery/` (64 MB, 30 days).
+  `download` link. Pictures are cached in the work folder's `gallery/` (64 MB, 30 days). A preset is written in one
+  main `language` and optionally more (`titleByLang`, `descriptionByLang`): the window shows the app language's texts
+  when the preset has them, else the main ones with a badge naming their language, lists the presets in the app's
+  language first and can hide the rest ("Only in my language"). Pictures follow the app language on their own
+  (`imagesByLang`).
 
 ## Platform code
 

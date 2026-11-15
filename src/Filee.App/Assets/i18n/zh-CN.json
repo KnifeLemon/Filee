@@ -1895,8 +1895,6 @@
   "gallery.format.all": "所有格式",
   "gallery.filter.tag": "标签",
   "gallery.tag.all": "所有标签",
-  "gallery.filter.language": "语言",
-  "gallery.language.all": "所有语言",
   "gallery.loading": "正在从 filee.sh 加载预设…",
   "gallery.failed": "无法连接 filee.sh。请检查网络连接以及 设置 → 常规 中的代理，然后重试。",
   "gallery.empty": "没有符合搜索和筛选条件的预设。",
@@ -1957,5 +1955,7 @@
   "gallery.export_saved": "已保存。",
   "gallery.export_submit": "打开提交表单",
   "gallery.export_none": "请至少勾选一个预设或选择一个环形工具栏。",
-  "gallery.export_warnings": "预设广场将显示以下提醒："
+  "gallery.export_warnings": "预设广场将显示以下提醒：",
+  "gallery.only_my_language": "只看我的语言",
+  "gallery.written_in": "使用{0}撰写"
 }

@@ -97,7 +97,7 @@ public sealed partial class GalleryExportViewModel : ObservableObject
             Status = _loc["gallery.export_none"];
             return;
         }
-        _file = GalleryExport.Build(_store.Presets, chosen, Donut.Value);
+        _file = GalleryExport.Build(_store.Presets, chosen, Donut.Value, _loc.Language);
         foreach (var error in _file.Check.Errors)
             Problems.Add(error.Path.Length == 0 ? error.Message : $"{error.Path}: {error.Message}");
         foreach (var warning in _file.Check.Derived?.Warnings ?? [])

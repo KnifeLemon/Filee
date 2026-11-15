@@ -127,6 +127,39 @@ public sealed class PresetGalleryIndexTests
     }
 
     [Fact]
+    public void Titles_and_descriptions_per_language_say_which_languages_a_preset_is_written_in()
+    {
+        var entry = Entry();
+        entry["language"] = "ko";
+        entry["title"] = "인스타그램용 JPG";
+        entry["titleByLang"] = new JsonObject { ["en"] = "Instagram-ready JPG", ["pt-BR"] = "JPG para Instagram", ["xx"] = "?" };
+        entry["descriptionByLang"] = new JsonObject { ["pt-BR"] = "Fotos menores." };
+        entry["languages"] = new JsonArray("ko", "en");
+        var read = Assert.Single(Parse(entry).Entries);
+
+        Assert.Equal("ko", read.Language);
+        Assert.Equal(["ko", "en", "pt-BR"], read.Languages);
+        Assert.Equal("인스타그램용 JPG", read.TitleIn("ko"));
+        Assert.Equal("Instagram-ready JPG", read.TitleIn("en"));
+        Assert.Equal("Resizes photos.", read.DescriptionIn("en")); // no English description: the main one
+        Assert.Equal("JPG para Instagram", read.TitleIn("pt-BR"));
+        Assert.Equal("Fotos menores.", read.DescriptionIn("pt-BR"));
+        Assert.False(read.Supports("pt-PT")); // no "pt" set to fall back to
+        Assert.False(read.Supports("ja"));
+        Assert.Null(read.DescriptionIn("ja"));
+        Assert.DoesNotContain("xx", read.TitleByLang.Keys);
+    }
+
+    [Fact]
+    public void An_index_from_before_language_takes_the_first_of_languages()
+    {
+        var read = Assert.Single(Parse(Entry()).Entries); // "languages": ["en", "ko"], no "language"
+        Assert.Equal("en", read.Language);
+        Assert.True(read.Supports("en"));
+        Assert.False(read.Supports("ko")); // listed, but without a title in Korean
+    }
+
+    [Fact]
     public void Stats_are_optional()
     {
         var bare = Entry();

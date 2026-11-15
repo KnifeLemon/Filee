@@ -1874,8 +1874,6 @@
   "gallery.format.all": "كل الصيغ",
   "gallery.filter.tag": "الوسم",
   "gallery.tag.all": "كل الوسوم",
-  "gallery.filter.language": "اللغة",
-  "gallery.language.all": "كل اللغات",
   "gallery.loading": "جارٍ تحميل الإعدادات المسبقة من filee.sh…",
   "gallery.failed": "تعذّر الوصول إلى filee.sh. تحقّق من الاتصال بالإنترنت ومن الوكيل في الإعدادات ← عام، ثم أعد المحاولة.",
   "gallery.empty": "لا يوجد إعداد مسبق يطابق البحث وعوامل التصفية.",
@@ -1936,5 +1934,7 @@
   "gallery.export_saved": "تم الحفظ.",
   "gallery.export_submit": "فتح نموذج الإرسال",
   "gallery.export_none": "حدّد إعدادًا مسبقًا واحدًا على الأقل أو اختر شريطًا دائريًا.",
-  "gallery.export_warnings": "سيعرض المعرض هذه التحذيرات:"
+  "gallery.export_warnings": "سيعرض المعرض هذه التحذيرات:",
+  "gallery.only_my_language": "بلغتي فقط",
+  "gallery.written_in": "مكتوب بـ {0}"
 }

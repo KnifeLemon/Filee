@@ -1871,8 +1871,6 @@
   "gallery.format.all": "সব ফরম্যাট",
   "gallery.filter.tag": "ট্যাগ",
   "gallery.tag.all": "সব ট্যাগ",
-  "gallery.filter.language": "ভাষা",
-  "gallery.language.all": "সব ভাষা",
   "gallery.loading": "filee.sh থেকে প্রিসেট লোড হচ্ছে…",
   "gallery.failed": "filee.sh-এ সংযোগ করা যায়নি। ইন্টারনেট সংযোগ এবং সেটিংস → সাধারণ-এর প্রক্সি পরীক্ষা করে আবার চেষ্টা করুন।",
   "gallery.empty": "অনুসন্ধান ও ফিল্টারের সঙ্গে মেলে এমন কোনো প্রিসেট নেই।",
@@ -1933,5 +1931,7 @@
   "gallery.export_saved": "সেভ হয়েছে।",
   "gallery.export_submit": "জমা দেওয়ার ফর্ম খুলুন",
   "gallery.export_none": "অন্তত একটি প্রিসেটে টিক দিন বা একটি ডোনাট টুলবার বেছে নিন।",
-  "gallery.export_warnings": "গ্যালারি এই সতর্কবার্তাগুলো দেখাবে:"
+  "gallery.export_warnings": "গ্যালারি এই সতর্কবার্তাগুলো দেখাবে:",
+  "gallery.only_my_language": "শুধু আমার ভাষায়",
+  "gallery.written_in": "{0}-এ লেখা"
 }

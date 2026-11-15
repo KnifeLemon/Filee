@@ -1895,8 +1895,6 @@
   "gallery.format.all": "All formats",
   "gallery.filter.tag": "Tag",
   "gallery.tag.all": "All tags",
-  "gallery.filter.language": "Language",
-  "gallery.language.all": "All languages",
   "gallery.loading": "Loading presets from filee.sh…",
   "gallery.failed": "Couldn't reach filee.sh. Check the internet connection and the proxy in Settings → General, then try again.",
   "gallery.empty": "No preset matches the search and filters.",
@@ -1957,5 +1955,7 @@
   "gallery.export_saved": "Saved.",
   "gallery.export_submit": "Open the submission form",
   "gallery.export_none": "Tick at least one preset or choose a donut.",
-  "gallery.export_warnings": "The gallery will show these warnings:"
+  "gallery.export_warnings": "The gallery will show these warnings:",
+  "gallery.only_my_language": "Only in my language",
+  "gallery.written_in": "Written in {0}"
 }

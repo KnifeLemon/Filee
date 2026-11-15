@@ -1871,8 +1871,6 @@
   "gallery.format.all": "Бүх формат",
   "gallery.filter.tag": "Шошго",
   "gallery.tag.all": "Бүх шошго",
-  "gallery.filter.language": "Хэл",
-  "gallery.language.all": "Бүх хэл",
   "gallery.loading": "filee.sh-ээс урьдчилсан тохиргоонуудыг ачаалж байна…",
   "gallery.failed": "filee.sh-тэй холбогдож чадсангүй. Интернэт холболт болон Тохиргоо → Ерөнхий хэсгийн проксиг шалгаад дахин оролдоно уу.",
   "gallery.empty": "Хайлт болон шүүлтүүрт тохирох урьдчилсан тохиргоо алга.",
@@ -1933,5 +1931,7 @@
   "gallery.export_saved": "Хадгаллаа.",
   "gallery.export_submit": "Илгээх маягтыг нээх",
   "gallery.export_none": "Дор хаяж нэг урьдчилсан тохиргоо чагтлах эсвэл цагираг самбар сонгоно уу.",
-  "gallery.export_warnings": "Цомог дараах сануулгуудыг харуулна:"
+  "gallery.export_warnings": "Цомог дараах сануулгуудыг харуулна:",
+  "gallery.only_my_language": "Зөвхөн миний хэлээр",
+  "gallery.written_in": "Хэл: {0}"
 }

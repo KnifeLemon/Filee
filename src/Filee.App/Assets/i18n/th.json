@@ -1875,8 +1875,6 @@
   "gallery.format.all": "ทุกฟอร์แมต",
   "gallery.filter.tag": "แท็ก",
   "gallery.tag.all": "ทุกแท็ก",
-  "gallery.filter.language": "ภาษา",
-  "gallery.language.all": "ทุกภาษา",
   "gallery.loading": "กำลังโหลดพรีเซ็ตจาก filee.sh…",
   "gallery.failed": "เชื่อมต่อ filee.sh ไม่ได้ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตและพร็อกซีใน การตั้งค่า → ทั่วไป แล้วลองอีกครั้ง",
   "gallery.empty": "ไม่มีพรีเซ็ตที่ตรงกับการค้นหาและตัวกรอง",
@@ -1937,5 +1935,7 @@
   "gallery.export_saved": "บันทึกแล้ว",
   "gallery.export_submit": "เปิดแบบฟอร์มส่ง",
   "gallery.export_none": "เลือกพรีเซ็ตอย่างน้อยหนึ่งรายการหรือเลือกแถบโดนัท",
-  "gallery.export_warnings": "แกลเลอรีจะแสดงคำเตือนต่อไปนี้:"
+  "gallery.export_warnings": "แกลเลอรีจะแสดงคำเตือนต่อไปนี้:",
+  "gallery.only_my_language": "เฉพาะภาษาของฉัน",
+  "gallery.written_in": "เขียนเป็นภาษา {0}"
 }

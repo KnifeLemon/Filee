@@ -183,6 +183,11 @@ public sealed class PresetGalleryInstallTests : IDisposable
         Assert.True(file.Check.Ok, string.Join("\n", file.Check.Errors));
         Assert.Equal(turn.SubPresetIds.Append(turn.Id).Append("to-jpg").ToHashSet(), file.Presets.Select(p => p.Id).ToHashSet());
         Assert.Contains("toolbar", file.Check.Derived!.Kinds);
+        Assert.Null(file.Check.Bundle!.Language);
+        var korean = GalleryExport.Build(_store.Presets, [turn], null, "ko");
+        Assert.True(korean.Check.Ok, string.Join("\n", korean.Check.Errors));
+        Assert.Equal("ko", korean.Check.Bundle!.Language);
+        Assert.Null(GalleryExport.Build(_store.Presets, [turn], null, "xx").Check.Bundle!.Language);
 
         var own = _store.FindPreset("to-png")!.Clone();
         own.Output.Location = OutputLocation.CustomFolder;
