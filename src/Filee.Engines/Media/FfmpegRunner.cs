@@ -5,6 +5,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using Filee.Core.Platform;
 using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Media;
@@ -40,14 +41,29 @@ internal static class FfmpegRunner
         // A run that reports the time of each picture (MediaEncoding.FrameProgress) writes -progress only to show it is
         // working while no picture is kept, and its out_time is wrong there.
         var byFrame = arguments.Any(a => a.StartsWith(FrameTimeKey + "=", StringComparison.Ordinal));
-        if (byFrame && WithoutFrameStats(arguments) is { } older
-            && CopyVersions.Installed("ffmpeg", Path.GetDirectoryName(ffmpeg) ?? "") is { Major: < 6 })
+        var version = CopyVersions.Installed("ffmpeg", Path.GetDirectoryName(ffmpeg) ?? "");
+        if (byFrame && WithoutFrameStats(arguments) is { } older && version is { Major: < 6 })
         {
             // FFmpeg before 6.0 has no -stats_enc_pre and would refuse the run: it reports its own -progress instead,
             // which falls short of the end with -copyts.
             arguments = older;
             byFrame = false;
         }
+        arguments = GraphInFile(arguments, version, out var graphFile);
+        try
+        {
+            return await RunProcessAsync(ffmpeg, arguments, onPosition, byFrame, stallTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (graphFile is not null)
+                TryDelete(graphFile);
+        }
+    }
+
+    private static async Task<ProcessResult> RunProcessAsync(string ffmpeg, IReadOnlyList<string> arguments, Action<double>? onPosition, bool byFrame,
+        TimeSpan? stallTimeout, CancellationToken cancellationToken)
+    {
         var psi = new ProcessStartInfo(ffmpeg)
         {
             UseShellExecute = false,
@@ -180,6 +196,50 @@ internal static class FfmpegRunner
                 ? seconds
                 : null;
         return null;
+    }
+
+    /// <summary>
+    /// A filter graph longer than this goes into a file: Windows limits a whole command line to 32,767 characters, and
+    /// every part of an edit, every clip of a merge adds a chain to the graph.
+    /// </summary>
+    internal const int MaxInlineGraph = 8000;
+
+    /// <summary>
+    /// <paramref name="arguments"/> with a long <c>-filter_complex</c> in a file (<paramref name="file"/>, deleted by
+    /// the caller after the run): <c>-/filter_complex</c> from FFmpeg 7.0 (and an unknown one),
+    /// <c>-filter_complex_script</c> before, which has no <c>-/</c>. A <c>-/filter_complex</c> already given (Merge
+    /// videos) becomes the older option there too.
+    /// </summary>
+    internal static IReadOnlyList<string> GraphInFile(IReadOnlyList<string> arguments, Version? version, out string? file)
+    {
+        file = null;
+        var older = version is { Major: < 7 };
+        List<string> changed = [.. arguments];
+        for (var i = 0; i + 1 < changed.Count; i++)
+        {
+            if (changed[i] == "-/filter_complex" && older)
+                changed[i] = "-filter_complex_script";
+            else if (changed[i] == "-filter_complex" && changed[i + 1].Length > MaxInlineGraph && file is null)
+            {
+                var folder = Path.Combine(WorkFolders.Root, "graphs");
+                Directory.CreateDirectory(folder);
+                file = Path.Combine(folder, $"graph-{Guid.NewGuid():N}.txt");
+                File.WriteAllText(file, changed[i + 1]);
+                (changed[i], changed[i + 1]) = (older ? "-filter_complex_script" : "-/filter_complex", file);
+            }
+        }
+        return changed;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>

@@ -288,7 +288,7 @@ internal static partial class MediaEncoding
         // A clip: read from the key frame found before its start (KeyFrames), its first frame time 0, and cut at both
         // ends by trims, sound and picture alike, so its first and last frames are exact.
         var seek = clip is { } range ? clipSeek ?? SeekPoint.Plain(range.Start) : (SeekPoint?)null;
-        var cut = clip is { } part && seek is { } at ? at.VideoTrim(part.Start, part.End) + "," : "";
+        var cut = clip is { } part && seek is { } at ? at.VideoTrim(part.Start, part.End) + at.ToZero + "," : "";
         List<string> args = [.. Common, .. seek?.EncodeInput ?? [], "-i", input, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
@@ -417,8 +417,12 @@ internal static partial class MediaEncoding
     {
         // A copy keeps what lies between the key frame and -ss, so a clip shorter than the 3/23 s -ss lies past the key
         // frame ends there (FFmpeg refuses an end before -ss, and the clip was encoded instead).
-        var end = Math.Max(clip.End, seek.CopyFrom + 0.00001);
-        var (args, spec) = CopyStreams(input, target, [.. SeekTo(seek.CopyFrom), "-to", ClipRange.Ffmpeg(end)], options, info);
+        var end = seek.CopyTo ?? Math.Max(clip.End, seek.CopyFrom + 0.00001);
+        // Where no -ss lands it on the key frame (a WMV's index): read from the start, kept from the key frame on.
+        var (args, spec) = CopyStreams(input, target, [.. seek.CopyAfter is null ? SeekTo(seek.CopyFrom) : [], "-to", ClipRange.Ffmpeg(end)],
+            options, info);
+        if (seek.CopyAfter is { } after)
+            args.InsertRange(args.IndexOf("-i") + 2, ["-ss", ClipRange.Ffmpeg(after)]);
         args.AddRange(ContainerArguments(target));
         args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;
@@ -892,7 +896,7 @@ internal static partial class MediaEncoding
         var ringtone = RingtoneRange(target, options, info);
         List<string> args = [.. Common];
         if (ringtone is { } part)
-            args.AddRange(["-ss", ClipRange.Ffmpeg(part.Start)]);
+            args.AddRange(SeekTo(part.Start));
         args.AddRange(["-i", input]);
         // Ogg: the tags, and the picture as a comment, come from a metadata file (input 1) instead of the source.
         if (extras?.MetadataFile is { } metadata)

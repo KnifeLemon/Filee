@@ -497,7 +497,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             {
                 try
                 {
-                    var copy = new FfmpegPass(MediaEncoding.ClipCopy(input, output, step.To, clip, seek, media, info), 1);
+                    var start = await KeyFrames.CopyEndAsync(ffprobe, input,
+                        await KeyFrames.CopyStartAsync(ffmpeg, ffprobe, input, seek, cancellationToken), clip.End, cancellationToken);
+                    var copy = new FfmpegPass(MediaEncoding.ClipCopy(input, output, step.To, clip, start, media, info), 1);
                     await RunPassesAsync(ffmpeg, [copy], output, duration, progress, cancellationToken);
                     progress?.Report(1);
                     return [output];

@@ -79,7 +79,11 @@ internal sealed record SubtitleStreamInfo(int Index, string? Codec, string? Lang
 /// <summary>An audio stream of a file.</summary>
 /// <param name="Codec">FFmpeg's codec name (<c>aac</c>, <c>opus</c>, …), null when unknown.</param>
 /// <param name="Ordinal">The audio track number in the file, including undecodable tracks (for <c>-map 0:a:Ordinal</c>).</param>
-internal sealed record AudioStreamInfo(int Channels, int SampleRate, string? Codec = null, int Ordinal = 0);
+/// <param name="End">
+/// Where the sound ends, in seconds from the file's start (its start time and length, or Matroska's track
+/// <c>DURATION</c>); null when the file doesn't say.
+/// </param>
+internal sealed record AudioStreamInfo(int Channels, int SampleRate, string? Codec = null, int Ordinal = 0, double? End = null);
 
 /// <summary>Summary of a media file.</summary>
 /// <param name="Duration">Playing time, null when the container does not say (raw streams).</param>
@@ -159,6 +163,7 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
         List<AudioStreamInfo> undecodable = [];
         var audioOrdinal = 0;
         var attachments = false;
+        var fileStart = root.TryGetProperty("format", out var head) ? Number(head, "start_time") : 0;
         double longestStream = 0;
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -186,7 +191,7 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
                         break;
                     case "audio":
                         var sound = new AudioStreamInfo((int)Number(stream, "channels"), (int)Number(stream, "sample_rate"),
-                            Text(stream, "codec_name"), audioOrdinal++);
+                            Text(stream, "codec_name"), audioOrdinal++, SoundEnd(stream, fileStart));
                         if (decodable is null || sound.Codec is { } name && decodable.Contains(name))
                             audios.Add(sound);
                         else
@@ -255,6 +260,19 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     /// <summary>ffprobe writes most numbers as strings ("2.000000"), some as JSON numbers.</summary>
+    /// <summary>
+    /// Where an audio stream ends, in seconds from the file's start (<paramref name="fileStart"/>): its start time and
+    /// length, or Matroska's track <c>DURATION</c> tag (00:00:02.200000000); null when neither is there.
+    /// </summary>
+    private static double? SoundEnd(JsonElement stream, double fileStart)
+    {
+        var length = Number(stream, "duration");
+        if (length <= 0 && stream.TryGetProperty("tags", out var tags) && Text(tags, "DURATION") is { } tag
+            && TimeSpan.TryParse(tag.Length > 16 ? tag[..16] : tag, CultureInfo.InvariantCulture, out var span))
+            length = span.TotalSeconds;
+        return length > 0 ? Number(stream, "start_time") + length - fileStart : null;
+    }
+
     private static double Number(JsonElement element, string name)
     {
         if (!element.TryGetProperty(name, out var value))

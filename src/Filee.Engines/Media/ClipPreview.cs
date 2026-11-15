@@ -180,7 +180,7 @@ public static partial class ClipPreview
     {
         var musicTrack = clip.Music is { } song
             ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken).ConfigureAwait(false) : 0;
-        return MediaEncoding.ClipPreviewAudio(input, clip, video, audio is not null, audio?.Ordinal ?? 0, musicTrack, seek);
+        return MediaEncoding.ClipPreviewAudio(input, clip, video, audio is not null, audio?.Ordinal ?? 0, musicTrack, seek, audio?.End);
     }
 
     /// <summary>
@@ -266,7 +266,8 @@ public static partial class ClipPreview
     /// <param name="audioTrack">The selected audio track's ordinal in the input file.</param>
     internal static List<string> SilenceArguments(string input, double start, double end, int audioTrack = 0) =>
     [
-        "-hide_banner", "-nostdin", "-nostats", "-v", "info", "-ss", ClipRange.Ffmpeg(start), "-to", ClipRange.Ffmpeg(end), "-i", input,
+        // No -ss at 0: FFmpeg's seek there drops an AAC file's first 1,024 samples a second time.
+        "-hide_banner", "-nostdin", "-nostats", "-v", "info", .. MediaEncoding.SeekTo(start), "-to", ClipRange.Ffmpeg(end), "-i", input,
         "-map", $"0:a:{audioTrack}", "-af", $"silencedetect=noise={SilenceThreshold.ToString(CultureInfo.InvariantCulture)}dB:d={ClipCutter.MinSilence.ToString(CultureInfo.InvariantCulture)}",
         "-f", "null", "-",
     ];
@@ -337,6 +338,8 @@ public static partial class ClipPreview
 
     private static Process Start(string executable, IReadOnlyList<string> arguments, bool stdin)
     {
+        // A long edit's graph goes into a file (FfmpegRunner.GraphInFile), deleted once the process has gone.
+        arguments = FfmpegRunner.GraphInFile(arguments, CopyVersions.Installed("ffmpeg", Path.GetDirectoryName(executable) ?? ""), out var graph);
         var psi = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
@@ -348,9 +351,25 @@ public static partial class ClipPreview
         };
         foreach (var argument in arguments)
             psi.ArgumentList.Add(argument);
-        var process = new Process { StartInfo = psi };
+        var process = new Process { StartInfo = psi, EnableRaisingEvents = graph is not null };
+        void Forget()
+        {
+            try
+            {
+                if (graph is not null)
+                    File.Delete(graph);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+        if (graph is not null)
+            process.Exited += (_, _) => Forget();
         if (!process.Start())
+        {
+            Forget();
             throw new InvalidOperationException($"Could not start {executable}.");
+        }
         // Nobody reads the messages: drained, so a chatty process never blocks on a full pipe.
         process.ErrorDataReceived += (_, _) => { };
         process.BeginErrorReadLine();

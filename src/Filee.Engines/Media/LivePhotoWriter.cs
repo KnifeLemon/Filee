@@ -159,7 +159,7 @@ internal static class LivePhotoWriter
             .. MediaEncoding.Common, .. seek.EncodeInput, "-i", input, "-map", "0:V:0",
             .. audio is null ? Array.Empty<string>() : ["-map", $"0:a:{audio.Ordinal}", "-af", $"atrim=start={seek.Clip(clip.Start)}"],
             "-t", Seconds(clip.Length),
-            "-vf", $"{seek.VideoTrim(clip.Start)},{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
+            "-vf", $"{seek.VideoTrim(clip.Start)}{seek.ToZero},{FirstFrame(video)}{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
         ];
         var crf = Choose(options.Quality, encoder == "libx265" ? [22, 26, 30] : [18, 23, 28]);
         args.AddRange(encoder == "libx265"
@@ -193,10 +193,19 @@ internal static class LivePhotoWriter
         return
         [
             .. MediaEncoding.Common, .. seek.EncodeInput, "-i", input, "-map", "0:V:0",
-            "-vf", $"{seek.VideoTrim(start)},{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
+            "-vf", $"{seek.VideoTrim(start)}{seek.ToZero},{FirstFrame(video)}{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
             "-frames:v", "1", "-fps_mode", "passthrough", "-update", "1", "-c:v", "png", "-f", "image2", "-progress", "pipe:1", output,
         ];
     }
+
+    /// <summary>
+    /// The first frame of a video faster than 30 fps put far enough into its picture that fps keeps it
+    /// (<see cref="MediaEncoding.FirstFrameInto"/>): the frame after it, within half a picture, replaced it. In
+    /// microseconds, as an AVI's whole-frame ticks would cut the move short. Nothing for 30 fps or slower.
+    /// </summary>
+    private static string FirstFrame(VideoStreamInfo video) => MediaEncoding.FirstFrameInto(video.FrameRate, 1, Fps) is var into and > 0
+        ? $"settb=AVTB,setpts=PTS+{into.ToString("0.###", CultureInfo.InvariantCulture)}/({Fps}*TB),"
+        : "";
 
     /// <summary>
     /// The paths of an iPhone pair: the photo where the output rules put it, and the MOV next to it with the same name.

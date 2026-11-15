@@ -180,8 +180,9 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var a = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, first, TestContext.Current.CancellationToken);
         var b = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, second, TestContext.Current.CancellationToken);
         Assert.Equal(a.Video, b.Video);
-        Assert.Equal(new AudioStreamInfo(2, 48000, "aac", 1), a.Audio);
-        Assert.Equal(new AudioStreamInfo(2, 48000, "aac", 0), b.Audio);
+        // The tracks, whatever their encoder made of their ends.
+        Assert.Equal(new AudioStreamInfo(2, 48000, "aac", 1), a.Audio! with { End = null });
+        Assert.Equal(new AudioStreamInfo(2, 48000, "aac", 0), b.Audio! with { End = null });
 
         var output = await RunAsync([first, second], BuiltIn("merge-videos"));
         var duration = await ProcessRunner.RunAsync(Tools.Value.Ffprobe,
