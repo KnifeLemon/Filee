@@ -181,6 +181,12 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // FFmpeg rounds the move 1.00135 s to 90121.5 ticks, and up (in doubles, 90121.49999…): the frame at tick
         // 90122, the first at or after 1.001351 s, is tick 0 once moved, and kept.
         Assert.Equal("trim=start_pts=0", new SeekPoint(0, 0, 0, 1.001351, (1, 90000)).VideoTrim(1.001351));
+        // A TS whose clock wraps 2.5 s in, so its own times start at -2.5 s: 1 s in is moved forward, by 1.500001 s,
+        // which FFmpeg rounds to -135000 ticks (halves away from 0 either way); 2 s in is then tick 90000.
+        var wrapped = new SeekPoint(0, -2.5, 0, 1, (1, 90000));
+        Assert.Equal("-1.500001", wrapped.Time(1));
+        Assert.Equal(["-copyts", "-noaccurate_seek", "-itsoffset", "1.500001"], wrapped.EncodeInput);
+        Assert.Equal("trim=start_pts=0:end_pts=90000", wrapped.VideoTrim(1, 2));
         // Without the file's start time, as Filee seeked before: straight to the time, counting from there.
         var plain = SeekPoint.Plain(61.25);
         Assert.Equal(["-ss", "61.250000"], plain.Input);
