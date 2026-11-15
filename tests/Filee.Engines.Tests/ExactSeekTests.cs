@@ -389,6 +389,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
             "-pix_fmt", "yuv420p"]),
         "opengop.ts" => ("30", "128x32", ["-c:v", "libx265", "-x265-params", "log-level=error:keyint=45", "-pix_fmt", "yuv420p", "-f", "mpegts"]),
         "bframes.avi" => ("30", "128x32", ["-c:v", "mpeg4", "-bf", "2", "-g", "32", "-q:v", "3"]),
+        "sound.avi" => ("30", "128x32", ["-c:v", "mpeg4", "-bf", "2", "-g", "32", "-q:v", "3", "-c:a", "pcm_s16le"]),
         "bframes.mkv" => ("30", "128x32", ["-c:v", "libx264", "-g", "32", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p"]),
         // B-frames decoded 2/15 s before they are shown, longer than FFmpeg's 3/23 s margin.
         "15fps.ts" => ("15", "128x32", ["-c:v", "libx264", "-g", "30", "-x264-params", "scenecut=0", "-pix_fmt", "yuv420p", "-f", "mpegts"]),
@@ -432,7 +433,7 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var (rate, size, codec) = VideoOf(name);
         // With sound, an MPEG-TS file starts with it, and its frames are shown at times that aren't round.
-        return await NumberedAsync(name, rate, seconds, codec, beepFrame: name is "soundfirst.ts" or "sound.wmv" ? 50 : null, tone: name == "sound.flv",
+        return await NumberedAsync(name, rate, seconds, codec, beepFrame: name is "soundfirst.ts" or "sound.wmv" or "sound.avi" ? 50 : null, tone: name == "sound.flv",
             size: size);
     }
 
@@ -640,6 +641,41 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var numbers = (await FramesAsync(clip)).Select(f => f.Number).ToList();
         Assert.Equal(Enumerable.Range(key, numbers.Count), numbers);
         Assert.InRange(numbers[^1], end - 1, end + 5);
+    }
+
+    [Fact]
+    public async Task A_copy_of_an_avi_with_b_frames_keeps_its_packets_to_just_before_a_key_or_p_frame()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in ffprobe is a Unix script.");
+        // An AVI gives its B-frames a time to be shown at, their decode time, and its key and P-frames none. FFmpeg's
+        // end stops only at a frame that has one: it kept the P-frame decoded at 2.2333 s, shown at 2.3333 s, and left
+        // out the B-frames shown before it (on the battery's AVI: 63, 66). The copy keeps the packets from its key
+        // frame (1.0333 s) to just before the second P-frame from the end (2.1333 s) on, 36 of them, and its sound
+        // to there.
+        List<string> packets = [];
+        for (var k = 31; k <= 75; k++)
+        {
+            var t = (k / 30.0).ToString("0.000000", CultureInfo.InvariantCulture);
+            packets.Add(k % 3 == 1 ? $$"""{"dts_time":"{{t}}","flags":"{{(k == 31 ? "K__" : "___")}}"}""" : $$"""{"pts_time":"{{t}}","dts_time":"{{t}}","flags":"___"}""");
+        }
+        var ffprobe = StandIn("ffprobe", $$$"""
+            #!/bin/sh
+            case "$*" in
+            *-read_intervals*) echo '{"packets":[{{{string.Join(",", packets)}}}]}';;
+            *) echo '{"streams":[{"codec_type":"video","has_b_frames":1,"time_base":"1/30"}],"format":{"format_name":"avi","start_time":"0.000000"}}';;
+            esac
+
+            """);
+        var seek = new SeekPoint(1.0333 + KeyFrames.DtsHeuristic, 0, 1.2638, 1.1333, (1, 30), Key: 31 / 30.0, KeyShown: 34 / 30.0);
+
+        var end = await KeyFrames.CopyEndAsync(ffprobe, Path.Combine(fx.NewFolder(), "b.avi"), seek, 64 / 30.0, Ct);
+
+        Assert.Equal(67 / 30.0, end.CopyTo!.Value, 6);
+        Assert.Equal(36, end.CopyFrames);
+        var args = MediaEncoding.ClipCopy("b.avi", "out.avi", "avi", new ClipRange(1.1333, 64 / 30.0), end, new MediaOptions(),
+            new MediaInfo(TimeSpan.FromSeconds(4), new VideoStreamInfo(128, 32, 1, 0, 30, "mpeg4", "yuv420p"), new AudioStreamInfo(1, 48000, "pcm_s16le"), null));
+        Assert.Equal("36", args[args.IndexOf("-frames:v") + 1]);
+        Assert.Equal((67 / 30.0 - 0.0001).ToString("0.000000", CultureInfo.InvariantCulture), args[args.IndexOf("-to") + 1]);
     }
 
     [Fact]
