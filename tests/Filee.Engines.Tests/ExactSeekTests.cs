@@ -1170,6 +1170,59 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(["-read_intervals 9.500000%"], at);
     }
 
+    [Theory]
+    [InlineData("dhav", false)]
+    [InlineData("dvdvideo", false)]
+    [InlineData("mov,mp4,m4a,3gp,3g2,mj2", false)]
+    [InlineData("mxf", false)]
+    [InlineData("nut", false)]
+    [InlineData("matroska,webm", true)]
+    [InlineData("flv", true)]
+    public async Task Formats_sought_by_the_time_shown_have_no_margin_for_b_frames(string format, bool margin)
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in ffprobe is a Unix script.");
+        // Security cameras' DHAV and DVD-Video read as a disc seek by the time a key frame is shown, as MP4 does
+        // (AVFMT_SEEK_TO_PTS): from it. Elsewhere FFmpeg seeks 3/23 s early with B-frames, so -ss is that much later.
+        var ffprobe = StandIn("ffprobe", $$$"""
+            #!/bin/sh
+            case "$*" in
+            *-read_intervals*) echo '{"packets":[{"pts_time":"2.000000","dts_time":"1.900000","flags":"K__"}]}';;
+            *) echo '{"streams":[{"codec_type":"video","has_b_frames":1,"time_base":"1/90000"}],"format":{"format_name":"{{{format}}}","start_time":"0.000000"}}';;
+            esac
+
+            """);
+
+        var seek = await KeyFrames.FindAsync(ffprobe, Path.Combine(fx.NewFolder(), "video"), 2.5, Ct);
+
+        Assert.Equal(margin ? 2 + KeyFrames.DtsHeuristic : 2, seek.From, 6);
+    }
+
+    [Fact]
+    public async Task The_formats_of_more_than_64_files_are_forgotten_and_looked_at_again()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in ffprobe is a Unix script.");
+        // A queue of conversions goes through many files once each: what is kept is let go past 64 of them.
+        var folder = fx.NewFolder();
+        var calls = Path.Combine(folder, "calls.log");
+        var ffprobe = StandIn("ffprobe", $$$"""
+            #!/bin/sh
+            case "$*" in
+            *-read_intervals*) echo '{"packets":[{"pts_time":"1.000000","dts_time":"1.000000","flags":"K__"}]}';;
+            *) echo format >> '{{{calls}}}'; echo '{"streams":[{"codec_type":"video","has_b_frames":0,"time_base":"1/90000"}],"format":{"format_name":"mpegts","start_time":"0.000000"}}';;
+            esac
+
+            """);
+        var first = Path.Combine(folder, "first.ts");
+        await KeyFrames.FindAsync(ffprobe, first, 1.5, Ct);
+        for (var i = 0; i < 70; i++)
+            await KeyFrames.FindAsync(ffprobe, Path.Combine(folder, $"{i}.ts"), 1.5, Ct);
+        var before = (await File.ReadAllLinesAsync(calls, Ct)).Length;
+
+        await KeyFrames.FindAsync(ffprobe, first, 1.5, Ct);
+
+        Assert.Equal(before + 1, (await File.ReadAllLinesAsync(calls, Ct)).Length);
+    }
+
     [Fact]
     public async Task A_cover_picture_does_not_set_the_videos_ticks()
     {

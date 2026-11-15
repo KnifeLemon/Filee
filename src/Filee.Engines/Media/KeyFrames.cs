@@ -20,6 +20,14 @@
 // chapters stayed where they were. The picture is cut by trim in the stream's own ticks, moved as FFmpeg rounds the
 // move, and not moved by setpts, which drops frame durations in FFmpeg 7.0 to 8.0 (an MP4 clip lost its last frame).
 // FFmpeg's -progress counts from its first report with -copyts, so what is encoded reports each picture's time too.
+//
+// A copy keeps what FFmpeg's seek lands on, which each demuxer decides its own way: an MP4 lands on the last key frame
+// decoded by -ss (the next one, in an open group or a fragmented file), a WMV's index names one key frame a second. So
+// a copy's -ss is checked where FFmpeg's own copy lands, and its end, which FFmpeg cuts by decode time, is put where no
+// frame shown before the last one kept is missing. A key frame ffprobe gives no time to be shown at is shown no later
+// than the longest wait between decoding and showing seen near it, or, where nothing near it is shown at a time of its
+// own (AVI), as FFmpeg decodes it. A raw stream's times are FFmpeg's count from where it starts reading: it is read
+// from its start.
 
 using System.Collections.Concurrent;
 using System.ComponentModel;
@@ -225,7 +233,7 @@ internal static class KeyFrames
     /// <summary>The reach of the last look in each of those inputs that found a key frame, or found none.</summary>
     private static readonly ConcurrentDictionary<string, double> Reaches = new();
 
-    /// <summary>When those inputs' key frames without a time of their own are shown, as decoded (NaN: unknown).</summary>
+    /// <summary>When those inputs' key frames without a display time are shown, as decoded (NaN: unknown).</summary>
     private static readonly ConcurrentDictionary<string, double> Shown = new();
 
     /// <summary>
