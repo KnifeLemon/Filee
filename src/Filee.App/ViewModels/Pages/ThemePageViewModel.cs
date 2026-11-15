@@ -1,5 +1,5 @@
-// Theme: light/dark, accent colour, softness (corner radius), the donut's opacity, reduce animations, and the window
-// size (UiZoom). Changes apply live.
+// Theme: light/dark, accent colour, softness (corner radius), the donut's opacity, the system font, reduce animations,
+// and the window size (UiZoom). Changes apply live.
 
 using Avalonia;
 using Avalonia.Media;
@@ -47,6 +47,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
         DonutOpacity = Math.Round(Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1) * 100);
         DonutCaptions = store.Settings.Donut.ShowCaptions;
         ReduceMotion = theme.ReduceMotion ?? platform.PrefersReducedMotion;
+        UseSystemFont = theme.UseSystemFont;
         PreviewItems =
         [
             new DonutItem { Id = "a", Label = "PNG" },
@@ -107,10 +108,11 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     };
     [ObservableProperty] private double _cornerRadius;
     [ObservableProperty] private bool _reduceMotion;
+    [ObservableProperty] private bool _useSystemFont;
 
     /// <summary>
-    /// The donut toolbar's opacity in percent: the one setting Donut toolbar → Appearance → Opacity edits too (each
-    /// page reads it when it opens). The preview donut follows it at once, the toolbar the next time it opens.
+    /// The donut toolbar's opacity in percent: the one setting Donut toolbar → Edit Donut Size → Opacity edits too
+    /// (each page reads it when it opens). The preview donut follows it at once, the toolbar the next time it opens.
     /// </summary>
     [ObservableProperty] private double _donutOpacity;
 
@@ -146,6 +148,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        DonutLookSave.Flush();
         UiZoom.Changed -= OnZoomChanged;
         _loc.LanguageChanged -= OnLanguageChanged;
     }
@@ -245,13 +248,14 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     }
     partial void OnCornerRadiusChanged(double value) => Save(t => t.CornerRadius = Math.Round(value));
     partial void OnReduceMotionChanged(bool value) => Save(t => t.ReduceMotion = value);
+    partial void OnUseSystemFontChanged(bool value) => Save(t => t.UseSystemFont = value);
 
     partial void OnDonutOpacityChanged(double value)
     {
         if (_loading)
             return;
         _store.Settings.Donut.Opacity = Math.Round(value) / 100;
-        _store.SaveSettings();
+        DonutLookSave.Schedule(_store); // the donut reads it when it opens: nothing to apply again
     }
 
     private void Save(Action<ThemeSettings> change)

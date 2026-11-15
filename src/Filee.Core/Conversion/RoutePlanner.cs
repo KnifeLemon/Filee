@@ -182,6 +182,7 @@ public sealed class RoutePlanner
                 if (edge.To == edge.From || edge.FrameSequence || edge.MotionPhoto || edge.LivePhoto || edge.Ocr || edge.Translate || edge.Caption || edge.Upscale
                     || (edge.ImageSourcesOnly && !imageSource) || (edge.NotForImageSources && imageSource)
                     || (edge.Unshaped && shaping)
+                    || (edge.Sources is { } sources && !sources.Contains(from))
                     || (edge.DirectOnly && (node != from || edge.To != to)))
                     continue;
                 var next = cost + edgeCost;
@@ -215,6 +216,10 @@ public sealed class RoutePlanner
     public bool CanConvert(string from, string to, bool frames = false, bool motionPhoto = false, bool livePhoto = false, bool ocr = false, bool caption = false, bool translate = false,
         bool metadata = false, bool upscale = false) =>
         Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, metadata: metadata, upscale: upscale) is not null;
+
+    /// <summary>The engine <paramref name="converterId"/> is among those planned over, for work it does outside a route (PDF/A).</summary>
+    public bool Includes(string converterId) =>
+        _edgesFrom.Values.Any(edges => edges.Any(e => e.Converter.Id == converterId));
 
     /// <summary>
     /// The route for an envelope (<see cref="IEnvelopeOpener"/>): the cheapest edge from <paramref name="from"/> to the

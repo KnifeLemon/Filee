@@ -64,32 +64,33 @@ public static class FormatFields
         ]),
         (FormatGrade.General,
         [
-            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "svg", "svgz", "emf", "vsd", "odg",
+            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "exe", "svg", "svgz", "emf", "vsd", "odg", "canvas",
             "docm", "dotx", "dotm", "doc", "odt", "ott", "rtf", "wps", "ofd", "abw", "pages", "pub", "eml", "msg",
             "p7m", "xlsm", "xltx", "xls", "ods", "ots", "tsv", "et", "numbers", "pptm", "potx", "potm", "ppsx", "ppt",
             "odp", "otp", "key", "dps", "md", "html", "mhtml", "opml", "json", "xml", "vcf", "ics", "epub", "kepub",
             "azw3", "fb2", "cbz", "cbr", "cb7", "cbt", "cbc", "m4v", "mkv", "webm", "avi", "wmv", "mpg", "ts",
-            "m2ts", "ogv", "m4b", "aac", "flac", "ogg", "opus", "wma", "aiff", "weba", "mka", "qta", "7z", "rar",
-            "dmg", "iso", "img", "alz", "egg", "split", "dxf", "srt", "vtt", "smi", "lrc"
+            "m2ts", "ogv", "m4b", "m4r", "aac", "flac", "ogg", "opus", "wma", "aiff", "weba", "mka", "qta", "7z", "rar",
+            "dmg", "iso", "img", "alz", "egg", "split", "dxf", "srt", "vtt", "smi", "lrc",
+            "krc"
         ]),
         (FormatGrade.Specialist,
         [
             "jp2", "psd", "psb", "ppm", "icns", "qoi", "dds", "cur", "xpm", "xbm", "pam", "pfm", "miff", "dcm",
-            "exr", "hdr", "fits", "xcf", "kra", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg", "fodt",
-            "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
-            "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
+            "exr", "hdr", "fits", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg",
+            "fodt", "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
+            "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "nov", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
-            "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "mcpack", "mcaddon",
-            "mcworld", "mctemplate", "mrpack", "cab",
+            "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "zxp", "nupkg", "apks",
+            "aab", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "cab", "gerber",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
-            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit"
+            "stl", "obj", "3mf", "ply", "fbx", "gcode", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani", "vtf"
         ]),
         (FormatGrade.Legacy,
         [
             "mng", "pcx", "wbmp", "sgi", "ras", "pcd", "wmf", "dot", "wpd", "lwp", "sdw", "cwk", "mcw", "602", "psw",
             "xlt", "sdc", "sda", "mobi", "azw", "azw4", "prc", "lit", "lrf", "pdb", "pml", "rb", "snb", "tcr", "oeb",
             "flv", "3gp", "3g2", "vob", "mod", "rm", "swf", "wtv", "flc", "amr", "au", "voc", "mpc", "spx", "tz", "z",
-            "lha", "arj", "eot", "fon", "sub"
+            "lha", "arj", "eot", "fon", "sub", "s3m"
         ]),
     ]);
 
@@ -97,29 +98,31 @@ public static class FormatFields
     private static readonly Dictionary<string, FormatField[]> Overlaps = BuildOverlaps(
     [
         // Layout, print, photo post-production, signs and embroidery.
-        (["psd", "psb", "exr", "hdr", "xcf", "kra", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
+        (["psd", "psb", "exr", "hdr", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
         // Game textures and cutscenes, Minecraft packs and modpacks.
-        (["dds", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"], ["game"]),
+        (["dds", "vtf", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"], ["game"]),
         // Medical imaging and astronomy.
         (["dcm", "fits"], ["science"]),
         // Software work: raw image formats of graphics tools, app icons and cursors, config and data files, flat XML
         // ODF for version control, man pages, streaming segments, packages and compressed archives.
         ([
-            "ppm", "icns", "qoi", "cur", "xpm", "xbm", "pam", "pfm", "miff", "fodg", "fodt", "fods", "fodp", "man",
+            "ppm", "icns", "qoi", "cur", "ani", "xpm", "xbm", "pam", "pfm", "miff", "fodg", "fodt", "fods", "fodp", "man",
             "jsonl", "yaml", "toml", "har", "plist", "m4s", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz",
-            "lz", "lzma", "jar", "cab", "cpio", "deb", "rpm"
+            "lz", "lzma", "jar", "zxp", "nupkg", "apks", "aab", "cab", "cpio", "deb", "rpm"
         ], ["developer"]),
         // Markup sources, papers and outlines, maintenance-doc drawings (CGM), Calibre's ebook formats.
         (["cgm", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "textile", "htmlz", "txtz"], ["writing"]),
         // Broadcast and editing masters, broadcast audio and captions, fansub and delivery subtitles, CCTV and
         // raw streams.
         ([
-            "dv", "mxf", "cavs", "dav", "h265", "h264", "ac3", "mp2", "eac3", "dts", "ass", "ssa", "ttml", "scc"
+            "dv", "mxf", "cavs", "dav", "nov", "h265", "h264", "ac3", "mp2", "eac3", "dts", "ass", "ssa", "ttml", "scc"
         ], ["video-pro"]),
         // Lossless archiving and recorders.
         (["dss", "wv", "tta", "w64", "ape", "tak", "dsf", "dff"], ["audio-pro"]),
         // 3D printing exports from CAD designs (STL, 3MF) and CAD models handed to renderers (OBJ).
         (["stl", "obj", "3mf"], ["model3d", "cad"]),
+        // G-code: what slicers make for 3D printers and CAM programs for CNC machines.
+        (["gcode"], ["model3d", "cad"]),
         // JPEG 2000: digital cinema, archives and medical imaging.
         (["jp2"], ["design", "science"]),
         // Jupyter notebooks: development and data science.
@@ -139,8 +142,10 @@ public static class FormatFields
         (["pcd"], ["legacy", "design"]),
         // FLIC: Autodesk Animator's animations, also the cutscenes of DOS games.
         (["flc"], ["legacy", "game"]),
-        // Musepack.
-        (["mpc"], ["legacy", "audio-pro"]),
+        // Musepack, and Scream Tracker 3 modules, which Impulse Tracker's IT replaced.
+        (["mpc", "s3m"], ["legacy", "audio-pro"]),
+        // Tracker modules: made in trackers (MilkyTracker, OpenMPT) by musicians, also for game soundtracks.
+        (["xm", "it"], ["audio-pro", "game"]),
         // EOT gave way to WOFF, FON to TrueType.
         (["eot", "fon"], ["legacy", "font"]),
         // Alpha-channel image sequences in video and motion graphics, as well as game textures.

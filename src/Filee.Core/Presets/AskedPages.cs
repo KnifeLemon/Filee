@@ -18,18 +18,19 @@ public static class AskedPages
     public static bool IsPdf(string path) => FormatRegistry.Detect(path)?.Id == "pdf";
 
     /// <summary>
-    /// The window offers one PDF or one file per page: the result is a PDF made from the pages themselves (not text
-    /// recognized into a new one, not several pages to a sheet).
+    /// The window offers one PDF, one file per page or several pages per file: the result is a PDF made from the pages
+    /// themselves (not text recognized into a new one, not several pages to a sheet).
     /// </summary>
     public static bool OffersSplit(Preset preset) =>
         preset.TargetFormat == "pdf" && !preset.RecognizesTextOf("pdf") && !preset.Pdf.MakesSheets;
 
     /// <summary>
     /// The preset as it runs for one PDF: the <paramref name="range"/> the user typed (checked by
-    /// <see cref="Conversion.PageRange.Check"/>), one file per page or one PDF where <see cref="OffersSplit"/>, and no
+    /// <see cref="Conversion.PageRange.Check"/>), one PDF or split where <see cref="OffersSplit"/> (one page per file,
+    /// or <paramref name="splitEvery"/> pages per file, or <paramref name="splitParts"/> equal parts, #1259), and no
     /// asking again (a retry from history converts the same pages). A copy; the saved preset is left alone.
     /// </summary>
-    public static Preset Apply(Preset preset, string range, bool splitPages)
+    public static Preset Apply(Preset preset, string range, bool splitPages, int splitEvery = 0, int splitParts = 0)
     {
         var copy = preset.Clone();
         copy.Pdf.PageRange = range.Trim();
@@ -37,6 +38,9 @@ public static class AskedPages
         if (OffersSplit(preset))
         {
             copy.Pdf.SplitPages = splitPages;
+            // One PDF keeps the preset's numbers, unused, for the next window to start with.
+            if (splitPages)
+                (copy.Pdf.SplitEvery, copy.Pdf.SplitParts) = (splitEvery, splitParts);
             // One PDF needs no folder of its own: the subfolder (Split PDF's "{name}") is for the pages.
             if (!splitPages && copy.Output.Location == OutputLocation.Subfolder)
                 copy.Output.SubfolderOnlyForSeveralFiles = true;

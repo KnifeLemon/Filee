@@ -261,10 +261,29 @@ public sealed partial class JobQueue : IAsyncDisposable
             await finisher.FinishAsync(pdf, preset.Pdf, ct);
     }
 
+    /// <summary>
+    /// Makes the PDFs among <paramref name="outputs"/> PDF/A when the preset asks for it (<see cref="DocumentOptions.PdfA"/>),
+    /// after the finishing, which would undo it. Without Ghostscript they stay as they are and the file says so, rather
+    /// than pass for PDF/A.
+    /// </summary>
+    /// <param name="changed">Rewritten since the engine wrote it: a PDF/A from LibreOffice no longer is one.</param>
+    private async Task ArchivePdfsAsync(Preset preset, IReadOnlyList<string> outputs, FileResult file, string workDir, bool changed,
+        CancellationToken ct)
+    {
+        if (!preset.Document.PdfA)
+            return;
+        var archiver = _catalog.All.OfType<IPdfArchiver>().FirstOrDefault();
+        foreach (var pdf in outputs.Where(o => FormatRegistry.Detect(o)?.Id == "pdf"))
+        {
+            if (archiver is null || !await archiver.ArchiveAsync(pdf, changed, workDir, ct))
+                file.NoticeKey = "notice.pdfa_needs_ghostscript";
+        }
+    }
+
     /// <summary>Converts every file to PDF in the work directory, then merges them into one output.</summary>
     private async Task RunMergedAsync(ConversionJob job, RoutePlanner planner, string workDir)
     {
-        var parts = new string?[job.Files.Count];
+        var parts = new PdfMergeInput?[job.Files.Count];
         await Parallel.ForEachAsync(Enumerable.Range(0, job.Files.Count),
             new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
             async (i, _) =>
@@ -280,14 +299,15 @@ public sealed partial class JobQueue : IAsyncDisposable
                     if (job.Preset.Image.ReworksPixels)
                         FailUnturned(job, file, "pdf → pdf");
                     else
-                        parts[i] = file.SourcePath;
+                        parts[i] = new(file.SourcePath, Path.GetFileName(file.SourcePath));
                     return;
                 }
                 var produced = await RunFileAsync(job, file, i + 1, planner, workDir, finalOutput: false);
-                parts[i] = produced.FirstOrDefault();
+                if (produced.FirstOrDefault() is { } pdfPath)
+                    parts[i] = new(pdfPath, Path.GetFileName(file.SourcePath));
             });
 
-        var inputs = parts.OfType<string>().ToList();
+        var inputs = parts.OfType<PdfMergeInput>().ToList();
         if (inputs.Count == 0 || job.CancellationToken.IsCancellationRequested)
             return;
 
@@ -302,9 +322,21 @@ public sealed partial class JobQueue : IAsyncDisposable
 
         try
         {
-            await _pdfMerger!.MergeAsync(inputs, output, job.CancellationToken);
-            // Once for the merged PDF, so its pages are numbered through.
+            var pdf = job.Preset.Pdf;
+            PdfMergePaper? paper = pdf.NormalizeMergePaper ? new(pdf.MergePaper, pdf.MergeOrientation) : null;
+            await _pdfMerger!.MergeAsync(inputs, output, pdf.SourceBookmarks, paper, job.CancellationToken);
+            // Once for the merged PDF, so its pages are numbered through. PDFsharp wrote it, so it is no PDF/A yet.
             await FinishPdfsAsync(job.Preset, [output], job.CancellationToken);
+            await ArchivePdfsAsync(job.Preset, [output], first, workDir, changed: true, job.CancellationToken);
+        }
+        catch (ConversionRefusedException ex)
+        {
+            // A refusal (a page the paper size can't be fitted to, say) is told on every merged file, as joining does.
+            allocator.Discard();
+            _log.LogInformation("Merging {Count} file(s) into {Output} was refused: {Reason}", inputs.Count, output, ex.Message);
+            foreach (var f in job.Files.Where(f => !Stopped(f)))
+                FailFile(job, f, ex.ErrorKey, ex.Detail);
+            return;
         }
         catch
         {
@@ -399,6 +431,9 @@ public sealed partial class JobQueue : IAsyncDisposable
                 FailFile(job, f, "error.too_many_pictures", $"{pictures} > {MediaOptions.MaxSlides}");
             return;
         }
+        // Songs go under videos only: on their own they would make a video of nothing.
+        var withVideo = !slideshow && target.Category == FormatCategory.Video
+            && job.Files.Any(f => !Stopped(f) && FormatRegistry.Detect(f.SourcePath)?.Category == FormatCategory.Video);
         var parts = new IReadOnlyList<string>?[job.Files.Count];
         await Parallel.ForEachAsync(Enumerable.Range(0, job.Files.Count),
             new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
@@ -426,9 +461,10 @@ public sealed partial class JobQueue : IAsyncDisposable
                             ceiling: PicturesReadyShare);
                     return;
                 }
-                // A video's sound can join an audio file; a picture or a document joins nothing.
+                // A video's sound can join an audio file, and an audio file plays as music under videos (#1402); a
+                // picture or a document joins nothing.
                 var joins = source.Category == FormatCategory.Video
-                    || source.Category == FormatCategory.Audio && target.Category == FormatCategory.Audio;
+                    || source.Category == FormatCategory.Audio && (target.Category == FormatCategory.Audio || withVideo);
                 if (!joins)
                 {
                     FailFile(job, file, "error.no_route", $"{source.Id} → {target.Id}");
@@ -439,6 +475,13 @@ public sealed partial class JobQueue : IAsyncDisposable
 
         var joined = job.Files.Where((f, i) => parts[i] is { Count: > 0 } && f.State != FileState.Failed).ToList();
         var inputs = parts.Where(p => p is not null).SelectMany(p => p!).ToList();
+        // The merged video is named after its first video, also when a song comes before it in the order.
+        if (withVideo && joined.FindIndex(f => FormatRegistry.Detect(f.SourcePath)?.Category == FormatCategory.Video) is > 0 and var video)
+        {
+            var named = joined[video];
+            joined.RemoveAt(video);
+            joined.Insert(0, named);
+        }
         if (inputs.Count == 0 || job.CancellationToken.IsCancellationRequested)
         {
             Notify(job);
@@ -940,9 +983,12 @@ public sealed partial class JobQueue : IAsyncDisposable
                 && CopyIfNotSmaller(file.SourcePath, inputs[0]);
             if (copiedSource)
                 file.NoticeKey = "notice.pdf_not_smaller";
-            // Watermark, page numbers, password: on every PDF this file became, from whichever engine.
+            // Watermark, page numbers, password, then PDF/A: on every PDF this file became, from whichever engine.
             if (finalOutput && runWith.TargetFormat == "pdf")
+            {
                 await FinishPdfsAsync(runWith, inputs, ct);
+                await ArchivePdfsAsync(runWith, inputs, file, workDir, changed: runWith.Pdf.FinishesPdf, ct);
+            }
             // The size limit (#553): a result the engine couldn't fit (HEIC, a render, an animation) isn't handed over.
             if (finalOutput)
                 SizeLimit.Check(runWith, inputs, file.SourcePath);

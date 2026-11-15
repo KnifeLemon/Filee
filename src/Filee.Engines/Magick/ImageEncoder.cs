@@ -2,6 +2,7 @@
 // Used by MagickImageConverter and by PdfiumConverter (PDF pages → images).
 
 using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Core.Presets;
 using ImageMagick;
 
@@ -11,17 +12,19 @@ internal static class ImageEncoder
 {
     /// <summary>
     /// Image formats ImageMagick can read (see <see cref="ImageReader"/> for RAW, layered and metafile sources).
-    /// Camera RAW is decoded by LibRaw; XCF, HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF
+    /// Camera RAW is decoded by LibRaw; HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF
     /// are Windows metafiles, which ImageMagick renders through GDI+ on Windows only (<see cref="Metafiles"/>). APNG is
     /// read and written by Filee's own <see cref="Apng"/> (its frames decoded and encoded by ImageMagick); FITS is read
-    /// by Filee's own <see cref="Fits"/> and written to TIFF by <see cref="FitsRendering"/>.
+    /// by Filee's own <see cref="Fits"/> and written to TIFF by <see cref="FitsRendering"/>. ANI (an animated cursor) is
+    /// read by Filee's own <see cref="Ani"/>, its frames decoded by ImageMagick. GIMP's XCF is read and written by Filee's
+    /// own <see cref="Xcf"/> and <see cref="XcfWriter"/>.
     /// </summary>
     public static readonly string[] Readable =
     [
         "png", "jpg", "webp", "tiff", "bmp", "gif", "ico", "avif", "heic",
         "jxl", "jp2", "psd", "psb", "tga", "ppm", "xcf", "raw",
         "apng", "mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff",
-        "dcm", "pcd", "exr", "hdr", "fits",
+        "dcm", "pcd", "exr", "hdr", "fits", "ani",
     ];
 
     /// <summary>Vector metafiles ImageMagick rasterizes (Windows only: it uses GDI+).</summary>
@@ -38,15 +41,19 @@ internal static class ImageEncoder
         "apng", "mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff",
     ];
 
-    /// <summary>Formats that store several frames/pages in one file.</summary>
-    private static readonly HashSet<string> MultiFrame = ["tiff", "gif", "apng", "mng"];
+    /// <summary>
+    /// Formats that store several frames/pages in one file. A Valve texture (VTF) is an animated texture with them
+    /// (<see cref="VtfWriter"/>).
+    /// </summary>
+    private static readonly HashSet<string> MultiFrame = ["tiff", "gif", "apng", "mng", "vtf"];
 
     /// <summary>
-    /// Formats whose frames are an animation; an AVIF only when it is an image sequence (<see cref="AvifSequence"/>).
+    /// Formats whose frames are an animation; an AVIF only when it is an image sequence (<see cref="AvifSequence"/>), and
+    /// an animated cursor (<see cref="Ani"/>), read only.
     /// Between these, all frames are kept with their timing (an animated GIF becomes an animated WebP, JPEG XL or AVIF
     /// and the other way round); any other target gets the first frame.
     /// </summary>
-    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl", AvifSequence.Format];
+    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl", AvifSequence.Format, "ani"];
 
     /// <summary>
     /// The edge an image engine offers from a picture in <paramref name="source"/> to <paramref name="target"/>. GIF
@@ -82,14 +89,17 @@ internal static class ImageEncoder
     public static readonly HashSet<string> ExplicitCoder =
         ["mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff", "dcm", "pcd", "exr", "hdr"];
 
-    /// <summary>Formats holding one picture in several sizes (icons) or mipmaps: the largest is converted.</summary>
-    private static readonly HashSet<string> SizeVariants = ["ico", "cur", "dds"];
+    /// <summary>
+    /// Formats holding one picture in several sizes (icons, the icon of a program) or mipmaps: the largest is converted.
+    /// </summary>
+    private static readonly HashSet<string> SizeVariants = ["ico", "cur", "dds", FormatRegistry.Program];
 
     /// <summary>
     /// Packages of a picture and more, of which the picture is read (<see cref="ImageReader"/>): an iPhone LIVP, a Krita
-    /// KRA.
+    /// KRA, a Paint.NET PDN (<see cref="PaintNet"/>), a Valve texture (VTF, <see cref="Vtf"/>), the icon of a Windows
+    /// program or library (<see cref="ProgramIcon"/>).
     /// </summary>
-    public static readonly string[] Packages = ["livp", "kra"];
+    public static readonly string[] Packages = ["livp", "kra", "pdn", "vtf", FormatRegistry.Program];
 
     /// <summary>
     /// Every format ImageMagick reads as input: the raster formats, the picture of <see cref="Packages"/> and, on
@@ -158,8 +168,8 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Chooses which frames of a (possibly multi-frame) source are converted.
-    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL, AVIF): every frame for an animated or
-    /// TIFF target, else the first frame.
+    /// ICO, CUR, DDS, a program's icon: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL, AVIF, ANI): every frame
+    /// for an animated or TIFF target, else the first frame.
     /// PSD/PSB: the composite (frame 0; any further frames are layers). Otherwise: all frames/pages.
     /// </summary>
     public static List<IMagickImage<byte>> SelectFrames(MagickImageCollection images, string sourceFormat, string targetFormat)
@@ -181,13 +191,16 @@ internal static class ImageEncoder
 
     /// <summary>
     /// The longest side a format stores: JPEG 65,535 px (65,500 keeps clear of encoder rounding), WebP 16,383 px,
-    /// AVIF 16,384 px. Other formats take more than any image Filee makes.
+    /// AVIF 16,384 px, Paint.NET 65,535 px, GIMP 524,288 px. Other formats take more than any image Filee makes.
     /// </summary>
     public static double MaxSide(string targetFormat) => targetFormat switch
     {
         "jpg" or "jpeg" => 65_500,
         "webp" => 16_383,
         "avif" => 16_384,
+        "pdn" => PaintNetWriter.MaxSide,
+        "xcf" => XcfWriter.MaxSide,
+        "vtf" => VtfWriter.MaxSide,
         _ => double.PositiveInfinity,
     };
 
@@ -204,13 +217,13 @@ internal static class ImageEncoder
 
     /// <summary>
     /// How much <see cref="ApplyOptions"/> resizes a width x height image before <see cref="FitFormat"/> (1 when it
-    /// does not). Custom sizing with the aspect kept takes one scale for both sides; stretched, the height's factor
-    /// is what a tall run of pages has to fit.
+    /// does not). Custom sizing with the aspect kept takes one scale for both sides (never above 1 for a box that
+    /// only shrinks); stretched, the height's factor is what a tall run of pages has to fit.
     /// </summary>
     public static double ResizeScale(double width, double height, ImageOptions options) =>
         options.CustomSize is { Width: > 0, Height: > 0 } custom
             ? custom.LockAspect
-                ? Math.Min(custom.ClampedWidth / width, custom.ClampedHeight / height)
+                ? custom.FitScale(width, height)
                 : custom.ClampedHeight / height
             : options.ClampedMinShortEdge is { } minShortEdge
                 ? MinShortEdgeScale(width, height, minShortEdge)
@@ -323,9 +336,10 @@ internal static class ImageEncoder
             var customHeight = custom.ClampedHeight;
             if (custom.LockAspect)
             {
-                // The file's own shape is kept: scaled up or down to the largest size that fits inside the box. Both
-                // sides come from one scale, so the aspect already matches and Resize keeps it, as it always does.
-                var scale = Math.Min(customWidth / (double)image.Width, customHeight / (double)image.Height);
+                // The file's own shape is kept: scaled up or down to the largest size that fits inside the box (only
+                // down when the box is a maximum, #1270). Both sides come from one scale, so the aspect already
+                // matches and Resize keeps it, as it always does.
+                var scale = custom.FitScale(image.Width, image.Height);
                 if (scale != 1)
                     image.Resize((uint)Math.Max(1, Math.Round(image.Width * scale)), (uint)Math.Max(1, Math.Round(image.Height * scale)));
             }
@@ -459,6 +473,30 @@ internal static class ImageEncoder
         ImageOptions? options = null, string? sourcePath = null, bool animation = false)
     {
         var written = new List<string>();
+        if (targetFormat is "pdn" or "xcf")
+        {
+            // Paint.NET's and GIMP's own files, written by Filee (PaintNetWriter, XcfWriter): one picture per file, as
+            // one layer.
+            for (var i = 0; i < frames.Count; i++)
+            {
+                var layered = output.Allocate(targetFormat, frames.Count > 1 ? $"_p{i + 1}" : null);
+                if (layered is null)
+                    continue;
+                WriteImage(frames[i], layered, targetFormat);
+                written.Add(layered);
+            }
+            return written;
+        }
+        if (targetFormat == "vtf")
+        {
+            // Valve's texture, written by Filee (VtfWriter): every frame in one file, an animated texture for several.
+            var vtf = output.Allocate("vtf");
+            if (vtf is null)
+                return written;
+            VtfWriter.Write(frames, vtf);
+            written.Add(vtf);
+            return written;
+        }
         var (format, extension) = OutputFormat(targetFormat, options ?? new ImageOptions(), sourcePath);
 
         if (targetFormat == "apng")
@@ -495,7 +533,10 @@ internal static class ImageEncoder
             frames[i].Write(path, format);
             // Animations and multi-page files written above aren't fitted: the queue refuses them when they're too large.
             if (options is { MaxSizeMb: > 0 } or { MinSizeMb: > 0 })
-                FitToSize(frames[i], path, format, SizeLimit.Bytes(options.MaxSizeMb), SizeLimit.MinimumBytes(options.MinSizeMb));
+                FitToSize(frames[i], path, format, SizeLimit.Bytes(options.MaxSizeMb), SizeLimit.MinimumBytes(options.MinSizeMb), options.MaxSizeKeepsPixels);
+            // ImageMagick writes a CUR as an icon: made a cursor, its hotspot at the top left (CursorFile).
+            if (targetFormat == "cur")
+                CursorFile.Write(path);
             written.Add(path);
         }
         return written;
@@ -517,17 +558,28 @@ internal static class ImageEncoder
     /// <summary>A fitted picture is never made smaller than this long edge (nor than its own): below it, it's a thumbnail.</summary>
     internal const int MinFittedLongEdge = 640;
 
+    /// <summary>The lowest quality <see cref="FitToSize"/> saves at.</summary>
+    internal const int MinFittedQuality = 50;
+
+    /// <summary>
+    /// The lowest quality <see cref="FitToSize"/> saves at when the picture keeps its pixels: blocky, but asked for in
+    /// place of a smaller picture (#1270).
+    /// </summary>
+    internal const int MinKeptPixelsQuality = 10;
+
     /// <summary>
     /// Saves <paramref name="image"/> again until <paramref name="path"/> is at most <paramref name="limit"/> bytes: a
-    /// lower quality first (down to 50, where a lossy format still looks fine), then fewer pixels, but never below a
-    /// long edge of <see cref="MinFittedLongEdge"/>. Refuses when it still doesn't fit, rather than hand over a file
-    /// that breaks the limit or a thumbnail. Under <paramref name="minimum"/> (#662), a lossy format is saved again at a
-    /// higher quality, never with more pixels, up to 100 or until the next step would break the limit; the queue tells
-    /// about a file that stays under it.
+    /// lower quality first (down to <see cref="MinFittedQuality"/>, where a lossy format still looks fine), then fewer
+    /// pixels, but never below a long edge of <see cref="MinFittedLongEdge"/>. With <paramref name="keepPixels"/> the
+    /// pixels stay and only the quality goes down, to <see cref="MinKeptPixelsQuality"/>. Refuses when it still doesn't
+    /// fit, rather than hand over a file that breaks the limit or a thumbnail. Under <paramref name="minimum"/> (#662), a
+    /// lossy format is saved again at a higher quality, never with more pixels, up to 100 or until the next step would
+    /// break the limit; the queue tells about a file that stays under it.
     /// </summary>
     /// <param name="limit">Most bytes; 0 = no limit.</param>
     /// <param name="minimum">Fewest bytes; 0 = no minimum.</param>
-    internal static void FitToSize(IMagickImage<byte> image, string path, MagickFormat format, long limit, long minimum = 0)
+    /// <param name="keepPixels">Never make the picture smaller (<see cref="ImageOptions.MaxSizeKeepsPixels"/>).</param>
+    internal static void FitToSize(IMagickImage<byte> image, string path, MagickFormat format, long limit, long minimum = 0, bool keepPixels = false)
     {
         var size = new FileInfo(path).Length;
         if (limit <= 0)
@@ -537,10 +589,13 @@ internal static class ImageEncoder
         using var copy = image.Clone();
         var lossy = format is MagickFormat.Jpeg or MagickFormat.WebP or MagickFormat.Avif or MagickFormat.Jxl or MagickFormat.Jp2;
         var floor = Math.Min(MinFittedLongEdge, Math.Max(copy.Width, copy.Height));
+        var lowestQuality = (uint)(keepPixels ? MinKeptPixelsQuality : MinFittedQuality);
         while (size > limit)
         {
-            if (lossy && copy.Quality > 50)
-                copy.Quality = Math.Max(50, copy.Quality - 10);
+            if (lossy && copy.Quality > lowestQuality)
+                copy.Quality = Math.Max(lowestQuality, copy.Quality - 10);
+            else if (keepPixels)
+                break;
             else
             {
                 var longEdge = Math.Max(copy.Width, copy.Height);
@@ -572,11 +627,21 @@ internal static class ImageEncoder
         }
     }
 
-    /// <summary>Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>).</summary>
+    /// <summary>
+    /// Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>, Paint.NET's PDN through
+    /// <see cref="PaintNetWriter"/>, GIMP's XCF through <see cref="XcfWriter"/>, a Valve texture through
+    /// <see cref="VtfWriter"/>).
+    /// </summary>
     public static void WriteImage(IMagickImage<byte> image, string path, string targetFormat)
     {
         if (targetFormat == "apng")
             Apng.Write([image], path);
+        else if (targetFormat == "pdn")
+            PaintNetWriter.Write(image, path);
+        else if (targetFormat == "xcf")
+            XcfWriter.Write(image, path);
+        else if (targetFormat == "vtf")
+            VtfWriter.Write([image], path);
         else
             image.Write(path, ToMagickFormat(targetFormat));
     }

@@ -36,6 +36,34 @@ public class ImageExtensionAliasTests
         Assert.DoesNotContain("jif", images.Extensions);
         Assert.Equal("my-photos", ProfileSelector.Select(profiles, ["photo.jif"])?.Id);
     }
+
+    [Theory]
+    [InlineData("IMG_20240101_120000_00_001.insp")]
+    [InlineData("IMG_20240101_120000_00_001.INSP")]
+    public void Insp_is_a_jpeg_and_uses_the_image_donut(string file)
+    {
+        Assert.Same(FormatRegistry.Get("jpg"), FormatRegistry.Detect(file));
+        Assert.Equal("jpg", FormatRegistry.Get("jpg").PrimaryExtension);
+        Assert.Equal("images", ProfileSelector.Select(BuiltInData.CreateProfiles(), [file])?.Id);
+    }
+
+    [Fact]
+    public void Version_75_libraries_learn_insp_without_taking_custom_claims()
+    {
+        var presets = BuiltInData.CreatePresets();
+        var profiles = BuiltInData.CreateProfiles();
+        var images = profiles.Single(p => p.Id == "images");
+        images.Extensions.Remove("insp");
+        Assert.True(SettingsMigrations.ApplyToLibrary(75, presets, profiles));
+        Assert.Contains("insp", images.Extensions);
+        Assert.False(SettingsMigrations.ApplyToLibrary(75, presets, profiles));
+
+        images.Extensions.Remove("insp");
+        profiles.Insert(0, new ToolbarProfile { Id = "my-360", Extensions = ["INSP"] });
+        Assert.False(SettingsMigrations.ApplyToLibrary(75, presets, profiles));
+        Assert.DoesNotContain("insp", images.Extensions);
+        Assert.Equal("my-360", ProfileSelector.Select(profiles, ["photo.insp"])?.Id);
+    }
     [Theory]
     [InlineData("photo.png_large", "png")]
     [InlineData("photo.jpg_large", "jpg")]

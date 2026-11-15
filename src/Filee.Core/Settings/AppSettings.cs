@@ -54,6 +54,13 @@ public sealed class ThemeSettings
     /// </summary>
     public bool? ReduceMotion { get; set; }
 
+    /// <summary>
+    /// Draws the UI in the system's own font (Segoe UI on Windows, San Francisco on macOS, fontconfig's default on
+    /// Linux) instead of the embedded Noto fonts, which still draw what it lacks. Off as before it existed; a missing
+    /// value reads as off, so it needs no schema step.
+    /// </summary>
+    public bool UseSystemFont { get; set; }
+
     public ThemeSettings Clone() => (ThemeSettings)MemberwiseClone();
 }
 
@@ -80,6 +87,37 @@ public sealed class DonutSettings
     /// On as before it existed; a missing value (settings from before it) reads as on, so it needs no schema step.
     /// </summary>
     public bool ShowCaptions { get; set; } = true;
+
+    /// <summary>
+    /// How large the ring a group fans out is, against its size on a donut of the same radius before this setting (<see
+    /// cref="MinGroupRingSize"/> to <see cref="MaxGroupRingSize"/>): its depth, its gap from the donut and its labels.
+    /// A missing value reads as 1, today's ring, so it needs no schema step.
+    /// </summary>
+    public double GroupRingSize { get; set; } = 1;
+
+    /// <summary>
+    /// How wide the ring a group fans out spreads, against the default fan (the group's slice and a quarter of each
+    /// neighbour): <see cref="MinGroupRingSpread"/> to <see cref="MaxGroupRingSpread"/>. Wider slices have room for
+    /// longer names. A missing value reads as 1.
+    /// </summary>
+    public double GroupRingSpread { get; set; } = 1;
+
+    public const double MinGroupRingSize = 0.75, MaxGroupRingSize = 1.5, GroupRingSizeStep = 0.05;
+    public const double MinGroupRingSpread = 1, MaxGroupRingSpread = 3, GroupRingSpreadStep = 0.1;
+
+    /// <summary>
+    /// <paramref name="size"/> within the allowed range, on a step; 1 for a value that isn't a number.
+    /// </summary>
+    public static double ClampGroupRingSize(double size) => OnStep(size, MinGroupRingSize, MaxGroupRingSize, GroupRingSizeStep);
+
+    /// <summary>
+    /// <paramref name="spread"/> within the allowed range, on a step; 1 for a value that isn't a number.
+    /// </summary>
+    public static double ClampGroupRingSpread(double spread) =>
+        OnStep(spread, MinGroupRingSpread, MaxGroupRingSpread, GroupRingSpreadStep);
+
+    private static double OnStep(double value, double min, double max, double step) =>
+        double.IsFinite(value) ? Math.Round(Math.Round(Math.Clamp(value, min, max) / step) * step, 2) : 1;
 
     /// <summary>The flip key unless the user picks another one (Settings → Shortcuts).</summary>
     public const string DefaultFlipKey = "Tab";
@@ -132,7 +170,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 75;
+    public const int CurrentSchemaVersion = 94;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -145,6 +183,13 @@ public sealed class AppSettings
     public bool ContextMenuEnabled { get; set; } = true;
 
     public bool CheckForUpdates { get; set; } = true;
+
+    /// <summary>
+    /// The proxy Filee's downloads go through (Settings → General → Network), such as <c>http://127.0.0.1:7890</c> or
+    /// <c>socks5://host:1080</c>; see <see cref="Web.ProxySetting"/>. Null or empty: the system proxy and HTTPS_PROXY.
+    /// Missing in older settings, which reads as empty, so it needs no schema step.
+    /// </summary>
+    public string? Proxy { get; set; }
 
     /// <summary>What closing the main window does. A value from a newer Filee reads as <see cref="CloseAction.Ask"/>.</summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<CloseAction>))]
@@ -174,6 +219,12 @@ public sealed class AppSettings
     /// <summary>Whether the macOS menu bar shows Filee's status icon.</summary>
     [JsonConverter(typeof(IconPreferenceJsonConverter))]
     public bool ShowMenuBarIcon { get; set; } = true;
+
+    /// <summary>
+    /// Whether the macOS menu bar icon keeps the coloured donut. Off by default: a one-colour template icon that macOS
+    /// paints white or black to match the bar, like the system's own icons.
+    /// </summary>
+    public bool ColoredMenuBarIcon { get; set; }
 
     /// <summary>Newest version the user was already told about, so the update notice shows once per release.</summary>
     public string? NotifiedUpdateVersion { get; set; }
@@ -289,6 +340,14 @@ public sealed class AppSettings
     /// once. A Filee from before it skips the property, so it needs no schema step.
     /// </summary>
     public WindowBounds? MainWindow { get; set; }
+
+    /// <summary>
+    /// Where the Donut toolbar page's donut on screen was dragged to: its centre against the main window's top-left
+    /// corner, in screen pixels (points on macOS) (<see cref="WindowBounds.X"/>, <see cref="WindowBounds.Y"/>), so it
+    /// opens there beside the window again. Null until it has been dragged, and again once it is dropped onto the
+    /// window. A Filee from before it skips the property, so it needs no schema step.
+    /// </summary>
+    public WindowBounds? DonutPreviewPlace { get; set; }
 
     /// <summary>
     /// The fields turned off on the Fields page (ids of <see cref="Formats.FormatFields.All"/>): a format that belongs only to

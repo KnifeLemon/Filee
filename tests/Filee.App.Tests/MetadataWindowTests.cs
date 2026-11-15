@@ -842,6 +842,32 @@ public sealed class MetadataWindowTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void A_field_of_a_list_ExifTool_read_only_part_of_says_why_it_cant_be_typed_in_and_can_still_be_removed()
+    {
+        var loc = AppHost.Get<ILocalizer>();
+        var vm = Reading(
+        [
+            new MetadataField("XMP", "XMP-xmpMM", "HistorySoftwareAgent", "Camera app 1.0", true) { CutShortList = "XMP-xmpMM:History" },
+            new MetadataField("XMP", "XMP-dc", "Title", "Long history", true),
+        ], "long-history.png");
+        Wait(() => !vm.IsBusy);
+        var row = Row(vm, "XMP-xmpMM:HistorySoftwareAgent");
+
+        row.EditCommand.Execute(null);
+
+        Assert.False(row.IsEditing);
+        Assert.False(row.CanType);
+        Assert.False(row.ShowsLock); // the × beside it works
+        Assert.Equal(loc.Format("metadata.list_cut_short", "XMP-xmpMM:History"), row.Note);
+        Assert.Contains(row.Note!, row.SpokenValue, StringComparison.Ordinal);
+        Assert.True(Row(vm, "XMP-dc:Title").CanType);
+        // Remove location can't check what wasn't read for a place, and says so before anything is saved.
+        Assert.Equal(loc.Format("metadata.location_unread", "XMP-xmpMM:History"), vm.LocationNotice);
+        row.RemoveCommand.Execute(null);
+        Assert.Equal(["XMP-xmpMM:HistorySoftwareAgent"], vm.Changes().Remove);
+    }
+
+    [AvaloniaFact]
     public void A_long_value_removed_is_struck_through_like_any_other()
     {
         var vm = Reading([new MetadataField("XMP", "XMP-dc", "Title", new string('a', 40_000), true)], "long.jpg");

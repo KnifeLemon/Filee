@@ -1,6 +1,7 @@
 <!-- "Choose pages" (#981): opens when a PDF is dropped on a preset whose pages are set to "Ask every time"
      (RadialController, PdfOptions.AskPageRange). It shows how many pages the PDF has and takes the range; for a PDF
-     target also one PDF or one file per page. Enter starts it, Esc or closing the window starts nothing. -->
+     target also one PDF, one file per page or several pages per file. Enter starts it, Esc or closing the window
+     starts nothing. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
@@ -8,10 +9,10 @@
         x:DataType="vm:AskPagesViewModel"
         Title="{DynamicResource pages.title}"
         Icon="avares://Filee/Assets/Icons/filee.ico"
-        Width="460" SizeToContent="Height" CanResize="False"
+        Width="540" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterScreen">
   <Window.Styles>
-    <!-- One PDF / one file per page: two segments in a pill, the chosen one filled with the accent (as the merge
+    <!-- One PDF / one file per page / several pages per file: segments in a pill, the chosen one filled with the accent (as the merge
          order window's direction switch). -->
     <Style Selector="Border.choices">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
@@ -79,15 +80,26 @@
         <TextBlock x:Name="RangeStatus" Classes="caption" Classes.danger="{Binding !IsValid}" Margin="0,6,0,0" TextWrapping="Wrap"
                    Text="{Binding Status}" IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       </StackPanel>
-      <!-- A PDF target: the pages together in one PDF, or each as a file of its own. -->
-      <Border x:Name="SplitChoice" Classes="choices" HorizontalAlignment="Left" IsVisible="{Binding OffersSplit}">
-        <StackPanel Orientation="Horizontal">
-          <RadioButton x:Name="OnePdf" Classes="choice" GroupName="PageOutput" IsChecked="{Binding OnePdf}"
-                       Content="{DynamicResource pages.one_pdf}" AutomationProperties.Name="{DynamicResource pages.one_pdf}" />
-          <RadioButton x:Name="PerPage" Classes="choice" GroupName="PageOutput" IsChecked="{Binding SplitPages}"
-                       Content="{DynamicResource presets.split}" AutomationProperties.Name="{DynamicResource presets.split}" />
+      <!-- A PDF target: the pages together in one PDF, each as a file of its own, or several to a file (#1259). -->
+      <StackPanel Spacing="10" IsVisible="{Binding OffersSplit}">
+        <Border x:Name="SplitChoice" Classes="choices" HorizontalAlignment="Left">
+          <StackPanel Orientation="Horizontal">
+            <RadioButton x:Name="OnePdf" Classes="choice" GroupName="PageOutput" IsChecked="{Binding OnePdf}"
+                         Content="{DynamicResource pages.one_pdf}" AutomationProperties.Name="{DynamicResource pages.one_pdf}" />
+            <RadioButton x:Name="PerPage" Classes="choice" GroupName="PageOutput" IsChecked="{Binding EachPage}"
+                         Content="{DynamicResource presets.split}" AutomationProperties.Name="{DynamicResource presets.split}" />
+            <RadioButton x:Name="Groups" Classes="choice" GroupName="PageOutput" IsChecked="{Binding Groups}"
+                         Content="{DynamicResource pages.groups}" AutomationProperties.Name="{DynamicResource pages.groups}" />
+          </StackPanel>
+        </Border>
+        <!-- Several pages per file: how many pages each, or how many equal parts. -->
+        <StackPanel x:Name="GroupRow" Orientation="Horizontal" Spacing="8" IsVisible="{Binding Groups}">
+          <NumericUpDown x:Name="GroupSize" Value="{Binding GroupSize}" Minimum="2" Maximum="9999" Increment="1" FormatString="0"
+                         Width="130" AutomationProperties.Name="{DynamicResource pages.groups}" />
+          <ComboBox x:Name="GroupKind" ItemsSource="{Binding GroupKinds}" SelectedItem="{Binding GroupKind}" MinWidth="170"
+                    AutomationProperties.Name="{DynamicResource pages.groups}" />
         </StackPanel>
-      </Border>
+      </StackPanel>
     </StackPanel>
   </DockPanel>
 </Window>

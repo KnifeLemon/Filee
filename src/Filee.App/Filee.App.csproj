@@ -31,8 +31,8 @@
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Markdig" />
-    <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="SharpHook" />
+    <PackageReference Include="QRCoder" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -103,4 +103,8 @@
           Condition="'$(FileeRelease)' == 'true' And '$(FileeExpectedPublisher)' != '' And '$(FileeExpectedIssuer)' == ''">
     <Error Text="FileeExpectedPublisher is set without FileeExpectedIssuer (Directory.Build.props)." />
   </Target>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <EmbeddedResource Include="Resources\Connect\**" />
+  </ItemGroup>
 </Project>

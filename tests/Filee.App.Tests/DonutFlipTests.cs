@@ -736,6 +736,24 @@ public class DonutFlipTests
     });
 
     [AvaloniaFact]
+    public void A_disabled_front_face_is_still_reachable_after_flipping_to_a_usable_back() =>
+        With(animations: false, back: ["to-gif"], () =>
+        {
+            Images.PresetIds = ["to-wav"];
+            var (vm, window, donut) = OpenClickMode();
+            try
+            {
+                Assert.All(vm.Items, item => Assert.False(item.IsEnabled));
+                Assert.True(donut.Flip());
+                Assert.True(vm.IsBackFace);
+                Assert.True(vm.CanFlip);
+                Assert.True(donut.Flip());
+                Assert.False(vm.IsBackFace);
+            }
+            finally { window.Close(); }
+        });
+
+    [AvaloniaFact]
     public void The_back_face_greys_out_what_cannot_convert_the_files_and_one_with_nothing_left_does_not_flip()
     {
         var group = new Preset

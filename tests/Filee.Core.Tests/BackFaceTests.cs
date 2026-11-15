@@ -235,12 +235,13 @@ public partial class BackFaceTests
         // The fronts as read are the new ones, so the new back faces; the migrations before 30 then add front slots, and
         // v31, v33 and v37 back slots, as for any library of that schema.
         Assert.Equal(schema == 4
-            ? ["to-png", "to-jpg", "pdf-long-image", "to-docx", "pdf-slides", "to-hwp", "to-md", "to-epub"]
-            : ["to-png", "to-jpg", "pdf-long-image", "to-docx", "pdf-slides", "to-txt", "to-md", "to-epub", "to-hwpx", "to-hwp"],
+            ? ["to-png", "to-jpg", "pdf-long-image", "to-docx", "to-xlsx", "pdf-slides", "to-hwp", "to-md", "to-epub"]
+            : ["to-png", "to-jpg", "pdf-long-image", "to-docx", "to-xlsx", "pdf-slides", "to-txt", "to-md", "to-epub", "to-hwpx", "to-hwp"],
             Profile(back, "pdf").PresetIds);
         Assert.Equal(["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"],
             Profile(back, "pdf").BackPresetIds);
-        Assert.Equal(["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg", "trace-line-art"], Profile(back, "images").PresetIds);
+        Assert.Equal(["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "merge-pdf", "trace-svg", "trace-line-art"],
+            Profile(back, "images").PresetIds);
         Assert.Equal(["tool-crop", "rotate", "remove-background", "trim-transparent", "merge-images", "compress-image", "half-size",
             "tool-image-edit", "remove-metadata", "zip-all"], Profile(back, "images").BackPresetIds);
         Assert.Equal(["to-mp4", "mp4-720", "mp4-hevc", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "caption-video"],

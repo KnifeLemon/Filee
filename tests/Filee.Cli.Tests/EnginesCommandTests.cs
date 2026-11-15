@@ -267,11 +267,52 @@ public sealed class EnginesCommandTests : IDisposable
         Assert.Empty(_server.Requests);
     }
 
+    [Fact]
+    public async Task Download_saves_the_files_install_from_takes_without_the_network()
+    {
+        // #447: the files saved on a computer with internet install on one without it.
+        var folder = Path.Combine(_settings, "usb");
+        var (code, output, errors) = await Run("engines", "download", "pandoc", "-o", folder, "--json");
+        Assert.Equal(0, code);
+        var result = JsonDocument.Parse(output).RootElement;
+        Assert.Equal(["id", "state", "version", "files"], Names(result));
+        Assert.Equal("saved", result.GetProperty("state").GetString());
+        Assert.Equal([Path.Combine(folder, "pandoc.zip")], result.GetProperty("files").EnumerateArray().Select(f => f.GetString()));
+        Assert.Equal(_pandoc, File.ReadAllBytes(Path.Combine(folder, "pandoc.zip")));
+        Assert.Contains("\"stage\":\"downloading\"", errors);
+        Assert.False(Directory.Exists(Path.Combine(_root, "pandoc"))); // nothing is installed here
+        Assert.Single(_server.Requests);
+
+        _server.Files.Clear();
+        (code, output, errors) = await Run("engines", "install", "pandoc", "--from", folder);
+        Assert.Equal(0, code);
+        Assert.Equal("Installed pandoc 1.0.", output.Trim());
+        Assert.Contains("Copying pandoc 1.0:", errors);
+        Assert.True(File.Exists(Path.Combine(_root, "pandoc", "bin", EngineEnvironment.OwnCopyPrograms["pandoc"][0])));
+        Assert.Single(_server.Requests);
+    }
+
+    [Fact]
+    public async Task Install_from_a_folder_without_the_files_names_them_and_downloads_nothing()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_settings, "empty")).FullName;
+        var (code, output, _) = await Run("engines", "install", "pandoc", "--from", folder, "--json");
+        Assert.Equal(1, code);
+        var result = JsonDocument.Parse(output).RootElement;
+        Assert.Equal("failed", result.GetProperty("state").GetString());
+        Assert.Equal("error.engine_files_missing", result.GetProperty("errorKey").GetString());
+        Assert.EndsWith("(pandoc.zip)", result.GetProperty("error").GetString());
+        Assert.Empty(_server.Requests);
+    }
+
     [Theory]
     [InlineData("engines", "install", "nonesuch")]
     [InlineData("engines", "install")]
     [InlineData("engines", "install", "pandoc", "ffmpeg")]
     [InlineData("engines", "update", "pandoc")]
+    [InlineData("engines", "remove", "pandoc", "--from", "Engines")]
+    [InlineData("engines", "--from", "Engines")]
+    [InlineData("engines", "download", "pandoc")]
     public async Task Wrong_engine_arguments_are_usage_errors(params string[] args)
     {
         var (code, output, errors) = await Run(args);

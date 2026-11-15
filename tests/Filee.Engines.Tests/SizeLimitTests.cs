@@ -85,6 +85,93 @@ public class SizeLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Keeping_the_pixels_lowers_only_the_quality_further_than_usual()
+    {
+        // #1270: the size the picture was given stays; the quality goes below the usual floor of 50 instead.
+        var path = Path.Combine(fx.NewFolder(), "noise.jpg");
+        using var image = Noisy(1600, 1200);
+        image.Quality = 95;
+        image.Write(path, MagickFormat.Jpeg);
+        using (var probe = image.Clone())
+        {
+            probe.Quality = 30;
+            var limit = probe.ToByteArray(MagickFormat.Jpeg).LongLength;
+            Assert.True(new FileInfo(path).Length > limit * 2, "quality alone would not have to go below 50");
+
+            ImageEncoder.FitToSize(image, path, MagickFormat.Jpeg, limit, keepPixels: true);
+
+            Assert.InRange(new FileInfo(path).Length, 1, limit);
+        }
+        using var fitted = new MagickImage(path);
+        Assert.Equal((1600u, 1200u), (fitted.Width, fitted.Height));
+        Assert.InRange(fitted.Quality, (uint)ImageEncoder.MinKeptPixelsQuality, 30u);
+    }
+
+    [Fact]
+    public void Keeping_the_pixels_refuses_a_limit_the_lowest_quality_cannot_meet()
+    {
+        // Rather than quietly shrinking the picture under the size that was asked for (#1270).
+        var path = Path.Combine(fx.NewFolder(), "noise.jpg");
+        using var image = Noisy(2400, 1600);
+        image.Quality = 95;
+        image.Write(path, MagickFormat.Jpeg);
+
+        var refused = Assert.Throws<ConversionRefusedException>(() => ImageEncoder.FitToSize(image, path, MagickFormat.Jpeg, 20_000, keepPixels: true));
+
+        Assert.Equal("error.over_size_limit", refused.ErrorKey);
+        using var last = new MagickImage(path);
+        Assert.Equal((2400u, 1600u), (last.Width, last.Height));
+        Assert.Equal((uint)ImageEncoder.MinKeptPixelsQuality, last.Quality);
+    }
+
+    [Fact]
+    public void Keeping_the_pixels_refuses_a_lossless_picture_over_the_limit_at_once()
+    {
+        // A PNG has no quality to lower, so there is nothing left to try but the pixels.
+        var path = Path.Combine(fx.NewFolder(), "noise.png");
+        using var image = Noisy(800, 600);
+        image.Write(path, MagickFormat.Png);
+
+        Assert.Throws<ConversionRefusedException>(() => ImageEncoder.FitToSize(image, path, MagickFormat.Png, 100_000, keepPixels: true));
+
+        using var last = new MagickImage(path);
+        Assert.Equal((800u, 600u), (last.Width, last.Height));
+    }
+
+    [Fact]
+    public async Task A_maximum_box_and_a_size_limit_keep_the_box_size_when_the_pixels_are_kept()
+    {
+        // The whole case from #1270: at most 1000 x 1000, never enlarged, under a size limit met by quality alone.
+        var source = NoisySource(1500, 1000);
+        var image = new ImageOptions
+        {
+            CustomSize = new() { Width = 1000, Height = 1000, LockAspect = true, ShrinkOnly = true },
+            MaxSizeKeepsPixels = true,
+        };
+        long limit;
+        using (var resized = new MagickImage(source))
+        {
+            ImageEncoder.ApplyOptions(resized, image, "jpg");
+            resized.Quality = 20;
+            limit = resized.ToByteArray(MagickFormat.Jpeg).LongLength;
+        }
+        image.MaxSizeMb = limit / 1e6;
+
+        var output = Done(await fx.ConvertAsync([source], new Preset { TargetFormat = "jpg", Image = image }));
+
+        Assert.InRange(new FileInfo(output).Length, 1, SizeLimit.Bytes(image.MaxSizeMb));
+        using var result = new MagickImage(output);
+        Assert.Equal((1000u, 667u), (result.Width, result.Height));
+
+        // A limit no quality meets is refused, not met with a smaller picture.
+        var tight = image.Clone();
+        tight.MaxSizeMb = 0.005;
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "jpg", Image = tight, Output = { FileNamePattern = "{name}_tight" } });
+        Assert.Equal("error.over_size_limit", Assert.Single(job.Files).ErrorKey);
+        Assert.Empty(job.Outputs);
+    }
+
+    [Fact]
     public async Task The_limit_still_wins_after_a_minimum_short_edge_enlarged_the_picture()
     {
         // As after any other resize (#652): the enlarged picture is made smaller again when it breaks the limit.

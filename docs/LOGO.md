@@ -7,6 +7,8 @@ The logo is made by hand. Nothing generates it, so a change is made in these fil
 | `src/Filee.App/Assets/Icons/filee.svg` | **The source artwork.** Start here. | Source for the other two files |
 | `src/Filee.App/Assets/Icons/filee.png` | 512 px export of the SVG | About page, main window header, What's New header, dialogs, the Linux installer icon, and the macOS app icon (`build/build-portable.ps1` scales it into the `.icns`) |
 | `src/Filee.App/Assets/Icons/filee.ico` | Several sizes in one file, see below | Window, taskbar and tray icons, and the `.exe` icons of Filee, Setup and the CLI |
+| `src/Filee.App/Assets/Icons/filee-menubar.svg` | One-colour donut, thinner strokes | Source for the menu bar PNG |
+| `src/Filee.App/Assets/Icons/filee-menubar.png` | 64 px export of `filee-menubar.svg`, cropped to the drawing | The macOS menu bar icon, unless **Show the menu bar icon in colour** is on |
 
 The folder `src/Filee.App/Assets` is embedded into the app, so keep other files (notes, working files) out of it.
 
@@ -27,6 +29,14 @@ magick filee.ico frame-%d.png                                  # take the frames
 magick 256.png 64.png 48.png 32.png 24.png 16.png filee.ico    # put the frames back, biggest first
 magick identify filee.ico                                      # lists the frames: check all six sizes are there
 ```
+
+## The macOS menu bar icon
+
+macOS shows `filee-menubar.png` as a template image: it uses only the alpha and paints it white on a dark menu bar and
+black on a light one. So the PNG is black on transparent, with no other colours or half-transparent shading meant to
+be seen. The pieces are drawn with thinner strokes than in `filee.svg`, which keeps the gaps between them open at the
+menu bar's 18 pt. Avalonia scales the image to the menu bar height, so crop the export to the drawing with only a
+pixel or two of margin.
 
 ## The logo drawn in code
 

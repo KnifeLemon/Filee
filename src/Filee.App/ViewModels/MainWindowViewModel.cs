@@ -11,6 +11,8 @@ using Filee.App.ViewModels.Pages;
 using Filee.Core.Localization;
 using Filee.Core.Settings;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.ViewModels;
 
@@ -45,9 +47,10 @@ public sealed partial class NavItem(string key, string titleKey, string iconKey,
 /// </summary>
 public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 {
-    private readonly IServiceProvider _services;
     private readonly ILocalizer _loc;
     private readonly UserDataStore _store;
+    private readonly ILogger _log;
+    private readonly Func<Type, ObservableObject> _createPage;
     private bool _disposed;
 
     /// <summary>Width of the navigation with its titles, and collapsed to icons.</summary>
@@ -58,10 +61,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public string RepositoryUrl => UpdateService.RepositoryUrl;
 
     public MainWindowViewModel(IServiceProvider services, ILocalizer loc, UpdateService updates, UserDataStore store)
+        : this(services, loc, updates, store, services.GetService<ILogger<MainWindowViewModel>>() ?? (ILogger)NullLogger.Instance,
+            type => (ObservableObject)ActivatorUtilities.CreateInstance(services, type))
     {
-        _services = services;
+    }
+
+    /// <summary><paramref name="createPage"/> builds a page's view model from its type (tests pass one that throws).</summary>
+    internal MainWindowViewModel(IServiceProvider services, ILocalizer loc, UpdateService updates, UserDataStore store,
+        ILogger log, Func<Type, ObservableObject> createPage)
+    {
         _loc = loc;
         _store = store;
+        _log = log;
+        _createPage = createPage;
         _isNavCollapsed = store.Settings.NavCollapsed;
         Updates = updates;
         updates.PropertyChanged += OnUpdatesChanged;
@@ -177,8 +189,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // Old pages may hold event subscriptions on long-lived services.
     partial void OnCurrentPageChanged(ObservableObject? oldValue, ObservableObject newValue) => (oldValue as IDisposable)?.Dispose();
 
-    private ObservableObject CreatePage(NavItem item) =>
-        (ObservableObject)ActivatorUtilities.CreateInstance(_services, item.PageType);
+    // A page that throws while it is built (its view model here, its view in ViewLocator) would otherwise be lost inside
+    // the navigation's binding: the old page stayed on screen and the log said nothing (#1327).
+    private ObservableObject CreatePage(NavItem item)
+    {
+        try
+        {
+            return _createPage(item.PageType);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Could not open the {Page} page", item.Key);
+            return new ErrorPageViewModel(item.Title);
+        }
+    }
 
     public void Dispose()
     {

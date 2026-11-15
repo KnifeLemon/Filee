@@ -56,7 +56,7 @@ public class FolderIso632Tests
         Assert.True(SettingsMigrations.ApplyToLibrary(73, presets, profiles));
         Assert.Equal(presets.FindIndex(p => p.Id == "zip-all") - 1, presets.FindIndex(p => p.Id == "to-iso"));
         Assert.Equal(original, archives.PresetIds);
-        Assert.Equal(["to-iso"],
+        Assert.Equal(["to-iso", "to-zip", "zip-all"],
             profiles.Single(p => p.Id == "folders").PresetIds);
         presets.Single(p => p.Id == "to-iso").Name = "My ISO";
         Assert.False(SettingsMigrations.ApplyToLibrary(73, presets, profiles));

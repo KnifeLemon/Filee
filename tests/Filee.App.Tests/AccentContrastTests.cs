@@ -459,4 +459,33 @@ public class AccentContrastTests
             service.Apply(new ThemeSettings(), "en");
         }
     }
+
+    /// <summary>
+    /// A custom accent, the radii, the font and the reading direction are published in one resource change: a change per
+    /// key reached every control of every window still alive, and made the later App tests minutes slower (#1414, as the
+    /// language strings did in #540).
+    /// </summary>
+    [AvaloniaFact]
+    public void A_custom_accent_is_published_in_one_resource_change()
+    {
+        var service = Theme();
+        var app = Application.Current!;
+        var changes = 0;
+        void Count(object? sender, ResourcesChangedEventArgs e) => changes++;
+        app.ResourcesChanged += Count;
+        try
+        {
+            service.Apply(new ThemeSettings { Accent = "#123456", CornerRadius = 4 }, "en");
+            Assert.Equal(1, changes);
+            Assert.Equal(Color.Parse("#123456"), ColorOf("AccentBrush", ThemeVariant.Light));
+            Assert.Equal(Color.Parse("#123456"), ColorOf("AccentBrush", ThemeVariant.Dark));
+            Assert.True(app.TryGetResource("SoftRadius", null, out var radius));
+            Assert.Equal(new CornerRadius(4), radius);
+        }
+        finally
+        {
+            app.ResourcesChanged -= Count;
+            service.Apply(new ThemeSettings(), "en");
+        }
+    }
 }

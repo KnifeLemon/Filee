@@ -126,6 +126,9 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
+    /// <summary>Options used when a G-code toolpath becomes a PDF, SVG or picture.</summary>
+    public GcodeOptions Gcode { get; set; } = new();
+
     /// <summary>Options used for offline AI translation.</summary>
     public TranslateOptions Translate { get; set; } = new();
 
@@ -145,6 +148,46 @@ public sealed class Preset
 
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
+
+    /// <summary>
+    /// "Ask every time" for the compression (#1353): files dropped on the donut open a small window first, where the
+    /// picture quality, the video quality, the audio bitrate or the PDF level is chosen with the size it will roughly
+    /// come to (<see cref="AskedCompression"/>). Off by default; watch folders and the command line use the preset's
+    /// own values.
+    /// </summary>
+    public bool AskCompression { get; set; }
+
+    /// <summary>
+    /// The icon its donut slice shows: the key of one of the app's slice icons, <see cref="NoIcon"/> for none, or null
+    /// for the default (a built-in preset's own icon; none for plain format conversions and the user's presets).
+    /// </summary>
+    public string? Icon { get; set; }
+
+    /// <summary><see cref="Icon"/> meaning "no icon", even where there would be a default.</summary>
+    public const string NoIcon = "none";
+
+    /// <summary>
+    /// A shorter name shown on its donut slice instead of the usual one. Null or blank: the usual name.
+    /// </summary>
+    public string? ShortName { get; set; }
+
+    /// <summary>
+    /// What its donut slice shows. Null: whatever its donut says (<see cref="Profiles.ToolbarProfile.LabelShow"/>).
+    /// </summary>
+    [JsonConverter(typeof(LabelShowJsonConverter))]
+    public LabelShow? Show { get; set; }
+
+    /// <summary>
+    /// Which way its donut slice's name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).
+    /// </summary>
+    [JsonConverter(typeof(LabelDirectionJsonConverter))]
+    public LabelDirection? Direction { get; set; }
+
+    /// <summary>
+    /// The preset gallery entry (its id on filee.sh) this preset was installed from, so the editor can say so; null for
+    /// every other preset. Never shared (<see cref="ForSharing"/>).
+    /// </summary>
+    public string? Gallery { get; set; }
 
     /// <summary>A conversion or a group. A kind this version doesn't know (from a newer Filee) is read as a group.</summary>
     [JsonConverter(typeof(PresetKindJsonConverter))]
@@ -346,10 +389,21 @@ public sealed class Preset
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
-    /// set by the clip window on the conversion it starts): the file is a video. Other files convert as usual.
+    /// set by the clip window on the conversion it starts): the file is a video or a sound. Other files convert as usual.
     /// </summary>
     public bool CutsClipOf(string sourceFormat) =>
-        Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+        Media.Clip is { Parts.Count: > 0 }
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
+
+    /// <summary>
+    /// True if converting a <paramref name="sourceFormat"/> file splits it into parts by stream copy
+    /// (<see cref="MediaOptions.SplitEverySeconds"/>, <see cref="MediaOptions.SplitParts"/>): the file is a video and the
+    /// target a video format. A clip, a crop, a join or a photo of a video does what it does instead.
+    /// </summary>
+    public bool SplitsVideoOf(string sourceFormat) =>
+        Media.Splits && !CutsClipOf(sourceFormat) && !CropsVideo && !JoinsIntoOneMedia
+        && Formats.FormatRegistry.FindById(TargetFormat)?.Category == Formats.FormatCategory.Video
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
     /// <summary>True for "Crop video" (<see cref="MediaOptions.CropFrame"/>): it works on videos only.</summary>
     [JsonIgnore]
@@ -380,6 +434,11 @@ public sealed class Preset
     public Preset ForSharing()
     {
         var copy = WithoutPassword(mark: false);
+        if (copy.Gallery is not null)
+        {
+            copy = ReferenceEquals(copy, this) ? Clone() : copy;
+            copy.Gallery = null;
+        }
         if (copy.Image.Backdrop?.Picture is null && copy.Image.BackdropLook?.Picture is null)
             return copy;
         copy = ReferenceEquals(copy, this) ? Clone() : copy;
@@ -400,11 +459,18 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
+        Gcode = Gcode.Clone(),
         Translate = Translate.Clone(),
         Upscale = Upscale.Clone(),
         Metadata = Metadata?.Clone(),
         Output = Output.Clone(),
+        Icon = Icon,
+        ShortName = ShortName,
+        Show = Show,
+        Direction = Direction,
+        AskCompression = AskCompression,
         Kind = Kind,
+        Gallery = Gallery,
         Tool = Tool,
         SubPresetIds = [.. SubPresetIds],
     };
@@ -713,9 +779,17 @@ public sealed class ImageOptions
 
     /// <summary>
     /// Keep each picture under this many MB of 1,000,000 bytes; 0 = no limit. A larger one is saved again at a lower
-    /// quality, then smaller (down to a long edge of 640 px), until it fits (#553).
+    /// quality, then smaller (down to a long edge of 640 px), until it fits (#553); with
+    /// <see cref="MaxSizeKeepsPixels"/> only at a lower quality.
     /// </summary>
     public double MaxSizeMb { get; set; }
+
+    /// <summary>
+    /// With <see cref="MaxSizeMb"/>: the picture keeps the size it has after resizing, and only the quality goes down,
+    /// further than it otherwise would; one that still doesn't fit is refused instead of made smaller (#1270). A field
+    /// of its own, so an older version skips it and fits the picture as it always did.
+    /// </summary>
+    public bool MaxSizeKeepsPixels { get; set; }
 
     /// <summary>
     /// Keep each picture at least this many MB of 1,000,000 bytes; 0 = no minimum. A smaller one in a lossy format is
@@ -817,7 +891,8 @@ public sealed class ImageOptions
 
     /// <summary>
     /// Free width x height resizing (issue #576): stretched to exactly that size, or with
-    /// <see cref="CustomImageSize.LockAspect"/> scaled (up or down) to the largest size that fits inside. When set it
+    /// <see cref="CustomImageSize.LockAspect"/> scaled (up or down, or with <see cref="CustomImageSize.ShrinkOnly"/> only
+    /// down) to the largest size that fits inside. When set it
     /// wins over <see cref="Resize"/>; null leaves <see cref="Resize"/> in charge. Stored as one object so a
     /// presets.json written by this version never carries a resize name an older version rejects: older versions skip
     /// the unknown property and simply do not resize.
@@ -1007,7 +1082,7 @@ public sealed class ImageOptions
         copy.Backdrop = Backdrop?.Clone();
         copy.BackdropLook = BackdropLook?.Clone();
         copy.CustomSize = CustomSize is { } size
-            ? new CustomImageSize { Width = size.Width, Height = size.Height, LockAspect = size.LockAspect, Unit = size.Unit, Dpi = size.Dpi }
+            ? new CustomImageSize { Width = size.Width, Height = size.Height, LockAspect = size.LockAspect, ShrinkOnly = size.ShrinkOnly, Unit = size.Unit, Dpi = size.Dpi }
             : null;
         return copy;
     }
@@ -1036,6 +1111,31 @@ public sealed class CustomImageSize
     /// stretching it to exactly that size.
     /// </summary>
     public bool LockAspect { get; set; }
+
+    /// <summary>
+    /// With <see cref="LockAspect"/>: the box is a maximum (#1270). A picture larger than it is scaled down to fit, one
+    /// that already fits stays as it is. Without the lock the picture is stretched to the exact size, so this has no
+    /// effect there. An older version skips the field and scales smaller pictures up, as it always did.
+    /// </summary>
+    public bool ShrinkOnly { get; set; }
+
+    /// <summary>
+    /// The side the editors store for a width or height left empty with <see cref="LockAspect"/> (#1270): the largest
+    /// one, so the other side is what limits the picture (the free side still never goes past the largest side the
+    /// editors offer). Stored as a real size rather than 0: an older version ignores a box with a side of 0, and its
+    /// editors show and save that side as the smallest one, which would shrink every picture to a sliver.
+    /// </summary>
+    public const int FreeSide = MaxSide;
+
+    /// <summary>
+    /// The one scale that fits a width x height picture inside the box with <see cref="LockAspect"/>: up or down, and
+    /// with <see cref="ShrinkOnly"/> never above 1.
+    /// </summary>
+    public double FitScale(double width, double height)
+    {
+        var scale = Math.Min(ClampedWidth / width, ClampedHeight / height);
+        return ShrinkOnly ? Math.Min(1, scale) : scale;
+    }
 
     /// <summary>
     /// The unit the Edit pictures window shows the size in (#725). <see cref="Width"/> and <see cref="Height"/> stay in
@@ -1123,7 +1223,7 @@ public enum PdfRotation
     Rotate180,
 }
 
-/// <summary>The paper "Pages per sheet" puts the pages on (<see cref="PdfOptions.PagesPerSheet"/>).</summary>
+/// <summary>The paper for "Pages per sheet" or for fitting merged pages to one size.</summary>
 public enum PdfSheetPaper
 {
     A4,
@@ -1133,7 +1233,7 @@ public enum PdfSheetPaper
     SameAsFirstPage,
 }
 
-/// <summary>Which way a sheet of "Pages per sheet" stands.</summary>
+/// <summary>Which way a sheet of "Pages per sheet" or a merged PDF stands.</summary>
 public enum PdfSheetOrientation
 {
     /// <summary>Whichever fits the first page larger.</summary>
@@ -1157,6 +1257,20 @@ public sealed class PdfOptions
     /// <summary>Combine all dropped files into one PDF instead of one PDF per file.</summary>
     public bool MergeIntoSingle { get; set; }
 
+    /// <summary>Add a bookmark for each original source file when merging several files into one PDF.</summary>
+    public bool SourceBookmarks { get; set; }
+
+    /// <summary>Fit every merged page to one paper size after input conversions and before PDF finishing.</summary>
+    public bool NormalizeMergePaper { get; set; }
+
+    /// <summary>With <see cref="NormalizeMergePaper"/>: the paper, independent of image and N-up page settings.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetPaper>))]
+    public PdfSheetPaper MergePaper { get; set; } = PdfSheetPaper.A4;
+
+    /// <summary>With <see cref="NormalizeMergePaper"/>: the orientation, chosen once from the first imported page.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetOrientation>))]
+    public PdfSheetOrientation MergeOrientation { get; set; } = PdfSheetOrientation.Auto;
+
     public PdfPageSize PageSize { get; set; } = PdfPageSize.FitImage;
 
     /// <summary>Page margin in millimetres (ignored for <see cref="PdfPageSize.FitImage"/>).</summary>
@@ -1177,8 +1291,23 @@ public sealed class PdfOptions
     /// </summary>
     public bool AskPageRange { get; set; }
 
-    /// <summary>For PDF → PDF: write every page as its own file.</summary>
+    /// <summary>
+    /// For PDF → PDF: write the pages into several files, every page as its own file unless <see cref="SplitEvery"/>
+    /// or <see cref="SplitParts"/> groups them (<see cref="Conversion.PageGroups"/>).
+    /// </summary>
     public bool SplitPages { get; set; }
+
+    /// <summary>
+    /// With <see cref="SplitPages"/>: this many pages to a file, the last file taking what is left (#1259). 0 or 1 is
+    /// one page per file, so a preset saved before it reads unchanged; a Filee from before it makes one file per page.
+    /// </summary>
+    public int SplitEvery { get; set; }
+
+    /// <summary>
+    /// With <see cref="SplitPages"/>: the pages in this many files of the same length, give or take a page (halves,
+    /// thirds, #1259). Over <see cref="SplitEvery"/>; 0 or 1 is off.
+    /// </summary>
+    public int SplitParts { get; set; }
 
     /// <summary>For PDF → PDF: rotate every selected page without rendering it.</summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<PdfRotation>))]
@@ -1453,12 +1582,73 @@ public sealed class MediaOptions
     /// <summary>With <see cref="SaveEveryFrame"/>: extract every Nth frame (1 = every frame).</summary>
     public int FrameInterval { get; set; } = 1;
 
+    /// <summary>Shortest, usual and longest iPhone ringtone, in seconds: iOS only takes a ringtone of at most 40 s (#1291).</summary>
+    public const double MinRingtoneLength = 1, DefaultRingtoneLength = 30, MaxRingtoneLength = 40;
+
+    /// <summary>M4R (iPhone ringtone): where the ringtone starts in the sound, in seconds.</summary>
+    public double RingtoneStart { get; set; }
+
+    /// <summary>
+    /// M4R (iPhone ringtone): how long the ringtone is, in seconds (<see cref="MinRingtoneLength"/> to
+    /// <see cref="MaxRingtoneLength"/>), shorter when the sound ends sooner.
+    /// </summary>
+    public double RingtoneLength { get; set; } = DefaultRingtoneLength;
+
+    /// <summary>
+    /// M4R (iPhone ringtone): ask for the part of each sound every time, in the "Cut a clip" window (#1291), instead
+    /// of using <see cref="RingtoneStart"/> and <see cref="RingtoneLength"/>.
+    /// </summary>
+    public bool AskRingtonePart { get; set; }
+
+    /// <summary>
+    /// The part of a sound of <paramref name="sourceSeconds"/> (null when unknown) that becomes the ringtone: where it
+    /// starts and how long it is. A hand-edited preset file may hold anything, so both are brought within their limits:
+    /// the length to 1–40 s and, when the sound's length is known, the window to the sound: a start past its end moves
+    /// back so that the ringtone keeps the length asked for and ends where the sound ends, and a length that goes past
+    /// the end is cut there.
+    /// </summary>
+    public (double Start, double Length) RingtoneWindow(double? sourceSeconds)
+    {
+        var length = double.IsFinite(RingtoneLength) ? Math.Clamp(RingtoneLength, MinRingtoneLength, MaxRingtoneLength) : DefaultRingtoneLength;
+        var start = double.IsFinite(RingtoneStart) ? Math.Max(0, RingtoneStart) : 0;
+        if (sourceSeconds is { } total && total > 0)
+        {
+            if (start >= total)
+                start = Math.Max(0, total - length);
+            length = Math.Min(length, total - start);
+        }
+        return (start, length);
+    }
+
     /// <summary>
     /// "Cut a clip": cut exactly at the chosen frames by encoding the clip again (with <see cref="Quality"/>,
     /// <see cref="MaxHeight"/>, <see cref="VideoCodec"/>, …). Off by default: the streams are copied as they are, which
     /// takes a moment and loses nothing, but the clip starts at the key frame before the chosen start.
     /// </summary>
     public bool ExactCut { get; set; }
+
+    /// <summary>
+    /// Video → video: a part for every this many seconds of the video (#1259), copied as it is (<see cref="Preset.SplitsVideoOf"/>).
+    /// A copy can only break at a key frame, so each part ends at the first one from there on. 0 is off, so presets
+    /// saved before it read unchanged.
+    /// </summary>
+    public int SplitEverySeconds { get; set; }
+
+    /// <summary>
+    /// Video → video: the video in this many parts of about the same length (halves, thirds, #1259), copied as it is.
+    /// Over <see cref="SplitEverySeconds"/>; 0 or 1 is off.
+    /// </summary>
+    public int SplitParts { get; set; }
+
+    /// <summary>
+    /// Most parts one video is split into (<see cref="SplitEverySeconds"/>, <see cref="SplitParts"/>): a two-hour film
+    /// every 10 seconds, already more files than anyone wants in a folder.
+    /// </summary>
+    public const int MaxSplitParts = 1000;
+
+    /// <summary>True when <see cref="SplitEverySeconds"/> or <see cref="SplitParts"/> asks for parts.</summary>
+    [JsonIgnore]
+    public bool Splits => SplitParts > 1 || SplitEverySeconds > 0;
 
     /// <summary>
     /// A clip of a video (<see cref="Preset.CutsClipOf"/>): its parts, their volume and speed, and its fades. Set by the
@@ -1477,9 +1667,17 @@ public sealed class MediaOptions
 
     /// <summary>
     /// MP4 or M4A: every dropped video (or audio file) goes, in order and without gaps, into one file named after the
-    /// first. Clips that share codecs and picture size are copied; others are encoded to match the first.
+    /// first. Clips that share codecs and picture size are copied; others are encoded to match the first. Audio files
+    /// dropped with videos into MP4 become music under them (<see cref="LoopMusic"/>).
     /// </summary>
     public bool JoinIntoOne { get; set; }
+
+    /// <summary>
+    /// With <see cref="JoinIntoOne"/> into MP4 (#1402): the audio files among the videos are music, played one after
+    /// another under them; this repeats that music from the start until the videos end, where it fades out. Off: the
+    /// music stops when the last song ends. The music never plays past the videos either way.
+    /// </summary>
+    public bool LoopMusic { get; set; }
 
     /// <summary>
     /// MP4: the dropped pictures become one 1080p video, each shown for <see cref="SlideSeconds"/>, fitted in with
@@ -1709,6 +1907,30 @@ public sealed class CadOptions
     public CadColors Colors { get; set; }
 
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
+}
+
+/// <summary>What a G-code file (3D printer or CNC) shows when it becomes a picture, an SVG or a PDF.</summary>
+public enum GcodeView
+{
+    /// <summary>The toolpath seen from above.</summary>
+    Top,
+    /// <summary>The toolpath seen from the front left corner, above the bed, so the height of the print shows.</summary>
+    Isometric,
+    /// <summary>
+    /// The preview the slicer saved in the file (PrusaSlicer, Cura, OrcaSlicer, Bambu Studio …), for pictures; the
+    /// toolpath from above for SVG and PDF, and for a file without one.
+    /// </summary>
+    Thumbnail,
+}
+
+/// <summary>Options for G-code files drawn into a PDF, SVG or picture.</summary>
+public sealed class GcodeOptions
+{
+    /// <summary>A choice from a newer Filee reads as <see cref="GcodeView.Top"/>.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<GcodeView>))]
+    public GcodeView View { get; set; }
+
+    public GcodeOptions Clone() => (GcodeOptions)MemberwiseClone();
 }
 
 /// <summary>Options for offline AI document translation.</summary>

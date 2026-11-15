@@ -261,6 +261,7 @@ public class InstallerTests
         Assert.True(result.Succeeded);
         Assert.Null(result.Launch);
         Assert.True(File.Exists(Path.Combine(folder, "Filee.exe")));
+        Assert.Equal("", File.ReadAllText(Path.Combine(folder, "filee.portable")));
         // No uninstaller: the app counts itself as portable (UpdateService.IsInstalled).
         Assert.False(File.Exists(Path.Combine(folder, "uninstall.exe")));
         Assert.False(portable.Registry.KeyExists(Hive.LocalMachine, Key));

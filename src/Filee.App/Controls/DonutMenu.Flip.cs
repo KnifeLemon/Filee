@@ -59,6 +59,9 @@ public sealed partial class DonutMenu
     private bool _swapping;           // FaceSwapping is being handled (Items change for the flip, not for new files)
     private Point? _lastExternalAt;   // where a drag from outside was last seen on the donut
     private OldSlice[]? _oldFace;
+
+    /// <summary>The old face's items, kept as one list so its labels are laid out once for the whole flip.</summary>
+    private DonutItem[]? _oldFaceItems;
     private OldGroup? _oldGroup;
     private double[] _oldDelay = [];
     private double[] _newDelay = [];
@@ -219,6 +222,7 @@ public sealed partial class DonutMenu
     private void CaptureOldFace()
     {
         var n = Count;
+        _oldFaceItems = Items!.Take(n).ToArray();
         _oldFace = Enumerable.Range(0, n).Select(i => new OldSlice
         {
             Item = Items![i],

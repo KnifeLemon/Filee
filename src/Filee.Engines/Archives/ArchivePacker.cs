@@ -105,7 +105,8 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         var paths = new List<string>();
         foreach (var item in items)
         {
-            if (string.Equals(Path.GetFileName(item.SourcePath), item.EntryName, StringComparison.Ordinal))
+            // 7-Zip follows junctions inside directories. Always stage folders through the link-skipping copy.
+            if (!Directory.Exists(item.SourcePath) && string.Equals(Path.GetFileName(item.SourcePath), item.EntryName, StringComparison.Ordinal))
             {
                 paths.Add(item.SourcePath);
                 continue;
@@ -133,9 +134,13 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
     /// <summary>Copies a folder tree without following links.</summary>
     private static async Task CopyFolderAsync(DirectoryInfo source, string target, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (source.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            throw new IOException($"Cannot pack a linked folder: {source.FullName}");
         Directory.CreateDirectory(target);
         foreach (var info in source.EnumerateFileSystemInfos())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (info.Attributes.HasFlag(FileAttributes.ReparsePoint))
                 continue;
             var destination = Path.Combine(target, info.Name);

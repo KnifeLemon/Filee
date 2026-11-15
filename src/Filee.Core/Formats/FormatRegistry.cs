@@ -10,12 +10,18 @@ public static class FormatRegistry
     /// <summary>Pseudo format for archive extraction outputs and folders explicitly classified at input handling.</summary>
     public const string Folder = "folder";
 
+    /// <summary>
+    /// Windows programs and libraries (.exe, .dll), read as the icon Explorer shows for them (#1188). They are never run.
+    /// </summary>
+    public const string Program = "exe";
+
     /// <summary>All known formats. Order is the order shown in format pickers.</summary>
     public static IReadOnlyList<FileFormat> Known { get; } =
     [
         // Raster images
         new("png", "PNG", FormatCategory.Image, ["png", "png_large"]),
-        new("jpg", "JPG", FormatCategory.Image, ["jpg", "jpeg", "jpe", "jfif", "jif", "jpg_large"]),
+        // Insta360 .insp photos (#711) are JPEGs of both fisheye circles; stitching them needs Insta360's lens data.
+        new("jpg", "JPG", FormatCategory.Image, ["jpg", "jpeg", "jpe", "jfif", "jif", "insp", "jpg_large"]),
         new("webp", "WEBP", FormatCategory.Image, ["webp"]),
         new("tiff", "TIFF", FormatCategory.Image, ["tiff", "tif"]),
         new("bmp", "BMP", FormatCategory.Image, ["bmp", "dib"]),
@@ -36,6 +42,8 @@ public static class FormatRegistry
         new("dds", "DDS", FormatCategory.Image, ["dds"]),
         new("pcx", "PCX", FormatCategory.Image, ["pcx"]),
         new("cur", "CUR", FormatCategory.Image, ["cur"]),
+        // Windows animated cursor (#1365), read by Filee: every step with its time, or the first one as a picture.
+        new("ani", "Animated cursor (ANI)", FormatCategory.Image, ["ani"], Writable: false),
         new("xpm", "XPM", FormatCategory.Image, ["xpm"]),
         new("xbm", "XBM", FormatCategory.Image, ["xbm"]),
         new("wbmp", "WBMP", FormatCategory.Image, ["wbmp"]),
@@ -53,12 +61,20 @@ public static class FormatRegistry
         new("fits", "FITS", FormatCategory.Image, ["fits", "fts"], Writable: false),
         // Read on Windows only, with its own codec (HDR screenshots of Windows are JPEG XR).
         new("jxr", "JPEG XR", FormatCategory.Image, ["jxr", "wdp", "hdp"], Writable: false),
-        new("xcf", "XCF", FormatCategory.Image, ["xcf"], Writable: false),
+        // GIMP's own file, read and written by Filee: layers merged for other pictures, kept between XCF, PDN and PSD.
+        new("xcf", "GIMP (XCF)", FormatCategory.Image, ["xcf"]),
         // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it. ".kra~" is the
         // backup Krita keeps of the previous save, the same file under another name (#1077).
         new("kra", "Krita (KRA)", FormatCategory.Image, ["kra", "kra~"], Writable: false),
+        // Paint.NET's own file, read and written by Filee: layers merged for other pictures, kept between PDN and PSD.
+        new("pdn", "Paint.NET (PDN)", FormatCategory.Image, ["pdn"]),
+        // Valve's texture for the Source engine (Garry's Mod, Counter-Strike: Source, Team Fortress 2), read and written by
+        // Filee: DXT1 or DXT5 with every mipmap, the frames of an animated texture.
+        new("vtf", "Valve Texture (VTF)", FormatCategory.Image, ["vtf"]),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
+        // A Windows program or library (#1188), read as its icon: the picture Explorer shows for the file.
+        new(Program, "Windows program icon (EXE, DLL)", FormatCategory.Image, ["exe", "dll"], Writable: false),
         new("raw", "RAW", FormatCategory.Image,
             ["dng", "cr2", "cr3", "crw", "nef", "nrw", "arw", "srf", "sr2", "orf", "rw2", "raf", "pef", "dcr", "kdc",
              "erf", "mos", "mrw", "x3f", "3fr", "fff", "iiq", "mef", "rwl", "srw", "raw"], Writable: false),
@@ -78,6 +94,9 @@ public static class FormatRegistry
         // Tajima embroidery designs: the stitches drawn as lines (issue #397).
         new("dst", "DST", FormatCategory.Vector, ["dst"], Writable: false),
         new("odg", "ODG", FormatCategory.Vector, ["odg"]),
+        // Obsidian's visual boards (JSON Canvas 1.0): cards, groups and the lines between them, read by Filee itself and
+        // drawn as SVG (then PDF and pictures), or their text as Markdown. A .canvas that isn't one is refused.
+        new("canvas", "Obsidian Canvas", FormatCategory.Vector, ["canvas"], Writable: false),
         new("fodg", "FODG", FormatCategory.Vector, ["fodg"], Writable: false),
 
         // PDF
@@ -147,12 +166,12 @@ public static class FormatRegistry
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
 
         // Plain text / markup
-        // Text logs, source code, database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
+        // Text logs, source code (Arduino and Processing sketches too), database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
         // text, never executed, compiled or translated (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660,
         // #864, #828, #980, #997, #854, #1176).
         new("txt", "TXT", FormatCategory.Text,
             ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
-             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java"]),
+             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java", "ino", "pde"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
         // A web page saved with its pictures in one MIME file (Chrome, Edge, Word); read as the page it holds.
@@ -213,9 +232,11 @@ public static class FormatRegistry
         new("oeb", "OEB", FormatCategory.Ebook, ["oeb", "opf"], Writable: false),
 
         // Video
-        new("mp4", "MP4", FormatCategory.Video, ["mp4"]),
+        // Some Instagram downloads are saved as ".mpg4" (#1397); MP4 stays the extension Filee writes.
+        new("mp4", "MP4", FormatCategory.Video, ["mp4", "mpg4"]),
         new("m4v", "M4V", FormatCategory.Video, ["m4v"]),
-        new("mov", "MOV", FormatCategory.Video, ["mov", "qt"]),
+        // Some downloaders name video/quicktime files ".quicktime" (#1283); MOV stays the extension Filee writes.
+        new("mov", "MOV", FormatCategory.Video, ["mov", "qt", "quicktime"]),
         new("mkv", "MKV", FormatCategory.Video, ["mkv"]),
         new("webm", "WEBM", FormatCategory.Video, ["webm"]),
         new("avi", "AVI", FormatCategory.Video, ["avi", "divx"]),
@@ -244,6 +265,9 @@ public static class FormatRegistry
         // Dahua and similar DVR / NVR recordings (#594): FFmpeg's dhav demuxer reads them (H.264 / H.265 video, often
         // with G.711 or AAC sound).
         new("dav", "DAV", FormatCategory.Video, ["dav"], Writable: false),
+        // Wisenet WAVE / Nx Witness exports: a layout file whose camera recordings are Matroska streams, read by FFmpeg
+        // from inside the file (NovExport). Password-protected exports are encrypted and refused.
+        new("nov", "NOV", FormatCategory.Video, ["nov"], Writable: false),
         // Bink Video, the game cutscene format of RAD Game Tools (#751): FFmpeg's bink demuxer reads it. Never a target.
         new("bik", "BIK", FormatCategory.Video, ["bik"], Writable: false),
         // FLIC, the animations of Autodesk Animator (.fli) and Animator Pro (.flc), also in DOS games and pixel-art tools
@@ -257,6 +281,8 @@ public static class FormatRegistry
         new("mp3", "MP3", FormatCategory.Audio, ["mp3"]),
         new("m4a", "M4A", FormatCategory.Audio, ["m4a"]),
         new("m4b", "M4B", FormatCategory.Audio, ["m4b"]),
+        // iPhone ringtones (#1291): AAC in the same container as M4A, which iOS takes as a ringtone by its .m4r extension.
+        new("m4r", "M4R", FormatCategory.Audio, ["m4r"]),
         new("aac", "AAC", FormatCategory.Audio, ["aac"]),
         new("wav", "WAV", FormatCategory.Audio, ["wav", "wave"]),
         new("flac", "FLAC", FormatCategory.Audio, ["flac"]),
@@ -286,6 +312,12 @@ public static class FormatRegistry
         new("spx", "Speex", FormatCategory.Audio, ["spx"], Writable: false),
         // Apple Voice Memos recordings (#646): QuickTime audio, read by FFmpeg's mov demuxer.
         new("qta", "QTA", FormatCategory.Audio, ["qta"], Writable: false),
+        // Tracker modules (#1376): FastTracker 2, Impulse Tracker and Scream Tracker 3 songs, stored as note patterns and
+        // samples. FFmpeg reads them only when built with libopenmpt or libmodplug (FfmpegConverter checks).
+        // Amiga .mod is left out: that extension is the camcorder video above.
+        new("xm", "XM (FastTracker 2 module)", FormatCategory.Audio, ["xm"], Writable: false),
+        new("it", "IT (Impulse Tracker module)", FormatCategory.Audio, ["it"], Writable: false),
+        new("s3m", "S3M (Scream Tracker 3 module)", FormatCategory.Audio, ["s3m"], Writable: false),
 
         // Archives
         // ANSYS Workbench project archives use the ZIP container (issue #294).
@@ -306,6 +338,15 @@ public static class FormatRegistry
         new("lzma", "LZMA", FormatCategory.Archive, ["lzma"], Writable: false),
         new("z", "Z", FormatCategory.Archive, ["z"], Writable: false),
         new("jar", "JAR", FormatCategory.Archive, ["jar"], Writable: false),
+        // Adobe extension packages for After Effects, Premiere Pro, Photoshop … (#1382): signed ZIPs. Never a target,
+        // since installing one needs the signature its developer makes with Adobe's ZXPSignCmd.
+        new("zxp", "ZXP (Adobe extension)", FormatCategory.Archive, ["zxp"], Writable: false),
+        // NuGet packages and their symbol packages (#1465), split-APK containers from bundletool, SAI, APKMirror and
+        // APKPure, and Android App Bundles (#1464): all ZIPs. Never a target, since NuGet, Android and the stores need
+        // a package signed (and laid out) by its developer's tools.
+        new("nupkg", "NUPKG (NuGet package)", FormatCategory.Archive, ["nupkg", "snupkg"], Writable: false),
+        new("apks", "APKS (Android split APKs)", FormatCategory.Archive, ["apks", "xapk", "apkm"], Writable: false),
+        new("aab", "AAB (Android App Bundle)", FormatCategory.Archive, ["aab"], Writable: false),
         // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
         // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
         // the top.
@@ -331,6 +372,14 @@ public static class FormatRegistry
         // CAD
         new("dwg", "DWG", FormatCategory.Cad, ["dwg"]),
         new("dxf", "DXF", FormatCategory.Cad, ["dxf"]),
+        // PCB layers (RS-274X / Gerber X2): generic, Protel-style per-layer and board-outline extensions. GIMP brushes
+        // also use .gbr; the reader tells them apart and says so.
+        new("gerber", "Gerber", FormatCategory.Cad,
+            ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"], Writable: false),
+        // Toolpaths of 3D printers (slicers) and CNC machines, read only and drawn as a picture. ".nc" stays out (also
+        // NetCDF, #562, #244), and so do ".tap" (also cassette images) and ".g" (also ANTLR and GAP; RepRapFirmware's
+        // macros seldom have a toolpath).
+        new("gcode", "G-code", FormatCategory.Cad, ["gcode", "gco", "ngc"], Writable: false),
 
         // Fonts
         new("ttf", "TTF", FormatCategory.Font, ["ttf"]),
@@ -347,6 +396,7 @@ public static class FormatRegistry
         new("vtt", "WebVTT", FormatCategory.Subtitle, ["vtt"]),
         new("smi", "SAMI", FormatCategory.Subtitle, ["smi", "sami"]),
         new("lrc", "LRC", FormatCategory.Subtitle, ["lrc"]),
+        new("krc", "KRC", FormatCategory.Subtitle, ["krc"], Writable: false),
         new("ttml", "TTML", FormatCategory.Subtitle, ["ttml", "dfxp"]),
         new("sub", "MicroDVD", FormatCategory.Subtitle, ["sub"]),
         new("scc", "SCC", FormatCategory.Subtitle, ["scc"], Writable: false),
@@ -368,6 +418,8 @@ public static class FormatRegistry
         new("shp", "Shapefile", FormatCategory.Geo, ["shp"]),
         // Activity files read by the geo engine (issue #451); .fits/.fts stay FITS.
         new("fit", "Garmin FIT", FormatCategory.Geo, ["fit"], Writable: false),
+        // OpenStreetMap XML exports read by the geo engine (issue #713); the binary .osm.pbf is not read.
+        new("osm", "OpenStreetMap", FormatCategory.Geo, ["osm"], Writable: false),
     ];
 
     private static readonly Dictionary<string, FileFormat> ById =
@@ -394,6 +446,12 @@ public static class FormatRegistry
 
     /// <summary>Detects the format of a file from its extension, or <c>null</c> if it is not supported.</summary>
     public static FileFormat? Detect(string path) => FindByExtension(ExtensionOf(path));
+
+    /// <summary>
+    /// True for a Windows program or library (<see cref="Program"/>). Filee reads its icon when the file is dropped or
+    /// named, but never opens one (it would start the program) and never takes one from a folder by itself.
+    /// </summary>
+    public static bool IsProgram(string path) => Detect(path)?.Id == Program;
 
     /// <summary>
     /// The extension of <paramref name="path"/> without the dot, including known two-part extensions

@@ -48,21 +48,55 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     public Task FinishAsync(string path, PdfOptions options, CancellationToken cancellationToken) =>
         Task.Run(() => PdfFinishing.Finish(path, options, cancellationToken), cancellationToken);
 
-    public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken) =>
-        Task.Run(() => Merge(inputPaths, outputPath, cancellationToken), cancellationToken);
+    /// <summary>Imports PDFs and their supported structure, optionally fitting every page to one paper.</summary>
+    public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks,
+        Core.Conversion.PdfMergePaper? paper, CancellationToken cancellationToken) =>
+        Task.Run(() => Merge(inputs, outputPath, sourceBookmarks, paper, cancellationToken), cancellationToken);
 
-    internal static void Merge(IReadOnlyList<string> inputs, string outputPath, CancellationToken ct, PdfMergeStructure.Limits? limits = null)
+    internal static void Merge(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks,
+        Core.Conversion.PdfMergePaper? paper, CancellationToken ct, PdfMergeStructure.Limits? limits = null)
     {
         using var output = new PdfDocument();
         var structure = new PdfMergeStructure(output, limits ?? new());
+        (double Width, double Height)? target = null;
+        var pageNumber = 0;
         foreach (var input in inputs)
         {
             ct.ThrowIfCancellationRequested();
-            using var source = Open(input, PdfDocumentOpenMode.Import, ct);
+            using var source = Open(input.PdfPath, PdfDocumentOpenMode.Import, ct);
             var pages = new Dictionary<PdfObjectID, PdfPage>();
+            var normalizer = paper is null ? null : new PdfMergePaperFitter(output, limits?.Paper ?? new(), limits?.AppearanceLength ?? 4096);
+            normalizer?.CollectAnnotations(source);
+            var transforms = normalizer is null ? null : new Dictionary<PdfObjectID, PdfMergePaperFitter.Transform>();
+            var occurrences = normalizer is null ? null : new List<(PdfPage Source, PdfPage Imported, PdfMergePaperFitter.Transform Transform)>();
+            PdfPage? firstPage = null;
             foreach (var page in source.Pages)
-                pages[page.Reference!.ObjectID] = output.AddPage(page);
-            structure.Carry(source, pages, ct);
+            {
+                PdfMergePaperFitter.Transform? transform = null;
+                if (normalizer is not null)
+                {
+                    var geometry = normalizer.Snapshot(page);
+                    target ??= PdfMergePaperFitter.Target(geometry, paper!.Value);
+                    transform = PdfMergePaperFitter.Fit(geometry, target.Value);
+                    transforms![page.Reference!.ObjectID] = transform;
+                }
+                var imported = output.AddPage(page);
+                firstPage ??= imported;
+                pages[page.Reference!.ObjectID] = imported;
+                if (transform is not null)
+                    occurrences!.Add((page, imported, transform));
+            }
+            structure.Carry(source, pages, ct, sourceBookmarks ? input.SourceName : null, firstPage, transforms);
+            if (normalizer is not null)
+            {
+                foreach (var (original, imported, transform) in occurrences!)
+                {
+                    limits?.Paper?.BeforePage?.Invoke(++pageNumber);
+                    ct.ThrowIfCancellationRequested();
+                    normalizer.Normalize(original, imported, transform);
+                    normalizer.Annotations(original, imported, transform);
+                }
+            }
         }
         structure.Write(ct);
         output.Save(outputPath);
@@ -73,7 +107,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     {
         var options = step.Preset.Image;
         var pdfOptions = step.Preset.Pdf;
-        using var images = ImageReader.Read(step.InputPath, step.From, step.Preset);
+        using var images = ImageReader.Read(step.InputPath, step.From, step.Preset, ct);
         var frames = ImageEncoder.SelectFrames(images, AvifSequence.SourceFormat(step.From, step.InputPath), "pdf");
 
         using var document = new PdfDocument();
@@ -175,7 +209,10 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         }
     }
 
-    /// <summary>PDF → PDF: split into single pages, extract a range, or rotate the complete document in place.</summary>
+    /// <summary>
+    /// PDF → PDF: split into single pages or groups of pages (PageGroups), extract a range, or rotate the complete
+    /// document in place.
+    /// </summary>
     private static IReadOnlyList<string> SplitOrExtract(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
         using var source = Open(step.InputPath, PdfDocumentOpenMode.Import, ct);
@@ -184,17 +221,19 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
         if (step.Preset.Pdf.SplitPages)
         {
-            for (var i = 0; i < pages.Count; i++)
+            var groups = PageGroups.Of(pages, step.Preset.Pdf);
+            for (var i = 0; i < groups.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
-                using var single = new PdfDocument();
-                Rotate(single.AddPage(source.Pages[pages[i]]), step.Preset.Pdf.Rotation);
-                var path = step.Output.Allocate("pdf", $"_p{pages[i] + 1}");
+                using var part = new PdfDocument();
+                foreach (var index in groups[i])
+                    Rotate(part.AddPage(source.Pages[index]), step.Preset.Pdf.Rotation);
+                var path = step.Output.Allocate("pdf", PageGroups.Suffix(groups[i]));
                 if (path is null)
                     continue;
-                single.Save(path);
+                part.Save(path);
                 written.Add(path);
-                progress?.Report((i + 1.0) / pages.Count);
+                progress?.Report((i + 1.0) / groups.Count);
             }
             return written;
         }
@@ -241,7 +280,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         };
 
     /// <summary>
-    /// PDF → a smaller PDF (<see cref="PdfOptions.Compression"/>), also with a page range or one file per page: the whole
+    /// PDF → a smaller PDF (<see cref="PdfOptions.Compression"/>), also with a page range or split into files: the whole
     /// file keeps everything (bookmarks, form fields, links, metadata) and is compressed as it is; selected pages are
     /// copied into new PDFs first, as without compression. Each result is the smallest of the built-in compression and,
     /// when the preset asks for it and it is installed, Ghostscript's; when neither is smaller than the pages as they
@@ -260,13 +299,15 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             var pages = PageRange.Parse(options.PageRange, source.PageCount);
             if (options.SplitPages)
             {
-                foreach (var index in pages)
+                var groups = PageGroups.Of(pages, options);
+                for (var i = 0; i < groups.Count; i++)
                 {
-                    using var single = new PdfDocument();
-                    Rotate(single.AddPage(source.Pages[index]), options.Rotation);
-                    var path = Path.Combine(scratch, $"page-{index + 1}.pdf");
-                    single.Save(path);
-                    parts.Add((path, $"_p{index + 1}"));
+                    using var part = new PdfDocument();
+                    foreach (var index in groups[i])
+                        Rotate(part.AddPage(source.Pages[index]), options.Rotation);
+                    var path = Path.Combine(scratch, $"part-{i + 1}.pdf");
+                    part.Save(path);
+                    parts.Add((path, PageGroups.Suffix(groups[i])));
                 }
             }
             else if (pages.SequenceEqual(Enumerable.Range(0, source.PageCount)))

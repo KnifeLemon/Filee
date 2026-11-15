@@ -25,6 +25,7 @@
             │   · E-mail · Signed files · Data · E-books · CAD · Fonts · Subtitles · 3D models   │
             │ Bundled: rhwp (HWP→PDF, HWP↔HWPX) · 7-Zip (archives) · Unhwp · Markdig             │
             │ Optional: FFmpeg · LibreOffice + H2Orestart · calibre · Ghostscript · Pandoc       │
+            │   · WeasyPrint                                                                     │
             └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -52,7 +53,7 @@
    writing, but only at a path that was its alone: nothing was there before and no other conversion was handed the
    same name ("Overwrite"). It frees its names and removes an output folder it made if that is left empty.
    A PDF target's finishing (watermark, page numbers, password; `IPdfFinisher`) runs after the last step, on every
-   PDF a file became, and once on a merged PDF.
+   PDF a file became, and once on a merged PDF; PDF/A (`IPdfArchiver`, Ghostscript) follows it there.
    *Replace the original* (`OutputRule.ReplaceOriginal`, off by default) comes after that, for a finished result of
    the source's own format and extension, or another spelling of it (`.jpeg` / `.jpg`; TXT also covers scripts and
    logs, PPT also `.pps` and `.pot`, so those need the same extension). The result is first
@@ -66,7 +67,8 @@
    named destinations and page-backed AcroForm fields. Fields with colliding names get a file-position prefix.
    "Compress into one archive" packs the dropped files, unconverted, with the archive engine (`IFileCombiner`).
    "Merge videos", "Merge audio" and "Video from images" join the files, in the order picked in the merge order
-   window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first. Like the
+   window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first, and audio
+   files dropped with videos are music under them (added in the same window, which also offers "Loop music"). Like the
    other one-file jobs, the output follows "subfolder only for several files", and a join that fails or is cancelled
    is undone by the job's allocator, which deletes only paths that were the job's own.
    "Merge images" puts the pictures, in the order picked in the same window (with their layout: one under another or
@@ -122,7 +124,10 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   private, carrier-grade NAT, link-local, unique local, multicast, `localhost` and `.local` names, IPv4 inside IPv6)
   is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
   `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
-  nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
+  nowhere. A connection to the user's proxy isn't checked, including the CONNECT tunnel the handler opens to an
+  https site through a proxy on this computer (`127.0.0.1:7890`); the names and numbers in the address still are.
+  The proxy is Settings → General → Network (`ProxySetting`, which never sends local addresses through it) or the
+  system's.
   "Allow links to this computer and the local network" (Settings → General, `BrowserDropSettings.AllowLocalNetwork`,
   off by default, read for each drop) lifts this for an intranet or a NAS. Those downloads go through an `HttpClient`
   of their own, so a pooled connection to a local address never serves a drop that may not go there.
@@ -169,6 +174,36 @@ per press, following `IsActive`); key window status is explicitly released once 
 with Filee when the drop opens a window of its own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard
 during a drag breaks Explorer's.
 The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits either list with the same drag and drop.
+Each gesture says which face the donut opens on (`TriggerGesture.Face`, the front unless set to the back in Settings →
+Shortcuts), so gestures with different modifiers open different sets of slices (#195). `RadialController.ShowForDrag`
+keeps it until files enter, `ShowForFiles` takes it for the selection and clipboard shortcuts, and
+`RadialViewModel.Load` opens the front instead when the back has no slice for the files. The flip key and the wheel
+turn it over from there. Thunar's shortcut on Linux goes through the context-menu action, which always opens the front.
+
+The editor's donut is laid out at its real size and drawn smaller (a `Viewbox` that only shrinks) when its column is
+narrower, so names wrap and icons show as on the donut itself. Clicking a group slice opens it in the editor
+(`ToolbarPageViewModel.OpenGroup`): the donut then shows and edits the group's members with the same drag and drop, the
+palette offers what the group doesn't hold and no groups (`Placed`, shared with the search and the judging), and the ✎
+still opens each preset's own editor. *Edit Donut Size* (`IsAdjustingLook`) swaps the editor for the size, look and
+label settings. While either is open, `DonutPreviewWindow` shows the donut on screen beside the main window at its real
+size, filled by a `RadialViewModel` of its own as the donut opens for the profile's files (`LoadPreview`, with the
+turned-off fields left out); it follows every change and converts nothing. It holds a group open
+(`DonutMenu.HeldGroupId`, by preset id, so a flip or a reload keeps it): the one open in the editor, or, once a ring
+setting changes, the one picked under the ring sliders (*Group shown*, offered with two or more) or clicked on it, the
+first until then; a donut with none fans an example ring off its top slice (`RadialViewModel.ShowExampleGroup`). Where
+it goes is `DonutPreviewPlacement` (pure, in screen pixels at each screen's own scaling): where it was last dragged
+(`AppSettings.DonutPreviewPlace`, against the main window) if all of it is on a screen there and clear of the window;
+beside the main window, on a screen as tall as the donut; on another screen; beside it past its screen's edges; else the
+main window moves over, narrower down to its minimum width if it must, and back when the donut goes
+(`MainWindow.RestPlace` keeps where it was, so closing meanwhile remembers that). Beside the window its facing edge
+stays put as a slider grows it, and it is placed again when it no longer fits, when the window is resized, moved or
+maximized. With no room at all (a screen too small for both, or a window that can't move: maximized) it goes over the
+start side of the main window (its navigation and profile list), never over Done, owned by the main window so it stays
+above it; otherwise it isn't Topmost or owned, unlike the live donut: a click on the main window brings that in front of
+it. Dragged by its middle, it is the user's until the button is up (released, or seen up since: a window manager's move
+may keep the release); dropped onto the main window, it moves back off it. The look sliders change the settings at once
+and write them once the slider rests (`DonutLookSave`, as `UiZoom` does), with `UserDataStore.SaveDonutLook`, which
+doesn't raise `SettingsChanged`: re-applying the theme for every pixel a slider moved made them stick.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
@@ -282,6 +317,83 @@ without touching the file's content.
 - PDFs: ExifTool appends its changes as an update, so earlier values stay recoverable inside the file; the window says
   so.
 
+A group's ring scales with the donut: its gap, depth and narrowest slice (`DonutMenu.SubGap`, `SubBand`,
+`DonutGeometry.MinSubWidth`) and the window's room for it (`SubRingSpaceFor`) are multiplied by the ring scale,
+radius ÷ 150 × *Group ring size* (`DonutSettings.GroupRingSize`, 75–150 %), never below the default ring of the
+smallest donut (`MinRingScale`). *Group ring spread* (`GroupRingSpread`, 100–300 %) widens each ring slice after the
+narrowest-slice rule, up to one turn round the donut. Pointer tolerances (`BackdropMargin`, `LeaveEdge`) stay in
+pixels. At the defaults and radius 150 the ring is the same as before these settings.
+
+### Slice labels
+
+`Controls/SliceLabelLayout.cs` decides what each slice shows and where, without drawing; `DonutMenu.DrawSliceLabel`
+draws the result. Every label stays inside the slice's *safe zone*: the slice inset by a margin of `max(2·s,
+0.025·depth)` from all four edges (plus half the 3 px gap on the sides), and as far from a group's chevron: the mark
+itself, not a band across the slice, so a group slice's label is centred as any other's. The margin is kept from the
+letters, measured from their outlines (`LabelText.InkBox`) with each line at its own width (`StackInside`), not from the
+lines' boxes, which hold room above and below the letters: it leaves about the room today's donut leaves round its
+names. A box's edges are checked against the inner edge too, since it curves inward. `s = OuterRadius / 150` is the
+donut scale; names start at `max(10, 13 × LabelScale × s)` px, captions 80 % of that, icons 20·k beside a name or
+16–28·k alone (k = LabelScale · s).
+
+What a slice shows is its preset's `Show` (`LabelShow`: Auto, IconAndText, TextOnly, IconOnly), else its donut's
+`ToolbarProfile.LabelShow`, else Auto. `PlanRing` lays out a whole ring at once: one name size, one way for its names
+and one icon size, and for each slice the best its Show allows there. The ring's size runs from the starting one down,
+0.5 px at a time, to `max(10, 10 × s)` (`SizesFor`; the icon beside a name shrinks with it, to 16·k), and the ring takes
+the size and way with the fewest slices it can't label, then the fewest needed captions lost, then the fewest names cut
+so far they no longer read (under four letters or 40 % of them) or by only a letter or two, then the earlier way, then
+the largest size: on the face a name that doesn't fit is shortened rather than the ring made smaller (a group's ring, of
+short words, steps down before it shortens), and optional captions never make the names smaller. Icon & text keeps its
+icons: where an icon and its name, whole or shortened to `MinKept`, don't fit (the eight-slice back faces), the ring
+steps down rather than cut the name to a word ("Merge…"), which says less. A block goes on the slice's middle first, its
+letters centred there and moved sideways until it has as much room left of it as right of it (`Balanced`: a slice that
+runs aslant has more on one side); there it drops a caption it doesn't need before it moves. Upright lines wrap at the
+slice's width at its middle less 10 px (`ComfortableWidth`, as today's donut wraps its names), and run longer only where
+no wrapping fits. Only a block that fits nowhere on the middle is tried along the middle line and round from it
+(`Positions`): a three-slice face's slices run aslant. Auto: icon and whole name where every Auto slice of the ring has
+room for both and loses nothing for it (the caption it shows without its icon, and its place on the middle), else the
+whole name alone, else shortened to no less than 60 % of its letters and never dropping a word (`MinKept`), else
+shorter, else its icon alone. Icon & text: icon and whole name, else (a slice that needs its caption) the name and
+caption alone, else icon and name shortened to `MinKept` (wrapped as a name alone is: "Remove / metad…"), else the icon
+alone. Text only: the whole name, else shortened to `MinKept`, else as far as it takes. Slices of one name look alike:
+where one shows its name alone, the others do too. Captions show per slice, under a name where they fit, with Show
+output format on. A caption the slice needs (`NeedsCaption`: "Copy to folder" or "Move to folder" under a folder's name,
+or the format under a name another slice of the ring has too) shows with it off as well, and under the name beside an
+icon; an icon otherwise stands in for the caption. A slice without an icon (a format conversion) shows its name and
+doesn't decide the others' style. Icon and name: on a deep slice the icon above the name, both upright, else (where that
+can't show the name whole, or for Out from the centre) the icon before a name running out from the centre; on a wide
+slice the upright icon above a name bent along the ring, above it as read (the outer of the two on the top half, the
+inner on the bottom), else (a group ring's chip, too shallow for one above the other at most sizes) before it, side by
+side. The icon never turns. A ring takes one placement for all its icons (above their names where every one fits so, the
+face stepping down for it; else before them) and names, the one of its way (`ways` in `PlanRing`): straight under an
+upright icon, out from the centre after the icon, or bent beside it; a format's name beside them runs that way too, and
+a ring bends only if every name of it can (else all run level with it). Names wrap at word boundaries (CJK by character,
+Korean by word) and run one way for the whole ring, each way through the sizes, except a slice whose preset says its own
+(`Preset.Direction`: Straight, OutFromCentre, AlongRing; `SliceLabelLayout.Tries`). The donut's face keeps its names
+upright, and so does a group's ring of Chinese, Japanese or Korean names (turned, their characters read sideways). A
+group's ring, deeper than it is wide, tries straight or out from the centre, then bent; one wider than deep (`IsWide`,
+so the ring's size, its spread and the name size decide) bent along the ring, then straight, then out from the centre. A
+bent name (`LabelText.Curved`) puts each line on its own circle and each letter on it, upright, clockwise on the top
+half and anticlockwise on the bottom (`CurvedGlyphs`); it fits when its lines stay between the zone's circles and their
+ends clear the side edges at their inner edge (`CurvedFits`). Scripts whose letters join or reorder (Arabic, Hebrew, the
+Indic scripts, Thai, Lao, Myanmar) aren't bent but drawn level with the ring. A shortened name runs in the direction
+that keeps the most of it. `DonutMenu.LabelPlan` caches each ring's plan by its inputs (items, geometry, scale,
+settings), so labels are laid out once per change, not per frame; the open, pop and flip animations move them with
+transforms. Every group's ring slices are equally wide, whatever the group's size (`DonutGeometry.SubSpan`: a share of
+the group's slice and a quarter of each neighbour, as if three slices shared it, times Group ring spread), so a group of
+six fans out twice as far as a group of three and the spread looks the same on every group; it never goes round more
+than once. A group's ring labels follow the ring's scale instead of the donut's, and the Label scale as far as the
+ring's slices have room: `PlanRingToFit` steps the Label scale down 5 % at a time, not below 100 %, until every slice
+shows its whole name or its icon.
+
+The icons are a curated set of Material Design Icons (`SliceIcons.Data.cs`, generated; Apache-2.0, see
+THIRD-PARTY-NOTICES.md), keyed by their MDI names and grouped for the picker. `Preset.Icon` is a key, `"none"`, or
+unset for the default: a built-in preset's own (by id), else its tool's; plain format conversions have none.
+`Preset.ShortName` replaces the name on the donut and its rings (`DonutName` / `RingName`); the centre hint always
+names the slice in full (`DonutItem.FullName`). The preset and group editors share `SliceLabelFields` (Icon with
+`IconPickerFlyout`, Short name, Show); the Toolbar page's Edit Donut Size panel sets each donut's Slice labels and
+Label scale.
+
 ## Crop overlay and PDF page editor
 
 The image Crop tool (`tool-crop`) and PDF Crop (`tool-pdf-crop`) open `Views/CropOverlayWindow` instead of running a job:
@@ -313,6 +425,9 @@ text, vectors, outlines, forms, page labels and document information remain PDF 
   pixels, where the size chip goes, where the dial opens) and is unit tested.
 
 `tool-pdf-pages` opens `Views/PdfPageEditorWindow`: it previews, reorders, rotates, deletes, adds and extracts pages.
+Ctrl / Shift + click selects several pages, and every action works on the whole selection: the pages move up or down
+as a block, dragging them moves them to the line drawn between two pages, Insert puts another PDF's pages before or
+after the selection and Replace puts them where the selection was, removing it (#860).
 Each source PDF's bytes and page sizes are cached once after the window has appeared; thumbnails and the large preview
 render off the UI thread. A whole-document edit keeps the original catalogue and changes `/Rotate` in modify mode.
 An actual reorder, deletion, addition or extraction builds a new PDF from selected page objects. A PDF that opens
@@ -324,6 +439,11 @@ has the read-only attribute; the source's bytes and attributes are left alone.
 
 The Cut a clip tool (`tool-clip`, first on the back of the video donut) opens `Views/ClipWindow` instead of running a
 job. The window only chooses the clip; writing it is an ordinary conversion.
+
+It also opens on sounds (#1291): the timeline is then the waveform (`ClipTimeline.Waveform`) in place of the picture strip,
+and the picture, thumbnails and sequence pictures are skipped (`ClipWindowViewModel.HasPicture`). In *ringtone mode*
+(`ShowRingtoneWindow`, from the donut for a preset with `AskRingtonePart`) only the part is chosen: the editing tools are
+hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
 
 - `Core/Presets/ClipCutter` does every edit without the window: the parts of the clip (start, end, speed, volume,
   mute), gaps left by Delete, the blade, edge trims that take back or cut away, music on A2, fades, Remove silence and
@@ -357,8 +477,8 @@ stretch the crop back: `VideoCrop.TargetFor`) and sets `MediaOptions.CropFrame` 
   (`MediaEncoding.FinalCrop`, `LargestCrop`); no black bars, or a box under a quarter of the picture, refuses the file
   (`error.no_black_bars`), and cropdetect failing everywhere is an error with FFmpeg's message.
 - The crop goes before the scale filter, so the video is always encoded: an HEVC or AV1 source stays in its codec where
-  the target and FFmpeg allow it (keeping 10 bits and HDR tags), the sound is copied where the container takes it, and an
-  MKV keeps its subtitles and attachments.
+  the target and FFmpeg allow it (keeping 10 bits and HDR tags), the sound is copied where the container takes it, and the
+  subtitle tracks stay as in any video conversion (see *FFmpeg* in `docs/ENGINES.md`).
 
 ## Spreadsheet print studio
 
@@ -373,13 +493,30 @@ hidden rows and manual breaks, then see the PDF that those settings will produce
   named range so cross-sheet formulas remain valid, hides the sheets not being rendered, and changes only the chosen
   sheet's print settings. A new print area is written only after the user explicitly changes or accepts the range.
 - `SpreadsheetPrintService` runs LibreOffice once for each region. Preview and export use the same disposable-workbook
-  path; export then joins the region PDFs in the chosen order with PDFsharp. The ordinary XLSX → PDF donut conversion
+  path; export then joins the region PDFs in the chosen order with PDFsharp, or, with **One PDF per sheet**, writes
+  each region as `<chosen name>_<sheet>.pdf` (`PerSheetPaths` cleans the names, adds `_2` for repeats, and applies the tool preset's conflict policy to files
+  already there). The ordinary XLSX → PDF donut conversion
   can still differ because route planning may select Filee's built-in spreadsheet reader instead of LibreOffice.
 - `PdfPreviewDocument` caches a PDF's bytes and page geometry. The studio asks PDFium/PDFtoImage for small thumbnails
   and only one large selected page, all decoded away from the UI thread; exporting never performs preview rendering.
   Cancellation closes LibreOffice and the temporary job folder is removed on success, error or window close.
 
 ## Settings and data
+
+`PortableMode.Initialize` runs in both entry points before logging, settings or engine discovery. A
+`filee.portable` marker selects the adjacent `data` directory through `FILEE_DATA_DIR`; an explicit override
+keeps precedence. macOS stores the marker/data outside `.app` to preserve the signed bundle. Startup validates
+write/delete access and reports failure without loading the normal user profile. Portable settings turn off
+login and file-manager integration; the existing separate-data guard prevents registration and unregistration.
+The General page explains this and disables those controls.
+
+Conversion work folders, temporary files and engine caches keep their existing behavior and locations.
+Portable mode does not change the environment passed to external engines.
+Portable release archives include the marker by default. Installer payloads keep normal profile storage;
+the desktop app offers a one-time copy of an existing profile into unused portable data before loading settings.
+Import stages copies first and preserves the source. Integration cleanup checks the executable target on all three
+platforms, asks independently of import and remembers declined cleanup. Shared macOS Finder service preferences stay
+unchanged. See [portable mode](PORTABLE.md) for migration and quarantine details.
 
 `UserDataStore` owns `settings.json`, `presets.json`, `profiles.json` and `history.json`
 (System.Text.Json source generation, atomic writes, broken files are kept as `*.broken`).
@@ -395,6 +532,12 @@ Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` w
   stay left to right. Light/dark surface colours are theme dictionaries in `Styles/Soft.axaml`; a user's
   `theme.json` (`CustomTheme`, see [CUSTOM-THEMES.md](CUSTOM-THEMES.md)) overrides them with theme dictionaries in
   application resources, which are searched first.
+- The UI font is one chain (`SoftPalette.FontFamilies`): the embedded Noto fonts (`FileeFontCollection`,
+  `fonts:Filee#…`), with the UI language's CJK font first so Han takes that region's shapes. Theme → *Use the system
+  font* puts the system's UI fonts ahead of them (Segoe UI and Windows' script fonts, San Francisco on macOS,
+  fontconfig's default on Linux), named `fonts:System#…` (`SystemUiFontCollection`): Avalonia's own system collection
+  answers any letter with the platform's fallback font, whatever family is asked, so a plain name would draw every
+  language's Han in Yu Gothic UI on Windows. Annotate's labels follow the same chain (`AnnotationFonts`).
 - What sits on an accent fill is `OnAccentBrush`: white or dark, whichever has the higher WCAG contrast
   (`SoftPalette.OnAccent`). `SoftPalette.ApplyAccentStates` also gives Fluent's accent controls this label instead of
   their fixed white, and their hover and pressed fills, which move away from the label when they would cost it contrast.
@@ -469,6 +612,34 @@ installed yet; the slides introduce the installed one. The demo animations are r
   retried after restart. Removing a rule's state file also forgets its results.
   The tray app runs one per rule (`WatchFolderService`, Settings → Watch folders, conversions in the toast and
   history); `filee watch` runs one on its own, with a stable `cli` rule identity across command restarts.
+
+## Preset gallery
+
+Presets shared by users live in the `KnifeLemon/Filee-Presets` repository and on filee.sh (#1530); the app reads
+them, it never uploads.
+
+- `Filee.Core/Gallery/SharedPresetRules` is the allow-list: every field a shared preset.json (a `PresetBundle`) may
+  have, with its range, and the fields left out (folders of one's own, passwords, picture and sound paths, metadata
+  naming people, places or owners), which may only be empty. A field added to `Preset` fails the check until it is
+  listed there (`PresetGalleryCheckTests` compares the list with the model). Settings that touch the installer's files
+  pass with a warning (`SharedPresetWarnings`, codes shared with the gallery's repository and filee.sh); the window
+  shows them and asks for a tick before installing a preset with a high one.
+- `SharedBundleCheck` checks a preset.json against it, as JSON first (unknown fields, types, ranges, links, personal
+  paths) and then as presets (kinds, tools, targets, references), and derives what meta.json needs.
+  `SharedPresetFolderCheck` checks a whole submission folder, pictures included (`GalleryImageHeader` reads their
+  header before anything decodes them). `filee presets check <folder> [--json]` runs it, with SkiaSharp decoding each
+  picture; the gallery's CI calls it.
+- `GalleryInstaller` checks the downloaded file's SHA-256 and the rules again, then adds its presets and donut under
+  new ids (" (2)" on a name the library has); nothing is ever replaced, unlike Settings → General → Import.
+  `GalleryExport` builds the preset.json "Export for the gallery…" saves (Presets page).
+- The app's `PresetGalleryWindow` (from the Presets page) reads `index.json` through `PresetGalleryClient`, only while
+  it is open, with the proxy setting, time and size limits, and falls back to the repository on GitHub when filee.sh
+  can't be reached. Paths in the index are relative to the URL it came from; Install uses the entry's counted
+  `download` link. Pictures are cached in the work folder's `gallery/` (64 MB, 30 days). A preset is written in one
+  main `language` and optionally more (`titleByLang`, `descriptionByLang`): the window shows the app language's texts
+  when the preset has them, else the main ones with a badge naming their language, lists the presets in the app's
+  language first and can hide the rest ("Only in my language"). Pictures follow the app language on their own
+  (`imagesByLang`).
 
 ## Platform code
 
@@ -661,3 +832,12 @@ and standalone shell scripts (`install.sh`, `uninstall.sh`).
   (`~/.local/share/Filee/engines`) and user settings (`~/.config/Filee`) remain untouched.
 - **Uninstallation**: `uninstall.sh` removes the application directory, desktop launcher, and `~/.local/bin/filee` symlink
   after verifying the `.filee-package` marker. User settings and converted files are kept.
+
+## Filee Connect
+
+Filee Connect (`Filee.App.Services.Connect`) is an embedded local Wi-Fi server providing instant device-to-device file transfers and quick note exchanges between desktop and mobile devices. See [FILEE-CONNECT.md](FILEE-CONNECT.md) for full details.
+
+- **Embedded Server**: Powered by Microsoft ASP.NET Core Kestrel with HTTP REST endpoints and WebSockets for real-time bi-directional messaging and presence detection.
+- **Security & Scope**: Runs locally without cloud dependencies. Secured with cryptographically random pairing tokens, LAN-only binding, and strict relative-path normalization preventing directory traversal.
+- **Shared Folder Manager**: Enforces a 2 GB total quota in `UserDataStore.Directory / ConnectShared` (fully supporting Portable mode) with instant ZIP streaming on folder download. Files outside the safe allowlist are stored as `{id}.bin` to prevent Explorer NTLM leak attacks.
+- **Workflow**: A global trigger gesture (`Ctrl + Alt + Left Click` on Windows/Linux, `⌥ Option + ⇧ Shift + Left Click` on macOS, or custom configuration for new installs) opens the Donut with the Filee Connect slice. Selecting it presents a QR code modal (`FileeConnectQrWindow`), and scanning it from any phone browser automatically transitions to the desktop Filee Connect application window (`FileeConnectWindow`) and mobile light-mode web client.

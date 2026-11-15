@@ -478,6 +478,24 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_box_that_never_enlarges_renders_a_vector_picture_at_its_usual_size_unless_that_is_larger()
+    {
+        // #1270: a drawing has no pixel size of its own, so the usual render size stands in for it.
+        var bounds = new SKRect(0, 0, 400, 200);
+        var usual = SvgRenderer.RasterScale(bounds, new ImageOptions(), new PdfOptions());
+
+        var roomy = new ImageOptions { CustomSize = new() { Width = 16000, Height = 8000, LockAspect = true, ShrinkOnly = true } };
+        Assert.Equal(usual, SvgRenderer.RasterScale(bounds, roomy, new PdfOptions()));
+
+        var tight = new ImageOptions { CustomSize = new() { Width = 200, Height = 200, LockAspect = true, ShrinkOnly = true } };
+        Assert.Equal(0.5f, SvgRenderer.RasterScale(bounds, tight, new PdfOptions()), 3);
+
+        // Only a height: the width follows it.
+        var tall = new ImageOptions { CustomSize = new() { Width = CustomImageSize.FreeSide, Height = 100, LockAspect = true, ShrinkOnly = true } };
+        Assert.Equal(0.5f, SvgRenderer.RasterScale(bounds, tall, new PdfOptions()), 3);
+    }
+
+    [Fact]
     public async Task Min_short_edge_renders_a_vector_picture_at_least_that_large()
     {
         var dir = fx.NewFolder();

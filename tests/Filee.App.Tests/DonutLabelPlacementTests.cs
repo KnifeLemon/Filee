@@ -88,25 +88,19 @@ public class DonutLabelPlacementTests
         return (sx / n, sy / n);
     }
 
-    /// <summary>
-    /// A word wider than its slice ("Grayscale" on a thin one) is drawn smaller rather than broken in the middle, and a
-    /// Korean word stays on one line. Chinese, which breaks between any two characters, keeps its size.
-    /// </summary>
-    [AvaloniaFact]
-    public void A_word_wider_than_its_slice_gets_smaller_instead_of_breaking()
+    /// <summary>A Korean word stays on one line: a word joiner goes between its syllables.</summary>
+    [Fact]
+    public void A_korean_word_is_kept_together()
     {
-        TestServices.EnsureInitialized("en");
-        var donut = new DonutMenu();
-        var typeface = new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold);
-
-        Assert.Equal(13, donut.LabelSize("Half size", typeface, 60));
-        Assert.InRange(donut.LabelSize("Grayscale", typeface, 40), 10, 12.9);
-        Assert.Equal(10, donut.LabelSize("Supercalifragilistic", typeface, 30)); // no smaller than 10
-        Assert.Equal(13, donut.LabelSize("去除背景去除背景", typeface, 40));
         Assert.Equal("ZIP 하\u2060나\u2060로", DonutMenu.KeepKoreanWords("ZIP 하나로"));
         Assert.Equal("Merge PDF", DonutMenu.KeepKoreanWords("Merge PDF"));
     }
 
+    /// <summary>
+    /// The Portuguese names of image actions were shortened to fit a full donut's slices; they still fit whole, without
+    /// a word split, on every slice of a full donut of the default size at the smallest Label scale (80 %). At larger
+    /// scales the ring falls back to icons (Auto) or shortens the name (Text only).
+    /// </summary>
     [AvaloniaTheory]
     [InlineData("pt-PT", "preset.half_size")]
     [InlineData("pt-BR", "preset.half_size")]
@@ -116,7 +110,7 @@ public class DonutLabelPlacementTests
     [InlineData("pt-BR", "preset.trace_svg")]
     [InlineData("pt-PT", "preset.extract_motion")]
     [InlineData("pt-BR", "preset.extract_motion")]
-    public void Portuguese_image_actions_fit_the_two_line_slice_label(string language, string key)
+    public void Portuguese_image_actions_fit_a_full_donuts_slices_whole(string language, string key)
     {
         TestServices.EnsureInitialized(language);
         var loc = AppHost.Get<LocalizationService>();
@@ -125,25 +119,14 @@ public class DonutLabelPlacementTests
         Assert.Equal(loc[key], loc.DisplayName(preset));
         preset.Name = "My custom action";
         Assert.Equal(preset.Name, loc.DonutName(preset));
-        var typeface = new Typeface(SoftPalette.FontFamilyFor(language), FontStyle.Normal, FontWeight.SemiBold);
-        var donut = new DonutMenu();
-        // Compact image donuts leave roughly 50 px for an action, over at most two lines.
-        using var text = new TextLayout(label, typeface, donut.LabelSize(label, typeface, 50), Brushes.Black,
-            textWrapping: TextWrapping.Wrap, textTrimming: TextTrimming.CharacterEllipsis, maxWidth: 50, maxLines: 2);
-        Assert.All(text.TextLines, line => Assert.False(line.HasCollapsed, $"{language}: {label} is truncated"));
-    }
-
-    /// <summary>A caption wider than its slice wraps where the slice is deep enough, rather than ending in "Same for…".</summary>
-    [AvaloniaFact]
-    public void A_caption_wider_than_its_slice_takes_a_second_line_where_there_is_room()
-    {
-        TestServices.EnsureInitialized("en");
-        var typeface = new Typeface(FontFamily.Default);
-        var oneLine = DonutMenu.MakeCaption("PNG", typeface, null, 45, labelHeight: 17, maxHeight: 80).Height;
-
-        Assert.InRange(DonutMenu.MakeCaption("Same format", typeface, null, 45, labelHeight: 17, maxHeight: 80).Height, oneLine * 1.8, oneLine * 2.2);
-        Assert.Equal(oneLine, DonutMenu.MakeCaption("Same format", typeface, null, 45, labelHeight: 17, maxHeight: 40).Height);
-        Assert.Equal(oneLine, DonutMenu.MakeCaption("Same format", typeface, null, 120, labelHeight: 17, maxHeight: 80).Height);
+        var family = SoftPalette.FontFamilyFor(language);
+        var layout = new SliceLabelLayout(new LabelFonts(new Typeface(family, FontStyle.Normal, FontWeight.SemiBold),
+            new Typeface(family), FlowDirection.LeftToRight));
+        var center = new Point(200, 200);
+        var whole = Enumerable.Range(0, 12).Count(i => layout.FitText(
+            SafeZone.Of(new SliceShape(center, OuterRadius * HoleRatio, OuterRadius, DonutGeometry.MidAngle(i, 12), DonutGeometry.Span(12), 3), 1),
+            label, null, SliceLabelLayout.NameSizeFor(0.8, 1), 10.5, alongToo: true) is { Whole: true });
+        Assert.True(whole == 12, $"{language}: {label} fits whole on {whole} of 12 slices");
     }
 
     private static (byte[] Pixels, int Width, int Height) Read(Avalonia.Media.Imaging.WriteableBitmap bitmap)

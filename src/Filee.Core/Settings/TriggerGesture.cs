@@ -35,6 +35,8 @@ public enum TriggerKind
     Hold,
     /// <summary>Press the modifiers + <see cref="TriggerGesture.Key"/> (no mouse). Uses the file manager selection.</summary>
     KeyChord,
+    /// <summary>Press and release the modifiers + mouse button without dragging.</summary>
+    Click,
 }
 
 /// <summary>Where the gesture is active.</summary>
@@ -47,6 +49,14 @@ public enum TriggerScope
     FileManager,
     /// <summary>Everywhere, except excluded applications.</summary>
     Anywhere,
+}
+
+/// <summary>The face of the donut a gesture opens on.</summary>
+public enum DonutFace
+{
+    Front,
+    /// <summary>The back face (the second set of slices); the front when the back has no slice for the files.</summary>
+    Back,
 }
 
 /// <summary>A user-configurable gesture that opens the donut toolbar.</summary>
@@ -81,6 +91,12 @@ public sealed class TriggerGesture
     /// </summary>
     public bool Clipboard { get; set; }
 
+    /// <summary>
+    /// The face the donut opens on (#195): two gestures with different modifiers open different sets of slices, Ctrl +
+    /// drag the front and Ctrl + Shift + drag the back, say. The flip key and the wheel still turn it over from there.
+    /// </summary>
+    public DonutFace Face { get; set; } = DonutFace.Front;
+
     public TriggerGesture Clone() => (TriggerGesture)MemberwiseClone();
 
     /// <summary>Default gestures for the current OS.</summary>
@@ -88,10 +104,14 @@ public sealed class TriggerGesture
     {
         // On macOS Ctrl+click means right-click, and Option already means "copy" in Finder.
         var dragModifier = OperatingSystem.IsMacOS() ? ModifierKeys.Alt : ModifierKeys.Ctrl;
+        var connectModifier = OperatingSystem.IsMacOS()
+            ? ModifierKeys.Alt | ModifierKeys.Shift
+            : ModifierKeys.Ctrl | ModifierKeys.Alt;
         return
         [
             new() { Kind = TriggerKind.Drag, Modifiers = dragModifier, Button = TriggerMouseButton.Left },
             new() { Kind = TriggerKind.KeyChord, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.None, Key = "Space" },
+            new() { Kind = TriggerKind.Click, Modifiers = connectModifier, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere },
         ];
     }
 }

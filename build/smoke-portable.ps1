@@ -31,6 +31,9 @@ New-Item -ItemType Directory -Path $WorkDir | Out-Null
 $smoke = (Resolve-Path -LiteralPath $WorkDir).Path
 Invoke-Checked 'Archive extraction' { tar -xzf $archive.FullName -C $smoke }
 $package = Join-Path $smoke ($archive.Name.Replace('.tar.gz', ''))
+if (-not (Test-Path -LiteralPath (Join-Path $package 'filee.portable') -PathType Leaf)) {
+    throw 'Portable archive is missing filee.portable.'
+}
 if ($IsMacOS) {
     Invoke-Checked 'Extracted app signature' { codesign --verify --deep --strict (Join-Path $package 'Filee.app') }
 }

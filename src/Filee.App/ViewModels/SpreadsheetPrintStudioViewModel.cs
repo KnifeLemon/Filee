@@ -9,6 +9,7 @@ using Filee.App.Services;
 using Filee.Core.Conversion;
 using Filee.Core.History;
 using Filee.Core.Localization;
+using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Engines.Office.Sheets;
 using Microsoft.Extensions.Logging;
@@ -192,6 +193,8 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
         Initialization = InitializeAsync();
     }
 
+    private const string PresetId = "tool-sheet-studio";
+
     public string FileName { get; }
     internal Task Initialization { get; }
     public ObservableCollection<SpreadsheetSheetPlan> Sheets { get; } = [];
@@ -208,6 +211,7 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
     [ObservableProperty] private bool _isExporting;
     [ObservableProperty] private string _status = "";
     [ObservableProperty] private double _exportProgress;
+    [ObservableProperty] private bool _onePdfPerSheet;
 
     public bool CanExport => _workbook is not null && !IsBusy && !IsExporting && Sheets.Any(sheet => sheet.Included);
     public bool CanRemoveSelectedRegion => SelectedSheet is { } selected
@@ -312,28 +316,39 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
         _pageCancellation?.Cancel();
         _exportCancellation = new CancellationTokenSource();
         ExportProgress = 0;
-        Status = _loc["sheet_studio.exporting"];
+        var onePerSheet = OnePdfPerSheet;
+        Status = _loc[onePerSheet ? "sheet_studio.exporting_each" : "sheet_studio.exporting"];
         try
         {
             var progress = new Progress<double>(value => ExportProgress = value * 100);
-            await _service.ExportAsync(_workbook, regions, outputPath, progress, _exportCancellation.Token);
-            Status = _loc.Format("sheet_studio.exported", Path.GetFileName(outputPath));
+            // The tool's own output setting, as for every other Filee output; Rename when it was never changed.
+            var conflict = _store.FindPreset(PresetId)?.Output.Conflict ?? ConflictPolicy.Rename;
+            var outputs = await _service.ExportAsync(_workbook, regions, outputPath, onePerSheet, conflict, progress,
+                _exportCancellation.Token);
+            if (outputs.Count == 0)
+            {
+                Status = _loc["toast.skipped"];
+                return;
+            }
+            Status = outputs.Count == 1
+                ? _loc.Format("sheet_studio.exported", Path.GetFileName(outputs[0]))
+                : _loc.Format("sheet_studio.exported_files", outputs.Count);
             try
             {
                 _store.AddHistory(new HistoryEntry
                 {
                     JobId = Guid.NewGuid().ToString("N")[..12],
                     FinishedAt = DateTime.Now,
-                    PresetId = "tool-sheet-studio",
+                    PresetId = PresetId,
                     PresetName = _loc["preset.sheet_studio"],
                     State = JobState.Completed,
                     Sources = [_workbook.Path],
-                    Outputs = [outputPath],
+                    Outputs = [.. outputs],
                 });
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                // The PDF is already safely in place; a history write must not turn that success into an error.
+                // The PDFs are already safely in place; a history write must not turn that success into an error.
                 _log?.LogWarning(ex, "Could not record spreadsheet studio export in history");
             }
         }

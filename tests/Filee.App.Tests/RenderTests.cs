@@ -105,11 +105,20 @@ public class RenderTests
                     var menu = page.FindControl<ToggleSwitch>("ShowMenuBarIconSwitch")!;
                     Assert.Equal(supported, dock.IsVisible);
                     Assert.Equal(supported, menu.IsVisible);
+                    var colored = page.FindControl<ToggleSwitch>("ColoredMenuBarIconSwitch")!;
+                    Assert.Equal(supported, colored.IsVisible);
+                    Assert.False(colored.IsChecked);
                     Assert.False(dock.IsChecked);
                     Assert.True(menu.IsChecked);
                     Assert.Empty(platform.DockCalls);
                     if (supported)
                         Save(window, "page-general-icons-en.png");
+
+                    // Without a menu bar icon there is no icon colour to pick.
+                    vm.ShowMenuBarIcon = false;
+                    Pump();
+                    Assert.False(colored.IsVisible);
+                    vm.ShowMenuBarIcon = true;
                 }
                 finally
                 {
@@ -926,7 +935,7 @@ public class RenderTests
         window.DonutControl.SetExternalHighlight(1);
         Pump();
 
-        Assert.Equal(6, vm.Items.Count); // conversions only; GIF follows WEBP
+        Assert.Equal(7, vm.Items.Count); // conversions and Merge PDF after PDF; GIF follows WEBP
         Assert.Equal(title, vm.CenterTitle);
         Save(window, $"donut-images-{language}.png");
         window.Close();
@@ -1280,6 +1289,58 @@ public class RenderTests
         Assert.True(vm.Apply());
         Assert.Null(preset.Image.CustomSize);
         Assert.Equal(Filee.Core.Presets.ResizeMode.Percent, preset.Image.Resize);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    [InlineData("ko")]
+    public void A_maximum_box_may_leave_a_side_empty_never_enlarge_and_keep_its_pixels_under_a_size_limit(string language)
+    {
+        // #1270: at most 2300 px tall, the width free, smaller pictures as they are, a size limit met by quality alone.
+        TestServices.EnsureInitialized(language);
+        var loc = AppHost.Get<ILocalizer>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "jpg-70");
+        var vm = new PresetEditorViewModel(preset, loc);
+        vm.Resize = vm.ResizeModes.Single(r => r.Value == Filee.Core.Presets.ResizeMode.Custom);
+        vm.LockAspect = true;
+        vm.CustomWidth = null;
+        vm.CustomHeight = 2300;
+        vm.ShrinkOnly = true;
+        Assert.False(vm.HasImageMaxSize);
+        vm.ImageSizeUnit = vm.SizeUnits.Single(u => u.Value == FileSizeUnit.KB);
+        vm.ImageMaxSize = 300;
+        vm.MaxSizeKeepsPixels = true;
+        Assert.True(vm.HasImageMaxSize);
+        Assert.Null(vm.CustomSizeError);
+
+        var window = new PresetEditorWindow { DataContext = vm, Height = 900 };
+        window.Show();
+        Pump();
+        Save(window, $"preset-max-box-{language}.png");
+        // Without the lock both sides are needed: the save waits, with the reason under the boxes.
+        vm.LockAspect = false;
+        Pump();
+        Assert.NotNull(vm.CustomSizeError);
+        Assert.False(vm.IsValid);
+        Save(window, $"preset-max-box-missing-{language}.png");
+        window.Close();
+        Assert.False(vm.Apply());
+
+        vm.LockAspect = true;
+        Assert.True(vm.Apply());
+        var size = preset.Image.CustomSize!;
+        Assert.Equal((Filee.Core.Presets.CustomImageSize.FreeSide, 2300, true, true), (size.Width, size.Height, size.LockAspect, size.ShrinkOnly));
+        Assert.True(preset.Image.MaxSizeKeepsPixels);
+
+        // The empty side reads back empty.
+        var reloaded = new PresetEditorViewModel(preset, loc);
+        Assert.Equal(((int?)null, (int?)2300, true, true), (reloaded.CustomWidth, reloaded.CustomHeight, reloaded.ShrinkOnly, reloaded.MaxSizeKeepsPixels));
+
+        // Keeping the pixels means nothing without a maximum, and is not stored then.
+        reloaded.ImageMaxSize = 0;
+        Assert.True(reloaded.Apply());
+        Assert.False(preset.Image.MaxSizeKeepsPixels);
     }
 
     [AvaloniaTheory]
@@ -2332,6 +2393,66 @@ public class RenderTests
         Assert.False(vm.ShowCad);
         Assert.True(vm.Apply());
         Assert.Equal(Filee.Core.Presets.CadVersion.AutoCad2018, preset.Cad.Version);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en", false)]
+    [InlineData("en", true)]
+    [InlineData("fr", false)]
+    [InlineData("ar", false)]
+    public void Preset_editor_offers_the_g_code_view_for_pictures_svg_and_pdf_while_its_fields_are_on(string language, bool dark)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        var loc = AppHost.Get<ILocalizer>();
+        var preset = AppHost.Get<UserDataStore>().FindPreset("to-png")!.Clone();
+        var vm = new PresetEditorViewModel(preset, loc, new HashSet<string> { "model3d" });
+        Assert.True(vm.ShowGcode); // CAD is still on
+        Assert.Equal(Filee.Core.Presets.GcodeView.Top, vm.GcodeView.Value);
+        Assert.Equal(Enum.GetValues<Filee.Core.Presets.GcodeView>().Select(v => loc[$"presets.gcode_view.{v}"]), vm.GcodeViews.Select(v => v.Label));
+
+        vm.GcodeView = vm.GcodeViews.Single(v => v.Value == Filee.Core.Presets.GcodeView.Thumbnail);
+        if (dark)
+            theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
+        try
+        {
+            var window = new PresetEditorWindow { DataContext = vm, Height = 900 };
+            window.Show();
+            Pump();
+            var card = window.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "GcodeCard");
+            Assert.True(card.IsEffectivelyVisible);
+            card.BringIntoView();
+            Pump();
+            Save(window, $"preset-gcode-view-{language}{(dark ? "-dark" : "")}.png");
+            window.Close();
+        }
+        finally
+        {
+            if (dark)
+                theme.Apply(new ThemeSettings(), language);
+        }
+        Assert.True(vm.Apply());
+        Assert.Equal(Filee.Core.Presets.GcodeView.Thumbnail, preset.Gcode.View);
+        Assert.Equal(Filee.Core.Presets.GcodeView.Thumbnail, new PresetEditorViewModel(preset, loc).GcodeView.Value);
+
+        // SVG and PDF take it too; DWG doesn't show it, and doesn't keep it.
+        foreach (var target in (string[])["svg", "pdf", "jpg"])
+        {
+            vm.Target = vm.Targets.Single(t => t.Value == target);
+            Assert.True(vm.ShowGcode, target);
+        }
+        vm.Target = vm.Targets.Single(t => t.Value == "dwg");
+        Assert.False(vm.ShowGcode);
+        Assert.True(vm.Apply());
+        Assert.Equal(Filee.Core.Presets.GcodeView.Top, preset.Gcode.View);
+
+        // With both of G-code's fields off, the card is left out, as its files' slots are; the view chosen stays.
+        preset.TargetFormat = "png";
+        preset.Gcode.View = Filee.Core.Presets.GcodeView.Isometric;
+        var off = new PresetEditorViewModel(preset, loc, new HashSet<string> { "model3d", "cad" });
+        Assert.False(off.ShowGcode);
+        Assert.True(off.Apply());
+        Assert.Equal(Filee.Core.Presets.GcodeView.Isometric, preset.Gcode.View);
     }
 
     [AvaloniaTheory]

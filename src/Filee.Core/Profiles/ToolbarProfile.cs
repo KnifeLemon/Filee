@@ -1,6 +1,8 @@
 // A toolbar profile decides which presets the donut shows for a given set of source files.
 
+using System.Text.Json.Serialization;
 using Filee.Core.Formats;
+using Filee.Core.Presets;
 
 namespace Filee.Core.Profiles;
 
@@ -44,6 +46,27 @@ public sealed class ToolbarProfile
     /// </summary>
     public List<string>? BackPresetIds { get; set; }
 
+    /// <summary>What its slices show where their preset doesn't say (<see cref="Preset.Show"/>). Null: Auto.</summary>
+    [JsonConverter(typeof(LabelShowJsonConverter))]
+    public LabelShow? LabelShow { get; set; }
+
+    /// <summary>
+    /// How large its slices' names and icons are, from <see cref="MinLabelScale"/> to <see cref="MaxLabelScale"/> in
+    /// steps of <see cref="LabelScaleStep"/>: 1 is 13 px names on a donut of the default size. They also grow and
+    /// shrink with the donut.
+    /// </summary>
+    public double LabelScale { get; set; } = 1;
+
+    public const double MinLabelScale = 0.8, MaxLabelScale = 1.6, LabelScaleStep = 0.05;
+
+    /// <summary>
+    /// <paramref name="scale"/> within the allowed range, on a step; 1 for a value that isn't a number.
+    /// </summary>
+    public static double ClampLabelScale(double scale) =>
+        double.IsFinite(scale)
+            ? Math.Round(Math.Round(Math.Clamp(scale, MinLabelScale, MaxLabelScale) / LabelScaleStep) * LabelScaleStep, 2)
+            : 1;
+
     /// <summary>Returns true if the extension (with or without dot) belongs to this profile.</summary>
     public bool Matches(string extension) =>
         Extensions.Contains(extension.TrimStart('.'), StringComparer.OrdinalIgnoreCase);
@@ -57,6 +80,8 @@ public sealed class ToolbarProfile
         IsFallback = IsFallback,
         PresetIds = [.. PresetIds],
         BackPresetIds = BackPresetIds is null ? null : [.. BackPresetIds],
+        LabelShow = LabelShow,
+        LabelScale = LabelScale,
     };
 }
 

@@ -181,7 +181,7 @@
                             <!-- Read-only: a text that can still be selected and copied. -->
                             <SelectableTextBlock Grid.Column="1" Text="{Binding ShownValue}" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="6"
                                                  Margin="9,4" IsVisible="{Binding !CanType}" AutomationProperties.Name="{Binding SpokenValue}"
-                                                 ToolTip.Tip="{Binding TooLongNote}" />
+                                                 ToolTip.Tip="{Binding Note}" />
                             <StackPanel Grid.Column="1" Spacing="2" Margin="3,2" IsVisible="{Binding IsEditing}" PropertyChanged="OnEditorPropertyChanged"
                                         AttachedToVisualTree="OnEditorAttached">
                               <TextBox Text="{Binding Value}" MinHeight="30" Padding="8,4" BorderBrush="{DynamicResource AccentBrush}"

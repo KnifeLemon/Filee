@@ -31,10 +31,31 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Theory]
+    [InlineData("png", MagickFormat.Png)]
+    [InlineData("jpg", MagickFormat.Jpeg)]
+    [InlineData("webp", MagickFormat.WebP)]
+    public async Task Insp_jpeg_converts_to_requested_image_format(string target, MagickFormat format)
+    {
+        // An Insta360 .insp is a JPEG under another name; ImageMagick knows no "insp" coder and reads the JPEG
+        // signature instead. A side-by-side 2:1 picture stands in for the two fisheye circles.
+        var dir = fx.NewFolder();
+        var source = EngineFixture.MakeImage(dir, "IMG_20240101_120000_00_001.insp", MagickFormat.Jpeg, 96, 48);
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = target });
+        AssertDone(job);
+        var output = Assert.Single(job.Outputs);
+        Assert.Equal("." + target, Path.GetExtension(output));
+        using var result = new MagickImage(output);
+        Assert.Equal(format, result.Format);
+        Assert.Equal((96u, 48u), (result.Width, result.Height));
+        Assert.True(File.Exists(source));
+    }
+
+    [Theory]
     [InlineData("photo.png_large", MagickFormat.Png)]
     [InlineData("photo.jpg_large", MagickFormat.Jpeg)]
     [InlineData("photo.jif", MagickFormat.Jpeg)]
     [InlineData("photo.JIF", MagickFormat.Jpeg)]
+    [InlineData("photo.INSP", MagickFormat.Jpeg)]
     public async Task Large_image_aliases_convert_to_png(string name, MagickFormat format)
     {
         var dir = fx.NewFolder();
@@ -509,6 +530,67 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_box_that_never_enlarges_shrinks_large_pictures_and_leaves_small_ones()
+    {
+        // The case from #1270: at most 2300 x 2300, a smaller picture stays as it is.
+        var options = new ImageOptions { CustomSize = new() { Width = 2300, Height = 2300, LockAspect = true, ShrinkOnly = true } };
+
+        using var large = new MagickImage(MagickColors.White, 4000, 3000);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(large, options, "jpg");
+        Assert.Equal((2300u, 1725u), (large.Width, large.Height));
+
+        using var small = new MagickImage(MagickColors.White, 1000, 800);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(small, options, "jpg");
+        Assert.Equal((1000u, 800u), (small.Width, small.Height));
+
+        Assert.Equal(1, Filee.Engines.Magick.ImageEncoder.ResizeScale(1000, 800, options), 3);
+        Assert.Equal(0.575, Filee.Engines.Magick.ImageEncoder.ResizeScale(4000, 3000, options), 3);
+    }
+
+    [Fact]
+    public void A_box_with_only_a_height_limits_the_height_and_leaves_the_width_free()
+    {
+        // #1270: "at most 2300 px tall", the width free. The editors store the empty side as the largest one.
+        var options = new ImageOptions
+        {
+            CustomSize = new() { Width = CustomImageSize.FreeSide, Height = 2300, LockAspect = true, ShrinkOnly = true },
+        };
+
+        using var large = new MagickImage(MagickColors.White, 4000, 3000);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(large, options, "jpg");
+        Assert.Equal(2300u, large.Height);
+        Assert.InRange(large.Width, 3066u, 3067u);
+
+        // A wide panorama is limited by its height too, not squeezed into some width.
+        using var wide = new MagickImage(MagickColors.White, 9000, 3000);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(wide, options, "jpg");
+        Assert.Equal((6900u, 2300u), (wide.Width, wide.Height));
+
+        using var small = new MagickImage(MagickColors.White, 1000, 800);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(small, options, "jpg");
+        Assert.Equal((1000u, 800u), (small.Width, small.Height));
+
+        // Without "Never enlarge" a smaller picture grows to the height, the width still following it.
+        options.CustomSize.ShrinkOnly = false;
+        using var grown = new MagickImage(MagickColors.White, 1000, 800);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(grown, options, "jpg");
+        Assert.Equal(2300u, grown.Height);
+        Assert.InRange(grown.Width, 2874u, 2876u);
+    }
+
+    [Fact]
+    public void Never_enlarge_does_not_change_a_stretch()
+    {
+        // Without the lock the picture gets exactly the asked size, so the flag has nothing to keep.
+        var options = new ImageOptions { CustomSize = new() { Width = 500, Height = 2000, ShrinkOnly = true } };
+        using var small = new MagickImage(MagickColors.White, 250, 444);
+
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(small, options, "png");
+
+        Assert.Equal((500u, 2000u), (small.Width, small.Height));
+    }
+
+    [Fact]
     public void A_custom_size_read_from_a_file_with_a_side_of_zero_or_below_is_skipped()
     {
         // The editor keeps both sides within 16-16384, but a hand-edited presets.json or an imported bundle can
@@ -756,5 +838,57 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         AssertDone(job);
         Assert.Equal(["pages_p2.pdf", "pages_p3.pdf"], job.Outputs.Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>A PDF whose page widths (100 + its index, in points) tell its pages apart in the results.</summary>
+    private static string NumberedPdf(string dir, string name, int pages)
+    {
+        var path = Path.Combine(dir, name);
+        using var document = new PdfSharp.Pdf.PdfDocument();
+        for (var i = 0; i < pages; i++)
+            document.AddPage().Width = PdfSharp.Drawing.XUnit.FromPoint(100 + i);
+        document.Save(path);
+        return path;
+    }
+
+    private static double[] Widths(string path)
+    {
+        using var document = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        return [.. document.Pages.Cast<PdfSharp.Pdf.PdfPage>().Select(p => p.Width.Point)];
+    }
+
+    /// <summary>Split PDF every N pages and into equal parts (#1259), also of a range and turned.</summary>
+    [Fact]
+    public async Task Split_pdf_every_n_pages_or_into_equal_parts()
+    {
+        var dir = fx.NewFolder();
+        var book = NumberedPdf(dir, "book.pdf", 120);
+
+        var every = await fx.ConvertAsync([book], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { SplitPages = true, SplitEvery = 50 },
+            Output = { Location = OutputLocation.Subfolder, SubfolderName = "every" },
+        });
+        AssertDone(every);
+        var files = every.Outputs.ToList();
+        Assert.Equal(["book_p1-50.pdf", "book_p51-100.pdf", "book_p101-120.pdf"], files.Select(Path.GetFileName));
+        Assert.Equal([50, 50, 20], files.Select(f => Widths(f).Length));
+        var second = Widths(files[1]);
+        Assert.Equal((150d, 199d), (second[0], second[^1]));
+
+        var thirds = await fx.ConvertAsync([book], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { SplitPages = true, SplitParts = 3, PageRange = "1-10", Rotation = PdfRotation.Right90 },
+            Output = { Location = OutputLocation.Subfolder, SubfolderName = "thirds" },
+        });
+        AssertDone(thirds);
+        Assert.Equal(["book_p1-4.pdf", "book_p5-7.pdf", "book_p8-10.pdf"],
+            thirds.Outputs.Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        var last = thirds.Outputs.Single(o => o.EndsWith("_p8-10.pdf", StringComparison.Ordinal));
+        Assert.Equal([107d, 108d, 109d], Widths(last));
+        using var turned = PdfReader.Open(last, PdfDocumentOpenMode.Import);
+        Assert.All(turned.Pages.Cast<PdfSharp.Pdf.PdfPage>(), page => Assert.Equal(90, page.Rotate));
     }
 }

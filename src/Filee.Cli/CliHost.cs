@@ -5,6 +5,7 @@ using Filee.Core.Conversion;
 using Filee.Core.Localization;
 using Filee.Core.Platform;
 using Filee.Core.Settings;
+using Filee.Core.Web;
 using Filee.Engines;
 using Filee.Engines.Infrastructure;
 
@@ -40,6 +41,8 @@ internal sealed class CliHost : IAsyncDisposable
     {
         var store = new UserDataStore(dataDirectory ?? UserDataStore.DefaultDirectory);
         store.Load();
+        // 'filee engines install' and OCR languages download through the app's proxy setting too.
+        ProxySetting.Use(() => store.Settings.Proxy);
         EngineEnvironment.OwnCopies = new Dictionary<string, string>(store.Settings.EngineOwnCopies);
         EngineEnvironment.LibreOfficeForSlides = store.Settings.LibreOfficeForSlides;
         EngineEnvironment.LibreOfficeForHwp = store.Settings.LibreOfficeForHwp;

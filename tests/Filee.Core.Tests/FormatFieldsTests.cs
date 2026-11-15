@@ -25,37 +25,37 @@ public class FormatFieldsTests
     // Every specialist and legacy format.
     private static readonly string[] HiddenWithEverythingOff =
     [
-        "3g2", "3gp", "3mf", "602", "ac3", "adoc", "ai", "amr", "ape", "arj", "ass", "au", "azw", "azw4", "bik",
-        "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
+        "3g2", "3gp", "3mf", "602", "aab", "ac3", "adoc", "ai", "amr", "ani", "ape", "apks", "arj", "ass", "au", "azw",
+        "azw4", "bik", "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
         "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
-        "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "geojson", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
-        "hdr", "htmlz", "icns", "ipynb", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
+        "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "gcode", "geojson", "gerber", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
+        "hdr", "htmlz", "icns", "ipynb", "it", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
         "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mediawiki", "miff", "mng", "mobi",
-        "mod", "mp2", "mpc", "mrpack", "mxf", "obj", "oeb",
-        "org", "otf", "pam", "pcd", "pcx", "pdb", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
-        "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "scc", "sda", "sdc", "sdw", "sgi", "shp", "snb", "spx",
+        "mod", "mp2", "mpc", "mrpack", "mxf", "nov", "nupkg", "obj", "oeb",
+        "org", "osm", "otf", "pam", "pcd", "pcx", "pdb", "pdn", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
+        "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "s3m", "scc", "sda", "sdc", "sdw", "sgi", "shp", "snb", "spx",
         "ssa", "stl", "sub", "swf", "tak", "tar", "tar7z", "tbz2", "tcr", "tex", "textile", "tgz", "tlz", "toml",
-        "tta", "ttf", "ttml", "txtz", "txz", "typ", "tz", "usm", "vob", "voc", "w64", "wbmp", "wmf", "woff", "woff2",
-        "wpd", "wtv", "wv", "xbm", "xcf", "xlt", "xpm", "xz", "yaml", "z"
+        "tta", "ttf", "ttml", "txtz", "txz", "typ", "tz", "usm", "vob", "voc", "vtf", "w64", "wbmp", "wmf", "woff", "woff2",
+        "wpd", "wtv", "wv", "xbm", "xcf", "xlt", "xm", "xpm", "xz", "yaml", "z", "zxp"
     ];
 
     public static TheoryData<string, string[]> HiddenWithOneFieldOff => new()
     {
-        { "cad", ["dwg"] },
+        { "cad", ["dwg", "gerber"] },
         { "model3d", ["fbx", "glb", "gltf", "ply"] },
-        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "shp"] },
+        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
         { "font", ["otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "dds", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "usm"] },
-        { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "plt", "ps", "psb", "psd", "raw", "xcf"] },
+        { "game", ["bik", "dds", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "usm", "vtf"] },
+        { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits"] },
         { "developer", [
-                "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har", "icns", "jar",
-                "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi", "rpm", "tar", "tar7z",
-                "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml"
+                "aab", "ani", "apks", "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
+                "icns", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "nupkg", "pam", "pfm", "plist", "ppm", "qoi",
+                "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
             ] },
         { "writing", ["adoc", "cgm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
-                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "scc", "ssa", "ttml"
+                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "nov", "scc", "ssa", "ttml"
             ] },
         { "audio-pro", ["ape", "dff", "dsf", "dss", "tak", "tta", "w64", "wv"] },
         { "legacy", [
@@ -68,28 +68,28 @@ public class FormatFieldsTests
 
     public static TheoryData<string, string[]> FieldMembers => new()
     {
-        { "cad", ["3mf", "dwg", "dxf", "obj", "stl"] },
-        { "model3d", ["3mf", "fbx", "glb", "gltf", "obj", "ply", "stl"] },
-        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "shp"] },
+        { "cad", ["3mf", "dwg", "dxf", "gcode", "gerber", "obj", "stl"] },
+        { "model3d", ["3mf", "fbx", "gcode", "glb", "gltf", "obj", "ply", "stl"] },
+        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
         { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "dds", "flc", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm"] },
-        { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "plt", "ps", "psb", "psd", "raw", "xcf"] },
+        { "game", ["bik", "dds", "flc", "it", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm", "vtf", "xm"] },
+        { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits", "ipynb", "jp2"] },
         { "developer", [
-                "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
-                "icns", "ipynb", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi",
-                "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml"
+                "aab", "ani", "apks", "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt",
+                "gz", "har", "icns", "ipynb", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "nupkg", "pam", "pfm",
+                "plist", "ppm", "qoi", "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
             ] },
         { "writing", ["adoc", "cgm", "chm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
-                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "scc", "ssa", "ttml"
+                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "nov", "scc", "ssa", "ttml"
             ] },
-        { "audio-pro", ["ape", "caf", "dff", "dsf", "dss", "mpc", "tak", "tta", "w64", "wv"] },
+        { "audio-pro", ["ape", "caf", "dff", "dsf", "dss", "it", "mpc", "s3m", "tak", "tta", "w64", "wv", "xm"] },
         { "legacy", [
                 "3g2", "3gp", "602", "amr", "arj", "au", "azw", "azw4", "cwk", "dot", "eot", "flc", "flv", "fon", "lha",
                 "lit", "lrf", "lwp", "mcw", "mng", "mobi", "mod", "mpc", "oeb", "pcd", "pcx", "pdb", "pml", "prc",
-                "psw", "ras", "rb", "rm", "sda", "sdc", "sdw", "sgi", "snb", "spx", "sub", "swf", "tcr", "tz", "vob",
-                "voc", "wbmp", "wmf", "wpd", "wtv", "xlt", "z"
+                "psw", "ras", "rb", "rm", "s3m", "sda", "sdc", "sdw", "sgi", "snb", "spx", "sub", "swf", "tcr", "tz",
+                "vob", "voc", "wbmp", "wmf", "wpd", "wtv", "xlt", "z"
             ] },
     };
 
@@ -144,9 +144,9 @@ public class FormatFieldsTests
             new Dictionary<FormatGrade, int>
             {
                 [FormatGrade.Everyday] = 19,
-                [FormatGrade.General] = 95,
-                [FormatGrade.Specialist] = 114,
-                [FormatGrade.Legacy] = 51,
+                [FormatGrade.General] = 99,
+                [FormatGrade.Specialist] = 127,
+                [FormatGrade.Legacy] = 52,
             },
             counts);
     }

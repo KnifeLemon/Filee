@@ -90,12 +90,13 @@ public class DonutGroupMarkTests
     }
 
     [AvaloniaFact]
-    public void A_groups_name_moves_in_to_leave_the_chevron_room()
+    public void A_groups_name_sits_where_any_other_name_does()
     {
-        // The first row the name's ink reaches, the name being what differs from the same slice without one.
+        // The first row the name's ink reaches, the name being what differs from the same slice without one: a group's
+        // name keeps clear of its chevron, not of a band across the slice, and is centred as any other's.
         int NameTop(bool group) => Changed(Render(group, label: "Rotate"), Render(group)).Min() / Picture;
 
-        Assert.InRange(NameTop(true) - NameTop(false), 2, 4);
+        Assert.InRange(NameTop(true) - NameTop(false), -1, 1);
     }
 
     [AvaloniaFact]

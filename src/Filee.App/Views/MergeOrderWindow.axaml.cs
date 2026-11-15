@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Filee.App.Services;
@@ -57,6 +58,32 @@ public partial class MergeOrderWindow : Window
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close();
+
+    /// <summary>"Add music…": songs picked from the disk join the list, after the files there.</summary>
+    private async void OnAddMusic(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MergeOrderViewModel vm)
+            return;
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = vm.MusicPickerTitle,
+                AllowMultiple = true,
+                FileTypeFilter =
+                [
+                    new FilePickerFileType(vm.MusicFilesName) { Patterns = [.. MergeOrderViewModel.MusicPatterns] },
+                    FilePickerFileTypes.All,
+                ],
+            });
+            vm.AddMusic(files.Select(file => file.TryGetLocalPath()).OfType<string>());
+            FocusSelected();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // No picker on this system: nothing is added.
+        }
+    }
 
     /// <summary>
     /// The keys of the list. The arrows and Delete act only while the list itself has the focus, so they never move a

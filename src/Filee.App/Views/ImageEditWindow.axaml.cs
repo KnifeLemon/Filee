@@ -43,7 +43,7 @@ public partial class ImageEditWindow : Window
 
     private void Convert()
     {
-        if (DataContext is not ImageEditViewModel vm || vm.Pictures.Count == 0) return;
+        if (DataContext is not ImageEditViewModel vm || vm.Pictures.Count == 0 || !vm.CanConvert) return;
         vm.Convert();
         Close();
     }

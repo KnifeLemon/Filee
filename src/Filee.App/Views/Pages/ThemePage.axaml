@@ -252,7 +252,7 @@
           </StackPanel>
         </Border>
 
-        <!-- The donut toolbar's opacity: the same setting as Donut toolbar → Appearance → Opacity. -->
+        <!-- The donut toolbar's opacity: the same setting as Donut toolbar → Edit Donut Size → Opacity. -->
         <Border Classes="card">
           <StackPanel Spacing="8">
             <DockPanel>
@@ -261,6 +261,14 @@
             </DockPanel>
             <Slider x:Name="DonutOpacitySlider" Minimum="10" Maximum="100" Value="{Binding DonutOpacity}"
                     TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource theme.donut_opacity}" />
+          </StackPanel>
+        </Border>
+
+        <!-- The system's UI font instead of the embedded Noto fonts, which still draw the scripts it lacks (#1065). -->
+        <Border Classes="card">
+          <StackPanel Spacing="4">
+            <CheckBox Content="{DynamicResource theme.system_font}" IsChecked="{Binding UseSystemFont}" FontWeight="SemiBold" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.system_font_hint}" Margin="28,0,0,0" />
           </StackPanel>
         </Border>
 

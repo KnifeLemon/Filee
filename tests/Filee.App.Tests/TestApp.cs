@@ -18,7 +18,11 @@ public static class TestAppBuilder
         AppBuilder.Configure<App>()
             .UseSkia()
             .UseHarfBuzz()
-            .ConfigureFonts(fonts => fonts.AddFontCollection(new FileeFontCollection()))
+            .ConfigureFonts(fonts =>
+            {
+                fonts.AddFontCollection(new FileeFontCollection());
+                fonts.AddFontCollection(new SystemUiFontCollection());
+            })
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 }
 

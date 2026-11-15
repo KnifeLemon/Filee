@@ -16,8 +16,7 @@ internal static class Help
         "watch" => Watch,
         "formats" => "Usage: filee formats [<format>] [--json]\n\nLists every format, or what one format converts to.\n" +
                      "With --json, prints the same as JSON (for scripts and other programs).\n",
-        "presets" => "Usage: filee presets [--json]\n\nLists the presets saved in Filee (built-in and your own).\n" +
-                     "With --json, prints the same as JSON (for scripts and other programs).\n",
+        "presets" => Presets,
         "engines" => Engines,
         _ => General,
     };
@@ -31,8 +30,10 @@ internal static class Help
           filee watch <folder> --to <format> [options]
           filee formats [<format>] [--json]
           filee presets [--json]
+          filee presets check <folder> [--json]
           filee engines [--json]
           filee engines (install | remove) <engine> [--json]
+          filee engines download <engine> -o <folder> [--json]
           filee help [<command>]
           filee version
 
@@ -49,19 +50,53 @@ internal static class Help
 
         """;
 
+    private const string Presets = """
+        Usage: filee presets [--json]
+               filee presets check <folder> [--json] [--quiet]
+
+        Lists the presets saved in Filee (built-in and your own). With --json, prints the same as JSON (for scripts
+        and other programs).
+
+        'check' checks a shared preset for the preset gallery: a folder with preset.json (what Settings → General →
+        Export writes, with at most 20 presets and one donut), meta.json (optional) and 1 to 4 pictures in images/
+        (1.png … 4.webp; PNG, JPEG or WebP, 640 to 2,560 pixels on the long edge, at most 2 MB, not animated).
+        Only fields on the gallery's list may be in preset.json, and nothing that runs a program or carries a folder
+        of one's own, a password, a path, a link or personal metadata (names, places, copyright owners). Settings that
+        touch the installer's files (replacing or moving originals, overwriting, metadata) pass with a warning. It reads
+        nothing else and changes nothing.
+        Exit codes: 0 the preset may be shared, 1 it has problems, 2 the folder doesn't exist.
+
+        Options:
+              --json             Print the result as JSON: "ok", "errors" (each with "code", "file", "path" and
+                                 "message") and "derived" (what the preset is: "kinds", "formats" with "from" and
+                                 "to", "minVersion", the number of "presets" and "profiles", the "sha256" of
+                                 preset.json and "warnings", each with "code", "severity" (high, medium or info),
+                                 "message" and the "presets" that have it)
+              --quiet            Print nothing when the preset passes
+
+        """;
+
     private const string Engines = """
         Usage: filee engines [--json]
-               filee engines install <engine> [--json] [--quiet]
+               filee engines install <engine> [--from <file or folder>...] [--json] [--quiet]
+               filee engines download <engine> -o <folder> [--json] [--quiet]
                filee engines remove <engine> [--json] [--quiet]
 
         Lists the optional engines of Settings → Engines (LibreOffice, Pandoc, FFmpeg, …), or installs or removes
         one with the same download and checks as the app. 'remove' only removes what Filee downloaded; your own copy
         and one found on this computer are left alone.
 
+        Without internet: 'download' saves an engine's files in a folder on a computer with internet, and
+        'install --from' installs them from that folder (or from the files downloaded by hand). The files have to be
+        the ones this version of Filee downloads: each is checked against its SHA-256 before anything is installed.
+
         In the JSON of the list, "version" is the version Filee downloads, also for an engine whose status is
         "owncopy" (your own copy or one found on this computer).
 
         Options:
+              --from <path>      Take the engine's files from this file or folder instead of downloading them
+                                 (can be given more than once)
+          -o, --output <folder>  Where 'download' saves the files
               --json             Print the result as JSON; progress goes to stderr, one JSON object per line
               --quiet            Print nothing but errors
 
@@ -83,6 +118,10 @@ internal static class Help
                                  no creation date (some Linux file systems), created uses its change or modified date
           -q, --quality <1-100>  Image quality for JPG, WebP, AVIF, …
               --pages <range>    The pages of PDFs, e.g. 13-55 or 1-3,8,12-15 (default: the preset's)
+              --split-every <n>  PDF to PDF: a file for every n pages, named _p1-50, _p51-100, … (1: one per page).
+                                 With a length (90s, 10m, 1h30m, 1:30:00), video to video: a part for every
+                                 so long, named _part1, _part2, …, copied without encoding again
+              --split-parts <n>  PDF to PDF or video to video: n files of the same length, e.g. 2 for halves
               --overwrite        Replace existing output files (default: add a number)
               --skip             Leave existing output files alone
               --keep-dates       Give converted files the created and modified dates of the originals

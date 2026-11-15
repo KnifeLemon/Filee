@@ -84,6 +84,8 @@ public sealed class UserDataStore
 
         var schema = Settings.SchemaVersion;
         SettingsMigrations.Apply(Settings);
+        if (PortableMode.IsEnabled)
+            PortableMode.DisableIntegration(Settings);
         var libraryChanged = File.Exists(ProfilesPath) && SettingsMigrations.ApplyToLibrary(schema, Presets, Profiles);
         EnsureConsistency();
 
@@ -99,6 +101,8 @@ public sealed class UserDataStore
 
     public void SaveSettings()
     {
+        if (PortableMode.IsEnabled)
+            PortableMode.DisableIntegration(Settings);
         Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -112,6 +116,14 @@ public sealed class UserDataStore
         Settings.UiScale = scale;
         Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
     }
+
+    /// <summary>
+    /// Remembers the donut's look (<see cref="AppSettings.Donut"/>: size, hole, opacity, output format, group ring) and
+    /// where its preview was dragged (<see cref="AppSettings.DonutPreviewPlace"/>), quietly as
+    /// <see cref="SaveUiScale"/>: the donut reads its look each time it opens, and the theme, triggers and integration
+    /// that <see cref="SettingsChanged"/> applies again haven't changed.
+    /// </summary>
+    public void SaveDonutLook() => Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
 
     /// <summary>
     /// Remembers where the main window was (<see cref="AppSettings.MainWindow"/>), quietly as <see cref="SaveUiScale"/>:
@@ -256,8 +268,12 @@ public sealed class UserDataStore
     /// Exports presets and profiles to a shareable JSON file, without PDF passwords or paths to one's own pictures.
     /// </summary>
     public void Export(string path) =>
-        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.ForSharing())], Profiles = Profiles },
-            FileeJsonContext.Default.PresetBundle);
+        Write(path, new PresetBundle
+        {
+            SettingsSchema = AppSettings.CurrentSchemaVersion,
+            Presets = [.. Presets.Select(p => p.ForSharing())],
+            Profiles = Profiles,
+        }, FileeJsonContext.Default.PresetBundle);
 
     /// <summary>
     /// Imports presets and profiles from a bundle. Items with an existing id are replaced, new ones added.
@@ -292,12 +308,16 @@ public sealed class UserDataStore
     /// <summary>Removes dangling preset references and guarantees at least one mixed-selection profile.</summary>
     private void EnsureConsistency()
     {
+        Settings.Donut.GroupRingSize = DonutSettings.ClampGroupRingSize(Settings.Donut.GroupRingSize);
+        Settings.Donut.GroupRingSpread = DonutSettings.ClampGroupRingSpread(Settings.Donut.GroupRingSpread);
         var ids = Presets.Select(p => p.Id).ToHashSet();
         foreach (var profile in Profiles)
         {
             profile.PresetIds = profile.PresetIds.Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
             // No back face known by now (a donut the user made, read from an older file): it has none.
             profile.BackPresetIds = (profile.BackPresetIds ?? []).Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
+            // A hand-edited or out-of-range label size: back within the slider's range, on one of its steps.
+            profile.LabelScale = ToolbarProfile.ClampLabelScale(profile.LabelScale);
         }
         // A Filee from before groups drops "kind" (and the presets) when it saves a group, which comes back as a
         // conversion to "group": still a group, now an empty one, rather than a conversion that can never run.
@@ -1077,13 +1097,93 @@ internal static class SettingsMigrations
         // v75: property lists (#1256) learn the data donut; custom claims stay put.
         if (from < 75)
             changed |= LearnExtensions(profiles, out _, ["plist"]);
+        // v76: QuickTime movies saved as .quicktime (#1283) learn the video donut and Insta360 .insp photos (#711) the
+        //      images donut; custom claims stay put.
+        if (from < 76)
+            changed |= LearnExtensions(profiles, out _, ["quicktime", "insp"]);
+        // v77: OpenStreetMap XML (.osm, #713) learns the geospatial donut; custom claims stay put.
+        if (from < 77)
+            changed |= LearnExtensions(profiles, out _, ["osm"]);
+        // v78: Windows programs and libraries (.exe, .dll, #1188), read as their icon, learn the images donut; custom
+        //      claims stay put.
+        if (from < 78)
+            changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
+        // v79: iPhone ringtones (#1291): M4R files learn the audio donut (custom claims stay put), and the "iPhone
+        //      ringtone" preset comes to libraries saved before it existed, after the built-in preset before it as in a
+        //      new library; no donut gets a slot (#806).
+        if (from < 79)
+        {
+            changed |= LearnExtensions(profiles, out _, ["m4r"]);
+            if (presets.All(p => p.Id != BuiltInData.RingtoneId))
+                changed |= AddLikeNewLibrary(presets, BuiltInData.RingtoneId);
+        }
+        // v80: the "PDF/A" preset (#1367) comes to libraries saved before it existed, after the built-in preset before it
+        //      as in a new library; no donut gets a slot. (Schema 80 may be renumbered if another change takes it first.)
+        if (from < 80 && presets.All(p => p.Id != BuiltInData.PdfAId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.PdfAId);
+        // v81: tracker modules (.xm, .it, .s3m, #1376) learn the audio donut; custom claims stay put. (Schema 81 may be
+        //      renumbered if another change takes it first.)
+        if (from < 81)
+            changed |= LearnExtensions(profiles, out _, ["xm", "it", "s3m"]);
+        // v82: Adobe extension packages (.zxp, #1382) learn the archives donut; custom claims stay put. (Schema 82 may be
+        //      renumbered if another change takes it first.)
+        if (from < 82)
+            changed |= LearnExtensions(profiles, out _, ["zxp"]);
+        // v83: MP4 videos saved as .mpg4 (#1397) learn the video donut; custom claims stay put. (Schema 83 may be
+        //      renumbered if another change takes it first.)
+        if (from < 83)
+            changed |= LearnExtensions(profiles, out _, ["mpg4"]);
+        // v84: restore folder compression (#1345) on the unchanged ISO-only default, preserving custom layouts.
+        if (from < 84 && profiles.FirstOrDefault(p => p.Id == "folders") is { } folders
+            && folders.PresetIds.SequenceEqual(new[] { "to-iso" }) && (folders.BackPresetIds?.Count ?? 0) == 0)
+        {
+            foreach (var id in new[] { "to-zip", "zip-all" })
+                if (presets.Any(p => p.Id == id)) { folders.PresetIds.Add(id); changed = true; }
+        }
+        // v85: Windows animated cursors (.ani, #1365) learn the images donut; custom claims stay put.
+        if (from < 85)
+            changed |= LearnExtensions(profiles, out _, ["ani"]);
+        // v86: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put.
+        if (from < 86)
+            changed |= LearnExtensions(profiles, out _, ["pdn"]);
+        // v87: Arduino and Processing sketches (.ino, .pde) learn the text donut; custom claims stay put. (Schema 87 may
+        //      be renumbered if another change takes it first.)
+        if (from < 87)
+            changed |= LearnExtensions(profiles, out _, ["ino", "pde"]);
+        // v88: NuGet packages (.nupkg, .snupkg, #1465), split-APK containers (.apks, .xapk, .apkm) and Android App
+        //      Bundles (.aab, #1464) learn the archives donut; custom claims stay put. (Schema 88 may be renumbered if
+        //      another change takes it first.)
+        if (from < 88)
+            changed |= LearnExtensions(profiles, out _, ["nupkg", "snupkg", "apks", "xapk", "apkm", "aab"]);
+        // v89: KuGou lyrics (.krc, #1296) learn the subtitles donut; custom claims stay put. (Schema 89 may be renumbered
+        //      if another change takes it first.)
+        if (from < 89)
+            changed |= LearnExtensions(profiles, out _, ["krc"]);
+        // v90: Wisenet WAVE / Nx Witness exports (.nov) learn the video donut; custom claims stay put.
+        if (from < 90)
+            changed |= LearnExtensions(profiles, out _, ["nov"]);
+        // v91: Gerber PCB layers learn the CAD donut; custom claims stay put.
+        if (from < 91)
+            changed |= LearnExtensions(profiles, out _, ["gbr", "ger", "gtl", "gbl", "gto", "gbo", "gts", "gbs", "gtp", "gbp", "gko", "gm1"]);
+        // v92: Obsidian's boards (.canvas, JSON Canvas) learn the vector donut; custom claims stay put.
+        if (from < 92)
+            changed |= LearnExtensions(profiles, out _, ["canvas"]);
+        // v93: G-code toolpaths (.gcode, .gco, .ngc) learn the CAD donut; custom claims stay put.
+        if (from < 93)
+            changed |= LearnExtensions(profiles, out _, ["gcode", "gco", "ngc"]);
+        // v94: Valve textures (.vtf) learn the images donut; custom claims stay put.
+        if (from < 94)
+            changed |= LearnExtensions(profiles, out _, ["vtf"]);
         return changed;
     }
 
-    private static bool AddTranslatePreset(List<Preset> presets)
+    private static bool AddTranslatePreset(List<Preset> presets) => AddLikeNewLibrary(presets, "translate");
+
+    /// <summary>Adds the built-in preset <paramref name="id"/> after the built-in preset before it in a new library.</summary>
+    private static bool AddLikeNewLibrary(List<Preset> presets, string id)
     {
         var defaults = BuiltInData.CreatePresets();
-        var at = defaults.FindIndex(p => p.Id == "translate");
+        var at = defaults.FindIndex(p => p.Id == id);
         var after = defaults.Take(at).Select(p => presets.FindIndex(existing => existing.Id == p.Id)).LastOrDefault(i => i >= 0, -1);
         presets.Insert(after + 1, defaults[at]);
         return true;

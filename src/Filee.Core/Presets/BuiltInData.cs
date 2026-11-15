@@ -11,8 +11,14 @@ public static class BuiltInData
     /// <summary>Special target format meaning "same format as the source file" (e.g. resize only).</summary>
     public const string SameAsSource = "*";
 
+    /// <summary>The "iPhone ringtone" preset (#1291): an M4R of at most 40 seconds, from where its Start field says.</summary>
+    public const string RingtoneId = "iphone-ringtone";
+
+    /// <summary>The "PDF/A" preset (#1367): any PDF Filee writes, PDF → PDF too, made PDF/A-2b for archiving.</summary>
+    public const string PdfAId = "pdf-a";
+
     /// <summary>Whether a conversion target accepts a folder directly.</summary>
-    public static bool SupportsFolderTarget(string target) => target == "iso";
+    public static bool SupportsFolderTarget(string target) => target is "iso" or "zip" or "7z" or "tar" or "tgz" or "tbz2" or "txz";
 
     /// <summary>Whether a preset accepts folders without converting their individual files.</summary>
     public static bool AcceptsFolders(Preset preset) => !preset.IsGroup
@@ -132,6 +138,7 @@ public static class BuiltInData
         },
         .. PdfCompressionPresets(),
         .. OcrPresets(),
+        .. PdfAPresets(),
         .. PdfSlidesPresets(),
         .. FramePresets(),
         .. MotionPhotoPresets(),
@@ -393,15 +400,17 @@ public static class BuiltInData
     [
         new()
         {
-            // Quality 75 like most photo apps' "smaller"; a JPEG saved below it stays at its own quality.
-            Id = "compress-image", NameKey = "preset.compress_image", TargetFormat = SameAsSource,
+            // Quality 75 like most photo apps' "smaller"; a JPEG saved below it stays at its own quality. The four
+            // "Compress" presets ask for the level on each drop (#1353): in a new install only, an existing library
+            // keeps them as they are.
+            Id = "compress-image", NameKey = "preset.compress_image", TargetFormat = SameAsSource, AskCompression = true,
             Image = { Quality = 75, MaxCompression = true, TiffCompression = TiffCompression.Zip },
             Output = { FileNamePattern = "{name}_compressed", OnlyIfSmaller = true },
         },
         new()
         {
             // H.264 at the Small quality, at most 1080p: plays everywhere, a fraction of a phone video's size.
-            Id = "compress-video", NameKey = "preset.compress_video", TargetFormat = "mp4",
+            Id = "compress-video", NameKey = "preset.compress_video", TargetFormat = "mp4", AskCompression = true,
             Media = { Quality = MediaQuality.Small, MaxHeight = 1080 }, Output = { FileNamePattern = "{name}_compressed", OnlyIfSmaller = true },
         },
         new()
@@ -422,7 +431,7 @@ public static class BuiltInData
         new()
         {
             // AAC at the Small quality: 128 kbit/s for stereo.
-            Id = "compress-audio", NameKey = "preset.compress_audio", TargetFormat = "m4a",
+            Id = "compress-audio", NameKey = "preset.compress_audio", TargetFormat = "m4a", AskCompression = true,
             Media = { Quality = MediaQuality.Small }, Output = { FileNamePattern = "{name}_compressed", OnlyIfSmaller = true },
         },
         new()
@@ -462,7 +471,7 @@ public static class BuiltInData
     [
         new()
         {
-            Id = "compress-pdf", NameKey = "preset.compress_pdf", TargetFormat = "pdf",
+            Id = "compress-pdf", NameKey = "preset.compress_pdf", TargetFormat = "pdf", AskCompression = true,
             Pdf = { Compression = PdfCompression.Ebook }, Output = { FileNamePattern = "{name}_compressed" },
         },
     ];
@@ -477,6 +486,19 @@ public static class BuiltInData
         {
             Id = "searchable-pdf", NameKey = "preset.searchable_pdf", TargetFormat = "pdf",
             Pdf = { Ocr = true }, Output = { FileNamePattern = "{name}_searchable" },
+        },
+    ];
+
+    /// <summary>
+    /// "PDF/A": a PDF, or a document converted to PDF, as PDF/A-2b (added in settings schema 80). LibreOffice writes it
+    /// itself; any other PDF is rewritten by Ghostscript. On no donut, like "Compress PDF".
+    /// </summary>
+    public static List<Preset> PdfAPresets() =>
+    [
+        new()
+        {
+            Id = PdfAId, NameKey = "preset.pdf_a", TargetFormat = "pdf",
+            Document = { PdfA = true }, Output = { FileNamePattern = "{name}_pdfa" },
         },
     ];
 
@@ -633,6 +655,11 @@ public static class BuiltInData
         new() { Id = "to-ogg", Name = "OGG", TargetFormat = "ogg" },
         new() { Id = "to-opus", Name = "OPUS", TargetFormat = "opus" },
         new() { Id = "to-aac", Name = "AAC", TargetFormat = "aac" },
+        new()
+        {
+            Id = RingtoneId, NameKey = "preset.iphone_ringtone", TargetFormat = "m4r",
+            Media = { RingtoneStart = 0, RingtoneLength = MediaOptions.DefaultRingtoneLength, AskRingtonePart = true },
+        },
 
         // Archives
         new() { Id = "to-iso", NameKey = "preset.iso_image", TargetFormat = "iso" },
@@ -729,9 +756,9 @@ public static class BuiltInData
         {
             (List<string> Front, List<string> Back) layout = profile.Id switch
             {
-                "images" => (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg"],
+                "images" => (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "merge-pdf", "trace-svg"],
                     ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
-                "pdf" => (["to-png", "to-jpg", "to-docx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"],
+                "pdf" => (["to-png", "to-jpg", "to-docx", "to-xlsx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"],
                     ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
                 "office" => (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-txt", "to-png", "merge-pdf"],
                     ["translate", "to-md", "pdf-long-image", "zip-all"]),
@@ -769,7 +796,7 @@ public static class BuiltInData
             Id = "folders",
             NameKey = "profile.folders",
             Extensions = [],
-            PresetIds = ["to-iso"],
+            PresetIds = ["to-iso", "to-zip", "zip-all"],
             BackPresetIds = [],
         };
         profiles.Insert(profiles.FindIndex(p => p.Id == "archives") + 1, folders);

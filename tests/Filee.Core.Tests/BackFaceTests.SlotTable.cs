@@ -6,11 +6,12 @@ namespace Filee.Core.Tests;
 public partial class BackFaceTests
 {
     // Slot table of #806, with Translate from #836 first on the document, text and e-book backs, and Crop video (#830)
-    // after Cut a clip. This is a new-install/reset contract, not migration input.
+    // after Cut a clip, XLSX (#1343) after Word on the PDF front, and Merge PDF after PDF on the images front (#1413). This is a new-install/reset contract, not
+    // migration input.
     internal static readonly Dictionary<string, (string[] Front, string[] Back)> ExpectedFaces = new()
     {
-        ["images"] = (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg"], ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
-        ["pdf"] = (["to-png", "to-jpg", "to-docx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"], ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
+        ["images"] = (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "merge-pdf", "trace-svg"], ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
+        ["pdf"] = (["to-png", "to-jpg", "to-docx", "to-xlsx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"], ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
         ["office"] = (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-txt", "to-png", "merge-pdf"], ["translate", "to-md", "pdf-long-image", "zip-all"]),
         ["spreadsheets"] = (["to-pdf", "to-xlsx", "to-csv", "to-hwpx", "to-hwp", "merge-pdf"], ["tool-sheet-studio", "to-docx", "to-vcf", "to-ics", "zip-all"]),
         ["presentations"] = (["to-pdf", "to-png", "to-jpg", "to-pptx", "to-hwpx", "to-hwp", "merge-pdf"], ["to-odp", "pdf-long-image", "to-docx", "zip-all"]),
@@ -22,7 +23,7 @@ public partial class BackFaceTests
         ["subtitles"] = (["to-srt", "to-vtt"], ["zip-all"]),
         ["vector"] = (["to-png", "to-pdf", "to-svg", "to-jpg", "to-webp"], ["to-tiff", "to-ico", "to-icns", "to-dxf", "zip-all"]),
         ["archives"] = (["extract", "zip-all", "to-zip", "to-7z"], []),
-        ["folders"] = (["to-iso"], []),
+        ["folders"] = (["to-iso", "to-zip", "zip-all"], []),
         ["cad"] = (["to-pdf", "to-png", "to-svg", "to-dxf", "to-dwg"], ["to-jpg", "merge-pdf", "zip-all"]),
         ["fonts"] = (["to-woff2", "to-woff", "to-ttf", "to-otf"], ["zip-all"]),
         ["data"] = (["to-json", "to-yaml", "to-xml", "to-csv", "to-xlsx"], ["to-ods", "to-html", "to-md", "zip-all"]),
@@ -69,7 +70,7 @@ public partial class BackFaceTests
         foreach (var profile in BuiltInData.CreateProfiles())
             foreach (var id in profile.PresetIds)
                 foreach (var work in WorkOf(profile.Id, id, presets))
-                    Assert.True(work == 'V' || work == 'B' && profile.Id is "archives" or "mixed", $"{profile.Id}/front: {id} is {work}");
+                    Assert.True(work == 'V' || work == 'B' && profile.Id is "archives" or "folders" or "mixed", $"{profile.Id}/front: {id} is {work}");
     }
 
     [Fact]

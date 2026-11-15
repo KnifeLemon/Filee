@@ -1,6 +1,6 @@
 // The metadata of a file as the Metadata tool shows it: every field, the group it lives in (where in the file: EXIF's
 // IFD0, GPS, IPTC, XMP-dc, a PDF's document info …), whether it holds a list (keywords, creators), and whether it may
-// be changed.
+// be changed, and whether ExifTool read all of it.
 
 namespace Filee.Engines.Metadata;
 
@@ -25,6 +25,12 @@ public sealed record MetadataField(string Family, string Group, string Tag, IRea
         : this(family, group, tag, [value], false, editable)
     {
     }
+
+    /// <summary>
+    /// The XMP list ExifTool stopped reading at 1,000 entries that this field is part of ("XMP-xmpMM:History"), or
+    /// null. Its value is only what was read, so writing it back would drop the rest; removing it takes all of it.
+    /// </summary>
+    public string? CutShortList { get; init; }
 
     /// <summary>"IFD0:Make": how ExifTool names the field when writing it.</summary>
     public string Key => $"{Group}:{Tag}";

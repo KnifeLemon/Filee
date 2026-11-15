@@ -1,5 +1,6 @@
 // Geospatial vector data in managed code: GeoJSON, KML, KMZ, GPX, Shapefile and CSV (a WKT column, or longitude and
-// latitude columns) into each other through one in-memory model (GeoModel); Garmin FIT activities are read into it too.
+// latitude columns) into each other through one in-memory model (GeoModel); Garmin FIT activities and OpenStreetMap XML
+// are read into it too.
 // FIT goes to CSV straight from its records (FitFormat.WriteCsv). Whatever the source's coordinate system
 // (a .prj or a GeoJSON crs), every result is longitude / latitude in WGS 84. See docs/ENGINES.md, "Geospatial data",
 // for what each format keeps and what it loses.
@@ -11,13 +12,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.Engines.Geo;
 
-/// <summary>Converts GeoJSON, KML, KMZ, GPX, Shapefile and CSV points / WKT, and reads Garmin FIT activities.</summary>
+/// <summary>Converts GeoJSON, KML, KMZ, GPX, Shapefile and CSV points / WKT, and reads Garmin FIT activities and OpenStreetMap XML.</summary>
 public sealed class GeoConverter(ILogger? logger = null) : IConverter
 {
     /// <summary>The geospatial formats, each readable and writable.</summary>
     public static readonly string[] Formats = ["geojson", "kml", "kmz", "gpx", "shp"];
     /// <summary>The geospatial formats that are only read.</summary>
-    public static readonly string[] ReadOnlyFormats = ["fit"];
+    public static readonly string[] ReadOnlyFormats = ["fit", "osm"];
 
     private readonly ILogger _logger = logger ?? NullLogger.Instance;
 
@@ -40,7 +41,7 @@ public sealed class GeoConverter(ILogger? logger = null) : IConverter
         .. ReadOnlyFormats.Select(source => new ConversionEdge(source, "csv")),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV; Garmin FIT activities → geospatial formats and CSV",
+    public EngineStatus GetStatus() => EngineStatus.Available("GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV; Garmin FIT activities, OpenStreetMap XML → geospatial formats and CSV",
         EngineVersions.BuiltIn);
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
@@ -59,6 +60,8 @@ public sealed class GeoConverter(ILogger? logger = null) : IConverter
                 _logger.LogDebug("{File}: {Features} features read as {Format}, {Crs}", step.InputPath, dataset.Features.Count, step.From, dataset.Crs.Name);
                 if (dataset.RowsWithoutLocation)
                     notices.Add("notice.geo_rows_without_location");
+                if (dataset.PartsMissing)
+                    notices.Add("notice.osm_incomplete");
                 // A GPX track has no start time, but its points keep theirs: the start is lost only when none has one.
                 if (activity is not null && step.To == "gpx" && dataset.Features[0].Geometry is GeoLineString { Times: null }
                     && dataset.Features[0].FindText("time") is not null)
@@ -96,6 +99,7 @@ public sealed class GeoConverter(ILogger? logger = null) : IConverter
         "gpx" => GpxFormat.Read(step.InputPath, cancellationToken),
         "shp" => ShapefileFormat.Read(step.InputPath, cancellationToken),
         "csv" => GeoCsvFormat.Read(step.InputPath, cancellationToken),
+        "osm" => OsmFormat.Read(step.InputPath, cancellationToken),
         _ => throw new NotSupportedException($"{step.From} is not a geospatial format."),
     };
 
@@ -239,13 +243,14 @@ public sealed class GeoConverter(ILogger? logger = null) : IConverter
 
     /// <summary>
     /// The notes a conversion collects. A file carries one note, so the most important one is reported:
-    /// the assumed datum can move data by hundreds of metres, the rest only say what a format could not hold.
+    /// the assumed datum can move data by hundreds of metres and features left out of an OpenStreetMap extract are
+    /// missing from the map, the rest only say what a format could not hold.
     /// </summary>
     internal sealed class Notices(Action<string>? sink)
     {
         private static readonly string[] Priority =
         [
-            "notice.geo_datum_assumed", "notice.geo_gpx_lossy", "notice.geo_heights_dropped", "notice.geo_text_cut", "notice.geo_columns_dropped",
+            "notice.geo_datum_assumed", "notice.osm_incomplete", "notice.geo_gpx_lossy", "notice.geo_heights_dropped", "notice.geo_text_cut", "notice.geo_columns_dropped",
             "notice.geo_rows_without_location", "notice.geo_field_names", "notice.geo_shapefile_split",
         ];
 

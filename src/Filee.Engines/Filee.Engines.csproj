@@ -18,6 +18,7 @@
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="PDFtoImage" />
     <PackageReference Include="Unhwp" />
+    <PackageReference Include="System.Formats.Nrbf" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="ExcelNumberFormat" />
     <PackageReference Include="Svg.Skia" />

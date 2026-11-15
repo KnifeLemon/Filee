@@ -170,9 +170,12 @@ internal static class SvgRenderer
         {
             // Render at the size the custom resize asks for, so the box is not reached by stretching a default-size
             // bitmap, which comes out soft. With the lock, at the fit-inside scale; without, at the larger side's
-            // scale, so the stretch that follows only ever shrinks the other side.
+            // scale, so the stretch that follows only ever shrinks the other side. A box that is a maximum (#1270) keeps
+            // the usual render size and only brings a larger one down into the box: a drawing has no size of its own
+            // in pixels, the usual one stands in for it.
+            var fit = Math.Min(custom.ClampedWidth / bounds.Width, custom.ClampedHeight / bounds.Height);
             scale = custom.LockAspect
-                ? Math.Min(custom.ClampedWidth / bounds.Width, custom.ClampedHeight / bounds.Height)
+                ? custom.ShrinkOnly ? Math.Min(scale, fit) : fit
                 : Math.Max(custom.ClampedWidth / bounds.Width, custom.ClampedHeight / bounds.Height);
         }
         else if (image.ClampedMinShortEdge is { } minShortEdge)
@@ -195,17 +198,20 @@ internal static class SvgRenderer
     }
 
     /// <summary>Renders the drawing on a transparent bitmap and hands it to ImageMagick for encoding.</summary>
-    public static MagickImage Rasterize(Drawing drawing, float scale)
+    public static MagickImage Rasterize(Drawing drawing, float scale) => Rasterize(drawing.Picture, drawing.Bounds, scale);
+
+    /// <summary>Renders a picture recorded in CSS pixels (the part in <paramref name="bounds"/>), as <see cref="Rasterize(Drawing, float)"/>.</summary>
+    public static MagickImage Rasterize(SKPicture picture, SKRect bounds, float scale)
     {
-        var width = Math.Max(1, (int)Math.Ceiling(drawing.Bounds.Width * scale));
-        var height = Math.Max(1, (int)Math.Ceiling(drawing.Bounds.Height * scale));
+        var width = Math.Max(1, (int)Math.Ceiling(bounds.Width * scale));
+        var height = Math.Max(1, (int)Math.Ceiling(bounds.Height * scale));
         using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
         using (var canvas = new SKCanvas(bitmap))
         {
             canvas.Clear(SKColors.Transparent);
             canvas.Scale(scale);
-            canvas.Translate(-drawing.Bounds.Left, -drawing.Bounds.Top);
-            canvas.DrawPicture(drawing.Picture);
+            canvas.Translate(-bounds.Left, -bounds.Top);
+            canvas.DrawPicture(picture);
         }
 
         // Skia draws premultiplied; ImageMagick expects straight alpha.

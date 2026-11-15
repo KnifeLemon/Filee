@@ -319,11 +319,58 @@ public static partial class ExifTool
                 ? [.. property.Value.EnumerateArray().Select(Text)] : [Text(property.Value)];
             fields.Add(new MetadataField(family, group, tag, items, isList, IsEditable(family, group, tag, items)));
         }
-        return fields;
+        return MarkCutShort(fields);
 
         // As ExifTool printed it: a title "true" comes without quotes, and isn't "True".
         static string Text(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : value.GetRawText();
     }
+
+    /// <summary>
+    /// How many entries of an XMP list ExifTool reads. Past that it stops, unless minor errors are ignored (<c>-m</c>),
+    /// which isn't done on a read: it also brings back a PDF's replaced fields, and slows long logs and encrypted PDFs.
+    /// </summary>
+    internal const int ListLimit = 1000;
+
+    /// <summary>
+    /// Marks the fields of each XMP list ExifTool stopped reading (<see cref="MetadataField.CutShortList"/>): the one its
+    /// warning names, and any of <see cref="ListLimit"/> entries or more, as <c>-j</c> prints only a file's first
+    /// warning. A list of structures is every field it was flattened into ("HistoryInstanceID", "HistorySoftwareAgent"
+    /// of xmpMM:History), and one of them can show a single entry when the others are past the 1,000th. Without the
+    /// warning the structure's name isn't known, so the tag's first word stands for it, which may take in a neighbour.
+    /// </summary>
+    private static List<MetadataField> MarkCutShort(List<MetadataField> fields)
+    {
+        var lists = new List<(string Group, string Name)>();
+        foreach (var field in fields)
+        {
+            if (field is { Family: "ExifTool", Tag: "Warning" } && CutShortWarning().Match(field.Value) is { Success: true } warning)
+                lists.Add(($"XMP-{warning.Groups[1].Value}", char.ToUpperInvariant(warning.Groups[2].Value[0]) + warning.Groups[2].Value[1..]));
+            else if (field.Family == "XMP" && field.Items.Count >= ListLimit)
+                lists.Add((field.Group, FirstWord().Match(field.Tag) is { Length: > 0 } word ? word.Value : field.Tag));
+        }
+        if (lists.Count == 0)
+            return fields;
+        return
+        [
+            .. fields.Select(f => f.Family == "XMP" && lists.FindIndex(l => l.Group == f.Group && f.Tag.StartsWith(l.Name, StringComparison.OrdinalIgnoreCase)) is >= 0 and var at
+                ? f with { CutShortList = $"{lists[at].Group}:{lists[at].Name}" } : f),
+        ];
+    }
+
+    /// <summary>ExifTool's "[Minor] Extracted only 1000 xmpMM:History items. Ignore minor errors to extract all".</summary>
+    [GeneratedRegex(@"Extracted only \d+ ([\w-]+):([\w-]+) items")]
+    private static partial Regex CutShortWarning();
+
+    /// <summary>"History" of "HistoryInstanceID", "GPS" of "GPSLatitude", "Subject" of "Subject".</summary>
+    [GeneratedRegex("^(?:[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z0-9]+|[A-Z0-9]+)")]
+    private static partial Regex FirstWord();
+
+    /// <summary>
+    /// The XMP lists ExifTool read only the first <see cref="ListLimit"/> entries of ("XMP-xmpMM:History"), each once:
+    /// a place in an entry past them is never seen, so Remove location can't say it took all.
+    /// </summary>
+    public static IReadOnlyList<string> CutShortLists(IEnumerable<MetadataField> fields) =>
+        [.. fields.Select(f => f.CutShortList).OfType<string>().Distinct()];
 
     internal static bool IsEditable(string family, string group, string tag, IReadOnlyList<string> items) =>
         EditableFamilies.Contains(family) && !ReadOnlyGroups.Contains(group) && !group.StartsWith("Track", StringComparison.Ordinal)

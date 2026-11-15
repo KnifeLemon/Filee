@@ -1,4 +1,4 @@
-<!-- Lossless PDF page organiser opened by Edit → Pages / Add pages on the donut. -->
+<!-- Lossless PDF page organiser opened by Edit → Pages / Add pages on the donut. Several pages can be selected and dragged (#860). -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
@@ -40,6 +40,22 @@
             <TextBlock Text="{DynamicResource pdf_editor.add}" />
           </StackPanel>
         </Button>
+        <Button Margin="0,0,6,6" IsEnabled="{Binding HasSelection}">
+          <StackPanel Orientation="Horizontal" Spacing="5">
+            <TextBlock Text="{DynamicResource pdf_editor.insert}" />
+            <!-- Opens a menu: before or after the selection. -->
+            <PathIcon Width="11" Height="11" Data="{StaticResource Icon.ChevronRight}" RenderTransform="rotate(90deg)"
+                      Foreground="{DynamicResource TextSecondaryBrush}" />
+          </StackPanel>
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+              <MenuItem Header="{DynamicResource pdf_editor.insert_before}" Click="OnInsertBefore" />
+              <MenuItem Header="{DynamicResource pdf_editor.insert_after}" Click="OnInsertAfter" />
+            </MenuFlyout>
+          </Button.Flyout>
+        </Button>
+        <Button Margin="0,0,6,6" Click="OnReplace" IsEnabled="{Binding HasSelection}"
+                Content="{DynamicResource pdf_editor.replace}" />
         <Button Margin="0,0,6,6" Command="{Binding MoveUpCommand}" ToolTip.Tip="{DynamicResource group.move_up}" AutomationProperties.Name="{DynamicResource group.move_up}">
           <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
         </Button>
@@ -54,44 +70,56 @@
             <TextBlock Text="{DynamicResource pdf_editor.delete}" />
           </StackPanel>
         </Button>
-        <Button Margin="0,0,6,6" Click="OnExtract" Content="{DynamicResource preset.pdf_extract.short}" />
+        <Button Margin="0,0,6,6" Click="OnExtract" IsEnabled="{Binding HasSelection}"
+                Content="{DynamicResource preset.pdf_extract.short}" />
       </WrapPanel>
     </StackPanel>
 
     <Grid ColumnDefinitions="280,10,*" Margin="20,0,20,14">
-      <ListBox x:Name="PageOrder" Grid.Column="0" ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}"
-               ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource SurfaceAltBrush}">
-        <ListBox.Styles>
-          <Style Selector="ListBoxItem">
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-          </Style>
-        </ListBox.Styles>
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="vm:PdfPageItem">
-            <Grid ColumnDefinitions="92,*" MinHeight="108" Margin="4,5">
-              <Border Width="82" Height="98" CornerRadius="6" Background="White"
-                      BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" ClipToBounds="True">
-                <Grid>
-                  <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="4"
-                         RenderTransformOrigin="50%,50%" IsVisible="{Binding HasThumbnail}">
-                    <Image.RenderTransform>
-                      <RotateTransform Angle="{Binding PreviewRotation}" />
-                    </Image.RenderTransform>
-                  </Image>
-                  <TextBlock Text="{Binding PageNumber}" Foreground="#666666" FontSize="20"
-                             HorizontalAlignment="Center" VerticalAlignment="Center"
-                             IsVisible="{Binding !HasThumbnail}" />
-                </Grid>
-              </Border>
-              <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
-                <TextBlock Text="{Binding PageText}" FontWeight="SemiBold" />
-                <TextBlock Classes="caption" Text="{Binding SourceName}" TextTrimming="CharacterEllipsis" />
-                <TextBlock Classes="caption" Text="{Binding RotationText}" />
-              </StackPanel>
-            </Grid>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+      <!-- Ctrl / Shift + click selects several pages; dragging moves the selection, shown by the line between pages. -->
+      <Panel Grid.Column="0">
+        <ListBox x:Name="PageOrder" ItemsSource="{Binding Pages}" SelectionMode="Multiple"
+                 SelectedItems="{Binding SelectedPages}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource SurfaceAltBrush}">
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem">
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </Style>
+            <Style Selector="Grid.moving">
+              <Setter Property="Opacity" Value="0.45" />
+            </Style>
+          </ListBox.Styles>
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:PdfPageItem">
+              <Grid ColumnDefinitions="92,*" MinHeight="108" Margin="4,5" Classes.moving="{Binding IsMoving}">
+                <Border Width="82" Height="98" CornerRadius="6" Background="White"
+                        BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" ClipToBounds="True">
+                  <Grid>
+                    <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="4"
+                           RenderTransformOrigin="50%,50%" IsVisible="{Binding HasThumbnail}">
+                      <Image.RenderTransform>
+                        <RotateTransform Angle="{Binding PreviewRotation}" />
+                      </Image.RenderTransform>
+                    </Image>
+                    <TextBlock Text="{Binding PageNumber}" Foreground="#666666" FontSize="20"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               IsVisible="{Binding !HasThumbnail}" />
+                  </Grid>
+                </Border>
+                <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding PageText}" FontWeight="SemiBold" />
+                  <TextBlock Classes="caption" Text="{Binding SourceName}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="caption" Text="{Binding RotationText}" />
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <Canvas IsHitTestVisible="False" ClipToBounds="True">
+          <Border x:Name="DropLine" Height="3" CornerRadius="1.5" Background="{DynamicResource AccentBrush}"
+                  IsVisible="False" />
+        </Canvas>
+      </Panel>
 
       <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" Background="Transparent" />
 

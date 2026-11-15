@@ -48,6 +48,15 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        IDisposable? portable;
+        try { portable = PortableMode.Initialize(); }
+        catch (PortableStorageException ex)
+        {
+            var message = string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                LocalizationService.EarlyText("startup.portable_unwritable"), ex.DataDirectory);
+            return PortableStartupFailure.Show(message);
+        }
+        using var portableScope = portable;
         Options = CommandLine.Parse(args);
         PreloadedStore = null;
         Log = StartupDiagnostics.CreateEarlyLogger(Path.Combine(UserDataStore.DefaultDirectory, "logs"), out var earlyStoreLogger);
@@ -296,7 +305,11 @@ internal static class Program
             builder = builder.With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] });
 
         builder = builder
-            .ConfigureFonts(fonts => fonts.AddFontCollection(new FileeFontCollection()))
+            .ConfigureFonts(fonts =>
+            {
+                fonts.AddFontCollection(new FileeFontCollection());
+                fonts.AddFontCollection(new SystemUiFontCollection());
+            })
 #if DEBUG
             .WithDeveloperTools()
 #endif

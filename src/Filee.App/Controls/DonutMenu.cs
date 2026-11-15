@@ -7,8 +7,10 @@
 //
 // After a drop the donut turns into a progress ring: see DonutMenu.Progress.cs. Group slices, which fan out a ring
 // of presets, and the keyboard: DonutMenu.Groups.cs. Tab (or the wheel) flips the donut over: DonutMenu.Flip.cs.
+// How each slice's name and icon fit inside it (the safe zone, one size and one style per ring): SliceLabelLayout.cs.
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
@@ -16,6 +18,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Filee.App.Services;
+using Filee.Core.Presets;
 
 namespace Filee.App.Controls;
 
@@ -42,11 +45,31 @@ public sealed class DonutItem
     /// <summary>Tooltip shown for disabled slices.</summary>
     public string? DisabledReason { get; init; }
 
+    /// <summary>A runnable slice's operation differs from its name, shown in the hub, not as an error.</summary>
+    public string? OrdinaryConversionNotice { get; init; }
+
     /// <summary>
     /// A group slice: converts nothing itself; hovering it fans these out in a small ring outside the donut, where they
     /// are clicked or dropped on like ordinary slices.
     /// </summary>
     public IReadOnlyList<DonutItem>? Children { get; init; }
+
+    /// <summary>
+    /// The preset's full name, for the centre hint: the slice may show an icon or a shorter name. Null:
+    /// <see cref="Label"/>.
+    /// </summary>
+    public string? FullName { get; init; }
+
+    /// <summary>The icon the slice can show (a <see cref="SliceIcons"/> key), or null for none.</summary>
+    public string? IconKey { get; init; }
+
+    /// <summary>What the slice shows. Null: the donut's <see cref="DonutMenu.DefaultShow"/>.</summary>
+    public LabelShow? Show { get; init; }
+
+    /// <summary>
+    /// Which way its name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).
+    /// </summary>
+    public LabelDirection? Direction { get; init; }
 
     /// <summary>A group slice (<see cref="Children"/> set), even one left with nothing to fan out.</summary>
     public bool IsGroup => Children is not null;
@@ -70,14 +93,26 @@ public sealed partial class DonutMenu : Control
         AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterTitle));
     public static readonly StyledProperty<string?> CenterSubtitleProperty =
         AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterSubtitle));
+    public static readonly StyledProperty<string?> CenterNoticeProperty =
+        AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterNotice));
     public static readonly StyledProperty<bool> IsEditModeProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(IsEditMode));
     public static readonly StyledProperty<bool> AllowContextEditProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(AllowContextEdit));
     public static readonly StyledProperty<bool> ReserveSubRingProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(ReserveSubRing));
+    public static readonly StyledProperty<double> LabelScaleProperty =
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(LabelScale), 1);
+    public static readonly StyledProperty<LabelShow> DefaultShowProperty =
+        AvaloniaProperty.Register<DonutMenu, LabelShow>(nameof(DefaultShow), LabelShow.Auto);
     public static readonly StyledProperty<bool> ShowCaptionsProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(ShowCaptions), true);
+    public static readonly StyledProperty<double> GroupRingSizeProperty =
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSize), 1);
+    public static readonly StyledProperty<double> GroupRingSpreadProperty =
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSpread), 1);
+    public static readonly StyledProperty<string?> HeldGroupIdProperty =
+        AvaloniaProperty.Register<DonutMenu, string?>(nameof(HeldGroupId));
 
     /// <summary>The theme's softness (Styles/Controls.axaml binds SoftRadius): rounds the corners of the slices.</summary>
     public static readonly StyledProperty<CornerRadius> CornerRadiusProperty =
@@ -142,12 +177,14 @@ public sealed partial class DonutMenu : Control
 
     static DonutMenu()
     {
-        AffectsMeasure<DonutMenu>(OuterRadiusProperty, ReserveSubRingProperty);
-        AffectsRender<DonutMenu>(HoleRatioProperty, SliceOpacityProperty, CenterTitleProperty, CenterSubtitleProperty,
+        AffectsMeasure<DonutMenu>(OuterRadiusProperty, ReserveSubRingProperty, GroupRingSizeProperty);
+        AffectsRender<DonutMenu>(HoleRatioProperty, SliceOpacityProperty, CenterTitleProperty, CenterSubtitleProperty, CenterNoticeProperty,
             IsEditModeProperty, SliceBrushProperty, SliceBorderBrushProperty, CenterBrushProperty, AccentBrushProperty,
             OnAccentBrushProperty, ForegroundProperty, SecondaryForegroundProperty, SuccessBrushProperty, CornerRadiusProperty,
-            CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty);
+            CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty,
+            GroupRingSizeProperty, GroupRingSpreadProperty);
         ItemsProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnItemsChanged());
+        HeldGroupIdProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnHeldGroupChanged());
     }
 
     public DonutMenu()
@@ -170,6 +207,7 @@ public sealed partial class DonutMenu : Control
     public double SliceOpacity { get => GetValue(SliceOpacityProperty); set => SetValue(SliceOpacityProperty, value); }
     public string? CenterTitle { get => GetValue(CenterTitleProperty); set => SetValue(CenterTitleProperty, value); }
     public string? CenterSubtitle { get => GetValue(CenterSubtitleProperty); set => SetValue(CenterSubtitleProperty, value); }
+    public string? CenterNotice { get => GetValue(CenterNoticeProperty); set => SetValue(CenterNoticeProperty, value); }
 
     /// <summary>Settings editor mode: shows ✎ on hover, raises drag and edit events instead of invoking slices.</summary>
     public bool IsEditMode { get => GetValue(IsEditModeProperty); set => SetValue(IsEditModeProperty, value); }
@@ -184,12 +222,29 @@ public sealed partial class DonutMenu : Control
     public bool ReserveSubRing { get => GetValue(ReserveSubRingProperty); set => SetValue(ReserveSubRingProperty, value); }
 
     /// <summary>
-    /// Draw a slice's <see cref="DonutItem.Caption"/> under its name (Settings → Donut toolbar → Appearance). Off, the
-    /// name is centred alone, a group's "Group of N" included: its chevron (<see cref="DrawGroupMark"/>) still tells
-    /// it from a preset. <see cref="DonutItem.KeepsCaption"/> stays, and so does the line of a slice that shares its
-    /// name with another on the face: nothing else would tell them apart.
+    /// Draw a slice's <see cref="DonutItem.Caption"/> under its name (Settings → Donut toolbar → Edit Donut Size). Off,
+    /// the name is centred alone, a group's "Group of N" included: its chevron (<see cref="DrawGroupMark"/>) still
+    /// tells it from a preset. <see cref="DonutItem.KeepsCaption"/> stays, and so does the line of a slice that shares
+    /// its name with another on the face: nothing else would tell them apart.
     /// </summary>
     public bool ShowCaptions { get => GetValue(ShowCaptionsProperty); set => SetValue(ShowCaptionsProperty, value); }
+
+    /// <summary>
+    /// How large the slices' names and icons are (the donut's Label scale, 0.8 to 1.6); they also follow the donut's
+    /// size (<see cref="DonutScale"/>).
+    /// </summary>
+    public double LabelScale { get => GetValue(LabelScaleProperty); set => SetValue(LabelScaleProperty, value); }
+
+    /// <summary>
+    /// How large a group's ring is, against its size on a donut of this radius (Group ring size, 1 = 100 %).
+    /// </summary>
+    public double GroupRingSize { get => GetValue(GroupRingSizeProperty); set => SetValue(GroupRingSizeProperty, value); }
+
+    /// <summary>How wide a group's ring spreads, against the default fan (Group ring spread, 1 = 100 %).</summary>
+    public double GroupRingSpread { get => GetValue(GroupRingSpreadProperty); set => SetValue(GroupRingSpreadProperty, value); }
+
+    /// <summary>What a slice shows when its item doesn't say (<see cref="DonutItem.Show"/>).</summary>
+    public LabelShow DefaultShow { get => GetValue(DefaultShowProperty); set => SetValue(DefaultShowProperty, value); }
 
     public CornerRadius CornerRadius { get => GetValue(CornerRadiusProperty); set => SetValue(CornerRadiusProperty, value); }
 
@@ -219,6 +274,12 @@ public sealed partial class DonutMenu : Control
 
     /// <summary>Right-click or ✎ on a slice.</summary>
     public event EventHandler<int>? SegmentContextRequested;
+
+    /// <summary>
+    /// A group slice was clicked (not its ✎): in the editor (<see cref="IsEditMode"/>), to open it and edit what it
+    /// fans out; on the live donut, after it opened at once.
+    /// </summary>
+    public event EventHandler<int>? GroupOpenRequested;
 
     /// <summary>Right-click on a slice of a group's ring (live toolbar, click mode): (group, slice in the group).</summary>
     public event EventHandler<(int Group, int Sub)>? SubSegmentContextRequested;
@@ -421,7 +482,7 @@ public sealed partial class DonutMenu : Control
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var side = SideFor(OuterRadius, ReserveSubRing || (!IsEditMode && Items?.Any(i => i.IsGroup) == true));
+        var side = SideFor(OuterRadius, ReserveSubRing || (!IsEditMode && Items?.Any(i => i.IsGroup) == true), GroupRingSize);
         return new Size(side, side);
     }
 
@@ -443,6 +504,7 @@ public sealed partial class DonutMenu : Control
         _expanded = _shownExpanded = _subHover = -1;
         ClearPending();
         _expand = default;
+        OpenHeldGroup();
         // New files (or none): a flip of the old ones is over. A flip's own swap keeps going (SwapFaces).
         if (!_swapping)
             CancelFlip();
@@ -586,11 +648,15 @@ public sealed partial class DonutMenu : Control
             case DonutHitKind.EditButton:
                 SegmentContextRequested?.Invoke(this, hit.Index);
                 break;
+            case DonutHitKind.Segment when IsEditMode && Items![hit.Index].IsGroup:
+                GroupOpenRequested?.Invoke(this, hit.Index);
+                break;
             case DonutHitKind.Segment when !IsEditMode && Items![hit.Index] is { IsEnabled: true, IsGroup: false }:
                 SegmentInvoked?.Invoke(this, hit.Index);
                 break;
             case DonutHitKind.Segment when !IsEditMode && Items![hit.Index].Children is { Count: > 0 }:
                 Expand(hit.Index); // no waiting when clicked; a tap has no hover to rest on at all
+                GroupOpenRequested?.Invoke(this, hit.Index);
                 break;
             case DonutHitKind.Outside when !IsEditMode && _expanded >= 0:
                 CollapseGroup(); // clicked past the ring
@@ -798,7 +864,7 @@ public sealed partial class DonutMenu : Control
                 active |= i == ActiveIndex ? _hover[i].Step(1, dt) : _hover[i].Step(0, dt, 320, CriticalDamping);
             active |= _centerPulse.Step(0, dt, 260, 12);
             // A soft bounce opening, like the slices popping out; folding away settles without one. The bounce grows the
-            // ring by about a pixel, well inside the room kept for it (SubRingSpace).
+            // ring by about a pixel, well inside the room kept for it (SubRingSpaceFor).
             active |= _expanded >= 0 ? _expand.Step(1, dt, 320, 24) : _expand.Step(0, dt, 320, CriticalDamping);
             if (_expanded < 0 && _expand.Value <= 0.001)
                 _shownExpanded = -1;
@@ -899,6 +965,11 @@ public sealed partial class DonutMenu : Control
                 context.DrawGeometry(WithOpacity(AccentBrush, 0.35), null, ring);
         }
 
+        var labels = n > 0
+            ? LabelPlan(Items!, center, r1, r2, i => IsEditMode && i < _mid.Length
+                ? (_mid[i].Value, _span[i].Value)
+                : (DonutGeometry.MidAngle(i, n), DonutGeometry.Span(n)), DonutScale, typeface, typefaceRegular)
+            : [];
         for (var i = 0; i < n; i++)
         {
             if (IsFlipping && SliceFlipWidth(false, i) == 0)
@@ -938,14 +1009,14 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(emphasis, 0, 1)), null, wedge);
 
                 var hot = (i == ActiveIndex || i == _dropTargetIndex) && item.IsEnabled;
-                DrawSliceLabel(context, item, Items!, center, r1, r2, mid, span, typeface, typefaceRegular, hot);
+                DrawSliceLabel(context, labels[i], item.IsEnabled, hot);
+                DrawGroupMark(context, item, center, r2, mid, hot);
             }
         }
 
-        if (_oldFace is { } old)
+        if (_oldFace is { } old && _oldFaceItems is { } oldItems)
         {
-            // Items holds the incoming face by now: the outgoing slices are compared with their own face.
-            var oldItems = Array.ConvertAll(old, slice => slice.Item);
+            var oldLabels = LabelPlan(oldItems, center, r1, r2, i => (old[i].Mid, old[i].Span), DonutScale, typeface, typefaceRegular);
             for (var i = 0; i < old.Length; i++)
             {
                 var slice = old[i];
@@ -965,8 +1036,8 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(SliceBrush, SliceOpacity * (slice.Item.IsEnabled ? 1 : 0.55)), BorderPen(), wedge);
                     if (slice.Emphasis > 0.01 && slice.Item.IsEnabled)
                         context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(slice.Emphasis, 0, 1)), null, wedge);
-                    DrawSliceLabel(context, slice.Item, oldItems, center, r1, r2, slice.Mid, slice.Span, typeface,
-                        typefaceRegular, slice.Hot && slice.Item.IsEnabled);
+                    DrawSliceLabel(context, oldLabels[i], slice.Item.IsEnabled, slice.Hot && slice.Item.IsEnabled);
+                    DrawGroupMark(context, slice.Item, center, r2, slice.Mid, slice.Hot && slice.Item.IsEnabled);
                 }
             }
         }
@@ -1003,46 +1074,261 @@ public sealed partial class DonutMenu : Control
         if (cancelHot)
             context.DrawEllipse(WithOpacity(DangerBrush, 0.18), null, center, radius, radius);
 
-        var maxWidth = radius * 1.6;
-        var title = CachedText(CenterTitle ?? "", bold, 14, Foreground, maxWidth, maxLines: 2);
-        var subtitle = CachedText(CenterSubtitle ?? "", regular, 11.5, cancelHot ? DangerBrush : SecondaryForeground, maxWidth, maxLines: 2);
-        // "⟳ Tab back": small, under the rest, a little narrower (the hub is round), with room for its icons.
-        var hintIcons = FlipArrowSize + (CenterHintWheel ? MouseWidth + MouseGap : 0) + IconGap;
-        var hint = string.IsNullOrEmpty(CenterHint) ? null : CachedText(CenterHint, regular, 10.5, SecondaryForeground, maxWidth * 0.85 - hintIcons);
-        var total = title.Height + (string.IsNullOrEmpty(CenterSubtitle) ? 0 : subtitle.Height + 2) + (hint is null ? 0 : hint.Height + 5);
-        var y = center.Y - total / 2;
-        DrawCentered(context, title, center.X, y);
-        y += title.Height;
-        if (!string.IsNullOrEmpty(CenterSubtitle))
+        // The text and its icons grow and shrink with the donut, as the hub does.
+        var scale = DonutScale;
+        using var scaled = context.PushTransform(Matrix.CreateTranslation(-center.X, -center.Y) * Matrix.CreateScale(scale, scale) *
+                                                 Matrix.CreateTranslation(center.X, center.Y));
+        var key = new CenterPlanKey(CenterNotice, CenterTitle, CenterSubtitle, CenterHint, CenterHintWheel,
+            radius, scale, bold, regular, Foreground, cancelHot ? DangerBrush : SecondaryForeground,
+            SecondaryForeground, CultureInfo.CurrentUICulture.Name, TextDirection);
+        if (!_centerPlans.TryGetValue(key, out var plan))
         {
-            DrawCentered(context, subtitle, center.X, y + 2);
-            y += subtitle.Height + 2;
+            if (_centerPlans.Count >= MaxCachedPlans) _centerPlans.Clear();
+            _centerPlans[key] = plan = PlanCenter(key);
         }
+        if (string.IsNullOrEmpty(CenterNotice))
+        {
+            // Preserve the original absolute-coordinate draw order, including subpixel icon placement.
+            var y = center.Y + plan.TitleTop;
+            DrawCentered(context, plan.Title!, center.X, y);
+            y += plan.Title!.Height;
+            if (!string.IsNullOrEmpty(CenterSubtitle))
+            {
+                DrawCentered(context, plan.Subtitle, center.X, y + 2);
+                y += plan.Subtitle.Height + 2;
+            }
+            if (plan.Hint is not null)
+                using (context.PushOpacity(0.85))
+                    DrawCenterHint(context, plan.Hint, center.X, y + 5);
+            return;
+        }
+        if (plan.Title is not null) DrawCentered(context, plan.Title, center.X, center.Y + plan.TitleTop);
+        if (!string.IsNullOrEmpty(CenterSubtitle))
+            DrawCentered(context, plan.Subtitle, center.X, center.Y + plan.SubtitleTop);
+        if (plan.Hint is not null)
+            using (context.PushOpacity(0.85))
+            using (context.PushTransform(Matrix.CreateScale(plan.HintScale, plan.HintScale) *
+                Matrix.CreateTranslation(center.X, center.Y + plan.HintTop)))
+                DrawCenterHint(context, plan.Hint, 0, 0);
+    }
+
+    private readonly record struct CenterPlanKey(string? Notice, string? Title, string? Subtitle, string? Hint,
+        bool Wheel, double Radius, double Scale, Typeface Bold, Typeface Regular, IBrush? Foreground,
+        IBrush? ActionBrush, IBrush? HintBrush, string Culture, FlowDirection Direction);
+    private sealed record CenterPlan(FormattedText? Title, FormattedText Subtitle, FormattedText? Hint,
+        double TitleTop, double SubtitleTop, double HintTop, double HintScale);
+    private readonly Dictionary<CenterPlanKey, CenterPlan> _centerPlans = new();
+
+    private CenterPlan PlanCenter(CenterPlanKey key)
+    {
+        var maxWidth = key.Radius * 1.6 / key.Scale;
+        var notice = !string.IsNullOrEmpty(key.Notice);
+        var title = notice
+            ? CachedText(key.Notice!, key.Regular, 11.5, key.Foreground, maxWidth, int.MaxValue)
+            : CachedText(key.Title ?? "", key.Bold, 14, key.Foreground, maxWidth, 2);
+        // This is deliberately identical to the no-notice action layout. The notice never takes its width.
+        var subtitle = CachedText(key.Subtitle ?? "", key.Regular, 11.5, key.ActionBrush, maxWidth, 2);
+        var hintIcons = FlipArrowSize + (key.Wheel ? MouseWidth + MouseGap : 0) + IconGap;
+        var hint = string.IsNullOrEmpty(key.Hint) ? null
+            : CachedText(key.Hint, key.Regular, 10.5, key.HintBrush, maxWidth * 0.85 - hintIcons);
+        var subtitleGap = 2.0;
+        var hintGap = 5.0;
+        var total = title.Height + (string.IsNullOrEmpty(key.Subtitle) ? 0 : subtitle.Height + subtitleGap)
+            + (hint is null ? 0 : hint.Height + hintGap);
+        var fitScale = 1.0;
+        var complete = true;
+        if (notice)
+        {
+            var width = Math.Max(Math.Max(title.Width, subtitle.Width), hint is null ? 0 : hint.Width + hintIcons);
+            fitScale = Math.Clamp(key.Radius * 1.9 / key.Scale / Math.Sqrt(width * width + total * total), 0.78, 1);
+            var line = CachedText(key.Notice!, key.Regular, 11.5 * fitScale, key.Foreground, maxWidth);
+            var otherHeight = total - title.Height;
+            var maxLines = Math.Max(1, (int)((key.Radius * 1.5 / key.Scale - otherHeight) / line.Height));
+            title = CachedText(key.Notice!, key.Regular, 11.5 * fitScale, key.Foreground, maxWidth, maxLines);
+            complete = title.Height >= CachedText(key.Notice!, key.Regular, 11.5 * fitScale,
+                key.Foreground, maxWidth, int.MaxValue).Height;
+            total = title.Height + otherHeight;
+        }
+        var titleTop = -total / 2;
+        var subtitleTop = titleTop + title.Height + subtitleGap;
+        var hintTop = (string.IsNullOrEmpty(key.Subtitle) ? titleTop + title.Height : subtitleTop + subtitle.Height) + hintGap;
+        // The no-notice path retains the original file count, metric spacing and unscaled hint.
+        // Containment and yielding apply only to the replacement notice.
+        if (!notice) return new(title, subtitle, hint, titleTop, subtitleTop, hintTop, 1);
+        var hintBounds = hint is null ? null : CenterHintBounds(hint);
+        var originalHintBounds = hintBounds;
+        var hintScale = 1.0;
+        if (complete && Place(keepPosition: true)) return Result();
+
+        // Search the circle's full diameter using actual ink. Let the secondary hint yield before
+        // truncating a complete notice; a platform's wider glyphs must not decide that priority.
+        for (var lines = int.MaxValue; lines >= 1; lines = lines == int.MaxValue ? 3 : lines - 1)
+            for (var hintStep = 10; hintStep >= (hint is not null && lines == int.MaxValue ? 5 : 10); hintStep--)
+            {
+                hintScale = hintStep / 10.0;
+                hintBounds = originalHintBounds?.Select(b =>
+                    b.TransformToAABB(Matrix.CreateScale(hintScale, hintScale))).ToList();
+                for (var smaller = 0; smaller < 2; smaller++)
+                    for (var step = 10; step >= 1; step--)
+                    {
+                        title = NoticeText(11.5 * (smaller == 0 ? fitScale : 0.78),
+                            key.Radius * 2 / key.Scale * step / 10, lines);
+                        Stack();
+                        if (Place()) return Result();
+                    }
+            }
+        title = null;
+        hintScale = 1;
+        hintBounds = originalHintBounds;
+        Stack();
+        CenterPlan? withoutNotice = null;
+        if (Place())
+        {
+            withoutNotice = Result();
+            if (hint is null) return withoutNotice;
+        }
+        if (hint is not null && withoutNotice is null)
+            for (var step = 9; step >= 1; step--)
+            {
+                hint = CachedText(key.Hint!, key.Regular, 10.5, key.HintBrush,
+                    Math.Max(10, (maxWidth * 0.85 - hintIcons) * step / 10));
+                hintBounds = CenterHintBounds(hint);
+                Stack();
+                if (Place())
+                {
+                    withoutNotice = Result();
+                    break;
+                }
+            }
+        // A minimum hub can lack room even after the notice yields. Fit the secondary hint as a unit,
+        // including its strokes, rather than taking any glyphs or font size from the action.
         if (hint is not null)
         {
-            using (context.PushOpacity(0.85))
+            var unscaled = CenterHintBounds(hint);
+            for (var step = 9; step >= 5; step--)
             {
-                // The flip arrow is drawn, not typed: a font without "↻" showed a box in its place (#554). A small mouse
-                // comes first when the wheel flips and no key does. The icons stand at the start of the line: on its
-                // left, or on its right in a right-to-left language, in reading order there too.
-                var left = center.X - (hintIcons + hint.Width) / 2;
-                var rtl = TextDirection == FlowDirection.RightToLeft;
-                var textLeft = rtl ? left : left + hintIcons;
-                var middle = y + 5 + hint.Height / 2;
-                var x = rtl ? left + hint.Width + IconGap : left;
-                var arrowFirst = rtl && CenterHintWheel;
-                if (CenterHintWheel && !arrowFirst)
+                hintScale = step / 10.0;
+                hintBounds = unscaled.Select(b => b.TransformToAABB(Matrix.CreateScale(hintScale, hintScale))).ToList();
+                Stack();
+                if (Place())
                 {
-                    DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
-                    x += MouseWidth + MouseGap;
+                    for (var width = 10; width >= 1; width--)
+                    {
+                        title = NoticeText(11.5 * 0.78, maxWidth * width / 10, 1);
+                        Stack();
+                        if (Place()) return Result();
+                    }
+                    title = null;
+                    Stack();
+                    if (Place()) withoutNotice = Result();
                 }
-                DrawFlipArrow(context, new Point(x + FlipArrowSize / 2, middle), FlipArrowSize / 2, SecondaryForeground);
-                x += FlipArrowSize + (arrowFirst ? MouseGap : IconGap);
-                if (arrowFirst)
-                    DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
-                DrawCentered(context, hint, textLeft + hint.Width / 2, y + 5);
             }
         }
+        // If even the unchanged guidance cannot fit, never return the last rejected candidate.
+        // Keep the original baseline positions and omit only the replacement notice.
+        return withoutNotice ?? PlanCenter(key with { Notice = null }) with { Title = null };
+
+        CenterPlan Result() => new(title, subtitle, hint, titleTop, subtitleTop, hintTop, hintScale);
+
+        FormattedText NoticeText(double size, double width, int lines) =>
+            CachedText(key.Notice!, key.Regular, size, key.Foreground,
+                Math.Max(Math.Ceiling(CachedText("…", key.Regular, size, key.Foreground, maxWidth).Width), width), lines);
+
+        void Stack()
+        {
+            // Pack actual ink, not the empty leading/trailing space of the font's metric boxes.
+            var bottom = 0.0;
+            titleTop = 0;
+            if (title is not null)
+            {
+                var bounds = TextBounds(title);
+                if (bounds.Count > 0)
+                {
+                    titleTop = -bounds.Min(b => b.Top);
+                    bottom = titleTop + bounds.Max(b => b.Bottom) + (string.IsNullOrEmpty(key.Subtitle) ? 0.5 : subtitleGap);
+                }
+            }
+            if (!string.IsNullOrEmpty(key.Subtitle))
+            {
+                subtitleTop = bottom - TextBounds(subtitle).Min(b => b.Top);
+                bottom = subtitleTop + TextBounds(subtitle).Max(b => b.Bottom) + 0.5;
+            }
+            hintTop = hintBounds is null ? bottom : bottom - hintBounds.Min(b => b.Top);
+        }
+
+        bool Place(bool keepPosition = false)
+        {
+            if (title is not null && !string.IsNullOrEmpty(key.Subtitle)
+                && subtitleTop + TextBounds(subtitle).Min(b => b.Top)
+                    - titleTop - TextBounds(title).Max(b => b.Bottom) < subtitleGap - 1e-6)
+                return false;
+            var r = key.Radius / key.Scale;
+            var lower = double.NegativeInfinity;
+            var upper = double.PositiveInfinity;
+            bool Include(IEnumerable<Rect> bounds, double y)
+            {
+                foreach (var b in bounds)
+                {
+                    var edge = Math.Max(Math.Abs(b.Left), Math.Abs(b.Right));
+                    if (edge >= r) return false;
+                    var halfChord = Math.Sqrt(r * r - edge * edge);
+                    lower = Math.Max(lower, -halfChord - b.Top - y);
+                    upper = Math.Min(upper, halfChord - b.Bottom - y);
+                }
+                return lower <= upper;
+            }
+            if (title is not null && !Include(TextBounds(title), titleTop)) return false;
+            if (!string.IsNullOrEmpty(key.Subtitle) && !Include(TextBounds(subtitle), subtitleTop)) return false;
+            if (hintBounds is not null && !Include(hintBounds, hintTop)) return false;
+            if (keepPosition) return lower <= 0 && upper >= 0;
+            var move = (lower + upper) / 2;
+            titleTop += move;
+            subtitleTop += move;
+            hintTop += move;
+            return true;
+        }
+    }
+
+    private List<Rect> CenterHintBounds(FormattedText hint)
+    {
+        var drawing = new DrawingGroup();
+        using (var context = drawing.Open()) DrawCenterHint(context, hint, 0, 0);
+        var bounds = new List<Rect>();
+        void Walk(Drawing item, Matrix transform)
+        {
+            if (item is DrawingGroup group)
+            {
+                var within = (group.Transform?.Value ?? Matrix.Identity) * transform;
+                foreach (var child in group.Children) Walk(child, within);
+            }
+            else if (item is GlyphRunDrawing { GlyphRun: { } glyph })
+                bounds.Add(glyph.InkBounds.TransformToAABB(transform));
+            else if (item is GeometryDrawing { Geometry: { } geometry } shape)
+                bounds.Add((shape.Pen is { } pen ? geometry.GetRenderBounds(pen) : geometry.Bounds).TransformToAABB(transform));
+        }
+        Walk(drawing, Matrix.Identity);
+        return bounds;
+    }
+
+    private void DrawCenterHint(DrawingContext context, FormattedText hint, double centerX, double top)
+    {
+        var hintIcons = FlipArrowSize + (CenterHintWheel ? MouseWidth + MouseGap : 0) + IconGap;
+        var left = centerX - (hintIcons + hint.Width) / 2;
+        var rtl = TextDirection == FlowDirection.RightToLeft;
+        var textLeft = rtl ? left : left + hintIcons;
+        var middle = top + hint.Height / 2;
+        var x = rtl ? left + hint.Width + IconGap : left;
+        var arrowFirst = rtl && CenterHintWheel;
+        if (CenterHintWheel && !arrowFirst)
+        {
+            DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
+            x += MouseWidth + MouseGap;
+        }
+        DrawFlipArrow(context, new Point(x + FlipArrowSize / 2, middle), FlipArrowSize / 2, SecondaryForeground);
+        x += FlipArrowSize + (arrowFirst ? MouseGap : IconGap);
+        if (arrowFirst)
+            DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
+        DrawCentered(context, hint, textLeft + hint.Width / 2, top);
     }
 
     // The hub hint's icons: the flip arrow, the mouse (wheel only) and the room between them and before the text. The
@@ -1097,43 +1383,147 @@ public sealed partial class DonutMenu : Control
         context.DrawLine(pen, new Point(box.Center.X, box.Top + 2), new Point(box.Center.X, box.Top + 4.5));
     }
 
-    /// <param name="face">The slices <paramref name="item"/> is shown among: its face, or its group's ring.</param>
-    private void DrawLabel(DrawingContext context, DonutItem item, IReadOnlyList<DonutItem> face, Point center,
-        double radius, double angle, double maxWidth, double maxHeight, Typeface bold, Typeface regular, bool hot)
-    {
-        var foreground = hot ? OnAccentBrush : item.IsEnabled ? Foreground : SecondaryForeground;
-        var width = Math.Clamp(maxWidth, 30, 120);
-        var text = KeepKoreanWords(item.Label);
-        var label = CachedText(text, bold, LabelSize(text, bold, width), foreground, width, maxLines: 2);
-        var showCaption = (ShowCaptions || item.KeepsCaption || SharesItsName(item, face)) &&
-                          !string.IsNullOrEmpty(item.Caption) &&
-                          !string.Equals(item.Caption, item.Label, StringComparison.OrdinalIgnoreCase) &&
-                          label.Height + 14 < maxHeight;
-        var caption = showCaption
-            ? CachedText(item.Caption!, regular, 10.5, hot ? OnAccentBrush : SecondaryForeground, width,
-                maxLines: label.Height + 28 < maxHeight ? 2 : 1)
-            : null;
+    // ───────────────────────── Slice labels ─────────────────────────
 
-        var total = label.Height + (caption?.Height ?? 0);
-        var anchor = DonutGeometry.PointAt(center, radius, angle);
-        var y = anchor.Y - total / 2;
-        DrawCentered(context, label, anchor.X, y);
-        if (caption is not null)
-            DrawCentered(context, caption, anchor.X, y + label.Height);
+    /// <summary>
+    /// How large the donut is against the default size (radius 150): names, icons, margins, the chevron and the centre
+    /// text grow and shrink with it.
+    /// </summary>
+    internal double DonutScale => OuterRadius / SliceLabelLayout.DefaultRadius;
+
+    private SliceLabelLayout? _labelLayout;
+    private readonly Dictionary<LabelPlanKey, IReadOnlyList<SliceLabel>> _labelPlans = new();
+    private const int MaxCachedPlans = 64;
+
+    // A ring's labels are laid out again only when something they depend on changes: its items, its slices' shapes, the
+    // donut's size or the label settings. Animations move the drawn labels with transforms.
+    private readonly record struct LabelPlanKey(IReadOnlyList<DonutItem> Items, Point Center, double Inner, double Outer,
+        int Shapes, double Scale, double LabelScale, bool Captions, LabelShow Show);
+
+    private SliceLabelLayout LabelLayout(Typeface bold, Typeface regular)
+    {
+        var fonts = new LabelFonts(bold, regular, TextDirection);
+        if (_labelLayout is null || _labelLayout.Fonts != fonts)
+        {
+            _labelLayout = new SliceLabelLayout(fonts);
+            _labelPlans.Clear();
+        }
+        return _labelLayout;
+    }
+
+    /// <summary>
+    /// The labels of one ring of <paramref name="items"/> between <paramref name="inner"/> and
+    /// <paramref name="outer"/>, slice <c>i</c> centred on <c>slice(i).Mid</c> and <c>slice(i).Span</c> wide.
+    /// </summary>
+    private IReadOnlyList<SliceLabel> LabelPlan(IReadOnlyList<DonutItem> items, Point center, double inner, double outer,
+        Func<int, (double Mid, double Span)> slice, double scale, Typeface bold, Typeface regular, bool fitScale = false)
+    {
+        var layout = LabelLayout(bold, regular);
+        var shapes = new HashCode();
+        for (var i = 0; i < items.Count; i++)
+        {
+            var (mid, span) = slice(i);
+            shapes.Add(mid);
+            shapes.Add(span);
+        }
+        var key = new LabelPlanKey(items, center, inner, outer, shapes.ToHashCode(), scale, LabelScale, ShowCaptions, DefaultShow);
+        if (_labelPlans.TryGetValue(key, out var plan))
+            return plan;
+        if (_labelPlans.Count >= MaxCachedPlans)
+            _labelPlans.Clear();
+        var inputs = items.Select((item, i) =>
+        {
+            var (mid, span) = slice(i);
+            // The slices of this ring only: the outgoing face of a flip, or a group's ring, compares among its own.
+            return new SliceLabelInput(item.Label, item.Caption, item.IconKey, item.Show ?? DefaultShow,
+                new SliceShape(center, inner, outer, mid, span, GapPixels, item.IsGroup ? ChevronIn : 0, item.IsGroup ? ChevronReach : 0),
+                item.Direction ?? LabelDirection.Auto,
+                NeedsCaption: item.KeepsCaption || SharesItsName(item, items));
+        }).ToList();
+        PlansMade++;
+        return _labelPlans[key] = fitScale
+            ? layout.PlanRingToFit(inputs, LabelScale, scale, ShowCaptions)
+            : layout.PlanRing(inputs, LabelScale, scale, ShowCaptions);
+    }
+
+    /// <summary>How many ring layouts were worked out (tests: not one per frame).</summary>
+    internal int PlansMade { get; private set; }
+
+    /// <summary>
+    /// The labels of the face (at rest) and of every group's ring, laid out as they are drawn, in the given fonts
+    /// (tests: whether names fit, without drawing).
+    /// </summary>
+    internal (IReadOnlyList<SliceLabel> Face, IReadOnlyList<IReadOnlyList<SliceLabel>> Rings) PlanLabels(Typeface bold, Typeface regular)
+    {
+        var items = Items ?? [];
+        var n = items.Count;
+        var space = SubRingSpaceFor(OuterRadius, GroupRingSize);
+        var center = new Point(OuterRadius + space, OuterRadius + space);
+        var face = n == 0 ? [] : LabelPlan(items, center, InnerRadius, OuterRadius,
+            i => (DonutGeometry.MidAngle(i, n), DonutGeometry.Span(n)), DonutScale, bold, regular);
+        var (inner, outer) = SubRadii;
+        var rings = items.Select((item, group) =>
+        {
+            if (item.Children is not { Count: > 0 } children)
+                return (IReadOnlyList<SliceLabel>)[];
+            var span = SubSpanOf(children.Count);
+            var mid = DonutGeometry.MidAngle(group, n);
+            return LabelPlan(children, center, inner, outer,
+                k => (DonutGeometry.SubMidAngle(mid, k, children.Count, span), span), RingScale, bold, regular, fitScale: true);
+        }).ToList();
+        return (face, rings);
+    }
+
+    /// <summary>
+    /// Draws a slice's laid-out icon and name in its text colour (on the accent when it's highlighted).
+    /// </summary>
+    private void DrawSliceLabel(DrawingContext context, SliceLabel label, bool enabled, bool hot)
+    {
+        var brush = hot ? OnAccentBrush : enabled ? Foreground : SecondaryForeground;
+        if (label.IconSize > 0 && SliceIcons.Geometry(label.IconKey) is { } icon)
+        {
+            var k = label.IconSize / SliceIcons.Box;
+            using (context.PushTransform(Matrix.CreateTranslation(-SliceIcons.Box / 2, -SliceIcons.Box / 2) *
+                                         Matrix.CreateScale(k, k) *
+                                         Matrix.CreateTranslation(label.IconCenter.X, label.IconCenter.Y)))
+                context.DrawGeometry(brush, null, icon);
+        }
+        if (label.Text is not { } text || _labelLayout is not { } layout)
+            return;
+        var fonts = layout.Fonts;
+        var at = text.Anchor;
+        if (text.Curved)
+        {
+            // Bent along the ring: each letter on its line's circle, upright to the reader.
+            foreach (var glyph in layout.CurvedGlyphs(label.Zone, text))
+            {
+                var letter = new FormattedText(KeepKoreanWords(glyph.Text), CultureInfo.CurrentUICulture, fonts.Direction,
+                    fonts.Bold, text.Size, brush);
+                using (context.PushTransform(Matrix.CreateTranslation(-glyph.Advance / 2, -text.LineHeights[glyph.Line] / 2) *
+                                             Matrix.CreateRotation(glyph.Rotation) *
+                                             Matrix.CreateTranslation(glyph.At.X, glyph.At.Y)))
+                    context.DrawText(letter, new Point(0, 0));
+            }
+            return;
+        }
+        using (context.PushTransform(Matrix.CreateTranslation(-at.X, -at.Y) * Matrix.CreateRotation(text.Rotation) *
+                                     Matrix.CreateTranslation(at.X, at.Y)))
+        {
+            var y = at.Y - text.Height / 2;
+            for (var i = 0; i < text.Lines.Count; i++)
+            {
+                DrawCentered(context, SliceLabelLayout.MakeLine(text.Lines[i], fonts.Bold, text.Size, brush, fonts.Direction, text.Width), at.X, y);
+                y += text.LineHeights[i];
+            }
+            if (text.Caption is { } caption)
+                DrawCentered(context, SliceLabelLayout.MakeLine(caption, fonts.Regular, text.CaptionSize,
+                    hot ? OnAccentBrush : SecondaryForeground, fonts.Direction, text.Width), at.X, y);
+        }
     }
 
     /// <summary>Another slice of <paramref name="face"/> has the name, and only the caption tells them apart.</summary>
     private static bool SharesItsName(DonutItem item, IReadOnlyList<DonutItem> face) =>
         face.Any(other => !ReferenceEquals(other, item) && string.Equals(other.Label, item.Label, StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>A slice's name and caption, and a group's mark, the name moved in to leave the mark room.</summary>
-    private void DrawSliceLabel(DrawingContext context, DonutItem item, IReadOnlyList<DonutItem> face, Point center,
-        double r1, double r2, double mid, double span, Typeface bold, Typeface regular, bool hot)
-    {
-        var room = item.IsGroup ? GroupMarkRoom * GroupMarkScale : 0;
-        DrawLabel(context, item, face, center, (r1 + r2 - room) / 2, mid, span * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot);
-        DrawGroupMark(context, item, center, r2, mid, hot);
-    }
 
     /// <summary>
     /// A group slice's mark: a small chevron by its outer edge pointing outward, where its ring fans out, as a
@@ -1146,7 +1536,7 @@ public sealed partial class DonutMenu : Control
         var brush = hot ? OnAccentBrush : SecondaryForeground;
         if (brush is null)
             return;
-        var size = GroupMarkScale;
+        var size = DonutScale;
         var pen = new Pen(brush, GroupMarkStroke * size, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
         using (context.PushOpacity(item.IsEnabled ? 1 : 0.5))
             context.DrawGeometry(null, pen, CreateGroupMark(center, r2, mid, size));
@@ -1181,52 +1571,24 @@ public sealed partial class DonutMenu : Control
         return mark;
     }
 
-    /// <summary>The group mark's size follows the donut's: 1 at the default radius.</summary>
-    private double GroupMarkScale => OuterRadius / DefaultOuterRadius;
-
     private const double DefaultOuterRadius = 150;
 
     // The group mark at the default radius: its tip this far in from the outer edge, its arms this far back and this
-    // far to each side, its line this thick, and how far a group's text area gives way for it.
-    private const double GroupMarkInset = 7, GroupMarkDepth = 4.5, GroupMarkHalfWidth = 5, GroupMarkStroke = 1.6, GroupMarkRoom = 6;
+    // far to each side, and its line this thick.
+    private const double GroupMarkInset = 7, GroupMarkDepth = 4.5, GroupMarkHalfWidth = 5, GroupMarkStroke = 1.6;
 
     /// <summary>
-    /// A slice's caption under its name: one line, or two where the slice is deep enough, so a caption wider than the
-    /// slice ("Same format" on a small donut) wraps instead of ending in "Same for…".
+    /// A group slice's chevron, for its label to keep clear of: its middle this far in from the outer edge, and its
+    /// arms' ends and line this far round that.
     /// </summary>
-    internal static FormattedText MakeCaption(string caption, Typeface typeface, IBrush? brush, double width,
-        double labelHeight, double maxHeight) =>
-        MakeText(caption, typeface, 10.5, brush, width, maxLines: labelHeight + 28 < maxHeight ? 2 : 1);
+    private double ChevronIn => (GroupMarkInset + GroupMarkDepth / 2) * DonutScale;
 
-    private const double LabelFontSize = 13;
-    private const double MinLabelFontSize = 10;
-    private readonly Dictionary<(string Text, Typeface Typeface, double Width), double> _labelSizes = new();
-
-    /// <summary>
-    /// The size a slice's name is drawn at: 13, or smaller (down to 10) when one of its words is wider than the slice
-    /// (<paramref name="width"/>), which would otherwise break in the middle ("Grayscal|e" on a thin slice). Words in
-    /// Chinese or Japanese are left out: those break between any two characters.
-    /// </summary>
-    internal double LabelSize(string text, Typeface typeface, double width)
-    {
-        var line = Math.Round(width);
-        var key = (text, typeface, line);
-        if (_labelSizes.TryGetValue(key, out var size))
-            return size;
-        if (_labelSizes.Count >= MaxCachedWedges)
-            _labelSizes.Clear();
-        var widest = text.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(word => !word.Any(IsHanOrKana))
-            .Select(word => new FormattedText(word, CultureInfo.CurrentUICulture, TextDirection, typeface, LabelFontSize, null).Width)
-            .DefaultIfEmpty(0)
-            .Max();
-        // A pixel to spare: a word exactly as wide as the line still wraps.
-        size = widest < line ? LabelFontSize : Math.Max(MinLabelFontSize, LabelFontSize * (line - 1) / widest);
-        return _labelSizes[key] = size;
-    }
+    /// <inheritdoc cref="ChevronIn"/>
+    private double ChevronReach =>
+        (Math.Sqrt(GroupMarkHalfWidth * GroupMarkHalfWidth + GroupMarkDepth * GroupMarkDepth / 4) + GroupMarkStroke / 2) * DonutScale;
 
     /// <summary>Chinese characters, kana and the CJK symbols and full-width forms: a line may break between any two.</summary>
-    private static bool IsHanOrKana(char c) =>
+    internal static bool IsHanOrKana(char c) =>
         c is >= '\u2E80' and <= '\u312F' or >= '\u3190' and <= '\u9FFF' or >= '\uF900' and <= '\uFAFF' or >= '\uFF00' and <= '\uFFEF';
 
     /// <summary>
@@ -1279,6 +1641,28 @@ public sealed partial class DonutMenu : Control
     // Text shaping is much more expensive than the slice transforms. Keep layouts across frames,
     // with all layout/paint inputs in the key so language, theme and hover changes remain correct.
     private readonly Dictionary<(string Text, Typeface Typeface, double Size, IBrush? Brush, double Width, int Lines, string Culture), FormattedText> _textLayouts = new();
+    private readonly ConditionalWeakTable<FormattedText, List<Rect>> _textBounds = new();
+
+    private List<Rect> TextBounds(FormattedText text) => _textBounds.GetValue(text, layout =>
+    {
+        var drawing = new DrawingGroup();
+        using (var context = drawing.Open())
+            DrawCentered(context, layout, 0, 0);
+        var bounds = new List<Rect>();
+        void Walk(Drawing item, Matrix transform)
+        {
+            if (item is DrawingGroup group)
+            {
+                var within = (group.Transform?.Value ?? Matrix.Identity) * transform;
+                foreach (var child in group.Children)
+                    Walk(child, within);
+            }
+            else if (item is GlyphRunDrawing { GlyphRun: { } glyph })
+                bounds.Add(glyph.InkBounds.TransformToAABB(transform));
+        }
+        Walk(drawing, Matrix.Identity);
+        return bounds;
+    });
 
     private FormattedText CachedText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth, int maxLines = 1)
     {
@@ -1291,9 +1675,9 @@ public sealed partial class DonutMenu : Control
     private static FormattedText MakeText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth, int maxLines = 1) =>
         new(text, CultureInfo.CurrentUICulture, TextDirection, typeface, size, brush)
         {
-            MaxTextWidth = Math.Max(10, maxWidth),
+            MaxTextWidth = Math.Max(1, maxWidth),
             MaxLineCount = maxLines,
-            Trimming = TextTrimming.CharacterEllipsis,
+            Trimming = maxLines == int.MaxValue ? TextTrimming.None : TextTrimming.CharacterEllipsis,
             TextAlignment = TextAlignment.Center,
         };
 
@@ -1319,8 +1703,17 @@ public sealed partial class DonutMenu : Control
         if (_previewLabel is null || span < 0.25)
             return;
         using (context.PushOpacity(Math.Clamp((span - 0.25) / 0.3, 0, 1) * 0.9))
-            DrawSliceLabel(context, new DonutItem { Id = "", Label = _previewLabel, Children = _previewGroup ? [] : null }, [], center,
-                r1, r2, mid, span, bold, regular, hot: false);
+        {
+            // One slice of its own: laid out each frame as it grows in, never cached.
+            var layout = LabelLayout(bold, regular);
+            var label = layout.PlanRing([new SliceLabelInput(_previewLabel, null, null, LabelShow.TextOnly,
+                new SliceShape(center, r1, r2, mid, span, GapPixels, _previewGroup ? ChevronIn : 0, _previewGroup ? ChevronReach : 0))],
+                LabelScale, DonutScale,
+                false)[0];
+            DrawSliceLabel(context, label, enabled: true, hot: false);
+            if (_previewGroup)
+                DrawGroupMark(context, new DonutItem { Id = "", Label = _previewLabel, Children = [] }, center, r2, mid, hot: false);
+        }
     }
 
     /// <summary>

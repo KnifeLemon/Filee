@@ -188,10 +188,17 @@ public class CloseActionTests
             Assert.True(store.Settings.ShowInDock);
             Assert.False(store.Settings.ShowMenuBarIcon);
             Assert.Equal(3, saves);
+
+            Assert.False(page.ColoredMenuBarIcon);
+            page.ColoredMenuBarIcon = true;
+            Assert.True(store.Settings.ColoredMenuBarIcon);
+            Assert.Equal([false, true], platform.DockCalls);
+            Assert.Equal(4, saves);
             var reloaded = new UserDataStore(directory);
             reloaded.Load();
             Assert.True(reloaded.Settings.ShowInDock);
             Assert.False(reloaded.Settings.ShowMenuBarIcon);
+            Assert.True(reloaded.Settings.ColoredMenuBarIcon);
             Assert.Equal(CloseAction.Quit, reloaded.Settings.CloseAction);
 
             using var unsupported = new GeneralPageViewModel(store, AppHost.Get<ILocalizer>(),

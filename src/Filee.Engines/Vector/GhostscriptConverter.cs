@@ -3,19 +3,23 @@
 // transparent background (through PDF the page would be drawn on white paper). Everything else (EPS → JPG,
 // SVG → EPS, …) is planned through PDF or PNG by the route planner. "Compress PDF" may also run a PDF through pdfwrite
 // (PdfSharpConverter calls CompressPdfAsync; there is no PDF → PDF edge here, so routes don't change), and
-// PdfiumConverter has CMYK pages rendered here for a CMYK JPG or TIFF (RenderCmykAsync).
+// PdfiumConverter has CMYK pages rendered here for a CMYK JPG or TIFF (RenderCmykAsync). The job queue has every PDF a
+// PDF/A preset writes made PDF/A-2b here (ArchiveAsync), so PDF → PDF/A is the PDFsharp step followed by this one;
+// links and markup that don't say they print get a copy where they do first (PdfPrintableAnnotations), or PDF/A drops them.
 
+using System.Text;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using ImageMagick;
+using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
 namespace Filee.Engines.Vector;
 
 /// <summary>EPS, PS and PostScript-based AI ↔ PDF through Ghostscript.</summary>
-public sealed class GhostscriptConverter : IConverter, IImageTransformer
+public sealed class GhostscriptConverter : IConverter, IImageTransformer, IPdfArchiver
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
 
@@ -113,6 +117,88 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer
         List<string> args = ["-sDEVICE=pdfwrite", "-dPDFSETTINGS=" + settings, "-dCompatibilityLevel=1.6", "-dAutoRotatePages=/None"];
         await RunAsync(gs, args, target, input, cancellationToken, progress: null);
         File.Move(target, output, overwrite: true);
+    }
+
+    /// <summary>
+    /// PDF/A-2b for the job queue (<see cref="IPdfArchiver"/>): a PDF that already says it is PDF/A and wasn't changed
+    /// since stays as it is, any other is rewritten by Ghostscript.
+    /// </summary>
+    public async Task<bool> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken)
+    {
+        if (!changed && DeclaresPdfA(path))
+            return true;
+        if (Locate() is not { } gs)
+            return false;
+        await ConvertToPdfAAsync(gs, path, path, workDirectory, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Rewrites a PDF as PDF/A-2b. Colours become RGB to match the sRGB output intent the standard asks for, fonts are
+    /// embedded, and what PDF/A doesn't allow is left out rather than the file refused (policy 1). A tagged PDF loses its
+    /// tags (pdfwrite doesn't carry them), which part B doesn't need. Ghostscript reads a copy whose visible annotations
+    /// print (<see cref="PdfAInput"/>): PDF/A leaves out every annotation that doesn't.
+    /// </summary>
+    internal static async Task ConvertToPdfAAsync(string gs, string input, string output, string workDirectory, CancellationToken cancellationToken)
+    {
+        var scratch = NewScratch(workDirectory);
+        var intent = Path.Combine(scratch, "pdfa.ps");
+        await File.WriteAllTextAsync(intent, OutputIntent(ColorProfiles.SRGB.ToByteArray()), Encoding.ASCII, cancellationToken);
+        var target = Path.Combine(scratch, "out.pdf");
+        var source = PdfAInput(input, scratch, cancellationToken);
+        await RunAsync(gs, PdfAArguments(), target, source, cancellationToken, progress: null, prelude: intent);
+        File.Move(target, output, overwrite: true);
+    }
+
+    /// <summary>
+    /// What Ghostscript reads for PDF/A: the copy in <paramref name="folder"/> with annotations made to print, or
+    /// <paramref name="input"/> itself when none needed it or the copy couldn't be made.
+    /// </summary>
+    internal static string PdfAInput(string input, string folder, CancellationToken cancellationToken) =>
+        Pdf.PdfPrintableAnnotations.Prepare(input, folder, cancellationToken) ?? input;
+
+    internal static List<string> PdfAArguments() =>
+        ["-sDEVICE=pdfwrite", "-dPDFA=2", "-dPDFACompatibilityPolicy=1", "-sColorConversionStrategy=RGB", "-dAutoRotatePages=/None"];
+
+    /// <summary>
+    /// The PostScript that gives the PDF its output intent, as Ghostscript's PDFA_def.ps does: without it pdfwrite marks
+    /// the file PDF/A but leaves the intent out. The profile goes in as a hex string, not as a file the script reads, so
+    /// safe mode needn't open a path and a folder name with brackets or non-ASCII letters can't break the script.
+    /// </summary>
+    internal static string OutputIntent(byte[] profile)
+    {
+        var hex = string.Join('\n', Convert.ToHexString(profile).Chunk(128).Select(line => new string(line)));
+        return $$"""
+            %!PS
+            [/_objdef {icc_PDFA} /type /stream /OBJ pdfmark
+            [{icc_PDFA} <</N 3>> /PUT pdfmark
+            [{icc_PDFA} <
+            {{hex}}
+            > /PUT pdfmark
+            [/_objdef {OutputIntent_PDFA} /type /dict /OBJ pdfmark
+            [{OutputIntent_PDFA} <</Type /OutputIntent /S /GTS_PDFA1 /DestOutputProfile {icc_PDFA} /OutputConditionIdentifier (sRGB)>> /PUT pdfmark
+            [{Catalog} <</OutputIntents [{OutputIntent_PDFA}]>> /PUT pdfmark
+
+            """;
+    }
+
+    /// <summary>
+    /// The PDF's XMP says it is PDF/A (pdfaid:part, which a PDF/A keeps unfiltered in its catalog). False for a PDF that
+    /// can't be read: Ghostscript gets to try it.
+    /// </summary>
+    internal static bool DeclaresPdfA(string path)
+    {
+        try
+        {
+            using var document = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+            if (document.Internals.Catalog.Elements.GetDictionary("/Metadata")?.Stream?.UnfilteredValue is not { } xmp)
+                return false;
+            return Encoding.UTF8.GetString(xmp).Contains("pdfaid:part", StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -254,13 +340,16 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer
     /// Runs Ghostscript in safe mode. Outputs go to an ASCII-named scratch folder first: in -sOutputFile a '%' is a
     /// page-number placeholder, so arbitrary user paths can't be passed there.
     /// </summary>
-    private static async Task RunAsync(string gs, List<string> deviceArgs, string outputFile, string input, CancellationToken ct, IProgress<double>? progress)
+    /// <param name="prelude">PostScript run before the input, once the output is set (the PDF/A output intent).</param>
+    private static async Task RunAsync(string gs, List<string> deviceArgs, string outputFile, string input, CancellationToken ct, IProgress<double>? progress,
+        string? prelude = null)
     {
         List<string> args =
         [
             "-dSAFER", "-dBATCH", "-dNOPAUSE", "-dQUIET",
             .. deviceArgs,
             "-sOutputFile=" + outputFile,
+            .. prelude is null ? (string[])[] : ["-f", prelude],
             "-f", Path.GetFullPath(input),
         ];
         ProcessResult result;

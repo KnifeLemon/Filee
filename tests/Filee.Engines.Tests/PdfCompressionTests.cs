@@ -217,6 +217,20 @@ public class PdfCompressionTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.Equal(["report_compressed_p1.pdf", "report_compressed_p2.pdf", "report_compressed_p3.pdf"],
             each.Outputs.Select(Path.GetFileName).Order(StringComparer.Ordinal));
         Assert.All(each.Outputs, o => Assert.InRange(Pictures(o).Single().Width, 448, 452));
+
+        // Several pages per file (#1259) are compressed as a file each.
+        var pairs = Compress();
+        pairs.Pdf.SplitPages = true;
+        pairs.Pdf.SplitEvery = 2;
+        // Its own folder, away from the _p3 written above.
+        pairs.Output.Location = OutputLocation.Subfolder;
+        pairs.Output.SubfolderName = "pairs";
+        var groups = await fx.ConvertAsync([source], pairs);
+        AssertDone(groups);
+        Assert.Equal(["report_compressed_p1-2.pdf", "report_compressed_p3.pdf"],
+            groups.Outputs.Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        var first = groups.Outputs.Single(o => o.EndsWith("_p1-2.pdf", StringComparison.Ordinal));
+        Assert.Equal([$"{Sentence} 1", $"{Sentence} 2"], Texts(first));
     }
 
     [Fact]

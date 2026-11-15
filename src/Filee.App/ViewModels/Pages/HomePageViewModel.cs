@@ -46,9 +46,10 @@ public sealed partial class HistoryItemViewModel : ObservableObject
         FailureSummary = loc.Format("home.failed_files", Failures.Count);
         _output = entry.Outputs.FirstOrDefault(ConversionService.Exists);
         HasOutputs = _output is not null;
-        // Only a file of a format Filee knows is opened (never a program a changed history could point to); an
-        // output folder ("Extract") opens in the file manager.
-        CanOpen = _output is not null && (FormatRegistry.Detect(_output) is not null || Directory.Exists(_output));
+        // Only a file of a format Filee knows is opened (never a program a changed history could point to, though Filee
+        // reads the icon of one); an output folder ("Extract") opens in the file manager.
+        CanOpen = _output is not null && (FormatRegistry.Detect(_output) is not null && !FormatRegistry.IsProgram(_output)
+                                          || Directory.Exists(_output));
         CanOpenWith = CanOpen && platform.SupportsOpenWith && !Directory.Exists(_output!);
 
         // The card shows the result: its picture when it is one, else its format. A job without results shows a source.

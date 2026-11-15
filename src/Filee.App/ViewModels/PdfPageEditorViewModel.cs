@@ -1,7 +1,9 @@
 // Lightweight PDF page organiser opened from the PDF donut's Edit group. Pages stay as PDF objects: saving copies
-// them in the chosen order and only changes /Rotate where requested.
+// them in the chosen order and only changes /Rotate where requested. Several pages can be selected at once (#860):
+// moving, rotating, deleting, extracting, inserting and replacing all act on the whole selection.
 
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -37,6 +39,10 @@ public sealed partial class PdfPageItem(PdfPreviewSource previewSource, int page
 
     [ObservableProperty]
     private bool _isThumbnailLoading;
+
+    /// <summary>The page is among the ones being dragged to another place in the strip.</summary>
+    [ObservableProperty]
+    private bool _isMoving;
 
     public string RotationText
     {
@@ -80,6 +86,15 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
     private int _previewRequest;
     private bool _closed;
 
+    /// <summary>
+    /// Set while the selection is changed in code: the list box also rewrites <see cref="SelectedPages"/> when pages
+    /// move or go, and those passing changes must not pick a new preview page.
+    /// </summary>
+    private bool _syncingSelection;
+
+    /// <summary>Where the pages of the PDFs being added go.</summary>
+    private enum Placement { End, BeforeSelection, AfterSelection, ReplaceSelection }
+
     public PdfPageEditorViewModel(IReadOnlyList<string> files, Preset preset, ILocalizer loc, UserDataStore store,
         ILogger? log = null)
     {
@@ -89,16 +104,21 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
         _log = log;
         _primarySource = files.First();
         _initialFiles = files;
+        SelectedPages.CollectionChanged += OnSelectedPagesChanged;
     }
 
     public ObservableCollection<PdfPageItem> Pages { get; } = [];
 
+    /// <summary>
+    /// The pages selected in the strip (click, Ctrl + click, Shift + click), bound to the list box's selected items.
+    /// They are in the order they were picked; <see cref="SelectionInOrder"/> gives them in page order.
+    /// </summary>
+    public ObservableCollection<PdfPageItem> SelectedPages { get; } = [];
+
+    /// <summary>
+    /// The page shown large: the one picked last. Setting it to a page outside the selection selects that page alone.
+    /// </summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
-    [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
-    [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
-    [NotifyCanExecuteChangedFor(nameof(RotateLeftCommand))]
-    [NotifyCanExecuteChangedFor(nameof(RotateRightCommand))]
     [NotifyPropertyChangedFor(nameof(SelectedPreviewRotation))]
     private PdfPageItem? _selectedPage;
 
@@ -116,6 +136,7 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     [NotifyCanExecuteChangedFor(nameof(RotateLeftCommand))]
     [NotifyCanExecuteChangedFor(nameof(RotateRightCommand))]
+    [NotifyPropertyChangedFor(nameof(HasSelection))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -127,7 +148,82 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
     public bool HasSelectedPreview => SelectedPreview is not null;
     public double SelectedPreviewRotation => SelectedPage?.PreviewRotation ?? 0;
 
-    partial void OnSelectedPageChanged(PdfPageItem? value) => _ = LoadSelectedPreviewAsync(value);
+    /// <summary>Pages are selected and nothing is loading or saving: Insert, Replace and Extract can act on them.</summary>
+    public bool HasSelection => !IsBusy && SelectedPages.Count > 0;
+
+    partial void OnSelectedPageChanged(PdfPageItem? value)
+    {
+        _ = LoadSelectedPreviewAsync(value);
+        // Picked in code rather than in the list: that page becomes the whole selection.
+        if (!_syncingSelection && (value is null ? SelectedPages.Count > 0 : !SelectedPages.Contains(value)))
+            Select(value is null ? [] : [value], value);
+    }
+
+    private void OnSelectedPagesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (!_syncingSelection)
+        {
+            _syncingSelection = true;
+            try
+            {
+                // A page added to the selection is the one the user just picked; it shows large.
+                if (e.NewItems is { Count: > 0 } added)
+                    SelectedPage = (PdfPageItem?)added[added.Count - 1];
+                else if (SelectedPage is not null && !SelectedPages.Contains(SelectedPage))
+                    SelectedPage = SelectedPages.LastOrDefault();
+            }
+            finally
+            {
+                _syncingSelection = false;
+            }
+        }
+        NotifyCollectionChanged();
+    }
+
+    /// <summary>Makes <paramref name="pages"/> the selection, with <paramref name="focus"/> shown large.</summary>
+    private void Select(IReadOnlyList<PdfPageItem> pages, PdfPageItem? focus)
+    {
+        var syncing = _syncingSelection;
+        _syncingSelection = true;
+        try
+        {
+            if (!SelectedPages.SequenceEqual(pages))
+            {
+                SelectedPages.Clear();
+                foreach (var page in pages)
+                    SelectedPages.Add(page);
+            }
+            SelectedPage = focus;
+        }
+        finally
+        {
+            _syncingSelection = syncing;
+        }
+        NotifyCollectionChanged();
+    }
+
+    /// <summary>A plain click on one page of a larger selection: that page alone stays selected.</summary>
+    public void SelectOnly(PdfPageItem page)
+    {
+        if (Pages.Contains(page))
+            Select([page], page);
+    }
+
+    /// <summary>The selected pages in the order they stand in the strip.</summary>
+    public IReadOnlyList<PdfPageItem> SelectionInOrder() => SelectedIndexes().Select(index => Pages[index]).ToList();
+
+    /// <summary>The positions of the selected pages, lowest first.</summary>
+    private List<int> SelectedIndexes()
+    {
+        if (SelectedPages.Count == 0)
+            return [];
+        var selected = SelectedPages.ToHashSet();
+        var indexes = new List<int>(selected.Count);
+        for (var index = 0; index < Pages.Count; index++)
+            if (selected.Contains(Pages[index]))
+                indexes.Add(index);
+        return indexes;
+    }
 
     /// <summary>Opens the PDFs and renders the page strip after the window is visible.</summary>
     public async Task LoadThumbnailsAsync()
@@ -201,18 +297,34 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
         }
     }
 
-    public async Task AddFilesAsync(IReadOnlyList<string> paths)
+    /// <summary>Adds the pages of the PDFs at the end.</summary>
+    public Task AddFilesAsync(IReadOnlyList<string> paths) => AddFilesAsync(paths, Placement.End);
+
+    /// <summary>
+    /// Inserts the pages of the PDFs before the first selected page or after the last one, and selects them. With no
+    /// page selected they go at the end.
+    /// </summary>
+    public Task InsertFilesAsync(IReadOnlyList<string> paths, bool after) =>
+        AddFilesAsync(paths, after ? Placement.AfterSelection : Placement.BeforeSelection);
+
+    /// <summary>
+    /// Puts the pages of the PDFs where the first selected page is and removes the selected pages, in one step. Nothing
+    /// is removed when none of the PDFs could be opened.
+    /// </summary>
+    public Task ReplaceSelectedAsync(IReadOnlyList<string> paths) => AddFilesAsync(paths, Placement.ReplaceSelection);
+
+    private async Task AddFilesAsync(IReadOnlyList<string> paths, Placement placement)
     {
         await EnsureInitialFilesAsync();
         if (paths.Count == 0 || IsBusy || _closed)
             return;
-        var added = await AddFilesCoreAsync(paths);
+        var added = await AddFilesCoreAsync(paths, placement);
         _ = LoadThumbnailsAsync(added);
     }
 
-    private Task EnsureInitialFilesAsync() => _initialLoad ??= AddFilesCoreAsync(_initialFiles);
+    private Task EnsureInitialFilesAsync() => _initialLoad ??= AddFilesCoreAsync(_initialFiles, Placement.End);
 
-    private async Task<IReadOnlyList<PdfPageItem>> AddFilesCoreAsync(IReadOnlyList<string> paths)
+    private async Task<IReadOnlyList<PdfPageItem>> AddFilesCoreAsync(IReadOnlyList<string> paths, Placement placement)
     {
         if (paths.Count == 0 || _closed)
             return [];
@@ -239,18 +351,41 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
                 }
                 _previewSources[path] = source!;
             }
-            foreach (var path in paths)
+            // Measured once the files are open: the selection may have changed while they were read.
+            List<int> selected = placement == Placement.End ? [] : SelectedIndexes();
+            List<PdfPageItem> replaced = placement == Placement.ReplaceSelection ? selected.Select(index => Pages[index]).ToList() : [];
+            var at = selected.Count == 0 ? Pages.Count
+                : placement == Placement.AfterSelection ? selected[^1] + 1
+                : selected[0];
+            _syncingSelection = true;
+            try
             {
-                if (!_previewSources.TryGetValue(path, out var source))
-                    continue;
-                for (var page = 0; page < source.PageCount; page++)
+                foreach (var path in paths)
                 {
-                    var item = new PdfPageItem(source, page, _loc);
-                    Pages.Add(item);
-                    added.Add(item);
+                    if (!_previewSources.TryGetValue(path, out var source))
+                        continue;
+                    for (var page = 0; page < source.PageCount; page++)
+                    {
+                        var item = new PdfPageItem(source, page, _loc);
+                        Pages.Insert(at++, item);
+                        added.Add(item);
+                    }
                 }
+                if (added.Count > 0)
+                    foreach (var page in replaced)
+                    {
+                        Pages.Remove(page);
+                        page.Dispose();
+                    }
             }
-            SelectedPage ??= Pages.FirstOrDefault();
+            finally
+            {
+                _syncingSelection = false;
+            }
+            if (placement != Placement.End && added.Count > 0)
+                Select(added, added[0]);
+            else
+                SelectedPage ??= Pages.FirstOrDefault();
             Status = failed ? _loc["error.conversion_failed"] : "";
             NotifyCollectionChanged();
         }
@@ -266,10 +401,11 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
         return added;
     }
 
-    private bool CanMoveUp() => !IsBusy && SelectedPage is not null && Pages.IndexOf(SelectedPage) > 0;
-    private bool CanMoveDown() => !IsBusy && SelectedPage is not null && Pages.IndexOf(SelectedPage) is >= 0 and var index && index < Pages.Count - 1;
-    private bool CanChangePage() => !IsBusy && SelectedPage is not null;
-    private bool CanDelete() => CanChangePage() && Pages.Count > 1;
+    // Up while some selected page has an unselected one above it; the pages already at the top stay there.
+    private bool CanMoveUp() => !IsBusy && SelectedIndexes() is { Count: > 0 } selected && selected[^1] >= selected.Count;
+    private bool CanMoveDown() => !IsBusy && SelectedIndexes() is { Count: > 0 } selected && selected[0] < Pages.Count - selected.Count;
+    private bool CanChangePage() => !IsBusy && SelectedPages.Count > 0;
+    private bool CanDelete() => CanChangePage() && SelectedPages.Count < Pages.Count;
 
     [RelayCommand(CanExecute = nameof(CanMoveUp))]
     private void MoveUp() => Move(-1);
@@ -277,29 +413,89 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
     [RelayCommand(CanExecute = nameof(CanMoveDown))]
     private void MoveDown() => Move(1);
 
+    /// <summary>
+    /// Moves every selected page one place. A selected page never passes another selected one, so a block of pages
+    /// moves together and pages already against the edge stay where they are.
+    /// </summary>
     private void Move(int direction)
     {
-        if (SelectedPage is not { } selected)
+        var selected = SelectedPages.ToHashSet();
+        if (selected.Count == 0)
             return;
-        var index = Pages.IndexOf(selected);
-        var target = index + direction;
-        if (index < 0 || target < 0 || target >= Pages.Count)
+        var order = Pages.ToList();
+        var indexes = Enumerable.Range(0, order.Count);
+        foreach (var index in direction < 0 ? indexes : indexes.Reverse())
+        {
+            var target = index + direction;
+            if (selected.Contains(order[index]) && target >= 0 && target < order.Count && !selected.Contains(order[target]))
+                (order[index], order[target]) = (order[target], order[index]);
+        }
+        Reorder(order);
+    }
+
+    /// <summary>
+    /// Moves <paramref name="pages"/> (a dragged selection) so they stand together, in their current order, before the
+    /// page now at <paramref name="insertAt"/>; <see cref="Pages"/>.Count puts them at the end. They stay selected.
+    /// </summary>
+    public void MovePages(IEnumerable<PdfPageItem> pages, int insertAt)
+    {
+        var moving = pages.ToHashSet();
+        if (IsBusy || moving.Count == 0)
             return;
-        Pages.Move(index, target);
-        SelectedPage = selected;
-        NotifyCollectionChanged();
+        insertAt = Math.Clamp(insertAt, 0, Pages.Count);
+        var rest = Pages.Where(page => !moving.Contains(page)).ToList();
+        var block = Pages.Where(moving.Contains).ToList();
+        // The drop position counts the dragged pages; without them, it is one place higher for each one above it.
+        var target = insertAt - Pages.Take(insertAt).Count(moving.Contains);
+        Reorder([.. rest.Take(target), .. block, .. rest.Skip(target)]);
+        Select(block, SelectedPage is { } focus && moving.Contains(focus) ? focus : block.FirstOrDefault());
+    }
+
+    /// <summary>Puts the pages in <paramref name="order"/> by moving them, so thumbnails and the selection are kept.</summary>
+    private void Reorder(IReadOnlyList<PdfPageItem> order)
+    {
+        if (order.Count != Pages.Count || order.SequenceEqual(Pages))
+            return;
+        var selected = SelectedPages.ToList();
+        var focus = SelectedPage;
+        _syncingSelection = true;
+        try
+        {
+            for (var index = 0; index < order.Count; index++)
+                if (!ReferenceEquals(Pages[index], order[index]))
+                    Pages.Move(Pages.IndexOf(order[index]), index);
+        }
+        finally
+        {
+            _syncingSelection = false;
+        }
+        // The list box may drop a moved page from its selection; it is selected again here.
+        Select(selected, focus);
     }
 
     [RelayCommand(CanExecute = nameof(CanDelete))]
     private void Delete()
     {
-        if (SelectedPage is not { } selected || Pages.Count <= 1)
+        var selected = SelectedIndexes();
+        if (selected.Count == 0 || selected.Count >= Pages.Count)
             return;
-        var index = Pages.IndexOf(selected);
-        Pages.RemoveAt(index);
-        selected.Dispose();
-        SelectedPage = Pages[Math.Min(index, Pages.Count - 1)];
-        NotifyCollectionChanged();
+        _syncingSelection = true;
+        try
+        {
+            foreach (var index in Enumerable.Reverse(selected))
+            {
+                var page = Pages[index];
+                Pages.RemoveAt(index);
+                page.Dispose();
+            }
+        }
+        finally
+        {
+            _syncingSelection = false;
+        }
+        // The page that took the place of the first deleted one.
+        var next = Pages[Math.Min(selected[0], Pages.Count - 1)];
+        Select([next], next);
     }
 
     [RelayCommand(CanExecute = nameof(CanChangePage))]
@@ -310,23 +506,24 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
 
     private void Rotate(int degrees)
     {
-        if (SelectedPage is not { } selected)
-            return;
-        selected.Rotation = ((selected.Rotation + degrees) % 360 + 360) % 360;
+        foreach (var page in SelectedPages)
+            page.Rotation = ((page.Rotation + degrees) % 360 + 360) % 360;
         OnPropertyChanged(nameof(SelectedPreviewRotation));
     }
 
     public Task<bool> SaveAsync() => WriteAsync(Pages, _preset, closeWhenDone: true);
 
+    /// <summary>Saves the selected pages, in page order, as one new PDF; the editor stays open.</summary>
     public Task<bool> ExtractSelectedAsync()
     {
-        if (SelectedPage is not { } selected)
+        var selected = SelectionInOrder();
+        if (selected.Count == 0)
             return Task.FromResult(false);
         var extract = _preset.Clone();
         extract.Id = "pdf-extract-page";
         extract.NameKey = "preset.pdf_extract";
         extract.Output.FileNamePattern = "{name}_extracted";
-        return WriteAsync([selected], extract, closeWhenDone: false);
+        return WriteAsync(selected, extract, closeWhenDone: false);
     }
 
     private async Task<bool> WriteAsync(IEnumerable<PdfPageItem> items, Preset preset, bool closeWhenDone)
@@ -397,6 +594,7 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
     private void NotifyCollectionChanged()
     {
         OnPropertyChanged(nameof(CanSave));
+        OnPropertyChanged(nameof(HasSelection));
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();

@@ -41,7 +41,7 @@ public sealed partial class OllamaModelItem : ObservableObject
 
 public sealed partial class OllamaModelManagerViewModel : ObservableObject
 {
-    private static readonly Uri OllamaBase = new("http://127.0.0.1:11434");
+    private static Uri OllamaBase => OllamaEndpoint.Base;
     private static readonly HttpClient SharedHttpClient = new(new SocketsHttpHandler
     {
         UseProxy = false,
@@ -247,12 +247,12 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         UpdateCanStopServer();
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
+            using var client = new HttpClient { Timeout = TranslatorConverter.CheckLimit };
             using var response = await client.GetAsync(new Uri(OllamaBase, "/api/tags"));
             if (response.IsSuccessStatusCode)
             {
                 IsServerRunning = true;
-                ServerStatusText = $"{_loc["engines.ollama.server_running"]} (http://127.0.0.1:11434)";
+                ServerStatusText = $"{_loc["engines.ollama.server_running"]} ({OllamaEndpoint.Address})";
 
                 using var stream = await response.Content.ReadAsStreamAsync();
                 using var doc = await JsonDocument.ParseAsync(stream);
@@ -443,6 +443,10 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
                 CreateNoWindow = true,
                 UseShellExecute = false
             };
+            // When OLLAMA_HOST names another computer, Filee ignores it, so the server it starts must listen
+            // where Filee looks instead of on that address.
+            if (OllamaEndpoint.IgnoredValue is not null)
+                psi.Environment[OllamaEndpoint.Variable] = $"{OllamaEndpoint.Base.Host}:{OllamaEndpoint.Base.Port}";
             _fileeStartedOllamaProcess = Process.Start(psi);
             UpdateCanStopServer();
         }

@@ -72,6 +72,11 @@
       <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
+    <!-- Close and Delete: a faint red tint and a red icon on hover and press (the tool hover above would win otherwise) -->
+    <Style Selector="Button.tool.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.tool.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource DangerFaintBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+    </Style>
     <Style Selector="ToggleButton.tool:checked /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -163,7 +168,7 @@
         <!-- The frame at the active handle, as large as fits -->
         <Panel Margin="36,66,36,12">
           <Border x:Name="PreviewFrame" CornerRadius="{DynamicResource SoftRadius}" ClipToBounds="True"
-                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  IsVisible="{Binding HasPicture}" HorizontalAlignment="Center" VerticalAlignment="Center"
                   Background="{DynamicResource SurfaceAltBrush}" BoxShadow="{DynamicResource CardShadow}">
             <Panel>
               <Image Source="{Binding Preview}" Stretch="Uniform" />
@@ -183,6 +188,14 @@
               </Border>
             </Panel>
           </Border>
+          <!-- A sound has no picture: its name, and the waveform below -->
+          <StackPanel IsVisible="{Binding IsSoundOnly}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+            <PathIcon Width="64" Height="64" Data="{StaticResource Clip.Music}" Foreground="{DynamicResource AccentBrush}" Opacity="0.7" />
+            <TextBlock Text="{Binding CurrentFileName}" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" MaxWidth="560" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <TextBlock Text="{Binding RingtoneLimitText}" FontSize="12.5" HorizontalAlignment="Center" IsVisible="{Binding IsRingtone}"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+          </StackPanel>
         </Panel>
 
         <!-- The clip: start, length, end and the timeline; then the toolbar and the keys -->
@@ -220,7 +233,7 @@
               </Grid>
 
               <!-- The whole video: where the clip is in it (its ends dragged here) -->
-              <c:ClipTimeline x:Name="Timeline" Height="58" Margin="2,0"
+              <c:ClipTimeline x:Name="Timeline" Height="{Binding TimelineHeight}" Waveform="{Binding IsSoundOnly}" Margin="2,0"
                               AutomationProperties.Name="{DynamicResource clip.timeline}"
                               Duration="{Binding Duration}" Start="{Binding Start}" End="{Binding End}"
                               Playhead="{Binding Playhead}" ActiveHandle="{Binding ActiveHandle}"
@@ -238,7 +251,7 @@
               </Grid>
 
               <!-- The clip as it plays: pictures (V1), its sound (A1) and the music (A2) -->
-              <c:ClipSequence x:Name="Sequence" Margin="2,4,2,0"
+              <c:ClipSequence x:Name="Sequence" Margin="2,4,2,0" IsVisible="{Binding ShowsEditor}"
                               AutomationProperties.Name="{DynamicResource clip.sequence}"
                               Pieces="{Binding Pieces}" Playhead="{Binding SequencePlayhead}"
                               SelectedIndex="{Binding SelectedIndex}" SelectedIndices="{Binding SelectedIndices}"
@@ -271,6 +284,7 @@
                 <TextBlock Text="{Binding SelectionText}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
               </Border>
 
+              <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding ShowsEditor}">
               <Border Classes="divider" />
 
               <Button Classes="tool" Command="{Binding SplitCommand}" Padding="10,8"
@@ -280,10 +294,10 @@
                   <TextBlock Text="{DynamicResource clip.cut}" FontSize="13" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
-              <Button Classes="tool" Command="{Binding DeleteSelectedCommand}" Padding="10,8"
+              <Button Classes="tool danger" Command="{Binding DeleteSelectedCommand}" Padding="10,8" Foreground="{DynamicResource TextPrimaryBrush}"
                       ToolTip.Tip="{DynamicResource clip.delete_hint}" AutomationProperties.Name="{Binding DeleteText}">
                 <StackPanel Orientation="Horizontal" Spacing="7">
-                  <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Delete}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Delete}" />
                   <TextBlock Text="{Binding DeleteText}" FontSize="13" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
@@ -359,6 +373,7 @@
                   <TextBlock Text="{DynamicResource clip.close_gaps}" FontSize="13" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
+              </StackPanel>
             </StackPanel>
           </Border>
 
@@ -368,9 +383,10 @@
                       IsEnabled="{Binding Can15}" ToolTip.Tip="{DynamicResource clip.length_hint}" />
               <Button Classes="tool" Content="{Binding Length30Text}" Command="{Binding QuickLengthCommand}" CommandParameter="30"
                       IsEnabled="{Binding Can30}" ToolTip.Tip="{DynamicResource clip.length_hint}" />
-              <Button Classes="tool" Content="{Binding Length60Text}" Command="{Binding QuickLengthCommand}" CommandParameter="60"
+              <Button Classes="tool" Content="{Binding Length60Text}" Command="{Binding QuickLengthCommand}" CommandParameter="{Binding LongLengthParameter}"
                       IsEnabled="{Binding Can60}" ToolTip.Tip="{DynamicResource clip.length_hint}" />
 
+              <StackPanel Orientation="Horizontal" Spacing="3" IsVisible="{Binding ShowsEditor}">
               <Border Classes="divider" />
 
               <ToggleButton Classes="tool" IsChecked="{Binding HasFadeIn}" Padding="10,8"
@@ -390,13 +406,14 @@
 
               <Border Classes="divider" />
 
-              <ToggleButton x:Name="FastToggle" Classes="tool" IsChecked="{Binding IsFast}" IsEnabled="{Binding CanFast}" Padding="10,8,12,8"
+              <ToggleButton x:Name="FastToggle" Classes="tool" IsVisible="{Binding HasPicture}" IsChecked="{Binding IsFast}" IsEnabled="{Binding CanFast}" Padding="10,8,12,8"
                             ToolTip.Tip="{Binding FastToolTip}" AutomationProperties.Name="{DynamicResource clip.fast}">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <PathIcon Width="13" Height="13" Data="{StaticResource Clip.Fast}" Foreground="{DynamicResource AccentBrush}" />
                   <TextBlock Text="{DynamicResource clip.fast}" FontSize="13" VerticalAlignment="Center" />
                 </StackPanel>
               </ToggleButton>
+              </StackPanel>
 
               <Button Classes="tool" Command="{Binding SkipCommand}" IsVisible="{Binding HasMultipleFiles}"
                       AutomationProperties.Name="{DynamicResource crop.skip}">
@@ -461,9 +478,9 @@
                     ToolTip.Tip="{DynamicResource crop.maximize}" AutomationProperties.Name="{DynamicResource crop.maximize}">
               <PathIcon Width="13" Height="13" Data="{StaticResource Clip.Maximize}" Foreground="{DynamicResource TextSecondaryBrush}" />
             </Button>
-            <Button Classes="tool round" Command="{Binding CancelCommand}"
+            <Button Classes="tool round danger" Command="{Binding CancelCommand}" Foreground="{DynamicResource TextSecondaryBrush}"
                     ToolTip.Tip="{DynamicResource crop.close_hint}" AutomationProperties.Name="{DynamicResource common.close}">
-              <PathIcon Width="11" Height="11" Data="{StaticResource Icon.Close}" Foreground="{DynamicResource TextSecondaryBrush}" />
+              <PathIcon Width="11" Height="11" Data="{StaticResource Icon.Close}" />
             </Button>
           </StackPanel>
         </Border>

@@ -1,7 +1,8 @@
-// The "filee" commands: convert, watch, formats, presets, engines. Writes results for people (one line per file) or, with
-// --json, one JSON document for other programs; while it runs, convert --json writes events to stderr and watch --json
-// to stdout, one JSON object per line. Exit codes: 0 nothing failed (skipped files included), 1 some failed or were
-// cancelled, 2 wrong arguments or a missing input, 3 nothing to convert.
+// The "filee" commands: convert, watch, formats, presets ('presets check' for the preset gallery), engines. Writes
+// results for people (one line per file) or, with --json, one JSON document for other programs; while it runs,
+// convert --json writes events to stderr and watch --json to stdout, one JSON object per line. Exit codes: 0 nothing
+// failed (skipped files included), 1 some failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to
+// convert.
 
 using System.Text.Json;
 using Filee.Core.Conversion;
@@ -40,6 +41,9 @@ internal static class Cli
             case "version":
                 output.WriteLine($"filee {Help.Version}");
                 return Success;
+            // Checks files only: no settings, no engines.
+            case "presets" when options.Inputs.Count > 0:
+                return PresetsCheckCommand.Run(options, output, errors);
         }
 
         await using var host = (createHost ?? (() => CliHost.Create()))();
@@ -62,7 +66,7 @@ internal static class Cli
 
         var missing = new List<string>();
         var files = ExpandInputs(options.Inputs, options.Recursive, missing,
-            foldersAsInputs: preset.TargetFormat == "iso" || preset.PacksIntoOneArchive);
+            foldersAsInputs: BuiltInData.AcceptsFolders(preset) || preset.PacksIntoOneArchive);
         foreach (var path in missing)
             errors.WriteLine($"filee: not found: {path}");
         if (missing.Count > 0)
@@ -317,6 +321,31 @@ internal static class Cli
         // The pages of PDFs; asked for on the donut (AskedPages), given here.
         if (options.Pages is { } pages)
             preset.Pdf.PageRange = pages;
+        // PDF → PDF in files of so many pages, a video in parts of so long, or either in equal parts (#1259), over the
+        // preset's split. Each only touches files of its kind, so PDFs and videos can go in one command; but pages for
+        // a video target, or a length for a PDF one, would split nothing, so they are refused rather than ignored.
+        var category = FormatRegistry.FindById(preset.TargetFormat)?.Category;
+        if (options.SplitEvery is { } pagesEvery && category == FormatCategory.Video)
+        {
+            errors.WriteLine($"filee: --split-every {options.SplitEveryText} is a number of pages, but this makes videos. "
+                + $"Give a length, e.g. {pagesEvery}s or {pagesEvery}m.");
+            return null;
+        }
+        if (options.SplitEverySeconds is not null && preset.TargetFormat == "pdf")
+        {
+            errors.WriteLine($"filee: --split-every {options.SplitEveryText} is a length of video, but this makes PDFs. "
+                + "Give a number of pages, e.g. --split-every 10.");
+            return null;
+        }
+        if (options.SplitEvery is { } every)
+            (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts) = (true, every, 0);
+        if (options.SplitEverySeconds is { } seconds)
+            (preset.Media.SplitEverySeconds, preset.Media.SplitParts) = (seconds, 0);
+        if (options.SplitParts is { } parts)
+        {
+            (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts) = (true, 0, parts);
+            (preset.Media.SplitEverySeconds, preset.Media.SplitParts) = (0, parts);
+        }
         if (options.Conflict is { } conflict)
             preset.Output.Conflict = conflict;
         if (options.KeepDates)
@@ -341,7 +370,8 @@ internal static class Cli
 
     /// <summary>
     /// Files from the arguments: files as given, wildcards ("*.heic", which cmd.exe and PowerShell pass on unexpanded)
-    /// and folders (their files in formats Filee knows; with --recursive also in sub folders).
+    /// and folders (their files in formats Filee knows, programs left out as in watch folders: the installers in a folder
+    /// aren't pictures to convert; with --recursive also in sub folders).
     /// </summary>
     internal static List<string> ExpandInputs(IEnumerable<string> inputs, bool recursive, List<string> missing, bool foldersAsInputs = false)
     {
@@ -362,7 +392,8 @@ internal static class Cli
             else if (Directory.Exists(input))
             {
                 if (foldersAsInputs) files.Add(Path.TrimEndingDirectorySeparator(input));
-                else files.AddRange(Directory.EnumerateFiles(input, "*", option).Where(f => FormatRegistry.Detect(f) is not null));
+                else files.AddRange(Directory.EnumerateFiles(input, "*", option)
+                    .Where(f => FormatRegistry.Detect(f) is not null && !FormatRegistry.IsProgram(f)));
             }
             else if (File.Exists(input))
                 files.Add(input);

@@ -59,6 +59,9 @@ public static class EngineDownloads
         new("ghostscript", OperatingSystem.IsWindows() ? ["ghostscript", "vcruntime"] : ["ghostscript"], 31_000_000, ["ghostscript"]),
         new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
         new("calibre", ["calibre"], 663_000_000, ["calibre"]),
+        // WeasyPrint's own Windows build (Python, Pango and HarfBuzz in one folder). Linux and macOS follow once
+        // WeasyPrint publishes a self-contained build for them (#1403); until then they keep their routes.
+        .. (OperatingSystem.IsWindows() ? [new EnginePackage("weasyprint", ["weasyprint"], 65_000_000, ["weasyprint"])] : Array.Empty<EnginePackage>()),
         new("tesseract", ["tesseract"], 168_000_000, ["tesseract"]),
         new("upscayl-bin", OperatingSystem.IsWindows() && architecture != Architecture.Arm64 ? ["upscayl-bin", "vcruntime", "vcomp14"] : OperatingSystem.IsWindows() ? [] : ["upscayl-bin"], 8_600_000, ["upscaler"]),
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"])] : Array.Empty<EnginePackage>()),
@@ -70,6 +73,40 @@ public static class EngineDownloads
     public static long DownloadSize(EnginePackage package) => package.Components.Sum(c => Components.GetValueOrDefault(c)?.Size ?? 0);
 
     public static bool CanDownload(EnginePackage package) => package.Components.Count > 0 && package.Components.All(Components.ContainsKey);
+
+    /// <summary>
+    /// The name a browser saves the download under ("LibreOffice_26.2.6_Win_x86-64.msi"), which Filee also saves it
+    /// under for another computer (#447); "&lt;id&gt;-&lt;version&gt;" when the URL doesn't end in a usable file name.
+    /// </summary>
+    public static string FileName(EngineComponent component)
+    {
+        var name = Path.GetFileName(Uri.UnescapeDataString(new Uri(component.Url).AbsolutePath).Replace('\\', '/'));
+        return name.Length == 0 || name is "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            ? $"{component.Id}-{component.Version}"
+            : name;
+    }
+
+    /// <summary>
+    /// Filee's own copy of every pinned download (Cloudflare R2 behind dl.filee.sh), filed under its SHA-256. A download
+    /// site drops old versions (LibreOffice's "stable" folder lost 26.2.6 when 26.2.7 came out, #1474), and a released
+    /// Filee can't change its pinned URL, so when the URL fails the installer takes the file from here. The pinned
+    /// SHA-256 is checked either way, so a copy here can't be anything but the pinned file.
+    /// </summary>
+    public const string MirrorRoot = "https://dl.filee.sh/engines/";
+
+    /// <summary>Where Filee's copy of <paramref name="component"/> is: <see cref="MirrorRoot"/>/&lt;sha256&gt;/&lt;file name&gt;.</summary>
+    public static Uri MirrorUrl(EngineComponent component) =>
+        new(MirrorRoot + component.Sha256.ToLowerInvariant() + "/" + Uri.EscapeDataString(FileName(component)));
+
+    /// <summary>
+    /// The package's downloads as text to copy (#447): per file its name, URL and SHA-256, to fetch them on a computer
+    /// with internet and install them here with "Install from downloaded files…".
+    /// </summary>
+    public static string DownloadList(EnginePackage package, IReadOnlyDictionary<string, EngineComponent> components) =>
+        string.Join(Environment.NewLine + Environment.NewLine, package.Components
+            .Where(components.ContainsKey)
+            .Select(id => components[id])
+            .Select(c => $"{FileName(c)}{Environment.NewLine}{c.Url}{Environment.NewLine}SHA-256: {c.Sha256}"));
 
     public static string? UnavailableReason(EnginePackage package)
     {
@@ -103,10 +140,11 @@ public static class EngineDownloads
     /// Ticked by default in the installer and in the first-run choice. Large downloads are offered, not suggested:
     /// LibreOffice is only needed for older formats (DOC, XLS, PPT, OpenDocument), FFmpeg (~100 MB) only for video and
     /// audio, calibre (~230 MB) only for rare e-book formats and Kindle output. Ghostscript and Tesseract are small but
-    /// only needed for EPS / PostScript and for scans.
+    /// only needed for EPS / PostScript and for scans. WeasyPrint is small too, but changes how HTML, Markdown and
+    /// e-mails become PDFs, so it is the user's choice (#1403).
     /// </summary>
     public static bool IsSuggested(EnginePackage package) =>
-        CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id is not ("ghostscript" or "tesseract" or "upscayl-bin");
+        CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id is not ("ghostscript" or "tesseract" or "upscayl-bin" or "weasyprint");
 
     /// <param name="macOSVersion">The running macOS; downloads whose minimumMacOS is newer are left out. Null keeps all.</param>
     public static IReadOnlyDictionary<string, EngineComponent> ComponentsForRuntime(string runtimeIdentifier, Version? macOSVersion = null)

@@ -157,6 +157,76 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
+    [Theory]
+    [InlineData("ch01_20261005150000.mp4", true, false)]
+    [InlineData("ch01_20261005150000.mp4", true, true)]
+    [InlineData("hiv00000.mp4", false, false)]
+    [InlineData("hiv00000.mp4", false, true)]
+    [InlineData("ch01.264", true, true)]
+    public async Task A_hikvision_recording_converts_to_mp4_with_its_sound(string name, bool imkhHeader, bool muLaw)
+    {
+        // iVMS-4200 / NVR exports (IMKH header) and SD-card recordings (no header) are MPEG program streams with
+        // G.711 sound. Without the header, FFmpeg reads mu-law sound as MP2 and fails, unless Filee adds the header.
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var h264 = await MakeClipAsync(folder, "camera.h264", size: "160x120", audio: false,
+            extra: ["-c:v", "libx264", "-g", "25", "-bsf:v", "h264_metadata=aud=insert"]);
+        var g711 = Path.Combine(folder, "camera.g711");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi",
+            "-i", "sine=frequency=440:sample_rate=8000:duration=2", "-ac", "1", "-f", muLaw ? "mulaw" : "alaw", g711]);
+        var recording = Path.Combine(folder, name);
+        await File.WriteAllBytesAsync(recording, HikvisionRecording.Write(
+            await File.ReadAllBytesAsync(h264, TestContext.Current.CancellationToken),
+            await File.ReadAllBytesAsync(g711, TestContext.Current.CancellationToken), muLaw, imkhHeader),
+            TestContext.Current.CancellationToken);
+
+        var probed = await ProbeAsync(await ConvertAsync(recording, "mp4"));
+        var video = probed.Video;
+        Assert.NotNull(video);
+        Assert.Equal(("h264", 160, 120, 50), (video.Codec, video.Width, video.Height, video.Frames));
+        Assert.Equal("aac", probed.Audio?.Codec);
+        Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
+    [Fact]
+    public void Nov_exports_are_read_but_never_written()
+    {
+        // Wisenet WAVE / Nx Witness exports: their recordings are read by FFmpeg from inside the file; never a target.
+        var route = Planner().Plan("nov", "mp4");
+        Assert.NotNull(route);
+        Assert.Equal("ffmpeg", Assert.Single(route.Steps).Converter.Id);
+        Assert.Null(Planner().Plan("mp4", "nov"));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task A_wisenet_wave_export_converts_its_largest_recording_to_mp4(int version)
+    {
+        // The client stores each camera's recording as a Matroska stream among the layout's other streams; a short
+        // recording of the same camera comes first, the longer one is converted.
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var shorter = await MakeClipAsync(folder, "short.mkv", seconds: 1, size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac"]);
+        var longer = await MakeClipAsync(folder, "long.mkv", seconds: 2, size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac"]);
+        var export = Path.Combine(folder, "Parking lot.nov");
+        var ct = TestContext.Current.CancellationToken;
+        await File.WriteAllBytesAsync(export, NovFile.Write(
+        [
+            ("uuid.bin", "{5b3c0f8e-0000-4000-8000-000000000001}"u8.ToArray()),
+            ("e3e9a385-7fe0-3ba5-5482-a86cde7faf48_1791212400000.mkv", await File.ReadAllBytesAsync(shorter, ct)),
+            ("e3e9a385-7fe0-3ba5-5482-a86cde7faf48_1791212460000.mkv", await File.ReadAllBytesAsync(longer, ct)),
+            ("range.bin", new byte[16]),
+        ], version), ct);
+
+        var probed = await ProbeAsync(await ConvertAsync(export, "mp4"));
+        var video = probed.Video;
+        Assert.NotNull(video);
+        Assert.Equal(("h264", 160, 120, 50), (video.Codec, video.Width, video.Height, video.Frames));
+        Assert.Equal("aac", probed.Audio?.Codec);
+        Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
     [Fact]
     public void Flic_animations_are_read_but_never_written()
     {
@@ -331,6 +401,178 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.InRange(probed.Duration, 1.7, 2.4);
             if (target == "m4a")
                 Assert.Equal("aac", audio.Codec);
+        }
+    }
+
+    [Theory]
+    [InlineData("xm")]
+    [InlineData("it")]
+    [InlineData("s3m")]
+    public void Tracker_modules_go_to_every_audio_target_in_one_ffmpeg_step(string module)
+    {
+        // #1376: read through FFmpeg's libopenmpt demuxer; never a target.
+        foreach (var target in MediaEncoding.AudioTargets.Keys)
+        {
+            var route = Planner().Plan(module, target);
+            Assert.True(route is not null, target);
+            Assert.Equal("ffmpeg", Assert.Single(route.Steps).Converter.Id);
+        }
+        Assert.DoesNotContain(new FfmpegConverter().Edges, e => e.To == module);
+        Assert.Contains(module, FfmpegConverter.TrackerModules);
+    }
+
+    [Fact]
+    public void Tracker_modules_need_an_ffmpeg_with_libopenmpt_or_libmodplug()
+    {
+        var demuxers = FfmpegConverter.ParseDemuxers("""
+            Formats:
+             D.. = Demuxing supported
+             .E. = Muxing supported
+             ..d = Is a device
+             ---
+             D   aac             raw ADTS AAC (Advanced Audio Coding)
+             D d dshow           DirectShow capture
+             D   libopenmpt      Tracker formats (libopenmpt)
+             D   mov,mp4,m4a,3gp,3g2,mj2 QuickTime / MOV
+            """);
+        Assert.Equal(["3g2", "3gp", "aac", "dshow", "libopenmpt", "m4a", "mj2", "mov", "mp4"], demuxers.Order(StringComparer.Ordinal));
+        Assert.True(FfmpegConverter.ReadsTrackerModules(demuxers));
+        Assert.True(FfmpegConverter.ReadsTrackerModules(new HashSet<string> { "libmodplug" }));
+        // Homebrew's FFmpeg: neither library.
+        Assert.False(FfmpegConverter.ReadsTrackerModules(new HashSet<string> { "aac", "mov", "mp4" }));
+        // A list that can't be read leaves the decision to FFmpeg.
+        Assert.True(FfmpegConverter.ReadsTrackerModules(null));
+    }
+
+    [Fact]
+    public async Task A_fasttracker_xm_module_converts_to_audio()
+    {
+        SkipUnlessInstalled();
+        var module = Path.Combine(fx.NewFolder(), "song.xm");
+        await File.WriteAllBytesAsync(module, MakeXm(), TestContext.Current.CancellationToken);
+
+        if (!FfmpegConverter.ReadsTrackerModules(await FfmpegConverter.DemuxersOfAsync(Tools!.Value.Ffmpeg)))
+        {
+            // An FFmpeg built without libopenmpt: Filee's message, not FFmpeg's "Invalid data found".
+            var job = await fx.ConvertAsync([module], new Preset { TargetFormat = "wav" });
+            var file = Assert.Single(job.Files);
+            Assert.Equal((FileState.Failed, "error.tracker_needs_openmpt"), (file.State, file.ErrorKey));
+            return;
+        }
+        foreach (var target in new[] { "wav", "mp3", "flac" })
+        {
+            var output = await ConvertAsync(module, target);
+            var probed = await ProbeAsync(output);
+            Assert.NotNull(probed.Audio);
+            // 16 rows at speed 6 and 125 BPM: 16 × 0.12 s.
+            Assert.InRange(probed.Duration, 1.5, 2.6);
+            // The note on the first row is heard, so the song is not rendered as silence.
+            if (target == "wav")
+                Assert.Contains((await File.ReadAllBytesAsync(output, TestContext.Current.CancellationToken)).Skip(1024), b => b != 0);
+        }
+    }
+
+    /// <summary>
+    /// A FastTracker 2 module (XM 1.04): two channels, one 16-row pattern with a C-4 on its first row, played by one
+    /// instrument whose sample is a short 8-bit square wave.
+    /// </summary>
+    private static byte[] MakeXm()
+    {
+        using var stream = new MemoryStream();
+        using var w = new BinaryWriter(stream);
+        static byte[] Text(string text, int length) => [.. Encoding.ASCII.GetBytes(text.PadRight(length))];
+
+        w.Write(Text("Extended Module: ", 17));
+        w.Write(Text("Filee test", 20));
+        w.Write((byte)0x1A);
+        w.Write(Text("Filee", 20));
+        w.Write((ushort)0x0104);
+        w.Write(276u); // header size, counted from this field: 20 bytes of fields + the 256-entry order table
+        w.Write((ushort)1); // song length (orders)
+        w.Write((ushort)0); // restart position
+        w.Write((ushort)2); // channels
+        w.Write((ushort)1); // patterns
+        w.Write((ushort)1); // instruments
+        w.Write((ushort)1); // linear frequency table
+        w.Write((ushort)6); // speed (ticks per row)
+        w.Write((ushort)125); // BPM
+        w.Write(new byte[256]); // order table: pattern 0
+
+        // Pattern 0, packed: a note byte with bit 7 set says which fields follow, 0x80 is an empty cell.
+        var rows = new List<byte> { 0x83, 49, 1, 0x80 }; // C-4 with instrument 1, then an empty channel
+        for (var row = 1; row < 16; row++)
+            rows.AddRange([0x80, 0x80]);
+        w.Write(9u); // pattern header size
+        w.Write((byte)0); // packing type
+        w.Write((ushort)16); // rows
+        w.Write((ushort)rows.Count);
+        w.Write(rows.ToArray());
+
+        // Instrument 1 with one sample: no envelopes, every note on sample 0.
+        w.Write(263u); // instrument header size
+        w.Write(Text("square", 22));
+        w.Write((byte)0); // type
+        w.Write((ushort)1); // samples
+        w.Write(40u); // sample header size
+        w.Write(new byte[96 + 48 + 48]); // note → sample map, volume and panning envelope points
+        w.Write(new byte[14]); // envelope counts, sustain and loop points, envelope types, vibrato
+        w.Write((ushort)0); // fadeout
+        w.Write(new byte[22]); // reserved
+
+        // The sample: 4000 bytes of 8-bit delta-coded square wave, played once at 8363 Hz (about half a second).
+        const int length = 4000;
+        w.Write((uint)length);
+        w.Write(0u); // loop start
+        w.Write(0u); // loop length
+        w.Write((byte)64); // volume
+        w.Write((sbyte)0); // finetune
+        w.Write((byte)0); // no loop, 8-bit
+        w.Write((byte)128); // panning
+        w.Write((sbyte)0); // relative note
+        w.Write((byte)0); // reserved
+        w.Write(Text("square", 22));
+        sbyte previous = 0;
+        for (var i = 0; i < length; i++)
+        {
+            var value = (sbyte)(i / 16 % 2 == 0 ? 64 : -64);
+            w.Write(unchecked((sbyte)(value - previous)));
+            previous = value;
+        }
+        w.Flush();
+        return stream.ToArray();
+    }
+
+    [Fact]
+    public async Task A_quicktime_named_movie_converts_like_a_mov()
+    {
+        // #1283: FFmpeg probes the content, so the .quicktime name only has to reach the MOV routes; a MOV output is
+        // written as .mov.
+        SkipUnlessInstalled();
+        var movie = await MakeClipAsync(fx.NewFolder(), "clip.quicktime", size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac", "-f", "mov"]);
+
+        foreach (var target in new[] { "mp4", "mov", "mp3" })
+        {
+            var probed = await ProbeAsync(await ConvertAsync(movie, target));
+            Assert.InRange(probed.Duration, 1.7, 2.4);
+            Assert.Equal(target != "mp3", probed.Video is not null);
+        }
+    }
+
+    [Fact]
+    public async Task An_mpg4_named_video_converts_like_an_mp4()
+    {
+        // #1397: FFmpeg probes the content, so the .mpg4 name only has to reach the MP4 routes; an MP4 output is written
+        // as .mp4.
+        SkipUnlessInstalled();
+        var video = await MakeClipAsync(fx.NewFolder(), "reel.mpg4", size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac", "-f", "mp4"]);
+
+        foreach (var target in new[] { "mp4", "mov", "mp3" })
+        {
+            var output = await ConvertAsync(video, target);
+            Assert.Equal("." + target, Path.GetExtension(output));
+            var probed = await ProbeAsync(output);
+            Assert.InRange(probed.Duration, 1.7, 2.4);
+            Assert.Equal(target != "mp3", probed.Video is not null);
         }
     }
 
@@ -729,17 +971,202 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("libx264", After(cropped, "-c:v"));
         Assert.StartsWith(crop + "scale=", After(cropped, "-vf"));
         Assert.Equal("copy", After(cropped, "-c:a"));
-        Assert.DoesNotContain("0:s?", cropped);
 
         // An MKV keeps its subtitles and fonts.
-        var mkv = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), info, "work", crop: crop).Single().Arguments;
-        Assert.Contains("0:s?", mkv);
-        Assert.Contains("0:t?", mkv);
-        Assert.Equal(("copy", "copy"), (After(mkv, "-c:s"), After(mkv, "-c:t")));
+        var episode = info with { SubtitleStreams = [new SubtitleStreamInfo(2, "ass", "kor")], HasAttachments = true };
+        var mkv = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), episode, "work", crop: crop).Single().Arguments;
+        Assert.Contains("0:2", mkv);
+        Assert.Contains("0:t", mkv);
+        Assert.Equal(("copy", "copy"), (After(mkv, "-c:s:0"), After(mkv, "-c:t")));
 
         // Anamorphic pixels are made square first, as cropdetect saw them.
         var dv = new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97);
         Assert.StartsWith(MediaEncoding.SquarePixels(dv) + "crop=", MediaEncoding.CropFilter(dv, new CropBox(640, 360, 0, 60)));
+    }
+
+    /// <summary>A Blu-ray rip: Korean SRT, English ASS, a Korean PGS track and the fonts of the ASS track.</summary>
+    private static readonly MediaInfo Episode = new(TimeSpan.FromSeconds(10), Hd with { Codec = "h264", PixelFormat = "yuv420p" },
+        new AudioStreamInfo(2, 48000, "aac"), null,
+        [new SubtitleStreamInfo(2, "subrip", "kor"), new SubtitleStreamInfo(3, "ass", "eng"), new SubtitleStreamInfo(4, "hdmv_pgs_subtitle", "kor")],
+        HasAttachments: true);
+
+    /// <summary>The streams mapped from the input, in order.</summary>
+    private static List<string> Mapped(IReadOnlyList<string> args) =>
+        [.. args.Select((arg, i) => (arg, i)).Where(a => a.arg == "-map").Select(a => args[a.i + 1])];
+
+    [Fact]
+    public void An_mkv_keeps_every_subtitle_track_and_its_fonts()
+    {
+        // #789: for every conversion, not only a crop; the video is copied here.
+        var args = Args("mkv", info: Episode);
+        Assert.Equal(["0:V:0", "0:a:0", "0:2", "0:3", "0:4", "0:t"], Mapped(args));
+        Assert.Equal(("copy", "copy", "copy", "copy"), (After(args, "-c:s:0"), After(args, "-c:s:1"), After(args, "-c:s:2"), After(args, "-c:t")));
+        Assert.Equal("copy", After(args, "-c:v"));
+
+        // Timed text from an MP4 isn't a Matroska codec: it becomes SRT. A file without attachments maps none (FFmpeg
+        // refuses a specifier that matches nothing).
+        var phone = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "mov_text", "eng")], HasAttachments = false };
+        var fromMp4 = Args("mkv", info: phone);
+        Assert.Equal("srt", After(fromMp4, "-c:s:0"));
+        Assert.DoesNotContain("0:t", fromMp4);
+    }
+
+    [Fact]
+    public void Mp4_and_mov_keep_the_text_subtitles_as_timed_text()
+    {
+        foreach (var target in new[] { "mp4", "m4v", "mov" })
+        {
+            var args = Args(target, info: Episode);
+            // The PGS track (0:4) and the fonts can't go in.
+            Assert.Equal(["0:V:0", "0:a:0", "0:2", "0:3"], Mapped(args));
+            Assert.Equal(("mov_text", "mov_text"), (After(args, "-c:s:0"), After(args, "-c:s:1")));
+            Assert.DoesNotContain("-c:s:2", args);
+            Assert.DoesNotContain("-c:t", args);
+            Assert.True(MediaEncoding.LeavesOutPictureSubtitles(target, Episode));
+        }
+
+        // Timed text already is timed text.
+        var phone = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "mov_text", "eng")] };
+        Assert.Equal("copy", After(Args("mp4", info: phone), "-c:s:0"));
+        Assert.False(MediaEncoding.LeavesOutPictureSubtitles("mp4", phone));
+    }
+
+    [Fact]
+    public void Webm_keeps_the_text_subtitles_as_webvtt()
+    {
+        var args = Args("webm", info: Episode);
+        Assert.Equal(["0:V:0", "0:a:0", "0:2", "0:3"], Mapped(args));
+        Assert.Equal(("webvtt", "webvtt"), (After(args, "-c:s:0"), After(args, "-c:s:1")));
+        Assert.True(MediaEncoding.LeavesOutPictureSubtitles("webm", Episode));
+        var web = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "webvtt", "eng")] };
+        Assert.Equal("copy", After(Args("webm", info: web), "-c:s:0"));
+    }
+
+    [Fact]
+    public void Other_targets_and_clips_keep_no_subtitles()
+    {
+        foreach (var target in new[] { "avi", "flv", "ts", "wmv", "mpg", "ogv" })
+        {
+            var args = Args(target, info: Episode);
+            Assert.Equal(["0:V:0", "0:a:0"], Mapped(args));
+            Assert.DoesNotContain(args, a => a.StartsWith("-c:s", StringComparison.Ordinal));
+            // Nothing to say either: these never kept subtitles.
+            Assert.False(MediaEncoding.LeavesOutPictureSubtitles(target, Episode));
+        }
+        Assert.False(MediaEncoding.LeavesOutPictureSubtitles("mkv", Episode));
+
+        // A clip: the input is seeked, and subtitle timing after the seek isn't proven.
+        var clip = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), Episode, "work", clip: new ClipRange(2, 5)).Single().Arguments;
+        Assert.Equal(["0:V:0", "0:a:0"], Mapped(clip));
+
+        // Captions and TTML are left out as before: no decoder, or no proof of their timing.
+        var captions = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "eia_608", null), new SubtitleStreamInfo(3, "ttml", "eng")] };
+        Assert.Equal(["0:V:0", "0:a:0"], Mapped(Args("mp4", info: captions)));
+        Assert.False(MediaEncoding.LeavesOutPictureSubtitles("mp4", captions));
+    }
+
+    [Fact]
+    public void A_retry_without_subtitles_maps_none()
+    {
+        var mapped = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), Episode, "work");
+        Assert.True(MediaEncoding.MapsSubtitles(mapped));
+        var without = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), Episode, "work", subtitles: false);
+        Assert.False(MediaEncoding.MapsSubtitles(without));
+        Assert.Equal(["0:V:0", "0:a:0"], Mapped(without.Single().Arguments));
+        Assert.False(MediaEncoding.MapsSubtitles(MediaEncoding.Plan("in.mkv", "out.avi", "avi", new MediaOptions(), Episode, "work")));
+    }
+
+    [Fact]
+    public void Only_ffmpeg_failures_that_may_be_the_subtitles_are_retried_without_them()
+    {
+        var none = CancellationToken.None;
+        Assert.True(FfmpegConverter.RetriesWithoutSubtitles(
+            new InvalidOperationException("FFmpeg failed (exit code -22): Could not find tag for codec ttf in stream #2"), none));
+        Assert.True(FfmpegConverter.RetriesWithoutSubtitles(new InvalidOperationException("FFmpeg did not write any output."), none));
+
+        // The output can't be written: the same again without subtitles.
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(
+            new InvalidOperationException("FFmpeg failed (exit code -28): Error writing trailer: No space left on device"), none));
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(
+            new InvalidOperationException("FFmpeg failed (exit code -13): out.mp4: Permission denied"), none));
+        // A stall, a cancellation or a refusal isn't FFmpeg failing over a track.
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new TimeoutException("FFmpeg stopped responding"), none));
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new OperationCanceledException(), none));
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new ConversionRefusedException("error.over_size_limit"), none));
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new InvalidOperationException("FFmpeg failed"), cancelled.Token));
+    }
+
+    [Fact]
+    public async Task A_conversion_that_fails_with_subtitles_runs_once_more_without_them()
+    {
+        var output = Path.Combine(fx.NewFolder(), "out.mp4");
+        var logger = new HardwareEncodingTests.ListLogger();
+        List<bool> runs = [];
+        Task FailWithSubtitles(bool subtitles)
+        {
+            runs.Add(subtitles);
+            if (!subtitles)
+                return Task.CompletedTask;
+            File.WriteAllText(output, "half-written");
+            throw new InvalidOperationException("FFmpeg failed (exit code -22): Subtitle codec 94213 is not supported");
+        }
+
+        Assert.True(await FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, FailWithSubtitles, output, logger, CancellationToken.None));
+        Assert.Equal([true, false], runs);
+        Assert.False(File.Exists(output)); // the partial output is gone before the retry
+        Assert.Contains("Subtitle codec 94213", Assert.Single(logger.Entries).Message);
+
+        // Nothing mapped: one run, its error as it is.
+        runs.Clear();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(false, FailWithSubtitles, output, logger, CancellationToken.None));
+        Assert.Contains("94213", error.Message);
+        Assert.Equal([true], runs);
+
+        // Success the first time, and a retry that fails too (its error is the one reported).
+        Assert.False(await FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, _ => Task.CompletedTask, output, logger, CancellationToken.None));
+        error = await Assert.ThrowsAsync<InvalidOperationException>(() => FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true,
+            subtitles => throw new InvalidOperationException(subtitles ? "with" : "without"), output, logger, CancellationToken.None));
+        Assert.Equal("without", error.Message);
+
+        // A full disk isn't retried.
+        runs.Clear();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, subtitles =>
+        {
+            runs.Add(subtitles);
+            throw new InvalidOperationException("FFmpeg failed (exit code -28): No space left on device");
+        }, output, logger, CancellationToken.None));
+        Assert.Equal([true], runs);
+    }
+
+    [Fact]
+    public async Task A_subtitle_track_ffmpeg_refuses_is_left_out_on_the_retry()
+    {
+        SkipUnlessInstalled();
+        // A track the container can't take, forced: stream 2 of this MKV is a font, planned as if it were an SRT track,
+        // so the MP4 muxer refuses it as a subtitle the way it would refuse a track it has no tag for.
+        var folder = fx.NewFolder();
+        var font = Path.Combine(folder, "Sub Font.ttf");
+        await File.WriteAllBytesAsync(font, Enumerable.Range(0, 2048).Select(i => (byte)i).ToArray(), TestContext.Current.CancellationToken);
+        var source = await MakeClipAsync(folder, "episode.mkv", seconds: 1, size: "160x120", extra:
+            ["-c:v", "libx264", "-c:a", "aac", "-attach", font, "-metadata:s:t", "mimetype=application/x-truetype-font"]);
+        var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, source, CancellationToken.None) with
+        {
+            SubtitleStreams = [new SubtitleStreamInfo(2, "subrip", "kor")],
+        };
+        var output = Path.Combine(folder, "episode.mp4");
+        var logger = new HardwareEncodingTests.ListLogger();
+
+        var left = await FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, subtitles => FfmpegConverter.RunPassAsync(Tools!.Value.Ffmpeg,
+            MediaEncoding.Plan(source, output, "mp4", new MediaOptions(), info, folder, subtitles: subtitles).Single(), info.Duration, null, 0,
+            CancellationToken.None), output, logger, CancellationToken.None);
+
+        Assert.True(left);
+        Assert.Single(logger.Entries);
+        var probed = await ProbeAsync(output);
+        Assert.Equal(["video", "audio"], probed.Streams.Select(s => s.Type));
     }
 
     [Fact]
@@ -1393,6 +1820,38 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(Decoded(spec.AudioCodec), probed.Audio?.Codec);
         Assert.Equal((320, 240), (probed.Video!.Width, probed.Video.Height));
         Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
+    [Theory]
+    [InlineData("mp4", "mov_text")]
+    [InlineData("mov", "mov_text")]
+    [InlineData("webm", "webvtt")]
+    public async Task An_mkv_with_srt_subtitles_keeps_them_as_a_switchable_track(string target, string codec)
+    {
+        SkipUnlessInstalled();
+        // #789: an MKV with a Korean SRT track, made here.
+        var folder = fx.NewFolder();
+        var srt = Path.Combine(folder, "episode.srt");
+        await File.WriteAllTextAsync(srt, "1\r\n00:00:00,500 --> 00:00:01,500\r\n안녕하세요\r\n\r\n", TestContext.Current.CancellationToken);
+        var source = Path.Combine(folder, "episode.mkv");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=25:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-i", srt,
+            "-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-c:a", "aac", "-c:s", "srt", "-metadata:s:s:0", "language=kor", source]);
+
+        var output = await ConvertAsync(source, target);
+
+        var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, output, CancellationToken.None);
+        var track = Assert.Single(info.Subtitles);
+        Assert.Equal((codec, "kor"), (track.Codec, track.Language));
+        // The cue still starts half a second in. Timed text fills the gap before it with an empty 2-byte sample.
+        var packets = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "s:0", "-show_entries", "packet=pts_time,size", "-of", "csv=p=0", output],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        var cue = packets.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split(','))
+            .First(p => int.Parse(p[1], CultureInfo.InvariantCulture) > 2);
+        Assert.InRange(double.Parse(cue[0], CultureInfo.InvariantCulture), 0.45, 0.55);
     }
 
     [Fact]

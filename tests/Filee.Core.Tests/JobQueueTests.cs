@@ -436,6 +436,48 @@ public class JobQueueTests
         Assert.Equal(("error.too_many_frames", "216,000 > 100,000"), (file.ErrorKey, file.ErrorDetail));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task A_mixed_drop_selects_extraction_per_source_and_does_not_retry_a_refused_motion_photo(bool motion, bool refused)
+    {
+        using var dir = new TempDir();
+        var from = motion ? "jpg" : "mp4";
+        var target = motion ? "mp4" : "jpg";
+        var named = dir.File("named." + from);
+        var plain = dir.File("plain.png");
+        var special = new FakeConverter("extraction", new ConversionEdge(from, target, FrameSequence: !motion, MotionPhoto: motion))
+        {
+            Failure = refused ? new ConversionRefusedException("error.no_motion_photo") : null,
+        };
+        var ordinary = new FakeConverter("ordinary", new ConversionEdge(from, target), new ConversionEdge("png", target));
+        await using var queue = new JobQueue(new ConverterCatalog([special, ordinary]));
+        var preset = new Preset { TargetFormat = target, Media = { SaveEveryFrame = !motion, ExtractMotionPhoto = motion } };
+
+        var job = await Run(queue, [named, plain], preset);
+
+        Assert.Equal([named], special.OriginalSources);
+        Assert.Equal([plain], ordinary.OriginalSources);
+        var namedResult = job.Files.Single(f => f.SourcePath == named);
+        var plainResult = job.Files.Single(f => f.SourcePath == plain);
+        Assert.Equal(FileState.Done, plainResult.State);
+        Assert.EndsWith("by ordinary", File.ReadAllText(Assert.Single(plainResult.Outputs)));
+        if (refused)
+        {
+            Assert.Equal(JobState.CompletedWithErrors, job.State);
+            Assert.Equal(FileState.Failed, namedResult.State);
+            Assert.Equal("error.no_motion_photo", namedResult.ErrorKey);
+            Assert.Empty(namedResult.Outputs);
+        }
+        else
+        {
+            Assert.Equal(JobState.Completed, job.State);
+            Assert.Equal(FileState.Done, namedResult.State);
+            Assert.EndsWith("by extraction", File.ReadAllText(Assert.Single(namedResult.Outputs)));
+        }
+    }
+
     [Fact]
     public async Task Multi_step_route_keeps_intermediates_out_of_the_output_folder()
     {
@@ -588,6 +630,388 @@ public class JobQueueTests
         var merged = Path.Combine(dir.Path, "1_merged.pdf");
         Assert.Equal("1.pdf|2.pdf|3.pdf", File.ReadAllText(merged));
         Assert.Equal(second, merger.Inputs[1]); // existing PDFs are merged as-is
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Source_bookmarks_pair_original_names_with_direct_and_converted_pdfs(bool sourceBookmarks, bool normalizePaper)
+    {
+        using var dir = new TempDir();
+        var pdf = dir.File("report.pdf");
+        var image = dir.File("photo.jpg");
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("pdf", new ConversionEdge("jpg", "pdf"))]), merger);
+
+        var job = await Run(queue, [pdf, image], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf =
+            {
+                MergeIntoSingle = true, SourceBookmarks = sourceBookmarks, NormalizeMergePaper = normalizePaper,
+                MergePaper = PdfSheetPaper.Letter, MergeOrientation = PdfSheetOrientation.Landscape
+            },
+            Output = { FileNamePattern = "{name}_merged" }
+        });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal(sourceBookmarks, merger.SourceBookmarks);
+        Assert.Equal(normalizePaper ? new PdfMergePaper(PdfSheetPaper.Letter, PdfSheetOrientation.Landscape) : (PdfMergePaper?)null,
+            merger.Paper);
+        Assert.Equal(new PdfMergeInput(pdf, "report.pdf"), merger.MergeInputs[0]);
+        var converted = merger.MergeInputs[1];
+        Assert.Equal("photo.jpg", converted.SourceName);
+        Assert.Equal("photo.pdf", Path.GetFileName(converted.PdfPath));
+        Assert.NotEqual(image, converted.PdfPath);
+        Assert.StartsWith(JobQueue.DefaultWorkRoot + Path.DirectorySeparatorChar, converted.PdfPath);
+        Assert.Equal(2, merger.MergeInputs.Count);
+    }
+
+    [Fact]
+    public async Task Source_bookmarks_skip_failed_slots_without_shifting_names()
+    {
+        using var dir = new TempDir();
+        var first = dir.File("first.jpg");
+        var broken = dir.File("broken.png");
+        var last = dir.File("last.jpg");
+        var merger = new FakeMerger();
+        var catalog = new ConverterCatalog([
+            new FakeConverter("pdf", new ConversionEdge("jpg", "pdf")),
+            new FakeConverter("broken", new ConversionEdge("png", "pdf")) { Throw = true }
+        ]);
+        await using var queue = new JobQueue(catalog, merger);
+
+        var job = await Run(queue, [first, broken, last],
+            new Preset
+            {
+                TargetFormat = "pdf",
+                Pdf =
+                {
+                    MergeIntoSingle = true, SourceBookmarks = true, NormalizeMergePaper = true,
+                    MergePaper = PdfSheetPaper.A3, MergeOrientation = PdfSheetOrientation.Portrait
+                }
+            });
+
+        Assert.Equal(FileState.Failed, job.Files[1].State);
+        Assert.Equal(["first.jpg", "last.jpg"], merger.MergeInputs.Select(input => input.SourceName));
+        Assert.Equal(["first.pdf", "last.pdf"], merger.MergeInputs.Select(input => Path.GetFileName(input.PdfPath)));
+        Assert.True(merger.SourceBookmarks);
+        Assert.Equal(new PdfMergePaper(PdfSheetPaper.A3, PdfSheetOrientation.Portrait), merger.Paper);
+    }
+
+    [Fact]
+    public async Task Merge_paper_is_passed_when_only_one_pdf_survives_after_the_first_input_fails()
+    {
+        using var dir = new TempDir();
+        var broken = dir.File("broken.png");
+        var survivor = dir.File("survivor.pdf");
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([
+            new FakeConverter("broken", new ConversionEdge("png", "pdf")) { Throw = true }
+        ]), merger);
+
+        var job = await Run(queue, [broken, survivor], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf =
+            {
+                MergeIntoSingle = true, NormalizeMergePaper = true,
+                MergePaper = PdfSheetPaper.SameAsFirstPage, MergeOrientation = PdfSheetOrientation.Auto
+            },
+            Output = { FileNamePattern = "{name}_merged" }
+        });
+
+        Assert.Equal(JobState.CompletedWithErrors, job.State);
+        Assert.Equal(FileState.Failed, job.Files[0].State);
+        Assert.Equal(FileState.Done, job.Files[1].State);
+        Assert.Equal(new PdfMergeInput(survivor, "survivor.pdf"), Assert.Single(merger.MergeInputs));
+        Assert.Equal(new PdfMergePaper(PdfSheetPaper.SameAsFirstPage, PdfSheetOrientation.Auto), merger.Paper);
+        Assert.False(merger.SourceBookmarks);
+        Assert.True(File.Exists(Assert.Single(job.Outputs)));
+        Assert.Equal("x", File.ReadAllText(survivor));
+    }
+
+    // The queue converts at most ProcessorCount files at once. A and enough held files fill every worker but B's,
+    // so the last file can start only after B's whole run, its slot included, is over, and before A is released.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Source_bookmarks_keep_input_order_when_conversions_finish_in_reverse(bool normalizePaper)
+    {
+        Assert.SkipWhen(Environment.ProcessorCount < 2, "Needs two files converting at once.");
+        using var dir = new TempDir();
+        var first = dir.File("a.jpg");
+        var second = dir.File("b.jpg");
+        var held = Enumerable.Range(0, Environment.ProcessorCount - 2).Select(i => dir.File($"held-{i:D3}.jpg")).ToList();
+        var last = dir.File("z.jpg");
+        string[] files = [first, second, .. held, last];
+        var converter = new ReversePdfConverter(first, second, last);
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([converter]), merger);
+        var job = new ConversionJob(files,
+            new Preset
+            {
+                TargetFormat = "pdf",
+                Pdf =
+                {
+                    MergeIntoSingle = true, SourceBookmarks = true, NormalizeMergePaper = normalizePaper,
+                    MergePaper = PdfSheetPaper.SameAsFirstPage, MergeOrientation = PdfSheetOrientation.Auto
+                }
+            }, "Test");
+        var running = queue.RunAsync(job);
+
+        try
+        {
+            await converter.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await converter.LastStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.False(converter.FirstCompleted.Task.IsCompleted);
+        }
+        finally
+        {
+            converter.Release.TrySetResult();
+            await running.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.True(converter.FirstCompleted.Task.IsCompletedSuccessfully);
+        Assert.Equal(files.Select(Path.GetFileName), merger.MergeInputs.Select(input => input.SourceName));
+        Assert.Equal(files.Select(f => Path.ChangeExtension(Path.GetFileName(f), ".pdf")),
+            merger.MergeInputs.Select(input => Path.GetFileName(input.PdfPath)));
+        Assert.True(merger.SourceBookmarks);
+        Assert.Equal(normalizePaper ? new PdfMergePaper(PdfSheetPaper.SameAsFirstPage, PdfSheetOrientation.Auto) : (PdfMergePaper?)null,
+            merger.Paper);
+    }
+
+    [Fact]
+    public async Task Source_bookmarks_keep_duplicate_basenames_and_repeated_inputs()
+    {
+        using var dir = new TempDir();
+        Directory.CreateDirectory(Path.Combine(dir.Path, "one"));
+        Directory.CreateDirectory(Path.Combine(dir.Path, "two"));
+        var first = dir.File(Path.Combine("one", "report.pdf"));
+        var second = dir.File(Path.Combine("two", "report.pdf"));
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([]), merger);
+
+        var job = await Run(queue, [first, second, first], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { MergeIntoSingle = true, SourceBookmarks = true },
+            Output = { FileNamePattern = "{name}_merged" }
+        });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal([
+            new PdfMergeInput(first, "report.pdf"),
+            new PdfMergeInput(second, "report.pdf"),
+            new PdfMergeInput(first, "report.pdf")
+        ], merger.MergeInputs);
+        Assert.True(merger.SourceBookmarks);
+    }
+
+    [Theory]
+    [InlineData("pdf", false, 2)]
+    [InlineData("png", true, 2)]
+    [InlineData("mp4", true, 2)]
+    [InlineData("docx", true, 2)]
+    [InlineData("zip", true, 2)]
+    [InlineData("pdf", true, 1)]
+    public async Task Source_bookmarks_are_not_applied_without_an_actual_pdf_merge(string target, bool merge, int count)
+    {
+        using var dir = new TempDir();
+        var sources = Enumerable.Range(0, count).Select(i => dir.File($"{i}.jpg")).ToArray();
+        var merger = new FakeMerger();
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("writer", new ConversionEdge("jpg", target))]), merger);
+
+        var job = await Run(queue, sources,
+            new Preset
+            {
+                TargetFormat = target,
+                Pdf =
+                {
+                    MergeIntoSingle = merge, SourceBookmarks = true, NormalizeMergePaper = true,
+                    MergePaper = PdfSheetPaper.A3, MergeOrientation = PdfSheetOrientation.Landscape
+                }
+            });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal(count, job.Outputs.Count());
+        Assert.Empty(merger.MergeInputs);
+        Assert.Null(merger.SourceBookmarks);
+        Assert.Null(merger.Paper);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("finish")]
+    [InlineData("archive")]
+    public async Task Merge_paper_runs_before_finishing_and_archiving_and_discards_failed_outputs(string? failingStage)
+    {
+        using var dir = new TempDir();
+        var image = dir.File("photo.jpg");
+        var pdf = dir.File("report.pdf");
+        var pipeline = new MergePaperPipeline(failingStage);
+        await using var queue = new JobQueue(new ConverterCatalog([pipeline]), pipeline);
+        var job = await Run(queue, [image, pdf], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf =
+            {
+                MergeIntoSingle = true, SourceBookmarks = true, NormalizeMergePaper = true,
+                MergePaper = PdfSheetPaper.A3, MergeOrientation = PdfSheetOrientation.Landscape,
+                PageSize = PdfPageSize.A4, MarginMm = 8, PageNumbers = true
+            },
+            Document = { PdfA = true },
+            Output = { FileNamePattern = "{name}_merged" }
+        });
+
+        string[] expectedEvents = failingStage == "finish"
+            ? ["convert", "normalize", "finish"]
+            : ["convert", "normalize", "finish", "archive"];
+        Assert.Equal(expectedEvents, pipeline.Events);
+        Assert.Equal(new PdfMergePaper(PdfSheetPaper.A3, PdfSheetOrientation.Landscape), pipeline.Paper);
+        Assert.True(pipeline.SourceBookmarks);
+        Assert.NotNull(pipeline.ConvertedOptions);
+        Assert.Equal(PdfPageSize.A4, pipeline.ConvertedOptions.PageSize);
+        Assert.Equal(8, pipeline.ConvertedOptions.MarginMm);
+        if (failingStage is null)
+        {
+            Assert.Equal(JobState.Completed, job.State);
+            Assert.Equal("normalized|finished|archived", File.ReadAllText(Assert.Single(job.Outputs)));
+            Assert.True(pipeline.ArchivedChanged);
+        }
+        else
+        {
+            Assert.Equal(JobState.Failed, job.State);
+            Assert.Empty(job.Outputs);
+            Assert.False(File.Exists(Path.Combine(dir.Path, "photo_merged.pdf")));
+        }
+        Assert.Equal("x", File.ReadAllText(image));
+        Assert.Equal("x", File.ReadAllText(pdf));
+    }
+
+    [Theory]
+    [InlineData("error.merge_paper_geometry")]
+    [InlineData("error.merge_paper_limit")]
+    public async Task A_refused_merge_fails_every_merged_file_with_its_reason_and_writes_nothing(string errorKey)
+    {
+        using var dir = new TempDir();
+        var image = dir.File("photo.jpg");
+        var pdf = dir.File("report.pdf");
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("writer", new ConversionEdge("jpg", "pdf"))]),
+            new RefusingMerger(errorKey));
+        var job = await Run(queue, [image, pdf], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { MergeIntoSingle = true, NormalizeMergePaper = true },
+            Output = { FileNamePattern = "{name}_merged" }
+        });
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Empty(job.Outputs);
+        Assert.All(job.Files, f =>
+        {
+            Assert.Equal(FileState.Failed, f.State);
+            Assert.Equal(errorKey, f.ErrorKey);
+            Assert.Equal("page 2", f.ErrorDetail);
+        });
+        Assert.False(File.Exists(Path.Combine(dir.Path, "photo_merged.pdf")));
+        Assert.Equal("x", File.ReadAllText(image));
+        Assert.Equal("x", File.ReadAllText(pdf));
+    }
+
+    private sealed class RefusingMerger(string errorKey) : IPdfMerger
+    {
+        public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
+            CancellationToken cancellationToken)
+        {
+            File.WriteAllText(outputPath, "half");
+            throw new ConversionRefusedException(errorKey, "page 2");
+        }
+    }
+
+    private sealed class MergePaperPipeline(string? failingStage) : IConverter, IPdfMerger, IPdfFinisher, IPdfArchiver
+    {
+        private readonly FakeConverter _writer = new("pipeline", new ConversionEdge("jpg", "pdf"));
+        public string Id => _writer.Id;
+        public string DisplayName => _writer.DisplayName;
+        public IReadOnlyList<ConversionEdge> Edges => _writer.Edges;
+        public int MaxParallelism => 0;
+        public List<string> Events { get; } = [];
+        public PdfMergePaper? Paper { get; private set; }
+        public bool SourceBookmarks { get; private set; }
+        public PdfOptions? ConvertedOptions { get; private set; }
+        public bool ArchivedChanged { get; private set; }
+        public EngineStatus GetStatus() => EngineStatus.Available();
+
+        public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+        {
+            Events.Add("convert");
+            ConvertedOptions = step.Preset.Pdf;
+            return _writer.ConvertAsync(step, progress, cancellationToken);
+        }
+
+        public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
+            CancellationToken cancellationToken)
+        {
+            Events.Add("normalize");
+            Paper = paper;
+            SourceBookmarks = sourceBookmarks;
+            File.WriteAllText(outputPath, "normalized");
+            return Task.CompletedTask;
+        }
+
+        public Task FinishAsync(string path, PdfOptions options, CancellationToken cancellationToken)
+        {
+            Events.Add("finish");
+            File.AppendAllText(path, "|finished");
+            if (failingStage == "finish")
+                throw new InvalidOperationException("finishing failed");
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken)
+        {
+            Events.Add("archive");
+            ArchivedChanged = changed;
+            File.AppendAllText(path, "|archived");
+            if (failingStage == "archive")
+                throw new InvalidOperationException("archiving failed");
+            return Task.FromResult(true);
+        }
+    }
+
+    private sealed class ReversePdfConverter(string first, string second, string last) : IConverter
+    {
+        private readonly FakeConverter _writer = new("reverse", new ConversionEdge("jpg", "pdf"));
+        public string Id => _writer.Id;
+        public string DisplayName => _writer.DisplayName;
+        public IReadOnlyList<ConversionEdge> Edges => _writer.Edges;
+        public int MaxParallelism => 0;
+        public TaskCompletionSource FirstStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource LastStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public EngineStatus GetStatus() => EngineStatus.Available();
+
+        public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+        {
+            // B runs straight through; the last file signals it got a worker; A and the held files wait.
+            if (step.InputPath == last)
+                LastStarted.TrySetResult();
+            else if (step.InputPath != second)
+            {
+                if (step.InputPath == first)
+                    FirstStarted.TrySetResult();
+                await Release.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            }
+            var outputs = await _writer.ConvertAsync(step, progress, cancellationToken);
+            if (step.InputPath == first)
+                FirstCompleted.TrySetResult();
+            return outputs;
+        }
     }
 
     [Fact]

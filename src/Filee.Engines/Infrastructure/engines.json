@@ -31,7 +31,7 @@
     },
     "libreoffice": {
       "version": "26.2.6",
-      "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.6/win/x86_64/LibreOffice_26.2.6_Win_x86-64.msi",
+      "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/win/x86_64/LibreOffice_26.2.6.3_Win_x86-64.msi",
       "sha256": "F9877032FD908BEB9C0DDF06DF4AF5C2E85F419C42E14876C4CCE5AAE5FB2660",
       "size": 373252096,
       "kind": "msi"
@@ -77,6 +77,13 @@
       "sha256": "A91EA9B26AF6CD057D8B193B86EDB66D1535F7C5CB0A106965FA74F8168A6BD5",
       "size": 240201728,
       "kind": "msi"
+    },
+    "weasyprint": {
+      "version": "70.0",
+      "url": "https://github.com/Kozea/WeasyPrint/releases/download/v70.0/weasyprint-windows-onedir.zip",
+      "sha256": "AB1151F210B4E6BB7AA7A79E91A67E8DDB760094C107BFDA55241B6AAEFE7D53",
+      "size": 32271073,
+      "kind": "zip"
     },
     "tesseract": {
       "version": "5.4.0.20240606",
@@ -247,7 +254,7 @@
         },
         "libreoffice": {
           "version": "26.2.6",
-          "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.6/mac/x86_64/LibreOffice_26.2.6_MacOS_x86-64.dmg",
+          "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/mac/x86_64/LibreOffice_26.2.6.3_MacOS_x86-64.dmg",
           "sha256": "135B8A95B8133396D54BF8E726DBC0066145EFA0D785963FC3D4592ACBFCFE5B",
           "size": 308308875,
           "kind": "dmg"
@@ -301,7 +308,7 @@
         },
         "libreoffice": {
           "version": "26.2.6",
-          "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.6/mac/aarch64/LibreOffice_26.2.6_MacOS_aarch64.dmg",
+          "url": "https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/mac/aarch64/LibreOffice_26.2.6.3_MacOS_aarch64.dmg",
           "sha256": "94BB3248DF074C225490A8A6D1D9DC87C7D6783DBB7A8E9F0D0C3D94348552AF",
           "size": 297798926,
           "kind": "dmg"
