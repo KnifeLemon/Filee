@@ -105,4 +105,20 @@ public class SourceFormatTests
         Assert.False(SettingsMigrations.ApplyToLibrary(99, presets, profiles));
         Assert.DoesNotContain("mdl", models.Extensions);
     }
+
+    [Fact]
+    public void Version_100_libraries_get_the_decompile_preset_after_smd()
+    {
+        var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id == BuiltInData.DecompileModelId);
+        var profiles = BuiltInData.CreateProfiles();
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(100, presets, profiles));
+        Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id)); // right after "SMD"
+        Assert.Equal(FormatRegistry.Folder, presets.Single(p => p.Id == BuiltInData.DecompileModelId).TargetFormat);
+        Assert.False(SettingsMigrations.ApplyToLibrary(100, presets, profiles));
+        // Not on a donut.
+        Assert.DoesNotContain(BuiltInData.CreateProfiles(),
+            p => p.PresetIds.Contains(BuiltInData.DecompileModelId) || p.BackPresetIds?.Contains(BuiltInData.DecompileModelId) == true);
+    }
 }

@@ -11,15 +11,14 @@
 //         → their vertices (9 bytes: the index of the mesh's vertex) and triangle lists (or strips) of u16
 //
 // The model is read in its bind pose with the default body groups (the first model of each body part), the first skin
-// and LOD 0; animations, flexes and physics (.phy) are not read. Source is Z up, one unit an inch, triangles clockwise,
-// UVs from the top left: Filee turns that into its own conventions (Y up, millimetres, counter-clockwise, bottom left).
+// and LOD 0; the rest (every body group and LOD, animations, physics) is read for decompiling (SourceDecompiler).
+// Source is Z up, one unit an inch, triangles clockwise, UVs from the top left: Filee turns that into its own
+// conventions (Y up, millimetres, counter-clockwise, bottom left).
 // The textures are found as Garry's Mod finds them: the model's material (a .vmt) in a "materials" folder above the
 // model, its $basetexture (a .vtf) decoded by the VTF reader.
 
-using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.ExceptionServices;
-using System.Text;
 using Filee.Core.Conversion;
 using Filee.Engines.Magick;
 using ImageMagick;
@@ -27,19 +26,16 @@ using ImageMagick;
 namespace Filee.Engines.Models3D;
 
 /// <summary>A Source engine model as read from its .mdl, .vvd and .vtx.</summary>
-internal sealed class SourceModel
+internal sealed partial class SourceModel
 {
     /// <summary>One inch, Source's unit, in Filee's millimetres.</summary>
     public const float MillimetresPerUnit = 25.4f;
 
-    /// <summary>The largest .mdl, .vvd or .vtx Filee reads (a damaged or made-up file otherwise).</summary>
-    private const long MaxFileSize = 256L * 1024 * 1024;
-
-    private const int MaxBones = 1024;
-    private const int MaxTextures = 4096;
-    private const int MaxBodyParts = 512;
-    private const int MaxMeshes = 16384;
-    private const int MaxVertices = 4_000_000;
+    internal const int MaxBones = 1024;
+    internal const int MaxTextures = 4096;
+    internal const int MaxBodyParts = 512;
+    internal const int MaxMeshes = 16384;
+    internal const int MaxVertices = 4_000_000;
 
     /// <summary>A bone in its bind pose, relative to its parent (Source's axes and units).</summary>
     internal readonly record struct Bone(string Name, int Parent, Vector3 Position, Vector3 Rotation);
@@ -59,6 +55,15 @@ internal sealed class SourceModel
     /// <summary>The folders the model's materials are looked up in ($cdmaterials, "/" separated, without the end slash).</summary>
     public List<string> MaterialFolders { get; } = [];
 
+    /// <summary>The material of every skin reference in the first skin family (what a mesh's material number selects).</summary>
+    public List<string> SkinMaterials { get; private set; } = [];
+
+    /// <summary>The .mdl, its file name and folder; the .vtx and its layout, kept for decompiling.</summary>
+    internal SourceBytes Mdl { get; private init; } = new([], "");
+    internal SourceBytes Vtx { get; private set; } = new([], "");
+    internal bool ExtendedVtx { get; private set; }
+    internal string MdlPath { get; private init; } = "";
+
     /// <summary>The most triangles Filee reads from one model, over all its meshes (as many as an SMD may have).</summary>
     public const int MaxTriangles = 10_000_000;
 
@@ -68,14 +73,14 @@ internal sealed class SourceModel
     /// </summary>
     public static SourceModel Load(string mdlPath, CancellationToken cancellationToken, int maxTriangles = MaxTriangles)
     {
-        var mdl = new Bytes(ReadFile(mdlPath), Path.GetFileName(mdlPath));
+        var mdl = SourceBytes.Read(mdlPath);
         var basePath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(mdlPath))!, Path.GetFileNameWithoutExtension(mdlPath));
         var vvdPath = Companion(basePath, [".vvd"])
             ?? throw new FileNotFoundException($"{Path.GetFileName(mdlPath)} needs its vertex file {Path.GetFileName(basePath)}.vvd next to it.");
         var vtxPath = Companion(basePath, [".dx90.vtx", ".vtx", ".dx80.vtx", ".sw.vtx"])
             ?? throw new FileNotFoundException($"{Path.GetFileName(mdlPath)} needs its triangle file {Path.GetFileName(basePath)}.dx90.vtx next to it.");
-        var vvd = new Bytes(ReadFile(vvdPath), Path.GetFileName(vvdPath));
-        var vtx = new Bytes(ReadFile(vtxPath), Path.GetFileName(vtxPath));
+        var vvd = SourceBytes.Read(vvdPath);
+        var vtx = SourceBytes.Read(vtxPath);
 
         if (!mdl.Data.AsSpan().StartsWith("IDST"u8))
             throw new InvalidDataException($"{mdl.File} is not a Source engine model (IDST).");
@@ -83,10 +88,11 @@ internal sealed class SourceModel
         if (version is < 44 or > 49)
             throw new InvalidDataException($"{mdl.File} is a model of version {version}; Filee reads Source engine models of versions 44 to 49.");
         var checksum = mdl.I32(8);
-        var model = new SourceModel { Name = mdl.String(12, 64) };
+        var model = new SourceModel { Name = mdl.String(12, 64), Mdl = mdl, MdlPath = Path.GetFullPath(mdlPath) };
 
         ReadBones(mdl, model);
         var textures = ReadTextures(mdl, model);
+        model.SkinMaterials = textures;
         ReadVertices(vvd, checksum, model);
         cancellationToken.ThrowIfCancellationRequested();
         if (!vtx.Data.AsSpan().StartsWith((ReadOnlySpan<byte>)[7, 0, 0, 0]))
@@ -94,6 +100,7 @@ internal sealed class SourceModel
         if (vtx.I32(16) != checksum)
             throw new InvalidDataException($"{vtx.File} belongs to another build of {mdl.File}: its checksum differs.");
         // Strip groups and strips grew by 8 bytes in later branches (CS:GO); the layout whose indices all fit is used.
+        model.Vtx = vtx;
         // A model too large in the first layout stays refused when the second one doesn't fit it at all.
         try
         {
@@ -102,6 +109,7 @@ internal sealed class SourceModel
         catch (Exception first) when (first is InvalidDataException or ConversionRefusedException)
         {
             model.Meshes.Clear();
+            model.ExtendedVtx = true;
             try
             {
                 ReadMeshes(mdl, vtx, textures, model, extended: true, new TriangleBudget(maxTriangles), cancellationToken);
@@ -116,16 +124,8 @@ internal sealed class SourceModel
         return model;
     }
 
-    private static byte[] ReadFile(string path)
-    {
-        var length = new FileInfo(path).Length;
-        if (length > MaxFileSize)
-            throw new InvalidDataException($"{Path.GetFileName(path)} is too large to be a Source engine model file.");
-        return File.ReadAllBytes(path);
-    }
-
     /// <summary>The first of "<paramref name="basePath"/> + suffix" that exists, letter case aside.</summary>
-    private static string? Companion(string basePath, string[] suffixes)
+    internal static string? Companion(string basePath, string[] suffixes)
     {
         var folder = Path.GetDirectoryName(basePath)!;
         var name = Path.GetFileName(basePath);
@@ -139,7 +139,7 @@ internal sealed class SourceModel
         return null;
     }
 
-    private static void ReadBones(Bytes mdl, SourceModel model)
+    private static void ReadBones(SourceBytes mdl, SourceModel model)
     {
         var count = mdl.Count(156, MaxBones, "bones");
         var start = mdl.I32(160);
@@ -153,7 +153,7 @@ internal sealed class SourceModel
     }
 
     /// <summary>The texture name of every skin reference of the first skin family.</summary>
-    private static List<string> ReadTextures(Bytes mdl, SourceModel model)
+    private static List<string> ReadTextures(SourceBytes mdl, SourceModel model)
     {
         var count = mdl.Count(204, MaxTextures, "textures");
         var start = mdl.I32(208);
@@ -182,7 +182,7 @@ internal sealed class SourceModel
         return skin.Count > 0 ? skin : names;
     }
 
-    private static void ReadVertices(Bytes vvd, int checksum, SourceModel model)
+    private static void ReadVertices(SourceBytes vvd, int checksum, SourceModel model)
     {
         if (!vvd.Data.AsSpan().StartsWith("IDSV"u8))
             throw new InvalidDataException($"{vvd.File} is not a Source engine vertex file (IDSV).");
@@ -193,8 +193,7 @@ internal sealed class SourceModel
         var fixupTable = vvd.I32(52);
         var vertexData = vvd.I32(56);
         // The tables are checked against the file before a single vertex is read or added.
-        bool Fits(long offset, long count, int size) => offset >= 0 && count >= 0 && offset + count * size <= vvd.Data.Length;
-        if (!Fits(vertexData, lod0, 48) || !Fits(fixupTable, fixups, 12))
+        if (!vvd.Fits(vertexData, lod0, 48) || !vvd.Fits(fixupTable, fixups, 12))
             throw vvd.Damaged("the vertex table");
 
         void Add(int index)
@@ -220,7 +219,7 @@ internal sealed class SourceModel
             var length = vvd.I32(at + 8);
             if (lod < 0)
                 continue;
-            if (source < 0 || length < 0 || model.Vertices.Count + length > MaxVertices || !Fits(vertexData, (long)source + length, 48))
+            if (source < 0 || length < 0 || model.Vertices.Count + length > MaxVertices || !vvd.Fits(vertexData, (long)source + length, 48))
                 throw vvd.Damaged("a vertex fixup");
             for (var i = 0; i < length; i++)
                 Add(source + i);
@@ -243,11 +242,9 @@ internal sealed class SourceModel
         }
     }
 
-    private static void ReadMeshes(Bytes mdl, Bytes vtx, List<string> materials, SourceModel model, bool extended,
+    private static void ReadMeshes(SourceBytes mdl, SourceBytes vtx, List<string> materials, SourceModel model, bool extended,
         TriangleBudget budget, CancellationToken cancellationToken)
     {
-        var stripGroupSize = extended ? 33 : 25;
-        var stripSize = extended ? 35 : 27;
         var bodyParts = Math.Min(mdl.Count(232, MaxBodyParts, "body parts"), vtx.Count(28, MaxBodyParts, "body parts"));
         var mdlBodyParts = mdl.I32(236);
         var vtxBodyParts = vtx.I32(32);
@@ -257,89 +254,103 @@ internal sealed class SourceModel
             var vtxPart = vtxBodyParts + b * 8;
             if (mdl.I32(mdlPart + 4) <= 0 || vtx.I32(vtxPart) <= 0)
                 continue;
-            // The default body group: the first model of the part.
+            // The default body group: the first model of the part, at LOD 0.
             var mdlModel = mdlPart + mdl.I32(mdlPart + 12);
             var vtxModel = vtxPart + vtx.I32(vtxPart + 4);
-            var modelName = mdl.String(mdlModel, 64);
-            var firstVertex = mdl.I32(mdlModel + 84) / 48;
-            var meshes = mdl.Count(mdlModel + 72, MaxMeshes, "meshes");
-            var mdlMeshes = mdlModel + mdl.I32(mdlModel + 76);
             if (vtx.I32(vtxModel) <= 0)
                 continue;
-            var lod = vtxModel + vtx.I32(vtxModel + 4); // LOD 0
-            meshes = Math.Min(meshes, vtx.Count(lod, MaxMeshes, "meshes"));
-            var vtxMeshes = lod + vtx.I32(lod + 4);
-
-            for (var m = 0; m < meshes; m++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var mdlMesh = mdlMeshes + m * 116;
-                var material = mdl.I32(mdlMesh);
-                var meshFirst = firstVertex + mdl.I32(mdlMesh + 12);
-                var vtxMesh = vtxMeshes + m * 9;
-                var groups = vtx.Count(vtxMesh, MaxMeshes, "strip groups");
-                var groupTable = vtxMesh + vtx.I32(vtxMesh + 4);
-                var triangles = new List<int>();
-                for (var g = 0; g < groups; g++)
-                {
-                    var group = groupTable + g * stripGroupSize;
-                    var vertexCount = vtx.Count(group, MaxVertices, "vertices");
-                    var vertexTable = group + vtx.I32(group + 4);
-                    var indexCount = vtx.Count(group + 8, MaxVertices * 3, "indices");
-                    var indexTable = group + vtx.I32(group + 12);
-                    var strips = vtx.Count(group + 16, MaxMeshes, "strips");
-                    var stripTable = group + vtx.I32(group + 20);
-
-                    int MeshVertex(int index)
-                    {
-                        if ((uint)index >= (uint)vertexCount)
-                            throw vtx.Damaged("a triangle");
-                        var vertex = meshFirst + vtx.U16(vertexTable + index * 9 + 4);
-                        if ((uint)vertex >= (uint)model.Vertices.Count)
-                            throw vtx.Damaged("a triangle");
-                        return vertex;
-                    }
-
-                    var anyStrip = false;
-                    for (var s = 0; s < strips; s++)
-                    {
-                        var strip = stripTable + s * stripSize;
-                        if ((vtx.Byte(strip + 18) & 0x02) == 0)
-                            continue;
-                        // A triangle strip: every next index makes a triangle with the two before it, alternating.
-                        anyStrip = true;
-                        var first = vtx.I32(strip + 4);
-                        var count = vtx.I32(strip);
-                        if (first < 0 || count < 0 || first + count > indexCount)
-                            throw vtx.Damaged("a triangle strip");
-                        for (var i = 2; i < count; i++)
-                        {
-                            var a = MeshVertex(vtx.U16(indexTable + (first + i - 2) * 2));
-                            var c = MeshVertex(vtx.U16(indexTable + (first + i - 1) * 2));
-                            var d = MeshVertex(vtx.U16(indexTable + (first + i) * 2));
-                            if (a == c || c == d || a == d)
-                                continue;
-                            budget.Take(1);
-                            if (i % 2 == 0)
-                                triangles.AddRange([a, c, d]);
-                            else
-                                triangles.AddRange([c, a, d]);
-                        }
-                    }
-                    if (anyStrip)
-                        continue;
-                    if (indexCount % 3 != 0)
-                        throw vtx.Damaged("a triangle list");
-                    budget.Take(indexCount / 3);
-                    for (var i = 0; i < indexCount; i++)
-                        triangles.Add(MeshVertex(vtx.U16(indexTable + i * 2)));
-                }
-                if (triangles.Count == 0)
-                    continue;
-                var name = material >= 0 && material < materials.Count ? materials[material] : $"material{material}";
-                model.Meshes.Add(new Mesh(modelName, name, triangles));
-            }
+            var lod = vtxModel + vtx.I32(vtxModel + 4);
+            model.Meshes.AddRange(ReadLodMeshes(mdl, vtx, mdlModel, lod, materials, model.Vertices.Count, extended, budget, cancellationToken));
         }
+    }
+
+    /// <summary>
+    /// The meshes of one model at one LOD: the model's meshes in the .mdl (at <paramref name="mdlModel"/>) with their
+    /// triangles from the .vtx LOD at <paramref name="vtxLod"/>, as indices into the LOD 0 vertices (every LOD's vertex
+    /// numbers count from the same first vertex of each mesh).
+    /// </summary>
+    internal static List<Mesh> ReadLodMeshes(SourceBytes mdl, SourceBytes vtx, int mdlModel, int vtxLod, IReadOnlyList<string> materials,
+        int vertexCount, bool extended, TriangleBudget budget, CancellationToken cancellationToken)
+    {
+        var stripGroupSize = extended ? 33 : 25;
+        var stripSize = extended ? 35 : 27;
+        var modelName = mdl.String(mdlModel, 64);
+        var firstVertex = mdl.I32(mdlModel + 84) / 48;
+        var meshes = Math.Min(mdl.Count(mdlModel + 72, MaxMeshes, "meshes"), vtx.Count(vtxLod, MaxMeshes, "meshes"));
+        var mdlMeshes = mdlModel + mdl.I32(mdlModel + 76);
+        var vtxMeshes = vtxLod + vtx.I32(vtxLod + 4);
+        var result = new List<Mesh>();
+
+        for (var m = 0; m < meshes; m++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var mdlMesh = mdlMeshes + m * 116;
+            var material = mdl.I32(mdlMesh);
+            var meshFirst = firstVertex + mdl.I32(mdlMesh + 12);
+            var vtxMesh = vtxMeshes + m * 9;
+            var groups = vtx.Count(vtxMesh, MaxMeshes, "strip groups");
+            var groupTable = vtxMesh + vtx.I32(vtxMesh + 4);
+            var triangles = new List<int>();
+            for (var g = 0; g < groups; g++)
+            {
+                var group = groupTable + g * stripGroupSize;
+                var groupVertices = vtx.Count(group, MaxVertices, "vertices");
+                var vertexTable = group + vtx.I32(group + 4);
+                var indexCount = vtx.Count(group + 8, MaxVertices * 3, "indices");
+                var indexTable = group + vtx.I32(group + 12);
+                var strips = vtx.Count(group + 16, MaxMeshes, "strips");
+                var stripTable = group + vtx.I32(group + 20);
+
+                int MeshVertex(int index)
+                {
+                    if ((uint)index >= (uint)groupVertices)
+                        throw vtx.Damaged("a triangle");
+                    var vertex = meshFirst + vtx.U16(vertexTable + index * 9 + 4);
+                    if ((uint)vertex >= (uint)vertexCount)
+                        throw vtx.Damaged("a triangle");
+                    return vertex;
+                }
+
+                var anyStrip = false;
+                for (var s = 0; s < strips; s++)
+                {
+                    var strip = stripTable + s * stripSize;
+                    if ((vtx.Byte(strip + 18) & 0x02) == 0)
+                        continue;
+                    // A triangle strip: every next index makes a triangle with the two before it, alternating.
+                    anyStrip = true;
+                    var first = vtx.I32(strip + 4);
+                    var count = vtx.I32(strip);
+                    if (first < 0 || count < 0 || first + count > indexCount)
+                        throw vtx.Damaged("a triangle strip");
+                    for (var i = 2; i < count; i++)
+                    {
+                        var a = MeshVertex(vtx.U16(indexTable + (first + i - 2) * 2));
+                        var c = MeshVertex(vtx.U16(indexTable + (first + i - 1) * 2));
+                        var d = MeshVertex(vtx.U16(indexTable + (first + i) * 2));
+                        if (a == c || c == d || a == d)
+                            continue;
+                        budget.Take(1);
+                        if (i % 2 == 0)
+                            triangles.AddRange([a, c, d]);
+                        else
+                            triangles.AddRange([c, a, d]);
+                    }
+                }
+                if (anyStrip)
+                    continue;
+                if (indexCount % 3 != 0)
+                    throw vtx.Damaged("a triangle list");
+                budget.Take(indexCount / 3);
+                for (var i = 0; i < indexCount; i++)
+                    triangles.Add(MeshVertex(vtx.U16(indexTable + i * 2)));
+            }
+            if (triangles.Count == 0)
+                continue;
+            var name = material >= 0 && material < materials.Count ? materials[material] : $"material{material}";
+            result.Add(new Mesh(modelName, name, triangles));
+        }
+        return result;
     }
 
     /// <summary>
@@ -384,44 +395,6 @@ internal sealed class SourceModel
             result.Parts.Add(part);
         }
         return result;
-    }
-
-    /// <summary>A model file's bytes with bounds-checked little-endian reads.</summary>
-    private sealed class Bytes(byte[] data, string file)
-    {
-        public byte[] Data { get; } = data;
-        public string File { get; } = file;
-
-        public InvalidDataException Damaged(string what) => new($"{File} is damaged ({what} points outside the file).");
-
-        private ReadOnlySpan<byte> At(int offset, int length) =>
-            offset >= 0 && (long)offset + length <= Data.Length ? Data.AsSpan(offset, length) : throw Damaged("an offset");
-
-        public int I32(int offset) => BinaryPrimitives.ReadInt32LittleEndian(At(offset, 4));
-        public int I16(int offset) => BinaryPrimitives.ReadInt16LittleEndian(At(offset, 2));
-        public int U16(int offset) => BinaryPrimitives.ReadUInt16LittleEndian(At(offset, 2));
-        public byte Byte(int offset) => At(offset, 1)[0];
-        public float F32(int offset) => BinaryPrimitives.ReadSingleLittleEndian(At(offset, 4));
-        public Vector3 Vector(int offset) => new(F32(offset), F32(offset + 4), F32(offset + 8));
-
-        /// <summary>A count at <paramref name="offset"/>, at most <paramref name="max"/>.</summary>
-        public int Count(int offset, int max, string what)
-        {
-            var count = I32(offset);
-            if (count < 0 || count > max)
-                throw new InvalidDataException($"{File} is damaged (it claims {count} {what}).");
-            return count;
-        }
-
-        /// <summary>A NUL-terminated name at <paramref name="offset"/>, at most <paramref name="max"/> bytes.</summary>
-        public string String(int offset, int max = 1024)
-        {
-            if (offset < 0 || offset >= Data.Length)
-                throw Damaged("a name");
-            var span = Data.AsSpan(offset, Math.Min(max, Data.Length - offset));
-            var end = span.IndexOf((byte)0);
-            return Encoding.UTF8.GetString(end < 0 ? span : span[..end]);
-        }
     }
 }
 

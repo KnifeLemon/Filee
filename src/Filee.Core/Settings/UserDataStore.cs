@@ -1200,6 +1200,10 @@ internal static class SettingsMigrations
             changed |= AddSourcePresets(presets);
             changed |= LearnExtensions(profiles, out _, ["mdl", "smd"]);
         }
+        // v101: "QC + SMD" (decompiling a Source engine model into its QC and SMDs) joins the palette after "SMD", not a
+        //       donut.
+        if (from < 101 && presets.All(p => p.Id != BuiltInData.DecompileModelId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.DecompileModelId);
         return changed;
     }
 
@@ -1277,7 +1281,8 @@ internal static class SettingsMigrations
     private static bool AddSourcePresets(List<Preset> presets)
     {
         var changed = false;
-        foreach (var preset in BuiltInData.SourceModelPresets().Where(p => presets.All(existing => existing.Id != p.Id)))
+        // Only "SMD": "QC + SMD" came a step later.
+        foreach (var preset in BuiltInData.SourceModelPresets().Where(p => p.Id == "to-smd" && presets.All(existing => existing.Id != p.Id)))
         {
             var models = BuiltInData.ModelPresets().Select(p => p.Id).ToHashSet();
             var last = presets.FindLastIndex(p => models.Contains(p.Id));
