@@ -193,6 +193,7 @@
   "notice.gcode_no_thumbnail": "لا يحتوي ملف G-code على معاينة من برنامج التقطيع، لذا رُسم مسار الأداة من الأعلى",
   "notice.cmyk_needs_ghostscript": "هذا الملف بنظام CMYK لكنه حُفظ بنظام RGB: ثبّت Ghostscript من الإعدادات ← المحركات للإبقاء على CMYK",
   "notice.pdfa_needs_ghostscript": "هذا الملف ليس PDF/A: ثبّت Ghostscript من الإعدادات ← المحركات لإنشاء PDF/A",
+  "notice.pdfa_form_fields": "تم إنشاء PDF/A: لم يعد بالإمكان تعبئة حقول النموذج",
   "notice.cmyk_render_failed": "هذا الملف بنظام CMYK، لكن Ghostscript لم يتمكن من رسمه، لذلك حُفظ بنظام RGB",
   "notice.original_kept": "تم الاحتفاظ بالأصل وحُفظت النتيجة كنسخة",
   "notice.original_in_trash": "الأصل في سلة المحذوفات، واحتفظت النتيجة باسمها",

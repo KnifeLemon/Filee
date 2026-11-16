@@ -199,6 +199,7 @@
   "notice.gcode_no_thumbnail": "В файле G-code нет превью слайсера, поэтому траектория нарисована сверху",
   "notice.cmyk_needs_ghostscript": "Это файл CMYK, но он сохранён в RGB: чтобы сохранить CMYK, установите Ghostscript в разделе Настройки → Движки",
   "notice.pdfa_needs_ghostscript": "Этот PDF не в формате PDF/A: чтобы создавать PDF/A, установите Ghostscript в разделе Настройки → Движки",
+  "notice.pdfa_form_fields": "Создан PDF/A: поля формы больше нельзя заполнять",
   "notice.cmyk_render_failed": "Это файл CMYK, но Ghostscript не смог его отрисовать, поэтому он сохранён в RGB",
   "notice.original_kept": "Оригинал оставлен, результат сохранён как копия",
   "notice.original_in_trash": "Оригинал в Корзине, результат сохранил своё имя",

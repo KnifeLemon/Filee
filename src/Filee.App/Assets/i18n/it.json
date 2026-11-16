@@ -192,6 +192,7 @@
 "notice.gcode_no_thumbnail": "Il file G-code non ha un'anteprima dello slicer, quindi il percorso è stato disegnato visto dall'alto",
 "notice.cmyk_needs_ghostscript": "Questo file è CMYK ma è stato salvato in RGB: installa Ghostscript in Impostazioni → Motori per mantenere il CMYK",
 "notice.pdfa_needs_ghostscript": "Questo PDF non è PDF/A: installa Ghostscript in Impostazioni → Motori per creare PDF/A",
+"notice.pdfa_form_fields": "PDF/A creato: i campi del modulo non possono più essere compilati",
 "notice.cmyk_render_failed": "Questo file è CMYK, ma Ghostscript non è riuscito a disegnarlo, quindi è stato salvato in RGB",
 "notice.original_kept": "L'originale è stato conservato, il risultato è stato salvato come copia",
 "notice.original_in_trash": "L'originale è nel Cestino, il risultato ha mantenuto il proprio nome",

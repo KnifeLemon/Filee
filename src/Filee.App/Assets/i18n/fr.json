@@ -199,6 +199,7 @@
   "notice.gcode_no_thumbnail": "Le fichier G-code n'a pas d'aperçu du slicer : son parcours a été dessiné vu de dessus",
   "notice.cmyk_needs_ghostscript": "Ce fichier est en CMJN mais a été enregistré en RVB : installez Ghostscript dans Paramètres → Moteurs pour garder le CMJN",
   "notice.pdfa_needs_ghostscript": "Ce PDF n'est pas un PDF/A : installez Ghostscript dans Paramètres → Moteurs pour créer du PDF/A",
+  "notice.pdfa_form_fields": "PDF/A créé : les champs du formulaire ne peuvent plus être remplis",
   "notice.cmyk_render_failed": "Ce fichier est en CMJN, mais Ghostscript n'a pas pu le dessiner : il a été enregistré en RVB",
   "notice.original_kept": "L'original a été conservé, le résultat a été enregistré en copie",
   "notice.original_in_trash": "L'original est dans la Corbeille, le résultat a gardé son propre nom",

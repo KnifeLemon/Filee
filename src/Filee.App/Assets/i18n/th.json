@@ -193,6 +193,7 @@
   "notice.gcode_no_thumbnail": "ไฟล์ G-code ไม่มีภาพตัวอย่างจากสไลเซอร์ จึงวาดเส้นทางเครื่องมือจากมุมบน",
   "notice.cmyk_needs_ghostscript": "ไฟล์นี้เป็น CMYK แต่บันทึกเป็น RGB: ติดตั้ง Ghostscript ในการตั้งค่า → เครื่องมือแปลงไฟล์ เพื่อคง CMYK ไว้",
   "notice.pdfa_needs_ghostscript": "PDF นี้ไม่ใช่ PDF/A: ติดตั้ง Ghostscript ในการตั้งค่า → เครื่องมือแปลงไฟล์ เพื่อสร้าง PDF/A",
+  "notice.pdfa_form_fields": "สร้าง PDF/A แล้ว: ไม่สามารถกรอกช่องแบบฟอร์มได้อีก",
   "notice.cmyk_render_failed": "ไฟล์นี้เป็น CMYK แต่ Ghostscript วาดไม่ได้ จึงบันทึกเป็น RGB",
   "notice.original_kept": "เก็บไฟล์ต้นฉบับไว้ และบันทึกผลลัพธ์เป็นสำเนา",
   "notice.original_in_trash": "ไฟล์ต้นฉบับอยู่ในถังขยะ ผลลัพธ์ยังใช้ชื่อของตัวเอง",
