@@ -1848,6 +1848,9 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   `BundleConfig.pb`) are ZIPs. They extract and convert to every archive target; the APKs inside stay APK files.
   Nothing writes these: NuGet and the Play Store take only packages their own tools build and sign, and turning a
   bundle or splits into one installable `.apk` needs it signed again, which Filee doesn't do.
+- **Windows app packages** (#1521, read only): `.msix`, `.appx`, `.msixbundle` and `.appxbundle` are ZIP-based
+  packages. Extract them or convert them to archive formats; packages inside a bundle remain files. The extracted
+  contents are not an installer. Encrypted `.emsix` and `.eappx` packages are not supported.
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
   file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.

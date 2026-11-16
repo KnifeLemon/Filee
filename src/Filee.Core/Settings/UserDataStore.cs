@@ -1176,6 +1176,9 @@ internal static class SettingsMigrations
         // v94: Valve textures (.vtf) learn the images donut; custom claims stay put.
         if (from < 94)
             changed |= LearnExtensions(profiles, out _, ["vtf"]);
+        // v95: Windows app packages and bundles learn the archives donut, without taking custom claims (#1521).
+        if (from < 95)
+            changed |= LearnExtensions(profiles, out _, ["msix", "appx", "msixbundle", "appxbundle"]);
         return changed;
     }
 
