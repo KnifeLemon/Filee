@@ -30,3 +30,8 @@ Thumbs.db
 # Fonts are downloaded by build/fetch-fonts.ps1
 src/Filee.App/Assets/Fonts/*.ttf
 src/Filee.App/Assets/Fonts/*.otf
+
+# Rust rewrite (src-tauri): cargo output, and re-include source dirs hit by bin/ and engines/ above
+/target/
+!/src-tauri/src/bin/
+!/src-tauri/src/engines/

@@ -1,0 +1,43 @@
+﻿[package]
+name = "filee-lite"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Drag. Drop. Converted. ??lightweight file converter core (Phase 1+2: engines, route planner, job queue)"
+license = "MIT"
+
+[lib]
+name = "filee_lite"
+path = "src/lib.rs"
+
+[[bin]]
+name = "filee-cli"
+path = "src/bin/filee-cli.rs"
+
+[features]
+default = ["pdfium"]
+# PDF -> PNG through pdfium-render. The pdfium shared library is bound at runtime
+# (FILEE_PDFIUM_DIR, next to the executable, or the system library path).
+pdfium = ["dep:pdfium-render"]
+
+[dependencies]
+anyhow = "1"
+calamine = "0.38"
+clap = { version = "4", features = ["derive"] }
+csv = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "ico"] }
+pdfium-render = { version = "0.8", optional = true, features = ["sync"] }
+petgraph = "0.6"
+pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
+quick-xml = "0.36"
+resvg = "0.44"
+rust_xlsxwriter = "0.79"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "fs", "time"] }
+tokio-util = "0.7"
+unhwp = "0.24"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "3"
