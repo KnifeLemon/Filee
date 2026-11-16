@@ -53,8 +53,8 @@ namespace Filee.Engines.Media;
 /// key frame's time plus the 3/23 s FFmpeg seeks early where it does.
 /// </param>
 /// <param name="Start">
-/// The time asked for, in seconds from the file's start: time 0 of what is encoded from there (<see
-/// cref="EncodeInput"/>).
+/// The time asked for, in seconds from the file's start: time 0 of what is encoded from there
+/// (<see cref="EncodeInput"/>).
 /// </param>
 /// <param name="Tick">The video stream's time base (<c>1/90000</c>); null when unknown.</param>
 /// <param name="Key">When the key frame reading starts at is decoded, in seconds from the file's start; null when none
@@ -107,8 +107,8 @@ internal readonly record struct SeekPoint(double From, double? Origin, double Co
     /// The input options of what is encoded (a clip, its playback, a Live Photo): with the file's own timestamps, moved
     /// back by <see cref="Shift"/> so that what is kept starts at time 0, and the encoder and the muxer count from
     /// there as they did before (chapters included); nothing kept goes below 0, where an MP4's encoder rounded the
-    /// first frame away. FFmpeg's own cut at <c>-ss</c> is left out: it ignores the move, and the trims (<see
-    /// cref="Clip"/>, <see cref="VideoTrim"/>) cut instead.
+    /// first frame away. FFmpeg's own cut at <c>-ss</c> is left out: it ignores the move, and the trims
+    /// (<see cref="Clip"/>, <see cref="VideoTrim"/>) cut instead.
     /// </summary>
     public string[] EncodeInput => Origin is not null
         ? ["-copyts", "-noaccurate_seek", .. MediaEncoding.SeekTo(From),
