@@ -355,7 +355,7 @@ public class UninstallerTests
     {
         var (bench, record) = Installed();
         using var _ = bench;
-        var names = new[] { "Filee.dll", "filee-cli.exe", "FileeExplorerMenu.dll", "FileeExplorerMenu.msix", @"cli\filee.cmd", @"engines\rhwp\rhwp.exe" };
+        var names = new[] { "Filee.dll", "filee-cli.exe", "FileeExplorerMenu.dll", "FileeExplorerMenu.msix", @"cli\filee.cmd", @"engines\rhwp\rhwp-cli.exe" };
         var locks = names.Select(f => new FileStream(Path.Combine(bench.InstallFolder, f), FileMode.Open, FileAccess.Read, FileShare.None)).ToList();
         try
         {

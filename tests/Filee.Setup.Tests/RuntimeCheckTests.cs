@@ -36,10 +36,10 @@ public class RuntimeCheckTests
         var system = temp.Sub("system32");
         Directory.CreateDirectory(system);
         Directory.CreateDirectory(Path.Combine(app, "engines", "rhwp"));
-        File.WriteAllBytes(Path.Combine(app, "engines", "rhwp", "rhwp.exe"), PeImporting("VCRUNTIME140.dll", "KERNEL32.dll"));
+        File.WriteAllBytes(Path.Combine(app, "engines", "rhwp", "rhwp-cli.exe"), PeImporting("VCRUNTIME140.dll", "KERNEL32.dll"));
 
         var missing = Assert.Single(RuntimeCheck.FindMissing(app, system));
-        Assert.Equal(@"engines\rhwp\rhwp.exe", missing.Program);
+        Assert.Equal(@"engines\rhwp\rhwp-cli.exe", missing.Program);
         Assert.Equal("vcruntime140.dll", missing.Dll);
 
         // App-local copies next to it (what fix/rhwp-vc-runtime ships) or the Redistributable in System32 both do.

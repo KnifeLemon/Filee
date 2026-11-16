@@ -144,7 +144,7 @@ function Invoke-Setup([string]$exe) {
     if ($process.ExitCode -ne 0) { throw "$(Split-Path $exe -Leaf) failed in the sandbox with exit code $($process.ExitCode) (logs: $sandbox\Temp)" }
 }
 # Programs Setup installs that must come out signed: the app's own, and rhwp, which comes unsigned.
-$programs = 'Filee.exe', 'filee-cli.exe', 'engines\rhwp\rhwp.exe'
+$programs = 'Filee.exe', 'filee-cli.exe', 'engines\rhwp\rhwp-cli.exe'
 function Assert-Signed([string]$folder, [string[]]$names, [string]$where) {
     foreach ($file in $names) {
         $signature = Get-AuthenticodeSignature (Join-Path $folder $file)

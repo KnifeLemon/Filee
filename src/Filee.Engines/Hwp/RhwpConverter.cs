@@ -277,9 +277,22 @@ public sealed class RhwpConverter : IConverter, ITextShapingCheck
         return new FileInfo(path).Length * 3;
     }
 
-    /// <summary>Filee's own copy (engines/rhwp), never one found elsewhere on the system.</summary>
-    private static string? Locate() =>
+    /// <summary>
+    /// The name of Filee's rhwp program on Windows. rhwp's release names it rhwp.exe, but some Korean endpoint security
+    /// products refuse to create any .exe whose name ends in "hwp" (Hancom's Hwp.exe, and HWord.exe), even renaming a
+    /// file to it: Setup failed with "Access to the path ...\engines\rhwp\rhwp.exe is denied" on such PCs.
+    /// build/fetch-engines.ps1 renames it when it unpacks rhwp.
+    /// </summary>
+    internal const string WindowsProgram = "rhwp-cli.exe";
+
+    /// <summary>
+    /// Filee's own copy (engines/rhwp), never one found elsewhere on the system. On Windows a development folder
+    /// fetched before the rename may still hold rhwp.exe.
+    /// </summary>
+    internal static string? Locate() =>
         EngineEnvironment.FindBundled("rhwp") is { } bundled
-            ? EngineEnvironment.FirstExisting(Path.Combine(bundled, OperatingSystem.IsWindows() ? "rhwp.exe" : "rhwp"))
+            ? OperatingSystem.IsWindows()
+                ? EngineEnvironment.FirstExisting(Path.Combine(bundled, WindowsProgram), Path.Combine(bundled, "rhwp.exe"))
+                : EngineEnvironment.FirstExisting(Path.Combine(bundled, "rhwp"))
             : null;
 }

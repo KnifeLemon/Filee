@@ -155,7 +155,7 @@ the runtime next to every program that needs it and does not ship it (`Infrastru
 
 | Binary | Runtime |
 |---|---|
-| `engines/rhwp/rhwp.exe` (bundled) | `vcruntime` component copied next to it by `fetch-engines.ps1` (#248) |
+| `engines/rhwp/rhwp-cli.exe` (bundled; rhwp's `rhwp.exe`, renamed) | `vcruntime` component copied next to it by `fetch-engines.ps1` (#248) |
 | `unhwp.dll` (NuGet, loaded into Filee.exe and filee-cli.exe) | `vcruntime` component copied next to `Filee.exe` (`build-installer.ps1` → `fetch-engines.ps1 -RuntimeTo`) |
 | Ghostscript (download) | `vcruntime` component copied next to `gswin64c.exe` (`EngineInstaller`, `fetch-engines.ps1`) |
 | LibreOffice (download) | its own copy, which the administrative install leaves in `System64`, copied into `program/` (`EngineInstaller`, `fetch-engines.ps1`; `LibreOfficeConverter` also repairs a copy installed by an earlier Filee) |

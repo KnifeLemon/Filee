@@ -237,7 +237,7 @@ public class DocxEquationTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         // rhwp stretches an equation whose stored width differs from its own layout by more than 1 %.
         var hwpx = await ConvertAsync(SampleDocument(), "equations-svg", "hwpx");
-        var exe = Path.Combine(EngineEnvironment.FindBundled("rhwp")!, OperatingSystem.IsWindows() ? "rhwp.exe" : "rhwp");
+        var exe = RhwpConverter.Locate()!;
         var folder = Path.Combine(Path.GetDirectoryName(hwpx)!, "svg");
         await ProcessRunner.RunAsync(exe, ["export-svg", hwpx, "-o", folder], TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken);
         var svg = string.Concat(Directory.GetFiles(folder, "*.svg").Select(File.ReadAllText));

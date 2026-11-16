@@ -20,13 +20,13 @@ public class InstallerTests
         Assert.True(result.Succeeded, result.Error?.ToString());
         var folder = bench.InstallFolder;
 
-        foreach (var file in new[] { "Filee.exe", "Filee.dll", @"cli\filee.cmd", @"engines\rhwp\rhwp.exe", "uninstall.exe", "uninstall.json" })
+        foreach (var file in new[] { "Filee.exe", "Filee.dll", @"cli\filee.cmd", @"engines\rhwp\rhwp-cli.exe", "uninstall.exe", "uninstall.json" })
             Assert.True(File.Exists(Path.Combine(folder, file)), file);
         Assert.Empty(Directory.EnumerateDirectories(folder, FileSwap.WorkFolderPrefix + "*"));
         var record = InstallRecord.Read(folder)!;
         Assert.Equal("2.0.0", record.Version);
         Assert.Contains("uninstall.exe", record.Files);
-        Assert.Contains(@"engines\rhwp\rhwp.exe", record.Files);
+        Assert.Contains(@"engines\rhwp\rhwp-cli.exe", record.Files);
 
         // Apps & Features: Inno Setup's key, with everything Windows shows.
         var registry = bench.Registry;

@@ -1,5 +1,5 @@
 // Does every program Setup installs find the Microsoft Visual C++ runtime it was built against? Filee itself is a
-// self-contained .NET app and needs nothing; a bundled engine built with MSVC (rhwp.exe) needs vcruntime140.dll and
+// self-contained .NET app and needs nothing; a bundled engine built with MSVC (rhwp-cli.exe) needs vcruntime140.dll and
 // friends, either next to it (app-local, as the build copies them) or installed in System32 by the Visual C++
 // Redistributable. Setup reads the import table of each .exe and .dll and reports what would be missing on this PC,
 // so a missing runtime is a clear message instead of an engine that fails to start.

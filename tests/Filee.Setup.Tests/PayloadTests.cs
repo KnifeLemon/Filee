@@ -15,7 +15,7 @@ public class PayloadTests
         using var payload = SetupPayload.Open(bench.SetupExe)!;
         Assert.Equal("2.0.0", payload.Manifest.Version);
         Assert.Contains(payload.Manifest.Files, f => f.Path == "Filee.exe");
-        Assert.Contains(payload.Manifest.Files, f => f.Path == @"engines\rhwp\rhwp.exe");
+        Assert.Contains(payload.Manifest.Files, f => f.Path == @"engines\rhwp\rhwp-cli.exe");
         Assert.Equal("pandoc", Assert.Single(payload.Manifest.Engines).Id);
         Assert.Equal(".filee-component", payload.Manifest.EngineMarker);
 

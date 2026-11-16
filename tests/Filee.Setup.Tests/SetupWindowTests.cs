@@ -132,7 +132,7 @@ public class SetupWindowTests
         Check(window, $"setup-3-installing-{language}.png");
 
         runner.Result = new InstallResult(new LaunchRequest(@"C:\Program Files\Filee\Filee.exe", "--install-engines=pandoc"),
-            [new RuntimeWarning([new MissingRuntime(@"engines\rhwp\rhwp.exe", "vcruntime140.dll")])]);
+            [new RuntimeWarning([new MissingRuntime(@"engines\rhwp\rhwp-cli.exe", "vcruntime140.dll")])]);
         runner.Hold.SetResult();
         await install;
         Pump();

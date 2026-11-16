@@ -86,7 +86,7 @@ public sealed class EngineEnvironment(string dataDirectory)
         ["ffmpeg"] = windows ? ["ffmpeg.exe", "ffprobe.exe"] : ["ffmpeg", "ffprobe"],
         ["calibre"] = [windows ? "ebook-convert.exe" : "ebook-convert"],
         ["weasyprint"] = [windows ? "weasyprint.exe" : "weasyprint"],
-        ["rhwp"] = [windows ? "rhwp.exe" : "rhwp"],
+        ["rhwp"] = [windows ? Hwp.RhwpConverter.WindowsProgram : "rhwp"],
         ["7zip"] = [windows ? "7z.exe" : "7zz"],
         ["tesseract"] = [windows ? "tesseract.exe" : "tesseract"],
         ["whisper"] = [windows ? "whisper-cli.exe" : "whisper-cli"],

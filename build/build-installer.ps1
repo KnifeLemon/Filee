@@ -6,7 +6,7 @@
 .DESCRIPTION
   Without -PublishDir the app is published first (Release, self-contained, -p:FileeRelease=true) into
   publish/win-x64, together with the Windows 11 Explorer menu extension (build-explorer-menu.ps1), the bundled
-  small engines rhwp and 7-Zip and the Microsoft C++ runtime DLLs next to rhwp.exe and Filee.exe
+  small engines rhwp and 7-Zip and the Microsoft C++ runtime DLLs next to rhwp-cli.exe and Filee.exe
   (fetch-engines.ps1); the large engines are downloaded by the app (engines.json).
 
   Setup itself (src/Filee.Setup) is published as one self-contained, trimmed program (no .NET needed on the PC);
@@ -74,7 +74,7 @@ if ($CheckOnly) {
     New-Item -ItemType Directory -Force -Path (Join-Path $PublishDir 'cli'), (Join-Path $PublishDir 'engines\rhwp') | Out-Null
     Set-Content (Join-Path $PublishDir 'Filee.exe') 'stub' -NoNewline
     Set-Content (Join-Path $PublishDir 'cli\filee.cmd') "@`"%~dp0..\filee-cli.exe`" %*" -Encoding ascii
-    Set-Content (Join-Path $PublishDir 'engines\rhwp\rhwp.exe') 'stub' -NoNewline
+    Set-Content (Join-Path $PublishDir 'engines\rhwp\rhwp-cli.exe') 'stub' -NoNewline
     $OutputDir = $check
 }
 elseif (-not $PublishDir) {
@@ -106,7 +106,7 @@ elseif (-not $PublishDir) {
     $architecture = $Runtime.Substring(4)
     & (Join-Path $PSScriptRoot 'build-explorer-menu.ps1') -Destination $PublishDir -Version $Version -Architecture $architecture
     # Only the small rhwp and 7-Zip are bundled; the app downloads the others when the user picks them. The Microsoft
-    # C++ runtime goes next to rhwp.exe and next to Filee.exe (unhwp.dll imports VCRUNTIME140.dll), so neither needs
+    # C++ runtime goes next to rhwp-cli.exe and next to Filee.exe (unhwp.dll imports VCRUNTIME140.dll), so neither needs
     # the Visual C++ Redistributable (#248). The ARM64 builds need none.
     $runtimeTo = @{}
     if ($Runtime -eq 'win-x64') { $runtimeTo = @{ RuntimeTo = $PublishDir } }
@@ -176,7 +176,7 @@ if ($CheckOnly) {
     }
     $installed = Join-Path $sandbox 'Program Files\Filee'
     Invoke-Setup $setupExe @('/MERGETASKS=desktopicon')
-    foreach ($file in 'Filee.exe', 'cli\filee.cmd', 'engines\rhwp\rhwp.exe', 'uninstall.exe', 'uninstall.json') {
+    foreach ($file in 'Filee.exe', 'cli\filee.cmd', 'engines\rhwp\rhwp-cli.exe', 'uninstall.exe', 'uninstall.json') {
         if (-not (Test-Path (Join-Path $installed $file))) { throw "Setup did not install $file" }
     }
     $registry = Get-Content (Join-Path $sandbox 'registry.json') -Raw

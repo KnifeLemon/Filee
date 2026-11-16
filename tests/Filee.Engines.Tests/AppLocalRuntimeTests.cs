@@ -14,12 +14,12 @@ public sealed class AppLocalRuntimeTests : IDisposable
     [InlineData(-1073741511)] // 0xC0000139 STATUS_ENTRYPOINT_NOT_FOUND
     public void A_program_Windows_could_not_load_is_refused_with_the_runtime_message(int exitCode)
     {
-        var rhwp = Path.Combine(_root, "engines", "rhwp", "rhwp.exe");
+        var rhwp = Path.Combine(_root, "engines", "rhwp", "rhwp-cli.exe");
         var refused = Assert.Throws<ConversionRefusedException>(() => AppLocalRuntime.ThrowIfMissing(rhwp, exitCode));
 
         Assert.Equal("error.runtime_missing", refused.ErrorKey);
-        Assert.Equal($"rhwp.exe, 0x{unchecked((uint)exitCode):X8}", refused.Detail);
-        Assert.StartsWith("rhwp.exe, 0xC000013", refused.Detail);
+        Assert.Equal($"rhwp-cli.exe, 0x{unchecked((uint)exitCode):X8}", refused.Detail);
+        Assert.StartsWith("rhwp-cli.exe, 0xC000013", refused.Detail);
     }
 
     [Theory]
@@ -29,7 +29,7 @@ public sealed class AppLocalRuntimeTests : IDisposable
     [InlineData(-1073741819)] // 0xC0000005 access violation: the program ran and crashed
     public void Other_exit_codes_are_left_to_the_engine(int exitCode)
     {
-        AppLocalRuntime.ThrowIfMissing("rhwp.exe", exitCode);
+        AppLocalRuntime.ThrowIfMissing("rhwp-cli.exe", exitCode);
         Assert.False(AppLocalRuntime.IsMissingDll(exitCode));
     }
 

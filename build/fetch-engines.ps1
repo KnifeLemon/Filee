@@ -10,7 +10,7 @@
       libreoffice/   LibreOffice (MPL-2.0), extracted from the official MSI via an administrative install
                      + H2Orestart (GPL-3.0) unpacked into share/extensions for HWP/HWPX import
       jre/           Eclipse Temurin JRE 21 (GPLv2 + Classpath Exception), used by H2Orestart
-      rhwp/          rhwp command line (MIT), HWP/HWPX -> PDF, with the Microsoft C++ runtime DLLs next to rhwp.exe
+      rhwp/          rhwp command line (MIT), HWP/HWPX -> PDF, as rhwp-cli.exe, with the Microsoft C++ runtime DLLs next to it
       pandoc/        Pandoc (GPL-2.0-or-later, separate program), Markdown/HTML and MD/HTML/ODT/RTF -> HWPX
       7zip/          7-Zip console (7z.exe + 7z.dll, LGPL-2.1 + unRAR restriction, separate program), archives
       ghostscript/   Ghostscript (AGPL-3.0, separate program) from conda-forge, EPS/PS <-> PDF, with the Microsoft
@@ -29,7 +29,7 @@
   shared with the app). Downloads are cached in build/.cache.
 
   The Microsoft C++ runtime (the "vcruntime" component: MSVCP140.dll, VCRUNTIME140.dll, ...) is copied next to the
-  programs built with Visual C++ that do not ship it themselves (rhwp.exe, gswin64c.exe; LibreOffice's own copy goes
+  programs built with Visual C++ that do not ship it themselves (rhwp-cli.exe, gswin64c.exe; LibreOffice's own copy goes
   into its program folder), so they also run on PCs without the Visual C++ Redistributable. -RuntimeTo copies it into
   more folders (build-installer.ps1: next to Filee.exe, for unhwp.dll).
 
@@ -259,7 +259,10 @@ if ('rhwp' -in $selected) {
     if ($exe.DirectoryName -ne (Join-Path $Destination 'rhwp')) {
         Get-ChildItem $exe.DirectoryName -Force | Move-Item -Destination (Join-Path $Destination 'rhwp') -Force
     }
-    # rhwp.exe imports MSVCP140.dll and VCRUNTIME140.dll; without them Windows does not start it (#248). The ARM64
+    # Renamed rhwp-cli.exe: some Korean endpoint security products refuse to create any .exe whose name ends in "hwp"
+    # (Hancom's Hwp.exe), so Setup could not write rhwp.exe on those PCs. See RhwpConverter.WindowsProgram.
+    Move-Item (Join-Path $Destination 'rhwp\rhwp.exe') (Join-Path $Destination 'rhwp\rhwp-cli.exe') -Force
+    # rhwp-cli.exe imports MSVCP140.dll and VCRUNTIME140.dll; without them Windows does not start it (#248). The ARM64
     # build imports neither.
     if ($Runtime -eq 'win-x64') {
         Copy-VcRuntime (Join-Path $Destination 'rhwp')

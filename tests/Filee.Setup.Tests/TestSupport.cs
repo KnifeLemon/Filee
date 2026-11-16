@@ -166,7 +166,7 @@ public sealed class SetupBench : IDisposable
         _temp.Write(@"app\Filee.dll", new string('a', 20_000));
         _temp.Write(@"app\cli\filee.cmd", "@\"%~dp0..\\filee-cli.exe\" %*");
         _temp.Write(@"app\filee-cli.exe", "cli");
-        _temp.Write(@"app\engines\rhwp\rhwp.exe", "rhwp");
+        _temp.Write(@"app\engines\rhwp\rhwp-cli.exe", "rhwp");
         _temp.Write(@"app\FileeExplorerMenu.dll", "menu");
         _temp.Write(@"app\FileeExplorerMenu.msix", "package");
         app?.Invoke(_temp, AppFolder);
