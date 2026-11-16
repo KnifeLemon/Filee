@@ -291,6 +291,19 @@ public class OcrTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
 
     [Fact]
+    public async Task Searchable_pdf_converts_back_to_text()
+    {
+        Assert.SkipUnless(Installed, Skip);
+        var scan = Scan(fx.NewFolder(), "roundtrip.png", "Filee reads scanned pages", "into searchable documents");
+        var pdf = await fx.ConvertAsync([scan], Ocr("pdf"));
+        AssertDone(pdf);
+
+        var text = await fx.ConvertAsync([pdf.Outputs.Single()], new Preset { TargetFormat = "txt" });
+        AssertDone(text);
+        Assert.Contains("searchable", File.ReadAllText(text.Outputs.Single()));
+    }
+
+    [Fact]
     public async Task A_picture_becomes_a_searchable_pdf()
     {
         Assert.SkipUnless(Installed, Skip);
