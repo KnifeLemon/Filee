@@ -2561,7 +2561,8 @@ public class RenderTests
         var vm = new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>());
         Assert.Equal("*", vm.Targets[0].Value); // "Same as source" stays first
         Assert.Equal([0, 32, 48, 64, 96, 128, 192, 256, 320], vm.AudioBitrates.Select(b => b.Value)); // 32-64 for speech (#37)
-        Assert.All(vm.Targets.Skip(1), t => Assert.True(Filee.Core.Formats.FormatRegistry.Get(t.Value).Writable));
+        Assert.Equal(Filee.Core.Presets.BuiltInData.SameAsAudio, vm.Targets[1].Value); // then "Same format as the audio" (#1490)
+        Assert.All(vm.Targets.Skip(2), t => Assert.True(Filee.Core.Formats.FormatRegistry.Get(t.Value).Writable));
         Assert.Equal("Video", vm.Target.Detail);
 
         vm.MediaQuality = vm.MediaQualities.Single(q => q.Value == Filee.Core.Presets.MediaQuality.Small);

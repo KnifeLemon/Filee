@@ -24,7 +24,7 @@ namespace Filee.Engines.Media;
 
 /// <summary>Converts video and audio files with Filee's own copy of FFmpeg.</summary>
 /// <param name="logger">Receives which hardware encoders work and why a hardware encode was redone in software.</param>
-public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter, IImageTransformer, IMediaJoiner
+public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter, IImageTransformer, IMediaJoiner, IAudioCopyTarget
 {
     private static readonly ConcurrentDictionary<string, string> Versions = new();
 
@@ -118,6 +118,13 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         }
     }
 
+    public async Task<string> AudioCopyTargetAsync(string path, CancellationToken cancellationToken)
+    {
+        var (_, ffprobe) = _tools ?? Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        var info = await MediaInfo.ProbeAsync(ffprobe, MediaInput.For(path), cancellationToken);
+        return info.CopyAudio is { } track ? MediaEncoding.CopyTargetFor(track.Codec) : throw new ConversionRefusedException("error.no_audio");
+    }
+
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var (ffmpeg, ffprobe) = _tools ?? Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
@@ -153,14 +160,19 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             : null;
 
         var media = step.Preset.Media;
-        // "Remove metadata": the streams as they are, in the same format, without tags.
-        if (media.RemoveMetadata && step.From == step.To && !still
-            && (MediaEncoding.VideoTargets.ContainsKey(step.To) || MediaEncoding.AudioTargets.ContainsKey(step.To)))
+        // "Same format as the audio" (#1490): the sound track as it is, in the format JobQueue read for it.
+        var copy = step.Preset.TargetFormat == BuiltInData.SameAsAudio && !still && info.CopyAudio is { } track && MediaEncoding.AudioTargets.ContainsKey(step.To)
+            ? MediaEncoding.CopyAudio(input, output, step.To, track)
+            // "Remove metadata": the streams as they are, in the same format, without tags.
+            : media.RemoveMetadata && step.From == step.To && !still
+              && (MediaEncoding.VideoTargets.ContainsKey(step.To) || MediaEncoding.AudioTargets.ContainsKey(step.To))
+                ? MediaEncoding.WithoutMetadata(input, output, step.To, info)
+                : null;
+        if (copy is not null)
         {
             try
             {
-                await RunPassesAsync(ffmpeg, [new FfmpegPass(MediaEncoding.WithoutMetadata(input, output, step.To, info), 1)], output,
-                    info.Duration, progress, cancellationToken);
+                await RunPassesAsync(ffmpeg, [new FfmpegPass(copy, 1)], output, info.Duration, progress, cancellationToken);
             }
             catch
             {

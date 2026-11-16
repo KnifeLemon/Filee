@@ -111,6 +111,7 @@
 
   "error.unsupported_source": "Este tipo de arquivo não é compatível",
   "error.empty_file": "O arquivo está vazio (0 bytes). Um arquivo criado com “Novo” no menu de contexto continua vazio até você abri-lo no aplicativo e salvá-lo",
+  "error.no_audio": "O arquivo não tem faixa de som",
   "error.p7m_unreadable": "Este não é um arquivo assinado .p7m que o Filee consiga abrir, ou está danificado",
   "error.p7m_detached": "Este .p7m contém só a assinatura, não o arquivo assinado. Converta o arquivo que ele assina",
   "error.p7m_encrypted": "Este .p7m está criptografado, não só assinado: só a chave do destinatário o abre",
@@ -921,6 +922,7 @@
   "icons.cat.general": "Geral",
   "presets.target": "Converter para",
   "presets.target_hidden": "O destino atual ({0}) pertence apenas a áreas desativadas e, por isso, não aparece na lista. Ele continuará selecionado até você escolher outro.",
+  "presets.same_as_audio": "O mesmo formato do áudio",
   "presets.same_as_source": "O mesmo formato da origem",
   "presets.cad_version": "Versão do AutoCAD",
   "presets.cad_version.same": "Igual ao original",

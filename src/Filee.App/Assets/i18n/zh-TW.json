@@ -111,6 +111,7 @@
 
   "error.unsupported_source": "不支援此檔案類型",
   "error.empty_file": "檔案是空的（0 位元組）。用右鍵選單「新增」建立的檔案，要在對應的應用程式中開啟並儲存後才有內容",
+  "error.no_audio": "檔案沒有音軌",
   "error.p7m_unreadable": "這不是 Filee 能開啟的已簽署 .p7m 檔案，或檔案已損壞",
   "error.p7m_detached": "這個 .p7m 只包含簽章，沒有被簽署的檔案。請轉換它所簽署的檔案",
   "error.p7m_encrypted": "這個 .p7m 已加密，而不只是簽署：只有收件人的金鑰才能開啟",
@@ -917,6 +918,7 @@
   "icons.cat.general": "一般",
   "presets.target": "轉換為",
   "presets.target_hidden": "目前的目標（{0}）僅屬於已關閉的領域，因此不在清單中。除非選擇其他目標，否則會保留目前的目標。",
+  "presets.same_as_audio": "與音訊相同的格式",
   "presets.same_as_source": "與來源檔案相同的格式",
   "presets.cad_version": "AutoCAD 版本",
   "presets.cad_version.same": "與來源檔案相同",

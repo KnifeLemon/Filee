@@ -248,6 +248,19 @@ public interface IEnvelopeOpener
     string InnerFormat(string path, string format);
 }
 
+/// <summary>
+/// An engine that reads which audio format a video's sound is copied into as it is (<see cref="BuiltInData.SameAsAudio"/>).
+/// <see cref="JobQueue"/> asks before planning, and plans the route to that format.
+/// </summary>
+public interface IAudioCopyTarget
+{
+    /// <summary>
+    /// The audio format id that holds the codec of the sound track <paramref name="path"/> would give. Throws
+    /// <see cref="ConversionRefusedException"/> when the file has no sound.
+    /// </summary>
+    Task<string> AudioCopyTargetAsync(string path, CancellationToken cancellationToken);
+}
+
 /// <summary>A PDF to merge and the name of its original source file.</summary>
 /// <param name="PdfPath">The PDF path, possibly produced by conversion or OCR.</param>
 /// <param name="SourceName">The original source's basename, including its extension, without directories.</param>

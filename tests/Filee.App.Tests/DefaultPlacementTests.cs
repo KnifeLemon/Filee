@@ -190,6 +190,27 @@ public class DefaultPlacementTests(ITestOutputHelper output)
     }
 
     [AvaloniaFact]
+    public void Same_format_as_the_audio_takes_videos_only()
+    {
+        // #1490: the sound's format is read from each file; FFmpeg's video → MKA says whether it can be copied out.
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<ILocalizer>();
+        var preset = new Preset { TargetFormat = BuiltInData.SameAsAudio };
+        var catalog = new ConverterCatalog([new FakeConverter("ffmpeg", ("mp4", "mka"), ("mp3", "mka"))]);
+        var availability = Availability(catalog, loc);
+
+        Assert.Null(availability.Check(preset, [FormatRegistry.Get("mp4")]));
+        Assert.Null(availability.Check(preset, [FormatRegistry.Get("mp4"), FormatRegistry.Get("png")]));
+        Assert.Equal(loc["error.unsupported_source"], availability.Check(preset, [FormatRegistry.Get("mp3")]));
+        Assert.Equal(loc["error.unsupported_source"], availability.Check(preset, [FormatRegistry.Get("png")]));
+
+        Assert.Equal(loc["presets.same_as_audio"], Filee.App.ViewModels.FormatLabels.NameOf(loc, BuiltInData.SameAsAudio));
+        var tip = Filee.App.ViewModels.PresetFormatTip.Build(preset, availability, catalog.CreatePlanner(catalog.All.Select(c => c.Id).ToArray()), loc);
+        Assert.Equal(loc["presets.same_as_audio"], tip.MakesName);
+        Assert.Contains(new Filee.App.ViewModels.PresetEditorViewModel(preset, loc).Targets, t => t.Value == BuiltInData.SameAsAudio);
+    }
+
+    [AvaloniaFact]
     public void Availability_seam_ignores_installation()
     {
         TestServices.EnsureInitialized("en");

@@ -11,6 +11,12 @@ public static class BuiltInData
     /// <summary>Special target format meaning "same format as the source file" (e.g. resize only).</summary>
     public const string SameAsSource = "*";
 
+    /// <summary>
+    /// Special target format for a video (#1490): its sound track copied out as it is, into the audio format that holds
+    /// its codec (AAC → M4A, Opus → OPUS, AC-3 or DTS → MKA, …), never encoded.
+    /// </summary>
+    public const string SameAsAudio = "*audio";
+
     /// <summary>The "iPhone ringtone" preset (#1291): an M4R of at most 40 seconds, from where its Start field says.</summary>
     public const string RingtoneId = "iphone-ringtone";
 

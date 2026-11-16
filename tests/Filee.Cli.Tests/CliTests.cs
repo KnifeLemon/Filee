@@ -40,6 +40,24 @@ public sealed class CliTests : IDisposable
     }
 
     [Fact]
+    public async Task Same_audio_takes_a_films_sound_out_as_it_is()
+    {
+        // #1490: "--to same-audio", the CLI's name for "Same format as the audio".
+        var ffmpeg = new Filee.Engines.Media.FfmpegConverter().GetStatus();
+        Assert.SkipUnless(ffmpeg.IsAvailable, "FFmpeg is not installed.");
+        var film = Path.Combine(_folder, "film.mkv");
+        var made = await ProcessRunner.RunAsync(ffmpeg.Detail!,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=1",
+             "-f", "lavfi", "-i", "sine=duration=1", "-c:v", "mpeg4", "-c:a", "libopus", film],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+
+        var result = await Run("convert", film, "--to", "same-audio", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        Assert.True(File.Exists(Path.Combine(_folder, "film.opus")));
+    }
+
+    [Fact]
     public async Task Folder_to_zip_keeps_the_folder_tree_instead_of_converting_its_individual_files()
     {
         Assert.SkipUnless(new Filee.Engines.Archives.ArchiveConverter().GetStatus().IsAvailable, "Bundled 7-Zip is required.");

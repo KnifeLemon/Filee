@@ -111,6 +111,7 @@
 
   "error.unsupported_source": "Ten typ pliku nie jest obsługiwany",
   "error.empty_file": "Plik jest pusty (0 bajtów). Plik utworzony przez „Nowy” w menu kontekstowym pozostaje pusty, dopóki nie otworzysz go w jego aplikacji i nie zapiszesz",
+  "error.no_audio": "Plik nie ma ścieżki dźwiękowej",
   "error.p7m_unreadable": "To nie jest podpisany plik .p7m, który Filee może otworzyć, albo jest uszkodzony",
   "error.p7m_detached": "Ten .p7m zawiera tylko podpis, a nie podpisany plik. Przekonwertuj plik, który podpisuje",
   "error.p7m_encrypted": "Ten .p7m jest zaszyfrowany, a nie tylko podpisany: otworzy go tylko klucz odbiorcy",
@@ -921,6 +922,7 @@
   "icons.cat.general": "Ogólne",
   "presets.target": "Konwertuj do",
   "presets.target_hidden": "Bieżący format docelowy ({0}) należy tylko do wyłączonych dziedzin, dlatego nie ma go na liście. Pozostanie wybrany, dopóki nie wybierzesz innego.",
+  "presets.same_as_audio": "Ten sam format co dźwięk",
   "presets.same_as_source": "Ten sam format co źródło",
   "presets.cad_version": "Wersja AutoCAD",
   "presets.cad_version.same": "Jak w oryginale",

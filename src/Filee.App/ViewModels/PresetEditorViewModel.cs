@@ -139,7 +139,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // and typing the first letters of a name jumps to it.
         Targets =
         [
-            .. FolderInput ? Array.Empty<Choice<string>>() : [new Choice<string>(BuiltInData.SameAsSource, loc["presets.same_as_source"])],
+            .. FolderInput ? Array.Empty<Choice<string>>() : [new Choice<string>(BuiltInData.SameAsSource, loc["presets.same_as_source"]),
+                // #1490: a video's sound as it is; on other files the preset is greyed (PresetAvailability).
+                new Choice<string>(BuiltInData.SameAsAudio, loc["presets.same_as_audio"], FormatLabels.Category(loc, FormatCategory.Video))],
             .. FormatRegistry.Known
                 .Where(f => f.Writable && (!FolderInput || BuiltInData.SupportsFolderTarget(f.Id)) && (turnedOff is null || FormatFields.IsShown(f.Id, turnedOff)))
                 .Select(f => new Choice<string>(
