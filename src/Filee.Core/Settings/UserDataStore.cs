@@ -1176,6 +1176,10 @@ internal static class SettingsMigrations
         // v94: Valve textures (.vtf) learn the images donut; custom claims stay put.
         if (from < 94)
             changed |= LearnExtensions(profiles, out _, ["vtf"]);
+        // v95: "VTF" (any picture to a Valve texture) joins the palette after HEIC, not a donut. (Schema 95 may be
+        //      renumbered if another change takes it first.)
+        if (from < 95 && presets.All(p => p.Id != BuiltInData.VtfId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.VtfId);
         return changed;
     }
 
