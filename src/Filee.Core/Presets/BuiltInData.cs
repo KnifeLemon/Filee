@@ -44,7 +44,7 @@ public static class BuiltInData
         new() { Id = "to-gif", Name = "GIF", TargetFormat = "gif" },
         new() { Id = "to-avif", Name = "AVIF", TargetFormat = "avif", Image = { Quality = 60 } },
         new() { Id = "to-heic", Name = "HEIC", TargetFormat = "heic", Image = { Quality = 80 } },
-        // Valve textures for Garry's Mod and other Source games (#1478, added to the library in settings schema 95): in
+        // Valve textures for Garry's Mod and other Source games (#1478, added to the library in settings schema 98): in
         // the palette only, in the Games field (off in a new install).
         new() { Id = VtfId, Name = "VTF", TargetFormat = "vtf" },
         new()
@@ -232,8 +232,8 @@ public static class BuiltInData
     ];
 
     /// <summary>
-    /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62): in the palette
-    /// only, after "TAR", in the Games field (off in a new install).
+    /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62) and Garry's Mod
+    /// addons (#1526, schema 97): in the palette only, after "TAR", in the Games field (off in a new install).
     /// </summary>
     public static List<Preset> GamePackPresets() =>
     [
@@ -242,6 +242,7 @@ public static class BuiltInData
         new() { Id = "to-mcworld", Name = "MCWORLD", TargetFormat = "mcworld" },
         new() { Id = "to-mctemplate", Name = "MCTEMPLATE", TargetFormat = "mctemplate" },
         new() { Id = "to-mrpack", Name = "MRPACK", TargetFormat = "mrpack" },
+        new() { Id = "to-gma", Name = "GMA", TargetFormat = "gma" },
     ];
 
     /// <summary>

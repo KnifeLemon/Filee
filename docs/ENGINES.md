@@ -33,13 +33,13 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
-| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
+| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs, GMA**; ALZ, EGG, lzip, GMA, VPK read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
-| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
+| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG / WebP, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR; e-books → PDF (ranked above the HWPX writer, see below) |
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
@@ -227,7 +227,7 @@ that signs the release): the x64 downloads, without the packages the ARM64 app h
   `Filee.exe` through the build (`-p:UnhwpNativeLibrary`).
 
 `UnhwpConverter` reports Unhwp as available where its library loads, so a build without it shows the engine as not
-available on this platform. CI's `build (win-arm64)` job builds and tests on Windows 11 ARM64; once both pins are filled
+available on this platform. CI's `windows / build (win-arm64)` job builds and tests on Windows 11 ARM64; once both pins are filled
 in it also builds the package (artifact `windows-arm64-package`). Releases ship it next to the x64 files: the release
 workflow's `windows-arm64` job builds and tests it the same way and keeps it unsigned for `build/sign-release.ps1`
 (see [Releasing](../CONTRIBUTING.md#releasing-maintainers)), and the in-app updater of an ARM64 build takes
@@ -248,6 +248,15 @@ so a separate ARM64 one would break their updates.
   one of these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL ↔ AVIF, WebP lossy or lossless as the preset says,
   #988) and becomes a multi-page TIFF;
   other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP and AVIF.
+  - **Video → animated WebP** needs FFmpeg: one looping pass with its `libwebp_anim` encoder (`MediaEncoding.AnimatedWebp`).
+    `FfmpegConverter` has a direct video → WebP edge (cost 15). Without it the route planner took video → still PNG →
+    WebP (10 + 10), cheaper than the animated routes through GIF or APNG (15 + 10), so the WebP was one frame. The
+    preset's image options decide the encoding: the quality slider sets a lossy WebP, *Lossless WEBP* writes every frame
+    losslessly. Lossy output follows the video quality for its limits (20 / 15 / 12 frames a second, at most 1920 / 1280 /
+    854 px wide, never upscaled: a 930 × 480 clip stays 930 × 480); lossless has no width limit (WebP's own is
+    16,383 px) and keeps up to 30 frames a second, so its files are large. "Ask every time" for the compression offers the
+    picture quality for a video → WebP (`AskedCompression.KindOf`); its size estimate reads a picture tile, so it can
+    show "unknown" for a video.
   - **Animated AVIF** (#1200) needs no FFmpeg, but goes much faster with it. ImageMagick reads the frames and applies
     the preset either way. With FFmpeg and its libaom-av1 encoder (Filee's FFmpeg download has it),
     `Media/AvifSequenceWriter.cs` packs the frames into an APNG in the work folder (`Magick/Apng.cs`, exact delays) and
@@ -274,7 +283,7 @@ so a separate ARM64 one would break their updates.
   keeps its new length. Players show a frame of 10 ms or less for 100 ms, so no delay goes below 20 ms (50 frames a
   second): a frame that would start sooner than that after the one before is dropped and its time goes to that one,
   which leaves frames out evenly. Source delays of 10 ms or less count as the 100 ms players show. Loop count and
-  disposal stay; 1× (also every preset saved before the option) leaves the timing untouched. Video → GIF / APNG
+  disposal stay; 1× (also every preset saved before the option) leaves the timing untouched. Video → GIF / APNG / WebP
   (FFmpeg) puts `setpts=PTS/<speed>` before the `fps` filter, so the frame rate limits stay. The speed changes only in
   the step that writes the output (`JobQueue`), never twice on a longer route.
 - **APNG** (`Magick/Apng.cs`) is Filee's own code, written from the APNG specification: ImageMagick reads only an
@@ -1824,6 +1833,9 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 | Split archives (.001, .7z.001, .zip.001, .tar.001) | 7-Zip (combining .002, .003 … automatically) | — |
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
 | EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (decoded by 7-Zip); several blocks per file | — |
+| GMA (Garry's Mod addon) | Filee: versions 1–3, CRCs checked, an `addon.json` written beside the files | Filee, as gmad does (see below) |
+| BSP (Source engine map), its packed files | Filee copies the pakfile lump (a ZIP) out, 7-Zip unpacks it | — |
+| VPK (Valve pak) | Filee: versions 1 and 2, `_dir.vpk` with its `_000.vpk` … parts, CRCs checked; a PS Vita `.vpk` (a ZIP) by 7-Zip | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
@@ -1837,6 +1849,38 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   an archive or a folder whose only top folder holds the marker gets that folder's content, not the folder
   (`GamePacks.Root`); an add-on (MCADDON, several packs side by side) is packed as it is. The presets (MCPACK …
   MRPACK) are in the palette only.
+- **Garry's Mod addons** (`.gma`, #1526, the Games field; `Archives/Gma.cs`, Filee's own reader): the Steam
+  Workshop's format, a header (title, a JSON description with the type and tags, author, timestamp), a file list
+  (names, sizes, CRC-32s) and the files one after another, ended by a CRC-32 of everything before it. Every name is
+  checked before anything is written (an absolute name, a drive or a `..` stops the addon), the entries are capped at
+  the archive limit and their sizes must fit inside the addon. Unpacking checks every file's CRC (0, as `gmad -nocrc`
+  writes it, is not checked) and writes an `addon.json` with the title, description, type and tags, so the folder packs
+  back into the same addon; the required-content list and the author are not kept (Garry's Mod uses neither). Packing
+  a folder, a ZIP of one or the files dropped onto "Compress into one archive" reads `addon.json` like gmad: `title`
+  (else the folder's name), `type` (else `servercontent`), `tags`, `description` and the `ignore` wildcards. Only
+  files on gmad's whitelist go in (`lua/*.lua`, `materials/*.vtf`, `models/*.mdl` …, the ones Garry's Mod mounts;
+  `addon.json`, `thumbs.db`, `desktop.ini`, `.git*` and `.DS_Store` never), so a `.psd` or a `readme.txt` beside them
+  is left out rather than failing the addon as gmad does without `-warninvalid`; a folder with none of them is
+  refused. Names are stored in lower case, sorted, with a CRC each. The type and tags are written as given (lower
+  case), not checked against the Workshop's lists. The "GMA" preset is in the palette after the game packs (schema
+  96), not on a donut.
+- **Valve paks** (`.vpk`, #1526, the Games field; `Archives/Vpk.cs`): the archives Source engine games keep their files
+  in (`hl2_textures_dir.vpk`, the content Garry's Mod mounts). The directory file holds a tree of extensions, folders
+  and names; each file's content is a few preload bytes stored in the tree plus its data, which follows the tree in the
+  directory file (archive index 0x7FFF) or sits in `<name>_nnn.vpk` next to it. The directory file is what unpacks;
+  a data part on its own is refused with the name of its directory file, a missing part names the part. Every name is
+  checked before anything is written, the tree is capped at 256 MB and the entries at the archive limit, preload bytes
+  must lie inside the tree, parts are `_000` to `_999`, and each file's data must lie inside its part; the total is
+  checked against the free space first. The MD5 and signature sections of version 2 are not read; every file's CRC-32
+  is checked. Nothing writes VPK (Garry's Mod
+  loads addons as folders or GMA). A PS Vita package has the same extension but is a ZIP: it goes to 7-Zip.
+- **Source engine maps** (`.bsp`, #1526, the Games field; `Archives/Bsp.cs`): the custom textures, models and sounds
+  packed into a map (by VBSP, VIDE or bspzip) are a ZIP stored as lump 40, the pakfile. Filee finds it in the lump
+  directory (offset, length, version, code; Left 4 Dead 2's version, offset, length order is used when only that one
+  points inside the file), copies it to the work folder and 7-Zip unpacks it, so a map extracts or converts to any
+  archive like one, with the same checks as any ZIP (names leaving the folder, the entry limit, the free space). The
+  lump must lie inside the map, and its copy is bounded by the lump's length. A map without packed files (an empty ZIP), a compressed pakfile lump and a Quake or GoldSrc map
+  (no `VBSP`) are refused with a message saying so. The map's geometry is not read.
 - **Adobe extension packages** (`.zxp`, #1382, read only like JAR): the panels and plug-ins of After Effects, Premiere
   Pro, Photoshop and the other Creative Cloud apps are signed ZIPs (`mimetype`, the extension's files and
   `META-INF/signatures.xml`). They extract and convert to every archive target with the signature file inside.
@@ -1848,6 +1892,9 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   `BundleConfig.pb`) are ZIPs. They extract and convert to every archive target; the APKs inside stay APK files.
   Nothing writes these: NuGet and the Play Store take only packages their own tools build and sign, and turning a
   bundle or splits into one installable `.apk` needs it signed again, which Filee doesn't do.
+- **Windows app packages** (#1521, read only): `.msix`, `.appx`, `.msixbundle` and `.appxbundle` are ZIP-based
+  packages. Extract them or convert them to archive formats; packages inside a bundle remain files. The extracted
+  contents are not an installer. Encrypted `.emsix` and `.eappx` packages are not supported.
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
   file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.

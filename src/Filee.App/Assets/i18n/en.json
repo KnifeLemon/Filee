@@ -199,6 +199,7 @@
   "notice.gcode_no_thumbnail": "The G-code file has no slicer preview, so its toolpath was drawn from above",
   "notice.cmyk_needs_ghostscript": "This file is CMYK but was saved as RGB: install Ghostscript in Settings → Engines to keep CMYK",
   "notice.pdfa_needs_ghostscript": "This PDF isn't PDF/A: install Ghostscript in Settings → Engines to make it PDF/A",
+  "notice.pdfa_form_fields": "Made PDF/A: its form fields can no longer be filled in",
   "notice.cmyk_render_failed": "This file is CMYK, but Ghostscript couldn't draw it, so it was saved as RGB",
   "notice.original_kept": "The original was kept, the result was saved as a copy",
   "notice.original_in_trash": "The original is in the Recycle Bin / Trash, the result kept its own name",

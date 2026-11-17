@@ -192,6 +192,7 @@
   "notice.gcode_no_thumbnail": "G-code файлд слайсерын урьдчилан харах зураг байхгүй тул замыг дээрээс нь зурсан",
   "notice.cmyk_needs_ghostscript": "Энэ файл CMYK боловч RGB хэлбэрээр хадгалагдлаа: CMYK хэвээр хадгалахын тулд Тохиргоо → Хөдөлгүүрүүд хэсгээс Ghostscript суулгана уу",
   "notice.pdfa_needs_ghostscript": "Энэ PDF нь PDF/A биш байна: PDF/A болгохын тулд Тохиргоо → Хөдөлгүүрүүд хэсгээс Ghostscript суулгана уу",
+  "notice.pdfa_form_fields": "PDF/A болголоо: маягтын талбаруудыг цаашид бөглөх боломжгүй",
   "notice.cmyk_render_failed": "Энэ файл CMYK боловч Ghostscript зурж чадсангүй тул RGB хэлбэрээр хадгаллаа",
   "notice.original_kept": "Эх файлыг хэвээр үлдээж, үр дүнг хуулбар болгон хадгаллаа",
   "notice.original_in_trash": "Эх файл Хогийн саванд орж, үр дүнгийн файл нэрийг нь авлаа",

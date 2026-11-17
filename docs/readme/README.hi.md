@@ -171,7 +171,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **टेक्स्ट**: TXT, LOG, स्क्रिप्ट सोर्स (PY, PAC, BAT, COMMAND; सिर्फ़ पढ़े जाते हैं, कभी चलाए नहीं जाते), Markdown, HTML;<br>MHTML (सेव किए गए वेब पेज) सिर्फ़ पढ़ने के लिए<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | UTF-8 TXT, PDF, DOCX, HWPX, EPUB<br>आपस में, PPTX स्लाइड³ |
 | **ई-बुक**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ<br>LIT, LRF, CHM, PDB, …⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3⁴ |
-| **वीडियो**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>सबटाइटल (SRT, ASS, WebVTT) |
+| **वीडियो**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A, 720p,<br>सबटाइटल (SRT, ASS, WebVTT) |
 | **ऑडियो**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **सबटाइटल**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC | आपस में, UTF-8 में (कोरियाई CP949 फ़ाइलें भी सही पढ़ी जाती हैं) |
 | **आर्काइव**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | निकालना, ZIP, 7Z, TAR, TAR.GZ;<br>कोई भी फ़ाइलें → एक ZIP |

@@ -188,7 +188,7 @@ internal static partial class MediaEncoding
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
     public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
         CoverExtras? cover = null, IReadOnlySet<string>? encoders = null, HardwareEncoder? hardware = null, double animationSpeed = 1,
-        ClipRange? clip = null, string? crop = null, bool subtitles = true)
+        ClipRange? clip = null, string? crop = null, bool subtitles = true, ImageOptions? image = null)
     {
         if (clip is { } part && VideoTargets.TryGetValue(target, out var clipTarget))
             return [new FfmpegPass(Video(input, output, target, clipTarget, options, info, encoders, hardware, part), 1)];
@@ -196,6 +196,8 @@ internal static partial class MediaEncoding
             return AnimatedGif(input, output, options, info, workDirectory, animationSpeed);
         if (target == "apng")
             return [new FfmpegPass(AnimatedPng(input, output, options, info, animationSpeed), 1)];
+        if (target == "webp")
+            return [new FfmpegPass(AnimatedWebp(input, output, options, image ?? new ImageOptions(), info, animationSpeed), 1)];
         if (target == "png")
             return [new FfmpegPass(PosterFrame(input, output, info), 1)];
         if (VideoTargets.TryGetValue(target, out var video))
@@ -1201,6 +1203,35 @@ internal static partial class MediaEncoding
         [
             .. Common, "-i", input, "-map", "0:V:0", "-vf", chain, "-an",
             "-c:v", "apng", "-pix_fmt", "rgb24", "-pred", "mixed", "-plays", "0", "-f", "apng", "-progress", "pipe:1", output,
+        ];
+    }
+
+    /// <summary>
+    /// Animated WebP with FFmpeg's libwebp_anim encoder: one looping pass. Without this edge a video reached WebP
+    /// through a single still frame (video → PNG → WebP), so the result was not animated.
+    /// </summary>
+    /// <remarks>
+    /// The preset's image options decide the encoding, as for any WebP: "Lossless WEBP" (<see cref="ImageOptions.WebpLossless"/>)
+    /// writes every frame losslessly, otherwise the image quality slider (<see cref="ImageOptions.Quality"/>) sets the lossy
+    /// quality. Lossy output follows the video quality for frame rate and size limits (never upscaled): a 930 × 480 clip
+    /// stays 930 × 480 at every quality, larger videos are scaled down to Full HD, 1280 or 854 px wide. Lossless output
+    /// has no width limit (WebP's own limit is 16,383 px) and keeps up to 30 frames per second, so the files are large.
+    /// </remarks>
+    private static List<string> AnimatedWebp(string input, string output, MediaOptions options, ImageOptions image, MediaInfo info, double speed)
+    {
+        var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
+        var quality = options.Quality;
+        var lossless = image.WebpLossless;
+        var chain = lossless
+            ? GifFrames(video, options.MaxHeight, fps: 30, maxWidth: 16_383, speed)
+            : GifFrames(video, options.MaxHeight, fps: Choose(quality, 20, 15, 12), maxWidth: Choose(quality, 1920, 1280, 854), speed);
+        // Lossless: -q:v is the effort spent on compressing (not the picture quality); 75 is a good size for the time.
+        var webpQuality = lossless ? 75 : Math.Clamp(image.Quality, 1, 100);
+        return
+        [
+            .. Common, "-i", input, "-map", "0:V:0", "-vf", chain, "-an",
+            "-c:v", "libwebp_anim", "-lossless", lossless ? "1" : "0", "-q:v", webpQuality.ToString(CultureInfo.InvariantCulture),
+            "-compression_level", "4", "-loop", "0", "-f", "webp", "-progress", "pipe:1", output,
         ];
     }
 

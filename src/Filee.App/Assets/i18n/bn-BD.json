@@ -207,6 +207,7 @@
   "notice.gcode_no_thumbnail": "G-code ফাইলে স্লাইসারের প্রিভিউ নেই, তাই টুলপাথ উপর থেকে আঁকা হয়েছে",
   "notice.cmyk_needs_ghostscript": "এই ফাইলটি CMYK হলেও RGB হিসেবে সংরক্ষণ করা হয়েছে: CMYK রাখতে সেটিংস → ইঞ্জিন-এ Ghostscript ইনস্টল করুন",
   "notice.pdfa_needs_ghostscript": "এই পিডিএফটি PDF/A নয়: PDF/A বানাতে সেটিংস → ইঞ্জিন-এ Ghostscript ইনস্টল করুন",
+  "notice.pdfa_form_fields": "PDF/A তৈরি হয়েছে: ফর্মের ঘরগুলো আর পূরণ করা যাবে না",
   "notice.cmyk_render_failed": "এই ফাইলটি CMYK, কিন্তু Ghostscript এটি আঁকতে পারেনি, তাই RGB হিসেবে সংরক্ষণ করা হয়েছে",
   "notice.original_kept": "মূল ফাইলটি রাখা হয়েছে, ফলাফলটি একটি কপি হিসেবে সংরক্ষণ করা হয়েছে",
   "notice.original_in_trash": "মূল ফাইলটি রিসাইকেল বিন / ট্র্যাশে রয়েছে, ফলাফলটি নিজস্ব নাম বজায় রেখেছে",

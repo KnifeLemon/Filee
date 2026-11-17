@@ -174,7 +174,7 @@ Setup-এর ফাইলের নামের ক্ষেত্রেও এ�
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **টেক্সট**: TXT, LOG, স্ক্রিপ্ট সোর্স (PY, PAC, BAT, COMMAND; পাঠযোগ্য, কখনো চালানো হয় না), Markdown, HTML;<br>MHTML (সংরক্ষিত ওয়েব পেজ) পাঠযোগ্য<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | UTF-8 TXT, PDF, DOCX, HWPX, EPUB<br>একে অপরে রূপান্তর, PPTX স্লাইড³ |
 | **ই-বুক**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ<br>LIT, LRF, CHM, PDB, …⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3⁴ |
-| **ভিডিও**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>সাবটাইটেল (SRT, ASS, WebVTT) |
+| **ভিডিও**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A, 720p,<br>সাবটাইটেল (SRT, ASS, WebVTT) |
 | **অডিও**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **সাবটাইটেল**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC | UTF-8 হিসেবে একে অপরে রূপান্তর (কোরিয়ান CP949 ফাইল সঠিকভাবে পড়ে) |
 | **আর্কাইভ**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | আনপ্যাক, ZIP, 7Z, TAR, TAR.GZ;<br>যেকোনো ফাইল → একটি একক ZIP |
