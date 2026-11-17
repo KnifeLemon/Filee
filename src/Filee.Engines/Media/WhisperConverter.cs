@@ -106,24 +106,25 @@ public sealed partial class WhisperConverter : IConverter
         if (!string.IsNullOrEmpty(cliPath) && Path.GetDirectoryName(cliPath) is { } cliDir && Directory.Exists(cliDir))
             searchDirs.Add(cliDir);
 
-        string[] preferredModels = ["ggml-large-v3-turbo.bin", "ggml-base.bin", "ggml-small.bin", "ggml-tiny.bin"];
-
-        foreach (var dir in searchDirs.Distinct())
-        {
-            foreach (var pref in preferredModels)
-            {
-                var candidate = Path.Combine(dir, pref);
-                if (File.Exists(candidate))
-                    return candidate;
-            }
-
-            var anyBin = Directory.GetFiles(dir, "*.bin").FirstOrDefault();
-            if (anyBin is not null)
-                return anyBin;
-        }
-
-        return null;
+        return PickModel(searchDirs);
     }
+
+    /// <summary>
+    /// The model to transcribe with among the <c>*.bin</c> files in <paramref name="dirs"/>: the largest one, since a
+    /// bigger Whisper model hears more (tiny &lt; base &lt; small &lt; medium &lt; large) and Filee itself only downloads
+    /// <c>ggml-base.bin</c>. A user who adds <c>ggml-small.bin</c> or <c>ggml-medium.bin</c> next to it, or keeps one in
+    /// their own copy's folder, gets that model. English-only models (<c>*.en.bin</c>) come after multilingual ones, so
+    /// speech in other languages isn't forced through them.
+    /// </summary>
+    internal static string? PickModel(IEnumerable<string> dirs) =>
+        dirs.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(Directory.Exists)
+            .SelectMany(dir => new DirectoryInfo(dir).GetFiles("*.bin"))
+            .OrderBy(file => file.Name.EndsWith(".en.bin", StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(file => file.Length)
+            .ThenBy(file => file.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(file => file.FullName)
+            .FirstOrDefault();
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
