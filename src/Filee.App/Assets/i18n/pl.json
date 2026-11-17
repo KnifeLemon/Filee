@@ -199,6 +199,7 @@
   "notice.gcode_no_thumbnail": "Plik G-code nie ma podglądu ze slicera, więc jego ścieżkę narysowano z góry",
   "notice.cmyk_needs_ghostscript": "Ten plik jest w CMYK, ale zapisano go w RGB: zainstaluj Ghostscript w Ustawienia → Silniki, aby zachować CMYK",
   "notice.pdfa_needs_ghostscript": "Ten PDF nie jest w formacie PDF/A: zainstaluj Ghostscript w Ustawienia → Silniki, aby tworzyć PDF/A",
+  "notice.pdfa_form_fields": "Utworzono PDF/A: pól formularza nie można już wypełniać",
   "notice.cmyk_render_failed": "Ten plik jest w CMYK, ale Ghostscript nie mógł go narysować, więc zapisano go w RGB",
   "notice.original_kept": "Oryginał został zachowany, wynik zapisano jako kopię",
   "notice.original_in_trash": "Oryginał jest w Koszu, wynik zachował własną nazwę",

@@ -293,8 +293,22 @@ public interface IPdfArchiver
     /// Rewrites <paramref name="path"/> in place as PDF/A, unless it already is one and <paramref name="changed"/> is
     /// false (LibreOffice and Skia write PDF/A themselves; a watermark added since breaks it).
     /// </summary>
-    /// <returns>False when it can't (Ghostscript isn't installed): the PDF is left as it is.</returns>
-    Task<bool> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken);
+    /// <returns>What it did; <see cref="PdfArchiveOutcome.NotArchived"/> when it can't (Ghostscript isn't installed):
+    /// the PDF is left as it is.</returns>
+    Task<PdfArchiveOutcome> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken);
+}
+
+/// <summary>What <see cref="IPdfArchiver.ArchiveAsync"/> did with a PDF.</summary>
+public enum PdfArchiveOutcome
+{
+    /// <summary>It couldn't (Ghostscript isn't installed): the PDF is left as it is.</summary>
+    NotArchived,
+
+    /// <summary>The PDF is PDF/A: rewritten, or kept because it already was one.</summary>
+    Archived,
+
+    /// <summary>Rewritten as PDF/A from a PDF with form fields, which are no longer fields in it.</summary>
+    ArchivedWithoutFormFields,
 }
 
 /// <summary>

@@ -199,6 +199,7 @@
   "notice.gcode_no_thumbnail": "O ficheiro G-code não tem pré-visualização do fatiador, por isso o percurso foi desenhado visto de cima",
   "notice.cmyk_needs_ghostscript": "Este ficheiro é CMYK, mas foi guardado em RGB: instala o Ghostscript em Definições → Motores para manter o CMYK",
   "notice.pdfa_needs_ghostscript": "Este PDF não é PDF/A: instala o Ghostscript em Definições → Motores para criar PDF/A",
+  "notice.pdfa_form_fields": "PDF/A criado: os campos do formulário já não podem ser preenchidos",
   "notice.cmyk_render_failed": "Este ficheiro é CMYK, mas o Ghostscript não o conseguiu desenhar, por isso foi guardado em RGB",
   "notice.original_kept": "O original foi mantido e o resultado foi guardado como cópia",
   "notice.original_in_trash": "O original está na Reciclagem ou no Lixo; o resultado manteve o seu próprio nome",

@@ -1176,10 +1176,12 @@ internal static class SettingsMigrations
         // v94: Valve textures (.vtf) learn the images donut; custom claims stay put.
         if (from < 94)
             changed |= LearnExtensions(profiles, out _, ["vtf"]);
-        // v95: Source engine files: Garry's Mod addons (.gma), Valve paks (.vpk) and maps (.bsp, for the files packed into
-        //      them) learn the archives donut; custom claims stay put. (Schema 95 may be renumbered if another change
-        //      takes it first.)
+        // v95: Windows app packages and bundles learn the archives donut, without taking custom claims (#1521).
         if (from < 95)
+            changed |= LearnExtensions(profiles, out _, ["msix", "appx", "msixbundle", "appxbundle"]);
+        // v96: Source engine files: Garry's Mod addons (.gma), Valve paks (.vpk) and maps (.bsp, for the files packed into
+        //      them) learn the archives donut; custom claims stay put.
+        if (from < 96)
             changed |= LearnExtensions(profiles, out _, ["gma", "vpk", "bsp"]);
         return changed;
     }
