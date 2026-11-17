@@ -1,6 +1,7 @@
 // Lua, PowerShell, AutoHotkey and batch scripts, SQL and HiveQL, DBML database schemas, INI files, RouterOS exports, CSS
 // style sheets, C, C++, C#, Dart and Java source files and Arduino / Processing sketches are plain text (issues #388, #368,
-// #442, #607, #536, #630, #661, #660, #864, #828, #980, #997, #854, #1176): recognised, and learnt by existing text donuts.
+// #442, #607, #536, #630, #661, #660, #864, #828, #980, #997, #854, #1176), and so are CrossOver logs (#1383): recognised, and
+// learnt by existing text donuts.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -36,6 +37,8 @@ public class ScriptTextTests
     [InlineData("Legacy.JAVA")]
     [InlineData("Blink.ino")]
     [InlineData("OldSketch.PDE")]
+    [InlineData("Steam.cxlog")]
+    [InlineData("Wine.CXLOG")]
     public void Scripts_and_style_sheets_are_text(string name) => Assert.Equal("txt", FormatRegistry.Detect(name)?.Id);
 
     [Fact]
@@ -188,5 +191,27 @@ public class ScriptTextTests
         profiles.Insert(0, new ToolbarProfile { Id = "my-arduino", Name = "Arduino", Extensions = ["INO"] });
         Assert.False(SettingsMigrations.ApplyToLibrary(86, presets, profiles));
         Assert.DoesNotContain("ino", text); // the user's own donut has it
+    }
+
+    [Fact]
+    public void A_crossover_log_uses_the_text_donut() =>
+        Assert.Equal("text", ProfileSelector.Select(BuiltInData.CreateProfiles(), ["Steam.cxlog"])?.Id);
+
+    [Fact]
+    public void Version_99_text_donuts_learn_cxlog_without_taking_custom_claims()
+    {
+        var presets = BuiltInData.CreatePresets();
+        var profiles = BuiltInData.CreateProfiles();
+        var text = profiles.Single(p => p.Id == "text").Extensions;
+        text.Remove("cxlog");
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(98, presets, profiles));
+        Assert.Contains("cxlog", text);
+        Assert.False(SettingsMigrations.ApplyToLibrary(98, presets, profiles));
+
+        text.Remove("cxlog");
+        profiles.Insert(0, new ToolbarProfile { Id = "my-logs", Name = "Logs", Extensions = ["CXLOG"] });
+        Assert.False(SettingsMigrations.ApplyToLibrary(98, presets, profiles));
+        Assert.DoesNotContain("cxlog", text); // the user's own donut has it
     }
 }

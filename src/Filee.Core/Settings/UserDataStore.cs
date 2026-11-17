@@ -1190,6 +1190,9 @@ internal static class SettingsMigrations
         // v98: "VTF" (any picture to a Valve texture) joins the palette after HEIC, not a donut.
         if (from < 98 && presets.All(p => p.Id != BuiltInData.VtfId))
             changed |= AddLikeNewLibrary(presets, BuiltInData.VtfId);
+        // v99: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put.
+        if (from < 99)
+            changed |= LearnExtensions(profiles, out _, ["cxlog"]);
         return changed;
     }
 
