@@ -30,6 +30,9 @@ public static class BuiltInData
     public static bool AcceptsFolders(Preset preset) => !preset.IsGroup
         && (preset.IsCopyToFolder || SupportsFolderTarget(preset.TargetFormat));
 
+    /// <summary>The preset that makes Valve textures (.vtf).</summary>
+    public const string VtfId = "to-vtf";
+
     /// <summary>Creates the default preset list.</summary>
     public static List<Preset> CreatePresets() =>
     [
@@ -47,6 +50,9 @@ public static class BuiltInData
         new() { Id = "to-gif", Name = "GIF", TargetFormat = "gif" },
         new() { Id = "to-avif", Name = "AVIF", TargetFormat = "avif", Image = { Quality = 60 } },
         new() { Id = "to-heic", Name = "HEIC", TargetFormat = "heic", Image = { Quality = 80 } },
+        // Valve textures for Garry's Mod and other Source games (#1478, added to the library in settings schema 98): in
+        // the palette only, in the Games field (off in a new install).
+        new() { Id = VtfId, Name = "VTF", TargetFormat = "vtf" },
         new()
         {
             Id = "half-size", NameKey = "preset.half_size", TargetFormat = SameAsSource,

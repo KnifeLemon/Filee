@@ -1187,6 +1187,9 @@ internal static class SettingsMigrations
         //      game packs the user removed stay removed.
         if (from < 97)
             changed |= AddGma(presets);
+        // v98: "VTF" (any picture to a Valve texture) joins the palette after HEIC, not a donut.
+        if (from < 98 && presets.All(p => p.Id != BuiltInData.VtfId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.VtfId);
         return changed;
     }
 
