@@ -227,7 +227,7 @@ public static class BuiltInData
 
     /// <summary>
     /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62) and Garry's Mod
-    /// addons (#1526, schema 96): in the palette only, after "TAR", in the Games field (off in a new install).
+    /// addons (#1526, schema 97): in the palette only, after "TAR", in the Games field (off in a new install).
     /// </summary>
     public static List<Preset> GamePackPresets() =>
     [

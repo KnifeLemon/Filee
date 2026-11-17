@@ -58,16 +58,16 @@ public class SourceFormatTests
     }
 
     [Fact]
-    public void Version_95_libraries_get_the_gma_preset_after_the_game_packs()
+    public void Version_96_libraries_get_the_gma_preset_after_the_game_packs()
     {
         var presets = BuiltInData.CreatePresets();
         presets.RemoveAll(p => p.Id == "to-gma");
         var profiles = BuiltInData.CreateProfiles();
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(96, presets, profiles));
         var ids = presets.Select(p => p.Id).ToList();
         Assert.Equal(ids.IndexOf("to-mrpack") + 1, ids.IndexOf("to-gma"));
-        Assert.False(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(96, presets, profiles));
         // Not on a donut.
         Assert.DoesNotContain(BuiltInData.CreateProfiles(), p => p.PresetIds.Contains("to-gma") || p.BackPresetIds?.Contains("to-gma") == true);
     }

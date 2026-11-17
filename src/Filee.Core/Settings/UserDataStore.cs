@@ -1183,9 +1183,9 @@ internal static class SettingsMigrations
         //      them) learn the archives donut; custom claims stay put.
         if (from < 96)
             changed |= LearnExtensions(profiles, out _, ["gma", "vpk", "bsp"]);
-        // v96: "GMA" (packing a folder into a Garry's Mod addon) joins the game packs in the palette, not a donut; the
-        //      game packs the user removed stay removed. (Schema 96 may be renumbered if another change takes it first.)
-        if (from < 96)
+        // v97: "GMA" (packing a folder into a Garry's Mod addon) joins the game packs in the palette, not a donut; the
+        //      game packs the user removed stay removed.
+        if (from < 97)
             changed |= AddGma(presets);
         return changed;
     }
