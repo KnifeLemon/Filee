@@ -428,6 +428,8 @@ text, vectors, outlines, forms, page labels and document information remain PDF 
 Ctrl / Shift + click selects several pages, and every action works on the whole selection: the pages move up or down
 as a block, dragging them moves them to the line drawn between two pages, Insert puts another PDF's pages before or
 after the selection and Replace puts them where the selection was, removing it (#860).
+PDFs dragged in from the file manager show the same line and go in at it, through the same path as Insert
+(`PdfPageEditorViewModel.InsertFilesAtAsync`); other files are left out, and a drag without a PDF isn't taken (#1596).
 Each source PDF's bytes and page sizes are cached once after the window has appeared; thumbnails and the large preview
 render off the UI thread. A whole-document edit keeps the original catalogue and changes `/Rotate` in modify mode.
 An actual reorder, deletion, addition or extraction builds a new PDF from selected page objects. A PDF that opens

@@ -1,6 +1,7 @@
 // Lightweight PDF page organiser opened from the PDF donut's Edit group. Pages stay as PDF objects: saving copies
 // them in the chosen order and only changes /Rotate where requested. Several pages can be selected at once (#860):
-// moving, rotating, deleting, extracting, inserting and replacing all act on the whole selection.
+// moving, rotating, deleting, extracting, inserting and replacing all act on the whole selection. PDFs dragged in from
+// the file manager go where they are dropped (#1596).
 
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -93,7 +94,7 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
     private bool _syncingSelection;
 
     /// <summary>Where the pages of the PDFs being added go.</summary>
-    private enum Placement { End, BeforeSelection, AfterSelection, ReplaceSelection }
+    private enum Placement { End, BeforeSelection, AfterSelection, ReplaceSelection, AtIndex }
 
     public PdfPageEditorViewModel(IReadOnlyList<string> files, Preset preset, ILocalizer loc, UserDataStore store,
         ILogger? log = null)
@@ -313,18 +314,43 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
     /// </summary>
     public Task ReplaceSelectedAsync(IReadOnlyList<string> paths) => AddFilesAsync(paths, Placement.ReplaceSelection);
 
-    private async Task AddFilesAsync(IReadOnlyList<string> paths, Placement placement)
+    /// <summary>
+    /// Inserts the pages of the PDFs dropped on the strip before the page now at <paramref name="insertAt"/>
+    /// (<see cref="Pages"/>.Count puts them at the end), each PDF's pages in order, and selects them. Files that aren't
+    /// PDFs are left out and the status line says so.
+    /// </summary>
+    public async Task InsertFilesAtAsync(IReadOnlyList<string> paths, int insertAt)
+    {
+        var pdfs = paths.Where(IsPdf).ToList();
+        if (pdfs.Count == 0)
+        {
+            if (paths.Count > 0 && !IsBusy && !_closed)
+                Status = _loc["error.unsupported_source"];
+            return;
+        }
+        if (await AddFilesAsync(pdfs, Placement.AtIndex, insertAt) && pdfs.Count < paths.Count && !HasStatus)
+            Status = _loc["pdf_editor.drop_left_out"];
+    }
+
+    /// <summary>Whether the editor takes <paramref name="path"/>: a PDF, by its extension, as the file picker filters.</summary>
+    public static bool IsPdf(string path) =>
+        string.Equals(System.IO.Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Returns false when nothing was done because the editor was busy or closed.</summary>
+    private async Task<bool> AddFilesAsync(IReadOnlyList<string> paths, Placement placement, int insertAt = 0)
     {
         await EnsureInitialFilesAsync();
         if (paths.Count == 0 || IsBusy || _closed)
-            return;
-        var added = await AddFilesCoreAsync(paths, placement);
+            return false;
+        var added = await AddFilesCoreAsync(paths, placement, insertAt);
         _ = LoadThumbnailsAsync(added);
+        return true;
     }
 
     private Task EnsureInitialFilesAsync() => _initialLoad ??= AddFilesCoreAsync(_initialFiles, Placement.End);
 
-    private async Task<IReadOnlyList<PdfPageItem>> AddFilesCoreAsync(IReadOnlyList<string> paths, Placement placement)
+    private async Task<IReadOnlyList<PdfPageItem>> AddFilesCoreAsync(IReadOnlyList<string> paths, Placement placement,
+        int insertAt = 0)
     {
         if (paths.Count == 0 || _closed)
             return [];
@@ -352,9 +378,10 @@ public sealed partial class PdfPageEditorViewModel : ObservableObject, IDisposab
                 _previewSources[path] = source!;
             }
             // Measured once the files are open: the selection may have changed while they were read.
-            List<int> selected = placement == Placement.End ? [] : SelectedIndexes();
+            List<int> selected = placement is Placement.End or Placement.AtIndex ? [] : SelectedIndexes();
             List<PdfPageItem> replaced = placement == Placement.ReplaceSelection ? selected.Select(index => Pages[index]).ToList() : [];
-            var at = selected.Count == 0 ? Pages.Count
+            var at = placement == Placement.AtIndex ? Math.Clamp(insertAt, 0, Pages.Count)
+                : selected.Count == 0 ? Pages.Count
                 : placement == Placement.AfterSelection ? selected[^1] + 1
                 : selected[0];
             _syncingSelection = true;

@@ -76,9 +76,10 @@
     </StackPanel>
 
     <Grid ColumnDefinitions="280,10,*" Margin="20,0,20,14">
-      <!-- Ctrl / Shift + click selects several pages; dragging moves the selection, shown by the line between pages. -->
+      <!-- Ctrl / Shift + click selects several pages; dragging moves the selection, shown by the line between pages.
+           PDFs dragged in from the file manager land at that line too (#1596). -->
       <Panel Grid.Column="0">
-        <ListBox x:Name="PageOrder" ItemsSource="{Binding Pages}" SelectionMode="Multiple"
+        <ListBox x:Name="PageOrder" ItemsSource="{Binding Pages}" SelectionMode="Multiple" DragDrop.AllowDrop="True"
                  SelectedItems="{Binding SelectedPages}"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource SurfaceAltBrush}">
           <ListBox.Styles>
