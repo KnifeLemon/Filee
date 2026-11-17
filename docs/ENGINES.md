@@ -2409,8 +2409,10 @@ Transcription runs entirely locally and offline on your computer; no audio or da
 - **Platform**: Windows only (x64). On macOS and Linux, the Whisper package is not offered and the engine reports
   `engine.reason.unsupported_platform` ("Not available on this platform").
 - **Download size**: ~157 MB total (~9 MB for `whisper-cli.exe` and ~148 MB for the default `ggml-base.bin` model; ~160 MB on disk).
-  Downloads are pinned by SHA-256 in `engines.json`. Users can also place larger Whisper models (such as `ggml-small.bin`
-  or `ggml-large-v3-turbo.bin`) into the engine directory or point to a custom installation in Settings → *Engines*.
+  Downloads are pinned by SHA-256 in `engines.json`. Users can also place larger Whisper models (such as `ggml-small.bin`,
+  `ggml-medium.bin` or `ggml-large-v3-turbo.bin`) into the engine directory or point to a custom installation in
+  Settings → *Engines*. Filee transcribes with the largest model file it finds in those folders (a bigger model hears
+  more, and is slower); English-only models (`*.en.bin`) are used only when no multilingual one is there.
 - **FFmpeg requirement**: Whisper operates on 16 kHz mono 16-bit WAV audio. Extracting audio from arbitrary video and audio
   formats requires FFmpeg. FFmpeg must be installed (via Settings → *Engines*, bundled, or found on `PATH`).
 - **Languages**: Whisper supports auto-detection (`auto`) as well as specific language codes (`-l <code>`, e.g. `hi` for
