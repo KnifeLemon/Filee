@@ -32,6 +32,9 @@ internal sealed class FakeConverter(string id, params ConversionEdge[] edges) : 
     /// <summary>Thrown instead of converting, when set.</summary>
     public Exception? Failure { get; set; }
 
+    /// <summary>A notice this test engine leaves on the file (<see cref="ConversionStep.Notice"/>), when set.</summary>
+    public string? Notice { get; set; }
+
     /// <summary>Document fonts this test engine reports before writing.</summary>
     public IReadOnlyList<string> FontsToReport { get; set; } = [];
     public ConcurrentQueue<string?> OriginalSources { get; } = new();
@@ -51,6 +54,8 @@ internal sealed class FakeConverter(string id, params ConversionEdge[] edges) : 
             throw Failure;
         if (FontsToReport.Count > 0)
             step.MissingFonts?.Invoke(FontsToReport);
+        if (Notice is not null)
+            step.Notice?.Invoke(Notice);
 
         var written = new List<string>();
         for (var i = 0; i < OutputsPerInput; i++)
