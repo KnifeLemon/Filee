@@ -818,10 +818,10 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Theory]
     [InlineData("mp4", "jpg", "magick")]
-    [InlineData("mkv", "webp", "magick")]
     [InlineData("mov", "pdf", "pdfsharp")]
     public void Video_to_images_goes_through_one_still_frame_not_an_animated_gif(string from, string to, string imageEngine)
     {
+        // WebP is not here: a video becomes an animated WebP directly (see Video_reaches_webp_directly_not_through_a_still_frame).
         var route = Planner().Plan(from, to);
         Assert.NotNull(route);
         Assert.Equal([("ffmpeg", from, "png"), (imageEngine, "png", to)], route.Steps.Select(s => (s.Converter.Id, s.From, s.To)));
@@ -1572,6 +1572,20 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var edge = Assert.Single(new FfmpegConverter().Edges, e => e is { From: "mp4", To: "webp" });
         Assert.True(edge.Cost < 20); // video → PNG → WebP costs 10 + 10
+    }
+
+    [Theory]
+    [InlineData("mp4")]
+    [InlineData("mkv")]
+    [InlineData("mov")]
+    public void A_video_to_webp_is_one_animated_ffmpeg_step(string from)
+    {
+        // The planner takes the direct step, not the still frame it used to (video → PNG → WebP).
+        var route = Planner().Plan(from, "webp");
+        Assert.NotNull(route);
+        var step = Assert.Single(route.Steps);
+        Assert.Equal(("ffmpeg", from, "webp"), (step.Converter.Id, step.From, step.To));
+        Assert.False(step.FrameSequence);
     }
 
     [Fact]
