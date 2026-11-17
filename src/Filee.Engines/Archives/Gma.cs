@@ -1,5 +1,5 @@
-// Garry's Mod addons (.gma), the format of the Steam Workshop, unpacked by Filee. Layout (little endian), as Facepunch's
-// gmad writes it:
+// Garry's Mod addons (.gma), the format of the Steam Workshop: read and written by Filee, as Facepunch's gmad does.
+// Layout (little endian, from gmad's AddonFormat.h, AddonReader.h and create_gmad.cpp):
 //
 //   "GMAD" + version (1 byte, 1–3; gmad writes 3)
 //   SteamID u64 (unused, 0) + timestamp u64 (Unix seconds)
@@ -10,7 +10,9 @@
 //   the files' content one after another, then a CRC-32 of everything before it (0 when gmad ran with -nocrc)
 //
 // The description is the JSON gmad builds from addon.json ({"description", "type", "tags"}). Unpacking writes an
-// addon.json beside the files with the title, description, type and tags, as gmad reads it to pack the folder again.
+// addon.json beside the files, so the folder packs back into the same addon. Packing reads it like gmad: title, type,
+// tags and the "ignore" wildcards; files outside gmad's whitelist (the only ones Garry's Mod loads) are left out, and
+// names are stored in lower case.
 
 using System.Text;
 using System.Text.Json;
@@ -18,16 +20,44 @@ using System.Text.Json.Nodes;
 
 namespace Filee.Engines.Archives;
 
-/// <summary>Unpacks Garry's Mod addons.</summary>
+/// <summary>Unpacks and writes Garry's Mod addons.</summary>
 internal static class Gma
 {
     private static ReadOnlySpan<byte> Ident => "GMAD"u8;
 
-    /// <summary>The newest version (gmad's).</summary>
+    /// <summary>The version gmad writes.</summary>
     private const byte Version = 3;
 
-    /// <summary>The settings file of an addon folder, which gmad packs it from; written on unpacking.</summary>
+    /// <summary>The settings file of an addon folder; never packed, written back on unpacking.</summary>
     public const string AddonJson = "addon.json";
+
+    /// <summary>
+    /// gmad's whitelist (AddonWhiteList.h), in order: the files Garry's Mod mounts from an addon. A "!" entry takes back
+    /// what the entries before it allowed. "*" matches any characters, slashes included.
+    /// </summary>
+    private static readonly string[] WhiteList =
+    [
+        "lua/*.lua", "scenes/*.vcd", "particles/*.pcf", "resource/fonts/*.ttf", "scripts/vehicles/*.txt",
+        "resource/localization/*/*.properties", "maps/*.bsp", "maps/*.lmp", "maps/*.nav", "maps/*.ain", "maps/thumb/*.png",
+        "sound/*.wav", "sound/*.mp3", "sound/*.ogg", "materials/*.vmt", "materials/*.vtf", "materials/*.png",
+        "materials/*.jpg", "materials/*.jpeg", "materials/colorcorrection/*.raw", "models/*.mdl", "models/*.phy",
+        "models/*.ani", "models/*.vvd", "models/*.vtx", "!models/*.sw.vtx", "!models/*.360.vtx", "!models/*.xbox.vtx",
+        "gamemodes/*/*.txt", "!gamemodes/*/*/*.txt", "gamemodes/*/*.fgd", "!gamemodes/*/*/*.fgd", "gamemodes/*/logo.png",
+        "gamemodes/*/icon24.png", "gamemodes/*/gamemode/*.lua", "gamemodes/*/entities/effects/*.lua",
+        "gamemodes/*/entities/weapons/*.lua", "gamemodes/*/entities/entities/*.lua", "gamemodes/*/backgrounds/*.png",
+        "gamemodes/*/backgrounds/*.jpg", "gamemodes/*/backgrounds/*.jpeg", "gamemodes/*/content/models/*.mdl",
+        "gamemodes/*/content/models/*.phy", "gamemodes/*/content/models/*.ani", "gamemodes/*/content/models/*.vvd",
+        "gamemodes/*/content/models/*.vtx", "!gamemodes/*/content/models/*.sw.vtx", "!gamemodes/*/content/models/*.360.vtx",
+        "!gamemodes/*/content/models/*.xbox.vtx", "gamemodes/*/content/materials/*.vmt", "gamemodes/*/content/materials/*.vtf",
+        "gamemodes/*/content/materials/*.png", "gamemodes/*/content/materials/*.jpg", "gamemodes/*/content/materials/*.jpeg",
+        "gamemodes/*/content/materials/colorcorrection/*.raw", "gamemodes/*/content/scenes/*.vcd",
+        "gamemodes/*/content/particles/*.pcf", "gamemodes/*/content/resource/fonts/*.ttf",
+        "gamemodes/*/content/scripts/vehicles/*.txt", "gamemodes/*/content/resource/localization/*/*.properties",
+        "gamemodes/*/content/maps/*.bsp", "gamemodes/*/content/maps/*.nav", "gamemodes/*/content/maps/*.ain",
+        "gamemodes/*/content/maps/thumb/*.png", "gamemodes/*/content/sound/*.wav", "gamemodes/*/content/sound/*.mp3",
+        "gamemodes/*/content/sound/*.ogg", "data_static/*.txt", "data_static/*.dat", "data_static/*.json",
+        "data_static/*.xml", "data_static/*.csv", "shaders/fxc/*.vcs",
+    ];
 
     /// <summary>The longest name Filee reads from a file list (gmad reserves 180 bytes; longer is a damaged file).</summary>
     private const int MaxNameBytes = 4096;
@@ -193,5 +223,228 @@ internal static class Gma
             ["ignore"] = new JsonArray(),
         };
         return json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
+    }
+
+    /// <summary>The top folders of an addon, the ones gmad's whitelist starts with.</summary>
+    private static readonly HashSet<string> AddonFolders = new(
+        WhiteList.Select(rule => rule.TrimStart('!').Split('/')[0]), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The folder whose content goes into an addon: <paramref name="folder"/>, or the folder inside it that holds
+    /// addon.json or the addon's top folders (lua, materials, models …). An addon zipped as its folder, maybe with a
+    /// readme beside it ("My Addon/lua/…"), is found through folders that hold one subfolder, up to a few levels.
+    /// </summary>
+    public static string Root(string folder)
+    {
+        var current = folder;
+        for (var depth = 0; depth < 8; depth++)
+        {
+            if (File.Exists(Path.Combine(current, AddonJson))
+                || Directory.EnumerateDirectories(current).Any(d => AddonFolders.Contains(Path.GetFileName(d))))
+                return current;
+            var folders = Directory.GetDirectories(current);
+            if (folders.Length != 1)
+                break;
+            current = folders[0];
+        }
+        return folder;
+    }
+
+    /// <summary>The settings gmad takes from addon.json.</summary>
+    internal sealed record AddonSettings(string? Title, string Description, string Type, IReadOnlyList<string> Tags, IReadOnlyList<string> Ignore);
+
+    /// <summary>Reads addon.json; a missing file gives the defaults (title from the folder, type "servercontent").</summary>
+    internal static AddonSettings ReadSettings(string? jsonPath)
+    {
+        if (jsonPath is null || !File.Exists(jsonPath))
+            return new AddonSettings(null, "Description", "servercontent", [], []);
+        JsonObject json;
+        try
+        {
+            json = JsonNode.Parse(File.ReadAllText(jsonPath), documentOptions: new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip,
+            }) as JsonObject ?? throw new InvalidDataException("addon.json is not a JSON object.");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException($"addon.json can't be read: {ex.Message}");
+        }
+
+        static string? Text(JsonNode? node) => node is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+        static List<string> Texts(JsonNode? node) => node is JsonArray array ? [.. array.Select(Text).OfType<string>()] : [];
+
+        var title = Text(json["title"]);
+        var type = Text(json["type"]);
+        return new AddonSettings(
+            string.IsNullOrWhiteSpace(title) ? null : title,
+            Text(json["description"]) ?? "Description",
+            string.IsNullOrWhiteSpace(type) ? "servercontent" : type.ToLowerInvariant(),
+            [.. Texts(json["tags"]).Where(t => t.Length > 0).Select(t => t.ToLowerInvariant())],
+            Texts(json["ignore"]));
+    }
+
+    /// <summary>True when gmad's whitelist lets <paramref name="name"/> (lower case, "/" separated) into an addon.</summary>
+    internal static bool IsAllowed(string name)
+    {
+        var valid = false;
+        foreach (var rule in WhiteList)
+        {
+            if (rule.StartsWith('!'))
+            {
+                if (Wildcard(rule[1..], name))
+                    valid = false;
+            }
+            else if (!valid)
+            {
+                valid = Wildcard(rule, name);
+            }
+        }
+        return valid;
+    }
+
+    /// <summary>True when one of gmad's own rules or an addon.json "ignore" wildcard leaves <paramref name="name"/> out.</summary>
+    internal static bool IsIgnored(string name, IReadOnlyList<string> ignore)
+    {
+        var lower = name.ToLowerInvariant();
+        if (lower == AddonJson || Wildcard("*thumbs.db", lower) || Wildcard("*desktop.ini", lower) || Wildcard(".git*", lower)
+            || name == ".DS_Store" || Wildcard("*/.DS_Store", name))
+            return true;
+        return ignore.Any(pattern => Wildcard(pattern.Replace('\\', '/'), name));
+    }
+
+    /// <summary>Bootil's wildcard test: "*" matches any run of characters (slashes too), everything else itself.</summary>
+    internal static bool Wildcard(string pattern, string text)
+    {
+        int p = 0, t = 0, star = -1, mark = 0;
+        while (t < text.Length)
+        {
+            if (p < pattern.Length && pattern[p] == '*')
+            {
+                star = p++;
+                mark = t;
+            }
+            else if (p < pattern.Length && pattern[p] == text[t])
+            {
+                p++;
+                t++;
+            }
+            else if (star >= 0)
+            {
+                p = star + 1;
+                t = ++mark;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        while (p < pattern.Length && pattern[p] == '*')
+            p++;
+        return p == pattern.Length;
+    }
+
+    /// <summary>
+    /// Writes an addon of <paramref name="files"/> (entry name relative to the addon folder, "/" separated, and the file
+    /// on disk). addon.json among them gives the title, type, tags and ignores; <paramref name="fallbackTitle"/> is the
+    /// title without one. Returns the names left out because Garry's Mod would not load them.
+    /// </summary>
+    public static IReadOnlyList<string> Write(IReadOnlyList<(string EntryName, string Path)> files, string output, string fallbackTitle,
+        IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        var json = files.FirstOrDefault(f => string.Equals(f.EntryName, AddonJson, StringComparison.OrdinalIgnoreCase));
+        var settings = ReadSettings(json.Path);
+        var title = settings.Title ?? fallbackTitle;
+
+        var packed = new List<(string Name, string Path, long Size)>();
+        var skipped = new List<string>();
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (entryName, path) in files.OrderBy(f => f.EntryName, StringComparer.Ordinal))
+        {
+            var name = entryName.Replace('\\', '/').TrimStart('/');
+            if (IsIgnored(name, settings.Ignore))
+                continue;
+            var lower = name.ToLowerInvariant();
+            if (!IsAllowed(lower) || !names.Add(lower))
+            {
+                skipped.Add(name);
+                continue;
+            }
+            packed.Add((lower, path, new FileInfo(path).Length));
+        }
+        if (packed.Count == 0)
+            throw new InvalidDataException(
+                "None of these files can go into a Garry's Mod addon. An addon holds lua/, materials/, models/, sound/, maps/ and the like, as Garry's Mod loads them.");
+
+        var description = new JsonObject
+        {
+            ["description"] = settings.Description,
+            ["type"] = settings.Type,
+            ["tags"] = new JsonArray([.. settings.Tags.Select(tag => (JsonNode?)JsonValue.Create(tag))]),
+        }.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+
+        var total = Math.Max(1, packed.Sum(f => f.Size));
+        long done = 0;
+        var crc = new Crc32();
+        using var file = new FileStream(output, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16);
+        using var stream = new CrcStream(file, crc);
+        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(Ident);
+            writer.Write(Version);
+            writer.Write(0UL); // SteamID
+            writer.Write((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            writer.Write((byte)0); // no required content
+            WriteString(writer, title);
+            WriteString(writer, description);
+            WriteString(writer, "Author Name"); // as gmad: unused
+            writer.Write(1); // addon version, unused
+
+            var number = 0u;
+            foreach (var (name, path, size) in packed)
+            {
+                writer.Write(++number);
+                WriteString(writer, name);
+                writer.Write(size);
+                writer.Write(FileCrc(path, cancellationToken));
+            }
+            writer.Write(0u);
+        }
+        foreach (var (_, path, size) in packed)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16);
+            var copied = ArchiveFiles.CopyLimited(source, stream, size, cancellationToken);
+            if (copied != size)
+                throw new IOException($"{path} changed while it was packed.");
+            done += size;
+            progress?.Report((double)done / total);
+        }
+        // The CRC of everything written so far, which the game checks after a download.
+        Span<byte> tail = stackalloc byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(tail, crc.Value);
+        file.Write(tail);
+        return skipped;
+    }
+
+    private static void WriteString(BinaryWriter writer, string text)
+    {
+        writer.Write(Encoding.UTF8.GetBytes(text.Replace("\0", "")));
+        writer.Write((byte)0);
+    }
+
+    private static uint FileCrc(string path, CancellationToken cancellationToken)
+    {
+        var crc = new Crc32();
+        var buffer = new byte[1 << 16];
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16);
+        int read;
+        while ((read = stream.Read(buffer)) > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            crc.Append(buffer.AsSpan(0, read));
+        }
+        return crc.Value;
     }
 }
