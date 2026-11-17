@@ -71,6 +71,13 @@ public sealed class DonutItem
     /// </summary>
     public LabelDirection? Direction { get; init; }
 
+    /// <summary>
+    /// The picture the slice shows instead of its name (a folder-icon ring entry): the icon candidate itself, seen
+    /// before it is applied. A slice with a preview draws the picture alone, big and centred; its label keeps for the
+    /// hover caption of the centre.
+    /// </summary>
+    public IImage? Preview { get; init; }
+
     /// <summary>A group slice (<see cref="Children"/> set), even one left with nothing to fan out.</summary>
     public bool IsGroup => Children is not null;
 
@@ -1009,7 +1016,7 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(emphasis, 0, 1)), null, wedge);
 
                 var hot = (i == ActiveIndex || i == _dropTargetIndex) && item.IsEnabled;
-                DrawSliceLabel(context, labels[i], item.IsEnabled, hot);
+                DrawSliceContent(context, item, labels[i], center, r1, r2, mid, hot);
                 DrawGroupMark(context, item, center, r2, mid, hot);
             }
         }
@@ -1036,7 +1043,7 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(SliceBrush, SliceOpacity * (slice.Item.IsEnabled ? 1 : 0.55)), BorderPen(), wedge);
                     if (slice.Emphasis > 0.01 && slice.Item.IsEnabled)
                         context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(slice.Emphasis, 0, 1)), null, wedge);
-                    DrawSliceLabel(context, oldLabels[i], slice.Item.IsEnabled, slice.Hot && slice.Item.IsEnabled);
+                    DrawSliceContent(context, slice.Item, oldLabels[i], center, r1, r2, slice.Mid, slice.Hot && slice.Item.IsEnabled);
                     DrawGroupMark(context, slice.Item, center, r2, slice.Mid, slice.Hot && slice.Item.IsEnabled);
                 }
             }
@@ -1078,6 +1085,14 @@ public sealed partial class DonutMenu : Control
         var scale = DonutScale;
         using var scaled = context.PushTransform(Matrix.CreateTranslation(-center.X, -center.Y) * Matrix.CreateScale(scale, scale) *
                                                  Matrix.CreateTranslation(center.X, center.Y));
+        // A hovered folder-icon slice borrows the centre: its picture drawn there, bigger than the disk itself, is
+        // the "look before you drop". The centre's texts step aside while it shows.
+        if (ExpandedChildren is { } lensChildren && _subHover >= 0 && _subHover < lensChildren.Count &&
+            lensChildren[_subHover].Preview is { } lens && !_progressMode)
+        {
+            DrawSlicePicture(context, lens, center, radius * 2.24, lensChildren[_subHover].IsEnabled);
+            return;
+        }
         var key = new CenterPlanKey(CenterNotice, CenterTitle, CenterSubtitle, CenterHint, CenterHintWheel,
             radius, scale, bold, regular, Foreground, cancelHot ? DangerBrush : SecondaryForeground,
             SecondaryForeground, CultureInfo.CurrentUICulture.Name, TextDirection);
@@ -1519,6 +1534,35 @@ public sealed partial class DonutMenu : Control
                 DrawCentered(context, SliceLabelLayout.MakeLine(caption, fonts.Regular, text.CaptionSize,
                     hot ? OnAccentBrush : SecondaryForeground, fonts.Direction, text.Width), at.X, y);
         }
+    }
+
+    /// <summary>
+    /// A slice's laid-out name and icon, or, for a folder-icon ring entry, its picture (<see cref="DonutItem.Preview"/>):
+    /// the icon candidate itself, as big as the band allows and centred on the slice, seen before it is applied.
+    /// </summary>
+    private void DrawSliceContent(DrawingContext context, DonutItem item, SliceLabel label, Point center,
+        double inner, double outer, double mid, bool hot)
+    {
+        if (item.Preview is { } picture)
+        {
+            DrawSlicePicture(context, picture, DonutGeometry.PointAt(center, (inner + outer) / 2, mid),
+                Math.Min((outer - inner) * 0.72, 40), item.IsEnabled);
+            return;
+        }
+        DrawSliceLabel(context, label, item.IsEnabled, hot);
+    }
+
+    /// <summary>A slice's picture at <paramref name="anchor"/>: scaled to <paramref name="size"/> keeping its ratio.</summary>
+    private static void DrawSlicePicture(DrawingContext context, IImage picture, Point anchor, double size, bool enabled)
+    {
+        var w = picture.Size.Width;
+        var h = picture.Size.Height;
+        if (w <= 0 || h <= 0)
+            return;
+        var scale = Math.Min(size / w, size / h);
+        var rect = new Rect(anchor.X - w * scale / 2, anchor.Y - h * scale / 2, w * scale, h * scale);
+        using (context.PushOpacity(enabled ? 1 : 0.4))
+            picture.Draw(context, new Rect(picture.Size), rect);
     }
 
     /// <summary>Another slice of <paramref name="face"/> has the name, and only the caption tells them apart.</summary>

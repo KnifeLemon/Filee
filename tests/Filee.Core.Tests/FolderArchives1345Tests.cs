@@ -25,7 +25,7 @@ public sealed class FolderArchives1345Tests
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var folders = profiles.Single(p => p.Id == "folders");
-        Assert.Equal(["to-iso", "to-zip", "zip-all"], folders.PresetIds);
+        Assert.Equal(["tool-folder-icon", "to-iso", "to-zip", "zip-all"], folders.PresetIds);
         folders.PresetIds = ["to-iso"];
         Assert.True(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
         Assert.Equal(["to-iso", "to-zip", "zip-all"], folders.PresetIds);
