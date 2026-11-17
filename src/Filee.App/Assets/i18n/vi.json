@@ -199,6 +199,7 @@
   "notice.gcode_no_thumbnail": "Tệp G-code không có ảnh xem trước của slicer nên đường chạy được vẽ nhìn từ trên xuống",
   "notice.cmyk_needs_ghostscript": "Tệp này là CMYK nhưng đã được lưu dưới dạng RGB: hãy cài Ghostscript trong Cài đặt → Bộ xử lý để giữ CMYK",
   "notice.pdfa_needs_ghostscript": "Tệp PDF này không phải PDF/A: hãy cài Ghostscript trong Cài đặt → Bộ xử lý để tạo PDF/A",
+  "notice.pdfa_form_fields": "Đã tạo PDF/A: không thể điền các trường biểu mẫu nữa",
   "notice.cmyk_render_failed": "Tệp này là CMYK, nhưng Ghostscript không vẽ được nên đã lưu dưới dạng RGB",
   "notice.original_kept": "Bản gốc được giữ lại, kết quả được lưu thành bản sao",
   "notice.original_in_trash": "Bản gốc đã ở trong Thùng rác, kết quả giữ tên riêng của nó",

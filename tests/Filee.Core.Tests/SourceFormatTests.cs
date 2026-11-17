@@ -36,23 +36,23 @@ public class SourceFormatTests
     }
 
     [Fact]
-    public void Version_94_libraries_learn_the_source_files_without_taking_custom_claims()
+    public void Version_95_libraries_learn_the_source_files_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var archives = profiles.Single(p => p.Id == "archives");
         archives.Extensions.RemoveAll(e => e is "gma" or "vpk" or "bsp");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(94, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
         Assert.Contains("gma", archives.Extensions);
         Assert.Contains("vpk", archives.Extensions);
         Assert.Contains("bsp", archives.Extensions);
         Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id)); // no preset added
-        Assert.False(SettingsMigrations.ApplyToLibrary(94, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
 
         archives.Extensions.Remove("gma");
         profiles.Insert(0, new ToolbarProfile { Id = "my-addons", Extensions = ["GMA"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(94, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
         Assert.DoesNotContain("gma", archives.Extensions); // the user's own donut has it
         Assert.Equal("my-addons", ProfileSelector.Select(profiles, ["wire.gma"])?.Id);
     }

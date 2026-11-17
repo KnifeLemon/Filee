@@ -1,7 +1,8 @@
 // PDF/A (#1367): Ghostscript's pdfwrite settings and output intent, which PDFs already count as PDF/A, and real round
 // trips (skipped when Ghostscript isn't installed): PDF → PDF/A, a picture → PDF/A, and a PDF/A from Skia kept as it is.
 // Annotations without the print flag (#1496): which get it in the copy Ghostscript reads, what else the copy keeps, when
-// no copy is made, and that links and document information come through to the PDF/A. Every input is made in the test.
+// no copy is made, and that links and document information come through to the PDF/A. Form fields: which PDFs count as
+// having them, their appearances kept as page content and what archiving reports. Every input is made in the test.
 
 using System.Text;
 using System.Xml.Linq;
@@ -329,10 +330,13 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
             UriLink("togglenoview-print", "/F 260"),
             Annot("Popup", "popup"), Annot("Popup", "popup-flagged", "/F 0"),
             Annot("Widget", "widget", "/FT /Btn /T (one)"), Annot("Widget", "widget-flagged", "/FT /Btn /T (two) /F 0"),
+            Annot("Widget", "widget-invisible", "/FT /Tx /T (three) /F 1"), Annot("Widget", "widget-hidden", "/FT /Tx /T (four) /F 2"),
+            Annot("Widget", "widget-noview", "/FT /Tx /T (five) /F 32"), Annot("Widget", "widget-togglenoview", "/FT /Tx /T (six) /F 256"),
+            Annot("Widget", "widget-hidden-print", "/FT /Tx /T (seven) /F 6"),
             UriLink("real", "/F 0.5"),
         ]);
 
-        var copy = PdfPrintableAnnotations.Prepare(input, dir, Ct);
+        var copy = PdfPrintableAnnotations.Prepare(input, dir, Ct).Copy;
 
         Assert.NotNull(copy);
         Assert.Equal(Path.Combine(dir, "printable.pdf"), copy);
@@ -341,12 +345,14 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.True(Flag(flags[name]) == 4, name);
         Assert.Equal(12, Flag(flags["nozoom"])); // NoZoom stays
         foreach (var (name, value) in (ValueTuple<string, int>[])[("invisible", 1), ("hidden", 2), ("noview", 32), ("togglenoview", 256),
-                     ("invisible-print", 5), ("hidden-print", 6), ("noview-print", 36), ("togglenoview-print", 260)])
+                     ("invisible-print", 5), ("hidden-print", 6), ("noview-print", 36), ("togglenoview-print", 260),
+                     ("widget-invisible", 1), ("widget-hidden", 2), ("widget-noview", 32), ("widget-togglenoview", 256),
+                     ("widget-hidden-print", 6)])
             Assert.True(Flag(flags[name]) == value, name);
         Assert.Null(flags["popup"]);
         Assert.Equal(0, Flag(flags["popup-flagged"]));
-        Assert.Null(flags["widget"]);
-        Assert.Equal(0, Flag(flags["widget-flagged"]));
+        Assert.Equal(4, Flag(flags["widget"])); // a form field's appearance is drawn into the page
+        Assert.Equal(4, Flag(flags["widget-flagged"]));
         Assert.Equal(0.5, Assert.IsType<PdfReal>(flags["real"]).Value); // not a whole number: left alone
     }
 
@@ -356,7 +362,7 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
         var dir = fx.NewFolder();
         var input = AnnotatedLetter(dir);
 
-        var path = PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct);
+        var path = PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct).Copy;
 
         Assert.NotNull(path);
         using var original = PdfReader.Open(input, PdfDocumentOpenMode.Import);
@@ -407,7 +413,7 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         foreach (var (input, title) in (ValueTuple<string, string?>[])[(bare, null), (titled, "Only a title")])
         {
-            var path = PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct);
+            var path = PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct).Copy;
 
             Assert.NotNull(path);
             using var copy = PdfReader.Open(path, PdfDocumentOpenMode.Import);
@@ -426,21 +432,25 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
         var dir = fx.NewFolder();
         var letter = AnnotatedLetter(dir);
         var bytes = File.ReadAllBytes(letter);
-        Assert.NotNull(PdfPrintableAnnotations.Prepare(letter, fx.NewFolder(), Ct));
+        Assert.NotNull(PdfPrintableAnnotations.Prepare(letter, fx.NewFolder(), Ct).Copy);
         Assert.Equal(bytes, File.ReadAllBytes(letter));
 
         string[] inputs =
         [
             OnePage(Path.Combine(dir, "none.pdf"), []),
             OnePage(Path.Combine(dir, "printing.pdf"), [UriLink("print", "/F 4"), UriLink("print-nozoom", "/F 12")]),
-            OnePage(Path.Combine(dir, "hidden.pdf"), [UriLink("hidden", "/F 2"), Annot("Popup", "popup"), Annot("Widget", "widget", "/FT /Btn /T (w)")]),
+            OnePage(Path.Combine(dir, "hidden.pdf"),
+            [
+                UriLink("hidden", "/F 2"), Annot("Popup", "popup"), Annot("Widget", "widget-hidden", "/FT /Btn /T (w) /F 2"),
+                Annot("Widget", "widget-print", "/FT /Btn /T (p) /F 4"),
+            ]),
         ];
         foreach (var input in inputs)
         {
             var before = File.ReadAllBytes(input);
             var folder = fx.NewFolder();
 
-            Assert.Null(PdfPrintableAnnotations.Prepare(input, folder, Ct));
+            Assert.Null(PdfPrintableAnnotations.Prepare(input, folder, Ct).Copy);
             Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
             Assert.Equal(before, File.ReadAllBytes(input));
         }
@@ -501,7 +511,10 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
             var before = File.ReadAllBytes(input);
             var folder = fx.NewFolder();
 
-            Assert.Null(PdfPrintableAnnotations.Prepare(input, folder, Ct));
+            var prepared = PdfPrintableAnnotations.Prepare(input, folder, Ct);
+
+            Assert.Null(prepared.Copy);
+            Assert.Null(prepared.HasFormFields); // couldn't be read: no form notice
             Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
             Assert.Equal(before, File.ReadAllBytes(input));
         }
@@ -511,14 +524,19 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void A_copy_that_cannot_be_saved_is_given_up()
     {
         var dir = fx.NewFolder();
-        var input = OnePage(Path.Combine(dir, "link.pdf"), [UriLink("plain")]);
-        var folder = fx.NewFolder();
-        var blocked = Directory.CreateDirectory(Path.Combine(folder, "printable.pdf")).FullName; // where the copy would go
+        var link = OnePage(Path.Combine(dir, "link.pdf"), [UriLink("plain")]);
+        var form = FilledForm(Path.Combine(dir, "form.pdf"));
+        foreach (var (input, hasFormFields) in (ValueTuple<string, bool>[])[(link, false), (form, true)])
+        {
+            var folder = fx.NewFolder();
+            var blocked = Directory.CreateDirectory(Path.Combine(folder, "printable.pdf")).FullName; // where the copy would go
 
-        Assert.Null(PdfPrintableAnnotations.Prepare(input, folder, Ct));
-        Assert.Equal([blocked], Directory.EnumerateFileSystemEntries(folder));
-        Assert.Empty(Directory.EnumerateFileSystemEntries(blocked));
-        Assert.Equal(input, GhostscriptConverter.PdfAInput(input, folder, Ct));
+            Assert.Equal(new PdfAPreparation(null, hasFormFields), PdfPrintableAnnotations.Prepare(input, folder, Ct));
+            Assert.Equal([blocked], Directory.EnumerateFileSystemEntries(folder));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(blocked));
+            // Ghostscript reads the PDF itself then, and the fields are still known to be there.
+            Assert.Equal(new PdfAPreparation(null, hasFormFields), GhostscriptConverter.PdfAInput(input, folder, Ct));
+        }
     }
 
     [Fact]
@@ -539,10 +557,119 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
         File.WriteAllText(broken, "%PDF-1.7 not really");
         var link = OnePage(Path.Combine(dir, "link.pdf"), [UriLink("plain")]);
 
-        Assert.Equal(printing, GhostscriptConverter.PdfAInput(printing, fx.NewFolder(), Ct));
-        Assert.Equal(broken, GhostscriptConverter.PdfAInput(broken, fx.NewFolder(), Ct));
+        Assert.Equal(new PdfAPreparation(null, false), GhostscriptConverter.PdfAInput(printing, fx.NewFolder(), Ct));
+        Assert.Equal(new PdfAPreparation(null, null), GhostscriptConverter.PdfAInput(broken, fx.NewFolder(), Ct));
         var folder = fx.NewFolder();
-        Assert.Equal(Path.Combine(folder, "printable.pdf"), GhostscriptConverter.PdfAInput(link, folder, Ct));
+        Assert.Equal(new PdfAPreparation(Path.Combine(folder, "printable.pdf"), false), GhostscriptConverter.PdfAInput(link, folder, Ct));
+    }
+
+    // ---- Form fields (#1496): PDF/A keeps no fields, so a printing field's appearance becomes page content ----
+
+    private const string FormFields = "/AcroForm << /Fields [5 0 R 6 0 R 9 0 R 8 0 R] /DR << /Font << /Helv 14 0 R >> >> /DA (/Helv 0 Tf 0 g) >>";
+
+    /// <summary>
+    /// A filled form whose fields have appearances: a text field, a ticked box, a chosen radio button (the field above
+    /// it isn't on the page) and a combo box, each with <paramref name="flags"/>, none printing without them.
+    /// </summary>
+    private static string FilledForm(string path, string flags = "") =>
+        OnePage(path,
+        [
+            $"<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /V (FILLED-ALPHA) /Rect [50 720 300 744] /NM (text) /AP << /N 10 0 R >> {flags} >>",
+            $"<< /Type /Annot /Subtype /Widget /FT /Btn /T (agree) /V /Yes /AS /Yes /Rect [50 670 70 690] /NM (check) /AP << /N << /Yes 11 0 R >> >> {flags} >>",
+            $"<< /Type /Annot /Subtype /Widget /Parent 9 0 R /AS /right /Rect [90 620 110 640] /NM (radio) /AP << /N << /right 12 0 R >> >> {flags} >>",
+            $"<< /Type /Annot /Subtype /Widget /FT /Ch /Ff 131072 /T (pick) /V (CHOICE-BETA) /Opt [(CHOICE-BETA) (other)] /Rect [50 560 250 584] /NM (combo) /AP << /N 13 0 R >> {flags} >>",
+        ], catalog: FormFields, extra:
+        [
+            "<< /FT /Btn /Ff 49152 /T (side) /V /right /Kids [7 0 R] >>",
+            RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [0 0 250 24] /Resources << /Font << /Helv 14 0 R >> >>",
+                "0 G 0.5 0.5 249 23 re S BT /Helv 12 Tf 0 g 4 7 Td (FILLED-ALPHA) Tj ET"),
+            RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [0 0 20 20]", "0 G 0.5 0.5 19 19 re S 0 g 4 4 12 12 re f"),
+            RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [0 0 20 20]", "0 G 0.5 0.5 19 19 re S 0 g 6 6 8 8 re f"),
+            RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [0 0 200 24] /Resources << /Font << /Helv 14 0 R >> >>",
+                "0 G 0.5 0.5 199 23 re S BT /Helv 12 Tf 0 g 4 7 Td (CHOICE-BETA) Tj ET"),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        ]);
+
+    [Fact]
+    public void Form_fields_that_dont_print_get_the_print_flag_and_nothing_else()
+    {
+        var dir = fx.NewFolder();
+        var input = FilledForm(Path.Combine(dir, "form.pdf"));
+
+        var prepared = PdfPrintableAnnotations.Prepare(input, dir, Ct);
+
+        Assert.True(prepared.HasFormFields);
+        Assert.NotNull(prepared.Copy);
+        using var original = PdfReader.Open(input, PdfDocumentOpenMode.Import);
+        using var copy = PdfReader.Open(prepared.Copy, PdfDocumentOpenMode.Import);
+        var seen = new HashSet<(object, object)>();
+        AssertSameValue(original, copy, original.Internals.Catalog.Elements["/AcroForm"], copy.Internals.Catalog.Elements["/AcroForm"], seen, "/AcroForm");
+        var before = Annotations(original.Pages[0]);
+        var after = Annotations(copy.Pages[0]);
+        Assert.Equal(before.Count, after.Count);
+        for (var i = 0; i < before.Count; i++)
+            AssertSameValue(original, copy, before[i], after[i], seen, $"widget {i}");
+        Assert.All(after, widget => Assert.Equal(4, Flag(widget.Elements["/F"])));
+    }
+
+    [Fact]
+    public void A_form_whose_fields_all_print_needs_no_copy_but_still_has_fields()
+    {
+        var dir = fx.NewFolder();
+        var input = FilledForm(Path.Combine(dir, "form.pdf"), "/F 4");
+        var folder = fx.NewFolder();
+
+        Assert.Equal(new PdfAPreparation(null, true), PdfPrintableAnnotations.Prepare(input, folder, Ct));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
+    }
+
+    [Theory]
+    [InlineData("no-form", false)]
+    [InlineData("no-fields", false)]
+    [InlineData("empty-fields", false)]
+    [InlineData("fields-and-widgets", true)]
+    [InlineData("fields-without-widgets", true)] // the fields still go missing from the PDF/A
+    [InlineData("widgets-without-fields", false)]
+    public void Only_a_catalog_form_with_fields_counts_as_form_fields(string kind, bool expected)
+    {
+        var path = Path.Combine(fx.NewFolder(), kind + ".pdf");
+        var input = kind switch
+        {
+            "no-form" => OnePage(path, [UriLink("plain")]),
+            "no-fields" => OnePage(path, [UriLink("plain")], catalog: "/AcroForm << /DA (/Helv 0 Tf 0 g) >>"),
+            "empty-fields" => OnePage(path, [UriLink("plain")], catalog: "/AcroForm << /Fields [] >>"),
+            "fields-and-widgets" => FilledForm(path),
+            "fields-without-widgets" => OnePage(path, [], catalog: "/AcroForm << /Fields [5 0 R] >>", extra: ["<< /FT /Tx /T (orphan) /V (x) >>"]),
+            _ => OnePage(path, [Annot("Widget", "widget", "/FT /Tx /T (loose)")]),
+        };
+
+        Assert.Equal(expected, PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct).HasFormFields);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Form_fields_are_found_through_references(bool formObject, bool fieldsObject)
+    {
+        var fields = fieldsObject ? "6 0 R" : "[5 0 R]";
+        var form = $"<< /Fields {fields} >>";
+        var input = OnePage(Path.Combine(fx.NewFolder(), "form.pdf"), [Annot("Widget", "field", "/FT /Tx /T (f) /F 4")],
+            catalog: formObject ? "/AcroForm 7 0 R" : "/AcroForm " + form, extra: ["[5 0 R]", form]);
+
+        Assert.True(PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct).HasFormFields);
+    }
+
+    [Theory]
+    [InlineData("/AcroForm 3")]
+    [InlineData("/AcroForm << /Fields << /Kids [5 0 R] >> >>")]
+    [InlineData("/AcroForm << /Fields 3 >>")]
+    public void A_form_entry_of_the_wrong_kind_has_no_fields(string catalog)
+    {
+        var input = OnePage(Path.Combine(fx.NewFolder(), "odd.pdf"), [Annot("Widget", "field", "/FT /Tx /T (f) /F 4")], catalog: catalog);
+
+        Assert.Equal(new PdfAPreparation(null, false), PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct));
     }
 
     /// <summary>Two pages with links of every kind and markup, none of which says it prints.</summary>
@@ -675,8 +802,8 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
         var test = Input("test.pdf", "");
         var control = Input("control.pdf", "/F 4");
-        Assert.NotNull(PdfPrintableAnnotations.Prepare(test, fx.NewFolder(), Ct));
-        Assert.Null(PdfPrintableAnnotations.Prepare(control, fx.NewFolder(), Ct)); // Ghostscript reads it as it is
+        Assert.NotNull(PdfPrintableAnnotations.Prepare(test, fx.NewFolder(), Ct).Copy);
+        Assert.Null(PdfPrintableAnnotations.Prepare(control, fx.NewFolder(), Ct).Copy); // Ghostscript reads it as it is
 
         var outputs = new List<(Dictionary<string, string?> Fields, string Everything)>();
         foreach (var input in (string[])[test, control])
@@ -703,8 +830,9 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.DoesNotContain("PDFsharp", outputs[0].Everything, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string DeclaredPdfA(string path) =>
-        OnePage(path, [UriLink("plain")], catalog: "/Metadata 6 0 R", extra:
+    private static string DeclaredPdfA(string path, bool form = false) =>
+        OnePage(path, [form ? Annot("Widget", "field", "/FT /Tx /T (f)") : UriLink("plain")],
+            catalog: "/Metadata 6 0 R" + (form ? " /AcroForm << /Fields [5 0 R] >>" : ""), extra:
         [
             RawPdf.Stream("/Type /Metadata /Subtype /XML", """
                 <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
@@ -724,7 +852,7 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
         var bytes = File.ReadAllBytes(path);
         var work = fx.NewFolder();
 
-        Assert.True(await new GhostscriptConverter().ArchiveAsync(path, changed: false, work, Ct));
+        Assert.Equal(PdfArchiveOutcome.Archived, await new GhostscriptConverter().ArchiveAsync(path, changed: false, work, Ct));
 
         Assert.Equal(bytes, File.ReadAllBytes(path));
         Assert.Empty(Directory.EnumerateFileSystemEntries(work));
@@ -737,10 +865,78 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
         var dir = fx.NewFolder();
         var path = DeclaredPdfA(Path.Combine(dir, "declared.pdf"));
 
-        Assert.True(await new GhostscriptConverter().ArchiveAsync(path, changed: true, fx.NewFolder(), Ct));
+        Assert.Equal(PdfArchiveOutcome.Archived, await new GhostscriptConverter().ArchiveAsync(path, changed: true, fx.NewFolder(), Ct));
 
         AssertOutputIntent(path); // Ghostscript's
         using var document = PdfReader.Open(path, PdfDocumentOpenMode.Import);
         Assert.Equal("https://example.com/plain", Uri(Assert.Single(Annotations(document.Pages[0]))));
+    }
+
+    [Fact]
+    public async Task A_form_becomes_pdf_a_with_its_values_on_the_page_and_says_its_fields_are_gone()
+    {
+        Assert.SkipUnless(GhostscriptInstalled, GhostscriptMissing);
+        var dir = fx.NewFolder();
+        var source = FilledForm(Path.Combine(dir, "form.pdf"));
+        var bytes = File.ReadAllBytes(source);
+
+        var job = await fx.ConvertAsync([source], BuiltInData.CreatePresets().Single(p => p.Id == BuiltInData.PdfAId));
+
+        AssertDone(job);
+        var file = job.Files.Single();
+        Assert.Equal("notice.pdfa_form_fields", file.NoticeKey);
+        Assert.Null(file.NoticeReasonKey);
+        Assert.Null(file.NoticeDetail);
+        Assert.Equal(bytes, File.ReadAllBytes(source));
+        var output = job.Outputs.Single();
+        Assert.True(GhostscriptConverter.DeclaresPdfA(output));
+        using (var document = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+        {
+            Assert.False(document.Internals.Catalog.Elements.ContainsKey("/AcroForm"));
+            Assert.DoesNotContain(Annotations(document.Pages[0]), a => a.Elements.GetName("/Subtype") == "/Widget");
+        }
+        using var pig = PigDocument.Open(output);
+        var text = Words(pig.GetPage(1).Text);
+        Assert.Contains("FILLED-ALPHA", text);
+        Assert.Contains("CHOICE-BETA", text);
+    }
+
+    [Fact]
+    public async Task Archiving_says_when_a_pdf_had_form_fields()
+    {
+        Assert.SkipUnless(GhostscriptInstalled, GhostscriptMissing);
+        var dir = fx.NewFolder();
+        var archiver = new GhostscriptConverter();
+
+        Assert.Equal(PdfArchiveOutcome.ArchivedWithoutFormFields,
+            await archiver.ArchiveAsync(FilledForm(Path.Combine(dir, "form.pdf")), changed: false, fx.NewFolder(), Ct));
+        Assert.Equal(PdfArchiveOutcome.Archived, await archiver.ArchiveAsync(TextPdf(dir), changed: false, fx.NewFolder(), Ct));
+        // Already PDF/A and unchanged: kept as it is, so its fields are too.
+        var declared = DeclaredPdfA(Path.Combine(dir, "declared.pdf"), form: true);
+        var bytes = File.ReadAllBytes(declared);
+        Assert.Equal(PdfArchiveOutcome.Archived, await archiver.ArchiveAsync(declared, changed: false, fx.NewFolder(), Ct));
+        Assert.Equal(bytes, File.ReadAllBytes(declared));
+    }
+
+    [Fact]
+    public async Task A_form_that_needs_no_copy_still_says_its_fields_are_gone()
+    {
+        Assert.SkipUnless(GhostscriptInstalled, GhostscriptMissing);
+        var path = FilledForm(Path.Combine(fx.NewFolder(), "form.pdf"), "/F 4");
+
+        Assert.Equal(PdfArchiveOutcome.ArchivedWithoutFormFields, await new GhostscriptConverter().ArchiveAsync(path, changed: false, fx.NewFolder(), Ct));
+        Assert.True(GhostscriptConverter.DeclaresPdfA(path));
+    }
+
+    [Fact]
+    public async Task A_pdf_that_cannot_be_read_for_fields_is_still_archived_without_the_form_notice()
+    {
+        Assert.SkipUnless(GhostscriptInstalled, GhostscriptMissing);
+        // PDFsharp can't open it without the owner password; Ghostscript reads it.
+        var path = Locked(fx.NewFolder(), "owner.pdf", userPassword: null);
+        Assert.Equal(new PdfAPreparation(null, null), PdfPrintableAnnotations.Prepare(path, fx.NewFolder(), Ct));
+
+        Assert.Equal(PdfArchiveOutcome.Archived, await new GhostscriptConverter().ArchiveAsync(path, changed: false, fx.NewFolder(), Ct));
+        Assert.True(GhostscriptConverter.DeclaresPdfA(path));
     }
 }

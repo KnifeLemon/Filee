@@ -123,14 +123,14 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer, IPdfAr
     /// PDF/A-2b for the job queue (<see cref="IPdfArchiver"/>): a PDF that already says it is PDF/A and wasn't changed
     /// since stays as it is, any other is rewritten by Ghostscript.
     /// </summary>
-    public async Task<bool> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken)
+    public async Task<PdfArchiveOutcome> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken)
     {
         if (!changed && DeclaresPdfA(path))
-            return true;
+            return PdfArchiveOutcome.Archived;
         if (Locate() is not { } gs)
-            return false;
-        await ConvertToPdfAAsync(gs, path, path, workDirectory, cancellationToken);
-        return true;
+            return PdfArchiveOutcome.NotArchived;
+        var hadFormFields = await ConvertToPdfAAsync(gs, path, path, workDirectory, cancellationToken);
+        return hadFormFields == true ? PdfArchiveOutcome.ArchivedWithoutFormFields : PdfArchiveOutcome.Archived;
     }
 
     /// <summary>
@@ -139,23 +139,26 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer, IPdfAr
     /// tags (pdfwrite doesn't carry them), which part B doesn't need. Ghostscript reads a copy whose visible annotations
     /// print (<see cref="PdfAInput"/>): PDF/A leaves out every annotation that doesn't.
     /// </summary>
-    internal static async Task ConvertToPdfAAsync(string gs, string input, string output, string workDirectory, CancellationToken cancellationToken)
+    /// <returns>Whether <paramref name="input"/> had form fields, which the PDF/A no longer has; null when that
+    /// couldn't be read.</returns>
+    internal static async Task<bool?> ConvertToPdfAAsync(string gs, string input, string output, string workDirectory, CancellationToken cancellationToken)
     {
         var scratch = NewScratch(workDirectory);
         var intent = Path.Combine(scratch, "pdfa.ps");
         await File.WriteAllTextAsync(intent, OutputIntent(ColorProfiles.SRGB.ToByteArray()), Encoding.ASCII, cancellationToken);
         var target = Path.Combine(scratch, "out.pdf");
-        var source = PdfAInput(input, scratch, cancellationToken);
-        await RunAsync(gs, PdfAArguments(), target, source, cancellationToken, progress: null, prelude: intent);
+        var prepared = PdfAInput(input, scratch, cancellationToken);
+        await RunAsync(gs, PdfAArguments(), target, prepared.Copy ?? input, cancellationToken, progress: null, prelude: intent);
         File.Move(target, output, overwrite: true);
+        return prepared.HasFormFields;
     }
 
     /// <summary>
     /// What Ghostscript reads for PDF/A: the copy in <paramref name="folder"/> with annotations made to print, or
-    /// <paramref name="input"/> itself when none needed it or the copy couldn't be made.
+    /// <paramref name="input"/> itself (no copy) when none needed it or the copy couldn't be made.
     /// </summary>
-    internal static string PdfAInput(string input, string folder, CancellationToken cancellationToken) =>
-        Pdf.PdfPrintableAnnotations.Prepare(input, folder, cancellationToken) ?? input;
+    internal static Pdf.PdfAPreparation PdfAInput(string input, string folder, CancellationToken cancellationToken) =>
+        Pdf.PdfPrintableAnnotations.Prepare(input, folder, cancellationToken);
 
     internal static List<string> PdfAArguments() =>
         ["-sDEVICE=pdfwrite", "-dPDFA=2", "-dPDFACompatibilityPolicy=1", "-sColorConversionStrategy=RGB", "-dAutoRotatePages=/None"];

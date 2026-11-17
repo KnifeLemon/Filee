@@ -193,6 +193,7 @@
   "notice.gcode_no_thumbnail": "G-code फ़ाइल में स्लाइसर का प्रीव्यू नहीं है, इसलिए टूलपाथ ऊपर से देखा हुआ बनाया गया",
   "notice.cmyk_needs_ghostscript": "यह फ़ाइल CMYK है, लेकिन RGB में सेव हुई: CMYK बनाए रखने के लिए सेटिंग्स → इंजन में Ghostscript इंस्टॉल करें",
   "notice.pdfa_needs_ghostscript": "यह PDF, PDF/A नहीं है: PDF/A बनाने के लिए सेटिंग्स → इंजन में Ghostscript इंस्टॉल करें",
+  "notice.pdfa_form_fields": "PDF/A बनाया गया: फ़ॉर्म के फ़ील्ड अब भरे नहीं जा सकते",
   "notice.cmyk_render_failed": "यह फ़ाइल CMYK है, लेकिन Ghostscript इसे नहीं बना सका, इसलिए यह RGB में सेव हुई",
   "notice.original_kept": "मूल फ़ाइल रखी गई, परिणाम कॉपी के रूप में सहेजा गया",
   "notice.original_in_trash": "मूल फ़ाइल रीसायकल बिन / ट्रैश में है, परिणाम ने अपना नाम रखा",
