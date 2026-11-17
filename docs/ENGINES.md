@@ -39,7 +39,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
-| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
+| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG / WebP, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR; e-books → PDF (ranked above the HWPX writer, see below) |
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
@@ -248,6 +248,15 @@ so a separate ARM64 one would break their updates.
   one of these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL ↔ AVIF, WebP lossy or lossless as the preset says,
   #988) and becomes a multi-page TIFF;
   other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP and AVIF.
+  - **Video → animated WebP** needs FFmpeg: one looping pass with its `libwebp_anim` encoder (`MediaEncoding.AnimatedWebp`).
+    `FfmpegConverter` has a direct video → WebP edge (cost 15). Without it the route planner took video → still PNG →
+    WebP (10 + 10), cheaper than the animated routes through GIF or APNG (15 + 10), so the WebP was one frame. The
+    preset's image options decide the encoding: the quality slider sets a lossy WebP, *Lossless WEBP* writes every frame
+    losslessly. Lossy output follows the video quality for its limits (20 / 15 / 12 frames a second, at most 1920 / 1280 /
+    854 px wide, never upscaled: a 930 × 480 clip stays 930 × 480); lossless has no width limit (WebP's own is
+    16,383 px) and keeps up to 30 frames a second, so its files are large. "Ask every time" for the compression offers the
+    picture quality for a video → WebP (`AskedCompression.KindOf`); its size estimate reads a picture tile, so it can
+    show "unknown" for a video.
   - **Animated AVIF** (#1200) needs no FFmpeg, but goes much faster with it. ImageMagick reads the frames and applies
     the preset either way. With FFmpeg and its libaom-av1 encoder (Filee's FFmpeg download has it),
     `Media/AvifSequenceWriter.cs` packs the frames into an APNG in the work folder (`Magick/Apng.cs`, exact delays) and
@@ -274,7 +283,7 @@ so a separate ARM64 one would break their updates.
   keeps its new length. Players show a frame of 10 ms or less for 100 ms, so no delay goes below 20 ms (50 frames a
   second): a frame that would start sooner than that after the one before is dropped and its time goes to that one,
   which leaves frames out evenly. Source delays of 10 ms or less count as the 100 ms players show. Loop count and
-  disposal stay; 1× (also every preset saved before the option) leaves the timing untouched. Video → GIF / APNG
+  disposal stay; 1× (also every preset saved before the option) leaves the timing untouched. Video → GIF / APNG / WebP
   (FFmpeg) puts `setpts=PTS/<speed>` before the `fps` filter, so the frame rate limits stay. The speed changes only in
   the step that writes the output (`JobQueue`), never twice on a longer route.
 - **APNG** (`Magick/Apng.cs`) is Filee's own code, written from the APNG specification: ImageMagick reads only an
