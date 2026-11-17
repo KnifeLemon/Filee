@@ -111,6 +111,7 @@
 
   "error.unsupported_source": "This file type isn't supported",
   "error.empty_file": "The file is empty (0 bytes). A file made with “New” in the right-click menu stays empty until you open it in its app and save it",
+  "error.no_audio": "The file has no sound track",
   "error.p7m_unreadable": "This isn't a signed .p7m file Filee can open, or it is damaged",
   "error.p7m_detached": "This .p7m holds only the signature, not the signed file. Convert the file it signs instead",
   "error.p7m_encrypted": "This .p7m is encrypted, not only signed: only the recipient's key opens it",
@@ -918,6 +919,7 @@
   "icons.cat.general": "General",
   "presets.target": "Convert to",
   "presets.target_hidden": "The current target ({0}) belongs only to fields that are turned off, so it isn't in the list. It stays the target unless you choose another.",
+  "presets.same_as_audio": "Same format as the audio",
   "presets.same_as_source": "Same format as the source",
   "presets.cad_version": "AutoCAD version",
   "presets.cad_version.same": "Same as the source",

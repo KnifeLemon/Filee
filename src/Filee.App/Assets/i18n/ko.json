@@ -111,6 +111,7 @@
 
   "error.unsupported_source": "지원하지 않는 파일 형식이에요",
   "error.empty_file": "빈 파일이에요(0바이트). 우클릭 메뉴의 “새로 만들기”로 만든 파일은 앱에서 열어 저장해야 내용이 생겨요",
+  "error.no_audio": "파일에 소리 트랙이 없어요",
   "error.p7m_unreadable": "Filee가 열 수 있는 서명 파일(.p7m)이 아니거나 손상됐어요",
   "error.p7m_detached": "이 .p7m에는 서명만 있고 서명된 파일은 없어요. 서명 대상 파일을 변환해 주세요",
   "error.p7m_encrypted": "이 .p7m은 서명만이 아니라 암호화돼 있어요. 받는 사람의 키로만 열 수 있어요",
@@ -918,6 +919,7 @@
   "icons.cat.general": "일반",
   "presets.target": "변환 형식",
   "presets.target_hidden": "현재 변환 형식({0})은 꺼진 분야에만 속해서 목록에 없어요. 다른 형식을 고르지 않으면 그대로 저장돼요.",
+  "presets.same_as_audio": "오디오와 같은 형식",
   "presets.same_as_source": "원본과 같은 형식",
   "presets.cad_version": "AutoCAD 버전",
   "presets.cad_version.same": "원본과 같게",

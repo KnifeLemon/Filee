@@ -109,7 +109,8 @@ internal static class Help
         Files can be wildcards (*.heic). Folders convert the files in them that Filee knows.
 
         Options:
-          -t, --to <format>      Target format, e.g. jpg, png, pdf, docx, mp4 (see 'filee formats')
+          -t, --to <format>      Target format, e.g. jpg, png, pdf, docx, mp4 (see 'filee formats'); same-audio
+                                 takes a video's sound out as it is (AAC → M4A, Opus → OPUS, DTS → MKA, …)
           -p, --preset <preset>  A preset from the app, by id or name (see 'filee presets')
               --iso-filesystem <joliet|udf201>
                                  ISO filesystem; an explicit choice overrides the preset (default: Joliet).
@@ -145,7 +146,7 @@ internal static class Help
         longer growing or open in another program). Output goes to a "converted" folder inside it unless -o is given.
 
         Options:
-          -t, --to <format>      Target format
+          -t, --to <format>      Target format, or same-audio (a video's sound as it is)
           -p, --preset <preset>  A preset from the app, by id or name
           -o, --output <folder>  Where converted files go (default: <folder>\converted)
           -r, --recursive        Also watch sub folders (their files keep the sub folder in the output)

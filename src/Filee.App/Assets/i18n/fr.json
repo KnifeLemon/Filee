@@ -111,6 +111,7 @@
 
   "error.unsupported_source": "Ce type de fichier n'est pas pris en charge",
   "error.empty_file": "Le fichier est vide (0 octet). Un fichier créé avec « Nouveau » dans le menu contextuel reste vide tant que vous ne l'avez pas ouvert et enregistré dans son application",
+  "error.no_audio": "Le fichier n'a pas de piste son",
   "error.p7m_unreadable": "Ce n'est pas un fichier signé .p7m que Filee peut ouvrir, ou il est endommagé",
   "error.p7m_detached": "Ce .p7m ne contient que la signature, pas le fichier signé. Convertissez plutôt le fichier qu'il signe",
   "error.p7m_encrypted": "Ce .p7m est chiffré, pas seulement signé : seule la clé du destinataire peut l'ouvrir",
@@ -922,6 +923,7 @@
   "icons.cat.general": "Général",
   "presets.target": "Convertir en",
   "presets.target_hidden": "La cible actuelle ({0}) appartient uniquement à des domaines désactivés et ne figure donc pas dans la liste. Elle reste la cible tant que vous n'en choisissez pas une autre.",
+  "presets.same_as_audio": "Même format que le son",
   "presets.same_as_source": "Même format que l'original",
   "presets.cad_version": "Version d'AutoCAD",
   "presets.cad_version.same": "Comme l'original",

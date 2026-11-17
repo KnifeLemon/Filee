@@ -122,7 +122,7 @@ internal static class Cli
             return UsageError;
         }
         if (events is not null)
-            events.Started(rule.Folder, host.Texts.DisplayName(preset), preset.TargetFormat, rule.ResolvedOutputFolder);
+            events.Started(rule.Folder, host.Texts.DisplayName(preset), TargetName(preset.TargetFormat), rule.ResolvedOutputFolder);
         else if (!options.Quiet)
             output.WriteLine($"Watching {rule.Folder} → {host.Texts.DisplayName(preset)}, saving to {rule.ResolvedOutputFolder}. Press Ctrl+C to stop.");
         try
@@ -221,7 +221,7 @@ internal static class Cli
         {
             json.WriteStartObject();
             json.WriteString("preset", job.PresetDisplayName);
-            json.WriteString("target", job.Preset.TargetFormat);
+            json.WriteString("target", TargetName(job.Preset.TargetFormat));
             json.WriteNumber("converted", job.Files.Count(f => f.State == FileState.Done));
             json.WriteNumber("skipped", job.Files.Count(f => f.State == FileState.Skipped));
             json.WriteNumber("failed", job.Files.Count(f => f.State is FileState.Failed or FileState.Cancelled));
@@ -265,11 +265,19 @@ internal static class Cli
             WriteStrings(json, "needsEngines", packages);
     }
 
+    /// <summary>"--to same-audio": a video's sound as it is, in the format of its codec (#1490).</summary>
+    internal const string SameAudioName = "same-audio";
+
+    /// <summary>A preset's target as the CLI names it.</summary>
+    private static string TargetName(string target) => target == BuiltInData.SameAsAudio ? SameAudioName : target;
+
     /// <summary>The preset from --to or --preset, with --quality and --overwrite/--skip applied (a copy).</summary>
     private static Preset? ResolvePreset(CliOptions options, CliHost host, TextWriter errors)
     {
         Preset preset;
-        if (options.To is not null)
+        if (string.Equals(options.To, SameAudioName, StringComparison.OrdinalIgnoreCase))
+            preset = new Preset { TargetFormat = BuiltInData.SameAsAudio };
+        else if (options.To is not null)
         {
             if (FindFormat(options.To) is not { } format)
             {
@@ -516,7 +524,7 @@ internal static class Cli
                     json.WriteStartObject();
                     json.WriteString("id", preset.Id);
                     json.WriteString("name", host.Texts.DisplayName(preset));
-                    json.WriteString("target", preset.TargetFormat);
+                    json.WriteString("target", TargetName(preset.TargetFormat));
                     json.WriteEndObject();
                 }
                 json.WriteEndArray();
@@ -526,7 +534,7 @@ internal static class Cli
         }
         output.WriteLine($"{"ID",-24} {"NAME",-28} TARGET");
         foreach (var preset in host.Store.Presets.Where(p => !p.IsGroup && !p.IsTool))
-            output.WriteLine($"{preset.Id,-24} {host.Texts.DisplayName(preset),-28} {preset.TargetFormat}");
+            output.WriteLine($"{preset.Id,-24} {host.Texts.DisplayName(preset),-28} {TargetName(preset.TargetFormat)}");
         output.WriteLine();
         output.WriteLine("Use one with: filee convert <files> --preset <id or name>");
         return Success;

@@ -938,6 +938,37 @@ internal static partial class MediaEncoding
         return MediaCodecs.Effective(target, options.AudioCodec) != Core.Presets.AudioCodec.Alac || codec == "alac";
     }
 
+    // ───────────────────────── Same format as the audio ─────────────────────────
+
+    /// <summary>
+    /// The audio format a track of <paramref name="codec"/> is copied into as it is (#1490): its own file type where
+    /// there is one, else Matroska audio, which holds any codec (AC-3, E-AC-3, DTS, TrueHD, big-endian PCM, …).
+    /// </summary>
+    internal static string CopyTargetFor(string? codec) => codec switch
+    {
+        "aac" or "alac" => "m4a",
+        "mp3" => "mp3",
+        "flac" => "flac",
+        "opus" => "opus",
+        "vorbis" => "ogg",
+        // Little-endian PCM, as WAV holds it; over 4 GB it becomes RF64 (ContainerArguments).
+        "pcm_u8" or "pcm_s16le" or "pcm_s24le" or "pcm_s32le" or "pcm_f32le" or "pcm_f64le" => "wav",
+        _ => "mka",
+    };
+
+    /// <summary>
+    /// "Same format as the audio": <paramref name="track"/> copied into <paramref name="target"/> without an encode, with
+    /// the file's tags; no pictures, subtitles or data.
+    /// </summary>
+    internal static List<string> CopyAudio(string input, string output, string target, AudioStreamInfo track)
+    {
+        List<string> args = [.. Common, "-i", input, "-map", $"0:a:{track.Ordinal}", "-vn", "-sn", "-dn", "-c:a", "copy"];
+        args.AddRange(MetadataArguments());
+        args.AddRange(ContainerArguments(target));
+        args.AddRange(["-f", AudioTargets[target].Muxer, "-progress", "pipe:1", output]);
+        return args;
+    }
+
     // ───────────────────────── Without metadata ─────────────────────────
 
     /// <summary>

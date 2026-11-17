@@ -111,6 +111,7 @@
 
   "error.unsupported_source": "Loại tệp này không được hỗ trợ",
   "error.empty_file": "Tệp trống (0 byte). Tệp tạo bằng “Mới” trong menu chuột phải sẽ trống cho đến khi bạn mở nó trong ứng dụng tương ứng và lưu lại",
+  "error.no_audio": "Tệp không có rãnh âm thanh",
   "error.p7m_unreadable": "Đây không phải tệp .p7m đã ký mà Filee mở được, hoặc tệp bị hỏng",
   "error.p7m_detached": "Tệp .p7m này chỉ chứa chữ ký, không chứa tệp đã ký. Hãy chuyển đổi tệp mà nó ký",
   "error.p7m_encrypted": "Tệp .p7m này được mã hóa chứ không chỉ được ký: chỉ khóa của người nhận mới mở được",
@@ -918,6 +919,7 @@
   "icons.cat.general": "Chung",
   "presets.target": "Chuyển đổi sang",
   "presets.target_hidden": "Định dạng đích hiện tại ({0}) chỉ thuộc các lĩnh vực đã tắt nên không có trong danh sách. Định dạng này vẫn là đích trừ khi bạn chọn định dạng khác.",
+  "presets.same_as_audio": "Cùng định dạng với âm thanh",
   "presets.same_as_source": "Cùng định dạng với tệp nguồn",
   "presets.cad_version": "Phiên bản AutoCAD",
   "presets.cad_version.same": "Giống tệp nguồn",

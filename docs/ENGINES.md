@@ -1051,6 +1051,10 @@ in the preset library only). Video and audio need FFmpeg.
   source goes into the ZIP instead.
 - **Extract audio** copies AAC or ALAC into M4A without an encode (`MediaOptions.CopyAudioWhenPossible`); other sound
   is encoded to AAC.
+- **Same format as the audio** (Convert to, `--to same-audio`; `BuiltInData.SameAsAudio`, #1490) copies a video's sound
+  track as it is, never encoded: the track marked default, else the first, without pictures, subtitles or data. The
+  format comes from its codec (`MediaEncoding.CopyTargetFor`): AAC and ALAC → M4A, MP3, FLAC, Opus → OPUS, Vorbis → OGG,
+  little-endian PCM → WAV (RF64 over 4 GB), anything else (AC-3, E-AC-3, DTS, TrueHD, …) → MKA.
 - **Merge videos** copies the clips with the concat demuxer only when all share the codec setup (ffprobe's extradata
   hash), size, pixel format, frame rate, turn and kind of sound; otherwise every clip is fitted into the first clip's
   frame and encoded, a clip without sound silent for its length. Sound tracks FFmpeg can't decode are skipped: each
