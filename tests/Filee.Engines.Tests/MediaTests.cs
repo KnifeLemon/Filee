@@ -1534,6 +1534,47 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Webp_is_one_looping_animated_pass_with_higher_limits_than_gif()
+    {
+        var pass = Assert.Single(MediaEncoding.Plan("in.mkv", "out.webp", "webp", new MediaOptions { Quality = MediaQuality.High },
+            new MediaInfo(TimeSpan.FromSeconds(3), Hd, new AudioStreamInfo(2, 44100), null), "work"));
+        var args = pass.Arguments;
+        Assert.Equal("fps=20,scale=w='min(iw,1920)':h=ih:force_original_aspect_ratio=decrease:flags=lanczos", After(args, "-vf"));
+        Assert.Equal("libwebp_anim", After(args, "-c:v"));
+        Assert.Equal("0", After(args, "-loop"));
+        Assert.Equal("webp", After(args, "-f"));
+        Assert.Contains("-an", args);
+    }
+
+    [Fact]
+    public void Webp_lossless_keeps_the_full_width_and_writes_every_frame_losslessly()
+    {
+        var pass = Assert.Single(MediaEncoding.Plan("in.mkv", "out.webp", "webp", new MediaOptions { Quality = MediaQuality.Balanced },
+            new MediaInfo(TimeSpan.FromSeconds(3), Hd, new AudioStreamInfo(2, 44100), null), "work",
+            image: new ImageOptions { WebpLossless = true }));
+        var args = pass.Arguments;
+        Assert.Equal("1", After(args, "-lossless"));
+        Assert.Contains("min(iw,16383)", After(args, "-vf"));
+        Assert.StartsWith("fps=30,", After(args, "-vf"));
+    }
+
+    [Fact]
+    public void Webp_lossy_quality_follows_the_image_quality_slider()
+    {
+        var pass = Assert.Single(MediaEncoding.Plan("in.mkv", "out.webp", "webp", new MediaOptions(),
+            new MediaInfo(TimeSpan.FromSeconds(3), Hd, new AudioStreamInfo(2, 44100), null), "work",
+            image: new ImageOptions { Quality = 70 }));
+        Assert.Equal(("0", "70"), (After(pass.Arguments, "-lossless"), After(pass.Arguments, "-q:v")));
+    }
+
+    [Fact]
+    public void Video_reaches_webp_directly_not_through_a_still_frame()
+    {
+        var edge = Assert.Single(new FfmpegConverter().Edges, e => e is { From: "mp4", To: "webp" });
+        Assert.True(edge.Cost < 20); // video → PNG → WebP costs 10 + 10
+    }
+
+    [Fact]
     public void A_still_picture_is_shown_for_five_seconds_at_full_size()
     {
         var photo = new MediaInfo(null, new VideoStreamInfo(4033, 3025, 1, 0, 25), null, null);

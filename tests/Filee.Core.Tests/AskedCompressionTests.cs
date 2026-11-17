@@ -59,6 +59,22 @@ public class AskedCompressionTests
             AskedCompression.KindsOf(new Preset { TargetFormat = BuiltInData.SameAsSource }, ["b.pdf", "a.jpg", "c.jpg", "notes.txt"]));
     }
 
+    [Theory]
+    [InlineData("clip.mp4", CompressionKind.Image)]
+    [InlineData("clip.mkv", CompressionKind.Image)]
+    [InlineData("anim.gif", CompressionKind.Image)]
+    [InlineData("photo.png", CompressionKind.Image)]
+    [InlineData("song.mp3", null)]
+    public void A_video_converted_to_webp_gets_a_picture_quality_like_a_gif(string file, CompressionKind? kind) =>
+        Assert.Equal(kind, AskedCompression.KindOf(new Preset { TargetFormat = "webp", AskCompression = true }, file));
+
+    [Fact]
+    public void A_video_converted_to_another_picture_format_still_has_no_level_to_choose()
+    {
+        // Only WebP is written as an animation by FFmpeg; a JPG of a video is one still frame.
+        Assert.Null(AskedCompression.KindOf(new Preset { TargetFormat = "jpg", AskCompression = true }, "clip.mp4"));
+    }
+
     /// <summary>
     /// The level chosen for the JPGs goes to them only: a PNG or a HEIC dropped with them converts with the preset as it
     /// is, in a run of its own.
