@@ -1743,6 +1743,8 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal((240, 240), (square.Video!.Width, square.Video.Height));
         var portrait = await ProbeAsync(Assert.Single((await CropAsync(video, "9:16")).Outputs));
         Assert.Equal((134, 240), (portrait.Video!.Width, portrait.Video.Height));
+        var post = await ProbeAsync(Assert.Single((await CropAsync(video, "4:5")).Outputs)); // #1602
+        Assert.Equal((192, 240), (post.Video!.Width, post.Video.Height));
 
         // Already 4:3: refused, rather than encoded again as it was.
         var same = Assert.Single((await CropAsync(video, "4:3")).Files);
