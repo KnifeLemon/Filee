@@ -11,7 +11,9 @@
 using System.Buffers.Binary;
 using System.Text;
 using System.Text.RegularExpressions;
+using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -95,14 +97,29 @@ internal static partial class MobiReader
 
     // ───────────────────────── Text records ─────────────────────────
 
+    /// <summary>Most text a book unpacks to: the text of the longest books is some tens of megabytes.</summary>
+    private const long MaxTextBytes = BoundedXml.MaxPartBytes;
+
+    /// <summary>
+    /// Text a book may unpack to at least, and per byte of the file above that: HUFF/CDIC and PalmDOC records unpack to
+    /// two or three times their size, and the file holds the pictures and indexes as well.
+    /// </summary>
+    private const long MinTextBytes = 16L * 1024 * 1024;
+    private const int MaxTextRatio = 64;
+
+    /// <summary>What the text of <paramref name="database"/> may unpack to.</summary>
+    internal static long TextLimit(PalmDatabase database) =>
+        Math.Min(MaxTextBytes, Math.Max(MinTextBytes, (long)MaxTextRatio * database.Length));
+
     /// <summary>The decompressed text of the book whose header is at record <paramref name="start"/>.</summary>
     private static byte[] Text(PalmDatabase database, MobiHeader header, int start)
     {
+        var limit = TextLimit(database);
         Func<ReadOnlySpan<byte>, byte[]> decompress = header.Compression switch
         {
             1 => data => data.ToArray(),
             2 => PalmDocCompression.Decompress,
-            17480 => HuffCdicReader(database, header, start).Decompress,
+            17480 => HuffCdicReader(database, header, start, limit).Decompress,
             var other => throw new InvalidDataException($"The book uses an unknown compression ({other})."),
         };
         using var text = new MemoryStream();
@@ -111,15 +128,22 @@ internal static partial class MobiReader
             var record = database.Record(start + i);
             var size = record.Length - TrailingSize(record, header.ExtraFlags);
             text.Write(decompress(record[..Math.Max(0, size)]));
+            CheckTextSize(text.Length, limit);
         }
         var bytes = text.ToArray();
         return header.TextLength > 0 && header.TextLength < bytes.Length ? bytes[..(int)header.TextLength] : bytes;
     }
 
-    private static HuffCdic HuffCdicReader(PalmDatabase database, MobiHeader header, int start)
+    private static HuffCdic HuffCdicReader(PalmDatabase database, MobiHeader header, int start, long limit)
     {
         var huff = start + header.HuffRecord;
-        return new HuffCdic(database.Record(huff), Enumerable.Range(huff + 1, Math.Max(0, header.HuffCount - 1)).Select(database.RecordArray));
+        return new HuffCdic(database.Record(huff), Enumerable.Range(huff + 1, Math.Max(0, header.HuffCount - 1)).Select(database.RecordArray), limit);
+    }
+
+    private static void CheckTextSize(long length, long limit)
+    {
+        if (length > limit)
+            throw new ConversionRefusedException("error.document_too_large", $"the book's text unpacks to over {BoundedXml.Size(limit)}");
     }
 
     /// <summary>
@@ -157,8 +181,12 @@ internal static partial class MobiReader
         var compression = PalmDatabase.U16(header, 0);
         var records = PalmDatabase.U16(header, 8);
         using var text = new MemoryStream();
+        var limit = TextLimit(database);
         for (var i = 1; i <= records && i < database.Count; i++)
+        {
             text.Write(compression == 2 ? PalmDocCompression.Decompress(database.Record(i)) : database.Record(i));
+            CheckTextSize(text.Length, limit);
+        }
         return text.ToArray();
     }
 

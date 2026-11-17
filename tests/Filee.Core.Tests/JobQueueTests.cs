@@ -972,14 +972,14 @@ public class JobQueueTests
             return Task.CompletedTask;
         }
 
-        public Task<bool> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken)
+        public Task<PdfArchiveOutcome> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken)
         {
             Events.Add("archive");
             ArchivedChanged = changed;
             File.AppendAllText(path, "|archived");
             if (failingStage == "archive")
                 throw new InvalidOperationException("archiving failed");
-            return Task.FromResult(true);
+            return Task.FromResult(PdfArchiveOutcome.Archived);
         }
     }
 

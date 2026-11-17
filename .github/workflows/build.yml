@@ -1,0 +1,186 @@
+# The Windows builds and tests of CI: x64 and ARM64. ci.yml calls this file as the `windows` job (like portable.yml), so
+# GitHub shows both jobs under `windows`. Whether it runs at all is decided in ci.yml (the changes job).
+name: Build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  # Windows x64: format check, build, the Explorer menu DLL, all tests and the installer check.
+  build-x64:
+    name: build (win-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Filee.slnx
+
+      - name: Check formatting
+        run: dotnet format Filee.slnx --verify-no-changes --no-restore --severity warn
+
+      # The release embeds the Noto fonts, so the tests run with them here too: the headless UI tests load them.
+      - name: Fonts
+        shell: pwsh
+        run: ./build/fetch-fonts.ps1
+
+      - name: Build
+        run: dotnet build Filee.slnx --no-restore -c Release
+
+      # Windows 11 Explorer menu (native DLL + unsigned sparse package); its tests load the DLL in-process.
+      # The toolchain (~100 MB) is saved right after it is downloaded, even if a later step fails, so it is
+      # downloaded once and not on every run. Release builds restore the same cache.
+      - name: Restore Zig toolchain
+        id: zig
+        uses: actions/cache/restore@v5
+        with:
+          path: build/.cache/zig-x86_64-windows-0.16.0
+          key: zig-0.16.0-x86_64-windows
+
+      - name: Build Explorer menu extension
+        timeout-minutes: 30
+        shell: pwsh
+        run: ./build/build-explorer-menu.ps1
+
+      - name: Save Zig toolchain
+        if: steps.zig.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: build/.cache/zig-x86_64-windows-0.16.0
+          key: zig-0.16.0-x86_64-windows
+
+      # rhwp, Pandoc, 7-Zip, ExifTool and WeasyPrint are small; with them the HWP/HWPX, archive, metadata and WeasyPrint
+      # engine tests run too, WeasyPrint's against the pinned Windows build (LibreOffice is skipped to save time).
+      - name: Fetch rhwp, Pandoc, 7-Zip, ExifTool and WeasyPrint for engine tests
+        shell: pwsh
+        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc,7zip,exiftool,weasyprint
+
+      # The UI tests on their own first, as the release runs them (there they crashed with 0xC0000005): a crash
+      # names the test that was running and leaves a dump in TestResults.
+      - name: Test UI on its own
+        run: dotnet test tests/Filee.App.Tests --no-build -c Release --blame-crash --blame-hang-timeout 5m --logger "console;verbosity=normal" --results-directory TestResults/app
+
+      # FILEE_TEST_EXIFTOOL: the metadata tests write real files, and fail rather than skip if it isn't there.
+      - name: Test
+        env:
+          FILEE_TEST_EXIFTOOL: ${{ github.workspace }}\engines\exiftool\exiftool.exe
+        run: dotnet test Filee.slnx --no-build -c Release --filter "FullyQualifiedName!~Filee.App.Tests" --logger "trx" --results-directory TestResults
+
+      # Builds Setup (src/Filee.Setup) around a stub app and runs it in a sandbox: install, update and uninstall into a
+      # scratch folder with a registry file of its own, without administrator rights.
+      - name: Check the installer
+        shell: pwsh
+        run: ./build/build-installer.ps1 -CheckOnly
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-windows
+          path: TestResults/
+          if-no-files-found: ignore
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: |
+            tests/Filee.App.Tests/bin/Release/net10.0/screenshots/
+            tests/Filee.Setup.Tests/bin/Release/net10.0/screenshots/
+          if-no-files-found: ignore
+
+  # Windows on ARM64 (#236), built and tested natively: the Explorer menu DLL, Setup, 7-Zip, rhwp and Unhwp's library
+  # are ARM64 builds, the downloaded engines (Pandoc here) x64 ones under emulation. rhwp and Unhwp come from pinned
+  # builds of .github/workflows/windows-arm64-native.yml (build/fetch-engines.ps1). Until both are pinned, their tests
+  # skip and no package is built; once they are, the job also builds the win-arm64 Setup and portable zip to try out.
+  build-arm64:
+    name: build (win-arm64)
+    runs-on: windows-11-arm
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: ARM64 pins
+        id: pins
+        run: |
+          $missing = @(./build/fetch-engines.ps1 -Runtime win-arm64 -MissingPins)
+          if ($missing) {
+            Write-Host "::warning::Not pinned yet for win-arm64: $($missing -join ', '). Their tests skip and no package is built (build/fetch-engines.ps1)."
+          }
+          "ready=$(([string](-not $missing)).ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore Filee.slnx
+
+      - name: Fonts
+        run: ./build/fetch-fonts.ps1
+
+      # The pinned rhwp and Unhwp builds when there are, as for the package; Unhwp's library goes next to the test
+      # programs through the build.
+      - name: Fetch engines for engine tests
+        run: |
+          $only = @('pandoc', '7zip')
+          if ('${{ steps.pins.outputs.ready }}' -eq 'true') { $only += @('rhwp', 'unhwp') }
+          ./build/fetch-engines.ps1 -Runtime win-arm64 -Only $only
+
+      - name: Build
+        run: |
+          $native = @()
+          if ('${{ steps.pins.outputs.ready }}' -eq 'true') { $native = @("-p:UnhwpNativeLibrary=$((Resolve-Path engines/unhwp/unhwp.dll).Path)") }
+          dotnet build Filee.slnx --no-restore -c Release @native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The x64 Zig toolchain the build (win-x64) job saves; it cross-compiles the ARM64 DLL under x64 emulation.
+      - name: Restore Zig toolchain
+        uses: actions/cache/restore@v5
+        with:
+          path: build/.cache/zig-x86_64-windows-0.16.0
+          key: zig-0.16.0-x86_64-windows
+
+      - name: Build Explorer menu extension
+        timeout-minutes: 30
+        run: ./build/build-explorer-menu.ps1 -Architecture arm64
+
+      - name: Test UI on its own
+        run: dotnet test tests/Filee.App.Tests --no-build -c Release --blame-crash --blame-hang-timeout 5m --logger "console;verbosity=normal" --results-directory TestResults/app
+
+      - name: Test
+        run: dotnet test Filee.slnx --no-build -c Release --filter "FullyQualifiedName!~Filee.App.Tests" --logger "trx" --results-directory TestResults
+
+      - name: Check the installer
+        run: ./build/build-installer.ps1 -CheckOnly -Runtime win-arm64
+
+      - name: Build package
+        if: steps.pins.outputs.ready == 'true'
+        run: ./build/build-installer.ps1 -Runtime win-arm64 -Portable
+
+      - name: Upload package
+        if: steps.pins.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-arm64-package
+          path: Releases/*-win-arm64-*
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-windows-arm64
+          path: TestResults/
+          if-no-files-found: ignore

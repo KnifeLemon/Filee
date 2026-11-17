@@ -818,10 +818,10 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Theory]
     [InlineData("mp4", "jpg", "magick")]
-    [InlineData("mkv", "webp", "magick")]
     [InlineData("mov", "pdf", "pdfsharp")]
     public void Video_to_images_goes_through_one_still_frame_not_an_animated_gif(string from, string to, string imageEngine)
     {
+        // WebP is not here: a video becomes an animated WebP directly (see Video_reaches_webp_directly_not_through_a_still_frame).
         var route = Planner().Plan(from, to);
         Assert.NotNull(route);
         Assert.Equal([("ffmpeg", from, "png"), (imageEngine, "png", to)], route.Steps.Select(s => (s.Converter.Id, s.From, s.To)));
@@ -1531,6 +1531,61 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("0", After(args, "-plays"));
         Assert.Equal("apng", After(args, "-f"));
         Assert.Contains("-an", args);
+    }
+
+    [Fact]
+    public void Webp_is_one_looping_animated_pass_with_higher_limits_than_gif()
+    {
+        var pass = Assert.Single(MediaEncoding.Plan("in.mkv", "out.webp", "webp", new MediaOptions { Quality = MediaQuality.High },
+            new MediaInfo(TimeSpan.FromSeconds(3), Hd, new AudioStreamInfo(2, 44100), null), "work"));
+        var args = pass.Arguments;
+        Assert.Equal("fps=20,scale=w='min(iw,1920)':h=ih:force_original_aspect_ratio=decrease:flags=lanczos", After(args, "-vf"));
+        Assert.Equal("libwebp_anim", After(args, "-c:v"));
+        Assert.Equal("0", After(args, "-loop"));
+        Assert.Equal("webp", After(args, "-f"));
+        Assert.Contains("-an", args);
+    }
+
+    [Fact]
+    public void Webp_lossless_keeps_the_full_width_and_writes_every_frame_losslessly()
+    {
+        var pass = Assert.Single(MediaEncoding.Plan("in.mkv", "out.webp", "webp", new MediaOptions { Quality = MediaQuality.Balanced },
+            new MediaInfo(TimeSpan.FromSeconds(3), Hd, new AudioStreamInfo(2, 44100), null), "work",
+            image: new ImageOptions { WebpLossless = true }));
+        var args = pass.Arguments;
+        Assert.Equal("1", After(args, "-lossless"));
+        Assert.Contains("min(iw,16383)", After(args, "-vf"));
+        Assert.StartsWith("fps=30,", After(args, "-vf"));
+    }
+
+    [Fact]
+    public void Webp_lossy_quality_follows_the_image_quality_slider()
+    {
+        var pass = Assert.Single(MediaEncoding.Plan("in.mkv", "out.webp", "webp", new MediaOptions(),
+            new MediaInfo(TimeSpan.FromSeconds(3), Hd, new AudioStreamInfo(2, 44100), null), "work",
+            image: new ImageOptions { Quality = 70 }));
+        Assert.Equal(("0", "70"), (After(pass.Arguments, "-lossless"), After(pass.Arguments, "-q:v")));
+    }
+
+    [Fact]
+    public void Video_reaches_webp_directly_not_through_a_still_frame()
+    {
+        var edge = Assert.Single(new FfmpegConverter().Edges, e => e is { From: "mp4", To: "webp" });
+        Assert.True(edge.Cost < 20); // video → PNG → WebP costs 10 + 10
+    }
+
+    [Theory]
+    [InlineData("mp4")]
+    [InlineData("mkv")]
+    [InlineData("mov")]
+    public void A_video_to_webp_is_one_animated_ffmpeg_step(string from)
+    {
+        // The planner takes the direct step, not the still frame it used to (video → PNG → WebP).
+        var route = Planner().Plan(from, "webp");
+        Assert.NotNull(route);
+        var step = Assert.Single(route.Steps);
+        Assert.Equal(("ffmpeg", from, "webp"), (step.Converter.Id, step.From, step.To));
+        Assert.False(step.FrameSequence);
     }
 
     [Fact]

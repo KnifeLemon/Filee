@@ -53,7 +53,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     public IReadOnlyList<ConversionEdge> Edges { get; } = BuildEdges();
 
     /// <summary>
-    /// Every video format (read by FFmpeg's demuxers) → every video target, animated GIF or APNG, a still PNG frame,
+    /// Every video format (read by FFmpeg's demuxers) → every video target, animated GIF, APNG or WebP, a still PNG frame,
     /// every frame as PNG or JPG pictures (only when a preset asks for it, see <see cref="ConversionEdge.FrameSequence"/>),
     /// every audio target and SRT / ASS / WebVTT (its subtitles); every audio format → every audio target (including
     /// itself: re-encode with another bitrate); GIF, APNG and PNG → MP4, WEBM, MOV; every image ImageMagick reads →
@@ -86,6 +86,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                select new ConversionEdge(source, target, target == "srt" ? 10 : 11, NotForImageSources: true),
             .. videos.Select(source => new ConversionEdge(source, "gif", 15)),
             .. videos.Select(source => new ConversionEdge(source, "apng", 15)),
+            // Animated WebP straight from FFmpeg. Cost 15 beats video → still PNG → WebP (10 + 10), which would make a
+            // one-frame picture of the video; it also beats going through an animated GIF or APNG (15 + 10).
+            .. videos.Select(source => new ConversionEdge(source, "webp", 15)),
             .. from source in audios from target in MediaEncoding.AudioTargets.Keys select new ConversionEdge(source, target),
             .. MediaEncoding.PictureToVideoTargets.Select(target => new ConversionEdge("gif", target)),
             .. MediaEncoding.PictureToVideoTargets.Select(target => new ConversionEdge("apng", target, 11)),
@@ -206,12 +209,12 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 : await HardwareProbe.SelectAsync(ffmpeg, codec, tenBit, encoders, _logger, cancellationToken);
         }
 
-        // Video → animated GIF / APNG can play faster or slower (the image options' playback speed).
-        var speed = step.To is "gif" or "apng" ? step.Preset.Image.PlaybackSpeed : 1;
+        // Video → animated GIF / APNG / WebP can play faster or slower (the image options' playback speed).
+        var speed = step.To is "gif" or "apng" or "webp" ? step.Preset.Image.PlaybackSpeed : 1;
         IReadOnlyList<FfmpegPass> Plan(HardwareEncoder? encoder, bool subtitles) => still
             ? MediaEncoding.PlanStill(input, output, step.To, media, info)
             : MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, cover, encoders, encoder, speed, crop: crop,
-                subtitles: subtitles);
+                subtitles: subtitles, image: step.Preset.Image);
         IReadOnlyList<FfmpegPass> Capped(bool subtitles) =>
             kbps > 0 ? MediaEncoding.WithMaxRate(Plan(hardware, subtitles), kbps) : Plan(hardware, subtitles);
         // Throws for a missing stream before anything is written (an existing file of that name stays untouched).

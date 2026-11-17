@@ -61,6 +61,8 @@ public static class AskedCompression
         {
             (FormatCategory.Pdf, FormatCategory.Pdf) when !preset.RecognizesTextOf("pdf") && !preset.Pdf.MakesSheets => CompressionKind.Pdf,
             (FormatCategory.Image, FormatCategory.Image) when LossyImageTargets.Contains(target) => CompressionKind.Image,
+            // A video written as an animated WebP (FFmpeg's encoder): its quality is the picture quality, as for a GIF → WebP.
+            (FormatCategory.Video, FormatCategory.Image) when target == "webp" => CompressionKind.Image,
             (FormatCategory.Video, FormatCategory.Video) => CompressionKind.Video,
             (FormatCategory.Audio or FormatCategory.Video, FormatCategory.Audio) => CompressionKind.Audio,
             _ => null,

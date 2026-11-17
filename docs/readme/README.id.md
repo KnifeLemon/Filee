@@ -136,7 +136,7 @@ Untuk mengembalikannya ke awal, hapus entri tersebut melalui: **Windows Security
 - **Watch Folders**: Pantau folder tertentu untuk mengonversi setiap file yang baru masuk secara otomatis.
 - **Riwayat Konversi Terkini** di halaman Utama, lengkap dengan *thumbnail*: buka file langsung atau jalankan dengan aplikasi lain.
 - **Berbagai Cara Akses**: Menu klik kanan, pintasan keyboard, area *drop zone*, dan [baris perintah `filee`](#baris-perintah-cli).
-- **Tema Terang & Gelap** dengan warna aksen kustom serta pengaturan transparansi menu donut, tersedia dalam bahasa English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (RTL), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia, dan Tiếng Việt.
+- **Tema Terang & Gelap** dengan warna aksen kustom serta pengaturan transparansi menu donut, tersedia dalam bahasa English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (RTL), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia, Tiếng Việt, বাংলা, فارسی, dan Монгол.
 
 ## Tangkapan Layar
 
@@ -164,7 +164,7 @@ Untuk mengembalikannya ke awal, hapus entri tersebut melalui: **Windows Security
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **Teks**: TXT, LOG, kode skrip sumber (PY, PAC, BAT, COMMAND; hanya baca, tidak pernah dieksekusi), Markdown, HTML;<br>MHTML (halaman web tersimpan) baca<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | UTF-8 TXT, PDF, DOCX, HWPX, EPUB<br>saling silang format, slide PPTX³ |
 | **E-book**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ<br>LIT, LRF, CHM, PDB, …⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3⁴ |
-| **Video**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>ekstraksi subtitle (SRT, ASS, WebVTT) |
+| **Video**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A, 720p,<br>ekstraksi subtitle (SRT, ASS, WebVTT) |
 | **Audio**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **Subtitle**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC | Saling konversi ke encoding UTF-8 (file Korea CP949 terbaca dengan benar) |
 | **Arsip**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | Ekstrak arsip, ZIP, 7Z, TAR, TAR.GZ;<br>kumpulan file apa saja → satu ZIP |

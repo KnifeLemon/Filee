@@ -143,7 +143,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **Папки наблюдения** конвертируют каждый файл, который в них попадает.
 - **Недавние конвертации** на главной, у каждой миниатюра: результат можно открыть («Открыть файл») или открыть в другой программе («Открыть с помощью»).
 - **Другие способы**: контекстное меню, горячая клавиша, зона перетаскивания и [команда `filee`](#командная-строка).
-- Светлая и тёмная темы со своим акцентным цветом и непрозрачностью кругового меню, интерфейс на языках English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (справа налево), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia и Tiếng Việt.
+- Светлая и тёмная темы со своим акцентным цветом и непрозрачностью кругового меню, интерфейс на языках English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (справа налево), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia, Tiếng Việt, বাংলা, فارسی и Монгол.
 
 ## Скриншоты
 
@@ -171,7 +171,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **Текст**: TXT, LOG, исходники скриптов (PY, PAC, BAT, COMMAND; только чтение, без запуска), Markdown, HTML;<br>MHTML (сохранённые веб-страницы) только чтение<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | TXT в UTF-8, PDF, DOCX, HWPX, EPUB<br>друг в друга, слайды PPTX³ |
 | **Электронные книги**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ<br>LIT, LRF, CHM, PDB, …⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3⁴ |
-| **Видео**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>субтитры (SRT, ASS, WebVTT) |
+| **Видео**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A, 720p,<br>субтитры (SRT, ASS, WebVTT) |
 | **Аудио**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **Субтитры**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC | друг в друга, в UTF-8 (корейские файлы в CP949 читаются правильно) |
 | **Архивы**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | распаковка, ZIP, 7Z, TAR, TAR.GZ;<br>любые файлы → один ZIP |

@@ -56,6 +56,9 @@ internal static class ImageReader
             images.Read(path, settings);
             if (formatId == "dds")
                 DdsChannelOrder.Correct(path, images);
+            // LibRaw writes its BT.709 curve, which Filee would otherwise treat as sRGB (#1545).
+            if (formatId == "raw")
+                RawTone.ToSrgb(images);
         }
         catch (MagickException ex) when (formatId == "dcm")
         {

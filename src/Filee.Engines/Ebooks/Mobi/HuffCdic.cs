@@ -3,6 +3,8 @@
 // dictionary (CDIC records); a phrase may itself be compressed and is unpacked on first use.
 
 using System.Buffers.Binary;
+using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -13,6 +15,8 @@ internal sealed class HuffCdic
     private readonly ulong[] _minCode = new ulong[33];
     private readonly ulong[] _maxCode = new ulong[33];
     private readonly List<Phrase> _phrases = [];
+    private readonly long _maxBytes;
+    private long _left;
 
     private sealed class Phrase(byte[] data, bool unpacked)
     {
@@ -23,8 +27,14 @@ internal sealed class HuffCdic
 
     /// <param name="huff">The HUFF record.</param>
     /// <param name="cdics">The CDIC records that follow it.</param>
-    public HuffCdic(ReadOnlySpan<byte> huff, IEnumerable<byte[]> cdics)
+    /// <param name="maxBytes">
+    /// Most bytes unpacked from all records together, the dictionary's own phrases included. A phrase may be made of
+    /// phrases, so each level multiplies the text: a few kilobytes of dictionary can stand for terabytes.
+    /// </param>
+    public HuffCdic(ReadOnlySpan<byte> huff, IEnumerable<byte[]> cdics, long maxBytes)
     {
+        _maxBytes = maxBytes;
+        _left = maxBytes;
         if (huff.Length < 24 || !huff[..4].SequenceEqual("HUFF"u8))
             throw new InvalidDataException("The book's HUFF compression table is damaged.");
         var table1 = (int)BinaryPrimitives.ReadUInt32BigEndian(huff[8..]);
@@ -68,6 +78,7 @@ internal sealed class HuffCdic
     }
 
     /// <summary>Decompresses one text record.</summary>
+    /// <exception cref="ConversionRefusedException">The text has unpacked to more than the limit.</exception>
     public byte[] Decompress(ReadOnlySpan<byte> data)
     {
         var output = new List<byte>(data.Length * 3);
@@ -122,6 +133,9 @@ internal sealed class HuffCdic
                 phrase.Unpacked = true;
                 phrase.Busy = false;
             }
+            _left -= phrase.Data.Length;
+            if (_left < 0)
+                throw new ConversionRefusedException("error.document_too_large", $"the book's text unpacks to over {BoundedXml.Size(_maxBytes)}");
             output.AddRange(phrase.Data);
         }
     }

@@ -143,7 +143,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **監視資料夾**，放入的檔案自動轉換。
 - **最近的轉換**顯示在首頁上，每項都有縮圖，可以直接「開啟檔案」，也可以用「開啟方式」換個應用程式開啟。
 - **其他方式** 右鍵選單、鍵盤快速鍵、拖放區域和 [`filee` 命令](#命令列)。
-- 淺色和深色主題，可自選強調色和環形工具列不透明度，支援 English、Español、日本語、한국어、简体中文、繁體中文、Polski、हिन्दी、Русский、العربية（從右到左）、Português (Brasil)、Français、नेपाली、ไทย、Türkçe、Português (Portugal)、Deutsch、Italiano、Bahasa Indonesia、Tiếng Việt。
+- 淺色和深色主題，可自選強調色和環形工具列不透明度，支援 English、Español、日本語、한국어、简体中文、繁體中文、Polski、हिन्दी、Русский、العربية（從右到左）、Português (Brasil)、Français、नेपाली、ไทย、Türkçe、Português (Portugal)、Deutsch、Italiano、Bahasa Indonesia、Tiếng Việt、বাংলা、فارسی、Монгол。
 
 ## 截圖
 
@@ -171,7 +171,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **HWP** HWP、HWPX | PDF、PNG、DOCX、HWPX ↔ HWP、TXT、Markdown、HTML |
 | **文字** TXT、LOG、指令碼原始碼（PY、PAC、BAT、COMMAND，只讀取，從不執行）、Markdown、HTML，<br>MHTML（儲存的網頁）僅讀取<br>reStructuredText、LaTeX、Org、AsciiDoc、Typst、MediaWiki、DocBook、Jupyter、Textile、man、OPML³ | UTF-8 TXT、PDF、DOCX、HWPX、EPUB<br>互相轉換、PPTX 投影片³ |
 | **電子書** EPUB、KEPUB、MOBI、AZW3、AZW、AZW4、FB2、CBZ、CBR、CB7、HTMLZ、TXTZ<br>LIT、LRF、CHM、PDB 等⁴ | PDF、EPUB、KEPUB（Kobo）、DOCX、TXT、HTML、HWPX<br>MOBI、AZW3⁴ |
-| **影片**⁵ MP4、MOV、MKV、WEBM、AVI、WMV、FLV、MPEG、VCD（DAT）、TS、M2TS、3GP、OGV、VOB 等 | MP4（H.264、HEVC、AV1）、WEBM、MOV、MKV、AVI、GIF、APNG、MP3、M4A、720p、<br>字幕（SRT、ASS、WebVTT） |
+| **影片**⁵ MP4、MOV、MKV、WEBM、AVI、WMV、FLV、MPEG、VCD（DAT）、TS、M2TS、3GP、OGV、VOB 等 | MP4（H.264、HEVC、AV1）、WEBM、MOV、MKV、AVI、GIF、APNG、WEBP、MP3、M4A、720p、<br>字幕（SRT、ASS、WebVTT） |
 | **音訊**⁵ MP3、M4A、AAC、WAV、FLAC、OGG、OPUS、WMA、AIFF、AMR、APE、WavPack、TTA、DSD（DSF、DFF）、DTS、AC3、E-AC3 等 | MP3、M4A（AAC、ALAC）、WAV、FLAC、OGG、OPUS、AAC、WavPack、TTA、W64、AC3、E-AC3 |
 | **字幕** SRT、ASS/SSA、WebVTT、SAMI（SMI）、LRC、TTML、MicroDVD、SCC | 互相轉換，儲存為 UTF-8（也能讀取 CP949 韓文字幕） |
 | **壓縮檔** ZIP、ANSYS Workbench（WBPZ）、7Z、RAR、TAR、TAR.GZ、TAR.BZ2、TAR.XZ、GZ、ISO、CAB、DMG、ALZ、EGG 等 | 解壓縮、ZIP、7Z、TAR、TAR.GZ，<br>多個檔案 → 一個 ZIP |

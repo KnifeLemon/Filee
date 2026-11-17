@@ -98,36 +98,84 @@ public sealed class FileSwap(string installFolder, string workFolder, ISetupSyst
     /// <summary>Deletes the work folder; what is still in use goes at the next restart.</summary>
     public void Cleanup() => DeleteTree(workFolder, system, log);
 
-    /// <summary>Deletes a folder tree; files still in use are deleted at the next restart.</summary>
-    public static void DeleteTree(string folder, ISetupSystem system, SetupLog log)
+    /// <summary>
+    /// Deletes a folder tree; files still in use are deleted at the next restart. Junctions and links inside are
+    /// removed themselves, never followed: Setup runs elevated, and a link could otherwise point it at any folder.
+    /// </summary>
+    /// <param name="userFolder">
+    /// A folder the user can change (%LocalAppData%, %AppData%), not the install folder: nothing is left for the next
+    /// restart, which deletes by path when the folders on the way may have been swapped for links meanwhile.
+    /// </param>
+    public static void DeleteTree(string folder, ISetupSystem system, SetupLog log, bool userFolder = false)
     {
-        if (!Directory.Exists(folder))
+        if (!OperatingSystem.IsWindows() || !Directory.Exists(folder))
             return;
-        foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+        if (new DirectoryInfo(folder).Attributes.HasFlag(FileAttributes.ReparsePoint))
         {
-            try
+            // The folder itself is a link: only the link goes. Its parent was checked by the caller, or is ours.
+            log.Info($"{folder} is a link; removing only the link");
+            var parent = LinkSafeDelete.RealFolder(Path.GetDirectoryName(Path.GetFullPath(folder))!);
+            if (parent is null || LinkSafeDelete.Entry(folder, parent) != LinkSafeDelete.Outcome.Deleted)
+                log.Warn($"Could not remove the link {folder}");
+            return;
+        }
+        if (LinkSafeDelete.RealFolder(folder) is not { } root)
+        {
+            log.Warn($"Not deleting {folder}: it is reached through a junction or link");
+            return;
+        }
+        DeleteContents(root, root, system, log, userFolder);
+        // The root itself is checked against its parent, which is where it really is.
+        if (LinkSafeDelete.Entry(root, Path.GetDirectoryName(root)!) == LinkSafeDelete.Outcome.Failed)
+            Later(root, system, log, userFolder);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void DeleteContents(string folder, string root, ISetupSystem system, SetupLog log, bool userFolder)
+    {
+        IEnumerable<FileSystemInfo> entries;
+        try
+        {
+            // Not recursive: a link found is deleted, not entered.
+            entries = new DirectoryInfo(folder).EnumerateFileSystemInfos("*", ListOnly).ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.Warn($"Could not list {folder}: {ex.Message}");
+            return;
+        }
+        foreach (var entry in entries)
+        {
+            if (entry is DirectoryInfo && !entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                DeleteContents(entry.FullName, root, system, log, userFolder);
+            switch (LinkSafeDelete.Entry(entry.FullName, root))
             {
-                File.SetAttributes(file, FileAttributes.Normal);
-                File.Delete(file);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                log.Info($"In use, deleted at the next restart: {file}");
-                system.DeleteAtRestart(file);
+                case LinkSafeDelete.Outcome.Failed:
+                    Later(entry.FullName, system, log, userFolder);
+                    break;
+                case LinkSafeDelete.Outcome.Outside:
+                    log.Warn($"Not deleting {entry.FullName}: it is no longer inside {root}");
+                    break;
             }
         }
-        foreach (var dir in Directory.EnumerateDirectories(folder, "*", SearchOption.AllDirectories)
-                     .OrderByDescending(d => d.Length).Append(folder))
+    }
+
+    private static readonly EnumerationOptions ListOnly = new()
+    {
+        RecurseSubdirectories = false,
+        AttributesToSkip = 0,
+        IgnoreInaccessible = false,
+    };
+
+    private static void Later(string path, ISetupSystem system, SetupLog log, bool userFolder)
+    {
+        if (userFolder)
         {
-            try
-            {
-                Directory.Delete(dir);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                system.DeleteAtRestart(dir);
-            }
+            log.Info($"In use, left in place: {path}");
+            return;
         }
+        log.Info($"In use, deleted at the next restart: {path}");
+        system.DeleteAtRestart(path);
     }
 
     /// <summary>Removes empty folders below <paramref name="root"/> (not the root itself).</summary>
