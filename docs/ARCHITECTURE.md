@@ -428,6 +428,8 @@ text, vectors, outlines, forms, page labels and document information remain PDF 
 Ctrl / Shift + click selects several pages, and every action works on the whole selection: the pages move up or down
 as a block, dragging them moves them to the line drawn between two pages, Insert puts another PDF's pages before or
 after the selection and Replace puts them where the selection was, removing it (#860).
+PDFs dragged in from the file manager show the same line and go in at it, through the same path as Insert
+(`PdfPageEditorViewModel.InsertFilesAtAsync`); other files are left out, and a drag without a PDF isn't taken (#1596).
 Each source PDF's bytes and page sizes are cached once after the window has appeared; thumbnails and the large preview
 render off the UI thread. A whole-document edit keeps the original catalogue and changes `/Rotate` in modify mode.
 An actual reorder, deletion, addition or extraction builds a new PDF from selected page objects. A PDF that opens
@@ -462,6 +464,15 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
   `setpts` and chained `atempo` for speed, `volume`, `color`/`anullsrc` for gaps, `concat`, the music as a second
   input (`atrim`, `volume`, `afade`, `adelay`, `amix`), then `fade`/`afade`. It is encoded with the preset's quality,
   size and codec.
+- Pictures, clips, the preview and Live Photos start at the frame shown at the time chosen (#1205):
+  `Engines/Media/KeyFrames` reads the packets before the time with ffprobe, without decoding, for the key frame to read
+  from, since FFmpeg's own `-ss` lands between key frames in MPEG-TS and MPEG-PS and skips the leading pictures of an
+  open group. A picture is trimmed at the file's own times (`-copyts`). What is encoded reads with `-copyts` and
+  `-itsoffset`, moved back to a microsecond before the start so nothing kept is below time 0, and its picture is cut by
+  `trim` in the stream's own ticks; its progress comes from `-stats_enc_pre`, with `-progress` to show it is working
+  between parts. A copy's `-ss` is checked where FFmpeg's own copy lands, since each demuxer seeks its own way (an MP4
+  by decode time, a WMV by a key frame a second), and its end is put where no frame shown before its last is missing.
+  The file header of `KeyFrames.cs` lists the FFmpeg behaviours, and the versions, that this allows for.
 
 ## Crop video
 

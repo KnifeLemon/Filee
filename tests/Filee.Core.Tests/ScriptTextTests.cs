@@ -198,20 +198,20 @@ public class ScriptTextTests
         Assert.Equal("text", ProfileSelector.Select(BuiltInData.CreateProfiles(), ["Steam.cxlog"])?.Id);
 
     [Fact]
-    public void Version_95_text_donuts_learn_cxlog_without_taking_custom_claims()
+    public void Version_99_text_donuts_learn_cxlog_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var text = profiles.Single(p => p.Id == "text").Extensions;
         text.Remove("cxlog");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(98, presets, profiles));
         Assert.Contains("cxlog", text);
-        Assert.False(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(98, presets, profiles));
 
         text.Remove("cxlog");
         profiles.Insert(0, new ToolbarProfile { Id = "my-logs", Name = "Logs", Extensions = ["CXLOG"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(95, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(98, presets, profiles));
         Assert.DoesNotContain("cxlog", text); // the user's own donut has it
     }
 }

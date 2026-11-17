@@ -24,7 +24,7 @@ namespace Filee.Engines.Media;
 
 /// <summary>Converts video and audio files with Filee's own copy of FFmpeg.</summary>
 /// <param name="logger">Receives which hardware encoders work and why a hardware encode was redone in software.</param>
-public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter, IImageTransformer, IMediaJoiner
+public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter, IImageTransformer, IMediaJoiner, IAudioCopyTarget
 {
     private static readonly ConcurrentDictionary<string, string> Versions = new();
 
@@ -121,6 +121,13 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         }
     }
 
+    public async Task<string> AudioCopyTargetAsync(string path, CancellationToken cancellationToken)
+    {
+        var (_, ffprobe) = _tools ?? Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        var info = await MediaInfo.ProbeAsync(ffprobe, MediaInput.For(path), cancellationToken);
+        return info.CopyAudio is { } track ? MediaEncoding.CopyTargetFor(track.Codec) : throw new ConversionRefusedException("error.no_audio");
+    }
+
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var (ffmpeg, ffprobe) = _tools ?? Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
@@ -156,14 +163,19 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             : null;
 
         var media = step.Preset.Media;
-        // "Remove metadata": the streams as they are, in the same format, without tags.
-        if (media.RemoveMetadata && step.From == step.To && !still
-            && (MediaEncoding.VideoTargets.ContainsKey(step.To) || MediaEncoding.AudioTargets.ContainsKey(step.To)))
+        // "Same format as the audio" (#1490): the sound track as it is, in the format JobQueue read for it.
+        var copy = step.Preset.TargetFormat == BuiltInData.SameAsAudio && !still && info.CopyAudio is { } track && MediaEncoding.AudioTargets.ContainsKey(step.To)
+            ? MediaEncoding.CopyAudio(input, output, step.To, track)
+            // "Remove metadata": the streams as they are, in the same format, without tags.
+            : media.RemoveMetadata && step.From == step.To && !still
+              && (MediaEncoding.VideoTargets.ContainsKey(step.To) || MediaEncoding.AudioTargets.ContainsKey(step.To))
+                ? MediaEncoding.WithoutMetadata(input, output, step.To, info)
+                : null;
+        if (copy is not null)
         {
             try
             {
-                await RunPassesAsync(ffmpeg, [new FfmpegPass(MediaEncoding.WithoutMetadata(input, output, step.To, info), 1)], output,
-                    info.Duration, progress, cancellationToken);
+                await RunPassesAsync(ffmpeg, [new FfmpegPass(copy, 1)], output, info.Duration, progress, cancellationToken);
             }
             catch
             {
@@ -466,6 +478,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         }
         var media = step.Preset.Media;
         var edit = media.Clip!.Clamped(info.Duration?.TotalSeconds);
+        // Reading (or a copy) starts at the key frame shown last before the clip's start, so the clip's first frame is
+        // the one the clip window showed, also in an MPEG-TS file or an open group of pictures (KeyFrames).
+        var seek = await KeyFrames.FindAsync(ffprobe, input, edit.Start, cancellationToken);
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)
             return [];
@@ -478,7 +493,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 var musicTrack = edit.Music is { } song && !media.RemoveAudio
                     ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken) : 0;
                 var pass = new FfmpegPass(MediaEncoding.ClipEditArguments(input, output, step.To, edit, media, info,
-                    await EncodersOfAsync(ffmpeg), musicTrack), 1);
+                    await EncodersOfAsync(ffmpeg), musicTrack, seek), 1);
                 await RunPassesAsync(ffmpeg, [pass], output, duration, progress, cancellationToken);
             }
             catch
@@ -497,7 +512,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             {
                 try
                 {
-                    var copy = new FfmpegPass(MediaEncoding.ClipCopy(input, output, step.To, clip, media, info), 1);
+                    var start = await KeyFrames.CopyEndAsync(ffprobe, input,
+                        await KeyFrames.CopyStartAsync(ffmpeg, ffprobe, input, seek, cancellationToken), clip.End, cancellationToken);
+                    var copy = new FfmpegPass(MediaEncoding.ClipCopy(input, output, step.To, clip, start, media, info), 1);
                     await RunPassesAsync(ffmpeg, [copy], output, duration, progress, cancellationToken);
                     progress?.Report(1);
                     return [output];
@@ -519,7 +536,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                     : await HardwareProbe.SelectAsync(ffmpeg, codec, tenBit, encoders, _logger, cancellationToken);
             }
             IReadOnlyList<FfmpegPass> Plan(HardwareEncoder? encoder) =>
-                MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, encoders: encoders, hardware: encoder, clip: clip);
+                MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, encoders: encoders, hardware: encoder, clip: clip,
+                    clipSeek: seek);
             await RunWithFallbackAsync(Plan(hardware), hardware, Plan,
                 planned => RunPassesAsync(ffmpeg, planned, output, duration, progress, cancellationToken), output, _logger, cancellationToken);
         }

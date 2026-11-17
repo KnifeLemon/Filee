@@ -864,6 +864,33 @@ public sealed partial class JobQueue : IAsyncDisposable
             : runWith.TargetFormat == BuiltInData.SameAsSource ? runWith.CropsVideo ? VideoCrop.TargetFor(from.Id) : from.Id
             : runWith.TargetFormat;
 
+        // "Same format as the audio" (#1490): the format that holds the video's sound as it is, read from the file.
+        if (target == BuiltInData.SameAsAudio)
+        {
+            var reader = _catalog.All.OfType<IAudioCopyTarget>().FirstOrDefault();
+            if (from.Category != FormatCategory.Video || reader is null || reader is IConverter { } engine && !engine.GetStatus().IsAvailable)
+                return Fail(file, "error.no_route", $"{from.Id} → mka", new RouteRequest(from.Id, "mka"));
+            try
+            {
+                target = await reader.AudioCopyTargetAsync(file.SourcePath, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                file.State = FileState.Cancelled;
+                Notify(job);
+                return [];
+            }
+            catch (ConversionRefusedException ex)
+            {
+                return Fail(file, ex.ErrorKey, ex.Detail);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Reading the sound of {File} failed", file.SourcePath);
+                return Fail(file, "error.conversion_failed", ex.Message);
+            }
+        }
+
         // "Save every frame": a video becomes a folder of pictures in one step of its own; "Extract Live/Motion Photo
         // video" likewise takes a photo's video, and "Live / Motion Photo" makes one of a video. Never for an
         // intermediate file, and never on the way to another format (video → JPG is otherwise one still frame, photo →

@@ -1179,9 +1179,13 @@ internal static class SettingsMigrations
         // v95: Windows app packages and bundles learn the archives donut, without taking custom claims (#1521).
         if (from < 95)
             changed |= LearnExtensions(profiles, out _, ["msix", "appx", "msixbundle", "appxbundle"]);
-        // v96: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put. (Schema 96 may be renumbered if
-        //      another change takes it first.)
+        // v96: Source engine files: Garry's Mod addons (.gma), Valve paks (.vpk) and maps (.bsp, for the files packed into
+        //      them) learn the archives donut; custom claims stay put.
         if (from < 96)
+            changed |= LearnExtensions(profiles, out _, ["gma", "vpk", "bsp"]);
+        // v99: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put. (97 and 98 are kept for the
+        //      Source engine presets in #1608 and #1611.)
+        if (from < 99)
             changed |= LearnExtensions(profiles, out _, ["cxlog"]);
         return changed;
     }

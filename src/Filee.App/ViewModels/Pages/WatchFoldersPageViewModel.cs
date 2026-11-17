@@ -141,6 +141,8 @@ public sealed partial class WatchFoldersPageViewModel : ObservableObject, IDispo
     private static string TargetExtension(Preset preset, string source) => preset.TargetFormat switch
     {
         BuiltInData.SameAsSource => FormatRegistry.ExtensionOf(source),
+        // The sound's format is known only once the file is read: the preview shows the usual one (AAC → M4A).
+        BuiltInData.SameAsAudio => "m4a",
         FormatRegistry.Folder => "",
         var id => FormatRegistry.FindById(id)?.PrimaryExtension ?? id,
     };
