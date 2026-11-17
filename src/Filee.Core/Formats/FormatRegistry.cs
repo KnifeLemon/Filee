@@ -347,6 +347,8 @@ public static class FormatRegistry
         new("nupkg", "NUPKG (NuGet package)", FormatCategory.Archive, ["nupkg", "snupkg"], Writable: false),
         new("apks", "APKS (Android split APKs)", FormatCategory.Archive, ["apks", "xapk", "apkm"], Writable: false),
         new("aab", "AAB (Android App Bundle)", FormatCategory.Archive, ["aab"], Writable: false),
+        // Windows app packages and bundles are ZIP-based; signed installers are never written by Filee (#1521).
+        new("msix", "MSIX / AppX (Windows app package)", FormatCategory.Archive, ["msix", "appx", "msixbundle", "appxbundle"], Writable: false),
         // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
         // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
         // the top.
