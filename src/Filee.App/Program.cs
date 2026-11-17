@@ -54,7 +54,7 @@ internal static class Program
         {
             var message = string.Format(System.Globalization.CultureInfo.CurrentCulture,
                 LocalizationService.EarlyText("startup.portable_unwritable"), ex.DataDirectory);
-            return PortableStartupFailure.Show(message);
+            return PortableStartupFailure.Show(message, ex);
         }
         using var portableScope = portable;
         // ImageMagick reads its policy once, at its first use; the app also calls it directly (crop, previews).

@@ -181,7 +181,7 @@ To undo it, remove the entries in Windows Security → App & browser control →
 | **Video**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, …;<br>Wisenet WAVE / Nx Witness exports (NOV) read | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A, 720p, split into parts;<br>subtitle tracks kept (MKV, MP4, MOV, WebM);<br>subtitles (SRT, ASS, WebVTT) |
 | **Audio**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, …;<br>tracker modules (XM, IT, S3M) read | MP3, M4A (AAC, ALAC), M4R (iPhone ringtone), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **Subtitles**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KRC, TTML, MicroDVD, SCC | each other as UTF-8 (Korean CP949 files read correctly) |
-| **Archives**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, Garry's Mod addon (GMA), Valve pak (VPK), files packed into a Source map (BSP), …;<br>JAR, NuGet (NUPKG), Android packages (APKS, XAPK, APKM, AAB), Adobe extensions (ZXP) read | extract, ZIP, 7Z, TAR, TAR.GZ;<br>any files → one ZIP; folders → ZIP, ISO (Joliet or UDF 2.01) |
+| **Archives**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, Garry's Mod addon (GMA), Valve pak (VPK), files packed into a Source map (BSP), …;<br>JAR, NuGet (NUPKG), Android packages (APKS, XAPK, APKM, AAB), Adobe extensions (ZXP) read | extract, ZIP, 7Z, TAR, TAR.GZ, GMA;<br>any files → one ZIP; folders → ZIP, ISO (Joliet or UDF 2.01), GMA |
 | **CAD**: DWG, DXF<br>Gerber PCB layers (GBR, GTL, GBL, GTO, …) read;<br>G-code of 3D printers and CNC machines (GCODE, GCO, NGC) read | PDF, SVG, PNG, DWG ↔ DXF;<br>G-code → toolpath (from above or isometric) or the slicer's preview |
 | **Fonts**: TTF, OTF, WOFF, WOFF2, EOT;<br>FON (Windows bitmap fonts) read | each other;<br>FON → one font per size |
 | **Data**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | each other, CSV and XLSX (tables);<br>vCard, iCalendar ↔ CSV |
@@ -239,6 +239,8 @@ It connects to the internet only:
 
 - to ask GitHub (`api.github.com`) whether a newer release exists, shortly after start and then every few hours.
   Turn this off in Settings → About ("Check for updates automatically").
+- to download an update when you press Update, from GitHub or, on Windows when GitHub doesn't answer, the same file
+  from Filee's download server (`dl.filee.sh`).
 - to download the conversion engines you choose to install, from the official locations pinned in [`engines.json`](src/Filee.Engines/Infrastructure/engines.json), and the text recognition (OCR) languages a preset uses, pinned in [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json).
 - when you click a link, which opens your web browser.
 

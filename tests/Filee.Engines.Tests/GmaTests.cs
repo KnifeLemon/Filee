@@ -76,14 +76,15 @@ public class GmaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private const string JsonDescription = """{ "description": "Logic gates.", "type": "tool", "tags": ["fun", "build"] }""";
 
     [Fact]
-    public void Gma_is_recognised_and_unpacks_in_one_step()
+    public void Gma_is_recognised_and_packs_and_unpacks_in_one_step()
     {
         Assert.Equal("gma", FormatRegistry.Detect("Addon.GMA")?.Id);
-        Assert.False(FormatRegistry.Get("gma")!.Writable);
+        Assert.True(FormatRegistry.Get("gma")!.Writable);
         var planner = fx.Catalog.CreatePlanner(["archive"]);
         Assert.Single(planner.Plan("gma", "zip")!.Steps);
         Assert.Single(planner.Plan("gma", FormatRegistry.Folder)!.Steps);
-        Assert.Null(planner.Plan("zip", "gma"));
+        Assert.Single(planner.Plan("zip", "gma")!.Steps);
+        Assert.Single(planner.Plan(FormatRegistry.Folder, "gma")!.Steps);
     }
 
     [Fact]
