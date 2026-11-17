@@ -5,6 +5,8 @@
 // source, or a failed download opens a download page instead. The check works in every build.
 // An official build also carries the public half of Filee's update key: the SHA256SUMS file must then be signed with
 // it (UpdateSignature), on every platform, and a Windows installer must come from the publisher the build names.
+// The Windows files are also on Filee's download mirror (dl.filee.sh): a file GitHub doesn't hand out is taken from
+// there and checked the same way (#1593).
 
 using System.ComponentModel;
 using System.Diagnostics;
@@ -13,6 +15,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -62,6 +65,18 @@ public sealed partial class UpdateService : ObservableObject
     private ReleaseFile? _installer;
     private ReleaseFile? _checksums;
 
+    /// <summary>GitHub failed for a file of this update: the next ones are tried on the mirror first.</summary>
+    private bool _mirrorFirst;
+
+    /// <summary>
+    /// Filee's copy of every Windows release file since 2.4.1 (Cloudflare R2), at &lt;version&gt;/&lt;file name&gt; with
+    /// GitHub's file names (build/sign-release.ps1 puts them there). GitHub's download links redirect to another
+    /// server, which some networks can't reach in time (#1593). Whatever comes from here is checked exactly like
+    /// GitHub's file: the signed SHA256SUMS, the installer's SHA-256 and its publisher. Linux and macOS files aren't
+    /// copied there.
+    /// </summary>
+    internal const string MirrorRoot = "https://dl.filee.sh/";
+
     public UpdateService(ILogger<UpdateService> log) : this(log, new HttpClientHandler())
     {
     }
@@ -70,7 +85,9 @@ public sealed partial class UpdateService : ObservableObject
     internal UpdateService(ILogger<UpdateService> log, HttpMessageHandler handler)
     {
         _log = log;
-        // Downloads use their own stall timeout (StallTimeout); this one covers the API call and the response headers.
+        // Downloads use their own stall timeout (StallTimeout); this one covers the API call, the response headers and
+        // the small files (SHA256SUMS and its signature, a few hundred bytes). Waiting longer for those doesn't help: one
+        // that hasn't come in 20 s is stuck, and the mirror is tried instead (FetchAsync).
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Filee", CurrentVersion));
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
@@ -532,8 +549,9 @@ public sealed partial class UpdateService : ObservableObject
     {
         var installer = _installer ?? throw new InvalidOperationException("No installer in the latest release");
         var checksums = _checksums ?? throw new InvalidOperationException("No checksum file in the latest release");
+        _mirrorFirst = false;
 
-        var sums = await GetBytesAsync(checksums.Url, cancellationToken);
+        var sums = await FetchAsync(checksums, file => GetBytesAsync(file.Url, cancellationToken), cancellationToken);
         if (UpdatePublicKey is { } key)
             await CheckSignatureAsync(checksums, sums, installer, key, cancellationToken);
         var expected = ParseChecksum(Encoding.UTF8.GetString(sums).TrimStart('\uFEFF'), installer.Name)
@@ -552,7 +570,11 @@ public sealed partial class UpdateService : ObservableObject
 
         var partial = target + ".part";
         TryDelete(partial);
-        await DownloadAsync(installer, partial, progress, cancellationToken);
+        await FetchAsync(installer, async file =>
+        {
+            await DownloadAsync(file, partial, progress, cancellationToken);
+            return true;
+        }, cancellationToken);
         var actual = await Sha256Async(partial, cancellationToken);
         if (actual != expected)
         {
@@ -573,10 +595,11 @@ public sealed partial class UpdateService : ObservableObject
         CancellationToken cancellationToken)
     {
         var name = checksums.Name + UpdateSignature.Extension;
+        var file = new ReleaseFile(name, checksums.Url + UpdateSignature.Extension, 0);
         byte[] signature;
         try
         {
-            signature = await GetBytesAsync(checksums.Url + UpdateSignature.Extension, cancellationToken);
+            signature = await FetchAsync(file, f => GetBytesAsync(f.Url, cancellationToken), cancellationToken);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -654,6 +677,65 @@ public sealed partial class UpdateService : ObservableObject
         private static string[] Split(string? list) =>
             list?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
     }
+
+    /// <summary>
+    /// The mirror's address of a Windows release file (<see cref="MirrorRoot"/>&lt;version&gt;/&lt;name&gt;, the version
+    /// from the name), or null for another platform's file or a name without a version.
+    /// </summary>
+    internal string? MirrorUrl(string name)
+    {
+        if (!IsWindowsTarget(TargetPlatform))
+            return null;
+        var version = VersionInName().Match(name);
+        return version.Success ? MirrorRoot + version.Groups[1].Value + "/" + Uri.EscapeDataString(name) : null;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="fetch"/> for the release's file and, when that fails on the way (an HTTP error, a timeout, a
+    /// cut connection), for the mirror's copy of it; after a failure on GitHub, the update's later files try the mirror
+    /// first. Only the transport changes: the caller checks what comes back the same way whichever answered. When both
+    /// fail, GitHub's error is thrown.
+    /// </summary>
+    private async Task<T> FetchAsync<T>(ReleaseFile file, Func<ReleaseFile, Task<T>> fetch, CancellationToken cancellationToken)
+    {
+        if (MirrorUrl(file.Name) is not { } url)
+            return await fetch(file);
+        var mirror = file with { Url = url };
+        var (first, second) = _mirrorFirst ? (mirror, file) : (file, mirror);
+        T result;
+        try
+        {
+            result = await fetch(first);
+        }
+        catch (Exception ex) when (FailedOnTheWay(ex, cancellationToken))
+        {
+            _log.LogWarning("Update: {Name} from {Source} failed ({Message}); trying {Other}", file.Name, Host(first),
+                ex.Message, Host(second));
+            if (first == file)
+                _mirrorFirst = true;
+            try
+            {
+                result = await fetch(second);
+            }
+            catch (Exception again) when (FailedOnTheWay(again, cancellationToken))
+            {
+                _log.LogWarning("Update: {Name} from {Source} failed too ({Message})", file.Name, Host(second), again.Message);
+                ExceptionDispatchInfo.Throw(first == file ? ex : again);
+                throw; // not reached: Throw always throws
+            }
+            first = second;
+        }
+        _log.LogInformation("Update: {Name} from {Source}", file.Name, Host(first));
+        return result;
+
+        static string Host(ReleaseFile f) => new Uri(f.Url).Host;
+    }
+
+    /// <summary>The download itself failed: not a file that arrived and was refused, and not the user cancelling.</summary>
+    private static bool FailedOnTheWay(Exception ex, CancellationToken cancellationToken) =>
+        ex is HttpRequestException or TaskCanceledException or IOException
+        && ex is not UpdateVerificationException
+        && !cancellationToken.IsCancellationRequested;
 
     private async Task DownloadAsync(ReleaseFile file, string path, IProgress<int>? progress, CancellationToken cancellationToken)
     {

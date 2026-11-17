@@ -14,6 +14,24 @@ change, a language may repeat; a language without lines shows the English ones):
 - `recommended`: bug fixes. The card shows once per version.
 - `optional`: new features only. No card, the sidebar button only.
 
+## Unreleased
+
+Rename this heading to the version number when you release it.
+
+<!-- update
+level: recommended
+ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서버(dl.filee.sh)에서 받아요
+en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
+-->
+
+- **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
+  gave up when GitHub's download link didn't answer within 20 seconds, which some networks hit every time. Filee now
+  takes the same file from its own download server (`dl.filee.sh`) instead, and the rest of that update goes there
+  first. Every file is still checked as before: the signed checksum list, the installer's checksum and its publisher,
+  so the server can only hand out the real installer. The log says where each file came from.
+  It helps from the update after this version on: on such a network, this version itself still comes from
+  [filee.sh](https://filee.sh/).
+
 ## 2.5.0
 
 <!-- update

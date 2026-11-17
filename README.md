@@ -239,6 +239,8 @@ It connects to the internet only:
 
 - to ask GitHub (`api.github.com`) whether a newer release exists, shortly after start and then every few hours.
   Turn this off in Settings → About ("Check for updates automatically").
+- to download an update when you press Update, from GitHub or, on Windows when GitHub doesn't answer, the same file
+  from Filee's download server (`dl.filee.sh`).
 - to download the conversion engines you choose to install, from the official locations pinned in [`engines.json`](src/Filee.Engines/Infrastructure/engines.json), and the text recognition (OCR) languages a preset uses, pinned in [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json).
 - when you click a link, which opens your web browser.
 

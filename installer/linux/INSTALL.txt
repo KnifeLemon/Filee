@@ -4,6 +4,11 @@ in data beside the executable. On first start the app offers to copy existing
 profile data and downloaded engines into unused portable data, leaving originals intact.
 Installing with install.sh uses the normal user profile instead.
 
+Packagers: delete filee.portable (and any data folder) from an installed copy,
+for example after cp -a into /opt/filee, as install.sh does. With the marker,
+Filee keeps its data in data beside the executable; where users can't write
+there, it shows an error and does not start.
+
 Run ./install.sh to install for the current user. It requires Python 3, creates
 an application launcher and ~/.local/bin/filee, and does not require root.
 Run ./install.sh --upgrade to safely upgrade an existing installation in place

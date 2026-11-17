@@ -148,7 +148,8 @@ ARM64 sums file for theirs, and fail to update; the script refuses to publish a 
 every `SHA256SUMS` file of the release (Windows, Linux and macOS) with Filee's update key and uploads the `.sig` files
 next to them (`build/sign-checksums.ps1`; it asks for the key's passphrase once). It also copies the Windows files to
 the download mirror `https://dl.filee.sh/X.Y.Z/` (Cloudflare R2; needs `npx wrangler login` once), which the
-Microsoft Store listing points at because GitHub's download links redirect. Look over the draft and publish it (or pass
+Microsoft Store listing points at because GitHub's download links redirect, and which the in-app updater falls back to
+when GitHub doesn't hand out a file (#1593): keep the file names as they are on the release. Look over the draft and publish it (or pass
 `-Publish`). `build/sign-windows.ps1` signs any folder or file on its own.
 
 The update key is made once with `pwsh build/new-update-key.ps1 -PrivateKeyPath <file outside the repository>`. Its
