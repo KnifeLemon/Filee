@@ -177,7 +177,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **النصوص**: TXT وLOG، والشيفرة المصدرية للسكربتات (PY, PAC, BAT, COMMAND؛ تُقرأ ولا تُشغَّل أبدًا)، وMarkdown وHTML؛<br>وMHTML للقراءة (صفحات الويب المحفوظة)<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | TXT بترميز UTF-8، PDF, DOCX, HWPX, EPUB<br>فيما بينها، شرائح PPTX³ |
 | **الكتب الإلكترونية**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ<br>LIT, LRF, CHM, PDB وغيرها⁴ | PDF, EPUB، KEPUB (Kobo)، DOCX, TXT, HTML, HWPX<br>MOBI, AZW3⁴ |
-| **الفيديو**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG، وVideo CD (DAT)، وTS, M2TS, 3GP, OGV, VOB وغيرها | MP4 (H.264, HEVC, AV1)، WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A، دقة 720p،<br>الترجمة (SRT, ASS, WebVTT) |
+| **الفيديو**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG، وVideo CD (DAT)، وTS, M2TS, 3GP, OGV, VOB وغيرها | MP4 (H.264, HEVC, AV1)، WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A، دقة 720p،<br>الترجمة (SRT, ASS, WebVTT) |
 | **الصوت**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA، وDSD (DSF, DFF)، وDTS, AC3, E-AC3 وغيرها | MP3، M4A (AAC, ALAC)، WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **الترجمة**: SRT, ASS/SSA, WebVTT، SAMI (SMI)، LRC, TTML, MicroDVD, SCC | فيما بينها بترميز UTF-8 (تُقرأ ملفات CP949 الكورية بشكل صحيح) |
 | **الأرشيفات**: ZIP، وANSYS Workbench (WBPZ)، و7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG وغيرها | الاستخراج، ZIP, 7Z, TAR, TAR.GZ؛<br>وجمع أي ملفات في ZIP واحد |
