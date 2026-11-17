@@ -1140,7 +1140,7 @@
   "presets.wav_format.Pcm32": "32 bits",
   "presets.wav_format.Float32": "32 bits flotante",
   "presets.video_codec": "Códec de vídeo",
-  "presets.video_codec_hint": "H.264 se reproduce en todas partes.\nLos archivos HEVC pesan aproximadamente la mitad y se reproducen en la mayoría de móviles, televisores y PC recientes.\nAV1 pesa todavía menos, pero codifica despacio y necesita un dispositivo reciente.\nUn vídeo que ya esté en el códec elegido solo se cambia de contenedor sin recodificar.",
+  "presets.video_codec_hint": "H.264 se reproduce en todas partes.\nLos archivos HEVC pesan aproximadamente la mitad y se reproducen en la mayoría de móviles, televisores y PC recientes.\nAV1 pesa todavía menos, pero codifica despacio y necesita un dispositivo reciente.\nCon H.264 (VP9 en WebM), un vídeo que el nuevo formato pueda contener tal cual (por ejemplo, HEVC en MKV) solo se cambia de contenedor sin recodificar. Con HEVC o AV1, solo un vídeo que ya esté en ese códec.",
   "presets.video_codec.h264": "H.264 (se reproduce en todas partes)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (más pequeño)",

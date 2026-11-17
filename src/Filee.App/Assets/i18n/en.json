@@ -1155,7 +1155,7 @@
   "presets.wav_format.Pcm32": "32-bit",
   "presets.wav_format.Float32": "32-bit float",
   "presets.video_codec": "Video codec",
-  "presets.video_codec_hint": "H.264 plays everywhere.\nHEVC files are about half the size and play on most phones, TVs and recent PCs.\nAV1 is smaller still but slow to encode and needs a recent device.\nA video already in the chosen codec is only rewrapped.",
+  "presets.video_codec_hint": "H.264 plays everywhere.\nHEVC files are about half the size and play on most phones, TVs and recent PCs.\nAV1 is smaller still but slow to encode and needs a recent device.\nWith H.264 (VP9 for WebM), a video the new format can hold as it is (HEVC into MKV, for example) is only rewrapped. With HEVC or AV1, only a video already in that codec is.",
   "presets.video_codec.h264": "H.264 (plays everywhere)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (smaller)",

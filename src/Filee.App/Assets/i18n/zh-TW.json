@@ -1155,7 +1155,7 @@
   "presets.wav_format.Pcm32": "32 位",
   "presets.wav_format.Float32": "32 位浮點",
   "presets.video_codec": "影片編碼",
-  "presets.video_codec_hint": "H.264 到處都能播放。\nHEVC 檔案約小一半，多數手機、電視和較新的電腦都能播放。\nAV1 更小，但編碼慢，需要較新的裝置。\n已是所選編碼的影片只重新封裝。",
+  "presets.video_codec_hint": "H.264 到處都能播放。\nHEVC 檔案約小一半，多數手機、電視和較新的電腦都能播放。\nAV1 更小，但編碼慢，需要較新的裝置。\n選 H.264（WebM 為 VP9）時，新格式能原樣容納的影片（例如 HEVC 轉 MKV）只重新封裝。選 HEVC 或 AV1 時，只有已是該編碼的影片才這樣。",
   "presets.video_codec.h264": "H.264（相容性最好）",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265（更小）",

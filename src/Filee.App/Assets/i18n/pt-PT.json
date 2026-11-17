@@ -1155,7 +1155,7 @@
   "presets.wav_format.Pcm32": "32 bits",
   "presets.wav_format.Float32": "32 bits de vírgula flutuante",
   "presets.video_codec": "Codec de vídeo",
-  "presets.video_codec_hint": "O H.264 é reproduzido em todo o lado.\nOs ficheiros HEVC têm cerca de metade do tamanho e são reproduzidos na maioria dos telemóveis, televisores e computadores recentes.\nO AV1 é ainda mais pequeno, mas lento a codificar e exige um dispositivo recente.\nSe o vídeo já utiliza o codec escolhido, só muda o contentor.",
+  "presets.video_codec_hint": "O H.264 é reproduzido em todo o lado.\nOs ficheiros HEVC têm cerca de metade do tamanho e são reproduzidos na maioria dos telemóveis, televisores e computadores recentes.\nO AV1 é ainda mais pequeno, mas lento a codificar e exige um dispositivo recente.\nCom H.264 (VP9 no WebM), um vídeo que o novo formato aceita tal como está (HEVC para MKV, por exemplo) só muda de contentor. Com HEVC ou AV1, só um vídeo que já utilize esse codec.",
   "presets.video_codec.h264": "H.264 (compatibilidade alargada)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (mais pequeno)",

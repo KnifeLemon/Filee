@@ -2154,8 +2154,9 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   target but AMR; *AudioSampleRate* (8 to 48 kHz) and *WavFormat* (bit depth) apply to WAV and W64.
 - *VideoCodec* (Default, HEVC, AV1) and *AudioCodec* (Default, ALAC) pick another codec where the target takes it
   (`MediaCodecs` in Filee.Core: HEVC for MP4/M4V/MKV/MOV, AV1 for MP4/M4V/MKV/WEBM, ALAC for M4A/M4B); for any other
-  target the usual codec is written. The presets "MP4 HEVC" (on the video donut), "MP4 AV1" and "ALAC" use them. A
-  video already in the chosen codec is copied (the rules above, with AV1 also into MP4); HEVC and AV1 keep 10 bits
+  target the usual codec is written. The presets "MP4 HEVC" (on the video donut), "MP4 AV1" and "ALAC" use them. With
+  Default, every video the target takes as it is is copied (HEVC into MKV too); with HEVC or AV1 only a video already in
+  that codec is (the rules above, with AV1 also into MP4) and any other is encoded. HEVC and AV1 keep 10 bits
   (`yuv420p10le`, Main 10) for 10-bit and HDR sources and write their colour tags (BT.2020, PQ or HLG), 8-bit 4:2:0
   for the rest. The encoders are looked up with `ffmpeg -encoders` once per FFmpeg, so a copy the user picked without
   x265 or AV1 fails with a clear message instead of an FFmpeg error. x265 and SVT-AV1 log only errors

@@ -1155,7 +1155,7 @@
   "presets.wav_format.Pcm32": "32 bit",
   "presets.wav_format.Float32": "32 bit dấu phẩy động",
   "presets.video_codec": "Codec video",
-  "presets.video_codec_hint": "H.264 phát được ở mọi nơi.\nTệp HEVC có kích thước khoảng một nửa và phát được trên hầu hết điện thoại, TV và máy tính đời mới.\nAV1 còn nhỏ hơn nữa nhưng mã hóa chậm và cần thiết bị đời mới.\nVideo đã ở codec được chọn chỉ được đóng gói lại.",
+  "presets.video_codec_hint": "H.264 phát được ở mọi nơi.\nTệp HEVC có kích thước khoảng một nửa và phát được trên hầu hết điện thoại, TV và máy tính đời mới.\nAV1 còn nhỏ hơn nữa nhưng mã hóa chậm và cần thiết bị đời mới.\nVới H.264 (VP9 cho WebM), video mà định dạng mới chứa được nguyên trạng (ví dụ HEVC sang MKV) chỉ được đóng gói lại. Với HEVC hoặc AV1, chỉ video đã ở codec đó.",
   "presets.video_codec.h264": "H.264 (phát được ở mọi nơi)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (nhỏ hơn)",

@@ -1140,7 +1140,7 @@
   "presets.wav_format.Pcm32": "32ビット",
   "presets.wav_format.Float32": "32ビット浮動小数点",
   "presets.video_codec": "動画コーデック",
-  "presets.video_codec_hint": "H.264はほぼすべての環境で再生できます。\nHEVCはファイルサイズが約半分になり、多くのスマートフォン、テレビ、最近のPCで再生できます。\nAV1はさらに小さくなりますが、エンコードに時間がかかり、新しい機器が必要です。\n動画がすでに選択したコーデックの場合、再エンコードせずに格納形式だけを変えます。",
+  "presets.video_codec_hint": "H.264はほぼすべての環境で再生できます。\nHEVCはファイルサイズが約半分になり、多くのスマートフォン、テレビ、最近のPCで再生できます。\nAV1はさらに小さくなりますが、エンコードに時間がかかり、新しい機器が必要です。\nH.264（WebMではVP9）では、新しい形式がそのまま格納できる動画（MKVへのHEVCなど）は再エンコードせずに格納形式だけを変えます。HEVCやAV1では、すでにそのコーデックの動画だけです。",
   "presets.video_codec.h264": "H.264（幅広い環境で再生可能）",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265（小さめ）",

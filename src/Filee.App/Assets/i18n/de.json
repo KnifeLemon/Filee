@@ -1140,7 +1140,7 @@
   "presets.wav_format.Pcm32": "32 Bit",
   "presets.wav_format.Float32": "32-Bit-Gleitkomma",
   "presets.video_codec": "Video-Codec",
-  "presets.video_codec_hint": "H.264 läuft überall.\nHEVC-Dateien sind etwa halb so groß und laufen auf den meisten Smartphones, Fernsehern und neueren PCs.\nAV1 ist noch kleiner, wird aber langsam kodiert und benötigt ein aktuelles Gerät.\nVerwendet das Video bereits den gewählten Codec, wird nur der Container gewechselt.",
+  "presets.video_codec_hint": "H.264 läuft überall.\nHEVC-Dateien sind etwa halb so groß und laufen auf den meisten Smartphones, Fernsehern und neueren PCs.\nAV1 ist noch kleiner, wird aber langsam kodiert und benötigt ein aktuelles Gerät.\nMit H.264 (VP9 bei WebM) wird ein Video, das das neue Format unverändert aufnehmen kann (etwa HEVC in MKV), nur in einen neuen Container gepackt. Mit HEVC oder AV1 gilt das nur für ein Video, das diesen Codec bereits verwendet.",
   "presets.video_codec.h264": "H.264 (läuft überall)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (kleiner)",
