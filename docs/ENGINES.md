@@ -1051,6 +1051,10 @@ in the preset library only). Video and audio need FFmpeg.
   source goes into the ZIP instead.
 - **Extract audio** copies AAC or ALAC into M4A without an encode (`MediaOptions.CopyAudioWhenPossible`); other sound
   is encoded to AAC.
+- **Same format as the audio** (Convert to, `--to same-audio`; `BuiltInData.SameAsAudio`, #1490) copies a video's sound
+  track as it is, never encoded: the track marked default, else the first, without pictures, subtitles or data. The
+  format comes from its codec (`MediaEncoding.CopyTargetFor`): AAC and ALAC → M4A, MP3, FLAC, Opus → OPUS, Vorbis → OGG,
+  little-endian PCM → WAV (RF64 over 4 GB), anything else (AC-3, E-AC-3, DTS, TrueHD, …) → MKA.
 - **Merge videos** copies the clips with the concat demuxer only when all share the codec setup (ffprobe's extradata
   hash), size, pixel format, frame rate, turn and kind of sound; otherwise every clip is fitted into the first clip's
   frame and encoded, a clip without sound silent for its length. Sound tracks FFmpeg can't decode are skipped: each
@@ -2185,8 +2189,9 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   target but AMR; *AudioSampleRate* (8 to 48 kHz) and *WavFormat* (bit depth) apply to WAV and W64.
 - *VideoCodec* (Default, HEVC, AV1) and *AudioCodec* (Default, ALAC) pick another codec where the target takes it
   (`MediaCodecs` in Filee.Core: HEVC for MP4/M4V/MKV/MOV, AV1 for MP4/M4V/MKV/WEBM, ALAC for M4A/M4B); for any other
-  target the usual codec is written. The presets "MP4 HEVC" (on the video donut), "MP4 AV1" and "ALAC" use them. A
-  video already in the chosen codec is copied (the rules above, with AV1 also into MP4); HEVC and AV1 keep 10 bits
+  target the usual codec is written. The presets "MP4 HEVC" (on the video donut), "MP4 AV1" and "ALAC" use them. With
+  Default, every video the target takes as it is is copied (HEVC into MKV too); with HEVC or AV1 only a video already in
+  that codec is (the rules above, with AV1 also into MP4) and any other is encoded. HEVC and AV1 keep 10 bits
   (`yuv420p10le`, Main 10) for 10-bit and HDR sources and write their colour tags (BT.2020, PQ or HLG), 8-bit 4:2:0
   for the rest. The encoders are looked up with `ffmpeg -encoders` once per FFmpeg, so a copy the user picked without
   x265 or AV1 fails with a clear message instead of an FFmpeg error. x265 and SVT-AV1 log only errors
@@ -2440,8 +2445,10 @@ Transcription runs entirely locally and offline on your computer; no audio or da
 - **Platform**: Windows only (x64). On macOS and Linux, the Whisper package is not offered and the engine reports
   `engine.reason.unsupported_platform` ("Not available on this platform").
 - **Download size**: ~157 MB total (~9 MB for `whisper-cli.exe` and ~148 MB for the default `ggml-base.bin` model; ~160 MB on disk).
-  Downloads are pinned by SHA-256 in `engines.json`. Users can also place larger Whisper models (such as `ggml-small.bin`
-  or `ggml-large-v3-turbo.bin`) into the engine directory or point to a custom installation in Settings → *Engines*.
+  Downloads are pinned by SHA-256 in `engines.json`. Users can also place larger Whisper models (such as `ggml-small.bin`,
+  `ggml-medium.bin` or `ggml-large-v3-turbo.bin`) into the engine directory or point to a custom installation in
+  Settings → *Engines*. Filee transcribes with the largest model file it finds in those folders (a bigger model hears
+  more, and is slower); English-only models (`*.en.bin`) are used only when no multilingual one is there.
 - **FFmpeg requirement**: Whisper operates on 16 kHz mono 16-bit WAV audio. Extracting audio from arbitrary video and audio
   formats requires FFmpeg. FFmpeg must be installed (via Settings → *Engines*, bundled, or found on `PATH`).
 - **Languages**: Whisper supports auto-detection (`auto`) as well as specific language codes (`-l <code>`, e.g. `hi` for

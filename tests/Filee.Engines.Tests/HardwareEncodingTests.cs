@@ -220,6 +220,27 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 
     [Fact]
+    public void An_exact_clip_made_on_the_graphics_chip_is_cut_as_one_made_on_the_processor()
+    {
+        // The clip's picture is cut by its trim alone (its input is read from the key frame before it): without it,
+        // a hardware encode would keep everything from there to the end of the file.
+        var on = new MediaOptions { HardwareEncoding = true };
+        var seek = SeekPoint.Plain(2) with { Origin = 1.4, Tick = (1, 90000) };
+        IReadOnlyList<string> Clip(HardwareEncoder? hardware) => MediaEncoding.Plan("in.mov", "out.mp4", "mp4", on, HdClip, "work",
+            hardware: hardware, clip: new ClipRange(2.5, 4), clipSeek: seek).Single().Arguments;
+        var trim = seek.VideoTrim(2.5, 4);
+
+        foreach (var hardware in new[] { new HardwareEncoder("h264_nvenc", HardwareApi.Nvenc), new("h264_vaapi", HardwareApi.Vaapi),
+                     new("h264_videotoolbox", HardwareApi.VideoToolbox) })
+        {
+            var args = Clip(hardware);
+            Assert.Equal(hardware.Name, After(args, "-c:v"));
+            Assert.StartsWith(trim + ",", After(args, "-vf"));
+        }
+        Assert.StartsWith(trim + ",", After(Clip(null), "-vf"));
+    }
+
+    [Fact]
     public void The_plan_uses_the_hardware_encoder_only_where_it_applies()
     {
         var on = new MediaOptions { HardwareEncoding = true };
