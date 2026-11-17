@@ -1179,6 +1179,10 @@ internal static class SettingsMigrations
         // v95: Windows app packages and bundles learn the archives donut, without taking custom claims (#1521).
         if (from < 95)
             changed |= LearnExtensions(profiles, out _, ["msix", "appx", "msixbundle", "appxbundle"]);
+        // v96: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put. (Schema 96 may be renumbered if
+        //      another change takes it first.)
+        if (from < 96)
+            changed |= LearnExtensions(profiles, out _, ["cxlog"]);
         return changed;
     }
 
