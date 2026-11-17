@@ -44,7 +44,10 @@ public sealed class HistoryEntry
     /// </summary>
     public List<HistoryOutput> Undoable { get; set; } = [];
 
-    /// <summary>"Replace the original" sent a source to the Recycle Bin / Trash; Undo says it is still there.</summary>
+    /// <summary>
+    /// "Replace the original" or "Move the original to the Recycle Bin / Trash" sent a source there; Undo says it is
+    /// still there.
+    /// </summary>
     public bool OriginalsInTrash { get; set; }
 
     /// <summary>Undo moved the results to the Recycle Bin / Trash.</summary>
@@ -66,9 +69,13 @@ public sealed class HistoryEntry
             Sources = [.. job.Sources],
             Outputs = [.. job.Outputs],
             Failures = failures,
-            // history.json isn't the place for a PDF password: a retry takes it from the preset again.
-            // No Retry for parts of a picture to hide: a Filee from before them would write the picture as it is.
-            Preset = failures.Count > 0 && !job.Preset.Image.HidesAreas ? job.Preset.Clone().WithoutPassword(mark: true) : null,
+            // history.json isn't the place for a PDF password: a retry takes it from the preset again. No Retry for
+            // parts of a picture to hide, marks drawn on it, a background set behind it or metadata changes: a Filee
+            // from before them would write the file as it is.
+            Preset = failures.Count > 0 && !job.Preset.Image.HidesAreas && !job.Preset.Image.HasAnnotations
+                     && !job.Preset.Image.AddsBackdrop && !job.Preset.EditsMetadata
+                ? job.Preset.Clone().WithoutPassword(mark: true)
+                : null,
             Undoable = UndoableOutputs(job),
             OriginalsInTrash = job.Files.Any(f => f.OriginalInTrash),
         };

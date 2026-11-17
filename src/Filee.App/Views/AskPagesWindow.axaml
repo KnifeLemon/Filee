@@ -1,0 +1,105 @@
+<!-- "Choose pages" (#981): opens when a PDF is dropped on a preset whose pages are set to "Ask every time"
+     (RadialController, PdfOptions.AskPageRange). It shows how many pages the PDF has and takes the range; for a PDF
+     target also one PDF, one file per page or several pages per file. Enter starts it, Esc or closing the window
+     starts nothing. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.AskPagesWindow"
+        x:DataType="vm:AskPagesViewModel"
+        Title="{DynamicResource pages.title}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="540" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterScreen">
+  <Window.Styles>
+    <!-- One PDF / one file per page / several pages per file: segments in a pill, the chosen one filled with the accent (as the merge
+         order window's direction switch). -->
+    <Style Selector="Border.choices">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="3" />
+    </Style>
+    <Style Selector="RadioButton.choice">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}" CornerRadius="999" Padding="12,5">
+            <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                              Foreground="{TemplateBinding Foreground}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="RadioButton.choice:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="RadioButton.choice:checked">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+    </Style>
+    <Style Selector="RadioButton.choice:focus-visible /template/ Border">
+      <Setter Property="BorderBrush" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+  </Window.Styles>
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
+            Background="{DynamicResource SurfaceBrush}">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button x:Name="CancelPages" Content="{DynamicResource common.cancel}" Click="OnCancel" IsCancel="True" />
+        <Button x:Name="StartPages" Classes="accent" Content="{DynamicResource preset.split_pdf}" Click="OnStart" IsDefault="True"
+                IsEnabled="{Binding IsValid}" />
+      </StackPanel>
+    </Border>
+    <StackPanel Margin="20,18,20,16" Spacing="14">
+      <StackPanel Spacing="4">
+        <TextBlock Classes="h2" Text="{DynamicResource pages.title}" />
+        <TextBlock x:Name="FileOfText" Classes="caption" Text="{Binding Position}" IsVisible="{Binding ShowsPosition}" />
+      </StackPanel>
+      <!-- The PDF and how many pages it has. -->
+      <Border x:Name="PdfCard" Padding="14,10" CornerRadius="10" Background="{DynamicResource SurfaceAltBrush}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+          <PathIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Icon.File}"
+                    Foreground="{DynamicResource TextSecondaryBrush}" />
+          <StackPanel Grid.Column="1" Spacing="2">
+            <TextBlock x:Name="FileName" Text="{Binding FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding FileName}" />
+            <TextBlock x:Name="PageCount" Classes="caption" Text="{Binding PageCountText}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Grid>
+      </Border>
+      <StackPanel>
+        <TextBlock Classes="label" Text="{DynamicResource presets.page_range}" />
+        <TextBox x:Name="RangeBox" Text="{Binding Range}" PlaceholderText="{DynamicResource pages.range_hint}"
+                 AutomationProperties.Name="{DynamicResource presets.page_range}" />
+        <TextBlock x:Name="RangeStatus" Classes="caption" Classes.danger="{Binding !IsValid}" Margin="0,6,0,0" TextWrapping="Wrap"
+                   Text="{Binding Status}" IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+      <!-- A PDF target: the pages together in one PDF, each as a file of its own, or several to a file (#1259). -->
+      <StackPanel Spacing="10" IsVisible="{Binding OffersSplit}">
+        <Border x:Name="SplitChoice" Classes="choices" HorizontalAlignment="Left">
+          <StackPanel Orientation="Horizontal">
+            <RadioButton x:Name="OnePdf" Classes="choice" GroupName="PageOutput" IsChecked="{Binding OnePdf}"
+                         Content="{DynamicResource pages.one_pdf}" AutomationProperties.Name="{DynamicResource pages.one_pdf}" />
+            <RadioButton x:Name="PerPage" Classes="choice" GroupName="PageOutput" IsChecked="{Binding EachPage}"
+                         Content="{DynamicResource presets.split}" AutomationProperties.Name="{DynamicResource presets.split}" />
+            <RadioButton x:Name="Groups" Classes="choice" GroupName="PageOutput" IsChecked="{Binding Groups}"
+                         Content="{DynamicResource pages.groups}" AutomationProperties.Name="{DynamicResource pages.groups}" />
+          </StackPanel>
+        </Border>
+        <!-- Several pages per file: how many pages each, or how many equal parts. -->
+        <StackPanel x:Name="GroupRow" Orientation="Horizontal" Spacing="8" IsVisible="{Binding Groups}">
+          <NumericUpDown x:Name="GroupSize" Value="{Binding GroupSize}" Minimum="2" Maximum="9999" Increment="1" FormatString="0"
+                         Width="130" AutomationProperties.Name="{DynamicResource pages.groups}" />
+          <ComboBox x:Name="GroupKind" ItemsSource="{Binding GroupKinds}" SelectedItem="{Binding GroupKind}" MinWidth="170"
+                    AutomationProperties.Name="{DynamicResource pages.groups}" />
+        </StackPanel>
+      </StackPanel>
+    </StackPanel>
+  </DockPanel>
+</Window>

@@ -1,5 +1,5 @@
 // Playback speed of animations (preset option ImageOptions.AnimationSpeed): rewrites the frame delays of an animation
-// written as GIF, WebP, APNG or MNG, and drops frames where a delay would get shorter than players show it.
+// written as GIF, WebP, APNG, MNG or AVIF, and drops frames where a delay would get shorter than players show it.
 
 using ImageMagick;
 
@@ -20,8 +20,8 @@ internal static class AnimationTiming
     /// <summary>The largest delay GIF and MNG store (16 bits of hundredths of a second, about 11 minutes).</summary>
     private const int MaxHundredths = ushort.MaxValue;
 
-    /// <summary>The ticks per second delays are written in: hundredths for GIF and MNG, milliseconds for WebP and APNG.</summary>
-    public static int TicksPerSecond(string targetFormat) => targetFormat is "webp" or "apng" ? 1000 : 100;
+    /// <summary>The ticks per second delays are written in: hundredths for GIF and MNG, milliseconds for WebP, APNG and AVIF.</summary>
+    public static int TicksPerSecond(string targetFormat) => targetFormat is "webp" or "apng" or "avif" ? 1000 : 100;
 
     /// <summary>
     /// The frames to write, playing <paramref name="speed"/> times as fast: every delay divided by

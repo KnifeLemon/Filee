@@ -18,6 +18,8 @@ internal static class UninstallCleanup
         var succeeded = true;
         // A copy with its own data folder (FILEE_DATA_DIR) never registered anything: only its engines go.
         var integrated = UserDataStore.OverrideDirectory is null;
+        if (PortableMode.IsEnabled && Environment.ProcessPath is { } executable)
+            Clean(() => PortableIntegrationCleanup.RemoveOwnedEntriesAsync(executable).GetAwaiter().GetResult());
         if (integrated)
         {
             Clean(() => platform.SetContextMenu(false, "", ""));
@@ -40,9 +42,7 @@ internal static class UninstallCleanup
         {
             Clean(() =>
             {
-                var engines = Filee.Engines.Infrastructure.EngineEnvironment.DownloadRoot;
-                if (Directory.Exists(engines))
-                    Directory.Delete(engines, recursive: true);
+                Filee.Engines.Infrastructure.EngineInstaller.DeleteFolder(Filee.Engines.Infrastructure.EngineEnvironment.DownloadRoot);
             });
         }
         return succeeded;

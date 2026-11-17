@@ -1,7 +1,8 @@
 // The languages Tesseract can read text in (tessdata_fast 4.1.0, Apache-2.0), pinned in ocr-languages.json like the
 // engines in engines.json. A language is downloaded the first time a preset needs it, checked against its SHA-256 and
 // kept in engines/ocr-languages/<code>/<code>.traineddata by EngineInstaller, so a damaged or partial download never
-// counts as installed.
+// counts as installed. A preset can name several languages for text that mixes them (#1123), joined with + in
+// PdfOptions.OcrLanguage, which is how Tesseract takes them too (chi_sim+eng); each one is its own download.
 
 using System.Globalization;
 using System.Text.Json;
@@ -51,6 +52,22 @@ public static class OcrLanguages
 
     public static OcrLanguage? Find(string code) => All.FirstOrDefault(l => l.Code == code);
 
+    /// <summary>
+    /// The languages a preset names (PdfOptions.OcrLanguage: one code, or several joined with <c>+</c>), the main one
+    /// first and each once. A code that isn't in the list is left out, and with none left <see cref="Default"/> is read.
+    /// </summary>
+    public static IReadOnlyList<OcrLanguage> Parse(string? codes)
+    {
+        var languages = (codes ?? "").Split(Separator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(Find).OfType<OcrLanguage>().Distinct().ToList();
+        return languages.Count > 0 ? languages : [Find(Default)!];
+    }
+
+    /// <summary>Codes as PdfOptions.OcrLanguage keeps them and Tesseract's <c>-l</c> takes them, each once.</summary>
+    public static string Join(IEnumerable<string> codes) => string.Join(Separator, codes.Distinct());
+
+    private const char Separator = '+';
+
     /// <summary>The language data, or null while it isn't downloaded.</summary>
     public static string? FileOf(string code) =>
         EngineEnvironment.FirstExisting(Path.Combine(Root, code, code + ".traineddata")) is { } file
@@ -80,13 +97,7 @@ public static class OcrLanguages
 
     private static readonly SemaphoreSlim OneAtATime = new(1, 1);
 
-    /// <summary>Redirects are followed by the installer, which checks every file against its SHA-256.</summary>
-    private static readonly Lazy<HttpClient> Http = new(() =>
-    {
-        var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Filee/{typeof(OcrLanguages).Assembly.GetName().Version}");
-        return http;
-    });
+    private static readonly Lazy<HttpClient> Http = new(() => EngineInstaller.CreateHttpClient(TimeSpan.FromMinutes(10)));
 
     private static EnginePackage PackageOf(string code) => new("ocr-" + code, [code], Components[code].Size, ["tesseract"]);
 

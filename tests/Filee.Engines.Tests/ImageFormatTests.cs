@@ -87,7 +87,7 @@ public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var flat = (MagickImage)image.Clone();
         flat.BackgroundColor = MagickColors.White;
-        flat.Alpha(AlphaOption.Remove);
+        flat.Alpha(AlphaAction.Remove);
         flat.ColorSpace = ColorSpace.sRGB;
         return flat;
     }

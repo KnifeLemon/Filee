@@ -31,6 +31,11 @@ body:
     validations:
       required: true
   - type: input
+    id: audience
+    attributes:
+      label: Who works with these files?
+      description: Your work or hobby (for example architects, game modders, video editors). It decides which field the format goes in, which people who don't need it can turn off in Settings → Fields.
+  - type: input
     id: target
     attributes:
       label: What should Filee convert them to?

@@ -26,7 +26,8 @@ foreach ($name in $Only) {
     $archive = Join-Path $cache "$($component.sha256).$($component.kind)"
     if (-not (Test-Path -LiteralPath $archive)) {
         $download = "$archive.$([Guid]::NewGuid().ToString('N')).partial"
-        Invoke-WebRequest -Uri $component.url -OutFile $download
+        # GitHub's release downloads answer 504 for minutes at a time: try again a few times.
+        Invoke-WebRequest -Uri $component.url -OutFile $download -MaximumRetryCount 5 -RetryIntervalSec 20
         if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $component.sha256) {
             Remove-Item -LiteralPath $download
             throw "Checksum mismatch for $name ($Runtime)."

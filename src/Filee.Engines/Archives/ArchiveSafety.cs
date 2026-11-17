@@ -11,6 +11,12 @@ internal static class ArchiveSafety
     /// <summary>More entries than this are refused: real archives stay far below, "entry bombs" do not.</summary>
     public const int MaxEntries = 1_000_000;
 
+    /// <summary>
+    /// Deepest folder nesting of an entry path. Real archives nest a few dozen folders; tens of thousands fit in one
+    /// name, and the folders are walked level by level after unpacking (links removed, moved into place).
+    /// </summary>
+    public const int MaxPathDepth = 512;
+
     /// <summary>Space that must stay free on the drive after unpacking.</summary>
     private const long Reserve = 64L * 1024 * 1024;
 
@@ -36,6 +42,18 @@ internal static class ArchiveSafety
         return entryPath.Split('/', '\\').Any(part => part == "..");
     }
 
+    /// <summary>True if an entry path has more than <see cref="MaxPathDepth"/> names (folders and the file).</summary>
+    public static bool IsTooDeep(string entryPath)
+    {
+        var names = 0;
+        foreach (var part in entryPath.Split('/', '\\'))
+        {
+            if (part is not ("" or ".") && ++names > MaxPathDepth)
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// Refuses a 7-Zip listing with encrypted entries, entries or hard links pointing outside the target folder,
     /// too many entries, or more data than the drive of <paramref name="targetDirectory"/> can hold.
@@ -50,27 +68,60 @@ internal static class ArchiveSafety
                 throw Encrypted(archiveName);
             if (IsUnsafePath(entry.Path) || entry.HardLink is { Length: > 0 } link && IsUnsafePath(link))
                 throw Unsafe(archiveName, entry.Path);
+            if (IsTooDeep(entry.Path) || entry.HardLink is { Length: > 0 } target && IsTooDeep(target))
+                throw TooDeep(archiveName);
         }
         EnsureRoom(entries.Where(e => !e.IsFolder).Sum(e => e.Size), targetDirectory, archiveName);
     }
 
-    /// <summary>Throws when <paramref name="bytes"/> would not fit on the drive of <paramref name="directory"/>.</summary>
+    /// <summary>
+    /// Throws when <paramref name="bytes"/> would not fit on the drive of <paramref name="directory"/>. Also for 0 bytes,
+    /// which is what a listing says when the archive states no sizes: the reserve must still be free.
+    /// </summary>
     public static void EnsureRoom(long bytes, string directory, string archiveName)
     {
-        var root = Path.GetPathRoot(Path.GetFullPath(directory));
-        if (string.IsNullOrEmpty(root) || bytes <= 0)
-            return;
-        long free;
+        if (FreeSpace(directory) is not (var root, var free))
+            return; // network shares have no DriveInfo; the write itself fails if space runs out
+        if (bytes > free - Reserve)
+            throw new IOException($"{archiveName} unpacks to {FormatSize(bytes)}, but only {FormatSize(free)} is free on {root}.");
+    }
+
+    /// <summary>
+    /// The most a single compressed stream (.gz, .bz2, .xz …) may write into <paramref name="directory"/>. Its header
+    /// states no size (bzip2) or one its author chose (gzip), so the limit is the room on the drive, leaving a tenth of
+    /// the free space (at least the reserve) for everything else. Without a known drive (a network share) there is no
+    /// limit; the write itself fails if space runs out.
+    /// </summary>
+    public static long StreamLimit(string directory) =>
+        FreeSpace(directory) is (_, var free) ? Math.Max(0, free - Math.Max(Reserve, free / 10)) : long.MaxValue;
+
+    /// <summary>The error for a stream that came out larger than <see cref="StreamLimit"/>; nothing of it is kept.</summary>
+    public static Exception TooLarge(string archiveName, long limit, string directory)
+    {
+        var (root, free) = FreeSpace(directory) ?? (directory, 0L);
+        return new IOException($"{archiveName} unpacks to more than {FormatSize(limit)}, but only {FormatSize(free)} is free on {root}.");
+    }
+
+    /// <summary>The drive of <paramref name="directory"/> and its free space, or null when it can't be told.</summary>
+    private static (string Root, long Free)? FreeSpace(string directory)
+    {
+        var full = Path.GetFullPath(directory);
         try
         {
-            free = new DriveInfo(root).AvailableFreeSpace;
+            // On Linux and macOS every path starts at "/": the drive is the deepest mount point above it (/home, /tmp …).
+            var root = OperatingSystem.IsWindows()
+                ? Path.GetPathRoot(full)
+                : DriveInfo.GetDrives().Select(d => d.RootDirectory.FullName)
+                    .Where(r => r == "/" || (full + "/").StartsWith(Path.TrimEndingDirectorySeparator(r) + "/", StringComparison.Ordinal))
+                    .MaxBy(r => r.Length);
+            if (string.IsNullOrEmpty(root))
+                return null;
+            return (root, new DriveInfo(root).AvailableFreeSpace);
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
         {
-            return; // network shares have no DriveInfo; the write itself fails if space runs out
+            return null;
         }
-        if (bytes > free - Reserve)
-            throw new IOException($"{archiveName} unpacks to {FormatSize(bytes)}, but only {FormatSize(free)} is free on {root}.");
     }
 
     /// <summary>
@@ -81,6 +132,8 @@ internal static class ArchiveSafety
     {
         if (IsUnsafePath(entryName))
             throw Unsafe(archiveName, entryName);
+        if (IsTooDeep(entryName))
+            throw TooDeep(archiveName);
         var parts = entryName.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
             .Where(part => part != ".")
             .Select(SanitizeSegment)
@@ -122,6 +175,9 @@ internal static class ArchiveSafety
 
     public static Exception Unsafe(string archiveName, string entry) =>
         new InvalidDataException($"{archiveName} was not unpacked: the entry \"{entry}\" points outside the target folder.");
+
+    public static Exception TooDeep(string archiveName) =>
+        new InvalidDataException($"{archiveName} was not unpacked: an entry is nested in more than {MaxPathDepth} folders.");
 
     public static Exception Damaged(string archiveName, string detail) =>
         new InvalidDataException($"{archiveName} is damaged or incomplete ({detail}).");

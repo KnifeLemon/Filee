@@ -9,10 +9,13 @@
 //    only their Windows binaries (Library/bin) are unpacked, with a managed decompressor (no 7-Zip, no installer).
 //  * NSIS installers (Tesseract) are unpacked with Filee's own 7-Zip, never run: files only, no registry entries.
 //  * A marker file with the component's hash records what is installed, so an engines.json update is detected.
+//  * Without internet the same files can come from a folder instead (#447): saved by Filee on another computer
+//    (SaveFilesAsync) or downloaded there by hand. They are copied and checked against the same SHA-256 first.
 
 using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using Filee.Core.Conversion;
 using Microsoft.Extensions.Logging;
@@ -25,6 +28,8 @@ namespace Filee.Engines.Infrastructure;
 public enum EngineInstallStage
 {
     Downloading,
+    /// <summary>Copying and checking a file the user brought (<see cref="EngineInstaller.InstallFromFilesAsync"/>).</summary>
+    Copying,
     Unpacking,
 }
 
@@ -33,105 +38,492 @@ public enum EngineInstallStage
 /// <param name="BytesTotal">Download size of the components being installed.</param>
 public readonly record struct EngineInstallProgress(EngineInstallStage Stage, string ComponentId, double Fraction, long BytesDone = 0, long BytesTotal = 0);
 
+/// <summary>Which copy of a package the engines use, see <see cref="EngineInstaller.StatusOf"/>.</summary>
+public enum EngineCopyStatus
+{
+    NotInstalled,
+    /// <summary>Filee's download.</summary>
+    Installed,
+    /// <summary>The user's own copy (Settings → Engines) or one found on the PC; nothing of Filee's is used.</summary>
+    OwnCopy,
+}
+
+/// <summary>The copy of a package the engines use, as Settings → Engines and 'filee engines' show it.</summary>
+/// <param name="Folder">Folder of the copy in use while the status is <see cref="EngineCopyStatus.OwnCopy"/>.</param>
+/// <param name="FromSystem">That copy was found on the PC (PATH, Program Files), not chosen by the user.</param>
+/// <param name="Outdated">Filee's download is older than the version engines.json pins.</param>
+/// <param name="OtherFolder">
+/// Folder of a copy on the PC that isn't used because Filee's download is installed (it comes first); null otherwise.
+/// Settings → Engines offers it instead (#867).
+/// </param>
+public sealed record EngineCopy(EngineCopyStatus Status, string? Folder, bool FromSystem, bool Outdated, string? OtherFolder = null);
+
+/// <summary>Another Filee (the app, the CLI or a second copy) is installing or removing the same package.</summary>
+public sealed class EngineBusyException(string packageId)
+    : IOException($"{packageId} is being installed by another Filee. Try again when it has finished.")
+{
+    public string PackageId { get; } = packageId;
+}
+
 /// <summary>Installs and removes <see cref="EnginePackage"/>s.</summary>
 public sealed class EngineInstaller
 {
     private const string MarkerName = ".filee-component";
     private static readonly TimeSpan MsiTimeout = TimeSpan.FromMinutes(15);
 
+    /// <summary>Tries before a file held open counts as in use: about 2 seconds, for holds as brief as a virus scan's.</summary>
+    private const int LockAttempts = 5;
+    private static readonly TimeSpan LockWait = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>What <see cref="DeleteFolder"/> makes writable: hidden and system files too, but not through links.</summary>
+    private static readonly EnumerationOptions EveryEntry = new()
+    {
+        RecurseSubdirectories = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+        IgnoreInaccessible = true,
+    };
+
     private readonly string _root;
     private readonly HttpClient _http;
     private readonly IReadOnlyDictionary<string, EngineComponent> _components;
     private readonly ILogger _logger;
+    private readonly IReadOnlyList<EnginePackage> _packages;
+    private readonly Func<EngineComponent, Uri?> _mirror;
 
     /// <param name="root">Folder that receives one sub folder per engine (default: EngineEnvironment.DownloadRoot).</param>
     /// <param name="components">Download list; engines.json when null (tests pass their own).</param>
-    public EngineInstaller(HttpClient http, string? root = null, IReadOnlyDictionary<string, EngineComponent>? components = null, ILogger? logger = null)
+    /// <param name="packages">Known packages (tests pass their own); EngineDownloads.Packages when null.</param>
+    /// <param name="mirror">Where a component is taken from when its URL fails (<see cref="EngineDownloads.MirrorUrl"/> when null; tests pass their own).</param>
+    public EngineInstaller(HttpClient http, string? root = null, IReadOnlyDictionary<string, EngineComponent>? components = null, ILogger? logger = null,
+        IReadOnlyList<EnginePackage>? packages = null, Func<EngineComponent, Uri?>? mirror = null)
     {
         _http = http;
+        _mirror = mirror ?? EngineDownloads.MirrorUrl;
         _root = root ?? EngineEnvironment.DownloadRoot;
         _components = components ?? EngineDownloads.Components;
         _logger = logger ?? NullLogger.Instance;
+        _packages = packages ?? EngineDownloads.Packages;
+    }
+
+    /// <summary>
+    /// The client to create an installer with: automatic redirects off, because the installer follows them itself
+    /// (mirrors may use plain HTTP; every file is checked against its SHA-256), and Filee's user agent.
+    /// </summary>
+    public static HttpClient CreateHttpClient(TimeSpan timeout)
+    {
+        var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = timeout };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Filee/{typeof(EngineInstaller).Assembly.GetName().Version}");
+        return http;
+    }
+
+    /// <summary>Folder that receives one sub folder per engine.</summary>
+    public string Root => _root;
+
+    /// <summary>The downloads this installer knows: engines.json for this computer unless a test passed its own.</summary>
+    public IReadOnlyDictionary<string, EngineComponent> Components => _components;
+
+    /// <summary>
+    /// The copy the engines use, in the order they look: the user's own copy, Filee's download, a copy on the PC. A
+    /// copy on the PC is also looked for while Filee's download is used, and reported as
+    /// <see cref="EngineCopy.OtherFolder"/>; it is not used then.
+    /// </summary>
+    public EngineCopy StatusOf(EnginePackage package)
+    {
+        var installed = IsInstalled(package);
+        var own = EngineEnvironment.OwnCopyFolder(package.Id);
+        var system = own is null ? EngineEnvironment.SystemCopyFolder(package.Id) : null;
+        var used = own ?? (installed ? null : system);
+        var status = used is not null ? EngineCopyStatus.OwnCopy
+            : installed ? EngineCopyStatus.Installed
+            : EngineCopyStatus.NotInstalled;
+        var other = used is null && installed && system is not null && !IsFileesDownload(package.Id, system) ? system : null;
+        return new EngineCopy(status, used, own is null && !installed && system is not null,
+            used is null && installed && !IsUpToDate(package), other);
+    }
+
+    /// <summary>
+    /// True when <paramref name="folder"/>, found on the PC, is a download of Filee's reached by another path (other
+    /// letter case, a short name, a link to the folder, to a folder above it or to its programs, as when a user links
+    /// Filee's Pandoc into /usr/local/bin or its LibreOffice.app into /Applications): going up from the folder, or from
+    /// a program in it, and following every link on the way, a folder up to three levels above has Filee's installed
+    /// marker. It isn't another copy, and using it "instead" would remove it.
+    /// </summary>
+    private static bool IsFileesDownload(string id, string folder)
+    {
+        var places = new List<string> { folder };
+        if (EngineEnvironment.OwnCopyPrograms.TryGetValue(id, out var programs))
+            foreach (var program in programs)
+                places.Add(Path.GetDirectoryName(Resolved(new FileInfo(Path.Combine(folder, program)))) ?? folder);
+        foreach (var place in places)
+        {
+            DirectoryInfo? dir;
+            try
+            {
+                // One form for every way the PATH may write it ("~/ffbin//", "C:\ffbin\"): a link whose path ends in a
+                // separator isn't followed.
+                dir = new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(place)));
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
+            {
+                continue;
+            }
+            for (var level = 0; dir is not null && level <= 3; level++, dir = dir.Parent)
+            {
+                dir = new DirectoryInfo(Resolved(dir));
+                if (File.Exists(Path.Combine(dir.FullName, MarkerName)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>The path a file or folder link ends at, or the path itself.</summary>
+    private static string Resolved(FileSystemInfo item)
+    {
+        try
+        {
+            return item.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? item.FullName;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return item.FullName;
+        }
     }
 
     /// <summary>True when every component is installed (any version).</summary>
-    public bool IsInstalled(EnginePackage package) => package.Components.All(c => _components.ContainsKey(c) && Marker(c) is not null);
+    public bool IsInstalled(EnginePackage package) => package.Components.Count > 0 && package.Components.All(c => _components.ContainsKey(c) && Marker(c) is not null);
 
     /// <summary>True when every component is installed in the version engines.json pins.</summary>
     public bool IsUpToDate(EnginePackage package) =>
+        package.Components.Count > 0 &&
         package.Components.All(c => _components.TryGetValue(c, out var component)
             && string.Equals(Marker(c), component.Sha256, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Downloads and unpacks the components that are missing or outdated.</summary>
-    public async Task InstallAsync(EnginePackage package, IProgress<EngineInstallProgress>? progress, CancellationToken cancellationToken)
+    public Task InstallAsync(EnginePackage package, IProgress<EngineInstallProgress>? progress, CancellationToken cancellationToken) =>
+        InstallAsync(package, null, progress, cancellationToken);
+
+    /// <summary>
+    /// Installs the components that are missing or outdated from files the user brought instead of downloading them
+    /// (#447): <paramref name="paths"/> are those files, or folders holding them (not their sub folders). Each
+    /// component is the file of its exact download size, preferably with its download's name, and is checked against
+    /// its SHA-256 like a download. Nothing is installed unless every component needed is there and matches.
+    /// </summary>
+    /// <exception cref="ConversionRefusedException">
+    /// error.engine_files_missing (the detail names the files to bring) or error.engine_file_mismatch.
+    /// </exception>
+    public Task InstallFromFilesAsync(EnginePackage package, IReadOnlyList<string> paths, IProgress<EngineInstallProgress>? progress,
+        CancellationToken cancellationToken) =>
+        InstallAsync(package, paths, progress, cancellationToken);
+
+    private async Task InstallAsync(EnginePackage package, IReadOnlyList<string>? localPaths, IProgress<EngineInstallProgress>? progress,
+        CancellationToken cancellationToken)
     {
         if (package.Components.Any(c => !_components.ContainsKey(c)))
             throw new PlatformNotSupportedException(EngineDownloads.UnavailableReason(package)
                 ?? $"The {package.Id} package is unavailable on this platform.");
+        using var packageLock = LockPackage(package);
+        ClearAside(package.Components);
         var pending = package.Components
             .Where(c => !string.Equals(Marker(c), _components[c].Sha256, StringComparison.OrdinalIgnoreCase))
             .Select(c => _components[c])
             .ToList();
+        var local = localPaths is null ? null : FindFiles(pending, localPaths);
         var total = Math.Max(1, pending.Sum(c => c.Size));
-        long done = 0;
         Directory.CreateDirectory(_root);
 
-        foreach (var component in pending)
+        // The user's files are all copied and checked before the first is unpacked, so a wrong one leaves the package
+        // as it was. Downloads are unpacked one by one as they arrive.
+        var copies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
         {
-            var offset = done;
-            var file = await DownloadAsync(component,
-                bytes => progress?.Report(new EngineInstallProgress(EngineInstallStage.Downloading, component.Id,
-                    Math.Min(1, (offset + bytes) / (double)total), offset + bytes, total)),
-                cancellationToken);
-            try
+            long copied = 0;
+            foreach (var component in local is null ? [] : pending)
             {
-                progress?.Report(new EngineInstallProgress(EngineInstallStage.Unpacking, component.Id,
-                    Math.Min(1, (offset + component.Size) / (double)total), offset + component.Size, total));
-                await UnpackAsync(component, file, cancellationToken);
+                var offset = copied;
+                copies[component.Id] = await DownloadAsync(component, local![component.Id],
+                    bytes => progress?.Report(new EngineInstallProgress(EngineInstallStage.Copying, component.Id,
+                        Math.Min(1, (offset + bytes) / (double)total), offset + bytes, total)),
+                    cancellationToken);
+                copied += component.Size;
             }
-            finally
+
+            long done = 0;
+            foreach (var component in pending)
             {
-                TryDelete(file);
+                var offset = done;
+                var file = copies.GetValueOrDefault(component.Id) ?? await DownloadAsync(component, null,
+                    bytes => progress?.Report(new EngineInstallProgress(EngineInstallStage.Downloading, component.Id,
+                        Math.Min(1, (offset + bytes) / (double)total), offset + bytes, total)),
+                    cancellationToken);
+                try
+                {
+                    // After copying the user's files the bar is already full; it doesn't go back for unpacking.
+                    progress?.Report(new EngineInstallProgress(EngineInstallStage.Unpacking, component.Id,
+                        local is null ? Math.Min(1, (offset + component.Size) / (double)total) : 1, offset + component.Size, total));
+                    await UnpackAsync(component, file, cancellationToken);
+                }
+                finally
+                {
+                    TryDelete(file);
+                    copies.Remove(component.Id);
+                }
+                done += component.Size;
+                _logger.LogInformation("Installed engine component {Component} {Version}", component.Id, component.Version);
             }
-            done += component.Size;
-            _logger.LogInformation("Installed engine component {Component} {Version}", component.Id, component.Version);
+        }
+        finally
+        {
+            foreach (var copy in copies.Values)
+                TryDelete(copy);
         }
         if (pending.Count > 0)
             CopyRuntime(package);
     }
 
-    /// <summary>Removes the package's folders. Fails if an engine is running (its files are locked).</summary>
+    /// <summary>
+    /// Removes the package's folders. Fails if an engine is running (its files are locked), and then leaves the package
+    /// as it was: each folder is first moved aside to a "~" name (on Windows that fails while a file in it is open), and
+    /// only once all of them are aside are they deleted. A delete Windows cuts short leaves a "~" folder, which no engine
+    /// reads and the next install or removal clears (#963).
+    /// </summary>
     public void Uninstall(EnginePackage package)
     {
-        foreach (var id in package.Components)
+        using var packageLock = LockPackage(package);
+        var shared = _packages
+            .Where(p => p.Id != package.Id && IsInstalled(p))
+            .SelectMany(p => p.Components)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var componentsToRemove = package.Components.Where(c => !shared.Contains(c)).ToList();
+
+        ClearAside(componentsToRemove);
+        var aside = new List<(string Folder, string Moved)>();
+        try
         {
-            var folder = FolderOf(id);
-            if (Directory.Exists(folder))
-                Directory.Delete(folder, recursive: true);
+            foreach (var folder in componentsToRemove.Select(FolderOf).Distinct())
+            {
+                var folderName = Path.GetFileName(folder);
+                if (!Directory.Exists(folder))
+                    continue;
+                var moved = AsideFolder(folderName);
+                Directory.Move(folder, moved);
+                aside.Add((folder, moved));
+            }
+        }
+        catch
+        {
+            // One folder is in use: put back the ones already moved, so the package stays whole and installed.
+            foreach (var (folder, moved) in aside)
+                Directory.Move(moved, folder);
+            throw;
+        }
+        foreach (var (_, moved) in aside)
+            TryDeleteFolder(moved);
+    }
+
+    /// <summary>Start of the name of a folder an earlier removal or update moved aside but couldn't delete.</summary>
+    private const string AsidePrefix = "~removed-";
+
+    private string AsideFolder(string id) => Path.Combine(_root, $"{AsidePrefix}{id}-{Guid.NewGuid().ToString("N")[..8]}");
+
+    /// <summary>Deletes what an earlier removal of components left aside (under the package's lock).</summary>
+    private void ClearAside(IEnumerable<string> components)
+    {
+        if (!Directory.Exists(_root))
+            return;
+        foreach (var folder in components.Select(FolderOf).Distinct())
+            foreach (var asideFolder in Directory.EnumerateDirectories(_root, $"{AsidePrefix}{Path.GetFileName(folder)}-*"))
+                TryDeleteFolder(asideFolder);
+    }
+
+    /// <summary>Deletes a folder that is only in the way: a failure is logged and never replaces another error (#1092).</summary>
+    private void TryDeleteFolder(string folder)
+    {
+        try
+        {
+            DeleteFolder(folder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A folder moved aside is left for the next install or removal (ClearAside).
+            _logger.LogWarning(ex, "Could not delete {Folder}", folder);
+        }
+    }
+
+    /// <summary>
+    /// Deletes a folder tree, read-only files included: Directory.Delete stops at the first one, and the calibre MSI
+    /// marks every file read-only (#1092). A file held briefly (an antivirus scanning what was just unpacked) is waited out.
+    /// Links are never followed: of a link only the link goes, also when <paramref name="folder"/> itself is one, and what
+    /// it leads to stays as it is.
+    /// </summary>
+    internal static void DeleteFolder(string folder) => WaitingOutLocks(() =>
+    {
+        var root = new DirectoryInfo(folder);
+        if (!root.Exists)
+            return;
+        if (root.LinkTarget is not null)
+        {
+            root.Delete(recursive: false);
+            return;
+        }
+        foreach (var entry in root.EnumerateFileSystemInfos("*", EveryEntry))
+        {
+            if ((entry.Attributes & FileAttributes.ReadOnly) != 0)
+                entry.Attributes &= ~FileAttributes.ReadOnly;
+        }
+        Directory.Delete(folder, recursive: true);
+    });
+
+    /// <summary>Runs an action on files that may be held briefly, trying again until the last attempt's error stands.</summary>
+    private static void WaitingOutLocks(Action action)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                action();
+                return;
+            }
+            catch (Exception ex) when (attempt < LockAttempts && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(LockWait * attempt);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Holds the package's lock file (.downloads/locks/&lt;id&gt;.lock) while it is installed or removed, so two Filee
+    /// processes never write the same download or replace the same folder at once. The file stays; the open handle
+    /// is the lock (deleting it on close would let a third process lock a new file while a second still holds the old).
+    /// </summary>
+    /// <exception cref="EngineBusyException">Another process holds the lock.</exception>
+    private IDisposable LockPackage(EnginePackage package)
+    {
+        var locks = Path.Combine(_root, ".downloads", "locks");
+        Directory.CreateDirectory(locks);
+        var streams = new List<FileStream>();
+        try
+        {
+            var keys = new[] { package.Id }.Concat(package.Components).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(k => k, StringComparer.Ordinal);
+            foreach (var key in keys)
+            {
+                try
+                {
+                    streams.Add(new FileStream(Path.Combine(locks, key + ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
+                }
+                catch (IOException ex) when (ex is not (FileNotFoundException or DirectoryNotFoundException or PathTooLongException))
+                {
+                    throw new EngineBusyException(package.Id);
+                }
+            }
+            return new CompositeLock(streams);
+        }
+        catch
+        {
+            foreach (var s in streams)
+                s.Dispose();
+            throw;
+        }
+    }
+
+    private sealed class CompositeLock(List<FileStream> streams) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var s in streams)
+                s.Dispose();
         }
     }
 
     // ───────────────────────── Download ─────────────────────────
 
-    private async Task<string> DownloadAsync(EngineComponent component, Action<long> reportBytes, CancellationToken cancellationToken)
+    /// <summary>The download in .downloads, or a copy of <paramref name="localFile"/> there: checked either way.</summary>
+    private async Task<string> DownloadAsync(EngineComponent component, string? localFile, Action<long> reportBytes, CancellationToken cancellationToken)
     {
         var downloads = Path.Combine(_root, ".downloads");
         Directory.CreateDirectory(downloads);
         var file = Path.Combine(downloads, $"{component.Id}-{component.Version}{Path.GetExtension(new Uri(component.Url).AbsolutePath)}");
-        var partial = file + ".part";
+        await FetchAsync(component, localFile, file, reportBytes, cancellationToken);
+        return file;
+    }
 
-        using var response = await GetFollowingRedirectsAsync(new Uri(component.Url), cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
-        await using (var target = File.Create(partial))
+    /// <summary>
+    /// Writes the component to <paramref name="file"/> (through a .part file) from its URL, or from
+    /// <paramref name="localFile"/>, and keeps it only when its SHA-256 is the pinned one.
+    /// </summary>
+    private async Task FetchAsync(EngineComponent component, string? localFile, string file, Action<long> reportBytes, CancellationToken cancellationToken)
+    {
+        if (localFile is not null)
         {
+            await FetchAsync(component, null, localFile, file, reportBytes, cancellationToken);
+            return;
+        }
+        try
+        {
+            await FetchAsync(component, new Uri(component.Url), null, file, reportBytes, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException && !cancellationToken.IsCancellationRequested
+                                   && _mirror(component) is { } mirror)
+        {
+            // The pinned URL is gone or broken (a retired version, a moved release, a cut or timed-out connection, a file
+            // that was replaced): Filee's own copy, checked against the same SHA-256. The first error is the one to report.
+            _logger.LogWarning(ex, "Downloading {Component} from {Url} failed; trying {Mirror}", component.Id, component.Url, mirror);
+            try
+            {
+                await FetchAsync(component, mirror, null, file, reportBytes, cancellationToken);
+            }
+            catch (Exception mirrorError) when (mirrorError is HttpRequestException or IOException or InvalidDataException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(mirrorError, "Downloading {Component} from {Mirror} failed too", component.Id, mirror);
+                ExceptionDispatchInfo.Throw(ex);
+            }
+        }
+    }
+
+    /// <summary>One attempt: from <paramref name="url"/>, or from <paramref name="localFile"/> when it's null.</summary>
+    private async Task FetchAsync(EngineComponent component, Uri? url, string? localFile, string file, Action<long> reportBytes, CancellationToken cancellationToken)
+    {
+        var partial = file + ".part";
+        using var response = url is not null ? await GetFollowingRedirectsAsync(url, cancellationToken) : null;
+        response?.EnsureSuccessStatusCode();
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        try
+        {
+            await CopyAsync();
+        }
+        catch
+        {
+            // Cancelled or cut off: the partial download (up to ~420 MB for LibreOffice) isn't kept (#963).
+            TryDelete(partial);
+            throw;
+        }
+
+        var actual = Convert.ToHexString(hash.GetHashAndReset());
+        if (!string.Equals(actual, component.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            TryDelete(partial);
+            if (localFile is not null)
+                throw new ConversionRefusedException("error.engine_file_mismatch", Path.GetFileName(localFile));
+            throw new InvalidDataException($"{component.Id}: checksum mismatch (expected {component.Sha256}, got {actual}). The download was discarded.");
+        }
+        File.Move(partial, file, overwrite: true);
+
+        async Task CopyAsync()
+        {
+            await using var source = response is not null
+                ? await response.Content.ReadAsStreamAsync(cancellationToken)
+                : new FileStream(localFile!, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, useAsync: true);
+            await using var target = File.Create(partial);
             var buffer = new byte[1 << 16];
             long received = 0;
             var lastReport = Stopwatch.StartNew();
             int read;
             while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
             {
+                // A file that has grown since it was picked by its size isn't the download: no need to read on.
+                if (localFile is not null && received + read > component.Size)
+                    break;
                 await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                 hash.AppendData(buffer, 0, read);
                 received += read;
@@ -143,15 +535,86 @@ public sealed class EngineInstaller
             }
             reportBytes(received);
         }
+    }
 
-        var actual = Convert.ToHexString(hash.GetHashAndReset());
-        if (!string.Equals(actual, component.Sha256, StringComparison.OrdinalIgnoreCase))
+    /// <summary>
+    /// The file each component is taken from: one of its exact download size (engines.json pins it next to the hash),
+    /// the one with its download's name when several have that size. Of a folder only the top level is looked at.
+    /// </summary>
+    /// <exception cref="ConversionRefusedException">error.engine_files_missing, naming the download of each missing component.</exception>
+    internal static Dictionary<string, string> FindFiles(IReadOnlyList<EngineComponent> components, IReadOnlyList<string> paths)
+    {
+        var files = new List<FileInfo>();
+        foreach (var path in paths)
         {
-            TryDelete(partial);
-            throw new InvalidDataException($"{component.Id}: checksum mismatch (expected {component.Sha256}, got {actual}). The download was discarded.");
+            if (Directory.Exists(path))
+                files.AddRange(new DirectoryInfo(path).EnumerateFiles("*", new EnumerationOptions { IgnoreInaccessible = true }));
+            else if (File.Exists(path))
+                files.Add(new FileInfo(path));
         }
-        File.Move(partial, file, overwrite: true);
-        return file;
+        var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var missing = new List<string>();
+        foreach (var component in components)
+        {
+            var name = EngineDownloads.FileName(component);
+            var match = files.Where(f => f.Length == component.Size)
+                .OrderByDescending(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault();
+            if (match is null)
+                missing.Add(name);
+            else
+                found[component.Id] = match.FullName;
+        }
+        if (missing.Count > 0)
+            throw new ConversionRefusedException("error.engine_files_missing", string.Join(", ", missing));
+        return found;
+    }
+
+    /// <summary>
+    /// Saves every component of the package in <paramref name="folder"/> under its download's name, checked against
+    /// its SHA-256, for <see cref="InstallFromFilesAsync"/> on a computer without internet (#447). What is installed
+    /// here was unpacked and trimmed, so the downloads are fetched again; a file in the folder that matches already
+    /// is kept. Returns the files.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> SaveFilesAsync(EnginePackage package, string folder, IProgress<EngineInstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (package.Components.Count == 0 || package.Components.Any(c => !_components.ContainsKey(c)))
+            throw new PlatformNotSupportedException(EngineDownloads.UnavailableReason(package)
+                ?? $"The {package.Id} package is unavailable on this platform.");
+        Directory.CreateDirectory(folder);
+        var components = package.Components.Select(c => _components[c]).ToList();
+        var total = Math.Max(1, components.Sum(c => c.Size));
+        long done = 0;
+        var saved = new List<string>();
+        foreach (var component in components)
+        {
+            var file = Path.Combine(folder, EngineDownloads.FileName(component));
+            if (!await MatchesAsync(file, component, cancellationToken))
+            {
+                var offset = done;
+                await FetchAsync(component, null, file,
+                    bytes => progress?.Report(new EngineInstallProgress(EngineInstallStage.Downloading, component.Id,
+                        Math.Min(1, (offset + bytes) / (double)total), offset + bytes, total)),
+                    cancellationToken);
+                _logger.LogInformation("Saved engine component {Component} {Version} to {File}", component.Id, component.Version, file);
+            }
+            done += component.Size;
+            progress?.Report(new EngineInstallProgress(EngineInstallStage.Downloading, component.Id, Math.Min(1, done / (double)total), done, total));
+            saved.Add(file);
+        }
+        return saved;
+    }
+
+    /// <summary>The file is there with the component's size and SHA-256.</summary>
+    private static async Task<bool> MatchesAsync(string file, EngineComponent component, CancellationToken cancellationToken)
+    {
+        var info = new FileInfo(file);
+        if (!info.Exists || info.Length != component.Size)
+            return false;
+        await using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, useAsync: true);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+        return string.Equals(Convert.ToHexString(hash), component.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -176,18 +639,35 @@ public sealed class EngineInstaller
 
     // ───────────────────────── Unpack ─────────────────────────
 
-    private async Task UnpackAsync(EngineComponent component, string file, CancellationToken cancellationToken)
+    /// <summary>
+    /// Runs <paramref name="unpack"/> on a new staging folder and removes what is left of it. The error that made
+    /// unpacking fail is the one the user sees: a cleanup that fails too doesn't replace it (#1092).
+    /// </summary>
+    internal async Task InStagingAsync(Func<string, Task> unpack)
     {
         // Short name: LibreOffice's own folder structure is deep, and msiexec fails beyond MAX_PATH (260 chars).
         var staging = Path.Combine(_root, "~" + Guid.NewGuid().ToString("N")[..6]);
         try
         {
+            await unpack(staging);
+        }
+        finally
+        {
+            TryDeleteFolder(staging);
+        }
+    }
+
+    private Task UnpackAsync(EngineComponent component, string file, CancellationToken cancellationToken) =>
+        InStagingAsync(async staging =>
+        {
             switch (component.Kind)
             {
                 case "zip":
                     ZipFile.ExtractToDirectory(file, staging);
-                    EnsureExecutablePrograms(component.Id, SingleRoot(staging));
-                    Replace(component.Id, SingleRoot(staging));
+                    var root = component.Id == "weasyprint" ? WeasyPrintFolder(staging) : SingleRoot(staging);
+                    RenameExifTool(component.Id, root);
+                    EnsureExecutablePrograms(component.Id, root);
+                    Replace(component.Id, root);
                     break;
                 case "tar.gz":
                 case "tar.xz":
@@ -213,6 +693,14 @@ public sealed class EngineInstaller
                     File.Copy(file, Path.Combine(staging, component.Id + ".traineddata"));
                     Replace(component.Id, staging);
                     break;
+                case "ncnn-param":
+                case "ncnn-bin":
+                    var ncnnTarget = FolderOf(component.Id);
+                    Directory.CreateDirectory(ncnnTarget);
+                    var ncnnFile = Path.GetFileName(new Uri(component.Url).LocalPath);
+                    File.Copy(file, Path.Combine(ncnnTarget, ncnnFile), overwrite: true);
+                    File.WriteAllText(Path.Combine(ncnnTarget, "." + component.Id), component.Sha256);
+                    return;
                 case "model":
                 case "bin":
                     // Standalone AI model file (e.g. Whisper ggml-base.bin): copied directly into its component folder.
@@ -235,22 +723,13 @@ public sealed class EngineInstaller
                     if (!Directory.Exists(extensions))
                         throw new InvalidOperationException($"{component.Id} needs LibreOffice, which is not installed.");
                     ZipFile.ExtractToDirectory(file, staging);
-                    var target = FolderOf(component.Id);
-                    if (Directory.Exists(target))
-                        Directory.Delete(target, recursive: true);
-                    Directory.Move(staging, target);
+                    Replace(component.Id, staging);
                     break;
                 default:
                     throw new NotSupportedException($"Unknown engine package kind '{component.Kind}'.");
             }
             File.WriteAllText(Path.Combine(FolderOf(component.Id), MarkerName), component.Sha256);
-        }
-        finally
-        {
-            if (Directory.Exists(staging))
-                Directory.Delete(staging, recursive: true);
-        }
-    }
+        });
 
     internal static async Task UnpackTarAsync(string file, string target, string kind, CancellationToken cancellationToken)
     {
@@ -263,6 +742,17 @@ public sealed class EngineInstaller
             _ => throw new NotSupportedException(kind),
         };
         await TarFile.ExtractToDirectoryAsync(content, target, overwriteFiles: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// ExifTool's Windows build ships as "exiftool(-k).exe", which waits for a key before it exits (for
+    /// double-clicking): renamed "exiftool.exe", it runs and exits as a command line program.
+    /// </summary>
+    internal static void RenameExifTool(string id, string root)
+    {
+        var waiting = Path.Combine(root, "exiftool(-k).exe");
+        if (id == "exiftool" && File.Exists(waiting))
+            File.Move(waiting, Path.Combine(root, "exiftool.exe"), overwrite: true);
     }
 
     internal static void EnsureExecutablePrograms(string id, string root)
@@ -378,6 +868,14 @@ public sealed class EngineInstaller
         }
         if (process.ExitCode != 0)
             throw MsiFailure(id, process.ExitCode, log);
+        // The verbose log is only worth keeping when unpacking failed (the error names it); else it would stay in %TEMP%.
+        try
+        {
+            File.Delete(log);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>What the Engines card shows: the reasons a user can act on in their language (error.* keys).</summary>
@@ -468,21 +966,51 @@ public sealed class EngineInstaller
     }
 
     /// <summary>
-    /// App-local Microsoft C++ runtime: when a package includes the "vcruntime" component, its DLLs are copied next
-    /// to the programs of the package's other conda components. Windows looks for DLLs in a program's folder before
-    /// System32, so the runtime a program was built for is used even when the PC has none or an older one.
+    /// App-local Microsoft C++ runtime: when a package includes runtime components ("vcruntime", "vcomp14"), their DLLs
+    /// are copied next to the programs of the package's other conda or zip components. Windows looks for DLLs in a
+    /// program's folder before System32, so the runtime a program was built for is used even when the PC has none or an older one.
     /// </summary>
+    private static readonly string[] RuntimeComponents = ["vcruntime", "vcomp14"];
+
     private void CopyRuntime(EnginePackage package)
     {
-        const string runtime = "vcruntime";
-        if (!package.Components.Contains(runtime) || !Directory.Exists(FolderOf(runtime)))
+        var runtimeDirs = RuntimeComponents
+            .Where(r => package.Components.Contains(r))
+            .Select(FolderOf)
+            .Where(Directory.Exists)
+            .ToList();
+        if (runtimeDirs.Count == 0)
             return;
-        var dlls = Directory.GetFiles(FolderOf(runtime), "*.dll");
-        foreach (var id in package.Components.Where(c => c != runtime && _components[c].Kind == "conda"))
+
+        var dlls = runtimeDirs.SelectMany(dir => Directory.GetFiles(dir, "*.dll")).ToList();
+        foreach (var id in package.Components.Where(c => !RuntimeComponents.Contains(c) && (_components[c].Kind is "conda" or "zip")))
         {
+            var targetDir = FolderOf(id);
+            if (!Directory.Exists(targetDir))
+                continue;
             foreach (var dll in dlls)
-                File.Copy(dll, Path.Combine(FolderOf(id), Path.GetFileName(dll)), overwrite: true);
+                File.Copy(dll, Path.Combine(targetDir, Path.GetFileName(dll)), overwrite: true);
         }
+    }
+
+    /// <summary>
+    /// WeasyPrint's Windows "onedir" zip holds LICENSE and README.rst at its top and the program in
+    /// onedir/weasyprint (weasyprint.exe with its _internal folder of Python, Pango, HarfBuzz, ...): that folder is
+    /// kept, with the licence moved into it.
+    /// </summary>
+    internal static string WeasyPrintFolder(string staging)
+    {
+        var program = EngineEnvironment.ProgramName("weasyprint.exe");
+        var found = Directory.EnumerateFiles(staging, program, SearchOption.AllDirectories).FirstOrDefault()
+                    ?? throw new InvalidDataException($"{program} not found in the WeasyPrint package.");
+        var folder = Path.GetDirectoryName(found)!;
+        foreach (var name in new[] { "LICENSE", "README.rst" })
+        {
+            var top = Path.Combine(staging, name);
+            if (File.Exists(top) && !File.Exists(Path.Combine(folder, name)))
+                File.Move(top, Path.Combine(folder, name));
+        }
+        return folder;
     }
 
     /// <summary>An archive with a single top-level folder is unpacked without that extra level.</summary>
@@ -492,14 +1020,30 @@ public sealed class EngineInstaller
         return entries.Length == 1 && Directory.Exists(entries[0]) ? entries[0] : folder;
     }
 
-    /// <summary>Makes <paramref name="source"/> the engine folder, replacing a previous version.</summary>
+    /// <summary>
+    /// Makes <paramref name="source"/> the engine folder, replacing a previous version. Like <see cref="Uninstall"/>, it
+    /// moves that version aside first: while an engine runs the move fails and the working copy keeps its marker, where
+    /// a delete in place took the marker first and left a half-deleted engine that looked not installed (#1092).
+    /// </summary>
     private void Replace(string id, string source)
     {
         RequiredProgramFolder(id, source, _components[id].Kind is "msi" or "conda" or "nsis" || OperatingSystem.IsWindows());
         var target = FolderOf(id);
-        if (Directory.Exists(target))
-            Directory.Delete(target, recursive: true);
-        Directory.Move(source, target);
+        var previous = Directory.Exists(target) ? AsideFolder(id) : null;
+        if (previous is not null)
+            WaitingOutLocks(() => Directory.Move(target, previous));
+        try
+        {
+            WaitingOutLocks(() => Directory.Move(source, target));
+        }
+        catch
+        {
+            if (previous is not null)
+                Directory.Move(previous, target);
+            throw;
+        }
+        if (previous is not null)
+            TryDeleteFolder(previous);
     }
 
     // ───────────────────────── Layout ─────────────────────────
@@ -507,7 +1051,14 @@ public sealed class EngineInstaller
     /// <summary>Folder of a component; the LibreOffice extension lives inside LibreOffice.</summary>
     private string FolderOf(string id) => _components.TryGetValue(id, out var component) && component.Kind == "oxt"
         ? Path.Combine(_root, "libreoffice", "share", "extensions", ExtensionFolder(id))
-        : Path.Combine(_root, id);
+        : _components.TryGetValue(id, out var c) && c.Kind is "ncnn-param" or "ncnn-bin"
+            ? Path.Combine(_root, NcnnModelFolder(id))
+            : Path.Combine(_root, id);
+
+    private static string NcnnModelFolder(string id) =>
+        id.EndsWith("-param", StringComparison.Ordinal) ? id[..^6]
+        : id.EndsWith("-bin", StringComparison.Ordinal) ? id[..^4]
+        : id;
 
     private static string ExtensionFolder(string id) => id switch
     {
@@ -518,6 +1069,11 @@ public sealed class EngineInstaller
     /// <summary>Hash of the installed version, or null when not installed.</summary>
     private string? Marker(string id)
     {
+        if (_components.TryGetValue(id, out var component) && component.Kind is "ncnn-param" or "ncnn-bin")
+        {
+            var componentMarker = Path.Combine(FolderOf(id), "." + id);
+            return File.Exists(componentMarker) ? File.ReadAllText(componentMarker).Trim() : null;
+        }
         var marker = Path.Combine(FolderOf(id), MarkerName);
         return File.Exists(marker) ? File.ReadAllText(marker).Trim() : null;
     }
@@ -528,7 +1084,7 @@ public sealed class EngineInstaller
         {
             File.Delete(file);
         }
-        catch (IOException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
         }
     }

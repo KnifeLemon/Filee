@@ -46,6 +46,9 @@ public class SubtitleTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("ttml", "srt")]
     [InlineData("sub", "srt")]
     [InlineData("scc", "vtt")]
+    [InlineData("srt", "txt")]
+    [InlineData("vtt", "txt")]
+    [InlineData("ass", "txt")]
     public void Subtitles_convert_in_one_built_in_step(string from, string to)
     {
         var route = fx.Catalog.CreatePlanner([]).Plan(from, to);
@@ -64,6 +67,9 @@ public class SubtitleTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // Subtitles never become video, and audio has no subtitles.
         Assert.Null(planner.Plan("srt", "mp4"));
         Assert.Null(planner.Plan("mp3", "srt"));
+        // Plain text comes from a subtitle file only: not from a video's track, and not on into documents.
+        Assert.DoesNotContain(planner.Plan("mkv", "txt")?.Steps ?? [], s => s.To == "srt");
+        Assert.DoesNotContain(planner.Plan("srt", "pdf")?.Steps ?? [], s => s.To == "txt");
     }
 
     // ───────────────────────── Encodings ─────────────────────────
@@ -241,6 +247,74 @@ public class SubtitleTests(EngineFixture fx) : IClassFixture<EngineFixture>
         ], document.Cues);
     }
 
+    /// <summary>A .krc as KuGou packs it: <c>krc1</c>, then the zlib-compressed text XORed with the fixed key.</summary>
+    private static byte[] PackKrc(string text)
+    {
+        byte[] key = [0x40, 0x47, 0x61, 0x77, 0x5E, 0x32, 0x74, 0x47, 0x51, 0x36, 0x31, 0x2D, 0xCE, 0xD2, 0x6E, 0x69];
+        using var packed = new MemoryStream();
+        using (var zlib = new System.IO.Compression.ZLibStream(packed, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+            zlib.Write(new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(text)).ToArray());
+        var body = packed.ToArray();
+        for (var i = 0; i < body.Length; i++)
+            body[i] ^= key[i % key.Length];
+        return [.. "krc1"u8, .. body];
+    }
+
+    [Fact]
+    public void Krc_lines_become_cues_without_their_word_times()
+    {
+        var document = SubtitleReader.Read("krc", PackKrc("""
+            [id:$00000000]
+            [ar:歌手]
+            [ti:歌名]
+            [hash:0123456789abcdef]
+            [offset:500]
+            [language:eyJjb250ZW50IjpbXX0=]
+            [1500,2000]<0,400,0>第一<400,600,0>句<1000,1000,0> lyric
+            [4000,1500]<0,1500,0>Second line
+            [6000,0]<0,0,0>
+            """));
+        Assert.Equal("歌名", document.Title);
+        Assert.Equal(
+        [
+            new SubtitleCue(Ms(1000), Ms(3000), "第一句 lyric"),
+            new SubtitleCue(Ms(3500), Ms(5000), "Second line"),
+        ], document.Cues);
+    }
+
+    [Fact]
+    public void A_krc_offset_counts_for_every_line_as_in_lrc()
+    {
+        var document = SubtitleReader.Read("krc", PackKrc("""
+            [1500,1000]First
+            [offset:500]
+            [4000,1000]Second
+            """));
+        Assert.Equal(
+        [
+            new SubtitleCue(Ms(1000), Ms(2000), "First"),
+            new SubtitleCue(Ms(3500), Ms(4500), "Second"),
+        ], document.Cues);
+    }
+
+    [Fact]
+    public void Krc_files_that_arent_packed_lyrics_fail_with_a_message()
+    {
+        Assert.Contains("krc1", Assert.Throws<InvalidDataException>(() => SubtitleReader.Read("krc", "[00:01.00]plain LRC"u8.ToArray())).Message);
+        Assert.Contains("damaged", Assert.Throws<InvalidDataException>(() => SubtitleReader.Read("krc", [.. "krc1"u8, 1, 2, 3, 4, 5])).Message);
+        Assert.Contains("No subtitles", Assert.Throws<InvalidDataException>(() => SubtitleReader.Read("krc", PackKrc("[ti:Only tags]\n"))).Message);
+    }
+
+    [Fact]
+    public async Task A_krc_file_converts_to_lrc()
+    {
+        var krc = Path.Combine(fx.NewFolder(), "song.krc");
+        File.WriteAllBytes(krc, PackKrc("[1000,2000]<0,1000,0>Hello <1000,1000,0>world\n[3500,1000]<0,1000,0>Bye\n"));
+        var job = await fx.ConvertAsync([krc], new Preset { TargetFormat = "lrc" });
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        Assert.Equal("[00:01.00]Hello world\r\n[00:03.00]\r\n[00:03.50]Bye\r\n[00:04.50]\r\n", File.ReadAllText(job.Outputs.Single()).TrimStart('﻿'));
+    }
+
     [Fact]
     public void Ttml_times_spans_and_styles_are_read()
     {
@@ -350,6 +424,36 @@ public class SubtitleTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains("""<p begin="00:00:01.000" end="00:00:02.500"><span tts:fontStyle="italic">Hello</span> &amp; <span tts:fontWeight="bold">bye</span><br /><span tts:color="#FFFF00">yellow</span> 1 &lt; 2</p>""", ttml);
 
         Assert.StartsWith("{1}{1}23.976\r\n{24}{60}Hello & bye|yellow 1 < 2\r\n", Write(document, "sub"));
+    }
+
+    [Fact]
+    public void Plain_text_has_the_spoken_lines_only()
+    {
+        var document = Sample();
+        // A repeated line (Whisper, roll-up captions) comes once; the same words later on stay.
+        document.Add(Ms(7000), Ms(8000), "<i>Last one</i>");
+        document.Add(Ms(8000), Ms(9000), " Last  one ");
+        document.Add(Ms(9000), Ms(10000), "Next");
+        document.Add(Ms(10000), Ms(11000), "Last one");
+        document.Finish();
+
+        var bytes = SubtitleWriter.Write(document, "txt");
+        Assert.Equal(Encoding.UTF8.GetPreamble(), bytes[..3]);
+        Assert.Equal("Hello & bye yellow 1 < 2\r\n다음 줄\r\nLast one\r\nNext\r\nLast one\r\n", Write(document, "txt"));
+    }
+
+    [Fact]
+    public async Task A_subtitle_file_becomes_plain_text()
+    {
+        var folder = fx.NewFolder();
+        var vtt = Path.Combine(folder, "talk.vtt");
+        File.WriteAllText(vtt, "WEBVTT\n\n00:00:01.000 --> 00:00:02.000 align:start\n<v Ann><b>Hi</b> there\n\n00:00:02.000 --> 00:00:03.000\nHow are you?\n", new UTF8Encoding(false));
+
+        var job = await fx.ConvertAsync([vtt], new Preset { TargetFormat = "txt" });
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var output = job.Outputs.Single();
+        Assert.Equal(".txt", Path.GetExtension(output));
+        Assert.Equal("Hi there\r\nHow are you?\r\n", File.ReadAllText(output));
     }
 
     [Theory]

@@ -22,6 +22,7 @@ using Filee.Setup.Payload;
 using Filee.Setup.ViewModels;
 using Filee.Setup.Views;
 using CommandLine = app::Filee.App.Services.CommandLine;
+using SoftPalette = Filee.App.Services.SoftPalette;
 
 namespace Filee.Setup.Tests;
 
@@ -40,6 +41,9 @@ public class SetupWindowTests
         public InstallResult Result { get; set; } = new(new LaunchRequest(@"C:\Program Files\Filee\Filee.exe", "--background"), []);
         public TaskCompletionSource? Hold { get; set; }
         public int DeletedAtRestart { get; set; }
+        public bool CleanupFailed { get; set; }
+        public string? FilesLeftIn { get; set; }
+        public Exception? UninstallError { get; set; }
 
         public InstallResult Install(InstallChoices choices, IProgress<SetupProgress> progress)
         {
@@ -52,7 +56,7 @@ public class SetupWindowTests
         public UninstallResult Uninstall(bool deleteSettings, IProgress<SetupProgress> progress)
         {
             DeletedSettings = deleteSettings;
-            return new UninstallResult(DeletedAtRestart: DeletedAtRestart);
+            return new UninstallResult(UninstallError, DeletedAtRestart, CleanupFailed, FilesLeftIn);
         }
     }
 
@@ -90,7 +94,7 @@ public class SetupWindowTests
     {
         var (model, _, runner) = Model(language);
         var window = Show(model);
-        Assert.Equal(language == "ar" ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, window.FlowDirection);
+        Assert.Equal(SoftPalette.IsRightToLeft(language) ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, window.FlowDirection);
         Check(window, $"setup-1-welcome-{language}.png");
 
         model.ToggleOptionsCommand.Execute(null);
@@ -229,6 +233,50 @@ public class SetupWindowTests
     }
 
     [AvaloniaFact]
+    public async Task Uninstall_says_what_filee_could_not_clean_up_for_the_user()
+    {
+        // Issue #1079: the startup entry stayed behind, and the card said Filee was gone without a word about it.
+        var (model, texts, runner) = Model("en", uninstall: true);
+        runner.CleanupFailed = true;
+        await model.UninstallAsync();
+        Assert.True(model.IsUninstalled);
+        Assert.Contains(texts["installer.uninstall.cleanup_failed"], model.UninstalledText);
+
+        var (plain, _, _) = Model("en", uninstall: true);
+        await plain.UninstallAsync();
+        Assert.DoesNotContain(texts["installer.uninstall.cleanup_failed"], plain.UninstalledText);
+    }
+
+    [AvaloniaFact]
+    public async Task Uninstall_says_where_renamed_files_stay()
+    {
+        var (model, texts, runner) = Model("en", uninstall: true);
+        runner.FilesLeftIn = @"D:\Apps\Filee";
+        await model.UninstallAsync();
+        Assert.True(model.IsUninstalled);
+        Assert.Contains(texts.Format("installer.uninstall.files_kept", @"D:\Apps\Filee"), model.UninstalledText);
+
+        var (plain, _, _) = Model("en", uninstall: true);
+        await plain.UninstallAsync();
+        Assert.DoesNotContain(".old", plain.UninstalledText);
+    }
+
+    [AvaloniaFact]
+    public async Task Uninstall_that_left_files_behind_fails_and_names_the_folder()
+    {
+        foreach (var language in new[] { "en", "ko" })
+        {
+            var (model, texts, runner) = Model(language, uninstall: true);
+            runner.UninstallError = new SetupException("installer.uninstall.files_left", "Could not remove", @"C:\Program Files\Filee");
+            await model.UninstallAsync();
+            Assert.True(model.IsFailed);
+            Assert.Equal(1, model.ExitCode);
+            Assert.Equal(texts.Format("installer.uninstall.files_left", @"C:\Program Files\Filee"), model.ErrorText);
+            Assert.Contains(@"C:\Program Files\Filee", model.ErrorText);
+        }
+    }
+
+    [AvaloniaFact]
     public void The_whats_new_slides_take_turns_while_installing()
     {
         var (model, texts, runner) = Model("en");
@@ -301,7 +349,7 @@ public class SetupWindowTests
         Pump();
         Assert.Equal(language, texts.Language);
         // Picking Arabic mirrors the card at once.
-        Assert.Equal(language == "ar" ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, window.FlowDirection);
+        Assert.Equal(SoftPalette.IsRightToLeft(language) ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, window.FlowDirection);
         Assert.Equal(texts["installer.install"], model.PrimaryText);
         Assert.Contains("2.0.0", model.WelcomeText);
         var choices = model.Choices();

@@ -3,7 +3,8 @@
 // far as the target can hold them; see the format files for what each one loses (TOML has no null, XML no types,
 // CSV only tables). Output is UTF-8 without BOM (CSV: with BOM, like the spreadsheet engine), indented by two spaces.
 // Spreadsheets reach JSON and the others through CSV (XLSX → CSV → JSON), contacts and calendars through CSV as well. HAR
-// network logs are read as JSON, and become a table of their requests (HarData).
+// network logs are read as JSON, and become a table of their requests (HarData). Property lists (.plist, XML or binary) are
+// read by PlistData and reach the same targets, and plain text as the YAML listing of their tree.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -13,7 +14,7 @@ using Filee.Engines.Office.Sheets;
 
 namespace Filee.Engines.Data;
 
-/// <summary>JSON, JSON Lines, YAML, TOML, XML and CSV into each other; vCard and iCalendar ↔ CSV; HAR → all of them.</summary>
+/// <summary>JSON, JSON Lines, YAML, TOML, XML and CSV into each other; vCard and iCalendar ↔ CSV; HAR and property lists → all of them.</summary>
 public sealed class DataConverter : IConverter
 {
     private static readonly string[] Trees = ["json", "jsonl", "yaml", "toml", "xml"];
@@ -30,13 +31,14 @@ public sealed class DataConverter : IConverter
         new("vcf", "csv"),
         new("csv", "vcf"),
         .. Trees.Append("csv").Select(to => new ConversionEdge("har", to)),
+        .. Trees.Append("csv").Append("txt").Select(to => new ConversionEdge("plist", to)),
         new("ics", "csv"),
         new("csv", "ics"),
         new("txt", "csv", DirectOnly: true),
     ];
 
     public EngineStatus GetStatus() =>
-        EngineStatus.Available("JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other; vCard and iCalendar ↔ CSV",
+        EngineStatus.Available("JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other; vCard and iCalendar ↔ CSV; property lists → each of them and TXT",
             $"{EngineVersions.BuiltIn} · {EngineVersions.Library("YamlDotNet", typeof(YamlDotNet.RepresentationModel.YamlStream))}"
             + $" · {EngineVersions.Library("Tomlyn", typeof(Tomlyn.TomlSerializer))}");
 
@@ -107,6 +109,16 @@ public sealed class DataConverter : IConverter
             var tree = Read(step.InputPath, step.From);
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(0.6);
+            if (step.To == "txt")
+            {
+                // A property list as text to read: the indented key: value listing of YAML, UTF-8 with a BOM like other TXT files.
+                var listing = YamlData.Write(tree);
+                if (step.Output.Allocate("txt") is not { } txt)
+                    return [];
+                File.WriteAllText(txt, listing, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+                progress?.Report(1);
+                return [txt];
+            }
             // Built before a path is taken, so a tree the target can't hold leaves no empty file behind.
             var text = step.To switch
             {
@@ -134,6 +146,7 @@ public sealed class DataConverter : IConverter
     {
         "xml" => XmlData.Read(path),
         "csv" => CsvData.Read(path),
+        "plist" => PlistData.Read(path),
         _ => ReadText(HwpxConverter.DecodeText(File.ReadAllBytes(path)), format),
     };
 

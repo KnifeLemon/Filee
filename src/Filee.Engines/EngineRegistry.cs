@@ -14,10 +14,12 @@ using Filee.Engines.Icns;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using Filee.Engines.Media;
+using Filee.Engines.Metadata;
 using Filee.Engines.Models3D;
 using Filee.Engines.Ocr;
 using Filee.Engines.Office;
 using Filee.Engines.Pdf;
+using Filee.Engines.Signed;
 using Filee.Engines.Subtitles;
 using Filee.Engines.Text;
 using Filee.Engines.Vector;
@@ -41,6 +43,7 @@ public static class EngineRegistry
     public static IReadOnlyList<IConverter> CreateAll(EngineEnvironment env, ILoggerFactory? loggers = null) =>
     [
         new MagickImageConverter(),
+        new FolderIsoConverter(),
         new PdfSharpConverter(),
         new PdfiumConverter(),
         new RhwpConverter(),
@@ -49,6 +52,7 @@ public static class EngineRegistry
         new SpreadsheetConverter(),
         new OoxmlConverter(),
         new HwpxConverter(),
+        new Translation.TranslatorConverter(loggers?.CreateLogger<Translation.TranslatorConverter>()),
         new ArchiveConverter(),
         new VectorConverter(),
         new IcnsConverter(),
@@ -57,14 +61,20 @@ public static class EngineRegistry
         new PdfTextConverter(),
         new PdfSlidesConverter(),
         new PdfTablesConverter(),
+        new DocumentTablesConverter(),
         new EmlConverter(),
+        new P7mConverter(),
         new DataConverter(),
         new SubtitleConverter(),
         new WicImageConverter(),
         new WhisperConverter(loggers?.CreateLogger<WhisperConverter>()),
+        new ExifToolConverter(),
+        new Upscale.UpscalerConverter(),
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
+        new Gcode.GcodeConverter(loggers?.CreateLogger<Gcode.GcodeConverter>()),
         new ModelConverter(),
+        new ImageTo3DConverter(),
         new GeoConverter(),
         new EbookConverter(),
         new PandocConverter(),
@@ -72,6 +82,7 @@ public static class EngineRegistry
         new VisionConverter(), // before Tesseract: a Mac's OCR step (Tesseract reads the languages Vision doesn't)
         new TesseractConverter(),
         new CalibreConverter(),
+        new WeasyPrintConverter(),
         new LibreOfficeConverter(env, loggers?.CreateLogger<LibreOfficeConverter>()),
     ];
 

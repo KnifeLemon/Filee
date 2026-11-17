@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Filee.App.Controls;
 using Filee.App.Services;
@@ -764,7 +765,7 @@ public class DonutGroupTests
 
         // The ring a group fans out (labels included) is inside the window, and the window inside the screen.
         var center = new PixelPoint(position.X + side / 2, position.Y + side / 2);
-        var ringReach = radius + 7 + DonutMenu.SubRingSpace;
+        var ringReach = radius + 7 + DonutMenu.SubRingSpaceFor(radius, 1);
         Assert.True(ringReach <= side / 2.0);
         Assert.True(center.X - ringReach >= area.X && center.X + ringReach <= area.Right, $"x {center.X}");
         Assert.True(center.Y - ringReach >= area.Y && center.Y + ringReach <= area.Bottom, $"y {center.Y}");
@@ -776,5 +777,58 @@ public class DonutGroupTests
         var side = (int)Math.Ceiling(DonutMenu.SideFor(150, subRing: true));
         var position = RadialController.WindowPosition(new PixelPoint(960, 540), new PixelRect(0, 0, 1920, 1080), side);
         Assert.Equal(new PixelPoint(960 - side / 2, 540 - side / 2), position);
+    }
+
+    [AvaloniaFact]
+    public void New_items_during_a_click_on_the_live_donut_keep_the_click()
+    {
+        var (donut, window) = Open(Item("PNG"), Item("JPG"), Item("WEBP"));
+        var invoked = new List<int>();
+        donut.SegmentInvoked += (_, index) => invoked.Add(index);
+        var slice = DonutGeometry.PointAt(Center(donut), donut.OuterRadius * 0.7, DonutGeometry.MidAngle(1, 3));
+
+        window.MouseDown(slice, MouseButton.Left);
+        donut.Items = [Item("PDF"), Item("TIFF"), Item("BMP")];
+        Dispatcher.UIThread.RunJobs();
+        window.MouseUp(slice, MouseButton.Left);
+
+        Assert.Equal([1], invoked);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Losing_the_capture_keeps_a_click_on_the_live_donut()
+    {
+        var (donut, window) = Open(Item("PNG"), Item("JPG"), Item("WEBP"));
+        var invoked = new List<int>();
+        donut.SegmentInvoked += (_, index) => invoked.Add(index);
+        IPointer? pressed = null;
+        window.AddHandler(InputElement.PointerPressedEvent, (_, e) => pressed = e.Pointer, RoutingStrategies.Tunnel, handledEventsToo: true);
+        var slice = DonutGeometry.PointAt(Center(donut), donut.OuterRadius * 0.7, DonutGeometry.MidAngle(1, 3));
+
+        window.MouseDown(slice, MouseButton.Left);
+        pressed!.Capture(null);
+        window.MouseUp(slice, MouseButton.Left);
+
+        Assert.Equal([1], invoked);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_last_press_on_the_live_donut_takes_the_click()
+    {
+        var (donut, window) = Open(Item("PNG"), Item("JPG"), Item("WEBP"));
+        var invoked = new List<int>();
+        donut.SegmentInvoked += (_, index) => invoked.Add(index);
+        var first = DonutGeometry.PointAt(Center(donut), donut.OuterRadius * 0.7, DonutGeometry.MidAngle(1, 3));
+        var second = DonutGeometry.PointAt(Center(donut), donut.OuterRadius * 0.7, DonutGeometry.MidAngle(2, 3));
+
+        window.MouseDown(first, MouseButton.Left);
+        var finger = window.TouchBegin(second);
+        window.TouchEnd(finger, second);
+        window.MouseUp(first, MouseButton.Left);
+
+        Assert.Equal([2], invoked);
+        window.Close();
     }
 }

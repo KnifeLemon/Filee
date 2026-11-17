@@ -6,8 +6,7 @@ so the everyday conversions stay easy to find as more arrive. They come from [#8
 [discussion #862](https://github.com/KnifeLemon/Filee/discussions/862).
 
 > **Status:** the fields and grades are in the code (`src/Filee.Core/Formats/FormatFields.cs`, tested by
-> `FormatFieldsTests`). The field switches and the new default donuts are #806's work and are not on screen yet.
-> Rules 3–6 describe how they behave once they are.
+> `FormatFieldsTests`). The field switches (Settings → Fields) and the new default donuts are on screen.
 
 ## Formats
 
@@ -98,8 +97,9 @@ image it is a plain PNG or JPG conversion.
 ### 8. Don't block inputs that pass as an ordinary conversion
 
 - Such inputs keep working, so existing toolbars and presets don't stop working.
-- Where the result differs a lot from what the name says, the user is told so, for example in the slot's tooltip:
+- Where the result differs a lot from what the name says, the user is told so in the donut centre text and the Available presets tooltip:
   *Extract frames* (`extract-frames-png`, `extract-frames-jpg`) and *Extract Live Photo video* (`extract-motion`).
+- The list of presets that need this notice lives in `PresetAvailability.OrdinaryConversionFor`; add new presets there.
 - An input is blocked only where the result would mislead. That is decided per feature, not by one rule for all.
 
 ### 9. When inputs grow, recheck the features

@@ -35,30 +35,36 @@ public static partial class ClipPreview
     /// <summary>Told how many bytes of sound reached the player once a clip has played (tests).</summary>
     internal static Action<long>? SoundPlayed { get; set; }
 
+    /// <summary>The program the sound (a WAV stream on its stdin) goes to instead of ffplay (tests).</summary>
+    internal static string? PlayerProgram { get; set; }
+
     /// <summary>True when the preview plays sound: ffplay is next to Filee's FFmpeg.</summary>
     public static bool HasSound => Player() is not null;
 
     private static string? Player() =>
-        FfmpegConverter.Locate() is { } tools
+        PlayerProgram ?? (FfmpegConverter.Locate() is { } tools
         && Path.Combine(Path.GetDirectoryName(tools.Ffmpeg) ?? "", EngineEnvironment.ProgramName("ffplay.exe")) is var ffplay
-        && File.Exists(ffplay) ? ffplay : null;
+        && File.Exists(ffplay) ? ffplay : null);
 
     /// <summary>
-    /// Plays <paramref name="edit"/> of the video at <paramref name="path"/> from its start (use
+    /// Plays <paramref name="edit"/> of the video (or sound) at <paramref name="path"/> from its start (use
     /// <see cref="ClipEdit.From"/> to start later): each picture, <paramref name="height"/> pixels high in BGRA, goes to
     /// <paramref name="onFrame"/> (pixels, width, height, seconds into <paramref name="edit"/>) when it is due; the sound
     /// plays along. Ends when the clip has played or <paramref name="cancellationToken"/> is cancelled (then it stops at
     /// once and doesn't throw). <paramref name="onFrame"/> is called on a worker thread, with a buffer it may keep only
-    /// until it returns.
+    /// until it returns. A sound has no pictures: <paramref name="onFrame"/> is then called as often, with no pixels and
+    /// size 0, to tell how far the clip has played.
     /// </summary>
-    /// <exception cref="InvalidOperationException">FFmpeg is missing or the video can't be read.</exception>
+    /// <exception cref="InvalidOperationException">FFmpeg is missing or the file can't be read.</exception>
     public static async Task PlayAsync(string path, ClipEdit edit, int height, Action<byte[], int, int, double> onFrame,
         CancellationToken cancellationToken)
     {
         var (ffmpeg, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
-        var input = Path.GetFullPath(path);
+        var input = MediaInput.For(path);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken).ConfigureAwait(false);
-        var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
+        var video = info.Video;
+        if (video is null && info.Audio is null)
+            throw new InvalidOperationException("The file has no video or sound stream.");
         ClipEdit clip;
         try
         {
@@ -69,37 +75,72 @@ public static partial class ClipPreview
             return; // nothing left to play
         }
 
+        // From the key frame before the first part, so the pictures start with the frame the clip window showed.
+        SeekPoint? seek = null;
+        if (video is not null)
+        {
+            try
+            {
+                seek = await KeyFrames.FindAsync(ffprobe, input, clip.Start, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return; // stopped before it started
+            }
+        }
+
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var pictures = Start(ffmpeg, MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out var width, out var frameHeight), stdin: false);
+        Process? pictures = null;
+        var width = 0;
+        var frameHeight = 0;
+        if (video is not null)
+            pictures = Start(ffmpeg, MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out width, out frameHeight, seek), stdin: false);
         Process? decoder = null, player = null;
         Task pump = Task.CompletedTask;
         try
         {
             if ((info.Audio is not null || clip.Music is not null) && Player() is { } ffplay)
             {
-                decoder = Start(ffmpeg, await PreviewSoundArgumentsAsync(ffprobe, input, clip, video, info.Audio, stop.Token).ConfigureAwait(false), stdin: false);
+                decoder = Start(ffmpeg, await PreviewSoundArgumentsAsync(ffprobe, input, clip, video, info.Audio, stop.Token, seek).ConfigureAwait(false), stdin: false);
                 player = Start(ffplay, ["-hide_banner", "-loglevel", "error", "-nodisp", "-autoexit",
                     .. PlayerVolume is { } volume ? new[] { "-volume", volume.ToString(CultureInfo.InvariantCulture) } : [], "-i", "-"], stdin: true);
                 pump = Pump(decoder, player, stop.Token);
             }
 
-            var frame = new byte[width * frameHeight * 4];
-            // The clock starts with the first picture: FFmpeg takes a moment to seek and start, and pictures counted
-            // from before that would all be late (and skipped) until it caught up.
-            Stopwatch? clock = null;
             var delay = player is null ? TimeSpan.Zero : SoundStart;
-            for (var n = 0; !stop.IsCancellationRequested; n++)
+            if (pictures is null)
             {
-                if (!await ReadFully(pictures.StandardOutput.BaseStream, frame, stop.Token).ConfigureAwait(false))
-                    break;
-                clock ??= Stopwatch.StartNew();
-                var due = delay + TimeSpan.FromSeconds((double)n / Fps);
-                var wait = due - clock.Elapsed;
-                if (wait > TimeSpan.Zero)
-                    await Task.Delay(wait, stop.Token).ConfigureAwait(false);
-                else if (wait < TimeSpan.FromSeconds(-0.2))
-                    continue; // behind: skip a picture rather than run late
-                onFrame(frame, width, frameHeight, (double)n / Fps);
+                // A sound: no pictures to wait for, so the clock tells how far it has played.
+                var started = Stopwatch.StartNew();
+                while (!stop.IsCancellationRequested)
+                {
+                    var played = (started.Elapsed - delay).TotalSeconds;
+                    if (played >= clip.Length)
+                        break;
+                    if (played > 0)
+                        onFrame([], 0, 0, played);
+                    await Task.Delay(TimeSpan.FromSeconds(1.0 / Fps), stop.Token).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                var frame = new byte[width * frameHeight * 4];
+                // The clock starts with the first picture: FFmpeg takes a moment to seek and start, and pictures counted
+                // from before that would all be late (and skipped) until it caught up.
+                Stopwatch? clock = null;
+                for (var n = 0; !stop.IsCancellationRequested; n++)
+                {
+                    if (!await ReadFully(pictures.StandardOutput.BaseStream, frame, stop.Token).ConfigureAwait(false))
+                        break;
+                    clock ??= Stopwatch.StartNew();
+                    var due = delay + TimeSpan.FromSeconds((double)n / Fps);
+                    var wait = due - clock.Elapsed;
+                    if (wait > TimeSpan.Zero)
+                        await Task.Delay(wait, stop.Token).ConfigureAwait(false);
+                    else if (wait < TimeSpan.FromSeconds(-0.2))
+                        continue; // behind: skip a picture rather than run late
+                    onFrame(frame, width, frameHeight, (double)n / Fps);
+                }
             }
             // The sound may still be playing its last moment.
             if (!stop.IsCancellationRequested && player is not null)
@@ -131,14 +172,15 @@ public static partial class ClipPreview
     }
 
     /// <summary>
-    /// The arguments of the preview's sound: the music's track probed like the video's.
+    /// The arguments of the preview's sound: the music's track probed like the video's, the video read from
+    /// <paramref name="seek"/> as its pictures are, so the two play together.
     /// </summary>
     internal static async Task<List<string>> PreviewSoundArgumentsAsync(string ffprobe, string input, ClipEdit clip,
-        VideoStreamInfo video, AudioStreamInfo? audio, CancellationToken cancellationToken)
+        VideoStreamInfo? video, AudioStreamInfo? audio, CancellationToken cancellationToken, SeekPoint? seek = null)
     {
         var musicTrack = clip.Music is { } song
             ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken).ConfigureAwait(false) : 0;
-        return MediaEncoding.ClipPreviewAudio(input, clip, video, audio is not null, audio?.Ordinal ?? 0, musicTrack);
+        return MediaEncoding.ClipPreviewAudio(input, clip, video, audio is not null, audio?.Ordinal ?? 0, musicTrack, seek);
     }
 
     /// <summary>
@@ -164,7 +206,7 @@ public static partial class ClipPreview
     internal static async Task<float[]> ReadLoudnessAsync((string Ffmpeg, string Ffprobe) tools, string path, double start, double end,
         int count, string workFolder, CancellationToken cancellationToken)
     {
-        var input = Path.GetFullPath(path);
+        var input = MediaInput.For(path, workDirectory: workFolder);
         var track = await MediaInfo.AudioTrackAsync(tools.Ffprobe, input, cancellationToken).ConfigureAwait(false);
         var samples = Path.Combine(workFolder, Guid.NewGuid().ToString("N") + ".f32");
         try
@@ -196,7 +238,7 @@ public static partial class ClipPreview
     public static async Task<double> ReadSoundLengthAsync(string path, CancellationToken cancellationToken)
     {
         var (_, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
-        var info = await MediaInfo.ProbeAsync(ffprobe, Path.GetFullPath(path), cancellationToken);
+        var info = await MediaInfo.ProbeAsync(ffprobe, MediaInput.For(path), cancellationToken);
         if (info.Audio is null)
             throw new InvalidOperationException("The file has no sound.");
         return info.Duration?.TotalSeconds is > 0 and var seconds ? seconds : throw new InvalidOperationException("The file doesn't say how long it is.");
@@ -212,7 +254,7 @@ public static partial class ClipPreview
     internal static async Task<IReadOnlyList<ClipRange>> FindSilencesAsync((string Ffmpeg, string Ffprobe) tools, string path,
         double start, double end, CancellationToken cancellationToken)
     {
-        var input = Path.GetFullPath(path);
+        var input = MediaInput.For(path);
         var track = await MediaInfo.AudioTrackAsync(tools.Ffprobe, input, cancellationToken).ConfigureAwait(false);
         var result = await ProcessRunner.RunAsync(tools.Ffmpeg, SilenceArguments(input, start, end, track), TimeSpan.FromMinutes(10), cancellationToken);
         if (result.ExitCode != 0)

@@ -3,6 +3,7 @@
 
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -94,14 +95,10 @@ internal sealed class OpfPackage
 
     /// <summary>
     /// Loads XML without resolving external DTDs (no network access, no XXE); entity declarations inside the file
-    /// are still allowed because some generators declare &amp;nbsp; and friends.
+    /// are still allowed because some generators declare &amp;nbsp; and friends. Size and depth are limited
+    /// (<see cref="BoundedXml"/>).
     /// </summary>
-    public static XDocument LoadXml(string path)
-    {
-        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null };
-        using var reader = XmlReader.Create(path, settings);
-        return XDocument.Load(reader);
-    }
+    public static XDocument LoadXml(string path) => BoundedXml.File(path, LoadOptions.None, DtdProcessing.Ignore);
 
     private static IEnumerable<XElement> Elements(XElement parent, string localName) =>
         parent.Elements().Where(e => e.Name.LocalName == localName);

@@ -1,6 +1,7 @@
 // End-to-end tests of the "filee" command: real engines, a temporary settings folder, files in a temporary folder.
 
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
 using Filee.Core.Conversion;
@@ -10,11 +11,113 @@ using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Tests;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.Advanced;
+using PdfSharp.Pdf.IO;
 
 namespace Filee.Cli.Tests;
 
+[Collection("Cli")] // shares EngineEnvironment state with EnginesCommandTests
 public sealed class CliTests : IDisposable
 {
+    [Fact]
+    public async Task Udf_filesystem_option_creates_a_readable_image_and_rejects_other_targets()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "udf-source")).FullName;
+        Directory.CreateDirectory(Path.Combine(folder, "empty"));
+        var name = new string('a', 100) + ".txt";
+        File.WriteAllText(Path.Combine(folder, name), "CLI UDF");
+        var result = await Run("convert", folder, "--to", "iso", "--iso-filesystem", "udf201", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        using var image = File.OpenRead(folder + ".iso");
+        using var udf = new DiscUtils.Udf.UdfReader(image);
+        Assert.True(udf.DirectoryExists("empty"));
+        using var reader = new StreamReader(udf.OpenFile(name, FileMode.Open));
+        Assert.Equal("CLI UDF", reader.ReadToEnd());
+        var rejected = await Run("convert", folder, "--to", "zip", "--iso-filesystem", "udf201");
+        Assert.NotEqual(0, rejected.Code);
+        Assert.Contains("requires an ISO target", rejected.Errors);
+    }
+
+    [Fact]
+    public async Task Same_audio_takes_a_films_sound_out_as_it_is()
+    {
+        // #1490: "--to same-audio", the CLI's name for "Same format as the audio".
+        var ffmpeg = new Filee.Engines.Media.FfmpegConverter().GetStatus();
+        Assert.SkipUnless(ffmpeg.IsAvailable, "FFmpeg is not installed.");
+        var film = Path.Combine(_folder, "film.mkv");
+        var made = await ProcessRunner.RunAsync(ffmpeg.Detail!,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=1",
+             "-f", "lavfi", "-i", "sine=duration=1", "-c:v", "mpeg4", "-c:a", "libopus", film],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+
+        var result = await Run("convert", film, "--to", "same-audio", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        Assert.True(File.Exists(Path.Combine(_folder, "film.opus")));
+    }
+
+    [Fact]
+    public async Task Folder_to_zip_keeps_the_folder_tree_instead_of_converting_its_individual_files()
+    {
+        Assert.SkipUnless(new Filee.Engines.Archives.ArchiveConverter().GetStatus().IsAvailable, "Bundled 7-Zip is required.");
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "photos.jpg")).FullName;
+        Directory.CreateDirectory(Path.Combine(folder, "empty"));
+        await File.WriteAllTextAsync(Path.Combine(folder, "input.txt"), "folder contents", TestContext.Current.CancellationToken);
+        var result = await Run("convert", folder, "--to", "zip", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        using var archive = System.IO.Compression.ZipFile.OpenRead(folder + ".zip");
+        Assert.NotNull(archive.GetEntry("photos.jpg/empty/"));
+        using var reader = new StreamReader(archive.GetEntry("photos.jpg/input.txt")!.Open());
+        Assert.Equal("folder contents", reader.ReadToEnd());
+    }
+
+    [Fact]
+    public async Task Folder_to_iso_uses_the_folder_itself_and_preserves_a_dotted_name()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "photos.jpg")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(folder, "input.txt"), "ISO contents", TestContext.Current.CancellationToken);
+        var result = await Run("convert", folder, "--to", "iso", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        Assert.True(File.Exists(folder + ".iso"));
+        Assert.True(File.Exists(Path.Combine(folder, "input.txt")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Drive_root_to_iso_is_refused_clearly_without_writing_an_image(bool json)
+    {
+        var output = Path.Combine(_folder, "root-output");
+        var args = new List<string> { "convert", Path.GetPathRoot(_folder)!, "--to", "iso", "--output", output };
+        if (json) args.AddRange(["--json", "--quiet"]);
+
+        var result = await Run(args.ToArray());
+
+        Assert.Equal(1, result.Code);
+        Assert.Contains("Select a folder inside", result.Output + result.Errors);
+        Assert.False(Directory.Exists(output));
+        if (json)
+        {
+            using var document = JsonDocument.Parse(result.Output);
+            Assert.Equal(1, document.RootElement.GetProperty("failed").GetInt32());
+            Assert.Equal(0, document.RootElement.GetProperty("converted").GetInt32());
+            Assert.Equal("error.iso_root", document.RootElement.GetProperty("files")[0].GetProperty("errorKey").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task Zip_to_iso_converts_archive_contents_without_manual_extraction()
+    {
+        var input = Path.Combine(_folder, "backup.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(input, System.IO.Compression.ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(zip.CreateEntry("contents.txt").Open())) writer.Write("archived contents");
+        var result = await Run("convert", input, "--to", "iso", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        Assert.True(File.Exists(Path.Combine(_folder, "backup.iso")));
+        Assert.True(File.Exists(input));
+    }
+
     private readonly string _folder = Directory.CreateTempSubdirectory("filee-cli-").FullName;
     private readonly string _settings = Directory.CreateTempSubdirectory("filee-cli-settings-").FullName;
 
@@ -38,6 +141,357 @@ public sealed class CliTests : IDisposable
         var errors = new StringWriter();
         var code = await Cli.RunAsync(args, output, errors, TestContext.Current.CancellationToken, () => CliHost.Create(_settings));
         return (code, output.ToString(), errors.ToString());
+    }
+
+    /// <summary>A one-page PDF whose page width tells it apart in a merge, with the date modified it is given.</summary>
+    private string SizedPdf(string name, int width, DateTime modified, int height = 500)
+    {
+        var path = Path.Combine(_folder, name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using (var document = new PdfSharp.Pdf.PdfDocument())
+        {
+            var page = document.AddPage();
+            page.Width = PdfSharp.Drawing.XUnit.FromPoint(width);
+            page.Height = PdfSharp.Drawing.XUnit.FromPoint(height);
+            document.Save(path);
+        }
+        File.SetLastWriteTimeUtc(path, modified);
+        return path;
+    }
+
+    /// <summary>L1: saved on/off presets reach the real merger without changing inputs or the saved library.</summary>
+    [Fact]
+    public async Task Merge_paper_saved_presets_control_all_three_page_sizes()
+    {
+        var day = new DateTime(2024, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+        var inputs = new[]
+        {
+            SizedPdf("sheet.pdf", 842, day, 596),
+            SizedPdf("letter.pdf", 612, day, 792),
+            SizedPdf("image.pdf", 1200, day, 675),
+        };
+        AddPresets(
+            new Preset
+            {
+                Id = "merge-paper-a4",
+                TargetFormat = "pdf",
+                Pdf = { MergeIntoSingle = true, NormalizeMergePaper = true, MergeOrientation = PdfSheetOrientation.Portrait },
+            },
+            new Preset { Id = "merge-paper-off", TargetFormat = "pdf", Pdf = { MergeIntoSingle = true } });
+        var protectedPaths = inputs.Append(Path.Combine(_settings, "presets.json")).ToArray();
+        var hashes = protectedPaths.Select(FileHash).ToArray();
+
+        foreach (var enabled in new[] { true, false })
+        {
+            var mode = enabled ? "a4" : "off";
+            var output = Path.Combine(_folder, mode);
+            var result = await Run("convert", inputs[0], inputs[1], inputs[2], "--preset", $"merge-paper-{mode}", "-o", output);
+            Assert.True(result.Code == 0, result.Errors + result.Output);
+            using var merged = PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfDocumentOpenMode.Import);
+            Assert.Equal(3, merged.PageCount);
+            for (var i = 0; i < inputs.Length; i++)
+            {
+                var width = enabled ? 595.28 : new[] { 842d, 612, 1200 }[i];
+                var height = enabled ? 841.89 : new[] { 596d, 792, 675 }[i];
+                AssertMergePage(merged.Pages[i], width, height, enabled);
+            }
+            Assert.Equal(hashes, protectedPaths.Select(FileHash));
+        }
+    }
+
+    /// <summary>L2: mixed real conversions are normalized only after their intermediate PDFs have been produced.</summary>
+    [Fact]
+    public async Task Merge_paper_mixed_inputs_keep_the_sum_of_individually_converted_pages()
+    {
+        Assert.SkipUnless(new Filee.Engines.Office.LibreOfficeConverter(new EngineEnvironment(_settings)).GetStatus().IsAvailable,
+            "LibreOffice is required for the mixed DOCX/XLSX integration case.");
+        var docx = OfficeFile("document.docx", spreadsheet: false);
+        var xlsx = OfficeFile("workbook.xlsx", spreadsheet: true);
+        var store = new UserDataStore(_settings);
+        store.Load();
+        store.Settings.LibreOfficeForDocuments = true;
+        store.Settings.LibreOfficeForSheets = true;
+        store.SaveSettings();
+        AddPresets(
+            new Preset { Id = "merge-paper-individual", TargetFormat = "pdf" },
+            new Preset
+            {
+                Id = "merge-paper-mixed",
+                TargetFormat = "pdf",
+                Pdf = { MergeIntoSingle = true, NormalizeMergePaper = true, MergeOrientation = PdfSheetOrientation.Portrait },
+            });
+        var inputs = new[] { SizedPdf("source.pdf", 842, DateTime.UnixEpoch, 596), Png("picture.png"), docx, xlsx };
+        var protectedPaths = inputs.Append(Path.Combine(_settings, "presets.json")).ToArray();
+        var hashes = protectedPaths.Select(FileHash).ToArray();
+        var pages = 0;
+        for (var i = 0; i < inputs.Length; i++)
+        {
+            var individual = Path.Combine(_folder, $"individual-{i}");
+            var result = await Run("convert", inputs[i], "--preset", "merge-paper-individual", "-o", individual);
+            Assert.True(result.Code == 0, result.Errors + result.Output);
+            using var pdf = PdfReader.Open(Assert.Single(Directory.GetFiles(individual, "*.pdf")), PdfDocumentOpenMode.Import);
+            Assert.True(pdf.PageCount > 0);
+            pages += pdf.PageCount;
+        }
+        var output = Path.Combine(_folder, "mixed");
+        var merge = await Run(["convert", .. inputs, "--preset", "merge-paper-mixed", "-o", output]);
+        Assert.True(merge.Code == 0, merge.Errors + merge.Output);
+        using var merged = PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfDocumentOpenMode.Import);
+        Assert.Equal(pages, merged.PageCount);
+        foreach (var page in merged.Pages)
+            AssertMergePage(page, 595.28, 841.89, normalized: true);
+        Assert.Equal(hashes, protectedPaths.Select(FileHash));
+    }
+
+    private static string FileHash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+    private string OfficeFile(string name, bool spreadsheet)
+    {
+        var path = Path.Combine(_folder, name);
+        using var zip = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Create);
+        void Part(string part, string xml)
+        {
+            var entry = zip.CreateEntry(part);
+            entry.LastWriteTime = new DateTimeOffset(2024, 3, 1, 0, 0, 0, TimeSpan.Zero);
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write(xml);
+        }
+        const string rel = "http://schemas.openxmlformats.org/package/2006/relationships";
+        const string office = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        var main = spreadsheet ? "xl/workbook.xml" : "word/document.xml";
+        var type = spreadsheet ? "spreadsheetml.sheet" : "wordprocessingml.document";
+        Part("[Content_Types].xml", $"""
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+            <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+            <Default Extension="xml" ContentType="application/xml"/>
+            <Override PartName="/{main}" ContentType="application/vnd.openxmlformats-officedocument.{type}.main+xml"/>
+            {(spreadsheet ? "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" : "")}
+            </Types>
+            """);
+        Part("_rels/.rels", $"<Relationships xmlns=\"{rel}\"><Relationship Id=\"rId1\" Type=\"{office}/officeDocument\" Target=\"{main}\"/></Relationships>");
+        if (spreadsheet)
+        {
+            Part(main, $"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"{office}\"><sheets><sheet name=\"QA\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+            Part("xl/_rels/workbook.xml.rels", $"<Relationships xmlns=\"{rel}\"><Relationship Id=\"rId1\" Type=\"{office}/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>");
+            Part("xl/worksheets/sheet1.xml", """
+                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>
+                <row r="1"><c r="A1" t="inlineStr"><is><t>Merge paper sheet</t></is></c></row></sheetData></worksheet>
+                """);
+        }
+        else
+            Part(main, """
+                <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                <w:body><w:p><w:r><w:t>Merge paper document</w:t></w:r></w:p></w:body></w:document>
+                """);
+        return path;
+    }
+
+    private static void AssertMergePage(PdfPage page, double width, double height, bool normalized)
+    {
+        Assert.InRange(page.MediaBox.X1, -.01, .01);
+        Assert.InRange(page.MediaBox.Y1, -.01, .01);
+        Assert.InRange(page.MediaBox.Width, width - .01, width + .01);
+        Assert.InRange(page.MediaBox.Height, height - .01, height + .01);
+        Assert.Equal(0, page.Rotate);
+        if (!normalized)
+            return;
+        Assert.InRange(page.CropBox.X1, -.01, .01);
+        Assert.InRange(page.CropBox.Y1, -.01, .01);
+        Assert.InRange(page.CropBox.Width, width - .01, width + .01);
+        Assert.InRange(page.CropBox.Height, height - .01, height + .01);
+        Assert.Equal(1, page.Elements.GetInteger("/UserUnit"));
+    }
+
+    [Fact]
+    public async Task Source_bookmarks_saved_presets_control_real_merged_outlines()
+    {
+        var day = new DateTime(2024, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+        var a = SizedPdf("A.pdf", 200, day);
+        var b = SizedPdf("B.pdf", 300, day);
+        AddChapter(a, "A chapter", addPage: true);
+        AddChapter(b, "B chapter", addPage: false);
+        AddPresets(
+            new Preset { Id = "bookmarks-on", TargetFormat = "pdf", Pdf = { MergeIntoSingle = true, SourceBookmarks = true } },
+            new Preset { Id = "bookmarks-off", TargetFormat = "pdf", Pdf = { MergeIntoSingle = true } });
+        var presetsPath = Path.Combine(_settings, "presets.json");
+        var saved = File.ReadAllBytes(presetsPath);
+
+        foreach (var enabled in new[] { true, false })
+        {
+            var mode = enabled ? "on" : "off";
+            var output = Path.Combine(_folder, mode);
+            var result = await Run("convert", a, b, "--preset", $"bookmarks-{mode}", "-o", output);
+            Assert.True(result.Code == 0, result.Errors + result.Output);
+            Assert.Equal(saved, File.ReadAllBytes(presetsPath));
+            using var merged = PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfDocumentOpenMode.Import);
+            Assert.Equal(3, merged.PageCount);
+            var outlines = Dictionary(merged.Internals.Catalog.Elements["/Outlines"]);
+            var first = Dictionary(outlines.Elements["/First"]);
+            var second = Dictionary(first.Elements["/Next"]);
+            Assert.Null(second.Elements["/Next"]);
+            if (enabled)
+            {
+                Assert.Equal("A.pdf", first.Elements.GetString("/Title"));
+                Assert.Equal("B.pdf", second.Elements.GetString("/Title"));
+                PointsAt(first, merged, 0);
+                PointsAt(second, merged, 2);
+                var aChapter = Dictionary(first.Elements["/First"]);
+                var bChapter = Dictionary(second.Elements["/First"]);
+                Assert.Equal("A chapter", aChapter.Elements.GetString("/Title"));
+                Assert.Equal("B chapter", bChapter.Elements.GetString("/Title"));
+                PointsAt(aChapter, merged, 1);
+                PointsAt(bChapter, merged, 2);
+                Assert.Null(aChapter.Elements["/Next"]);
+                Assert.Null(bChapter.Elements["/Next"]);
+            }
+            else
+            {
+                Assert.Equal("A chapter", first.Elements.GetString("/Title"));
+                Assert.Equal("B chapter", second.Elements.GetString("/Title"));
+                PointsAt(first, merged, 1);
+                PointsAt(second, merged, 2);
+                Assert.Null(first.Elements["/First"]);
+                Assert.Null(second.Elements["/First"]);
+            }
+        }
+
+        var store = new UserDataStore(_settings);
+        store.Load();
+        Assert.True(store.Presets.Single(preset => preset.Id == "bookmarks-on").Pdf.SourceBookmarks);
+        Assert.False(store.Presets.Single(preset => preset.Id == "bookmarks-off").Pdf.SourceBookmarks);
+
+        static PdfDictionary Dictionary(PdfItem? item) =>
+            Assert.IsAssignableFrom<PdfDictionary>(item is PdfReference reference ? reference.Value : item);
+
+        static void PointsAt(PdfDictionary outline, PdfDocument document, int page)
+        {
+            var destination = Assert.IsType<PdfArray>(outline.Elements["/Dest"]);
+            Assert.Equal(2, destination.Elements.Count);
+            Assert.Equal(document.Pages[page].Reference!.ObjectID, Assert.IsType<PdfReference>(destination.Elements[0]).ObjectID);
+            Assert.Equal("/Fit", Assert.IsType<PdfName>(destination.Elements[1]).Value);
+        }
+
+        static void AddChapter(string path, string title, bool addPage)
+        {
+            using var document = PdfReader.Open(path, PdfDocumentOpenMode.Modify);
+            if (addPage)
+                document.AddPage();
+            var root = new PdfDictionary(document);
+            var chapter = new PdfDictionary(document);
+            document.Internals.AddObject(root);
+            document.Internals.AddObject(chapter);
+            var destination = new PdfArray(document);
+            destination.Elements.Add(document.Pages[addPage ? 1 : 0].Reference!);
+            destination.Elements.Add(new PdfName("/Fit"));
+            chapter.Elements["/Title"] = new PdfString(title);
+            chapter.Elements["/Dest"] = destination;
+            chapter.Elements["/Parent"] = root.Reference;
+            root.Elements["/Type"] = new PdfName("/Outlines");
+            root.Elements["/First"] = chapter.Reference;
+            root.Elements["/Last"] = chapter.Reference;
+            root.Elements["/Count"] = new PdfInteger(1);
+            document.Internals.Catalog.Elements["/Outlines"] = root.Reference;
+            document.Save(path);
+        }
+    }
+
+    [Theory]
+    [InlineData("name", new[] { 200d, 300d, 400d })]
+    [InlineData("name-desc", new[] { 400d, 300d, 200d })]
+    [InlineData("modified", new[] { 300d, 200d, 400d })]
+    [InlineData("MODIFIED-DESC", new[] { 400d, 200d, 300d })]
+    public async Task Sort_sets_the_order_files_merge_in(string sort, double[] pageWidths)
+    {
+        var day = new DateTime(2024, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+        SizedPdf("page 2.pdf", 200, day.AddHours(2));
+        SizedPdf("page 10.pdf", 300, day.AddHours(1));
+        SizedPdf("page 30.pdf", 400, day.AddHours(3));
+        var output = Directory.CreateDirectory(Path.Combine(_folder, "out")).FullName;
+
+        var (code, _, errors) = await Run("convert", _folder, "--preset", "merge-pdf", "--sort", sort, "-o", output);
+
+        Assert.True(code == 0, errors);
+        using var merged = PdfSharp.Pdf.IO.PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        Assert.Equal(pageWidths, merged.Pages.Cast<PdfSharp.Pdf.PdfPage>().Select(p => p.Width.Point));
+    }
+
+    [Theory]
+    [InlineData("name", new[] { 200d, 300d, 400d, 500d, 600d, 700d })]
+    [InlineData("name-desc", new[] { 700d, 600d, 500d, 400d, 300d, 200d })]
+    public async Task Sort_by_name_keeps_each_folders_files_together_when_recursive(string sort, double[] pageWidths)
+    {
+        // By file name alone these interleave: sub2\a, sub1\b, c, ...
+        var day = new DateTime(2024, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+        SizedPdf(Path.Combine("sub1", "deep", "z.pdf"), 200, day);
+        SizedPdf(Path.Combine("sub1", "b.pdf"), 300, day);
+        SizedPdf(Path.Combine("sub1", "page 10.pdf"), 400, day);
+        SizedPdf(Path.Combine("sub2", "a.pdf"), 500, day);
+        SizedPdf(Path.Combine("sub10", "a.pdf"), 600, day);
+        SizedPdf("c.pdf", 700, day);
+        var output = Directory.CreateDirectory(Path.Combine(_settings, "out")).FullName;
+
+        var (code, _, errors) = await Run("convert", _folder, "-r", "--preset", "merge-pdf", "--sort", sort, "-o", output);
+
+        Assert.True(code == 0, errors);
+        using var merged = PdfSharp.Pdf.IO.PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        Assert.Equal(pageWidths, merged.Pages.Cast<PdfSharp.Pdf.PdfPage>().Select(p => p.Width.Point));
+    }
+
+    [Theory]
+    [InlineData("--sort", "size", "--sort must be")]
+    [InlineData("--sort", null, "--sort needs a value")]
+    public void Sort_refuses_an_order_it_does_not_know(string option, string? value, string error)
+    {
+        string[] args = value is null ? ["convert", "a.pdf", "--to", "pdf", option] : ["convert", "a.pdf", "--to", "pdf", option, value];
+        Assert.StartsWith(error, CliOptions.Parse(args).Error);
+    }
+
+    /// <summary>--split-every with a length (#1259): parts of a video; a plain number stays pages of a PDF.</summary>
+    [Theory]
+    [InlineData("50", 50, null)]
+    [InlineData("90s", null, 90)]
+    [InlineData("10m", null, 600)]
+    [InlineData("10min", null, 600)]
+    [InlineData("2.5m", null, 150)]
+    [InlineData("1h30m", null, 5400)]
+    [InlineData("1H", null, 3600)]
+    [InlineData("10:00", null, 600)]
+    [InlineData("1:30:00", null, 5400)]
+    public void Split_every_takes_pages_or_a_length_of_video(string value, int? pages, int? seconds)
+    {
+        var options = CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", value]);
+        Assert.Null(options.Error);
+        Assert.Equal((pages, seconds), (options.SplitEvery, options.SplitEverySeconds));
+    }
+
+    [Theory]
+    [InlineData("10x")]
+    [InlineData("m")]
+    [InlineData("1:2:3:4")]
+    [InlineData("0s")]
+    [InlineData("25h")]
+    [InlineData("-5m")]
+    public void Split_every_refuses_what_is_neither_pages_nor_a_length(string value) =>
+        Assert.StartsWith("--split-every must be", CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", value]).Error);
+
+    [Fact]
+    public void Sort_is_refused_by_watch_rather_than_ignored() =>
+        Assert.Contains("--sort", CliOptions.Parse(["watch", "inbox", "--to", "pdf", "--sort", "name"]).Error);
+
+    [Fact]
+    public async Task Converts_to_a_format_of_a_turned_off_field()
+    {
+        File.WriteAllText(Path.Combine(_settings, "settings.json"), """{"schemaVersion":58,"turnedOffFields":["video-pro"]}""");
+        var srt = Path.Combine(_folder, "a.srt");
+        File.WriteAllText(srt, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+        var (code, output, errors) = await Run("convert", srt, "--to", "ass");
+        Assert.True(code == Cli.Success, output + errors);
+        var result = Path.Combine(_folder, "a.ass");
+        Assert.True(File.Exists(result));
+        Assert.True(new FileInfo(result).Length > 0);
+        (code, output, errors) = await Run("formats", "srt");
+        Assert.True(code == Cli.Success, errors);
+        Assert.Contains("ass", output);
     }
 
     private static readonly ushort[] FitCrcTable =
@@ -183,11 +637,67 @@ public sealed class CliTests : IDisposable
         Assert.Contains("scan_compressed_compressed.pdf (Couldn't make it smaller", output);
     }
 
+    /// <summary>
+    /// --pages (#981): the range on the command line, over the preset's; Split PDF, which asks on the donut in a new
+    /// install, takes it here without asking.
+    /// </summary>
+    [Fact]
+    public async Task Pages_takes_the_range_of_a_pdf_over_the_presets()
+    {
+        var source = Path.Combine(_folder, "book.pdf");
+        using (var document = new PdfSharp.Pdf.PdfDocument())
+        {
+            for (var i = 0; i < 6; i++)
+                document.AddPage();
+            document.Save(source);
+        }
+
+        var (code, output, errors) = await Run("convert", source, "--preset", "pdf-split", "--pages", "2\u20133, 5");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Contains("Converted 1 of 1", output);
+        Assert.Equal(["book_p2.pdf", "book_p3.pdf", "book_p5.pdf"],
+            Directory.EnumerateFiles(Path.Combine(_folder, "book"), "*.pdf").Select(path => Path.GetFileName(path)).Order().ToArray());
+
+        (code, _, errors) = await Run("convert", source, "--to", "pdf", "--pages", "4-", "-o", Path.Combine(_folder, "out"));
+        Assert.Equal(Cli.Success, code);
+        using var extract = PdfSharp.Pdf.IO.PdfReader.Open(Path.Combine(_folder, "out", "book.pdf"), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        Assert.Equal(3, extract.PageCount);
+    }
+
+    /// <summary>--split-every and --split-parts (#1259): a PDF in files of so many pages, or in equal parts.</summary>
+    [Fact]
+    public async Task Split_every_and_split_parts_cut_a_pdf_into_files()
+    {
+        var source = Path.Combine(_folder, "book.pdf");
+        using (var document = new PdfSharp.Pdf.PdfDocument())
+        {
+            for (var i = 0; i < 10; i++)
+                document.AddPage();
+            document.Save(source);
+        }
+
+        var (code, _, errors) = await Run("convert", source, "--preset", "pdf-split", "--split-every", "4");
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Equal(["book_p1-4.pdf", "book_p5-8.pdf", "book_p9-10.pdf"],
+            Directory.EnumerateFiles(Path.Combine(_folder, "book"), "*.pdf").Select(path => Path.GetFileName(path)).Order().ToArray());
+
+        (code, _, errors) = await Run("convert", source, "--to", "pdf", "--pages", "2-", "--split-parts", "2", "-o", Path.Combine(_folder, "halves"));
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Equal(["book_p2-6.pdf", "book_p7-10.pdf"],
+            Directory.EnumerateFiles(Path.Combine(_folder, "halves"), "*.pdf").Select(path => Path.GetFileName(path)).Order().ToArray());
+    }
+
     [Fact]
     public async Task A_folder_converts_the_files_filee_knows()
     {
         Png("a.png");
         File.WriteAllText(Path.Combine(_folder, "notes.unknownformat"), "x");
+        // Filee reads a program's icon only when the program is named, not every installer in a folder (#1188).
+        File.WriteAllBytes(Path.Combine(_folder, "setup.exe"), "MZ"u8.ToArray());
 
         var (code, output, _) = await Run("convert", _folder, "--preset", BuiltInData.CreatePresets().First(p => p.TargetFormat == "jpg").Id);
 
@@ -227,6 +737,16 @@ public sealed class CliTests : IDisposable
     [InlineData(new[] { "convert", "a.png", "--preset", "rotate" }, "rotate-left, rotate-right, rotate-180")]
     [InlineData(new[] { "convert", "--to", "jpg" }, "at least one file")]
     [InlineData(new[] { "convert", "a.png", "--to", "jpg", "--quality", "300" }, "--quality")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--pages", "1-x" }, "--pages")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "0" }, "--split-every")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-parts", "1" }, "--split-parts")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "5", "--split-parts", "2" }, "either --split-every or --split-parts")]
+    [InlineData(new[] { "convert", "a.png", "--to", "mp4", "--split-every", "10m", "--split-parts", "2" }, "either --split-every or --split-parts")]
+    // Pages for a video, or a length for a PDF, would split nothing (#1259).
+    [InlineData(new[] { "convert", "a.png", "--to", "mp4", "--split-every", "10" }, "Give a length, e.g. 10s or 10m")]
+    [InlineData(new[] { "convert", "a.png", "--to", "mkv", "--split-every", "3" }, "--split-every 3 is a number of pages, but this makes videos")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "10m" }, "--split-every 10m is a length of video, but this makes PDFs")]
+    [InlineData(new[] { "convert", "a.png", "--preset", "pdf-split", "--split-every", "1:30" }, "Give a number of pages")]
     [InlineData(new[] { "frobnicate" }, "Unknown command")]
     public async Task Wrong_arguments_explain_themselves_with_exit_code_2(string[] args, string message)
     {
@@ -436,6 +956,20 @@ public sealed class CliTests : IDisposable
     }
 
     [Fact]
+    public async Task The_command_line_never_moves_an_original_to_the_trash()
+    {
+        // A preset saved in the app with "Move the original to the Recycle Bin / Trash" (#1387) runs here without it.
+        AddPresets(new Preset { Id = "trashing", Name = "Trashing", TargetFormat = "jpg", Output = { TrashOriginalAfterConvert = true } });
+        var png = Png("a.png");
+
+        var (code, _, errors) = await Run("convert", png, "--preset", "trashing");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.True(File.Exists(Path.Combine(_folder, "a.jpg")), errors);
+        Assert.True(File.Exists(png));
+    }
+
+    [Fact]
     public async Task A_group_is_never_run_listed_or_in_the_way_of_a_conversion_of_the_same_name()
     {
         AddPresets(
@@ -506,7 +1040,7 @@ public sealed class CliTests : IDisposable
         var (code, output, errors) = await Run("convert", lower, upper, lower, "--to", "jpg", "-o", outputFolder, "--json");
 
         Assert.Equal(Cli.Success, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
         using var json = JsonDocument.Parse(output);
         Assert.Equal(2, json.RootElement.GetProperty("converted").GetInt32());
         Assert.Equal(2, json.RootElement.GetProperty("files").GetArrayLength());
@@ -526,7 +1060,7 @@ public sealed class CliTests : IDisposable
         var (code, output, errors) = await Run("convert", source, "--to", "jpg", "-o", outputFolder, "--json");
 
         Assert.Equal(Cli.Success, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
         using var json = JsonDocument.Parse(output);
         Assert.Equal(1, json.RootElement.GetProperty("converted").GetInt32());
         var result = json.RootElement.GetProperty("files")[0].GetProperty("outputs")[0].GetString();
@@ -582,7 +1116,7 @@ public sealed class CliTests : IDisposable
 
         var (code, output, errors) = await Run("convert", source, "--to", format, "-o", json, "--json");
         Assert.Equal(Cli.Success, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
         Assert.Equal([Path.Combine(json, "Name." + format)], Outputs(output));
         Assert.Equal(["Name." + format], Directory.EnumerateFiles(json).Select(Path.GetFileName));
 
@@ -715,6 +1249,136 @@ public sealed class CliTests : IDisposable
 
     private static string[] Strings(JsonElement value) => value.EnumerateArray().Select(e => e.GetString()!).ToArray();
 
+    private static List<JsonElement> Events(string lines) =>
+        lines.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(Result).ToList();
+
+    private static void OnlyEvents(string errors) =>
+        Assert.All(Events(errors), e => Assert.Contains(e.GetProperty("event").GetString(), new[] { "progress", "file" }));
+
+    private static (string Name, string Value)[] Fields(IEnumerable<JsonProperty> properties) =>
+        properties.Select(p => (p.Name, JsonSerializer.Serialize(p.Value))).ToArray();
+
+    [Fact]
+    public async Task Convert_json_writes_progress_and_file_events_to_stderr()
+    {
+        var errors = new LineWriter();
+        var converter = new ControlledConverter("built-in", true, [new("md", "html")])
+        {
+            BeforeConvert = async (progress, token) =>
+            {
+                progress?.Report(0.5);
+                for (var i = 0; i < 200 && !errors.Contains("\"event\":\"progress\""); i++)
+                    await Task.Delay(25, token);
+            },
+        };
+        var source = Input("md");
+        var output = new StringWriter();
+
+        var code = await Cli.RunAsync(["convert", source, "--to", "html", "--json"], output, errors,
+            TestContext.Current.CancellationToken, () => ControlledHost(new([converter])));
+
+        Assert.Equal(Cli.Success, code);
+        var file = FileResultOf(output.ToString());
+        var events = Events(errors.ToString());
+        Assert.Contains(events, e => e.GetProperty("event").GetString() == "progress"
+            && e.GetProperty("source").GetString() == source
+            && e.GetProperty("fraction").GetDouble() is > 0 and < 1);
+        var last = events[^1];
+        Assert.Equal("file", last.GetProperty("event").GetString());
+        Assert.Equal(Fields(file.EnumerateObject()), Fields(last.EnumerateObject().Skip(1)));
+        Assert.Single(events, e => e.GetProperty("event").GetString() == "file");
+    }
+
+    [Fact]
+    public async Task Convert_json_with_quiet_writes_no_events()
+    {
+        var (code, output, errors) = await RunWith(new([new ControlledConverter("built-in", true, [new("md", "html")])]),
+            "convert", Input("md"), "--to", "html", "--json", "--quiet");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Equal(1, Result(output).GetProperty("converted").GetInt32());
+    }
+
+    [Fact]
+    public async Task Watch_json_prints_nothing_but_events()
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var output = new LineWriter();
+        var watching = Cli.RunAsync(["watch", _folder, "--to", "jpg", "--settle", "0.2", "--json"], output, TextWriter.Null,
+            stop.Token, () => CliHost.Create(_settings));
+
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+        Png("arrived.png");
+        for (var i = 0; i < 100 && !output.Contains("\"event\":\"file\""); i++)
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        stop.Cancel();
+
+        Assert.Equal(Cli.Success, await watching);
+        var events = Events(output.ToString());
+        Assert.Equal("started", events[0].GetProperty("event").GetString());
+        Assert.Equal(Path.GetFullPath(_folder), events[0].GetProperty("folder").GetString());
+        Assert.Equal("jpg", events[0].GetProperty("target").GetString());
+        Assert.Equal(Path.Combine(Path.GetFullPath(_folder), "converted"), events[0].GetProperty("outputFolder").GetString());
+        var file = Assert.Single(events, e => e.GetProperty("event").GetString() == "file");
+        Assert.Equal("done", file.GetProperty("state").GetString());
+        Assert.EndsWith("arrived.png", file.GetProperty("source").GetString());
+        Assert.EndsWith("arrived.jpg", file.GetProperty("outputs")[0].GetString());
+        Assert.Equal("stopped", events[^1].GetProperty("event").GetString());
+        Assert.Equal(3, events.Count);
+    }
+
+    [Fact]
+    public async Task Watch_json_with_quiet_prints_no_events()
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var output = new LineWriter();
+        var watching = Cli.RunAsync(["watch", _folder, "--to", "jpg", "--settle", "0.2", "--json", "--quiet"], output, TextWriter.Null,
+            stop.Token, () => CliHost.Create(_settings));
+
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+        var converted = Path.Combine(_folder, "converted", "arrived.jpg");
+        Png("arrived.png");
+        for (var i = 0; i < 100 && !File.Exists(converted); i++)
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        stop.Cancel();
+
+        Assert.Equal(Cli.Success, await watching);
+        Assert.True(File.Exists(converted));
+        Assert.Equal("", output.ToString());
+    }
+
+    private sealed class LineWriter : StringWriter
+    {
+        private readonly Lock _gate = new();
+
+        public override void Write(char value)
+        {
+            lock (_gate)
+                base.Write(value);
+        }
+
+        public override void Write(string? value)
+        {
+            lock (_gate)
+                base.Write(value);
+        }
+
+        public override void WriteLine(string? value)
+        {
+            lock (_gate)
+                base.WriteLine(value);
+        }
+
+        public bool Contains(string text) => ToString().Contains(text, StringComparison.Ordinal);
+
+        public override string ToString()
+        {
+            lock (_gate)
+                return base.ToString();
+        }
+    }
+
     private static void Hints(JsonElement file, params string[] packages)
     {
         Assert.Equal("failed", file.GetProperty("state").GetString());
@@ -781,7 +1445,7 @@ public sealed class CliTests : IDisposable
         var catalog = new ConverterCatalog([converter]);
         var (code, output, errors) = await RunWith(catalog, "convert", source, "--to", "html", "--json");
         Assert.Equal(0, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
         var root = Result(output);
         Assert.Equal(["preset", "target", "converted", "skipped", "failed", "files"], root.EnumerateObject().Select(p => p.Name));
         Assert.Equal("HTML", root.GetProperty("preset").GetString());
@@ -841,7 +1505,8 @@ public sealed class CliTests : IDisposable
         var catalog = new ConverterCatalog([Package("pandoc", false, new ConversionEdge("md", "pptx"))]);
         var (code, output, errors) = await RunWith(catalog, "convert", Input("md"), "--to", "pptx", "--json");
         Assert.Equal(1, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
+        Assert.Equal("failed", Assert.Single(Events(errors), e => e.GetProperty("event").GetString() == "file").GetProperty("state").GetString());
         Hints(FileResultOf(output), "pandoc");
         (code, output, _) = await RunWith(catalog, "convert", Input("txt"), "--to", "mp3", "--json");
         Assert.Equal(1, code);
@@ -1004,7 +1669,8 @@ public sealed class CliTests : IDisposable
         var root = Result(output.ToString());
         Assert.Equal(1, root.GetProperty("failed").GetInt32());
         Assert.Equal(0, root.GetProperty("converted").GetInt32());
-        Assert.Equal("", errors.ToString());
+        OnlyEvents(errors.ToString());
+        Assert.Equal("cancelled", Assert.Single(Events(errors.ToString()), e => e.GetProperty("event").GetString() == "file").GetProperty("state").GetString());
         var file = root.GetProperty("files")[0];
         Assert.Equal(["source", "state", "outputs", "error"], file.EnumerateObject().Select(p => p.Name));
         Assert.Equal("cancelled", file.GetProperty("state").GetString());
@@ -1124,9 +1790,14 @@ public sealed class CliTests : IDisposable
         public bool NeedsShaping { get; init; }
         public bool ReadsImages { get; set; }
         public Func<ConversionStep, CancellationToken, Task<IReadOnlyList<string>>>? Convert { get; set; }
+        public Func<IProgress<double>?, CancellationToken, Task>? BeforeConvert { get; init; }
         public EngineStatus GetStatus() => Available ? EngineStatus.Available() : EngineStatus.Unavailable(Reason);
-        public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
-            Convert?.Invoke(step, cancellationToken) ?? Write(step);
+        public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+        {
+            if (BeforeConvert is not null)
+                await BeforeConvert(progress, cancellationToken);
+            return await (Convert?.Invoke(step, cancellationToken) ?? Write(step));
+        }
         public static Task<IReadOnlyList<string>> Write(ConversionStep step)
         {
             if (step.Output.Allocate(step.To) is not { } path)
@@ -1143,7 +1814,8 @@ public sealed class CliTests : IDisposable
 
     private sealed class UnexpectedMerger : IPdfMerger, ITiffMerger, IMediaJoiner
     {
-        public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken) =>
+        public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
+            CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Unexpected PDF merge");
         public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, ImageOptions options, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Unexpected TIFF merge");

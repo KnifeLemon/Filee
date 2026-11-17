@@ -41,6 +41,7 @@ public sealed class WindowsPlatformServices : IPlatformServices
         "Q-Dir",
         "FreeCommander",
         "FPilot",         // File Pilot (#633)
+        "xplorer2_64",    // xplorer² (#1424)
     };
 
     public void RaiseTopmost(nint windowHandle)
@@ -353,8 +354,8 @@ public sealed class WindowsPlatformServices : IPlatformServices
         using var verb = Registry.CurrentUser.CreateSubKey(ContextMenuKey);
         verb.SetValue("MUIVerb", label);
         verb.SetValue("Icon", $"\"{executablePath}\",0");
-        // "Player": Explorer invokes the verb once per selected file; the running instance
-        // collects the calls (see SingleInstance / --convert handling in the app).
+        // "Player": Explorer invokes the verb once per selected file, and offers it for up to 100 files instead of 15;
+        // the running instance makes one request of the calls (see SelectionLaunches).
         verb.SetValue("MultiSelectModel", "Player");
         using var command = verb.CreateSubKey("command");
         command.SetValue(null, $"\"{executablePath}\" --convert \"%1\"");

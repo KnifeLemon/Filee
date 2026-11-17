@@ -2,25 +2,32 @@
 // writes nothing for longer than the limit is treated as stuck. Engines that report their progress all the time
 // (FFmpeg, calibre) may then run as long as a big file needs instead of up to a fixed time.
 
-using System.Diagnostics;
-
 namespace Filee.Engines.Infrastructure;
 
 /// <summary>Watches a running program's output for a stall.</summary>
-/// <param name="limit">How long the program may stay silent before it counts as stuck.</param>
-internal sealed class StallWatch(TimeSpan limit)
+internal sealed class StallWatch
 {
     private static readonly TimeSpan DefaultInterval = TimeSpan.FromSeconds(1);
 
-    private long _lastActivity = Stopwatch.GetTimestamp();
+    private readonly TimeProvider _time;
+    private long _lastActivity;
 
-    public TimeSpan Limit { get; } = limit;
+    /// <param name="limit">How long the program may stay silent before it counts as stuck.</param>
+    /// <param name="time">The clock for the silence and the checks; the system clock when null (tests pass a fake).</param>
+    public StallWatch(TimeSpan limit, TimeProvider? time = null)
+    {
+        Limit = limit;
+        _time = time ?? TimeProvider.System;
+        _lastActivity = _time.GetTimestamp();
+    }
+
+    public TimeSpan Limit { get; }
 
     /// <summary>Records a sign of life (a line of output); called from the output reader threads.</summary>
-    public void Touch() => Volatile.Write(ref _lastActivity, Stopwatch.GetTimestamp());
+    public void Touch() => Volatile.Write(ref _lastActivity, _time.GetTimestamp());
 
     /// <summary>True once the program has written nothing for longer than <see cref="Limit"/>.</summary>
-    public bool IsStalled => Stopwatch.GetElapsedTime(Volatile.Read(ref _lastActivity)) > Limit;
+    public bool IsStalled => _time.GetElapsedTime(Volatile.Read(ref _lastActivity)) > Limit;
 
     /// <summary>
     /// Waits until <paramref name="exited"/> completes, checking every <paramref name="interval"/> (a second when
@@ -32,7 +39,7 @@ internal sealed class StallWatch(TimeSpan limit)
     {
         while (!exited.IsCompleted)
         {
-            await Task.WhenAny(exited, Task.Delay(interval ?? DefaultInterval, cancellationToken));
+            await Task.WhenAny(exited, Task.Delay(interval ?? DefaultInterval, _time, cancellationToken));
             cancellationToken.ThrowIfCancellationRequested();
             if (!exited.IsCompleted && IsStalled)
                 return false;

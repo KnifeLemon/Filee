@@ -1,10 +1,12 @@
 // Ruled tables in PDF → DOCX / HWPX: grids drawn with lines (or thin filled bars) become real tables with the PDF's
-// column widths, merged cells, borders and shading, in reading order between the paragraphs around them. Boxes,
+// column widths, merged cells, borders, shading and the pictures in their cells, in reading order between the
+// paragraphs around them. Boxes,
 // underlines and empty grids stay what they were. The PDFs are drawn here with the standard 14 fonts.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
+using ImageMagick;
 using static Filee.Engines.Tests.DocxAssert;
 
 namespace Filee.Engines.Tests;
@@ -161,6 +163,118 @@ public class PdfTableTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.InRange(corner.Borders.Value.Left.WidthMm, 0.5, 1);
         Assert.Equal("#D9D9D9", corner.Fill);
         Assert.Null(inner.Fill);
+    }
+
+    [Fact]
+    public async Task Long_text_running_past_its_cell_stays_in_that_cell()
+    {
+        // A spreadsheet's measurement sheet (#138): one label is longer than its column, so its last word runs on past
+        // the cell's right rule, where the spreadsheet cut it off (the PDF only clips it).
+        var dir = fx.NewFolder();
+        var pdf = new PdfBuilder().NewPage();
+        double[] xs = [50, 200, 260, 400];
+        double[] ys = [100, 120, 140, 160, 180];
+        foreach (var y in ys)
+            pdf.Rule(xs[0], y, xs[^1], y);
+        foreach (var x in xs)
+            pdf.Rule(x, ys[0], x, ys[^1]);
+        string[][] cells =
+        [
+            ["Point of measurement", "Tol.", "M"],
+            ["Shoulder seam forward", "1/8", "1/2"],
+            ["Front neck drop at the collar notch", "1/8", "3 1/2"],
+            ["Collar point", "1/8", "3.5"],
+        ];
+        for (var r = 0; r < 4; r++)
+        {
+            for (var c = 0; c < 3; c++)
+                Cell(pdf, cells[r][c], c == 1 ? xs[c] + 16 : xs[c], ys[r], bold: r == 0); // tolerances sit mid-column
+        }
+        var label = pdf.Width(cells[2][0], 10, pdf.Font());
+        Assert.InRange(xs[0] + 4 + label, xs[1] + 2, xs[1] + 16); // its last word straddles the rule, short of the next text
+        var docx = await ConvertAsync(pdf.Save(Path.Combine(dir, "overflow.pdf")), "docx");
+
+        ValidPackage(docx);
+        var table = Assert.Single(ReadBack(docx).Sections.SelectMany(s => s.Blocks).OfType<HTable>());
+        var texts = Texts(table);
+        Assert.Equal(4, texts.Length);
+        Assert.Equal("Front neck drop at the collar notch", texts[2][0]);
+        Assert.Equal(["1/8", "3 1/2"], texts[2][1..]);
+        Assert.Equal(cells[3], texts[3]);
+    }
+
+    /// <summary>
+    /// A 3 × 2 table with pictures in its cells (#1082): under the label "Bottle" a picture as wide as its cell (148 of
+    /// 150 pt, wider than the cell's inner width), two pictures side by side in the last cell, and a picture under
+    /// the table that is no part of it.
+    /// </summary>
+    private static string PictureTable(string folder)
+    {
+        var pdf = new PdfBuilder().NewPage();
+        pdf.Paragraph("The products and their photos are in the table below.", 11, pdf.Font(), 50, 80, 495, 14);
+        double[] xs = [50, 200, 350, 545];
+        double[] ys = [100, 120, 240];
+        foreach (var y in ys)
+            pdf.Rule(xs[0], y, xs[^1], y);
+        foreach (var x in xs)
+            pdf.Rule(x, ys[0], x, ys[^1]);
+        Cell(pdf, "Product", xs[0], ys[0], bold: true);
+        Cell(pdf, "Front", xs[1], ys[0], bold: true);
+        Cell(pdf, "Sides", xs[2], ys[0], bold: true);
+        Cell(pdf, "Orange juice", xs[0], ys[1]);
+        Cell(pdf, "Bottle", xs[1], ys[1]);
+        pdf.Picture(PdfBuilder.Photo(folder, "bottle.png", MagickFormat.Png, 148, 80), 201, 145, 148, 80);
+        pdf.Picture(PdfBuilder.Photo(folder, "left.png", MagickFormat.Png, 80, 50), 360, 150, 80, 50);
+        pdf.Picture(PdfBuilder.Photo(folder, "right.png", MagickFormat.Png, 80, 50), 450, 150, 80, 50);
+        pdf.Picture(PdfBuilder.Photo(folder, "shop.png", MagickFormat.Png, 100, 60), 50, 270, 100, 60);
+        return pdf.Save(Path.Combine(folder, "pictures.pdf"));
+    }
+
+    private static List<HImage> Images(HCell cell) => [.. Paragraphs(cell.Blocks).SelectMany(p => p.Inlines).OfType<HImage>()];
+
+    /// <summary>The pictures of a table read back from DOCX or HWPX: in their cells, in order with the text, fitted to the cell.</summary>
+    private static void AssertPicturesInCells(HDocument model)
+    {
+        var blocks = model.Sections.SelectMany(s => s.Blocks)
+            .Where(b => b is HTable || (b is HParagraph p && (TextOf(p).Trim().Length > 0 || p.Inlines.OfType<HImage>().Any()))).ToList();
+        Assert.Equal(3, blocks.Count);
+        Assert.StartsWith("The products", TextOf(Assert.IsType<HParagraph>(blocks[0])).Trim());
+        var table = Assert.IsType<HTable>(blocks[1]);
+        Assert.Equal([["Product", "Front", "Sides"], ["Orange juice", "Bottle", ""]], Texts(table));
+
+        // The picture under the label, after it, shrunk to the cell's inner width (150 pt less 4 pt on each side).
+        var bottleCell = table.Rows[1].Cells[1];
+        var paragraphs = Paragraphs(bottleCell.Blocks).Where(p => TextOf(p).Trim().Length > 0 || p.Inlines.OfType<HImage>().Any()).ToList();
+        Assert.Equal(2, paragraphs.Count);
+        Assert.Equal("Bottle", TextOf(paragraphs[0]).Trim());
+        var bottle = Assert.Single(paragraphs[1].Inlines.OfType<HImage>());
+        Assert.InRange(bottle.Width!.Value, 14000, 14200);
+        Assert.InRange(bottle.Height!.Value / (double)bottle.Width.Value, 80 / 148.0 - 0.01, 80 / 148.0 + 0.01);
+
+        // Two pictures side by side stay on one line, at their size.
+        var sides = Paragraphs(table.Rows[1].Cells[2].Blocks).Single(p => p.Inlines.OfType<HImage>().Any()).Inlines.OfType<HImage>().ToList();
+        Assert.Equal(2, sides.Count);
+        Assert.All(sides, s => Assert.InRange(s.Width!.Value, 7900, 8100));
+        Assert.Empty(table.Rows.SelectMany(r => r.Cells).Where(c => c != bottleCell && c != table.Rows[1].Cells[2]).SelectMany(Images));
+
+        // The picture under the table stays a paragraph of the page.
+        var shop = Assert.Single(Assert.IsType<HParagraph>(blocks[2]).Inlines.OfType<HImage>());
+        Assert.InRange(shop.Width!.Value, 9900, 10100);
+    }
+
+    [Fact]
+    public async Task Pictures_in_a_table_stay_in_their_cells()
+    {
+        var path = PictureTable(fx.NewFolder());
+
+        var docx = await ConvertAsync(path, "docx");
+        ValidPackage(docx);
+        AssertPicturesInCells(ReadBack(docx));
+
+        var hwpx = await ConvertAsync(path, "hwpx");
+        HwpxAssert.ValidPackage(hwpx, expectImages: 4);
+        AssertPicturesInCells(HwpxReader.Read(hwpx, Path.Combine(Path.GetDirectoryName(hwpx)!, "readback-media")));
+        HwpxAssert.RenderWithRhwp(fx, hwpx, "pdf-table-pictures");
     }
 
     [Fact]

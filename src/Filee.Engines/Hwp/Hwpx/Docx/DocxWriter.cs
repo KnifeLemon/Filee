@@ -72,6 +72,7 @@ internal sealed partial class DocxWriter
     /// <summary>Writes <paramref name="document"/> as a .docx file (replaced atomically).</summary>
     public static void Write(HDocument document, string outputPath)
     {
+        Nesting.Limit(document); // the writer recurses per table, text box and note level
         var writer = new DocxWriter();
         var body = writer.Body(document);
         writer.WritePackage(document, body, outputPath);
@@ -164,49 +165,58 @@ internal sealed partial class DocxWriter
         });
 
         var temp = outputPath + ".tmp";
-        using (var file = File.Create(temp))
-        using (var zip = new ZipArchive(file, ZipArchiveMode.Create))
+        try
         {
-            WriteText(zip, "[Content_Types].xml", ContentTypes(parts));
-            WriteText(zip, "_rels/.rels",
-                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
-                $"<Relationship Id=\"rId1\" Type=\"{RelationshipBase}officeDocument\" Target=\"word/document.xml\"/>" +
-                "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>" +
-                $"<Relationship Id=\"rId3\" Type=\"{RelationshipBase}extended-properties\" Target=\"docProps/app.xml\"/>" +
-                "</Relationships>");
-            foreach (var part in parts)
+            using (var file = File.Create(temp))
+            using (var zip = new ZipArchive(file, ZipArchiveMode.Create))
             {
-                WriteText(zip, part.Path, part.Xml);
-                if (part.Relationships.Count > 0)
+                WriteText(zip, "[Content_Types].xml", ContentTypes(parts));
+                WriteText(zip, "_rels/.rels",
+                    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                    $"<Relationship Id=\"rId1\" Type=\"{RelationshipBase}officeDocument\" Target=\"word/document.xml\"/>" +
+                    "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>" +
+                    $"<Relationship Id=\"rId3\" Type=\"{RelationshipBase}extended-properties\" Target=\"docProps/app.xml\"/>" +
+                    "</Relationships>");
+                foreach (var part in parts)
                 {
-                    var folder = part.Path[..part.Path.LastIndexOf('/')];
-                    var name = part.Path[(part.Path.LastIndexOf('/') + 1)..];
-                    WriteText(zip, $"{folder}/_rels/{name}.rels",
-                        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
-                        string.Concat(part.Relationships.Select(r =>
-                            $"<Relationship Id=\"{r.Id}\" Type=\"{r.Type}\" Target=\"{Escape(r.Target)}\"{(r.External ? " TargetMode=\"External\"" : "")}/>")) +
-                        "</Relationships>");
+                    WriteText(zip, part.Path, part.Xml);
+                    if (part.Relationships.Count > 0)
+                    {
+                        var folder = part.Path[..part.Path.LastIndexOf('/')];
+                        var name = part.Path[(part.Path.LastIndexOf('/') + 1)..];
+                        WriteText(zip, $"{folder}/_rels/{name}.rels",
+                            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                            string.Concat(part.Relationships.Select(r =>
+                                $"<Relationship Id=\"{r.Id}\" Type=\"{r.Type}\" Target=\"{Escape(r.Target)}\"{(r.External ? " TargetMode=\"External\"" : "")}/>")) +
+                            "</Relationships>");
+                    }
+                }
+                foreach (var (source, (zipPath, extension)) in _media)
+                {
+                    using var target = zip.CreateEntry(zipPath, CompressionLevel.Optimal).Open();
+                    if (string.Equals(Path.GetExtension(source).TrimStart('.'), extension, StringComparison.OrdinalIgnoreCase)
+                        || (extension == "jpg" && Path.GetExtension(source).Equals(".jpeg", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        using var input = File.OpenRead(source);
+                        input.CopyTo(target);
+                    }
+                    else
+                    {
+                        // WEBP, TIFF, SVG, AVIF ... → PNG, which every Word version shows.
+                        using var image = new MagickImage(source);
+                        DdsChannelOrder.Correct(source, image);
+                        image.Write(target, MagickFormat.Png);
+                    }
                 }
             }
-            foreach (var (source, (zipPath, extension)) in _media)
-            {
-                using var target = zip.CreateEntry(zipPath, CompressionLevel.Optimal).Open();
-                if (string.Equals(Path.GetExtension(source).TrimStart('.'), extension, StringComparison.OrdinalIgnoreCase)
-                    || (extension == "jpg" && Path.GetExtension(source).Equals(".jpeg", StringComparison.OrdinalIgnoreCase)))
-                {
-                    using var input = File.OpenRead(source);
-                    input.CopyTo(target);
-                }
-                else
-                {
-                    // WEBP, TIFF, SVG, AVIF ... → PNG, which every Word version shows.
-                    using var image = new MagickImage(source);
-                    DdsChannelOrder.Correct(source, image);
-                    image.Write(target, MagickFormat.Png);
-                }
-            }
+            File.Move(temp, outputPath, overwrite: true);
         }
-        File.Move(temp, outputPath, overwrite: true);
+        finally
+        {
+            // A write that fails (a picture that can't be read) leaves no half-written file behind.
+            if (File.Exists(temp))
+                File.Delete(temp);
+        }
     }
 
     private string ContentTypes(List<Part> parts)

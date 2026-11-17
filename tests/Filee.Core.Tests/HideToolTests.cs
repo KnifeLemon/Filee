@@ -179,6 +179,26 @@ public class HideToolTests
     }
 
     [Fact]
+    public void Each_part_keeps_its_own_style_through_the_conversion_and_saving()
+    {
+        var tool = Tool();
+        HideTool.Remember(tool, HideStyle.Box, 5);
+        var boxed = Area(0.1, 0.2, 0.3, 0.4);
+        boxed.Style = HideStyle.Box;
+        var blurred = Area(0.5, 0.5, 0.6, 0.6); // runs off the picture: clamped, its style kept
+        blurred.Style = HideStyle.Blur;
+
+        var conversion = HideTool.ConversionOf(tool, "png", [boxed, blurred, Area(0, 0, 0.1, 0.1)]);
+        var json = JsonSerializer.Serialize(new List<Preset> { conversion }, FileeJsonContext.Default.ListPreset);
+        var read = JsonSerializer.Deserialize(json, FileeJsonContext.Default.ListPreset)!.Single();
+
+        Assert.Equal([HideStyle.Box, HideStyle.Blur, null], read.Image.HiddenAreas!.Select(a => a.Style));
+        Assert.Equal(0.5, read.Image.HiddenAreas![1].Width, 9);
+        Assert.Equal(HideStyle.Box, read.Image.HideStyle);
+        Assert.Contains("\"style\": \"Box\"", json);
+    }
+
+    [Fact]
     public void A_style_from_a_newer_Filee_reads_as_pixelate_instead_of_failing_the_whole_file()
     {
         var json = JsonSerializer.Serialize(new List<Preset> { Tool() }, FileeJsonContext.Default.ListPreset)
@@ -276,12 +296,12 @@ public class HideToolTests
     // ───────────────────────── Settings schema 52 ─────────────────────────
 
     [Fact]
-    public void A_new_library_has_the_tool_after_edit_pictures_in_the_library_and_on_the_images_donut()
+    public void A_new_library_keeps_hide_in_the_library_for_the_toolbar_palette()
     {
         var presets = BuiltInData.CreatePresets();
         Assert.Equal("tool-image-edit", presets[presets.FindIndex(p => p.Id == "tool-hide") - 1].Id);
         var images = BuiltInData.CreateProfiles().Single(p => p.Id == "images");
-        Assert.Equal(["half-size", "tool-image-edit", "tool-hide"], images.PresetIds.Skip(images.PresetIds.IndexOf("half-size")));
+        Assert.DoesNotContain("tool-hide", images.PresetIds);
         Assert.DoesNotContain("tool-hide", images.BackPresetIds!);
         Assert.InRange(images.PresetIds.Count, 1, ToolbarProfile.MaxSlices);
     }
@@ -290,7 +310,7 @@ public class HideToolTests
     {
         var presets = BuiltInData.CreatePresets();
         presets.RemoveAll(p => p.Id == "tool-hide");
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var images = profiles.Single(p => p.Id == "images");
         images.PresetIds.Remove("tool-hide");
         return (presets, profiles, images);
@@ -305,7 +325,7 @@ public class HideToolTests
 
         Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id));
         Assert.True(presets.Single(p => p.Id == "tool-hide").IsHideTool);
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "images").PresetIds, images.PresetIds);
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "images").PresetIds, images.PresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(52, presets, profiles)); // once only
     }
 
@@ -369,7 +389,7 @@ public class HideToolTests
         hide.Output.FileNamePattern = "{name}_safe";
         Assert.True(hide.IsCropTool);
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(51, presets, BuiltInData.CreateProfiles()));
+        Assert.True(SettingsMigrations.ApplyToLibrary(51, presets, BuiltInData.ProfilesSchema58()));
 
         Assert.True(hide.IsHideTool);
         Assert.Equal(("Redact", "{name}_safe"), (hide.Name, hide.Output.FileNamePattern));
@@ -378,7 +398,7 @@ public class HideToolTests
         // One that read it as a group.
         hide.Kind = PresetKind.Group;
         hide.TargetFormat = Preset.GroupTarget;
-        Assert.True(SettingsMigrations.ApplyToLibrary(51, presets, BuiltInData.CreateProfiles()));
+        Assert.True(SettingsMigrations.ApplyToLibrary(51, presets, BuiltInData.ProfilesSchema58()));
         Assert.True(hide.IsHideTool);
         Assert.Equal(BuiltInData.SameAsSource, hide.TargetFormat);
     }

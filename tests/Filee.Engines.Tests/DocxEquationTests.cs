@@ -99,6 +99,81 @@ public class DocxEquationTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
+    private static string NumberedArray(string body, string number) =>
+        $"<m:eqArr><m:eqArrPr><m:maxDist m:val=\"1\"/></m:eqArrPr><m:e>{body}{MR("#")}{number}</m:e></m:eqArr>";
+
+    private List<HParagraph> ReadParagraphs(DocxBuilder docx)
+    {
+        var dir = fx.NewFolder();
+        return DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media"))
+            .Sections.SelectMany(s => s.Blocks).OfType<HParagraph>().ToList();
+    }
+
+    [Fact]
+    public void The_number_after_a_hash_goes_to_the_right_margin()
+    {
+        // "E#(1)" in Word (issue #355): rhwp drew "#(1)" as part of the equation.
+        var paragraph = Assert.Single(ReadParagraphs(new DocxBuilder().Paragraph(
+            P(Display(NumberedArray(MR("a=b"), Delimited(MR("1")))), "<w:jc w:val=\"center\"/>"))));
+
+        var box = Assert.IsType<HTextBox>(paragraph.Inlines[0]);
+        var equation = Assert.IsType<HEquation>(Assert.Single(paragraph.Inlines.Skip(1)));
+        Assert.Equal("a = b", EquationScript.Script(equation.Math));
+        Assert.Equal(HAlign.Center, paragraph.Format.Align);
+        var number = Assert.IsType<HParagraph>(Assert.Single(box.Blocks));
+        Assert.Equal("(1)", Assert.IsType<HText>(Assert.Single(number.Inlines)).Text);
+        Assert.Equal(HAlign.Right, number.Format.Align);
+        // A4 with 1 inch margins: the box ends at the right margin of the 451 pt column.
+        Assert.Equal(HwpxUnits.FromTwips(11906 - 2880), box.Anchor!.HorizontalOffset + box.Width);
+        Assert.Equal(("COLUMN", "IN_FRONT_OF_TEXT"), (box.Anchor.HorizontalRelativeTo, box.Anchor.Wrap));
+    }
+
+    [Fact]
+    public void A_hash_elsewhere_stays_in_the_equation()
+    {
+        var plain = OmmlReader.Read(XElement.Parse($"<m:oMath {Namespaces}>{MR("a#b")}</m:oMath>"));
+        Assert.Null(OmmlReader.SplitNumber(plain).Number);
+        var twoRows = OmmlReader.Read(XElement.Parse($"<m:oMath {Namespaces}><m:eqArr><m:e>{MR("a#1")}</m:e><m:e>{MR("b")}</m:e></m:eqArr></m:oMath>"));
+        Assert.Null(OmmlReader.SplitNumber(twoRows).Number);
+        var nothingAfter = OmmlReader.Read(XElement.Parse($"<m:oMath {Namespaces}><m:eqArr><m:e>{MR("a#")}</m:e></m:eqArr></m:oMath>"));
+        Assert.Null(OmmlReader.SplitNumber(nothingAfter).Number);
+    }
+
+    [Fact]
+    public void A_long_equation_breaks_before_its_signs()
+    {
+        // Issue #355: one line that ran off the page.
+        var terms = string.Concat(Enumerable.Range(1, 30).Select(i => MR("+") + Sup(MR("e"), MR("-" + i)) + MR("0,0010" + i)));
+        var paragraphs = ReadParagraphs(new DocxBuilder().Paragraph(
+            P(Display(MR("y=") + terms), "<w:spacing w:before=\"100\" w:after=\"200\"/><w:jc w:val=\"center\"/>")));
+
+        Assert.True(paragraphs.Count > 1);
+        var equations = paragraphs.Select(p => Assert.IsType<HEquation>(Assert.Single(p.Inlines))).ToList();
+        var width = HwpxUnits.FromTwips(11906 - 2880);
+        Assert.All(equations, e => Assert.True(EquationScript.Measure(e.Math, e.Format.Size ?? 1000).Width <= width));
+        Assert.StartsWith("y =", EquationScript.Script(equations[0].Math));
+        Assert.All(equations.Skip(1), e => Assert.StartsWith("+", EquationScript.Script(e.Math)));
+        Assert.All(paragraphs, p => Assert.Equal(HAlign.Center, p.Format.Align));
+        Assert.Equal(HwpxUnits.FromTwips(100), paragraphs[0].Format.Before);
+        Assert.Equal(0, paragraphs[0].Format.After);
+        Assert.Equal(0, paragraphs[^1].Format.Before);
+        Assert.Equal(HwpxUnits.FromTwips(200), paragraphs[^1].Format.After);
+    }
+
+    [Fact]
+    public void An_equation_that_fits_or_is_in_a_cell_stays_on_one_line()
+    {
+        var terms = string.Concat(Enumerable.Range(1, 30).Select(i => MR("+") + Sup(MR("e"), MR("-" + i))));
+        var cell = $"<w:tbl><w:tblGrid><w:gridCol w:w=\"9000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"9000\" w:type=\"dxa\"/></w:tcPr>{P(Display(MR("y=") + terms))}</w:tc></w:tr></w:tbl>";
+        var dir = fx.NewFolder();
+        var document = DocxReader.Read(new DocxBuilder().Paragraph(P(Display(MR("y=1+2")))).Paragraph(cell).Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media"));
+
+        var blocks = document.Sections.Single().Blocks;
+        Assert.Single(Assert.IsType<HParagraph>(blocks[0]).Inlines);
+        var table = Assert.IsType<HTable>(blocks[1]);
+        Assert.Single(Assert.IsType<HParagraph>(Assert.Single(table.Rows.Single().Cells.Single().Blocks)).Inlines);
+    }
+
     [Fact]
     public void Equation_boxes_follow_the_layout_of_the_script()
     {

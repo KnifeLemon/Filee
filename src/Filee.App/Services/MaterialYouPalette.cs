@@ -29,33 +29,73 @@ public sealed class MaterialYouPalette
     public required Color OnAccent { get; init; }
 
     /// <summary>Creates an Avalonia ResourceDictionary mapping standard Filee theme keys to solid brushes and resources.</summary>
-    public ResourceDictionary ToResourceDictionary() => new()
+    public ResourceDictionary ToResourceDictionary()
     {
-        ["PageBrush"] = new SolidColorBrush(Page),
-        ["SurfaceBrush"] = new SolidColorBrush(Surface),
-        ["SurfaceAltBrush"] = new SolidColorBrush(SurfaceAlt),
-        ["SubtleBorderBrush"] = new SolidColorBrush(SubtleBorder),
-        ["TextPrimaryBrush"] = new SolidColorBrush(TextPrimary),
-        ["TextSecondaryBrush"] = new SolidColorBrush(TextSecondary),
-        ["DangerBrush"] = new SolidColorBrush(Danger),
-        ["SuccessBrush"] = new SolidColorBrush(Success),
-        ["WarningBrush"] = new SolidColorBrush(Warning),
-        ["CardShadow"] = CardShadow,
+        var resources = new ResourceDictionary
+        {
+            ["PageBrush"] = new SolidColorBrush(Page),
+            ["SurfaceBrush"] = new SolidColorBrush(Surface),
+            ["SurfaceAltBrush"] = new SolidColorBrush(SurfaceAlt),
+            ["SubtleBorderBrush"] = new SolidColorBrush(SubtleBorder),
+            ["TextPrimaryBrush"] = new SolidColorBrush(TextPrimary),
+            ["TextSecondaryBrush"] = new SolidColorBrush(TextSecondary),
+            ["DangerBrush"] = new SolidColorBrush(Danger),
+            ["SuccessBrush"] = new SolidColorBrush(Success),
+            ["WarningBrush"] = new SolidColorBrush(Warning),
+            ["CardShadow"] = CardShadow,
 
-        ["AccentColor"] = Accent,
-        ["AccentBrush"] = new SolidColorBrush(Accent),
-        ["AccentSoftBrush"] = new SolidColorBrush(AccentSoft),
-        ["AccentFaintBrush"] = new SolidColorBrush(AccentFaint),
-        ["AccentStrongBrush"] = new SolidColorBrush(AccentStrong),
-        ["OnAccentBrush"] = new SolidColorBrush(OnAccent),
-        ["SystemAccentColor"] = Accent,
-        ["SystemAccentColorLight1"] = SoftPalette.Shade(Accent, 0.15),
-        ["SystemAccentColorLight2"] = SoftPalette.Shade(Accent, 0.30),
-        ["SystemAccentColorLight3"] = SoftPalette.Shade(Accent, 0.45),
-        ["SystemAccentColorDark1"] = SoftPalette.Shade(Accent, -0.15),
-        ["SystemAccentColorDark2"] = SoftPalette.Shade(Accent, -0.30),
-        ["SystemAccentColorDark3"] = SoftPalette.Shade(Accent, -0.45),
-    };
+            ["AccentColor"] = Accent,
+            ["AccentBrush"] = new SolidColorBrush(Accent),
+            ["AccentSoftBrush"] = new SolidColorBrush(AccentSoft),
+            ["AccentFaintBrush"] = new SolidColorBrush(AccentFaint),
+            ["AccentStrongBrush"] = new SolidColorBrush(AccentStrong),
+            ["SystemAccentColor"] = Accent,
+            ["SystemAccentColorLight1"] = SoftPalette.Shade(Accent, 0.15),
+            ["SystemAccentColorLight2"] = SoftPalette.Shade(Accent, 0.30),
+            ["SystemAccentColorLight3"] = SoftPalette.Shade(Accent, 0.45),
+            ["SystemAccentColorDark1"] = SoftPalette.Shade(Accent, -0.15),
+            ["SystemAccentColorDark2"] = SoftPalette.Shade(Accent, -0.30),
+            ["SystemAccentColorDark3"] = SoftPalette.Shade(Accent, -0.45),
+
+            // Fluent's own templates read these keys for sliders and focused text boxes (filled buttons, checkboxes and the
+            // like: ApplyAccentStates below). Pointing them at the Material You accent keeps those controls on the chosen colour.
+            // The slider thumb is a slightly darker shade of the accent so it stays visible against the accent-filled track.
+            ["AccentThumbBrush"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.2)),
+            ["SliderThumbBackground"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.2)),
+            ["SliderThumbBackgroundPointerOver"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.26)),
+            ["SliderThumbBackgroundPressed"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.32)),
+            ["SliderTrackValueFill"] = new SolidColorBrush(Accent),
+            ["SliderTrackValueFillPointerOver"] = new SolidColorBrush(Accent),
+            ["SliderTrackValueFillPressed"] = new SolidColorBrush(Accent),
+            ["TextControlBorderBrushFocused"] = new SolidColorBrush(Accent),
+
+            // The cross in search boxes turns the accent colour on hover and press, with no background behind it.
+            ["TextControlButtonBackgroundPointerOver"] = new SolidColorBrush(Colors.Transparent),
+            ["TextControlButtonBackgroundPressed"] = new SolidColorBrush(Colors.Transparent),
+            ["TextControlButtonBorderBrushPointerOver"] = new SolidColorBrush(Colors.Transparent),
+            ["TextControlButtonBorderBrushPressed"] = new SolidColorBrush(Colors.Transparent),
+            ["TextControlButtonForegroundPointerOver"] = new SolidColorBrush(Accent),
+            ["TextControlButtonForegroundPressed"] = new SolidColorBrush(Accent),
+        };
+
+        SoftPalette.ApplyAccentStates(resources, Accent, OnAccent, hover: -0.08, pressed: -0.16);
+
+        // Dark mode: Fluent's hover and focus fills for inputs and dropdowns are near-black, a sudden dark box. Keep them a
+        // faint step lighter than the resting fill (SurfaceAlt, which the Material You styles already give inputs and
+        // dropdowns) instead, so hovering only hints at the change. The resting fills themselves are not set here.
+        if (Luminance(Surface) < 0.5)
+        {
+            var faint = new SolidColorBrush(SoftPalette.Shade(SurfaceAlt, 0.06));
+            foreach (var key in new[]
+                     {
+                         "TextControlBackgroundPointerOver", "TextControlBackgroundFocused",
+                         "ComboBoxBackgroundPointerOver", "ComboBoxBackgroundPressed",
+                     })
+                resources[key] = faint;
+        }
+
+        return resources;
+    }
 
     /// <summary>True if the colour is monochrome (low saturation or black/white/charcoal).</summary>
     public static bool IsMonochrome(Color c)
@@ -69,6 +109,48 @@ public sealed class MaterialYouPalette
     /// <summary>Calculates standard sRGB relative luminance.</summary>
     public static double Luminance(Color c) => (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
 
+    /// <summary>WCAG 2.x relative luminance (gamma-corrected), used for contrast ratios.</summary>
+    public static double RelativeLuminance(Color c) => SoftPalette.RelativeLuminance(c);
+
+    /// <summary>WCAG 2.x contrast ratio between two colours (1 to 21).</summary>
+    public static double ContrastRatio(Color a, Color b) => SoftPalette.ContrastRatio(a, b);
+
+    /// <summary>Minimum contrast between filled accent controls (buttons, checkboxes) and the text or glyph on them.</summary>
+    public const double MinAccentContrast = SoftPalette.MinAccentContrast;
+
+    private static readonly Color DarkOnAccent = Color.Parse("#1F1E1D");
+
+    /// <summary>
+    /// Picks the light-mode accent fill and the colour used on top of it. The fill stays as close to the chosen accent
+    /// as readability allows: the old rule jumped any light accent to a fixed 45% lightness, which turned lavender
+    /// (#7F77DD) into a dark blue (#392EB8). Now the seed is used as is when white text already reads on it, nudged
+    /// only slightly darker when that is enough, and light pastels keep their colour and get dark text instead.
+    /// </summary>
+    internal static (Color Primary, Color OnPrimary) LightPrimary(Color seed, double h, double sat, double l)
+    {
+        if (ContrastRatio(seed, Colors.White) >= MinAccentContrast)
+            return (seed, Colors.White);
+
+        // Darken in small steps, keeping hue and saturation, until white text is readable.
+        var candidate = seed;
+        var lightness = l;
+        while (lightness > 0.20 && ContrastRatio(candidate, Colors.White) < MinAccentContrast)
+        {
+            lightness -= 0.005;
+            candidate = HslToRgb(h, sat, lightness);
+        }
+
+        // A small nudge keeps the accent recognisable; a big one would change its character.
+        if (l - lightness <= 0.08)
+            return (candidate, Colors.White);
+
+        // Pastels (peach, rose, amber ...): keep the colour itself and put dark text on it.
+        if (ContrastRatio(seed, DarkOnAccent) >= MinAccentContrast)
+            return (seed, DarkOnAccent);
+
+        return (candidate, Colors.White);
+    }
+
     /// <summary>Generates Material You tonal resources for the specified seed and variant.</summary>
     public static MaterialYouPalette Generate(Color seed, bool isDark)
     {
@@ -80,8 +162,7 @@ public sealed class MaterialYouPalette
 
         if (!isDark)
         {
-            var primary = l > 0.60 ? HslToRgb(h, sat, 0.45) : seed;
-            var onPrimary = Luminance(primary) > 0.55 ? Color.Parse("#1F1E1D") : Colors.White;
+            var (primary, onPrimary) = LightPrimary(seed, h, sat, l);
             var primaryContainer = HslToRgb(h, Math.Min(sat * 0.5, 0.40), 0.90);
             var onPrimaryContainer = HslToRgb(h, Math.Min(sat * 0.7, 0.60), 0.22);
 
@@ -108,7 +189,7 @@ public sealed class MaterialYouPalette
         else
         {
             var darkPrimary = l < 0.65 ? HslToRgb(h, Math.Min(sat * 0.75, 0.65), 0.75) : seed;
-            var onPrimary = Luminance(darkPrimary) > 0.45 ? Color.Parse("#16141A") : Colors.White;
+            var onPrimary = SoftPalette.OnAccent(darkPrimary);
             var primaryContainer = HslToRgb(h, Math.Min(sat * 0.5, 0.38), 0.26);
             var onPrimaryContainer = HslToRgb(h, Math.Min(sat * 0.7, 0.55), 0.88);
 

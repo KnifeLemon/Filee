@@ -35,6 +35,16 @@ internal sealed record VideoStreamInfo(int Width, int Height, double SampleAspec
     private static readonly string[] HighBitDepthSuffixes = ["p10", "p12", "p14", "p16"];
     private static readonly string[] HighBitDepthPrefixes = ["p010", "p012", "p016", "p210", "p216", "p410", "p416", "y210", "y212", "v210"];
 
+    /// <summary>
+    /// True when the decoded pictures carry an alpha channel: ProRes 4444 (yuva444p…), QuickTime Animation (argb), PNG
+    /// in MOV and APNG (rgba), GIF (FFmpeg always decodes it to bgra, so an opaque GIF counts too). Palette formats
+    /// (pal8) are left out, since they are as often opaque. A VP9 WebM with alpha reads as yuv420p: the alpha is a
+    /// side stream that only libvpx's decoder reads.
+    /// </summary>
+    public bool HasAlpha => PixelFormat is { } format && AlphaPrefixes.Any(p => format.StartsWith(p, StringComparison.Ordinal));
+
+    private static readonly string[] AlphaPrefixes = ["yuva", "rgba", "bgra", "argb", "abgr", "gbrap", "ya8", "ya16", "ayuv", "vuya"];
+
     /// <summary>True for HDR video: PQ (HDR10, Dolby Vision) or HLG transfer.</summary>
     public bool IsHdr => Color?.Transfer is "smpte2084" or "arib-std-b67";
 
@@ -85,9 +95,11 @@ internal sealed record AudioStreamInfo(int Channels, int SampleRate, string? Cod
 /// <param name="HasAttachments">The file carries attachments (an MKV's subtitle fonts).</param>
 /// <param name="AudioStreams">Decodable audio streams in file order (all when none can be decoded), null for none or only one;
 /// a stream ffprobe names no codec for counts as undecodable when the codec table is known.</param>
+/// <param name="CopyAudio">The track "Same format as the audio" copies (#1490): the one marked default, else the first,
+/// decodable or not; null for none.</param>
 internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, AudioStreamInfo? Audio, int? CoverStreamIndex,
     IReadOnlyList<SubtitleStreamInfo>? SubtitleStreams = null, bool RawStream = false, bool HasAttachments = false,
-    IReadOnlyList<AudioStreamInfo>? AudioStreams = null)
+    IReadOnlyList<AudioStreamInfo>? AudioStreams = null, AudioStreamInfo? CopyAudio = null)
 {
     /// <summary>Decodable audio streams in file order (all when none can be decoded): <see cref="Audio"/> first;
     /// a stream ffprobe names no codec for counts as undecodable when the codec table is known.</summary>
@@ -148,6 +160,8 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
         List<AudioStreamInfo> audios = [];
         List<AudioStreamInfo> undecodable = [];
         var audioOrdinal = 0;
+        AudioStreamInfo? copy = null;
+        var copyIsDefault = false;
         var attachments = false;
         double longestStream = 0;
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
@@ -177,6 +191,8 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
                     case "audio":
                         var sound = new AudioStreamInfo((int)Number(stream, "channels"), (int)Number(stream, "sample_rate"),
                             Text(stream, "codec_name"), audioOrdinal++);
+                        if (copy is null || !copyIsDefault && Disposition(stream, "default"))
+                            (copy, copyIsDefault) = (sound, Disposition(stream, "default"));
                         if (decodable is null || sound.Codec is { } name && decodable.Contains(name))
                             audios.Add(sound);
                         else
@@ -201,7 +217,7 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
             seconds = longestStream;
         var raw = root.TryGetProperty("format", out var container) && Text(container, "format_name") is "h264" or "hevc";
         return new MediaInfo(seconds > 0 ? TimeSpan.FromSeconds(seconds) : null, video, audio, cover,
-            subtitles.Count > 0 ? subtitles : null, raw, attachments, audios.Count > 1 ? audios : null);
+            subtitles.Count > 0 ? subtitles : null, raw, attachments, audios.Count > 1 ? audios : null, copy);
     }
 
     /// <summary>The colour tags of a video stream; null when it has none ("unknown" counts as none).</summary>
@@ -212,10 +228,12 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
         return color is { Primaries: null, Transfer: null, Matrix: null, Range: null } ? null : color;
     }
 
-    private static bool IsAttachedPicture(JsonElement stream) =>
+    private static bool IsAttachedPicture(JsonElement stream) => Disposition(stream, "attached_pic");
+
+    private static bool Disposition(JsonElement stream, string name) =>
         stream.TryGetProperty("disposition", out var disposition)
-        && disposition.TryGetProperty("attached_pic", out var attached)
-        && attached.ValueKind == JsonValueKind.Number && attached.GetInt32() == 1;
+        && disposition.TryGetProperty(name, out var flag)
+        && flag.ValueKind == JsonValueKind.Number && flag.GetInt32() == 1;
 
     /// <summary>Average frame rate; the nominal rate when the average is missing or nonsense (e.g. "0/0").</summary>
     private static double FrameRateOf(JsonElement stream)

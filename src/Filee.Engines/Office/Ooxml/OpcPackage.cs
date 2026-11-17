@@ -2,6 +2,7 @@
 
 using System.IO.Compression;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office.Ooxml;
 
@@ -14,10 +15,22 @@ internal sealed class OpcPackage : IDisposable
     private static readonly XNamespace PackageRelationships = "http://schemas.openxmlformats.org/package/2006/relationships";
 
     private readonly ZipArchive _zip;
+    private readonly BoundedXml _xml = new();
     private readonly Dictionary<string, XDocument?> _parts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, OpcRelationship>> _relationships = new(StringComparer.OrdinalIgnoreCase);
 
-    public OpcPackage(string path) => _zip = ZipFile.OpenRead(path);
+    private readonly UnpackLimit _unpack;
+
+    public OpcPackage(string path) : this(path, UnpackLimit.For(path))
+    {
+    }
+
+    /// <summary>A package with another limit on what <see cref="Extract"/> unpacks (for tests).</summary>
+    internal OpcPackage(string path, UnpackLimit unpack)
+    {
+        _zip = ZipFile.OpenRead(path);
+        _unpack = unpack;
+    }
 
     /// <summary>The main part (target of the package's officeDocument relationship), e.g. xl/workbook.xml.</summary>
     public string? MainPartPath =>
@@ -30,10 +43,7 @@ internal sealed class OpcPackage : IDisposable
             return cached;
         XDocument? xml = null;
         if (_zip.GetEntry(path) is { } entry)
-        {
-            using var stream = entry.Open();
-            xml = XDocument.Load(stream, LoadOptions.PreserveWhitespace);
-        }
+            xml = _xml.Load(entry, LoadOptions.PreserveWhitespace);
         _parts[path] = xml;
         return xml;
     }
@@ -48,8 +58,7 @@ internal sealed class OpcPackage : IDisposable
         var result = new Dictionary<string, OpcRelationship>();
         if (_zip.GetEntry(relsPath) is { } entry)
         {
-            using var stream = entry.Open();
-            foreach (var rel in XDocument.Load(stream).Root?.Elements(PackageRelationships + "Relationship") ?? [])
+            foreach (var rel in _xml.Load(entry).Root?.Elements(PackageRelationships + "Relationship") ?? [])
             {
                 var target = (string?)rel.Attribute("Target") ?? "";
                 var external = (string?)rel.Attribute("TargetMode") == "External";
@@ -76,7 +85,7 @@ internal sealed class OpcPackage : IDisposable
             return null;
         Directory.CreateDirectory(folder);
         var file = Path.Combine(folder, $"{Guid.NewGuid():N}{Path.GetExtension(partPath)}");
-        entry.ExtractToFile(file);
+        _unpack.Extract(entry, file);
         return file;
     }
 

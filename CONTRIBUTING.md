@@ -34,7 +34,20 @@ dotnet test Filee.slnx -c Release
 pwsh build/build-portable.ps1 -Runtime linux-x64
 ```
 
-Use the matching runtime on a Mac or ARM64 Linux machine. Packaging runs on Linux/macOS so archives retain
+Use the matching runtime on a Mac or ARM64 Linux machine. A Mac also needs dmgbuild for the disk image. Homebrew's
+Python refuses `pip install` outside a virtual environment (PEP 668), so install it into one and run the build from
+a shell where that environment is active:
+
+```sh
+python3 -m venv ~/.venvs/filee-dmg
+source ~/.venvs/filee-dmg/bin/activate
+python3 -m pip install -r installer/macos/dmg/requirements.txt
+```
+
+`build-portable.ps1` checks for it with `python3 -c 'import dmgbuild'`, so a pipx install isn't found.
+Magick.NET has no ImageMagick library for Intel Macs: there,
+put Filee's own next to each build after building, e.g.
+`pwsh build/fetch-magick-native.ps1 -Runtime osx-x64 -Destination src/Filee.App/bin/Debug/net10.0`. Packaging runs on Linux/macOS so archives retain
 executable permissions. Each archive contains the app, CLI, rhwp, 7-Zip, installation instructions and per-user
 install/uninstall scripts. `Filee-<version>-<rid>-SHA256SUMS.txt` verifies the archive. macOS bundles use
 `com.filee.app` and a development ad-hoc signature by default; public distribution still needs Developer ID signing
@@ -115,22 +128,37 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. In short:
 Bump `<Version>` in `Directory.Build.props`, merge, then push a tag `vX.Y.Z`. `.github/workflows/release.yml` runs the
 tests and `build/build-installer.ps1 -Portable`: it publishes the app (`-p:FileeRelease=true`, which lets it register
 Explorer and startup entries), adds the Explorer menu extension and the bundled rhwp and 7-Zip, compiles
-`src/Filee.Setup` (Filee's own installer) and appends the app to it. It drafts the release with the Linux and macOS
-packages and release notes generated from the merged pull requests, and keeps the tested Windows build unsigned (the
-artifact `windows-unsigned`).
+`src/Filee.Setup` (Filee's own installer) and appends the app to it, for x64 and, on a Windows 11 ARM64 runner, for
+Windows on ARM64 (`-Runtime win-arm64`). It keeps both tested Windows builds unsigned (the artifacts
+`windows-unsigned` and `windows-arm64-unsigned`) and then drafts the release with the Linux and macOS packages and
+release notes generated from the merged pull requests.
 
 Then, on a PC signed in to SimplySign Desktop (Certum's cloud certificate; its key needs the phone app's token), sign
 the Windows files and add them to the draft:
 
 ```
-pwsh build/sign-release.ps1 -Version X.Y.Z -CertificateThumbprint <sha1>
+pwsh build/sign-release.ps1 -Version X.Y.Z -CertificateThumbprint <sha1> -UpdateKey <private key file>
 ```
 
-It signs every unsigned program in the build and the Setup program, packs and signs `Filee-X.Y.Z-win-Setup.exe`, zips
-the portable copy, checks the signed Setup in a sandbox install and uploads the files with their SHA-256 sums. It also
-copies them to the download mirror `https://dl.filee.sh/X.Y.Z/` (Cloudflare R2; needs `npx wrangler login` once),
-which the Microsoft Store listing points at because GitHub's download links redirect. Look over the draft and publish
-it (or pass `-Publish`). `build/sign-windows.ps1` signs any folder or file on its own.
+It signs every unsigned program in both builds and their Setup programs, packs and signs `Filee-X.Y.Z-win-Setup.exe`
+and `Filee-X.Y.Z-win-arm64-Setup.exe`, zips the portable copies, checks the signed x64 Setup in a sandbox install (and
+the ARM64 one too on an ARM64 PC; on an x64 PC it checks the ARM64 signatures without running it) and uploads the
+files with their SHA-256 sums, all in one `Filee-X.Y.Z-SHA256SUMS.txt` (Filee 2.4.0 and older would take a separate
+ARM64 sums file for theirs, and fail to update; the script refuses to publish a draft that has one). It signs
+every `SHA256SUMS` file of the release (Windows, Linux and macOS) with Filee's update key and uploads the `.sig` files
+next to them (`build/sign-checksums.ps1`; it asks for the key's passphrase once). It also copies the Windows files to
+the download mirror `https://dl.filee.sh/X.Y.Z/` (Cloudflare R2; needs `npx wrangler login` once), which the
+Microsoft Store listing points at because GitHub's download links redirect. Look over the draft and publish it (or pass
+`-Publish`). `build/sign-windows.ps1` signs any folder or file on its own.
+
+The update key is made once with `pwsh build/new-update-key.ps1 -PrivateKeyPath <file outside the repository>`. Its
+public half goes into `FileeUpdatePublicKey` in `Directory.Build.props`; official builds (`-p:FileeRelease=true`)
+then refuse an update whose checksum file isn't signed with it, so `sign-release.ps1` stops without `-UpdateKey` (or
+`FILEE_UPDATE_KEY`) and won't publish a draft with an unsigned checksum file. Keep the private key and a backup off
+the repository: copies that carry the public key can only be updated with releases signed by it.
+`FileeExpectedPublisher` and `FileeExpectedIssuer` name the code signing certificate the Windows installer must be
+signed with; before a renewed certificate comes from another certificate authority, release a build that lists both
+issuers.
 
 ### "What's new" slides for a release
 

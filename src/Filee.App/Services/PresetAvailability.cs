@@ -9,6 +9,9 @@ namespace Filee.App.Services;
 
 public enum PresetUse { Usable, NeedsPackage, Unusable }
 
+/// <summary>Whether the agreed extraction presets convert usable inputs without their named operation.</summary>
+public enum OrdinaryConversion { None, All, Some }
+
 /// <summary>Why a preset can or cannot run; usable presets have no reason.</summary>
 public readonly record struct PresetJudgement(PresetUse Use, string? Reason);
 
@@ -17,15 +20,21 @@ public sealed class PresetAvailability
     private readonly ConverterCatalog _catalog;
     private readonly ILocalizer _loc;
     private readonly IReadOnlyList<EnginePackageState> _packages;
+    private readonly Func<RoutePlanner> _installedPlanner;
 
     public PresetAvailability(ConverterCatalog catalog, ILocalizer loc, EngineDownloadService downloads)
         : this(catalog, loc, downloads.Packages) { }
 
     internal PresetAvailability(ConverterCatalog catalog, ILocalizer loc, IReadOnlyList<EnginePackageState> packages)
+        : this(catalog, loc, packages, catalog.CreatePlanner) { }
+
+    internal PresetAvailability(ConverterCatalog catalog, ILocalizer loc, IReadOnlyList<EnginePackageState> packages,
+        Func<RoutePlanner> installedPlanner)
     {
         _catalog = catalog;
         _loc = loc;
         _packages = packages;
+        _installedPlanner = installedPlanner;
     }
 
     private static readonly HashSet<string> WritableSingleFrameRasterFormats =
@@ -37,7 +46,7 @@ public sealed class PresetAvailability
     /// otherwise a localized reason — naming the optional engine to download when that would help.
     /// </summary>
     public string? Check(Preset preset, IReadOnlyList<FileFormat> formats) =>
-        Evaluate(preset, formats, _catalog.CreatePlanner,
+        Evaluate(preset, formats, _installedPlanner,
             possible => PackageEnabling(possible, p => _catalog.CreatePlanner(p.Package.ConverterIds))).Reason;
 
     /// <summary>Formats for which this preset is usable, in the input order.</summary>
@@ -45,7 +54,7 @@ public sealed class PresetAvailability
     {
         RoutePlanner? installed = null;
         var packagePlanners = new Dictionary<EnginePackageState, RoutePlanner>();
-        RoutePlanner Installed() => installed ??= _catalog.CreatePlanner();
+        RoutePlanner Installed() => installed ??= _installedPlanner();
         EnginePackageState? Enabling(Func<RoutePlanner, bool> possible) =>
             PackageEnabling(possible, p => packagePlanners.TryGetValue(p, out var planner)
                 ? planner : packagePlanners[p] = _catalog.CreatePlanner(p.Package.ConverterIds));
@@ -55,6 +64,24 @@ public sealed class PresetAvailability
             if (Evaluate(preset, [format], Installed, Enabling).Use == PresetUse.Usable)
                 usable.Add(format);
         return usable;
+    }
+
+    /// <summary>Counts only runnable inputs; an envelope's operation is unknown until its file is opened.</summary>
+    public OrdinaryConversion OrdinaryConversionFor(Preset preset, IReadOnlyList<FileFormat> formats)
+    {
+        Func<string, bool>? asNamed = preset.Id switch
+        {
+            "extract-frames-png" or "extract-frames-jpg" => preset.SavesFramesOf,
+            "extract-motion" => preset.ExtractsMotionOf,
+            _ => null,
+        };
+        if (asNamed is null)
+            return OrdinaryConversion.None;
+        var usable = UsableFormats(preset, formats);
+        var ordinary = usable.Count(format => !asNamed(format.Id)
+            && !_catalog.All.OfType<IEnvelopeOpener>().Any(opener => opener.Opens(format.Id)));
+        return ordinary == 0 ? OrdinaryConversion.None
+            : ordinary == usable.Count ? OrdinaryConversion.All : OrdinaryConversion.Some;
     }
 
     private EnginePackageState? PackageEnabling(Func<RoutePlanner, bool> possible, Func<EnginePackageState, RoutePlanner> plannerFor) =>
@@ -75,7 +102,7 @@ public sealed class PresetAvailability
             _formats = formats;
         }
 
-        private RoutePlanner Installed() => _installed ??= _owner._catalog.CreatePlanner();
+        private RoutePlanner Installed() => _installed ??= _owner._installedPlanner();
 
         private EnginePackageState? Enabling(Func<RoutePlanner, bool> possible) =>
             _owner.PackageEnabling(possible, p => _packagePlanners.TryGetValue(p, out var r)
@@ -107,11 +134,14 @@ public sealed class PresetAvailability
     {
         if (preset.IsCopyToFolder)
             return new(PresetUse.Usable, null);
+        // Single-file compressors also implement combining, but cannot hold a directory tree.
+        if (formats.Count > 0 && formats.All(f => f.Id == FormatRegistry.Folder) && !BuiltInData.AcceptsFolders(preset))
+            return new(PresetUse.Unusable, _loc["error.no_route"]);
 
         if (preset.IsClipTool)
         {
-            // Any video among the files: the others are left out when the clip window opens.
-            var videos = formats.Where(f => f.Category == FormatCategory.Video).ToList();
+            // Any video or sound among the files: the others are left out when the clip window opens.
+            var videos = formats.Where(f => f.Category is FormatCategory.Video or FormatCategory.Audio).ToList();
             if (videos.Count == 0)
                 return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
             bool CanCut(RoutePlanner planner) => videos.Any(f => ClipTool.CanCut(f.Id, planner));
@@ -127,8 +157,24 @@ public sealed class PresetAvailability
             return formats.Any(f => ImageEditTool.CanEdit(f.Id))
                 ? new(PresetUse.Usable, null)
                 : new(PresetUse.Unusable, _loc["error.images_only"]);
+        if (preset.IsAnnotateTool)
+            return formats.Any(f => HideService.CanOpen(f.Id))
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.images_only"]);
+        if (preset.IsBackgroundTool)
+            return formats.Any(f => HideService.CanOpen(f.Id))
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.images_only"]);
+        if (preset.IsMetadataTool)
+            return formats.Any(WindowService.MetadataReadable)
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.unsupported_source"]);
         if (preset.IsHideTool)
             return formats.Any(f => HideService.CanOpen(f.Id))
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.images_only"]);
+        if (preset.IsUpscaleTool)
+            return formats.Any(f => UpscaleTool.CanUpscale(f.Id))
                 ? new(PresetUse.Usable, null)
                 : new(PresetUse.Unusable, _loc["error.images_only"]);
 
@@ -177,6 +223,22 @@ public sealed class PresetAvailability
                 return new(PresetUse.Unusable, _loc["error.images_only"]);
         }
 
+        // "Crop video" cuts the frame of a video: a picture or a song has none to cut.
+        if (preset.CropsVideo)
+        {
+            formats = [.. formats.Where(f => f.Category == FormatCategory.Video)];
+            if (formats.Count == 0)
+                return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
+        }
+
+        // "Same format as the audio" (#1490) copies a video's sound: a picture or a song has no video to take it from.
+        if (preset.TargetFormat == BuiltInData.SameAsAudio)
+        {
+            formats = [.. formats.Where(f => f.Category == FormatCategory.Video)];
+            if (formats.Count == 0)
+                return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
+        }
+
         // "Trim transparent borders" on JPG and other formats without transparency would only re-encode them.
         if (preset.Image.TrimTransparent
             && formats.All(f => !Filee.Engines.Magick.ImageEncoder.HoldsAlpha(preset.TargetFormat == BuiltInData.SameAsSource ? f.Id : preset.TargetFormat)))
@@ -217,6 +279,24 @@ public sealed class PresetAvailability
 
         // "Merge videos" / "Merge audio" / "Video from images": FFmpeg joins the files, so a route into the target (or,
         // for pictures, into PNG and from PNG into a video) says whether it is installed.
+        // "Translate": Ollama / Translator translates documents and e-books.
+        if (preset.Translate.Enabled)
+        {
+            var docFiles = formats.Where(f => preset.TranslatesDocument(f.Id)).ToList();
+            if (docFiles.Count == 0)
+                return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
+            bool CanTranslate(RoutePlanner planner) => docFiles.Any(f =>
+            {
+                var target = TargetFor(f);
+                return planner.CanConvert(f.Id, target, translate: true);
+            });
+            if (CanTranslate(installedPlanner()))
+                return new(PresetUse.Usable, null);
+            return packageEnabling(CanTranslate) is { } needed
+                ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", needed.Name))
+                : new(PresetUse.Unusable, _loc["error.no_route"]);
+        }
+
         if (preset.JoinsIntoOneMedia)
         {
             var target = preset.TargetFormat;
@@ -232,9 +312,22 @@ public sealed class PresetAvailability
                 : new(PresetUse.Unusable, _loc["error.no_route"]);
         }
 
+        // PDF/A of PDFs is Ghostscript's (the job queue's IPdfArchiver): without it they would only be copied. Other files
+        // may get it from LibreOffice, or are converted with a notice that the PDF isn't PDF/A.
+        static bool Archives(RoutePlanner planner) => planner.Includes("ghostscript");
+        if (preset.TargetFormat == "pdf" && preset.Document.PdfA && formats.All(f => f.Id == "pdf") && !Archives(installedPlanner()))
+        {
+            return packageEnabling(Archives) is { } archiver
+                ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", archiver.Name))
+                : new(PresetUse.Unusable, _loc["error.no_route"]);
+        }
+
         var merge = preset.Pdf.MergeIntoSingle && preset.TargetFormat == "pdf";
         var turns = preset.Image.TurnsOrMirrors;
-        string TargetFor(FileFormat f) => preset.TargetFormat == BuiltInData.SameAsSource ? f.Id : preset.TargetFormat;
+        // The sound's own format is known only from the file: FFmpeg's video → MKA stands for every one of them.
+        string TargetFor(FileFormat f) => preset.TargetFormat == BuiltInData.SameAsAudio ? "mka"
+            : preset.TargetFormat != BuiltInData.SameAsSource ? preset.TargetFormat
+            : preset.CropsVideo ? VideoCrop.TargetFor(f.Id) : f.Id;
         var copiesUnturned = false;
         bool Possible(RoutePlanner planner) => formats.Any(f =>
         {
@@ -245,10 +338,11 @@ public sealed class PresetAvailability
             var motion = preset.ExtractsMotionOf(f.Id);
             var live = preset.MakesLivePhotoOf(f.Id);
             var ocr = preset.RecognizesTextOf(f.Id);
+            var translate = preset.TranslatesDocument(f.Id);
             if (!turns)
-                return planner.CanConvert(f.Id, target, frames, motionPhoto: motion, livePhoto: live, ocr: ocr);
+                return planner.CanConvert(f.Id, target, frames, motionPhoto: motion, livePhoto: live, ocr: ocr, translate: translate);
             // Rotate / flip: a route only counts when an engine on it turns images (not a PDF or a video copied).
-            if (planner.Plan(f.Id, target, frames, motionPhoto: motion, livePhoto: live, ocr: ocr) is not { } route)
+            if (planner.Plan(f.Id, target, frames, motionPhoto: motion, livePhoto: live, ocr: ocr, translate: translate) is not { } route)
                 return false;
             if (route.FirstTransformStep() >= 0)
                 return true;

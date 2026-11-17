@@ -1,10 +1,11 @@
-// Gives memory back while Filee waits in the tray (issue #119): a while after the last conversion finished, and after
-// the main window was released. Large images grow the managed heap and the engines' caches, and the garbage collector
+// Gives memory back while Filee waits in the tray (issues #119, #957): a while after the last conversion finished, after
+// the main window was released, and after a start without a window. Large images grow the managed heap and the engines' caches, and the garbage collector
 // keeps that memory committed for the next allocation, so Filee stayed hundreds of MB above its idle size.
 
 using System.Diagnostics;
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
+using Filee.Platform.Linux;
 using Filee.Platform.Windows;
 using Microsoft.Extensions.Logging;
 
@@ -74,25 +75,44 @@ public sealed class MemoryTrimmer : IDisposable
         Interlocked.Increment(ref _trims);
     }
 
-    /// <summary>Drops the engines' caches, collects every generation, then trims the working set (Windows).</summary>
+    /// <summary>
+    /// Drops the engines' caches, collects every generation, then trims the working set (Windows) or gives malloc's free
+    /// memory back (Linux).
+    /// </summary>
     internal static void Trim(ILogger log)
     {
         try
         {
             var watch = Stopwatch.StartNew();
             var before = PrivateMegabytes();
+            var linuxBefore = ProcessMemoryUsage.Current();
             EngineCaches.Release();
-            // Without compacting: garbage is freed and empty heap regions are decommitted all the same. Compaction was
-            // once blamed for a CI crash in Skia (sk_pngencoder_encode) after a trim; the cause was tests that let a
-            // captured frame be collected while Avalonia encoded it (WriteableBitmap.Save encodes a snapshot that
-            // doesn't own the pixels, and the finalizers this trim runs freed them). Nothing in Filee leaves native
-            // code with a pointer into managed memory: NativeMemoryStressTests converts under constant compaction.
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
             GC.WaitForPendingFinalizers();
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
+            // Aggressive: a forced collection frees the garbage but keeps the empty heap regions committed for the next
+            // allocation (hundreds of MB after a large conversion), and only this one decommits them all. It compacts.
+            // Compaction was once blamed for a CI crash in Skia (sk_pngencoder_encode) after a trim; the cause was tests
+            // that let a captured frame be collected while Avalonia encoded it (WriteableBitmap.Save encodes a snapshot
+            // that doesn't own the pixels, and the finalizers this trim runs freed them). Nothing in Filee leaves native
+            // code with a pointer into managed memory: NativeMemoryStressTests converts under constant compaction.
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
             ProcessMemory.TrimWorkingSet();
-            log.LogInformation("Trimmed memory: private {Before} MB → {After} MB (managed heap {Heap} MB) in {Elapsed} ms",
-                before, PrivateMegabytes(), GC.GetTotalMemory(false) / (1024 * 1024), watch.ElapsedMilliseconds);
+            NativeHeap.Trim();
+            var committed = GC.GetGCMemoryInfo().TotalCommittedBytes / Megabyte;
+            if (linuxBefore is { } own && ProcessMemoryUsage.Current() is { } now)
+            {
+                // Windows' "private" means nothing here (see ProcessMemoryUsage). The split is what a report needs: what
+                // is the runtime's, what is malloc's, and what is left (mapped files, stacks, JIT code).
+                var malloc = NativeHeap.Usage();
+                log.LogInformation("Trimmed memory: own {Before} MB → {After} MB, resident {Resident} MB, anonymous {Anonymous} MB " +
+                                   "(managed heap {Heap} MB of {Committed} MB committed, malloc {MallocUsed} MB used, {MallocFree} MB free) in {Elapsed} ms",
+                    own.OwnBytes / Megabyte, now.OwnBytes / Megabyte, now.ResidentBytes / Megabyte, now.AnonymousBytes / Megabyte,
+                    GC.GetTotalMemory(false) / Megabyte, committed,
+                    malloc?.InUseBytes / Megabyte, malloc?.FreeBytes / Megabyte, watch.ElapsedMilliseconds);
+                return;
+            }
+            log.LogInformation("Trimmed memory: private {Before} MB → {After} MB (managed heap {Heap} MB of {Committed} MB committed) in {Elapsed} ms",
+                before, PrivateMegabytes(), GC.GetTotalMemory(false) / Megabyte, committed, watch.ElapsedMilliseconds);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -100,10 +120,12 @@ public sealed class MemoryTrimmer : IDisposable
         }
     }
 
+    private const long Megabyte = 1024 * 1024;
+
     private static long PrivateMegabytes()
     {
         using var process = Process.GetCurrentProcess();
-        return process.PrivateMemorySize64 / (1024 * 1024);
+        return process.PrivateMemorySize64 / Megabyte;
     }
 
     public void Dispose()

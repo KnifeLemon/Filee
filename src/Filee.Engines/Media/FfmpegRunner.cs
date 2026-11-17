@@ -20,7 +20,10 @@ internal static class FfmpegRunner
 
     private const int KeptErrorLines = 40;
 
-    /// <summary>Key of the per-frame stats line the GIF palette pass writes (seconds, see MediaEncoding).</summary>
+    /// <summary>
+    /// Key of the per-frame stats line the GIF palette pass and the runs that read with <c>-copyts</c> write (seconds,
+    /// see MediaEncoding).
+    /// </summary>
     public const string FrameTimeKey = "frame_time";
 
     /// <summary>
@@ -34,6 +37,17 @@ internal static class FfmpegRunner
         string ffmpeg, IReadOnlyList<string> arguments, Action<double>? onPosition, CancellationToken cancellationToken,
         TimeSpan? stallTimeout = null)
     {
+        // A run that reports the time of each picture (MediaEncoding.FrameProgress) writes -progress only to show it is
+        // working while no picture is kept, and its out_time is wrong there.
+        var byFrame = arguments.Any(a => a.StartsWith(FrameTimeKey + "=", StringComparison.Ordinal));
+        if (byFrame && WithoutFrameStats(arguments) is { } older
+            && CopyVersions.Installed("ffmpeg", Path.GetDirectoryName(ffmpeg) ?? "") is { Major: < 6 })
+        {
+            // FFmpeg before 6.0 has no -stats_enc_pre and would refuse the run: it reports its own -progress instead,
+            // which falls short of the end with -copyts.
+            arguments = older;
+            byFrame = false;
+        }
         var psi = new ProcessStartInfo(ffmpeg)
         {
             UseShellExecute = false,
@@ -58,7 +72,7 @@ internal static class FfmpegRunner
             if (e.Data is null)
                 return;
             watch.Touch();
-            if (ParsePosition(e.Data) is { } seconds)
+            if (ParsePosition(e.Data, byFrame) is { } seconds)
                 onPosition?.Invoke(seconds);
         };
         process.ErrorDataReceived += (_, e) =>
@@ -146,10 +160,11 @@ internal static class FfmpegRunner
     }
 
     /// <summary>
-    /// The position in seconds from one line of <c>-progress</c> output (<c>out_time_us=2000000</c>) or of the
-    /// palette pass' frame stats (<c>frame_time=2.5</c>); null for every other line.
+    /// The position in seconds from one line of <c>-progress</c> output (<c>out_time_us=2000000</c>) or of the frame
+    /// stats of the palette pass and <see cref="MediaEncoding.FrameProgress"/> (<c>frame_time=2.5</c>); null for every
+    /// other line, and for <c>-progress</c> lines when <paramref name="byFrame"/> is set.
     /// </summary>
-    internal static double? ParsePosition(string line)
+    internal static double? ParsePosition(string line, bool byFrame = false)
     {
         var separator = line.IndexOf('=');
         if (separator <= 0)
@@ -157,7 +172,7 @@ internal static class FfmpegRunner
         var key = line.AsSpan(0, separator);
         var value = line.AsSpan(separator + 1).Trim();
         if (key.SequenceEqual("out_time_us"))
-            return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var microseconds) && microseconds >= 0
+            return !byFrame && long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var microseconds) && microseconds >= 0
                 ? microseconds / 1_000_000.0
                 : null; // "N/A" before the first frame
         if (key.SequenceEqual(FrameTimeKey))
@@ -165,6 +180,23 @@ internal static class FfmpegRunner
                 ? seconds
                 : null;
         return null;
+    }
+
+    /// <summary>
+    /// <paramref name="arguments"/> without the picture times of <see cref="MediaEncoding.FrameProgress"/>; null when
+    /// they hold none.
+    /// </summary>
+    internal static List<string>? WithoutFrameStats(IReadOnlyList<string> arguments)
+    {
+        List<string> kept = [];
+        for (var i = 0; i < arguments.Count; i++)
+        {
+            if (arguments[i] is "-stats_enc_pre:v:0" or "-stats_enc_pre_fmt:v:0" && i + 1 < arguments.Count)
+                i++;
+            else
+                kept.Add(arguments[i]);
+        }
+        return kept.Count < arguments.Count ? kept : null;
     }
 
     /// <summary>A short, readable version of FFmpeg's error output: its last distinct lines, without log prefixes.</summary>

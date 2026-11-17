@@ -2,9 +2,11 @@
 // a new reason.
 
 using Filee.App.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.Tests;
 
+[Collection("Memory")]
 public class MemoryTrimmerTests
 {
     private static readonly TimeSpan Delay = TimeSpan.FromMilliseconds(100);
@@ -47,6 +49,29 @@ public class MemoryTrimmerTests
     }
 
     [Fact]
+    public void Trimming_decommits_the_managed_heap_that_was_freed()
+    {
+        // A heap grown by a large conversion and its garbage: without decommitting, the regions stay committed.
+        var filled = new List<byte[]>();
+        for (var i = 0; i < 300; i++)
+            filled.Add(new byte[1024 * 1024]);
+        filled.ForEach(block => Array.Fill(block, (byte)1));
+
+        // The figures come from the latest collection. A young one refreshes them and frees none of this memory.
+        GC.Collect(0);
+        var peak = GC.GetGCMemoryInfo().TotalCommittedBytes;
+        filled.Clear();
+
+        MemoryTrimmer.Trim(NullLogger.Instance);
+
+        // Read the same way: committed memory on both sides counts free space kept from earlier tests, which bytes in
+        // use don't. Most of the 300 MB is gone, not all of it.
+        GC.Collect(0);
+        var after = GC.GetGCMemoryInfo().TotalCommittedBytes;
+        Assert.True(after < peak - 150L * 1024 * 1024, $"{after} bytes stayed committed of {peak}");
+    }
+
+    [Fact]
     public async Task A_new_request_moves_the_trim_on()
     {
         using var trimmer = new MemoryTrimmer(() => false, () => { }, TimeSpan.FromSeconds(2));
@@ -60,3 +85,8 @@ public class MemoryTrimmerTests
         Assert.Equal(1, trimmer.Trims);
     }
 }
+
+// Committed memory and forced collections belong to the whole process: a test collecting or allocating next to these
+// would change the figures, and a collection already running can stand in for the one a trim asks for.
+[CollectionDefinition("Memory", DisableParallelization = true)]
+public sealed class MemoryCollection;

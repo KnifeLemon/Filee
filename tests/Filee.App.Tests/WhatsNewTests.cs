@@ -33,19 +33,22 @@ public class WhatsNewTests
 
     // ───────────────────────── Manifests ─────────────────────────
 
-    [AvaloniaFact]
-    public void The_2_0_0_deck_ships_with_its_media_and_texts()
+    [AvaloniaTheory]
+    [InlineData("2.0.0")]
+    [InlineData("2.3.0")]
+    [InlineData("2.5.0")]
+    public void A_deck_ships_with_its_media_and_texts(string version)
     {
         TestServices.EnsureInitialized("en");
         var decks = SlideDeck.LoadAll("Filee");
-        var deck = Assert.Single(decks, d => d.Version == V2);
+        var deck = Assert.Single(decks, d => d.Version == new Version(version));
         Assert.InRange(deck.Slides.Count, 5, 7);
         Assert.Equal(deck.Slides.Count, deck.Slides.Select(s => s.Id).Distinct().Count());
         var english = LoadStrings("en");
         foreach (var slide in deck.Slides)
         {
             Assert.True(AssetLoader.Exists(slide.Media), $"{slide.Media} is missing");
-            Assert.StartsWith("avares://Filee/Assets/WhatsNew/2.0.0/", slide.Media.ToString(), StringComparison.Ordinal);
+            Assert.StartsWith($"avares://Filee/Assets/WhatsNew/{version}/", slide.Media.ToString(), StringComparison.Ordinal);
             Assert.Contains(slide.TitleKey, english.Keys);
             Assert.Contains(slide.TextKey, english.Keys);
         }
@@ -62,7 +65,8 @@ public class WhatsNewTests
         Assert.All(media, f => Assert.True(f.Length <= 400 * 1024, $"{f.Name} is {f.Length / 1024} KB"));
         foreach (var pack in media.GroupBy(f => f.DirectoryName))
             Assert.True(pack.Sum(f => f.Length) <= 2 * 1024 * 1024, $"{pack.Key} adds up to more than 2 MB");
-        Assert.True(media.Sum(f => f.Length) <= 6 * 1024 * 1024, "the shared and Portuguese media exceed 6 MB");
+        // Every deck stays in the installers (About → "What's new" shows the newest), about 2 MB a release.
+        Assert.True(media.Sum(f => f.Length) <= 8 * 1024 * 1024, "the shared and Portuguese media exceed 8 MB");
     }
 
     [Theory]
@@ -318,11 +322,11 @@ public class WhatsNewTests
 
     // ───────────────────────── The window ─────────────────────────
 
-    private static WhatsNewWindow Open(string language = "en", Action? beforeOpening = null)
+    private static WhatsNewWindow Open(string language = "en", Action? beforeOpening = null, Version? version = null)
     {
         TestServices.EnsureInitialized(language);
         beforeOpening?.Invoke();
-        var deck = SlideDeck.LoadAll("Filee").Single(d => d.Version == V2);
+        var deck = SlideDeck.LoadAll("Filee").Single(d => d.Version == (version ?? V2));
         var window = new WhatsNewWindow(deck, AppHost.Get<ILocalizer>());
         window.Show();
         window.Activate();
@@ -600,6 +604,64 @@ public class WhatsNewTests
         finally
         {
             window.Close();
+            theme.Apply(new ThemeSettings(), "en");
+        }
+    }
+
+    /// <summary>
+    /// The 2.3.0 and 2.5.0 slides in a few languages: every slide's text fits and, with reduced motion, shows its
+    /// poster frame (what the installer shows too). A screenshot of each slide.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("2.3.0", "en", false)]
+    [InlineData("2.3.0", "en", true)]
+    [InlineData("2.3.0", "ko", false)]
+    [InlineData("2.3.0", "ar", false)]
+    [InlineData("2.3.0", "de", false)]
+    [InlineData("2.3.0", "ja", false)]
+    [InlineData("2.3.0", "it", false)]
+    [InlineData("2.3.0", "id", false)]
+    [InlineData("2.5.0", "en", false)]
+    [InlineData("2.5.0", "en", true)]
+    [InlineData("2.5.0", "ko", false)]
+    [InlineData("2.5.0", "ar", false)]
+    [InlineData("2.5.0", "de", false)]
+    [InlineData("2.5.0", "ja", false)]
+    [InlineData("2.5.0", "ru", false)]
+    [InlineData("2.5.0", "mn", false)]
+    [InlineData("2.5.0", "ne", true)]
+    public void Slides_render_on_their_posters(string version, string language, bool dark)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        var motion = Motion.Enabled;
+        var window = Open(language, () =>
+        {
+            theme.Apply(new ThemeSettings { Mode = dark ? ThemeMode.Dark : ThemeMode.Light }, language);
+            Motion.Set(false);
+        }, new Version(version));
+        try
+        {
+            var slides = window.SlideShow;
+            Assert.Equal(6, slides.Slides.Count);
+            var heights = new HashSet<double>();
+            for (var i = 0; i < slides.Slides.Count; i++)
+            {
+                slides.GoTo(i);
+                Pump();
+                heights.Add(window.Bounds.Height);
+                var media = slides.Media;
+                Assert.True(media.HasPicture, $"slide {i} has no picture");
+                Assert.InRange(slides.Slides[i].PosterFrame, 0, media.FrameCount - 1);
+                Assert.Equal(slides.Slides[i].PosterFrame, media.CurrentFrame);
+                Save(window, $"whatsnew-{version}-{language}-{(dark ? "dark" : "light")}-{i + 1}-{slides.Slides[i].Id}.png");
+            }
+            Assert.Single(heights);
+        }
+        finally
+        {
+            window.Close();
+            Motion.Set(motion);
             theme.Apply(new ThemeSettings(), "en");
         }
     }

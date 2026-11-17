@@ -50,14 +50,30 @@ public class FitsFormatTests
     [Fact]
     public void Presets_saved_before_the_options_debayer_and_keep_tiffs_linear()
     {
-        var old = System.Text.Json.JsonSerializer.Deserialize("""{"TargetFormat":"png","Image":{"Quality":80}}""",
-            FileeJsonContext.Default.Preset)!;
-        var newer = System.Text.Json.JsonSerializer.Deserialize("""{"TargetFormat":"tiff","Image":{"FitsTiff":"Sharpened"}}""",
-            FileeJsonContext.Default.Preset)!;
+        // presets.json as UserDataStore writes it: camelCase keys, enums by name. PascalCase keys would be skipped and
+        // every value below would only be a default.
+        var presets = System.Text.Json.JsonSerializer.Deserialize("""
+            [
+              { "id": "old", "targetFormat": "png", "image": { "quality": 80 } },
+              { "id": "newer", "targetFormat": "tiff", "image": { "quality": 70, "fitsTiff": "Sharpened" } },
+              { "id": "mono", "targetFormat": "png", "image": { "fitsDebayer": false } },
+              { "id": "stretched", "targetFormat": "tiff", "image": { "fitsTiff": "Stretched" } }
+            ]
+            """, FileeJsonContext.Default.ListPreset)!;
+        var image = presets.ToDictionary(p => p.Id, p => p.Image);
 
-        Assert.True(old.Image.FitsDebayer);
-        Assert.Equal(FitsTiffMode.Linear, old.Image.FitsTiff);
-        Assert.Equal(FitsTiffMode.Linear, newer.Image.FitsTiff); // a mode from a newer Filee
+        Assert.Equal(80, image["old"].Quality); // the image block was read, not left at its defaults
+        Assert.True(image["old"].FitsDebayer);
+        Assert.Equal(FitsTiffMode.Linear, image["old"].FitsTiff);
+        Assert.Equal(70, image["newer"].Quality);
+        Assert.Equal(FitsTiffMode.Linear, image["newer"].FitsTiff); // a mode from a newer Filee
+        Assert.False(image["mono"].FitsDebayer);
+        Assert.Equal(FitsTiffMode.Stretched, image["stretched"].FitsTiff);
+
+        var written = System.Text.Json.JsonSerializer.Serialize(new Preset(), FileeJsonContext.Default.Preset);
+        Assert.Contains("\"fitsTiff\": \"Linear\"", written);
+        Assert.Contains("\"fitsDebayer\": true", written);
+
         var stretched = new ImageOptions { FitsTiff = FitsTiffMode.Stretched, FitsDebayer = false }.Clone();
         Assert.Equal((FitsTiffMode.Stretched, false), (stretched.FitsTiff, stretched.FitsDebayer));
     }

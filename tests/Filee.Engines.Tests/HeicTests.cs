@@ -149,7 +149,7 @@ public class HeicTests(EngineFixture fx) : IClassFixture<EngineFixture>
             exif.SetValue(ExifTag.Orientation, (ushort)6);
             exif.SetValue(ExifTag.Make, "Filee test");
             photo.SetProfile(exif);
-            photo.Orientation = OrientationType.RightTop; // ImageMagick writes this into the Exif orientation
+            photo.Orientation = Orientation.RightTop; // ImageMagick writes this into the Exif orientation
             photo.SetProfile(ColorProfiles.AdobeRGB1998);
             photo.Quality = 95;
             photo.Write(jpg, MagickFormat.Jpeg);
@@ -168,8 +168,8 @@ public class HeicTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // the wrong place would break it up.
         using var reference = new MagickImage(jpg);
         reference.AutoOrient();
-        reference.Alpha(AlphaOption.Off);
-        heic.Alpha(AlphaOption.Off);
+        reference.Alpha(AlphaAction.Off);
+        heic.Alpha(AlphaAction.Off);
         var rmse = heic.Compare(reference, ErrorMetric.RootMeanSquared);
         Assert.True(rmse < 0.01, $"RMSE {rmse}");
     }

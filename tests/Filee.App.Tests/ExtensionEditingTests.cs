@@ -29,6 +29,7 @@ public class ExtensionInputTests
     [InlineData("dvr-ms", "dvr-ms")]
     [InlineData("xyz", "xyz")]
     [InlineData("jpg.", "jpg")]
+    [InlineData("*.KRA~", "kra~")] // Krita's backup, a known extension
     public void Normalizes_extensions(string input, string expected) => Assert.Equal(expected, ExtensionInput.Normalize(input));
 
     [Theory]
@@ -39,6 +40,7 @@ public class ExtensionInputTests
     [InlineData("a/b")]
     [InlineData(@"C:\x")]
     [InlineData("a..b")]
+    [InlineData("txt~")] // only known extensions take other characters
     [InlineData("photo.jpg")] // two-part extensions only when Filee knows them
     [InlineData("averyveryverylongextension")]
     public void Rejects_what_cannot_be_an_extension(string input) => Assert.Null(ExtensionInput.Normalize(input));

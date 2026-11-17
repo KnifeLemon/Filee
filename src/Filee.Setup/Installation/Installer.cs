@@ -76,6 +76,11 @@ public sealed class Installer(SetupContext context, SetupPayload payload)
                 progress?.Report(new SetupProgress(SetupStep.Copying, 0.12 + 0.68 * bytes / total))), cancellation);
             Log.Info($"Unpacked and checked {payload.Manifest.Files.Count} files ({payload.Manifest.TotalSize / 1_000_000} MB)");
             var newFiles = payload.Manifest.Files.Select(f => f.Path).ToList();
+            if (choices.Portable)
+            {
+                File.WriteAllText(Path.Combine(swap.Staging, "filee.portable"), "");
+                newFiles.Add("filee.portable");
+            }
             if (!choices.Portable)
             {
                 payload.CopyProgramTo(Path.Combine(swap.Staging, SetupNames.UninstallerExe));

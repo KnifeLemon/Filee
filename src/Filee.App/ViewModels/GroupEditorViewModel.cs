@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
+using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -19,15 +20,18 @@ public sealed partial class GroupEditorViewModel : ObservableObject
     private readonly Preset _group;
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;
+    private readonly bool _folderInput;
 
     /// <param name="isNew">A group not yet in the store: it can't be deleted, only not saved.</param>
-    public GroupEditorViewModel(Preset group, UserDataStore store, ILocalizer loc, bool isNew = false)
+    public GroupEditorViewModel(Preset group, UserDataStore store, ILocalizer loc, bool isNew = false, bool folderInput = false)
     {
         _group = group;
         _store = store;
         _loc = loc;
+        _folderInput = folderInput;
         IsNew = isNew;
         _name = loc.DisplayName(group);
+        Labels = new SliceLabelFields(group, loc);
         foreach (var id in group.SubPresetIds)
         {
             if (store.FindPreset(id) is { IsGroup: false } preset)
@@ -45,10 +49,18 @@ public sealed partial class GroupEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsValid), nameof(NameError))]
     private string _name;
 
+    partial void OnNameChanged(string value) => Labels.NameChanged(value);
+
+    /// <summary>The group slice's icon, short name and what it shows.</summary>
+    public SliceLabelFields Labels { get; }
+
     /// <summary>The presets the group fans out, in order.</summary>
     public ObservableCollection<GroupMember> Members { get; } = [];
 
-    /// <summary>Actions that can still be added (not groups, not already in it).</summary>
+    /// <summary>
+    /// Actions that can still be added (not groups, not already in it), without the ones whose target belongs only to
+    /// turned-off fields, like the toolbar editor's palette. Members already in the group stay.
+    /// </summary>
     public ObservableCollection<Choice<string>> Available { get; } = [];
 
     [ObservableProperty]
@@ -76,7 +88,8 @@ public sealed partial class GroupEditorViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanAdd))]
     private void Add()
     {
-        if (ToAdd is null || _store.FindPreset(ToAdd.Value) is not { } preset)
+        if (ToAdd is null || _store.FindPreset(ToAdd.Value) is not { } preset
+            || (_folderInput && !BuiltInData.AcceptsFolders(preset)))
             return;
         Members.Add(MemberOf(preset));
         ToAdd = null;
@@ -118,6 +131,7 @@ public sealed partial class GroupEditorViewModel : ObservableObject
         _group.Kind = PresetKind.Group;
         _group.TargetFormat = Preset.GroupTarget;
         _group.SubPresetIds = Members.Select(m => m.PresetId).ToList();
+        Labels.Apply(_group);
         return true;
     }
 
@@ -139,8 +153,9 @@ public sealed partial class GroupEditorViewModel : ObservableObject
     private void Refresh()
     {
         var taken = Members.Select(m => m.PresetId).ToHashSet();
+        var off = _store.Settings.TurnedOffFieldSet();
         Available.Clear();
-        foreach (var preset in _store.Presets.Where(p => !p.IsGroup && !taken.Contains(p.Id)))
+        foreach (var preset in _store.Presets.Where(p => !p.IsGroup && (!_folderInput || BuiltInData.AcceptsFolders(p) || p.IsCopyToFolder) && !taken.Contains(p.Id) && FormatFields.IsShown(p.TargetFormat, off)))
             Available.Add(new Choice<string>(preset.Id, _loc.DisplayName(preset), CaptionOf(preset)));
         OnPropertyChanged(nameof(IsFull));
         OnPropertyChanged(nameof(IsEmpty));

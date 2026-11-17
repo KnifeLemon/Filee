@@ -56,12 +56,23 @@ namespace Filee.Core.Conversion;
 /// asking for it the route starts with it.
 /// </param>
 /// <param name="Caption">
-/// The edge transcribes speech to SRT subtitles using Whisper (<see cref="Presets.MediaOptions.Caption"/>).
+/// The edge transcribes speech to SRT subtitles or plain text using Whisper (<see cref="Presets.MediaOptions.Caption"/>).
+/// </param>
+/// <param name="Metadata">
+/// The edge writes a file's metadata changes into a copy of it in its own format, the picture, sound or document itself
+/// left as it is (<see cref="Presets.Preset.Metadata"/>, ExifTool). It is never part of an ordinary route, and with
+/// <see cref="RoutePlanner.Plan"/> asking for it it is the whole route.
+/// </param>
+/// <param name="Sources">
+/// The edge is used only in routes that start from one of these formats (ids, lower case); null for every source.
+/// WeasyPrint's HTML → PDF serves pages, Markdown and e-mails, which become HTML first, but must not become a hop for
+/// a Word document or an e-book that the HTML writers could also turn into a page.
 /// </param>
 public readonly record struct ConversionEdge(
     string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false,
     bool DirectOnly = false, bool FrameSequence = false, bool Unshaped = false, bool MotionPhoto = false, bool LivePhoto = false,
-    bool Ocr = false, bool Caption = false);
+    bool Ocr = false, bool Caption = false, bool Translate = false, bool Metadata = false, bool Upscale = false,
+    IReadOnlyList<string>? Sources = null);
 
 /// <summary>
 /// A conversion an engine refuses with a reason the user can act on, shown in their language (the file's
@@ -145,7 +156,8 @@ public sealed record ConversionStep(
     bool LivePhoto = false,
     Action<IReadOnlyList<string>>? MissingFonts = null,
     string? OriginalSourcePath = null,
-    bool Caption = false);
+    bool Caption = false,
+    bool Translate = false);
 
 /// <summary>
 /// A conversion engine (ImageMagick, LibreOffice, rhwp, ...).
@@ -218,10 +230,58 @@ public interface ITextShapingCheck
     TextScripts ScanScripts(string sourcePath, string sourceFormat);
 }
 
+/// <summary>
+/// An engine that opens envelopes: files that wrap one file of another format, such as a signed .p7m around a PDF or
+/// an XML invoice. Which format is inside is known only from the file, so <see cref="JobQueue"/> asks before planning
+/// and plans the route from that format, with the engine's step to it first (<see cref="RoutePlanner.PlanThrough"/>).
+/// The engine has an edge from the envelope to every format it can find inside.
+/// </summary>
+public interface IEnvelopeOpener
+{
+    /// <summary>True for an envelope format this engine opens.</summary>
+    bool Opens(string format);
+
+    /// <summary>
+    /// The format id of the file inside <paramref name="path"/> (an envelope of <paramref name="format"/>). Throws
+    /// <see cref="ConversionRefusedException"/> when it can't be opened or holds nothing Filee converts.
+    /// </summary>
+    string InnerFormat(string path, string format);
+}
+
+/// <summary>
+/// An engine that reads which audio format a video's sound is copied into as it is (<see cref="BuiltInData.SameAsAudio"/>).
+/// <see cref="JobQueue"/> asks before planning, and plans the route to that format.
+/// </summary>
+public interface IAudioCopyTarget
+{
+    /// <summary>
+    /// The audio format id that holds the codec of the sound track <paramref name="path"/> would give. Throws
+    /// <see cref="ConversionRefusedException"/> when the file has no sound.
+    /// </summary>
+    Task<string> AudioCopyTargetAsync(string path, CancellationToken cancellationToken);
+}
+
+/// <summary>A PDF to merge and the name of its original source file.</summary>
+/// <param name="PdfPath">The PDF path, possibly produced by conversion or OCR.</param>
+/// <param name="SourceName">The original source's basename, including its extension, without directories.</param>
+public sealed record PdfMergeInput(string PdfPath, string SourceName);
+
+/// <summary>The paper size and orientation shared by every page of a merged PDF.</summary>
+/// <param name="Paper">The target paper, or the visible physical size of the first imported page.</param>
+/// <param name="Orientation">The target orientation, chosen once from the first imported page when automatic.</param>
+public readonly record struct PdfMergePaper(PdfSheetPaper Paper, PdfSheetOrientation Orientation);
+
 /// <summary>Merges several PDF files into one. Implemented by the PDF engine.</summary>
 public interface IPdfMerger
 {
-    Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken);
+    /// <summary>Imports the input PDFs in order and writes their pages and supported structure into one PDF.</summary>
+    /// <param name="inputs">PDFs and original source names in the order to merge.</param>
+    /// <param name="outputPath">File to create.</param>
+    /// <param name="sourceBookmarks">Add a parent bookmark for each original source file.</param>
+    /// <param name="paper">Fit merged pages to this paper, or null to preserve their original geometry.</param>
+    /// <param name="cancellationToken">Cancels the merge without modifying the inputs.</param>
+    Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -233,6 +293,35 @@ public interface IPdfFinisher
 {
     /// <summary>Rewrites <paramref name="path"/> in place.</summary>
     Task FinishAsync(string path, Presets.PdfOptions options, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Makes a finished PDF a PDF/A (<see cref="Presets.DocumentOptions.PdfA"/>). Implemented by the Ghostscript engine;
+/// <see cref="JobQueue"/> runs it after the finishing on every PDF a job writes, whichever engine made it, and on a
+/// merged PDF once, so the box means the same for every route.
+/// </summary>
+public interface IPdfArchiver
+{
+    /// <summary>
+    /// Rewrites <paramref name="path"/> in place as PDF/A, unless it already is one and <paramref name="changed"/> is
+    /// false (LibreOffice and Skia write PDF/A themselves; a watermark added since breaks it).
+    /// </summary>
+    /// <returns>What it did; <see cref="PdfArchiveOutcome.NotArchived"/> when it can't (Ghostscript isn't installed):
+    /// the PDF is left as it is.</returns>
+    Task<PdfArchiveOutcome> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken);
+}
+
+/// <summary>What <see cref="IPdfArchiver.ArchiveAsync"/> did with a PDF.</summary>
+public enum PdfArchiveOutcome
+{
+    /// <summary>It couldn't (Ghostscript isn't installed): the PDF is left as it is.</summary>
+    NotArchived,
+
+    /// <summary>The PDF is PDF/A: rewritten, or kept because it already was one.</summary>
+    Archived,
+
+    /// <summary>Rewritten as PDF/A from a PDF with form fields, which are no longer fields in it.</summary>
+    ArchivedWithoutFormFields,
 }
 
 /// <summary>
@@ -253,7 +342,8 @@ public interface IMediaJoiner
 {
     /// <summary>
     /// Writes every file of <paramref name="inputPaths"/>, in order, into <paramref name="outputPath"/>: video or audio
-    /// clips back to back, or pictures shown one after the other (<see cref="MediaOptions.Slideshow"/>).
+    /// clips back to back, or pictures shown one after the other (<see cref="MediaOptions.Slideshow"/>). Into MP4,
+    /// audio files among the videos are music: played in their order under the videos (<see cref="MediaOptions.LoopMusic"/>).
     /// </summary>
     /// <param name="inputPaths">Videos, audio files, or pictures (PNG, as the image engines wrote them).</param>
     /// <param name="outputPath">File to create; removed again when the join fails.</param>

@@ -1,11 +1,14 @@
 // What Filee fixes in an HWPX copy before rhwp renders it (issue #65: an exam paper written in 한글 2022; issue #49:
-// a table floating in a table cell of an HWP file).
+// a table floating in a table cell of an HWP file; issue #1352: a slide title aligned to the bottom of its box).
 
 using System.IO.Compression;
+using System.Text;
 using System.Xml.Linq;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Hwp;
+using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Pptx;
 using UglyToad.PdfPig;
 
 namespace Filee.Engines.Tests;
@@ -20,6 +23,60 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private const int Step = 2800, Offset = 500, RowHeight = 2000, Rows = 3, Margin = 141, OuterHeight = 30_000;
     private const int AnchorTop = Step;
     private const int UnderTable = AnchorTop + Offset + Margin + Rows * RowHeight + Margin; // where 한글 stores the line
+
+    [Fact]
+    public void A_picture_alone_in_a_header_paragraph_gets_a_space_beside_it()
+    {
+        // rhwp left out a logo that was all its header paragraph held (issue #280).
+        var section = XDocument.Parse($$"""
+            <hs:sec xmlns:hs="{{Hs.NamespaceName}}" xmlns:hp="{{Hp.NamespaceName}}">
+              <hp:p><hp:run><hp:ctrl><hp:header><hp:subList>
+                <hp:p><hp:run><hp:pic/><hp:t/></hp:run></hp:p>
+                <hp:p><hp:run><hp:pic/></hp:run></hp:p>
+                <hp:p><hp:run><hp:pic/><hp:t>beside</hp:t></hp:run></hp:p>
+              </hp:subList></hp:header></hp:ctrl></hp:run></hp:p>
+              <hp:p><hp:run><hp:pic/><hp:t/></hp:run></hp:p>
+            </hs:sec>
+            """);
+
+        Assert.True(RhwpInput.ShowHeaderPictures(section));
+
+        var header = section.Descendants(Hp + "header").Single().Descendants(Hp + "p").ToList();
+        Assert.Equal([" ", " ", "beside"], header.Select(p => p.Descendants(Hp + "t").Single().Value));
+        Assert.Equal("", section.Root!.Elements(Hp + "p").Last().Descendants(Hp + "t").Single().Value); // the body draws it
+        Assert.False(RhwpInput.ShowHeaderPictures(section)); // nothing left to do
+    }
+
+    [Fact]
+    public void A_floating_picture_in_a_header_becomes_a_group_of_one()
+    {
+        // rhwp left out what came after a floating picture in a header, and the text beside it (issue #1152).
+        const string Floating = """<hp:pic id="7"><hp:offset x="0" y="0"/><hp:orgSz width="900" height="300"/><hp:img/><hp:sz width="900" height="300"/><hp:pos treatAsChar="0" vertRelTo="PAPER" vertOffset="500"/><hp:outMargin/></hp:pic>""";
+        var section = XDocument.Parse($$"""
+            <hs:sec xmlns:hs="{{Hs.NamespaceName}}" xmlns:hp="{{Hp.NamespaceName}}">
+              <hp:p><hp:run><hp:ctrl><hp:header><hp:subList>
+                <hp:p><hp:run>{{Floating}}<hp:t/></hp:run></hp:p>
+                <hp:p><hp:run>{{Floating}}<hp:t>beside</hp:t></hp:run></hp:p>
+                <hp:p><hp:run><hp:pic id="8"><hp:pos treatAsChar="1"/></hp:pic><hp:t>inline</hp:t></hp:run></hp:p>
+                <hp:p><hp:run>{{Floating}}</hp:run><hp:linesegarray/></hp:p>
+              </hp:subList></hp:header></hp:ctrl></hp:run></hp:p>
+              <hp:p><hp:run>{{Floating}}</hp:run></hp:p>
+            </hs:sec>
+            """);
+
+        Assert.True(RhwpInput.GroupFloatingHeaderPictures(section));
+
+        var header = section.Descendants(Hp + "header").Single().Descendants(Hp + "subList").Single().Elements(Hp + "p").ToList();
+        Assert.Equal([1, 1, 0, 0], header.Select(p => p.Descendants(Hp + "container").Count()));
+        var group = header[0].Descendants(Hp + "container").Single();
+        Assert.Equal("7", (string)group.Attribute("id")!);
+        Assert.Equal("7", (string)group.Element(Hp + "pic")!.Attribute("id")!);
+        Assert.Equal("500", (string)group.Element(Hp + "pos")!.Attribute("vertOffset")!);
+        Assert.Equal("900", (string)group.Element(Hp + "sz")!.Attribute("width")!);
+        Assert.Equal([" ", "beside"], header.Take(2).Select(p => p.Descendants(Hp + "t").Single().Value)); // an empty paragraph keeps its line
+        Assert.Empty(section.Root!.Elements(Hp + "p").Last().Descendants(Hp + "container")); // the body draws it
+        Assert.False(RhwpInput.GroupFloatingHeaderPictures(section)); // nothing left to do
+    }
 
     [Theory]
     [InlineData("f ^{2} = f CIRCf", "f ^{2} = f CIRC f")]
@@ -152,6 +209,74 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
         ], RhwpInput.PdfOptions(Lookup));
     }
 
+    [Fact]
+    public void Bottom_aligned_and_centred_text_boxes_get_their_room_as_top_margin()
+    {
+        // Issue #1352: rhwp took the text of a text box without stored lines as 0 high, so a bottom-aligned title (the
+        // Title Slide layout's) was drawn a line below its box, over the subtitle, and a centred one half a line low.
+        var dir = fx.NewFolder();
+        static InstalledFont? HalfEm(string face) => new(true, _ => true, _ => 0.5);
+        var copy = RhwpInput.Prepare(TitleSlideHwpx(dir), dir, HalfEm);
+
+        Assert.NotNull(copy);
+        var boxes = Section(copy).Descendants(Hp + "drawText").ToDictionary(
+            d => string.Concat(d.Descendants(Hp + "t").Select(t => t.Value)),
+            d => (Align: (string)d.Element(Hp + "subList")!.Attribute("vertAlign")!, Margin: d.Element(Hp + "textMargin")!,
+                Height: (int)d.Parent!.Element(Hp + "sz")!.Attribute("height")!));
+        Assert.All(boxes.Values, b => Assert.Equal("TOP", b.Align));
+
+        // One line of 60 pt (6000) ends at the bottom margin; the centred 44 pt line has as much room above as below.
+        var title = boxes["My Name is Ali"];
+        Assert.Equal(title.Height - (int)title.Margin.Attribute("bottom")!, (int)title.Margin.Attribute("top")! + 6000);
+        var centred = boxes["Centred"];
+        var below = centred.Height - (int)centred.Margin.Attribute("bottom")! - (int)centred.Margin.Attribute("top")! - 4400;
+        Assert.InRange((int)centred.Margin.Attribute("top")! - 360 - below, -1, 1);
+        Assert.Equal(360, (int)boxes["I am a Software Engineering Student"].Margin.Attribute("top")!); // top-aligned: as it was
+
+        Assert.Null(RhwpInput.Prepare(copy, dir, HalfEm)); // nothing left to do
+    }
+
+    [Fact]
+    public async Task The_title_of_a_title_slide_stays_above_its_subtitle_in_the_pdf()
+    {
+        var rhwp = fx.Converters.Single(c => c.Id == "rhwp");
+        Assert.SkipUnless(fx.Catalog.StatusOf(rhwp).IsAvailable, "rhwp not found (pwsh build/fetch-engines.ps1 -Only rhwp)");
+        var dir = fx.NewFolder();
+        var pdf = Path.Combine(dir, "title.pdf");
+
+        await rhwp.ConvertAsync(new ConversionStep(TitleSlideHwpx(dir), "hwpx", "pdf", new Preset(), new HwpxAssert.FixedPath(pdf), dir), null, TestContext.Current.CancellationToken);
+
+        using var document = PdfDocument.Open(pdf);
+        var page = document.GetPage(1);
+        var words = page.GetWords().ToDictionary(w => w.Text, w => w.BoundingBox);
+        // PDF coordinates grow upwards. Before the fix the title's line was drawn over the subtitle's.
+        Assert.True(words["Ali"].Bottom > words["Student"].Top, "the title ends above the subtitle");
+        // The title's box ends at 3509963 EMU of 6858000: the baseline of its last line sits just above that.
+        var boxBottom = page.Height * (1 - 3509963.0 / 6858000);
+        Assert.InRange(words["Ali"].Bottom, boxBottom, boxBottom + 30);
+    }
+
+    /// <summary>
+    /// PowerPoint's Title Slide in an HWPX of Filee's PPTX reader: "My Name is Ali" at 60 pt aligned to the bottom of its
+    /// box, "I am a Software Engineering Student" in the box below, aligned to the top; then a slide whose title
+    /// "Centred" is centred in the box it takes from the master.
+    /// </summary>
+    private string TitleSlideHwpx(string dir)
+    {
+        static string Box(int id, string placeholder, long y, long height, string anchor, int size, string text) =>
+            $"<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"{placeholder}\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"{placeholder}\"/></p:nvPr></p:nvSpPr>" +
+            $"<p:spPr><a:xfrm><a:off x=\"1524000\" y=\"{y}\"/><a:ext cx=\"9144000\" cy=\"{height}\"/></a:xfrm></p:spPr>" +
+            $"<p:txBody><a:bodyPr anchor=\"{anchor}\"/><a:lstStyle/><a:p><a:pPr algn=\"ctr\"><a:buNone/></a:pPr><a:r><a:rPr lang=\"en-US\" sz=\"{size}\"/><a:t>{text}</a:t></a:r></a:p></p:txBody></p:sp>";
+        var pptx = new PptxBuilder();
+        pptx.Slide(Box(20, "ctrTitle", 1122363, 2387600, "b", 6000, "My Name is Ali") +
+                   Box(21, "subTitle", 3602038, 1655762, "t", 2400, "I am a Software Engineering Student"));
+        pptx.Slide(pptx.Title("Centred"));
+        var source = PptxReader.Read(pptx.Save(Path.Combine(dir, "title.pptx")), Path.Combine(dir, "pptx-media"));
+        var hwpx = Path.Combine(dir, "title.hwpx");
+        HwpxWriter.Write(source, hwpx);
+        return hwpx;
+    }
+
     /// <summary>
     /// The #49 form in a package of Filee's HWPX writer: "Before", then the tall outer table. With
     /// <paramref name="fromHwp"/> it carries the marker rhwp's export-hwpx writes.
@@ -258,5 +383,25 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var zip = ZipFile.OpenRead(hwpx);
         using var stream = zip.GetEntry("Contents/section0.xml")!.Open();
         return XDocument.Load(stream);
+    }
+
+    [Fact]
+    public void Floating_pictures_nested_in_their_own_layout_do_not_double_at_every_level()
+    {
+        // A picture keeps a copy of itself and of its layout elements in its group, so walking on into those copies
+        // would double a header inside one at every level: 170 levels fit the XML limits, in a file of some kilobytes.
+        const int Levels = 20;
+        var hp = "http://www.hancom.co.kr/hwpml/2011/paragraph";
+        var level = new StringBuilder();
+        for (var i = 0; i < Levels; i++)
+            level.Append("<hp:header><hp:subList><hp:p><hp:run><hp:pic><hp:pos treatAsChar=\"0\"/><hp:offset>");
+        for (var i = 0; i < Levels; i++)
+            level.Append("</hp:offset></hp:pic></hp:run></hp:p></hp:subList></hp:header>");
+        var section = XDocument.Parse($"<hs:sec xmlns:hs=\"urn:s\" xmlns:hp=\"{hp}\">{level}</hs:sec>");
+
+        Assert.True(RhwpInput.GroupFloatingHeaderPictures(section));
+
+        Assert.True(section.Descendants().Count() < 100_000, $"{section.Descendants().Count()} elements");
+        Assert.NotNull(section.Root!.Descendants(XName.Get("container", hp)).FirstOrDefault());
     }
 }

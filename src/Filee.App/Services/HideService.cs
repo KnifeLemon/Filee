@@ -78,7 +78,7 @@ public static class HideService
     /// <summary>The picture as a bitmap the window draws.</summary>
     public static Bitmap ToBitmap(IMagickImage<byte> image)
     {
-        var pixels = image.ToByteArray(MagickFormat.Bgra);
+        var pixels = PixelsOf(image);
         var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
         try
         {
@@ -89,5 +89,20 @@ public static class HideService
         {
             handle.Free();
         }
+    }
+
+    /// <summary>
+    /// The picture's pixels as BGRA, four bytes each, for <see cref="ToBitmap"/>: read from its pixels, 8 bits a
+    /// channel whatever depth it was stored with. Written out as "BGRA" a 1-bit or palette PNG kept its depth, an
+    /// eighth of the bytes, and the bitmap read past their end.
+    /// </summary>
+    internal static byte[] PixelsOf(IMagickImage<byte> image)
+    {
+        using var pixels = image.GetPixels();
+        var bytes = pixels.ToByteArray(PixelMapping.BGRA)
+                    ?? throw new InvalidOperationException("The picture's pixels could not be read.");
+        if (bytes.Length != (long)image.Width * image.Height * 4)
+            throw new InvalidOperationException($"Expected {image.Width * image.Height * 4} bytes of pixels, got {bytes.Length}.");
+        return bytes;
     }
 }

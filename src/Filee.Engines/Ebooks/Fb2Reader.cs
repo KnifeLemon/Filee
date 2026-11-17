@@ -7,6 +7,7 @@ using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -15,6 +16,7 @@ internal sealed class Fb2Reader
     private const int Indent = 2000;
     private readonly Dictionary<string, string> _binaries = new(StringComparer.Ordinal);
     private readonly Dictionary<string, XElement> _notes = new(StringComparer.Ordinal);
+    private bool _inNote;
 
     private Fb2Reader()
     {
@@ -23,7 +25,10 @@ internal sealed class Fb2Reader
     /// <summary>Reads an FB2 book's content (for the reader registry of the HWPX writer).</summary>
     public static HDocument Read(string path, string workFolder) => ReadBook(path, workFolder).Document;
 
-    public static Book ReadBook(string path, string workFolder)
+    /// <summary>Reads an FB2 book: sections and inline elements are followed level by level, on a large stack.</summary>
+    public static Book ReadBook(string path, string workFolder) => Nesting.OnLargeStack(() => ReadTree(path, workFolder));
+
+    private static Book ReadTree(string path, string workFolder)
     {
         var root = Load(path).Root ?? throw new InvalidDataException("The FB2 file is empty.");
         if (root.Name.LocalName != "FictionBook")
@@ -51,10 +56,8 @@ internal sealed class Fb2Reader
     {
         // FB2 files are often windows-1251; the XML declaration names the encoding.
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null };
-        using var reader = XmlReader.Create(path, settings);
         // Spaces between inline elements ("<strong>a</strong> <emphasis>b</emphasis>") are text.
-        return XDocument.Load(reader, LoadOptions.PreserveWhitespace);
+        return BoundedXml.File(path, LoadOptions.PreserveWhitespace, DtdProcessing.Ignore);
     }
 
     private static IEnumerable<XElement> Children(XElement? parent, string name) =>
@@ -398,12 +401,21 @@ internal sealed class Fb2Reader
     private void Link(XElement link, List<HInline> output, HCharFormat format)
     {
         var href = Href(link) ?? "";
-        if (href.StartsWith('#') && _notes.TryGetValue(href[1..], out var noteSection))
+        // Links inside a note stay links: a note linking to itself (or two to each other) would be read forever.
+        if (!_inNote && href.StartsWith('#') && _notes.TryGetValue(href[1..], out var noteSection))
         {
             // A note reference becomes a footnote with the note's text (its title is only the number).
             var note = new HNote(endnote: false);
-            foreach (var child in noteSection.Elements().Where(e => e.Name.LocalName != "title"))
-                Block(child, note.Blocks, 0, 0);
+            _inNote = true;
+            try
+            {
+                foreach (var child in noteSection.Elements().Where(e => e.Name.LocalName != "title"))
+                    Block(child, note.Blocks, 0, 0);
+            }
+            finally
+            {
+                _inNote = false;
+            }
             if (note.Blocks.Count > 0)
             {
                 output.Add(note);

@@ -39,7 +39,7 @@ public class ClipToolTests
         {
             CultureInfo.CurrentCulture = new CultureInfo(culture);
             Assert.Equal("1:05.3", ClipRange.Display(65.3));
-            Assert.Equal("65.300", ClipRange.Ffmpeg(65.3));
+            Assert.Equal("65.300000", ClipRange.Ffmpeg(65.3));
         }
         finally
         {
@@ -48,12 +48,13 @@ public class ClipToolTests
     }
 
     [Theory]
-    [InlineData(0, "0.000")]
-    [InlineData(12.3456, "12.346")]
-    [InlineData(600, "600.000")]
-    [InlineData(-1, "0.000")]
-    [InlineData(double.PositiveInfinity, "0.000")]
-    public void Ffmpeg_reads_seconds_with_three_decimals(double seconds, string expected) =>
+    [InlineData(0, "0.000000")]
+    [InlineData(12.3456, "12.345600")]
+    [InlineData(2 / 30.0, "0.066667")] // a 30 fps frame: 0.067 would seek to the frame after it
+    [InlineData(600, "600.000000")]
+    [InlineData(-1, "0.000000")]
+    [InlineData(double.PositiveInfinity, "0.000000")]
+    public void Ffmpeg_reads_seconds_to_the_microsecond(double seconds, string expected) =>
         Assert.Equal(expected, ClipRange.Ffmpeg(seconds));
 
     // ───────────────────────── The range ─────────────────────────
@@ -148,7 +149,7 @@ public class ClipToolTests
         Assert.Equal(LivePhotoKind.None, conversion.Media.LivePhoto);
         Assert.Equal(("tool-clip", "Highlights", "{name}_clip"), (conversion.Id, conversion.Name, conversion.Output.FileNamePattern));
         Assert.True(conversion.CutsClipOf("mp4"));
-        Assert.False(conversion.CutsClipOf("mp3")); // only videos
+        Assert.True(conversion.CutsClipOf("mp3")); // sounds cut clips too
         // The tool itself is untouched.
         Assert.True(tool.IsClipTool);
         Assert.Null(tool.Media.Clip);
@@ -167,7 +168,43 @@ public class ClipToolTests
         Assert.Equal("mp4", ClipTool.TargetFor("rm", planner)); // RealVideo can't be written
         Assert.True(ClipTool.CanCut("rm", planner));
         Assert.False(ClipTool.CanCut("mov", planner)); // no engine reads it here
-        Assert.False(ClipTool.CanCut("mp3", planner)); // not a video
+        Assert.False(ClipTool.CanCut("mp3", planner)); // no engine writes sounds here
+    }
+
+    [Fact]
+    public void A_clip_of_a_sound_keeps_its_format_where_ffmpeg_writes_it_else_mp3()
+    {
+        var ffmpeg = new FakeConverter("ffmpeg", new ConversionEdge("mp3", "mp3"), new ConversionEdge("flac", "flac"),
+            new ConversionEdge("ape", "mp3"), new ConversionEdge("wma", "mp3"));
+        // Another engine writes WMA to WMA, but it knows nothing of clips.
+        var other = new FakeConverter("other-sounds", new ConversionEdge("wma", "wma"));
+        var planner = new ConverterCatalog([ffmpeg, other]).CreatePlanner();
+
+        Assert.True(ClipTool.IsSound("mp3"));
+        Assert.False(ClipTool.IsSound("mp4"));
+        Assert.Equal("mp3", ClipTool.TargetFor("mp3", planner));
+        Assert.Equal("flac", ClipTool.TargetFor("flac", planner));
+        Assert.Equal("mp3", ClipTool.TargetFor("ape", planner)); // Monkey's Audio can't be written
+        Assert.Equal("mp3", ClipTool.TargetFor("wma", planner)); // only an engine without clips writes WMA
+        Assert.True(ClipTool.CanCut("mp3", planner));
+        Assert.True(ClipTool.CanCut("ape", planner));
+        Assert.True(ClipTool.CanCut("wma", planner));
+        Assert.False(ClipTool.CanCut("wav", planner)); // no engine reads it here
+        Assert.False(ClipTool.CanCut("png", planner)); // neither a video nor a sound
+
+        // Only another engine converts sounds: no clip.
+        var onlyOther = new ConverterCatalog([new FakeConverter("other-sounds", new ConversionEdge("wma", "wma"), new ConversionEdge("wma", "mp3"))]).CreatePlanner();
+        Assert.False(ClipTool.CanCut("wma", onlyOther));
+    }
+
+    [Fact]
+    public void A_clip_is_cut_of_a_video_or_a_sound_only()
+    {
+        var clip = new Preset { TargetFormat = "mp3", Media = { Clip = ClipEdit.Of(new ClipRange(1, 5)) } };
+
+        Assert.True(clip.CutsClipOf("mp3"));
+        Assert.True(clip.CutsClipOf("mp4"));
+        Assert.False(clip.CutsClipOf("png"));
     }
 
     [Fact]
@@ -213,7 +250,7 @@ public class ClipToolTests
     {
         var presets = BuiltInData.CreatePresets();
         presets.RemoveAll(p => p.Id == "tool-clip");
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var video = profiles.Single(p => p.Id == "video");
         // The back face of 44: FLAC after WAV, no clip tool.
         video.BackPresetIds!.Remove("tool-clip");
@@ -223,12 +260,12 @@ public class ClipToolTests
 
         Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id));
         Assert.True(presets.Single(p => p.Id == "tool-clip").IsClipTool);
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "video").BackPresetIds, video.BackPresetIds);
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "video").BackPresetIds, video.BackPresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(44, presets, profiles)); // once only
 
         // A full back face makes room by giving up FLAC; one the user filled up without FLAC, or with the tool on the
         // front, stays as it is.
-        var withFlac = BuiltInData.CreateProfiles();
+        var withFlac = BuiltInData.ProfilesSchema58();
         var withFlacBack = withFlac.Single(p => p.Id == "video").BackPresetIds!;
         withFlacBack.Remove("tool-clip");
         withFlacBack.Add("to-flac");
@@ -239,7 +276,7 @@ public class ClipToolTests
         Assert.DoesNotContain("to-flac", withFlacBack);
         Assert.Equal(ToolbarProfile.MaxSlices, withFlacBack.Count);
 
-        var full = BuiltInData.CreateProfiles();
+        var full = BuiltInData.ProfilesSchema58();
         var fullBack = full.Single(p => p.Id == "video").BackPresetIds!;
         fullBack.Remove("tool-clip");
         while (fullBack.Count < ToolbarProfile.MaxSlices)
@@ -248,7 +285,7 @@ public class ClipToolTests
         SettingsMigrations.ApplyToLibrary(44, BuiltInData.CreatePresets(), full);
         Assert.Equal(before, fullBack);
 
-        var front = BuiltInData.CreateProfiles();
+        var front = BuiltInData.ProfilesSchema58();
         var frontVideo = front.Single(p => p.Id == "video");
         frontVideo.BackPresetIds!.Remove("tool-clip");
         frontVideo.PresetIds[^1] = "tool-clip";
@@ -267,7 +304,7 @@ public class ClipToolTests
         clip.Output.FileNamePattern = "{name}_best";
         Assert.True(clip.IsCropTool);
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(44, presets, BuiltInData.CreateProfiles()));
+        Assert.True(SettingsMigrations.ApplyToLibrary(44, presets, BuiltInData.ProfilesSchema58()));
 
         Assert.True(clip.IsClipTool);
         Assert.Equal(("Highlights", "{name}_best"), (clip.Name, clip.Output.FileNamePattern));
@@ -276,7 +313,7 @@ public class ClipToolTests
         // A Filee before 26 read it as a group.
         clip.Kind = PresetKind.Group;
         clip.TargetFormat = Preset.GroupTarget;
-        Assert.True(SettingsMigrations.ApplyToLibrary(44, presets, BuiltInData.CreateProfiles()));
+        Assert.True(SettingsMigrations.ApplyToLibrary(44, presets, BuiltInData.ProfilesSchema58()));
         Assert.True(clip.IsClipTool);
         Assert.Equal(BuiltInData.SameAsSource, clip.TargetFormat);
     }

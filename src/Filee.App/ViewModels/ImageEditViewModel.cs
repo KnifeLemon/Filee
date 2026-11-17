@@ -72,9 +72,12 @@ public sealed partial class ImageEditViewModel : ObservableObject
         var custom = image.CustomSize ?? new CustomImageSize { LockAspect = true };
         _unit = Units.FirstOrDefault(u => u.Value == custom.Unit) ?? Units[0];
         _dpi = Math.Clamp(custom.Dpi, CustomImageSize.MinDpi, CustomImageSize.MaxDpi);
-        _customWidth = (decimal)CustomImageSize.FromPixels(custom.ClampedWidth, _unit.Value, _dpi);
-        _customHeight = (decimal)CustomImageSize.FromPixels(custom.ClampedHeight, _unit.Value, _dpi);
+        // A side left empty is stored as the largest one (CustomImageSize.FreeSide) and comes back empty (#1270).
+        bool Free(int side) => custom.LockAspect && side >= CustomImageSize.FreeSide;
+        _customWidth = Free(custom.Width) ? null : (decimal)CustomImageSize.FromPixels(custom.ClampedWidth, _unit.Value, _dpi);
+        _customHeight = Free(custom.Height) ? null : (decimal)CustomImageSize.FromPixels(custom.ClampedHeight, _unit.Value, _dpi);
         _lockAspect = custom.LockAspect;
+        _shrinkOnly = custom.ShrinkOnly;
         _rotation = Rotations.FirstOrDefault(r => r.Value == image.Rotation) ?? Rotations[0];
         _flip = Flips.FirstOrDefault(f => f.Value == image.Flip) ?? Flips[0];
         _resizePercent = image.ResizePercent;
@@ -98,6 +101,7 @@ public sealed partial class ImageEditViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowPercent), nameof(ShowLongEdge), nameof(ShowWidth), nameof(ShowCustom), nameof(ShowDpi), nameof(SizeAfter))]
+    [NotifyPropertyChangedFor(nameof(CustomSizeError), nameof(CanConvert))]
     private Choice<ResizeMode> _resize;
 
     [ObservableProperty]
@@ -118,20 +122,25 @@ public sealed partial class ImageEditViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SizeAfter))]
     private int _width;
 
-    /// <summary>With <see cref="ResizeMode.Custom"/>: the width, in <see cref="Unit"/>.</summary>
+    /// <summary>With <see cref="ResizeMode.Custom"/>: the width, in <see cref="Unit"/>; empty leaves it free while the aspect is kept.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SizeAfter))]
-    private decimal _customWidth;
+    [NotifyPropertyChangedFor(nameof(SizeAfter), nameof(CustomSizeError), nameof(CanConvert))]
+    private decimal? _customWidth;
 
-    /// <summary>With <see cref="ResizeMode.Custom"/>: the height, in <see cref="Unit"/>.</summary>
+    /// <summary>With <see cref="ResizeMode.Custom"/>: the height, in <see cref="Unit"/>; empty as <see cref="CustomWidth"/>.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SizeAfter))]
-    private decimal _customHeight;
+    [NotifyPropertyChangedFor(nameof(SizeAfter), nameof(CustomSizeError), nameof(CanConvert))]
+    private decimal? _customHeight;
 
     /// <summary>With <see cref="ResizeMode.Custom"/>: fit inside the width × height instead of stretching to it.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SizeAfter))]
+    [NotifyPropertyChangedFor(nameof(SizeAfter), nameof(CustomSizeError), nameof(CanConvert))]
     private bool _lockAspect;
+
+    /// <summary>With <see cref="LockAspect"/>: pictures that already fit the box stay as they are (#1270).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SizeAfter))]
+    private bool _shrinkOnly;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowDpi), nameof(SizeFormat), nameof(SizeAfter))]
@@ -156,14 +165,27 @@ public sealed partial class ImageEditViewModel : ObservableObject
             return;
         // The same pixels shown in the new unit, so switching the unit never changes the size by itself.
         var dpi = Math.Clamp(Dpi, CustomImageSize.MinDpi, CustomImageSize.MaxDpi);
-        CustomWidth = (decimal)CustomImageSize.FromPixels(CustomImageSize.ToPixels((double)CustomWidth, oldValue.Value, dpi), newValue.Value, dpi);
-        CustomHeight = (decimal)CustomImageSize.FromPixels(CustomImageSize.ToPixels((double)CustomHeight, oldValue.Value, dpi), newValue.Value, dpi);
+        decimal? Converted(decimal? side) => side is { } value
+            ? (decimal)CustomImageSize.FromPixels(CustomImageSize.ToPixels((double)value, oldValue.Value, dpi), newValue.Value, dpi)
+            : null;
+        CustomWidth = Converted(CustomWidth);
+        CustomHeight = Converted(CustomHeight);
     }
 
     public bool ShowPercent => Resize.Value == ResizeMode.Percent;
     public bool ShowLongEdge => Resize.Value == ResizeMode.LongEdge;
     public bool ShowWidth => Resize.Value == ResizeMode.Width;
     public bool ShowCustom => Resize.Value == ResizeMode.Custom;
+
+    /// <summary>
+    /// The width × height boxes, while shown: a stretch needs both sides, a box that keeps the aspect at least one.
+    /// </summary>
+    public string? CustomSizeError => ShowCustom && (LockAspect ? CustomWidth is null && CustomHeight is null : CustomWidth is null || CustomHeight is null)
+        ? _loc["presets.custom_size_missing"]
+        : null;
+
+    /// <summary>The choices make a size to convert to.</summary>
+    public bool CanConvert => CustomSizeError is null;
 
     /// <summary>A size in cm, mm or inches needs a resolution to become pixels.</summary>
     public bool ShowDpi => ShowCustom && Unit.Value != SizeUnit.Pixels;
@@ -204,7 +226,7 @@ public sealed partial class ImageEditViewModel : ObservableObject
     /// </summary>
     internal (int Width, int Height)? SizeOfFirst()
     {
-        if (_firstSize is not { } size)
+        if (_firstSize is not { } size || !CanConvert)
             return null;
         var options = Options();
         var (width, height) = options.Rotation is ImageRotation.Left90 or ImageRotation.Right90 ? (size.Height, size.Width) : size;
@@ -238,14 +260,21 @@ public sealed partial class ImageEditViewModel : ObservableObject
         {
             // Stored as presets store it, CustomSize with Resize None, so an older version reads the tool (#576).
             var dpi = Math.Clamp(Dpi, CustomImageSize.MinDpi, CustomImageSize.MaxDpi);
-            int Side(decimal value) =>
-                Math.Clamp(CustomImageSize.ToPixels((double)value, Unit.Value, dpi), CustomImageSize.MinSide, CustomImageSize.MaxSide);
+            // An empty side is free while the aspect is kept (#1270); a stretch with one missing (Convert is off then)
+            // keeps the size the window opens with.
+            var (width, height) = (CustomWidth, CustomHeight);
+            if (!LockAspect || width is null && height is null)
+                (width, height) = (width ?? 1920, height ?? 1080);
+            int Side(decimal? value) => value is { } side
+                ? Math.Clamp(CustomImageSize.ToPixels((double)side, Unit.Value, dpi), CustomImageSize.MinSide, CustomImageSize.MaxSide)
+                : CustomImageSize.FreeSide;
             image.Resize = ResizeMode.None;
             image.CustomSize = new CustomImageSize
             {
-                Width = Side(CustomWidth),
-                Height = Side(CustomHeight),
+                Width = Side(width),
+                Height = Side(height),
                 LockAspect = LockAspect,
+                ShrinkOnly = LockAspect && ShrinkOnly,
                 Unit = Unit.Value,
                 Dpi = dpi,
             };
@@ -269,6 +298,8 @@ public sealed partial class ImageEditViewModel : ObservableObject
     /// </summary>
     public void Convert()
     {
+        if (!CanConvert)
+            return;
         var image = Options();
         Remember(image);
         foreach (var group in Pictures.GroupBy(path => _targetFor(path, Target.Value)))

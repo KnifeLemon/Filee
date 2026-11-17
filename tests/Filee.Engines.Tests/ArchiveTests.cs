@@ -38,6 +38,11 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Theory]
     [InlineData("zip")]
     [InlineData("jar")]
+    [InlineData("zxp")]
+    [InlineData("nupkg")]
+    [InlineData("apks")]
+    [InlineData("aab")]
+    [InlineData("msix")]
     [InlineData("7z")]
     [InlineData("rar")]
     [InlineData("tgz")]
@@ -111,7 +116,11 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         ZipFile.ExtractToDirectory(current, check);
         Assert.Equal(expected, Snapshot(Path.Combine(check, "프로젝트")));
         var time = File.GetLastWriteTime(Path.Combine(check, "프로젝트", "readme.txt"));
-        Assert.True(Math.Abs((time - KnownTime).TotalSeconds) <= 2, $"time {time} instead of {KnownTime}");
+        // 7-Zip turns a ZIP's local times into UTC with Windows' current offset, which in a time zone with daylight
+        // saving time can be an hour off .NET's offset for that date (seen on a Pacific-time CI runner).
+        var off = Math.Abs((time - KnownTime).TotalSeconds);
+        var dstHour = TimeZoneInfo.Local.SupportsDaylightSavingTime && Math.Abs(off - 3600) <= 2;
+        Assert.True(off <= 2 || dstHour, $"time {time} instead of {KnownTime}");
     }
 
     [Fact]
@@ -258,13 +267,15 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(["real.txt"], Directory.GetFileSystemEntries(folder).Select(Path.GetFileName));
     }
 
-    [Fact]
-    public async Task Zip_slip_entries_are_rejected()
+    [Theory]
+    [InlineData("zip")]
+    [InlineData("msix")]
+    public async Task Zip_slip_entries_are_rejected(string extension)
     {
         SkipWithout7Zip();
         var dir = fx.NewFolder();
         var inner = Directory.CreateDirectory(Path.Combine(dir, "inner")).FullName;
-        var zip = Path.Combine(inner, "evil.zip");
+        var zip = Path.Combine(inner, "evil." + extension);
         using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
         {
             using (var w = new StreamWriter(archive.CreateEntry("good.txt").Open()))
@@ -278,7 +289,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(JobState.Failed, job.State);
         Assert.Contains("outside the target folder", job.Files[0].ErrorDetail);
         Assert.False(File.Exists(Path.Combine(dir, "evil.txt")));
-        Assert.Equal(["evil.zip"], Directory.GetFileSystemEntries(inner).Select(Path.GetFileName)); // no half-extracted folder
+        Assert.Equal(["evil." + extension], Directory.GetFileSystemEntries(inner).Select(Path.GetFileName)); // no half-extracted folder
     }
 
     [Fact]
@@ -314,6 +325,154 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(JobState.Failed, job.State);
         Assert.Contains("not a valid archive", job.Files[0].ErrorDetail);
         Assert.Equal(["fake.zip"], Directory.GetFileSystemEntries(dir).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task Extract_into_an_existing_folder_refuses_a_link_inside_it_before_moving_anything()
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var tree = MakeTree(dir, "data");
+        var zip = Path.Combine(dir, "data.zip");
+        ZipFile.CreateFromDirectory(tree, zip, CompressionLevel.Fastest, includeBaseDirectory: false, Encoding.UTF8);
+        Directory.Delete(tree, true);
+        var target = Directory.CreateDirectory(Path.Combine(dir, "data")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(target, "readme.txt"), "old", Ct);
+        var elsewhere = Directory.CreateDirectory(Path.Combine(dir, "elsewhere")).FullName;
+        var link = Path.Combine(target, "docs"); // "docs/보고서/data.csv" would land in elsewhere
+        LinkFolder(link, elsewhere);
+        try
+        {
+            var overwrite = Extract;
+            overwrite.Output.Conflict = ConflictPolicy.Overwrite;
+            var job = await fx.ConvertAsync([zip], overwrite);
+
+            Assert.Equal(JobState.Failed, job.State);
+            Assert.Contains("is a link", job.Files[0].ErrorDetail);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
+            Assert.Equal("old", await File.ReadAllTextAsync(Path.Combine(target, "readme.txt"), Ct));
+        }
+        finally
+        {
+            Directory.Delete(link); // the link only, before the fixture deletes the folders
+        }
+    }
+
+    // ───────── Mark of the Web ─────────
+
+    [Fact]
+    public async Task Unpacked_files_keep_the_mark_of_the_web_of_their_archive()
+    {
+        SkipWithout7Zip();
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        var dir = fx.NewFolder();
+        var tree = MakeTree(dir, "tree");
+        var zip = Path.Combine(dir, "tools.zip");
+        ZipFile.CreateFromDirectory(tree, zip, CompressionLevel.Fastest, includeBaseDirectory: false, Encoding.UTF8);
+        var tgz = Path.Combine(dir, "tools.tar.gz");
+        await using (var file = File.Create(tgz))
+        await using (var gzip = new GZipStream(file, CompressionLevel.Fastest))
+            await TarFile.CreateFromDirectoryAsync(tree, gzip, includeBaseDirectory: false, Ct);
+        var alz = Path.Combine(dir, "tools.alz");
+        WriteAlz(alz, [new("setup.txt", Words(1_000), Method: 2)]);
+        var egg = Path.Combine(dir, "tools.egg");
+        WriteEgg(egg, [new("setup.txt", false, new EggBlock(Words(1_000), 1))]);
+        var lz = Path.Combine(dir, "setup.txt.lz");
+        await File.WriteAllBytesAsync(lz, await LzipAsync(Words(1_000), dir), Ct);
+
+        var mark = Filee.Core.Platform.MarkOfTheWeb.Internet(new Uri("https://example.com/tools.zip"));
+        foreach (var archive in new[] { zip, tgz, alz, egg, lz })
+        {
+            Assert.SkipUnless(Filee.Core.Platform.MarkOfTheWeb.TryWrite(archive, mark), "The temp drive holds no NTFS streams.");
+            var folder = (await ConvertOkAsync(archive, Extract)).Outputs.Single();
+            var files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
+            Assert.NotEmpty(files);
+            foreach (var file in files)
+                Assert.Contains("ZoneId=3", Filee.Core.Platform.MarkOfTheWeb.Read(file) ?? $"no mark on {file}");
+        }
+
+        // An archive without a mark gives files without one.
+        var plain = Path.Combine(dir, "plain.zip");
+        ZipFile.CreateFromDirectory(tree, plain, CompressionLevel.Fastest, includeBaseDirectory: false, Encoding.UTF8);
+        var unmarked = (await ConvertOkAsync(plain, Extract)).Outputs.Single();
+        Assert.All(Directory.GetFiles(unmarked, "*", SearchOption.AllDirectories), f => Assert.Null(Filee.Core.Platform.MarkOfTheWeb.Read(f)));
+    }
+
+    // ───────── Disk space ─────────
+
+    [Fact]
+    public async Task A_compressed_stream_that_unpacks_past_the_limit_is_stopped_and_nothing_is_kept()
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var zeros = new byte[16 * 1024 * 1024]; // a few hundred bytes as .bz2 and a few KB as .gz
+        var bz2 = Path.Combine(dir, "zeros.bin.bz2");
+        await File.WriteAllBytesAsync(bz2, await Bzip2Async(zeros, dir), Ct);
+        var gz = Path.Combine(dir, "zeros.bin.gz");
+        await using (var file = File.Create(gz))
+        await using (var gzip = new GZipStream(file, CompressionLevel.SmallestSize))
+            await gzip.WriteAsync(zeros, Ct);
+        var tgz = Path.Combine(dir, "zeros.tar.gz");
+        await using (var file = File.Create(tgz))
+        await using (var gzip = new GZipStream(file, CompressionLevel.SmallestSize))
+        await using (var tar = new TarWriter(gzip, TarEntryFormat.Pax))
+            await tar.WriteEntryAsync(new PaxTarEntry(TarEntryType.RegularFile, "zeros.bin") { DataStream = new MemoryStream(zeros) }, Ct);
+
+        var extractor = new ArchiveExtractor(SevenZip.Locate(), _ => 1024 * 1024);
+        foreach (var (archive, format) in new[] { (bz2, "bz2"), (gz, "gz"), (tgz, "tgz") })
+        {
+            var scratch = Directory.CreateDirectory(Path.Combine(dir, "scratch-" + format)).FullName;
+            var error = await Assert.ThrowsAsync<IOException>(() => extractor.ExtractAsync(archive, format, scratch, Ct));
+            Assert.Contains("unpacks to more than 1.0 MB", error.Message);
+            Assert.Empty(Directory.EnumerateFiles(scratch, "*", SearchOption.AllDirectories));
+        }
+
+        // Under the limit, the same files unpack as before.
+        var roomy = new ArchiveExtractor(SevenZip.Locate(), _ => 32 * 1024 * 1024);
+        var unpacked = await roomy.ExtractAsync(bz2, "bz2", Directory.CreateDirectory(Path.Combine(dir, "roomy")).FullName, Ct);
+        Assert.Equal(zeros.Length, new FileInfo(Path.Combine(unpacked, "zeros.bin")).Length);
+    }
+
+    [Fact]
+    public async Task An_lzip_member_longer_than_its_trailer_says_is_stopped_at_that_size()
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var member = await LzipAsync(Words(200_000), dir);
+        BitConverter.GetBytes(1_000L).CopyTo(member, member.Length - 16); // the trailer's data size
+        var lz = Path.Combine(dir, "log.txt.lz");
+        await File.WriteAllBytesAsync(lz, member, Ct);
+
+        var job = await fx.ConvertAsync([lz], Extract);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Contains("more than the archive declares", job.Files[0].ErrorDetail);
+        Assert.Equal(["log.txt.lz"], Directory.GetFileSystemEntries(dir).Where(File.Exists).Select(Path.GetFileName));
+    }
+
+    /// <summary>A junction on Windows (no rights needed), a symbolic link elsewhere; skips when neither can be made.</summary>
+    private static void LinkFolder(string link, string target)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, target);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("This machine doesn't let the test make a symbolic link.");
+            }
+            return;
+        }
+        using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, target])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        mklink.WaitForExit();
+        Assert.SkipUnless(mklink.ExitCode == 0, "This drive can't hold a junction.");
     }
 
     // ───────── Compress into one archive ─────────
@@ -576,6 +735,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Path = dir\file.txt
             Folder = -
             Size = 7
+            Modified = 2021-05-06 07:08:10
             Mode = -rw-r--r--
             Symbolic Link =
             Hard Link =
@@ -600,6 +760,8 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(entries[2].IsFolder);
         Assert.True(entries[2].IsEncrypted);
         Assert.Equal(7, entries[0].Size);
+        Assert.Equal(KnownTime.ToUniversalTime(), entries[0].Modified);
+        Assert.Null(entries[1].Modified);
     }
 
     [Fact]
@@ -672,6 +834,239 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         await File.WriteAllTextAsync(input, "This is not an archive.", TestContext.Current.CancellationToken);
         var job = await fx.ConvertAsync([input], new Preset { TargetFormat = "zip" });
         Assert.Equal(JobState.Failed, job.State);
+        Assert.Empty(job.Outputs);
+    }
+
+    // ───────────────────────── Adobe extension packages (issue #1382) ─────────────────────────
+
+    [Fact]
+    public void A_zxp_is_read_but_never_written()
+    {
+        var planner = fx.Catalog.CreatePlanner(["archive"]);
+        Assert.Null(planner.Plan("zip", "zxp"));
+        Assert.Null(planner.Plan("7z", "zxp"));
+    }
+
+    [Fact]
+    public async Task An_adobe_zxp_extracts_and_converts_to_zip_with_its_signature_file()
+    {
+        SkipWithout7Zip();
+        var input = Path.Combine(fx.NewFolder(), "panel.zxp");
+        // The layout ZXPSignCmd writes: the mimetype first, the extension's files, the signature in META-INF.
+        var expected = new Dictionary<string, byte[]>
+        {
+            ["mimetype"] = Encoding.ASCII.GetBytes("application/vnd.adobe.air-ucf-package+zip"),
+            ["CSXS/manifest.xml"] = Encoding.UTF8.GetBytes("<ExtensionManifest ExtensionBundleId=\"com.example.panel\"/>"),
+            ["client/index.html"] = Encoding.UTF8.GetBytes("<!doctype html><title>패널</title>"),
+            ["META-INF/signatures.xml"] = Encoding.UTF8.GetBytes("<signatures/>"),
+        };
+        using (var archive = ZipFile.Open(input, ZipArchiveMode.Create))
+            foreach (var (name, bytes) in expected)
+            {
+                using var entry = archive.CreateEntry(name, name == "mimetype" ? CompressionLevel.NoCompression : CompressionLevel.Optimal).Open();
+                entry.Write(bytes);
+            }
+        var original = await File.ReadAllBytesAsync(input, Ct);
+
+        var folder = (await ConvertOkAsync(input, Extract)).Outputs.Single();
+        foreach (var (name, bytes) in expected)
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(folder, name), Ct));
+
+        var zip = (await ConvertOkAsync(input, new Preset { TargetFormat = "zip" })).Outputs.Single();
+        Assert.EndsWith("panel.zip", zip);
+        using var output = ZipFile.OpenRead(zip);
+        Assert.Equal(expected.Keys.Order(), output.Entries.Where(e => !e.FullName.EndsWith('/')).Select(e => e.FullName).Order());
+        Assert.Equal(original, await File.ReadAllBytesAsync(input, Ct));
+    }
+
+    // ──────────────── NuGet and Android packages (issues #1465, #1464) ────────────────
+
+    [Theory]
+    [InlineData("nupkg")]
+    [InlineData("apks")]
+    [InlineData("aab")]
+    [InlineData("msix")]
+    public void A_package_is_read_but_never_written(string package)
+    {
+        var planner = fx.Catalog.CreatePlanner(["archive"]);
+        Assert.Null(planner.Plan("zip", package));
+        Assert.Null(planner.Plan("7z", package));
+        Assert.Null(planner.Plan(FormatRegistry.Folder, package));
+    }
+
+    /// <summary>The entries each kind of package holds, laid out as the tool that makes it does.</summary>
+    private static Dictionary<string, byte[]> PackageEntries(string extension) => extension switch
+    {
+        "nupkg" or "snupkg" => new()
+        {
+            ["_rels/.rels"] = Encoding.UTF8.GetBytes("<Relationships/>"),
+            ["Example.Lib.nuspec"] = Encoding.UTF8.GetBytes("<package><metadata><id>Example.Lib</id><description>예제</description></metadata></package>"),
+            ["lib/net8.0/Example.Lib." + (extension == "nupkg" ? "dll" : "pdb")] = Noise(4096, 1),
+            ["package/services/metadata/core-properties/0123456789abcdef.psmdcp"] = Encoding.UTF8.GetBytes("<coreProperties/>"),
+            ["[Content_Types].xml"] = Encoding.UTF8.GetBytes("<Types/>"),
+        },
+        // bundletool's .apks: the splits and a table of contents.
+        "apks" => new()
+        {
+            ["toc.pb"] = Noise(64, 2),
+            ["splits/base-master.apk"] = Apk("base"),
+            ["splits/base-arm64_v8a.apk"] = Apk("arm64"),
+        },
+        // APKPure's .xapk: a manifest, the APKs, the icon and an expansion file.
+        "xapk" => new()
+        {
+            ["manifest.json"] = Encoding.UTF8.GetBytes("{\"package_name\":\"com.example.app\",\"name\":\"예제\"}"),
+            ["com.example.app.apk"] = Apk("base"),
+            ["config.arm64_v8a.apk"] = Apk("arm64"),
+            ["icon.png"] = Noise(256, 3),
+            ["Android/obb/com.example.app/main.1.com.example.app.obb"] = Noise(8192, 4),
+        },
+        // APKMirror's .apkm: info.json and the APKs.
+        "apkm" => new()
+        {
+            ["info.json"] = Encoding.UTF8.GetBytes("{\"pname\":\"com.example.app\"}"),
+            ["base.apk"] = Apk("base"),
+            ["split_config.xxhdpi.apk"] = Apk("xxhdpi"),
+        },
+        // An Android App Bundle: a folder per module and the bundle's config.
+        "aab" => new()
+        {
+            ["BundleConfig.pb"] = Noise(32, 5),
+            ["base/manifest/AndroidManifest.xml"] = Noise(512, 6),
+            ["base/dex/classes.dex"] = Noise(2048, 7),
+            ["base/resources.pb"] = Noise(128, 8),
+            ["base/res/values/strings.xml"] = Encoding.UTF8.GetBytes("<resources><string name=\"app\">예제</string></resources>"),
+            ["META-INF/MANIFEST.MF"] = Encoding.ASCII.GetBytes("Manifest-Version: 1.0\r\n"),
+        },
+        "msix" or "appx" or "msixbundle" or "appxbundle" => new()
+        {
+            ["AppxManifest.xml"] = Encoding.UTF8.GetBytes("<Package/>"),
+            ["AppxBlockMap.xml"] = Encoding.UTF8.GetBytes("<BlockMap/>"),
+            ["AppxSignature.p7x"] = Noise(128, 12),
+            ["Assets/图标.png"] = Noise(256, 13),
+            ["payload/app.msix"] = Apk("nested"),
+        },
+        _ => throw new ArgumentOutOfRangeException(nameof(extension)),
+    };
+
+    /// <summary>A small APK (itself a ZIP): it must come out as one file, not unpacked.</summary>
+    private static byte[] Apk(string name)
+    {
+        using var buffer = new MemoryStream();
+        using (var apk = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var manifest = apk.CreateEntry("AndroidManifest.xml").Open())
+                manifest.Write(Noise(256, name.Length));
+            using var dex = apk.CreateEntry("classes.dex").Open();
+            dex.Write(Encoding.UTF8.GetBytes(name));
+        }
+        return buffer.ToArray();
+    }
+
+    private static void WritePackage(string path, Dictionary<string, byte[]> entries)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        foreach (var (name, bytes) in entries)
+        {
+            // APKs and expansion files are stored, as the Android tools write them.
+            var level = name.EndsWith(".apk", StringComparison.Ordinal) || name.EndsWith(".obb", StringComparison.Ordinal)
+                ? CompressionLevel.NoCompression : CompressionLevel.Optimal;
+            using var entry = archive.CreateEntry(name, level).Open();
+            entry.Write(bytes);
+        }
+    }
+
+    [Theory]
+    [InlineData("Example.Lib.1.0.0.nupkg")]
+    [InlineData("Example.Lib.1.0.0.snupkg")]
+    [InlineData("app.apks")]
+    [InlineData("com.example.app.xapk")]
+    [InlineData("com.example.app_1.0-1_minAPI24.apkm")]
+    [InlineData("app-release.aab")]
+    [InlineData("app.msix")]
+    [InlineData("app.appx")]
+    [InlineData("app.msixbundle")]
+    [InlineData("app.appxbundle")]
+    public async Task A_package_extracts_and_converts_to_zip_and_tar_with_every_entry(string fileName)
+    {
+        SkipWithout7Zip();
+        var input = Path.Combine(fx.NewFolder(), fileName);
+        var expected = PackageEntries(Path.GetExtension(fileName).TrimStart('.'));
+        WritePackage(input, expected);
+        var original = await File.ReadAllBytesAsync(input, Ct);
+        var name = Path.GetFileNameWithoutExtension(fileName);
+
+        var folder = (await ConvertOkAsync(input, Extract)).Outputs.Single();
+        foreach (var (entry, bytes) in expected)
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(folder, entry), Ct)); // the APKs stay files
+        Assert.Equal(expected.Count, Directory.GetFiles(folder, "*", SearchOption.AllDirectories).Length);
+
+        var zip = (await ConvertOkAsync(input, new Preset { TargetFormat = "zip" })).Outputs.Single();
+        Assert.Equal(name + ".zip", Path.GetFileName(zip));
+        using (var output = ZipFile.OpenRead(zip))
+            foreach (var (entry, bytes) in expected)
+            {
+                using var stream = output.GetEntry(entry)!.Open();
+                using var copy = new MemoryStream();
+                await stream.CopyToAsync(copy, Ct);
+                Assert.Equal(bytes, copy.ToArray());
+            }
+
+        if (Path.GetExtension(fileName).EndsWith("msix", StringComparison.OrdinalIgnoreCase))
+        {
+            var sevenZip = (await ConvertOkAsync(input, new Preset { TargetFormat = "7z" })).Outputs.Single();
+            var unpacked = (await ConvertOkAsync(sevenZip, Extract)).Outputs.Single();
+            foreach (var (entry, bytes) in expected)
+                Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(unpacked, entry), Ct));
+        }
+
+        var tar = (await ConvertOkAsync(input, new Preset { TargetFormat = "tar" })).Outputs.Single();
+        Assert.Equal(name + ".tar", Path.GetFileName(tar));
+        var files = new List<string>();
+        await using (var reader = new TarReader(File.OpenRead(tar)))
+            while (await reader.GetNextEntryAsync(cancellationToken: Ct) is { } entry)
+                if (entry.EntryType is TarEntryType.RegularFile or TarEntryType.V7RegularFile)
+                    files.Add(entry.Name);
+        Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), files.Order(StringComparer.Ordinal));
+        Assert.Equal(original, await File.ReadAllBytesAsync(input, Ct));
+    }
+
+    [Theory]
+    [InlineData("broken.nupkg")]
+    [InlineData("broken.xapk")]
+    [InlineData("broken.aab")]
+    [InlineData("broken.msix")]
+    public async Task A_package_that_is_no_archive_fails_with_7zips_reason(string fileName)
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var input = Path.Combine(dir, fileName);
+        await File.WriteAllTextAsync(input, "This is not a package.", Ct);
+
+        var job = await fx.ConvertAsync([input], Extract);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Contains("not a valid archive", job.Files[0].ErrorDetail);
+        Assert.Empty(job.Outputs);
+        Assert.Equal([fileName], Directory.GetFileSystemEntries(dir).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task A_cut_off_package_fails_instead_of_hanging()
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var whole = Path.Combine(dir, "whole.xapk");
+        WritePackage(whole, PackageEntries("xapk"));
+        var bytes = await File.ReadAllBytesAsync(whole, Ct);
+        File.Delete(whole);
+        var input = Path.Combine(dir, "cut.xapk");
+        await File.WriteAllBytesAsync(input, bytes[..(bytes.Length / 2)], Ct);
+
+        var job = await fx.ConvertAsync([input], new Preset { TargetFormat = "zip" }).WaitAsync(TimeSpan.FromMinutes(2), Ct);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.False(string.IsNullOrWhiteSpace(job.Files[0].ErrorDetail));
         Assert.Empty(job.Outputs);
     }
 }

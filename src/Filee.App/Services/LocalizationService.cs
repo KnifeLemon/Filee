@@ -108,6 +108,11 @@ public sealed class LocalizationService : ILocalizer
             return Languages.First(l => l.Code.Equals(setting, StringComparison.OrdinalIgnoreCase)).Code;
 
         var ui = osLanguage();
+        // Mongolian in Cyrillic ("mn", "mn-MN", "mn-Cyrl"); the traditional script ("mn-Mong", Inner Mongolia) reads
+        // differently, so it keeps the fallback.
+        if (ui.Equals("mn", StringComparison.OrdinalIgnoreCase)
+            || ui.StartsWith("mn-", StringComparison.OrdinalIgnoreCase) && !ui.Contains("Mong", StringComparison.OrdinalIgnoreCase))
+            return "mn";
         if (ui.Equals("de", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("de-", StringComparison.OrdinalIgnoreCase))
             return "de";
         // "it" and every region ("it-IT", "it-CH", …), but not Itelmen "itl".
@@ -116,6 +121,9 @@ public sealed class LocalizationService : ILocalizer
         // "id" and "id-ID", but not Idoma "idu" or other codes starting with "id".
         if (ui.Equals("id", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("id-", StringComparison.OrdinalIgnoreCase))
             return "id";
+        // "vi" and "vi-VN", but not Vinza "vin" or other codes starting with "vi".
+        if (ui.Equals("vi", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("vi-", StringComparison.OrdinalIgnoreCase))
+            return "vi";
         if (AppLanguages.PortugueseVariant(ui) is { } portuguese)
             return portuguese;
         if (ui.Equals("tr", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("tr-", StringComparison.OrdinalIgnoreCase))
@@ -137,6 +145,9 @@ public sealed class LocalizationService : ILocalizer
         // "ar" and every region ("ar-SA", "ar-EG", …), but not other codes starting with "ar".
         if (ui.Equals("ar", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("ar-", StringComparison.OrdinalIgnoreCase))
             return "ar";
+        // "fa" and every region ("fa-IR", "fa-AF", …), but not Fang "fan".
+        if (ui.Equals("fa", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("fa-", StringComparison.OrdinalIgnoreCase))
+            return "fa";
         // "fr" and every region ("fr-FR", "fr-CA", …), but not North Frisian "frr".
         if (ui.Equals("fr", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("fr-", StringComparison.OrdinalIgnoreCase))
             return "fr";

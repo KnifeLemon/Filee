@@ -89,7 +89,7 @@ public sealed class MacOSWindowTests
             {
                 platform.RaiseTopmost(window);
                 Assert.Equal(panelClass, ObjectClass(window));
-                Assert.Equal((nint)(1 | (1 << 6) | (1 << 8)), behavior);
+                Assert.Equal((nint)(1 | (1 << 4) | (1 << 6) | (1 << 8)), behavior);
                 Assert.Equal(unrelatedStyle | nonactivatingPanel, style);
                 Assert.False(hidesOnDeactivate);
                 Assert.Equal((nint)3, level);
@@ -141,6 +141,160 @@ public sealed class MacOSWindowTests
         }
     }
 
+    [Fact]
+    public void TakeKeyWindow_and_ReleaseKeyWindow_manage_key_window_state()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Requires macOS.");
+            return;
+        }
+
+        var isKey = false;
+        var isVisible = false;
+        var makeKeyCalls = 0;
+        var orderOutCalls = 0;
+        var orderFrontCalls = 0;
+        var resignKeyCalls = 0;
+
+        SendActionWithArg makeKey = (_, _, _) => { isKey = true; isVisible = true; makeKeyCalls++; };
+        SendActionWithArg orderOut = (_, _, _) => { isKey = false; isVisible = false; orderOutCalls++; };
+        SendAction orderFront = (_, _) => { isVisible = true; orderFrontCalls++; };
+        SendAction resignKey = (_, _) => resignKeyCalls++;
+        GetBool isKeyWindow = (_, _) => isKey;
+        GetBool getIsVisible = (_, _) => isVisible;
+        Delegate[] callbacks = [makeKey, orderOut, orderFront, resignKey, isKeyWindow, getIsVisible];
+
+        var testClass = AllocateClass(GetClass("NSObject"), "FileeKeyWindowTestWindow", 0);
+        Assert.NotEqual(0, testClass);
+        nint window = 0;
+        try
+        {
+            AddMethod(testClass, "makeKeyAndOrderFront:", makeKey, "v@:@");
+            AddMethod(testClass, "orderOut:", orderOut, "v@:@");
+            AddMethod(testClass, "orderFrontRegardless", orderFront, "v@:");
+            AddMethod(testClass, "resignKeyWindow", resignKey, "v@:");
+            AddMethod(testClass, "isKeyWindow", isKeyWindow, "B@:");
+            AddMethod(testClass, "isVisible", getIsVisible, "B@:");
+            RegisterClass(testClass);
+
+            window = Send(Send(testClass, Selector("alloc")), Selector("init"));
+            Assert.NotEqual(0, window);
+
+            var platform = new MacOSPlatformServices();
+            Assert.False(isKey);
+            Assert.False(NativeMethods.IsKeyWindow(window));
+
+            // 1. TakeKeyWindow sends makeKeyAndOrderFront:
+            platform.TakeKeyWindow(window);
+            Assert.True(isKey);
+            Assert.True(isVisible);
+            Assert.True(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(1, makeKeyCalls);
+            Assert.Equal(0, orderOutCalls);
+            Assert.Equal(0, resignKeyCalls);
+
+            // 2. ReleaseKeyWindow ends key status via orderOut: and restores visibility via orderFrontRegardless
+            platform.ReleaseKeyWindow(window);
+            Assert.False(isKey);
+            Assert.True(isVisible);
+            Assert.False(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(1, makeKeyCalls);
+            Assert.Equal(1, orderOutCalls);
+            Assert.Equal(1, orderFrontCalls);
+            Assert.Equal(0, resignKeyCalls); // resignKeyWindow is never invoked directly per Apple guidelines
+
+            // 3. ReturnFocus releases key window if TakeKeyWindow was called
+            platform.TakeKeyWindow(window);
+            Assert.True(isKey);
+            Assert.True(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(2, makeKeyCalls);
+
+            platform.ReturnFocus();
+            Assert.False(isKey);
+            Assert.True(isVisible);
+            Assert.False(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(2, orderOutCalls);
+            Assert.Equal(2, orderFrontCalls);
+            Assert.Equal(0, resignKeyCalls);
+
+            // 4. RestoreWindow releases key window if still tracked
+            platform.TakeKeyWindow(window);
+            Assert.True(isKey);
+            Assert.True(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(3, makeKeyCalls);
+
+            platform.RestoreWindow(window);
+            Assert.False(isKey);
+            Assert.False(NativeMethods.IsKeyWindow(window));
+            Assert.Equal(3, orderOutCalls);
+            Assert.Equal(0, resignKeyCalls);
+
+            // 5. Handles zero safely
+            platform.TakeKeyWindow(0);
+            platform.ReleaseKeyWindow(0);
+            platform.RestoreWindow(0);
+            platform.ReturnFocus();
+        }
+        finally
+        {
+            if (window != 0)
+                Send(window, Selector("release"));
+            if (testClass != 0)
+                DisposeClass(testClass);
+            GC.KeepAlive(callbacks);
+        }
+    }
+
+    [Fact]
+    public void MoveToActiveSpace_sets_full_screen_auxiliary_and_move_to_active_space_behavior()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Requires macOS.");
+            return;
+        }
+
+        nint behavior = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 7) | (1 << 9) | (1 << 16) | (1 << 17) | (1 << 18);
+
+        GetInteger getBehavior = (_, _) => behavior;
+        SetInteger setBehavior = (_, _, value) => behavior = value;
+        Delegate[] callbacks = [getBehavior, setBehavior];
+
+        var testClass = AllocateClass(GetClass("NSObject"), "FileeMoveToActiveSpaceTestWindow", 0);
+        Assert.NotEqual(0, testClass);
+        nint window = 0;
+        try
+        {
+            AddMethod(testClass, "collectionBehavior", getBehavior, "q@:");
+            AddMethod(testClass, "setCollectionBehavior:", setBehavior, "v@:q");
+            RegisterClass(testClass);
+
+            window = Send(Send(testClass, Selector("alloc")), Selector("init"));
+            Assert.NotEqual(0, window);
+
+            var platform = new MacOSPlatformServices();
+
+            // 1. Calling with 0 handle is safe
+            platform.MoveToActiveSpace(0);
+
+            // 2. Calling with window updates collection behavior
+            platform.MoveToActiveSpace(window);
+            const nint moveToActiveSpace = 1 << 1;
+            const nint fullScreenAuxiliary = 1 << 8;
+            const nint ignoresCycle = 1 << 6;
+            Assert.Equal(moveToActiveSpace | ignoresCycle | fullScreenAuxiliary, behavior);
+        }
+        finally
+        {
+            if (window != 0)
+                Send(window, Selector("release"));
+            if (testClass != 0)
+                DisposeClass(testClass);
+            GC.KeepAlive(callbacks);
+        }
+    }
+
     private static nint RegisterSubclass(nint superclass, string name)
     {
         var result = AllocateClass(superclass, name, 0);
@@ -160,6 +314,13 @@ public sealed class MacOSWindowTests
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void SendAction(nint receiver, nint selector);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void SendActionWithArg(nint receiver, nint selector, nint arg);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    private delegate bool GetBool(nint receiver, nint selector);
 
     private const string ObjC = "/usr/lib/libobjc.A.dylib";
 
@@ -188,4 +349,7 @@ public sealed class MacOSWindowTests
 
     [DllImport(ObjC, EntryPoint = "objc_msgSend")]
     private static extern nint Send(nint receiver, nint selector);
+
+    [DllImport(ObjC, EntryPoint = "objc_msgSend")]
+    private static extern nint Send(nint receiver, nint selector, nint arg);
 }

@@ -1,6 +1,6 @@
 // Writers of every subtitle target. All write UTF-8: SRT, ASS, SAMI and MicroDVD with a byte order mark (Windows
 // players such as PotPlayer and KMPlayer take files without one for the PC's code page), WebVTT, TTML and LRC without
-// (browsers, XML and music players expect plain UTF-8).
+// (browsers, XML and music players expect plain UTF-8). Plain text has one, as Filee's other TXT writers do.
 
 using System.Globalization;
 using System.Text;
@@ -12,7 +12,7 @@ namespace Filee.Engines.Subtitles;
 internal static class SubtitleWriter
 {
     /// <summary>Format ids this engine writes.</summary>
-    public static readonly string[] Formats = ["srt", "ass", "vtt", "smi", "lrc", "ttml", "sub"];
+    public static readonly string[] Formats = ["srt", "ass", "vtt", "smi", "lrc", "ttml", "sub", "txt"];
 
     /// <summary>The frame rate MicroDVD files are written with (stated in their first line).</summary>
     internal const double MicroDvdFps = SubtitleReader.MicroDvdDefaultFps;
@@ -28,6 +28,7 @@ internal static class SubtitleWriter
             "lrc" => (Lrc(document), false),
             "ttml" => (Ttml(document), false),
             "sub" => (MicroDvd(document), true),
+            "txt" => (PlainText(document), true),
             _ => throw new NotSupportedException($"Subtitles can't be written as '{format}'."),
         };
         return [.. (bom ? Encoding.UTF8.GetPreamble() : []), .. new UTF8Encoding(false).GetBytes(text)];
@@ -351,6 +352,27 @@ internal static class SubtitleWriter
                          && tokens.Count(t => t.Value == "i") == 2;
             var text = string.Join("|", SubtitleMarkup.PlainText(cue.Text).Split('\n'));
             sb.Append(CultureInfo.InvariantCulture, $"{{{start}}}{{{end}}}{(italic ? "{Y:i}" : "")}{text.Replace("{", "(").Replace("}", ")")}\r\n");
+        }
+        return sb.ToString();
+    }
+
+    // ───────────────────────── Plain text ─────────────────────────
+
+    /// <summary>
+    /// The spoken text only (#1274): one line per cue, its lines joined, no times or styles. A line the same as the one
+    /// before is left out: Whisper and roll-up captions repeat a line over several cues.
+    /// </summary>
+    private static string PlainText(SubtitleDocument document)
+    {
+        var sb = new StringBuilder();
+        string? previous = null;
+        foreach (var cue in document.Cues)
+        {
+            var line = string.Join(" ", SubtitleMarkup.PlainText(cue.Text).Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+            if (line.Length == 0 || line == previous)
+                continue;
+            sb.Append(line).Append("\r\n");
+            previous = line;
         }
         return sb.ToString();
     }

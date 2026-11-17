@@ -14,7 +14,7 @@
             Background="{DynamicResource SurfaceBrush}">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
         <Button x:Name="CancelEdit" Content="{DynamicResource common.cancel}" Click="OnCancel" IsCancel="True" />
-        <Button x:Name="StartEdit" Classes="accent" Content="{DynamicResource image_edit.convert}" Click="OnConvert" IsDefault="True" />
+        <Button x:Name="StartEdit" Classes="accent" Content="{DynamicResource image_edit.convert}" Click="OnConvert" IsDefault="True" IsEnabled="{Binding CanConvert}" />
       </StackPanel>
     </Border>
     <StackPanel Margin="20,18,20,16" Spacing="12">
@@ -54,13 +54,15 @@
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource image_edit.width}" />
             <NumericUpDown x:Name="CustomWidthBox" Value="{Binding CustomWidth}" Minimum="0.1" Maximum="16384" Increment="1" FormatString="{Binding SizeFormat}"
-                           ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource image_edit.width}" />
+                           ShowButtonSpinner="False" HorizontalContentAlignment="Center" ToolTip.Tip="{DynamicResource presets.custom_size_empty_hint}"
+                           AutomationProperties.Name="{DynamicResource image_edit.width}" />
           </StackPanel>
           <TextBlock Grid.Column="2" Text="×" VerticalAlignment="Bottom" Margin="0,0,0,8" />
           <StackPanel Grid.Column="4">
             <TextBlock Classes="label" Text="{DynamicResource image_edit.height}" />
             <NumericUpDown x:Name="CustomHeightBox" Value="{Binding CustomHeight}" Minimum="0.1" Maximum="16384" Increment="1" FormatString="{Binding SizeFormat}"
-                           ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource image_edit.height}" />
+                           ShowButtonSpinner="False" HorizontalContentAlignment="Center" ToolTip.Tip="{DynamicResource presets.custom_size_empty_hint}"
+                           AutomationProperties.Name="{DynamicResource image_edit.height}" />
           </StackPanel>
           <StackPanel Grid.Column="6">
             <TextBlock Classes="label" Text="{DynamicResource image_edit.unit}" />
@@ -74,8 +76,15 @@
             <NumericUpDown x:Name="DpiBox" Value="{Binding Dpi}" Minimum="1" Maximum="9600" Increment="10" FormatString="0" Width="90"
                            ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource presets.dpi}" />
           </StackPanel>
-          <CheckBox x:Name="LockAspectBox" Content="{DynamicResource presets.lock_aspect}" IsChecked="{Binding LockAspect}" VerticalAlignment="Center" />
+          <StackPanel Spacing="4" VerticalAlignment="Center">
+            <CheckBox x:Name="LockAspectBox" Content="{DynamicResource presets.lock_aspect}" IsChecked="{Binding LockAspect}" VerticalAlignment="Center" />
+            <!-- #1270: with the shape kept, the box can be a maximum that leaves smaller pictures as they are. -->
+            <CheckBox x:Name="ShrinkOnlyBox" Content="{DynamicResource presets.never_enlarge}" IsChecked="{Binding ShrinkOnly}" IsVisible="{Binding LockAspect}"
+                      VerticalAlignment="Center" ToolTip.Tip="{DynamicResource presets.never_enlarge_hint}" />
+          </StackPanel>
         </DockPanel>
+        <TextBlock x:Name="CustomSizeErrorText" Classes="caption danger" TextWrapping="Wrap" Text="{Binding CustomSizeError}"
+                   IsVisible="{Binding CustomSizeError, Converter={x:Static ObjectConverters.IsNotNull}}" />
       </StackPanel>
       <!-- The first picture's size before and after. Each size stays "width × height" in Arabic too; the arrow and their
            order follow the reading direction. -->

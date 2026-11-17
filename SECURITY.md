@@ -40,13 +40,21 @@ Out of scope:
 
 ## How downloads are checked
 
-- **Updates:** an installed copy downloads the new installer from GitHub Releases and checks it against the release's
-  `SHA256SUMS` file before it runs it. It also checks that Windows trusts the installer's Authenticode signature and
-  that the publisher who signed the installed Filee signed it; an installer signed by anyone else is discarded.
+- **Updates:** an installed copy downloads the new installer (Windows) or package (Linux) from GitHub Releases and
+  checks its SHA-256 against the release's `SHA256SUMS` file before it runs it.
+  - Official builds carry the public half of Filee's update key. The `SHA256SUMS` file must then have a valid
+    signature made with that key next to it (`…-SHA256SUMS.txt.sig`, ECDSA P-256), and the version it lists must be
+    newer than the installed one. Otherwise nothing is installed, on every platform. The private key never leaves
+    the maintainer's PC; releases are signed there, not on GitHub.
+  - On Windows, Windows must also trust the installer's Authenticode signature, and the certificate must be Filee's:
+    an official build names the publisher and the certificate authority that issued its certificate, so it checks
+    both even if the installed copy itself isn't signed. A copy built from source compares with the certificate that
+    signed it. An installer signed by anyone else is discarded.
 - **Engines:** every engine comes from the official location pinned in
   [`engines.json`](src/Filee.Engines/Infrastructure/engines.json), with its SHA-256 and size. A download that doesn't
   match is discarded.
-- **Release files:** each release lists the SHA-256 of every package in `Filee-<version>-SHA256SUMS.txt`.
+- **Release files:** each release lists the SHA-256 of every package in `Filee-<version>-SHA256SUMS.txt` (the Linux
+  and macOS packages in their own `-SHA256SUMS.txt` files), each signed with the update key in a `.sig` file.
 
 Filee converts files on your own computer and never uploads them. See the
 [Privacy policy](README.md#privacy-policy).

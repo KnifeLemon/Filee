@@ -1,7 +1,8 @@
 // Reads lzip files (.lz, .tar.lz), which 7-Zip does not open. An lzip member is a 6-byte header ("LZIP", version 1,
 // coded dictionary size), a raw LZMA stream (lc=3, lp=0, pb=2, always ended by an end marker) and a 20-byte
 // trailer (CRC-32 u32, data size u64, member size u64). Each member is rewritten as a classic .lzma file, which the
-// bundled 7-Zip decodes; the result is checked against the trailer.
+// bundled 7-Zip decodes straight into the output, stopped at the size the trailer states; the result is checked
+// against the trailer.
 
 namespace Filee.Engines.Archives;
 
@@ -40,18 +41,11 @@ internal static class LzipReader
                     ArchiveFiles.CopyLimited(new BoundedStream(input, member.Size - HeaderSize - TrailerSize), file, long.MaxValue, cancellationToken);
                 }
 
-                var unpacked = Path.Combine(folder, "out");
-                ArchiveFiles.TryDeleteFolder(unpacked);
-                await sevenZip.ExtractAsync(lzma, unpacked, [], folder, cancellationToken);
-                var result = Path.Combine(unpacked, "member");
-                if (!File.Exists(result))
-                    throw ArchiveSafety.Damaged(name, "LZMA data could not be decoded");
-
+                // The .lzma header says "until the end marker", so 7-Zip alone would write as much as the data holds.
                 var crc = new Crc32();
-                await using (var decoded = File.OpenRead(result))
                 await using (var checkedOutput = new CrcStream(new NonClosingStream(output), crc))
                 {
-                    if (ArchiveFiles.CopyLimited(decoded, checkedOutput, member.DataSize, cancellationToken) != member.DataSize)
+                    if (await sevenZip.DecodeAsync(lzma, checkedOutput, member.DataSize, null, cancellationToken) != member.DataSize)
                         throw ArchiveSafety.Damaged(name, "wrong data size");
                 }
                 if (crc.Value != member.Crc)

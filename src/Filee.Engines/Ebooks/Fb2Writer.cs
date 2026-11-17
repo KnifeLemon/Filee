@@ -32,6 +32,7 @@ internal sealed class Fb2Writer
 
     public static void Write(Book book, string outputPath, string sourcePath, string workFolder)
     {
+        Nesting.Limit(book.Document);
         var writer = new Fb2Writer(EbookFiles.NewFolder(workFolder, "fb2-images"));
         var root = writer.Tree(book.Document);
         var settings = new XmlWriterSettings { Encoding = new UTF8Encoding(false), Indent = true, IndentChars = " " };

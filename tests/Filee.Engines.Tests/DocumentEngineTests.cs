@@ -145,6 +145,22 @@ public class DocumentEngineTests(EngineFixture fx) : IClassFixture<EngineFixture
     }
 
     [Fact]
+    public void A_direct_pdf_without_some_of_the_characters_is_noticed()
+    {
+        // Issue #993: rhwp's direct backend left out the Chinese characters its font lacked.
+        var pdf = new GlyphPdfBuilder().Run("工费", 72, 72, 24).Glyph(" ", 96, 72, 6).Run("序号", 102, 72, 24).Save(Path.Combine(fx.NewFolder(), "direct.pdf"));
+
+        Assert.False(RhwpConverter.DropsCharacters(pdf, 4));
+        Assert.False(RhwpConverter.DropsCharacters(pdf, 3));
+        Assert.True(RhwpConverter.DropsCharacters(pdf, 5));
+        Assert.False(RhwpConverter.DropsCharacters(pdf, null)); // an HWP's characters aren't counted
+        Assert.False(RhwpConverter.DropsCharacters(pdf, 1_000_000)); // too many to wait for the other backend
+        var broken = Path.Combine(fx.NewFolder(), "broken.pdf");
+        File.WriteAllText(broken, "not a pdf");
+        Assert.False(RhwpConverter.DropsCharacters(broken, 5));
+    }
+
+    [Fact]
     public async Task Rhwp_progress_follows_the_characters_it_draws()
     {
         // A table cell takes hundreds of bytes of XML for a few characters, and rhwp's time goes by characters: a

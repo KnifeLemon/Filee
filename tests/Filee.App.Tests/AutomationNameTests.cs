@@ -24,6 +24,7 @@ public class AutomationNameTests
     [InlineData("triggers")]
     [InlineData("toolbar")]
     [InlineData("presets")]
+    [InlineData("fields")]
     [InlineData("theme")]
     [InlineData("engines")]
     [InlineData("about")]

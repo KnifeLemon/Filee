@@ -13,12 +13,16 @@ using Filee.Engines.Infrastructure;
 
 namespace Filee.App.ViewModels.Pages;
 
+/// <summary>Colour of an engine's status tag and dot.</summary>
+public enum EngineTone { Neutral, Ok, Warn, Danger }
+
 public sealed partial class EngineItemViewModel(IConverter converter, EngineStatus status, ILocalizer loc) : ObservableObject
 {
     /// <summary>Being dragged to a new place in the priority order.</summary>
     [ObservableProperty] private bool _isDragging;
 
     public IConverter Converter { get; } = converter;
+    public bool IsTranslator => Converter.Id == "translator";
     /// <summary>Localized descriptive name, retaining the engine's technical name for unregistered engines.</summary>
     public string Name
     {
@@ -29,6 +33,23 @@ public sealed partial class EngineItemViewModel(IConverter converter, EngineStat
         }
     }
     public bool IsAvailable { get; } = status.IsAvailable;
+    /// <summary>How the status tag and dot are coloured (Border.status in Soft.axaml).</summary>
+    public EngineTone Tone { get; } = ToneOf(status);
+    public bool StatusIsOk => Tone == EngineTone.Ok;
+    public bool StatusIsWarn => Tone == EngineTone.Warn;
+    public bool StatusIsDanger => Tone == EngineTone.Danger;
+    public bool StatusIsNeutral => Tone == EngineTone.Neutral;
+
+    /// <summary>
+    /// Green when ready, red when the check failed, amber for the reasons it can't run here (other platform, needs
+    /// Ollama or Perl, needs another engine). A missing optional engine isn't an error, so it stays neutral.
+    /// </summary>
+    public static EngineTone ToneOf(EngineStatus status) => status.IsAvailable ? EngineTone.Ok : status.ReasonKey switch
+    {
+        null or "engine.reason.error" => EngineTone.Danger,
+        "engine.reason.not_installed" => EngineTone.Neutral,
+        _ => EngineTone.Warn,
+    };
     public string StatusText { get; } = status.IsAvailable ? loc["engines.available"] : loc[status.ReasonKey ?? "engines.unavailable"];
 
     /// <summary>Path of the program or other technical detail, shown as a tooltip.</summary>
@@ -119,8 +140,24 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Cancel(EnginePackageState package) => _downloads.Cancel(package);
 
+    /// <summary>Installs a package from files the user downloaded elsewhere (#447); a failure shows on its card.</summary>
+    public Task InstallFromFilesAsync(EnginePackageState package, IReadOnlyList<string> files) => _downloads.InstallAsync(package, files);
+
+    /// <summary>Saves a package's downloads in <paramref name="folder"/> for a computer without internet (#447).</summary>
+    public Task<(bool Saved, string? Error)> SaveFilesAsync(EnginePackageState package, string folder) => _downloads.SaveFilesAsync(package, folder);
+
+    /// <summary>Name, URL and SHA-256 of each of a package's downloads, to fetch them elsewhere (#447).</summary>
+    public static string DownloadLinks(EnginePackageState package) => EngineDownloads.DownloadList(package.Package, EngineDownloads.Components);
+
     /// <summary>Removes a package (after the view asked for confirmation). False when its files are in use.</summary>
-    public bool Remove(EnginePackageState package) => _downloads.Uninstall(package);
+    /// <summary>Removes a package: null when it's gone, else the key of the reason (see <see cref="EngineDownloadService.Uninstall"/>).</summary>
+    public string? Remove(EnginePackageState package) => _downloads.Uninstall(package);
+
+    /// <summary>
+    /// Uses the copy on the PC instead of Filee's download (<see cref="EngineDownloadService.UseOtherCopyAsync"/>).
+    /// </summary>
+    public Task<string?> UseOtherCopyAsync(EnginePackageState package, string folder) =>
+        _downloads.UseOtherCopyAsync(package, folder);
 
     /// <summary>
     /// Uses the user's own copy of a package from <paramref name="path"/> (a program they picked). Returns false when
@@ -160,12 +197,20 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void MoveDown(EngineItemViewModel item) => Move(item, +1);
 
+    /// <summary>The check can be over in a blink; the arrow on "Check again" keeps turning for at least this long so it reads as checking.</summary>
+    private static readonly TimeSpan MinimumRecheckTime = TimeSpan.FromMilliseconds(900);
+
     [RelayCommand]
-    private void Recheck()
+    private async Task Recheck()
     {
+        // With "Reduce animations" on there is no arrow turning, so there is nothing to hold the result back for.
+        var minimumSpin = Task.Delay(Motion.Enabled ? MinimumRecheckTime : TimeSpan.Zero);
         EngineEnvironment.ForgetSystemCopies(); // a tool installed meanwhile is found
         _downloads.RefreshStatus();
+        _ = Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
         _catalog.Refresh();
+        _ = _catalog.CheckInBackgroundAsync();
+        await minimumSpin;
     }
 
     private void Move(EngineItemViewModel item, int delta)

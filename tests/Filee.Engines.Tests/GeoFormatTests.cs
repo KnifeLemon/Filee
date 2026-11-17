@@ -646,6 +646,44 @@ public class GeoFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(111, Features(doc)[0].GetProperty("properties").GetProperty("LONGITUDE").GetInt64());
     }
 
+    [Theory]
+    [InlineData("shape")]
+    [InlineData("wkt")]
+    [InlineData("geometry")]
+    [InlineData("wkt_geo")]
+    [InlineData("WKT-GEO")]
+    [InlineData("WKT GEO")]
+    public async Task Csv_output_uses_wkt_when_an_attribute_is_already_called_a_wkt_column_name_so_it_reads_back_unchanged(string attribute)
+    {
+        var text = $$$"""{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"{{{attribute}}}":"POINT (9 9)","n":1},"geometry":{"type":"Point","coordinates":[1,2]}}]}""";
+        var csv = (await fx.ConvertOkAsync(GeoFixtures.WriteText(fx, attribute + ".geojson", text), "csv")).Single();
+        using var doc = await ToGeoJsonAsync(csv);
+        Assert.Equal([1.0, 2.0], GeoFixtures.Position(Features(doc)[0].GetProperty("geometry")));
+        Assert.Equal("POINT (9 9)", Features(doc)[0].GetProperty("properties").GetProperty(attribute).GetString());
+    }
+
+    [Fact]
+    public async Task Csv_output_keeps_geometry_and_attributes_when_wkt_and_wkt_geo_are_both_attribute_names()
+    {
+        var text = """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"wkt":"POINT (9 9)","wkt_geo":"POINT (8 8)","n":1},"geometry":{"type":"Point","coordinates":[1,2]}}]}""";
+        var csv = (await fx.ConvertOkAsync(GeoFixtures.WriteText(fx, "wkt-both.geojson", text), "csv")).Single();
+        using var doc = await ToGeoJsonAsync(csv);
+        Assert.Equal([1.0, 2.0], GeoFixtures.Position(Features(doc)[0].GetProperty("geometry")));
+        Assert.Equal("POINT (9 9)", Features(doc)[0].GetProperty("properties").GetProperty("wkt").GetString());
+        Assert.Equal("POINT (8 8)", Features(doc)[0].GetProperty("properties").GetProperty("wkt_geo").GetString());
+    }
+
+    [Fact]
+    public async Task Csv_wkt_column_keeps_precedence_over_an_earlier_shape_column()
+    {
+        var (doc, _) = await CsvToGeoJsonAsync("shape,id,wkt\n\"POINT (9 9)\",1,\"POINT (1 2)\"\n");
+        using (doc)
+        {
+            Assert.Equal([1.0, 2.0], GeoFixtures.Position(Features(doc)[0].GetProperty("geometry")));
+            Assert.Equal("POINT (9 9)", Features(doc)[0].GetProperty("properties").GetProperty("shape").GetString());
+        }
+    }
+
     [Fact]
     public async Task Csv_output_quotes_commas_quotes_and_line_breaks()
     {

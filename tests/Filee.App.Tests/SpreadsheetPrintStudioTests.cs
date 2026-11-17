@@ -8,6 +8,7 @@ using Filee.App.ViewModels;
 using Filee.App.Views;
 using Filee.Core.Conversion;
 using Filee.Core.Localization;
+using Filee.Core.Presets;
 using Filee.Core.Settings;
 
 namespace Filee.App.Tests;
@@ -113,6 +114,74 @@ public class SpreadsheetPrintStudioTests
 
             Assert.False(File.Exists(output + ".filee-tmp"));
             Assert.Empty(WorkFolders().Except(before));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public void One_pdf_per_sheet_names_follow_the_chosen_file_and_never_collide()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "exports");
+        var paths = SpreadsheetPrintService.PerSheetPaths(Path.Combine(folder, "Report.pdf"),
+            ["Sales", "Q1/Q2", "Sales", "q1:q2", "  ", "DATA", "data"], exists: _ => false);
+
+        Assert.Equal(
+        [
+            "Report_Sales.pdf", "Report_Q1_Q2.pdf", "Report_Sales_2.pdf", "Report_q1_q2_2.pdf", "Report_Sheet.pdf",
+            "Report_DATA.pdf", "Report_data_2.pdf",
+        ], paths.Select(Path.GetFileName));
+        Assert.All(paths, path => Assert.Equal(folder, Path.GetDirectoryName(path)));
+    }
+
+    [Theory]
+    [InlineData(ConflictPolicy.Rename, "Report_Sales (3).pdf|Report_Sales_2 (2).pdf|Report_Data.pdf")]
+    [InlineData(ConflictPolicy.Overwrite, "Report_Sales.pdf|Report_Sales_2.pdf|Report_Data.pdf")]
+    [InlineData(ConflictPolicy.Skip, "-|-|Report_Data.pdf")]
+    public void One_pdf_per_sheet_follows_the_conflict_policy_for_files_already_there(ConflictPolicy conflict,
+        string expected)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "exports");
+        // An earlier export left Report_Sales.pdf, Report_Sales (2).pdf and Report_Sales_2.pdf behind.
+        var existing = new HashSet<string>(["Report_Sales.pdf", "Report_Sales (2).pdf", "Report_Sales_2.pdf"],
+            StringComparer.OrdinalIgnoreCase);
+
+        var paths = SpreadsheetPrintService.PerSheetPaths(Path.Combine(folder, "Report.pdf"),
+            ["Sales", "Sales", "Data"], conflict, path => existing.Contains(Path.GetFileName(path)));
+
+        Assert.Equal(expected.Split('|'), paths.Select(path => path is null ? "-" : Path.GetFileName(path)));
+    }
+
+    [AvaloniaFact]
+    public async Task One_pdf_per_sheet_writes_a_file_for_each_region_and_records_them_all()
+    {
+        TestServices.EnsureInitialized();
+        var service = AppHost.Get<SpreadsheetPrintService>();
+        Assert.SkipUnless(service.Status.IsAvailable, "LibreOffice not found");
+        var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-split-").FullName;
+        var store = AppHost.Get<UserDataStore>();
+        try
+        {
+            var source = Path.Combine(folder, "book.xlsx");
+            WriteWorkbook(source);
+            using var vm = new SpreadsheetPrintStudioViewModel(source, service, AppHost.Get<ILocalizer>(), store);
+            await vm.Initialization;
+            vm.AddRegionCommand.Execute(null);
+            vm.OnePdfPerSheet = true;
+            // An earlier export must survive: the tool's default policy numbers the new file instead.
+            var earlier = Path.Combine(folder, "book_Data.pdf");
+            File.WriteAllText(earlier, "earlier export");
+
+            await vm.ExportAsync(Path.Combine(folder, "book.pdf"));
+
+            string[] expected = [Path.Combine(folder, "book_Data (2).pdf"), Path.Combine(folder, "book_Data_2.pdf")];
+            Assert.All(expected, path => Assert.True(File.Exists(path), path));
+            Assert.Equal("earlier export", File.ReadAllText(earlier));
+            Assert.False(File.Exists(Path.Combine(folder, "book.pdf")));
+            Assert.Empty(Directory.GetFiles(folder, "*.filee-tmp"));
+            Assert.Contains(store.History, entry => entry.Outputs.SequenceEqual(expected));
         }
         finally
         {

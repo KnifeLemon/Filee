@@ -14,6 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -55,6 +56,9 @@ internal static partial class Kepub
         EpubReader.CheckDrm(source);
         var documents = ContentDocuments(source);
 
+        // The copy unpacks to no more than other copies of the book may (UnpackLimit), a chapter to no more than an XML
+        // part (BoundedXml): it is parsed as a whole.
+        var limit = UnpackLimit.For(input);
         using var stream = File.Create(output);
         using var target = new ZipArchive(stream, ZipArchiveMode.Create);
         var mimetype = target.CreateEntry("mimetype", CompressionLevel.NoCompression);
@@ -71,8 +75,7 @@ internal static partial class Kepub
             byte[]? rewritten = null;
             if (documents.Contains(entry.FullName))
             {
-                using var read = entry.Open();
-                var bytes = ReadAll(read);
+                var bytes = limit.Read(entry, BoundedXml.MaxPartBytes);
                 if (Load(bytes) is { } document && transform(document))
                     rewritten = Save(document);
                 rewritten ??= bytes;
@@ -84,8 +87,7 @@ internal static partial class Kepub
             }
             else
             {
-                using var read = entry.Open();
-                read.CopyTo(write);
+                limit.Copy(entry, write);
             }
         }
     }
@@ -168,20 +170,10 @@ internal static partial class Kepub
         return parts.Count == 0 ? null : string.Join('/', parts);
     }
 
-    private static XDocument? LoadEntry(ZipArchiveEntry entry)
-    {
-        using var stream = entry.Open();
-        return Load(ReadAll(stream));
-    }
+    private static XDocument? LoadEntry(ZipArchiveEntry entry) =>
+        Load(new UnpackLimit(BoundedXml.MaxPartBytes).Read(entry, BoundedXml.MaxPartBytes));
 
     // ───────────────────────── XML ─────────────────────────
-
-    private static byte[] ReadAll(Stream stream)
-    {
-        using var memory = new MemoryStream();
-        stream.CopyTo(memory);
-        return memory.ToArray();
-    }
 
     /// <summary>
     /// Parses an XHTML document with its whitespace. HTML entities that XML does not define (&amp;nbsp; …) become

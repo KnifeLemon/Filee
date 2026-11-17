@@ -1267,7 +1267,8 @@ public class FonTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var converter = fx.Converters.OfType<FontConverter>().Single();
         Assert.Equal(Formats.Select(t => ("fon", t)).Order(), converter.Edges.Where(e => e.From == "fon").Select(e => (e.From, e.To)).Order());
-        Assert.DoesNotContain(fx.Converters.SelectMany(c => c.Edges), e => e.To == "fon");
+        // Nothing makes FON; a signed envelope (.p7m) only opens to one signed as it was.
+        Assert.DoesNotContain(fx.Converters.Where(c => c is not IEnvelopeOpener).SelectMany(c => c.Edges), e => e.To == "fon");
         foreach (var from in Formats)
             foreach (var to in Formats.Where(t => t != from))
                 Assert.Contains(new ConversionEdge(from, to), converter.Edges);

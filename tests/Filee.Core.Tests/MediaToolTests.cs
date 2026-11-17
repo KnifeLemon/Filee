@@ -77,7 +77,7 @@ public class MediaToolTests
     public void Version_36_libraries_get_the_tools_and_back_faces_with_room_offer_them()
     {
         var presets = BuiltInData.CreatePresets().Where(p => !ToolIds.Contains(p.Id)).ToList();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         foreach (var profile in profiles)
             profile.BackPresetIds!.RemoveAll(ToolIds.Contains);
         // The video donut's back face of schema 36, with the plain M4A slice.
@@ -94,24 +94,26 @@ public class MediaToolTests
         Assert.All(ToolIds, id => Assert.Single(presets, p => p.Id == id));
         var audio = profiles.Single(p => p.Id == "audio").BackPresetIds!;
         Assert.Equal(["to-alac", "compress-audio", "merge-audio", "remove-metadata", "zip-all"], audio);
-        // "Extract audio" takes the M4A slice's place; the new library's back face is what an upgraded one gets.
+        // "Extract audio" takes the M4A slice's place; the new library's back face is what an upgraded one gets, but
+        // with WAV where a new one has "Crop video" (#830: placed on new installs only).
         var video = profiles.Single(p => p.Id == "video").BackPresetIds!;
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "video").BackPresetIds, video);
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "video").BackPresetIds, video);
         Assert.Equal(full, pdf.BackPresetIds);
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "images").BackPresetIds,
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "images").BackPresetIds,
             profiles.Single(p => p.Id == "images").BackPresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(36, presets, profiles)); // once only
         Assert.False(SettingsMigrations.ApplyToLibrary(AppSettings.CurrentSchemaVersion, presets, profiles));
     }
 
     [Fact]
-    public void A_new_library_images_back_face_is_full_without_the_live_photo_video()
+    public void A_new_library_images_back_face_has_eight_tools_without_the_live_photo_video()
     {
         var presets = BuiltInData.CreatePresets();
         var images = BuiltInData.CreateProfiles().Single(p => p.Id == "images").BackPresetIds!;
-        Assert.Equal(ToolbarProfile.MaxSlices, images.Count);
+        Assert.Equal(8, images.Count);
         Assert.Contains("compress-image", images);
-        Assert.Contains("remove-metadata", images);
+        Assert.DoesNotContain("remove-metadata", images);
+        Assert.Single(presets, p => p.Id == "remove-metadata");
         Assert.DoesNotContain("extract-motion", images);
         Assert.Single(presets, p => p.Id == "extract-motion"); // still in the library
     }
@@ -120,7 +122,7 @@ public class MediaToolTests
     public void A_schema_36_images_back_face_takes_what_fits_and_never_more_than_the_donut_holds()
     {
         var presets = BuiltInData.CreatePresets().Where(p => !ToolIds.Contains(p.Id)).ToList();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         // The images back face as schema 36 wrote it: eleven slices, "Extract Live Photo video" among them.
         var images = profiles.Single(p => p.Id == "images");
         images.BackPresetIds = ["tool-crop", "rotate", "flip", "remove-background", "trim-transparent", "grayscale", "extract-motion",
@@ -139,7 +141,7 @@ public class MediaToolTests
     public void Extract_audio_comes_onto_a_video_back_face_without_the_m4a_slice_when_there_is_room()
     {
         var presets = BuiltInData.CreatePresets().Where(p => !ToolIds.Contains(p.Id)).ToList();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var video = profiles.Single(p => p.Id == "video");
         video.BackPresetIds = ["mp4-av1", "to-wav", "zip-all"];
 
@@ -166,19 +168,60 @@ public class MediaToolTests
     }
 
     [Fact]
-    public async Task A_file_that_is_no_video_fails_and_the_other_clips_still_join()
+    public async Task A_file_that_is_no_video_or_sound_fails_and_the_other_clips_still_join()
     {
         using var dir = new TempDir();
         var clip = dir.File("a.mp4");
-        var song = dir.File("b.mp3");
+        var photo = dir.File("b.jpg");
         var joiner = new FakeJoiner();
         await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
 
-        var job = await Run(queue, [clip, song], BuiltIn("merge-videos"));
+        var job = await Run(queue, [clip, photo], BuiltIn("merge-videos"));
 
         Assert.Equal(JobState.CompletedWithErrors, job.State);
         Assert.Equal([clip], joiner.Inputs);
         Assert.Equal("error.no_route", job.Files[1].ErrorKey);
+    }
+
+    [Fact]
+    public async Task Songs_dropped_with_videos_go_to_the_join_in_order_and_the_video_names_the_file()
+    {
+        using var dir = new TempDir();
+        var intro = dir.File("1 intro.mp3");
+        var clip = dir.File("2 clip.mp4");
+        var outro = dir.File("3 outro.flac");
+        var joiner = new FakeJoiner();
+        await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
+
+        var job = await Run(queue, [intro, clip, outro], BuiltIn("merge-videos"));
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal([intro, clip, outro], joiner.Inputs); // the joiner tells the music from the pictures
+        Assert.Equal(Path.Combine(dir.Path, "2 clip_merged.mp4"), job.Outputs.Single());
+        Assert.All(job.Files, f => Assert.Equal(FileState.Done, f.State));
+    }
+
+    [Fact]
+    public async Task Songs_without_a_video_make_no_merged_video()
+    {
+        using var dir = new TempDir();
+        var joiner = new FakeJoiner();
+        await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
+
+        var job = await Run(queue, [dir.File("a.mp3"), dir.File("b.wav")], BuiltIn("merge-videos"));
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.All(job.Files, f => Assert.Equal("error.no_route", f.ErrorKey));
+        Assert.Empty(joiner.Inputs);
+    }
+
+    [Fact]
+    public void Merge_videos_plays_its_music_once_until_told_to_loop()
+    {
+        var media = BuiltIn("merge-videos").Media;
+        Assert.False(media.LoopMusic);
+        media.LoopMusic = true;
+        Assert.True(media.Clone().LoopMusic);
     }
 
     [Fact]
@@ -396,5 +439,45 @@ public class MediaToolTests
         Assert.Equal(JobState.Failed, job.State);
         Assert.All(job.Files, f => Assert.Equal("error.conversion_failed", f.ErrorKey));
         Assert.Empty(job.Outputs);
+    }
+
+    [Fact]
+    public async Task Merge_videos_over_percentage_limit_is_refused()
+    {
+        using var dir = new TempDir();
+        var first = dir.File("a.mp4", new string('a', 10_000));
+        var second = dir.File("b.mp4", new string('b', 10_000));
+        // Total source size is 20,000 bytes. With 25% limit, max allowed is 5,000 bytes.
+        // Joiner writes 8,000 bytes, which exceeds 5,000 bytes.
+        var joiner = new FakeJoiner { OutputLength = 8_000 };
+        await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
+        var preset = BuiltIn("merge-videos").Clone();
+        preset.Media.MaxSizePercent = 25;
+
+        var job = await Run(queue, [first, second], preset);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.All(job.Files, f => Assert.Equal("error.over_size_limit", f.ErrorKey));
+        Assert.Empty(job.Outputs);
+    }
+
+    [Fact]
+    public async Task Merge_videos_within_percentage_limit_succeeds()
+    {
+        using var dir = new TempDir();
+        var first = dir.File("a.mp4", new string('a', 10_000));
+        var second = dir.File("b.mp4", new string('b', 10_000));
+        // Total source size is 20,000 bytes. With 50% limit, max allowed is 10,000 bytes.
+        // Joiner writes 8,000 bytes, which fits within 10,000 bytes.
+        var joiner = new FakeJoiner { OutputLength = 8_000 };
+        await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
+        var preset = BuiltIn("merge-videos").Clone();
+        preset.Media.MaxSizePercent = 50;
+
+        var job = await Run(queue, [first, second], preset);
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.All(job.Files, f => Assert.Equal(FileState.Done, f.State));
+        Assert.Single(job.Outputs);
     }
 }

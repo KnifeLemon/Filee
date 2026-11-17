@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Office.Ooxml;
 
 namespace Filee.Engines.Office.Sheets;
@@ -414,6 +415,7 @@ public static partial class SpreadsheetPrintPackage
         if (!SpreadsheetPrintInspector.IsValidRange(region.Range))
             throw new ArgumentException("The print area is not a valid A1 cell range.", nameof(region));
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        var limit = UnpackLimit.For(source);
         using var input = ZipFile.OpenRead(source);
         using var output = ZipFile.Open(destination, ZipArchiveMode.Create);
         foreach (var entry in input.Entries)
@@ -429,8 +431,7 @@ public static partial class SpreadsheetPrintPackage
                 RewriteSheetSelection(entry, to, selected: false);
             else
             {
-                using var from = entry.Open();
-                from.CopyTo(to);
+                limit.Copy(entry, to);
             }
         }
     }
@@ -564,11 +565,7 @@ public static partial class SpreadsheetPrintPackage
         }
     }
 
-    private static XDocument Load(ZipArchiveEntry entry)
-    {
-        using var stream = entry.Open();
-        return XDocument.Load(stream, LoadOptions.PreserveWhitespace);
-    }
+    private static XDocument Load(ZipArchiveEntry entry) => BoundedXml.Part(entry, LoadOptions.PreserveWhitespace);
 
     private static XElement Ensure(XElement root, string localName)
     {

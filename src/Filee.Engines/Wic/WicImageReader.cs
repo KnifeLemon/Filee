@@ -54,7 +54,7 @@ internal static class WicImageReader
             image.ReadPixels(pixels, new PixelReadSettings(width, height, StorageType.Char, hdr ? PixelMapping.RGBA : PixelMapping.BGRA));
             // HDR screenshots carry an alpha channel that is opaque everywhere: a PNG of them needs none.
             if (!pixelFormat.SupportsTransparency() || IsOpaque(pixels))
-                image.Alpha(AlphaOption.Off);
+                image.Alpha(AlphaAction.Off);
 
             frame.GetResolution(out var dpiX, out var dpiY);
             if (dpiX is > 0 and < 100_000 && dpiY is > 0 and < 100_000)

@@ -61,6 +61,41 @@ public class GestureDetectorTests
     }
 
     [Fact]
+    public void A_move_after_the_release_that_still_reports_the_button_starts_nothing()
+    {
+        // macOS (#784): the hook reads each event's mask from the session's state, so a move right after the release can
+        // still say the button is held. A gesture starting then wiped the donut before the drop reached it.
+        var detector = Create(CtrlDrag);
+        var started = 0;
+        var ended = 0;
+        detector.DragStarted += (_, _, _) => started++;
+        detector.DragEnded += (_, _) => ended++;
+
+        detector.MouseDown(TriggerMouseButton.Left, 0, 0, ModifierKeys.Ctrl);
+        detector.MouseMove(60, 0, ModifierKeys.Ctrl, TriggerMouseButton.Left);
+        detector.MouseUp(TriggerMouseButton.Left, 60, 0);
+        detector.MouseMove(61, 0, ModifierKeys.Ctrl, TriggerMouseButton.Left);
+
+        Assert.Equal((1, 1), (started, ended));
+    }
+
+    [Fact]
+    public void A_modifier_pressed_after_the_button_still_fires_on_the_next_press()
+    {
+        var detector = Create(CtrlDrag);
+        var started = 0;
+        detector.DragStarted += (_, _, _) => started++;
+
+        detector.MouseDown(TriggerMouseButton.Left, 0, 0, ModifierKeys.Ctrl);
+        detector.MouseMove(60, 0, ModifierKeys.Ctrl, TriggerMouseButton.Left);
+        detector.MouseUp(TriggerMouseButton.Left, 60, 0);
+        detector.MouseDown(TriggerMouseButton.Left, 0, 0, ModifierKeys.None);
+        detector.MouseMove(30, 0, ModifierKeys.Ctrl, TriggerMouseButton.Left);
+
+        Assert.Equal(2, started);
+    }
+
+    [Fact]
     public void Drag_end_is_reported_only_after_a_drag_started()
     {
         var detector = Create(CtrlDrag);
@@ -206,5 +241,67 @@ public class GestureDetectorTests
         detector.KeyDown("Space", ModifierKeys.Ctrl);
 
         Assert.Equal(777, fired?.HoldMilliseconds);
+    }
+
+    [Fact]
+    public void Click_fires_on_mouse_up_without_drag()
+    {
+        var click = new TriggerGesture { Kind = TriggerKind.Click, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere };
+        var detector = Create(click);
+        int clicks = 0;
+        int clickX = 0, clickY = 0;
+        detector.ClickTriggered += (g, x, y) =>
+        {
+            clicks++;
+            clickX = x;
+            clickY = y;
+        };
+
+        detector.MouseDown(TriggerMouseButton.Left, 200, 300, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(201, 301, ModifierKeys.Ctrl | ModifierKeys.Alt); // Within drag threshold
+        detector.MouseUp(TriggerMouseButton.Left, 201, 301);
+
+        Assert.Equal(1, clicks);
+        Assert.Equal(200, clickX);
+        Assert.Equal(300, clickY);
+    }
+
+    [Fact]
+    public void Click_does_not_fire_if_dragged_or_wrong_modifiers()
+    {
+        var click = new TriggerGesture { Kind = TriggerKind.Click, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere };
+        var detector = Create(click);
+        int clicks = 0;
+        detector.ClickTriggered += (_, _, _) => clicks++;
+
+        // Exceeding drag threshold cancels click
+        detector.MouseDown(TriggerMouseButton.Left, 100, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(150, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseUp(TriggerMouseButton.Left, 150, 100);
+        Assert.Equal(0, clicks);
+
+        // Wrong modifier (Ctrl only instead of Ctrl+Alt)
+        detector.MouseDown(TriggerMouseButton.Left, 100, 100, ModifierKeys.Ctrl);
+        detector.MouseUp(TriggerMouseButton.Left, 100, 100);
+        Assert.Equal(0, clicks);
+    }
+
+    [Fact]
+    public void Ctrl_alt_drag_with_multiple_moves_never_fires_click()
+    {
+        var click = new TriggerGesture { Kind = TriggerKind.Click, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere };
+        var detector = Create(click);
+        int clicks = 0;
+        detector.ClickTriggered += (_, _, _) => clicks++;
+
+        detector.MouseDown(TriggerMouseButton.Left, 100, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(110, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(130, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(150, 100, ModifierKeys.Ctrl | ModifierKeys.Alt, TriggerMouseButton.Left);
+        detector.MouseMove(170, 100, ModifierKeys.Ctrl | ModifierKeys.Alt, TriggerMouseButton.Left);
+        detector.MouseMove(200, 100, ModifierKeys.Ctrl | ModifierKeys.Alt, TriggerMouseButton.Left);
+        detector.MouseUp(TriggerMouseButton.Left, 200, 100);
+
+        Assert.Equal(0, clicks);
     }
 }

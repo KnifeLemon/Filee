@@ -101,26 +101,33 @@ public static class VelopackInstall
         log.Info($"Removing Filee 1.1 (Velopack) from {root}; settings and engines stay");
         // Its Explorer menu entry points into the folder that goes next.
         system.UnregisterExplorerMenu();
+        // All of it is the user's own and Setup may be elevated: nothing through a link, nothing left for the restart.
         foreach (var file in new[] { "Update.exe", SetupNames.AppExe })
-            DeleteFile(Path.Combine(root, file), system, log);
-        FileSwap.DeleteTree(Path.Combine(root, "current"), system, log);
-        FileSwap.DeleteTree(Path.Combine(root, "packages"), system, log);
-        DeleteFile(Path.Combine(paths.UserStartMenu, SetupNames.ShortcutName), system, log);
-        DeleteFile(Path.Combine(paths.UserDesktop, SetupNames.ShortcutName), system, log);
+            DeleteFile(Path.Combine(root, file), log);
+        FileSwap.DeleteTree(Path.Combine(root, "current"), system, log, userFolder: true);
+        FileSwap.DeleteTree(Path.Combine(root, "packages"), system, log, userFolder: true);
+        DeleteFile(Path.Combine(paths.UserStartMenu, SetupNames.ShortcutName), log);
+        DeleteFile(Path.Combine(paths.UserDesktop, SetupNames.ShortcutName), log);
         registry.DeleteKey(Hive.CurrentUser, SetupNames.VelopackUninstallKey);
     }
 
-    private static void DeleteFile(string path, ISetupSystem system, SetupLog log)
+    private static void DeleteFile(string path, SetupLog log)
     {
-        try
+        if (!OperatingSystem.IsWindows() || !Path.Exists(path))
+            return;
+        if (LinkSafeDelete.RealFolder(Path.GetDirectoryName(path)!) is not { } folder)
         {
-            if (File.Exists(path))
-                File.Delete(path);
+            log.Warn($"Not deleting {path}: its folder is reached through a junction or link");
+            return;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        switch (LinkSafeDelete.Entry(path, folder))
         {
-            log.Info($"In use, deleted at the next restart: {path}");
-            system.DeleteAtRestart(path);
+            case LinkSafeDelete.Outcome.Failed:
+                log.Info($"In use, left in place: {path}");
+                break;
+            case LinkSafeDelete.Outcome.Outside:
+                log.Warn($"Not deleting {path}: it is no longer inside {folder}");
+                break;
         }
     }
 }

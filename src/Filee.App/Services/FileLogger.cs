@@ -1,4 +1,5 @@
-// Minimal file logger: %APPDATA%\Filee\logs\filee-yyyyMMdd.log, keeps the last 7 days.
+// Minimal file logger: %APPDATA%\Filee\logs\filee-yyyyMMdd.log, keeps the last 14 days. Reporters often answer a
+// request for the log more than a week later (issue #767), so a week was too short.
 
 using Microsoft.Extensions.Logging;
 
@@ -15,7 +16,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
         _directory = directory;
         Directory.CreateDirectory(directory);
         foreach (var old in Directory.EnumerateFiles(directory, "filee-*.log")
-                     .Where(f => File.GetLastWriteTime(f) < DateTime.Now.AddDays(-7)))
+                     .Where(f => File.GetLastWriteTime(f) < DateTime.Now.AddDays(-14)))
         {
             try { File.Delete(old); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }

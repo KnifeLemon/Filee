@@ -80,6 +80,7 @@ internal sealed class XhtmlWriter
     /// <summary>Converts a document into one page or a list of chapters.</summary>
     public static IReadOnlyList<XhtmlChapter> Write(HDocument document, XhtmlOptions options)
     {
+        Nesting.Limit(document);
         var chapters = Split(document, options.SplitChapters);
         var writer = new XhtmlWriter(options, BodySize(document));
         for (var i = 0; i < chapters.Count; i++)

@@ -7,12 +7,17 @@ using Filee.Core.Localization;
 using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
+using Filee.Core.Web;
 using Microsoft.Extensions.Logging;
 
 namespace Filee.App.ViewModels.Pages;
 
 public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
 {
+    /// <summary>Portable copies leave installed startup and file-manager entries alone.</summary>
+    public bool IsPortable => PortableMode.IsEnabled;
+    public bool CanChangeSystemIntegration => !IsPortable;
+    public string PortableDataDirectory => PortableMode.DataDirectory ?? "";
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
@@ -37,6 +42,7 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         _startWithSystem = store.Settings.StartWithSystem;
         _showInDock = store.Settings.ShowInDock;
         _showMenuBarIcon = store.Settings.ShowMenuBarIcon;
+        _coloredMenuBarIcon = store.Settings.ColoredMenuBarIcon;
         _contextMenu = store.Settings.ContextMenuEnabled;
         _noHistory = !store.Settings.KeepHistory;
         _historyLimit = store.Settings.EffectiveHistoryLimit;
@@ -47,8 +53,11 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         _defaultSubfolder = output.SubfolderName;
         _defaultFolder = output.CustomFolder;
         _keepFileDates = store.Settings.KeepFileDates;
+        _collectDroppedFiles = store.Settings.CollectDroppedFiles;
         _browserFolder = store.Settings.BrowserDrops.Folder;
         _saveOnlyConverted = store.Settings.BrowserDrops.SaveOnlyConverted;
+        _allowLocalNetwork = store.Settings.BrowserDrops.AllowLocalNetwork;
+        _proxy = store.Settings.Proxy ?? "";
         _zipGeoResults = store.Settings.ZipGeoResults;
         CloseChoices = Enum.GetValues<CloseAction>().Select(v => new Choice<CloseAction>(v, loc[$"general.close.{v}"])).ToList();
         _closeChoice = CloseChoices.First(c => c.Value == store.Settings.CloseAction);
@@ -63,6 +72,8 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     public bool HasSystemIntegration => _platform is not NullPlatformServices;
     /// <summary>Whether this platform supports changing Filee's Dock visibility.</summary>
     public bool SupportsDockVisibility => _platform.SupportsDockVisibility;
+    /// <summary>The icon colour choice only matters while there is a menu bar icon.</summary>
+    public bool ShowColoredMenuBarIconOption => SupportsDockVisibility && ShowMenuBarIcon;
     public string ContextMenuText => _loc[OperatingSystem.IsMacOS() ? "general.context_menu_macos"
         : OperatingSystem.IsLinux() ? "general.context_menu_linux" : "general.context_menu"];
     public string? IntegrationMessage => _integration?.Error ?? (OperatingSystem.IsMacOS()
@@ -92,12 +103,17 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     partial void OnDefaultFolderChanged(string value) => Save(s => s.DefaultOutput.CustomFolder = value.Trim());
 
     [ObservableProperty] private bool _keepFileDates;
+
+    [ObservableProperty] private bool _collectDroppedFiles;
     [ObservableProperty] private bool _zipGeoResults;
 
     /// <summary>Where files dragged from a browser are saved; empty for the Downloads folder.</summary>
     [ObservableProperty] private string _browserFolder;
 
     [ObservableProperty] private bool _saveOnlyConverted;
+
+    /// <summary>Links dragged from a browser may lead to this computer and the local network.</summary>
+    [ObservableProperty] private bool _allowLocalNetwork;
 
     /// <summary>The user's Downloads folder, shown while no other folder is set.</summary>
     public string DownloadsFolder => _platform.DownloadsFolder;
@@ -108,6 +124,21 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     partial void OnBrowserFolderChanged(string value) => Save(s => s.BrowserDrops.Folder = value.Trim());
 
     partial void OnSaveOnlyConvertedChanged(bool value) => Save(s => s.BrowserDrops.SaveOnlyConverted = value);
+
+    partial void OnAllowLocalNetworkChanged(bool value) => Save(s => s.BrowserDrops.AllowLocalNetwork = value);
+
+    /// <summary>The proxy for Filee's downloads as typed. Saved whenever it is empty or an address.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ProxyInvalid))]
+    private string _proxy;
+
+    /// <summary>What is typed isn't a proxy address; the last one that was stays in use.</summary>
+    public bool ProxyInvalid => !ProxySetting.TryParse(Proxy, out _);
+
+    partial void OnProxyChanged(string value)
+    {
+        if (ProxySetting.TryParse(value, out _))
+            Save(s => s.Proxy = string.IsNullOrWhiteSpace(value) ? null : value.Trim());
+    }
 
     /// <summary>What closing the main window does; its "Don't ask again" also sets it.</summary>
     public IReadOnlyList<Choice<CloseAction>> CloseChoices { get; }
@@ -131,12 +162,16 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
 
     partial void OnKeepFileDatesChanged(bool value) => Save(s => s.KeepFileDates = value);
 
+    partial void OnCollectDroppedFilesChanged(bool value) => Save(s => s.CollectDroppedFiles = value);
+
     partial void OnZipGeoResultsChanged(bool value) => Save(s => s.ZipGeoResults = value);
 
     [ObservableProperty] private Choice<string> _language;
     [ObservableProperty] private bool _startWithSystem;
     [ObservableProperty] private bool _showInDock;
-    [ObservableProperty] private bool _showMenuBarIcon;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowColoredMenuBarIconOption))]
+    private bool _showMenuBarIcon;
+    [ObservableProperty] private bool _coloredMenuBarIcon;
     [ObservableProperty] private string? _dockStatus;
     [ObservableProperty] private bool _contextMenu;
     [ObservableProperty] private string? _libraryMessage;
@@ -152,9 +187,9 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private string? _modernMenuStatus;
 
-    public bool ShowModernMenu => ContextMenu && ModernMenuState != ModernContextMenuState.Unsupported;
-    public bool CanAddModernMenu => !ModernMenuBusy && ModernMenuState is ModernContextMenuState.Off or ModernContextMenuState.Outdated;
-    public bool CanRemoveModernMenu => !ModernMenuBusy && ModernMenuState is ModernContextMenuState.On or ModernContextMenuState.Outdated;
+    public bool ShowModernMenu => CanChangeSystemIntegration && ContextMenu && ModernMenuState != ModernContextMenuState.Unsupported;
+    public bool CanAddModernMenu => CanChangeSystemIntegration && !ModernMenuBusy && ModernMenuState is ModernContextMenuState.Off or ModernContextMenuState.Outdated;
+    public bool CanRemoveModernMenu => CanChangeSystemIntegration && !ModernMenuBusy && ModernMenuState is ModernContextMenuState.On or ModernContextMenuState.Outdated;
 
     partial void OnLanguageChanged(Choice<string>? oldValue, Choice<string> newValue)
     {
@@ -193,6 +228,8 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
 
     partial void OnShowMenuBarIconChanged(bool value) => Save(s => s.ShowMenuBarIcon = value);
 
+    partial void OnColoredMenuBarIconChanged(bool value) => Save(s => s.ColoredMenuBarIcon = value);
+
     partial void OnContextMenuChanged(bool value)
     {
         Save(s => s.ContextMenuEnabled = value);
@@ -208,7 +245,7 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
 
     private async Task ChangeModernMenu(bool enabled)
     {
-        if (Environment.ProcessPath is not { } exe)
+        if (!CanChangeSystemIntegration || Environment.ProcessPath is not { } exe)
             return;
         ModernMenuBusy = true;
         ModernMenuStatus = _loc["general.modern_menu_busy"];

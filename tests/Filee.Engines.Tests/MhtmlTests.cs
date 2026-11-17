@@ -17,7 +17,7 @@ public class MhtmlTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     static MhtmlTests() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice", "calibre"];
+    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice", "calibre", "weasyprint"];
 
     private static readonly byte[] Photo = EbookBuilders.Png(40, 30, MagickColors.Teal);
     private static readonly byte[] Banner = EbookBuilders.Png(50, 10, MagickColors.Orange);

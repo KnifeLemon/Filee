@@ -12,6 +12,11 @@
 //    joins the consonant after it.
 //  * A right-to-left word is read from right to left (its clusters by position), with numbers and Latin words in it
 //    kept left to right; the words of a right-to-left line likewise (Runs), and such a paragraph is marked right to left.
+//    Punctuation at the edges of those numbers and Latin words goes to the side the text around them puts it on
+//    (MoveEdgeNeutrals: ")1(" → "(1)").
+//  * An engine without right-to-left layout (rhwp) draws such text left to right in reading order, its letters unjoined.
+//    Read from the right it would come out backwards, so the words themselves tell: letters that only end a word
+//    standing first, and short common words backwards (ReadsBackwards), make the page read from the left.
 // Not recovered: PDFs that draw a cluster as one glyph whose ToUnicode entry is wrong and give no ActualText.
 
 using System.Globalization;
@@ -24,8 +29,11 @@ namespace Filee.Engines.Pdf;
 
 internal sealed partial class PdfDocumentReader
 {
-    /// <summary>A word of a page before it gets its position relative to the crop box and its formatting.</summary>
-    private sealed record PageWord(string Text, PdfRectangle Box, IReadOnlyList<Letter> Letters, Letter Lead);
+    /// <summary>
+    /// A word of a page before it gets its position relative to the crop box and its formatting.
+    /// <paramref name="DrawnForward"/>: the page draws right-to-left text left to right in reading order.
+    /// </summary>
+    private sealed record PageWord(string Text, PdfRectangle Box, IReadOnlyList<Letter> Letters, Letter Lead, bool DrawnForward = false);
 
     /// <summary>An ActualText that covers more glyphs or lines than this is a label for a passage, not a cluster's text.</summary>
     private const int MaxActualTextLetters = 64;
@@ -246,7 +254,7 @@ internal sealed partial class PdfDocumentReader
                 rows.Add(row = []);
             row.Add(word);
         }
-        var result = new List<PageWord>(words.Count);
+        var result = new List<List<Cluster>>(words.Count);
         foreach (var row in rows)
         {
             row.Sort((a, b) => a.Min(c => c.Start).CompareTo(b.Min(c => c.Start)));
@@ -263,18 +271,19 @@ internal sealed partial class PdfDocumentReader
                         continue;
                     }
                 }
-                result.Add(Word(joined));
+                result.Add(joined);
                 if (w < row.Count)
                     joined = [.. row[w]];
             }
         }
-        return result;
+        var read = result.Select(word => Word(word, drawnForward: false)).ToList();
+        return ReadsBackwards(read) ? result.Select(word => Word(word, drawnForward: true)).ToList() : read;
     }
 
     /// <summary>A word of clusters: its characters in logical order and its box.</summary>
-    private static PageWord Word(List<Cluster> clusters)
+    private static PageWord Word(List<Cluster> clusters, bool drawnForward)
     {
-        var rtl = ComplexScripts.Direction(string.Concat(clusters.Select(c => c.Text.ToString()))) < 0;
+        var rtl = !drawnForward && ComplexScripts.Direction(string.Concat(clusters.Select(c => c.Text.ToString()))) < 0;
         IEnumerable<Cluster> ordered = rtl
             ? LogicalOrder(clusters.OrderByDescending(c => c.Center).ToList(), c => ComplexScripts.Direction(c.Text.ToString()), rightToLeft: true)
             : clusters.OrderBy(c => c.Start);
@@ -282,7 +291,34 @@ internal sealed partial class PdfDocumentReader
         var letters = clusters.SelectMany(c => c.Letters).ToList();
         var box = new PdfRectangle(letters.Min(l => l.BoundingBox.Left), letters.Min(l => l.BoundingBox.Bottom),
             letters.Max(l => l.BoundingBox.Right), letters.Max(l => l.BoundingBox.Top));
-        return new PageWord(text, box, letters, clusters.OrderBy(c => c.Start).First().Lead);
+        return new PageWord(text, box, letters, clusters.OrderBy(c => c.Start).First().Lead, drawnForward);
+    }
+
+    /// <summary>Letters that only ever end a word: Arabic ة and ى, the final forms of Hebrew.</summary>
+    private const string WordEndLetters = "ةىךםןףץ";
+
+    /// <summary>Short words common in Arabic and Persian, and how each reads backwards.</summary>
+    private static readonly HashSet<string> CommonWords = ["في", "من", "على", "إلى", "عن", "أن", "در", "از", "به", "که", "را", "با", "این"];
+    private static readonly HashSet<string> CommonWordsBackwards = [.. CommonWords.Select(w => new string([.. w.Reverse()]))];
+
+    /// <summary>
+    /// Whether the right-to-left words of a page, read from the right, come out backwards: there is more that only fits
+    /// the other way round (a word starting with a letter that ends words, a common word backwards) than fits this way.
+    /// </summary>
+    private static bool ReadsBackwards(List<PageWord> words)
+    {
+        int backwards = 0, forwards = 0;
+        foreach (var word in words)
+        {
+            var text = new string([.. CleanText(word.Text).Where(char.IsLetter)]);
+            if (text.Length < 2 || ComplexScripts.Direction(text) >= 0)
+                continue;
+            if (WordEndLetters.Contains(text[0]) || CommonWordsBackwards.Contains(text))
+                backwards++;
+            if (WordEndLetters.Contains(text[^1]) || text.StartsWith("ال", StringComparison.Ordinal) || CommonWords.Contains(text))
+                forwards++;
+        }
+        return backwards > forwards;
     }
 
     private static bool OnSameBaseline(Letter a, Letter b) =>

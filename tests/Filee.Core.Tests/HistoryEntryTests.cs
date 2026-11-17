@@ -113,11 +113,13 @@ public class HistoryEntryTests
     public void An_entry_from_before_undo_has_nothing_to_undo()
     {
         using var dir = new TempDir();
-        File.WriteAllText(Path.Combine(dir.Path, "history.json"), """[{"JobId":"a","PresetName":"PNG","Outputs":["photo.png"]}]""");
+        File.WriteAllText(Path.Combine(dir.Path, "history.json"), """[{"jobId":"a","presetName":"PNG","outputs":["photo.png"]}]""");
         var store = new UserDataStore(dir.Path);
         store.Load();
 
         var entry = Assert.Single(store.History);
+        Assert.Equal("a", entry.JobId); // the entry was read, not left at its defaults
+        Assert.Equal(["photo.png"], entry.Outputs);
         Assert.Empty(entry.Undoable);
         Assert.False(entry.Undone);
     }

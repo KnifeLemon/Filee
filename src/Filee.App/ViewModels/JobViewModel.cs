@@ -69,6 +69,11 @@ public sealed partial class JobViewModel : ObservableObject
 
     public string Title { get; }
 
+    /// <summary>The header and complete message, including details truncated or scrolled in a toast.</summary>
+    public string NotificationText => string.Join(Environment.NewLine,
+        new[] { Title, Status, IsDownloading ? DownloadText : null, ErrorDetails, Notices, MissingFontsText }
+            .Where(text => !string.IsNullOrWhiteSpace(text)));
+
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string _status = "";
     [ObservableProperty] private bool _isRunning = true;
@@ -113,8 +118,11 @@ public sealed partial class JobViewModel : ObservableObject
         ErrorDetails = failed.Count == 0 ? null : string.Join(Environment.NewLine,
             failed.Select(f => $"{Path.GetFileName(f.SourcePath)} — {FailureText.Reason(_loc, f.ErrorKey, f.ErrorDetail)}"));
         // A file from a browser that couldn't be saved, or whose original wasn't kept, is gone: nothing to retry with.
+        // Not for a picture behind changed since Add background showed it: retried, it is refused again (the look is
+        // to be added again).
         CanRetry = _retry is not null && !IsRunning && failed.Count > 0
-                   && (Job.Fetcher is null || failed.Any(f => File.Exists(f.SourcePath)));
+                   && (Job.Fetcher is null || failed.Any(f => File.Exists(f.SourcePath)))
+                   && failed.Any(f => f.ErrorKey != "error.background_picture_changed");
         IReadOnlyList<string> unknown = IsRunning ? [] : FormatRequest.UnknownExtensions(
             failed.Where(f => f.ErrorKey == "error.unsupported_source").Select(f => f.SourcePath));
         if (!unknown.SequenceEqual(UnknownExtensions))

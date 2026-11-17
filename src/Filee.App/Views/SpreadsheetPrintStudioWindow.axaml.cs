@@ -19,7 +19,8 @@ public partial class SpreadsheetPrintStudioWindow : Window
     {
         if (DataContext is not SpreadsheetPrintStudioViewModel vm)
             return;
-        var name = Path.GetFileNameWithoutExtension(vm.FileName) + "_prepared.pdf";
+        // With one PDF per sheet the chosen name is only the start of each file: Book_Sheet1.pdf, Book_Sheet2.pdf.
+        var name = Path.GetFileNameWithoutExtension(vm.FileName) + (vm.OnePdfPerSheet ? ".pdf" : "_prepared.pdf");
         var target = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = this.TryFindResource("sheet_studio.export_pdf", out var title)

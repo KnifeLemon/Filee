@@ -133,14 +133,14 @@ public class ImageEditToolTests
     // ───────────────────────── Settings schema 51 ─────────────────────────
 
     [Fact]
-    public void A_new_library_has_the_tool_after_crop_and_on_the_images_donut_after_half_size()
+    public void A_new_library_has_the_tool_after_crop_and_behind_the_images_donut_after_half_size()
     {
         var presets = BuiltInData.CreatePresets();
         var edit = presets.Single(p => p.Id == "tool-image-edit");
         Assert.Equal("tool-crop", presets[presets.IndexOf(edit) - 1].Id);
         var images = BuiltInData.CreateProfiles().Single(p => p.Id == "images");
-        Assert.Equal("tool-image-edit", images.PresetIds[images.PresetIds.IndexOf("half-size") + 1]);
-        Assert.DoesNotContain("tool-image-edit", images.BackPresetIds!);
+        Assert.Equal("tool-image-edit", images.BackPresetIds![images.BackPresetIds.IndexOf("half-size") + 1]);
+        Assert.DoesNotContain("tool-image-edit", images.PresetIds);
         Assert.InRange(images.PresetIds.Count, 1, ToolbarProfile.MaxSlices);
     }
 
@@ -149,7 +149,7 @@ public class ImageEditToolTests
     {
         var presets = BuiltInData.CreatePresets();
         presets.RemoveAll(p => p.Id == "tool-image-edit");
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var images = profiles.Single(p => p.Id == "images");
         images.PresetIds.Remove("tool-image-edit");
 
@@ -157,18 +157,18 @@ public class ImageEditToolTests
 
         Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id));
         Assert.True(presets.Single(p => p.Id == "tool-image-edit").IsImageEditTool);
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "images").PresetIds, images.PresetIds);
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "images").PresetIds, images.PresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(50, presets, profiles)); // once only
 
         // A front laid out by the user (without "Half size"), a full one, or the tool already on the back, stays as it is.
-        var own = BuiltInData.CreateProfiles();
+        var own = BuiltInData.ProfilesSchema58();
         var ownFront = own.Single(p => p.Id == "images").PresetIds;
         ownFront.Clear();
         ownFront.AddRange(["to-webp", "to-png"]);
         SettingsMigrations.ApplyToLibrary(50, BuiltInData.CreatePresets(), own);
         Assert.Equal(["to-webp", "to-png"], ownFront);
 
-        var full = BuiltInData.CreateProfiles();
+        var full = BuiltInData.ProfilesSchema58();
         var fullFront = full.Single(p => p.Id == "images").PresetIds;
         fullFront.Remove("tool-image-edit");
         while (fullFront.Count < ToolbarProfile.MaxSlices)
@@ -177,7 +177,7 @@ public class ImageEditToolTests
         SettingsMigrations.ApplyToLibrary(50, BuiltInData.CreatePresets(), full);
         Assert.Equal(before, fullFront);
 
-        var back = BuiltInData.CreateProfiles();
+        var back = BuiltInData.ProfilesSchema58();
         var backImages = back.Single(p => p.Id == "images");
         backImages.PresetIds.Remove("tool-image-edit");
         backImages.BackPresetIds![^1] = "tool-image-edit";
@@ -196,7 +196,7 @@ public class ImageEditToolTests
         edit.TargetFormat = "ico";
         Assert.True(edit.IsCropTool);
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(50, presets, BuiltInData.CreateProfiles()));
+        Assert.True(SettingsMigrations.ApplyToLibrary(50, presets, BuiltInData.ProfilesSchema58()));
 
         Assert.True(edit.IsImageEditTool);
         Assert.Equal(("Icons", "ico"), (edit.Name, edit.TargetFormat));

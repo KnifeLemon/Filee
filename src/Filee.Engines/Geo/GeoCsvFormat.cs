@@ -142,20 +142,23 @@ internal static class GeoCsvFormat
     {
         var columns = dataset.Columns();
         var geometries = dataset.Features.Select(f => f.Geometry).OfType<GeoGeometry>().ToList();
-        // An attribute that already is a longitude or latitude column would be mistaken for the geometry when the CSV is
-        // read again, so such a dataset gets its geometry as WKT.
-        var ambiguous = columns.Any(c => LonNames.Contains(Key(c)) || LatNames.Contains(Key(c)));
+        // An attribute that already is a longitude, latitude or WKT column would be mistaken for the geometry when the
+        // CSV is read again, so such a dataset gets its geometry as WKT.
+        var ambiguous = columns.Any(c => LonNames.Contains(Key(c)) || LatNames.Contains(Key(c)) || WktNames.Contains(Key(c)));
         var points = !ambiguous && geometries.Count > 0 && geometries.All(g => g is GeoPoint);
         var withHeight = points && geometries.Any(g => g.HasZ);
 
-        string[] geometryColumns = !points ? ["wkt"] : withHeight ? ["longitude", "latitude", "elevation"] : ["longitude", "latitude"];
-        // An attribute that already has one of these names keeps it; the geometry column gets "_geo" after it.
+        // The generated WKT header uses the reader's first candidate when an attribute already does, so its leading column wins on read.
+        var wktColumn = columns.Any(c => Key(c) == WktNames[0]) ? "wkt_geo" : "wkt";
+        string[] geometryColumns = !points ? [wktColumn] : withHeight ? ["longitude", "latitude", "elevation"] : ["longitude", "latitude"];
+        // An attribute that already has one of these names keeps it; the geometry column gets a suffix after it.
         var taken = new HashSet<string>(columns, StringComparer.OrdinalIgnoreCase);
         var geometryNames = geometryColumns.Select(name =>
         {
             var unique = name;
+            var suffix = Key(name) == WktNames[0] ? "_" : "_geo";
             while (!taken.Add(unique))
-                unique += "_geo";
+                unique += suffix;
             return unique;
         }).ToList();
 

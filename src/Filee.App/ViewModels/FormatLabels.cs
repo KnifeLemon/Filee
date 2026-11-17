@@ -17,7 +17,8 @@ public static class FormatLabels
 
     /// <summary>Name of the format with id <paramref name="formatId"/>, or null when it is unknown.</summary>
     public static string? NameOf(ILocalizer loc, string formatId) =>
-        FormatRegistry.FindById(formatId) is { } format ? Name(loc, format) : null;
+        formatId == Core.Presets.BuiltInData.SameAsAudio ? loc["presets.same_as_audio"]
+        : FormatRegistry.FindById(formatId) is { } format ? Name(loc, format) : null;
 
     /// <summary>"JPG · Image".</summary>
     public static string NameAndCategory(ILocalizer loc, FileFormat format) => $"{Name(loc, format)} · {Category(loc, format.Category)}";

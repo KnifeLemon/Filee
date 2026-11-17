@@ -37,7 +37,7 @@
           <Border Classes="card">
             <StackPanel Spacing="12">
               <DockPanel>
-                <Button DockPanel.Dock="Right" Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource watch.remove}" AutomationProperties.Name="{DynamicResource watch.remove}">
+                <Button DockPanel.Dock="Right" Classes="danger" Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource watch.remove}" AutomationProperties.Name="{DynamicResource watch.remove}">
                   <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Delete}" />
                 </Button>
                 <!-- No label of its own: the status beside it says whether the folder is watched. -->

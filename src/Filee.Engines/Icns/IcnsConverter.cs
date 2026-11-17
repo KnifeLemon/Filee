@@ -36,7 +36,7 @@ public sealed class IcnsConverter : IConverter, IImageTransformer
     /// </summary>
     private static IReadOnlyList<string> WriteIcon(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
-        using var images = ImageReader.Read(step.InputPath, step.From, step.Preset);
+        using var images = ImageReader.Read(step.InputPath, step.From, step.Preset, ct);
         // An icon holds one picture: the first page/frame, or the largest icon of an .ico.
         var master = ImageEncoder.SelectFrames(images, step.From, "icns")[0];
         ImageEncoder.ApplyOptions(master, step.Preset.Image, "icns");
@@ -113,7 +113,7 @@ public sealed class IcnsConverter : IConverter, IImageTransformer
     /// <summary>Pads the shorter side with transparency so the picture becomes a centred square.</summary>
     private static void MakeSquare(IMagickImage<byte> image)
     {
-        image.Alpha(AlphaOption.Set);
+        image.Alpha(AlphaAction.Set);
         if (image.Width == image.Height)
             return;
         var side = Math.Max(image.Width, image.Height);

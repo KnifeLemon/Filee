@@ -25,6 +25,7 @@ public sealed partial class PresetFormatTip(
     [ObservableProperty] private string? _worksWith;
     [ObservableProperty] private string? _anyFile;
     [ObservableProperty] private string? _reason;
+    [ObservableProperty] private string? _ordinaryConversionNotice;
     [ObservableProperty] private IReadOnlyList<PresetFormatTipRow> _summaryRows = [];
     [ObservableProperty] private IReadOnlyList<PresetFormatTipRow> _fullRows = [];
     [ObservableProperty] private string? _footer;
@@ -75,7 +76,7 @@ public sealed partial class PresetFormatTip(
         {
             Title = loc.DisplayName(preset);
             AnyFile = loc["toolbar.chip_tip.any_file"];
-            MakesBefore = loc["presets.copy_hint"];
+            MakesBefore = loc[preset.Output.MoveInsteadOfCopy ? "presets.move_hint" : "presets.copy_hint"];
             return;
         }
 
@@ -134,13 +135,14 @@ public sealed partial class PresetFormatTip(
             return;
         }
 
-        var output = FormatRegistry.Get(preset.TargetFormat);
+        // "Same format as the audio" (#1490): an audio file whose format the video's sound decides.
+        var output = preset.TargetFormat == BuiltInData.SameAsAudio ? null : FormatRegistry.Get(preset.TargetFormat);
         var template = loc[preset.TargetFormat == FormatRegistry.Folder
             ? "toolbar.chip_tip.makes_name" : "toolbar.chip_tip.makes"];
         var position = template.IndexOf("{0}", StringComparison.Ordinal);
         MakesBefore = template[..position];
-        MakesName = LocalizationService.LeftToRight(FormatLabels.Name(loc, output));
-        MakesAfter = template[(position + 3)..].Replace("{1}", FormatLabels.Category(loc, output.Category),
+        MakesName = output is null ? loc["presets.same_as_audio"] : LocalizationService.LeftToRight(FormatLabels.Name(loc, output));
+        MakesAfter = template[(position + 3)..].Replace("{1}", FormatLabels.Category(loc, output?.Category ?? FormatCategory.Audio),
             StringComparison.Ordinal);
     }
 }

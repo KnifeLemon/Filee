@@ -6,8 +6,8 @@
 // #202). Its PDF edges are marked Unshaped, so a document with such text (found by ComplexScripts) goes to LibreOffice,
 // or is refused with that reason when LibreOffice is missing. rhwp's width tables cover only ASCII and Latin-1,
 // general punctuation, math, the CJK forms and Hangul, so a letter of any other script — Polish, Turkish, Vietnamese,
-// Greek, Cyrillic, ... — overlaps at a fixed half-em (rhwp#8143): such a document takes a route without rhwp when
-// one exists, and is never refused for it.
+// Greek, Cyrillic, ... — is laid out at a fixed half-em (rhwp#8143): such a document takes a route without rhwp when
+// one exists, and is never refused for it. When rhwp draws it, RhwpInput spaces those letters to their font's width.
 
 using System.IO.Compression;
 using System.Xml;
@@ -17,6 +17,7 @@ using Filee.Engines.Ebooks;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Office;
+using UglyToad.PdfPig;
 
 namespace Filee.Engines.Hwp;
 
@@ -48,6 +49,9 @@ public sealed class RhwpConverter : IConverter, ITextShapingCheck
     private static readonly TimeSpan TypicalPerCharacterDirect = TimeSpan.FromMilliseconds(0.2);
 
     private static readonly TimeSpan TypicalDuration = TimeSpan.FromSeconds(1.5);
+
+    /// <summary>Above this many characters (some 6 minutes with the SVG backend) a direct PDF isn't drawn again.</summary>
+    private const long MostToRedraw = 100_000;
 
     private string? _exe;
 
@@ -102,9 +106,9 @@ public sealed class RhwpConverter : IConverter, ITextShapingCheck
                 ProcessResult direct;
                 using (ProgressEstimate.Start(progress, Typical(characters, text, direct: true)))
                     direct = await ProcessRunner.RunAsync(exe, ["export-pdf", input, "-o", temp, "--backend", "direct"], TimeLimit(text), cancellationToken);
-                if (direct.ExitCode == 0 && Written(temp))
+                if (direct.ExitCode == 0 && Written(temp) && !DropsCharacters(temp, characters))
                     return Finish(step, temp, progress);
-                File.Delete(temp); // the SVG backend draws what the direct one refused
+                File.Delete(temp); // the SVG backend draws what the direct one refused or left out
             }
 
             string[] arguments = step.To switch
@@ -128,6 +132,34 @@ public sealed class RhwpConverter : IConverter, ITextShapingCheck
         }
 
         return Finish(step, temp, progress);
+    }
+
+    /// <summary>
+    /// Whether a PDF of the direct backend draws fewer than the document's <paramref name="characters"/>. That backend
+    /// has no fallback font: when the font it settled on lacks a character it leaves it out, where the SVG backend takes
+    /// another font for it (issue #993: Chinese cells drawn in a Korean font). Above <see cref="MostToRedraw"/> characters
+    /// the PDF stays as it is, since the SVG backend would take far longer than any wait for a few characters is worth.
+    /// </summary>
+    internal static bool DropsCharacters(string pdf, long? characters)
+    {
+        if (characters is not { } expected || expected > MostToRedraw)
+            return false;
+        try
+        {
+            using var document = PdfDocument.Open(pdf, new ParsingOptions { UseLenientParsing = true, SkipMissingFonts = true });
+            long drawn = 0;
+            foreach (var page in document.GetPages())
+            {
+                drawn += page.Letters.Count(letter => !string.IsNullOrWhiteSpace(letter.Value));
+                if (drawn >= expected)
+                    return false;
+            }
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return false; // PdfPig can't read it: the PDF rhwp wrote may still be fine
+        }
     }
 
     private static IReadOnlyList<string> Finish(ConversionStep step, string temp, IProgress<double>? progress)

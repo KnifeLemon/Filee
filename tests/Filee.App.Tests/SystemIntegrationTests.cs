@@ -6,8 +6,38 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.Tests;
 
+[Collection("Portable UI environment")]
 public sealed class SystemIntegrationTests
 {
+    [Fact]
+    public void A_marked_copy_never_registers_or_removes_installed_integration()
+    {
+        var root = Directory.CreateTempSubdirectory("filee-portable-integration-").FullName;
+        var previous = Environment.GetEnvironmentVariable(UserDataStore.DirectoryVariable);
+        Environment.SetEnvironmentVariable(UserDataStore.DirectoryVariable, null);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, PortableMode.MarkerName), "");
+            using var portable = PortableMode.Initialize(root);
+            var platform = new RecordingPlatform();
+            var service = new SystemIntegrationService(platform, new Texts(), NullLogger<SystemIntegrationService>.Instance)
+            {
+                RegistrationEnabled = true,
+                ExecutablePath = Path.Combine(root, "Filee.exe"),
+            };
+            Assert.True(service.SeparateDataDirectory);
+            service.Apply(new AppSettings { StartWithSystem = true, ContextMenuEnabled = true });
+            service.Apply(new AppSettings { StartWithSystem = false, ContextMenuEnabled = false });
+            Assert.Equal(0, platform.StartupCalls);
+            Assert.Equal(0, platform.MenuCalls);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(UserDataStore.DirectoryVariable, previous);
+            Directory.Delete(root, true);
+        }
+    }
+
     [Fact]
     public void Unrelated_settings_do_not_reregister_the_file_manager()
     {

@@ -1,0 +1,83 @@
+<!-- "Choose the compression" (#1353): opens when files are dropped on a preset that asks for its compression
+     (RadialController, Preset.AskCompression). It shows the preset editor's own setting for each kind of file dropped
+     (picture quality, video quality, audio bitrate, PDF level) and the size they will roughly come to. Enter starts
+     it, Esc or closing the window starts nothing. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.AskCompressionWindow"
+        x:DataType="vm:AskCompressionViewModel"
+        Title="{DynamicResource compression.title}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="540" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterScreen">
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
+            Background="{DynamicResource SurfaceBrush}">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button x:Name="CancelCompression" Content="{DynamicResource common.cancel}" Click="OnCancel" IsCancel="True" />
+        <Button x:Name="StartCompression" Classes="accent" Content="{DynamicResource preset.compress_image}" Click="OnStart" IsDefault="True" />
+      </StackPanel>
+    </Border>
+    <StackPanel Margin="20,18,20,16" Spacing="14">
+      <TextBlock Classes="h2" Text="{DynamicResource compression.title}" />
+      <!-- The files and their size now. -->
+      <Border x:Name="FilesCard" Padding="14,10" CornerRadius="10" Background="{DynamicResource SurfaceAltBrush}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+          <PathIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Icon.File}"
+                    Foreground="{DynamicResource TextSecondaryBrush}" />
+          <StackPanel Grid.Column="1" Spacing="2">
+            <TextBlock x:Name="FilesText" Text="{Binding FilesText}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding FilesText}" />
+            <TextBlock x:Name="SizeNow" Classes="caption" Text="{Binding SizeNowText}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+      <!-- The preset editor's controls, for the kinds of file dropped. -->
+      <StackPanel x:Name="ImageQuality" IsVisible="{Binding ShowImage}">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Right" Text="{Binding Quality}" FontWeight="SemiBold" />
+          <TextBlock Classes="label" Text="{DynamicResource presets.quality}" />
+        </DockPanel>
+        <Slider x:Name="QualitySlider" Minimum="1" Maximum="100" Value="{Binding Quality}" TickFrequency="1" IsSnapToTickEnabled="True"
+                AutomationProperties.Name="{DynamicResource presets.quality}" />
+      </StackPanel>
+      <Grid IsVisible="{Binding ShowVideo}">
+        <StackPanel>
+          <TextBlock Classes="label" Text="{DynamicResource presets.media_quality}" />
+          <ComboBox x:Name="VideoQuality" ItemsSource="{Binding VideoQualities}" SelectedItem="{Binding VideoQuality}" HorizontalAlignment="Stretch"
+                    ToolTip.Tip="{DynamicResource presets.media_quality_hint}" AutomationProperties.Name="{DynamicResource presets.media_quality}" />
+        </StackPanel>
+      </Grid>
+      <Grid IsVisible="{Binding ShowAudio}">
+        <StackPanel>
+          <TextBlock Classes="label" Text="{DynamicResource presets.audio_bitrate}" />
+          <ComboBox x:Name="AudioBitrate" ItemsSource="{Binding AudioBitrates}" SelectedItem="{Binding AudioBitrate}" HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="{DynamicResource presets.audio_bitrate}" />
+        </StackPanel>
+      </Grid>
+      <StackPanel Spacing="2" IsVisible="{Binding ShowPdf}">
+        <Grid>
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.pdf_compression}" />
+            <ComboBox x:Name="PdfLevel" ItemsSource="{Binding PdfLevels}" SelectedItem="{Binding PdfLevel}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource presets.pdf_compression}" />
+          </StackPanel>
+        </Grid>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_compression_hint}" />
+      </StackPanel>
+      <!-- About what the files come to: an estimate, and the window says so. -->
+      <Border x:Name="EstimateCard" Padding="14,10" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource SubtleBorderBrush}">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="label" Text="{DynamicResource compression.estimate_label}" />
+          <TextBlock x:Name="EstimateText" Text="{Binding EstimateText}" FontWeight="SemiBold" TextWrapping="Wrap"
+                     Classes.caption="{Binding IsEstimating}" />
+          <TextBlock x:Name="EstimateHint" Classes="caption" Text="{Binding HintText}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+      <!-- Off by default: the choice is for this conversion; the preset (also used by watch folders and the command
+           line) changes only when asked. -->
+      <CheckBox x:Name="RememberChoice" Content="{DynamicResource compression.remember}" IsChecked="{Binding Remember}" />
+    </StackPanel>
+  </DockPanel>
+</Window>

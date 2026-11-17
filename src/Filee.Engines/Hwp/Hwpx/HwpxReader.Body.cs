@@ -12,6 +12,12 @@ internal sealed partial class HwpxReader
     /// <summary>Fields (fieldBegin … fieldEnd) open in the current paragraph list; hyperlinks may span paragraphs.</summary>
     private List<OpenField> _fields = [];
 
+    /// <summary>Fields begun while <see cref="Nesting.MaxDepth"/> others were open, which are not tracked.</summary>
+    private int _untrackedFields;
+
+    /// <summary>Paragraph lists (cells, notes, text boxes ...) around the one being read.</summary>
+    private int _depth;
+
     /// <summary>Highlighter colour between hp:markpenBegin and hp:markpenEnd.</summary>
     private string? _markpen;
 
@@ -23,15 +29,21 @@ internal sealed partial class HwpxReader
 
     private sealed record OpenField(string? Id, string? Target);
 
-    /// <summary>Paragraphs and tables of a paragraph list (cell, header, footer, note, text box, caption).</summary>
+    /// <summary>
+    /// Paragraphs and tables of a paragraph list (cell, header, footer, note, text box, caption). Lists nested deeper
+    /// than <see cref="Nesting.MaxDepth"/> give their text only, as plain paragraphs.
+    /// </summary>
     private List<HBlock> ReadSubList(XElement? subList)
     {
         var blocks = new List<HBlock>();
         if (subList is null)
             return blocks;
+        if (_depth >= Nesting.MaxDepth)
+            return Nesting.PlainParagraphs(subList, "p", "t");
         // Fields, highlighting and tracked deletions do not reach into or out of a nested paragraph list.
-        var (fields, markpen, deleted) = (_fields, _markpen, _deleted);
-        (_fields, _markpen, _deleted) = ([], null, false);
+        var (fields, untracked, markpen, deleted) = (_fields, _untrackedFields, _markpen, _deleted);
+        (_fields, _untrackedFields, _markpen, _deleted) = ([], 0, null, false);
+        _depth++;
         try
         {
             foreach (var element in Elements(subList))
@@ -44,7 +56,8 @@ internal sealed partial class HwpxReader
         }
         finally
         {
-            (_fields, _markpen, _deleted) = (fields, markpen, deleted);
+            (_fields, _untrackedFields, _markpen, _deleted) = (fields, untracked, markpen, deleted);
+            _depth--;
         }
         return blocks;
     }
@@ -64,6 +77,13 @@ internal sealed partial class HwpxReader
         private readonly int _heading;
         private readonly HListRef? _list;
         private bool _afterTable;
+
+        // Text joined to the HText at _joinedAt in _joinedSink, kept in a StringBuilder until something else is
+        // added there: joining strings one piece at a time costs the square of the run's length (a run of a
+        // hundred thousand hp:nbSpace elements).
+        private StringBuilder? _joined;
+        private List<HInline>? _joinedSink;
+        private int _joinedAt;
 
         public ParagraphBuilder(List<HBlock> output, List<OpenField> fields, HParaFormat format, int heading, HListRef? list)
         {
@@ -90,14 +110,38 @@ internal sealed partial class HwpxReader
             if (text.Length == 0)
                 return;
             var sink = Sink;
-            if (sink.Count > 0 && sink[^1] is HText last && last.Format == format)
-                sink[^1] = new HText(last.Text + text, format);
-            else
+            if (sink.Count == 0 || sink[^1] is not HText last || last.Format != format)
+            {
                 sink.Add(new HText(text, format));
+                return;
+            }
+            if (_joined is null || !ReferenceEquals(_joinedSink, sink) || _joinedAt != sink.Count - 1)
+            {
+                FinishJoin();
+                (_joined, _joinedSink, _joinedAt) = (new StringBuilder(last.Text), sink, sink.Count - 1);
+            }
+            _joined.Append(text);
+            // The text is written to the HText when the paragraph is finished (FinishJoin).
+        }
+
+        /// <summary>Writes the text joined so far to its HText.</summary>
+        private void FinishJoin()
+        {
+            if (_joined is null || _joinedSink is null)
+                return;
+            var last = (HText)_joinedSink[_joinedAt];
+            _joinedSink[_joinedAt] = new HText(_joined.ToString(), last.Format);
+            (_joined, _joinedSink) = (null, null);
         }
 
         public void OpenLink(string target)
         {
+            // Links in links beyond the limit keep their text in the link around them.
+            if (_sinks.Count >= Nesting.MaxDepth)
+            {
+                _sinks.Push(Sink);
+                return;
+            }
             var link = new HLink(target);
             Sink.Add(link);
             _sinks.Push(link.Content);
@@ -111,6 +155,7 @@ internal sealed partial class HwpxReader
 
         public void Table(HTable table)
         {
+            FinishJoin();
             // Breaks and column changes have no place on a table, so they keep an empty paragraph in front of it.
             if (HasContent || Current.PageBreakBefore || Current.ColumnBreakBefore || Current.ColumnsChange is not null)
                 Emit();
@@ -122,6 +167,7 @@ internal sealed partial class HwpxReader
 
         public void Finish()
         {
+            FinishJoin();
             if (!_afterTable || HasContent)
                 Emit();
         }
@@ -414,6 +460,12 @@ internal sealed partial class HwpxReader
                     builder.Add(new HBookmark(name));
                 break;
         }
+        // Every paragraph opens the links of all open fields again, so fields begun without an end must not pile up.
+        if (_fields.Count >= Nesting.MaxDepth)
+        {
+            _untrackedFields++;
+            return;
+        }
         // Other fields (click-here, date, file name, ...) keep their result text, which follows until fieldEnd.
         _fields.Add(new OpenField(Attr(control, "id"), target));
         if (target is not null)
@@ -423,7 +475,12 @@ internal sealed partial class HwpxReader
     private void FieldEnd(XElement control, ParagraphBuilder builder)
     {
         var id = Attr(control, "beginIDRef");
-        var index = _fields.FindLastIndex(f => id is null || f.Id == id);
+        var index = id is null && _untrackedFields > 0 ? -1 : _fields.FindLastIndex(f => id is null || f.Id == id);
+        if (index < 0 && _untrackedFields > 0)
+        {
+            _untrackedFields--;
+            return;
+        }
         if (index < 0)
             index = _fields.Count - 1;
         if (index < 0)
@@ -472,7 +529,7 @@ internal sealed partial class HwpxReader
 
     private HTable Table(XElement tbl)
     {
-        var table = new HTable { ColumnCount = Math.Max(0, Int(tbl, "colCnt")) };
+        var table = new HTable { ColumnCount = Math.Clamp(Int(tbl, "colCnt"), 0, HwpxWriter.MaxTableColumns) };
         var pos = Child(tbl, "pos");
         if (pos is not null && !Flag(pos, "treatAsChar"))
         {
@@ -505,13 +562,14 @@ internal sealed partial class HwpxReader
                 var span = Part("cellSpan");
                 var size = Part("cellSz");
                 var subList = Child(tc, "subList");
+                // Addresses and spans past the widest table written (HwpxWriter.MaxTableColumns) are cut there.
                 var cell = new HCell
                 {
-                    Column = address is null ? -1 : Math.Max(0, Int(address, "colAddr")),
-                    ColSpan = Math.Max(1, Int(span, "colSpan", 1)),
+                    Column = address is null ? -1 : Math.Clamp(Int(address, "colAddr"), 0, HwpxWriter.MaxTableColumns - 1),
                     RowSpan = Math.Max(1, Int(span, "rowSpan", 1)),
                     VerticalAlign = VerticalAlign(Attr(subList, "vertAlign")),
                 };
+                cell.ColSpan = Math.Clamp(Int(span, "colSpan", 1), 1, HwpxWriter.MaxTableColumns - Math.Max(0, cell.Column));
                 if (BorderFill(Attr(tc, "borderFillIDRef")) is { } borderFill)
                     (cell.Borders, cell.Fill) = borderFill;
                 cell.Blocks.AddRange(ReadSubList(subList));
