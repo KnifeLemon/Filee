@@ -15,6 +15,8 @@ public static class PageRange
     {
         if (pageCount <= 0)
             return [];
+        // Other keyboards' digits, dashes and commas, as Check reads them: "2–5" is pages 2 to 5, not every page.
+        expression = Normalize(expression ?? "");
         if (string.IsNullOrWhiteSpace(expression))
             return Enumerable.Range(0, pageCount).ToList();
 
@@ -25,7 +27,7 @@ public static class PageRange
             int start, end;
             if (dash < 0)
             {
-                if (!int.TryParse(raw, out start))
+                if (!int.TryParse(raw, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out start))
                     continue;
                 end = start;
             }
@@ -33,8 +35,8 @@ public static class PageRange
             {
                 var left = raw[..dash].Trim();
                 var right = raw[(dash + 1)..].Trim();
-                start = left.Length == 0 ? 1 : int.TryParse(left, out var l) ? l : -1;
-                end = right.Length == 0 ? pageCount : int.TryParse(right, out var r) ? r : -1;
+                start = left.Length == 0 ? 1 : int.TryParse(left, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var l) ? l : -1;
+                end = right.Length == 0 ? pageCount : int.TryParse(right, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var r) ? r : -1;
                 if (start < 0 || end < 0)
                     continue;
             }
@@ -47,4 +49,84 @@ public static class PageRange
 
         return pages.Count == 0 ? Enumerable.Range(0, pageCount).ToList() : pages.ToList();
     }
+
+    /// <summary>
+    /// Checks a range typed by hand (the "Choose pages" window, <c>filee convert --pages</c>), which
+    /// <see cref="Parse"/> would quietly make the best of: every part must be a page number or a span of them, from 1,
+    /// and none past the last page when <paramref name="pageCount"/> is known. What a keyboard in another language
+    /// types is read too: other digits (Devanagari, Arabic-Indic, Thai, full-width), en, em and full-width dashes,
+    /// full-width, ideographic and Arabic commas. Empty means every page.
+    /// </summary>
+    public static PageRangeCheck Check(string? expression, int? pageCount)
+    {
+        var text = Normalize(expression ?? "").Trim();
+        if (text.Length == 0)
+            return new(PageRangeProblem.None, "", pageCount);
+
+        var last = 0;
+        foreach (var raw in text.Split(','))
+        {
+            var part = raw.Trim();
+            if (part.Length == 0)
+                continue;
+            var dash = part.IndexOf('-');
+            var left = dash < 0 ? part : part[..dash].Trim();
+            var right = dash < 0 ? part : part[(dash + 1)..].Trim();
+            if (dash >= 0 && left.Length == 0 && right.Length == 0)
+                return new(PageRangeProblem.Invalid, text, null);
+            if (!Page(left, out var start) || !Page(right, out var end))
+                return new(PageRangeProblem.Invalid, text, null);
+            last = Math.Max(last, Math.Max(start, end));
+        }
+        if (last == 0 && !text.Contains('-'))
+            return new(PageRangeProblem.Invalid, text, null);
+        if (pageCount is { } count && last > count)
+            return new(PageRangeProblem.PastTheEnd, text, null);
+        return new(PageRangeProblem.None, text, pageCount is { } total ? Parse(text, total).Count : null);
+
+        // A side left empty ("7-", "-4") is open; anything else must be a whole number from 1.
+        static bool Page(string side, out int page)
+        {
+            page = 0;
+            if (side.Length == 0)
+                return true;
+            return side.All(char.IsAsciiDigit) && int.TryParse(side, System.Globalization.CultureInfo.InvariantCulture, out page) && page >= 1;
+        }
+    }
+
+    /// <summary>The range in the digits, hyphens and commas <see cref="Parse"/> reads.</summary>
+    private static string Normalize(string expression) =>
+        string.Create(expression.Length, expression, (chars, source) =>
+        {
+            for (var i = 0; i < source.Length; i++)
+            {
+                var c = source[i];
+                chars[i] = c switch
+                {
+                    '\u2013' or '\u2014' or '\u2212' or '\uFF0D' => '-', // en, em, minus and full-width dashes
+                    '\uFF0C' or '\u3001' or '\u060C' => ',', // full-width, ideographic and Arabic commas
+                    _ when !char.IsAsciiDigit(c) && char.IsDigit(c) => (char)('0' + (int)char.GetNumericValue(c)),
+                    _ => c,
+                };
+            }
+        });
+}
+
+/// <summary>What is wrong with a range typed by hand (<see cref="PageRange.Check"/>).</summary>
+public enum PageRangeProblem
+{
+    None,
+    /// <summary>A part that is not a page number or a span of them ("abc", "3-x", "0").</summary>
+    Invalid,
+    /// <summary>A page after the last one of the PDF.</summary>
+    PastTheEnd,
+}
+
+/// <summary>
+/// The result of <see cref="PageRange.Check"/>: <see cref="Text"/> is the range as it is used (dashes made hyphens,
+/// trimmed); <see cref="Pages"/> how many pages it takes, when the page count is known and the range is fine.
+/// </summary>
+public readonly record struct PageRangeCheck(PageRangeProblem Problem, string Text, int? Pages)
+{
+    public bool IsValid => Problem == PageRangeProblem.None;
 }
