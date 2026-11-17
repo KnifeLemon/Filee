@@ -227,7 +227,7 @@ that signs the release): the x64 downloads, without the packages the ARM64 app h
   `Filee.exe` through the build (`-p:UnhwpNativeLibrary`).
 
 `UnhwpConverter` reports Unhwp as available where its library loads, so a build without it shows the engine as not
-available on this platform. CI's `build (win-arm64)` job builds and tests on Windows 11 ARM64; once both pins are filled
+available on this platform. CI's `windows / build (win-arm64)` job builds and tests on Windows 11 ARM64; once both pins are filled
 in it also builds the package (artifact `windows-arm64-package`). Releases ship it next to the x64 files: the release
 workflow's `windows-arm64` job builds and tests it the same way and keeps it unsigned for `build/sign-release.ps1`
 (see [Releasing](../CONTRIBUTING.md#releasing-maintainers)), and the in-app updater of an ARM64 build takes
