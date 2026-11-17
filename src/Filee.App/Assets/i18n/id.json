@@ -1137,7 +1137,7 @@
   "presets.wav_format.Pcm32": "32-bit",
   "presets.wav_format.Float32": "32-bit float",
   "presets.video_codec": "Kodek video",
-  "presets.video_codec_hint": "H.264 dapat diputar di semua perangkat.\nFile HEVC berukuran sekitar setengahnya dan dapat diputar di sebagian besar ponsel, TV, dan PC modern.\nAV1 bahkan lebih kecil lagi tetapi lambat dalam pengodean dan membutuhkan perangkat keluaran baru.\nVideo yang sudah menggunakan kodek yang dipilih hanya akan dikemas ulang.",
+  "presets.video_codec_hint": "H.264 dapat diputar di semua perangkat.\nFile HEVC berukuran sekitar setengahnya dan dapat diputar di sebagian besar ponsel, TV, dan PC modern.\nAV1 bahkan lebih kecil lagi tetapi lambat dalam pengodean dan membutuhkan perangkat keluaran baru.\nDengan H.264 (VP9 untuk WebM), video yang dapat ditampung format baru apa adanya (misalnya HEVC ke MKV) hanya dikemas ulang. Dengan HEVC atau AV1, hanya video yang sudah menggunakan kodek tersebut.",
   "presets.video_codec.h264": "H.264 (kompatibel di semua perangkat)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (lebih kecil)",

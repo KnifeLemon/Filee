@@ -1152,7 +1152,7 @@
   "presets.wav_format.Pcm32": "32 bits",
   "presets.wav_format.Float32": "32 bits flottant",
   "presets.video_codec": "Codec vidéo",
-  "presets.video_codec_hint": "Le H.264 se lit partout.\nLes fichiers HEVC sont environ deux fois plus légers et se lisent sur la plupart des téléphones, téléviseurs et PC récents.\nL'AV1 est encore plus léger, mais lent à encoder et nécessite un appareil récent.\nUne vidéo déjà dans le codec choisi change seulement de conteneur.",
+  "presets.video_codec_hint": "Le H.264 se lit partout.\nLes fichiers HEVC sont environ deux fois plus légers et se lisent sur la plupart des téléphones, téléviseurs et PC récents.\nL'AV1 est encore plus léger, mais lent à encoder et nécessite un appareil récent.\nAvec H.264 (VP9 pour WebM), une vidéo que le nouveau format peut contenir telle quelle (du HEVC vers MKV, par exemple) change seulement de conteneur. Avec HEVC ou AV1, seule une vidéo déjà dans ce codec est dans ce cas.",
   "presets.video_codec.h264": "H.264 (se lit partout)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (plus léger)",

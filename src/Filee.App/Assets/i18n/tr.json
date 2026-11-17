@@ -1137,7 +1137,7 @@
   "presets.wav_format.Pcm32": "32 bit",
   "presets.wav_format.Float32": "32 bit kayan nokta",
   "presets.video_codec": "Video codec'i",
-  "presets.video_codec_hint": "H.264 her yerde oynatılır.\nHEVC dosyaları yaklaşık yarı boyuttadır; çoğu telefon, TV ve yeni bilgisayarda oynatılır.\nAV1 daha da küçüktür ancak kodlaması yavaştır ve yeni cihaz gerektirir.\nSeçili codec'teki videonun yalnızca kapsayıcısı değiştirilir.",
+  "presets.video_codec_hint": "H.264 her yerde oynatılır.\nHEVC dosyaları yaklaşık yarı boyuttadır; çoğu telefon, TV ve yeni bilgisayarda oynatılır.\nAV1 daha da küçüktür ancak kodlaması yavaştır ve yeni cihaz gerektirir.\nH.264 (WebM için VP9) seçiliyken, yeni biçimin olduğu gibi alabildiği bir videonun (örneğin MKV'ye HEVC) yalnızca kapsayıcısı değiştirilir. HEVC veya AV1 seçiliyken bu yalnızca zaten o codec'teki videolar için geçerlidir.",
   "presets.video_codec.h264": "H.264 (her yerde oynatılır)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (daha küçük)",

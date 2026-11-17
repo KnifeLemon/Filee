@@ -1152,7 +1152,7 @@
   "presets.wav_format.Pcm32": "32비트",
   "presets.wav_format.Float32": "32비트 부동소수점",
   "presets.video_codec": "비디오 코덱",
-  "presets.video_codec_hint": "H.264는 어디서나 재생돼요.\nHEVC는 용량이 절반쯤이고 대부분의 휴대폰, TV, 최신 PC에서 재생돼요.\nAV1은 더 작지만 인코딩이 느리고 최신 기기가 필요해요.\n이미 고른 코덱인 동영상은 다시 인코딩하지 않아요.",
+  "presets.video_codec_hint": "H.264는 어디서나 재생돼요.\nHEVC는 용량이 절반쯤이고 대부분의 휴대폰, TV, 최신 PC에서 재생돼요.\nAV1은 더 작지만 인코딩이 느리고 최신 기기가 필요해요.\nH.264(WebM은 VP9)를 고르면 새 형식이 그대로 담을 수 있는 동영상(MKV로 바꾸는 HEVC 등)은 다시 인코딩하지 않아요. HEVC나 AV1을 고르면 이미 그 코덱인 동영상만 그대로 담아요.",
   "presets.video_codec.h264": "H.264 (어디서나 재생)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (더 작게)",

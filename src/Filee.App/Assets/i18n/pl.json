@@ -1152,7 +1152,7 @@
   "presets.wav_format.Pcm32": "32-bit",
   "presets.wav_format.Float32": "32-bit float",
   "presets.video_codec": "Kodek wideo",
-  "presets.video_codec_hint": "H.264 odtwarza się wszędzie.\nPliki HEVC są mniej więcej o połowę mniejsze i działają na większości telefonów, telewizorów i nowszych komputerów.\nAV1 jest jeszcze mniejszy, ale wolno się koduje i wymaga nowego urządzenia.\nWideo już w wybranym kodeku jest tylko przepakowywane.",
+  "presets.video_codec_hint": "H.264 odtwarza się wszędzie.\nPliki HEVC są mniej więcej o połowę mniejsze i działają na większości telefonów, telewizorów i nowszych komputerów.\nAV1 jest jeszcze mniejszy, ale wolno się koduje i wymaga nowego urządzenia.\nPrzy H.264 (VP9 dla WebM) wideo, które nowy format przyjmie bez zmian (np. HEVC do MKV), jest tylko przepakowywane. Przy HEVC lub AV1 dotyczy to tylko wideo już w tym kodeku.",
   "presets.video_codec.h264": "H.264 (działa wszędzie)",
   "presets.video_codec.vp9": "VP9",
   "presets.video_codec.hevc": "HEVC / H.265 (mniejszy)",
