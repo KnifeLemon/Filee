@@ -26,7 +26,7 @@ public sealed record VideoSummary(double Duration, int Width, int Height, double
 /// <summary>Reads a video's length and takes pictures of single frames with Filee's FFmpeg.</summary>
 public static class VideoFrames
 {
-    /// <summary>How long one frame may take: FFmpeg seeks to the key frame before it and decodes from there.</summary>
+    /// <summary>How long one frame may take: FFmpeg decodes from the key frame before it.</summary>
     private static readonly TimeSpan FrameStall = TimeSpan.FromSeconds(30);
 
     /// <summary>True when FFmpeg is installed (Settings › Engines).</summary>
@@ -52,12 +52,16 @@ public static class VideoFrames
 
     /// <summary>
     /// Writes the frame at <paramref name="seconds"/> as a JPEG at most <paramref name="maxHeight"/> pixels high to
-    /// <paramref name="output"/>. False when FFmpeg found no frame there (past the end) or failed.
+    /// <paramref name="output"/>: the first frame shown at or after that time, the one a clip from there starts with.
+    /// False when FFmpeg found no frame there (past the end) or failed.
     /// </summary>
     public static async Task<bool> WriteFrameAsync(string path, double seconds, string output, int maxHeight, CancellationToken cancellationToken)
     {
-        var (ffmpeg, _) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
-        var arguments = MediaEncoding.FrameAt(MediaInput.For(path), Math.Max(0, seconds), output, maxHeight, null);
+        var (ffmpeg, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        var input = MediaInput.For(path);
+        seconds = Math.Max(0, seconds);
+        var seek = await KeyFrames.FindAsync(ffprobe, input, seconds, cancellationToken);
+        var arguments = MediaEncoding.FrameAt(input, seconds, seek, output, maxHeight, null);
         var result = await FfmpegRunner.RunAsync(ffmpeg, arguments, null, cancellationToken, FrameStall);
         return result.ExitCode == 0 && File.Exists(output) && new FileInfo(output).Length > 0;
     }

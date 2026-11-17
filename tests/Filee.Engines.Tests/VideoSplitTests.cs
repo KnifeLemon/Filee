@@ -37,7 +37,7 @@ public class VideoSplitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(["0:V:0", "0:a:0"], args.Where((a, i) => i > 0 && args[i - 1] == "-map"));
         Assert.Equal("segment", After(args, "-f"));
         Assert.Equal("mp4", After(args, "-segment_format"));
-        Assert.Equal("180.000,360.000,540.000", After(args, "-segment_times"));
+        Assert.Equal("180.000000,360.000000,540.000000", After(args, "-segment_times"));
         Assert.Equal("1", After(args, "-reset_timestamps"));
         // The MP4's own option goes to each part: the segment muxer has no -movflags.
         Assert.Equal("movflags=+faststart", After(args, "-segment_format_options"));

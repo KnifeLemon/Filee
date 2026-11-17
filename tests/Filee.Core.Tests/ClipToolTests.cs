@@ -39,7 +39,7 @@ public class ClipToolTests
         {
             CultureInfo.CurrentCulture = new CultureInfo(culture);
             Assert.Equal("1:05.3", ClipRange.Display(65.3));
-            Assert.Equal("65.300", ClipRange.Ffmpeg(65.3));
+            Assert.Equal("65.300000", ClipRange.Ffmpeg(65.3));
         }
         finally
         {
@@ -48,12 +48,13 @@ public class ClipToolTests
     }
 
     [Theory]
-    [InlineData(0, "0.000")]
-    [InlineData(12.3456, "12.346")]
-    [InlineData(600, "600.000")]
-    [InlineData(-1, "0.000")]
-    [InlineData(double.PositiveInfinity, "0.000")]
-    public void Ffmpeg_reads_seconds_with_three_decimals(double seconds, string expected) =>
+    [InlineData(0, "0.000000")]
+    [InlineData(12.3456, "12.345600")]
+    [InlineData(2 / 30.0, "0.066667")] // a 30 fps frame: 0.067 would seek to the frame after it
+    [InlineData(600, "600.000000")]
+    [InlineData(-1, "0.000000")]
+    [InlineData(double.PositiveInfinity, "0.000000")]
+    public void Ffmpeg_reads_seconds_to_the_microsecond(double seconds, string expected) =>
         Assert.Equal(expected, ClipRange.Ffmpeg(seconds));
 
     // ───────────────────────── The range ─────────────────────────

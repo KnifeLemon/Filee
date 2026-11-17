@@ -1,5 +1,5 @@
 // A part of a video for "Cut a clip": where it starts and ends, kept inside the video, and the times as the clip
-// window shows them (1:05.3) and as FFmpeg reads them (65.300).
+// window shows them (1:05.3) and as FFmpeg reads them (65.300000).
 
 using System.Globalization;
 
@@ -63,7 +63,11 @@ public readonly record struct ClipRange(double Start, double End)
             : string.Create(invariant, $"{minutes}:{secs:00}.{tenth}");
     }
 
-    /// <summary>A time as FFmpeg's <c>-ss</c> and <c>-to</c> read it: seconds with three decimals, <c>65.300</c>.</summary>
+    /// <summary>
+    /// A time as FFmpeg's <c>-ss</c> and <c>-to</c> read it: seconds to the microsecond, <c>65.300000</c>, as FFmpeg
+    /// counts time. Milliseconds are too coarse: a frame of a 30 fps video starts at 0.0666… s, and 0.067 seeks to the
+    /// frame after it.
+    /// </summary>
     public static string Ffmpeg(double seconds) =>
-        Math.Max(0, double.IsFinite(seconds) ? seconds : 0).ToString("0.000", CultureInfo.InvariantCulture);
+        Math.Max(0, double.IsFinite(seconds) ? seconds : 0).ToString("0.000000", CultureInfo.InvariantCulture);
 }
