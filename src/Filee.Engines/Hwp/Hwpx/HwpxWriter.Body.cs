@@ -123,6 +123,12 @@ internal sealed partial class HwpxWriter
     private static string ColumnDefinition(HColumns columns)
     {
         var line = columns.Separator ? "<hp:colLine type=\"SOLID\" width=\"0.12 mm\" color=\"#000000\"/>" : "";
+        if (columns.Count > 1 && columns.Sizes is { } sizes && sizes.Count == columns.Count)
+        {
+            // Columns of their own widths (sameSz="0"): each one's width and the gap after it.
+            var each = string.Concat(sizes.Select((s, i) => $"<hp:colSz width=\"{s.Width}\" gap=\"{(i + 1 < sizes.Count ? s.Gap : 0)}\"/>"));
+            return $"<hp:colPr id=\"\" type=\"NEWSPAPER\" layout=\"LEFT\" colCount=\"{columns.Count}\" sameSz=\"0\" sameGap=\"0\">{line}{each}</hp:colPr>";
+        }
         return $"<hp:colPr id=\"\" type=\"NEWSPAPER\" layout=\"LEFT\" colCount=\"{Math.Max(1, columns.Count)}\" sameSz=\"1\" sameGap=\"{(columns.Count > 1 ? columns.Gap : 0)}\">{line}</hp:colPr>";
     }
 

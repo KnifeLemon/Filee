@@ -147,6 +147,7 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
             style:horizontal-pos="from-left" style:horizontal-rel="paragraph" style:vertical-pos="from-top" style:vertical-rel="paragraph"/>
         </style:style>
         <style:style style:name="Sect1" style:family="section"><style:section-properties><style:columns fo:column-count="2" fo:column-gap="0.5cm"/></style:section-properties></style:style>
+        <style:style style:name="Sect2" style:family="section"><style:section-properties><style:columns fo:column-count="2"><style:column style:rel-width="2*" fo:start-indent="0cm" fo:end-indent="0.25cm"/><style:column style:rel-width="1*" fo:start-indent="0.25cm" fo:end-indent="0cm"/></style:columns></style:section-properties></style:style>
         """;
 
     private const string Text = """
@@ -183,6 +184,7 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         <text:p text:style-name="Standard"><draw:frame draw:style-name="fr3" draw:name="Frame1" text:anchor-type="paragraph" svg:x="2cm" svg:y="3cm" svg:width="5cm" draw:z-index="2"><draw:text-box fo:min-height="2cm"><text:p>Boxed text</text:p></draw:text-box></draw:frame><draw:rect draw:style-name="gr1" text:anchor-type="paragraph" svg:x="1cm" svg:y="1cm" svg:width="2cm" svg:height="1cm" draw:corner-radius="0.2cm"/><draw:line draw:style-name="gr1" text:anchor-type="paragraph" svg:x1="4cm" svg:y1="2cm" svg:x2="2cm" svg:y2="3cm"/></text:p>
         <text:table-of-content text:name="Contents"><text:table-of-content-source/><text:index-body><text:index-title text:name="Contents"><text:p>Contents</text:p></text:index-title><text:p>Report title<text:tab/>1</text:p></text:index-body></text:table-of-content>
         <text:section text:style-name="Sect1" text:name="Section1"><text:p text:style-name="Standard">In two columns</text:p></text:section>
+        <text:section text:style-name="Sect2" text:name="Section2"><text:p text:style-name="Standard">In own widths</text:p></text:section>
         <text:p text:style-name="Standard">After the section</text:p>
         <text:p text:style-name="P3">Fixed line height on a new page</text:p>
         <text:p text:style-name="Loop1">Styles that loop</text:p>
@@ -338,6 +340,10 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // An index keeps its text; a section of two columns; a page break; a style chain that loops.
         Assert.Equal("Contents", DocxAssert.TextOf(Find(model, "Contents")));
         Assert.Equal(new HColumns(2, Cm(0.5), false), Find(model, "In two columns").ColumnsChange);
+        // Columns of their own widths: a share of the text width each (16.5 cm), less the indents around their gap.
+        var textWidth = Cm(21.001) - Cm(2.5) - Cm(2);
+        Assert.Equal(new HColumns(2, Cm(0.25) * 2, false, Sizes: [new HColumnSize((int)Math.Round(textWidth * 2 / 3.0) - Cm(0.25), Cm(0.25) * 2),
+            new HColumnSize((int)Math.Round(textWidth / 3.0) - Cm(0.25), 0)]), Find(model, "In own widths").ColumnsChange);
         Assert.Equal(HColumns.Single, Find(model, "After the section").ColumnsChange);
         var fixedLine = Find(model, "Fixed line");
         Assert.Equal((true, new HLineSpacing(HLineSpacingKind.Fixed, Cm(0.8))), (fixedLine.PageBreakBefore, fixedLine.Format.LineSpacing));

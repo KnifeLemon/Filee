@@ -122,9 +122,20 @@ internal sealed partial class DocxWriter
           .Append($"w:header=\"{Number(Twips(page.Top))}\" w:footer=\"{Number(Twips(page.Bottom))}\" w:gutter=\"{Number(Twips(page.Gutter))}\"/>");
         if (!continuous && section.StartPageNumber is { } start)
             sb.Append($"<w:pgNumType w:start=\"{Number(start)}\"/>");
-        sb.Append(columns.Count > 1
-            ? $"<w:cols w:num=\"{Number(Math.Min(columns.Count, 45))}\" w:space=\"{Number(Twips(columns.Gap))}\"{(columns.Separator ? " w:sep=\"1\"" : "")}/>"
-            : "<w:cols w:space=\"720\"/>");
+        if (columns.Count > 1 && columns.Count <= 45 && columns.Sizes is { } sizes && sizes.Count == columns.Count)
+        {
+            // Columns of their own widths: one w:col each, with the space after it.
+            sb.Append($"<w:cols w:num=\"{Number(columns.Count)}\" w:space=\"{Number(Twips(columns.Gap))}\"{(columns.Separator ? " w:sep=\"1\"" : "")} w:equalWidth=\"0\">");
+            for (var i = 0; i < sizes.Count; i++)
+                sb.Append($"<w:col w:w=\"{Number(Twips(sizes[i].Width))}\"{(i + 1 < sizes.Count ? $" w:space=\"{Number(Twips(sizes[i].Gap))}\"" : "")}/>");
+            sb.Append("</w:cols>");
+        }
+        else
+        {
+            sb.Append(columns.Count > 1
+                ? $"<w:cols w:num=\"{Number(Math.Min(columns.Count, 45))}\" w:space=\"{Number(Twips(columns.Gap))}\"{(columns.Separator ? " w:sep=\"1\"" : "")}/>"
+                : "<w:cols w:space=\"720\"/>");
+        }
         if (titlePage)
             sb.Append("<w:titlePg/>");
         return sb.Append("</w:sectPr>").ToString();

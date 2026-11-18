@@ -588,6 +588,68 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.Equal(plain + 1, separated);
     }
 
+    /// <summary>Columns of their own widths: 50 pt, a 10 pt gap, then 20 pt (the body's 80 pt).</summary>
+    private static readonly HColumns WideAndNarrow = new(2, 1000, false, Sizes: [new HColumnSize(5000, 1000), new HColumnSize(2000, 0)]);
+
+    [Fact]
+    public void Columns_of_their_own_widths_take_their_widths_and_gaps_from_either_side()
+    {
+        HSection Of(HColumns columns)
+        {
+            var section = Section(Small, Paragraph("one"), Paragraph("two"));
+            ((HParagraph)section.Blocks[1]).ColumnBreakBefore = true;
+            section.Columns = columns;
+            return section;
+        }
+
+        // Left to right: the second column starts after the first's 50 pt and the 10 pt gap.
+        var page = Assert.Single(Compose(Of(WideAndNarrow)).Pages);
+        Assert.Equal(10f, Runs(page).Single(r => r.Text == "one").Positions[0].X, 0.5f);
+        Assert.Equal(70f, Runs(page).Single(r => r.Text == "two").Positions[0].X, 0.5f);
+
+        // Right to left: the first (wide) column at the right, the narrow one at the left margin.
+        page = Assert.Single(Compose(Of(WideAndNarrow with { RightToLeft = true })).Pages);
+        Assert.Equal(40f, Runs(page).Single(r => r.Text == "one").Positions[0].X, 0.5f);
+        Assert.Equal(10f, Runs(page).Single(r => r.Text == "two").Positions[0].X, 0.5f);
+
+        // Sizes that don't add up to the text width are scaled to it: 25 + 5 + 10 = 40 → 50 + 10 + 20.
+        var half = new HColumns(2, 500, false, Sizes: [new HColumnSize(2500, 500), new HColumnSize(1000, 0)]);
+        page = Assert.Single(Compose(Of(half)).Pages);
+        Assert.Equal(70f, Runs(page).Single(r => r.Text == "two").Positions[0].X, 0.5f);
+    }
+
+    [Fact]
+    public void The_line_between_columns_of_their_own_widths_is_in_the_middle_of_their_gap()
+    {
+        var section = Section(Small, Paragraph("one"), Paragraph("two"));
+        ((HParagraph)section.Blocks[1]).ColumnBreakBefore = true;
+        section.Columns = WideAndNarrow with { Separator = true };
+
+        using var bitmap = Assert.Single(Compose(section).Pages).Render(288); // 4 pixels a point
+        // The gap runs from 60 to 70 pt: the line at 65 pt beside the text (20 to 36 pt down), nothing where equal
+        // columns would put it (50 pt).
+        Assert.True(bitmap.GetPixel(65 * 4 - 1, 30 * 4).Red < 128 || bitmap.GetPixel(65 * 4, 30 * 4).Red < 128);
+        Assert.Equal(SKColors.White, bitmap.GetPixel(50 * 4, 30 * 4));
+    }
+
+    [Fact]
+    public void A_paragraph_going_on_in_a_column_of_another_width_is_laid_out_anew_for_it()
+    {
+        // Twelve lines of 50 pt hold more than the first column's ten: the rest goes on in the 20 pt column.
+        var text = string.Join(" ", Enumerable.Range(0, 40).Select(i => $"w{i}"));
+        var section = Section(Small, Paragraph(text));
+        section.Columns = WideAndNarrow;
+
+        var pages = Compose(section).Pages;
+
+        var narrow = pages.SelectMany(Runs).Where(r => r.Positions[0].X > 65).ToList();
+        Assert.NotEmpty(narrow);
+        // Every line of the narrow column fits its 20 pt (laid out for 50 pt they would reach past the page's 90 pt).
+        Assert.All(narrow, r => Assert.True(r.Positions[^1].X <= 90, $"'{r.Text}' at {r.Positions[^1].X}"));
+        // Nothing lost or repeated where the paragraph changed width.
+        Assert.Equal(Normalise(text), Normalise(string.Concat(pages.SelectMany(Runs).Select(r => r.Text))));
+    }
+
     [Fact]
     public void Columns_changing_on_a_page_start_under_the_balanced_columns_before()
     {

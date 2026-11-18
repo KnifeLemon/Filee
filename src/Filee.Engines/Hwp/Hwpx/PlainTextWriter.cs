@@ -153,6 +153,18 @@ internal sealed class ListNumbers
         return text;
     }
 
+    /// <summary>The marker <see cref="Next"/> would give, without counting the item (to measure it ahead).</summary>
+    public string Peek(HListRef item)
+    {
+        var saved = _counters.TryGetValue(item.Numbering, out var counters) ? (int[])counters.Clone() : null;
+        var text = Next(item);
+        if (saved is null)
+            _counters.Remove(item.Numbering);
+        else
+            _counters[item.Numbering] = saved;
+        return text;
+    }
+
     /// <summary>A number in an OWPML number format.</summary>
     public static string Format(int value, string format) => format switch
     {
