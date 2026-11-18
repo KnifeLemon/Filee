@@ -271,6 +271,9 @@ internal sealed class XzReader : Stream
         if (!Lzma2Parallel.Enabled || _declaredPacked < 0 || _declaredUnpacked < 0
             || _declaredPacked > Lzma2Parallel.MaxSegment || _declaredUnpacked > Lzma2Parallel.MaxSegment)
             return false;
+        // A block that hardly shrank is mostly stored chunks: copying them here is quicker than a thread.
+        if (!Lzma2Parallel.Forced && _declaredPacked > _declaredUnpacked / 10 * 9)
+            return false;
         var checkSize = XzFormat.CheckSize(_checkType);
         var length = (int)_declaredPacked + (int)((4 - _declaredPacked % 4) % 4) + checkSize;
         var workers = Lzma2Parallel.Workers(_declaredUnpacked, length, dictionary);

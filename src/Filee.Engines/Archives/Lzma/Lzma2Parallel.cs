@@ -79,12 +79,16 @@ internal static class Lzma2Parallel
         var segments = Scan(packed, size);
         if (segments is null || segments.Count < 2)
             return null;
-        long largest = 0, largestPacked = 0;
+        long largest = 0, largestPacked = 0, totalPacked = 0;
         foreach (var segment in segments)
         {
             largest = Math.Max(largest, segment.Unpacked);
             largestPacked = Math.Max(largestPacked, segment.Length);
+            totalPacked += segment.Length;
         }
+        // Data that hardly shrank is mostly stored chunks: copying them is quicker here than handing them to threads.
+        if (!Forced && totalPacked > size / 10 * 9)
+            return null;
         var workers = Math.Min(Workers(largest, largestPacked, dictionary), segments.Count);
         if (workers < 2)
             return null;
