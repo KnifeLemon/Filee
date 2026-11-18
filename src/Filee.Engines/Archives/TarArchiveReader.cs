@@ -37,7 +37,7 @@ internal static class TarArchiveReader
         }, cancellationToken);
         ArchiveSafety.CheckListing(items, name, stream.Length, folder);
 
-        var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
+        using var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
         stream.Position = 0;
         Read(stream, name, copyData: false, entry =>
         {

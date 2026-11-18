@@ -1,6 +1,8 @@
 // File system helpers for the archive engine: copying with a size cap, unique names, and moving an unpacked folder
 // into place (with the "one top folder is not nested twice" rule of the Extract preset).
 
+using System.Buffers;
+
 namespace Filee.Engines.Archives;
 
 /// <summary>Copy, naming and folder-moving helpers.</summary>
@@ -12,20 +14,28 @@ internal static class ArchiveFiles
     public static long CopyLimited(Stream from, Stream to, long maxBytes, CancellationToken cancellationToken,
         Action<long>? progress = null, UnpackBudget? budget = null, Func<Exception>? tooLarge = null)
     {
-        var buffer = new byte[1 << 16];
-        long total = 0;
-        int read;
-        while ((read = from.Read(buffer, 0, buffer.Length)) > 0)
+        // Rented: archives of many small files call this once per file.
+        var buffer = ArrayPool<byte>.Shared.Rent(1 << 16);
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            total += read;
-            if (total > maxBytes)
-                throw tooLarge?.Invoke() ?? new InvalidDataException("the data unpacks to more than the archive declares");
-            budget?.Add(read);
-            to.Write(buffer, 0, read);
-            progress?.Invoke(read);
+            long total = 0;
+            int read;
+            while ((read = from.Read(buffer, 0, 1 << 16)) > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                total += read;
+                if (total > maxBytes)
+                    throw tooLarge?.Invoke() ?? new InvalidDataException("the data unpacks to more than the archive declares");
+                budget?.Add(read);
+                to.Write(buffer, 0, read);
+                progress?.Invoke(read);
+            }
+            return total;
         }
-        return total;
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     /// <summary>True when nothing is at <paramref name="path"/>.</summary>
@@ -144,9 +154,10 @@ internal sealed class UniquePaths
     /// <summary>Path → the next number to try for it.</summary>
     private readonly Dictionary<string, int> _next = new(StringComparer.OrdinalIgnoreCase);
 
-    public string Get(string path)
+    /// <param name="taken">Paths handed out already that may not be on disk yet (files still being written).</param>
+    public string Get(string path, IReadOnlySet<string>? taken = null)
     {
-        if (ArchiveFiles.IsFree(path))
+        if (taken?.Contains(path) != true && ArchiveFiles.IsFree(path))
             return path;
         var dir = Path.GetDirectoryName(path)!;
         var stem = Path.GetFileNameWithoutExtension(path);
@@ -154,7 +165,7 @@ internal sealed class UniquePaths
         for (var n = _next.GetValueOrDefault(path, 1); ; n++)
         {
             var candidate = Path.Combine(dir, $"{stem}_{n}{ext}");
-            if (ArchiveFiles.IsFree(candidate))
+            if (taken?.Contains(candidate) != true && ArchiveFiles.IsFree(candidate))
             {
                 _next[path] = n + 1;
                 return candidate;

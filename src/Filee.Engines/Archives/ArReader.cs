@@ -28,7 +28,7 @@ internal static class ArReader
         var members = List(stream, name);
         ArchiveSafety.CheckListing([.. members.Select(m => new ArchiveItem(m.Name, false, m.Size))], name, stream.Length, folder);
 
-        var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
+        using var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
         foreach (var member in members)
         {
             cancellationToken.ThrowIfCancellationRequested();

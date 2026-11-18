@@ -71,7 +71,7 @@ internal static class IsoReader
         ArchiveSafety.CheckListing([.. nodes.Select(n => new ArchiveItem(n.Path, n.IsFolder, n.IsFolder || n.IsLink ? 0 : n.Size, IsLink: n.IsLink))],
             name, stream.Length, folder);
 
-        var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
+        using var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
         foreach (var node in nodes)
         {
             cancellationToken.ThrowIfCancellationRequested();

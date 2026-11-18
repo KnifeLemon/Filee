@@ -179,7 +179,7 @@ internal static class SevenZipReader
         ArchiveSafety.CheckListing([.. listing.Items.Where(i => !i.IsAnti).Select(i => new ArchiveItem(i.Name, i.IsFolder, i.IsFolder ? 0 : i.Size, IsLink: i.IsLink))],
             name, length, folder);
 
-        var writer = new EntryWriter(folder, new UnpackBudget(name, length, folder), cancellationToken);
+        using var writer = new EntryWriter(folder, new UnpackBudget(name, length, folder), cancellationToken);
         using var folders = new FolderSequence(stream, listing, name, cancellationToken);
         foreach (var item in listing.Items)
         {
@@ -746,7 +746,8 @@ internal static class SevenZipReader
                     var pack = folder.FirstPackStream + Array.IndexOf(folder.PackedStreams, input);
                     inputs[j] = new SharedWindowStream(stream, listing.PackOffsets[pack], listing.PackSizes[pack]);
                 }
-                return SevenZipCoders.Create(c, inputs, folder.UnpackSizes[firstOut[coder]], name, cancellationToken);
+                return SevenZipCoders.Create(c, inputs, folder.UnpackSizes[firstOut[coder]], name, cancellationToken,
+                    onePackedStream: folder.PackedStreams.Length == 1);
             }
         }
     }

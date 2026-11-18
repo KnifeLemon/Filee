@@ -1,7 +1,9 @@
 // Unpacks a compressed single file (.gz, .bz2, .xz, .lzma, .Z, .zst and the outer layer of .tar.gz, .tar.bz2, .tar.xz
-// and .tar.Z) in-process: gzip with .NET's own decoder, bzip2 and zstd with SharpCompress (MIT), xz, LZMA and Unix
-// compress with Filee's own decoders (XzReader, LzmaRawReader, UnixCompressStream). None of these formats declares a size it must keep (gzip's is the
-// size modulo 4 GiB), so what comes out is counted by UnpackBudget against bombs and a full drive.
+// and .tar.Z) in-process: gzip with .NET's own decoder, zstd with SharpCompress (MIT), bzip2, xz, LZMA and Unix
+// compress with Filee's own decoders (Bzip2Decoder, XzReader, LzmaRawReader, UnixCompressStream; bzip2 with
+// randomised blocks from old encoders goes back to SharpCompress). None of these
+// formats declares a size it must keep (gzip's is the size modulo 4 GiB), so what comes out is counted by
+// UnpackBudget against bombs and a full drive.
 
 using System.IO.Compression;
 using Filee.Engines.Archives.Lzma;
@@ -71,7 +73,15 @@ internal static class CompressedFile
                 return new GZipStream(input, CompressionMode.Decompress, leaveOpen: true);
             case "bz2":
             case "tbz2":
-                return new BZip2Stream(new NonClosingStream(input), SharpCompressMode.Decompress, decompressConcatenated: true);
+                {
+                    // SharpCompress reads the randomised blocks of old encoders, which Filee's decoder leaves out.
+                    var start = input.CanSeek ? input.Position : -1;
+                    return Bzip2Decoder.OpenRead(input, CancellationToken.None, start < 0 ? null : () =>
+                    {
+                        input.Position = start;
+                        return new BZip2Stream(new NonClosingStream(input), SharpCompressMode.Decompress, decompressConcatenated: true);
+                    });
+                }
             case "xz":
             case "txz":
                 return new XzReader(input, name);

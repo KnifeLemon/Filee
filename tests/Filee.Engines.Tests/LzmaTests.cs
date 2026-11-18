@@ -157,7 +157,7 @@ public class LzmaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // 4 KiB dictionary (input size unknown to the writer is not the case here: say it's tiny), 3 MB of input.
         var data = Mixed(3_000_000);
         var xz = Compress(data, ArchiveLevel.Normal, expected: 1000);
-        Assert.Equal(12, XzFormat.DictionaryFromProperty(xz[16]) is { } d ? System.Numerics.BitOperations.Log2(d) : 0);
+        Assert.Equal(12, XzFormat.DictionaryFromProperty(xz[PropertyOffset(xz)]) is { } d ? System.Numerics.BitOperations.Log2(d) : 0);
         Assert.Equal(data, Decompress(xz));
         // And with the input size not known at all (full level dictionary).
         Assert.Equal(data, Decompress(Compress(data, ArchiveLevel.Fast, expected: -1)));
@@ -293,10 +293,24 @@ public class LzmaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static byte[] WithDictionaryProperty(byte property)
     {
         var xz = Compress(Prose(10_000), ArchiveLevel.Store);
-        Assert.Equal(0x21, xz[14]);
-        xz[16] = property;
-        BinaryPrimitives.WriteUInt32LittleEndian(xz.AsSpan(20), Crc32.Compute(xz.AsSpan(12, 8)));
+        xz[PropertyOffset(xz)] = property;
+        var size = (xz[12] + 1) * 4;
+        BinaryPrimitives.WriteUInt32LittleEndian(xz.AsSpan(12 + size - 4), Crc32.Compute(xz.AsSpan(12, size - 4)));
         return xz;
+    }
+
+    /// <summary>Where the dictionary property of the first block header is: after the sizes the header may name.</summary>
+    private static int PropertyOffset(byte[] xz)
+    {
+        var at = 14;
+        var flags = xz[13];
+        for (var sizes = ((flags & 0x40) != 0 ? 1 : 0) + ((flags & 0x80) != 0 ? 1 : 0); sizes > 0; sizes--)
+            while ((xz[at++] & 0x80) != 0)
+            {
+            }
+        Assert.Equal(0x21, xz[at]);
+        Assert.Equal(1, xz[at + 1]);
+        return at + 2;
     }
 
     [Fact]

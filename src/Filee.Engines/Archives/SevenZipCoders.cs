@@ -2,9 +2,10 @@
 // stream of the archive or the output of another coder), and every coder's output is held to the unpacked size the
 // header names. Filee's own LZMA and LZMA2 decoders (Archives/Lzma), the Copy coder, the x86 branch converters BCJ and
 // BCJ2, the branch converters for ARM64, ARM, ARM Thumb, PowerPC, SPARC and IA-64 (7-Zip picks ARM64 for ARM64
-// programs by itself) and the Delta filter are written here; Deflate comes from .NET and BZip2 from SharpCompress
-// (MIT), as for the .bz2 files Filee reads. Other methods (PPMd, RISC-V …) are reported as unsupported before anything
-// is unpacked.
+// programs by itself) and the Delta filter are written here; Deflate comes from .NET and BZip2 from Filee's own
+// decoder (Bzip2Decoder, on threads of its own), as for the .bz2 files Filee reads; in the rare folder where BZip2
+// shares the archive with other packed streams (read on this thread), from SharpCompress (MIT). Other methods (PPMd,
+// RISC-V …) are reported as unsupported before anything is unpacked.
 
 using System.Buffers.Binary;
 using System.IO.Compression;
@@ -70,7 +71,12 @@ internal static class SevenZipCoders
     /// The decoder for <paramref name="coder"/> reading <paramref name="inputs"/>, giving exactly
     /// <paramref name="size"/> bytes (more or fewer is damage). Properties are checked here.
     /// </summary>
-    public static Stream Create(SevenZipCoder coder, Stream[] inputs, long size, string name, CancellationToken cancellationToken)
+    /// <param name="onePackedStream">
+    /// True when the folder has a single packed stream: then a decoder may read it on a thread of its own (nothing else
+    /// reads the archive meanwhile).
+    /// </param>
+    public static Stream Create(SevenZipCoder coder, Stream[] inputs, long size, string name, CancellationToken cancellationToken,
+        bool onePackedStream = false)
     {
         var props = coder.Properties;
         Stream decoder;
@@ -93,7 +99,9 @@ internal static class SevenZipCoders
                     if (props.Length < 1 || XzFormat.DictionaryFromProperty(props[0]) is not { } dictionary)
                         throw ArchiveSafety.Damaged(name, "the LZMA2 dictionary size is out of range");
                     CheckDictionary(dictionary, name);
-                    decoder = new Lzma2Stream(new Lzma2Reader(new ByteInput(inputs[0]), dictionary, size, cancellationToken));
+                    // Data with several dictionary resets (as 7-Zip writes with several threads) is decoded on several.
+                    decoder = (inputs[0] is SharedWindowStream window ? Lzma2Parallel.TryOpen(window.Window, dictionary, size, cancellationToken) : null)
+                              ?? new Lzma2Stream(new Lzma2Reader(new ByteInput(inputs[0]), dictionary, size, cancellationToken));
                     break;
                 }
             case Bcj:
@@ -112,7 +120,12 @@ internal static class SevenZipCoders
                 decoder = new DeflateStream(inputs[0], CompressionMode.Decompress, leaveOpen: true);
                 break;
             case Bzip2:
-                decoder = new BZip2Stream(new NonClosingStream(inputs[0]), SharpCompressMode.Decompress, decompressConcatenated: false);
+                // Filee's decoder reads its input on a thread of its own: only where nothing else reads the archive.
+                // SharpCompress also takes over randomised blocks (old encoders), from the start of the packed stream.
+                decoder = onePackedStream && inputs[0] is SharedWindowStream packed
+                    ? Bzip2Decoder.OpenRead(packed, cancellationToken,
+                        () => new BZip2Stream(packed.Restart(), SharpCompressMode.Decompress, decompressConcatenated: false))
+                    : new BZip2Stream(new NonClosingStream(inputs[0]), SharpCompressMode.Decompress, decompressConcatenated: false);
                 break;
             default:
                 throw new SevenZipUnsupportedException(NameOf(coder.Method));
@@ -186,8 +199,15 @@ internal sealed class SizedStream(Stream inner, long size, string name) : ReadOn
 /// </summary>
 internal sealed class SharedWindowStream(Stream shared, long offset, long length) : ReadOnlyDecoderStream
 {
-    private long _position = offset;
+    private readonly long _start = offset;
     private readonly long _end = offset + length;
+    private long _position = offset;
+
+    /// <summary>The same bytes, for reading at any place (<see cref="Lzma2Parallel"/>).</summary>
+    public PackedWindow Window => new(shared, _start, _end - _start);
+
+    /// <summary>A new window over the same bytes, from their start.</summary>
+    public SharedWindowStream Restart() => new(shared, _start, _end - _start);
 
     public override int Read(Span<byte> buffer)
     {

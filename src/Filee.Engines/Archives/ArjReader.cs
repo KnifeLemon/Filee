@@ -41,7 +41,7 @@ internal static class ArjReader
         if (entries.FirstOrDefault(e => !e.IsFolder && e.Method > 4) is { } unknown)
             throw new NotSupportedException($"the ARJ method {unknown.Method}");
 
-        var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
+        using var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
         foreach (var entry in entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
