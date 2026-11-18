@@ -361,9 +361,9 @@ public sealed partial class JobQueue : IAsyncDisposable
                 FailFile(job, f, ex.ErrorKey, ex.Detail);
             return;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (job.CancellationToken.IsCancellationRequested)
         {
-            // A cancel while merging is a cancel, not a failure of the job.
+            // Only a real cancel counts: a timeout inside the merger is also an OperationCanceledException and is an error below.
             allocator.Discard();
             foreach (var f in job.Files.Where(f => !Stopped(f)))
                 f.State = FileState.Cancelled;
@@ -426,7 +426,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         {
             await _tiffMerger!.MergeAsync(inputs, output, job.Preset.Image, job.CancellationToken);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (job.CancellationToken.IsCancellationRequested)
         {
             allocator.Discard();
             foreach (var f in job.Files.Where(f => !Stopped(f)))
