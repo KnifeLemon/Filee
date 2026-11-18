@@ -1937,6 +1937,18 @@ preset, or use `--iso-filesystem udf201` with `--to iso` in the CLI (`--iso-file
 No new donut slice is added. Existing presets retain Joliet without a schema migration. Images are data discs,
 not bootable clones. Archive reading still uses the existing extraction engine.
 
+The volume label defaults to the input folder name, or the archive name without its extension (including `.tar.gz`).
+A dotted folder name keeps its suffix. Names are fitted to the selected filesystem, with `FILEE` as the fallback
+when no usable label remains. Each input gets its own label, independently of the output filename.
+The ISO preset's **Volume label** field overrides this default; empty uses the input name. The CLI equivalent is
+`--iso-label "MY_DISC"`, which overrides the preset for that command without changing the saved preset.
+Custom labels are validated rather than silently changed. Joliet accepts up to 16 uppercase ASCII letters,
+digits or underscores so both its primary and Unicode descriptors preserve the same label. UDF accepts up to
+30 Latin-1 characters, or 15 UTF-16 units when another character is present; a supplementary character takes two units.
+UDF labels cannot contain control characters, malformed Unicode or leading/trailing whitespace.
+For example: `filee convert "backup.tar.gz" --to iso --iso-filesystem udf201 --iso-label "My backup"`.
+The optional label is saved with presets and can be included in shared presets; older presets need no migration.
+
 UDF supports approximately 234 GiB per file and 8 TiB per partition. The library encodes filenames in OSTA compressed
 Unicode (up to 254 bytes before the file identifier prefix); names outside its supported range are refused before replacing the
 destination. Source permissions, extended attributes and per-file timestamps are not imported into UDF images.
