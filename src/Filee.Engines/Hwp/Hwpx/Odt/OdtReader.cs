@@ -9,6 +9,7 @@
 // DocumentPackage), the model within DocumentBudget and a count of text characters (MaxPartBytes); encrypted
 // (password-protected) packages are refused.
 
+using System.Globalization;
 using System.IO.Compression;
 using System.Xml;
 using System.Xml.Linq;
@@ -218,7 +219,8 @@ internal sealed partial class OdtReader
         {
             var headers = HeadersAndFooters(Shown(header) ? header : null, Shown(headerLeft) ? headerLeft : null);
             var footers = HeadersAndFooters(Shown(footer) ? footer : null, Shown(footerLeft) ? footerLeft : null);
-            var master = new Master(PageOf(layout, hasHeader, hasFooter), ColumnsOf(layout?.Element(Style + "page-layout-properties")),
+            var page = PageOf(layout, hasHeader, hasFooter);
+            var master = new Master(page, ColumnsOf(layout?.Element(Style + "page-layout-properties"), page?.TextWidth),
                 headers, footers,
                 hasHeader && Shown(headerFirst) && IsBlank(Blocks(headerFirst!)),
                 hasFooter && Shown(footerFirst) && IsBlank(Blocks(footerFirst!)));
@@ -299,7 +301,8 @@ internal sealed partial class OdtReader
     }
 
     /// <summary>Newspaper columns of page layout or section properties (style:columns).</summary>
-    private static HColumns ColumnsOf(XElement? props)
+    /// <param name="textWidth">The width the columns share (HWPUNIT), for columns of their own widths; null takes them as equal.</param>
+    private static HColumns ColumnsOf(XElement? props, int? textWidth)
     {
         var columns = props?.Element(Style + "columns");
         var count = Int(Attr(columns, Fo + "column-count")) ?? 1;
@@ -314,7 +317,28 @@ internal sealed partial class OdtReader
         }
         var separator = columns.Element(Style + "column-sep") is { } sep && Attr(sep, Style + "style") != "none"
                         && (Length(Attr(sep, Style + "width")) ?? 1) > 0;
-        return new HColumns(Math.Min(count, 255), Math.Clamp(gap.Value, 0, 1_000_000), separator);
+        return HColumns.Of(count, Math.Clamp(gap.Value, 0, 1_000_000), separator, false, ColumnSizes(columns, count, textWidth));
+    }
+
+    /// <summary>
+    /// The widths of columns of their own sizes (style:column): each takes its style:rel-width share of the text width,
+    /// less its start and end indents, which together with the next column's make the space between them.
+    /// </summary>
+    private static List<HColumnSize>? ColumnSizes(XElement columns, int count, int? textWidth)
+    {
+        var own = columns.Elements(Style + "column").Take(256).ToList();
+        if (own.Count != count || textWidth is not > 0)
+            return null;
+        static double Share(string? value) =>
+            double.TryParse(value?.TrimEnd('*'), NumberStyles.Float, CultureInfo.InvariantCulture, out var share) && share is > 0 and < 1e9 ? share : 0;
+        int Indent(int i, string name) => i < own.Count ? Math.Clamp(Length(Attr(own[i], Fo + name)) ?? 0, 0, 1_000_000) : 0;
+        var shares = own.ConvertAll(c => Share(Attr(c, Style + "rel-width")));
+        var total = shares.Sum();
+        if (shares.Any(s => s <= 0))
+            return null;
+        return [.. shares.Select((share, i) => new HColumnSize(
+            (int)Math.Round(share / total * textWidth.Value) - Indent(i, "start-indent") - Indent(i, "end-indent"),
+            i + 1 < count ? Indent(i, "end-indent") + Indent(i + 1, "start-indent") : 0))];
     }
 
     // ───────────────────────── Blocks ─────────────────────────
@@ -411,7 +435,8 @@ internal sealed partial class OdtReader
     {
         if (Attr(section, Text + "display") == "none")
             return;
-        var columns = ColumnsOf(Find("section", Attr(section, Text + "style-name"))?.Element(Style + "section-properties"));
+        var columns = ColumnsOf(Find("section", Attr(section, Text + "style-name"))?.Element(Style + "section-properties"),
+            _section?.Page?.TextWidth);
         if (!sink.Body || columns.Count <= 1 || columns == _columns)
         {
             ReadBlocks(section.Elements(), sink);

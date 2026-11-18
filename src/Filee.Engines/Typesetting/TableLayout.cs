@@ -7,6 +7,17 @@
 //   DocumentLimits.MaxTableColumns and row spans at the last row; free columns are found in a segment tree, not a grid
 //   of every spanned cell. Tables of other formats (a spreadsheet's columns) are scaled down to the text width when
 //   wider; 한글's keep the widths 한글 gave them, as 한글 draws them.
+// - Word's tables (HTable.Sizing) are sized as Word sizes them. A column takes its grid width (w:gridCol, the widths
+//   Word laid the table out at when it saved), else the widest preferred width (w:tcW: a length, or a share of the
+//   table's width) a cell of the column gives, else, where nothing gives one, its content's width. An autofit table
+//   (not w:tblLayout fixed) then widens each column to its longest word (what a cell's text needs at least, with the
+//   cell's margins), and to the table's preferred width (w:tblW: a length or a share of the width around it) when it
+//   is narrower; a cell spanning columns spreads what it needs over them. A table wider than its room (from its indent
+//   to the far edge: the text column, or the cell a nested table is in, which it never overflows) gives up first what
+//   its columns have beyond their widest line, then down to their longest words, then shrinks evenly; a fixed table
+//   outside cells shrinks evenly at once, keeping its shape (Word lets it run into the margin). Content widths
+//   come from ParagraphLayouter.ContentWidths, once per table (nested tables measure as the widths they need), for
+//   its first MaxMeasuredCells cells.
 // - Cells: their blocks are laid out at the columns' width less the padding (the cell's, else the table's, else
 //   한글's default 1.8 mm by 0.5 mm), nested tables too; a row is as high as its tallest single-row cell or its own
 //   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it. A
@@ -114,7 +125,12 @@ internal sealed record TableBox(float Offset, float Width, IReadOnlyList<RowBox>
 
 /// <summary>Lays out tables and paragraph lists for a layout job.</summary>
 /// <param name="frame">The page areas floating objects relative to the paper or the page are placed in; null places them in the list.</param>
-internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragraph, bool fitToWidth, Func<AnchorFrame>? frame = null)
+/// <param name="measure">
+/// The narrowest and the natural width of a paragraph (ParagraphLayouter.ContentWidths), which Word's autofit tables size
+/// their columns by; null sizes them by their preferred widths alone.
+/// </param>
+internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragraph, bool fitToWidth, Func<AnchorFrame>? frame = null,
+    Func<HParagraph, (float Min, float Max)>? measure = null)
 {
     /// <summary>한글's default cell padding: 1.8 mm left and right, 0.5 mm top and bottom (HWPUNIT).</summary>
     private static readonly HInsets DefaultPadding = new(510, 510, 141, 141);
@@ -123,6 +139,9 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     private const int MaxDepth = 16;
 
     private int _depth;
+
+    /// <summary>How deep in cells the tables being laid out are (0: in the body, a header, a text box).</summary>
+    private int _inCell;
 
     /// <summary>
     /// Cells are sized as Word sizes them (a model of another format, resolved through the style resolver): the space
@@ -300,7 +319,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     {
         var placed = Place(table);
         var columns = Math.Max(1, Math.Max(Math.Min(table.ColumnCount, MaxColumns), placed.Count == 0 ? 0 : placed.Max(c => c.Column + ColumnSpan(c.Column, c.Cell))));
-        var widths = ColumnWidths(table, columns, width);
+        var widths = table.Sizing is { } sizing ? WordColumnWidths(table, sizing, placed, columns, width) : ColumnWidths(table, columns, width);
         var left = new float[columns + 1];
         for (var c = 0; c < columns; c++)
             left[c + 1] = left[c] + widths[c];
@@ -323,6 +342,17 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             }
             var cellWidth = left[column + span] - left[column];
             var contentWidth = Math.Max(1, cellWidth - (padding.Left + padding.Right) / 100f);
+            List<Piece> content;
+            float extent;
+            _inCell++;
+            try
+            {
+                content = Stack(cell.Blocks, contentWidth, out extent);
+            }
+            finally
+            {
+                _inCell--;
+            }
             cells[row].Add(new CellBox
             {
                 Row = row,
@@ -334,7 +364,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 Borders = borders,
                 Fill = ParagraphText.Color(cell.Fill),
                 FillPicture = cell.FillPicture,
-                Content = Stack(cell.Blocks, contentWidth, out var extent),
+                Content = content,
                 Extent = WordCells ? extent : null,
             });
         }
@@ -551,6 +581,241 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 widths[c] *= width / total;
         }
         return widths;
+    }
+
+    // ───────────────────────── Word's column widths ─────────────────────────
+
+    /// <summary>Cells measured for a table's content widths at most: the cells after them don't widen its columns.</summary>
+    private const int MaxMeasuredCells = 2048;
+
+    /// <summary>What each column's cells need: their longest word and their widest line, with the cells' margins (points).</summary>
+    private sealed record ContentWidths(float[] Min, float[] Max);
+
+    /// <summary>Tables measured so far (a nested table is measured for its cell, then laid out with the same widths).</summary>
+    private readonly Dictionary<HTable, ContentWidths> _measured = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>A Word table's columns in a column <paramref name="width"/> points wide (see the file's notes).</summary>
+    private float[] WordColumnWidths(HTable table, HTableSizing sizing, List<(int Row, int Column, HCell Cell)> placed, int columns, float width)
+    {
+        // The room the table has: from its indent to the column's far edge (a negative indent reaches into the margin).
+        var room = Math.Max(1, table.Align == HAlign.Left ? width - table.Indent / 100f : width);
+        float? tableWidth = sizing.Width.Type switch
+        {
+            HWidthType.Absolute => (float)(sizing.Width.Value / 100),
+            HWidthType.Percent => (float)(sizing.Width.Value * width),
+            _ => null,
+        };
+        var widths = Preferred(sizing, placed, columns, tableWidth ?? room);
+        var open = widths.Contains(0f);
+        var content = !sizing.Fixed || open || (_inCell > 0 && widths.Sum() > room + 0.5f) ? Measure(table, placed, columns) : null;
+        if (content is { } measured)
+        {
+            for (var c = 0; c < columns; c++)
+            {
+                if (widths[c] <= 0)
+                    widths[c] = measured.Max[c];
+                else if (!sizing.Fixed)
+                    widths[c] = Math.Max(widths[c], measured.Min[c]);
+            }
+        }
+        // Columns nothing gives a width share what the table's width leaves, or a hundredth of it each.
+        var missing = widths.Count(w => w <= 0);
+        if (missing > 0)
+        {
+            var basis = tableWidth ?? room;
+            var rest = Math.Max(basis / 100 * missing, basis - widths.Sum());
+            for (var c = 0; c < columns; c++)
+            {
+                if (widths[c] <= 0)
+                    widths[c] = rest / missing;
+            }
+        }
+        var total = widths.Sum();
+        if (!sizing.Fixed && tableWidth is { } wanted && total < Math.Min(wanted, room) - 0.5f && total > 0)
+        {
+            var scale = Math.Min(wanted, room) / total;
+            for (var c = 0; c < columns; c++)
+                widths[c] *= scale;
+            total = widths.Sum();
+        }
+        // A fixed table in the body keeps its shape, narrowed evenly as other formats' tables (Word lets it run into the
+        // margin); one in a cell, and an autofit table, gives up what its content doesn't need first.
+        if (total > room + 0.5f)
+            Shrink(widths, sizing.Fixed && _inCell == 0 ? null : content ?? Measure(table, placed, columns), room);
+        return widths;
+    }
+
+    /// <summary>
+    /// Each column's preferred width in points: the grid's, else the widest a cell of the column gives (a cell spanning
+    /// only such columns spreads its own over them), else 0.
+    /// </summary>
+    /// <param name="basis">What a cell's share of the table's width is a share of.</param>
+    private static float[] Preferred(HTableSizing sizing, List<(int Row, int Column, HCell Cell)> placed, int columns, float basis)
+    {
+        var widths = new float[columns];
+        for (var c = 0; c < Math.Min(columns, sizing.Grid.Length); c++)
+            widths[c] = Math.Max(0, sizing.Grid[c]) / 100f;
+        var gridded = widths.Select(w => w > 0).ToArray();
+        var spanning = new List<(int Column, int Span, float Width)>();
+        foreach (var (_, column, cell) in placed)
+        {
+            float? given = cell.Width switch
+            {
+                { Type: HWidthType.Absolute, Value: var length } => (float)(length / 100),
+                { Type: HWidthType.Percent, Value: var share } => (float)(share * basis),
+                _ => null,
+            };
+            if (given is not > 0 || column >= columns)
+                continue;
+            var span = Math.Clamp(cell.ColSpan, 1, columns - column);
+            if (span > 1)
+                spanning.Add((column, span, given.Value));
+            else if (!gridded[column])
+                widths[column] = Math.Max(widths[column], given.Value);
+        }
+        foreach (var (column, span, given) in spanning.OrderBy(s => s.Span))
+        {
+            if (!gridded.AsSpan(column, span).Contains(true))
+                Spread(widths, column, span, given);
+        }
+        return widths;
+    }
+
+    /// <summary>What each column's cells need (see <see cref="ContentWidths"/>); null when paragraphs aren't measured.</summary>
+    private ContentWidths? Measure(HTable table, List<(int Row, int Column, HCell Cell)> placed, int columns)
+    {
+        if (measure is null)
+            return null;
+        if (_measured.TryGetValue(table, out var same) && same.Min.Length == columns)
+            return same;
+        var min = new float[columns];
+        var max = new float[columns];
+        var spanning = new List<(int Column, int Span, float Min, float Max)>();
+        foreach (var (_, column, cell) in placed.Take(MaxMeasuredCells))
+        {
+            if (column >= columns)
+                continue;
+            var padding = cell.CellMargin ?? table.CellMargin ?? DefaultPadding;
+            var sides = Math.Max(0, (padding.Left + padding.Right) / 100f);
+            var (least, natural) = Measure(cell.Blocks);
+            var span = Math.Clamp(cell.ColSpan, 1, columns - column);
+            if (span > 1)
+            {
+                spanning.Add((column, span, least + sides, natural + sides));
+                continue;
+            }
+            min[column] = Math.Max(min[column], least + sides);
+            max[column] = Math.Max(max[column], natural + sides);
+        }
+        foreach (var (column, span, least, natural) in spanning.OrderBy(s => s.Span))
+        {
+            Spread(min, column, span, least);
+            Spread(max, column, span, natural);
+        }
+        var widths = new ContentWidths(min, max);
+        _measured[table] = widths;
+        return widths;
+    }
+
+    /// <summary>The narrowest and the natural width of a list of blocks (a cell's): its widest paragraph or nested table.</summary>
+    private (float Min, float Max) Measure(IReadOnlyList<HBlock> blocks)
+    {
+        float min = 0, max = 0;
+        foreach (var block in blocks)
+        {
+            var (least, natural) = block switch
+            {
+                HParagraph p => measure!(p),
+                HTable t when _depth < MaxDepth => Measure(t),
+                _ => (0f, 0f),
+            };
+            min = Math.Max(min, least);
+            max = Math.Max(max, natural);
+        }
+        return (min, max);
+    }
+
+    /// <summary>
+    /// A nested table's narrowest and natural width: its columns at their longest words, and at their preferred widths
+    /// (their content where they have none), with its indent and outer margins.
+    /// </summary>
+    private (float Min, float Max) Measure(HTable table)
+    {
+        _depth++;
+        try
+        {
+            var placed = Place(table);
+            var columns = Math.Max(1, Math.Max(Math.Min(table.ColumnCount, MaxColumns), placed.Count == 0 ? 0 : placed.Max(c => c.Column + ColumnSpan(c.Column, c.Cell))));
+            var margin = table.OuterMargin ?? default;
+            var around = Math.Max(0, (margin.Left + margin.Right) / 100f) + Math.Max(0, table.Indent / 100f);
+            if (table.Sizing is not { } sizing)
+            {
+                var given = table.ColumnWidths is { } absolute ? absolute.Take(columns).Sum(w => Math.Max(0, w) / 100f) : 0;
+                return (around + given, around + given);
+            }
+            var content = Measure(table, placed, columns);
+            var length = sizing.Width.Type == HWidthType.Absolute ? (float)(sizing.Width.Value / 100) : 0;
+            var preferred = Preferred(sizing, placed, columns, length);
+            float min = 0, max = 0;
+            for (var c = 0; c < columns; c++)
+            {
+                var least = content?.Min[c] ?? 0;
+                min += least;
+                max += preferred[c] > 0 ? Math.Max(preferred[c], sizing.Fixed ? 0 : least) : content?.Max[c] ?? 0;
+            }
+            if (!sizing.Fixed)
+                max = Math.Max(max, length);
+            return (around + min, around + Math.Max(min, max));
+        }
+        finally
+        {
+            _depth--;
+        }
+    }
+
+    /// <summary>Widens <paramref name="span"/> columns from <paramref name="from"/> to <paramref name="need"/> together, each by its share.</summary>
+    private static void Spread(float[] widths, int from, int span, float need)
+    {
+        var have = 0f;
+        for (var c = from; c < from + span; c++)
+            have += widths[c];
+        if (need <= have)
+            return;
+        var extra = need - have;
+        for (var c = from; c < from + span; c++)
+            widths[c] += have > 0 ? extra * widths[c] / have : extra / span;
+    }
+
+    /// <summary>
+    /// Narrows a table to <paramref name="room"/>: first what its columns have beyond their widest line, then down to
+    /// their longest words, each column by its share of what it can give; then all of them evenly.
+    /// </summary>
+    private static void Shrink(float[] widths, ContentWidths? content, float room)
+    {
+        var total = widths.Sum();
+        if (content is { } needs)
+        {
+            foreach (var natural in (bool[])[true, false])
+            {
+                float Floor(int c) => natural ? Math.Max(needs.Max[c], needs.Min[c]) : needs.Min[c];
+                var spare = 0f;
+                for (var c = 0; c < widths.Length; c++)
+                    spare += Math.Max(0, widths[c] - Floor(c));
+                if (spare <= 0)
+                    continue;
+                var cut = Math.Min(spare, total - room);
+                for (var c = 0; c < widths.Length; c++)
+                    widths[c] -= cut * Math.Max(0, widths[c] - Floor(c)) / spare;
+                total = widths.Sum();
+                if (total <= room + 0.01f)
+                    return;
+            }
+        }
+        if (total > 0)
+        {
+            for (var c = 0; c < widths.Length; c++)
+                widths[c] *= room / total;
+        }
     }
 
     // ───────────────────────── Splitting ─────────────────────────

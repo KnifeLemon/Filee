@@ -176,11 +176,50 @@ internal sealed class PageComposer
 
         private float Gap => _columns.Count > 1 ? _columns.Gap / 100f : 0;
 
-        private float ColumnWidth => (_geometry.TextWidth - Gap * (_columns.Count - 1)) / Math.Max(1, _columns.Count);
+        /// <summary>The width of the current column.</summary>
+        private float ColumnWidth => ColumnBox(_column).Width;
 
         /// <summary>The left edge of a column: the first is the leftmost, or the rightmost in a right-to-left section.</summary>
-        private float ColumnLeft(int column) =>
-            _geometry.Left + (_columns.RightToLeft ? _columns.Count - 1 - column : column) * (ColumnWidth + Gap);
+        private float ColumnLeft(int column) => ColumnBox(column).Left;
+
+        /// <summary>A column's left edge and width: equal columns, or columns of their own sizes scaled to the text width.</summary>
+        private (float Left, float Width) ColumnBox(int column)
+        {
+            var count = Math.Max(1, _columns.Count);
+            if (_columns.Sizes is { } sizes && sizes.Count == count && count > 1)
+                return SizedColumns(sizes)[Math.Clamp(column, 0, count - 1)];
+            var width = (_geometry.TextWidth - Gap * (count - 1)) / count;
+            return (_geometry.Left + (_columns.RightToLeft ? count - 1 - column : column) * (width + Gap), width);
+        }
+
+        /// <summary>The columns of their own sizes worked out for the columns and text width they were last asked for.</summary>
+        private (HColumns Columns, float Left, float Width, (float Left, float Width)[] Boxes)? _sized;
+
+        /// <summary>
+        /// Columns of their own sizes across the text width, in reading order: their widths and the spaces after them
+        /// scaled together to fill it (Word's add up to it), the first at the left, or at the right in a right-to-left
+        /// section.
+        /// </summary>
+        private (float Left, float Width)[] SizedColumns(IReadOnlyList<HColumnSize> sizes)
+        {
+            var (left, textWidth) = (_geometry.Left, _geometry.TextWidth);
+            if (_sized is { } known && ReferenceEquals(known.Columns, _columns) && known.Left == left && known.Width == textWidth)
+                return known.Boxes;
+            var total = 0.0;
+            for (var i = 0; i < sizes.Count; i++)
+                total += sizes[i].Width + (i + 1 < sizes.Count ? sizes[i].Gap : 0);
+            var scale = total > 0 ? textWidth / total : 0;
+            var boxes = new (float Left, float Width)[sizes.Count];
+            var x = 0.0;
+            for (var i = 0; i < sizes.Count; i++)
+            {
+                var width = sizes[i].Width * scale;
+                boxes[i] = ((float)(_columns.RightToLeft ? left + textWidth - x - width : left + x), (float)width);
+                x += width + (i + 1 < sizes.Count ? sizes[i].Gap * scale : 0);
+            }
+            _sized = (_columns, left, textWidth, boxes);
+            return boxes;
+        }
 
         /// <summary>Where the body ends on this page: above the footnotes.</summary>
         private float Bottom => _geometry.BodyBottom - FootnotesHeight();
@@ -228,15 +267,19 @@ internal sealed class PageComposer
             var bottom = placed.Max(p => p.Y + p.Height);
             if (_columns.Separator && _columns.Count > 1)
             {
-                var (top, gap, width, count, left) = (_regionTop, Gap, ColumnWidth, _columns.Count, _geometry.Left);
+                // A line in the middle of the space between each two columns.
+                var lines = new float[_columns.Count - 1];
+                for (var c = 0; c + 1 < _columns.Count; c++)
+                {
+                    var (one, next) = (ColumnBox(c), ColumnBox(c + 1));
+                    lines[c] = _columns.RightToLeft ? (next.Left + next.Width + one.Left) / 2 : (one.Left + one.Width + next.Left) / 2;
+                }
+                var top = _regionTop;
                 page.Draw(canvas =>
                 {
                     using var paint = new SkiaSharp.SKPaint { Style = SkiaSharp.SKPaintStyle.Stroke, StrokeWidth = 0.5f, Color = SkiaSharp.SKColors.Black, IsAntialias = true };
-                    for (var c = 1; c < count; c++)
-                    {
-                        var x = left + c * (width + gap) - gap / 2;
+                    foreach (var x in lines)
                         canvas.DrawLine(x, top, x, bottom, paint);
-                    }
                 });
             }
             _placed.Clear();
@@ -247,10 +290,13 @@ internal sealed class PageComposer
 
         /// <summary>
         /// The region's content spread over its columns as evenly as it goes: the lowest column height at which
-        /// everything still fits, keeping the order and the space between things.
+        /// everything still fits, keeping the order and the space between things. Columns of their own widths stay as
+        /// filled: their lines are as wide as the column they were laid out for.
         /// </summary>
         private List<Placed> Balance(List<Placed> placed)
         {
+            if (_columns.Sizes is not null)
+                return placed;
             // The space above each thing in its column (none at a column's top). A thing that starts above the bottom of
             // the one before it is on that one's row (lines on both sides of an object) and stays beside it.
             var units = new List<(Placed Item, float Gap, bool Along)>();
@@ -412,7 +458,15 @@ internal sealed class PageComposer
             {
                 _guard.Paragraph();
                 return Layout(composer.Resolve(p), width);
-            }, composer._styles is not null, () => Frame(_y))
+            }, composer._styles is not null, () => Frame(_y), p =>
+            {
+                // Word's autofit tables measure their cells' paragraphs first; a list item is measured with the number it
+                // will get, without counting it.
+                _guard.Paragraph();
+                var resolved = composer.Resolve(p);
+                var marker = resolved.List is { Numbered: true } list ? _numbers.Peek(list) : null;
+                return composer._layouter.ContentWidths(resolved, marker, FieldText, NoteText);
+            })
             {
                 WordCells = composer._styles is not null,
             };
@@ -662,10 +716,26 @@ internal sealed class PageComposer
         }
 
         private ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<float, float, LineRoom>? wrap = null,
-            string? noteNumber = null)
+            string? noteNumber = null, int from = 0)
         {
             marker ??= paragraph.List is { Numbered: true } list ? _numbers.Next(list) : null;
-            return composer._layouter.Layout(paragraph, width, marker, FieldText, NoteText, wrap, noteNumber);
+            return composer._layouter.Layout(paragraph, width, marker, FieldText, NoteText, wrap, noteNumber, from);
+        }
+
+        /// <summary>
+        /// The paragraph's lines from line <paramref name="from"/> on laid out anew for the current column, when it is
+        /// one of columns of their own widths and not as wide as the column they were laid out for; null when they stay.
+        /// A paragraph with a border goes on with the lines it has (its box is cut where they were laid out).
+        /// </summary>
+        private ParagraphBox? Refit(HParagraph paragraph, ParagraphBox box, int from, bool opens, bool closes)
+        {
+            if (_columns.Sizes is null || box.StoredLines || box.Width <= 0 || Math.Abs(box.Width - ColumnWidth) < Epsilon
+                || from >= box.Lines.Count || from > 0 && (box.Border is not null || box.Lines[from].Start <= box.Lines[from - 1].Start))
+                return null;
+            var fresh = Layout(paragraph, ColumnWidth, box.Marker, from: box.Lines[from].Start);
+            if (from == 0 && box.Border is { } border)
+                fresh = border.Pad(fresh, opens, closes);
+            return fresh.Lines.Count == 0 ? null : fresh;
         }
 
         /// <summary>Puts a paragraph's lines into columns and pages from the current position on.</summary>
@@ -691,9 +761,16 @@ internal sealed class PageComposer
                 _hangulStart = (_pages.Count, _column);
                 _inStep = true;
             }
+            // Lines laid out anew from a line on, for a column of another width, go on from the paragraph's middle.
+            var resumed = false;
             for (var i = 0; i < lines.Count;)
             {
                 _guard.Paragraph();
+                if (Refit(paragraph, box, i, opens, closes) is { } refit)
+                {
+                    resumed |= i > 0;
+                    (box, lines, i) = (refit, refit.Lines, 0);
+                }
                 var stored = box.StoredLines && _inStep;
                 if (stored && lines[i].StoredPageStart && !_empty)
                     HangulPage();
@@ -734,9 +811,9 @@ internal sealed class PageComposer
                 if (widowOrphan && !stored && fit < lines.Count - i)
                 {
                     // At least two lines of the paragraph in this column (or none) and two in the next.
-                    if (i == 0 && fit < MinimumLines && !_columnEmpty)
+                    if (i == 0 && !resumed && fit < MinimumLines && !_columnEmpty)
                         fit = 0;
-                    else if (lines.Count - i - fit < MinimumLines && fit > MinimumLines - 1 + (i == 0 ? 1 : 0))
+                    else if (lines.Count - i - fit < MinimumLines && fit > MinimumLines - 1 + (i == 0 && !resumed ? 1 : 0))
                         fit -= MinimumLines - (lines.Count - i - fit);
                 }
                 // A row of lines beside an object stays in one column.
@@ -747,7 +824,7 @@ internal sealed class PageComposer
                     if (!_columnEmpty)
                     {
                         // Objects placed ahead with the paragraph go on with it.
-                        if (i == 0 && _anchored.Remove(paragraph, out var ahead))
+                        if (i == 0 && !resumed && _anchored.Remove(paragraph, out var ahead))
                         {
                             Current.Objects.RemoveAll(ahead.Contains);
                             foreach (var item in ahead)
@@ -763,7 +840,7 @@ internal sealed class PageComposer
                 {
                     if (box.StoredLines && j > i && SameRow(lines, j))
                         _y -= lines[j - 1].Height;
-                    PlaceLine(paragraph, box, lines[j], j == 0, stored, j == lines.Count - 1, opens, closes);
+                    PlaceLine(paragraph, box, lines[j], j == 0 && !resumed, stored, j == lines.Count - 1, opens, closes);
                 }
                 i += fit;
                 if (i < lines.Count)

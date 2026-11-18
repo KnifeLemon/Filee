@@ -49,6 +49,10 @@ internal sealed partial class DocxReader
     private Part? _endnotesPart;
     private bool _evenAndOddHeaders;
 
+    /// <summary>Page borders measured from the text go around the header and the footer (Word's default; settings say otherwise).</summary>
+    private bool _bordersAroundHeader = true;
+    private bool _bordersAroundFooter = true;
+
     /// <summary>Width of each section's text column (HWPUNIT), for equations that don't fit a line.</summary>
     private readonly List<int> _columnWidths = [];
 
@@ -218,6 +222,8 @@ internal sealed partial class DocxReader
         LoadNumbering(RelatedPart(main, "/numbering"));
         var settings = RelatedPart(main, "/settings")?.Xml.Root;
         _evenAndOddHeaders = settings?.Element(W + "evenAndOddHeaders") is { } evenOdd && Val(evenOdd) is not ("0" or "false");
+        _bordersAroundHeader = !(settings?.Element(W + "bordersDoNotSurroundHeader") is { } noHeader && Val(noHeader) is not ("0" or "false"));
+        _bordersAroundFooter = !(settings?.Element(W + "bordersDoNotSurroundFooter") is { } noFooter && Val(noFooter) is not ("0" or "false"));
         _footnotesPart = RelatedPart(main, "/footnotes");
         _endnotesPart = RelatedPart(main, "/endnotes");
         foreach (var note in _footnotesPart?.Xml.Root?.Elements(W + "footnote") ?? [])
@@ -318,6 +324,7 @@ internal sealed partial class DocxReader
             Endnotes = HNoteShape.Endnote with { Format = new HNoteFormat("ROMAN_SMALL", "", "", false) },
         };
         section.Blocks.AddRange(blocks);
+        PageBorders(sectPr, section);
 
         void Add(Dictionary<string, List<HBlock>> source, List<HHeaderFooter> target, HParagraph? startsAt = null)
         {
@@ -605,12 +612,80 @@ internal sealed partial class DocxReader
     private static HColumns Columns(XElement? sectPr)
     {
         var cols = sectPr?.Element(W + "cols");
-        var count = int.TryParse(Attr(cols, "num"), out var n) ? n : cols?.Elements(W + "col").Count() ?? 1;
+        // Columns of their own widths (equalWidth="0") are the w:col elements, each with its width and the space after it.
+        var own = cols is not null && Bool(cols, "equalWidth") == false
+            ? cols.Elements(W + "col").Take(256).ToList()
+            : [];
+        var count = own.Count > 1 ? own.Count
+            : int.TryParse(Attr(cols, "num"), out var n) ? n : cols?.Elements(W + "col").Count() ?? 1;
         if (count <= 1)
             return HColumns.Single;
+        List<HColumnSize>? sizes = own.Count > 1
+            ? [.. own.Select((col, i) => new HColumnSize(HwpxUnits.FromTwips(Twips(col, "w") ?? 0), i + 1 < own.Count ? HwpxUnits.FromTwips(Math.Max(0, Twips(col, "space") ?? 0)) : 0))]
+            : null;
         // A right-to-left section (w:bidi) fills its columns from the right.
-        return new HColumns(Math.Min(count, 255), HwpxUnits.FromTwips(Twips(cols, "space") ?? 720), Bool(cols, "sep") == true,
-            RightToLeft: sectPr is not null && Toggle(sectPr, "bidi") == true);
+        return HColumns.Of(count, HwpxUnits.FromTwips(Twips(cols, "space") ?? 720), Bool(cols, "sep") == true,
+            sectPr is not null && Toggle(sectPr, "bidi") == true, sizes);
+    }
+
+    /// <summary>
+    /// A section's page border (w:pgBorders): each side's line, w:space points from the paper's edge (offsetFrom="page")
+    /// or out from the text, on all pages, the first only or all but the first (w:display).
+    /// </summary>
+    private void PageBorders(XElement? sectPr, HSection section)
+    {
+        if (sectPr?.Element(W + "pgBorders") is not { } borders)
+            return;
+        var (left, leftSpace) = PageBorderLine(borders.Element(W + "left"));
+        var (right, rightSpace) = PageBorderLine(borders.Element(W + "right"));
+        var (top, topSpace) = PageBorderLine(borders.Element(W + "top"));
+        var (bottom, bottomSpace) = PageBorderLine(borders.Element(W + "bottom"));
+        var border = new HPageBorder(HPageType.Both, new HBorders(left, right, top, bottom), Fill: null, Picture: null,
+            new HInsets(leftSpace, rightSpace, topSpace, bottomSpace),
+            AroundBody: Attr(borders, "offsetFrom") != "page",
+            HeaderInside: _bordersAroundHeader, FooterInside: _bordersAroundFooter, HPageFillArea.Paper);
+        if (border.IsEmpty)
+            return;
+        section.PageBorders.Add(border);
+        section.PageBorderShows = Attr(borders, "display") switch
+        {
+            "firstPage" => HFirstPageRule.OnlyFirst,
+            "notFirstPage" => HFirstPageRule.HideFirst,
+            _ => HFirstPageRule.All,
+        };
+    }
+
+    /// <summary>
+    /// One side of a page border and how far its line's middle lies from the paper's edge or the text (HWPUNIT). Line
+    /// styles the layout doesn't draw become the nearest it does: multi-line ones a double line, picture borders
+    /// (w:val="apples" ...) a single line.
+    /// </summary>
+    private static (HBorder Line, int Offset) PageBorderLine(XElement? edge)
+    {
+        if (edge is null)
+            return (HBorder.None, 0);
+        var value = Val(edge);
+        var (style, art) = value switch
+        {
+            null or "nil" or "none" => (HBorderStyle.None, false),
+            "single" or "thick" or "wave" or "threeDEmboss" or "threeDEngrave" or "outset" or "inset" => (HBorderStyle.Solid, false),
+            "dotted" => (HBorderStyle.Dot, false),
+            "dashed" or "dashSmallGap" => (HBorderStyle.Dash, false),
+            "dotDash" or "dotDotDash" or "dashDotStroked" => (HBorderStyle.DashDot, false),
+            "double" or "triple" or "doubleWave" or "thinThickSmallGap" or "thickThinSmallGap" or "thinThickThinSmallGap"
+                or "thinThickMediumGap" or "thickThinMediumGap" or "thinThickThinMediumGap" or "thinThickLargeGap"
+                or "thickThinLargeGap" or "thinThickThinLargeGap" => (HBorderStyle.Double, false),
+            _ => (HBorderStyle.Solid, true),
+        };
+        if (style == HBorderStyle.None)
+            return (HBorder.None, 0);
+        // w:sz is in eighths of a point (2-96) for lines; a double line is two such lines with one's width between them.
+        var points = art ? 1.5 : Math.Clamp(Twips(edge, "sz") ?? 4, 2, 96) / 8.0;
+        if (style == HBorderStyle.Double)
+            points *= 3;
+        var color = Attr(edge, "color") is { Length: 6 } hex ? "#" + hex.ToUpperInvariant() : "#000000";
+        var space = Math.Clamp(Twips(edge, "space") ?? 0, 0, 31);
+        return (new HBorder(style, points * 25.4 / 72, color), HwpxUnits.FromPoints(space + points / 2));
     }
 
     // ───────────────────────── Blocks ─────────────────────────
