@@ -43,6 +43,7 @@ public sealed class LinuxPortableIntegration(string configHome, string dataHome)
             (Path.Combine(dataHome, "nemo", "actions", "filee.nemo_action"), $"Exec={desktop} --convert %F"),
             (Path.Combine(dataHome, "kio", "servicemenus", "filee.desktop"), $"Exec={desktop} --convert %F"),
             (Path.Combine(dataHome, "nautilus", "scripts", "Filee"), $"exec {LinuxDesktopIntegration.ShellArgument(executable)} --convert \"$@\""),
+            (Path.Combine(configHome, "flea", "scripts", "Filee"), $"exec {LinuxDesktopIntegration.ShellArgument(executable)} --convert \"$@\""),
         })
         {
             if (!RegularFile(path)) continue;
