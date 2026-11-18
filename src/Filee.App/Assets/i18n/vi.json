@@ -1172,8 +1172,13 @@
   "presets.group.archive": "Tệp nén",
   "presets.iso_filesystem": "Hệ thống tệp ISO",
   "presets.iso_label": "Nhãn ổ đĩa",
+  "presets.iso_label_joliet_hint": "Tối đa 16 ký tự BMP. Để trống dùng tên nguồn.",
+  "presets.iso_label_udf_hint": "Tối đa 30 ký tự Latin-1 hoặc 15 đơn vị UTF-16. Để trống dùng tên nguồn.",
+  "error.iso_label_length": "Nhãn ổ đĩa quá dài đối với {0}.",
+  "error.iso_label_characters": "Xóa ký tự không hỗ trợ hoặc khoảng trắng ở đầu/cuối.",
 
   "presets.iso_label_hint": "Để trống dùng tên thư mục hoặc tệp nén. Joliet: tối đa 16 ký tự Unicode BMP, giữ nguyên hoa/thường và dấu gạch nối. UDF: 30 ký tự Latin-1 hoặc 15 đơn vị UTF-16.",
+  "presets.ask_iso_label_hint": "Chọn nhãn ổ đĩa cho từng đầu vào trước khi chuyển đổi. Nhãn ở trên được điền sẵn; để trống sẽ dùng tên nguồn. Thư mục theo dõi và dòng lệnh không hỏi.",
   "presets.archive_level": "Mức nén",
   "presets.archive_level.Store": "Không nén (chỉ lưu)",
   "presets.archive_level.Fast": "Nhanh",

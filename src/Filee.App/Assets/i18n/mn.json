@@ -1156,8 +1156,13 @@
   "presets.group.archive": "Архив",
   "presets.iso_filesystem": "ISO файлын систем",
   "presets.iso_label": "Дискний нэр",
+  "presets.iso_label_joliet_hint": "16 хүртэл BMP тэмдэгт. Хоосон бол эх нэрийг ашиглана.",
+  "presets.iso_label_udf_hint": "30 хүртэл Latin-1 тэмдэгт эсвэл 15 UTF-16 нэгж. Хоосон бол эх нэрийг ашиглана.",
+  "error.iso_label_length": "Дискний шошго {0}-д хэт урт байна.",
+  "error.iso_label_characters": "Дэмжигдээгүй тэмдэгт эсвэл эхлэл/төгсгөлийн зайг арилгана уу.",
 
   "presets.iso_label_hint": "Хоосон бол хавтас эсвэл архивын нэр. Joliet: үсгийн том жижиг хэлбэр, зураасыг хадгалсан 16 хүртэл BMP Unicode тэмдэгт. UDF: 30 Latin-1 тэмдэгт эсвэл 15 UTF-16 нэгж.",
+  "presets.ask_iso_label_hint": "Хөрвүүлэхээс өмнө оролт бүрийн дискний шошгыг сонгоно. Дээрх шошгыг урьдчилан бөглөнө; хоосон бол эх нэрийг ашиглана. Хянадаг хавтас болон командын мөр асуухгүй.",
   "presets.archive_level": "Шахалт",
   "presets.archive_level.Store": "Байхгүй (зөвхөн хадгалах)",
   "presets.archive_level.Fast": "Хурдан",

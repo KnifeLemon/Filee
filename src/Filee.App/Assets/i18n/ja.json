@@ -1157,8 +1157,13 @@
   "presets.group.archive": "アーカイブ",
   "presets.iso_filesystem": "ISO ファイルシステム",
   "presets.iso_label": "ボリュームラベル",
+  "presets.iso_label_joliet_hint": "BMP文字で最大16文字。空欄なら元の名前を使用。",
+  "presets.iso_label_udf_hint": "Latin-1で最大30文字、またはUTF-16で15単位。空欄なら元の名前を使用。",
+  "error.iso_label_length": "ボリュームラベルが{0}の上限を超えています。",
+  "error.iso_label_characters": "非対応の文字や前後の空白を削除してください。",
 
   "presets.iso_label_hint": "空欄ならフォルダーまたはアーカイブ名を使用します。Joliet: 大文字・小文字とハイフンを保持し、BMP Unicode で16文字まで。UDF: Latin-1 で30文字、UTF-16 で15単位まで。",
+  "presets.ask_iso_label_hint": "変換前に入力ごとのボリュームラベルを指定します。上のラベルを初期値とし、空欄の場合は元の名前を使います。監視フォルダーとコマンドラインでは確認しません。",
   "presets.archive_level": "圧縮レベル",
   "presets.archive_level.Store": "圧縮しない（格納のみ）",
   "presets.archive_level.Fast": "高速",

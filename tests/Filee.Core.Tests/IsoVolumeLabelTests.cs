@@ -58,16 +58,21 @@ public sealed class IsoVolumeLabelTests
     {
         var old = JsonSerializer.Deserialize("{\"targetFormat\":\"iso\"}", FileeJsonContext.Default.Preset)!;
         Assert.Equal("", old.Archive.IsoVolumeLabel);
+        Assert.False(old.Archive.AskIsoVolumeLabel);
         old.Archive.IsoVolumeLabel = "MY_DISC";
+        old.Archive.AskIsoVolumeLabel = true;
         var copy = old.Clone();
         var json = JsonSerializer.Serialize(copy, FileeJsonContext.Default.Preset);
         Assert.Equal("MY_DISC", JsonSerializer.Deserialize(json, FileeJsonContext.Default.Preset)!.Archive.IsoVolumeLabel);
+        Assert.True(JsonSerializer.Deserialize(json, FileeJsonContext.Default.Preset)!.Archive.AskIsoVolumeLabel);
+        copy.Archive.AskIsoVolumeLabel = false;
+        Assert.True(old.Archive.AskIsoVolumeLabel);
     }
 
     [Fact]
     public void Custom_labels_can_be_shared_in_the_gallery()
     {
-        var preset = new Preset { Id = "iso-label", Name = "ISO", TargetFormat = "iso", Archive = { IsoVolumeLabel = "MY_DISC" } };
+        var preset = new Preset { Id = "iso-label", Name = "ISO", TargetFormat = "iso", Archive = { IsoVolumeLabel = "MY_DISC", AskIsoVolumeLabel = true } };
         var result = Filee.Core.Gallery.SharedBundleCheck.Check(GalleryFiles.Bundle(preset));
         Assert.True(result.Ok, string.Join("\n", result.Errors));
     }

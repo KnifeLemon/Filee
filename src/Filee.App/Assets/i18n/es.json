@@ -1157,8 +1157,13 @@
   "presets.group.archive": "Archivo comprimido",
   "presets.iso_filesystem": "Sistema de archivos ISO",
   "presets.iso_label": "Etiqueta del volumen",
+  "presets.iso_label_joliet_hint": "Hasta 16 caracteres BMP. Vacío usa el nombre de origen.",
+  "presets.iso_label_udf_hint": "Hasta 30 caracteres Latin-1 o 15 unidades UTF-16. Vacío usa el nombre de origen.",
+  "error.iso_label_length": "La etiqueta de volumen es demasiado larga para {0}.",
+  "error.iso_label_characters": "Elimina los caracteres no admitidos o los espacios al inicio y al final.",
 
   "presets.iso_label_hint": "Vacío usa el nombre de la carpeta o archivo. Joliet: hasta 16 caracteres Unicode BMP, conservando mayúsculas y guiones. UDF: 30 caracteres Latin-1 o 15 unidades UTF-16.",
+  "presets.ask_iso_label_hint": "Elegir una etiqueta de volumen para cada entrada antes de convertir. Se rellena con la etiqueta anterior; si está vacía, se usa el nombre de origen. Las carpetas vigiladas y la línea de comandos no preguntan.",
   "presets.archive_level": "Compresión",
   "presets.archive_level.Store": "Ninguna (solo almacenar)",
   "presets.archive_level.Fast": "Rápida",

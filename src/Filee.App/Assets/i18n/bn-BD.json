@@ -1156,8 +1156,13 @@
   "presets.group.archive": "আর্কাইভ",
   "presets.iso_filesystem": "ISO ফাইল সিস্টেম",
   "presets.iso_label": "ভলিউম লেবেল",
+  "presets.iso_label_joliet_hint": "সর্বোচ্চ 16টি BMP অক্ষর। খালি হলে উৎসের নাম ব্যবহৃত হবে।",
+  "presets.iso_label_udf_hint": "সর্বোচ্চ 30টি Latin-1 অক্ষর বা 15টি UTF-16 ইউনিট। খালি হলে উৎসের নাম ব্যবহৃত হবে।",
+  "error.iso_label_length": "ভলিউম লেবেল {0}-এর জন্য বেশি দীর্ঘ।",
+  "error.iso_label_characters": "অসমর্থিত অক্ষর বা শুরু/শেষের ফাঁকা স্থান সরান।",
 
   "presets.iso_label_hint": "খালি থাকলে ফোল্ডার বা আর্কাইভের নাম। Joliet: সর্বোচ্চ 16টি BMP Unicode অক্ষর; বড়/ছোট হাত ও হাইফেন অপরিবর্তিত। UDF: 30টি Latin-1 অক্ষর বা 15টি UTF-16 একক।",
+  "presets.ask_iso_label_hint": "রূপান্তরের আগে প্রতিটি ইনপুটের ভলিউম লেবেল বেছে নিন। উপরের লেবেল আগে থেকে পূরণ থাকবে; খালি হলে উৎসের নাম ব্যবহৃত হবে। পর্যবেক্ষিত ফোল্ডার এবং কমান্ড লাইন জিজ্ঞাসা করবে না।",
   "presets.archive_level": "সংকোচন",
   "presets.archive_level.Store": "কোনোটি নয় (কেবল সংরক্ষণ)",
   "presets.archive_level.Fast": "দ্রুত",

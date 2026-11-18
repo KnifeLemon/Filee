@@ -1157,8 +1157,13 @@
   "presets.group.archive": "आर्काइव",
   "presets.iso_filesystem": "ISO फ़ाइल सिस्टम",
   "presets.iso_label": "वॉल्यूम लेबल",
+  "presets.iso_label_joliet_hint": "अधिकतम 16 BMP अक्षर। खाली होने पर स्रोत नाम उपयोग होगा।",
+  "presets.iso_label_udf_hint": "अधिकतम 30 Latin-1 अक्षर या 15 UTF-16 इकाइयाँ। खाली होने पर स्रोत नाम उपयोग होगा।",
+  "error.iso_label_length": "वॉल्यूम लेबल {0} के लिए बहुत लंबा है।",
+  "error.iso_label_characters": "असमर्थित अक्षर या शुरू/अंत के रिक्त स्थान हटाएँ।",
 
   "presets.iso_label_hint": "खाली होने पर फ़ोल्डर या आर्काइव का नाम। Joliet: अधिकतम 16 BMP Unicode वर्ण; अक्षरों का आकार और हाइफ़न सुरक्षित। UDF: 30 Latin-1 वर्ण या 15 UTF-16 इकाइयाँ।",
+  "presets.ask_iso_label_hint": "रूपांतरण से पहले हर इनपुट के लिए वॉल्यूम लेबल चुनें। ऊपर का लेबल पहले से भरा होगा; खाली होने पर स्रोत का नाम उपयोग होगा। निगरानी फ़ोल्डर और कमांड लाइन नहीं पूछते।",
   "presets.archive_level": "कंप्रेशन",
   "presets.archive_level.Store": "कोई नहीं (केवल स्टोर)",
   "presets.archive_level.Fast": "तेज़",

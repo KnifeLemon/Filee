@@ -1156,8 +1156,13 @@
   "presets.group.archive": "آرشیو",
   "presets.iso_filesystem": "سیستم فایل ISO",
   "presets.iso_label": "برچسب دیسک",
+  "presets.iso_label_joliet_hint": "تا 16 نویسهٔ BMP. خالی یعنی نام منبع.",
+  "presets.iso_label_udf_hint": "تا 30 نویسهٔ Latin-1 یا 15 واحد UTF-16. خالی یعنی نام منبع.",
+  "error.iso_label_length": "برچسب دیسک برای {0} بیش از حد طولانی است.",
+  "error.iso_label_characters": "نویسه‌های پشتیبانی‌نشده یا فاصله‌های ابتدا و انتها را حذف کنید.",
 
   "presets.iso_label_hint": "خالی: نام پوشه یا بایگانی. Joliet: تا 16 نویسهٔ BMP Unicode با حفظ بزرگی حروف و خط تیره. UDF: تا 30 نویسهٔ Latin-1 یا 15 واحد UTF-16.",
+  "presets.ask_iso_label_hint": "پیش از تبدیل، برای هر ورودی برچسب دیسک انتخاب کنید. برچسب بالا از پیش وارد می‌شود؛ اگر خالی باشد نام منبع استفاده می‌شود. پوشه‌های پایش‌شده و خط فرمان پرسشی نمایش نمی‌دهند.",
   "presets.archive_level": "سطح فشرده‌سازی",
   "presets.archive_level.Store": "بدون فشرده‌سازی (تنها ذخیره‌سازی)",
   "presets.archive_level.Fast": "سریع",

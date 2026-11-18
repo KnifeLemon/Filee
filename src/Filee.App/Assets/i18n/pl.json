@@ -1172,8 +1172,13 @@
   "presets.group.archive": "Archiwum",
   "presets.iso_filesystem": "System plików ISO",
   "presets.iso_label": "Etykieta woluminu",
+  "presets.iso_label_joliet_hint": "Do 16 znaków BMP. Puste pole używa nazwy źródła.",
+  "presets.iso_label_udf_hint": "Do 30 znaków Latin-1 lub 15 jednostek UTF-16. Puste pole używa nazwy źródła.",
+  "error.iso_label_length": "Etykieta woluminu jest za długa dla {0}.",
+  "error.iso_label_characters": "Usuń nieobsługiwane znaki lub spacje na początku i końcu.",
 
   "presets.iso_label_hint": "Puste pole używa nazwy folderu lub archiwum. Joliet: do 16 znaków Unicode BMP, z zachowaniem wielkości liter i łączników. UDF: 30 znaków Latin-1 lub 15 jednostek UTF-16.",
+  "presets.ask_iso_label_hint": "Wybierz etykietę woluminu dla każdego źródła przed konwersją. Powyższa etykieta jest wstępnie wypełniana; pusta oznacza nazwę źródła. Monitorowane foldery i wiersz poleceń nie pytają.",
   "presets.archive_level": "Kompresja",
   "presets.archive_level.Store": "Brak (tylko zapis)",
   "presets.archive_level.Fast": "Szybka",

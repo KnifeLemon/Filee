@@ -446,6 +446,14 @@ public sealed class RadialController(
             return;
         }
 
+        if (!preset.IsGroup && !preset.IsTool && preset.TargetFormat == "iso" && preset.Archive.AskIsoVolumeLabel)
+        {
+            KeepKeyboard();
+            Close(animate: false);
+            _ = AskIsoLabelsThenConvertAsync(sources, preset, web, _toClipboard, _onJob);
+            return;
+        }
+
         // "Ask every time" for the pages (#981): a small window per PDF first, then the save dialog when that asks too; the
         // toast shows the jobs, the donut has closed for the window.
         if (AskedPages.Asks(preset) && sources.Any(AskedPages.IsPdf))
@@ -584,6 +592,51 @@ public sealed class RadialController(
         {
             log.LogWarning(ex, "Could not remember whether merged videos loop their music");
         }
+    }
+
+    /// <summary>
+    /// Choose each input's ISO label before queuing any jobs. Browser inputs are saved first, as for other prompts.
+    /// </summary>
+    private async Task AskIsoLabelsThenConvertAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard,
+        Action<ConversionJob>? onJob)
+    {
+        try
+        {
+            if (web is not null)
+            {
+                var drop = web;
+                web = null;
+                files = await conversions.SaveBrowserFilesAsync(drop, (placeholder, ex) =>
+                    log.LogWarning(ex, "Saving {File} from a browser for {Preset} failed", Path.GetFileName(placeholder), preset.Id));
+            }
+            var runs = new List<(string File, Preset Preset)>();
+            for (var i = 0; i < files.Count; i++)
+            {
+                if (await windows.AskIsoLabelAsync(files[i], preset, i, files.Count) is not { } label)
+                    return;
+                var running = preset.Clone();
+                running.Archive.IsoVolumeLabel = label;
+                running.Archive.AskIsoVolumeLabel = false;
+                runs.Add((files[i], running));
+            }
+            if (runs.Count == 0) return;
+            // Ask once for the whole batch, before starting any of its jobs.
+            if (preset.Output.AskEveryTime)
+            {
+                var running = store.Settings.WithDefaultOutput(preset);
+                if (await windows.AskSaveLocationAsync(files, running, files.Count == 1) is not { } located)
+                    return;
+                foreach (var run in runs) run.Preset.Output = located.Output.Clone();
+            }
+            foreach (var run in runs)
+                if (conversions.Start([run.File], run.Preset, toClipboard: toClipboard) is { } job)
+                    onJob?.Invoke(job.Job);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogError(ex, "Could not convert with the ISO labels chosen");
+        }
+        finally { web?.Dispose(); }
     }
 
     /// <summary>

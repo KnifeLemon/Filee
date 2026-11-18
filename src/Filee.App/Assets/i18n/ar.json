@@ -1157,8 +1157,13 @@
   "presets.group.archive": "الأرشيف",
   "presets.iso_filesystem": "نظام ملفات ISO",
   "presets.iso_label": "تسمية وحدة التخزين",
+  "presets.iso_label_joliet_hint": "حتى 16 حرف BMP. الفراغ يستخدم اسم المصدر.",
+  "presets.iso_label_udf_hint": "حتى 30 حرف Latin-1 أو 15 وحدة UTF-16. الفراغ يستخدم اسم المصدر.",
+  "error.iso_label_length": "تسمية وحدة التخزين أطول من المسموح في {0}.",
+  "error.iso_label_characters": "أزل الأحرف غير المدعومة أو المسافات في البداية والنهاية.",
 
   "presets.iso_label_hint": "فارغ: اسم المجلد أو الأرشيف. Joliet: حتى 16 محرف BMP Unicode مع حفظ حالة الأحرف والشرطات. UDF: حتى 30 محرف Latin-1 أو 15 وحدة UTF-16.",
+  "presets.ask_iso_label_hint": "اختر تسمية وحدة التخزين لكل مصدر قبل التحويل. تُملأ التسمية أعلاه مسبقًا؛ وعند تركها فارغة يُستخدم اسم المصدر. لا تطلب المجلدات المراقبة وسطر الأوامر تسمية.",
   "presets.archive_level": "الضغط",
   "presets.archive_level.Store": "بلا (تخزين فقط)",
   "presets.archive_level.Fast": "سريع",

@@ -1172,8 +1172,13 @@
   "presets.group.archive": "压缩文件",
   "presets.iso_filesystem": "ISO 文件系统",
   "presets.iso_label": "卷标",
+  "presets.iso_label_joliet_hint": "最多 16 个 BMP 字符。留空使用源名称。",
+  "presets.iso_label_udf_hint": "最多 30 个 Latin-1 字符或 15 个 UTF-16 单位。留空使用源名称。",
+  "error.iso_label_length": "卷标超出了 {0} 的长度限制。",
+  "error.iso_label_characters": "请移除不支持的字符或首尾空格。",
 
   "presets.iso_label_hint": "留空使用文件夹或压缩包名称。Joliet：保留大小写和连字符，最多16个 BMP Unicode 字符。UDF：30个 Latin-1 字符或15个 UTF-16 单元。",
+  "presets.ask_iso_label_hint": "转换前为每个输入选择卷标。默认填入上方的卷标；留空则使用源名称。监视文件夹和命令行不会询问。",
   "presets.archive_level": "压缩级别",
   "presets.archive_level.Store": "不压缩（仅存储）",
   "presets.archive_level.Fast": "快速",
