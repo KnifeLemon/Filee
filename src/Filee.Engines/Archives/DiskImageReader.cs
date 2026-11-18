@@ -220,9 +220,12 @@ internal static class DiskImageReader
         }
     }
 
+    /// <summary>The separators of DiscUtils paths on this system.</summary>
+    private static readonly char[] Separators = Path.DirectorySeparatorChar == '\\' ? ['\\'] : ['\\', Path.DirectorySeparatorChar];
+
     /// <summary>
-    /// Lists a DiscUtils file system. Its paths use "\" ("\folder\file"); each call may read up to
-    /// <see cref="DiskImageGuard.StructureBudget"/>.
+    /// Lists a DiscUtils file system. Its paths use "\" ("\folder\file"), on Linux and macOS LTRData's DiscUtils
+    /// uses "/" ("/folder/file"); each call may read up to <see cref="DiskImageGuard.StructureBudget"/>.
     /// </summary>
     /// <param name="decomposed">HFS+: names are stored decomposed (NFD) and are composed for the files written.</param>
     private static void Walk(DiscFileSystem fs, bool decomposed, List<DiskImageNode> nodes, NameTally names, DiskImageGuard guard,
@@ -240,7 +243,7 @@ internal static class DiskImageReader
             {
                 if (nodes.Count >= ArchiveSafety.EntryLimit)
                     throw ArchiveSafety.TooManyEntries(name);
-                var leaf = entry[(entry.LastIndexOf('\\') + 1)..];
+                var leaf = entry[(entry.LastIndexOfAny(Separators) + 1)..];
                 if (leaf.Length == 0 || leaf is "." or "..")
                     continue;
                 if (decomposed)
