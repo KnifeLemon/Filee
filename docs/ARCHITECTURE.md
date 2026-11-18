@@ -504,14 +504,15 @@ hidden rows and manual breaks, then see the PDF that those settings will produce
 - `SpreadsheetPrintPackage` makes a disposable XLSX under `JobQueue.DefaultWorkRoot`. It keeps every worksheet and
   named range so cross-sheet formulas remain valid, hides the sheets not being rendered, and changes only the chosen
   sheet's print settings. A new print area is written only after the user explicitly changes or accepts the range.
-- `SpreadsheetPrintService` runs LibreOffice once for each region. Preview and export use the same disposable-workbook
+- `SpreadsheetPrintService` prints each region once with Filee's sheet printer (`SheetPrintConverter`), or with
+  LibreOffice when it is chosen for spreadsheets in Settings → Engines and installed. Preview and export use the same disposable-workbook
   path; export then joins the region PDFs in the chosen order with PDFsharp, or, with **One PDF per sheet**, writes
   each region as `<chosen name>_<sheet>.pdf` (`PerSheetPaths` cleans the names, adds `_2` for repeats, and applies the tool preset's conflict policy to files
-  already there). The ordinary XLSX → PDF donut conversion
-  can still differ because route planning may select Filee's built-in spreadsheet reader instead of LibreOffice.
-- `PdfPreviewDocument` caches a PDF's bytes and page geometry. The studio asks PDFium/PDFtoImage for small thumbnails
-  and only one large selected page, all decoded away from the UI thread; exporting never performs preview rendering.
-  Cancellation closes LibreOffice and the temporary job folder is removed on success, error or window close.
+  already there).
+- `PdfPreviewDocument` caches a PDF's bytes and page geometry. The studio asks PDFium/PDFtoImage for the thumbnails
+  of the pages its virtualised strip shows (a few per document load) and only one large selected page, all decoded
+  away from the UI thread; exporting never performs preview rendering. Cancellation stops the printer (or closes
+  LibreOffice) and the temporary job folder is removed on success, error or window close.
 
 ## Settings and data
 

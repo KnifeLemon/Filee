@@ -13,6 +13,15 @@ public partial class SpreadsheetPrintStudioWindow : Window
         InitializeComponent();
         Motion.Track(this);
         Closed += (_, _) => (DataContext as IDisposable)?.Dispose();
+        PageList.ContainerPrepared += OnPageShown;
+    }
+
+    // The strip only makes items for the pages in view (and a few beside them): those are the thumbnails rendered.
+    private void OnPageShown(object? sender, ContainerPreparedEventArgs e)
+    {
+        // The container isn't indexed yet while it is being prepared (ItemFromContainer gives null): go by its index.
+        if (DataContext is SpreadsheetPrintStudioViewModel vm && e.Index >= 0 && e.Index < vm.Pages.Count)
+            vm.RequestThumbnail(vm.Pages[e.Index]);
     }
 
     private async void OnExport(object? sender, RoutedEventArgs e)

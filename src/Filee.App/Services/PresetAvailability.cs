@@ -184,8 +184,10 @@ public sealed class PresetAvailability
             {
                 if (formats.Count > 0 && formats.All(format => format.Id == "xlsx"))
                 {
-                    var libreOffice = _catalog.All.FirstOrDefault(converter => converter.Id == "libreoffice");
-                    if (libreOffice?.GetStatus().IsAvailable == true)
+                    // Filee's own sheet printer prints the studio's pages; LibreOffice only where it's missing.
+                    var printer = _catalog.All.FirstOrDefault(converter => converter.Id is "sheet-print" or "libreoffice"
+                        && converter.GetStatus().IsAvailable);
+                    if (printer is not null)
                         return new(PresetUse.Usable, null);
                     var libreOfficePackage = _packages.FirstOrDefault(item => !item.IsInstalled
                         && item.Package.ConverterIds.Contains("libreoffice"));

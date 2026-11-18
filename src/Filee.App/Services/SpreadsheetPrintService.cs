@@ -1,34 +1,82 @@
 // The spreadsheet print studio's conversion boundary. Every preview and export is made from a disposable copy of
 // the workbook, so changing a print area, page size or hidden-row option can never touch the user's original file.
+//
+// The copy is printed by the same engine as every other spreadsheet → PDF: Filee's own sheet printer
+// (SheetPrintConverter), or LibreOffice when Settings → Engines → "Use LibreOffice for spreadsheets → PDF" is on and
+// LibreOffice is installed. The printer reads every setting the studio writes into the copy (paper, orientation,
+// margins, scale or fit to pages, page order, print area, hidden rows and columns, manual breaks, the one sheet left
+// visible) and keeps the sheet's own gridlines, headings, centring and headers / footers. A workbook with what the
+// printer doesn't draw yet (charts, text in shapes, form controls: SheetCapabilities) goes to LibreOffice when it is
+// installed, as in a normal conversion; without it the pages are printed all the same and the region carries the
+// printer's notice, which the studio shows.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Office;
 using Filee.Engines.Office.Sheets;
 using Filee.Engines.Pdf;
 
 namespace Filee.App.Services;
 
-public sealed record SpreadsheetRenderedRegion(string PdfPath, PdfPreviewDocument Preview, string TemporaryDirectory);
+/// <param name="Notices">Localization keys of what the printer said about the region (something left out).</param>
+public sealed record SpreadsheetRenderedRegion(string PdfPath, PdfPreviewDocument Preview, string TemporaryDirectory,
+    IReadOnlyList<string> Notices);
+
+/// <summary>Which engine prints the studio's pages.</summary>
+public enum SpreadsheetPrintEngine
+{
+    /// <summary>Filee's own sheet printer (SheetPrintConverter): the default.</summary>
+    BuiltIn,
+
+    /// <summary>LibreOffice Calc, when chosen for spreadsheets in Settings → Engines and installed.</summary>
+    LibreOffice,
+}
 
 public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters)
 {
+    private readonly SheetPrintConverter? _sheetPrinter = converters.OfType<SheetPrintConverter>().FirstOrDefault();
     private readonly LibreOfficeConverter? _libreOffice = converters.OfType<LibreOfficeConverter>().FirstOrDefault();
     private readonly IPdfMerger? _pdfMerger = converters.OfType<IPdfMerger>().FirstOrDefault();
 
     public SpreadsheetWorkbookInfo Inspect(string path) => SpreadsheetPrintInspector.Read(path);
 
-    public EngineStatus Status => _libreOffice?.GetStatus()
-        ?? EngineStatus.Unavailable("engine.reason.not_installed");
+    /// <summary>The engine the next preview or export uses; null when neither is there.</summary>
+    public SpreadsheetPrintEngine? Engine
+    {
+        get
+        {
+            var prefer = EngineEnvironment.LibreOfficeForSheets;
+            // LibreOffice is only looked for when it could be the one.
+            var libreOffice = (prefer || _sheetPrinter is null) && _libreOffice?.GetStatus().IsAvailable == true;
+            return Choose(_sheetPrinter is not null, libreOffice, prefer);
+        }
+    }
+
+    /// <summary>
+    /// The sheet printer, like the spreadsheet → PDF route: LibreOffice only when the user chose it for spreadsheets
+    /// (<paramref name="preferLibreOffice"/>) and it is installed, or when there is no sheet printer at all.
+    /// </summary>
+    internal static SpreadsheetPrintEngine? Choose(bool builtIn, bool libreOffice, bool preferLibreOffice) =>
+        libreOffice && (preferLibreOffice || !builtIn) ? SpreadsheetPrintEngine.LibreOffice
+        : builtIn ? SpreadsheetPrintEngine.BuiltIn
+        : null;
+
+    public EngineStatus Status => Engine switch
+    {
+        SpreadsheetPrintEngine.BuiltIn => _sheetPrinter!.GetStatus(),
+        SpreadsheetPrintEngine.LibreOffice => _libreOffice!.GetStatus(),
+        _ => EngineStatus.Unavailable("engine.reason.not_installed"),
+    };
 
     public async Task<SpreadsheetRenderedRegion> RenderAsync(SpreadsheetWorkbookInfo workbook,
         SpreadsheetPrintRegion region, CancellationToken cancellationToken = default)
     {
-        var (output, folder) = await MakePdfAsync(workbook, region, cancellationToken);
+        var (output, folder, notices) = await MakePdfAsync(workbook, region, cancellationToken);
         try
         {
             var preview = await Task.Run(() => PdfPreviewDocument.Open(output), cancellationToken);
-            return new SpreadsheetRenderedRegion(output, preview, folder);
+            return new SpreadsheetRenderedRegion(output, preview, folder, notices);
         }
         catch
         {
@@ -41,12 +89,13 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
     /// Renders every region and writes them to <paramref name="outputPath"/> as one merged PDF, or, with
     /// <paramref name="onePerSheet"/>, as one PDF per region named after <paramref name="outputPath"/> and the sheet
     /// (see <see cref="PerSheetPaths"/>), where <paramref name="conflict"/> decides about files already there. Returns
-    /// the files written; empty when the policy skipped every sheet.
+    /// the files written; empty when the policy skipped every sheet. <paramref name="notice"/> hears each notice key
+    /// the printer gave (once per key).
     /// </summary>
     public async Task<IReadOnlyList<string>> ExportAsync(SpreadsheetWorkbookInfo workbook,
         IReadOnlyList<SpreadsheetPrintRegion> regions, string outputPath, bool onePerSheet = false,
         ConflictPolicy conflict = ConflictPolicy.Rename, IProgress<double>? progress = null,
-        CancellationToken cancellationToken = default)
+        Action<string>? notice = null, CancellationToken cancellationToken = default)
     {
         if (regions.Count == 0)
             throw new ArgumentException("At least one region must be exported.", nameof(regions));
@@ -65,13 +114,16 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
                 return [];
         }
         var overwrite = !onePerSheet || conflict == ConflictPolicy.Overwrite;
-        var rendered = new List<(string PdfPath, string TemporaryDirectory)>();
+        var rendered = new List<(string PdfPath, string TemporaryDirectory, IReadOnlyList<string> Notices)>();
         var temporaryOutputs = targets.Select(target => target + ".filee-tmp").ToArray();
         try
         {
             for (var index = 0; index < parts.Count; index++)
             {
-                rendered.Add(await MakePdfAsync(workbook, parts[index], cancellationToken));
+                var done = index;
+                var part = progress is null ? null
+                    : new SubProgress(value => progress.Report(0.85 * (done + Math.Clamp(value, 0, 1)) / parts.Count));
+                rendered.Add(await MakePdfAsync(workbook, parts[index], cancellationToken, part));
                 progress?.Report(0.85 * (index + 1) / parts.Count);
             }
             foreach (var temporary in temporaryOutputs)
@@ -91,6 +143,8 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
             // Without Overwrite, a file that appeared there since the names were chosen is never replaced.
             for (var index = 0; index < targets.Count; index++)
                 File.Move(temporaryOutputs[index], targets[index], overwrite);
+            foreach (var key in rendered.SelectMany(item => item.Notices).Distinct())
+                notice?.Invoke(key);
             progress?.Report(1);
             return targets;
         }
@@ -147,23 +201,31 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
         return paths;
     }
 
-    private async Task<(string PdfPath, string TemporaryDirectory)> MakePdfAsync(SpreadsheetWorkbookInfo workbook,
-        SpreadsheetPrintRegion region, CancellationToken cancellationToken)
+    private async Task<(string PdfPath, string TemporaryDirectory, IReadOnlyList<string> Notices)> MakePdfAsync(
+        SpreadsheetWorkbookInfo workbook, SpreadsheetPrintRegion region, CancellationToken cancellationToken,
+        IProgress<double>? progress = null)
     {
-        if (_libreOffice is null)
-            throw new InvalidOperationException("LibreOffice is not available.");
+        IConverter engine = Engine switch
+        {
+            SpreadsheetPrintEngine.BuiltIn => _sheetPrinter!,
+            SpreadsheetPrintEngine.LibreOffice => _libreOffice!,
+            _ => throw new InvalidOperationException("No spreadsheet printer is available."),
+        };
         var folder = CreateWorkFolder();
         try
         {
             var input = Path.Combine(folder, "sheet.xlsx");
             var output = Path.Combine(folder, "sheet.pdf");
             await Task.Run(() => SpreadsheetPrintPackage.Create(workbook.Path, input, workbook, region), cancellationToken);
-            var results = await _libreOffice.ConvertAsync(new ConversionStep(
+            var notices = new List<string>();
+            // The original's path names the workbook in the &F / &Z header fields and finds the fonts it lacks.
+            var results = await engine.ConvertAsync(new ConversionStep(
                 input, "xlsx", "pdf", new Preset { TargetFormat = "pdf" },
-                new ExactOutput(output), folder), null, cancellationToken);
+                new ExactOutput(output), folder, Notice: key => { lock (notices) notices.Add(key); },
+                OriginalSourcePath: workbook.Path), progress, cancellationToken);
             if (results.Count != 1 || !File.Exists(output))
-                throw new InvalidOperationException("LibreOffice did not create the requested PDF.");
-            return (output, folder);
+                throw new InvalidOperationException($"{engine.DisplayName} did not create the requested PDF.");
+            return (output, folder, notices);
         }
         catch
         {
@@ -197,6 +259,12 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+    }
+
+    /// <summary>Passes a region's progress on as its share of the export, on the thread that reports it.</summary>
+    private sealed class SubProgress(Action<double> report) : IProgress<double>
+    {
+        public void Report(double value) => report(value);
     }
 
     private sealed class ExactOutput(string path) : IOutputAllocator

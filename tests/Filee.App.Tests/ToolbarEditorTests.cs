@@ -788,6 +788,18 @@ public class PresetAvailabilityTests
     }
 
     [AvaloniaFact]
+    public void Spreadsheet_print_studio_needs_no_LibreOffice_with_the_built_in_sheet_printer()
+    {
+        // No LibreOffice at all in this catalog.
+        using var f = new Fixture(new FakeConverter("sheet-print", ("xlsx", "pdf")));
+        var studio = f.Preset("tool-sheet-studio");
+
+        Assert.Null(f.Availability.Check(studio, [Fixture.Format("xlsx")]));
+        Assert.Equal(f.Loc["error.unsupported_source"],
+            f.Availability.Check(studio, [Fixture.Format("ods")]));
+    }
+
+    [AvaloniaFact]
     public void The_palette_session_matches_check_and_sorts_the_reasons()
     {
         using var f = new Fixture();
