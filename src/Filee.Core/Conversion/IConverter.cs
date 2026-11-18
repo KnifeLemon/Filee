@@ -149,6 +149,10 @@ public interface IOutputAllocator
 /// (<see cref="Presets.MediaOptions.LivePhoto"/> says which kind).
 /// </param>
 /// <param name="Caption">The step takes a <see cref="ConversionEdge.Caption"/> edge to transcribe speech to SRT subtitles using Whisper.</param>
+/// <param name="LeftOut">
+/// Reports what a step that worked drew only approximately or left out of the document (<see cref="LeftOutNotice"/>),
+/// shown with the file's result. Null when nobody listens.
+/// </param>
 public sealed record ConversionStep(
     string InputPath,
     string From,
@@ -163,7 +167,22 @@ public sealed record ConversionStep(
     Action<IReadOnlyList<string>>? MissingFonts = null,
     string? OriginalSourcePath = null,
     bool Caption = false,
-    bool Translate = false);
+    bool Translate = false,
+    Action<LeftOutNotice>? LeftOut = null);
+
+/// <summary>One kind of thing an engine left out of a document or drew only approximately, and how many.</summary>
+/// <param name="Key">
+/// Localization key: with <paramref name="Count"/> 1 its <c>_one</c> form ("1 chart left out"), with more the key
+/// itself with the number for {0} ("{0} charts left out").
+/// </param>
+/// <param name="Count">How many the document holds; 0 for a kind that isn't counted ("vertical text set horizontally").</param>
+public sealed record LeftOutPart(string Key, int Count);
+
+/// <summary>
+/// A note on a document an engine converted without all of it: <paramref name="Key"/> is the localization key of the
+/// sentence, whose {0} is the list of <paramref name="Parts"/> (each kind once, in the order given).
+/// </summary>
+public sealed record LeftOutNotice(string Key, IReadOnlyList<LeftOutPart> Parts);
 
 /// <summary>
 /// A conversion engine (ImageMagick, LibreOffice, rhwp, ...).

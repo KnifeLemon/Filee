@@ -219,6 +219,7 @@ internal sealed partial class OdtReader
         {
             var headers = HeadersAndFooters(Shown(header) ? header : null, Shown(headerLeft) ? headerLeft : null);
             var footers = HeadersAndFooters(Shown(footer) ? footer : null, Shown(footerLeft) ? footerLeft : null);
+            CountVerticalText([layout?.Element(Style + "page-layout-properties")]);
             var page = PageOf(layout, hasHeader, hasFooter);
             var master = new Master(page, ColumnsOf(layout?.Element(Style + "page-layout-properties"), page?.TextWidth),
                 headers, footers,

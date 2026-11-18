@@ -55,6 +55,7 @@ internal sealed partial class HwpxReader
         var blocks = new List<HBlock>();
         if (subList is null)
             return blocks;
+        CountVerticalText(subList);
         using var level = _budget.Enter();
         if (_depth >= Nesting.MaxDepth)
             return Nesting.PlainParagraphs(subList, "p", "t");
@@ -416,6 +417,16 @@ internal sealed partial class HwpxReader
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Counts text a section or paragraph list (cell, text box) writes top to bottom (textDirection VERTICAL /
+    /// VERTICALALL), which is set horizontally.
+    /// </summary>
+    private void CountVerticalText(XElement element)
+    {
+        if (Attr(element, "textDirection")?.StartsWith("VERT", StringComparison.Ordinal) == true)
+            _leftOut.Add(HLeftOutKind.VerticalText);
     }
 
     /// <summary>hp:t: text mixed with tabs, line breaks, special spaces, highlighter and change-tracking marks.</summary>

@@ -82,8 +82,11 @@ internal sealed partial class HwpxReader
                 break;
             case "ole" when _forLayout && OlePicture(element) is { } picture:
                 builder.Add(picture);
+                _leftOut.Add(HLeftOutKind.ObjectPictured);
                 break;
             default:
+                if (name switch { "ole" => HLeftOutKind.ObjectLeftOut, "chart" => HLeftOutKind.Chart, "video" => HLeftOutKind.Video, _ => (HLeftOutKind?)null } is { } leftOut)
+                    _leftOut.Add(leftOut);
                 Skip(element); // ole, chart, video, form controls, ...
                 break;
         }

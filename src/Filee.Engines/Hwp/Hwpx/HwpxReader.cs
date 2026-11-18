@@ -62,6 +62,9 @@ internal sealed partial class HwpxReader
     /// <summary>Elements the model cannot hold, by local name, with the number of times they were skipped.</summary>
     private readonly Dictionary<string, int> _skipped = new(StringComparer.Ordinal);
 
+    /// <summary>What the renderer draws only approximately or leaves out (<see cref="HDocument.LeftOut"/>).</summary>
+    private readonly HLeftOut _leftOut = new();
+
     private HwpxReader(DocumentPackage? package, string mediaFolder, bool forLayout, UnpackLimit? unpack = null)
     {
         _package = package;
@@ -165,6 +168,7 @@ internal sealed partial class HwpxReader
 
         var document = new HDocument
         {
+            LeftOut = _leftOut,
             Title = Descendants(package?.Root, "title").FirstOrDefault()?.Value is { } title && !string.IsNullOrWhiteSpace(title) ? title.Trim() : null,
         };
         foreach (var sectionPath in SectionPaths(package, items))
@@ -374,6 +378,7 @@ internal sealed partial class HwpxReader
         var secPr = Elements(p).Where(e => e.Name.LocalName == "run").SelectMany(Elements).FirstOrDefault(e => e.Name.LocalName == "secPr");
         if (secPr is not null)
         {
+            CountVerticalText(secPr);
             var section = state.Begin(Section(secPr));
             _outlineNumberingId = Attr(secPr, "outlineShapeIDRef");
             if (_forLayout)

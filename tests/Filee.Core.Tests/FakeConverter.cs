@@ -35,6 +35,9 @@ internal sealed class FakeConverter(string id, params ConversionEdge[] edges) : 
     /// <summary>A notice this test engine leaves on the file (<see cref="ConversionStep.Notice"/>), when set.</summary>
     public string? Notice { get; set; }
 
+    /// <summary>What this test engine says it left out of the document (<see cref="ConversionStep.LeftOut"/>), when set.</summary>
+    public LeftOutNotice? LeftOut { get; set; }
+
     /// <summary>Document fonts this test engine reports before writing.</summary>
     public IReadOnlyList<string> FontsToReport { get; set; } = [];
     public ConcurrentQueue<string?> OriginalSources { get; } = new();
@@ -56,6 +59,8 @@ internal sealed class FakeConverter(string id, params ConversionEdge[] edges) : 
             step.MissingFonts?.Invoke(FontsToReport);
         if (Notice is not null)
             step.Notice?.Invoke(Notice);
+        if (LeftOut is not null)
+            step.LeftOut?.Invoke(LeftOut);
 
         var written = new List<string>();
         for (var i = 0; i < OutputsPerInput; i++)
