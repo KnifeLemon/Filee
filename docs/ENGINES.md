@@ -1345,6 +1345,14 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     spans. Columns take the table's absolute widths, else its relative ones (columns without one share the rest), else
     equal shares; tables of other formats (a spreadsheet's columns) are scaled down to the text width when wider, 한글's
     keep the widths 한글 gave them.
+  - Word's column widths: the grid (`w:gridCol`), else the cells' preferred widths (`w:tcW`, a length or a share of the
+    table), else the content. Autofit tables (not `w:tblLayout fixed`) widen a column to its longest word (a cell
+    spanning columns widens them together) and the table to its preferred width (`w:tblW`, a length or a share of the
+    text column). A table wider than its room (from its indent to the column's edge, or its cell for a nested table,
+    which never overflows it) gives up first what its columns have beyond their widest line, then down to their longest
+    words. Cell margins nothing gives are Word's 0.19 cm at the sides. Not yet: the indent of Word 2010 and older
+    documents measured to the cell's text (the table sits a cell margin further left there), `w:tblCellSpacing`,
+    `w:gridBefore` / `w:gridAfter` widths.
   - Cells: padding (the cell's, the table's, else 한글's 1.8 × 0.5 mm), content laid out at the column width less it,
     nested tables included; lines on 한글's stored layout take their stored place in the cell. A row is as high as its
     own height or its tallest single-row cell, whose height is its content without the spacing below its last line (as

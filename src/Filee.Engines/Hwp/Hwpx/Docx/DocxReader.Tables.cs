@@ -1,8 +1,11 @@
 // DOCX tables: grid column widths, merged cells (gridSpan / vMerge), borders from the table style (with its header
 // row, banded rows ... formatting), the table and each cell, cell shading, cell margins, vertical alignment, row
 // heights, repeated header rows and rows that do not split across pages. The table style's paragraph and run
-// formatting reaches the text in the cells.
+// formatting reaches the text in the cells. What the layout sizes the columns by (HTableSizing): fixed or autofit
+// (w:tblLayout), the table's preferred width (w:tblW), the grid and each cell's preferred width (w:tcW); cell margins
+// none of the table, its style or the cell give are Word's 0.19 cm left and right, none at the top and bottom.
 
+using System.Globalization;
 using System.Xml.Linq;
 
 namespace Filee.Engines.Hwp.Hwpx.Docx;
@@ -17,7 +20,8 @@ internal sealed partial class DocxReader
         var style = _styles.GetValueOrDefault(Val(tblPr?.Element(W + "tblStyle")) ?? _defaultTableStyle ?? "");
         var styleChain = StyleChain(style);
 
-        var grid = tbl.Element(W + "tblGrid")?.Elements(W + "gridCol").Select(c => HwpxUnits.FromTwips(Twips(c, "w") ?? 0)).ToArray() ?? [];
+        var grid = tbl.Element(W + "tblGrid")?.Elements(W + "gridCol").Select(c => HwpxUnits.FromTwips(Math.Max(0, Twips(c, "w") ?? 0))).ToArray() ?? [];
+        var tableProperties = styleChain.Select(s => s.TblPr).Append(tblPr).OfType<XElement>().ToList();
         var table = new HTable
         {
             ColumnWidths = grid.Length > 0 && grid.All(w => w > 0) ? grid : null,
@@ -33,6 +37,10 @@ internal sealed partial class DocxReader
             // borders and margins name the start and the end side (the layout mirrors them).
             RightToLeft = styleChain.Select(s => s.TblPr).Append(tblPr).OfType<XElement>()
                 .Aggregate((bool?)null, (inherited, properties) => Toggle(properties, "bidiVisual") ?? inherited) == true,
+            Sizing = new HTableSizing(
+                tableProperties.Select(p => Attr(p.Element(W + "tblLayout"), "type")).LastOrDefault(t => t is not null) == "fixed",
+                tableProperties.Select(p => PreferredWidth(p.Element(W + "tblW"))).LastOrDefault(w => w is not null) ?? HPreferredWidth.Auto,
+                grid),
         };
 
         // Borders and cell margins: table style chain, then the table's own properties.
@@ -44,7 +52,8 @@ internal sealed partial class DocxReader
             if (properties?.Element(W + "tblCellMar") is { } cellMar)
                 margins = CellMargins(cellMar, margins);
         }
-        table.CellMargin = margins;
+        // Word's own cell margins where nothing gives them: 108 twips at the sides.
+        table.CellMargin = margins ?? WordCellMargin;
         table.Borders = HBorders.Empty;
 
         var rows = tbl.Elements().SelectMany(e => e.Name == W + "tr" ? [e] : FlattenRows(e)).ToList();
@@ -127,13 +136,14 @@ internal sealed partial class DocxReader
                 string? fill = null;
                 foreach (var properties in cellProperties)
                 {
-                    // Sides a cell leaves out keep the padding its neighbours get: the table's, else the HWPX default.
+                    // Sides a cell leaves out keep the padding its neighbours get: the table's, else Word's.
                     if (properties?.Element(W + "tcMar") is { } cellMar)
-                        cell.CellMargin = CellMargins(cellMar, cell.CellMargin ?? table.CellMargin ?? new HInsets(510, 510, 141, 141));
+                        cell.CellMargin = CellMargins(cellMar, cell.CellMargin ?? table.CellMargin);
                     if (properties?.Element(W + "shd") is { } shd)
                         fill = ShadingColor(shd) ?? fill;
                 }
                 cell.Borders = new HBorders(cellBorders["left"], cellBorders["right"], cellBorders["top"], cellBorders["bottom"]);
+                cell.Width = PreferredWidth(tcPr?.Element(W + "tcW"));
                 cell.Fill = fill;
 
                 if (vMerge is not null)
@@ -254,6 +264,35 @@ internal sealed partial class DocxReader
         var eighths = Twips(edge, "sz") ?? 4;
         var color = Attr(edge, "color") is { Length: 6 } hex ? "#" + hex.ToUpperInvariant() : "#000000";
         return new HBorder(style, eighths / 8.0 * 25.4 / 72, color);
+    }
+
+    /// <summary>Word's cell margins where neither the table, its style nor the cell gives them (HWPUNIT).</summary>
+    private static readonly HInsets WordCellMargin = new(HwpxUnits.FromTwips(108), HwpxUnits.FromTwips(108), 0, 0);
+
+    /// <summary>
+    /// A preferred width (ST_TblWidth: w:w and w:type): twips (dxa, the default), fiftieths of a percent or a percentage
+    /// with "%" (pct), auto; nil and a missing element give none (null). A zero length is auto.
+    /// </summary>
+    private static HPreferredWidth? PreferredWidth(XElement? element)
+    {
+        if (element is null)
+            return null;
+        switch (Attr(element, "type"))
+        {
+            case "nil":
+                return null;
+            case "auto":
+                return HPreferredWidth.Auto;
+            case "pct":
+                var raw = Attr(element, "w")?.Trim() ?? "";
+                var percent = raw.EndsWith('%');
+                if (!double.TryParse(percent ? raw[..^1] : raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !double.IsFinite(value) || value <= 0)
+                    return HPreferredWidth.Auto;
+                // At most ten times the width around it: a damaged file's share stays a number the layout can add up.
+                return new HPreferredWidth(HWidthType.Percent, Math.Min(10, percent ? value / 100 : value / 5000));
+            default:
+                return Twips(element, "w") is > 0 and var twips ? new HPreferredWidth(HWidthType.Absolute, HwpxUnits.FromTwips(twips)) : HPreferredWidth.Auto;
+        }
     }
 
     private static HInsets CellMargins(XElement cellMar, HInsets? current)

@@ -410,7 +410,15 @@ internal sealed class PageComposer
             {
                 _guard.Paragraph();
                 return Layout(composer.Resolve(p), width);
-            }, composer._styles is not null, () => Frame(_y))
+            }, composer._styles is not null, () => Frame(_y), p =>
+            {
+                // Word's autofit tables measure their cells' paragraphs first; a list item is measured with the number it
+                // will get, without counting it.
+                _guard.Paragraph();
+                var resolved = composer.Resolve(p);
+                var marker = resolved.List is { Numbered: true } list ? _numbers.Peek(list) : null;
+                return composer._layouter.ContentWidths(resolved, marker, FieldText, NoteText);
+            })
             {
                 WordCells = composer._styles is not null,
             };

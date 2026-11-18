@@ -362,7 +362,38 @@ internal sealed class HTable : HBlock
     /// <summary>How the table splits at the end of a page (한글 "쪽 경계에서"); null = the source does not say.</summary>
     public HTablePageBreak? PageBreak { get; set; }
 
+    /// <summary>
+    /// How Word sizes the columns (w:tblLayout, w:tblW, w:tblGrid with the cells' w:tcW); null = by
+    /// <see cref="ColumnWidths"/> / <see cref="RelativeWidths"/> as the other formats. Only the layout engine uses it.
+    /// </summary>
+    public HTableSizing? Sizing { get; set; }
+
     public List<HBlock> Caption { get; } = [];
+}
+
+/// <summary>A Word table's column sizing.</summary>
+/// <param name="Fixed">w:tblLayout fixed: the columns keep their widths whatever the cells hold; else Word's autofit.</param>
+/// <param name="Width">The table's preferred width (w:tblW).</param>
+/// <param name="Grid">The grid columns' widths (w:gridCol) in HWPUNIT, 0 where a column has none.</param>
+internal sealed record HTableSizing(bool Fixed, HPreferredWidth Width, int[] Grid);
+
+/// <summary>A preferred width as Word gives one (ST_TblWidth): a length, a share of the width around it, or none (auto).</summary>
+/// <param name="Value">HWPUNIT for <see cref="HWidthType.Absolute"/>, a fraction (1 = all) for <see cref="HWidthType.Percent"/>.</param>
+internal readonly record struct HPreferredWidth(HWidthType Type, double Value)
+{
+    public static readonly HPreferredWidth Auto = new(HWidthType.Auto, 0);
+}
+
+internal enum HWidthType
+{
+    /// <summary>No preference: the content decides.</summary>
+    Auto,
+
+    /// <summary>A length.</summary>
+    Absolute,
+
+    /// <summary>A share of the width the table (a cell) or the table's container (the table) has.</summary>
+    Percent,
 }
 
 internal sealed class HRow
@@ -392,6 +423,9 @@ internal sealed class HCell
     public HBorders? Borders { get; set; }
     /// <summary>Cell-specific padding; null inherits the table's padding.</summary>
     public HInsets? CellMargin { get; set; }
+
+    /// <summary>The cell's preferred width (Word w:tcW); null when it gives none. Only the layout engine uses it.</summary>
+    public HPreferredWidth? Width { get; set; }
     public List<HBlock> Blocks { get; } = [];
 }
 
