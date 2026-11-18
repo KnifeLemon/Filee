@@ -239,7 +239,7 @@
   "notice.geo_heights_dropped": "일부 점에 높이가 없는데 Shapefile은 점마다 비워 둘 수 없어서 높이를 모두 뺐어요",
   "notice.osm_incomplete": "파일에 없는 점을 쓰는 선과 영역이 있어서(잘라 낸 지역) 뺐어요",
   "notice.renderer_left_out": "Filee 렌더러가 이 문서를 다 그리지 못했어요: {0}",
-  "notice.renderer_left_out_libreoffice": "Filee 렌더러가 이 문서를 다 그리지 못했어요: {0}. 원본대로 받으려면 설정 → 변환 엔진에서 LibreOffice를 설치하세요",
+  "notice.renderer_left_out_libreoffice": "Filee 렌더러가 이 문서를 다 그리지 못했어요: {0}. 원본 그대로 변환하려면 설정 → 변환 엔진에서 LibreOffice를 설치하세요",
   "notice.renderer_left_out.separator": ", ",
   "notice.renderer_left_out.charts": "차트 {0}개 빠짐",
   "notice.renderer_left_out.charts_one": "차트 1개 빠짐",
