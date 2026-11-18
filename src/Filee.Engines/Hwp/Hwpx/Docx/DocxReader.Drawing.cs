@@ -14,6 +14,8 @@ internal sealed partial class DocxReader
     private static readonly XNamespace W10 = "urn:schemas-microsoft-com:office:word";
     private static readonly XNamespace O = "urn:schemas-microsoft-com:office:office";
     private static readonly XNamespace W14 = "http://schemas.microsoft.com/office/word/2010/wordml";
+    private static readonly XNamespace Chart = "http://schemas.openxmlformats.org/drawingml/2006/chart";
+    private static readonly XNamespace Dgm = "http://schemas.openxmlformats.org/drawingml/2006/diagram";
 
     /// <summary>Default DrawingML text box insets: 0.1" left/right, 0.05" top/bottom.</summary>
     private static readonly HInsets DefaultTextBoxPadding = new(720, 720, 360, 360);
@@ -80,6 +82,15 @@ internal sealed partial class DocxReader
             {
                 foreach (var inline in Group(obj, width, height, anchor, groupTransform))
                     yield return inline;
+            }
+            // Charts and SmartArt have no picture in the document part to fall back on: the renderer says so.
+            else if (obj.Name == Chart + "chart")
+            {
+                _leftOut.Add(HLeftOutKind.Chart);
+            }
+            else if (obj.Name == Dgm + "relIds")
+            {
+                _leftOut.Add(HLeftOutKind.SmartArt);
             }
         }
     }

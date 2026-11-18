@@ -15,6 +15,11 @@
 // it would take without the engine (JobQueue). An HWP is looked through as the HWPX package it becomes; a deck by
 // SlideCapabilities (charts, effects, ...). Pictures of document pages go on from the PDF through PDFium, which applies
 // the image options; pictures of slides are drawn directly, with the image options applied here.
+//
+// A document the engine converts anyway (no other route, or the user's choice) says what it left out: the readers count
+// what they meet that the engine can't draw (HDocument.LeftOut: charts, embedded objects drawn from their saved
+// pictures or left out, vertical text, ...) and the file's result names each kind once, with LibreOffice to install
+// when it would draw a Word or OpenDocument file faithfully (LeftOutNotice).
 
 using System.Text;
 using System.Text.RegularExpressions;
@@ -268,9 +273,44 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         if (target is null)
             return [];
         await File.WriteAllBytesAsync(target, pdf, cancellationToken);
+        if (LeftOutNotice(document, step.From) is { } leftOut)
+            step.LeftOut?.Invoke(leftOut);
         progress?.Report(1);
         return [target];
     }
+
+    /// <summary>Formats whose files no optional engine draws better: LibreOffice doesn't read HWPX, nor HWP faithfully.</summary>
+    private static readonly HashSet<string> HangulFormats = new(StringComparer.OrdinalIgnoreCase) { "hwp", "hwpx" };
+
+    /// <summary>
+    /// What the readers met in <paramref name="document"/> that this engine draws only approximately or leaves out, as
+    /// the file's note: each kind once with its count, LibreOffice to install when it isn't there and reads the format;
+    /// null when it drew everything.
+    /// </summary>
+    internal LeftOutNotice? LeftOutNotice(HDocument document, string format)
+    {
+        if (document.LeftOut.IsEmpty)
+            return null;
+        var parts = document.LeftOut.Kinds
+            .Select(kind => new LeftOutPart(LeftOutKey(kind.Kind), kind.Kind == HLeftOutKind.VerticalText ? 0 : kind.Count))
+            .ToList();
+        var key = !HangulFormats.Contains(format) && !(_libreOffice ??= _findLibreOffice())
+            ? "notice.renderer_left_out_libreoffice"
+            : "notice.renderer_left_out";
+        return new LeftOutNotice(key, parts);
+    }
+
+    private static string LeftOutKey(HLeftOutKind kind) => "notice.renderer_left_out." + kind switch
+    {
+        HLeftOutKind.Chart => "charts",
+        HLeftOutKind.SmartArt => "smartart",
+        HLeftOutKind.ObjectLeftOut => "objects",
+        HLeftOutKind.FormControl => "form_controls",
+        HLeftOutKind.Video => "videos",
+        HLeftOutKind.ObjectPictured => "objects_pictured",
+        HLeftOutKind.FormulaAsText => "formulas",
+        _ => "vertical_text",
+    };
 
     /// <summary>A deck → one PDF, or a picture per slide (the PDF options' page range and resolution, then the image options).</summary>
     private static async Task<IReadOnlyList<string>> ConvertSlidesAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)

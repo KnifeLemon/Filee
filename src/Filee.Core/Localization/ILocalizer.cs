@@ -25,20 +25,52 @@ public interface ILocalizer
 /// <summary>Helpers that resolve user-facing names of presets and profiles.</summary>
 public static class LocalizerExtensions
 {
+    /// <summary>Kinds named in a <see cref="Conversion.LeftOutNotice"/> at most; more end the list with "and more".</summary>
+    public const int MaxLeftOutParts = 4;
+
     /// <summary>
     /// A file's notice with why in brackets, the reason translated and the system's own words after it:
-    /// "The original was kept… (the file is open in another program)". A picture under the preset's minimum size adds
-    /// its own sentence, or is the notice on its own (<see cref="Conversion.FileResult.UnderMinimumSize"/>, #662).
+    /// "The original was kept… (the file is open in another program)". What the engine left out of a document
+    /// (<see cref="Conversion.FileResult.LeftOut"/>) and a picture under the preset's minimum size
+    /// (<see cref="Conversion.FileResult.UnderMinimumSize"/>, #662) each add their own sentence, or are the notice on
+    /// their own.
     /// </summary>
     public static string Notice(this ILocalizer loc, Conversion.FileResult file)
     {
-        if (file.NoticeKey is null)
-            return file.UnderMinimumSize ? loc["notice.under_min_size"] : string.Empty;
-        var why = file.NoticeReasonKey is { } key ? loc[key] : null;
-        if (!string.IsNullOrWhiteSpace(file.NoticeDetail))
-            why = why is null ? file.NoticeDetail : $"{why}: {file.NoticeDetail}";
-        var notice = why is null ? loc[file.NoticeKey] : $"{loc[file.NoticeKey]} ({why})";
-        return file.UnderMinimumSize ? loc.Format("notice.with_under_min_size", notice, loc["notice.under_min_size"]) : notice;
+        string? notice = null;
+        if (file.NoticeKey is not null)
+        {
+            var why = file.NoticeReasonKey is { } key ? loc[key] : null;
+            if (!string.IsNullOrWhiteSpace(file.NoticeDetail))
+                why = why is null ? file.NoticeDetail : $"{why}: {file.NoticeDetail}";
+            notice = why is null ? loc[file.NoticeKey] : $"{loc[file.NoticeKey]} ({why})";
+        }
+        if (file.LeftOut is { } leftOut)
+            notice = And(notice, loc.LeftOut(leftOut));
+        if (file.UnderMinimumSize)
+            notice = And(notice, loc["notice.under_min_size"]);
+        return notice ?? string.Empty;
+
+        string And(string? first, string next) => first is null ? next : loc.Format("notice.with_under_min_size", first, next);
+    }
+
+    /// <summary>
+    /// What an engine left out of a document, in its sentence: "The Filee renderer couldn't draw all of this document:
+    /// 2 charts left out, vertical text set horizontally". Each kind once, at most <see cref="MaxLeftOutParts"/>.
+    /// </summary>
+    public static string LeftOut(this ILocalizer loc, Conversion.LeftOutNotice notice)
+    {
+        var separator = loc["notice.renderer_left_out.separator"];
+        var parts = notice.Parts.Take(MaxLeftOutParts).Select(part => part.Count switch
+        {
+            <= 0 => loc[part.Key],
+            1 => loc[part.Key + "_one"],
+            var count => loc.Format(part.Key, count),
+        });
+        var list = string.Join(separator, parts);
+        if (notice.Parts.Count > MaxLeftOutParts)
+            list += separator + loc["notice.renderer_left_out.more"];
+        return loc.Format(notice.Key, list);
     }
 
     public static string DisplayName(this ILocalizer loc, Preset preset) =>

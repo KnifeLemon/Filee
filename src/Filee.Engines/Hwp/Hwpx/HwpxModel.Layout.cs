@@ -431,3 +431,55 @@ internal enum HArcKind
     /// <summary>Closed by a straight line between the ends.</summary>
     Chord,
 }
+
+// ───────────────────────── What the renderer can't draw ─────────────────────────
+
+/// <summary>
+/// A kind of thing in a document that the reader met and Filee's renderer draws only approximately or not at all; the
+/// order is the order the renderer's note names them in (left out first).
+/// </summary>
+internal enum HLeftOutKind
+{
+    /// <summary>A chart (DOCX c:chart, HWPX hp:chart): nothing of it is drawn.</summary>
+    Chart,
+
+    /// <summary>SmartArt (DOCX dgm:relIds): nothing of it is drawn.</summary>
+    SmartArt,
+
+    /// <summary>An embedded (OLE or ODF) object without a saved picture to draw.</summary>
+    ObjectLeftOut,
+
+    /// <summary>A form control the reader doesn't draw (ODT draw:control).</summary>
+    FormControl,
+
+    /// <summary>A video (HWPX hp:video).</summary>
+    Video,
+
+    /// <summary>An embedded object drawn from the picture its program saved with it (an OLE preview, an ODF replacement).</summary>
+    ObjectPictured,
+
+    /// <summary>An ODF formula object written as its formula text.</summary>
+    FormulaAsText,
+
+    /// <summary>Vertical text (a table cell, text box or section written top to bottom), set horizontally. Not counted.</summary>
+    VerticalText,
+}
+
+/// <summary>
+/// How many of each <see cref="HLeftOutKind"/> a reader met, so the renderer can say what it left out without looking
+/// through the file again (see <see cref="HDocument.LeftOut"/>).
+/// </summary>
+internal sealed class HLeftOut
+{
+    private readonly Dictionary<HLeftOutKind, int> _counts = [];
+
+    public void Add(HLeftOutKind kind) => _counts[kind] = _counts.GetValueOrDefault(kind) + 1;
+
+    public int this[HLeftOutKind kind] => _counts.GetValueOrDefault(kind);
+
+    public bool IsEmpty => _counts.Count == 0;
+
+    /// <summary>Each kind met, with its count, in the enum's order.</summary>
+    public IEnumerable<(HLeftOutKind Kind, int Count)> Kinds =>
+        _counts.OrderBy(pair => pair.Key).Select(pair => (pair.Key, pair.Value));
+}

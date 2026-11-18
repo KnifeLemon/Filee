@@ -186,6 +186,7 @@ internal sealed partial class OdtReader
         if (++_cells > _budget.Limits.MaxParagraphs)
             throw DocumentLimits.Exceeded($"The document has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} table cells.");
         var props = Chain("table-cell", Attr(element, Table + "style-name")).Select(s => s.Element(Style + "table-cell-properties")).ToList();
+        CountVerticalText(props);
         var fill = Inherited(props, Fo + "background-color");
         var cell = new HCell
         {
@@ -333,8 +334,18 @@ internal sealed partial class OdtReader
                 foreach (var child in element.Elements())
                     result.AddRange(Objects(child, text, groupAnchor));
                 break;
+            case "control":
+                _document.LeftOut.Add(HLeftOutKind.FormControl);
+                break;
         }
         return result;
+    }
+
+    /// <summary>Counts text a cell, page or text box writes top to bottom (style:writing-mode tb-rl / tb-lr), which is set horizontally.</summary>
+    private void CountVerticalText(IEnumerable<XElement?> chain)
+    {
+        if (Inherited(chain, Style + "writing-mode")?.StartsWith("tb", StringComparison.Ordinal) == true)
+            _document.LeftOut.Add(HLeftOutKind.VerticalText);
     }
 
     /// <summary>The graphic properties of an object's style and its parents; with the default style for shapes.</summary>
@@ -354,6 +365,7 @@ internal sealed partial class OdtReader
 
         if (frame.Element(Draw + "text-box") is { } content)
         {
+            CountVerticalText(all);
             var box = new HTextBox
             {
                 Width = Size(width ?? Length(Attr(content, Fo + "min-width"))),
@@ -369,10 +381,14 @@ internal sealed partial class OdtReader
             TextBoxContent(content, box.Blocks);
             return box;
         }
+        // An embedded object (a chart, a formula, an OLE object) is drawn from the picture its program saved beside it.
+        var embedded = frame.Element(Draw + "object") ?? frame.Element(Draw + "object-ole");
         foreach (var image in frame.Elements(Draw + "image"))
         {
             if (Picture(image) is { } path)
             {
+                if (embedded is not null)
+                    _document.LeftOut.Add(HLeftOutKind.ObjectPictured);
                 return new HImage(path)
                 {
                     Width = width is > 0 ? width : null,
@@ -385,8 +401,13 @@ internal sealed partial class OdtReader
                 };
             }
         }
-        if (frame.Element(Draw + "object") is { } embedded && Formula(embedded) is { Length: > 0 } formula)
+        if (embedded is not null && embedded.Name == Draw + "object" && Formula(embedded) is { Length: > 0 } formula)
+        {
+            _document.LeftOut.Add(HLeftOutKind.FormulaAsText);
             return new HText(formula, CharFormat(text) with { Italic = true });
+        }
+        if (embedded is not null)
+            _document.LeftOut.Add(HLeftOutKind.ObjectLeftOut);
         return null;
     }
 

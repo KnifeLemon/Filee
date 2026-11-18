@@ -79,6 +79,7 @@ internal sealed partial class DocxReader
             foreach (var tc in tr.Elements().SelectMany(e => e.Name == W + "tc" ? [e] : FlattenCells(e)))
             {
                 var tcPr = tc.Element(W + "tcPr");
+                CountVerticalText(tcPr);
                 var span = Math.Clamp(Twips(tcPr?.Element(W + "gridSpan"), "val") ?? 1, 1, maxColumns);
                 var vMerge = tcPr?.Element(W + "vMerge");
                 var cellConditions = conditions(r, column, span);

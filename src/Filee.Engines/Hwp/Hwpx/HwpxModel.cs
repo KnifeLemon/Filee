@@ -27,6 +27,12 @@ internal sealed class HDocument
 
     /// <summary>Custom East Asian line breaking characters (Word settings), by language; empty = the usual rules.</summary>
     public List<HKinsoku> Kinsoku { get; } = [];
+
+    /// <summary>
+    /// What the reader met that the renderer draws only approximately or leaves out (charts, embedded objects,
+    /// vertical text …), counted as it read; the writers ignore it.
+    /// </summary>
+    public HLeftOut LeftOut { get; set; } = new();
 }
 
 /// <summary>A run of pages sharing page setup, headers and footers (한글 "구역").</summary>
