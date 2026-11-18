@@ -331,6 +331,20 @@ internal static class Cli
             }
             preset.Archive.IsoFileSystem = filesystem;
         }
+        if (options.IsoLabel is { } label)
+        {
+            if (preset.TargetFormat != "iso")
+            {
+                errors.WriteLine("filee: --iso-label requires an ISO target.");
+                return null;
+            }
+            preset.Archive.IsoVolumeLabel = label;
+        }
+        if (preset.TargetFormat == "iso" && IsoVolumeLabels.ErrorKey(preset.Archive.IsoVolumeLabel, preset.Archive.IsoFileSystem) is { } labelError)
+        {
+            errors.WriteLine("filee: " + host.Texts[labelError]);
+            return null;
+        }
         // The command line never moves an original to the Trash, whatever the saved preset says (#1387).
         preset.Output.TrashOriginalAfterConvert = false;
         if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model))

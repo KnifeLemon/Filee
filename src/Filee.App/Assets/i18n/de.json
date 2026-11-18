@@ -1156,6 +1156,9 @@
   "presets.audio_codec.alac": "ALAC (verlustfrei)",
   "presets.group.archive": "Archiv",
   "presets.iso_filesystem": "ISO-Dateisystem",
+  "presets.iso_label": "Datenträgerbezeichnung",
+
+  "presets.iso_label_hint": "Leer verwendet den Ordner- oder Archivnamen. Joliet: bis zu 16 BMP-Unicode-Zeichen, Groß-/Kleinschreibung und Bindestriche bleiben erhalten. UDF: 30 Latin-1-Zeichen oder 15 UTF-16-Einheiten.",
   "presets.archive_level": "Komprimierung",
   "presets.archive_level.Store": "Keine (nur speichern)",
   "presets.archive_level.Fast": "Schnell",
@@ -1797,6 +1800,8 @@
   "error.iso_root": "ISO-Abbilder können nicht aus Laufwerks- oder Dateisystemwurzeln erstellt werden. Wählen Sie stattdessen einen Unterordner.",
   "error.iso_link": "Beim Erstellen von ISO-Abbildern werden symbolische Links und Verzeichnisverknüpfungen nicht verfolgt. Wählen Sie einen Originalordner ohne verknüpfte Einträge.",
   "error.iso_name": "Joliet-Namen dürfen höchstens 62 Unicode-BMP-Zeichen und keine Steuerzeichen, Semikolons oder umgekehrten Schrägstriche sowie *, : oder ? enthalten. Relative Pfade dürfen höchstens 240 Zeichen lang sein. Für längere Namen oder größere Dateien im Preset unter ISO-Dateisystem UDF 2.01 auswählen.",
+
+  "error.iso_label": "Ungültige ISO-Bezeichnung. Joliet: bis zu 16 BMP-Unicode-Zeichen, ohne * / : ; ? und Rückstrich. UDF: 30 Latin-1-Zeichen oder 15 UTF-16-Einheiten. Keine Steuerzeichen oder führenden/nachgestellten Leerzeichen.",
   "error.iso_file_size": "Beim Erstellen von ISO-Abbildern muss jede einzelne Datei kleiner als 4 GiB sein. Für längere Namen oder größere Dateien im Preset unter ISO-Dateisystem UDF 2.01 auswählen.",
   "error.iso_udf_name": "UDF-Namen müssen gültiges Unicode sein, dürfen keine Schrägstriche, Rückstriche oder Nullzeichen enthalten und nicht . oder .. sein. Die Grenze beträgt 254 Latin-1-Zeichen oder 127 UTF-16-Einheiten, sobald ein Zeichen außerhalb von Latin-1 vorkommt.",
   "error.iso_changed": "Die ISO-Erstellung wurde beendet, bevor alle Daten geschrieben waren. Eine Quelldatei könnte während der Konvertierung verändert worden sein.",

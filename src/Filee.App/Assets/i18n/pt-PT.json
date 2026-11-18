@@ -1171,6 +1171,9 @@
   "presets.audio_codec.alac": "ALAC (sem perdas)",
   "presets.group.archive": "Ficheiro comprimido",
   "presets.iso_filesystem": "Sistema de ficheiros ISO",
+  "presets.iso_label": "Nome do volume",
+
+  "presets.iso_label_hint": "Vazio usa o nome da pasta ou arquivo. Joliet: até 16 carateres Unicode BMP, preservando maiúsculas e hífenes. UDF: 30 carateres Latin-1 ou 15 unidades UTF-16.",
   "presets.archive_level": "Compressão",
   "presets.archive_level.Store": "Nenhuma (apenas guardar)",
   "presets.archive_level.Fast": "Rápida",
@@ -1819,6 +1822,8 @@
   "error.iso_root": "Não é possível criar uma ISO a partir da raiz de uma unidade ou sistema de ficheiros. Selecione uma pasta dentro da unidade.",
   "error.iso_link": "A criação de ISO não segue ligações simbólicas nem junções. Selecione uma pasta original sem itens ligados.",
   "error.iso_name": "Os nomes Joliet devem ter, no máximo, 62 carateres Unicode BMP, sem carateres de controlo, pontos e vírgulas ou barras invertidas, *, : ou ?. Os caminhos relativos devem ter, no máximo, 240 carateres. Para nomes mais longos ou ficheiros maiores, selecione UDF 2.01 na opção de sistema de ficheiros ISO da predefinição.",
+
+  "error.iso_label": "Nome ISO inválido. Joliet: até 16 carateres Unicode BMP, sem * / : ; ? nem barra invertida. UDF: 30 carateres Latin-1 ou 15 unidades UTF-16. Sem controlos nem espaços no início ou fim.",
   "error.iso_file_size": "Para criar uma ISO, cada ficheiro deve ter menos de 4 GiB. Para nomes mais longos ou ficheiros maiores, selecione UDF 2.01 na opção de sistema de ficheiros ISO da predefinição.",
   "error.iso_udf_name": "Os nomes UDF devem ser Unicode válido, sem barras, barras invertidas ou carateres nulos, e não podem ser . ou ... O limite é de 254 carateres Latin-1, ou 127 unidades UTF-16 se houver algum caráter fora de Latin-1.",
   "error.iso_changed": "A criação de ISO parou antes de escrever todos os dados. Um ficheiro de origem pode ter sido alterado durante a conversão.",
