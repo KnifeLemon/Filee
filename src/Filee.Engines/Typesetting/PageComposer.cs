@@ -86,6 +86,8 @@ internal sealed class PageComposer
     /// <summary>The document's pages.</summary>
     public ComposedDocument Compose(HDocument document, CancellationToken cancellationToken = default)
     {
+        _layouter.FontAlternates = document.FontAlternates;
+        _layouter.DefaultTabStop = document.DefaultTabStop;
         // The body's total pages fields need the count first: a first pass finds it.
         int? total = null;
         if (document.Sections.Any(s => Fields(s.Blocks).Any(f => f.Kind == HFieldKind.TotalPages)))
@@ -564,7 +566,15 @@ internal sealed class PageComposer
             // Filee's rows are not 한글's unless the table is as high as 한글's (its line for it, else its stored size);
             // else the stored places hold again on 한글's next page.
             _inStep = _inStep && TableLayout.AsStored(table, box.Height, line);
-            var x = box.Offset + margin.Left / 100f;
+            // A table set as a character is centred or set right with its outer margins, like a character that wide.
+            var x = box.Offset + (table.AsCharacter && !table.RightToLeft
+                ? table.Align switch
+                {
+                    HAlign.Center => (margin.Left - margin.Right) / 2f,
+                    HAlign.Right => -margin.Right,
+                    _ => margin.Left,
+                }
+                : margin.Left) / 100f;
             var header = box.Rows.Take(box.HeaderRows).ToList();
             // A table that must not split goes to the next column whole when it fits in one.
             if (box.PageBreak == HTablePageBreak.None && !_columnEmpty && _y + box.Height > Bottom + Epsilon && box.Height <= ColumnHeight)

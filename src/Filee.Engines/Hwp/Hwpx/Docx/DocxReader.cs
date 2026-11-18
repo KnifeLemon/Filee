@@ -227,6 +227,9 @@ internal sealed partial class DocxReader
 
         var document = new HDocument { Title = Title() };
         Kinsoku(settings, document);
+        FontAlternates(RelatedPart(main, "/fontTable")?.Xml.Root, document);
+        // Word's default tab stops: every half inch unless the settings say otherwise.
+        document.DefaultTabStop = HwpxUnits.FromTwips(Twips(settings?.Element(W + "defaultTabStop"), "val") is > 0 and var interval ? interval : 720);
         var body = main.Xml.Root?.Element(W + "body") ?? throw new InvalidDataException("word/document.xml has no body.");
 
         // A section ends with the paragraph whose properties hold its sectPr; the last one is the body's own sectPr.
@@ -476,6 +479,17 @@ internal sealed partial class DocxReader
         }
         foreach (var (language, (start, end)) in rules)
             document.Kinsoku.Add(new HKinsoku(language.Length > 0 ? language : null, start, end));
+    }
+
+    /// <summary>The font table's other names (w:altName), which Word draws with when a font is not installed.</summary>
+    private static void FontAlternates(XElement? fonts, HDocument document)
+    {
+        foreach (var font in fonts?.Elements(W + "font") ?? [])
+        {
+            if (Attr(font, "name")?.Trim() is { Length: > 0 } name && Val(font.Element(W + "altName"))?.Trim() is { Length: > 0 } alternate
+                && !alternate.Equals(name, StringComparison.OrdinalIgnoreCase))
+                document.FontAlternates.TryAdd(name, alternate);
+        }
     }
 
     /// <summary>Style and contextual-spacing flag of the paragraphs read so far, to compare a paragraph with the one before it.</summary>
