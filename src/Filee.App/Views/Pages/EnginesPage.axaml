@@ -186,11 +186,11 @@
                       </Button>
                       <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_up}" AutomationProperties.Name="{DynamicResource engines.move_up}"
                               Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}">
-                        <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
+                        <PathIcon Width="16" Height="16" Data="{StaticResource Icon.ChevronUp}" />
                       </Button>
                       <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_down}" AutomationProperties.Name="{DynamicResource engines.move_down}"
                               Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}">
-                        <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
+                        <PathIcon Width="16" Height="16" Data="{StaticResource Icon.ChevronDown}" />
                       </Button>
                     </StackPanel>
                     <!-- The grab handle: only here (not on the rest of the card or its arrows) the pointer is the move cursor. The
