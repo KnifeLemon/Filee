@@ -16,8 +16,7 @@ internal static class Help
         "watch" => Watch,
         "formats" => "Usage: filee formats [<format>] [--json]\n\nLists every format, or what one format converts to.\n" +
                      "With --json, prints the same as JSON (for scripts and other programs).\n",
-        "presets" => "Usage: filee presets [--json]\n\nLists the presets saved in Filee (built-in and your own).\n" +
-                     "With --json, prints the same as JSON (for scripts and other programs).\n",
+        "presets" => Presets,
         "engines" => Engines,
         _ => General,
     };
@@ -31,6 +30,7 @@ internal static class Help
           filee watch <folder> --to <format> [options]
           filee formats [<format>] [--json]
           filee presets [--json]
+          filee presets check <folder> [--json]
           filee engines [--json]
           filee engines (install | remove) <engine> [--json]
           filee engines download <engine> -o <folder> [--json]
@@ -38,6 +38,7 @@ internal static class Help
           filee version
 
         Examples:
+          filee convert folder --to iso --iso-filesystem udf201
           filee convert photo.heic --to jpg
           filee convert *.png --to webp --quality 80 -o converted
           filee convert D:\Scans --recursive --preset to-pdf
@@ -47,6 +48,32 @@ internal static class Help
         Presets and engines are the ones in the Filee app. Exit codes: 0 nothing failed (skipped
         files included), 1 some failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to
         convert.
+
+        """;
+
+    private const string Presets = """
+        Usage: filee presets [--json]
+               filee presets check <folder> [--json] [--quiet]
+
+        Lists the presets saved in Filee (built-in and your own). With --json, prints the same as JSON (for scripts
+        and other programs).
+
+        'check' checks a shared preset for the preset gallery: a folder with preset.json (what Settings → General →
+        Export writes, with at most 20 presets and one donut), meta.json (optional) and 1 to 4 pictures in images/
+        (1.png … 4.webp; PNG, JPEG or WebP, 640 to 2,560 pixels on the long edge, at most 2 MB, not animated).
+        Only fields on the gallery's list may be in preset.json, and nothing that runs a program or carries a folder
+        of one's own, a password, a path, a link or personal metadata (names, places, copyright owners). Settings that
+        touch the installer's files (replacing or moving originals, overwriting, metadata) pass with a warning. It reads
+        nothing else and changes nothing.
+        Exit codes: 0 the preset may be shared, 1 it has problems, 2 the folder doesn't exist.
+
+        Options:
+              --json             Print the result as JSON: "ok", "errors" (each with "code", "file", "path" and
+                                 "message") and "derived" (what the preset is: "kinds", "formats" with "from" and
+                                 "to", "minVersion", the number of "presets" and "profiles", the "sha256" of
+                                 preset.json and "warnings", each with "code", "severity" (high, medium or info),
+                                 "message" and the "presets" that have it)
+              --quiet            Print nothing when the preset passes
 
         """;
 
@@ -82,8 +109,11 @@ internal static class Help
         Files can be wildcards (*.heic). Folders convert the files in them that Filee knows.
 
         Options:
-          -t, --to <format>      Target format, e.g. jpg, png, pdf, docx, mp4 (see 'filee formats')
+          -t, --to <format>      Target format, e.g. jpg, png, pdf, docx, mp4 (see 'filee formats'); same-audio
+                                 takes a video's sound out as it is (AAC → M4A, Opus → OPUS, DTS → MKA, …)
           -p, --preset <preset>  A preset from the app, by id or name (see 'filee presets')
+              --iso-filesystem <joliet|udf201>
+                                 ISO filesystem; an explicit choice overrides the preset (default: Joliet).
           -o, --output <folder>  Save there instead of next to the sources
           -r, --recursive        Include sub folders
               --sort <order>     The order files merge in: name, name-desc, modified, modified-desc, created or
@@ -116,7 +146,7 @@ internal static class Help
         longer growing or open in another program). Output goes to a "converted" folder inside it unless -o is given.
 
         Options:
-          -t, --to <format>      Target format
+          -t, --to <format>      Target format, or same-audio (a video's sound as it is)
           -p, --preset <preset>  A preset from the app, by id or name
           -o, --output <folder>  Where converted files go (default: <folder>\converted)
           -r, --recursive        Also watch sub folders (their files keep the sub folder in the output)

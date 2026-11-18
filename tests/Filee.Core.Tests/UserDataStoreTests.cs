@@ -1586,10 +1586,10 @@ public partial class UserDataStoreTests
     [InlineData("""["magick", "rhwp", "unhwp", "markdown", "hwpx-writer", "libreoffice"]""", new[] { "magick", "rhwp", "hwp-text", "markdown", "hwpx-writer", "libreoffice" })]
     [InlineData("""["unhwp", "magick", "hwp-text", "libreoffice"]""", new[] { "magick", "hwp-text", "libreoffice" })]
     [InlineData("""["magick", "libreoffice"]""", new[] { "magick", "libreoffice" })]
-    public void Version_94_settings_put_the_built_in_hwp_text_engine_where_unhwp_was(string order, string[] expected)
+    public void Version_99_settings_put_the_built_in_hwp_text_engine_where_unhwp_was(string order, string[] expected)
     {
         using var dir = new TempDir();
-        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), $$"""{ "schemaVersion": 94, "enginePriority": {{order}} }""");
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), $$"""{ "schemaVersion": 99, "enginePriority": {{order}} }""");
 
         var store = new UserDataStore(dir.Path);
         store.Load();
@@ -1602,12 +1602,12 @@ public partial class UserDataStoreTests
     [InlineData(true, false)]
     [InlineData(false, false)]
     [InlineData(false, true)]
-    public void Version_95_settings_drop_libreoffice_for_hwp_and_end_with_the_filee_renderer_on(bool libreOfficeForHwp, bool renderer)
+    public void Version_100_settings_drop_libreoffice_for_hwp_and_end_with_the_filee_renderer_on(bool libreOfficeForHwp, bool renderer)
     {
-        // v96 turned the renderer on for whoever sent HWP through LibreOffice; v97 turns it on for everyone.
+        // v101 turned the renderer on for whoever sent HWP through LibreOffice; v102 turns it on for everyone.
         using var dir = new TempDir();
         File.WriteAllText(Path.Combine(dir.Path, "settings.json"),
-            $$"""{ "schemaVersion": 95, "libreOfficeForHwp": {{(libreOfficeForHwp ? "true" : "false")}}, "fileeRenderer": {{(renderer ? "true" : "false")}} }""");
+            $$"""{ "schemaVersion": 100, "libreOfficeForHwp": {{(libreOfficeForHwp ? "true" : "false")}}, "fileeRenderer": {{(renderer ? "true" : "false")}} }""");
 
         var store = new UserDataStore(dir.Path);
         store.Load();
@@ -1619,13 +1619,13 @@ public partial class UserDataStoreTests
     }
 
     [Theory]
-    [InlineData(94)] // main's last schema: no renderer switch in the file
-    [InlineData(96)] // built-in engines builds: the renderer a preview, off unless turned on
-    public void Settings_before_97_turn_the_filee_renderer_on_and_libreoffice_for_presentations_off_once(int schema)
+    [InlineData(99)] // main's last schema: no renderer switch in the file
+    [InlineData(101)] // built-in engines builds: the renderer a preview, off unless turned on
+    public void Settings_before_102_turn_the_filee_renderer_on_and_libreoffice_for_presentations_off_once(int schema)
     {
         using var dir = new TempDir();
         var path = Path.Combine(dir.Path, "settings.json");
-        var renderer = schema >= 95 ? """, "fileeRenderer": false""" : "";
+        var renderer = schema >= 100 ? """, "fileeRenderer": false""" : "";
         File.WriteAllText(path,
             $$"""{ "schemaVersion": {{schema}}, "libreOfficeForSlides": true, "libreOfficeForDocuments": true, "libreOfficeForSheets": false{{renderer}} }""");
 

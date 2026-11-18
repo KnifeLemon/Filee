@@ -5,6 +5,8 @@
 // source, or a failed download opens a download page instead. The check works in every build.
 // An official build also carries the public half of Filee's update key: the SHA256SUMS file must then be signed with
 // it (UpdateSignature), on every platform, and a Windows installer must come from the publisher the build names.
+// The Windows files are also on Filee's download mirror (dl.filee.sh): a file GitHub doesn't hand out is taken from
+// there and checked the same way (#1593).
 
 using System.ComponentModel;
 using System.Diagnostics;
@@ -13,6 +15,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -62,6 +65,18 @@ public sealed partial class UpdateService : ObservableObject
     private ReleaseFile? _installer;
     private ReleaseFile? _checksums;
 
+    /// <summary>GitHub failed for a file of this update: the next ones are tried on the mirror first.</summary>
+    private bool _mirrorFirst;
+
+    /// <summary>
+    /// Filee's copy of every Windows release file since 2.4.1 (Cloudflare R2), at &lt;version&gt;/&lt;file name&gt; with
+    /// GitHub's file names (build/sign-release.ps1 puts them there). GitHub's download links redirect to another
+    /// server, which some networks can't reach in time (#1593). Whatever comes from here is checked exactly like
+    /// GitHub's file: the signed SHA256SUMS, the installer's SHA-256 and its publisher. Linux and macOS files aren't
+    /// copied there.
+    /// </summary>
+    internal const string MirrorRoot = "https://dl.filee.sh/";
+
     public UpdateService(ILogger<UpdateService> log) : this(log, new HttpClientHandler())
     {
     }
@@ -70,7 +85,9 @@ public sealed partial class UpdateService : ObservableObject
     internal UpdateService(ILogger<UpdateService> log, HttpMessageHandler handler)
     {
         _log = log;
-        // Downloads use their own stall timeout (StallTimeout); this one covers the API call and the response headers.
+        // Downloads use their own stall timeout (StallTimeout); this one covers the API call, the response headers and
+        // the small files (SHA256SUMS and its signature, a few hundred bytes). Waiting longer for those doesn't help: one
+        // that hasn't come in 20 s is stuck, and the mirror is tried instead (FetchAsync).
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Filee", CurrentVersion));
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
@@ -132,13 +149,24 @@ public sealed partial class UpdateService : ObservableObject
             var arch => throw new PlatformNotSupportedException($"Unsupported Linux architecture: {arch}"),
         };
 
-    /// <summary>Target platform for release assets ("win", "linux-x64", "linux-arm64"). Tests can override this.</summary>
+    /// <summary>
+    /// The Windows release files for a process of <paramref name="architecture"/>: "win-arm64" for the native ARM64
+    /// build, "win" (the x64 files) otherwise. It is the process, not the PC: the x64 build on Windows on ARM keeps
+    /// updating to the x64 build it is.
+    /// </summary>
+    internal static string GetWindowsTarget(Architecture architecture) => architecture == Architecture.Arm64 ? "win-arm64" : "win";
+
+    private static bool IsWindowsTarget(string target) => target is "win" or "win-arm64";
+
+    /// <summary>
+    /// Target platform for release assets ("win", "win-arm64", "linux-x64", "linux-arm64"). Tests can override this.
+    /// </summary>
     internal string TargetPlatform { get; set; } = DefaultTargetPlatform();
 
     private static string DefaultTargetPlatform()
     {
         if (OperatingSystem.IsWindows())
-            return "win";
+            return GetWindowsTarget(RuntimeInformation.ProcessArchitecture);
         if (OperatingSystem.IsLinux())
         {
             try
@@ -269,6 +297,11 @@ public sealed partial class UpdateService : ObservableObject
             (_installer, _checksums) = TargetPlatform != "unsupported"
                 ? FindFiles(json.RootElement, TargetPlatform)
                 : (null, null);
+            // No other platform's installer instead: on an ARM64 build, a release with only the x64 Setup would install
+            // fine over it, but turn a native install into an emulated one without asking. Update then fails like for
+            // any release without this platform's installer, and the download page is still there.
+            if (newer is not null && _installer is null)
+                _log.LogInformation("Update check: {Tag} has no {Target} installer", tag, TargetPlatform);
             IReadOnlyList<ReleaseNote> notes = [];
             if (newer is not null)
             {
@@ -368,7 +401,7 @@ public sealed partial class UpdateService : ObservableObject
             return;
         }
 
-        if (TargetPlatform == "win")
+        if (IsWindowsTarget(TargetPlatform))
         {
             var folder = Path.Combine(Path.GetTempPath(), "Filee-update");
             string installer;
@@ -516,8 +549,9 @@ public sealed partial class UpdateService : ObservableObject
     {
         var installer = _installer ?? throw new InvalidOperationException("No installer in the latest release");
         var checksums = _checksums ?? throw new InvalidOperationException("No checksum file in the latest release");
+        _mirrorFirst = false;
 
-        var sums = await GetBytesAsync(checksums.Url, cancellationToken);
+        var sums = await FetchAsync(checksums, file => GetBytesAsync(file.Url, cancellationToken), cancellationToken);
         if (UpdatePublicKey is { } key)
             await CheckSignatureAsync(checksums, sums, installer, key, cancellationToken);
         var expected = ParseChecksum(Encoding.UTF8.GetString(sums).TrimStart('\uFEFF'), installer.Name)
@@ -536,7 +570,11 @@ public sealed partial class UpdateService : ObservableObject
 
         var partial = target + ".part";
         TryDelete(partial);
-        await DownloadAsync(installer, partial, progress, cancellationToken);
+        await FetchAsync(installer, async file =>
+        {
+            await DownloadAsync(file, partial, progress, cancellationToken);
+            return true;
+        }, cancellationToken);
         var actual = await Sha256Async(partial, cancellationToken);
         if (actual != expected)
         {
@@ -557,10 +595,11 @@ public sealed partial class UpdateService : ObservableObject
         CancellationToken cancellationToken)
     {
         var name = checksums.Name + UpdateSignature.Extension;
+        var file = new ReleaseFile(name, checksums.Url + UpdateSignature.Extension, 0);
         byte[] signature;
         try
         {
-            signature = await GetBytesAsync(checksums.Url + UpdateSignature.Extension, cancellationToken);
+            signature = await FetchAsync(file, f => GetBytesAsync(f.Url, cancellationToken), cancellationToken);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -638,6 +677,65 @@ public sealed partial class UpdateService : ObservableObject
         private static string[] Split(string? list) =>
             list?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
     }
+
+    /// <summary>
+    /// The mirror's address of a Windows release file (<see cref="MirrorRoot"/>&lt;version&gt;/&lt;name&gt;, the version
+    /// from the name), or null for another platform's file or a name without a version.
+    /// </summary>
+    internal string? MirrorUrl(string name)
+    {
+        if (!IsWindowsTarget(TargetPlatform))
+            return null;
+        var version = VersionInName().Match(name);
+        return version.Success ? MirrorRoot + version.Groups[1].Value + "/" + Uri.EscapeDataString(name) : null;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="fetch"/> for the release's file and, when that fails on the way (an HTTP error, a timeout, a
+    /// cut connection), for the mirror's copy of it; after a failure on GitHub, the update's later files try the mirror
+    /// first. Only the transport changes: the caller checks what comes back the same way whichever answered. When both
+    /// fail, GitHub's error is thrown.
+    /// </summary>
+    private async Task<T> FetchAsync<T>(ReleaseFile file, Func<ReleaseFile, Task<T>> fetch, CancellationToken cancellationToken)
+    {
+        if (MirrorUrl(file.Name) is not { } url)
+            return await fetch(file);
+        var mirror = file with { Url = url };
+        var (first, second) = _mirrorFirst ? (mirror, file) : (file, mirror);
+        T result;
+        try
+        {
+            result = await fetch(first);
+        }
+        catch (Exception ex) when (FailedOnTheWay(ex, cancellationToken))
+        {
+            _log.LogWarning("Update: {Name} from {Source} failed ({Message}); trying {Other}", file.Name, Host(first),
+                ex.Message, Host(second));
+            if (first == file)
+                _mirrorFirst = true;
+            try
+            {
+                result = await fetch(second);
+            }
+            catch (Exception again) when (FailedOnTheWay(again, cancellationToken))
+            {
+                _log.LogWarning("Update: {Name} from {Source} failed too ({Message})", file.Name, Host(second), again.Message);
+                ExceptionDispatchInfo.Throw(first == file ? ex : again);
+                throw; // not reached: Throw always throws
+            }
+            first = second;
+        }
+        _log.LogInformation("Update: {Name} from {Source}", file.Name, Host(first));
+        return result;
+
+        static string Host(ReleaseFile f) => new Uri(f.Url).Host;
+    }
+
+    /// <summary>The download itself failed: not a file that arrived and was refused, and not the user cancelling.</summary>
+    private static bool FailedOnTheWay(Exception ex, CancellationToken cancellationToken) =>
+        ex is HttpRequestException or TaskCanceledException or IOException
+        && ex is not UpdateVerificationException
+        && !cancellationToken.IsCancellationRequested;
 
     private async Task DownloadAsync(ReleaseFile file, string path, IProgress<int>? progress, CancellationToken cancellationToken)
     {
@@ -775,8 +873,11 @@ public sealed partial class UpdateService : ObservableObject
         if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
             return (null, null);
 
+        // Windows has one checksum file for x64 and ARM64, Filee-<v>-SHA256SUMS.txt: Filee 2.4.0 and older take the
+        // last file ending in -SHA256SUMS.txt that isn't Linux or macOS, so an ARM64 one next to it would break their
+        // updates. The x64 Setup is Filee-<v>-win-Setup.exe, the ARM64 one Filee-<v>-win-arm64-Setup.exe.
         var isLinux = target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase);
-        var expectedInstallerSuffix = isLinux ? $"-{target}.tar.gz" : "-win-Setup.exe";
+        var expectedInstallerSuffix = isLinux ? $"-{target}.tar.gz" : $"-{target}-Setup.exe";
         var expectedChecksumsSuffix = isLinux ? $"-{target}-SHA256SUMS.txt" : "-SHA256SUMS.txt";
 
         foreach (var asset in assets.EnumerateArray())
@@ -793,8 +894,11 @@ public sealed partial class UpdateService : ObservableObject
             }
             else if (name.EndsWith(expectedChecksumsSuffix, StringComparison.OrdinalIgnoreCase))
             {
-                // When targeting Windows, exclude platform-specific checksum files (e.g. -linux-x64-SHA256SUMS.txt, -osx-...)
-                if (!isLinux && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase) || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)))
+                // The other platforms' checksum files end in -SHA256SUMS.txt too (-linux-x64-, -osx-arm64-), and so does
+                // the ARM64 build's own one (CI's package), should one ever be attached.
+                if (!isLinux && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase)
+                                 || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)
+                                 || name.Contains("-win-arm64-", StringComparison.OrdinalIgnoreCase)))
                     continue;
 
                 checksums = new ReleaseFile(name, url, size);

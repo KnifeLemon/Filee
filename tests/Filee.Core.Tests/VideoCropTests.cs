@@ -14,6 +14,7 @@ public class VideoCropTests
     [Theory]
     [InlineData("16:9", true, 16, 9)]
     [InlineData("9:16", true, 9, 16)]
+    [InlineData("4:5", true, 4, 5)]
     [InlineData("1:1", true, 1, 1)]
     [InlineData("auto", false, 0, 0)]
     [InlineData("", false, 0, 0)]
@@ -34,6 +35,9 @@ public class VideoCropTests
     public void Every_offered_ratio_reads()
     {
         Assert.All(VideoCrop.Ratios, r => Assert.True(VideoCrop.TryParseRatio(r, out _, out _), r));
+        // Instagram and Facebook portrait posts, and the landscape twin (#1602).
+        Assert.Contains("4:5", VideoCrop.Ratios);
+        Assert.Contains("5:4", VideoCrop.Ratios);
     }
 
     [Fact]

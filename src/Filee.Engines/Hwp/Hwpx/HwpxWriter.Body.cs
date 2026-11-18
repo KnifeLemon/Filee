@@ -5,6 +5,7 @@
 
 using System.Text;
 using System.Xml.Linq;
+using Filee.Core.Conversion;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -388,6 +389,12 @@ internal sealed partial class HwpxWriter
     }
 
     /// <summary>
+    /// Widest table placed (<see cref="Documents.DocumentLimits.MaxTableColumns"/>): Excel's sheet width, far wider than
+    /// 한글 or Word lay out a table.
+    /// </summary>
+    internal static int MaxTableColumns => Documents.DocumentLimits.Default.MaxTableColumns;
+
+    /// <summary>
     /// Grid positions (rows × columns) a table written by the document writers may have. Far above real tables; a
     /// small file can declare a span of thousands of columns on each of thousands of rows, which every writer that
     /// keeps a rectangular grid (ODT, the layout) would have to fill.
@@ -402,6 +409,7 @@ internal sealed partial class HwpxWriter
     /// refused. Covered positions are tracked per column (the first row a cell placed so far leaves free), so a span
     /// costs its columns, not its rows × columns.
     /// </summary>
+    /// <exception cref="ConversionRefusedException">The table is larger than <see cref="MaxTableCells"/>.</exception>
     internal static (List<List<(HCell Cell, int Column)>> Placed, int Columns) PlaceCells(HTable table)
     {
         var maxColumns = Documents.DocumentLimits.Default.MaxTableColumns;
@@ -474,7 +482,7 @@ internal sealed partial class HwpxWriter
             throw TableTooLarge();
     }
 
-    private static Filee.Core.Conversion.ConversionRefusedException TableTooLarge() =>
+    internal static ConversionRefusedException TableTooLarge() =>
         Documents.DocumentLimits.Exceeded($"A table has more than {Documents.DocumentLimits.Count(MaxTableCells)} cells (rows × columns).");
 
     /// <summary>Column widths that fit <paramref name="available"/>: absolute (scaled down if too wide), relative or equal.</summary>

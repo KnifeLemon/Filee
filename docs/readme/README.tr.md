@@ -93,6 +93,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **Windows 10/11**: `Filee-<sürüm>-win-Setup.exe` dosyasını çalıştırın veya `win-Portable.zip` arşivini açıp `Filee.exe` dosyasını başlatın.
+  - Windows on ARM bilgisayarda (Ayarlar → Sistem → Hakkında bölümünde "ARM tabanlı işlemci" yazar) bunun yerine `win-arm64-Setup.exe` veya `win-arm64-Portable.zip` dosyasını alın: x64 öykünmesi olmadan yerel olarak çalışır.
   - Kurulum sihirbazı, Filee'nin kendi dillerini içeren yerel yükleyicisidir ve bilgisayarda başka hiçbir şeye ihtiyaç duymaz.
   - Dosya Gezgini menüsünü, oturum açılışında başlatmayı, `filee` komutunu ve isteğe bağlı motorları ekleyebilir.
   - Sessiz kurulumlar Inno Setup anahtarlarını destekler (`/VERYSILENT /SUPPRESSMSGBOXES`).
@@ -142,7 +143,7 @@ Geri almak için Windows Güvenliği → Uygulama ve tarayıcı denetimi → Aç
 - **İzlenen klasörler**: İçine bırakılan her dosyayı otomatik olarak dönüştürür.
 - **Ana sayfada son dönüştürmeler**, her biri küçük resim önizlemesiyle: sonucu açın veya başka bir uygulamayla başlatın.
 - **Diğer erişim yolları**: Sağ tık menüsü, klavye kısayolu, bırakma alanı ve [`filee` komutu](#komut-satırı).
-- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia ve Tiếng Việt dillerinde.
+- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia, Tiếng Việt, বাংলা, فارسی ve Монгол dillerinde.
 
 ## Ekran Görüntüleri
 
@@ -170,7 +171,7 @@ Geri almak için Windows Güvenliği → Uygulama ve tarayıcı denetimi → Aç
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **Metin**: TXT, LOG, betik kaynak kodları (PY, PAC, BAT, COMMAND; yalnızca okunur, asla çalıştırılmaz), Markdown, HTML;<br>MHTML (kaydedilmiş web sayfaları) okunabilir<br>Jupyter, reStructuredText, Org, MediaWiki, DocBook, Textile, OPML<br>LaTeX, AsciiDoc, Typst, man³ | UTF-8 TXT, PDF, DOCX, HWPX, EPUB<br>birbirleri arasında dönüşüm, PPTX slaytları³ |
 | **E-kitaplar**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB<br>LIT, LRF⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3 |
-| **Video**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>altyazılar (SRT, ASS, WebVTT) |
+| **Video**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A, 720p,<br>altyazılar (SRT, ASS, WebVTT) |
 | **Ses**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **Altyazılar**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC | UTF-8 olarak birbirleri arasında (Korece CP949 dosyaları doğru okunur) |
 | **Arşivler**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | dışa aktarma, ZIP, 7Z, TAR, TAR.GZ;<br>herhangi bir dosya → tek bir ZIP |

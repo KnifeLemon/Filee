@@ -93,6 +93,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **Windows 10/11**: esegui `Filee-<versione>-win-Setup.exe`, oppure decomprimi `win-Portable.zip` ed esegui `Filee.exe`.
+  - Su un PC Windows on ARM (Impostazioni → Sistema → Informazioni riporta «processore basato su ARM»), usa invece `win-arm64-Setup.exe` o `win-arm64-Portable.zip`: funziona in modo nativo, senza emulazione x64.
   - Setup è l'installer proprio di Filee, nelle lingue di Filee, e non richiede altro sul PC.
   - Può aggiungere la voce nel menu di Esplora risorse, l'avvio all'accesso, il comando `filee` ed engine opzionali.
   - Le installazioni silenziose accettano gli switch di Inno Setup (`/VERYSILENT /SUPPRESSMSGBOXES`).
@@ -142,7 +143,7 @@ Per annullare, rimuovi le voci in Sicurezza di Windows → Controllo app e brows
 - **Le cartelle monitorate** convertono ogni file che vi arriva.
 - **Conversioni recenti** nella Home, ognuna con anteprima: apri il risultato, oppure aprilo con un'altra app.
 - **Altri modi per avviarla**: il menu contestuale, una scorciatoia da tastiera, la zona di rilascio e il [comando `filee`](#riga-di-comando).
-- Temi chiaro e scuro con colore d'accento e opacità della donut personalizzabili, in inglese, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da destra a sinistra), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia e Tiếng Việt.
+- Temi chiaro e scuro con colore d'accento e opacità della donut personalizzabili, in inglese, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da destra a sinistra), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia, Tiếng Việt, বাংলা, فارسی e Монгол.
 
 ## Screenshot
 
@@ -170,7 +171,7 @@ Per annullare, rimuovi le voci in Sicurezza di Windows → Controllo app e brows
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **Testo**: TXT, LOG, codice sorgente di script (PY, PAC, BAT, COMMAND; solo lettura, mai eseguito), Markdown, HTML;<br>lettura MHTML (pagine web salvate)<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | TXT UTF-8, PDF, DOCX, HWPX, EPUB<br>ciascuno negli altri, slide PPTX³ |
 | **E-book**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ<br>LIT, LRF, CHM, PDB, …⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3⁴ |
-| **Video**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>sottotitoli (SRT, ASS, WebVTT) |
+| **Video**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A, 720p,<br>sottotitoli (SRT, ASS, WebVTT) |
 | **Audio**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **Sottotitoli**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC | ciascuno negli altri in UTF-8 (i file coreani in CP949 vengono letti correttamente) |
 | **Archivi**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | estrazione, ZIP, 7Z, TAR, TAR.GZ;<br>più file → un unico ZIP |

@@ -16,7 +16,7 @@
     <PackageReference Include="DocumentFormat.OpenXml" />
     <PackageReference Include="System.Drawing.Common" />
     <!-- Tests only: writes FAT images with an independent writer (DiscUtils.Fat keeps to 8.3 names). -->
-    <PackageReference Include="DiscUtils.Fat" />
+    <PackageReference Include="LTRData.DiscUtils.Fat" />
   </ItemGroup>
 
   <ItemGroup>

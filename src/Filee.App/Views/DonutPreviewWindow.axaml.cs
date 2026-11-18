@@ -61,8 +61,8 @@ public partial class DonutPreviewWindow : Window
     /// <summary>Where it was put, or last moved to (null before it is first shown).</summary>
     internal PreviewPlace? Place => _place;
 
-    /// <summary>The square it takes on screen, in pixels (points on macOS).</summary>
-    internal PixelRect Box => new(Position, PixelSize.FromSize(Bounds.Size, Scaling));
+    /// <summary>The square the donut takes on screen, in pixels (points on macOS).</summary>
+    internal PixelRect Box => new(Position, new PixelSize(Side, Side));
 
     private bool OnHandle(PointerEventArgs e) => Donut.HitTest(e.GetPosition(Donut)).Kind == DonutHitKind.Center;
 
@@ -82,7 +82,10 @@ public partial class DonutPreviewWindow : Window
     // macOS reports window positions in points, the others in device pixels.
     private double Scaling => OperatingSystem.IsMacOS() ? 1 : RenderScaling;
 
-    private int Side => (int)Math.Ceiling(Math.Max(Bounds.Width, Bounds.Height) * Scaling);
+    // The donut's side, as it measures, not the window's: shown for the first time, the window has the system's size
+    // for a new window (three quarters of the screen on macOS) until it is laid out to the donut's. Placed for that
+    // size on the way, off the top of the screen, macOS left it 0 × 0, and the donut never appeared.
+    private int Side => (int)Math.Ceiling(Math.Max(Donut.DesiredSize.Width, Donut.DesiredSize.Height) * Scaling);
 
     // Dragged by its middle: it stays centred there from then on.
     private void OnMoved()

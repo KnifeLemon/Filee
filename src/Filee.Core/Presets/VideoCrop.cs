@@ -9,8 +9,11 @@ public static class VideoCrop
     /// <summary>The picture inside the black bars, found by FFmpeg's <c>cropdetect</c>.</summary>
     public const string Auto = "auto";
 
-    /// <summary>The ratios offered, landscape and portrait, as "width:height".</summary>
-    public static IReadOnlyList<string> Ratios { get; } = ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9", "9:21"];
+    /// <summary>
+    /// The ratios offered, landscape and portrait, as "width:height". 4:5 is the portrait post of Instagram and Facebook
+    /// feeds and carousels (#1602).
+    /// </summary>
+    public static IReadOnlyList<string> Ratios { get; } = ["16:9", "9:16", "4:3", "3:4", "5:4", "4:5", "1:1", "21:9", "9:21"];
 
     /// <summary>
     /// Reads a "width:height" ratio such as "16:9"; false for <see cref="Auto"/>, an empty value and anything that isn't

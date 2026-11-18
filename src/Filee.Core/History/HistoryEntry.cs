@@ -44,7 +44,10 @@ public sealed class HistoryEntry
     /// </summary>
     public List<HistoryOutput> Undoable { get; set; } = [];
 
-    /// <summary>"Replace the original" sent a source to the Recycle Bin / Trash; Undo says it is still there.</summary>
+    /// <summary>
+    /// "Replace the original" or "Move the original to the Recycle Bin / Trash" sent a source there; Undo says it is
+    /// still there.
+    /// </summary>
     public bool OriginalsInTrash { get; set; }
 
     /// <summary>Undo moved the results to the Recycle Bin / Trash.</summary>

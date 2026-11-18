@@ -32,6 +32,8 @@ public sealed partial class JobQueue : IAsyncDisposable
     private readonly Task _worker;
     private readonly Func<string, Platform.TrashRefusal?>? _moveToTrash;
     private int _busy;
+    /// <summary>The jobs that wait in the queue or run: "Move the original to the Trash" keeps a source another one still lists (#1387).</summary>
+    private readonly List<ConversionJob> _live = [];
 
     /// <param name="catalog">Converters and their priority.</param>
     /// <param name="pdfMerger">Used by "Merge into one PDF" presets.</param>
@@ -72,6 +74,8 @@ public sealed partial class JobQueue : IAsyncDisposable
     {
         var job = new ConversionJob(sources, preset, presetDisplayName, fetcher, folderSources);
         Interlocked.Increment(ref _busy); // until the worker is done with it
+        lock (_live)
+            _live.Add(job);
         _channel.Writer.TryWrite(job);
         JobUpdated?.Invoke(this, job);
         return job;
@@ -81,12 +85,19 @@ public sealed partial class JobQueue : IAsyncDisposable
     public async Task RunAsync(ConversionJob job)
     {
         Interlocked.Increment(ref _busy);
+        lock (_live)
+        {
+            if (!_live.Contains(job))
+                _live.Add(job);
+        }
         try
         {
             await RunJobAsync(job);
         }
         finally
         {
+            lock (_live)
+                _live.Remove(job);
             Interlocked.Decrement(ref _busy);
         }
     }
@@ -264,7 +275,7 @@ public sealed partial class JobQueue : IAsyncDisposable
     /// <summary>
     /// Makes the PDFs among <paramref name="outputs"/> PDF/A when the preset asks for it (<see cref="DocumentOptions.PdfA"/>),
     /// after the finishing, which would undo it. Without Ghostscript they stay as they are and the file says so, rather
-    /// than pass for PDF/A.
+    /// than pass for PDF/A. Otherwise the file says when form fields were made page content, which can't be filled in.
     /// </summary>
     /// <param name="changed">Rewritten since the engine wrote it: a PDF/A from LibreOffice no longer is one.</param>
     private async Task ArchivePdfsAsync(Preset preset, IReadOnlyList<string> outputs, FileResult file, string workDir, bool changed,
@@ -273,10 +284,22 @@ public sealed partial class JobQueue : IAsyncDisposable
         if (!preset.Document.PdfA)
             return;
         var archiver = _catalog.All.OfType<IPdfArchiver>().FirstOrDefault();
+        var notArchived = false;
+        var withoutFormFields = false;
         foreach (var pdf in outputs.Where(o => FormatRegistry.Detect(o)?.Id == "pdf"))
         {
-            if (archiver is null || !await archiver.ArchiveAsync(pdf, changed, workDir, ct))
-                file.NoticeKey = "notice.pdfa_needs_ghostscript";
+            var outcome = archiver is null ? PdfArchiveOutcome.NotArchived : await archiver.ArchiveAsync(pdf, changed, workDir, ct);
+            notArchived |= outcome == PdfArchiveOutcome.NotArchived;
+            withoutFormFields |= outcome == PdfArchiveOutcome.ArchivedWithoutFormFields;
+        }
+        // A PDF that didn't become PDF/A matters more than fields that can't be filled in any more.
+        if (notArchived)
+            file.NoticeKey = "notice.pdfa_needs_ghostscript";
+        else if (withoutFormFields)
+        {
+            file.NoticeKey = "notice.pdfa_form_fields";
+            file.NoticeReasonKey = null;
+            file.NoticeDetail = null;
         }
     }
 
@@ -841,6 +864,33 @@ public sealed partial class JobQueue : IAsyncDisposable
             : runWith.TargetFormat == BuiltInData.SameAsSource ? runWith.CropsVideo ? VideoCrop.TargetFor(from.Id) : from.Id
             : runWith.TargetFormat;
 
+        // "Same format as the audio" (#1490): the format that holds the video's sound as it is, read from the file.
+        if (target == BuiltInData.SameAsAudio)
+        {
+            var reader = _catalog.All.OfType<IAudioCopyTarget>().FirstOrDefault();
+            if (from.Category != FormatCategory.Video || reader is null || reader is IConverter { } engine && !engine.GetStatus().IsAvailable)
+                return Fail(file, "error.no_route", $"{from.Id} → mka", new RouteRequest(from.Id, "mka"));
+            try
+            {
+                target = await reader.AudioCopyTargetAsync(file.SourcePath, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                file.State = FileState.Cancelled;
+                Notify(job);
+                return [];
+            }
+            catch (ConversionRefusedException ex)
+            {
+                return Fail(file, ex.ErrorKey, ex.Detail);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Reading the sound of {File} failed", file.SourcePath);
+                return Fail(file, "error.conversion_failed", ex.Message);
+            }
+        }
+
         // "Save every frame": a video becomes a folder of pictures in one step of its own; "Extract Live/Motion Photo
         // video" likewise takes a photo's video, and "Live / Motion Photo" makes one of a video. Never for an
         // intermediate file, and never on the way to another format (video → JPG is otherwise one still frame, photo →
@@ -1023,6 +1073,8 @@ public sealed partial class JobQueue : IAsyncDisposable
             var mark = finalOutput ? Platform.MarkOfTheWeb.Read(file.SourcePath) : null;
             if (finalOutput && !zipResult && inputs.Count == 1)
                 inputs = [ReplaceOriginal(job, file, source.Id, inputs[0], copiedSource)];
+            if (finalOutput && !zipResult && !copiedSource)
+                TrashOriginal(job, file, source.Id, inputs);
 
             // A name the engine took but wrote nothing to is free again.
             final?.Release(except: inputs);
@@ -1373,6 +1425,56 @@ public sealed partial class JobQueue : IAsyncDisposable
         }
     }
 
+    /// <summary>True while another queued or running job still has <paramref name="source"/> to convert.</summary>
+    private bool UsedByAnotherJob(ConversionJob job, string source)
+    {
+        lock (_live)
+            return _live.Any(other => !ReferenceEquals(other, job) && other.Files.Any(f =>
+                (f.State is FileState.Pending or FileState.Running)
+                && string.Equals(f.SourcePath, source, Platform.FileSystemPaths.Comparison)));
+    }
+
+    /// <summary>
+    /// "Move the original to the Recycle Bin / Trash" (<see cref="OutputRule.TrashOriginalAfterConvert"/>, #1387): once
+    /// every result of <paramref name="file"/> is complete and none has the source's format, the source goes to the
+    /// Trash. A result of the source's own format is "Replace the original"'s, and a result at the source's own path
+    /// would be moved with it, so either leaves the source alone. When the Trash refuses, the source stays and the
+    /// file gets a note saying why; nothing is ever deleted for good.
+    /// </summary>
+    private void TrashOriginal(ConversionJob job, FileResult file, string sourceFormat, IReadOnlyList<string> outputs)
+    {
+        var source = file.SourcePath;
+        if (!job.Preset.Output.TrashOriginalAfterConvert || job.Fetcher is not null || file.OriginalInTrash
+            || outputs.Count == 0 || !File.Exists(source))
+            return;
+        foreach (var output in outputs)
+        {
+            if (string.Equals(Path.GetFullPath(output), Path.GetFullPath(source), Platform.FileSystemPaths.Comparison))
+                return;
+            if (Directory.Exists(output))
+                continue; // an output folder (Extract)
+            if (!File.Exists(output) || FormatRegistry.Detect(output)?.Id == sourceFormat)
+                return;
+        }
+
+        // The same file dropped on two presets is two jobs: once this one has moved it, the other would fail as not found.
+        if (UsedByAnotherJob(job, source))
+        {
+            _log.LogInformation("Kept the original {Source}: another conversion still uses it", source);
+            file.NoticeKey = "notice.trash_original_busy";
+            return;
+        }
+
+        var refusal = _moveToTrash is null ? new Platform.TrashRefusal("trash.no_recycle_bin") : _moveToTrash(source);
+        file.OriginalInTrash = refusal is null;
+        if (refusal is null)
+            return;
+        _log.LogInformation("Kept the original {Source}: {Reason} {Detail}", source, refusal.ReasonKey, refusal.Detail);
+        file.NoticeKey = "notice.trash_original_kept";
+        file.NoticeReasonKey = refusal.ReasonKey;
+        file.NoticeDetail = refusal.Detail;
+    }
+
     /// <summary>Extensions that only spell the same kind of file differently ("Replace the original" may swap them).</summary>
     private static readonly string[][] Spellings =
     [
@@ -1443,6 +1545,8 @@ public sealed partial class JobQueue : IAsyncDisposable
             }
             finally
             {
+                lock (_live)
+                    _live.Remove(job);
                 Interlocked.Decrement(ref _busy);
             }
         }

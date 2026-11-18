@@ -268,8 +268,12 @@ public sealed class UserDataStore
     /// Exports presets and profiles to a shareable JSON file, without PDF passwords or paths to one's own pictures.
     /// </summary>
     public void Export(string path) =>
-        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.ForSharing())], Profiles = Profiles },
-            FileeJsonContext.Default.PresetBundle);
+        Write(path, new PresetBundle
+        {
+            SettingsSchema = AppSettings.CurrentSchemaVersion,
+            Presets = [.. Presets.Select(p => p.ForSharing())],
+            Profiles = Profiles,
+        }, FileeJsonContext.Default.PresetBundle);
 
     /// <summary>
     /// Imports presets and profiles from a bundle. Items with an existing id are replaced, new ones added.
@@ -285,6 +289,8 @@ public sealed class UserDataStore
         {
             // A path to a picture in someone else's bundle is not one of ours to open (a network share, say).
             preset.Image.ForgetBackdropPictures();
+            // Sending originals to the Recycle Bin / Trash is on only where this user ticked it on this PC (#1387).
+            preset.Output.TrashOriginalAfterConvert = false;
             Presets.RemoveAll(p => p.Id == preset.Id);
             Presets.Add(preset);
         }
@@ -472,26 +478,27 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 21)
             InsertBefore(settings.EnginePriority, "wic", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
 
-        // v95: Unhwp is gone; the built-in "hwp-text" engine (HWP / HWPX → TXT, Markdown, HTML) takes its place in the
-        //      order, so every other engine keeps its rank. (Built-in engines branch; was schema 58, then 89, there
-        //      before main took 58–94. May be renumbered again if another change takes it first.)
-        if (settings.SchemaVersion < 95)
+        // v100: Unhwp is gone; the built-in "hwp-text" engine (HWP / HWPX → TXT, Markdown, HTML) takes its place in the
+        //       order, so every other engine keeps its rank. (Built-in engines branch; was schema 58, then 89, then 95,
+        //       there before main took 58–99. May be renumbered again if another change takes it first.)
+        if (settings.SchemaVersion < 100)
             ReplaceEngine(settings.EnginePriority, "unhwp", "hwp-text");
 
-        // v96: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
-        //      around rhwp gets the other way around rhwp, Filee's renderer. (Built-in engines branch; was schema 59, then
-        //      90, there. May be renumbered again if another change takes it first.)
-        if (settings.SchemaVersion < 96 && settings.LibreOfficeForHwp == true)
+        // v101: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
+        //       around rhwp gets the other way around rhwp, Filee's renderer. (Built-in engines branch; was schema 59,
+        //       then 90, then 96, there. May be renumbered again if another change takes it first.)
+        if (settings.SchemaVersion < 101 && settings.LibreOfficeForHwp == true)
             settings.FileeRenderer = true;
         settings.LibreOfficeForHwp = null;
 
-        // v97: Filee's renderer is the default document → PDF engine, and its slide renderer draws presentations. The
-        //      renderer is turned on for everyone (it was a preview of unreleased builds, so an "off" there was no
-        //      choice against a default), and "Use LibreOffice for presentations", on by default since it beat the
-        //      HWPX writer and rhwp, is turned off once so decks reach the slide renderer; whoever turns it back on
-        //      keeps it. The other LibreOffice switches were off by default and stay as the user set them.
-        //      (Built-in engines branch; was schema 91 there. May be renumbered if another change takes it first.)
-        if (settings.SchemaVersion < 97)
+        // v102: Filee's renderer is the default document → PDF engine, and its slide renderer draws presentations. The
+        //       renderer is turned on for everyone (it was a preview of unreleased builds, so an "off" there was no
+        //       choice against a default), and "Use LibreOffice for presentations", on by default since it beat the
+        //       HWPX writer and rhwp, is turned off once so decks reach the slide renderer; whoever turns it back on
+        //       keeps it. The other LibreOffice switches were off by default and stay as the user set them.
+        //       (Built-in engines branch; was schema 91, then 97, there. May be renumbered if another change takes it
+        //       first.)
+        if (settings.SchemaVersion < 102)
         {
             settings.FileeRenderer = true;
             settings.LibreOfficeForSlides = false;
@@ -1194,6 +1201,23 @@ internal static class SettingsMigrations
         // v94: Valve textures (.vtf) learn the images donut; custom claims stay put.
         if (from < 94)
             changed |= LearnExtensions(profiles, out _, ["vtf"]);
+        // v95: Windows app packages and bundles learn the archives donut, without taking custom claims (#1521).
+        if (from < 95)
+            changed |= LearnExtensions(profiles, out _, ["msix", "appx", "msixbundle", "appxbundle"]);
+        // v96: Source engine files: Garry's Mod addons (.gma), Valve paks (.vpk) and maps (.bsp, for the files packed into
+        //      them) learn the archives donut; custom claims stay put.
+        if (from < 96)
+            changed |= LearnExtensions(profiles, out _, ["gma", "vpk", "bsp"]);
+        // v97: "GMA" (packing a folder into a Garry's Mod addon) joins the game packs in the palette, not a donut; the
+        //      game packs the user removed stay removed.
+        if (from < 97)
+            changed |= AddGma(presets);
+        // v98: "VTF" (any picture to a Valve texture) joins the palette after HEIC, not a donut.
+        if (from < 98 && presets.All(p => p.Id != BuiltInData.VtfId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.VtfId);
+        // v99: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put.
+        if (from < 99)
+            changed |= LearnExtensions(profiles, out _, ["cxlog"]);
         return changed;
     }
 
@@ -1249,6 +1273,22 @@ internal static class SettingsMigrations
             changed = true;
         }
         return changed;
+    }
+
+    /// <summary>
+    /// "GMA" after the last game pack of the library (else after "TAR", else at the end); the game packs the user removed
+    /// stay removed.
+    /// </summary>
+    private static bool AddGma(List<Preset> presets)
+    {
+        if (presets.Any(p => p.Id == "to-gma"))
+            return false;
+        var packs = BuiltInData.GamePackPresets().Select(p => p.Id).ToHashSet();
+        var at = presets.FindLastIndex(p => packs.Contains(p.Id));
+        if (at < 0)
+            at = presets.FindIndex(p => p.Id == "to-tar");
+        presets.Insert(at < 0 ? presets.Count : at + 1, BuiltInData.GamePackPresets().Single(p => p.Id == "to-gma"));
+        return true;
     }
 
     private static bool AddCropVideo(List<Preset> presets)

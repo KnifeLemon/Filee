@@ -442,6 +442,57 @@ public class DonutEditorTests
     }
 
     [AvaloniaFact]
+    public void The_donut_on_screen_shown_the_first_time_is_placed_for_its_own_size_only()
+    {
+        // A window shown for the first time has the system's size for a new window (three quarters of the screen on
+        // macOS, 1024 × 768 here) until it is laid out to the donut's. Placed for that size on the way (off the top of
+        // the screen on macOS), it opened 0 × 0 there and stayed so: the donut appeared only after Done and Edit Donut
+        // Size again, when the window was already the donut's size. Left of this window, its right edge is where it
+        // was put: placed for another size, its left edge is that size away from there.
+        var (window, page, vm) = Open();
+        window.Position = new PixelPoint(640, 100);
+        RenderTests.Pump();
+        var sizes = new HashSet<int>();
+        var seen = new List<PixelPoint>();
+        DonutPreviewWindow? watched = null;
+        void Moved(object? sender, PixelPointEventArgs e) => seen.Add(e.Point);
+        // Made inside Edit Donut Size: its sizes from the start, and every move once it is made.
+        using var watch = TopLevel.ClientSizeProperty.Changed.AddClassHandler<DonutPreviewWindow>((preview, e) =>
+        {
+            foreach (var size in new[] { e.OldValue, e.NewValue }.OfType<Size>())
+                sizes.UnionWith([(int)Math.Ceiling(size.Width), (int)Math.Ceiling(size.Height)]);
+            if (watched is null)
+            {
+                watched = preview;
+                preview.PositionChanged += Moved;
+            }
+        });
+        try
+        {
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            var preview = page.Preview!;
+            var place = preview.Place!;
+            Assert.Equal(PreviewAnchor.Right, place.Anchor);
+            var donut = preview.DonutControl;
+            var side = (int)Math.Ceiling(DonutMenu.SideFor(donut.OuterRadius, donut.ReserveSubRing, donut.GroupRingSize));
+            Assert.InRange(preview.Bounds.Width, side - 1, side);
+            Assert.Equal(place.TopLeftFor(side), preview.Position);
+            sizes.Remove(side);
+            Assert.NotEmpty(sizes); // it had another size on the way
+            Assert.NotEmpty(seen);
+            Assert.All(seen, at => Assert.DoesNotContain(place.Point.X - at.X, sizes));
+        }
+        finally
+        {
+            if (watched is not null)
+                watched.PositionChanged -= Moved;
+            vm.DoneAdjustingLookCommand.Execute(null);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void Every_slider_of_the_panel_shows_its_value()
     {
         var (window, page, vm) = Open();

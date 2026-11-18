@@ -47,4 +47,20 @@ public class VtfFormatTests
         Assert.DoesNotContain("vtf", images.Extensions); // the user's own donut has it
         Assert.Equal("my-textures", ProfileSelector.Select(profiles, ["spray.vtf"])?.Id);
     }
+
+    [Fact]
+    public void Version_97_libraries_get_the_vtf_preset_after_heic()
+    {
+        var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id == BuiltInData.VtfId);
+        var profiles = BuiltInData.CreateProfiles();
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(97, presets, profiles));
+        Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id)); // right after HEIC
+        Assert.Equal("vtf", presets.Single(p => p.Id == BuiltInData.VtfId).TargetFormat);
+        Assert.False(SettingsMigrations.ApplyToLibrary(97, presets, profiles));
+        // In the palette only, not on a donut.
+        Assert.DoesNotContain(BuiltInData.CreateProfiles(),
+            p => p.PresetIds.Contains(BuiltInData.VtfId) || p.BackPresetIds?.Contains(BuiltInData.VtfId) == true);
+    }
 }

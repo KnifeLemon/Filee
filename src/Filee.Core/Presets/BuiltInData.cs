@@ -11,6 +11,12 @@ public static class BuiltInData
     /// <summary>Special target format meaning "same format as the source file" (e.g. resize only).</summary>
     public const string SameAsSource = "*";
 
+    /// <summary>
+    /// Special target format for a video (#1490): its sound track copied out as it is, into the audio format that holds
+    /// its codec (AAC → M4A, Opus → OPUS, AC-3 or DTS → MKA, …), never encoded.
+    /// </summary>
+    public const string SameAsAudio = "*audio";
+
     /// <summary>The "iPhone ringtone" preset (#1291): an M4R of at most 40 seconds, from where its Start field says.</summary>
     public const string RingtoneId = "iphone-ringtone";
 
@@ -23,6 +29,9 @@ public static class BuiltInData
     /// <summary>Whether a preset accepts folders without converting their individual files.</summary>
     public static bool AcceptsFolders(Preset preset) => !preset.IsGroup
         && (preset.IsCopyToFolder || SupportsFolderTarget(preset.TargetFormat));
+
+    /// <summary>The preset that makes Valve textures (.vtf).</summary>
+    public const string VtfId = "to-vtf";
 
     /// <summary>Creates the default preset list.</summary>
     public static List<Preset> CreatePresets() =>
@@ -41,6 +50,9 @@ public static class BuiltInData
         new() { Id = "to-gif", Name = "GIF", TargetFormat = "gif" },
         new() { Id = "to-avif", Name = "AVIF", TargetFormat = "avif", Image = { Quality = 60 } },
         new() { Id = "to-heic", Name = "HEIC", TargetFormat = "heic", Image = { Quality = 80 } },
+        // Valve textures for Garry's Mod and other Source games (#1478, added to the library in settings schema 98): in
+        // the palette only, in the Games field (off in a new install).
+        new() { Id = VtfId, Name = "VTF", TargetFormat = "vtf" },
         new()
         {
             Id = "half-size", NameKey = "preset.half_size", TargetFormat = SameAsSource,
@@ -226,8 +238,8 @@ public static class BuiltInData
     ];
 
     /// <summary>
-    /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62): in the palette
-    /// only, after "TAR", in the Games field (off in a new install).
+    /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62) and Garry's Mod
+    /// addons (#1526, schema 97): in the palette only, after "TAR", in the Games field (off in a new install).
     /// </summary>
     public static List<Preset> GamePackPresets() =>
     [
@@ -236,6 +248,7 @@ public static class BuiltInData
         new() { Id = "to-mcworld", Name = "MCWORLD", TargetFormat = "mcworld" },
         new() { Id = "to-mctemplate", Name = "MCTEMPLATE", TargetFormat = "mctemplate" },
         new() { Id = "to-mrpack", Name = "MRPACK", TargetFormat = "mrpack" },
+        new() { Id = "to-gma", Name = "GMA", TargetFormat = "gma" },
     ];
 
     /// <summary>

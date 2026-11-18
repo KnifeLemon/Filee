@@ -818,10 +818,10 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Theory]
     [InlineData("mp4", "jpg", "magick")]
-    [InlineData("mkv", "webp", "magick")]
     [InlineData("mov", "pdf", "pdfsharp")]
     public void Video_to_images_goes_through_one_still_frame_not_an_animated_gif(string from, string to, string imageEngine)
     {
+        // WebP is not here: a video becomes an animated WebP directly (see Video_reaches_webp_directly_not_through_a_still_frame).
         var route = Planner().Plan(from, to);
         Assert.NotNull(route);
         Assert.Equal([("ffmpeg", from, "png"), (imageEngine, "png", to)], route.Steps.Select(s => (s.Converter.Id, s.From, s.To)));
@@ -1234,7 +1234,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(4).ToList());
         Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(null).ToList());
         var args = MediaEncoding.CropDetect("in.mp4", 6, 1, Hd);
-        Assert.Equal(("info", "6.000", "1.000"), (After(args, "-v"), After(args, "-ss"), After(args, "-t")));
+        Assert.Equal(("info", "6.000000", "1.000000"), (After(args, "-v"), After(args, "-ss"), After(args, "-t")));
         // A part of the range, not 24 of 255: the same black at 10 bits (#830 review).
         Assert.Contains("cropdetect=limit=0.094:", After(args, "-vf"));
     }
@@ -1534,6 +1534,61 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Webp_is_one_looping_animated_pass_with_higher_limits_than_gif()
+    {
+        var pass = Assert.Single(MediaEncoding.Plan("in.mkv", "out.webp", "webp", new MediaOptions { Quality = MediaQuality.High },
+            new MediaInfo(TimeSpan.FromSeconds(3), Hd, new AudioStreamInfo(2, 44100), null), "work"));
+        var args = pass.Arguments;
+        Assert.Equal("fps=20,scale=w='min(iw,1920)':h=ih:force_original_aspect_ratio=decrease:flags=lanczos", After(args, "-vf"));
+        Assert.Equal("libwebp_anim", After(args, "-c:v"));
+        Assert.Equal("0", After(args, "-loop"));
+        Assert.Equal("webp", After(args, "-f"));
+        Assert.Contains("-an", args);
+    }
+
+    [Fact]
+    public void Webp_lossless_keeps_the_full_width_and_writes_every_frame_losslessly()
+    {
+        var pass = Assert.Single(MediaEncoding.Plan("in.mkv", "out.webp", "webp", new MediaOptions { Quality = MediaQuality.Balanced },
+            new MediaInfo(TimeSpan.FromSeconds(3), Hd, new AudioStreamInfo(2, 44100), null), "work",
+            image: new ImageOptions { WebpLossless = true }));
+        var args = pass.Arguments;
+        Assert.Equal("1", After(args, "-lossless"));
+        Assert.Contains("min(iw,16383)", After(args, "-vf"));
+        Assert.StartsWith("fps=30,", After(args, "-vf"));
+    }
+
+    [Fact]
+    public void Webp_lossy_quality_follows_the_image_quality_slider()
+    {
+        var pass = Assert.Single(MediaEncoding.Plan("in.mkv", "out.webp", "webp", new MediaOptions(),
+            new MediaInfo(TimeSpan.FromSeconds(3), Hd, new AudioStreamInfo(2, 44100), null), "work",
+            image: new ImageOptions { Quality = 70 }));
+        Assert.Equal(("0", "70"), (After(pass.Arguments, "-lossless"), After(pass.Arguments, "-q:v")));
+    }
+
+    [Fact]
+    public void Video_reaches_webp_directly_not_through_a_still_frame()
+    {
+        var edge = Assert.Single(new FfmpegConverter().Edges, e => e is { From: "mp4", To: "webp" });
+        Assert.True(edge.Cost < 20); // video → PNG → WebP costs 10 + 10
+    }
+
+    [Theory]
+    [InlineData("mp4")]
+    [InlineData("mkv")]
+    [InlineData("mov")]
+    public void A_video_to_webp_is_one_animated_ffmpeg_step(string from)
+    {
+        // The planner takes the direct step, not the still frame it used to (video → PNG → WebP).
+        var route = Planner().Plan(from, "webp");
+        Assert.NotNull(route);
+        var step = Assert.Single(route.Steps);
+        Assert.Equal(("ffmpeg", from, "webp"), (step.Converter.Id, step.From, step.To));
+        Assert.False(step.FrameSequence);
+    }
+
+    [Fact]
     public void A_still_picture_is_shown_for_five_seconds_at_full_size()
     {
         var photo = new MediaInfo(null, new VideoStreamInfo(4033, 3025, 1, 0, 25), null, null);
@@ -1641,6 +1696,13 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Null(FfmpegRunner.ParsePosition("out_time_us=N/A"));
         Assert.Equal(1.25, FfmpegRunner.ParsePosition("frame_time=1.25"));
         Assert.Null(FfmpegRunner.ParsePosition("progress=continue"));
+        // A run that reports each picture's time writes -progress only to show it is working.
+        Assert.Null(FfmpegRunner.ParsePosition("out_time_us=2500000", byFrame: true));
+        Assert.Equal(1.25, FfmpegRunner.ParsePosition("frame_time=1.25", byFrame: true));
+        // FFmpeg before 6.0 has no -stats_enc_pre: those runs go without, on -progress alone.
+        Assert.Equal(["-i", "in.mp4", "-progress", "pipe:1", "out.mp4"],
+            FfmpegRunner.WithoutFrameStats(["-i", "in.mp4", .. MediaEncoding.FrameProgress, "out.mp4"]));
+        Assert.Null(FfmpegRunner.WithoutFrameStats(["-i", "in.mp4", "-progress", "pipe:1", "out.mp4"]));
         Assert.Equal("too many channels: got 6, need 2 or fewer Error while opening encoder",
             FfmpegRunner.Summarize("[wmav2 @ 000001e0] too many channels: got 6, need 2 or fewer\r\n" +
                                    "[aost#0:1/wmav2 @ 000001e0] [enc:wmav2 @ 000001e0] Error while opening encoder\r\n"));
@@ -1688,6 +1750,8 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal((240, 240), (square.Video!.Width, square.Video.Height));
         var portrait = await ProbeAsync(Assert.Single((await CropAsync(video, "9:16")).Outputs));
         Assert.Equal((134, 240), (portrait.Video!.Width, portrait.Video.Height));
+        var post = await ProbeAsync(Assert.Single((await CropAsync(video, "4:5")).Outputs)); // #1602
+        Assert.Equal((192, 240), (post.Video!.Width, post.Video.Height));
 
         // Already 4:3: refused, rather than encoded again as it was.
         var same = Assert.Single((await CropAsync(video, "4:3")).Files);

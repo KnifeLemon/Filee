@@ -1,7 +1,8 @@
-// The "filee" commands: convert, watch, formats, presets, engines. Writes results for people (one line per file) or, with
-// --json, one JSON document for other programs; while it runs, convert --json writes events to stderr and watch --json
-// to stdout, one JSON object per line. Exit codes: 0 nothing failed (skipped files included), 1 some failed or were
-// cancelled, 2 wrong arguments or a missing input, 3 nothing to convert.
+// The "filee" commands: convert, watch, formats, presets ('presets check' for the preset gallery), engines. Writes
+// results for people (one line per file) or, with --json, one JSON document for other programs; while it runs,
+// convert --json writes events to stderr and watch --json to stdout, one JSON object per line. Exit codes: 0 nothing
+// failed (skipped files included), 1 some failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to
+// convert.
 
 using System.Text.Json;
 using Filee.Core.Conversion;
@@ -40,6 +41,9 @@ internal static class Cli
             case "version":
                 output.WriteLine($"filee {Help.Version}");
                 return Success;
+            // Checks files only: no settings, no engines.
+            case "presets" when options.Inputs.Count > 0:
+                return PresetsCheckCommand.Run(options, output, errors);
         }
 
         await using var host = (createHost ?? (() => CliHost.Create()))();
@@ -118,7 +122,7 @@ internal static class Cli
             return UsageError;
         }
         if (events is not null)
-            events.Started(rule.Folder, host.Texts.DisplayName(preset), preset.TargetFormat, rule.ResolvedOutputFolder);
+            events.Started(rule.Folder, host.Texts.DisplayName(preset), TargetName(preset.TargetFormat), rule.ResolvedOutputFolder);
         else if (!options.Quiet)
             output.WriteLine($"Watching {rule.Folder} → {host.Texts.DisplayName(preset)}, saving to {rule.ResolvedOutputFolder}. Press Ctrl+C to stop.");
         try
@@ -217,7 +221,7 @@ internal static class Cli
         {
             json.WriteStartObject();
             json.WriteString("preset", job.PresetDisplayName);
-            json.WriteString("target", job.Preset.TargetFormat);
+            json.WriteString("target", TargetName(job.Preset.TargetFormat));
             json.WriteNumber("converted", job.Files.Count(f => f.State == FileState.Done));
             json.WriteNumber("skipped", job.Files.Count(f => f.State == FileState.Skipped));
             json.WriteNumber("failed", job.Files.Count(f => f.State is FileState.Failed or FileState.Cancelled));
@@ -272,11 +276,19 @@ internal static class Cli
         ["error.archive_needs_7zip"] = "7zip",
     };
 
+    /// <summary>"--to same-audio": a video's sound as it is, in the format of its codec (#1490).</summary>
+    internal const string SameAudioName = "same-audio";
+
+    /// <summary>A preset's target as the CLI names it.</summary>
+    private static string TargetName(string target) => target == BuiltInData.SameAsAudio ? SameAudioName : target;
+
     /// <summary>The preset from --to or --preset, with --quality and --overwrite/--skip applied (a copy).</summary>
     private static Preset? ResolvePreset(CliOptions options, CliHost host, TextWriter errors)
     {
         Preset preset;
-        if (options.To is not null)
+        if (string.Equals(options.To, SameAudioName, StringComparison.OrdinalIgnoreCase))
+            preset = new Preset { TargetFormat = BuiltInData.SameAsAudio };
+        else if (options.To is not null)
         {
             if (FindFormat(options.To) is not { } format)
             {
@@ -321,6 +333,17 @@ internal static class Cli
             preset = found.Clone();
         }
         preset = host.Store.Settings.WithDefaultOutput(preset);
+        if (options.IsoFileSystem is { } filesystem)
+        {
+            if (preset.TargetFormat != "iso")
+            {
+                errors.WriteLine("filee: --iso-filesystem requires an ISO target.");
+                return null;
+            }
+            preset.Archive.IsoFileSystem = filesystem;
+        }
+        // The command line never moves an original to the Trash, whatever the saved preset says (#1387).
+        preset.Output.TrashOriginalAfterConvert = false;
         if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model))
             preset.Translate.Model = host.Store.Settings.PreferredOllamaModel;
         if (options.Quality is { } quality)
@@ -512,7 +535,7 @@ internal static class Cli
                     json.WriteStartObject();
                     json.WriteString("id", preset.Id);
                     json.WriteString("name", host.Texts.DisplayName(preset));
-                    json.WriteString("target", preset.TargetFormat);
+                    json.WriteString("target", TargetName(preset.TargetFormat));
                     json.WriteEndObject();
                 }
                 json.WriteEndArray();
@@ -522,7 +545,7 @@ internal static class Cli
         }
         output.WriteLine($"{"ID",-24} {"NAME",-28} TARGET");
         foreach (var preset in host.Store.Presets.Where(p => !p.IsGroup && !p.IsTool))
-            output.WriteLine($"{preset.Id,-24} {host.Texts.DisplayName(preset),-28} {preset.TargetFormat}");
+            output.WriteLine($"{preset.Id,-24} {host.Texts.DisplayName(preset),-28} {TargetName(preset.TargetFormat)}");
         output.WriteLine();
         output.WriteLine("Use one with: filee convert <files> --preset <id or name>");
         return Success;

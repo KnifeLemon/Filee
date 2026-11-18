@@ -93,6 +93,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **Windows 10/11**: `Filee-<version>-win-Setup.exe` চালান, অথবা `win-Portable.zip` আনজিপ করে `Filee.exe` চালান।
+  - Windows on ARM পিসিতে (Settings → System → About-এ "ARM-based processor" লেখা থাকে) এর বদলে `win-arm64-Setup.exe` বা `win-arm64-Portable.zip` নিন: এটি x64 ইমুলেশনে নয়, সরাসরি নেটিভভাবে চলে।
   - Setup হলো Filee-র নিজস্ব ইনস্টলার, Filee-র বিভিন্ন ভাষায় উপলব্ধ, এবং কম্পিউটারে অন্য কিছুর প্রয়োজন পড়ে না।
   - এটি Explorer মেনু, সাইন-ইনের সময় স্বয়ংক্রিয় চালু, `filee` কমান্ড এবং ঐচ্ছিক ইঞ্জিনগুলো যোগ করতে পারে।
   - সাইলেন্ট ইনস্টলেশন Inno Setup-এর সুইচগুলো সমর্থন করে (`/VERYSILENT /SUPPRESSMSGBOXES`)।
@@ -145,7 +146,7 @@ Setup-এর ফাইলের নামের ক্ষেত্রেও এ�
   কার্ড টেনে এনে বা Alt+↑ / Alt+↓ চেপে ক্রম ঠিক করুন, মুছে ফেলতে Delete চাপুন, এবং সেই ক্রম অনুযায়ী তালিকার জন্য ডোনাট খুলতে *অ্যাকশন নির্বাচন করুন* চাপুন।
   রূপান্তর শেষ হলে তালিকাটি খালি হয়ে যায়।
 - **ব্যবহারের অন্যান্য উপায়**: রাইট-ক্লিক মেনু, কীবোর্ড শর্টকাট, ড্রপ জোন এবং [`filee` কমান্ড](#কমান্ড-লাইন)।
-- নিজস্ব অ্যাকসেন্ট রঙ এবং ডোনাট স্বচ্ছতাসহ লাইট ও ডার্ক থিম; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, বাংলা, Русский, العربية (ডান থেকে বাম), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia এবং Tiếng Việt ভাষায় উপলব্ধ।
+- নিজস্ব অ্যাকসেন্ট রঙ এবং ডোনাট স্বচ্ছতাসহ লাইট ও ডার্ক থিম; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, বাংলা, Русский, العربية (ডান থেকে বাম), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia, Tiếng Việt, فارسی এবং Монгол ভাষায় উপলব্ধ।
 
 ## স্ক্রিনশট
 
@@ -173,7 +174,7 @@ Setup-এর ফাইলের নামের ক্ষেত্রেও এ�
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **টেক্সট**: TXT, LOG, স্ক্রিপ্ট সোর্স (PY, PAC, BAT, COMMAND; পাঠযোগ্য, কখনো চালানো হয় না), Markdown, HTML;<br>MHTML (সংরক্ষিত ওয়েব পেজ) পাঠযোগ্য<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | UTF-8 TXT, PDF, DOCX, HWPX, EPUB<br>একে অপরে রূপান্তর, PPTX স্লাইড³ |
 | **ই-বুক**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ<br>LIT, LRF, CHM, PDB, …⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3⁴ |
-| **ভিডিও**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>সাবটাইটেল (SRT, ASS, WebVTT) |
+| **ভিডিও**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A, 720p,<br>সাবটাইটেল (SRT, ASS, WebVTT) |
 | **অডিও**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **সাবটাইটেল**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC | UTF-8 হিসেবে একে অপরে রূপান্তর (কোরিয়ান CP949 ফাইল সঠিকভাবে পড়ে) |
 | **আর্কাইভ**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | আনপ্যাক, ZIP, 7Z, TAR, TAR.GZ;<br>যেকোনো ফাইল → একটি একক ZIP |

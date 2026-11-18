@@ -429,6 +429,8 @@ text, vectors, outlines, forms, page labels and document information remain PDF 
 Ctrl / Shift + click selects several pages, and every action works on the whole selection: the pages move up or down
 as a block, dragging them moves them to the line drawn between two pages, Insert puts another PDF's pages before or
 after the selection and Replace puts them where the selection was, removing it (#860).
+PDFs dragged in from the file manager show the same line and go in at it, through the same path as Insert
+(`PdfPageEditorViewModel.InsertFilesAtAsync`); other files are left out, and a drag without a PDF isn't taken (#1596).
 Each source PDF's bytes and page sizes are cached once after the window has appeared; thumbnails and the large preview
 render off the UI thread. A whole-document edit keeps the original catalogue and changes `/Rotate` in modify mode.
 An actual reorder, deletion, addition or extraction builds a new PDF from selected page objects. A PDF that opens
@@ -463,6 +465,15 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
   `setpts` and chained `atempo` for speed, `volume`, `color`/`anullsrc` for gaps, `concat`, the music as a second
   input (`atrim`, `volume`, `afade`, `adelay`, `amix`), then `fade`/`afade`. It is encoded with the preset's quality,
   size and codec.
+- Pictures, clips, the preview and Live Photos start at the frame shown at the time chosen (#1205):
+  `Engines/Media/KeyFrames` reads the packets before the time with ffprobe, without decoding, for the key frame to read
+  from, since FFmpeg's own `-ss` lands between key frames in MPEG-TS and MPEG-PS and skips the leading pictures of an
+  open group. A picture is trimmed at the file's own times (`-copyts`). What is encoded reads with `-copyts` and
+  `-itsoffset`, moved back to a microsecond before the start so nothing kept is below time 0, and its picture is cut by
+  `trim` in the stream's own ticks; its progress comes from `-stats_enc_pre`, with `-progress` to show it is working
+  between parts. A copy's `-ss` is checked where FFmpeg's own copy lands, since each demuxer seeks its own way (an MP4
+  by decode time, a WMV by a key frame a second), and its end is put where no frame shown before its last is missing.
+  The file header of `KeyFrames.cs` lists the FFmpeg behaviours, and the versions, that this allows for.
 
 ## Crop video
 
@@ -614,6 +625,34 @@ installed yet; the slides introduce the installed one. The demo animations are r
   The tray app runs one per rule (`WatchFolderService`, Settings → Watch folders, conversions in the toast and
   history); `filee watch` runs one on its own, with a stable `cli` rule identity across command restarts.
 
+## Preset gallery
+
+Presets shared by users live in the `KnifeLemon/Filee-Presets` repository and on filee.sh (#1530); the app reads
+them, it never uploads.
+
+- `Filee.Core/Gallery/SharedPresetRules` is the allow-list: every field a shared preset.json (a `PresetBundle`) may
+  have, with its range, and the fields left out (folders of one's own, passwords, picture and sound paths, metadata
+  naming people, places or owners), which may only be empty. A field added to `Preset` fails the check until it is
+  listed there (`PresetGalleryCheckTests` compares the list with the model). Settings that touch the installer's files
+  pass with a warning (`SharedPresetWarnings`, codes shared with the gallery's repository and filee.sh); the window
+  shows them and asks for a tick before installing a preset with a high one.
+- `SharedBundleCheck` checks a preset.json against it, as JSON first (unknown fields, types, ranges, links, personal
+  paths) and then as presets (kinds, tools, targets, references), and derives what meta.json needs.
+  `SharedPresetFolderCheck` checks a whole submission folder, pictures included (`GalleryImageHeader` reads their
+  header before anything decodes them). `filee presets check <folder> [--json]` runs it, with SkiaSharp decoding each
+  picture; the gallery's CI calls it.
+- `GalleryInstaller` checks the downloaded file's SHA-256 and the rules again, then adds its presets and donut under
+  new ids (" (2)" on a name the library has); nothing is ever replaced, unlike Settings → General → Import.
+  `GalleryExport` builds the preset.json "Export for the gallery…" saves (Presets page).
+- The app's `PresetGalleryWindow` (from the Presets page) reads `index.json` through `PresetGalleryClient`, only while
+  it is open, with the proxy setting, time and size limits, and falls back to the repository on GitHub when filee.sh
+  can't be reached. Paths in the index are relative to the URL it came from; Install uses the entry's counted
+  `download` link. Pictures are cached in the work folder's `gallery/` (64 MB, 30 days). A preset is written in one
+  main `language` and optionally more (`titleByLang`, `descriptionByLang`): the window shows the app language's texts
+  when the preset has them, else the main ones with a badge naming their language, lists the presets in the app's
+  language first and can hide the rest ("Only in my language"). Pictures follow the app language on their own
+  (`imagesByLang`).
+
 ## Platform code
 
 Everything OS-specific goes through `IPlatformServices` (`Filee.Core/Platform`). Windows lives in
@@ -736,7 +775,11 @@ have no semibold) instead of the app's embedded Noto fonts.
   update Setup starts Filee with `--background --whats-new`, so the slides show once in the app as well.
 
 - **Build** (`build/build-installer.ps1`): Setup is published as one self-contained, trimmed file
-  (`-p:FileeSetupPublish=true`), so it runs on Windows 10 1809+ x64 without .NET. `build/tools/make-setup.cs` appends
+  (`-p:FileeSetupPublish=true`), so it runs on Windows 10 1809+ x64 without .NET. Skia and HarfBuzz are resources of
+  `Filee.Setup.dll` rather than files .NET unpacks at start: `NativeLibraries` writes them into a new folder of its
+  own before the window opens (elevated, one in `%SystemRoot%\Temp` only administrators can change) and loads them by
+  full path; other libraries come from System32 only. Setup draws in software, so ANGLE isn't carried.
+  `build/tools/make-setup.cs` appends
   the app's publish folder as the payload: `[program][LZMA streams of all files][manifest JSON][72-byte trailer]`
   (`SetupPayload`): ~48 MB segments compressed in parallel with SharpCompress's LZMA (48 MB dictionary), programs
   first through the x86 branch filter (`X86Filter`, from the LZMA SDK) as 7-Zip and Inno Setup do. The manifest lists
@@ -776,6 +819,13 @@ have no semibold) instead of the app's embedded Noto fonts.
 - **Command line**: Inno Setup's switches (`SetupOptions`, documented at the top of the file), because Filee 1.x
   updates itself with `/SILENT /NORESTART` and winget passes `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Exit codes as
   Inno Setup's: 0 done, 1 could not start, 2 cancelled before installing (also a declined UAC prompt), 4 failed.
+- **In-app updates** (`UpdateService`): an installed copy downloads `Filee-<v>-SHA256SUMS.txt`, its `.sig` and
+  `Filee-<v>-win[-arm64]-Setup.exe` from the GitHub release, checks the signature with the update key, the Setup's
+  SHA-256 and its Authenticode publisher, and runs it with `/SILENT /NORESTART`. A file GitHub doesn't hand out (an
+  HTTP error, a timeout, a cut connection) is taken from the download mirror, `https://dl.filee.sh/<v>/<file name>`
+  (`UpdateService.MirrorRoot`, filled by `build/sign-release.ps1`); after one GitHub failure, the update's other files
+  try the mirror first. The checks don't depend on the source. A file that arrived and was refused is not fetched
+  again from the other source. Linux and macOS files aren't on the mirror.
 - **Testing**: `Filee.Setup.Tests` runs installs, updates (also over a simulated 1.x installation) and uninstalls
   against `MemoryRegistry`, a fake `ISetupSystem` and scratch folders, and renders every page. `/SANDBOX=<folder>`
   runs the real Setup with a registry file and all folders inside `<folder>`; `build-installer.ps1 -CheckOnly` (CI)

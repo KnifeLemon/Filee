@@ -67,11 +67,11 @@
         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6">
           <Button x:Name="MoveUp" Classes="icon" Focusable="False" Command="{Binding MoveUpCommand}"
                   ToolTip.Tip="{DynamicResource group.move_up}" AutomationProperties.Name="{DynamicResource group.move_up}">
-            <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
+            <PathIcon Width="16" Height="16" Data="{StaticResource Icon.ChevronUp}" />
           </Button>
           <Button x:Name="MoveDown" Classes="icon" Focusable="False" Command="{Binding MoveDownCommand}"
                   ToolTip.Tip="{DynamicResource group.move_down}" AutomationProperties.Name="{DynamicResource group.move_down}">
-            <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
+            <PathIcon Width="16" Height="16" Data="{StaticResource Icon.ChevronDown}" />
           </Button>
         </StackPanel>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">

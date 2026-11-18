@@ -751,13 +751,14 @@ internal sealed partial class HwpxReader
                 var span = Part("cellSpan");
                 var size = Part("cellSz");
                 var subList = Child(tc, "subList");
+                // Addresses and spans past the widest table read (the budget's MaxTableColumns) are cut there.
                 var cell = new HCell
                 {
                     Column = address is null ? -1 : Math.Clamp(Int(address, "colAddr"), 0, maxColumns - 1),
-                    ColSpan = Math.Clamp(Int(span, "colSpan", 1), 1, maxColumns),
                     RowSpan = Math.Max(1, Int(span, "rowSpan", 1)),
                     VerticalAlign = VerticalAlign(Attr(subList, "vertAlign")),
                 };
+                cell.ColSpan = Math.Clamp(Int(span, "colSpan", 1), 1, maxColumns - Math.Max(0, cell.Column));
                 if (BorderFill(Attr(tc, "borderFillIDRef")) is { } borderFill)
                     (cell.Borders, cell.Fill, cell.FillPicture) = borderFill;
                 cell.Blocks.AddRange(ReadSubList(subList));

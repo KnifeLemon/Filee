@@ -4,6 +4,11 @@ in data beside the executable. On first start the app offers to copy existing
 profile data and downloaded engines into unused portable data, leaving originals intact.
 Installing with install.sh uses the normal user profile instead.
 
+Packagers: delete filee.portable (and any data folder) from an installed copy,
+for example after cp -a into /opt/filee, as install.sh does. With the marker,
+Filee keeps its data in data beside the executable; where users can't write
+there, it shows an error and does not start.
+
 Run ./install.sh to install for the current user. It requires Python 3, creates
 an application launcher and ~/.local/bin/filee, and does not require root.
 Run ./install.sh --upgrade to safely upgrade an existing installation in place
@@ -126,6 +131,20 @@ libwayland-client0 on Ubuntu). To turn it on:
      windowrulev2 = noshadow, title:^(Filee Donut)$
      windowrulev2 = noblur, title:^(Filee Donut)$
    Hyprland reloads its config when the file changes; hyprctl reload forces it.
+
+Yazi terminal file manager integration:
+The Linux package includes a Yazi plugin (filee.yazi) for converting selected or
+hovered files directly within Yazi, or opening them in the Filee Donut.
+Requires Yazi 25.5 or newer (for Yazi 0.3.x or older, use [[manager.prepend_keymap]]).
+To set up:
+1. Link or copy the plugin into your Yazi plugins directory:
+     mkdir -p ~/.config/yazi/plugins
+     ln -s "${XDG_DATA_HOME:-$HOME/.local/share}/filee/application/yazi/filee.yazi" ~/.config/yazi/plugins/filee.yazi
+2. Add a keybinding in ~/.config/yazi/keymap.toml:
+     [[mgr.prepend_keymap]]
+     on   = [ "c", "f" ]
+     run  = "plugin filee"
+     desc = "Convert with Filee"
 
 Native Wayland Backend (experimental, off by default):
 By default, Filee runs through XWayland on Wayland desktops for maximum compatibility.

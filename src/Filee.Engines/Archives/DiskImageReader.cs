@@ -339,12 +339,13 @@ internal static class DiskImageReader
 }
 
 /// <summary>
-/// Tells HFS+ symbolic links from files. DiscUtils.HfsPlus 0.16.13 reads a record's BSD file mode two bytes early
-/// (offset 8 of HFSPlusBSDInfo, the admin and owner flags, instead of 10), so its attributes never say "link" or
+/// Tells HFS+ symbolic links from files. DiscUtils.HfsPlus 0.16.13 read a record's BSD file mode two bytes early
+/// (offset 8 of HFSPlusBSDInfo, the admin and owner flags, instead of 10), so its attributes never said "link" or
 /// "device"; and opening a link follows it (to another file of the volume, or to nothing: a NullReferenceException).
 /// Its directory entries do know a link, by the Finder type "slnk" every HFS+ link carries, but only through the
-/// file system's protected GetDirectoryEntry, reached here by reflection. The package version is pinned; should that
-/// member not be found, the volume is left to 7-Zip rather than unpacked with links followed.
+/// file system's protected GetDirectoryEntry, reached here by reflection (LTRData's 1.0.90 has the same members). The
+/// package version is pinned; should that member not be found, the volume is left to 7-Zip rather than unpacked with
+/// links followed.
 /// </summary>
 internal static class HfsPlusLinks
 {
