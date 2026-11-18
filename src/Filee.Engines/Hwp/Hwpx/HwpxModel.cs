@@ -106,7 +106,6 @@ internal sealed record HPage(int Width, int Height, int Left, int Right, int Top
     public int TextWidth => Math.Max(2000, Width - Left - Right - Gutter);
 }
 
-/// <summary>Newspaper-style columns.</summary>
 /// <summary>What a page hides (한글 hp:pageHiding).</summary>
 internal sealed record HPageHiding(bool Header, bool Footer, bool MasterPage = false, bool Border = false, bool Fill = false, bool PageNumber = false);
 
@@ -148,11 +147,53 @@ internal sealed record HPageBorder(HPageType Pages, HBorders Borders, string? Fi
     public bool IsEmpty => Fill is null && Picture is null && Borders == HBorders.Empty;
 }
 
+/// <summary>Newspaper-style columns.</summary>
+/// <param name="Gap">The space between two columns; for columns of their own widths, the one after the first.</param>
 /// <param name="RightToLeft">The first column is the rightmost (Word sectPr w:bidi, RTF \rtlsect). Only the layout engine uses it.</param>
-internal sealed record HColumns(int Count, int Gap, bool Separator, bool RightToLeft = false)
+/// <param name="Sizes">
+/// Columns of their own widths (Word w:cols equalWidth="0", 한글 sameSz="0", ODF style:column): each column's width
+/// and the space after it in reading order, one per column; null when the columns are equal. The layout scales them to
+/// the text width.
+/// </param>
+internal sealed record HColumns(int Count, int Gap, bool Separator, bool RightToLeft = false, IReadOnlyList<HColumnSize>? Sizes = null)
 {
     public static readonly HColumns Single = new(1, 0, false);
+
+    public bool Equals(HColumns? other) =>
+        other is not null && Count == other.Count && Gap == other.Gap && Separator == other.Separator && RightToLeft == other.RightToLeft
+        && (Sizes ?? []).SequenceEqual(other.Sizes ?? []);
+
+    public override int GetHashCode() => HashCode.Combine(Count, Gap, Separator, RightToLeft, Sizes?.Count ?? 0);
+
+    /// <summary>The members with the sizes themselves (model dumps compare them).</summary>
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append($"Count = {Count}, Gap = {Gap}, Separator = {Separator}, RightToLeft = {RightToLeft}");
+        if (Sizes is { } sizes)
+            builder.Append(", Sizes = [").AppendJoin(", ", sizes).Append(']');
+        return true;
+    }
+
+    /// <summary>
+    /// <paramref name="count"/> columns (at most 255) of the given <paramref name="sizes"/>, or equal ones
+    /// <paramref name="gap"/> apart when the sizes don't give a width for each column or are all the same.
+    /// </summary>
+    public static HColumns Of(int count, int gap, bool separator, bool rightToLeft, IReadOnlyList<HColumnSize>? sizes)
+    {
+        count = Math.Min(count, 255);
+        if (count <= 1)
+            return Single;
+        if (sizes is null || sizes.Count != count || sizes.Any(s => s.Width <= 0 || s.Gap < 0))
+            return new HColumns(count, gap, separator, rightToLeft);
+        var first = sizes[0];
+        return sizes.All(s => s.Width == first.Width) && sizes.Take(count - 1).All(s => s.Gap == first.Gap)
+            ? new HColumns(count, first.Gap, separator, rightToLeft)
+            : new HColumns(count, first.Gap, separator, rightToLeft, [.. sizes]);
+    }
 }
+
+/// <summary>One of the columns of their own widths: its width and the space after it (HWPUNIT).</summary>
+internal readonly record struct HColumnSize(int Width, int Gap);
 
 /// <summary>How a note's number shows: a numbering type (as list numbers, "DIGIT", "ROMAN_SMALL", ...) between characters.</summary>
 /// <param name="Superscript">The number in front of the note's text is raised (the reference always is); the layout

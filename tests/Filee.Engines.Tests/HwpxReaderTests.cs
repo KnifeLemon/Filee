@@ -430,7 +430,8 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(2, document.Sections.Count);
         var section = document.Sections[0];
         Assert.Equal(new HPage(84188, 59528, 8504, 8504, 5668, 4252, 4252, 4252, 0), section.Page);
-        Assert.Equal(new HColumns(2, 850, true), section.Columns);
+        // Columns of different widths (sameSz="0"): each hp:colSz width with the gap after it.
+        Assert.Equal(new HColumns(2, 850, true, Sizes: [new HColumnSize(20000, 850), new HColumnSize(21000, 0)]), section.Columns);
         Assert.True(section.HideFirstHeader);
         Assert.Equal(5, section.StartPageNumber);
         Assert.Equal("홀수 쪽 머리말", Text(Assert.Single(section.Headers, h => h.Pages == HPageType.Odd).Blocks));

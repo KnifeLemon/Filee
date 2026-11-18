@@ -1315,12 +1315,20 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     around the body grown by its offsets (around the header and footer areas too when they are inside), "CONTENT" its
     offsets in from the paper's edges; the background fills the paper, the page inside its margins or the border.
     The section's visibility (border, fill: all pages, all but the first, only the first) and a page's hp:pageHiding
-    (hideBorder, hideFill) leave them out.
+    (hideBorder, hideFill) leave them out. Word's page borders (w:pgBorders) take the same place: w:space points in
+    from the paper's edges (offsetFrom="page") or out from the text and around the header and footer areas, on all
+    pages, the first or all but the first (w:display); line styles it doesn't draw become a single or double line,
+    picture borders a single line.
 - **Columns, footnotes and endnotes** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: multi-column layout,
   footnotes and endnotes*):
   - Columns: a section's newspaper columns at their gap, with a separator line between them when the section has one;
     text fills a column, then the next, then the next page. A column break starts the next column; 한글's stored lines
     that started a column (the stored first-line-of-column flag) start one.
+  - Columns of their own widths (Word w:cols equalWidth="0", 한글 sameSz="0", ODF style:column rel-width): each its
+    width and the gap after it, scaled to the text width, the first at the right in a right-to-left section. A
+    paragraph going on in a column of another width is laid out anew from where it broke; they are not balanced
+    where columns change on a page (their lines are as wide as the column they were laid out for), and a table going
+    on in one keeps its first column's width.
   - Columns changing on a page (한글 다단 설정 나누기, Word's continuous section break): the columns before are balanced,
     the first ones taking the odd line as 한글 does, and the new ones start under them. At the end of a section they
     are left as they are (neither 한글 nor Word balances there).
@@ -1337,8 +1345,7 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - Measured against 한글's own PDFs: hwplib's 각주미주 sample breaks and numbers every line as 한글 (<I>, <II> under a
     full-width line, the endnote on page 2 at 한글's baseline), its separator line at 한글's place and footnotes within
     0.8 pt; hwpxlib's three-column sample has every line as 한글's, on two pages, in the same columns.
-  - Not yet: columns of different widths (한글 sameSz="0") share the width equally; footnotes go across the text
-    width also in columns (한글 puts them under each column); the separator line is solid; a note's own number is not
+  - Not yet: footnotes go across the text width also in columns (한글 puts them under each column); the separator line is solid; a note's own number is not
     raised where the section asks for it.
 - **Tables** (`TableLayout.cs`, GitHub Project 4 item *Layout engine: tables*):
   - Grid: cells take their column (or the next free one past cells spanning down from above) and their row and column

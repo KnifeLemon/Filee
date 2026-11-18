@@ -22,6 +22,9 @@ internal sealed record ParagraphBox(float SpaceBefore, float SpaceAfter, IReadOn
     /// <summary>The list item's number or bullet the paragraph was laid out with, or null.</summary>
     public string? Marker { get; init; }
 
+    /// <summary>The width of the column the paragraph was laid out in (points).</summary>
+    public float Width { get; init; }
+
     /// <summary>The paragraph's border and background, or null when it draws none.</summary>
     public BoxBorder? Border { get; init; }
 
