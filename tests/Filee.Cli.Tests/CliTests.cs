@@ -56,14 +56,14 @@ public sealed class CliTests : IDisposable
         Assert.True(result.Code == 0, result.Errors + result.Output);
         using var image = File.OpenRead(folder + ".iso");
         using DiscUtils.DiscFileSystem fs = filesystem == "udf201" ? new DiscUtils.Udf.UdfReader(image) : new DiscUtils.Iso9660.CDReader(image, true);
-        Assert.Equal(label.Length == 0 ? "LABEL_SOURCE" : label, fs.VolumeLabel);
+        Assert.Equal(label.Length == 0 ? "label-source" : label, fs.VolumeLabel);
         var reloaded = new Filee.Core.Settings.UserDataStore(_settings);
         reloaded.Load();
         Assert.Equal("SAVED", reloaded.FindPreset("label-test")!.Archive.IsoVolumeLabel);
         var wrongTarget = await Run("convert", folder, "--to", "zip", "--iso-label", label);
         Assert.NotEqual(0, wrongTarget.Code);
         Assert.Contains("requires an ISO target", wrongTarget.Errors);
-        var invalid = await Run("convert", folder, "--to", "iso", "--iso-label", "lowercase");
+        var invalid = await Run("convert", folder, "--to", "iso", "--iso-label", "bad/label");
         Assert.NotEqual(0, invalid.Code);
         Assert.Contains("Invalid ISO label", invalid.Errors);
     }
@@ -75,7 +75,7 @@ public sealed class CliTests : IDisposable
         var second = Directory.CreateDirectory(Path.Combine(_folder, "second")).FullName;
         var result = await Run("convert", first, second, "--to", "iso", "--output", _folder);
         Assert.True(result.Code == 0, result.Errors + result.Output);
-        foreach (var (folder, expected) in new[] { (first, "FIRST_DIR"), (second, "SECOND") })
+        foreach (var (folder, expected) in new[] { (first, "first.dir"), (second, "second") })
         {
             using var stream = File.OpenRead(folder + ".iso");
             using var iso = new DiscUtils.Iso9660.CDReader(stream, true);

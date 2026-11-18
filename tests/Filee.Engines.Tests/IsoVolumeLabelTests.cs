@@ -15,15 +15,17 @@ public sealed class IsoVolumeLabelTests : IDisposable
     private readonly string _root = Directory.CreateTempSubdirectory("filee-label-").FullName;
 
     [Theory]
-    [InlineData(IsoFileSystem.Joliet, "my photos", "", "MY_PHOTOS")]
-    [InlineData(IsoFileSystem.Joliet, "photos.jpg", "", "PHOTOS_JPG")]
-    [InlineData(IsoFileSystem.Joliet, "照片", "", "FILEE")]
-    [InlineData(IsoFileSystem.Joliet, "source", "ABCDEFGHIJKLMNOP", "ABCDEFGHIJKLMNOP")]
-    [InlineData(IsoFileSystem.Udf201, "我的照片", "", "我的照片")]
-    [InlineData(IsoFileSystem.Udf201, "abcdefghijklmn text字", "", "abcdefghijklmn")]
-    [InlineData(IsoFileSystem.Udf201, "source", "123456789012345678901234567890", "123456789012345678901234567890")]
-    [InlineData(IsoFileSystem.Udf201, "source", "一二三四五六七八九十一二三四五", "一二三四五六七八九十一二三四五")]
-    public async Task Folder_labels_are_not_silently_truncated(IsoFileSystem filesystem, string folderName, string custom, string expected)
+    [InlineData(IsoFileSystem.Joliet, "my photos", "", "my photos", "MY_PHOTOS")]
+    [InlineData(IsoFileSystem.Joliet, "photos.jpg", "", "photos.jpg", "PHOTOS_JPG")]
+    [InlineData(IsoFileSystem.Joliet, "Filee-ISO-Label-1492-Test1-win", "", "Filee-ISO-Label-", "FILEE_ISO_LABEL_")]
+    [InlineData(IsoFileSystem.Joliet, "照片", "", "照片", "__")]
+    [InlineData(IsoFileSystem.Joliet, "😀", "", "FILEE", "FILEE")]
+    [InlineData(IsoFileSystem.Joliet, "source", "ABCDEFGHIJKLMNOP", "ABCDEFGHIJKLMNOP", "ABCDEFGHIJKLMNOP")]
+    [InlineData(IsoFileSystem.Udf201, "我的照片", "", "我的照片", null)]
+    [InlineData(IsoFileSystem.Udf201, "abcdefghijklmn text字", "", "abcdefghijklmn", null)]
+    [InlineData(IsoFileSystem.Udf201, "source", "123456789012345678901234567890", "123456789012345678901234567890", null)]
+    [InlineData(IsoFileSystem.Udf201, "source", "一二三四五六七八九十一二三四五", "一二三四五六七八九十一二三四五", null)]
+    public async Task Folder_labels_are_not_silently_truncated(IsoFileSystem filesystem, string folderName, string custom, string expected, string? primary)
     {
         var folder = Directory.CreateDirectory(Path.Combine(_root, folderName)).FullName;
         File.WriteAllText(Path.Combine(folder, "data.txt"), "contents");
@@ -34,14 +36,14 @@ public sealed class IsoVolumeLabelTests : IDisposable
         if (filesystem == IsoFileSystem.Joliet)
         {
             var bytes = File.ReadAllBytes(output);
-            Assert.Equal(expected, Encoding.ASCII.GetString(bytes, 16 * 2048 + 40, 32).TrimEnd());
+            Assert.Equal(primary, Encoding.ASCII.GetString(bytes, 16 * 2048 + 40, 32).TrimEnd());
             Assert.Equal(expected, Encoding.BigEndianUnicode.GetString(bytes, 17 * 2048 + 40, 32).TrimEnd());
         }
     }
 
     [Theory]
-    [InlineData(IsoFileSystem.Joliet, false, "", "HOLIDAY")]
-    [InlineData(IsoFileSystem.Joliet, true, "", "HOLIDAY")]
+    [InlineData(IsoFileSystem.Joliet, false, "", "holiday")]
+    [InlineData(IsoFileSystem.Joliet, true, "", "holiday")]
     [InlineData(IsoFileSystem.Udf201, false, "", "holiday")]
     [InlineData(IsoFileSystem.Udf201, true, "", "holiday")]
     [InlineData(IsoFileSystem.Udf201, true, "Custom disc", "Custom disc")]
@@ -69,7 +71,7 @@ public sealed class IsoVolumeLabelTests : IDisposable
     }
 
     [Theory]
-    [InlineData(IsoFileSystem.Joliet, "lower")]
+    [InlineData(IsoFileSystem.Joliet, "a/b")]
     [InlineData(IsoFileSystem.Udf201, "1234567890123456789012345678901")]
     public async Task Invalid_custom_labels_preserve_existing_destinations(IsoFileSystem filesystem, string label)
     {

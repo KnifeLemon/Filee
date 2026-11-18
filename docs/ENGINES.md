@@ -1942,8 +1942,9 @@ A dotted folder name keeps its suffix. Names are fitted to the selected filesyst
 when no usable label remains. Each input gets its own label, independently of the output filename.
 The ISO preset's **Volume label** field overrides this default; empty uses the input name. The CLI equivalent is
 `--iso-label "MY_DISC"`, which overrides the preset for that command without changing the saved preset.
-Custom labels are validated rather than silently changed. Joliet accepts up to 16 uppercase ASCII letters,
-digits or underscores so both its primary and Unicode descriptors preserve the same label. UDF accepts up to
+Custom labels are validated rather than silently changed. Joliet preserves case, spaces, punctuation and BMP Unicode
+within its 16-character limit, excluding control characters and `*`, `/`, `:`, `;`, `?` and backslashes. Its primary
+ISO 9660 descriptor has a separate uppercase ASCII-compatible label for older readers. UDF accepts up to
 30 Latin-1 characters, or 15 UTF-16 units when another character is present; a supplementary character takes two units.
 UDF labels cannot contain control characters, malformed Unicode or leading/trailing whitespace.
 For example: `filee convert "backup.tar.gz" --to iso --iso-filesystem udf201 --iso-label "My backup"`.

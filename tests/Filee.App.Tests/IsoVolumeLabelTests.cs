@@ -17,11 +17,12 @@ public sealed class IsoVolumeLabelTests
         TestServices.EnsureInitialized("en");
         var preset = new Preset { Name = "ISO image", TargetFormat = "iso" };
         var editor = new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>());
-        editor.IsoVolumeLabel = "My disc";
+        editor.IsoVolumeLabel = "ABCDEFGHIJKLMNOPQ";
         Assert.False(editor.IsValid);
         Assert.NotNull(editor.IsoLabelError);
         Assert.False(editor.Apply());
         editor.IsoFileSystem = editor.IsoFileSystems.Single(c => c.Value == IsoFileSystem.Udf201);
+        editor.IsoVolumeLabel = "My disc";
         Assert.Null(editor.IsoLabelError);
         Assert.True(editor.Apply());
         Assert.Equal("My disc", preset.Archive.IsoVolumeLabel);

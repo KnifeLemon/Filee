@@ -13,7 +13,7 @@ public static class IsoVolumeLabels
         if (string.IsNullOrEmpty(label)) return null;
         if (label != label.Trim() || label.Any(char.IsControl)) return "error.iso_label";
         if (filesystem == IsoFileSystem.Joliet)
-            return label.Length <= 16 && label.All(c => c is >= 'A' and <= 'Z' or >= '0' and <= '9' or '_') ? null : "error.iso_label";
+            return label.Length <= 16 && label.All(JolietCharacter) ? null : "error.iso_label";
         if (filesystem != IsoFileSystem.Udf201) return "error.iso_label";
         try
         {
@@ -23,16 +23,17 @@ public static class IsoVolumeLabels
         catch (EncoderFallbackException) { return "error.iso_label"; }
     }
 
-    /// <summary>Adapts an input's base name, falling back to FILEE when it has no usable characters.</summary>
+    /// <summary>Keeps representable source characters and truncates at the selected descriptor's limit.</summary>
     public static string FromName(string name, IsoFileSystem filesystem)
     {
         var label = new StringBuilder();
         if (filesystem == IsoFileSystem.Joliet)
         {
-            foreach (var c in name.ToUpperInvariant())
-                label.Append(c is >= 'A' and <= 'Z' or >= '0' and <= '9' ? c : '_');
-            var text = label.ToString().Trim('_');
-            return text.Length == 0 ? "FILEE" : text[..Math.Min(16, text.Length)];
+            foreach (var c in name)
+                if (JolietCharacter(c)) label.Append(c);
+            var text = label.ToString().Trim();
+            var fittedJoliet = text[..Math.Min(16, text.Length)].TrimEnd();
+            return fittedJoliet.Length == 0 ? "FILEE" : fittedJoliet;
         }
         foreach (var rune in name.EnumerateRunes())
             if (!Rune.IsControl(rune)) label.Append(rune.ToString());
@@ -43,4 +44,10 @@ public static class IsoVolumeLabels
         var fitted = unicode[..length].TrimEnd();
         return fitted.Length == 0 ? "FILEE" : fitted;
     }
+
+    /// <summary>ISO 9660's primary descriptor needs its own ASCII-compatible representation of the Joliet label.</summary>
+    public static string PrimaryLabel(string label) => new(label.ToUpperInvariant()
+        .Select(c => c is >= 'A' and <= 'Z' or >= '0' and <= '9' or '_' ? c : '_').ToArray());
+
+    private static bool JolietCharacter(char c) => !char.IsControl(c) && !char.IsSurrogate(c) && c is not ('*' or '/' or ':' or ';' or '?' or '\\');
 }

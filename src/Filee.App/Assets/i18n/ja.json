@@ -1157,7 +1157,8 @@
   "presets.group.archive": "アーカイブ",
   "presets.iso_filesystem": "ISO ファイルシステム",
   "presets.iso_label": "ボリュームラベル",
-  "presets.iso_label_hint": "空欄ならフォルダーまたはアーカイブ名を使用します。Joliet: 大文字 A–Z、数字、下線で16文字まで。UDF: Latin-1 で30文字、その他は UTF-16 で15単位まで。",
+
+  "presets.iso_label_hint": "空欄ならフォルダーまたはアーカイブ名を使用します。Joliet: 大文字・小文字とハイフンを保持し、BMP Unicode で16文字まで。UDF: Latin-1 で30文字、UTF-16 で15単位まで。",
   "presets.archive_level": "圧縮レベル",
   "presets.archive_level.Store": "圧縮しない（格納のみ）",
   "presets.archive_level.Fast": "高速",
@@ -1801,7 +1802,8 @@
   "error.iso_root": "ドライブやファイルシステムのルートからは ISO を作成できません。ドライブ内のフォルダーを選択してください。",
   "error.iso_link": "ISO 作成ではシンボリックリンクやジャンクションをたどりません。リンクを含まない元のフォルダーを選択してください。",
   "error.iso_name": "Joliet 名は Unicode BMP の 62 文字以内で、制御文字、セミコロン、バックスラッシュ、*、:、?は使用できません。相対パスは 240 文字以内にしてください。 長い名前や大きなファイルには、プリセットの ISO ファイルシステムで UDF 2.01 を選択してください。",
-  "error.iso_label": "無効な ISO ラベルです。Joliet: 大文字 A–Z、数字、下線で16文字まで。UDF: Latin-1 で30文字、その他は UTF-16 で15単位まで。有効な Unicode を使用し、制御文字や前後の空白を含めないでください。",
+
+  "error.iso_label": "無効な ISO ラベルです。Joliet: BMP Unicode で16文字まで。* / : ; ? とバックスラッシュは使用できません。UDF: Latin-1 で30文字、UTF-16 で15単位まで。制御文字や前後の空白も使用できません。",
   "error.iso_file_size": "ISO を作成するには、各ファイルのサイズを 4 GiB 未満にしてください。 長い名前や大きなファイルには、プリセットの ISO ファイルシステムで UDF 2.01 を選択してください。",
   "error.iso_udf_name": "UDF の名前は有効な Unicode で、スラッシュ、バックスラッシュ、ヌル文字を含められず、. や .. にもできません。上限は Latin-1 のみなら254文字、それ以外を含む場合は UTF-16 で127単位です。",
   "error.iso_changed": "すべてのデータを書き込む前に ISO 作成が停止しました。変換中に元のファイルが変更された可能性があります。",

@@ -52,7 +52,7 @@ public sealed class FolderIsoConverter : IConverter
                 var name = Directory.Exists(source) ? new DirectoryInfo(Path.TrimEndingDirectorySeparator(source)).Name : FormatRegistry.NameWithoutExtension(source);
                 label = IsoVolumeLabels.FromName(name, filesystem);
             }
-            var builder = new CDBuilder { UseJoliet = true, VolumeIdentifier = filesystem == IsoFileSystem.Joliet ? label : "FILEE" };
+            var builder = new CDBuilder { UseJoliet = true, VolumeIdentifier = filesystem == IsoFileSystem.Joliet ? IsoVolumeLabels.PrimaryLabel(label) : "" };
             var udf = step.Preset.Archive.IsoFileSystem == IsoFileSystem.Udf201
                 ? new UdfBuilder { VolumeIdentifier = label } : null;
             if (!Enum.IsDefined(step.Preset.Archive.IsoFileSystem))
