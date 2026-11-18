@@ -4,6 +4,7 @@
 using Filee.Core.Platform;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
+using PdfSharp.Pdf.Advanced;
 using PdfSharp.Pdf.IO;
 using PDFtoImage;
 using PDFtoImage.Exceptions;
@@ -85,7 +86,10 @@ public static class PdfPageTools
 
     /// <summary>Copies pages in the supplied order, optionally from several PDFs, and applies their lossless turns.</summary>
     public static void Save(IReadOnlyList<PdfPageReference> pages, string outputPath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) => Save(pages, outputPath, cancellationToken, null);
+
+    internal static void Save(IReadOnlyList<PdfPageReference> pages, string outputPath,
+        CancellationToken cancellationToken, PdfMergeStructure.Limits? limits)
     {
         if (pages.Count == 0)
             throw new InvalidOperationException("A PDF must contain at least one page.");
@@ -115,9 +119,12 @@ public static class PdfPageTools
         }
 
         var sources = new Dictionary<string, PdfDocument>(FileSystemPaths.Comparer);
+        var maps = new Dictionary<PdfDocument, Dictionary<PdfObjectID, PdfPage>>();
+        var occurrences = new List<(PdfDocument Source, PdfPage Original, PdfPage Imported)>();
         try
         {
             using var output = new PdfDocument();
+            var structure = new PdfMergeStructure(output, limits ?? new());
             foreach (var item in pages)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -125,13 +132,24 @@ public static class PdfPageTools
                 {
                     source = PdfSharpConverter.Open(item.Path, PdfDocumentOpenMode.Import);
                     sources.Add(item.Path, source);
+                    maps.Add(source, []);
                 }
                 if (item.PageIndex < 0 || item.PageIndex >= source.PageCount)
                     throw new InvalidDataException($"Page {item.PageIndex + 1} no longer exists in {Path.GetFileName(item.Path)}.");
-                var page = output.AddPage(source.Pages[item.PageIndex]);
+                var original = source.Pages[item.PageIndex];
+                var page = output.AddPage(original);
+                // PDFsharp maps a repeated source page to its last import; destinations use our first occurrence.
+                maps[source].TryAdd(original.Reference!.ObjectID, page);
+                occurrences.Add((source, original, page));
                 if (item.Rotation != 0)
                     page.Rotate = NormaliseRotation(page.Rotate + item.Rotation);
             }
+            structure.Normalize(occurrences, cancellationToken);
+            foreach (var source in sources.Values)
+                structure.Carry(source, maps[source], cancellationToken, partial: true);
+            structure.Separate(output.Pages, cancellationToken);
+            structure.Write(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             output.Save(outputPath);
         }
         finally
