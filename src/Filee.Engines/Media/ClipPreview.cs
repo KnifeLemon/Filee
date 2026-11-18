@@ -35,13 +35,16 @@ public static partial class ClipPreview
     /// <summary>Told how many bytes of sound reached the player once a clip has played (tests).</summary>
     internal static Action<long>? SoundPlayed { get; set; }
 
+    /// <summary>The program the sound (a WAV stream on its stdin) goes to instead of ffplay (tests).</summary>
+    internal static string? PlayerProgram { get; set; }
+
     /// <summary>True when the preview plays sound: ffplay is next to Filee's FFmpeg.</summary>
     public static bool HasSound => Player() is not null;
 
     private static string? Player() =>
-        FfmpegConverter.Locate() is { } tools
+        PlayerProgram ?? (FfmpegConverter.Locate() is { } tools
         && Path.Combine(Path.GetDirectoryName(tools.Ffmpeg) ?? "", EngineEnvironment.ProgramName("ffplay.exe")) is var ffplay
-        && File.Exists(ffplay) ? ffplay : null;
+        && File.Exists(ffplay) ? ffplay : null);
 
     /// <summary>
     /// Plays <paramref name="edit"/> of the video (or sound) at <paramref name="path"/> from its start (use
@@ -72,19 +75,33 @@ public static partial class ClipPreview
             return; // nothing left to play
         }
 
+        // From the key frame before the first part, so the pictures start with the frame the clip window showed.
+        SeekPoint? seek = null;
+        if (video is not null)
+        {
+            try
+            {
+                seek = await KeyFrames.FindAsync(ffprobe, input, clip.Start, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return; // stopped before it started
+            }
+        }
+
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Process? pictures = null;
         var width = 0;
         var frameHeight = 0;
         if (video is not null)
-            pictures = Start(ffmpeg, MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out width, out frameHeight), stdin: false);
+            pictures = Start(ffmpeg, MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out width, out frameHeight, seek), stdin: false);
         Process? decoder = null, player = null;
         Task pump = Task.CompletedTask;
         try
         {
             if ((info.Audio is not null || clip.Music is not null) && Player() is { } ffplay)
             {
-                decoder = Start(ffmpeg, await PreviewSoundArgumentsAsync(ffprobe, input, clip, video, info.Audio, stop.Token).ConfigureAwait(false), stdin: false);
+                decoder = Start(ffmpeg, await PreviewSoundArgumentsAsync(ffprobe, input, clip, video, info.Audio, stop.Token, seek).ConfigureAwait(false), stdin: false);
                 player = Start(ffplay, ["-hide_banner", "-loglevel", "error", "-nodisp", "-autoexit",
                     .. PlayerVolume is { } volume ? new[] { "-volume", volume.ToString(CultureInfo.InvariantCulture) } : [], "-i", "-"], stdin: true);
                 pump = Pump(decoder, player, stop.Token);
@@ -155,14 +172,15 @@ public static partial class ClipPreview
     }
 
     /// <summary>
-    /// The arguments of the preview's sound: the music's track probed like the video's.
+    /// The arguments of the preview's sound: the music's track probed like the video's, the video read from
+    /// <paramref name="seek"/> as its pictures are, so the two play together.
     /// </summary>
     internal static async Task<List<string>> PreviewSoundArgumentsAsync(string ffprobe, string input, ClipEdit clip,
-        VideoStreamInfo? video, AudioStreamInfo? audio, CancellationToken cancellationToken)
+        VideoStreamInfo? video, AudioStreamInfo? audio, CancellationToken cancellationToken, SeekPoint? seek = null)
     {
         var musicTrack = clip.Music is { } song
             ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken).ConfigureAwait(false) : 0;
-        return MediaEncoding.ClipPreviewAudio(input, clip, video, audio is not null, audio?.Ordinal ?? 0, musicTrack);
+        return MediaEncoding.ClipPreviewAudio(input, clip, video, audio is not null, audio?.Ordinal ?? 0, musicTrack, seek);
     }
 
     /// <summary>

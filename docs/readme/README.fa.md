@@ -95,6 +95,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **ویندوز ۱۰ و ۱۱**: فایل `Filee-<version>-win-Setup.exe` را اجرا کنید، یا نسخه پرتابل `win-Portable.zip` را از حالت فشرده خارج کرده و `Filee.exe` را اجرا نمایید.
+  - روی رایانه‌های Windows on ARM (در Settings → System → About عبارت «ARM-based processor» دیده می‌شود)، به‌جای آن `win-arm64-Setup.exe` یا `win-arm64-Portable.zip` را بگیرید: به‌صورت بومی اجرا می‌شود، نه با شبیه‌سازی x64.
   - نصاب Filee نرم‌افزار اختصاصی خود آن است، به زبان‌های مختلف برنامه ارائه می‌شود و به برنامه دیگری نیاز ندارد.
   - می‌تواند منوی راست‌کلیک Explorer، اجرا در هنگام ورود به سیستم، دستور `filee` و موتورهای اختیاری را اضافه کند.
   - برای نصب بی‌صدا از سوئیچ‌های Inno Setup استفاده کنید (`/VERYSILENT /SUPPRESSMSGBOXES`).
@@ -147,7 +148,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
   با کشیدن کارت‌ها یا Alt+↑ / Alt+↓ ترتیب را تغییر دهید، با Delete حذف کنید، و با *انتخاب عملکرد* دونات را برای کل لیست باز کنید.
   لیست با اتمام تبدیل خالی می‌شود.
 - **روش‌های دیگر دسترسی**: منوی راست‌کلیک، میانبر کیبورد، ناحیه رها کردن و دستور [`filee`](#خط-فرمان).
-- پوسته‌های روشن و تیره با رنگ تأکیدی دلخواه و شفافیت دونات، به زبان‌های انگلیسی، اسپانیایی، ژاپنی، کره‌ای، چینی ساده و سنتی، لهستانی، هندی، روسی، عربی (راست به چپ)، پرتغالی (برزیل و پرتغال)، فرانسوی، نپالی، تایلندی، ترکی، آلمانی، ایتالیایی، اندونزیایی، ویتنامی و فارسی (راست به چپ).
+- پوسته‌های روشن و تیره با رنگ تأکیدی دلخواه و شفافیت دونات، به زبان‌های انگلیسی، اسپانیایی، ژاپنی، کره‌ای، چینی ساده و سنتی، لهستانی، هندی، روسی، عربی (راست به چپ)، پرتغالی (برزیل و پرتغال)، فرانسوی، نپالی، تایلندی، ترکی، آلمانی، ایتالیایی، اندونزیایی، ویتنامی، بنگالی، مغولی و فارسی (راست به چپ).
 
 ## تصاویر برنامه
 
@@ -175,7 +176,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **HWP**: HWP، HWPX | PDF، PNG، DOCX، HWPX ↔ HWP، TXT، Markdown، HTML |
 | **متن**: TXT، LOG، کدهای اسکریپت (PY، PAC، BAT، COMMAND؛ فقط خواندن، هرگز اجرا نمی‌شود)، Markdown، HTML؛<br>خواندن MHTML (صفحات وب ذخیره‌شده)<br>reStructuredText، LaTeX، Org، AsciiDoc، Typst، MediaWiki، DocBook، Jupyter، Textile، man، OPML³ | UTF-8 TXT، PDF، DOCX، HWPX، EPUB<br>تبدیل به یکدیگر، اسلایدهای PPTX³ |
 | **کتاب‌های الکترونیکی**: EPUB، KEPUB، MOBI، AZW3، AZW، AZW4، FB2، CBZ، CBR، CB7، HTMLZ، TXTZ<br>LIT، LRF، CHM، PDB، …⁴ | PDF، EPUB، KEPUB (Kobo)، DOCX، TXT، HTML، HWPX<br>MOBI، AZW3⁴ |
-| **ویدیو**⁵: MP4، MOV، MKV، WEBM، AVI، WMV، FLV، MPEG، ویدیو سی‌دی (DAT)، TS، M2TS، 3GP، OGV، VOB، … | MP4 (H.264، HEVC، AV1)، WEBM، MOV، MKV، AVI، GIF، APNG، MP3، M4A، 720p،<br>زیرنویس‌ها (SRT، ASS، WebVTT) |
+| **ویدیو**⁵: MP4، MOV، MKV، WEBM، AVI، WMV، FLV، MPEG، ویدیو سی‌دی (DAT)، TS، M2TS، 3GP، OGV، VOB، … | MP4 (H.264، HEVC، AV1)، WEBM، MOV، MKV، AVI، GIF، APNG، WEBP، MP3، M4A، 720p،<br>زیرنویس‌ها (SRT، ASS، WebVTT) |
 | **صدا**⁵: MP3، M4A، AAC، WAV، FLAC، OGG، OPUS، WMA، AIFF، AMR، APE، WavPack، TTA، DSD (DSF، DFF)، DTS، AC3، E-AC3، … | MP3، M4A (AAC، ALAC)، WAV، FLAC، OGG، OPUS، AAC، WavPack، TTA، W64، AC3، E-AC3 |
 | **زیرنویس**: SRT، ASS/SSA، WebVTT، SAMI (SMI)، LRC، TTML، MicroDVD، SCC | تبدیل به یکدیگر در قالب UTF-8 (فایل‌های CP949 کره‌ای به درستی خوانده می‌شوند) |
 | **آرشیوها**: ZIP، ANSYS Workbench (WBPZ)، 7Z، RAR، TAR، TAR.GZ، TAR.BZ2، TAR.XZ، GZ، ISO، CAB، DMG، ALZ، EGG، … | استخراج، ZIP، 7Z، TAR، TAR.GZ؛<br>هر فایلی → یک فایل ZIP |

@@ -1,7 +1,9 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Filee.App.Services;
 using Filee.App.ViewModels;
@@ -225,6 +227,137 @@ public class PdfPageEditorTests
             Assert.True(await vm.SaveAsync());
             using var result = PdfReader.Open(Path.Combine(folder, "source_edited.pdf"), PdfDocumentOpenMode.Import);
             Assert.Equal([210d, 410d, 420d, 220d, 410d, 420d, 410d, 420d], result.Pages.Cast<PdfPage>().Select(p => p.Width.Point));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Dropped_pdfs_are_inserted_at_the_drop_position_and_other_files_left_out()
+    {
+        TestServices.EnsureInitialized("en");
+        var folder = Directory.CreateTempSubdirectory("filee-pdf-pages-drop-").FullName;
+        try
+        {
+            var source = MakePdf(folder, "source.pdf", (210, 0), (220, 0), (230, 0));
+            var first = MakePdf(folder, "first.pdf", (410, 0), (420, 0));
+            var second = MakePdf(folder, "second.PDF", (510, 0));
+            var picture = Path.Combine(folder, "picture.png");
+            await File.WriteAllBytesAsync(picture, [0x89, 0x50, 0x4E, 0x47], TestContext.Current.CancellationToken);
+            using var vm = Editor(folder, source, out _);
+            await vm.LoadThumbnailsAsync();
+
+            // Two PDFs dropped between pages 1 and 2: each PDF's pages in order, the first PDF first, all selected.
+            await vm.InsertFilesAtAsync([first, second], 1);
+            Assert.Equal([210d, 410d, 420d, 510d, 220d, 230d], vm.Pages.Select(Width));
+            Assert.Equal([410d, 420d, 510d], vm.SelectionInOrder().Select(Width));
+            Assert.False(vm.HasStatus);
+
+            // At the very start and the very end; a position past the end goes at the end.
+            await vm.InsertFilesAtAsync([second], 0);
+            await vm.InsertFilesAtAsync([second], 99);
+            Assert.Equal([510d, 210d, 410d, 420d, 510d, 220d, 230d, 510d], vm.Pages.Select(Width));
+
+            // A picture among them is left out, and the status line says so.
+            await vm.InsertFilesAtAsync([picture, first], 2);
+            Assert.Equal([510d, 210d, 410d, 420d, 410d, 420d, 510d, 220d, 230d, 510d], vm.Pages.Select(Width));
+            Assert.Equal("Files that aren't PDFs were left out", vm.Status);
+
+            // Nothing but other files: no pages, the usual "isn't supported" message.
+            await vm.InsertFilesAtAsync([picture], 0);
+            Assert.Equal(10, vm.Pages.Count);
+            Assert.Equal("This file type isn't supported", vm.Status);
+
+            // A .pdf that can't be opened adds nothing, as with Insert.
+            var broken = Path.Combine(folder, "broken.pdf");
+            await File.WriteAllTextAsync(broken, "not a pdf", TestContext.Current.CancellationToken);
+            await vm.InsertFilesAtAsync([broken], 0);
+            Assert.Equal(10, vm.Pages.Count);
+            Assert.Equal(AppHost.Get<ILocalizer>()["error.conversion_failed"], vm.Status);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Pdfs_dragged_from_the_file_manager_show_the_drop_line_and_land_there()
+    {
+        TestServices.EnsureInitialized("en");
+        var folder = Directory.CreateTempSubdirectory("filee-pdf-pages-filedrop-").FullName;
+        try
+        {
+            var source = MakePdf(folder, "source.pdf", (210, 0), (220, 0), (230, 0), (240, 0));
+            var other = MakePdf(folder, "other.pdf", (410, 0), (420, 0));
+            var picture = Path.Combine(folder, "picture.png");
+            await File.WriteAllBytesAsync(picture, [0x89, 0x50, 0x4E, 0x47], TestContext.Current.CancellationToken);
+            var vm = Editor(folder, source, out _);
+            var window = new PdfPageEditorWindow { DataContext = vm };
+            window.Show();
+            await vm.LoadThumbnailsAsync();
+            RenderTests.Pump();
+            var list = window.PageOrder;
+
+            // A point on a page in the strip, in the strip's coordinates; y is a share of the page's height.
+            Point On(int index, double y)
+            {
+                var card = list.ContainerFromIndex(index)!;
+                return card.TranslatePoint(new Point(card.Bounds.Width / 2, card.Bounds.Height * y), list)!.Value;
+            }
+            static DataTransfer Files(params string[] paths)
+            {
+                var data = new DataTransfer();
+                foreach (var path in paths)
+                    data.Add(DataTransferItem.CreateFile(BrowserDropTests.VirtualFile.Create(Path.GetFileName(path), [], path).Item));
+                return data;
+            }
+            DragDropEffects Raise(RoutedEvent<DragEventArgs> kind, DataTransfer data, Point at)
+            {
+                var args = new DragEventArgs(kind, data, list, at, KeyModifiers.None) { DragEffects = DragDropEffects.Copy | DragDropEffects.Move };
+                list.RaiseEvent(args);
+                Dispatcher.UIThread.RunJobs();
+                return args.DragEffects;
+            }
+
+            // Only a picture: not taken, no line.
+            using (var pictures = Files(picture))
+            {
+                Assert.Equal(DragDropEffects.None, Raise(DragDrop.DragEnterEvent, pictures, On(1, .3)));
+                Assert.False(window.DropLine.IsVisible);
+                Raise(DragDrop.DragLeaveEvent, pictures, new Point(-10, -10));
+            }
+
+            // A PDF and a picture over the bottom half of page 2: copied (never moved), the line under page 2.
+            using var data = Files(other, picture);
+            Assert.Equal(DragDropEffects.Copy, Raise(DragDrop.DragEnterEvent, data, On(1, .3)));
+            Assert.Equal(DragDropEffects.Copy, Raise(DragDrop.DragOverEvent, data, On(1, .8)));
+            Assert.True(window.DropLine.IsVisible);
+            var lineCentre = Canvas.GetTop(window.DropLine) + window.DropLine.Height / 2;
+            var below = list.ContainerFromIndex(1)!;
+            Assert.Equal(below.TranslatePoint(new Point(0, below.Bounds.Height), list)!.Value.Y, lineCentre, 1);
+            RenderTests.Pump();
+            RenderTests.Save(window, "pdf-page-editor-file-drop.png");
+
+            // Passing onto the next page inside the strip keeps the line; leaving the strip hides it.
+            Raise(DragDrop.DragLeaveEvent, data, On(2, .2));
+            Assert.True(window.DropLine.IsVisible);
+            Raise(DragDrop.DragLeaveEvent, data, new Point(-10, -10));
+            Assert.False(window.DropLine.IsVisible);
+
+            Raise(DragDrop.DragEnterEvent, data, On(1, .8));
+            Assert.Equal(DragDropEffects.Copy, Raise(DragDrop.DropEvent, data, On(1, .8)));
+            for (var i = 0; i < 100 && (vm.Pages.Count < 6 || !vm.HasStatus); i++)
+                await Task.Delay(20, TestContext.Current.CancellationToken);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(window.DropLine.IsVisible);
+            Assert.Equal([210d, 220d, 410d, 420d, 230d, 240d], vm.Pages.Select(Width));
+            Assert.Equal([410d, 420d], vm.SelectionInOrder().Select(Width));
+            Assert.Equal("Files that aren't PDFs were left out", vm.Status);
+            window.Close();
         }
         finally
         {

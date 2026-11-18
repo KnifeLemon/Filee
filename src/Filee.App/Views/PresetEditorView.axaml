@@ -37,6 +37,9 @@
     </DataTemplate>
   </UserControl.Resources>
   <StackPanel Spacing="14">
+    <!-- A preset installed from the preset gallery says so: it keeps the settings it was shared with (#1530). -->
+    <TextBlock x:Name="GalleryNote" Classes="caption" TextWrapping="Wrap" Text="{Binding GalleryNote}"
+               IsVisible="{Binding GalleryNote, Converter={x:Static ObjectConverters.IsNotNull}}" />
     <!-- Name + target -->
     <Grid ColumnDefinitions="*,12,*">
       <StackPanel>
@@ -467,6 +470,14 @@
       </StackPanel>
     </Border>
 
+    <Border Classes="card" IsVisible="{Binding ShowIso}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.iso_filesystem}" />
+        <ComboBox ItemsSource="{Binding IsoFileSystems}" SelectedItem="{Binding IsoFileSystem}"
+                  HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.iso_filesystem}" />
+      </StackPanel>
+    </Border>
+
     <!-- Archive options -->
     <Border x:Name="ArchiveCard" Classes="card" IsVisible="{Binding ShowArchive}" Padding="14">
       <StackPanel Spacing="10">
@@ -816,6 +827,11 @@
           <CheckBox Content="{DynamicResource presets.replace_original}" IsChecked="{Binding ReplaceOriginal}" />
           <TextBlock Classes="caption" Text="{DynamicResource presets.replace_original_hint}" TextWrapping="Wrap"
                      IsVisible="{Binding ReplaceOriginal}" Margin="28,2,0,0" />
+        </StackPanel>
+        <StackPanel IsVisible="{Binding ShowReplaceOriginal}">
+          <CheckBox Content="{DynamicResource presets.trash_original}" IsChecked="{Binding TrashOriginal}" />
+          <TextBlock Classes="caption" Text="{DynamicResource presets.trash_original_hint}" TextWrapping="Wrap"
+                     IsVisible="{Binding TrashOriginal}" Margin="28,2,0,0" />
         </StackPanel>
       </StackPanel>
     </Border>

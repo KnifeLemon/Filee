@@ -74,4 +74,43 @@ public class WhisperTests
             Assert.True(status.IsAvailable);
         }
     }
+
+    [Fact]
+    public void The_largest_model_is_used_even_next_to_the_downloaded_base()
+    {
+        var root = Directory.CreateTempSubdirectory("filee-whisper-").FullName;
+        try
+        {
+            // Filee downloads base into whisper-model; the user puts small next to it and medium in their own copy's folder.
+            var downloaded = Directory.CreateDirectory(Path.Combine(root, "whisper-model")).FullName;
+            var own = Directory.CreateDirectory(Path.Combine(root, "own")).FullName;
+            Model(downloaded, "ggml-base.bin", 148);
+            Assert.Equal(Path.Combine(downloaded, "ggml-base.bin"), WhisperConverter.PickModel([downloaded, own]));
+
+            Model(downloaded, "ggml-small.bin", 466);
+            Model(downloaded, "ggml-tiny.bin", 75);
+            Assert.Equal(Path.Combine(downloaded, "ggml-small.bin"), WhisperConverter.PickModel([downloaded, own]));
+
+            Model(own, "ggml-medium.bin", 1500);
+            Assert.Equal(Path.Combine(own, "ggml-medium.bin"), WhisperConverter.PickModel([downloaded, own, "missing"]));
+
+            // An English-only model is bigger, but would turn speech in other languages into English.
+            Model(own, "ggml-large-v3.en.bin", 3000);
+            Assert.Equal(Path.Combine(own, "ggml-medium.bin"), WhisperConverter.PickModel([downloaded, own]));
+            // Alone, it is still used.
+            var english = Directory.CreateDirectory(Path.Combine(root, "english")).FullName;
+            Model(english, "ggml-base.en.bin", 148);
+            Assert.Equal(Path.Combine(english, "ggml-base.en.bin"), WhisperConverter.PickModel([english]));
+
+            Assert.Null(WhisperConverter.PickModel([Path.Combine(root, "missing")]));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+
+        // The size of the model file stands for the model: a few bytes per megabyte keep the test fast.
+        static void Model(string dir, string name, int megabytes) =>
+            File.WriteAllBytes(Path.Combine(dir, name), new byte[megabytes]);
+    }
 }

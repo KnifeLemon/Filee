@@ -2,7 +2,7 @@
 
 How Filee measures a document renderer: GitHub Project 4, "Filee: built-in engines", item *Layout engine: render
 quality harness*. It measures Filee's own layout engine, the Filee renderer (the default document → PDF engine since
-settings schema 97), against rhwp, the renderer it replaced and Filee still bundles for files the renderer leaves to it
+settings schema 102), against rhwp, the renderer it replaced and Filee still bundles for files the renderer leaves to it
 and for users who turn it off. The numbers behind the switch (pages, lines and SSIM on the HWPX and HWP corpora) are in
 discussion #891. No input or reference file is in
 the repository: every document is written in code at test time, and real documents stay in a private corpus outside

@@ -1,12 +1,14 @@
 // Unpacks every archive format Filee reads into a folder, in-process: Filee's own readers (7z, xz, LZMA, ALZ, EGG,
-// lzip, Unix compress, ar / DEB, cpio, RPM, ISO 9660, CAB, LHA, ARJ, FAT disk images), SharpCompress (ZIP, RAR),
-// DiscUtils (UDF discs, HFS+ volumes, DMG blocks; see DiskImageReader), .NET's TAR reader and gzip / bzip2 / zstd
-// decoders. 7-Zip is an optional engine (Settings → Engines) for the long tail: when it is installed it reads 7z
-// archives with a method Filee does not decode (PPMd, RISC-V …, see SevenZipReader.NeedsOtherDecoder) and is asked
-// again when an in-process reader meets a feature it lacks (Quantum CABs, cabinet sets, other LHA methods,
-// multi-volume ARJ; NTFS, APFS, exFAT or LZFSE in disk images) or damage it can't read past. Without it such an
-// archive is refused with error.archive_needs_7zip, which suggests installing it; a bridge disc whose UDF part fails
-// is read by its ISO 9660 part first. Deliberate refusals (password, paths leaving the folder, bombs) are final.
+// lzip, Unix compress, ar / DEB, cpio, RPM, ISO 9660, CAB, LHA, ARJ, FAT disk images, Garry's Mod addons (GMA), Valve
+// paks (VPK)), SharpCompress (ZIP, RAR), DiscUtils (UDF discs, HFS+ volumes, DMG blocks; see DiskImageReader), .NET's
+// TAR reader and gzip / bzip2 / zstd decoders. The files packed into a Source engine map (BSP) are a ZIP that Filee
+// copies out and unpacks like any ZIP. 7-Zip is an optional engine (Settings → Engines) for the long tail: when it is
+// installed it reads 7z archives with a method Filee does not decode (PPMd, RISC-V …, see
+// SevenZipReader.NeedsOtherDecoder) and is asked again when an in-process reader meets a feature it lacks (Quantum
+// CABs, cabinet sets, other LHA methods, multi-volume ARJ; NTFS, APFS, exFAT or LZFSE in disk images) or damage it
+// can't read past. Without it such an archive is refused with error.archive_needs_7zip, which suggests installing it; a
+// bridge disc whose UDF part fails is read by its ISO 9660 part first. Deliberate refusals (password, paths leaving the
+// folder, bombs) are final.
 // Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads are unpacked stage by stage until the files appear. Every
 // stage is listed and checked first, and links are removed. A single compressed stream (.gz, .bz2 …) stops at the
 // room on the drive (ArchiveSafety.StreamLimit), in-process or written by Filee as 7-Zip decodes it. The archive's
@@ -35,17 +37,18 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     /// <summary>Formats Filee reads (all in-process; 7-Zip, when installed, only as a fallback).</summary>
     public static readonly IReadOnlyList<string> BuiltInFormats =
     [
-        "zip", "jar", "zxp", "nupkg", "apks", "aab", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tlz", "gz", "bz2",
-        "xz", "lzma", "z", "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split", "cab", "lha", "arj", "dmg", "img",
+        "zip", "jar", "zxp", "nupkg", "apks", "aab", "msix", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tlz",
+        "gz", "bz2", "xz", "lzma", "z", "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split", "cab", "lha", "arj", "dmg",
+        "img", "gma", "vpk", "bsp",
         "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
 
     /// <summary>Formats 7-Zip can read too, so it may try again after an in-process reader gave up.</summary>
     private static readonly HashSet<string> SevenZipAlsoReads =
     [
-        "zip", "jar", "zxp", "nupkg", "apks", "aab", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz",
-        "lzma", "z", "cpio", "deb", "rpm", "iso", "split", "cab", "lha", "arj", "dmg", "img", "mcpack", "mcaddon", "mcworld",
-        "mctemplate", "mrpack",
+        "zip", "jar", "zxp", "nupkg", "apks", "aab", "msix", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz",
+        "bz2", "xz", "lzma", "z", "cpio", "deb", "rpm", "iso", "split", "cab", "lha", "arj", "dmg", "img", "mcpack",
+        "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
 
     /// <summary>A TAR inside a compressed stream (or a 7z): unpacking the outer layer yields one .tar file.</summary>
@@ -92,6 +95,29 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
 
     private async Task ExtractOnceAsync(string archive, string format, string folder, string scratchRoot, CancellationToken cancellationToken)
     {
+        switch (format)
+        {
+            // A PS Vita package is a ZIP under the same extension.
+            case "vpk" when Vpk.IsZip(archive):
+                await ExtractOnceAsync(archive, "zip", folder, scratchRoot, cancellationToken);
+                return;
+            case "bsp":
+                {
+                    // The map's packed files are a ZIP inside it: copied out, then unpacked like any ZIP.
+                    var pakfile = Path.Combine(scratchRoot, $"pakfile-{Guid.NewGuid():N}.zip");
+                    try
+                    {
+                        await Task.Run(() => Bsp.ExtractPakfile(archive, pakfile, cancellationToken), cancellationToken);
+                        await ExtractOnceAsync(pakfile, "zip", folder, scratchRoot, cancellationToken);
+                    }
+                    finally
+                    {
+                        ArchiveFiles.TryDeleteFile(pakfile);
+                    }
+                    PassOnMark(archive, folder);
+                    return;
+                }
+        }
         if (sevenZip is not null && format is "7z" or "tar7z" && SevenZipReader.NeedsOtherDecoder(archive))
         {
             await WithSevenZipAsync(sevenZip, archive, format, folder, scratchRoot, cancellationToken);
@@ -145,6 +171,12 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
             case "egg":
                 EggReader.Extract(archive, folder, cancellationToken);
                 break;
+            case "gma":
+                Gma.Extract(archive, folder, cancellationToken);
+                break;
+            case "vpk":
+                Vpk.Extract(archive, folder, cancellationToken);
+                break;
             case "lz":
             case "tlz":
                 LzipReader.Decompress(archive, Path.Combine(folder, CompressedFile.OutputName(archive, tar: format == "tlz")), cancellationToken);
@@ -189,6 +221,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
             case "nupkg":
             case "apks":
             case "aab":
+            case "msix":
             case "mcpack":
             case "mcaddon":
             case "mcworld":

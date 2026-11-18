@@ -31,7 +31,10 @@ internal static class ArchiveSafety
     /// <summary>Characters of one entry path: the longest path Windows can open at all.</summary>
     public const int MaxPathLength = 32_767;
 
-    /// <summary>Folder levels of one entry path. Real trees stay far below, and the walks over the result recurse.</summary>
+    /// <summary>
+    /// Folder levels of one entry path. Real archives nest a few dozen folders; tens of thousands fit in one name, and
+    /// the walks over the result (links removed, moved into place) recurse.
+    /// </summary>
     public const int MaxPathDepth = 512;
 
     /// <summary>
@@ -66,6 +69,9 @@ internal static class ArchiveSafety
         return entryPath.Split('/', '\\').Any(part => part == "..");
     }
 
+    /// <summary>True if an entry path has more than <see cref="MaxPathDepth"/> names (folders and the file).</summary>
+    public static bool IsTooDeep(string entryPath) => Depth(entryPath) > MaxPathDepth;
+
     /// <summary>
     /// Refuses a 7-Zip listing with encrypted entries, entries or hard links pointing outside the target folder,
     /// too many entries, more data than the drive of <paramref name="targetDirectory"/> can hold, or a bomb.
@@ -93,7 +99,7 @@ internal static class ArchiveSafety
             names.Add(item.Path);
             if (IsUnsafePath(item.Path) || item.HardLink is { Length: > 0 } link && IsUnsafePath(link))
                 throw Unsafe(archiveName, item.Path);
-            if (Depth(item.Path) > MaxPathDepth)
+            if (IsTooDeep(item.Path) || item.HardLink is { Length: > 0 } deepLink && IsTooDeep(deepLink))
                 throw TooDeep(archiveName);
             if (item.Size < 0)
                 throw Damaged(archiveName, "an entry has a negative size");
@@ -208,6 +214,8 @@ internal static class ArchiveSafety
     {
         if (IsUnsafePath(entryName))
             throw Unsafe(archiveName, entryName);
+        if (IsTooDeep(entryName))
+            throw TooDeep(archiveName);
         var parts = entryName.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
             .Where(part => part != ".")
             .Select(SanitizeSegment)

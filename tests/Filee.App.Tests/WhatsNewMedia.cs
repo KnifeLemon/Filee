@@ -25,6 +25,7 @@ using Filee.App.ViewModels;
 using Filee.App.ViewModels.Pages;
 using Filee.App.Views;
 using Filee.App.Views.Pages;
+using Filee.Core.History;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -116,6 +117,34 @@ public class WhatsNewMedia
             Write(folder, "fields.webp", Fields);
             Write(folder, "translate.webp", Translate);
             Write(folder, "more.webp", AndMore);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = culture;
+            theme.Apply(new ThemeSettings(), "en");
+            TestServices.EnsureInitialized("en");
+        }
+    }
+
+    [AvaloniaFact(Explicit = true)]
+    public void Generate_2_5_0()
+    {
+        TestServices.EnsureInitialized("en");
+        var folder = Folder("2.5.0");
+        var theme = AppHost.Get<ThemeService>();
+        Motion.Set(true);
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+        try
+        {
+            theme.Apply(new ThemeSettings { ReduceMotion = false, Mode = ThemeMode.Light }, "en");
+            // The gallery clips read the published presets from a copy of the gallery's repository (LoadGallery).
+            Write(folder, "gallery.webp", PresetGallery);
+            Write(folder, "share.webp", ShareForGallery);
+            Write(folder, "trash.webp", TrashOriginal);
+            Write(folder, "formats.webp", NewFormats);
+            Write(folder, "mongolian.webp", Mongolian);
+            Write(folder, "more.webp", AndMore_2_5_0);
         }
         finally
         {
@@ -1418,6 +1447,550 @@ public class WhatsNewMedia
         return clip;
     }
 
+    // ───────────────────────── Scenes of 2.5.0 ─────────────────────────
+
+    /// <summary>
+    /// The preset gallery (#1530): "Preset gallery" on the Presets page, then the gallery window with the presets
+    /// published on filee.sh (<see cref="LocalGallery"/>): "Only in my language" ticked, the cards scrolled, one chosen,
+    /// its second picture, the warning it comes with, and Install. The gallery's own window opened by the button would
+    /// go to filee.sh, so the press is only shown and this window is opened on the local copy instead.
+    /// </summary>
+    private static Clip PresetGallery()
+    {
+        var clip = new Clip { Quality = 68 };
+        var store = AppHost.Get<UserDataStore>();
+        var loc = AppHost.Get<ILocalizer>();
+        var (presets, profiles) = (store.Presets.ToList(), store.Profiles.ToList());
+        var (vm, client) = LoadGallery();
+        var main = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), store);
+        MainWindow? page = null;
+        PresetGalleryWindow? window = null;
+        try
+        {
+            // Frame 0: the Presets page, the pointer on its way to "Preset gallery".
+            main.Navigate("presets");
+            page = new MainWindow { DataContext = main, Width = 1120, Height = 630 };
+            page.Show();
+            Pump();
+            var scene = new Scene(page, clip, "2.5.0") { FrameLength = 1 / 15.0 };
+            var button = Named<Button>(page, "GalleryButton");
+            scene.Place(Middle(page, button) + new Avalonia.Vector(150, 170));
+            scene.Hold(0.7);
+            scene.MoveTo(Middle(page, button) + new Avalonia.Vector(2, 3), 0.6);
+            scene.Hold(0.15);
+            Press(scene);
+            page.Close();
+
+            window = new PresetGalleryWindow { DataContext = vm, Width = 960, Height = 540 };
+            ShowGallery(window);
+            scene = new Scene(window, clip) { FrameLength = 1 / 12.0, Direct = true };
+            var list = Named<ListBox>(window, "CardList");
+            scene.Place(Middle(window, list) + new Avalonia.Vector(40, 30));
+            scene.Hold(1.0);
+
+            // Only the presets written in the app's language.
+            Click(scene, window, Named<CheckBox>(window, "OnlyMyLanguage"), new Avalonia.Point(10, 0.5));
+            scene.Hold(0.5);
+
+            // Down the cards to one, and its pictures and what it does.
+            var scroller = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+            var item = list.GetVisualDescendants().OfType<ListBoxItem>()
+                .Single(i => i.DataContext is PresetGalleryCardViewModel { Entry.Id: "photos-for-social-media" });
+            scene.MoveTo(Middle(window, list) + new Avalonia.Vector(60, 60), 0.4);
+            var top = Math.Clamp(item.Bounds.Y - 14, 0, Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height));
+            for (var f = 1; f <= 5; f++)
+            {
+                scroller.Offset = new Avalonia.Vector(0, top * Scene.EaseInOut(f / 5.0));
+                scene.Tick();
+            }
+            scene.Hold(0.3);
+            Click(scene, window, item, new Avalonia.Point(0.5, 0.35));
+            WaitFor(() => vm.Detail is { Installable: true } d && d.Images.All(i => i.Bitmap is not null));
+            Pump();
+            scene.Hold(1.0);
+            // Shown with reduced motion: the chosen preset beside the cards.
+            clip.MarkPoster();
+            scene.Hold(0.4);
+
+            var second = window.GetVisualDescendants().OfType<Button>().Where(b => b.DataContext is PresetGalleryImageViewModel).ElementAt(1);
+            Click(scene, window, second, new Avalonia.Point(0.5, 0.5));
+            scene.Hold(1.0);
+            Assert.True(vm.Detail!.HasWarnings);
+
+            Click(scene, window, Named<Button>(window, "InstallButton"), new Avalonia.Point(0.5, 0.5));
+            WaitFor(() => vm.Detail!.InstallState != GalleryInstallState.Installing);
+            Assert.Equal(GalleryInstallState.Installed, vm.Detail!.InstallState);
+            Pump();
+            scene.Hold(2.2);
+        }
+        finally
+        {
+            page?.Close();
+            window?.Close();
+            main.Dispose();
+            vm.Dispose();
+            client.Dispose();
+            store.Presets.Clear();
+            store.Presets.AddRange(presets);
+            store.Profiles.Clear();
+            store.Profiles.AddRange(profiles);
+            store.SaveLibrary();
+        }
+        return clip;
+    }
+
+    /// <summary>
+    /// "Export for the gallery…" (#1530): a preset of one's own ticked and found ready to share with the warning the
+    /// gallery will show, a second one that saves into a folder of its own ticked and listed as what can't be shared,
+    /// left out again, and preset.json saved.
+    /// </summary>
+    private static Clip ShareForGallery()
+    {
+        var clip = new Clip { Quality = 78 };
+        var store = AppHost.Get<UserDataStore>();
+        var loc = AppHost.Get<ILocalizer>();
+        var folder = Directory.CreateTempSubdirectory("filee-whatsnew-share-").FullName;
+        var blog = new Preset
+        {
+            Id = "whatsnew-blog",
+            Name = "Blog photos",
+            TargetFormat = "webp",
+            Image = { Quality = 80, Resize = ResizeMode.LongEdge, LongEdge = 1600, KeepMetadata = false },
+            Output = { FileNamePattern = "{name}_blog" },
+        };
+        var handOff = new Preset
+        {
+            Id = "whatsnew-hand-off",
+            Name = "Client hand-off PDF",
+            TargetFormat = "pdf",
+            Output = { Location = OutputLocation.CustomFolder, CustomFolder = @"D:\Clients\Out" },
+        };
+        store.Presets.InsertRange(0, [blog, handOff]);
+        var vm = new GalleryExportViewModel(store, loc, blog, _ => Task.CompletedTask, () => Task.FromResult<string?>(Path.Combine(folder, "preset.json")));
+        var window = new GalleryExportWindow { DataContext = vm, Width = 818, Height = 460 };
+        try
+        {
+            window.Show();
+            Pump();
+            CheckBox Box(Preset preset) => window.GetVisualDescendants().OfType<CheckBox>()
+                .Single(c => c.DataContext is GalleryExportChoice choice && choice.Preset == preset);
+            var scene = new Scene(window, clip) { FrameLength = 1 / 15.0 };
+            // Frame 0: one preset ticked, ready to share, with its warning.
+            Assert.True(vm.CanSave);
+            Assert.True(vm.HasWarnings);
+            scene.Place(Middle(window, Box(blog)) + new Avalonia.Vector(90, 60));
+            scene.Hold(1.5);
+
+            Click(scene, window, Box(handOff), new Avalonia.Point(10, 0.5));
+            Assert.True(vm.HasProblems);
+            scene.Hold(2.0);
+            Click(scene, window, Box(handOff), new Avalonia.Point(10, 0.5));
+            Assert.True(vm.CanSave);
+            scene.Hold(0.7);
+
+            Click(scene, window, Named<Button>(window, "SaveButton"), new Avalonia.Point(0.5, 0.5));
+            WaitFor(() => vm.Status == loc["gallery.export_saved"]);
+            Pump();
+            scene.Hold(2.0);
+        }
+        finally
+        {
+            window.Close();
+            store.Presets.Remove(blog);
+            store.Presets.Remove(handOff);
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (IOException) { }
+        }
+        return clip;
+    }
+
+    /// <summary>
+    /// "Move the original to the Recycle Bin / Trash after converting" (#1387): ticked in a Word to PDF preset on the
+    /// Presets page and saved (the Save button's tick, #1505), then the Home page's card for such a conversion, whose
+    /// Undo says the original is in the Recycle Bin / Trash too. Undo would move a file, so the press is only shown.
+    /// </summary>
+    private static Clip TrashOriginal()
+    {
+        var clip = new Clip { Quality = 72 };
+        var store = AppHost.Get<UserDataStore>();
+        var loc = AppHost.Get<ILocalizer>();
+        var folder = Directory.CreateTempSubdirectory("filee-whatsnew-trash-").FullName;
+        var word = new Preset { Id = "whatsnew-word-pdf", Name = "Word to PDF", TargetFormat = "pdf" };
+        store.Presets.Insert(0, word);
+        store.ClearHistory();
+        var main = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), store);
+        MainWindow? window = null;
+        try
+        {
+            main.Navigate("presets");
+            var presets = (PresetsPageViewModel)main.CurrentPage!;
+            presets.SelectedPreset = presets.VisiblePresets.First(p => p.Preset == word);
+            // Wide enough for the whole editor and its Save button.
+            window = new MainWindow { DataContext = main, Width = 1120, Height = 630 };
+            window.Show();
+            Pump();
+            var scene = new Scene(window, clip, "2.5.0") { FrameLength = 1 / 12.0 };
+            var box = window.GetVisualDescendants().OfType<CheckBox>().Single(c => Equals(c.Content, loc["presets.trash_original"]));
+            var scroller = Named<Control>(window, "PresetEditor").FindAncestorOfType<ScrollViewer>()!;
+            // Frame 0: the preset, the option further down its Output card.
+            scene.Place(Middle(window, scroller) + new Avalonia.Vector(80, 40));
+            scene.Hold(1.0);
+            var at = box.TranslatePoint(default, (Avalonia.Visual)scroller.Content!)!.Value.Y;
+            var target = Math.Clamp(at - scroller.Viewport.Height * 0.3, 0, Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height));
+            var start = scroller.Offset.Y;
+            for (var f = 1; f <= 8; f++)
+            {
+                scroller.Offset = new Avalonia.Vector(0, start + (target - start) * Scene.EaseInOut(f / 8.0));
+                scene.Tick();
+            }
+            scene.Hold(0.3);
+            Click(scene, window, box, new Avalonia.Point(10, 0.5));
+            // The note under it comes in: down to the end of the card.
+            scene.Hold(0.2);
+            window.UpdateLayout();
+            start = scroller.Offset.Y;
+            var end = Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height);
+            for (var f = 1; f <= 4; f++)
+            {
+                scroller.Offset = new Avalonia.Vector(0, start + (end - start) * Scene.EaseInOut(f / 4.0));
+                scene.Tick();
+            }
+            scene.Hold(1.2);
+            // Shown with reduced motion: the option ticked, and what it does.
+            clip.MarkPoster();
+            Click(scene, window, Named<Button>(window, "SavePresetButton"), new Avalonia.Point(0.5, 0.5));
+            Assert.Equal(SaveResult.Succeeded, presets.SaveResult);
+            Assert.True(store.Presets.Single(p => p.Id == word.Id).Output.TrashOriginalAfterConvert);
+            scene.Hold(1.4);
+
+            // The conversion on the Home page: the PDF, and Undo.
+            var pdf = Path.Combine(folder, "Quarterly report.pdf");
+            File.WriteAllBytes(pdf, [0]);
+            var photo = Path.Combine(folder, "harbour.jpg");
+            DrawLandscape(photo);
+            var info = new FileInfo(pdf);
+            store.AddHistory(new HistoryEntry
+            {
+                FinishedAt = DateTime.Now.AddMinutes(-40),
+                PresetName = "JPG",
+                State = Filee.Core.Conversion.JobState.Completed,
+                Sources = [Path.Combine(folder, "harbour.heic")],
+                Outputs = [photo],
+            });
+            var entry = new HistoryEntry
+            {
+                FinishedAt = DateTime.Now,
+                PresetName = word.Name,
+                State = Filee.Core.Conversion.JobState.Completed,
+                Sources = [Path.Combine(folder, "Quarterly report.docx")],
+                Outputs = [pdf],
+                Undoable = [new HistoryOutput { Path = pdf, Length = info.Length, WrittenUtc = info.LastWriteTimeUtc }],
+                OriginalsInTrash = true,
+            };
+            store.AddHistory(entry);
+            main.Navigate("home");
+            var home = (HomePageViewModel)main.CurrentPage!;
+            Assert.True(home.ThumbnailsLoaded.Wait(TimeSpan.FromSeconds(20)));
+            Pump();
+            Assert.True(home.History[0].CanUndo);
+            var undo = window.GetVisualDescendants().OfType<Button>().First(b => b.Command == home.History[0].UndoCommand);
+            scene.Place(Middle(window, undo) + new Avalonia.Vector(-160, 90));
+            scene.Hold(0.8);
+            scene.MoveTo(Middle(window, undo) + new Avalonia.Vector(2, 3), 0.6);
+            scene.Hold(0.2);
+            var undoAt = Middle(window, undo);
+            Press(scene);
+            entry.Undone = true;
+            store.SaveHistory();
+            WaitFor(() => home.History.Count > 0 && home.History[0].IsUndone);
+            Pump();
+            scene.MoveTo(undoAt + new Avalonia.Vector(60, 50), 0.4);
+            scene.Hold(2.2);
+        }
+        finally
+        {
+            window?.Close();
+            main.Dispose();
+            store.ClearHistory();
+            store.Presets.RemoveAll(p => p.Id == word.Id);
+            store.SaveLibrary();
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (IOException) { }
+        }
+        return clip;
+    }
+
+    /// <summary>The donut opening for one new format of 2.5.0 after another, with every field on.</summary>
+    private static Clip NewFormats()
+    {
+        var clip = new Clip { Quality = 80 };
+        var store = AppHost.Get<UserDataStore>();
+        var turnedOff = store.Settings.TurnedOffFields.ToList();
+        store.Settings.TurnedOffFields = [];
+        string[][] sets =
+        [
+            [@"C:\Games\materials\crate.vtf"],
+            [@"C:\Boards\sensor\top_copper.gbr"],
+            [@"C:\Notes\project-map.canvas"],
+            [@"C:\Printer\bracket.gcode"],
+            [@"C:\CCTV\entrance.nov"],
+        ];
+        try
+        {
+            foreach (var files in sets)
+            {
+                var (window, vm) = OpenDonut(files, clickMode: true);
+                // As someone with the optional engines sees it, not greyed out for a missing engine.
+                vm.Items = vm.Items.Select(Enabled).ToList();
+                Assert.NotEmpty(vm.Items);
+                try
+                {
+                    var donut = window.DonutControl;
+                    if (clip.Count == 0)
+                    {
+                        // Frame 0: the first donut open, for reduced motion.
+                        donut.FinishAnimations();
+                        Highlight(window, vm, 0);
+                        clip.Add(Capture(window), 900);
+                        donut.SetExternalHighlight(-1);
+                    }
+                    donut.PlayOpenAnimation();
+                    Run(clip, window, 0.4);
+                    Highlight(window, vm, 0);
+                    clip.Add(Capture(window), 1100);
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+        }
+        finally
+        {
+            store.Settings.TurnedOffFields = turnedOff;
+        }
+        return clip;
+    }
+
+    /// <summary>Mongolian (#1471): the Home page, and the preset gallery with the presets' Mongolian titles and pictures.</summary>
+    private static Clip Mongolian()
+    {
+        var clip = new Clip { Quality = 80 };
+        var theme = AppHost.Get<ThemeService>();
+        try
+        {
+            TestServices.EnsureInitialized("mn");
+            theme.Apply(new ThemeSettings { ReduceMotion = false, Mode = ThemeMode.Light }, "mn");
+            var main = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
+            main.Navigate("home");
+            var home = new MainWindow { DataContext = main, Width = 960, Height = 540 };
+            home.Show();
+            Pump();
+            clip.Add(Capture(home, "2.5.0"), 2000);
+            home.Close();
+            main.Dispose();
+
+            var (vm, client) = LoadGallery();
+            using (client)
+            using (vm)
+            {
+                vm.Selected = vm.Cards[0];
+                WaitFor(() => vm.Detail is { Installable: true } d && d.Images.All(i => i.Bitmap is not null));
+                var window = new PresetGalleryWindow { DataContext = vm, Width = 960, Height = 540 };
+                ShowGallery(window);
+                clip.Add(Capture(window, direct: true), 2400);
+                window.Close();
+            }
+        }
+        finally
+        {
+            TestServices.EnsureInitialized("en");
+            theme.Apply(new ThemeSettings { ReduceMotion = false, Mode = ThemeMode.Light }, "en");
+        }
+        return clip;
+    }
+
+    /// <summary>
+    /// "And more": the ISO preset with UDF 2.01 (#1443), a merged PDF fitted to one paper size (#1451), and Merge PDF
+    /// on the pictures donut (#1413).
+    /// </summary>
+    private static Clip AndMore_2_5_0()
+    {
+        var clip = new Clip { Quality = 80 };
+        var loc = AppHost.Get<ILocalizer>();
+
+        var iso = new Preset { Name = "ISO image", TargetFormat = "iso", Archive = { IsoFileSystem = IsoFileSystem.Udf201 } };
+        Editor(iso, window =>
+        {
+            var vm = (PresetEditorViewModel)window.DataContext!;
+            return window.GetVisualDescendants().OfType<ComboBox>().First(c => ReferenceEquals(c.ItemsSource, vm.IsoFileSystems));
+        });
+
+        var merge = new Preset { Name = "Merge PDF", TargetFormat = "pdf" };
+        merge.Pdf.MergeIntoSingle = true;
+        merge.Pdf.NormalizeMergePaper = true;
+        merge.Pdf.MergePaper = PdfSheetPaper.A4;
+        Editor(merge, window => Named<Control>(window, "MergePaperSettings"));
+
+        var (donut, vm) = OpenDonut([@"C:\Scans\page-1.jpg", @"C:\Scans\page-2.jpg", @"C:\Scans\page-3.jpg"], clickMode: true);
+        try
+        {
+            donut.DonutControl.PlayOpenAnimation();
+            Run(clip, donut, 0.4);
+            Highlight(donut, vm, vm.Items.ToList().FindIndex(i => i.Id == "merge-pdf"));
+            clip.Add(Capture(donut), 1800);
+        }
+        finally
+        {
+            donut.Close();
+        }
+        return clip;
+
+        // The preset editor scrolled to <shown>, the part of it around that control.
+        void Editor(Preset preset, Func<PresetEditorWindow, Control> shown)
+        {
+            var window = new PresetEditorWindow { DataContext = new PresetEditorViewModel(preset, loc), Width = 560, Height = 680 };
+            try
+            {
+                window.Show();
+                Pump();
+                var control = shown(window);
+                control.BringIntoView();
+                Pump();
+                var card = (Control?)control.GetVisualAncestors().OfType<Border>().FirstOrDefault(b => b.Classes.Contains("card")) ?? control;
+                var bounds = new Avalonia.Rect(card.TranslatePoint(default, window)!.Value, card.Bounds.Size);
+                var around = new Avalonia.Rect(control.TranslatePoint(default, window)!.Value, control.Bounds.Size);
+                var width = Math.Min(window.Bounds.Width, bounds.Width + 24);
+                var height = Math.Min(window.Bounds.Height, width * CanvasHeight / CanvasWidth);
+                var region = new Avalonia.Rect(bounds.Center.X - width / 2, around.Center.Y - height / 2, width, height);
+                clip.Add(Capture(window, region: region), 1800);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The presets published in the gallery, read from a copy of its repository (KnifeLemon/Filee-Presets) next to this
+    /// one, or where FILEE_WHATSNEW_PRESETS says: the clips show the real presets, pictures and texts without a network.
+    /// </summary>
+    private static (PresetGalleryViewModel Vm, PresetGalleryClient Client) LoadGallery()
+    {
+        var copy = Environment.GetEnvironmentVariable("FILEE_WHATSNEW_PRESETS") ?? Path.Combine(RepositoryRoot, "..", "Filee-Presets");
+        Assert.True(File.Exists(Path.Combine(copy, "index.json")),
+            $"No gallery at {copy}: clone https://github.com/KnifeLemon/Filee-Presets there or set FILEE_WHATSNEW_PRESETS");
+        var client = new PresetGalleryClient(new LocalGallery(copy), cacheFolder: "");
+        var vm = new PresetGalleryViewModel(client, AppHost.Get<UserDataStore>(), AppHost.Get<ILocalizer>(), new Version(2, 5, 0), _ => Task.CompletedTask);
+        _ = vm.LoadAsync();
+        WaitFor(() => vm.State != GalleryState.Loading);
+        Assert.Equal(GalleryState.Ready, vm.State);
+        WaitFor(() => vm.Cards.All(c => c.Thumb is not null));
+        return (vm, client);
+    }
+
+    /// <summary>
+    /// filee.sh answered from a copy of the gallery's repository: its index.json as the site serves it (the paths under
+    /// files/, the counted download link), the pictures and each preset.json. Nothing else is answered.
+    /// </summary>
+    private sealed class LocalGallery(string root) : HttpMessageHandler
+    {
+        private readonly string _root = Path.GetFullPath(root);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var uri = request.RequestUri!;
+            var path = Uri.UnescapeDataString(uri.AbsolutePath);
+            var data = uri.Host != "filee.sh" ? null
+                : path == "/presets/index.json" ? SiteIndex()
+                : path.StartsWith("/presets/files/", StringComparison.Ordinal) ? Read(path["/presets/files/".Length..])
+                : path.StartsWith("/presets/download/", StringComparison.Ordinal) ? Read($"presets/{path["/presets/download/".Length..]}/preset.json")
+                : null;
+            return Task.FromResult(data is null
+                ? new HttpResponseMessage(System.Net.HttpStatusCode.NotFound) { RequestMessage = request }
+                : new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(data), RequestMessage = request });
+        }
+
+        private byte[]? Read(string relative)
+        {
+            var file = Path.GetFullPath(Path.Combine(_root, relative));
+            return file.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) && File.Exists(file)
+                ? File.ReadAllBytes(file)
+                : null;
+        }
+
+        private byte[] SiteIndex()
+        {
+            static JsonNode Files(JsonNode? path) => "files/" + path!.GetValue<string>();
+            var index = JsonNode.Parse(File.ReadAllBytes(Path.Combine(_root, "index.json")))!;
+            foreach (var entry in index["presets"]!.AsArray().Select(e => e!.AsObject()))
+            {
+                entry["images"] = new JsonArray([.. entry["images"]!.AsArray().Select(Files)]);
+                entry["thumb"] = Files(entry["thumb"]);
+                entry["preset"] = Files(entry["preset"]);
+                entry["download"] = "https://filee.sh/presets/download/" + entry["id"]!.GetValue<string>();
+                if (entry["imagesByLang"] is JsonObject images)
+                    foreach (var (language, list) in images.ToList())
+                        images[language] = new JsonArray([.. list!.AsArray().Select(Files)]);
+                if (entry["thumbByLang"] is JsonObject thumbs)
+                    foreach (var (language, thumb) in thumbs.ToList())
+                        thumbs[language] = Files(thumb);
+            }
+            return System.Text.Encoding.UTF8.GetBytes(index.ToJsonString());
+        }
+    }
+
+    /// <summary>
+    /// Shows the gallery with its cards from the top (a chosen card scrolls into view), without the focus in the search
+    /// box, whose caret would blink through the clip. Its frames are drawn directly (<see cref="Scene.Direct"/>).
+    /// </summary>
+    private static void ShowGallery(PresetGalleryWindow window)
+    {
+        window.Show();
+        var search = Named<TextBox>(window, "SearchBox");
+        for (var i = 0; i < 10 && !search.IsFocused; i++)
+            Pump(); // the window puts the focus there once it is open
+        window.Focus();
+        Named<ListBox>(window, "CardList").GetVisualDescendants().OfType<ScrollViewer>().First().Offset = default;
+        Pump();
+    }
+
+    private static T Named<T>(TopLevel window, string name) where T : Control =>
+        window.GetVisualDescendants().OfType<T>().First(c => c.Name == name);
+
+    private static Avalonia.Point Middle(TopLevel window, Control control) =>
+        control.TranslatePoint(new Avalonia.Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+
+    /// <summary>
+    /// The pointer goes to <paramref name="control"/> and clicks it, at <paramref name="at"/>: a part of its width and
+    /// height (0 to 1), or pixels from its left edge when X is more than 1.
+    /// </summary>
+    private static void Click(Scene scene, TopLevel window, Control control, Avalonia.Point at)
+    {
+        var x = at.X > 1 ? at.X : control.Bounds.Width * at.X;
+        var point = control.TranslatePoint(new Avalonia.Point(x, control.Bounds.Height * at.Y), window)!.Value;
+        scene.MoveTo(point + new Avalonia.Vector(2, 3), 0.5);
+        scene.Hold(0.12);
+        scene.Click();
+        scene.Hold(0.15);
+    }
+
+    /// <summary>A press shown without input, for a button whose real click the clip can't let happen.</summary>
+    private static void Press(Scene scene)
+    {
+        scene.Grab(true);
+        scene.Tick();
+        scene.Grab(false);
+        scene.Tick();
+    }
+
     /// <summary>
     /// A made-up photo of a page lying at an angle on a desk (1600 × 1000), with lines of writing that follow its tilt.
     /// Returns where the page's corners are, in parts of the photo.
@@ -1685,6 +2258,12 @@ public class WhatsNewMedia
         /// </summary>
         public bool RunsRenderTimer { get; init; } = true;
 
+        /// <summary>
+        /// The window drawn straight from its state (<see cref="Snapshot"/>): a window resized from its XAML size can
+        /// keep rendering frames of that size headless.
+        /// </summary>
+        public bool Direct { get; init; }
+
         /// <summary>Puts the pointer somewhere at once (before the first frame).</summary>
         public void Place(Avalonia.Point at)
         {
@@ -1708,7 +2287,7 @@ public class WhatsNewMedia
             }
             if (pointer is not null)
                 Pointer = pointer();
-            var frame = Capture(window, version, Region, Pointer, Pressed || _grabbed);
+            var frame = Capture(window, version, Region, Pointer, Pressed || _grabbed, Direct);
             var shown = _key.Step(_keyCap.Shown ? 1 : 0, FrameLength);
             if (shown > 0.01)
                 DrawKeyCap(frame, _keyCap.Label, shown, _keyCap.Down);
@@ -1880,13 +2459,13 @@ public class WhatsNewMedia
     /// before the version is bumped). With <paramref name="pointer"/> (in the window), a mouse pointer is drawn there.
     /// </summary>
     private static MagickImage Capture(TopLevel window, string? version = null, Avalonia.Rect? region = null,
-        Avalonia.Point? pointer = null, bool pressed = false)
+        Avalonia.Point? pointer = null, bool pressed = false, bool direct = false)
     {
         if (window is RadialWindow radial)
             KeepFramesComing(radial.DonutControl);
         try
         {
-            return CaptureCore(window, version, region, pointer, pressed);
+            return CaptureCore(window, version, region, pointer, pressed, direct);
         }
         finally
         {
@@ -1933,7 +2512,8 @@ public class WhatsNewMedia
         return new MagickImage(png);
     }
 
-    private static MagickImage CaptureCore(TopLevel window, string? version, Avalonia.Rect? region, Avalonia.Point? pointer, bool pressed)
+    private static MagickImage CaptureCore(TopLevel window, string? version, Avalonia.Rect? region, Avalonia.Point? pointer, bool pressed,
+        bool direct)
     {
         if (version is not null)
         {
@@ -1943,7 +2523,7 @@ public class WhatsNewMedia
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         }
-        using var shot = Snapshot(window);
+        using var shot = Snapshot(window, direct);
         var corner = new Avalonia.Point(0, 0);
         if (region is { } r)
         {

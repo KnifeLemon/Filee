@@ -9,16 +9,16 @@
   </PropertyGroup>
 
   <ItemGroup Label="ISO creation, disk images">
-    <!-- Keep every DiscUtils package on the same version: they share DiscUtils.Core and DiscUtils.Streams. -->
-    <PackageVersion Include="DiscUtils.Iso9660" Version="0.16.13" />
-    <PackageVersion Include="DiscUtils.Udf" Version="0.16.13" />
+    <!-- LTRData's DiscUtils (main's ISO and UDF writer). Keep every LTRData.DiscUtils package on the same version: they
+         share DiscUtils.Core and DiscUtils.Streams, which the original DiscUtils packages also ship, so the two families
+         can't be mixed. -->
+    <PackageVersion Include="LTRData.DiscUtils.Iso9660" Version="1.0.90" />
+    <PackageVersion Include="LTRData.DiscUtils.Udf" Version="1.0.90" />
     <!-- Tests only: Filee reads FAT itself (DiscUtils.Fat reads 8.3 names only). -->
-    <PackageVersion Include="DiscUtils.Fat" Version="0.16.13" />
-    <!-- DiscUtils.Dmg's LZFSE wrapper. Only its managed part is used: LZFSE chunks are left to 7-Zip, and the native
-         library it calls is not shipped (ExcludeAssets="native" in Filee.Engines). -->
-    <PackageVersion Include="lzfse-net" Version="1.0.15" />
-    <PackageVersion Include="DiscUtils.HfsPlus" Version="0.16.13" />
-    <PackageVersion Include="DiscUtils.Dmg" Version="0.16.13" />
+    <PackageVersion Include="LTRData.DiscUtils.Fat" Version="1.0.90" />
+    <PackageVersion Include="LTRData.DiscUtils.HfsPlus" Version="1.0.90" />
+    <!-- Brings LzfseSharp (managed) for its LZFSE chunks; Filee leaves LZFSE chunks to 7-Zip before DiscUtils reads them. -->
+    <PackageVersion Include="LTRData.DiscUtils.Dmg" Version="1.0.90" />
   </ItemGroup>
   <ItemGroup Label="UI">
     <PackageVersion Include="Avalonia" Version="$(AvaloniaVersion)" />

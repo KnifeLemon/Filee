@@ -38,6 +38,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("nupkg")]
     [InlineData("apks")]
     [InlineData("aab")]
+    [InlineData("msix")]
     [InlineData("7z")]
     [InlineData("rar")]
     [InlineData("tgz")]
@@ -258,12 +259,14 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(["real.txt"], Directory.GetFileSystemEntries(folder).Select(Path.GetFileName));
     }
 
-    [Fact]
-    public async Task Zip_slip_entries_are_rejected()
+    [Theory]
+    [InlineData("zip")]
+    [InlineData("msix")]
+    public async Task Zip_slip_entries_are_rejected(string extension)
     {
         var dir = fx.NewFolder();
         var inner = Directory.CreateDirectory(Path.Combine(dir, "inner")).FullName;
-        var zip = Path.Combine(inner, "evil.zip");
+        var zip = Path.Combine(inner, "evil." + extension);
         using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
         {
             using (var w = new StreamWriter(archive.CreateEntry("good.txt").Open()))
@@ -277,7 +280,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(JobState.Failed, job.State);
         Assert.Contains("outside the target folder", job.Files[0].ErrorDetail);
         Assert.False(File.Exists(Path.Combine(dir, "evil.txt")));
-        Assert.Equal(["evil.zip"], Directory.GetFileSystemEntries(inner).Select(Path.GetFileName)); // no half-extracted folder
+        Assert.Equal(["evil." + extension], Directory.GetFileSystemEntries(inner).Select(Path.GetFileName)); // no half-extracted folder
     }
 
     [Fact]
@@ -873,6 +876,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("nupkg")]
     [InlineData("apks")]
     [InlineData("aab")]
+    [InlineData("msix")]
     public void A_package_is_read_but_never_written(string package)
     {
         var planner = fx.Catalog.CreatePlanner(["archive"]);
@@ -925,6 +929,14 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
             ["base/res/values/strings.xml"] = Encoding.UTF8.GetBytes("<resources><string name=\"app\">예제</string></resources>"),
             ["META-INF/MANIFEST.MF"] = Encoding.ASCII.GetBytes("Manifest-Version: 1.0\r\n"),
         },
+        "msix" or "appx" or "msixbundle" or "appxbundle" => new()
+        {
+            ["AppxManifest.xml"] = Encoding.UTF8.GetBytes("<Package/>"),
+            ["AppxBlockMap.xml"] = Encoding.UTF8.GetBytes("<BlockMap/>"),
+            ["AppxSignature.p7x"] = Noise(128, 12),
+            ["Assets/图标.png"] = Noise(256, 13),
+            ["payload/app.msix"] = Apk("nested"),
+        },
         _ => throw new ArgumentOutOfRangeException(nameof(extension)),
     };
 
@@ -962,6 +974,10 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("com.example.app.xapk")]
     [InlineData("com.example.app_1.0-1_minAPI24.apkm")]
     [InlineData("app-release.aab")]
+    [InlineData("app.msix")]
+    [InlineData("app.appx")]
+    [InlineData("app.msixbundle")]
+    [InlineData("app.appxbundle")]
     public async Task A_package_extracts_and_converts_to_zip_and_tar_with_every_entry(string fileName)
     {
         var input = Path.Combine(fx.NewFolder(), fileName);
@@ -986,6 +1002,14 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 Assert.Equal(bytes, copy.ToArray());
             }
 
+        if (Path.GetExtension(fileName).EndsWith("msix", StringComparison.OrdinalIgnoreCase))
+        {
+            var sevenZip = (await ConvertOkAsync(input, new Preset { TargetFormat = "7z" })).Outputs.Single();
+            var unpacked = (await ConvertOkAsync(sevenZip, Extract)).Outputs.Single();
+            foreach (var (entry, bytes) in expected)
+                Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(unpacked, entry), Ct));
+        }
+
         var tar = (await ConvertOkAsync(input, new Preset { TargetFormat = "tar" })).Outputs.Single();
         Assert.Equal(name + ".tar", Path.GetFileName(tar));
         var files = new List<string>();
@@ -1001,6 +1025,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("broken.nupkg")]
     [InlineData("broken.xapk")]
     [InlineData("broken.aab")]
+    [InlineData("broken.msix")]
     public async Task A_package_that_is_no_archive_fails_as_not_an_archive(string fileName)
     {
         var dir = fx.NewFolder();
