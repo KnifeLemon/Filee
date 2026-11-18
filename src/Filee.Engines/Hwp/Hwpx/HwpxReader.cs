@@ -513,10 +513,15 @@ internal sealed partial class HwpxReader
         var count = Math.Max(1, Int(colPr, "colCount", 1));
         if (count == 1)
             return HColumns.Single;
-        // Columns of different widths (sameSz="0") list each width and gap; the model keeps one gap.
-        var gap = Flag(colPr, "sameSz", true) ? Int(colPr, "sameGap") : Int(Child(colPr, "colSz"), "gap", Int(colPr, "sameGap"));
+        // Columns of different widths (sameSz="0") list each width and the gap after it (hp:colSz).
+        var sizes = Flag(colPr, "sameSz", true)
+            ? null
+            : Children(colPr, "colSz").Take(256).Select(size => new HColumnSize(Int(size, "width"), Int(size, "gap"))).ToList();
+        var gap = sizes is null ? Int(colPr, "sameGap") : sizes.FirstOrDefault(new HColumnSize(0, Int(colPr, "sameGap"))).Gap;
         var line = Child(colPr, "colLine");
-        return new HColumns(count, gap, line is not null && Attr(line, "type") is not (null or "NONE"));
+        if (sizes is { Count: > 0 })
+            sizes[^1] = sizes[^1] with { Gap = 0 };
+        return HColumns.Of(count, gap, line is not null && Attr(line, "type") is not (null or "NONE"), false, sizes);
     }
 
     // ───────────────────────── XML helpers ─────────────────────────

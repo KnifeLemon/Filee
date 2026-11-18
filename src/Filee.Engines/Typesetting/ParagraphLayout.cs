@@ -132,8 +132,12 @@ internal sealed partial class ParagraphLayouter
     /// whole.
     /// </param>
     /// <param name="noteNumber">In a note's text, the note's number, put where the text has it (HNoteNumber).</param>
+    /// <param name="from">
+    /// Where in the text the lines start (a line's LineBox.Start): the rest of a paragraph whose first lines went into
+    /// a column of another width. Lines from 0 start with the paragraph's first.
+    /// </param>
     public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<HField, string>? fields = null,
-        Func<HNote, string>? notes = null, Func<float, float, LineRoom>? wrap = null, string? noteNumber = null)
+        Func<HNote, string>? notes = null, Func<float, float, LineRoom>? wrap = null, string? noteNumber = null, int from = 0)
     {
         var (format, source, language, border, items, advances, starts, breaking, rules, breaks, paragraphLayout) =
             Prepare(paragraph, width, marker, fields, notes, noteNumber);
@@ -142,7 +146,7 @@ internal sealed partial class ParagraphLayouter
         var before = (format.Before ?? 0) / 100f;
         var after = (format.After ?? 0) / 100f;
 
-        var (stored, ignored) = _storedLines ? StoredStarts(paragraph, source, marker, items, advances) : (null, null);
+        var (stored, ignored) = _storedLines && from == 0 ? StoredStarts(paragraph, source, marker, items, advances) : (null, null);
         var ranges = new LineIndex(source, items);
         // Auto-spacing on the lines laid out anew; 한글's stored lines already hold what 한글 put there.
         if (stored is null && AutoSpace(source, items, starts, breaking) is { } autoSpace)
@@ -164,17 +168,17 @@ internal sealed partial class ParagraphLayouter
                 var forced = end == text.Length || text[end - 1] == ParagraphText.LineSeparator;
                 storedLines.Add(Place(source, ranges, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], whole)));
             }
-            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker, FloatingAt = source.Floating, Border = border };
+            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker, FloatingAt = source.Floating, Border = border, Width = width };
         }
 
         var lines = new List<LineBox>();
-        var start = 0;
+        var start = Math.Clamp(from, 0, text.Length);
         var y = 0f;
         do
         {
             if (lines.Count % GuardLines == GuardLines - 1)
                 Guard?.Paragraph();
-            var first = lines.Count == 0;
+            var first = lines.Count == 0 && start == 0;
             if (wrap is not null)
             {
                 // The room for a line as high as the one before; once laid out, again for its own height where it is higher.
@@ -203,7 +207,7 @@ internal sealed partial class ParagraphLayouter
         if (text.Length > 0 && text[^1] == ParagraphText.LineSeparator)
             lines.Add(Place(source, ranges, text.Length, text.Length, true, false, width, paragraphLayout, mark));
 
-        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating, Border = border };
+        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating, Border = border, Width = width };
 
         // One row of text from start in the room's stretches, in reading order: a part of the text in each, as much as
         // fits, until a line break or the end. A stretch the next word doesn't fit in is left empty while another
