@@ -1178,8 +1178,13 @@
   "presets.group.archive": "Archive",
   "presets.iso_filesystem": "ISO filesystem",
   "presets.iso_label": "Volume label",
+  "presets.iso_label_joliet_hint": "Up to 16 BMP characters. Empty uses the source name.",
+  "presets.iso_label_udf_hint": "Up to 30 Latin-1 characters or 15 UTF-16 units. Empty uses the source name.",
+  "error.iso_label_length": "Volume label is too long for {0}.",
+  "error.iso_label_characters": "Remove unsupported characters or leading/trailing spaces.",
 
   "presets.iso_label_hint": "Empty uses the folder or archive name. Joliet: up to 16 BMP Unicode characters, preserving case and hyphens. UDF: up to 30 Latin-1 characters or 15 UTF-16 units.",
+  "presets.ask_iso_label_hint": "Choose a volume label for each input before conversion. The label above is prefilled; empty uses the source name. Watch folders and the command line do not prompt.",
   "presets.archive_level": "Compression",
   "presets.archive_level.Store": "None (store only)",
   "presets.archive_level.Fast": "Fast",

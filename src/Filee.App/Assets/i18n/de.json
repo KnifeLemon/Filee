@@ -1163,8 +1163,13 @@
   "presets.group.archive": "Archiv",
   "presets.iso_filesystem": "ISO-Dateisystem",
   "presets.iso_label": "Datenträgerbezeichnung",
+  "presets.iso_label_joliet_hint": "Bis zu 16 BMP-Zeichen. Leer verwendet den Quellnamen.",
+  "presets.iso_label_udf_hint": "Bis zu 30 Latin-1-Zeichen oder 15 UTF-16-Einheiten. Leer verwendet den Quellnamen.",
+  "error.iso_label_length": "Die Datenträgerbezeichnung ist zu lang für {0}.",
+  "error.iso_label_characters": "Nicht unterstützte Zeichen oder Leerzeichen am Anfang/Ende entfernen.",
 
   "presets.iso_label_hint": "Leer verwendet den Ordner- oder Archivnamen. Joliet: bis zu 16 BMP-Unicode-Zeichen, Groß-/Kleinschreibung und Bindestriche bleiben erhalten. UDF: 30 Latin-1-Zeichen oder 15 UTF-16-Einheiten.",
+  "presets.ask_iso_label_hint": "Vor der Konvertierung für jede Eingabe eine Datenträgerbezeichnung wählen. Die Bezeichnung oben wird vorgegeben; leer verwendet den Quellnamen. Überwachte Ordner und die Befehlszeile fragen nicht nach.",
   "presets.archive_level": "Komprimierung",
   "presets.archive_level.Store": "Keine (nur speichern)",
   "presets.archive_level.Fast": "Schnell",

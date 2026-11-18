@@ -1163,8 +1163,13 @@
   "presets.group.archive": "ไฟล์บีบอัด",
   "presets.iso_filesystem": "ระบบไฟล์ ISO",
   "presets.iso_label": "ป้ายชื่อโวลุม",
+  "presets.iso_label_joliet_hint": "สูงสุด 16 อักขระ BMP เว้นว่างเพื่อใช้ชื่อแหล่งที่มา",
+  "presets.iso_label_udf_hint": "สูงสุด 30 อักขระ Latin-1 หรือ 15 หน่วย UTF-16 เว้นว่างเพื่อใช้ชื่อแหล่งที่มา",
+  "error.iso_label_length": "ป้ายชื่อไดรฟ์ยาวเกินไปสำหรับ {0}",
+  "error.iso_label_characters": "ลบอักขระที่ไม่รองรับหรือช่องว่างที่ต้นและท้าย",
 
   "presets.iso_label_hint": "เว้นว่างเพื่อใช้ชื่อโฟลเดอร์หรือแฟ้มบีบอัด Joliet: รักษาตัวพิมพ์และขีดกลาง ไม่เกิน 16 อักขระ Unicode BMP UDF: 30 อักขระ Latin-1 หรือ 15 หน่วย UTF-16",
+  "presets.ask_iso_label_hint": "เลือกป้ายชื่อไดรฟ์สำหรับแต่ละรายการก่อนแปลง ระบบกรอกป้ายชื่อด้านบนไว้ให้ หากว่างจะใช้ชื่อแหล่งที่มา โฟลเดอร์ที่เฝ้าดูและบรรทัดคำสั่งจะไม่ถาม",
   "presets.archive_level": "การบีบอัด",
   "presets.archive_level.Store": "ไม่บีบอัด (จัดเก็บเท่านั้น)",
   "presets.archive_level.Fast": "เร็ว",

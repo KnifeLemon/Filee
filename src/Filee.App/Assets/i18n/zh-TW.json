@@ -1178,8 +1178,13 @@
   "presets.group.archive": "壓縮檔",
   "presets.iso_filesystem": "ISO 檔案系統",
   "presets.iso_label": "磁碟區標籤",
+  "presets.iso_label_joliet_hint": "最多 16 個 BMP 字元。留空使用來源名稱。",
+  "presets.iso_label_udf_hint": "最多 30 個 Latin-1 字元或 15 個 UTF-16 單位。留空使用來源名稱。",
+  "error.iso_label_length": "磁碟區標籤超出了 {0} 的長度限制。",
+  "error.iso_label_characters": "請移除不支援的字元或頭尾空格。",
 
   "presets.iso_label_hint": "留空使用資料夾或壓縮檔名稱。Joliet：保留大小寫和連字號，最多16個 BMP Unicode 字元。UDF：30個 Latin-1 字元或15個 UTF-16 單元。",
+  "presets.ask_iso_label_hint": "轉換前為每個輸入選擇磁碟區標籤。預先填入上方的標籤；留空則使用來源名稱。監看資料夾和命令列不會詢問。",
   "presets.archive_level": "壓縮等級",
   "presets.archive_level.Store": "不壓縮（僅儲存）",
   "presets.archive_level.Fast": "快速",

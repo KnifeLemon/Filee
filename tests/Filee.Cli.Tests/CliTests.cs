@@ -47,7 +47,7 @@ public sealed class CliTests : IDisposable
     {
         var folder = Directory.CreateDirectory(Path.Combine(_folder, "label-source")).FullName;
         File.WriteAllText(Path.Combine(folder, "input.txt"), "label contents");
-        var preset = new Filee.Core.Presets.Preset { Id = "label-test", Name = "Label", TargetFormat = "iso", Archive = { IsoVolumeLabel = "SAVED" } };
+        var preset = new Filee.Core.Presets.Preset { Id = "label-test", Name = "Label", TargetFormat = "iso", Archive = { IsoVolumeLabel = "SAVED", AskIsoVolumeLabel = true } };
         var store = new Filee.Core.Settings.UserDataStore(_settings);
         store.Load();
         store.Presets.Add(preset);
@@ -60,6 +60,7 @@ public sealed class CliTests : IDisposable
         var reloaded = new Filee.Core.Settings.UserDataStore(_settings);
         reloaded.Load();
         Assert.Equal("SAVED", reloaded.FindPreset("label-test")!.Archive.IsoVolumeLabel);
+        Assert.True(reloaded.FindPreset("label-test")!.Archive.AskIsoVolumeLabel);
         var wrongTarget = await Run("convert", folder, "--to", "zip", "--iso-label", label);
         Assert.NotEqual(0, wrongTarget.Code);
         Assert.Contains("requires an ISO target", wrongTarget.Errors);

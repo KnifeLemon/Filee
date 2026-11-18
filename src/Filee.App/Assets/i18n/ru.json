@@ -1178,8 +1178,13 @@
   "presets.group.archive": "Архив",
   "presets.iso_filesystem": "Файловая система ISO",
   "presets.iso_label": "Метка тома",
+  "presets.iso_label_joliet_hint": "До 16 символов BMP. Пустое поле — имя источника.",
+  "presets.iso_label_udf_hint": "До 30 символов Latin-1 или 15 единиц UTF-16. Пустое поле — имя источника.",
+  "error.iso_label_length": "Метка тома слишком длинная для {0}.",
+  "error.iso_label_characters": "Удалите неподдерживаемые символы или пробелы по краям.",
 
   "presets.iso_label_hint": "Пусто — имя папки или архива. Joliet: до 16 символов Unicode BMP с сохранением регистра и дефисов. UDF: 30 символов Latin-1 или 15 единиц UTF-16.",
+  "presets.ask_iso_label_hint": "Выберите метку тома для каждого источника перед преобразованием. Подставляется метка выше; если она пуста, используется имя источника. Отслеживаемые папки и командная строка не запрашивают метку.",
   "presets.archive_level": "Сжатие",
   "presets.archive_level.Store": "Нет (только упаковка)",
   "presets.archive_level.Fast": "Быстрое",

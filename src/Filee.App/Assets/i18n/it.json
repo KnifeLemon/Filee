@@ -1162,8 +1162,13 @@
 "presets.group.archive": "Archivio",
   "presets.iso_filesystem": "File system ISO",
   "presets.iso_label": "Etichetta del volume",
+  "presets.iso_label_joliet_hint": "Fino a 16 caratteri BMP. Vuoto usa il nome di origine.",
+  "presets.iso_label_udf_hint": "Fino a 30 caratteri Latin-1 o 15 unità UTF-16. Vuoto usa il nome di origine.",
+  "error.iso_label_length": "L\u0027etichetta di volume è troppo lunga per {0}.",
+  "error.iso_label_characters": "Rimuovi i caratteri non supportati o gli spazi iniziali e finali.",
 
   "presets.iso_label_hint": "Vuoto usa il nome della cartella o dell’archivio. Joliet: fino a 16 caratteri Unicode BMP, mantenendo maiuscole e trattini. UDF: 30 caratteri Latin-1 o 15 unità UTF-16.",
+  "presets.ask_iso_label_hint": "Scegli un\u0027etichetta di volume per ogni elemento prima della conversione. Viene proposta quella sopra; se vuota, si usa il nome di origine. Le cartelle monitorate e la riga di comando non chiedono conferma.",
 "presets.archive_level": "Compressione",
 "presets.archive_level.Store": "Nessuna (solo archiviazione)",
 "presets.archive_level.Fast": "Veloce",

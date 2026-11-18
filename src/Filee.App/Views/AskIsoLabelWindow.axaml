@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.AskIsoLabelWindow"
+        x:DataType="vm:AskIsoLabelViewModel"
+        Title="{DynamicResource presets.iso_label}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="540" SizeToContent="Height" CanResize="False" WindowStartupLocation="CenterScreen">
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SubtleBorderBrush}" Background="{DynamicResource SurfaceBrush}">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Content="{DynamicResource common.cancel}" Click="OnCancel" IsCancel="True" />
+        <Button x:Name="StartIso" Classes="accent" Click="OnStart" IsDefault="True" IsEnabled="{Binding IsValid}" />
+      </StackPanel>
+    </Border>
+    <StackPanel Margin="20,18,20,16" Spacing="12">
+      <TextBlock Classes="h2" Text="{DynamicResource presets.iso_label}" />
+      <TextBlock Classes="caption" Text="{Binding Position}" IsVisible="{Binding Position, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <TextBlock Classes="caption" Text="{Binding FileSystem}" />
+      <Border Padding="14,10" CornerRadius="10" Background="{DynamicResource SurfaceAltBrush}">
+        <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FileName}" />
+      </Border>
+      <TextBox x:Name="LabelBox" Height="38" Text="{Binding Label}" AutomationProperties.Name="{DynamicResource presets.iso_label}" />
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Hint}" />
+        <TextBlock Grid.Column="1" Width="72" TextAlignment="Right" Classes="caption" Classes.danger="{Binding !IsValid}" Text="{Binding Counter}" />
+      </Grid>
+      <!-- Reserve both localized messages so validation never changes the window or button positions. -->
+      <Grid>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding LengthError}" Opacity="0"
+                   IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding CharactersError}" Opacity="0"
+                   IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
+        <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding Error}"
+                   IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
+      </Grid>
+    </StackPanel>
+  </DockPanel>
+</Window>

@@ -1178,8 +1178,13 @@
   "presets.group.archive": "Arquivo compactado",
   "presets.iso_filesystem": "Sistema de arquivos ISO",
   "presets.iso_label": "Rótulo do volume",
+  "presets.iso_label_joliet_hint": "Até 16 caracteres BMP. Vazio usa o nome da origem.",
+  "presets.iso_label_udf_hint": "Até 30 caracteres Latin-1 ou 15 unidades UTF-16. Vazio usa o nome da origem.",
+  "error.iso_label_length": "O rótulo de volume é longo demais para {0}.",
+  "error.iso_label_characters": "Remova caracteres não suportados ou espaços no início e no fim.",
 
   "presets.iso_label_hint": "Vazio usa o nome da pasta ou arquivo. Joliet: até 16 caracteres Unicode BMP, preservando maiúsculas e hífens. UDF: 30 caracteres Latin-1 ou 15 unidades UTF-16.",
+  "presets.ask_iso_label_hint": "Escolha um rótulo de volume para cada entrada antes da conversão. O rótulo acima é preenchido; vazio usa o nome da origem. Pastas monitoradas e a linha de comando não perguntam.",
   "presets.archive_level": "Compactação",
   "presets.archive_level.Store": "Nenhuma (só armazenar)",
   "presets.archive_level.Fast": "Rápida",

@@ -1163,8 +1163,13 @@
   "presets.group.archive": "Arsip",
   "presets.iso_filesystem": "Sistem berkas ISO",
   "presets.iso_label": "Label volume",
+  "presets.iso_label_joliet_hint": "Maksimal 16 karakter BMP. Kosong memakai nama sumber.",
+  "presets.iso_label_udf_hint": "Maksimal 30 karakter Latin-1 atau 15 unit UTF-16. Kosong memakai nama sumber.",
+  "error.iso_label_length": "Label volume terlalu panjang untuk {0}.",
+  "error.iso_label_characters": "Hapus karakter yang tidak didukung atau spasi di awal/akhir.",
 
   "presets.iso_label_hint": "Kosong memakai nama folder atau arsip. Joliet: hingga 16 karakter Unicode BMP, mempertahankan kapitalisasi dan tanda hubung. UDF: 30 karakter Latin-1 atau 15 unit UTF-16.",
+  "presets.ask_iso_label_hint": "Pilih label volume untuk setiap masukan sebelum konversi. Label di atas diisi otomatis; jika kosong, nama sumber digunakan. Folder pantauan dan baris perintah tidak meminta label.",
   "presets.archive_level": "Tingkat kompresi",
   "presets.archive_level.Store": "Tanpa kompresi (simpan saja)",
   "presets.archive_level.Fast": "Cepat",
