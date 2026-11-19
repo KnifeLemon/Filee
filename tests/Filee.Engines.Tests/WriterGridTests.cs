@@ -172,7 +172,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         foreach (var write in new Action<HDocument, string>[]
                  {
                      (d, p) => OdtWriter.Write(d, p),
-                     (d, p) => HwpxWriter.Write(d, p),
+                     (d, p) => HwpxWriter.Write(d, p, cancellationToken: TestContext.Current.CancellationToken),
                      (d, p) => DocxWriter.Write(d, p),
                  })
         {

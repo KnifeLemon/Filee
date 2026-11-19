@@ -127,7 +127,7 @@ public class ConversionBudgetTests(EngineFixture fx) : IClassFixture<EngineFixtu
         var document = WithTable(table);
         var folder = fx.NewFolder();
 
-        Assert.Equal(TooComplex, Assert.Throws<ConversionRefusedException>(() => HwpxWriter.Write(document, Path.Combine(folder, "a.hwpx"))).ErrorKey);
+        Assert.Equal(TooComplex, Assert.Throws<ConversionRefusedException>(() => HwpxWriter.Write(document, Path.Combine(folder, "a.hwpx"), cancellationToken: TestContext.Current.CancellationToken)).ErrorKey);
         Assert.Equal(TooComplex, Assert.Throws<ConversionRefusedException>(() => MarkdownWriter.Write(document, _ => null)).ErrorKey);
     }
 
@@ -166,7 +166,7 @@ public class ConversionBudgetTests(EngineFixture fx) : IClassFixture<EngineFixtu
         document.Sections.Add(section);
         var folder = fx.NewFolder();
         var path = Path.Combine(folder, "a.hwpx");
-        HwpxWriter.Write(document, path);
+        HwpxWriter.Write(document, path, cancellationToken: TestContext.Current.CancellationToken);
         using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
         {
             var entry = zip.GetEntry("Contents/section0.xml")!;

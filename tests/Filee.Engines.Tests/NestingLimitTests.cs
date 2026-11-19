@@ -75,7 +75,7 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private void WriteAll(HDocument document)
     {
         var folder = fx.NewFolder();
-        HwpxWriter.Write(document, Path.Combine(folder, "out.hwpx"));
+        HwpxWriter.Write(document, Path.Combine(folder, "out.hwpx"), cancellationToken: TestContext.Current.CancellationToken);
         DocxWriter.Write(document, Path.Combine(folder, "out.docx"));
         Assert.NotEmpty(XhtmlWriter.Write(document, new XhtmlOptions { ImageSource = _ => null }));
         Assert.NotEmpty(MarkdownWriter.Write(document, _ => null));
@@ -245,7 +245,7 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         section.Blocks.Add(paragraph);
         document.Sections.Add(section);
         var path = Path.Combine(fx.NewFolder(), "nested.hwpx");
-        HwpxWriter.Write(document, path);
+        HwpxWriter.Write(document, path, cancellationToken: TestContext.Current.CancellationToken);
 
         var tables = new StringBuilder();
         for (var i = 1; i <= levels; i++)

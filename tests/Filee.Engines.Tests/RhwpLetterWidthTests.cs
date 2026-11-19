@@ -16,7 +16,7 @@ public class RhwpLetterWidthTests(EngineFixture fx) : IClassFixture<EngineFixtur
     {
         var dir = fx.NewFolder();
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(DocumentReaders.TextDocument(Encoding.UTF8.GetBytes(text)), hwpx);
+        HwpxWriter.Write(DocumentReaders.TextDocument(Encoding.UTF8.GetBytes(text)), hwpx, cancellationToken: TestContext.Current.CancellationToken);
         return hwpx;
     }
 

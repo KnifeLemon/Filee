@@ -232,7 +232,7 @@ public sealed partial class MarkdownMathTests(EngineFixture fx) : IClassFixture<
     {
         var output = Path.Combine(fx.NewFolder(), "math.hwpx");
 
-        HwpxWriter.Write(MarkdownReader.Read(Formulas, fx.NewFolder()), output);
+        HwpxWriter.Write(MarkdownReader.Read(Formulas, fx.NewFolder()), output, cancellationToken: TestContext.Current.CancellationToken);
 
         using var zip = ZipFile.OpenRead(output);
         var section = new StreamReader(zip.GetEntry("Contents/section0.xml")!.Open()).ReadToEnd();

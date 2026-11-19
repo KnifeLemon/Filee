@@ -289,7 +289,7 @@ public sealed class TranslatorConverter : IConverter
                     break;
                 }
             case "hwpx":
-                HwpxWriter.Write(document, output);
+                HwpxWriter.Write(document, output, cancellationToken: cancellationToken);
                 break;
             case "docx":
                 DocxWriter.Write(document, output);

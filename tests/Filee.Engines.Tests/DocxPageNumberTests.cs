@@ -17,7 +17,7 @@ public class DocxPageNumberTests(EngineFixture fx) : IClassFixture<EngineFixture
             .Paragraph(P(R("front matter"), $"<w:sectPr>{DefaultPage}</w:sectPr>"))
             .Paragraph(P(R("body")));
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx);
+        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx, cancellationToken: TestContext.Current.CancellationToken);
         ValidPackage(hwpx);
 
         Assert.Empty(Xml(hwpx).Descendants(Hp + "newNum"));

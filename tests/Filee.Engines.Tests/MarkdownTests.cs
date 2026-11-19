@@ -454,7 +454,7 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var hwpx = Path.Combine(folder, "table.hwpx");
         var odt = Path.Combine(folder, "table.odt");
         DocxWriter.Write(document, docx);
-        HwpxWriter.Write(document, hwpx);
+        HwpxWriter.Write(document, hwpx, cancellationToken: TestContext.Current.CancellationToken);
         Filee.Engines.Hwp.Hwpx.Odt.OdtWriter.Write(document, odt, TestContext.Current.CancellationToken);
 
         var media = fx.NewFolder();

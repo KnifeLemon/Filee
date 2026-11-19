@@ -274,7 +274,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var hangul = HwpxReaderTests.HangulStylePackage(folder);
         // DOCX read and written as HWPX: what Filee's own writer makes.
         var written = Path.Combine(folder, "written.hwpx");
-        HwpxWriter.Write(DocxReader.Read(RichDocx(folder), Path.Combine(folder, "media-docx")), written);
+        HwpxWriter.Write(DocxReader.Read(RichDocx(folder), Path.Combine(folder, "media-docx")), written, cancellationToken: TestContext.Current.CancellationToken);
         // The 한글-style package with the equation seed in place of its "x over y".
         var equation = Path.Combine(folder, "equation.hwpx");
         File.Copy(hangul, equation);

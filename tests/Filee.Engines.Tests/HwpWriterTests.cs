@@ -21,7 +21,7 @@ public class HwpWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static List<string> Sources(string folder)
     {
         var rich = Path.Combine(folder, "rich.hwpx");
-        HwpxWriter.Write(DocxReader.Read(DocumentFuzzTests.RichDocx(folder), Path.Combine(folder, "docx-media")), rich);
+        HwpxWriter.Write(DocxReader.Read(DocumentFuzzTests.RichDocx(folder), Path.Combine(folder, "docx-media")), rich, cancellationToken: TestContext.Current.CancellationToken);
         List<string> sources = [rich, HwpxReaderTests.HangulStylePackage(folder)];
         sources.AddRange(RenderFeatures.All.Select(feature => feature.Write(Path.Combine(folder, feature.Name))));
         return sources;
@@ -132,7 +132,7 @@ public class HwpWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var document = DocxReader.Read(DocumentFuzzTests.RichDocx(folder), Path.Combine(folder, "docx-media"));
         document.Title = "보고서 제목";
         var hwpx = Path.Combine(folder, "titled.hwpx");
-        HwpxWriter.Write(document, hwpx);
+        HwpxWriter.Write(document, hwpx, cancellationToken: TestContext.Current.CancellationToken);
         var hwp = Write(hwpx);
         using var cfb = Filee.Engines.Documents.CompoundFile.Open(hwp);
         Assert.Equal(

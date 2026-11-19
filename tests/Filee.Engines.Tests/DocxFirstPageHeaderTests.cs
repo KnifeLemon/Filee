@@ -124,7 +124,7 @@ public class DocxFirstPageHeaderTests(EngineFixture fx) : IClassFixture<EngineFi
         docx.Paragraph(P(R("Body")));
         docx.SectionProperties = Reference(other, "default") + Reference(first, "first") + DefaultPage + TitlePage;
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx);
+        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx, cancellationToken: TestContext.Current.CancellationToken);
         ValidPackage(hwpx);
 
         var section = Xml(hwpx);

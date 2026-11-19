@@ -185,7 +185,7 @@ public class HwpTextTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var document = new HDocument();
         document.Sections.Add(section);
         var path = Path.Combine(folder, "code.hwpx");
-        HwpxWriter.Write(document, path);
+        HwpxWriter.Write(document, path, cancellationToken: TestContext.Current.CancellationToken);
         return path;
     }
 

@@ -728,7 +728,7 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
             writer(Build(detail), path);
             return path;
         }
-        Assert.Equal(Parts(Write("plain.hwpx", (d, p) => HwpxWriter.Write(d, p), false)), Parts(Write("detail.hwpx", (d, p) => HwpxWriter.Write(d, p), true)));
+        Assert.Equal(Parts(Write("plain.hwpx", (d, p) => HwpxWriter.Write(d, p, cancellationToken: TestContext.Current.CancellationToken), false)), Parts(Write("detail.hwpx", (d, p) => HwpxWriter.Write(d, p, cancellationToken: TestContext.Current.CancellationToken), true)));
         Assert.Equal(Parts(Write("plain.docx", DocxWriter.Write, false)), Parts(Write("detail.docx", DocxWriter.Write, true)));
         Assert.Equal(PlainTextWriter.Write(Build(false)), PlainTextWriter.Write(Build(true)));
         Assert.Equal(MarkdownWriter.Write(Build(false), _ => null), MarkdownWriter.Write(Build(true), _ => null));
@@ -778,7 +778,7 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Add(new HParagraph(), link);
 
         var path = Path.Combine(fx.NewFolder(), "resolved.hwpx");
-        HwpxWriter.Write(document, path);
+        HwpxWriter.Write(document, path, cancellationToken: TestContext.Current.CancellationToken);
         var written = HwpxReader.Read(path, Path.Combine(Path.GetDirectoryName(path)!, "media")).Sections[0].Blocks.Cast<HParagraph>().ToList();
 
         var resolver = StyleResolver.FromTemplate();

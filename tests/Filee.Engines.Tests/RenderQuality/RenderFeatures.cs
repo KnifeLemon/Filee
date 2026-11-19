@@ -302,7 +302,7 @@ internal static class RenderFeatures
         document.Sections.Add(section);
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, name + ".hwpx");
-        HwpxWriter.Write(document, path);
+        HwpxWriter.Write(document, path, cancellationToken: TestContext.Current.CancellationToken);
         return path;
     }
 
@@ -317,7 +317,7 @@ internal static class RenderFeatures
         Directory.CreateDirectory(folder);
         var source = docx.Save(Path.Combine(folder, name + ".docx"));
         var path = Path.Combine(folder, name + ".hwpx");
-        HwpxWriter.Write(DocxReader.Read(source, Path.Combine(folder, name + "-media")), path);
+        HwpxWriter.Write(DocxReader.Read(source, Path.Combine(folder, name + "-media")), path, cancellationToken: TestContext.Current.CancellationToken);
         return path;
     }
 
