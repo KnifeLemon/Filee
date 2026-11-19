@@ -116,6 +116,7 @@
   "error.p7m_detached": "This .p7m holds only the signature, not the signed file. Convert the file it signs instead",
   "error.p7m_encrypted": "This .p7m is encrypted, not only signed: only the recipient's key opens it",
   "error.p7m_unknown_content": "The file inside this .p7m is of a type Filee doesn't convert",
+  "error.udf_not_uyap": "This .udf file isn't a UYAP document. If it's a disc image (Universal Disk Format), use Extract to unpack it",
   "error.p7m_too_large": "The signed file is too large to open",
   "error.document_too_large": "This document unpacks to too much data or is nested too deeply to open safely",
   "format_request.request": "Request this format",

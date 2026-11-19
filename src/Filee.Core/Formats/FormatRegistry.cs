@@ -116,6 +116,9 @@ public static class FormatRegistry
         new("wps", "WPS", FormatCategory.Document, ["wps"], Writable: false),
         // The Chinese fixed-layout standard (GB/T 33190): e-invoices, official documents; read by the built-in OFD reader.
         new("ofd", "OFD", FormatCategory.Document, ["ofd"], Writable: false),
+        // UYAP Document Editor files (Turkish courts and lawyers, #1338), read by the built-in UYAP reader. ".udf" is also
+        // a Universal Disk Format disc image: told apart by content, such a file unpacks with Extract (archive engine).
+        new("udf", "UYAP (UDF)", FormatCategory.Document, ["udf"], Writable: false),
         new("wpd", "WPD", FormatCategory.Document, ["wpd"], Writable: false),
         new("lwp", "LWP", FormatCategory.Document, ["lwp"], Writable: false),
         new("abw", "ABW", FormatCategory.Document, ["abw", "zabw"], Writable: false),

@@ -116,6 +116,7 @@
   "error.p7m_detached": "这个 .p7m 只包含签名，没有被签名的文件。请转换它所签名的文件",
   "error.p7m_encrypted": "这个 .p7m 已加密，而不只是签名：只有收件人的密钥才能打开",
   "error.p7m_unknown_content": "这个 .p7m 中的文件是 Filee 不转换的类型",
+  "error.udf_not_uyap": "这个 .udf 文件不是 UYAP 文档。如果它是光盘映像（Universal Disk Format），请用“解压”打开",
   "error.p7m_too_large": "已签名的文件太大，无法打开",
   "error.document_too_large": "此文档解压后数据过多或嵌套过深，无法安全打开",
   "format_request.request": "请求支持此格式",

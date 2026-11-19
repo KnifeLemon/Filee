@@ -116,6 +116,7 @@
   "error.p7m_detached": "這個 .p7m 只包含簽章，沒有被簽署的檔案。請轉換它所簽署的檔案",
   "error.p7m_encrypted": "這個 .p7m 已加密，而不只是簽署：只有收件人的金鑰才能開啟",
   "error.p7m_unknown_content": "這個 .p7m 中的檔案是 Filee 不轉換的類型",
+  "error.udf_not_uyap": "這個 .udf 檔案不是 UYAP 文件。如果它是光碟映像（Universal Disk Format），請用「解壓縮」開啟",
   "error.p7m_too_large": "已簽署的檔案太大，無法開啟",
   "error.document_too_large": "此文件解壓縮後資料過多或巢狀層級過深，無法安全開啟",
   "format_request.request": "請求支援此格式",

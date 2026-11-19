@@ -18,9 +18,9 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
-| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
-| **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → DOCX** |
-| **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → ODT** (OpenDocument text, LibreOffice Writer) |
+| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
+| **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → DOCX** |
+| **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → ODT** (OpenDocument text, LibreOffice Writer) |
 | **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
 | **ODP writer** | built in | **PPTX (+ PPTM/POTX/POTM/PPSX), PPT → ODP** with masters, shapes, pictures, tables, lists and speaker notes; **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → ODP slides** laid out as the PPTX writer lays them out (see [ODP writer](#odp-writer)); a deck with what the slide model leaves out (charts without a picture, effects, 3D) keeps LibreOffice's route |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
@@ -39,7 +39,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
+| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP, and Windows app packages MSIX / APPX), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs, GMA** (in-process); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
@@ -1026,7 +1026,7 @@ test turns it on.
   Word documents (DOCX, DOCM, DOTX, DOTM, and DOC, DOT, WPS through the [DOC reader](#doc-reader)), ODT, RTF, text,
   Markdown, HTML and MHTML, EPUB, KEPUB, MOBI / AZW3 / AZW / PRC, FB2, HTMLZ, TXTZ, the other e-book and markup
   formats Filee reads, CSV and TSV (one table each: sheet print needs a page setup), OFD (the pages the
-  [OFD reader](#ofd-reader) rebuilds, tables and seals included), and Pandoc's formats when Pandoc is installed, to
+  [OFD reader](#ofd-reader) rebuilds, tables and seals included), UYAP documents (the [UYAP reader](#uyap-reader)), and Pandoc's formats when Pandoc is installed, to
   PDF. Pictures of the pages go on from its PDF through PDFium, which applies the image options.
 - **Slide decks** (`Slides/SlideFormats.cs`): PPTX, PPTM, POTX, POTM and PPSX, PPT through the PPTX package the
   [PPT reader](#ppt-reader) translates it to, and ODP, OTP and FODP through the [ODP / ODG reader](#odp--odg-reader)
@@ -2159,6 +2159,48 @@ in tabbed rows), clipping. Two text blocks side by side without rules share thei
 differently inside an exact line (Word and LibreOffice at its foot, 한글 and rhwp at its head), so in the rhwp PDF
 text sits up to 0.2 sizes higher than on the page. LibreOffice adds cell borders to row heights: the DOCX of a
 full 140 mm invoice opened there puts its last line on a second page (rhwp's PDF keeps it on one).
+
+## UYAP reader
+
+UYAP's `.udf` (#1338) is the file of the UYAP Document Editor (UYAP Doküman Editörü), which Turkish courts, lawyers and
+citizens write petitions and decisions in. `Uyap/UyapReader.cs` reads it into the document model with no external
+engine, so UDF → PDF is one step through the Filee renderer (two, HWPX writer and rhwp, with it off), UDF → DOCX, ODT
+and HWPX one through their writers, and TXT, Markdown, HTML and EPUB follow from there. UDF is read only
+(`Writable: false`) and sits on the office donut (new libraries; an existing library learns `.udf` through a settings
+migration).
+
+- **Package**: a ZIP with one part, `content.xml`, read within `DocumentLimits` (`Documents/DocumentPackage`: part
+  sizes counted while unpacking, the inflate ratio, no DTD, depth and element limits). Its `<template>` holds the whole
+  text in one CDATA block (paragraphs ended by a line feed), the page (`<properties><pageFormat>`), the paragraphs
+  (`<elements>`) and the styles. Runs (`<content startOffset length …/>`) point into the text by offset, in UTF-16
+  units as Java counts; offsets outside the text are cut to it.
+- **Formats**: a run takes what it doesn't say from its paragraph, then from the style `<elements resolver>` names
+  (`hvl-default`, Times New Roman 12 pt), never from the editor's own grey Dialog `default` style, which UYAP doesn't
+  print. Family, size (points), bold, italic, underline, strikethrough, super- and subscript, foreground and background
+  (Java ARGB integers); Java's logical fonts (Dialog, Serif, Monospaced) become Arial, Times New Roman and Courier New.
+  Paragraphs: Swing alignment (0 left, 1 centre, 2 right, 3 justified), left, right and first-line indents, space
+  above and below, line spacing, and the TabSet (`position:alignment:leader`, from the left indent). Text is drawn
+  without kerning, as Java draws it, and Swing's default tab stops are every 72 pt.
+- **Line height**: Java's (`FontMetrics.getHeight`: the ascent rounded up, descent and leading rounded up together),
+  for the fonts UYAP documents use (Times New Roman, Calibri, Arial, Courier New, Tahoma, Verdana, Cambria, Georgia,
+  Segoe UI), as an "at least" height: a 12 pt Calibri or Times New Roman line is 15 pt as in the PDF the editor
+  prints, so pages break where they break there. Other fonts take their own single line height.
+- **Page**: A4 (`mediaSizeName` 1, and every other value until a file shows what it means), landscape for Java's
+  orientations 0 and 2; margins in points, the header and footer distances (`headerFOffset`, `footerFOffset`) as the
+  top of the header and footer areas.
+- **Tables** (`<table columnCount columnSpans border><row><cell>`): the column spans as shares of the text width,
+  `borderNone` without lines, cell spans and fill where a cell gives them; tables nested past `Nesting.MaxDepth`
+  become plain paragraphs. **Pictures** (`<image imageData>`, Base64 in the XML): PNG, JPEG, GIF and BMP up to 32 MB
+  each and 2,000 a document, left out when their header claims more pixels than `DocumentLimits` allows.
+  **Page breaks**, **headers and footers** (paragraphs in `<header>` / `<footer>`) and page-number fields are read.
+- **The other `.udf`**: a Universal Disk Format disc image has the same extension. The content tells them apart
+  (`UyapReader.IsUyap`): a ZIP whose `content.xml` has a `<template>` root is UYAP. Given to a document route, a disc
+  is refused with `error.udf_not_uyap`, which points to Extract; the archive engine has a UDF → folder edge (Extract
+  only, no repacking) and unpacks a disc as an ISO (`ArchiveExtractor`), a UYAP file as the ZIP it is.
+
+Compared with the PDF the editor prints, a petition in Calibri comes out on the same pages with the same page breaks,
+fonts, alignment and indents. Lines inside a paragraph may break a word earlier or later: Java lays text out with
+whole-point glyph advances, the Filee renderer with the font's own.
 
 ## PDF → XLSX
 
@@ -3446,7 +3488,7 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
 | CPIO | Filee (`CpioReader`: newc, crc with its byte sum checked, odc, old binary in either byte order; newc hard link groups become copies) | — |
 | DEB (ar) | Filee (`ArReader`: GNU and BSD long names, symbol tables skipped): unpacks to `debian-binary`, `control.tar.*`, `data.tar.*` | — |
 | RPM | Filee (`RpmReader`): the payload (gzip, bzip2, xz, LZMA, zstd or plain) becomes `<name>.cpio`, unpacked in the next stage | — |
-| ISO | Filee (`IsoReader`: ISO 9660 with Rock Ridge names, else Joliet, else the plain names; multi-extent files); discs with UDF (Windows install discs, DVD and Blu-ray data discs, UDF 1.02 to 2.60) by DiscUtils.Udf through `DiskImageReader`, and when that fails by 7-Zip, or without 7-Zip by the ISO 9660 part of a bridge disc | — |
+| ISO | Filee (`IsoReader`: ISO 9660 with Rock Ridge names, else Joliet, else the plain names; multi-extent files); discs with UDF (Windows install discs, DVD and Blu-ray data discs, UDF 1.02 to 2.60) by DiscUtils.Udf through `DiskImageReader`, and when that fails by 7-Zip, or without 7-Zip by the ISO 9660 part of a bridge disc; a disc image named `.udf` too (Extract only; a `.udf` that is a ZIP is a UYAP document, see [UYAP reader](#uyap-reader)) | — |
 | Split archives (.001, .7z.001, .zip.001, .tar.001) | the volumes read as one stream (`SplitVolumes`): 7z by Filee's reader, ZIP and RAR by SharpCompress, TAR by .NET | — |
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
 | EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (SharpCompress's decoder); several blocks per file | — |

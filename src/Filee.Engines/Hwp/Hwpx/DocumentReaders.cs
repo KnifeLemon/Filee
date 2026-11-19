@@ -20,6 +20,7 @@ using Filee.Engines.Office.Ppt;
 using Filee.Engines.Office.Sheets;
 using Filee.Engines.Pdf;
 using Filee.Engines.Slides;
+using Filee.Engines.Uyap;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -65,6 +66,8 @@ internal static class DocumentReaders
         ["fodp"] = ReadSlides,
         ["pdf"] = PdfDocumentReader.Read,
         ["ofd"] = OfdReader.Read,
+        // UYAP documents (Turkish courts); a .udf disc image is refused here and unpacks with Extract instead.
+        [UyapReader.Format] = UyapReader.Read,
         ["hwpx"] = HwpxReader.Read,
         // HWP 5.0: its records become the HWPX package 한글 saves, read by HwpxReader (no rhwp needed).
         ["hwp"] = HwpReader.Read,
