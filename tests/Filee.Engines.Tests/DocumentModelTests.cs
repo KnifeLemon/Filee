@@ -374,6 +374,27 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Hwpx_table_set_as_a_character_takes_its_paragraphs_alignment()
+    {
+        // #49: a title box (a one-cell table as a character) in a centred paragraph was drawn at the left.
+        static string Table(bool asCharacter) =>
+            "<hp:tbl id=\"20\" zOrder=\"0\" numberingType=\"TABLE\" textWrap=\"TOP_AND_BOTTOM\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" pageBreak=\"CELL\" repeatHeader=\"0\" rowCnt=\"1\" colCnt=\"1\" cellSpacing=\"0\" borderFillIDRef=\"1\" noAdjust=\"0\">" +
+            "<hp:sz width=\"6000\" widthRelTo=\"ABSOLUTE\" height=\"1000\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" +
+            $"<hp:pos treatAsChar=\"{(asCharacter ? 1 : 0)}\" affectLSpacing=\"0\" flowWithText=\"1\" allowOverlap=\"0\" holdAnchorAndSO=\"0\" vertRelTo=\"PARA\" horzRelTo=\"PARA\" vertAlign=\"TOP\" horzAlign=\"LEFT\" vertOffset=\"0\" horzOffset=\"0\"/>" +
+            "<hp:tr><hp:tc name=\"\" header=\"0\" hasMargin=\"0\" protect=\"0\" editable=\"0\" dirty=\"0\" borderFillIDRef=\"1\">" + SubList(Hp(Hr(Ht("칸")))) +
+            "<hp:cellAddr colAddr=\"0\" rowAddr=\"0\"/><hp:cellSpan colSpan=\"1\" rowSpan=\"1\"/><hp:cellSz width=\"6000\" height=\"1000\"/><hp:cellMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/></hp:tc></hp:tr></hp:tbl>";
+        string Aligned(string id, string align) => ParaPr(id, LineSpacing("PERCENT", 160)).Replace("horizontal=\"JUSTIFY\"", $"horizontal=\"{align}\"", StringComparison.Ordinal);
+        var section = Hp(Hr(Table(true)), "1") + Hp(Hr(Table(true)), "2") + Hp(Hr(Table(true))) + Hp(Hr(Table(false)), "1");
+
+        var tables = ReadHwpx(Package(Path.Combine(fx.NewFolder(), "aligned.hwpx"), RefList(paraPrs: Aligned("1", "CENTER") + Aligned("2", "RIGHT")), section))
+            .Sections[0].Blocks.OfType<HTable>().ToList();
+
+        // Centred and right-aligned like a character; a justified paragraph's only line starts at the left; a table
+        // placed at its paragraph (not as a character) keeps its own position.
+        Assert.Equal([HAlign.Center, HAlign.Right, HAlign.Left, HAlign.Left], tables.Select(t => t.Align));
+    }
+
+    [Fact]
     public void Hwpx_pictures_keep_their_margin_and_outline_cells_their_picture_fill_and_sections_their_note_shapes()
     {
         var png = TinyPng();

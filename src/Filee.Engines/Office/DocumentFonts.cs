@@ -50,9 +50,12 @@ internal static class DocumentFonts
         {
             if (!PackageExtensions.Contains(Path.GetExtension(path)))
                 return [];
-            var referenced = Referenced(path);
-            return referenced.Where(face => !installed(face)
-                    && (!MetricAliases.TryGetValue(face, out var aliases) || !aliases.Any(installed)))
+            using var zip = ZipFile.OpenRead(path);
+            var table = FontTable(zip);
+            bool Usable(string face) => installed(face) || MetricAliases.TryGetValue(face, out var aliases) && aliases.Any(installed);
+            // Word draws a font that is not installed with the font table's other name for it (w:altName).
+            return Referenced(zip, table.Embedded)
+                .Where(face => !Usable(face) && !(table.Alternates.TryGetValue(face, out var alternate) && Usable(alternate)))
                 .Order(StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
@@ -72,7 +75,11 @@ internal static class DocumentFonts
     internal static IReadOnlyList<string> Referenced(string path)
     {
         using var zip = ZipFile.OpenRead(path);
-        var embedded = EmbeddedFonts(zip);
+        return Referenced(zip, FontTable(zip).Embedded);
+    }
+
+    private static IReadOnlyList<string> Referenced(ZipArchive zip, HashSet<string> embedded)
+    {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long total = 0;
         foreach (var entry in zip.Entries.Where(IsDocumentXml))
@@ -115,12 +122,14 @@ internal static class DocumentFonts
         return result.Order(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private static HashSet<string> EmbeddedFonts(ZipArchive zip)
+    /// <summary>The Word font table: the fonts embedded in the package, and each font's other name (w:altName).</summary>
+    private static (HashSet<string> Embedded, Dictionary<string, string> Alternates) FontTable(ZipArchive zip)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var alternates = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var entry = zip.GetEntry("word/fontTable.xml");
         if (entry is null || entry.Length > MaxPartBytes)
-            return result;
+            return (result, alternates);
         using var stream = entry.Open();
         using var reader = XmlReader.Create(stream, SafeXml());
         string? face = null;
@@ -135,13 +144,16 @@ internal static class DocumentFonts
             else if (reader.NodeType == XmlNodeType.Element && fontDepth >= 0 && reader.Depth > fontDepth
                      && reader.LocalName.StartsWith("embed", StringComparison.OrdinalIgnoreCase))
                 Add(face, result);
+            else if (reader.NodeType == XmlNodeType.Element && fontDepth >= 0 && reader.Depth == fontDepth + 1 && reader.LocalName == "altName"
+                     && face?.Trim() is { Length: > 0 } named && Attribute(reader, "val")?.Trim() is { Length: > 0 } alternate)
+                alternates.TryAdd(named, alternate);
             else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "font" && reader.Depth == fontDepth)
             {
                 face = null;
                 fontDepth = -1;
             }
         }
-        return result;
+        return (result, alternates);
     }
 
     private static bool IsDocumentXml(ZipArchiveEntry entry)

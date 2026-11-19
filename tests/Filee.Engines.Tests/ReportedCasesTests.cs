@@ -449,6 +449,91 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
     }
 
     [Fact]
+    public void Issue1011_a_font_the_font_table_gives_an_installed_other_name_for_is_not_missing()
+    {
+        // styles.xml names "Arial (CS Gövde)" and the font table says its other name is Arial: Word draws Arial, so
+        // the notice named a font nothing was missing for. An other name that isn't installed either still counts.
+        var docx = Docx(P(R("Body", "<w:rFonts w:ascii=\"Noto Sans\" w:hAnsi=\"Noto Sans\" w:cs=\"Arial (CS Gövde)\"/>") +
+                          R("Odd", "<w:rFonts w:ascii=\"Odd Face\" w:hAnsi=\"Odd Face\"/>")));
+        docx.FontTable = "<w:font w:name=\"Arial (CS Gövde)\"><w:altName w:val=\"Arial\"/><w:family w:val=\"roman\"/></w:font>" +
+                         "<w:font w:name=\"Odd Face\"><w:altName w:val=\"Absent Face\"/></w:font>";
+        var path = docx.Save(Path.Combine(fx.NewFolder(), "fonts.docx"));
+
+        // Arial counts through its metric-compatible Liberation Sans.
+        var missing = DocumentFonts.Missing(path, face => face is "Noto Sans" or "Noto Sans KR" or "Noto Sans Arabic" or "Liberation Sans");
+
+        Assert.Equal(["Odd Face"], missing);
+    }
+
+    [Fact]
+    public async Task Issue1011_text_in_a_font_that_is_not_installed_is_drawn_with_its_other_name()
+    {
+        NeedFonts(RepositoryFonts.Latin, RepositoryFonts.Korean);
+        var docx = Docx(P(R("Named", "<w:rFonts w:ascii=\"Absent Face (Body)\" w:hAnsi=\"Absent Face (Body)\"/>")) +
+                        P(R("Plain", "<w:rFonts w:ascii=\"Other Absent Face\" w:hAnsi=\"Other Absent Face\"/>")));
+        docx.FontTable = "<w:font w:name=\"Absent Face (Body)\"><w:altName w:val=\"Noto Sans KR\"/></w:font>";
+
+        var runs = Runs(Single(await DocxAsync(docx))).ToList();
+
+        Assert.Same(_fonts.Font(RepositoryFonts.Korean), runs.Single(r => r.Text == "Named").Font);
+        // Without another name, the usual substitute.
+        Assert.NotSame(_fonts.Font(RepositoryFonts.Korean), runs.Single(r => r.Text == "Plain").Font);
+    }
+
+    [Fact]
+    public async Task Issue1011_a_number_followed_by_a_space_stays_on_its_line_in_a_narrow_cell()
+    {
+        // The answer key: "10." … "24." in a 2.2 cm cell, numbered with w:suff="space". A tab came after every number,
+        // and a number wider than its hanging indent sent the answer to the next line; the table ran to two pages.
+        var docx = Docx(Cell("<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:ind w:left=\"433\" w:right=\"7\" w:hanging=\"264\"/><w:jc w:val=\"center\"/>"));
+        docx.Numbering = Numbering(10, "<w:suff w:val=\"space\"/>");
+
+        var page = Single(await DocxAsync(docx));
+
+        Assert.Equal("10.D", Assert.Single(Lines(page)).Text);
+    }
+
+    [Fact]
+    public async Task Issue1011_a_number_wider_than_its_hanging_indent_tabs_to_words_next_default_stop()
+    {
+        // With the tab Word puts after a number by default, a number past its hanging indent sends the text to the
+        // next default tab stop: every half inch from the margin (w:defaultTabStop), not 한글's 40 pt from the indent.
+        var docx = Docx(P(R("D"), "<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:ind w:left=\"1000\" w:hanging=\"200\"/>"));
+        docx.Numbering = Numbering(10, "");
+
+        var glyphs = Glyphs(Single(await DocxAsync(docx)));
+
+        // The number from 40 pt is wider than the 10 pt to the hanging indent's stop at 50 pt.
+        Assert.Equal(LeftMargin + 40, glyphs.Single(g => g.Char == '1').X, 0.1f);
+        Assert.Equal(LeftMargin + 72, glyphs.Single(g => g.Char == 'D').X, 0.1f);
+    }
+
+    [Fact]
+    public async Task Issue510_default_tab_stops_are_words_from_the_margin()
+    {
+        // A CV's "July 2026 – Present" after default tabs wrapped "Present" onto a line of its own: the tabs went to
+        // 한글's stops, every 40 pt from the indent, instead of the document's w:defaultTabStop from the margin.
+        var docx = Docx(P(R("a") + "<w:r><w:tab/></w:r>" + R("b"), "<w:ind w:left=\"300\"/>"));
+        docx.Settings = "<w:defaultTabStop w:val=\"567\"/>";
+
+        var glyphs = Glyphs(Single(await DocxAsync(docx)));
+
+        // 1 cm stops: "a" from 15 pt, "b" at the first stop after it, 28.35 pt.
+        Assert.Equal(LeftMargin + 15, glyphs.Single(g => g.Char == 'a').X, 0.1f);
+        Assert.Equal(LeftMargin + 28.35f, glyphs.Single(g => g.Char == 'b').X, 0.1f);
+    }
+
+    /// <summary>A one-column table 1253 twips wide, its cell holding "D" in a paragraph with <paramref name="pPr"/>.</summary>
+    private static string Cell(string pPr) =>
+        "<w:tbl><w:tblPr><w:tblW w:w=\"1253\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"1253\"/></w:tblGrid>" +
+        $"<w:tr><w:tc><w:tcPr><w:tcW w:w=\"1253\" w:type=\"dxa\"/></w:tcPr>{P(R("D"), pPr)}</w:tc></w:tr></w:tbl>";
+
+    /// <summary>A decimal list (numId 1) starting at <paramref name="start"/>, "%1.", with <paramref name="levelExtra"/>.</summary>
+    private static string Numbering(int start, string levelExtra) =>
+        $"<w:abstractNum w:abstractNumId=\"1\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"{start}\"/><w:numFmt w:val=\"decimal\"/>{levelExtra}" +
+        "<w:lvlText w:val=\"%1.\"/><w:lvlJc w:val=\"left\"/></w:lvl></w:abstractNum><w:num w:numId=\"1\"><w:abstractNumId w:val=\"1\"/></w:num>";
+
+    [Fact]
     public void Issue356_a_word_document_with_an_ole_object_keeps_its_fallback_route()
     {
         // A Visio drawing in a Word file: the renderer doesn't draw OLE objects yet, so the file goes to LibreOffice or rhwp.
@@ -660,6 +745,60 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Equal(Lines(without).Select(l => l.Y), Lines(with).Select(l => l.Y));
         // The picture is drawn, under the text.
         Assert.Contains(with.Items, i => i is DrawingItem);
+    }
+
+    [Fact]
+    public void Issue49_a_table_set_as_a_character_is_centred_with_its_outer_margins()
+    {
+        NeedFonts(RepositoryFonts.Latin);
+        // A title box set as a character in a centred paragraph: 한글 centres it with its outer margins, as a character
+        // that wide. The reader gives it the paragraph's alignment (DocumentModelTests); here, where it is drawn.
+        float TextLeft(HAlign align)
+        {
+            var cell = new HCell();
+            cell.Blocks.Add(Paragraph("Title"));
+            var row = new HRow();
+            row.Cells.Add(cell);
+            var table = new HTable { ColumnCount = 1, ColumnWidths = [6000], AsCharacter = true, Align = align, OuterMargin = new HInsets(2000, 0, 0, 0) };
+            table.Rows.Add(row);
+            var section = new HSection { Page = PageComposer.DefaultPage };
+            section.Blocks.Add(table);
+            var document = new HDocument();
+            document.Sections.Add(section);
+            return Glyphs(Single(Compose(document))).Min(g => g.X);
+        }
+
+        // The page's text is 425.2 pt wide; the table 60 pt, with 20 pt of margin on its left.
+        Assert.Equal((425.2f - 60 - 20) / 2, TextLeft(HAlign.Center) - TextLeft(HAlign.Left), 0.5f);
+        Assert.Equal(425.2f - 60 - 20, TextLeft(HAlign.Right) - TextLeft(HAlign.Left), 0.5f);
+    }
+
+    [Fact]
+    public void Issue49_a_picture_set_as_a_character_follows_its_paragraphs_alignment()
+    {
+        NeedFonts(RepositoryFonts.Latin);
+        // Pictures and shapes set as characters sit on their line like letters, so a centred or right-aligned
+        // paragraph moves them as it does text.
+        (float Left, float Right) Drawn(HAlign align)
+        {
+            var paragraph = Paragraph("");
+            paragraph.Format = paragraph.Format with { Align = align };
+            paragraph.Inlines.Clear();
+            paragraph.Inlines.Add(new HShape(HShapeKind.Rectangle) { Width = 6000, Height = 2000, Fill = "#000000", Line = HBorder.None });
+            var section = new HSection { Page = PageComposer.DefaultPage };
+            section.Blocks.Add(paragraph);
+            var document = new HDocument();
+            document.Sections.Add(section);
+            using var pixels = Single(Compose(document)).Render(72 * Scale);
+            // The shape is on the page's first line, in its top third.
+            var columns = Enumerable.Range(0, pixels.Width).Where(x => Enumerable.Range(0, pixels.Height / 3).Any(y => pixels.GetPixel(x, y).Red < 128)).ToList();
+            return (columns[0] / (float)Scale, (columns[^1] + 1) / (float)Scale);
+        }
+
+        // 85.04 pt of left margin and 425.2 pt of text: the 60 pt shape from 267.64 pt centred, to 510.24 pt at the right.
+        Assert.Equal(85.04f + (425.2f - 60) / 2, Drawn(HAlign.Center).Left, 1f);
+        Assert.Equal(85.04f + 425.2f, Drawn(HAlign.Right).Right, 1f);
+        Assert.Equal(85.04f, Drawn(HAlign.Left).Left, 1f);
     }
 
     [Fact]

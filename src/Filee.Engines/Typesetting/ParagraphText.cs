@@ -198,10 +198,16 @@ internal sealed class ParagraphText
 
         if (marker is { Length: > 0 })
         {
-            var format = paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count && levels[level].MarkerFormat is { } own
-                ? own
-                : paragraph.Inlines.OfType<HText>().FirstOrDefault()?.Format ?? paragraph.MarkFormat;
-            Add(marker + ((paragraph.Format.FirstLine ?? 0) < 0 ? "\t" : " "), format, null);
+            var listLevel = paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count ? levels[level] : null;
+            var format = listLevel?.MarkerFormat ?? paragraph.Inlines.OfType<HText>().FirstOrDefault()?.Format ?? paragraph.MarkFormat;
+            // Word's level says what follows the number; 한글 puts a tab after a hanging number, else a space.
+            Add(marker + (listLevel?.Suffix switch
+            {
+                HNumberSuffix.Tab => "\t",
+                HNumberSuffix.Space => " ",
+                HNumberSuffix.Nothing => "",
+                _ => (paragraph.Format.FirstLine ?? 0) < 0 ? "\t" : " ",
+            }), format, null);
             markerLength = text.Length;
         }
         Inlines(paragraph.Inlines, null);
