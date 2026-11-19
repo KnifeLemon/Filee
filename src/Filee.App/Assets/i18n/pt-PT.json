@@ -116,6 +116,7 @@
   "error.p7m_detached": "Este .p7m contém só a assinatura, não o ficheiro assinado. Converte o ficheiro que ele assina",
   "error.p7m_encrypted": "Este .p7m está encriptado, não só assinado: só a chave do destinatário o abre",
   "error.p7m_unknown_content": "O ficheiro dentro deste .p7m é de um tipo que o Filee não converte",
+  "error.udf_not_uyap": "Este ficheiro .udf não é um documento do UYAP. Se for uma imagem de disco (Universal Disk Format), abra-o com «Extrair»",
   "error.p7m_too_large": "O ficheiro assinado é demasiado grande para abrir",
   "error.document_too_large": "Este documento descomprime-se em demasiados dados ou está aninhado demasiado fundo para ser aberto em segurança",
   "error.merge_paper_geometry": "A página tem um tamanho, uma rotação ou unidades inválidos e não pode ser ajustada ao papel selecionado",

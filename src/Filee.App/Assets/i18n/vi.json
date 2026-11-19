@@ -116,6 +116,7 @@
   "error.p7m_detached": "Tệp .p7m này chỉ chứa chữ ký, không chứa tệp đã ký. Hãy chuyển đổi tệp mà nó ký",
   "error.p7m_encrypted": "Tệp .p7m này được mã hóa chứ không chỉ được ký: chỉ khóa của người nhận mới mở được",
   "error.p7m_unknown_content": "Tệp bên trong .p7m này thuộc loại Filee không chuyển đổi",
+  "error.udf_not_uyap": "Tệp .udf này không phải tài liệu UYAP. Nếu đây là ảnh đĩa (Universal Disk Format), hãy mở bằng “Giải nén”",
   "error.p7m_too_large": "Tệp đã ký quá lớn để mở",
   "error.document_too_large": "Tài liệu này giải nén ra quá nhiều dữ liệu hoặc lồng nhau quá sâu nên không thể mở an toàn",
   "format_request.request": "Yêu cầu định dạng này",
