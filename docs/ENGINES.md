@@ -828,8 +828,20 @@ so DOCX → HWPX and HWP keep editable equations and DOCX → PDF draws them wit
 The box an equation is stored with (`hp:sz`) is measured like rhwp lays the script out (estimated character
 widths, script scale 0.7, fraction and root spacing, from rhwp's `equation/layout.rs`): rhwp stretches an equation to
 its stored width, so a wrong box would distort it. 한글 lays the script out again when the equation is edited.
-The model's other writers (HTML, EPUB, Markdown, TXT …) write a linear form instead, `(a+b)/(2c)`, `x_i^2`, `√(x)`,
-which is also the equation's alternative text in HWPX.
+The model's other writers (Markdown, TXT, ODT, PPTX …) write a linear form instead, `(a+b)/(2c)`, `x_i^2`, `√(x)`,
+which is also the equation's alternative text in HWPX. The DOCX writer writes every equation back as Word math
+(`Hwp/Hwpx/Docx/OmmlWriter.cs`), the HTML and EPUB writers as MathML (`Hwp/Hwpx/MathMLWriter.cs`; EPUB pages with it
+carry `properties="mathml"`; MOBI keeps the text).
+
+**TeX math in Markdown** (#1652): `$…$`, `$$…$$`, `\(…\)` and `\[…\]` (`Hwp/Hwpx/MarkdownMath.cs`, Pandoc's rules
+for dollars: no space inside the delimiters, no digit after the closing `$`, code spans win) are read by
+`Hwp/Hwpx/LatexMath.cs` into the same tree: fractions, roots, scripts, Greek letters and symbols, sums, integrals and
+`\lim` with their limits, `\left … \right`, matrices, `cases`, `aligned` and `gather`, accents, `\text`, `\mathbf`,
+`\mathrm`, `\mathbb` and the spacing commands. So Markdown → PDF typesets them, → DOCX gives Word math, → HWPX 한글
+equations, → HTML and EPUB MathML (with the TeX as its annotation). Display math alone in its paragraph is centred.
+An unknown command stays as its text (`\foo`); a formula longer than 32,768 characters or nested deeper than 100
+levels stays its source, and the equations count against `MaxObjects`. Writers without equations keep the TeX
+source as written (`$\frac{a}{b}$`).
 
 ## Spreadsheets
 

@@ -3,12 +3,15 @@
 // Mirrors PandocAstReader: headings (with their ids as bookmarks), paragraphs, bold / italic / strike / sub- and
 // superscript / inserted / marked text, code, lists (1. / a. / i. / A. / I. with the start number, nested levels),
 // task lists, block quotes, pipe and grid tables with spans and column alignment (as the cells' paragraph alignment),
-// definition lists, links, images, footnotes and math. The YAML front matter's "title", "subtitle", "author" and "date"
+// definition lists, links, images, footnotes and TeX math (#1652: $ … $, $$ … $$, \( … \), \[ … \], see MarkdownMath),
+// read by LatexMath into equations: a display equation alone in its paragraph is centred, and math LatexMath doesn't
+// read stays its source as text. Equations count against DocumentLimits.MaxObjects. The YAML front matter's "title", "subtitle", "author" and "date"
 // become the document's metadata. Raw HTML is skipped, except <br>. For the PPTX writer, blocks keep what they were
 // (HBlockRole): code lines, thematic breaks and the content of Pandoc-style "::: notes" containers (speaker notes). A
 // code block is one shaded box in a monospace font: a borderless one-column table with a row per line, so it can break
 // across pages.
 
+using Filee.Engines.Documents;
 using Filee.Engines.Infrastructure;
 using Markdig;
 using Markdig.Extensions.CustomContainers;
@@ -39,6 +42,7 @@ internal sealed class MarkdownReader
     public static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
         .UseYamlFrontMatter()
+        .Use<TexMathExtension>()
         .Build();
 
     private static readonly HCharFormat Plain = default;
@@ -62,11 +66,15 @@ internal sealed class MarkdownReader
     /// <summary>A folder of pictures Filee wrote itself (a notebook's attachments), allowed besides the resource root.</summary>
     private readonly string? _mediaFolder;
 
-    private MarkdownReader(string baseFolder, string? resourceRoot, string? mediaFolder = null)
+    /// <summary>Counts the equations (a file of a million "$x$" would lay out a million of them).</summary>
+    private readonly DocumentBudget _budget;
+
+    private MarkdownReader(string baseFolder, string? resourceRoot, string? mediaFolder, DocumentLimits? limits)
     {
         _baseFolder = baseFolder;
         _resourceRoot = resourceRoot;
         _mediaFolder = mediaFolder;
+        _budget = new DocumentBudget(limits ?? DocumentLimits.Default);
     }
 
     /// <summary>Parses Markdown text.</summary>
@@ -77,10 +85,11 @@ internal sealed class MarkdownReader
         Read(markdown, baseFolder, resourceRoot, mediaFolder: null);
 
     /// <param name="mediaFolder">A folder of pictures Filee wrote itself, which images may name too (file: URLs).</param>
-    internal static HDocument Read(string markdown, string baseFolder, string? resourceRoot, string? mediaFolder)
+    /// <param name="limits">Limits of what is read; default <see cref="DocumentLimits.Default"/>.</param>
+    internal static HDocument Read(string markdown, string baseFolder, string? resourceRoot, string? mediaFolder, DocumentLimits? limits = null)
     {
         var parsed = Markdown.Parse(markdown, Pipeline);
-        var reader = new MarkdownReader(baseFolder, resourceRoot, mediaFolder);
+        var reader = new MarkdownReader(baseFolder, resourceRoot, mediaFolder, limits);
         var section = new HSection();
         reader.Blocks(parsed, section.Blocks, new Context());
         var document = new HDocument();
@@ -123,8 +132,22 @@ internal sealed class MarkdownReader
                 Blocks(quote, output, context with { Indent = context.Indent + QuoteIndent, Quote = true });
                 break;
             case MathBlock math:
-                CodeLines(math, output, context, Plain with { Italic = true }, HBlockRole.Body);
-                break;
+                {
+                    // $$ on lines of their own: a centred display equation; its source as before when it isn't read.
+                    var tex = math.Lines.ToString();
+                    if (Equation(tex, display: true, '$', Plain) is HEquation equation)
+                    {
+                        var paragraph = NewParagraph(context);
+                        paragraph.Format = paragraph.Format with { Align = HAlign.Center };
+                        paragraph.Inlines.Add(equation);
+                        output.Add(paragraph);
+                    }
+                    else
+                    {
+                        CodeLines(math, output, context, Plain with { Italic = true }, HBlockRole.Body);
+                    }
+                    break;
+                }
             case CodeBlock code:
                 // Speaker notes keep their lines as notes; elsewhere one shaded box of code lines.
                 if (context.Role == HBlockRole.Body)
@@ -181,7 +204,51 @@ internal sealed class MarkdownReader
     {
         var paragraph = NewParagraph(context);
         Inlines(inlines, paragraph.Inlines, Plain);
+        DisplayMath(paragraph);
         return paragraph;
+    }
+
+    /// <summary>
+    /// A paragraph of display math only ($$x$$, \[x\], one or more on their lines): centred, one equation per line.
+    /// Display math among text stays in its line, as an inline equation.
+    /// </summary>
+    private static void DisplayMath(HParagraph paragraph)
+    {
+        if (!paragraph.Inlines.Any(i => i is HEquation { Display: true }))
+            return;
+        var alone = paragraph.Inlines.All(i => i is HEquation { Display: true } or HLineBreak or HBookmark
+                                               || (i is HText { Text: var text } and not HEquation && string.IsNullOrWhiteSpace(text)));
+        if (alone)
+        {
+            var kept = paragraph.Inlines.Where(i => i is HEquation or HBookmark).ToList();
+            paragraph.Inlines.Clear();
+            foreach (var inline in kept)
+            {
+                if (inline is HEquation && paragraph.Inlines.Any(i => i is HEquation))
+                    paragraph.Inlines.Add(new HLineBreak(Plain));
+                paragraph.Inlines.Add(inline);
+            }
+            paragraph.Format = paragraph.Format with { Align = HAlign.Center };
+            return;
+        }
+        for (var i = 0; i < paragraph.Inlines.Count; i++)
+        {
+            if (paragraph.Inlines[i] is HEquation { Display: true } display)
+                paragraph.Inlines[i] = new HEquation(display.Math, display.Format, display.Text) { Tex = display.Tex };
+        }
+    }
+
+    /// <summary>
+    /// TeX math as an equation; its source as text when LatexMath doesn't read it (too long or nested too deep).
+    /// </summary>
+    private HText Equation(string tex, bool display, char delimiter, HCharFormat format)
+    {
+        var source = MarkdownMath.Source(tex, display, delimiter);
+        var trimmed = tex.Trim();
+        if (LatexMath.Parse(trimmed) is not { } tree)
+            return new HText(source, format);
+        _budget.Object();
+        return new HEquation(tree, format, source) { Tex = trimmed, Display = display };
     }
 
     private HParagraph Heading(HeadingBlock heading, Context context)
@@ -429,7 +496,7 @@ internal sealed class MarkdownReader
                     output.Add(new HText(task.Checked ? "☑" : "☐", format)); // the following text starts with a space
                     break;
                 case MathInline math:
-                    output.Add(new HText(math.Content.ToString(), format with { Italic = true }));
+                    output.Add(Equation(math.Content.ToString(), math.DelimiterCount == 2, math.Delimiter, format));
                     break;
                 case FootnoteLink { IsBackLink: false } footnote:
                     {

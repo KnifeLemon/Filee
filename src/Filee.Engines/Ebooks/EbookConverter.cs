@@ -176,7 +176,7 @@ public sealed class EbookConverter : IConverter
                 {
                     // One self-contained page: pictures are embedded as data: URIs.
                     var images = EbookFiles.NewFolder(work, "html-images");
-                    var page = XhtmlWriter.Write(book.Document, new XhtmlOptions { ImageSource = path => DataUri(path, images) }).Single();
+                    var page = XhtmlWriter.Write(book.Document, new XhtmlOptions { ImageSource = path => DataUri(path, images), MathML = true }).Single();
                     File.WriteAllText(output, XhtmlWriter.Page(book.DisplayTitle(step.InputPath), page.Body, book.DisplayLanguage(), null, epub: false), new UTF8Encoding(false));
                     break;
                 }

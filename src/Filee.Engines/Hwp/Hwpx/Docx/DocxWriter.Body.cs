@@ -45,6 +45,9 @@ internal sealed partial class DocxWriter
     /// <summary>What the paragraph style of the current paragraph already sets (explicit "off" values override it).</summary>
     private readonly record struct RunContext(bool StyleBold, bool Link);
 
+    /// <summary>The paragraph whose runs are being written (whether an equation in it is a display equation).</summary>
+    private HParagraph? _paragraph;
+
     // ───────────────────────── Sections ─────────────────────────
 
     private string Body(HDocument document)
@@ -217,7 +220,10 @@ internal sealed partial class DocxWriter
         if (paragraph.ColumnBreakBefore)
             sb.Append("<w:r><w:br w:type=\"column\"/></w:r>");
         sb.Append(leadingRuns);
+        var outer = _paragraph;
+        _paragraph = paragraph;
         Inlines(paragraph.Inlines, sb, context);
+        _paragraph = outer;
         return sb.Append("</w:p>").ToString();
     }
 
@@ -346,6 +352,14 @@ internal sealed partial class DocxWriter
         {
             switch (inline)
             {
+                case HEquation equation:
+                    {
+                        // Word math; its runs take the equation's size and colour, the math font and style their own.
+                        var display = _paragraph is { } paragraph && HEquation.IsDisplay(equation, paragraph);
+                        var format = equation.Format with { Font = null, EastAsianFont = null, Bold = null, Italic = null, Underline = null, Strike = null, Superscript = null, Subscript = null };
+                        sb.Append(OmmlWriter.Write(equation.Math, display, RunProperties(format, context with { Link = false, StyleBold = false })));
+                        break;
+                    }
                 case HText text:
                     TextRuns(sb, text.Text, text.Format, context);
                     break;
