@@ -27,13 +27,14 @@ public class PdfObjectNestingTests(EngineFixture fx) : IClassFixture<EngineFixtu
     private static byte[] Latin1(string text) => Encoding.Latin1.GetBytes(text);
 
     /// <summary>
-    /// A one-page PDF with <paramref name="objects"/> after the catalog, page tree and page (objects 1–3); the
-    /// cross-reference table points at the first "N 0 obj" of each of the <paramref name="count"/> objects.
+    /// A one-page PDF with <paramref name="objects"/> after the catalog, page tree and page (objects 1–3, the page's
+    /// dictionary ending in <paramref name="page"/>); the cross-reference table points at the first "N 0 obj" of each
+    /// of the <paramref name="count"/> objects.
     /// </summary>
-    internal static byte[] Pdf(string objects, int count = 4, string trailer = "")
+    internal static byte[] Pdf(string objects, int count = 4, string trailer = "", string page = "")
     {
         var text = "%PDF-1.4\n1 0 obj\n<</Type/Catalog/Pages 2 0 R>>\nendobj\n2 0 obj\n<</Type/Pages/Kids[3 0 R]/Count 1>>\nendobj\n"
-            + "3 0 obj\n<</Type/Page/Parent 2 0 R/MediaBox[0 0 100 100]>>\nendobj\n" + objects;
+            + $"3 0 obj\n<</Type/Page/Parent 2 0 R/MediaBox[0 0 100 100]{page}>>\nendobj\n" + objects;
         var xref = new StringBuilder($"xref\n0 {count + 1}\n0000000000 65535 f \n");
         for (var n = 1; n <= count; n++)
             xref.Append($"{text.IndexOf($"\n{n} 0 obj", StringComparison.Ordinal) + 1:D10} 00000 n \n");
@@ -100,10 +101,10 @@ public class PdfObjectNestingTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 
     /// <summary>
-    /// Runs <paramref name="action"/> on a thread with a 1 MB stack (the smallest a conversion gets) and returns what
-    /// it threw; fails when it takes longer than <paramref name="seconds"/>.
+    /// Runs <paramref name="action"/> on a thread with a 1 MB stack (the smallest a conversion gets on Windows), or
+    /// <paramref name="stack"/> bytes, and returns what it threw; fails when it takes longer than <paramref name="seconds"/>.
     /// </summary>
-    private static Exception? OnSmallStack(Action action, int seconds = 60)
+    private static Exception? OnSmallStack(Action action, int seconds = 60, int stack = 1024 * 1024)
     {
         Exception? error = null;
         var thread = new Thread(() =>
@@ -116,7 +117,7 @@ public class PdfObjectNestingTests(EngineFixture fx) : IClassFixture<EngineFixtu
             {
                 error = ex;
             }
-        }, 1024 * 1024);
+        }, stack);
         thread.IsBackground = true;
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(seconds)), $"Still running after {seconds} s");
@@ -198,6 +199,43 @@ public class PdfObjectNestingTests(EngineFixture fx) : IClassFixture<EngineFixtu
         // About 1,900 levels already overflowed a 1 MB stack in PDFsharp.
         var path = Save(Pdf($"4 0 obj\n{Nest(2_000)}\nendobj\n"));
         Refused(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, ct).Dispose());
+    }
+
+    [Fact]
+    public void The_deepest_nesting_allowed_is_read_saved_and_copied_on_a_quarter_megabyte_stack()
+    {
+        // Secondary threads can get 512 KB on macOS: half of it leaves the conversion room for its own frames. PDFsharp
+        // takes about 530 bytes per level (it overflowed a 1 MB stack near 1,900), so 256 levels need some 140 KB.
+        var deep = Nest(PdfObjectNesting.MaxDepth);
+        var dictionaries = string.Concat(Enumerable.Repeat("<</A ", PdfObjectNesting.MaxDepth)) + "1"
+            + string.Concat(Enumerable.Repeat(">>", PdfObjectNesting.MaxDepth));
+        var content = "q " + Nest(PdfContentNesting.MaxDepth) + " 0 d Q";
+        byte[][] files =
+        [
+            Pdf($"4 0 obj\n{deep}\nendobj\n", page: "/X 4 0 R"),
+            Pdf($"4 0 obj\n{dictionaries}\nendobj\n", page: "/X 4 0 R"),
+            Pdf("", count: 3, trailer: "/X " + Nest(PdfObjectNesting.MaxDepth - 1)), // the trailer is a level itself
+            ObjectStream(deep),
+            Pdf($"4 0 obj\n<</Length {content.Length}>>\nstream\n{content}\nendstream\nendobj\n", page: "/Contents 4 0 R"),
+        ];
+        var paths = files.Select(Save).ToList();
+        var ct = TestContext.Current.CancellationToken;
+        Assert.Null(OnSmallStack(() =>
+        {
+            foreach (var (pdf, path) in files.Zip(paths))
+            {
+                using (var document = PdfObjectNesting.Open(pdf, PdfDocumentOpenMode.Modify, ct))
+                    document.Save(new MemoryStream());
+                using (var source = PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, ct))
+                using (var copy = new PdfDocument())
+                {
+                    copy.AddPage(source.Pages[0]);
+                    copy.Save(new MemoryStream());
+                }
+                // Content streams go through PDFsharp's ContentReader there.
+                _ = PdfBlankPages.Remove(path);
+            }
+        }, stack: 256 * 1024));
     }
 
     [Fact]
