@@ -105,6 +105,7 @@ internal sealed class XlsbReader
     private readonly List<FontInfo> _fonts = [];
     private OoxmlColors _colors = OoxmlColors.FromTheme(null);
     private XDocument? _theme;
+    private readonly Charts.ChartBudget _charts = new();
     private NumberFormatter _formatter = new();
     private bool _date1904;
     private int _records;
@@ -713,7 +714,7 @@ internal sealed class XlsbReader
 
         sheet.PageSetup = PageSetupOf(page, margins, options, fitToPage, headerFooter, partPath, headerPictures);
         if (_package.Target(partPath, drawing) is { } drawingPart)
-            sheet.Drawings.AddRange(XlsxDrawing.Read(_package, drawingPart, _theme?.Root, read: true).Drawings);
+            sheet.Drawings.AddRange(XlsxDrawing.Read(_package, drawingPart, _theme?.Root, read: true, _charts).Drawings);
         return sheet;
     }
 

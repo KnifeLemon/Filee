@@ -2,7 +2,7 @@
 // FileeRendererConverter): such a deck takes the route it would take without the renderer (LibreOffice). Only the
 // shown slides and the layouts and masters they use are looked at, as the reader reads them.
 //
-// Named: charts without a stored picture, SmartArt without its stored drawing, OLE objects and other embedded content
+// Named: charts ChartReader doesn't draw (3D, radar, stock, ..., and chartex) without a stored picture, SmartArt without its stored drawing, OLE objects and other embedded content
 // without a picture, ink, shadows and other effects (glow, reflection, soft edges, blur; on shapes, pictures and text,
 // or through the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, preset shapes not
 // in PresetShapes, and pictures Skia can't decode (TIFF, JPEG XR).
@@ -156,7 +156,12 @@ internal static class SlideCapabilities
         var uri = (string?)data.Attribute("uri") ?? "";
         if (data.Element(A + "tbl") is not null || data.Descendants(P + "pic").Any())
             return null;
-        if (uri.EndsWith("/chart", StringComparison.Ordinal) || uri.EndsWith("/chartex", StringComparison.Ordinal))
+        if (uri.EndsWith("/chart", StringComparison.Ordinal))
+        {
+            var target = package.Target(part, (string?)data.Element(Charts.ChartReader.C + "chart")?.Attribute(R + "id"));
+            return Charts.ChartReader.Read(target is null ? null : package.Part(target), DrawingColors.FromTheme(null)).LeftOut;
+        }
+        if (uri.EndsWith("/chartex", StringComparison.Ordinal))
             return "charts";
         if (uri.EndsWith("/diagram", StringComparison.Ordinal))
             return package.Part(package.DiagramDrawing(part, data)) is null ? "SmartArt" : null;

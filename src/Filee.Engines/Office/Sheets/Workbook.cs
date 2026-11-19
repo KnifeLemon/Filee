@@ -331,6 +331,10 @@ internal sealed record SheetPicture(byte[] Data, int Row, int Column, double Off
     public (double Left, double Top, double Right, double Bottom) Crop { get; init; }
 }
 
+/// <summary>A chart on a sheet (a graphic frame of a chart part), drawn by ChartDrawer.</summary>
+internal sealed record SheetChart(Charts.Chart Chart, int Row, int Column, double OffsetX, double OffsetY, double Width, double Height)
+    : SheetDrawing(Row, Column, OffsetX, OffsetY, Width, Height);
+
 /// <summary>A preset shape on a sheet (rectangle, oval, line, arrow, ...), filled and outlined in one colour each.</summary>
 /// <param name="Preset">The a:prstGeom name, one <see cref="Slides.PresetShapes"/> draws.</param>
 internal sealed record SheetShape(string Preset, int Row, int Column, double OffsetX, double OffsetY, double Width, double Height)

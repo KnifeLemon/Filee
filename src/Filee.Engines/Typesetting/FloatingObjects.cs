@@ -31,6 +31,7 @@
 // Pictures are decoded only when their codec reports at most DocumentLimits.MaxPicturePixels (Image), also those whose
 // header PictureSize can't read (an ICO or other container holding a larger picture).
 
+using Filee.Engines.Charts;
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Metafiles;
@@ -303,6 +304,15 @@ internal static class FloatingObjects
     {
         switch (item)
         {
+            case HImage { Chart: { } chart } picture:
+                {
+                    // Drawn as vectors with its text as text; the picture beside it is for the writers.
+                    var margin = picture.Margin;
+                    using var fonts = new ChartFonts();
+                    ChartDrawer.Draw(page, chart, new SKRect(area.Left + margin.Left / 100f, area.Top + margin.Top / 100f,
+                        area.Right - margin.Right / 100f, area.Bottom - margin.Bottom / 100f), fonts);
+                    break;
+                }
             case HImage picture:
                 page.Draw(canvas => Transformed(canvas, picture.Transform, area, () =>
                 {

@@ -63,6 +63,12 @@ internal sealed class SlideShape : SlideElement
 
     /// <summary>A picture fill keeps its place in the box when the shape turns (DrawingML rotWithShape) — always, for pictures.</summary>
     public bool IsPicture { get; set; }
+
+    /// <summary>
+    /// A chart: the renderer draws it; what takes pictures (the ODP writer, the deck's text) takes the picture of it the
+    /// shape's fill makes when asked.
+    /// </summary>
+    public Charts.Chart? Chart { get; set; }
 }
 
 /// <summary>How a path's inside is filled.</summary>
@@ -205,10 +211,17 @@ internal enum GradientShape
 internal sealed record GradientFill(IReadOnlyList<GradientStop> Stops, GradientShape Shape, float Angle, bool Scaled, SKRect Focus,
     bool RotateWithShape = true) : SlideFill;
 
-/// <summary>A picture's encoded bytes (PNG, JPEG, GIF, BMP, TIFF, EMF, WMF).</summary>
-internal sealed class SlideImage(byte[] data)
+/// <summary>A picture's encoded bytes (PNG, JPEG, GIF, BMP, TIFF, EMF, WMF), or what makes them when they're first asked for.</summary>
+internal sealed class SlideImage
 {
-    public byte[] Data { get; } = data;
+    private byte[]? _data;
+    private readonly Func<byte[]>? _make;
+
+    public SlideImage(byte[] data) => _data = data;
+
+    public SlideImage(Func<byte[]> make) => _make = make;
+
+    public byte[] Data => _data ??= _make?.Invoke() ?? [];
 }
 
 /// <summary>Colour changes of a picture.</summary>

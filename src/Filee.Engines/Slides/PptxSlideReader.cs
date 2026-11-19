@@ -11,7 +11,8 @@
 //   layout's and slide's overrides), theme fonts (+mj-lt, +mn-ea, script fonts by language) and theme style
 //   references (fillRef, lnRef, fontRef, bgRef).
 // - Shapes (preset and custom geometry), connectors, pictures (crop, fill rectangle, tiles, recolouring), groups, tables
-//   (with tableStyles.xml styles), SmartArt from the drawing PowerPoint keeps with it, OLE objects and charts as the
+//   (with tableStyles.xml styles), SmartArt from the drawing PowerPoint keeps with it, charts from their chart part
+//   (ChartReader; drawn by ChartDrawer, a picture of them for what takes pictures), OLE objects and other charts as the
 //   picture stored for them, mc:AlternateContent through its fallback.
 // - Fills: solid, gradient (linear, circle, rectangle; group fill), picture, pattern. Lines: width, dash, cap, join,
 //   compound, arrowheads.
@@ -26,6 +27,7 @@
 
 using System.Globalization;
 using System.Xml.Linq;
+using Filee.Engines.Charts;
 using Filee.Engines.Documents;
 using SkiaSharp;
 
@@ -64,6 +66,7 @@ internal sealed partial class PptxSlideReader
     private long _commands;
     private long _visits;
     private readonly long _maxVisits;
+    private readonly ChartBudget _charts = new();
 
     /// <summary>Custom geometry (a:custGeom) read, with what one use of it costs against <see cref="MaxDeckCommands"/>.</summary>
     private readonly Dictionary<XElement, (GeometryDefinition Definition, int Cost)> _customGeometry = new(ReferenceEqualityComparer.Instance);
@@ -477,6 +480,8 @@ internal sealed partial class PptxSlideReader
             return Table(context, part, table, xfrm);
         if (uri.EndsWith("/diagram", StringComparison.Ordinal))
             return SmartArt(context, part, data, xfrm);
+        if (uri.EndsWith("/chart", StringComparison.Ordinal) && Chart(context, part, data, xfrm) is { } chart)
+            return chart;
         // An OLE object, chart or other content with a picture of it (p:oleObj/p:pic, or a fallback picture).
         if (data.Descendants(P + "pic").FirstOrDefault() is { } picture)
         {
@@ -485,6 +490,21 @@ internal sealed partial class PptxSlideReader
             return Picture(context, part, picture, placed.Bounds);
         }
         return null;
+    }
+
+    /// <summary>A chart drawn from its chart part, as a picture-filled shape that carries the chart; null when ChartReader doesn't draw it.</summary>
+    private SlideShape? Chart(SlideContext context, string part, XElement data, XElement xfrm)
+    {
+        var target = _package.Target(part, (string?)data.Element(ChartReader.C + "chart")?.Attribute(R + "id"));
+        if (ChartReader.Read(target is null ? null : _package.Part(target), context.Colors, context.Fonts.Minor.Latin).Chart is not { } chart)
+            return null;
+        _charts.Charge(chart);
+        var shape = new SlideShape { IsPicture = true, Chart = chart };
+        Place(shape, xfrm);
+        var (width, height) = (shape.Bounds.Width, shape.Bounds.Height);
+        shape.Fill = new PictureFill(new SlideImage(() => ChartPicture.Png(chart, width, height) ?? []), SKRect.Empty, SKRect.Empty);
+        shape.Paths = Geometry([], shape.Bounds).Paths;
+        return shape;
     }
 
     /// <summary>

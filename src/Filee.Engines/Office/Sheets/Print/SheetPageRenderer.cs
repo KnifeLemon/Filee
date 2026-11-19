@@ -6,6 +6,7 @@
 // footer with their fields.
 
 using System.Globalization;
+using Filee.Engines.Charts;
 using Filee.Engines.Rendering;
 using Filee.Engines.Slides;
 using SkiaSharp;
@@ -27,6 +28,7 @@ internal sealed class SheetPageRenderer
     private readonly Dictionary<int, List<(int Column, CellStyle Style)>> _blanks = [];
     private readonly IReadOnlyList<(SheetDrawing Drawing, SKImage? Image)> _drawings;
     private readonly float _scale;
+    private ChartFonts? _charts;
 
     /// <summary>Characters "fill" alignment repeats a cell's text to at most (Excel's limit for a cell's text).</summary>
     private const int MaxFillCharacters = 32_767;
@@ -832,12 +834,28 @@ internal sealed class SheetPageRenderer
         }
         if (placed.Count == 0)
             return;
-        page.Draw(canvas =>
+        // Pictures and shapes in runs between charts, which add their text as text.
+        for (var start = 0; start < placed.Count;)
         {
-            canvas.ClipRect(area);
-            foreach (var (drawing, image, rect) in placed)
-                Draw(canvas, drawing, image, rect, s);
-        });
+            if (placed[start].Item1 is SheetChart chart)
+            {
+                _charts ??= new ChartFonts(_fonts.Resolver, _fonts.Shaper);
+                ChartDrawer.Draw(page, chart.Chart, placed[start].Item3, _charts, s, null, area);
+                start++;
+                continue;
+            }
+            var end = start;
+            while (end < placed.Count && placed[end].Item1 is not SheetChart)
+                end++;
+            var run = placed.GetRange(start, end - start);
+            page.Draw(canvas =>
+            {
+                canvas.ClipRect(area);
+                foreach (var (drawing, image, rect) in run)
+                    Draw(canvas, drawing, image, rect, s);
+            });
+            start = end;
+        }
     }
 
     /// <summary>One picture or shape in its anchor's box, turned and mirrored about the box's centre.</summary>
