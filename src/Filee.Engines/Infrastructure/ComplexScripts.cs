@@ -500,7 +500,7 @@ internal static partial class ComplexScripts
             "pptx" or "pptm" or "potx" or "potm" or "ppsx" => Xml("ppt/slides/", "slide"),
             "xlsx" or "xlsm" or "xltx" => Xml("xl/", "sharedStrings") || Xml("xl/worksheets/", "sheet"),
             "hwpx" => Xml("Contents/", "section"),
-            "odt" or "ods" or "odp" => name.Equals("content.xml", StringComparison.OrdinalIgnoreCase),
+            "odt" or "ods" or "odp" or "udf" => name.Equals("content.xml", StringComparison.OrdinalIgnoreCase),
             // OFD: the pages and templates (Doc_0/Pages/Page_0/Content.xml, Doc_0/Tpls/Tpl_0/Content.xml).
             "ofd" => name.EndsWith("/Content.xml", StringComparison.OrdinalIgnoreCase),
             // EPUB, HTMLZ, TXTZ, ...: the chapters.

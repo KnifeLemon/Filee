@@ -17,6 +17,7 @@
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Core.Platform;
+using Filee.Engines.Uyap;
 
 namespace Filee.Engines.Archives;
 
@@ -97,6 +98,11 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     {
         switch (format)
         {
+            // A .udf is a UYAP document (a ZIP) or a Universal Disk Format disc, read like an .iso (a bridge disc's
+            // ISO 9660 part too).
+            case UyapReader.Format:
+                await ExtractOnceAsync(archive, UyapReader.IsZip(archive) ? "zip" : "iso", folder, scratchRoot, cancellationToken);
+                return;
             // A PS Vita package is a ZIP under the same extension.
             case "vpk" when Vpk.IsZip(archive):
                 await ExtractOnceAsync(archive, "zip", folder, scratchRoot, cancellationToken);

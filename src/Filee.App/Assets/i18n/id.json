@@ -110,6 +110,7 @@
   "error.p7m_detached": ".p7m ini hanya berisi tanda tangan, bukan file yang ditandatangani. Konversikan file yang ditandatanganinya",
   "error.p7m_encrypted": ".p7m ini dienkripsi, bukan hanya ditandatangani: hanya kunci penerima yang bisa membukanya",
   "error.p7m_unknown_content": "File di dalam .p7m ini berjenis yang tidak dikonversi Filee",
+  "error.udf_not_uyap": "File .udf ini bukan dokumen UYAP. Jika ini image disk (Universal Disk Format), buka dengan “Ekstrak”",
   "error.p7m_too_large": "File bertanda tangan terlalu besar untuk dibuka",
   "error.document_too_large": "Dokumen ini terurai menjadi data yang terlalu besar atau bersarang terlalu dalam untuk dibuka dengan aman",
   "format_request.request": "Minta format ini",

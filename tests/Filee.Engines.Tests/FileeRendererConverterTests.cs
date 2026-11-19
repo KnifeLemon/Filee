@@ -98,6 +98,7 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     [InlineData("csv", "layout")] // no page setup for sheet print: one table, no longer the HWPX writer and rhwp
     [InlineData("tsv", "layout")]
     [InlineData("ofd", "layout")]
+    [InlineData("udf", "layout")]
     [InlineData("pptx", "layout")]
     [InlineData("potm", "layout")]
     [InlineData("xlsx", "sheet-print")]
@@ -109,6 +110,15 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
         var step = Assert.Single(fx.Catalog.CreatePlanner().Plan(from, "pdf")!.Steps);
         Assert.Equal(engine, step.Converter.Id);
         Assert.Equal(engine == "layout", step.Checked);
+    }
+
+    [Fact]
+    public void On_rtf_to_txt_reads_the_rtf_not_the_text_of_its_pdf()
+    {
+        // #1204: through the PDF the text came out wrapped, without its indentation and its empty lines.
+        Assert.Equal(["hwp-text"], Engines(WithLibreOffice(installed: false).Plan("rtf", "txt")));
+        Assert.Equal(["libreoffice"], Engines(WithLibreOffice().Plan("rtf", "txt")));
+        Assert.Equal(["libreoffice"], Engines(WithLibreOffice(documents: true).Plan("rtf", "txt")));
     }
 
     [Fact]

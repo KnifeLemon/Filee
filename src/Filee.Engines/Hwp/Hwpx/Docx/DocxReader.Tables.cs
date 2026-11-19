@@ -43,6 +43,9 @@ internal sealed partial class DocxReader
                 grid),
         };
 
+        if (tblPr?.Element(W + "tblpPr") is { } position)
+            Float(table, position);
+
         // Borders and cell margins: table style chain, then the table's own properties.
         var borders = new Dictionary<string, HBorder>();
         HInsets? margins = null;
@@ -158,6 +161,47 @@ internal sealed partial class DocxReader
             table.ColumnCount = Math.Max(table.ColumnCount, column);
         }
         return table;
+    }
+
+    /// <summary>
+    /// A floating table's place (w:tblpPr): against the paper (page), the margins (margin) or, down, the paragraph after
+    /// the table and, across, the column (text); at tblpX / tblpY from their left and top, or aligned by tblpXSpec /
+    /// tblpYSpec. Text goes around it on both sides, the From-text distances away.
+    /// </summary>
+    private static void Float(HTable table, XElement position)
+    {
+        static string Area(string? anchor, string text) => anchor switch
+        {
+            "page" => "PAPER",
+            "margin" => "PAGE",
+            _ => text,
+        };
+        static string Align(string? spec) => spec switch
+        {
+            "center" => "CENTER",
+            "right" => "RIGHT",
+            "inside" => "INSIDE",
+            "outside" => "OUTSIDE",
+            _ => "LEFT",
+        };
+        // Word's defaults where the attributes are left out: across from the column, down from the margin.
+        var across = Area(Attr(position, "horzAnchor"), "COLUMN");
+        var down = Area(Attr(position, "vertAnchor") ?? "margin", "PARA");
+        var xSpec = Attr(position, "tblpXSpec");
+        var ySpec = Attr(position, "tblpYSpec");
+        table.Float = new HAnchor(
+            across, Align(xSpec), xSpec is null ? HwpxUnits.FromTwips(Twips(position, "tblpX") ?? 0) : 0,
+            down, ySpec switch
+            {
+                "center" => "CENTER",
+                "bottom" => "BOTTOM",
+                "inside" => "INSIDE",
+                "outside" => "OUTSIDE",
+                _ => "TOP",
+            }, ySpec is null or "inline" ? HwpxUnits.FromTwips(Twips(position, "tblpY") ?? 0) : 0,
+            "SQUARE", true);
+        int Distance(string name) => HwpxUnits.FromTwips(Math.Max(0, Twips(position, name) ?? 0));
+        table.FloatDistance = new HInsets(Distance("leftFromText"), Distance("rightFromText"), Distance("topFromText"), Distance("bottomFromText"));
     }
 
     /// <summary>

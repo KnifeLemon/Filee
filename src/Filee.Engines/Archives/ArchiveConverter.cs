@@ -14,6 +14,7 @@ using Filee.Core.Formats;
 using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Uyap;
 
 namespace Filee.Engines.Archives;
 
@@ -76,6 +77,9 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
                select new ConversionEdge(source, target),
             .. sources.Select(source => new ConversionEdge(source, "iso", DirectOnly: true)),
             .. folderTargets.Select(target => new ConversionEdge(FormatRegistry.Folder, target, DirectOnly: true)),
+            // ".udf" is a UYAP document (read by the document readers) or a Universal Disk Format disc: Extract unpacks
+            // either, the disc as a disc (ArchiveExtractor).
+            new ConversionEdge(UyapReader.Format, FormatRegistry.Folder),
         ];
     }
 
