@@ -346,4 +346,3 @@ public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(8u, high.Depth);
     }
 }
-}
