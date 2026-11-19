@@ -592,7 +592,7 @@ internal sealed class XlsxReader
                     DifferentFirst = On(hf.Attribute("differentFirst")),
                     ScaleWithDocument = hf.Attribute("scaleWithDoc") is not { } scaleWith || On(scaleWith),
                     AlignWithMargins = hf.Attribute("alignWithMargins") is not { } align || On(align),
-                    Pictures = _package.Target(partPath, (string?)xml.Element(S + "legacyDrawingHF")?.Attribute(R + "id")) is { } vml ? HeaderPictures(vml) : [],
+                    Pictures = _package.Target(partPath, (string?)xml.Element(S + "legacyDrawingHF")?.Attribute(R + "id")) is { } vml ? HeaderPictures(_package, vml) : [],
                 },
             };
         }
@@ -600,13 +600,13 @@ internal sealed class XlsxReader
     }
 
     /// <summary>The pictures of headers and footers: VML shapes named LH, CH, RH, LF, CF, RF (+ FIRST / EVEN).</summary>
-    private Dictionary<string, (byte[], double, double)> HeaderPictures(string vmlPath)
+    internal static Dictionary<string, (byte[], double, double)> HeaderPictures(OpcPackage package, string vmlPath)
     {
         var pictures = new Dictionary<string, (byte[], double, double)>(StringComparer.OrdinalIgnoreCase);
         XDocument? vml;
         try
         {
-            vml = _package.Part(vmlPath);
+            vml = package.Part(vmlPath);
         }
         catch (InvalidDataException)
         {
@@ -616,7 +616,7 @@ internal sealed class XlsxReader
         {
             var id = (string?)shape.Attribute("id");
             var relation = (string?)shape.Element(V + "imagedata")?.Attribute(O + "relid") ?? (string?)shape.Element(V + "imagedata")?.Attribute(R + "id");
-            if (id is null || _package.Target(vmlPath, relation) is not { } image || _package.Bytes(image, MaxPictureBytes) is not { } data)
+            if (id is null || package.Target(vmlPath, relation) is not { } image || package.Bytes(image, MaxPictureBytes) is not { } data)
                 continue;
             var style = ((string?)shape.Attribute("style") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries)
                 .Select(p => p.Split(':', 2)).Where(p => p.Length == 2).GroupBy(p => p[0].Trim(), StringComparer.OrdinalIgnoreCase)

@@ -1,4 +1,4 @@
-// Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice (XLS / XLT and the XLSM / XLTX
+// Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice (XLS / XLT, XLSB and the XLSM / XLTX
 // variants are read, not written).
 // XLSX / XLS / ODS → PDF are printed by SheetPrintConverter; CSV / TSV → PDF and every sheet → HWPX and HTML go
 // through the HWPX writer (sheets become 한글 tables), see HwpxConverter and SheetDocument.
@@ -12,7 +12,7 @@ namespace Filee.Engines.Office;
 /// <summary>Converts between spreadsheet formats in-process.</summary>
 public sealed class SpreadsheetConverter : IConverter
 {
-    private static readonly string[] Sources = ["xlsx", "xlsm", "xltx", "xls", "xlt", "ods", "csv", "tsv"];
+    private static readonly string[] Sources = ["xlsx", "xlsm", "xltx", "xlsb", "xls", "xlt", "ods", "csv", "tsv"];
     private static readonly string[] Targets = ["xlsx", "ods", "csv", "tsv"];
 
     public string Id => "spreadsheet";
@@ -25,7 +25,7 @@ public sealed class SpreadsheetConverter : IConverter
             .Select(to => new ConversionEdge(from, to)))];
 
     public EngineStatus GetStatus() =>
-        EngineStatus.Available("XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV",
+        EngineStatus.Available("XLSX, XLSB, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV",
             $"{EngineVersions.BuiltIn} · {EngineVersions.Library("ExcelDataReader", typeof(ExcelDataReader.ExcelReaderFactory))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
@@ -79,6 +79,7 @@ public sealed class SpreadsheetConverter : IConverter
     internal static Workbook Read(string path, string format) => format switch
     {
         "xls" or "xlt" => XlsReader.Read(path),
+        XlsbReader.Format => XlsbReader.Read(path),
         "ods" => OdsReader.Read(path),
         "csv" => CsvFormat.Read(path),
         "tsv" => CsvFormat.ReadTsv(path),

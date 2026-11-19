@@ -14,7 +14,7 @@ internal static class SheetDocument
 {
     /// <summary>The formats DocumentReaders reads into a document through <see cref="Build"/>.</summary>
     public static readonly IReadOnlySet<string> SourceFormats =
-        new HashSet<string>(["xlsx", "xlsm", "xltx", "csv", "tsv", "xls", "xlt", "ods"], StringComparer.OrdinalIgnoreCase);
+        new HashSet<string>(["xlsx", "xlsm", "xltx", "xlsb", "csv", "tsv", "xls", "xlt", "ods"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Largest table written; bigger sheets are cut with a note (a PDF of 100 000 rows helps nobody).</summary>
     private const int MaxRows = 5000;
@@ -53,8 +53,9 @@ internal static class SheetDocument
         columns = columns.Take(MaxColumns).ToList();
 
         // Excel widths count digits of Calibri 11 (7 px each + 5 px padding). The 한글 fonts that render the table have
-        // wider digits, so a character gets 8 px plus room for the cell margins; 75 HWPUNIT per pixel.
-        var widths = columns.Select(c => (int)Math.Round((sheet.ColumnWidth(c) * 8 + 10) * 75)).ToArray();
+        // wider digits, so a character gets 8 px plus room for the cell margins; 75 HWPUNIT per pixel. Excel's widest
+        // column is 255 characters: a file that claims more can't overflow the table's width.
+        var widths = columns.Select(c => (int)Math.Round((Math.Clamp(sheet.ColumnWidth(c), 0, 255) * 8 + 10) * 75)).ToArray();
         var total = Math.Max(1, widths.Sum());
         var landscape = total > A4Short - 2 * Margin;
         var page = landscape

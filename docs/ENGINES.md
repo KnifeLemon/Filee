@@ -14,8 +14,8 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF through the Filee renderer, → DOCX through the DOCX writer) |
 | **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
-| Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
-| **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
+| Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLSB, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
+| **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLSB, XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
 | **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
@@ -833,13 +833,14 @@ which is also the equation's alternative text in HWPX.
 
 ## Spreadsheets
 
-`SpreadsheetConverter` (engine id `spreadsheet`) converts between XLSX, XLS (and XLT templates, read only), ODS, CSV and TSV (also
+`SpreadsheetConverter` (engine id `spreadsheet`) converts between XLSX, XLSB (read only), XLS (and XLT templates, read only), ODS, CSV and TSV (also
 `.tab`) in-process; every format goes through one in-memory workbook (`Office/Sheets/Workbook.cs`) whose cells keep
 the text the spreadsheet shows, the value behind it and its Excel number format.
 
 | Format | Read | Written |
 |---|---|---|
 | XLSX | own reader: values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print titles; for printing the page setup, print areas, page breaks, headers and footers, conditional formats and pictures | every sheet, numbers and dates as numbers with their formats, booleans, styles, merges, widths, heights, hidden rows / columns, frozen rows |
+| XLSB (Excel binary workbook) | own reader from [MS-XLSB] (`XlsbReader.cs`): the BIFF12 records of the workbook, shared strings, styles and sheets give what the XLSX reader gives (values, formulas' cached values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print areas and titles, page setup, breaks, headers and footers, pictures); conditional formats and comments are not read | no |
 | XLS (Excel 97–2003, also Excel 5/95) | ExcelDataReader (MIT): values, number formats, merges; fonts, fills, borders and alignment (BIFF8), widths, heights, hidden rows / columns and the page setup from the BIFF records (`XlsLayout.cs`) | no (LibreOffice) |
 | ODS | own reader (`content.xml`, `styles.xml`, `settings.xml`): repeated rows / columns (the empty repeats up to the end of the sheet are skipped), spans, every value type, the text Calc shows (`text:p`), data styles as Excel codes, cell styles, widths, heights, hidden rows / columns / sheets, frozen and header rows | every sheet, typed cells (float, percentage, currency, date, time, boolean) with data styles and the shown text, styles, merges, widths, heights, hidden rows / columns, frozen rows |
 | CSV / TSV | delimiter (CSV: comma, semicolon or tab; TSV: tab) and encoding (UTF-8 / UTF-16 with BOM, CP949 when it looks Korean or on Korean Windows, else the PC's code page) | UTF-8 with BOM, CRLF, one file per sheet |
@@ -852,8 +853,9 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
   measures with its own fonts, so a width can differ by up to a fifth after LibreOffice opens the file.
 - XLS fonts, fills and borders come from the FONT, XF and PALETTE records of BIFF8 files (Excel 97–2003); Excel 5/95
   files keep the default look. XLS output still needs LibreOffice. Password-protected XLS and ODS files stop with a
-  clear message. XLSX and ODS packages are read within `DocumentLimits` (sizes, inflate ratio, XML depth and
-  elements); ODS repeats expand to at most 20,000,000 cells.
+  clear message. XLSX, XLSB and ODS packages are read within `DocumentLimits` (sizes, inflate ratio, XML depth and
+  elements; XLSB records count as elements, a record the reader takes apart holds at most 1 MB); ODS repeats expand
+  to at most 20,000,000 cells.
 - Not converted to other spreadsheets: formulas (their cached results are kept), charts, pictures, comments,
   conditional formatting, data validation, print areas and page breaks (the print engine reads the page setup,
   print areas, breaks, conditional formats and pictures for PDF).
@@ -871,7 +873,7 @@ selected large page.
 
 ## Spreadsheet printing
 
-`SheetPrintConverter` (engine id `sheet-print`) prints XLSX (and XLSM / XLTX), XLS (and XLT) and ODS to PDF the way
+`SheetPrintConverter` (engine id `sheet-print`) prints XLSX (and XLSM / XLTX), XLSB, XLS (and XLT) and ODS to PDF the way
 Excel prints a whole workbook, without Excel or LibreOffice (GitHub Project 4, item *Spreadsheet print layout →
 PDF*). The readers above keep each sheet's page setup; `Office/Sheets/Print` lays the pages out with Excel's page logic
 and draws them with the Filee renderer's PDF writer (`Rendering/PdfPageWriter`, fonts subset by Filee) and its text
@@ -3777,7 +3779,7 @@ all expected bytes have been written; failures and cancellation preserve any pre
 - It is the only reader of rarer formats, converted to PDF and to the editable formats of their kind: Word 6.0 / 95
   and Microsoft Works documents (a `.doc`, `.dot` or `.wps` the [DOC reader](#doc-reader) names as such), WordPerfect,
   Lotus Word Pro, AbiWord, Apple Pages, StarWriter, ClarisWorks / AppleWorks (`.cwk`), MacWrite (`.mcw`), T602
-  (`.602`) and Pocket Word (`.psw`) (→ DOCX, ODT, FODT, OTT, DOC, RTF, TXT, HTML); WPS Spreadsheets (ET), Apple Numbers, StarCalc and flat ODS (`.fods`) (→ XLSX, ODS, OTS, XLS, XLT, CSV, HTML); Apple
+  (`.602`) and Pocket Word (`.psw`) (→ DOCX, ODT, FODT, OTT, DOC, RTF, TXT, HTML); WPS Spreadsheets (ET), Apple Numbers, StarCalc and flat ODS (`.fods`) (→ XLSX, ODS, OTS, XLS, XLT, CSV, HTML); XLSB too, where the built-in reader has no route (→ XLS, XLT, OTS) and for a workbook with what the print engine doesn't draw; Apple
   Keynote, WPS Presentation (DPS), StarImpress / StarDraw and PowerPoint 95 and older PPT (→ PPTX, ODP, OTP, PPT);
   Publisher, CorelDRAW, binary Visio (`.vsd`) and CGM (→ ODG, SVG, PNG, EMF, WMF). VSDX, ODP, FODP, ODG and FODG
   are read by Filee itself ([Drawings](#drawings-visio-odg), [ODP / ODG reader](#odp--odg-reader)); LibreOffice keeps

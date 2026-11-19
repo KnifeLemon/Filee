@@ -143,6 +143,8 @@ public static class FormatRegistry
         new("xlsx", "XLSX", FormatCategory.Spreadsheet, ["xlsx"]),
         new("xlsm", "XLSM", FormatCategory.Spreadsheet, ["xlsm"]),
         new("xltx", "XLTX", FormatCategory.Spreadsheet, ["xltx"]),
+        // Excel binary workbooks, read by the built-in XLSB reader (#1535).
+        new("xlsb", "XLSB", FormatCategory.Spreadsheet, ["xlsb"], Writable: false),
         new("xls", "XLS", FormatCategory.Spreadsheet, ["xls"]),
         new("xlt", "XLT", FormatCategory.Spreadsheet, ["xlt"]),
         new("ods", "ODS", FormatCategory.Spreadsheet, ["ods"]),
