@@ -27,7 +27,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
-| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders and column widths kept |
+| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT, RTF, HWP, HWPX, HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
@@ -2225,26 +2225,35 @@ not found.
   workbook. The same tables can be written as ODS, or as CSV (one file per sheet). These edges are direct only: an image
   made into a PDF has no ruled tables, so no picture reaches a spreadsheet through PDF.
 
-## DOCX / HTML → XLSX
+## Documents → XLSX
 
-`Office/DocumentTablesConverter.cs` puts the tables of a Word document (DOCX and its DOCM / DOTX / DOTM variants), a web
-page (HTML) or a saved web page (MHTML) into a workbook (#1016). The tables are the ones the DOCX and HTML readers give
-the HWPX and DOCX writers, with their merged cells (`gridSpan` / `vMerge`, `colspan` / `rowspan`); text outside the
-tables is left out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, shared by both).
+`Office/DocumentTablesConverter.cs` puts the tables of a Word document (DOCX and its DOCM / DOTX / DOTM variants, DOC
+and its DOT / WPS variants), an OpenDocument text (ODT), an RTF file, a 한글 file (HWP, HWPX), a web page (HTML) or a
+saved web page (MHTML) into a workbook (#1016). The tables are the ones the built-in readers give the HWPX and DOCX
+writers, with their merged cells (`gridSpan` / `vMerge`, DOC's merge flags, `number-columns-spanned` /
+`number-rows-spanned`, `\clmgf` / `\clvmgf`, 한글's `cellSpan`, `colspan` / `rowspan`); text outside the tables is left
+out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, shared by both).
 
 - **One sheet per table** ("Table 1", "Table 2" …) in reading order, a table inside a cell too (its text isn't repeated
   in the outer cell). Nothing is joined: a Word table running over a page break is one table already. A table without
   any text, such as a web page's layout table around the real one, gets no sheet.
-- **Numbers and dates** become real values by the same rules as PDF → XLSX (above).
+- **Numbers and dates** become real values by the same rules as PDF → XLSX (above). 한글 files are read as the renderer
+  reads them, so a number typed as an equation (common in 한글 tables) is its text ("40"), not its script ("40~~~").
 - Cells keep their own borders (a Word table style's lines, the HTML grid unless `border="0"`), shading, vertical
-  alignment and bold. Column widths come from the Word grid or the HTML `<col>` / first-row widths (shares of an A4
-  text width); without either, a column is as wide as its longest line, up to 60 characters. Rows fit their text: a
-  Word row height is only a minimum. Leading header rows (Word's "repeat as header row", HTML `<thead>` or rows of
-  `<th>`) are frozen.
+  alignment, bold and italic (when all the cell's text is), and centred or right alignment (when all its paragraphs
+  are; left and justified text keeps Excel's own, numbers to the right). Column widths come from the document's grid
+  (Word, DOC, RTF, ODT, 한글) or the HTML `<col>` / first-row widths (shares of an A4 text width); without either, a
+  column is as wide as its longest line, up to 60 characters. Rows fit their text: a document's row height is only a
+  minimum. Excel doesn't fit a row to a merged cell, so the rows under a merged cell get the height its lines need.
+  Leading header rows (Word's and RTF's "repeat as header row", ODT header rows, 한글's title cells, HTML `<thead>` or
+  rows of `<th>`) are frozen.
 - A file without tables fails with `error.document_no_tables`. The edges are direct only, like PDF → XLSX: a PDF,
   a picture or an e-book that became a DOCX on the way doesn't reach spreadsheets this way, and a document's tables
-  don't go on to JSON or XML. For the same reason DOC (which LibreOffice reads into a DOCX first) isn't an input: the
-  XLSX preset's note says to convert it to DOCX first.
+  don't go on to JSON or XML. DOC edges are checked: a Word 6.0 / 95 or Works file the DOC reader doesn't read gets
+  the reader's own message (LibreOffice has no Writer → spreadsheet route to fall back on).
+- Limits: the tables of one file get at most 10,000 sheets, 1,048,576 rows each (Excel's) and 10,000,000 cell
+  positions together (`HwpxWriter.MaxTableCells`), counted before anything is written; more is refused with
+  `error.document_too_complex`. Nested tables are walked with a stack, not recursion.
 
 ## PDF → PPTX
 
