@@ -26,17 +26,29 @@ public sealed class ProcessRunnerOutputTests : IDisposable
             ? ("powershell.exe", new[]
             {
                 "-NoProfile", "-Command",
-                "$ErrorActionPreference = 'Stop'; $held = @(); 1..150 | ForEach-Object { $block = [byte[]]::new(10MB); [Array]::Clear($block, 0, $block.Length); $held += ,$block }; 'reached the end'",
+                "$ErrorActionPreference = 'Stop'; [Console]::Out.WriteLine('started'); $held = @(); 1..150 | ForEach-Object { $block = [byte[]]::new(10MB); [Array]::Clear($block, 0, $block.Length); $held += ,$block }; 'reached the end'",
             })
-            : ("/usr/bin/env", ["perl", "-e", "my @held; push @held, 'a' x 10_000_000 for 1..150; print 'reached the end'; sleep 30"]);
+            : ("/usr/bin/env", ["perl", "-e", "$| = 1; print qq(started\\n); my @held; push @held, 'a' x 10_000_000 for 1..150; print 'reached the end'; sleep 30"]);
+        var timeout = TimeSpan.FromMinutes(1);
         var printed = new StringWriter();
         var clock = Stopwatch.StartNew();
+        var started = TimeSpan.Zero;
 
-        var result = await ProcessRunner.RunWithOutputAsync(program, arguments, (output, _) => printed.Write(new StreamReader(output).ReadToEnd()),
-            TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken, memoryLimit: 500L * 1024 * 1024);
+        var result = await ProcessRunner.RunWithOutputAsync(program, arguments, (output, _) =>
+            {
+                var reader = new StreamReader(output);
+                printed.WriteLine(reader.ReadLine());
+                started = clock.Elapsed;
+                printed.Write(reader.ReadToEnd());
+            },
+            timeout, TestContext.Current.CancellationToken, memoryLimit: 500L * 1024 * 1024);
 
+        Assert.StartsWith("started", printed.ToString());
         Assert.DoesNotContain("reached the end", printed.ToString());
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(25), clock.Elapsed.ToString());
+        // Timed from its first line, not from the start: PowerShell alone can take half a minute to start on a slow
+        // runner (win-arm64). Stopped for memory, it ends in seconds; a program left to the timeout would throw.
+        var ran = clock.Elapsed - started;
+        Assert.True(ran < timeout / 4, $"ran {ran} after it started");
         Assert.True(result.StoppedForMemory); // so a cut output isn't taken for a file it couldn't read
     }
 
@@ -160,20 +172,25 @@ public sealed class ProcessRunnerOutputTests : IDisposable
             """);
         var complete = LibreOfficeConverter.OutputComplete(Output);
         var held = 0;
-        var started = Stopwatch.StartNew();
+        var clock = Stopwatch.StartNew();
+        var firstReady = TimeSpan.Zero;
+        var timeout = TimeSpan.FromSeconds(30);
 
-        var result = await ProcessRunner.RunAsync(Cmd, ["/c", script], TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken,
+        var result = await ProcessRunner.RunAsync(Cmd, ["/c", script], timeout, TestContext.Current.CancellationToken,
             outputReady: () =>
             {
                 var ready = complete();
-                if (ready)
-                    held++;
+                if (ready && held++ == 0)
+                    firstReady = clock.Elapsed;
                 return ready;
             });
 
+        // The script waits longer than the timeout, which would throw: the probe ended the run.
         Assert.Equal(0, result.ExitCode);
         Assert.True(held >= 4, $"the run ended by itself after {held} ready polls");
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(20), $"took {started.Elapsed}");
+        // Timed from the first poll that found the PDF complete, not from the start, which a busy runner can delay.
+        var after = clock.Elapsed - firstReady;
+        Assert.True(after < timeout / 2, $"ended {after} after the PDF was complete");
     }
 
     [Fact]
@@ -196,8 +213,9 @@ public sealed class ProcessRunnerOutputTests : IDisposable
             outputReady: () => File.Exists(pidFile) && complete());
 
         Assert.Equal(0, result.ExitCode);
-        // Under the 30 s the rest of the output may take: the job ended the child, so the output ended too.
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(20), $"took {started.Elapsed}");
+        // Under the 30 s that waiting for the rest of the output alone would take: the job ended the child, so the
+        // output ended too.
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"took {started.Elapsed}");
         Assert.DoesNotContain("output not complete", result.StandardError);
         if (!File.Exists(pidFile))
             return; // The script exited before the child had started; the job ended it all the same.
@@ -218,24 +236,35 @@ public sealed class ProcessRunnerOutputTests : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "cmd.exe.");
         // A steady file for longer than the probe needs, but the PDF is not complete: the script's own exit code counts.
+        // The script waits until the probe has seen the file as often as a complete one would take to end the run, and
+        // not for a fixed time, which a busy runner can fill with a single poll; it gives up after about 20 s. (An exit
+        // /b inside the loop's brackets would end cmd /c with 0.)
         var script = Script("""
             @echo off
             >"%~dp0out\out.pdf" echo %%PDF-1.4
-            ping -n 4 127.0.0.1 >nul
+            for /l %%i in (1,1,20) do (
+                if exist "%~dp0seen" goto end
+                ping -n 2 127.0.0.1 >nul
+            )
+            :end
             exit /b 3
             """);
+        var seen = Path.Combine(_root, "seen");
         var complete = LibreOfficeConverter.OutputComplete(Output);
         var polls = 0;
 
         var result = await ProcessRunner.RunAsync(Cmd, ["/c", script], TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken,
             outputReady: () =>
             {
-                polls++;
-                return complete();
+                var ready = complete();
+                // The first poll that finds the file only takes its size; four steady ones after it would end the run.
+                if (File.Exists(Path.Combine(Output, "out.pdf")) && ++polls == 5)
+                    File.WriteAllText(seen, "");
+                return ready;
             });
 
         Assert.Equal(3, result.ExitCode);
-        Assert.True(polls >= 2, $"probed {polls} times");
+        Assert.True(polls >= 5, $"probed the file {polls} times");
     }
 
     private static string Cmd => Path.Combine(Environment.SystemDirectory, "cmd.exe");
