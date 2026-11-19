@@ -48,6 +48,7 @@ internal static class DocumentReaders
         ["xlsx"] = (path, _) => SheetDocument.Build(XlsxReader.Read(path)),
         ["xlsm"] = (path, _) => SheetDocument.Build(XlsxReader.Read(path)),
         ["xltx"] = (path, _) => SheetDocument.Build(XlsxReader.Read(path)),
+        [XlsbReader.Format] = (path, _) => SheetDocument.Build(XlsbReader.Read(path)),
         ["csv"] = (path, _) => SheetDocument.Build(CsvFormat.Read(path)),
         ["tsv"] = (path, _) => SheetDocument.Build(SpreadsheetConverter.Read(path, "tsv")),
         ["xls"] = (path, _) => SheetDocument.Build(SpreadsheetConverter.Read(path, "xls")),

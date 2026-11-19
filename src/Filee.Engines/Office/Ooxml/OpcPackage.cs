@@ -76,6 +76,19 @@ internal sealed class OpcPackage : IDisposable
         return copy.Length > max ? null : copy.ToArray();
     }
 
+    /// <summary>
+    /// A binary part to read from start to end (an XLSB record stream), counted against the package's limits while it
+    /// is read; null when it doesn't exist.
+    /// </summary>
+    public Stream? OpenPart(string partPath)
+    {
+        if (Entry(partPath) is not { } entry)
+            return null;
+        if (_limited is not null)
+            return _limited.Open(entry);
+        return entry.Open();
+    }
+
     /// <summary>The main part (target of the package's officeDocument relationship), e.g. xl/workbook.xml.</summary>
     public string? MainPartPath =>
         Relationships("").Values.FirstOrDefault(r => r.Type.EndsWith("/officeDocument", StringComparison.Ordinal)).Target;
