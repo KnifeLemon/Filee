@@ -121,6 +121,10 @@ public static class FormatRegistry
         new("udf", "UYAP (UDF)", FormatCategory.Document, ["udf"], Writable: false),
         // XPS and OpenXPS (ECMA-388) fixed-layout documents (#613), read by the built-in XPS reader (drawing engine).
         new("xps", "XPS", FormatCategory.Document, ["xps", "oxps"], Writable: false),
+        // Mind maps (#1543, #1004), read by Filee itself as an outline: topics as headings and lists, notes under them (the
+        // map isn't drawn). A .mm that isn't XML is Objective-C++ source, read as plain text.
+        new("mm", "FreeMind / Freeplane (MM)", FormatCategory.Document, ["mm"], Writable: false),
+        new("xmind", "XMind", FormatCategory.Document, ["xmind"], Writable: false),
         new("wpd", "WPD", FormatCategory.Document, ["wpd"], Writable: false),
         new("lwp", "LWP", FormatCategory.Document, ["lwp"], Writable: false),
         new("abw", "ABW", FormatCategory.Document, ["abw", "zabw"], Writable: false),

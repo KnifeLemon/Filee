@@ -384,7 +384,7 @@ internal static partial class ComplexScripts
                 return FindInString(message.HtmlBody ?? message.TextBody ?? "", classifier, skipBelow);
             }
             return format is "txt" or "md" or "html" or "csv" or "tsv" or "fb2" or "rtf" or "rst" or "tex" or "org" or "adoc"
-                or "typ" or "mediawiki" or "dbk" or "textile" or "man" or "opml"
+                or "typ" or "mediawiki" or "dbk" or "textile" or "man" or "opml" or "mm"
                 ? FindInText(path, classifier, skipBelow)
                 : null; // other binary formats (MOBI, ...): left to the engines
         }
@@ -504,6 +504,7 @@ internal static partial class ComplexScripts
             "xlsx" or "xlsm" or "xltx" => Xml("xl/", "sharedStrings") || Xml("xl/worksheets/", "sheet"),
             "hwpx" => Xml("Contents/", "section"),
             "odt" or "ods" or "odp" or "udf" => name.Equals("content.xml", StringComparison.OrdinalIgnoreCase),
+            "xmind" => name.Equals("content.json", StringComparison.OrdinalIgnoreCase) || name.Equals("content.xml", StringComparison.OrdinalIgnoreCase),
             // OFD: the pages and templates (Doc_0/Pages/Page_0/Content.xml, Doc_0/Tpls/Tpl_0/Content.xml).
             "ofd" => name.EndsWith("/Content.xml", StringComparison.OrdinalIgnoreCase),
             // EPUB, HTMLZ, TXTZ, ...: the chapters.

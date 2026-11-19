@@ -1230,6 +1230,9 @@ internal static class SettingsMigrations
         // v106: Excel binary workbooks (.xlsb, #1535) learn the spreadsheets donut; custom claims stay put.
         if (from < 106)
             changed |= LearnExtensions(profiles, out _, ["xlsb"]);
+        // v108: mind maps (.mm, .xmind; #1543, #1004) learn the documents donut; custom claims stay put.
+        if (from < 108)
+            changed |= LearnExtensions(profiles, out _, ["mm", "xmind"]);
         return changed;
     }
 
