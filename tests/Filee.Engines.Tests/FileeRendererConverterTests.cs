@@ -113,6 +113,15 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     }
 
     [Fact]
+    public void On_rtf_to_txt_reads_the_rtf_not_the_text_of_its_pdf()
+    {
+        // #1204: through the PDF the text came out wrapped, without its indentation and its empty lines.
+        Assert.Equal(["hwp-text"], Engines(WithLibreOffice(installed: false).Plan("rtf", "txt")));
+        Assert.Equal(["libreoffice"], Engines(WithLibreOffice().Plan("rtf", "txt")));
+        Assert.Equal(["libreoffice"], Engines(WithLibreOffice(documents: true).Plan("rtf", "txt")));
+    }
+
+    [Fact]
     public void On_slide_decks_go_to_pdf_and_pictures_through_it()
     {
         // LibreOffice installed but not chosen for presentations (the default): the slide renderer draws the decks.

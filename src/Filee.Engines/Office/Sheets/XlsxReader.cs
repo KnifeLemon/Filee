@@ -326,7 +326,7 @@ internal sealed class XlsxReader
                 DiagonalDown = border.Down,
             };
             var formatId = Index(xf, "numFmtId");
-            _cellFormats.Add((style, formats.GetValueOrDefault(formatId) ?? NumberFormatter.BuiltInFormats.GetValueOrDefault(formatId, "General")));
+            _cellFormats.Add((style, formats.GetValueOrDefault(formatId) ?? NumberFormatter.BuiltIn(formatId) ?? "General"));
         }
 
         foreach (var dxf in root.Element(S + "dxfs")?.Elements(S + "dxf") ?? [])

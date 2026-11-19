@@ -983,4 +983,43 @@ public sealed class SheetPrintTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.Contains(sections.Right, p => p.Text.Contains('&'));
         Assert.True(HeaderFooterText.Parse(new string('&', 100_000)).Center.Sum(p => p.Text.Length) <= 4096);
     }
+
+    // ───────────────────────── Number formats ─────────────────────────
+
+    [Theory]
+    [InlineData("en-US", "11/8/2026")]
+    [InlineData("zh-CN", "2026/11/8")]
+    [InlineData("de-DE", "08.11.2026")]
+    public void Issue1315_the_built_in_short_date_prints_as_the_pcs_short_date(string culture, string expected)
+    {
+        // Format 14 is the short date of the PC's regional format in Excel. It printed as 2026-11-08, one character
+        // more than Excel shows in China or the US, so the reporter's dates came out as ####.
+        using var scope = new CultureScope(culture);
+        var book = new XlsxBuilder();
+        book.Sheet("Order", Row(1, Number("B1", 46334, XlsxBuilder.Date)),
+            before: "<cols><col min=\"2\" max=\"2\" width=\"12\" customWidth=\"1\"/></cols>", after: A4);
+
+        var page = Assert.Single(Print(Save(book, "order.xlsx")));
+
+        Assert.Equal(expected, page);
+    }
+
+    [Theory]
+    [InlineData("M/d/yyyy", "/", "m/d/yyyy")]
+    [InlineData("yyyy/M/d", "/", "yyyy/m/d")]
+    [InlineData("M/d/yyyy", ".", "m\\.d\\.yyyy")] // "/" is the date separator
+    [InlineData("dd.MM.yy", "/", "dd\\.mm\\.yy")]
+    [InlineData("yyyy. MM. dd.", "/", "yyyy\\. mm\\. dd\\.")]
+    [InlineData("d.MM.yyyy 'г'.", "/", "d\\.mm\\.yyyy \\г\\.")]
+    [InlineData("dddd, MMMM d, yyyy", "/", "yyyy-mm-dd")] // names: not a short date Excel would show
+    [InlineData("gg yyyy/MM/dd", "/", "yyyy-mm-dd")] // an era
+    public void Short_date_patterns_become_excel_format_codes(string pattern, string separator, string expected)
+    {
+        var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.InvariantCulture.Clone();
+        culture.DateTimeFormat.ShortDatePattern = pattern;
+        culture.DateTimeFormat.DateSeparator = separator;
+
+        Assert.Equal(expected, NumberFormatter.ShortDate(culture));
+        Assert.Equal("yyyy-mm-dd", NumberFormatter.ShortDate(System.Globalization.CultureInfo.GetCultureInfo("th-TH"))); // Buddhist years
+    }
 }
