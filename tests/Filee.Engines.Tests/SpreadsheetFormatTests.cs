@@ -148,16 +148,15 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
             var cells = Part("xl/worksheets/sheet1.xml").Descendants(S + "c").ToDictionary(c => (string)c.Attribute("r")!);
             var styles = Part("xl/styles.xml");
             var xfs = styles.Element(S + "cellXfs")!.Elements(S + "xf").ToList();
-            string FormatCode(string reference)
-            {
-                var id = (int)xfs[(int)cells[reference].Attribute("s")!].Attribute("numFmtId")!;
-                return (string)styles.Descendants(S + "numFmt").Single(f => (int)f.Attribute("numFmtId")! == id).Attribute("formatCode")!;
-            }
+            int FormatId(string reference) => (int)xfs[(int)cells[reference].Attribute("s")!].Attribute("numFmtId")!;
+            string FormatCode(string reference) =>
+                (string)styles.Descendants(S + "numFmt").Single(f => (int)f.Attribute("numFmtId")! == FormatId(reference)).Attribute("formatCode")!;
             // Real numbers with their formats, not text: Excel can calculate with them.
             Assert.Null(cells["B3"].Attribute("t"));
             Assert.Equal("1350000", (string)cells["B3"].Element(S + "v")!);
             Assert.Equal("#,##0\"원\"", FormatCode("B3"));
-            Assert.Equal(("46296", "m/d/yyyy"), ((string)cells["C3"].Element(S + "v")!, FormatCode("C3")));
+            // The short date stays Excel's format 14, which shows in the regional format of whoever opens the file.
+            Assert.Equal(("46296", 14), ((string)cells["C3"].Element(S + "v")!, FormatId("C3")));
             Assert.Equal("b", (string?)cells["C5"].Attribute("t"));
         }
 
@@ -166,6 +165,47 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.Equal(source.Sheets[0].Merges, result.Sheets[0].Merges);
         Assert.Equal(source.Sheets[0].HiddenRows, result.Sheets[0].HiddenRows);
         Assert.Equal(14, result.Sheets[0].ColumnWidth(0));
+    }
+
+    [Theory]
+    [InlineData("en-US", "m/d/yyyy", true)]
+    [InlineData("zh-CN", "yyyy/m/d", true)]
+    [InlineData("en-US", "yyyy-mm-dd", false)] // a date format of the file's own
+    [InlineData("en-US", "d/m/yyyy", false)]
+    [InlineData("th-TH", "yyyy-mm-dd", false)] // Buddhist years: the ISO date read for 14 here isn't Excel's 14 there
+    public void Xlsx_writer_stores_the_pcs_short_date_as_format_14(string culture, string code, bool builtIn)
+    {
+        using var scope = new CultureScope(culture);
+        var book = new Workbook();
+        var sheet = new Worksheet("Sheet1");
+        sheet.Set(0, 0, new SheetCell("date", CellStyle.Default, IsNumber: true) { Value = October1, NumberFormat = code });
+        book.Sheets.Add(sheet);
+        var path = Path.Combine(fx.NewFolder(), "dates.xlsx");
+
+        XlsxWriter.Write(book, path);
+
+        XElement styles, cell;
+        using (var zip = ZipFile.OpenRead(path))
+        {
+            using (var stream = zip.GetEntry("xl/styles.xml")!.Open())
+                styles = XElement.Load(stream);
+            using (var stream = zip.GetEntry("xl/worksheets/sheet1.xml")!.Open())
+                cell = XElement.Load(stream).Descendants(S + "c").Single();
+        }
+        var id = (int)styles.Element(S + "cellXfs")!.Elements(S + "xf").ElementAt((int)cell.Attribute("s")!).Attribute("numFmtId")!;
+        var custom = styles.Descendants(S + "numFmt").Select(f => (string)f.Attribute("formatCode")!).ToList();
+        if (builtIn)
+        {
+            Assert.Equal(14, id);
+            Assert.Empty(custom);
+        }
+        else
+        {
+            Assert.True(id >= 164, $"{id}");
+            Assert.Equal([code], custom);
+        }
+        // Read back on the same PC, the date shows as before.
+        Assert.Equal(code, XlsxReader.Read(path).Sheets[0].Get(0, 0)!.NumberFormat);
     }
 
     // ───────────────────────── ODS ─────────────────────────

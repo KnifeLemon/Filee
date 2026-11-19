@@ -25,11 +25,20 @@ internal sealed class NumberFormatter(bool date1904 = false)
     /// The short date pattern of <paramref name="culture"/> as an Excel format code ("M/d/yyyy" → "m/d/yyyy"), or
     /// <see cref="IsoDate"/> for a calendar other than the Gregorian one or a pattern with more than day, month and year.
     /// </summary>
-    internal static string ShortDate(CultureInfo culture)
+    internal static string ShortDate(CultureInfo culture) => ExcelShortDate(culture) ?? IsoDate;
+
+    /// <summary>
+    /// True when <paramref name="code"/> is the PC's short date (format 14 as this PC shows it), so a writer can store
+    /// it as format 14 and Excel shows the reader's own short date. Not the ISO date this PC falls back to.
+    /// </summary>
+    public static bool IsShortDate(string code) => ExcelShortDate(CultureInfo.CurrentCulture) == code;
+
+    /// <summary><see cref="ShortDate"/>, or null where the culture's short date can't be written as an Excel format.</summary>
+    private static string? ExcelShortDate(CultureInfo culture)
     {
         var format = culture.DateTimeFormat;
         if (format.Calendar is not GregorianCalendar)
-            return IsoDate;
+            return null;
         var pattern = format.ShortDatePattern;
         var code = new System.Text.StringBuilder();
         for (var i = 0; i < pattern.Length;)
@@ -56,7 +65,7 @@ internal sealed class NumberFormatter(bool date1904 = false)
                     {
                         var end = pattern.IndexOf(c, i + 1);
                         if (end < 0)
-                            return IsoDate;
+                            return null;
                         Literal(code, pattern[(i + 1)..end]);
                         i = end + 1;
                         continue;
@@ -67,7 +76,7 @@ internal sealed class NumberFormatter(bool date1904 = false)
                     continue;
                 default:
                     if (char.IsLetter(c))
-                        return IsoDate; // an era, a day or month name: not a short date Excel would show
+                        return null; // an era, a day or month name: not a short date Excel would show
                     Literal(code, new string(c, run));
                     break;
             }
