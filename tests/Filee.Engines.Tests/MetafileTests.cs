@@ -613,4 +613,66 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
         }
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60), $"600 damaged files took {watch.Elapsed}");
     }
+
+    [Fact]
+    public void A_bitmap_is_decoded_straight_into_the_bitmap_Skia_draws()
+    {
+        // 1,024 × 1,024 at 24 bits, bottom-up: the first row of the data is the bottom row of the picture.
+        const int size = 1024;
+        var info = EmfBuilder.Dib(size, size, 24);
+        var bits = new byte[size * 3 * size];
+        bits[0] = 0xFF; // blue, bottom left
+        bits[^1] = 0xFF; // red, top right
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        using var image = Dib.Decode(info, bits, DibOptions.Default, new MetafileBudget(MetafileLimits.Default));
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.NotNull(image);
+        // The pixels (4 MB) are written once, into Skia's memory: no array of them, no copy of that array.
+        Assert.True(allocated < 512 * 1024, $"{allocated:N0} bytes allocated");
+        using var bitmap = SKBitmap.FromImage(image.Image);
+        Assert.Equal(new SKColor(0, 0, 255), bitmap.GetPixel(0, size - 1));
+        Assert.Equal(new SKColor(255, 0, 0), bitmap.GetPixel(size - 1, 0));
+        Assert.Equal(SKColors.Black, bitmap.GetPixel(size / 2, size / 2));
+    }
+
+    [Fact]
+    public void A_bitmap_whose_pixels_are_cut_off_is_refused_before_they_are_allocated()
+    {
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<DibFormatException>(() =>
+            Dib.Decode(EmfBuilder.Dib(8_192, 8_192, 24), new byte[16], DibOptions.Default, new MetafileBudget(MetafileLimits.Default)));
+        Assert.True(GC.GetAllocatedBytesForCurrentThread() - before < 1024 * 1024);
+    }
+
+    [Fact]
+    public void A_run_length_bitmap_leaves_the_pixels_its_runs_skip_transparent()
+    {
+        // RLE8, 4 × 2, bottom-up: two pixels of colour 1 on the bottom row, then the end of the bitmap.
+        var header = EmfBuilder.Dib(4, 2, 8);
+        BitConverter.GetBytes(1).CopyTo(header, 16); // BI_RLE8
+        var table = new byte[256 * 4];
+        table[4 + 2] = 0xFF; // colour 1: red
+        var bits = new byte[] { 2, 1, 0, 1 };
+        using var image = Dib.Decode([.. header, .. table], bits, DibOptions.Default, new MetafileBudget(MetafileLimits.Default));
+        using var bitmap = SKBitmap.FromImage(image!.Image);
+        Assert.Equal(new SKColor(255, 0, 0), bitmap.GetPixel(0, 1));
+        Assert.Equal(new SKColor(255, 0, 0), bitmap.GetPixel(1, 1));
+        Assert.Equal(0, bitmap.GetPixel(2, 1).Alpha);
+        Assert.Equal(0, bitmap.GetPixel(0, 0).Alpha);
+    }
+
+    [Fact]
+    public void A_metafile_read_for_a_cancelled_conversion_stops()
+    {
+        // More records than the player plays between two looks at the token.
+        var emf = new EmfBuilder(96, 96);
+        for (var i = 0; i < 5_000; i++)
+            emf.Add(18, 1); // SETBKMODE
+        var path = Path.Combine(fx.NewFolder(), "many.emf");
+        File.WriteAllBytes(path, emf.ToArray());
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            Magick.ImageReader.Read(path, "emf", new Preset(), new CancellationToken(canceled: true)).Dispose());
+        using var images = Magick.ImageReader.Read(path, "emf", new Preset(), TestContext.Current.CancellationToken);
+        Assert.Single(images);
+    }
 }

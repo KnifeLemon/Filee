@@ -257,7 +257,7 @@ public sealed class LibreOfficeConverter : IConverter
     /// </summary>
     private static string FirstPage(ConversionStep step)
     {
-        using var source = PdfReader.Open(step.InputPath, PdfDocumentOpenMode.Import);
+        using var source = PdfObjectNesting.Open(step.InputPath, PdfDocumentOpenMode.Import);
         var pages = PageRange.Parse(step.Preset.Pdf.PageRange, source.PageCount);
         if (pages.Count == 0)
             throw new InvalidOperationException("The PDF has no pages in the selected range.");

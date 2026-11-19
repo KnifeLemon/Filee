@@ -438,11 +438,13 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// Opens a PDF. A file PDFsharp reads is opened as it is; one it refuses gets one mended try (<see cref="PdfRepair"/>,
     /// issue #1175), and when that does not help either the original error is thrown. The file on disk is never changed.
     /// <paramref name="mended"/> is the mended file when that was needed (else null), for code that reads the file a
-    /// second time (PDFsharp's XPdfForm) and must read the mended bytes, not the file.
+    /// second time (PDFsharp's XPdfForm) and must read the mended bytes, not the file. Both are checked for nesting
+    /// PDFsharp's parser can't take first (<see cref="PdfObjectNesting"/>).
     /// </summary>
     private static PdfDocument OpenTolerant(string path, PdfDocumentOpenMode mode, CancellationToken cancellationToken, out byte[]? mended)
     {
         mended = null;
+        PdfObjectNesting.Check(path, cancellationToken);
         try
         {
             return PdfReader.Open(path, mode);
@@ -454,7 +456,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
                 throw;
             try
             {
-                var document = PdfReader.Open(new MemoryStream(repaired), mode);
+                var document = PdfObjectNesting.Open(repaired, mode, cancellationToken);
                 mended = repaired;
                 return document;
             }
