@@ -748,6 +748,12 @@ internal sealed class HImage(string path) : HObject
 
     /// <summary>Colour changes drawn over the picture (Word's washout, grey scale, transparency); null = none. Read for layout only.</summary>
     public HPictureEffects? Effects { get; set; }
+
+    /// <summary>
+    /// A chart (DOCX c:chart) the renderer draws instead of the picture, which is a picture of it for the writers;
+    /// null for a picture. Read for layout only.
+    /// </summary>
+    public Charts.Chart? Chart { get; set; }
 }
 
 /// <summary>A box with its own paragraphs (DOCX text box, 한글 글상자).</summary>

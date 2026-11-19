@@ -11,7 +11,8 @@
 // presentations or spreadsheets, the engine leaves those files to it (its edge would win on cost otherwise).
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
-// doesn't draw yet (OLE objects and charts, vertical text, form controls, SmartArt), and such a file takes the route
+// doesn't draw yet (OLE objects, charts other than the DrawingML ones ChartReader draws, vertical text, form controls,
+// SmartArt), and such a file takes the route
 // it would take without the engine (JobQueue). An HWP is looked through as the HWPX package it becomes; a deck by
 // SlideCapabilities (charts, effects, ...). Pictures of document pages go on from the PDF through PDFium, which applies
 // the image options; pictures of slides are drawn directly, with the image options applied here.
@@ -156,12 +157,21 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         {
             using var package = DocumentPackage.Open(sourcePath);
             long scanned = 0;
+            var referencesCharts = false;
+            List<string?>? charts = null;
             foreach (var entry in package.Entries)
             {
                 var name = entry.FullName;
                 if (!name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) || (scanned += entry.Length) > MaxScannedBytes
                     || package.BytesRead > MaxScannedBytes)
                     continue;
+                // A Word chart part: drawn when ChartReader draws it.
+                if (markers == WordMarkers && WordChartPart().IsMatch(name))
+                {
+                    charts ??= [];
+                    charts.Add(Charts.ChartReader.Read(package.LoadXml(entry, preserveWhitespace: false).Root, Filee.Engines.Slides.DrawingColors.FromTheme(null)).LeftOut);
+                    continue;
+                }
                 using var reader = new StreamReader(package.Open(entry), Encoding.UTF8);
                 var xml = reader.ReadToEnd();
                 foreach (var (pattern, feature) in markers)
@@ -169,10 +179,12 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
                     if (pattern.IsMatch(xml))
                         return feature;
                 }
+                referencesCharts |= markers == WordMarkers && WordChart().IsMatch(xml);
             }
-            return null;
+            // Charts are drawn when every chart part is one ChartReader draws.
+            return referencesCharts && (charts is null || charts.Any(c => c is not null)) ? "OLE objects and charts" : null;
         }
-        catch (ConversionRefusedException)
+        catch (Exception ex) when (ex is ConversionRefusedException or System.Xml.XmlException)
         {
             return null;
         }
@@ -371,8 +383,15 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     [GeneratedRegex(@"<\w+:video\b")]
     private static partial Regex HwpxVideo();
 
-    [GeneratedRegex(@"<o:OLEObject\b|<c:chart\b")]
+    [GeneratedRegex(@"<o:OLEObject\b")]
     private static partial Regex WordOle();
+
+    [GeneratedRegex(@"<c:chart\b")]
+    private static partial Regex WordChart();
+
+    /// <summary>A chart part of a Word package (word/charts/chart1.xml; chartEx parts too, which aren't drawn).</summary>
+    [GeneratedRegex(@"^word/charts/chart(?:Ex)?\d*\.xml$", RegexOptions.IgnoreCase)]
+    private static partial Regex WordChartPart();
 
     [GeneratedRegex(@"<w:textDirection w:val=""(?:tbRl|btLr|tbRlV|tbLrV)""")]
     private static partial Regex WordVertical();

@@ -863,8 +863,8 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
 The XLSX donut also offers **PDF + Edit** (`tool-sheet-studio`). This interactive tool preserves the original
 workbook, makes one disposable copy per selected sheet region, applies that region's print settings, and prints it
 with the same engine as an ordinary XLSX → PDF: Filee's own print engine (below), or LibreOffice when **Use
-LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with charts or
-other objects the print engine doesn't draw yet; without LibreOffice the studio shows the printer's notice). Every
+LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with chart
+sheets, 3D charts or other objects the print engine doesn't draw yet; without LibreOffice the studio shows the printer's notice). Every
 studio setting (paper, orientation, margins, scale or fit to pages, page order, print area, hidden rows and columns,
 manual breaks, sheet choice) is written into the copy and read by the print engine; the sheet's own gridlines,
 headings, centring and headers / footers are kept. PDFsharp combines the resulting PDFs. The live preview follows
@@ -944,7 +944,10 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   Each sheet's page count is checked against `MaxPages` before anything is drawn (a cell in A1 and one in
   XFD1048576 would be about 35 million pages), and the layout runs under `LayoutGuard`. `DocumentFuzzTests` mutates
   an XLSX and an ODS built in code and prints them.
-- **Not printed yet.** Charts, shapes, text boxes, comments, sparklines; data bars, icon sets and conditional formats
+- **Charts** (bar, column, line, area, pie, doughnut, scatter) on a sheet are printed from their chart part by the
+  [chart drawer](#charts); 3D, radar, stock, surface and bubble charts, new chart types (`chartex`) and chart sheets
+  are named, so such a workbook takes LibreOffice where it is installed.
+- **Not printed yet.** Chart sheets, shapes with text, text boxes, comments, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).
@@ -1053,9 +1056,9 @@ test turns it on.
   were always off by default and are left as the user set them. Tests: `FileeRendererConverterTests`
   (`Libreoffice_chosen_for_*`), `RoutePlannerTests` (the costs).
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
-  or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects and charts, vertical
-  text, form controls, videos, SmartArt — and a deck for what the slide renderer doesn't draw (charts without a
-  stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
+  or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects, charts
+  other than the DrawingML ones the [chart drawer](#charts) draws, vertical text, form controls, videos, SmartArt — and a deck for what the slide
+  renderer doesn't draw (charts the chart drawer doesn't draw without a stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
   without it, so such a file takes its usual route (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
   file is the one the engine looked at. Text formats hold nothing it can't draw.
 - Its edges aren't `Unshaped`: with it on, Arabic, Hebrew, Indic and Thai documents are shaped by it instead of
@@ -1540,8 +1543,8 @@ a slide.
   fonts (`+mj-lt`, `+mn-ea`, script fonts by the run's language); theme style references (`fillRef`, `lnRef`,
   `fontRef`, `bgRef`); tables with `tableStyles.xml` styles (PowerPoint's default *Medium Style 2 – Accent 1* is built
   in, as files often name it without writing it out); SmartArt through the drawing PowerPoint keeps with it (the data
-  part's `dsp:dataModelExt`); OLE objects and charts through their stored picture; `mc:AlternateContent` through its
-  fallback.
+  part's `dsp:dataModelExt`); charts from their chart part ([Charts](#charts)); OLE objects and other charts through
+  their stored picture; `mc:AlternateContent` through its fallback.
 - **Text frames:** insets, the geometry's text rectangle, anchoring (top, middle, bottom, centred across),
   wrapping on or off, columns, vertical frames (`vert`, `vert270`), the body's own rotation; "shrink text on overflow"
   with the font scale and line spacing reduction PowerPoint stored; line spacing as a multiple of the fonts' own line
@@ -1573,7 +1576,7 @@ a slide.
 - **Pictures of slides:** the PDF options' page range and resolution (`RenderDpi`, lowered so one picture stays within
   200 million pixels), then the image options (`ImageEncoder.ApplyOptions`), one file per slide (`_p2`, ...).
 - **The check** (`SlideCapabilities.cs`) looks at the shown slides and the layouts and masters they use, leaving out
-  what a fallback replaces, and names: charts without a stored picture, SmartArt without its drawing, OLE objects and
+  what a fallback replaces, and names: charts the chart drawer doesn't draw without a stored picture, SmartArt without its drawing, OLE objects and
   other embedded content without a picture, ink, shadows and other effects (on shapes, pictures and text, or through
   the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, preset names outside
   ST_ShapeType, and TIFF and JPEG XR pictures.
@@ -1596,7 +1599,37 @@ Every slide's text reads back, nothing is outside a slide, every font is embedde
 Not yet: shadows, glow, reflection, soft edges and 3D (named by the check); WordArt warps and text outlines; East Asian
 vertical text (upright characters); gradient-filled text (the first stop's colour); tiled pictures at their own
 resolution (taken as 96 dpi); a gradient that doesn't turn with its shape; "rect" path gradients (drawn as an ellipse
-through the corners); charts drawn from their data; notes pages and handouts.
+through the corners); 3D and other charts the chart drawer doesn't draw; notes pages and handouts.
+
+## Charts
+
+`Charts/` reads a DrawingML chart part (`c:chartSpace`, ECMA-376 Part 1 §21.2) and draws it with Skia, text as glyph
+runs, for the sheet printer (`XlsxDrawing`, XLSX and XLSB), the document renderer (Word `c:chart` through
+`DocxReader` and `FloatingObjects`) and the slide renderer (`PptxSlideReader`, `SlideRenderer`).
+
+- **Read** (`ChartReader`): bar and column (clustered, stacked, 100 %, horizontal), line (markers, smooth, stacked),
+  area, pie (first slice angle, pulled-out slices), doughnut and scatter plots, several in one plot area against
+  their own axes; values and categories from the part's caches (`c:numCache`, `c:strCache`, `c:multiLvlStrCache`,
+  literals), so no formula is evaluated; title (rich text, a cell's text, or the lone series' name Office shows),
+  axis titles, category / date / value axes (scaling, logarithmic base, orientation, number format, gridlines, tick
+  marks, label position, crossing, label skip and turn), legend (position, deleted entries), data labels (value,
+  category, series, percent, position), fills and outlines of the chart area, plot area, series and points (solid,
+  first colour of a gradient or pattern, none), the theme's accents in Office's order (then darker and lighter
+  variations), manual layouts of plot area, title and legend.
+- **Drawn** (`ChartDrawer`): Office's automatic layout (title on top, legend on its side, axes' labels and titles
+  around the plot); value axes scale as Excel's (zero kept unless the values sit far from it, 1-2-5 units for the
+  axis' length, a little room above the top value); category labels level, wrapped at spaces, turned 45° or thinned
+  out. Writers that take pictures get a PNG of the chart (`ChartPicture`): the Word chart's picture in HWPX, ODT,
+  EPUB, ...; the slide's picture in ODP and in a deck's text.
+- **Named instead** (the left-out notice says "charts"; the checks send the file to LibreOffice where it is
+  installed): 3D, radar, bubble, stock, surface and bar-of-pie charts and new chart types (`chartex`); a fallback
+  picture, when the file stores one, is drawn for those on slides.
+- **Hostile input:** the part comes through the package's XML limits; more than 1,024 series or 1,048,576 points per
+  chart (a cache's `ptCount` or highest index counts, not only the points it holds) is refused with
+  `error.document_too_complex`, as is a document whose charts draw more than ten times that (`ChartBudget`, a chart
+  placed many times counting each time); texts are cut at 1,024 characters, values clamped to ±1e100, data labels
+  (4,096), markers (100,000), measured category labels (2,000) and ticks per axis (1,000) capped. `ChartTests` builds
+  the charts in code; `ChartFuzzTests` mutates chart parts alone and in a printed workbook.
 
 ## DOCX writer
 

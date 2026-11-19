@@ -2,10 +2,10 @@
 // LibreOffice when it is installed, and otherwise prints it and says what was left out.
 //
 // Only what prints is looked at: visible sheets, and drawings not set to stay off the printout.
-//  * XLSX: a visible chart sheet ("charts"); in each visible worksheet's drawing what XlsxDrawing leaves out (charts,
-//    SmartArt, embedded objects, ink, text in shapes, freeform shapes, ...); form controls (ctrlProp parts, or legacy
-//    VML controls); embedded OLE objects. Comments are not printed unless the page setup asks for them, and are
-//    left out of the check.
+//  * XLSX: a visible chart sheet ("charts"); in each visible worksheet's drawing what XlsxDrawing leaves out (charts
+//    ChartReader doesn't draw, SmartArt, embedded objects, ink, text in shapes, freeform shapes, ...); form controls
+//    (ctrlProp parts, or legacy VML controls); embedded OLE objects. Comments are not printed unless the page setup
+//    asks for them, and are left out of the check.
 //  * XLSB: the same relationships as XLSX; the visible sheets come from the binary workbook part.
 //  * XLS: the reader takes no drawing at all, so every object of a visible sheet is named by its OBJ record's type
 //    (charts, pictures, text boxes, shapes, form controls; comments aside), and a visible chart sheet.
