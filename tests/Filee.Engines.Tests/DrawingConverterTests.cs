@@ -115,7 +115,7 @@ public sealed class DrawingConverterTests : IDisposable
     {
         var engine = Assert.Single(EngineRegistry.CreateAll(new Infrastructure.EngineEnvironment(_folder)).OfType<DrawingConverter>());
         Assert.Equal("drawing", engine.Id);
-        Assert.Equal(["vsd", "odg", "fodg"], engine.Edges.Select(e => e.From).Distinct());
+        Assert.Equal(["vsd", "odg", "fodg", "xps"], engine.Edges.Select(e => e.From).Distinct());
         Assert.True(engine.GetStatus().IsAvailable);
         Assert.Null(engine.FirstUnsupported(Path.Combine(_folder, "a.odg"), "odg"));
     }

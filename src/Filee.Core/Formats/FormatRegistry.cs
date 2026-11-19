@@ -119,6 +119,8 @@ public static class FormatRegistry
         // UYAP Document Editor files (Turkish courts and lawyers, #1338), read by the built-in UYAP reader. ".udf" is also
         // a Universal Disk Format disc image: told apart by content, such a file unpacks with Extract (archive engine).
         new("udf", "UYAP (UDF)", FormatCategory.Document, ["udf"], Writable: false),
+        // XPS and OpenXPS (ECMA-388) fixed-layout documents (#613), read by the built-in XPS reader (drawing engine).
+        new("xps", "XPS", FormatCategory.Document, ["xps", "oxps"], Writable: false),
         new("wpd", "WPD", FormatCategory.Document, ["wpd"], Writable: false),
         new("lwp", "LWP", FormatCategory.Document, ["lwp"], Writable: false),
         new("abw", "ABW", FormatCategory.Document, ["abw", "zabw"], Writable: false),
