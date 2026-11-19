@@ -1425,7 +1425,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         pdf.PageSize = PageSize.Value;
         pdf.MarginMm = Math.Clamp(MarginMm, 0, 100);
         pdf.RenderDpi = Math.Clamp(RenderDpi, 36, 1200);
-        pdf.PageRange = PageRange.Trim();
+        pdf.PageRange = Filee.Core.Conversion.PageRange.Check(PageRange, null) is { IsValid: true } checkedRange ? checkedRange.Text : PageRange.Trim();
         pdf.AskPageRange = ShowAskPages && AskPageRange;
         _original.AskCompression = AskCompression && (ShowAskCompressionImage || ShowAskCompressionMedia || ShowAskCompressionPdf);
         var (split, every, parts) = PageOutputs.Settings(PageOutput.Value, GroupKind.Value, GroupSize);
