@@ -113,13 +113,23 @@ public sealed partial class UpdateService : ObservableObject
 
     private static readonly bool InstalledCopy =
         OperatingSystem.IsWindows() && IsInstalledIn(AppContext.BaseDirectory)
-        || OperatingSystem.IsLinux() && IsLinuxInstalled(AppContext.BaseDirectory);
+        || OperatingSystem.IsLinux() && IsLinuxInstalled(AppContext.BaseDirectory)
+        || OperatingSystem.IsMacOS() && IsMacAppBundle(AppContext.BaseDirectory);
 
     /// <summary>
-    /// Installed by Windows Setup or Linux install.sh, and not marked portable. A marked copy is updated manually
+    /// Installed by Windows Setup or Linux install.sh or macOS app bundle, and not marked portable. A marked copy is updated manually
     /// so an installer cannot register it or replace the user's installed copy.
     /// </summary>
     public static bool IsInstalled => !PortableMode.IsEnabled && InstalledCopy;
+
+    /// <summary>
+    /// Whether Filee can update itself in-place: installed Windows (Setup), portable Windows (zip),
+    /// installed Linux (install.sh), or macOS app bundle (ditto).
+    /// </summary>
+    public static bool CanSelfUpdate =>
+        OperatingSystem.IsWindows()
+        || OperatingSystem.IsLinux() && IsLinuxInstalled(AppContext.BaseDirectory)
+        || OperatingSystem.IsMacOS() && IsMacAppBundle(AppContext.BaseDirectory);
 
     internal static bool IsInstalledIn(string folder) =>
         File.Exists(Path.Combine(folder, "uninstall.exe")) || File.Exists(Path.Combine(folder, "unins000.exe"));
@@ -137,6 +147,29 @@ public sealed partial class UpdateService : ObservableObject
         }
     }
 
+    internal static bool IsMacAppBundle(string baseDirectory) =>
+        MacAppBundleOverride is not null || GetMacAppBundlePath(baseDirectory) is not null;
+
+    internal static string? GetMacAppBundlePath(string? path = null)
+    {
+        if (MacAppBundleOverride is { } ovr)
+            return ovr;
+        var current = Path.GetFullPath(path ?? Environment.ProcessPath ?? AppContext.BaseDirectory);
+        const string contentsMacOS = "/Contents/MacOS";
+        var index = current.LastIndexOf(contentsMacOS, StringComparison.OrdinalIgnoreCase);
+        if (index > 0 && current[..index].EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+            return current[..index];
+
+        var dir = new DirectoryInfo(current);
+        while (dir is not null)
+        {
+            if (dir.Name.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+                return dir.FullName;
+            dir = dir.Parent;
+        }
+        return null;
+    }
+
     /// <summary>Returns the RID for the current Linux process architecture ("linux-x64" or "linux-arm64").</summary>
     internal static string GetLinuxRid() => GetLinuxRid(RuntimeInformation.ProcessArchitecture);
 
@@ -149,6 +182,18 @@ public sealed partial class UpdateService : ObservableObject
             var arch => throw new PlatformNotSupportedException($"Unsupported Linux architecture: {arch}"),
         };
 
+    /// <summary>Returns the RID for the current macOS process architecture ("osx-arm64" or "osx-x64").</summary>
+    internal static string GetMacOsRid() => GetMacOsRid(RuntimeInformation.ProcessArchitecture);
+
+    /// <summary>Maps <paramref name="architecture"/> to supported macOS RIDs or throws <see cref="PlatformNotSupportedException"/>.</summary>
+    internal static string GetMacOsRid(Architecture architecture) =>
+        architecture switch
+        {
+            Architecture.Arm64 => "osx-arm64",
+            Architecture.X64 => "osx-x64",
+            var arch => throw new PlatformNotSupportedException($"Unsupported macOS architecture: {arch}"),
+        };
+
     /// <summary>
     /// The Windows release files for a process of <paramref name="architecture"/>: "win-arm64" for the native ARM64
     /// build, "win" (the x64 files) otherwise. It is the process, not the PC: the x64 build on Windows on ARM keeps
@@ -156,22 +201,46 @@ public sealed partial class UpdateService : ObservableObject
     /// </summary>
     internal static string GetWindowsTarget(Architecture architecture) => architecture == Architecture.Arm64 ? "win-arm64" : "win";
 
-    private static bool IsWindowsTarget(string target) => target is "win" or "win-arm64";
+    private static bool IsWindowsTarget(string target) =>
+        target is "win" or "win-arm64" or "win-portable" or "win-arm64-portable";
+
+    private static bool IsWindowsPortable(string target) =>
+        target is "win-portable" or "win-arm64-portable";
+
+    private static bool IsLinuxTarget(string target) =>
+        target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsMacOsTarget(string target) =>
+        target.StartsWith("osx-", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Target platform for release assets ("win", "win-arm64", "linux-x64", "linux-arm64"). Tests can override this.
+    /// Target platform for release assets ("win", "win-arm64", "win-portable", "win-arm64-portable", "linux-x64", "linux-arm64", "osx-arm64", "osx-x64"). Tests can override this.
     /// </summary>
     internal string TargetPlatform { get; set; } = DefaultTargetPlatform();
 
     private static string DefaultTargetPlatform()
     {
         if (OperatingSystem.IsWindows())
-            return GetWindowsTarget(RuntimeInformation.ProcessArchitecture);
+        {
+            var arch = GetWindowsTarget(RuntimeInformation.ProcessArchitecture);
+            return PortableMode.IsEnabled || !InstalledCopy ? $"{arch}-portable" : arch;
+        }
         if (OperatingSystem.IsLinux())
         {
             try
             {
                 return GetLinuxRid();
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return "unsupported";
+            }
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            try
+            {
+                return GetMacOsRid();
             }
             catch (PlatformNotSupportedException)
             {
@@ -190,14 +259,20 @@ public sealed partial class UpdateService : ObservableObject
     /// <summary>Allows tests to redirect Linux installation target directory to an isolated temporary folder.</summary>
     internal string? LinuxInstallDirectoryOverride { get; set; }
 
+    /// <summary>Allows tests to redirect macOS installation target bundle to an isolated temporary location.</summary>
+    internal string? MacAppBundleOverride { get; set; }
+
+    /// <summary>Allows tests to redirect Windows portable target directory to an isolated temporary folder.</summary>
+    internal string? WindowsInstallDirectoryOverride { get; set; }
+
     /// <summary>Allows tests to redirect update failure marker path to an isolated temporary location.</summary>
     internal string? FailureMarkerPathOverride { get; set; }
 
     /// <summary>The log file path recorded in the update failure marker from the previous run, if any.</summary>
     internal string? LastFailureLogPath { get; private set; }
 
-    /// <summary>Whether <see cref="UpdateAsync"/> installs by itself (<see cref="IsInstalled"/>; tests set it).</summary>
-    internal bool InstallsItself { get; init; } = IsInstalled;
+    /// <summary>Whether <see cref="UpdateAsync"/> installs by itself (<see cref="CanSelfUpdate"/>; tests set it).</summary>
+    internal bool InstallsItself { get; init; } = CanSelfUpdate;
 
     /// <summary>
     /// Who signed a program, if Windows trusts the signature (<see cref="Authenticode.TrustedSigner"/>; the flag also
@@ -403,6 +478,121 @@ public sealed partial class UpdateService : ObservableObject
 
         if (IsWindowsTarget(TargetPlatform))
         {
+            if (IsWindowsPortable(TargetPlatform))
+            {
+                string? workspace = null;
+                string archive;
+                try
+                {
+                    workspace = CreateSecureWorkspace();
+                    var progress = new Progress<int>(percent => DownloadPercent = percent);
+                    archive = await DownloadInstallerAsync(workspace, progress);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException
+                                               or InvalidDataException or UnauthorizedAccessException)
+                {
+                    DeleteSecureWorkspace(workspace);
+                    Fail("download", ex);
+                    return;
+                }
+
+                var stagingDir = Path.Combine(workspace, "payload");
+                string payloadDir;
+                try
+                {
+                    Directory.CreateDirectory(stagingDir);
+                    payloadDir = ExtractZipArchive(archive, stagingDir);
+                    var newFileeExe = Path.Combine(payloadDir, "Filee.exe");
+                    if (ExpectedPublisher is not null)
+                    {
+                        await Task.Run(() => CheckPublisher(newFileeExe));
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException
+                                               or UpdateVerificationException)
+                {
+                    DeleteSecureWorkspace(workspace);
+                    Fail("extract", ex);
+                    return;
+                }
+
+                var targetInstallDir = WindowsInstallDirectoryOverride ?? AppContext.BaseDirectory;
+                var newExe = Path.Combine(targetInstallDir, "Filee.exe");
+                var currentPid = Environment.ProcessId;
+                var logDir = Path.Combine(UserDataStore.DefaultDirectory, "logs");
+                Directory.CreateDirectory(logDir);
+                var logFile = Path.Combine(logDir, $"filee-{DateTime.Now:yyyyMMdd}.log");
+                var markerFile = FailureMarkerPathOverride ?? Path.Combine(UserDataStore.DefaultDirectory, ".update-failed");
+
+                var scriptPath = Path.Combine(workspace, "update-portable.ps1");
+                var scriptContent =
+                    "param([int]$TargetPid, [string]$StagingDir, [string]$TargetDir, [string]$LogFile, [string]$WorkspaceDir, [string]$MarkerFile, [string]$NewExe)\r\n" +
+                    "$sw = [Diagnostics.Stopwatch]::StartNew()\r\n" +
+                    "while ((Get-Process -Id $TargetPid -ErrorAction SilentlyContinue) -and $sw.ElapsedMilliseconds -lt 60000) {\r\n" +
+                    "    Start-Sleep -Milliseconds 100\r\n" +
+                    "}\r\n" +
+                    "if (Get-Process -Id $TargetPid -ErrorAction SilentlyContinue) {\r\n" +
+                    "    Add-Content -LiteralPath $LogFile -Value \"Update aborted: Filee (PID $TargetPid) did not exit within timeout\"\r\n" +
+                    "    Remove-Item -LiteralPath $WorkspaceDir -Recurse -Force -ErrorAction SilentlyContinue\r\n" +
+                    "    exit 1\r\n" +
+                    "}\r\n" +
+                    "try {\r\n" +
+                    "    Get-ChildItem -LiteralPath $StagingDir -Force | ForEach-Object {\r\n" +
+                    "        Copy-Item -LiteralPath $_.FullName -Destination $TargetDir -Recurse -Force\r\n" +
+                    "    }\r\n" +
+                    "    $marker = Join-Path $TargetDir 'filee.portable'\r\n" +
+                    "    if (-not (Test-Path -LiteralPath $marker)) { New-Item -ItemType File -Path $marker -Force | Out-Null }\r\n" +
+                    "    Remove-Item -LiteralPath $WorkspaceDir -Recurse -Force -ErrorAction SilentlyContinue\r\n" +
+                    "    Start-Process -FilePath $NewExe -ArgumentList @('--background', '--whats-new')\r\n" +
+                    "}\r\n" +
+                    "catch {\r\n" +
+                    "    Add-Content -LiteralPath $LogFile -Value \"Update failed: $($_.Exception.Message)\"\r\n" +
+                    "    Set-Content -LiteralPath \"$MarkerFile.tmp\" -Value $LogFile\r\n" +
+                    "    Move-Item -LiteralPath \"$MarkerFile.tmp\" -Destination $MarkerFile -Force -ErrorAction SilentlyContinue\r\n" +
+                    "    Remove-Item -LiteralPath $WorkspaceDir -Recurse -Force -ErrorAction SilentlyContinue\r\n" +
+                    "    Start-Process -FilePath $NewExe -ArgumentList @('--background')\r\n" +
+                    "    exit 1\r\n" +
+                    "}\r\n";
+                File.WriteAllText(scriptPath, scriptContent, Encoding.UTF8);
+
+                Process? helper;
+                try
+                {
+                    var startInfo = new ProcessStartInfo("powershell.exe")
+                    {
+                        WorkingDirectory = payloadDir,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                    };
+                    startInfo.ArgumentList.Add("-NoProfile");
+                    startInfo.ArgumentList.Add("-NonInteractive");
+                    startInfo.ArgumentList.Add("-ExecutionPolicy");
+                    startInfo.ArgumentList.Add("Bypass");
+                    startInfo.ArgumentList.Add("-File");
+                    startInfo.ArgumentList.Add(scriptPath);
+                    startInfo.ArgumentList.Add(currentPid.ToString());
+                    startInfo.ArgumentList.Add(payloadDir);
+                    startInfo.ArgumentList.Add(targetInstallDir);
+                    startInfo.ArgumentList.Add(logFile);
+                    startInfo.ArgumentList.Add(workspace);
+                    startInfo.ArgumentList.Add(markerFile);
+                    startInfo.ArgumentList.Add(newExe);
+
+                    helper = StartProcess(startInfo);
+                }
+                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+                {
+                    DeleteSecureWorkspace(workspace);
+                    Fail("start", ex);
+                    return;
+                }
+
+                _log.LogInformation("Started Windows portable update helper for {Version}, exiting current process", LatestVersion);
+                Step = UpdateStep.Installing;
+                RequestApplicationShutdown?.Invoke();
+                return;
+            }
+
             var folder = Path.Combine(Path.GetTempPath(), "Filee-update");
             string installer;
             try
@@ -448,7 +638,7 @@ public sealed partial class UpdateService : ObservableObject
             return;
         }
 
-        if (TargetPlatform.StartsWith("linux-", StringComparison.OrdinalIgnoreCase))
+        if (IsLinuxTarget(TargetPlatform))
         {
             string? workspace = null;
             string installer;
@@ -535,7 +725,101 @@ public sealed partial class UpdateService : ObservableObject
             return;
         }
 
-        throw new PlatformNotSupportedException("In-app update is only supported on Windows and Linux");
+        if (IsMacOsTarget(TargetPlatform))
+        {
+            string? workspace = null;
+            string installer;
+            try
+            {
+                workspace = CreateSecureWorkspace();
+                var progress = new Progress<int>(percent => DownloadPercent = percent);
+                installer = await DownloadInstallerAsync(workspace, progress);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException
+                                           or InvalidDataException or UnauthorizedAccessException)
+            {
+                DeleteSecureWorkspace(workspace);
+                Fail("download", ex);
+                return;
+            }
+
+            var stagingDir = Path.Combine(workspace, "payload");
+            string payloadAppBundle;
+            try
+            {
+                Directory.CreateDirectory(stagingDir);
+                payloadAppBundle = ExtractMacArchive(installer, stagingDir);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                DeleteSecureWorkspace(workspace);
+                Fail("extract", ex);
+                return;
+            }
+
+            var targetAppBundle = MacAppBundleOverride ?? GetMacAppBundlePath() ?? "/Applications/Filee.app";
+            var newExe = Path.Combine(targetAppBundle, "Contents", "MacOS", "Filee");
+            var currentPid = Environment.ProcessId;
+            var logDir = Path.Combine(UserDataStore.DefaultDirectory, "logs");
+            Directory.CreateDirectory(logDir);
+            var logFile = Path.Combine(logDir, $"filee-{DateTime.Now:yyyyMMdd}.log");
+            var markerFile = FailureMarkerPathOverride ?? Path.Combine(UserDataStore.DefaultDirectory, ".update-failed");
+
+            Process? helper;
+            try
+            {
+                var startInfo = new ProcessStartInfo("/bin/sh")
+                {
+                    WorkingDirectory = stagingDir,
+                    UseShellExecute = false,
+                };
+                startInfo.ArgumentList.Add("-c");
+                startInfo.ArgumentList.Add(
+                    "for _ in $(seq 1 600); do if ! kill -0 \"$1\" 2>/dev/null; then break; fi; sleep 0.1; done; " +
+                    "if kill -0 \"$1\" 2>/dev/null; then echo \"Update aborted: Filee (PID $1) did not exit within timeout\" >> \"$4\"; rm -rf \"$5\" 2>/dev/null; exit 1; fi; " +
+                    "backup=\"${3}.old.$$\"; " +
+                    "if [ -e \"$3\" ]; then mv -f \"$3\" \"$backup\" 2>/dev/null || true; fi; " +
+                    "/usr/bin/ditto \"$2\" \"$3\" >> \"$4\" 2>&1; " +
+                    "status=$?; " +
+                    "rm -rf \"$5\" 2>/dev/null; " +
+                    "if [ $status -eq 0 ]; then " +
+                    "rm -rf \"$backup\" 2>/dev/null; " +
+                    "/usr/bin/xattr -dr com.apple.quarantine \"$3\" 2>/dev/null || true; " +
+                    "bin_dir=\"$HOME/.local/bin\"; " +
+                    "if [ -d \"$bin_dir\" ] && [ -f \"$3/Contents/MacOS/filee-cli\" ]; then ln -sf \"$3/Contents/MacOS/filee-cli\" \"$bin_dir/filee\" 2>/dev/null || true; fi; " +
+                    "if [ -x \"$7\" ]; then open -n \"$3\" --args --background --whats-new 2>/dev/null || exec \"$7\" --background --whats-new; else echo \"Update succeeded but '$7' is not executable\" >> \"$4\"; exit 1; fi; " +
+                    "else " +
+                    "echo \"Update failed with status $status\" >> \"$4\"; " +
+                    "echo \"$4\" > \"$6.tmp\" 2>/dev/null && mv -f \"$6.tmp\" \"$6\" 2>/dev/null || true; " +
+                    "if [ -e \"$backup\" ]; then rm -rf \"$3\" 2>/dev/null; mv -f \"$backup\" \"$3\" 2>/dev/null || true; fi; " +
+                    "if [ -x \"$7\" ]; then open -n \"$3\" --args --background 2>/dev/null || exec \"$7\" --background; else echo \"Cannot restart Filee: '$7' is not executable after rollback\" >> \"$4\"; exit $status; fi; " +
+                    "fi"
+                );
+                startInfo.ArgumentList.Add("_");
+                startInfo.ArgumentList.Add(currentPid.ToString());
+                startInfo.ArgumentList.Add(payloadAppBundle);
+                startInfo.ArgumentList.Add(targetAppBundle);
+                startInfo.ArgumentList.Add(logFile);
+                startInfo.ArgumentList.Add(workspace);
+                startInfo.ArgumentList.Add(markerFile);
+                startInfo.ArgumentList.Add(newExe);
+
+                helper = StartProcess(startInfo);
+            }
+            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+            {
+                DeleteSecureWorkspace(workspace);
+                Fail("start", ex);
+                return;
+            }
+
+            _log.LogInformation("Started macOS update helper for {Version}, exiting current process", LatestVersion);
+            Step = UpdateStep.Installing;
+            RequestApplicationShutdown?.Invoke();
+            return;
+        }
+
+        throw new PlatformNotSupportedException("In-app update is only supported on Windows, Linux, and macOS");
     }
 
     /// <summary>
@@ -873,12 +1157,29 @@ public sealed partial class UpdateService : ObservableObject
         if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
             return (null, null);
 
-        // Windows has one checksum file for x64 and ARM64, Filee-<v>-SHA256SUMS.txt: Filee 2.4.0 and older take the
-        // last file ending in -SHA256SUMS.txt that isn't Linux or macOS, so an ARM64 one next to it would break their
-        // updates. The x64 Setup is Filee-<v>-win-Setup.exe, the ARM64 one Filee-<v>-win-arm64-Setup.exe.
         var isLinux = target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase);
-        var expectedInstallerSuffix = isLinux ? $"-{target}.tar.gz" : $"-{target}-Setup.exe";
-        var expectedChecksumsSuffix = isLinux ? $"-{target}-SHA256SUMS.txt" : "-SHA256SUMS.txt";
+        var isMac = target.StartsWith("osx-", StringComparison.OrdinalIgnoreCase);
+        var isWinPortable = target is "win-portable" or "win-arm64-portable";
+
+        string expectedInstallerSuffix;
+        string expectedChecksumsSuffix;
+
+        if (isLinux || isMac)
+        {
+            expectedInstallerSuffix = $"-{target}.tar.gz";
+            expectedChecksumsSuffix = $"-{target}-SHA256SUMS.txt";
+        }
+        else if (isWinPortable)
+        {
+            var archPart = target == "win-arm64-portable" ? "-win-arm64-Portable.zip" : "-win-Portable.zip";
+            expectedInstallerSuffix = archPart;
+            expectedChecksumsSuffix = "-SHA256SUMS.txt";
+        }
+        else
+        {
+            expectedInstallerSuffix = $"-{target}-Setup.exe";
+            expectedChecksumsSuffix = "-SHA256SUMS.txt";
+        }
 
         foreach (var asset in assets.EnumerateArray())
         {
@@ -896,7 +1197,7 @@ public sealed partial class UpdateService : ObservableObject
             {
                 // The other platforms' checksum files end in -SHA256SUMS.txt too (-linux-x64-, -osx-arm64-), and so does
                 // the ARM64 build's own one (CI's package), should one ever be attached.
-                if (!isLinux && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase)
+                if (!isLinux && !isMac && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase)
                                  || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)
                                  || name.Contains("-win-arm64-", StringComparison.OrdinalIgnoreCase)))
                     continue;
@@ -913,11 +1214,11 @@ public sealed partial class UpdateService : ObservableObject
         UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
 
     /// <summary>
-    /// Extracts a Linux release archive (.tar.gz) into <paramref name="destinationDirectory"/> with security validation
+    /// Extracts a tar.gz archive into <paramref name="destinationDirectory"/> with security validation
     /// (rejecting path traversal, absolute paths, unsafe entry types, directory symlinks, and escaping/component symlinks).
-    /// Returns the path to the extracted payload folder containing <c>install.sh</c>.
+    /// Returns the canonical destination directory root with a trailing separator.
     /// </summary>
-    internal static string ExtractLinuxArchive(string archivePath, string destinationDirectory)
+    internal static string ExtractTarArchive(string archivePath, string destinationDirectory)
     {
         if (!File.Exists(archivePath))
             throw new FileNotFoundException("Archive file not found", archivePath);
@@ -981,7 +1282,7 @@ public sealed partial class UpdateService : ObservableObject
 
                         entry.ExtractToFile(destinationPath, overwrite: true);
 
-                        if (OperatingSystem.IsLinux())
+                        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
                         {
                             var mode = (entry.Mode & RwxMask) | UnixFileMode.UserRead | UnixFileMode.UserWrite;
                             File.SetUnixFileMode(destinationPath, mode);
@@ -1068,6 +1369,17 @@ public sealed partial class UpdateService : ObservableObject
             }
         }
 
+        return fullDestRoot;
+    }
+
+    /// <summary>
+    /// Extracts a Linux release archive (.tar.gz) into <paramref name="destinationDirectory"/> with security validation
+    /// (rejecting path traversal, absolute paths, unsafe entry types, directory symlinks, and escaping/component symlinks).
+    /// Returns the path to the extracted payload folder containing <c>install.sh</c>.
+    /// </summary>
+    internal static string ExtractLinuxArchive(string archivePath, string destinationDirectory)
+    {
+        var fullDestRoot = ExtractTarArchive(archivePath, destinationDirectory);
         var rootTrimmed = Path.TrimEndingDirectorySeparator(fullDestRoot);
         string payloadDir;
         if (File.Exists(Path.Combine(rootTrimmed, "install.sh")))
@@ -1096,7 +1408,7 @@ public sealed partial class UpdateService : ObservableObject
             throw new InvalidDataException("Archive is missing install.sh or Filee executable in the payload directory.");
         }
 
-        if (OperatingSystem.IsLinux())
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
         {
             EnsureExecutable(installSh);
             EnsureExecutable(fileeExe);
@@ -1106,6 +1418,143 @@ public sealed partial class UpdateService : ObservableObject
             var uninstall = Path.Combine(payloadDir, "uninstall.sh");
             if (File.Exists(uninstall))
                 EnsureExecutable(uninstall);
+        }
+
+        return payloadDir;
+    }
+
+    /// <summary>
+    /// Extracts a macOS release archive (.tar.gz) into <paramref name="destinationDirectory"/> with security validation
+    /// (rejecting path traversal, absolute paths, unsafe entry types, directory symlinks, and escaping/component symlinks).
+    /// Returns the path to the extracted <c>Filee.app</c> bundle.
+    /// </summary>
+    internal static string ExtractMacArchive(string archivePath, string destinationDirectory)
+    {
+        var fullDestRoot = ExtractTarArchive(archivePath, destinationDirectory);
+        var rootTrimmed = Path.TrimEndingDirectorySeparator(fullDestRoot);
+
+        string appBundlePath;
+        var directApp = Path.Combine(rootTrimmed, "Filee.app");
+        if (Directory.Exists(directApp))
+        {
+            appBundlePath = directApp;
+        }
+        else
+        {
+            var candidates = Directory.GetDirectories(rootTrimmed, "Filee.app", SearchOption.AllDirectories)
+                .Where(d => File.Exists(Path.Combine(d, "Contents", "MacOS", "Filee")))
+                .ToList();
+            if (candidates.Count == 1)
+            {
+                appBundlePath = candidates[0];
+            }
+            else
+            {
+                throw new InvalidDataException("Archive does not contain a single valid Filee.app bundle.");
+            }
+        }
+
+        var mainExe = Path.Combine(appBundlePath, "Contents", "MacOS", "Filee");
+        if (!File.Exists(mainExe))
+        {
+            throw new InvalidDataException("Archive is missing Filee executable in Contents/MacOS.");
+        }
+
+        if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+        {
+            EnsureExecutable(mainExe);
+            var cli = Path.Combine(appBundlePath, "Contents", "MacOS", "filee-cli");
+            if (File.Exists(cli))
+                EnsureExecutable(cli);
+        }
+
+        return appBundlePath;
+    }
+
+    /// <summary>
+    /// Extracts a Windows portable zip archive into <paramref name="destinationDirectory"/> with security validation
+    /// (rejecting path traversal, absolute paths, empty entry names, and escaping symlinks/reparse points).
+    /// Returns the directory path containing <c>Filee.exe</c>.
+    /// </summary>
+    internal static string ExtractZipArchive(string archivePath, string destinationDirectory)
+    {
+        if (!File.Exists(archivePath))
+            throw new FileNotFoundException("Archive file not found", archivePath);
+
+        var fullDestRoot = Path.GetFullPath(destinationDirectory);
+        if (!fullDestRoot.EndsWith(Path.DirectorySeparatorChar))
+            fullDestRoot += Path.DirectorySeparatorChar;
+
+        Directory.CreateDirectory(fullDestRoot);
+
+        using (var zipStream = File.OpenRead(archivePath))
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Read))
+        {
+            foreach (var entry in archive.Entries)
+            {
+                if (string.IsNullOrWhiteSpace(entry.FullName))
+                    throw new InvalidDataException("Archive contains an entry with an empty name.");
+
+                var entryName = entry.FullName.Replace('\\', '/');
+                if (Path.IsPathRooted(entryName) || entryName.StartsWith('/') || entry.FullName.Contains(':'))
+                    throw new InvalidDataException($"Archive entry '{entry.FullName}' has an invalid or rooted path.");
+
+                var destinationPath = Path.GetFullPath(Path.Combine(fullDestRoot, entry.FullName));
+                if (!destinationPath.StartsWith(fullDestRoot, StringComparison.Ordinal))
+                    throw new InvalidDataException($"Archive entry '{entry.FullName}' attempts path traversal outside destination.");
+
+                ValidateNoSymlinkComponents(fullDestRoot, destinationPath);
+
+                if (entryName.EndsWith('/'))
+                {
+                    if (Path.Exists(destinationPath))
+                    {
+                        var info = new DirectoryInfo(destinationPath);
+                        if (info.LinkTarget is not null || info.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                            throw new InvalidDataException($"Archive entry '{entry.FullName}' conflicts with an existing symbolic link.");
+                    }
+                    Directory.CreateDirectory(destinationPath);
+                }
+                else
+                {
+                    if (Directory.Exists(destinationPath))
+                        throw new InvalidDataException($"Archive entry '{entry.FullName}' conflicts with an existing directory.");
+
+                    var parentDir = Path.GetDirectoryName(destinationPath);
+                    if (!string.IsNullOrEmpty(parentDir))
+                        Directory.CreateDirectory(parentDir);
+
+                    if (Path.Exists(destinationPath))
+                    {
+                        var existingInfo = new FileInfo(destinationPath);
+                        if (existingInfo.LinkTarget is not null || existingInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                            File.Delete(destinationPath);
+                    }
+
+                    entry.ExtractToFile(destinationPath, overwrite: true);
+                }
+            }
+        }
+
+        var rootTrimmed = Path.TrimEndingDirectorySeparator(fullDestRoot);
+        string payloadDir;
+        if (File.Exists(Path.Combine(rootTrimmed, "Filee.exe")))
+        {
+            payloadDir = rootTrimmed;
+        }
+        else
+        {
+            var candidates = Directory.GetDirectories(rootTrimmed)
+                .Where(d => File.Exists(Path.Combine(d, "Filee.exe")))
+                .ToList();
+            if (candidates.Count == 1)
+            {
+                payloadDir = candidates[0];
+            }
+            else
+            {
+                throw new InvalidDataException("Archive does not contain a single valid Filee payload with Filee.exe.");
+            }
         }
 
         return payloadDir;
