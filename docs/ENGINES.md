@@ -1434,8 +1434,8 @@ to draw). G-code is a read-only CAD format (fields: 3D models and CAD).
 
 ## 3D models
 
-`Filee.Engines/Models3D` converts GLB, glTF, STL, OBJ, 3MF and PLY into each other, and FBX into any of them, in
-managed code: every reader
+`Filee.Engines/Models3D` converts GLB, glTF, STL, OBJ, 3MF and PLY into each other, FBX and Source engine models (MDL)
+into any of them, and studiomdl data (SMD) to and from them, in managed code: every reader
 fills one in-memory model (`Model3D`: parts with positions, normals, UVs, vertex colours and triangles; materials
 with a base colour and a base colour texture) and every writer takes it, so each pair is one step. glTF and GLB are
 read and written with [SharpGLTF](https://github.com/vpenades/SharpGLTF) (MIT); STL, OBJ/MTL, PLY, 3MF and the FBX
@@ -1469,6 +1469,8 @@ What each format keeps:
 | OBJ + MTL | `o` / `g` / `usemtl` as parts, `v` (+ r g b), `vt`, `vn`, faces of any size; `mtllib` with `Kd`, `d` / `Tr`, `map_Kd` (options skipped) next to the file | **the `.mtl` and the textures are written next to the `.obj`** (`name.obj`, `name.mtl`, `name_texture.png`, named like the output); vertex colours as `v x y z r g b` |
 | 3MF | objects, components (also in other model parts, as Bambu Studio writes them), build transforms, base materials, colour groups (materials extension); `support` / `other` objects skipped | one object per part, base materials from material colours, a colour group from vertex colours |
 | FBX (read only) | binary 6.x–7.x (64-bit records from 7.5, zlib-compressed arrays) and ASCII; mesh geometry with polygons of any size, the first normal, UV, colour and material layer (by polygon vertex, control point or polygon, or all the same; direct or indexed); the model hierarchy from the connections with translation, rotation (every Euler order, pre- / post-rotation, pivots and offsets), scaling and geometric transforms; property templates from Definitions; material `DiffuseColor` and `Opacity`; the diffuse texture embedded (Video `Content`) or named next to the file; animation, skins, blend shapes, NURBS, cameras and lights skipped (the rest pose is read) | — (not written) |
+| SMD (studiomdl data) | the triangles of a reference SMD, one part per material (bones and weights not kept) | from an MDL: its bones, bind pose and weights (see below); from the others: a static prop with one root bone |
+| MDL (Source engine, read only) | versions 44–49 with the `.vvd` and `.dx90.vtx` (else `.vtx`, `.dx80.vtx`, `.sw.vtx`) beside it (see below) | — (needs Valve's studiomdl) |
 | PLY | ASCII, binary little / big endian; vertex position, normal, UV (`s`/`t`, `u`/`v`, `texture_u`/`texture_v`), colours of any type; face lists with per-corner `texcoord` and face colours; `comment TextureFile`; other elements skipped | binary little endian, one mesh; material colours become vertex colours |
 
 Lost on the way (no place in the target): **STL** keeps only the triangles (no colours, UVs, normals or materials);
@@ -1482,6 +1484,35 @@ a clear message, as do damaged files ("cut short", an index that does not exist,
 FBX's texture names) are read only from the model's folder or a folder below it. A path that climbs out (`../`) or
 points anywhere else is looked up by its name in the model's folder instead, so a downloaded model cannot pull a
 picture from elsewhere on the disk into its output.
+
+**Source engine models** (`.mdl`, #1526, the Games field; `Models3D/SourceModel.cs`): Garry's Mod, Counter-Strike:
+Source, Team Fortress 2 and Half-Life 2 models are three files studiomdl writes side by side: the `.mdl` (bones,
+textures, texture folders, the skin table, body parts → models → meshes), the `.vvd` (vertices with up to three bone
+weights; fixups say which runs make LOD 0) and the `.dx90.vtx` (per mesh, strip groups of triangle lists or strips
+indexing the mesh's vertices). All three must have the `.mdl`'s checksum, else the files belong to different builds and
+the model is refused; a missing `.vvd` or `.vtx` is named. The model is read in its bind pose with its default body
+groups (the first model of each body part), the first skin and LOD 0; animations, flexes, attachments and the physics
+mesh (`.phy`) are not read. Source is Z up and measured in inches (25.4 mm), its triangles are clockwise and its UVs
+start at the top left, so the model is turned to Filee's Y up, millimetres, counter-clockwise and bottom-left UVs; each
+mesh becomes a part named after its model, with one material per texture. Later branches' 8-byte-longer strip groups
+(CS:GO) are read when the indices of the usual layout don't fit.
+The textures are found as Garry's Mod finds them: in the addon's or game's own layout, the `materials` folder beside the
+`models` folder the model is in, `materials/<texture folder>/<texture>.vmt` for each of the model's texture folders
+(`$cdmaterials`), letter case aside, then the material's `$basetexture` (also through a `patch` material's `include`) as
+a `.vtf`, decoded by the VTF reader into a PNG texture; `$nocull` makes the material double-sided. Only `.vmt` and
+`.vtf` files below that `materials` folder are read, never through `..`. A model outside such a layout, or one whose
+materials come from the game itself (the HL2 textures), keeps plain materials. OBJ output writes the textures beside the
+`.obj`, GLB embeds them.
+
+**Studiomdl data** (`.smd`, #1526, the Games field; `Models3D/SmdFormat.cs`): the text Valve's studiomdl compiles models
+from (`nodes`, a `skeleton` at `time 0`, `triangles`: a material line and three vertex lines of parent bone, position,
+normal, UV and bone weights), Z up, in inches, counter-clockwise, UVs from the bottom left. An MDL becomes a reference
+SMD that studiomdl can compile again: its bones with their bind pose (position and rotation relative to the parent), its
+triangles with up to three bone weights per vertex and the textures as materials, read straight from the model so the
+skeleton is kept (Filee's own 3D model has no place for it). Any other model becomes a static prop: one `root` bone,
+every vertex weighted to it, the material's (or texture's) name as the material line, normals computed where the model
+has none. Reading takes the triangles of a reference SMD as a static model; an animation SMD (no triangles) is refused
+with "no triangles", a broken line with its number. The "SMD" preset is in the palette, after glTF.
 
 **3D → pictures**: a small software rasteriser (`MeshRenderer`) draws an isometric view from the front right, above,
 with one light and flat shading per triangle, vertex colours or the texture interpolated across it, and a z-buffer,

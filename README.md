@@ -185,7 +185,7 @@ To undo it, remove the entries in Windows Security → App & browser control →
 | **CAD**: DWG, DXF<br>Gerber PCB layers (GBR, GTL, GBL, GTO, …) read;<br>G-code of 3D printers and CNC machines (GCODE, GCO, NGC) read | PDF, SVG, PNG, DWG ↔ DXF;<br>G-code → toolpath (from above or isometric) or the slicer's preview |
 | **Fonts**: TTF, OTF, WOFF, WOFF2, EOT;<br>FON (Windows bitmap fonts) read | each other;<br>FON → one font per size |
 | **Data**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | each other, CSV and XLSX (tables);<br>vCard, iCalendar ↔ CSV |
-| **3D models**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY;<br>FBX read | each other, PNG preview |
+| **3D models**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY, studiomdl data (SMD);<br>FBX, Source engine model (MDL, with its VTF textures) read | each other, PNG preview |
 | **Geospatial vectors**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV with coordinates; Garmin FIT, OpenStreetMap (.osm) read | each other and CSV / XLSX / JSON;<br>projected data (UTM, Web Mercator, Lambert, Albers) comes out as WGS 84 longitude / latitude |
 
 Unmarked formats work out of the box, without Office, Hancom Office or LibreOffice.
