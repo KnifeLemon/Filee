@@ -2,11 +2,13 @@
 // LibreOffice when it is installed, and otherwise prints it and says what was left out.
 //
 // Only what prints is looked at: visible sheets, and drawings not set to stay off the printout.
-//  * XLSX: a visible chart sheet ("charts"); in each visible worksheet's drawing what XlsxDrawing leaves out (charts
+//  * XLSX: a visible chart sheet whose chart ChartReader doesn't draw, or with pictures or shapes over its chart
+//    ("charts", ...); in each visible worksheet's drawing what XlsxDrawing leaves out (charts
 //    ChartReader doesn't draw, SmartArt, embedded objects, ink, text in shapes, freeform shapes, ...); form controls
 //    (ctrlProp parts, or legacy VML controls); embedded OLE objects. Comments are not printed unless the page setup
 //    asks for them, and are left out of the check.
-//  * XLSB: the same relationships as XLSX; the visible sheets come from the binary workbook part.
+//  * XLSB: the same relationships as XLSX, but a visible chart sheet is named (the XLSB reader doesn't print them);
+//    the visible sheets come from the binary workbook part.
 //  * XLS: the reader takes no drawing at all, so every object of a visible sheet is named by its OBJ record's type
 //    (charts, pictures, text boxes, shapes, form controls; comments aside), and a visible chart sheet.
 //  * ODS: the reader takes no drawing either: pictures, charts and other embedded objects, shapes, text boxes and
@@ -84,7 +86,7 @@ internal static partial class SheetCapabilities
         {
             if ((string?)sheet.Attribute("state") is "hidden" or "veryHidden")
                 continue;
-            if (SheetFeature(package, relationships, (string?)sheet.Attribute(R + "id"), theme) is { } feature)
+            if (SheetFeature(package, relationships, (string?)sheet.Attribute(R + "id"), theme, chartSheets: true) is { } feature)
                 return feature;
         }
         return null;
@@ -100,19 +102,20 @@ internal static partial class SheetCapabilities
         var relationships = package.Relationships(workbookPath);
         foreach (var sheet in XlsbReader.ListSheets(package, workbookPath, DocumentLimits.Default))
         {
-            if (sheet.State == 0 && SheetFeature(package, relationships, sheet.RelationshipId, theme) is { } feature)
+            if (sheet.State == 0 && SheetFeature(package, relationships, sheet.RelationshipId, theme, chartSheets: false) is { } feature)
                 return feature;
         }
         return null;
     }
 
     /// <summary>What a visible sheet holds that the printer doesn't draw, from its relationships, without reading its cells.</summary>
-    private static string? SheetFeature(OpcPackage package, Dictionary<string, OpcRelationship> relationships, string? id, XElement? theme)
+    /// <param name="chartSheets">Chart sheets are printed (XLSX): one is named only when its chart isn't drawn.</param>
+    private static string? SheetFeature(OpcPackage package, Dictionary<string, OpcRelationship> relationships, string? id, XElement? theme, bool chartSheets)
     {
         if (id is null || !relationships.TryGetValue(id, out var relationship) || relationship.External)
             return null;
         if (relationship.Type.EndsWith("/chartsheet", StringComparison.Ordinal))
-            return "charts";
+            return chartSheets ? ChartSheet(package, relationship.Target, theme) : "charts";
         if (!relationship.Type.EndsWith("/worksheet", StringComparison.Ordinal))
             return null;
         foreach (var part in package.Relationships(relationship.Target).Values.Where(r => !r.External))
@@ -129,6 +132,17 @@ internal static partial class SheetCapabilities
                 return feature;
         }
         return null;
+    }
+
+    /// <summary>What of a chart sheet isn't printed: its chart when ChartReader doesn't draw it, or what is placed over it.</summary>
+    private static string? ChartSheet(OpcPackage package, string part, XElement? theme)
+    {
+        if (package.Part(part)?.Root is not { } xml)
+            return "charts";
+        var drawing = package.Target(part, (string?)xml.Element(S + "drawing")?.Attribute(R + "id"));
+        if (drawing is null)
+            return "charts";
+        return XlsxDrawing.ChartSheet(package, drawing, theme).LeftOut;
     }
 
     /// <summary>

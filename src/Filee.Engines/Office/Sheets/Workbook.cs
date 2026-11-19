@@ -8,6 +8,27 @@ internal sealed class Workbook
 {
     public List<Worksheet> Sheets { get; } = [];
 
+    /// <summary>
+    /// Chart sheets, for the printer only (the writers to other spreadsheet formats leave them out): each with the
+    /// number of <see cref="Sheets"/> before it in the workbook's order.
+    /// </summary>
+    public List<(int Position, Worksheet Sheet)> ChartSheets { get; } = [];
+
+    /// <summary>The sheets in the workbook's order, chart sheets among them: what the printer prints.</summary>
+    public IEnumerable<Worksheet> Printed()
+    {
+        var charts = 0;
+        for (var i = 0; i <= Sheets.Count; i++)
+        {
+            while (charts < ChartSheets.Count && ChartSheets[charts].Position <= i)
+                yield return ChartSheets[charts++].Sheet;
+            if (i < Sheets.Count)
+                yield return Sheets[i];
+        }
+        while (charts < ChartSheets.Count)
+            yield return ChartSheets[charts++].Sheet;
+    }
+
     /// <summary>The font of the Normal style: Excel measures column widths in its digits.</summary>
     public string DefaultFontName { get; set; } = "Calibri";
 
@@ -92,6 +113,9 @@ internal sealed class Worksheet(string name)
 
     /// <summary>Pictures and shapes placed on the sheet, in drawing order (the last one on top).</summary>
     public List<SheetDrawing> Drawings { get; } = [];
+
+    /// <summary>The chart of a chart sheet (<see cref="Workbook.ChartSheets"/>), printed alone on one page; null for a worksheet.</summary>
+    public Charts.Chart? Chart { get; set; }
 
     public void Set(int row, int column, SheetCell cell)
     {

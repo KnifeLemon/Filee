@@ -4,7 +4,8 @@
 // column widths, row heights (custom and the autofit Excel saved), hidden rows / columns / sheets, frozen header
 // rows, and what printing needs: the page setup, margins, print options, headers and footers (with their
 // pictures), print areas, print titles, manual page breaks, conditional formats that colour cells, and the pictures,
-// shapes and charts of each sheet's drawing (XlsxDrawing, which names what it leaves out: 3D charts, SmartArt, ...).
+// shapes and charts of each sheet's drawing (XlsxDrawing, which names what it leaves out: 3D charts, SmartArt, ...),
+// and chart sheets (Workbook.ChartSheets: their page setup and chart, for the printer).
 // Comments are not read. The package is read within DocumentLimits; the charts' points within ChartBudget.
 
 using System.Globalization;
@@ -94,8 +95,16 @@ internal sealed class XlsxReader
             if ((string?)sheet.Attribute("state") is "hidden" or "veryHidden")
                 continue;
             var target = _package.Target(workbookPath, (string?)sheet.Attribute(R + "id"));
-            if (target is null || _package.Part(target)?.Root is not { } xml || xml.Name != S + "worksheet")
-                continue; // chart sheets and dialog sheets have no cells
+            if (target is null || _package.Part(target)?.Root is not { } xml)
+                continue;
+            if (xml.Name == S + "chartsheet")
+            {
+                if (ChartSheet((string?)sheet.Attribute("name") ?? "Chart", xml, target) is { } chartSheet)
+                    result.ChartSheets.Add((result.Sheets.Count, chartSheet));
+                continue;
+            }
+            if (xml.Name != S + "worksheet")
+                continue; // dialog sheets and macro sheets have no cells the printer prints
             var read = ReadSheet((string?)sheet.Attribute("name") ?? "Sheet", xml, target);
             if (titles.TryGetValue(index, out var title))
             {
@@ -532,6 +541,15 @@ internal sealed class XlsxReader
         if (_package.Target(partPath, (string?)xml.Element(S + "drawing")?.Attribute(R + "id")) is { } drawing)
             sheet.Drawings.AddRange(XlsxDrawing.Read(_package, drawing, _theme?.Root, read: true, _charts).Drawings);
         return sheet;
+    }
+
+    /// <summary>A chart sheet: its page setup and the chart of its drawing; null when it has no chart ChartReader draws.</summary>
+    private Worksheet? ChartSheet(string name, XElement xml, string partPath)
+    {
+        if (_package.Target(partPath, (string?)xml.Element(S + "drawing")?.Attribute(R + "id")) is not { } drawing
+            || XlsxDrawing.ChartSheet(_package, drawing, _theme?.Root, _charts).Chart is not { } chart)
+            return null;
+        return new Worksheet(name) { PageSetup = PageSetup(xml, partPath), Chart = chart };
     }
 
     // ───────────────────────── Page setup ─────────────────────────

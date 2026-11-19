@@ -266,6 +266,94 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("charts", SheetCapabilities.FirstUnsupported(Save(Workbook(SheetAnchor(), xml)), "xlsx"));
     }
 
+    /// <summary>
+    /// A chart sheet "Chart1" (landscape, a footer with the page number) holding <paramref name="chart"/> on an absolute
+    /// anchor, before (or after) a worksheet "Data".
+    /// </summary>
+    private static XlsxBuilder ChartSheetBook(string chart, bool chartFirst = true, bool hidden = false, string over = "")
+    {
+        var book = new XlsxBuilder();
+        book.Sheet(chartFirst ? "Chart1" : "Data", chartFirst ? "" : XlsxBuilder.Row(1, book.Text("A1", "Sales")), hidden: hidden && chartFirst);
+        book.Sheet(chartFirst ? "Data" : "Chart1", chartFirst ? XlsxBuilder.Row(1, book.Text("A1", "Sales")) : "", hidden: hidden && !chartFirst);
+        var (chartId, dataId) = chartFirst ? ("rId1", "rId2") : ("rId2", "rId1");
+        book.Parts["xl/_rels/workbook.xml.rels"] = OpcWriter.Relationships([
+            (chartId, "chartsheet", "chartsheets/sheet1.xml"), (dataId, "worksheet", $"worksheets/sheet{(chartFirst ? 2 : 1)}.xml"),
+            ("rIdS", "sharedStrings", "sharedStrings.xml"), ("rIdT", "styles", "styles.xml")]);
+        book.Parts["xl/chartsheets/sheet1.xml"] =
+            $"<chartsheet {XlsxBuilder.Namespaces}><sheetPr/><sheetViews><sheetView zoomToFit=\"1\" workbookViewId=\"0\"/></sheetViews>" +
+            "<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/><pageSetup paperSize=\"9\" orientation=\"landscape\"/>" +
+            "<headerFooter><oddFooter>&amp;CPage &amp;P</oddFooter></headerFooter><drawing r:id=\"rIdD\"/></chartsheet>";
+        book.Parts["xl/chartsheets/_rels/sheet1.xml.rels"] = OpcWriter.Relationships([("rIdD", "drawing", "../drawings/drawing1.xml")]);
+        book.Parts["xl/drawings/drawing1.xml"] =
+            $"<xdr:wsDr {Xdr}><xdr:absoluteAnchor><xdr:pos x=\"0\" y=\"0\"/><xdr:ext cx=\"9309100\" cy=\"6073775\"/>" +
+            "<xdr:graphicFrame macro=\"\"><xdr:nvGraphicFramePr><xdr:cNvPr id=\"2\" name=\"Chart 1\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>" +
+            $"<xdr:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/></xdr:xfrm><a:graphic><a:graphicData uri=\"{GraphicUri}\">" +
+            $"<c:chart xmlns:c=\"{GraphicUri}\" r:id=\"rIdC\"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:absoluteAnchor>{over}</xdr:wsDr>";
+        book.Parts["xl/drawings/_rels/drawing1.xml.rels"] = OpcWriter.Relationships([("rIdC", "chart", "../charts/chart1.xml")]);
+        book.Parts["xl/charts/chart1.xml"] = chart;
+        return book;
+    }
+
+    [Fact]
+    public void A_chart_sheet_prints_as_one_page_with_its_chart_filling_the_margins()
+    {
+        var path = Save(ChartSheetBook(Columns()));
+        Assert.Null(SheetCapabilities.FirstUnsupported(path, "xlsx"));
+
+        var book = XlsxReader.Read(path);
+        // The writers to other spreadsheet formats don't see it.
+        Assert.Equal(["Data"], book.Sheets.Select(s => s.Name));
+        Assert.Equal(["Chart1", "Data"], book.Printed().Select(s => s.Name));
+        using var printed = SheetPrinter.Print(book, new SheetPrintSource("book.xlsx", "C:\\"), DocumentLimits.Default, DateTime.Now, null, TestContext.Current.CancellationToken);
+        Assert.Equal(2, printed.Pages.Count);
+        var page = printed.Pages[0];
+        Assert.True(page.Width > page.Height); // landscape A4
+        Assert.Equal(841.9, page.Width, 0);
+        using (var bitmap = page.Render(72))
+        {
+            Assert.True(Count(bitmap, Red) > 2000 && Count(bitmap, Blue) > 2000);
+            // Nothing is drawn inside the left margin (0.7 in), the chart starts there.
+            Assert.Equal(0, Count(bitmap, Red, 0, 40 / 842.0));
+        }
+        Assert.Contains("Sales by quarter", Text(page));
+        Assert.Contains("Page 1", Text(page));
+        Assert.Contains("Sales", Text(printed.Pages[1]));
+        Assert.Equal(["Chart1", "Data"], printed.Outline.Select(o => o.Title));
+
+        // After the worksheet, and hidden.
+        Assert.Equal(["Data", "Chart1"], XlsxReader.Read(Save(ChartSheetBook(Columns(), chartFirst: false))).Printed().Select(s => s.Name));
+        Assert.Equal(["Data"], XlsxReader.Read(Save(ChartSheetBook(Columns(), hidden: true))).Printed().Select(s => s.Name));
+    }
+
+    [Fact]
+    public void A_chart_sheet_whose_chart_is_not_drawn_is_named()
+    {
+        var radar = Chart($"<c:radarChart>{Series(0, "S", ["a"], [1])}<c:axId val=\"1\"/><c:axId val=\"2\"/></c:radarChart>", Axes());
+        var path = Save(ChartSheetBook(radar));
+        Assert.Equal("charts", SheetCapabilities.FirstUnsupported(path, "xlsx"));
+        Assert.Empty(XlsxReader.Read(path).ChartSheets);
+
+        // A shape placed over the chart isn't printed with it.
+        var shape = "<xdr:absoluteAnchor><xdr:pos x=\"0\" y=\"0\"/><xdr:ext cx=\"1270000\" cy=\"1270000\"/><xdr:sp><xdr:nvSpPr><xdr:cNvPr id=\"3\" name=\"Box\"/><xdr:cNvSpPr/></xdr:nvSpPr>" +
+                    "<xdr:spPr><a:prstGeom prst=\"rect\"/><a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill></xdr:spPr></xdr:sp><xdr:clientData/></xdr:absoluteAnchor>";
+        Assert.Equal("shapes", SheetCapabilities.FirstUnsupported(Save(ChartSheetBook(Columns(), over: shape)), "xlsx"));
+    }
+
+    [Fact]
+    public void Chart_sheets_count_against_the_workbook_chart_budget()
+    {
+        var points = Series(0, "S", [], [.. Enumerable.Range(0, 20).Select(i => (double?)i)]);
+        var big = Chart(Lines(points), Axes()).Replace("<c:ptCount val=\"20\"/>", $"<c:ptCount val=\"{ChartReader.MaxPoints}\"/>", StringComparison.Ordinal);
+        // One chart sheet of a full column of points is drawn; eleven of them pass the budget of ten.
+        var book = ChartSheetBook(big);
+        var sheets = string.Concat(Enumerable.Range(0, 11).Select(i => $"<sheet name=\"C{i}\" sheetId=\"{i + 10}\" r:id=\"rIdC{i}\"/>"));
+        book.Parts["xl/workbook.xml"] = $"<workbook {XlsxBuilder.Namespaces}><sheets>{sheets}</sheets></workbook>";
+        book.Parts["xl/_rels/workbook.xml.rels"] = OpcWriter.Relationships([.. Enumerable.Range(0, 11).Select(i => ($"rIdC{i}", "chartsheet", "chartsheets/sheet1.xml")),
+            ("rIdS", "sharedStrings", "sharedStrings.xml"), ("rIdT", "styles", "styles.xml")]);
+        var path = Save(book);
+        Assert.Equal(DocumentLimits.ErrorKey, Assert.Throws<ConversionRefusedException>(() => XlsxReader.Read(path)).ErrorKey);
+    }
+
     // ───────────────────────── Word ─────────────────────────
 
     private string WordWithChart(string chart)
