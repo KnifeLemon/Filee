@@ -380,7 +380,7 @@ public sealed class VisioTests(EngineFixture fx) : IDisposable, IClassFixture<En
     {
         var converter = new DrawingConverter();
         Assert.Equal([("vsd", "pdf"), ("vsd", "svg"), ("vsd", "png")], converter.Edges.Where(e => e.From == "vsd").Select(e => (e.From, e.To)));
-        Assert.All(converter.Edges, e => Assert.True(e.Checked));
+        Assert.All(converter.Edges.Where(e => e.From == "vsd"), e => Assert.True(e.Checked));
 
         var binary = Path.Combine(_folder, "old.vsd");
         File.WriteAllBytes(binary, [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0]);

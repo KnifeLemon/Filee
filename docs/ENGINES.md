@@ -32,7 +32,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
@@ -2733,6 +2733,8 @@ its reader, one line in `Drawings/DrawingFormats.cs`:
   WMF). Cells, geometry and text are inherited from master shapes and style sheets; colours by index come from the
   document's colour table, fonts from its face names. Only stored values (`V`) are read; formulas aren't calculated.
 - **ODG and FODG** (OpenDocument drawings, packaged and flat): the [ODP / ODG reader](#odp--odg-reader).
+- **XPS and OpenXPS** (`.xps`, `.oxps`, format id `xps`): not slides; the [XPS reader](#xps-and-openxps-reader) draws
+  its pages straight into the page model (`DrawingFormat.ReadPages`, `IFixedPages`).
 
 Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
 takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a
@@ -2755,6 +2757,55 @@ Not yet (VSDX): theme colours and effects stored as "Themed" (the inherited or d
 sections, shadows, rounding, the full arrowhead table, text backgrounds, formulas beyond stored values, and `.vsdm` /
 `.vssx` / `.vstx`. The slide model has one size per deck, so pages of other sizes sit at the top left of the largest
 page's size. Checked against drawings built from the specification, not against files Visio saved.
+
+## XPS and OpenXPS reader
+
+Built in (#613), in `Xps/`, written from the XPS 1.0 specification and ECMA-388 (OpenXPS); both namespaces are read.
+The [drawing engine](#drawings-visio-odg) converts `.xps` and `.oxps` (one format, id `xps`, documents donut) to PDF,
+SVG and PNG, page by page: `XpsDocument` reads the package's page list once and each page when it is drawn
+(`XpsPageReader` → `XpsPageWriter` → the page model `PageContent`), so pictures of a few pages don't read the rest.
+PDF goes through `PdfPageWriter` (fonts subset, text mapped), PNG through `PageContent.Render`, SVG through the slide
+output's SVG writer.
+
+- **Package:** the fixed representation relationship of either spec (else the `.fdseq` part), its FixedDocuments and
+  their PageContent list, LinkTargets, the title from the core properties. Part names are URIs (`%20`), resolved
+  against the referring part and never outside the package; interleaved parts (`[0].piece` … `[n].last.piece`) are
+  joined, and one with a gap is damage.
+- **Elements:** Canvas, Path and Glyphs with RenderTransform, Clip, Opacity, OpacityMask (a DstIn layer),
+  `RenderOptions.EdgeMode`, `FixedPage.NavigateUri` (URL links and links to link targets, which become named
+  destinations), properties as attributes or property elements, `{StaticResource}` from FixedPage and Canvas
+  resources (inline or a remote ResourceDictionary part), markup compatibility's AlternateContent (Fallback, else the
+  first Choice).
+- **Geometry:** the abbreviated syntax (F, M, L, H, V, C, Q, S, A, Z, relative forms) and PathGeometry with PathFigure
+  (IsFilled, IsClosed), PolyLine, PolyBezier, PolyQuadraticBezier and Arc segments (IsStroked), with its Transform.
+  Strokes: thickness, joins, miter limit, start / dash caps, dash arrays and offsets.
+- **Brushes:** SolidColorBrush (`#RRGGBB`, `#AARRGGBB`, scRGB, ContextColor without its ICC profile),
+  LinearGradientBrush and RadialGradientBrush (spread methods, stops outside 0–1 cut there), ImageBrush (PNG, JPEG,
+  GIF, BMP by Skia, TIFF by ImageMagick; sized by the picture's resolution, 96 dpi when it has none; `TileMode` none
+  draws the picture as it is, so a PDF keeps the JPEG) and VisualBrush (untiled: drawn as vector; tiled: a picture
+  shader, which Skia's PDF writer rasterises).
+- **Glyphs:** embedded fonts, obfuscated `.odttf` ones restored (the first 32 bytes XORed with the GUID of the part
+  name) and read by Filee's SFNT parser before Skia sees them; `Indices` (glyph, advance, offsets, cluster maps),
+  `UnicodeString` (with the `{}` escape), BidiLevel (odd: right to left), StyleSimulations (bold and italic drawn
+  synthetically), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
+  glyph item of the page model (the PDF writer subsets its font and maps its text); others are drawn by
+  `XpsPainter` as text blobs of the whole font. A run whose font is missing or damaged draws its text with an installed
+  font.
+- **Left out and named in the file's result** (`notice.renderer_left_out` with `.pictures`): JPEG XR (HD Photo)
+  pictures and pictures that are damaged or too large. Not drawn: IsSideways glyphs are upright, the Triangle cap is
+  flat, scRGB gradients interpolate in sRGB, ICC profiles aren't applied; print tickets, signatures, document
+  structure and story fragments aren't read.
+- **Hostile input:** parts through `DocumentPackage` (`DocumentLimits`: part and package sizes counted while
+  unpacking, inflate ratio, XML depth and elements, joined pieces included); `XpsLimits`: pages (`MaxPages`), canvas
+  and visual brush nesting (64, which also ends a visual brush that draws itself), elements (2 million), points of all
+  paths and glyphs (40 million), one path's data (32 M characters), dash patterns (1,024 entries, longer ones are
+  drawn solid), page sides cut at 200 inches; pictures within `MaxPartBytes` and `MaxPicturePixels` (read from the
+  header before decoding). Refusals are `error.document_too_complex`. `XpsFuzzTests` fuzzes the reader and the
+  drawing together.
+- Tests: `XpsTests` (packages built in code by `XpsBuilder`, checked as pixels at 96 dpi, one pixel per XPS unit, and
+  as PDF text), `XpsSettingsTests` (settings v105: existing documents donuts learn `.xps` and `.oxps`). Compared by eye
+  with WPF's own rendering of documents its XPS writer saved (text in Latin, Korean, Japanese, Arabic and Hebrew,
+  gradients, pictures at 96 and 192 dpi, dashes, transparency, clips, tiled image and visual brushes, opacity masks).
 
 ## Gerber PCB layers
 
