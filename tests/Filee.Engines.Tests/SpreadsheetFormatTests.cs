@@ -70,6 +70,7 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
     [Fact]
     public void Xls_values_formats_and_layout_are_read_like_excel_shows_them()
     {
+        using var culture = new CultureScope("en-US"); // the date's format 14 is the PC's short date
         var book = XlsReader.Read(SalesXls(fx.NewFolder()));
 
         Assert.Equal(["매출", "메모"], book.Sheets.Select(s => s.Name)); // the hidden sheet is left out
@@ -77,7 +78,7 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
         var won = sales.Get(2, 1)!;
         Assert.Equal(("1,350,000원", true, 1350000.0, "#,##0\"원\""), (won.Text, won.IsNumber, won.Value, won.NumberFormat));
         var date = sales.Get(2, 2)!;
-        Assert.Equal(("2026-10-01", October1, "yyyy-mm-dd"), (date.Text, date.Value, date.NumberFormat));
+        Assert.Equal(("10/1/2026", October1, "m/d/yyyy"), (date.Text, date.Value, date.NumberFormat));
         Assert.Equal(("12.8%", "0.0%"), (sales.Get(2, 3)!.Text, sales.Get(2, 3)!.NumberFormat));
         Assert.Equal("2,220,000원", sales.Get(4, 1)!.Text);
         Assert.Equal(("TRUE", true, 1.0), (sales.Get(4, 2)!.Text, sales.Get(4, 2)!.IsBoolean, sales.Get(4, 2)!.Value));
@@ -128,6 +129,7 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
     [Fact]
     public async Task Xls_to_xlsx_keeps_numbers_dates_and_their_formats()
     {
+        using var culture = new CultureScope("en-US"); // the date's format 14 is the PC's short date
         var dir = fx.NewFolder();
         var xls = SalesXls(dir, filler: 400);
         Assert.True(new FileInfo(xls).Length > 8192);
@@ -155,7 +157,7 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
             Assert.Null(cells["B3"].Attribute("t"));
             Assert.Equal("1350000", (string)cells["B3"].Element(S + "v")!);
             Assert.Equal("#,##0\"원\"", FormatCode("B3"));
-            Assert.Equal(("46296", "yyyy-mm-dd"), ((string)cells["C3"].Element(S + "v")!, FormatCode("C3")));
+            Assert.Equal(("46296", "m/d/yyyy"), ((string)cells["C3"].Element(S + "v")!, FormatCode("C3")));
             Assert.Equal("b", (string?)cells["C5"].Attribute("t"));
         }
 
@@ -510,10 +512,11 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
     [Fact]
     public async Task Workbook_to_tsv_writes_one_file_per_sheet()
     {
+        using var culture = new CultureScope("en-US"); // the date's format 14 is the PC's short date
         var outputs = await ConvertAsync(OfficeTests.SalesWorkbook(fx.NewFolder()), "tsv");
 
         Assert.Equal(["매출보고_매출.tsv", "매출보고_메모.tsv", "매출보고_넓은 표.tsv"], outputs.Select(Path.GetFileName));
-        Assert.StartsWith("지점별 매출\t\t\t\r\n지점\t매출\t일자\t성장률\r\n서울 강남\t1,350,000원\t2026-10-01\t12.8%\r\n",
+        Assert.StartsWith("지점별 매출\t\t\t\r\n지점\t매출\t일자\t성장률\r\n서울 강남\t1,350,000원\t10/1/2026\t12.8%\r\n",
             (await File.ReadAllTextAsync(outputs[0], TestContext.Current.CancellationToken)).TrimStart('﻿'));
     }
 

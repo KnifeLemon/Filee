@@ -9,8 +9,86 @@ namespace Filee.Engines.Office.Sheets;
 /// <summary>Formats cell values with Excel number format codes; parsed formats are cached per instance.</summary>
 internal sealed class NumberFormatter(bool date1904 = false)
 {
-    /// <summary>Built-in number formats (ECMA-376 18.8.30); 14 uses the ISO date order most locales read.</summary>
-    public static readonly IReadOnlyDictionary<int, string> BuiltInFormats = new Dictionary<int, string>
+    /// <summary>The built-in format Excel shows as the PC's short date (#1315).</summary>
+    private const int ShortDateId = 14;
+
+    /// <summary>The short date where the PC's can't be written as an Excel format: ISO order, which most locales read.</summary>
+    private const string IsoDate = "yyyy-mm-dd";
+
+    /// <summary>
+    /// Built-in number format <paramref name="id"/> (ECMA-376 18.8.30), or null for an id without one. 14 is the PC's
+    /// short date, as Excel shows it: 11/8/2026 in the US, 2026/11/8 in China, 08.11.2026 in Germany.
+    /// </summary>
+    public static string? BuiltIn(int id) => id == ShortDateId ? ShortDate(CultureInfo.CurrentCulture) : BuiltInFormats.GetValueOrDefault(id);
+
+    /// <summary>
+    /// The short date pattern of <paramref name="culture"/> as an Excel format code ("M/d/yyyy" → "m/d/yyyy"), or
+    /// <see cref="IsoDate"/> for a calendar other than the Gregorian one or a pattern with more than day, month and year.
+    /// </summary>
+    internal static string ShortDate(CultureInfo culture)
+    {
+        var format = culture.DateTimeFormat;
+        if (format.Calendar is not GregorianCalendar)
+            return IsoDate;
+        var pattern = format.ShortDatePattern;
+        var code = new System.Text.StringBuilder();
+        for (var i = 0; i < pattern.Length;)
+        {
+            var c = pattern[i];
+            var run = 1;
+            while (i + run < pattern.Length && pattern[i + run] == c)
+                run++;
+            switch (c)
+            {
+                case 'd' when run <= 2:
+                    code.Append('d', run);
+                    break;
+                case 'M' when run <= 2:
+                    code.Append('m', run);
+                    break;
+                case 'y':
+                    code.Append('y', run <= 2 ? 2 : 4);
+                    break;
+                case '/':
+                    Literal(code, format.DateSeparator);
+                    break;
+                case '\'' or '"':
+                    {
+                        var end = pattern.IndexOf(c, i + 1);
+                        if (end < 0)
+                            return IsoDate;
+                        Literal(code, pattern[(i + 1)..end]);
+                        i = end + 1;
+                        continue;
+                    }
+                case '\\' when i + 1 < pattern.Length:
+                    Literal(code, pattern[i + 1].ToString());
+                    i += 2;
+                    continue;
+                default:
+                    if (char.IsLetter(c))
+                        return IsoDate; // an era, a day or month name: not a short date Excel would show
+                    Literal(code, new string(c, run));
+                    break;
+            }
+            i += run;
+        }
+        return code.ToString();
+
+        // Characters other than day, month and year are escaped, except the separators Excel's own codes write bare.
+        static void Literal(System.Text.StringBuilder code, string text)
+        {
+            foreach (var c in text)
+            {
+                if (c is not ('/' or '-' or ' '))
+                    code.Append('\\');
+                code.Append(c);
+            }
+        }
+    }
+
+    /// <summary>Built-in number formats (ECMA-376 18.8.30) but 14, the PC's short date (<see cref="BuiltIn"/>).</summary>
+    private static readonly Dictionary<int, string> BuiltInFormats = new()
     {
         [0] = "General",
         [1] = "0",
@@ -22,7 +100,6 @@ internal sealed class NumberFormatter(bool date1904 = false)
         [11] = "0.00E+00",
         [12] = "# ?/?",
         [13] = "# ??/??",
-        [14] = "yyyy-mm-dd",
         [15] = "d-mmm-yy",
         [16] = "d-mmm",
         [17] = "mmm-yy",

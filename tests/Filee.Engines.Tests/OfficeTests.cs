@@ -61,13 +61,14 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void Xlsx_values_and_styles_are_read_like_excel_shows_them()
     {
+        using var culture = new CultureScope("en-US"); // the date's format 14 is the PC's short date
         var book = XlsxReader.Read(SalesWorkbook(fx.NewFolder()));
 
         Assert.Equal(["매출", "메모", "넓은 표"], book.Sheets.Select(s => s.Name)); // the hidden sheet is left out
         var sales = book.Sheets[0];
         Assert.Equal("1,350,000원", sales.Get(2, 1)!.Text);
         Assert.True(sales.Get(2, 1)!.IsNumber);
-        Assert.Equal("2026-10-01", sales.Get(2, 2)!.Text);
+        Assert.Equal("10/1/2026", sales.Get(2, 2)!.Text);
         Assert.Equal("12.8%", sales.Get(2, 3)!.Text);
         Assert.Equal("2,220,000원", sales.Get(4, 1)!.Text); // cached formula result
         Assert.Equal("TRUE", sales.Get(4, 2)!.Text);
@@ -96,6 +97,7 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Xlsx_to_csv_writes_one_file_per_sheet_for_excel()
     {
+        using var culture = new CultureScope("en-US"); // the date's format 14 is the PC's short date
         var outputs = await ConvertAsync(SalesWorkbook(fx.NewFolder()), "csv");
 
         Assert.Equal(["매출보고_매출.csv", "매출보고_메모.csv", "매출보고_넓은 표.csv"], outputs.Select(Path.GetFileName));
@@ -104,8 +106,8 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(
             "지점별 매출,,,\r\n" +
             "지점,매출,일자,성장률\r\n" +
-            "서울 강남,\"1,350,000원\",2026-10-01,12.8%\r\n" +
-            "부산 서면,\"870,000원\",2026-10-02,9.0%\r\n" +
+            "서울 강남,\"1,350,000원\",10/1/2026,12.8%\r\n" +
+            "부산 서면,\"870,000원\",10/2/2026,9.0%\r\n" +
             "합계,\"2,220,000원\",TRUE,\"메모, \"\"따옴표\"\"\"\r\n",
             Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3));
     }
