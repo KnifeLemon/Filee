@@ -1221,6 +1221,9 @@ internal static class SettingsMigrations
         // v103: UYAP documents (.udf, #1338) learn their documents donut; custom claims stay put.
         if (from < 103)
             changed |= LearnExtensions(profiles, out _, ["udf"]);
+        // v105: XPS and OpenXPS documents (.xps, .oxps, #613) learn their documents donut; custom claims stay put.
+        if (from < 105)
+            changed |= LearnExtensions(profiles, out _, ["xps", "oxps"]);
         return changed;
     }
 
