@@ -1,5 +1,6 @@
-// State for the Excel → PDF print studio: a non-destructive plan per sheet and previews rendered by the same
-// LibreOffice path as the final PDF.
+// State for the Excel → PDF print studio: a non-destructive plan per sheet and previews rendered by the same engine
+// as the final PDF (Filee's sheet printer, or LibreOffice when chosen: SpreadsheetPrintService). The thumbnail strip
+// only renders the pages its list shows (RequestThumbnail).
 
 using System.Collections.ObjectModel;
 using Avalonia.Media.Imaging;
@@ -157,7 +158,14 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
     private CancellationTokenSource? _pageCancellation;
     private CancellationTokenSource? _exportCancellation;
     private SpreadsheetRenderedRegion? _rendered;
+    private CancellationTokenSource? _thumbnailCancellation;
+    private readonly List<SpreadsheetPreviewPage> _wantedThumbnails = [];
+    /// <summary>The region whose thumbnails are being rendered; null when none are.</summary>
+    private SpreadsheetRenderedRegion? _thumbnailsFor;
     private bool _closed;
+
+    /// <summary>Thumbnails rendered per PDFium document load.</summary>
+    private const int ThumbnailBatch = 8;
 
     public SpreadsheetPrintStudioViewModel(string file, SpreadsheetPrintService service, ILocalizer loc, UserDataStore store,
         ILogger<SpreadsheetPrintStudioViewModel>? log = null)
@@ -212,6 +220,13 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
     [ObservableProperty] private string _status = "";
     [ObservableProperty] private double _exportProgress;
     [ObservableProperty] private bool _onePdfPerSheet;
+
+    /// <summary>What the printer left out of the previewed or exported pages (charts, …); empty when nothing.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
+    private string _notice = "";
+
+    public bool HasNotice => Notice.Length > 0;
 
     public bool CanExport => _workbook is not null && !IsBusy && !IsExporting && Sheets.Any(sheet => sheet.Included);
     public bool CanRemoveSelectedRegion => SelectedSheet is { } selected
@@ -323,8 +338,10 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
             var progress = new Progress<double>(value => ExportProgress = value * 100);
             // The tool's own output setting, as for every other Filee output; Rename when it was never changed.
             var conflict = _store.FindPreset(PresetId)?.Output.Conflict ?? ConflictPolicy.Rename;
+            var notices = new List<string>();
             var outputs = await _service.ExportAsync(_workbook, regions, outputPath, onePerSheet, conflict, progress,
-                _exportCancellation.Token);
+                notices.Add, _exportCancellation.Token);
+            Notice = NoticeText(notices);
             if (outputs.Count == 0)
             {
                 Status = _loc["toast.skipped"];
@@ -359,7 +376,7 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log?.LogError(ex, "Could not export spreadsheet print plan for {File}", _workbook.Path);
-            Status = _loc["error.conversion_failed"];
+            Status = FailureStatus(ex);
         }
         finally
         {
@@ -372,6 +389,13 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
     }
 
     public void CancelExport() => _exportCancellation?.Cancel();
+
+    /// <summary>The usual reasoned error for a refused workbook (too large, too complex), else "conversion failed".</summary>
+    private string FailureStatus(Exception ex) => ex.GetBaseException() is ConversionRefusedException refused
+        ? FailureText.Reason(_loc, refused.ErrorKey, refused.Detail)
+        : _loc["error.conversion_failed"];
+
+    private string NoticeText(IEnumerable<string> keys) => string.Join(" ", keys.Distinct().Select(key => _loc[key]));
 
     private void SchedulePreview()
     {
@@ -409,17 +433,19 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
             ClearPages();
             SpreadsheetPrintService.Release(_rendered);
             _rendered = rendered;
+            _thumbnailCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             for (var pageNumber = 1; pageNumber <= rendered.Preview.PageCount; pageNumber++)
                 Pages.Add(new SpreadsheetPreviewPage(pageNumber));
             SelectedPage = Pages.FirstOrDefault();
             Status = _loc.Format("sheet_studio.page_count", Pages.Count);
-            await LoadThumbnailsAsync(rendered, cancellationToken);
+            Notice = NoticeText(rendered.Notices);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log?.LogWarning(ex, "Could not render spreadsheet preview for {File}", _file);
-            Status = _loc["error.conversion_failed"];
+            Status = FailureStatus(ex);
+            Notice = "";
         }
         finally
         {
@@ -454,21 +480,61 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
         }
     }
 
+    /// <summary>
+    /// Asks for the thumbnail of a page the strip shows (its list realised the page's item): a long sheet's hundreds
+    /// of pages are only rendered as they scroll into view, a few at a time.
+    /// </summary>
+    public void RequestThumbnail(SpreadsheetPreviewPage page)
+    {
+        if (_closed || page.Thumbnail is not null || _rendered is not { } rendered
+            || _thumbnailCancellation is not { IsCancellationRequested: false } cancellation
+            || !Pages.Contains(page) || _wantedThumbnails.Contains(page))
+            return;
+        _wantedThumbnails.Add(page);
+        if (_thumbnailsFor != rendered)
+            _ = LoadThumbnailsAsync(rendered, cancellation.Token);
+    }
+
     private async Task LoadThumbnailsAsync(SpreadsheetRenderedRegion rendered, CancellationToken cancellationToken)
     {
-        var bitmaps = await Task.Run(() => rendered.Preview.RenderThumbnails(220, cancellationToken).Select(page =>
+        _thumbnailsFor = rendered;
+        try
         {
-            using var stream = new MemoryStream(page.Png, writable: false);
-            return (page.PageNumber, Image: new Bitmap(stream));
-        }).ToArray(), cancellationToken);
-        foreach (var (pageNumber, bitmap) in bitmaps)
-        {
-            if (_closed || cancellationToken.IsCancellationRequested || _rendered != rendered)
+            while (_wantedThumbnails.Count > 0 && !_closed && !cancellationToken.IsCancellationRequested
+                   && _rendered == rendered)
             {
-                bitmap.Dispose();
-                continue;
+                var batch = _wantedThumbnails.Take(ThumbnailBatch).ToArray();
+                _wantedThumbnails.RemoveRange(0, batch.Length);
+                var numbers = batch.Select(page => page.Number).ToArray();
+                var bitmaps = await Task.Run(() => rendered.Preview.RenderThumbnails(220, numbers, cancellationToken)
+                    .Select(page =>
+                    {
+                        using var stream = new MemoryStream(page.Png, writable: false);
+                        return (page.PageNumber, Image: new Bitmap(stream));
+                    }).ToArray(), cancellationToken);
+                foreach (var (pageNumber, bitmap) in bitmaps)
+                {
+                    if (_closed || cancellationToken.IsCancellationRequested || _rendered != rendered
+                        || batch.FirstOrDefault(page => page.Number == pageNumber) is not { } page || !Pages.Contains(page))
+                    {
+                        bitmap.Dispose();
+                        continue;
+                    }
+                    var old = page.Thumbnail;
+                    page.Thumbnail = bitmap;
+                    old?.Dispose();
+                }
             }
-            Pages.FirstOrDefault(page => page.Number == pageNumber)!.Thumbnail = bitmap;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log?.LogWarning(ex, "Could not render spreadsheet preview thumbnails for {File}", _file);
+        }
+        finally
+        {
+            if (_thumbnailsFor == rendered)
+                _thumbnailsFor = null;
         }
     }
 
@@ -516,6 +582,10 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
 
     private void ClearPages()
     {
+        _thumbnailCancellation?.Cancel();
+        _thumbnailCancellation?.Dispose();
+        _thumbnailCancellation = null;
+        _wantedThumbnails.Clear();
         foreach (var page in Pages) page.Dispose();
         Pages.Clear();
         var preview = PreviewImage;

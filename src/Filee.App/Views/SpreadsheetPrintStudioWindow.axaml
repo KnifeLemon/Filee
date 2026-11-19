@@ -1,4 +1,5 @@
-<!-- A three-pane print studio: sheets, the PDF LibreOffice will really export, and per-sheet page settings. -->
+<!-- A three-pane print studio: sheets, the PDF that will really be exported, and per-sheet page settings. The page
+     strip virtualises its items, and only the pages it shows get a thumbnail (RequestThumbnail). -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
@@ -73,12 +74,12 @@
         </Grid>
         <Border Grid.Row="1" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
                 Background="{DynamicResource SurfaceBrush}" Padding="10">
-          <ListBox ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}"
+          <ListBox x:Name="PageList" ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}"
                    ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-            <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="8" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+            <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:SpreadsheetPreviewPage">
-                <StackPanel Spacing="3">
+                <StackPanel Spacing="3" Margin="0,0,8,0">
                   <Border Width="70" Height="92" Background="White" CornerRadius="2"
                           BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1">
                     <Image Source="{Binding Thumbnail}" Stretch="Uniform" />
@@ -96,6 +97,8 @@
         <ScrollViewer Padding="18" IsVisible="{Binding SelectedSheet, Converter={x:Static ObjectConverters.IsNotNull}}">
           <StackPanel Spacing="13">
             <TextBlock Classes="h2" Text="{DynamicResource sheet_studio.page_setup}" />
+            <TextBlock Classes="caption" Text="{Binding Notice}" TextWrapping="Wrap"
+                       Foreground="{DynamicResource WarningBrush}" IsVisible="{Binding HasNotice}" />
             <TextBlock Classes="caption" Text="{Binding SelectedSheet.Warning}" TextWrapping="Wrap"
                        Foreground="{DynamicResource WarningBrush}" IsVisible="{Binding SelectedSheet.HasWarning}" />
             <Button HorizontalAlignment="Left" Classes="accent" Content="{DynamicResource sheet_studio.apply_fix}"

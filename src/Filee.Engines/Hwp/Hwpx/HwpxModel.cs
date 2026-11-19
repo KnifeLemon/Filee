@@ -29,6 +29,12 @@ internal sealed class HDocument
     public List<HKinsoku> Kinsoku { get; } = [];
 
     /// <summary>
+    /// What the reader met that the renderer draws only approximately or leaves out (charts, embedded objects,
+    /// vertical text …), counted as it read; the writers ignore it.
+    /// </summary>
+    public HLeftOut LeftOut { get; set; } = new();
+
+    /// <summary>
     /// Other names of the document's fonts (Word font table w:altName), by font name: the font to draw with when the
     /// named one is not installed. Only the layout engine uses it.
     /// </summary>

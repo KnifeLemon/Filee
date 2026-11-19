@@ -54,24 +54,33 @@ public sealed class PdfPreviewDocument
 
     /// <summary>Renders the thumbnail strip in one PDFium document load.</summary>
     public IReadOnlyList<RenderedPdfPage> RenderThumbnails(int maxLongEdge,
+        CancellationToken cancellationToken = default) =>
+        RenderThumbnails(maxLongEdge, Enumerable.Range(1, PageCount).ToArray(), cancellationToken);
+
+    /// <summary>
+    /// Renders the thumbnails of <paramref name="pageNumbers"/> (1-based, those out of range left out) in one PDFium
+    /// document load, at the scale of the whole strip so every thumbnail keeps the same size whichever are asked for.
+    /// </summary>
+    public IReadOnlyList<RenderedPdfPage> RenderThumbnails(int maxLongEdge, IReadOnlyList<int> pageNumbers,
         CancellationToken cancellationToken = default)
     {
-        if (PageCount == 0)
+        var numbers = pageNumbers.Where(number => number >= 1 && number <= PageCount).Distinct().Order().ToArray();
+        if (numbers.Length == 0)
             return [];
         var largestPage = _sizes.Max(size => Math.Max(size.Width, size.Height));
         var dpi = (int)Math.Ceiling(Math.Clamp(maxLongEdge * 72d / largestPage, 24d, 180d));
-        var result = new List<RenderedPdfPage>(PageCount);
-        var number = 1;
+        var result = new List<RenderedPdfPage>(numbers.Length);
+        var index = 0;
         var options = new RenderOptions(Dpi: dpi, WithAnnotations: true, WithFormFill: true,
             BackgroundColor: SKColors.White);
-        foreach (var page in Conversion.ToImages(_bytes, Enumerable.Range(0, PageCount), null, options))
+        foreach (var page in Conversion.ToImages(_bytes, numbers.Select(number => number - 1), null, options))
         {
             using (page)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 using var shown = Downscale(page, maxLongEdge);
                 using var png = shown.Encode(SKEncodedImageFormat.Png, 82);
-                result.Add(new RenderedPdfPage(number++, shown.Width, shown.Height, png.ToArray()));
+                result.Add(new RenderedPdfPage(numbers[index++], shown.Width, shown.Height, png.ToArray()));
             }
         }
         return result;

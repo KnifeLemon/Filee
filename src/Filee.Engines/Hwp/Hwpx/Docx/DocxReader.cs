@@ -45,6 +45,7 @@ internal sealed partial class DocxReader
     private readonly Dictionary<string, XElement> _footnotes = [];
     private readonly Dictionary<string, XElement> _endnotes = [];
     private readonly List<FieldState> _fields = [];
+    private readonly HLeftOut _leftOut = new();
     private Part? _footnotesPart;
     private Part? _endnotesPart;
     private bool _evenAndOddHeaders;
@@ -231,7 +232,7 @@ internal sealed partial class DocxReader
         foreach (var note in _endnotesPart?.Xml.Root?.Elements(W + "endnote") ?? [])
             _endnotes[Attr(note, "id") ?? ""] = note;
 
-        var document = new HDocument { Title = Title() };
+        var document = new HDocument { Title = Title(), LeftOut = _leftOut };
         Kinsoku(settings, document);
         FontAlternates(RelatedPart(main, "/fontTable")?.Xml.Root, document);
         // Word's default tab stops: every half inch unless the settings say otherwise.
@@ -283,6 +284,7 @@ internal sealed partial class DocxReader
     {
         var page = Page(sectPr);
         var columns = Columns(sectPr);
+        CountVerticalText(sectPr);
         var previous = document.Sections.LastOrDefault();
 
         // Sections without their own header or footer reference inherit the previous section's.
@@ -1162,8 +1164,15 @@ internal sealed partial class DocxReader
             case "pict" or "object":
                 if (ShowsText())
                 {
+                    // An embedded (OLE) object is drawn from the picture Word saved with it, when there is one.
+                    var pictured = false;
                     foreach (var inline in Vml(child, format))
+                    {
+                        pictured |= inline is HImage;
                         builder.Add(inline);
+                    }
+                    if (child.Element(O + "OLEObject") is not null)
+                        _leftOut.Add(pictured ? HLeftOutKind.ObjectPictured : HLeftOutKind.ObjectLeftOut);
                 }
                 break;
             case "footnoteReference":
@@ -1327,6 +1336,13 @@ internal sealed partial class DocxReader
             first.Inlines[index] = new HText(trimmed, leading.Format);
         }
         return note;
+    }
+
+    /// <summary>Counts text a section or cell writes top to bottom (w:textDirection), which is set horizontally.</summary>
+    private void CountVerticalText(XElement? properties)
+    {
+        if (Val(properties?.Element(W + "textDirection")) is "tbRl" or "btLr" or "tbRlV" or "tbLrV")
+            _leftOut.Add(HLeftOutKind.VerticalText);
     }
 
     /// <summary>mc:AlternateContent: the Choice when it is DrawingML we understand, else the (VML) Fallback.</summary>

@@ -858,12 +858,16 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
   conditional formatting, data validation, print areas and page breaks (the print engine reads the page setup,
   print areas, breaks, conditional formats and pictures for PDF).
 
-The XLSX donut also offers **PDF + Edit** (`tool-sheet-studio`). Unlike an ordinary routed XLSX → PDF conversion,
-this interactive tool always requires LibreOffice regardless of engine priority: it preserves the original workbook,
-makes one disposable copy per selected sheet region, applies that region's print settings, and asks LibreOffice to
-render it. PDFsharp combines the resulting PDFs. The live preview follows this exact studio export path and uses
-PDFium/PDFtoImage for lazy thumbnails and the selected large page; the ordinary donut's PDF can differ because it
-is printed by Filee's own print engine (below).
+The XLSX donut also offers **PDF + Edit** (`tool-sheet-studio`). This interactive tool preserves the original
+workbook, makes one disposable copy per selected sheet region, applies that region's print settings, and prints it
+with the same engine as an ordinary XLSX → PDF: Filee's own print engine (below), or LibreOffice when **Use
+LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with charts or
+other objects the print engine doesn't draw yet; without LibreOffice the studio shows the printer's notice). Every
+studio setting (paper, orientation, margins, scale or fit to pages, page order, print area, hidden rows and columns,
+manual breaks, sheet choice) is written into the copy and read by the print engine; the sheet's own gridlines,
+headings, centring and headers / footers are kept. PDFsharp combines the resulting PDFs. The live preview follows
+this exact studio export path and uses PDFium/PDFtoImage for the thumbnails of the pages the strip shows and the
+selected large page.
 
 ## Spreadsheet printing
 
@@ -941,7 +945,7 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
 - **Not printed yet.** Charts, shapes, text boxes, comments, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
-  (a PDF has none). The studio (*PDF + Edit*) still renders through LibreOffice.
+  (a PDF has none).
 
 `tests/Filee.Engines.Tests/SheetPrintTests.cs` builds workbooks in code and checks the page count and where each page
 starts against the numbers Excel's units give (10 default columns and 48 default rows on A4 with the Normal margins,

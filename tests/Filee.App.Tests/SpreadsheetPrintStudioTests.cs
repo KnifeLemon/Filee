@@ -10,6 +10,10 @@ using Filee.Core.Conversion;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
+using Filee.Engines.Infrastructure;
+using Filee.Engines.Office;
+using Filee.Engines.Office.Sheets;
+using Filee.Engines.Pdf;
 
 namespace Filee.App.Tests;
 
@@ -90,11 +94,11 @@ public class SpreadsheetPrintStudioTests
     }
 
     [AvaloniaFact]
-    public async Task Closing_during_export_cancels_LibreOffice_and_removes_temporary_files()
+    public async Task Closing_during_export_cancels_the_printer_and_removes_temporary_files()
     {
         TestServices.EnsureInitialized();
         var service = AppHost.Get<SpreadsheetPrintService>();
-        Assert.SkipUnless(service.Status.IsAvailable, "LibreOffice not found");
+        Assert.SkipUnless(service.Status.IsAvailable, "No spreadsheet printer");
         var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-test-").FullName;
         try
         {
@@ -159,7 +163,7 @@ public class SpreadsheetPrintStudioTests
     {
         TestServices.EnsureInitialized();
         var service = AppHost.Get<SpreadsheetPrintService>();
-        Assert.SkipUnless(service.Status.IsAvailable, "LibreOffice not found");
+        Assert.SkipUnless(service.Status.IsAvailable, "No spreadsheet printer");
         var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-split-").FullName;
         var store = AppHost.Get<UserDataStore>();
         try
@@ -189,6 +193,199 @@ public class SpreadsheetPrintStudioTests
         }
     }
 
+    [Theory]
+    [InlineData(true, false, false, SpreadsheetPrintEngine.BuiltIn)]
+    [InlineData(true, true, false, SpreadsheetPrintEngine.BuiltIn)]
+    [InlineData(true, true, true, SpreadsheetPrintEngine.LibreOffice)]
+    [InlineData(true, false, true, SpreadsheetPrintEngine.BuiltIn)]
+    [InlineData(false, true, false, SpreadsheetPrintEngine.LibreOffice)]
+    [InlineData(false, false, true, null)]
+    public void The_studio_prints_with_the_built_in_printer_unless_LibreOffice_is_chosen_and_installed(bool builtIn,
+        bool libreOffice, bool preferLibreOffice, SpreadsheetPrintEngine? expected)
+    {
+        Assert.Equal(expected, SpreadsheetPrintService.Choose(builtIn, libreOffice, preferLibreOffice));
+    }
+
+    [AvaloniaFact]
+    public async Task Without_LibreOffice_the_preview_and_export_use_the_built_in_printer()
+    {
+        var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-builtin-").FullName;
+        try
+        {
+            // LibreOffice is looked for in an empty engine folder: not installed.
+            var libreOffice = new LibreOfficeConverter(new EngineEnvironment(Path.Combine(folder, "data")));
+            var service = new SpreadsheetPrintService([libreOffice, new SheetPrintConverter(), new PdfSharpConverter()]);
+            Assert.Equal(SpreadsheetPrintEngine.BuiltIn, service.Engine);
+            Assert.True(service.Status.IsAvailable);
+            var source = Path.Combine(folder, "book.xlsx");
+            WriteWorkbook(source, rows: 200);
+            var workbook = service.Inspect(source);
+            var sheet = Assert.Single(workbook.Sheets);
+            var fitted = SpreadsheetPrintRegion.FromSource(sheet) with
+            {
+                Paper = SpreadsheetPaper.A4,
+                Orientation = SpreadsheetPageOrientation.Landscape,
+                ScaleMode = SpreadsheetScaleMode.FitToPages,
+                FitWidth = 1,
+                FitHeight = 1,
+            };
+            var portion = SpreadsheetPrintRegion.FromSource(sheet) with { Range = "A1:A100", WritePrintArea = true };
+
+            var rendered = await service.RenderAsync(workbook, fitted, TestContext.Current.CancellationToken);
+            try
+            {
+                Assert.Equal(1, rendered.Preview.PageCount);
+                var page = rendered.Preview.RenderPage(1, 200, TestContext.Current.CancellationToken);
+                Assert.True(page.Width > page.Height); // landscape
+                Assert.Empty(rendered.Notices);
+            }
+            finally
+            {
+                SpreadsheetPrintService.Release(rendered);
+            }
+            Assert.False(Directory.Exists(rendered.TemporaryDirectory));
+
+            var whole = await service.RenderAsync(workbook, portion, TestContext.Current.CancellationToken);
+            var portionPages = whole.Preview.PageCount;
+            SpreadsheetPrintService.Release(whole);
+            Assert.True(portionPages > 1);
+
+            var output = Path.Combine(folder, "book.pdf");
+            var outputs = await service.ExportAsync(workbook, [fitted, portion], output,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal([output], outputs);
+            Assert.Equal(1 + portionPages, PdfPreviewDocument.Open(output).PageCount);
+            Assert.False(File.Exists(output + ".filee-tmp"));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Without_any_printer_the_studio_says_it_cannot_render()
+    {
+        var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-none-").FullName;
+        try
+        {
+            var service = new SpreadsheetPrintService([new PdfSharpConverter()]);
+            Assert.Null(service.Engine);
+            Assert.False(service.Status.IsAvailable);
+            var source = Path.Combine(folder, "book.xlsx");
+            WriteWorkbook(source, rows: 10);
+            var workbook = service.Inspect(source);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.RenderAsync(workbook,
+                SpreadsheetPrintRegion.FromSource(workbook.Sheets[0]), TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task What_the_built_in_printer_leaves_out_is_shown_in_the_studio()
+    {
+        TestServices.EnsureInitialized();
+        var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-notice-").FullName;
+        try
+        {
+            var service = new SpreadsheetPrintService([new SheetPrintConverter(), new PdfSharpConverter()]);
+            var source = Path.Combine(folder, "controls.xlsx");
+            WriteWorkbook(source, rows: 10, formControl: true);
+            var loc = AppHost.Get<ILocalizer>();
+            using var vm = new SpreadsheetPrintStudioViewModel(source, service, loc, AppHost.Get<UserDataStore>());
+            await vm.Initialization;
+
+            await WaitUntilAsync(() => vm.Pages.Count > 0, TimeSpan.FromSeconds(20));
+
+            Assert.True(vm.HasNotice);
+            Assert.Equal(loc["notice.sheet_objects_left_out"], vm.Notice);
+            Assert.Equal(loc.Format("sheet_studio.page_count", vm.Pages.Count), vm.Status);
+
+            await vm.ExportAsync(Path.Combine(folder, "controls.pdf"));
+
+            Assert.True(File.Exists(Path.Combine(folder, "controls.pdf")));
+            Assert.Equal(loc["notice.sheet_objects_left_out"], vm.Notice);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task A_cancelled_export_leaves_no_file_and_no_work_folder()
+    {
+        var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-cancel-").FullName;
+        try
+        {
+            var service = new SpreadsheetPrintService([new SheetPrintConverter(), new PdfSharpConverter()]);
+            var source = Path.Combine(folder, "book.xlsx");
+            WriteWorkbook(source, rows: 10);
+            var workbook = service.Inspect(source);
+            var before = WorkFolders();
+            using var cancelled = new CancellationTokenSource();
+            await cancelled.CancelAsync();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.ExportAsync(workbook,
+                [SpreadsheetPrintRegion.FromSource(workbook.Sheets[0])], Path.Combine(folder, "book.pdf"),
+                cancellationToken: cancelled.Token));
+
+            Assert.False(File.Exists(Path.Combine(folder, "book.pdf")));
+            Assert.False(File.Exists(Path.Combine(folder, "book.pdf.filee-tmp")));
+            // Work folders of other tests may come and go meanwhile; none of this export's copies stays.
+            Assert.DoesNotContain(WorkFolders().Except(before), work => File.Exists(Path.Combine(work, "sheet.xlsx")));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task The_page_strip_renders_only_the_thumbnails_it_shows()
+    {
+        TestServices.EnsureInitialized();
+        var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-strip-").FullName;
+        SpreadsheetPrintStudioWindow? window = null;
+        try
+        {
+            var service = new SpreadsheetPrintService([new SheetPrintConverter(), new PdfSharpConverter()]);
+            var source = Path.Combine(folder, "long.xlsx");
+            WriteWorkbook(source);
+            var vm = new SpreadsheetPrintStudioViewModel(source, service, AppHost.Get<ILocalizer>(),
+                AppHost.Get<UserDataStore>());
+            window = new SpreadsheetPrintStudioWindow { DataContext = vm, Width = 1380, Height = 860 };
+            window.Show();
+            await vm.Initialization;
+
+            // The strip shows about seven pages; they (and none far along) get their thumbnail.
+            var shown = 0;
+            await WaitUntilAsync(() =>
+            {
+                RenderTests.Pump();
+                shown = window.GetVisualDescendants().OfType<ListBox>().Last().GetRealizedContainers().Count();
+                return vm.Pages.Count > 0 && vm.Pages.Take(shown).All(page => page.Thumbnail is not null);
+            }, TimeSpan.FromSeconds(30));
+
+            Assert.True(vm.Pages.Count > 40, $"{vm.Pages.Count} pages");
+            Assert.InRange(shown, 1, 20);
+            Assert.Null(vm.Pages[^1].Thumbnail);
+            Assert.True(vm.Pages.Count(page => page.Thumbnail is not null) < vm.Pages.Count / 2);
+            if (Environment.GetEnvironmentVariable("FILEE_LOCALIZATION_SCREENSHOTS") == "1")
+                RenderTests.Save(window, "spreadsheet-studio-built-in.png");
+        }
+        finally
+        {
+            window?.Close();
+            try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+        }
+    }
+
     private static HashSet<string> WorkFolders() => Directory.Exists(JobQueue.DefaultWorkRoot)
         ? Directory.GetDirectories(JobQueue.DefaultWorkRoot).ToHashSet(StringComparer.Ordinal)
         : [];
@@ -201,19 +398,25 @@ public class SpreadsheetPrintStudioTests
         Assert.True(condition());
     }
 
-    private static void WriteWorkbook(string path)
+    /// <param name="formControl">The sheet has a form control (a part the built-in printer doesn't draw yet).</param>
+    private static void WriteWorkbook(string path, int rows = 4000, bool formControl = false)
     {
-        var rows = new StringBuilder();
-        for (var row = 1; row <= 4000; row++)
-            rows.Append($"<row r=\"{row}\"><c r=\"A{row}\"><v>{row}</v></c></row>");
+        var data = new StringBuilder();
+        for (var row = 1; row <= rows; row++)
+            data.Append($"<row r=\"{row}\"><c r=\"A{row}\"><v>{row}</v></c></row>");
         var parts = new Dictionary<string, string>
         {
             ["_rels/.rels"] = "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>",
             ["xl/workbook.xml"] = "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><bookViews><workbookView activeTab=\"0\"/></bookViews><sheets><sheet name=\"Data\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>",
             ["xl/_rels/workbook.xml.rels"] = "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>",
-            ["xl/worksheets/sheet1.xml"] = $"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetViews><sheetView workbookViewId=\"0\" tabSelected=\"1\"/></sheetViews><sheetData>{rows}</sheetData></worksheet>",
+            ["xl/worksheets/sheet1.xml"] = $"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetViews><sheetView workbookViewId=\"0\" tabSelected=\"1\"/></sheetViews><sheetData>{data}</sheetData></worksheet>",
             ["[Content_Types].xml"] = "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>",
         };
+        if (formControl)
+        {
+            parts["xl/worksheets/_rels/sheet1.xml.rels"] = "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/ctrlProp\" Target=\"../ctrlProps/ctrlProp1.xml\"/></Relationships>";
+            parts["xl/ctrlProps/ctrlProp1.xml"] = "<formControlPr xmlns=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\" objectType=\"CheckBox\"/>";
+        }
         using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
         foreach (var (name, xml) in parts)
         {

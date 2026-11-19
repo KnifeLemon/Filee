@@ -75,8 +75,14 @@ public sealed class FileResult
     /// </summary>
     public bool UnderMinimumSize { get; set; }
 
-    /// <summary>There is a note to show: <see cref="NoticeKey"/>, <see cref="UnderMinimumSize"/> or both.</summary>
-    public bool HasNotice => NoticeKey is not null || UnderMinimumSize;
+    /// <summary>
+    /// What the engine drew only approximately or left out of the document (charts, embedded objects, vertical text …),
+    /// or null. Shown after <see cref="NoticeKey"/>, which doesn't replace it.
+    /// </summary>
+    public LeftOutNotice? LeftOut { get; set; }
+
+    /// <summary>There is a note to show: <see cref="NoticeKey"/>, <see cref="LeftOut"/>, <see cref="UnderMinimumSize"/> or several.</summary>
+    public bool HasNotice => NoticeKey is not null || LeftOut is not null || UnderMinimumSize;
 
     /// <summary>"Replace the original" sent the source to the Recycle Bin / Trash (its path may now hold the result).</summary>
     public bool OriginalInTrash { get; set; }
