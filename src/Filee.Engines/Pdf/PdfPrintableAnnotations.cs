@@ -42,9 +42,9 @@ internal static class PdfPrintableAnnotations
         bool? hasFormFields = null;
         try
         {
-            if (!PageTreeIsSafe(input))
+            if (!PageTreeIsSafe(input, cancellationToken))
                 return new(null, null);
-            using var document = PdfReader.Open(input, PdfDocumentOpenMode.Modify);
+            using var document = PdfObjectNesting.Open(input, PdfDocumentOpenMode.Modify, cancellationToken);
             hasFormFields = HasFormFields(document);
             var changed = 0;
             var seen = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance); // one annotation on several pages
@@ -108,9 +108,9 @@ internal static class PdfPrintableAnnotations
     /// changes, recursing without such checks, so a page tree that contains itself would overflow the stack.
     /// Opening for import doesn't flatten it.
     /// </summary>
-    private static bool PageTreeIsSafe(string input)
+    private static bool PageTreeIsSafe(string input, CancellationToken cancellationToken)
     {
-        using var document = PdfReader.Open(input, PdfDocumentOpenMode.Import);
+        using var document = PdfObjectNesting.Open(input, PdfDocumentOpenMode.Import, cancellationToken);
         if (PdfCompressor.Resolve(document.Internals.Catalog.Elements["/Pages"]) is not PdfDictionary root)
             return false;
         var visited = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance);

@@ -36,7 +36,7 @@ internal static class PdfBlankPages
         try
         {
             int removed;
-            using (var document = PdfReader.Open(fullPath, PdfDocumentOpenMode.Modify))
+            using (var document = PdfObjectNesting.Open(fullPath, PdfDocumentOpenMode.Modify))
             {
                 var blank = Enumerable.Range(0, document.PageCount).Where(i => IsBlank(document.Pages[i])).ToList();
                 if (blank.Count == 0 || blank.Count == document.PageCount)
