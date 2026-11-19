@@ -473,6 +473,13 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
   between parts. A copy's `-ss` is checked where FFmpeg's own copy lands, since each demuxer seeks its own way (an MP4
   by decode time, a WMV by a key frame a second), and its end is put where no frame shown before its last is missing.
   The file header of `KeyFrames.cs` lists the FFmpeg behaviours, and the versions, that this allows for.
+- Mark this frame (F, under the picture, #1205) writes the frame in the large picture as a full-size PNG
+  (`MediaEncoding.StillAt`, found as the picture is, with HDR tone-mapped where FFmpeg has zscale) into a work folder
+  of its own (`App/Services/MarkedFrames`) and opens it in Annotate (`WindowService.AnnotateFrame`), or adds it there
+  as the next picture. Annotate saves it where it saves "next to the source", with the video's folder as the source's,
+  and never replaces or trashes the frame; the frame goes once its marked copy is saved, cancelled or skipped, when
+  Annotate closes with it unsaved, and when Filee quits. Annotate sits above the clip window, which stays on top, while
+  frames from it wait. The time beside Play is the time of the frame in the picture.
 
 ## Crop video
 

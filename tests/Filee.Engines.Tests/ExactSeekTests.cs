@@ -478,6 +478,154 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
+    // ───────────────────────── Mark this frame ─────────────────────────
+
+    public static TheoryData<string> StillVideos => ["30fps.mp4", "2997fps.mp4", "30fps.ts", "dvd.vob", "opengop.mp4", "bframes.avi", "wrap.ts"];
+
+    /// <summary>
+    /// The frame "Mark this frame" opens in Annotate is the frame the window shows at that time, as a PNG at the size
+    /// the video is shown at.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(StillVideos))]
+    public async Task A_marked_frame_is_the_frame_shown_at_the_size_shown(string name)
+    {
+        SkipUnlessInstalled();
+        var video = await VideoAsync(name);
+        var frames = await FramesAsync(video);
+        var summary = await VideoFrames.ProbeAsync(video, Ct);
+        var folder = fx.NewFolder();
+        List<string> wrong = [];
+        foreach (var (time, number, _) in frames.Where((_, i) => i % 9 == 4 || i == 0))
+        {
+            var output = Path.Combine(folder, $"{number}.png");
+            var still = await VideoFrames.WriteStillAsync(video, time, output, Ct);
+            Assert.True(still.Written, $"no frame at {time}");
+            Assert.False(still.ColorsNotConverted);
+            Assert.Equal((summary.Width, summary.Height), await SizeOfAsync(output));
+            if (await NumberOfPictureAsync(output) is var shown && shown != number)
+                wrong.Add($"{time:0.000000} s: frame {shown} instead of {number}");
+        }
+        Assert.True(wrong.Count == 0, string.Join("; ", wrong));
+    }
+
+    [Fact]
+    public async Task A_marked_frame_of_a_video_with_wide_pixels_has_square_ones()
+    {
+        SkipUnlessInstalled();
+        // Each pixel shown twice as wide as high (anamorphic video): the picture is 256 × 32 on screen.
+        var video = await NumberedAsync("wide.mp4", "30", 2, ["-vf", "setsar=2", .. Mp4]);
+        var frames = await FramesAsync(video);
+        var output = Path.Combine(fx.NewFolder(), "wide.png");
+        Assert.True((await VideoFrames.WriteStillAsync(video, frames[17].Time, output, Ct)).Written);
+        Assert.Equal((256, 32), await SizeOfAsync(output));
+        Assert.Equal(frames[17].Number, await NumberOfPictureAsync(output));
+    }
+
+    [Fact]
+    public async Task A_marked_frame_of_a_phone_video_held_upright_is_upright()
+    {
+        SkipUnlessInstalled();
+        // A phone records upright video sideways and says how to turn it (the display matrix): 32 × 128 on screen.
+        var sideways = await NumberedAsync("sideways.mp4", "30", 2, Mp4);
+        var video = Path.Combine(fx.NewFolder(), "upright.mp4");
+        var remux = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            [.. MediaEncoding.Common, "-display_rotation", "90", "-i", sideways, "-c", "copy", video], TimeSpan.FromMinutes(1), Ct);
+        Assert.True(remux.ExitCode == 0, remux.StandardError);
+        var frames = await FramesAsync(sideways);
+        var output = Path.Combine(fx.NewFolder(), "upright.png");
+        Assert.True((await VideoFrames.WriteStillAsync(video, frames[23].Time, output, Ct)).Written);
+        Assert.Equal((32, 128), await SizeOfAsync(output));
+        // Turned back a quarter clockwise, it reads as the frame it is: the picture was turned, not squeezed.
+        var back = Path.Combine(fx.NewFolder(), "back.png");
+        var turn = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg, [.. MediaEncoding.Common, "-i", output, "-vf", "transpose=clock", back],
+            TimeSpan.FromMinutes(1), Ct);
+        Assert.True(turn.ExitCode == 0, turn.StandardError);
+        Assert.Equal(frames[23].Number, await NumberOfPictureAsync(back));
+    }
+
+    /// <summary>
+    /// An HDR video's frame is turned into ordinary colours as a Live Photo's is, where FFmpeg has zscale; without it
+    /// the frame is still taken, and the window says its colours may look washed out.
+    /// </summary>
+    [Fact]
+    public async Task A_marked_frame_of_an_HDR_video_gets_ordinary_colours_or_says_it_could_not()
+    {
+        SkipUnlessInstalled();
+        // Tagged in x265's own settings: FFmpeg's -color_trc alone doesn't reach a stream drawn by a filter.
+        var video = await NumberedAsync("hdr.mp4", "30", 2, ["-c:v", "libx265", "-x265-params",
+            "log-level=error:keyint=30:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc", "-pix_fmt", "yuv420p10le", "-tag:v", "hvc1"]);
+        var probed = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", video], TimeSpan.FromMinutes(1), Ct);
+        Assert.Equal("smpte2084", probed.StandardOutput.Trim());
+        var frames = await FramesAsync(video);
+        var output = Path.Combine(fx.NewFolder(), "hdr.png");
+        var still = await VideoFrames.WriteStillAsync(video, frames[11].Time, output, Ct);
+        Assert.True(still.Written);
+        var zscale = FfmpegConverter.HasFilter(Tools!.Value.Ffmpeg, "zscale");
+        Assert.Equal(!zscale, still.ColorsNotConverted);
+        Assert.Equal(frames[11].Number, await NumberOfPictureAsync(output));
+        if (!zscale)
+            return;
+        // The colours really were converted: a frame with mid-tones differs clearly from the same frame taken without
+        // the tone map, which a chain that wrote a PNG but did nothing would not. (The numbered frames above are only
+        // black and peak white, which every tone map leaves as they are, so they can't show it.)
+        var tones = Path.Combine(fx.NewFolder(), "tones.mp4");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg, [.. MediaEncoding.Common, "-f", "lavfi", "-i",
+            "testsrc2=size=320x180:rate=30:d=1", "-c:v", "libx265", "-x265-params",
+            "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc", "-pix_fmt", "yuv420p10le", tones],
+            TimeSpan.FromMinutes(1), Ct);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        var tonesProbed = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", tones], TimeSpan.FromMinutes(1), Ct);
+        Assert.Equal("smpte2084", tonesProbed.StandardOutput.Trim());
+        var mappedPath = Path.Combine(fx.NewFolder(), "mapped.png");
+        var mappedStill = await VideoFrames.WriteStillAsync(tones, 0.5, mappedPath, Ct);
+        Assert.True(mappedStill.Written);
+        Assert.False(mappedStill.ColorsNotConverted);
+        var plain = Path.Combine(fx.NewFolder(), "plain.png");
+        var input = MediaInput.For(tones);
+        var info = (await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, input, Ct)).Video!;
+        var seek = await KeyFrames.FindAsync(Tools!.Value.Ffprobe, input, 0.5, Ct);
+        var args = MediaEncoding.StillAt(input, 0.5, seek, plain, info, toneMap: false);
+        var run = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg, args, TimeSpan.FromMinutes(1), Ct);
+        Assert.True(run.ExitCode == 0, run.StandardError);
+        using var mapped = new ImageMagick.MagickImage(mappedPath);
+        using var untouched = new ImageMagick.MagickImage(plain);
+        var difference = mapped.Compare(untouched, ImageMagick.ErrorMetric.RootMeanSquared);
+        Assert.True(difference > 0.02,
+            $"the tone-mapped frame looks the same as one taken without the tone map (RMS difference {difference:F4}, needs over 0.02)");
+    }
+
+    [Fact]
+    public void A_marked_frame_is_a_full_size_png_turned_to_ordinary_colours_when_asked()
+    {
+        var hdr = new VideoStreamInfo(1920, 1080, 1, 0, 30, "hevc", "yuv420p10le", new VideoColor("bt2020", "smpte2084", "bt2020nc", "tv"));
+        var args = MediaEncoding.StillAt("in.mov", 12.5, SeekPoint.Plain(12.5), "out.png", hdr, toneMap: true);
+        var filters = args[args.IndexOf("-vf") + 1];
+        Assert.Contains("tonemap=tonemap=hable", filters, StringComparison.Ordinal);
+        // A still goes from the tone map straight to RGB: the Live Photo chain's last step, format=yuv420p, would halve
+        // its colour detail first.
+        Assert.DoesNotContain("yuv420p", filters, StringComparison.Ordinal);
+        Assert.DoesNotContain("scale=w=-2", filters, StringComparison.Ordinal); // full size, not the window's preview height
+        Assert.EndsWith("format=rgb24", filters, StringComparison.Ordinal);
+        Assert.Equal("png", args[args.IndexOf("-c:v") + 1]);
+        Assert.Equal("out.png", args[^1]);
+        var plain = MediaEncoding.StillAt("in.mov", 12.5, SeekPoint.Plain(12.5), "out.png", hdr, toneMap: false);
+        Assert.DoesNotContain("zscale", plain[plain.IndexOf("-vf") + 1], StringComparison.Ordinal);
+        var wide = MediaEncoding.StillAt("in.mov", 1, SeekPoint.Plain(1), "out.png", new VideoStreamInfo(720, 480, 32.0 / 27, 0, 30), toneMap: false);
+        Assert.Contains("setsar=1", wide[wide.IndexOf("-vf") + 1], StringComparison.Ordinal);
+    }
+
+    private async Task<(int Width, int Height)> SizeOfAsync(string path)
+    {
+        var probed = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", path], TimeSpan.FromMinutes(1), Ct);
+        Assert.True(probed.ExitCode == 0, probed.StandardError);
+        var parts = probed.StandardOutput.Trim().Split(',');
+        return (int.Parse(parts[0], CultureInfo.InvariantCulture), int.Parse(parts[1], CultureInfo.InvariantCulture));
+    }
+
     // ───────────────────────── Clips, playback and Live Photos ─────────────────────────
 
     private async Task<string> CutAsync(string source, ClipEdit edit, bool exact, string target = "mp4", bool removeAudio = false)
