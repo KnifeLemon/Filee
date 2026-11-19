@@ -6,6 +6,10 @@
 // bits or less, which every bzip2 decoder takes. The result is a bit string (Bzip2Bits) that starts with the block
 // magic; blocks are not byte aligned, so the writer joins them bit by bit.
 
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+
 namespace Filee.Engines.Archives;
 
 /// <summary>Encodes bzip2 blocks; reusable, one block at a time.</summary>
@@ -27,6 +31,10 @@ internal sealed class Bzip2BlockEncoder
     private readonly byte[][] _lengths = CreateTables<byte>();
     private readonly uint[][] _codes = CreateTables<uint>();
     private readonly int[][] _tableFrequencies = CreateTables<int>();
+
+    // Per symbol, its code length in each table side by side (eight lanes, the unused ones too dear to be chosen), so
+    // a group's cost in every table is one vector sum.
+    private readonly Vector128<ushort>[] _packedLengths = new Vector128<ushort>[MaxAlphabet];
 
     /// <summary>The last block's bits, from its magic to its last Huffman code.</summary>
     public Bzip2Bits Output { get; } = new();
@@ -231,28 +239,41 @@ internal sealed class Bzip2BlockEncoder
             remaining -= sum;
         }
 
-        Span<int> cost = stackalloc int[MaxTables];
+        Span<ushort> lanes = stackalloc ushort[Vector128<ushort>.Count];
         var symbols = _symbols;
+        if (count > symbols.Length)
+            throw new ArgumentOutOfRangeException(nameof(count));
+        ref var symbol0 = ref MemoryMarshal.GetArrayDataReference(symbols);
+        ref var packed = ref MemoryMarshal.GetArrayDataReference(_packedLengths);
         for (var pass = 0; pass < passes; pass++)
         {
             for (var t = 0; t < tables; t++)
                 Array.Clear(_tableFrequencies[t], 0, alphabet);
+            for (var v = 0; v < alphabet; v++)
+            {
+                // A group holds at most 50 symbols of at most 17 bits: 255 a lane never wins and never overflows.
+                lanes.Fill(255);
+                for (var t = 0; t < tables; t++)
+                    lanes[t] = _lengths[t][v];
+                _packedLengths[v] = Vector128.Create<ushort>(lanes);
+            }
             for (var g = 0; g < selectorCount; g++)
             {
                 var start = g * GroupSize;
                 var end = Math.Min(count, start + GroupSize);
-                cost.Clear();
+                var cost = Vector128<ushort>.Zero;
                 for (var i = start; i < end; i++)
-                {
-                    var symbol = symbols[i];
-                    for (var t = 0; t < tables; t++)
-                        cost[t] += _lengths[t][symbol];
-                }
+                    cost += Unsafe.Add(ref packed, Unsafe.Add(ref symbol0, i)); // symbols are below the alphabet
                 var best = 0;
+                var bestCost = cost.GetElement(0);
                 for (var t = 1; t < tables; t++)
                 {
-                    if (cost[t] < cost[best])
+                    var c = cost.GetElement(t);
+                    if (c < bestCost)
+                    {
                         best = t;
+                        bestCost = c;
+                    }
                 }
                 _selectors[g] = (byte)best;
                 var chosen = _tableFrequencies[best];

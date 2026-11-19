@@ -725,7 +725,28 @@ internal static class SevenZipReader
                 firstOut[i] = firstOut[i - 1] + folder.Coders[i - 1].OutStreams;
             }
             var opened = new bool[folder.Coders.Length];
-            return OpenCoder(Array.IndexOf(firstOut, folder.MainOut));
+            // Each coder that feeds another decodes ahead on a thread of its own, and so does the last one: the chain's
+            // stages and the writing of the files run side by side. The threads are stopped with the folder's stream,
+            // or here when the folder doesn't open.
+            var ahead = new List<Stream>();
+            try
+            {
+                var output = Ahead(OpenCoder(Array.IndexOf(firstOut, folder.MainOut)), folder.UnpackSize);
+                return ahead.Count == 0 ? output : new FolderOutput(output, ahead);
+            }
+            catch
+            {
+                FolderOutput.Stop(ahead);
+                throw;
+            }
+
+            Stream Ahead(Stream decoder, long size)
+            {
+                var stream = ReadAheadStream.Wrap(decoder, size, cancellationToken);
+                if (stream != decoder)
+                    ahead.Add(stream);
+                return stream;
+            }
 
             Stream OpenCoder(int coder)
             {
@@ -740,7 +761,8 @@ internal static class SevenZipReader
                     var pair = Array.FindIndex(folder.BindPairs, p => p.In == input);
                     if (pair >= 0)
                     {
-                        inputs[j] = OpenCoder(Array.IndexOf(firstOut, folder.BindPairs[pair].Out));
+                        var bound = folder.BindPairs[pair].Out;
+                        inputs[j] = Ahead(OpenCoder(Array.IndexOf(firstOut, bound)), folder.UnpackSizes[bound]);
                         continue;
                     }
                     var pack = folder.FirstPackStream + Array.IndexOf(folder.PackedStreams, input);
@@ -749,6 +771,31 @@ internal static class SevenZipReader
                 return SevenZipCoders.Create(c, inputs, folder.UnpackSizes[firstOut[coder]], name, cancellationToken,
                     onePackedStream: folder.PackedStreams.Length == 1);
             }
+        }
+    }
+
+    /// <summary>
+    /// A folder's output with coders read through <see cref="ReadAheadStream"/>s. Disposing it stops them all, the
+    /// later (which read the earlier) first.
+    /// </summary>
+    private sealed class FolderOutput(Stream output, List<Stream> ahead) : ReadOnlyDecoderStream
+    {
+        public override int Read(Span<byte> buffer) => output.Read(buffer);
+
+        public static void Stop(List<Stream> ahead)
+        {
+            for (var i = ahead.Count - 1; i >= 0; i--)
+                ahead[i].Dispose();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                output.Dispose();
+                Stop(ahead);
+            }
+            base.Dispose(disposing);
         }
     }
 

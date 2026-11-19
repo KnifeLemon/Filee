@@ -8,7 +8,7 @@
 // A block's first chunk resets the dictionary and sets the properties; after a first stored chunk (0x01) the decoder
 // needs the properties again, so the next LZMA chunk carries them (0xC0).
 // With processors to spare (fewer blocks than half of them), each block's binary-tree match finder searches ahead on
-// a thread of its own (MatchFinder.StartAhead), which gives the same bytes too.
+// threads of its own (MatchFinder.StartAhead, the trees split between them by hash), which gives the same bytes too.
 
 using System.Numerics;
 using Filee.Core.Presets;
@@ -18,9 +18,11 @@ namespace Filee.Engines.Archives.Lzma;
 /// <summary>Dictionary and search effort for one <see cref="ArchiveLevel"/>.</summary>
 internal readonly record struct Lzma2Settings(int Dictionary, LzmaEncoderSettings Encoder, bool Store)
 {
+
     /// <summary>
     /// The settings for <paramref name="level"/>, with the dictionary cut to the input when its size is known. Memory
-    /// for one block's encoder is about 8 × the dictionary with the hash chain (fast: 4 MiB → ~32 MB) and 10–11 × with
+    /// for one block's encoder is about 8 × the dictionary with the hash chain (fast: 256 KiB → ~2 MB; small, so the
+    /// tables mostly stay in the processor's cache, and the lazy parse makes up the ratio) and 10–11 × with
     /// the binary tree (normal: 16 MiB → ~180 MB, maximum: 64 MiB → ~660 MB, as xz -9), plus the block itself while it
     /// is coded (<see cref="BlockSize"/>); unpacking needs only the dictionary.
     /// </summary>
@@ -29,7 +31,7 @@ internal readonly record struct Lzma2Settings(int Dictionary, LzmaEncoderSetting
         var settings = level switch
         {
             ArchiveLevel.Store => new Lzma2Settings(1 << 12, default, Store: true),
-            ArchiveLevel.Fast => new Lzma2Settings(1 << 22, new LzmaEncoderSettings(Depth: 8, Nice: 32, Optimal: false, Tree: false), false),
+            ArchiveLevel.Fast => new Lzma2Settings(1 << 18, new LzmaEncoderSettings(Depth: 8, Nice: 32, Optimal: false, Tree: false), false),
             ArchiveLevel.Maximum => new Lzma2Settings(1 << 26, new LzmaEncoderSettings(Depth: 64, Nice: 64, Optimal: true, Tree: true), false),
             _ => new Lzma2Settings(1 << 24, new LzmaEncoderSettings(Depth: 32, Nice: 32, Optimal: true, Tree: true), false),
         };
@@ -43,8 +45,8 @@ internal readonly record struct Lzma2Settings(int Dictionary, LzmaEncoderSetting
 
     /// <summary>
     /// The input coded as one block, from one dictionary reset to the next, at least 1 MiB and at most 256 MiB: one
-    /// dictionary at the fast level (many blocks for many threads; about 0.2 % larger output), two at normal (about
-    /// 0.15 %), four at maximum. Matches never reach into the block before, which costs that little ratio.
+    /// dictionary at the fast level (that is 1 MiB: many blocks for many threads), two at normal (about 0.15 % larger
+    /// output), four at maximum. Matches never reach into the block before, which costs that little ratio.
     /// </summary>
     public int BlockSize => (int)Math.Clamp((long)Dictionary * (!Encoder.Optimal ? 1 : Encoder.Depth >= 64 ? 4 : 2), 1 << 20, 1 << 28);
 }
@@ -60,6 +62,9 @@ internal sealed class Lzma2Writer
     /// <summary>Tests turn the match finder's own thread on or off (normally on with processors to spare).</summary>
     internal static readonly AsyncLocal<bool?> TestSearchAhead = new();
 
+    /// <summary>Tests set how many threads the match finder of each block searches on (normally from the processors).</summary>
+    internal static readonly AsyncLocal<int?> TestSearchThreads = new();
+
     private readonly Stream _output;
     private readonly Lzma2Settings _settings;
     private readonly Action<Lzma2Block>? _onBlock;
@@ -67,7 +72,7 @@ internal sealed class Lzma2Writer
     private readonly int _blockSize;
     private readonly int _firstCapacity;
     private readonly int _threads;
-    private readonly bool _searchAhead;
+    private readonly int _searchThreads; // per block: 0 for none, else the match finder's tree threads
     private readonly bool _check;
     private readonly Stack<Lzma2BlockEncoder> _free = new();
     private readonly Queue<(Lzma2BlockEncoder Encoder, Task Work)> _pending = new();
@@ -96,8 +101,11 @@ internal sealed class Lzma2Writer
             ? (int)Math.Min(_blockSize, Math.Max(expectedSize, 1) + LzmaModel.MatchMaxLength + 4)
             : _blockSize;
         _threads = TestThreads.Value ?? Threads(settings, _blockSize, expectedSize);
-        _searchAhead = settings.Encoder is { Tree: true, Optimal: true }
-                       && (TestSearchAhead.Value ?? 2 * _threads <= Environment.ProcessorCount);
+        // Processors left over by the blocks go to their match finders: the trees are split between threads by hash.
+        var searchAhead = settings.Encoder is { Tree: true, Optimal: true }
+                          && (TestSearchAhead.Value ?? 2 * _threads <= Environment.ProcessorCount);
+        _searchThreads = !searchAhead ? 0
+            : TestSearchThreads.Value ?? Math.Clamp(Environment.ProcessorCount / _threads - 1, 1, MatchFinder.MaxSearchThreads);
     }
 
     /// <summary>The dictionary size the decoder needs (for the filter properties).</summary>
@@ -187,12 +195,12 @@ internal sealed class Lzma2Writer
         _cancellationToken.ThrowIfCancellationRequested();
         if (_threads == 1)
         {
-            encoder.Encode(_cancellationToken, _searchAhead);
+            encoder.Encode(_cancellationToken, _searchThreads);
             Emit(encoder);
             _free.Push(encoder);
             return;
         }
-        var (token, ahead) = (_cancellationToken, _searchAhead);
+        var (token, ahead) = (_cancellationToken, _searchThreads);
         _pending.Enqueue((encoder, Task.Run(() => encoder.Encode(token, ahead), CancellationToken.None)));
     }
 
@@ -311,8 +319,8 @@ internal sealed class Lzma2BlockEncoder
     }
 
     /// <summary>Codes the whole block.</summary>
-    /// <param name="searchAhead">Lets the match finder search on a thread of its own (binary tree, large blocks).</param>
-    public void Encode(CancellationToken cancellationToken, bool searchAhead = false)
+    /// <param name="searchThreads">Lets the match finder search ahead on this many threads of its own (binary tree, large blocks; 0 for none).</param>
+    public void Encode(CancellationToken cancellationToken, int searchThreads = 0)
     {
         _first = true;
         _needProperties = false;
@@ -325,8 +333,8 @@ internal sealed class Lzma2BlockEncoder
             WriteStored(_stored.AsSpan(0, _storedCount));
             return;
         }
-        if (searchAhead && _settings.Encoder.Tree && _mf.Filled >= 1 << 18)
-            _mf.StartAhead(cancellationToken);
+        if (searchThreads > 0 && _settings.Encoder.Tree && _mf.Filled >= 1 << 18)
+            _mf.StartAhead(cancellationToken, searchThreads);
         try
         {
             while (_mf.Position < _mf.Filled)

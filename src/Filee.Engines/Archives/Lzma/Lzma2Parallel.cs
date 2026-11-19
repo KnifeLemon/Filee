@@ -12,7 +12,9 @@
 // What a segment decodes to is held in memory until it is read, so the threads and the size of a segment are
 // bounded: at most one segment per processor, all of them in an eighth of the memory, none past 512 MiB. A segment
 // that fails on its thread is decoded again, from its start, on the reader's thread as it is read: so damaged data
-// gives the very bytes and the very error, at the same place, as the one-thread decoder.
+// gives the very bytes and the very error, at the same place, as the one-thread decoder. Workers hand out what they
+// decoded as they go (Decoded.Publish), so the segment being read streams out while the next ones decode; after a
+// failure the reader's own decoder skips what was handed out already.
 
 using System.Runtime.ExceptionServices;
 
@@ -158,21 +160,70 @@ internal static class Lzma2Parallel
         return segments;
     }
 
-    /// <summary>What a worker decoded: the output, how much of it is good, and the error that stopped it, if any.</summary>
+    /// <summary>
+    /// What a worker decodes: the output, how much of it is good, and the error that stopped it, if any. The worker
+    /// publishes the output as it goes, so the reader hands out the start of a segment while the rest is decoded.
+    /// </summary>
     internal sealed class Decoded(byte[] output)
     {
+        /// <summary>The worker publishes after every this many bytes.</summary>
+        public const int Step = 1 << 20;
+
+        private readonly object _gate = new();
+        private int _ready;
+        private bool _done;
+
         public byte[] Output { get; } = output;
+
+        /// <summary>Bytes the worker decoded so far (its own count; readers go by <see cref="WaitBeyond"/>).</summary>
         public int Count { get; set; }
+
         public ExceptionDispatchInfo? Error { get; set; }
+
+        /// <summary>Called by the worker: the first <see cref="Count"/> bytes of the output are final.</summary>
+        public void Publish()
+        {
+            lock (_gate)
+            {
+                _ready = Count;
+                Monitor.PulseAll(_gate);
+            }
+        }
+
+        /// <summary>Called by the worker when it stops, with <see cref="Error"/> set if it failed.</summary>
+        public void Finish()
+        {
+            lock (_gate)
+            {
+                if (Error is null)
+                    _ready = Count;
+                _done = true;
+                Monitor.PulseAll(_gate);
+            }
+        }
+
+        /// <summary>
+        /// Waits until more than <paramref name="position"/> bytes are published or the worker stopped; returns the
+        /// bytes published (all that will be when <paramref name="done"/>).
+        /// </summary>
+        public int WaitBeyond(int position, out bool done)
+        {
+            lock (_gate)
+            {
+                while (_ready <= position && !_done)
+                    Monitor.Wait(_gate);
+                done = _done;
+                return _ready;
+            }
+        }
     }
 
     /// <summary>
-    /// Decodes one segment: <paramref name="length"/> bytes of chunks followed by the end byte (the caller puts it at
-    /// <c>packed[length]</c>), expected to give <paramref name="unpacked"/> bytes.
+    /// Decodes one segment into <paramref name="result"/>: <paramref name="length"/> bytes of chunks followed by the
+    /// end byte (the caller puts it at <c>packed[length]</c>), expected to give <paramref name="unpacked"/> bytes.
     /// </summary>
-    public static Decoded DecodeSegment(byte[] packed, int length, uint dictionary, int unpacked, CancellationToken cancellationToken)
+    public static void DecodeSegment(Decoded result, byte[] packed, int length, uint dictionary, int unpacked, CancellationToken cancellationToken)
     {
-        var result = new Decoded(GC.AllocateUninitializedArray<byte>(unpacked));
         try
         {
             var reader = new Lzma2Reader(new ByteInput(new MemoryStream(packed, 0, length + 1, writable: false)), dictionary, unpacked,
@@ -180,17 +231,40 @@ internal static class Lzma2Parallel
             var output = result.Output;
             while (result.Count < unpacked)
             {
-                var read = reader.Read(output.AsSpan(result.Count));
+                var read = reader.Read(output.AsSpan(result.Count, Math.Min(Decoded.Step, unpacked - result.Count)));
                 if (read == 0)
                     throw new InvalidDataException("the LZMA2 chunk is damaged");
                 result.Count += read;
+                result.Publish();
             }
         }
         catch (Exception ex)
         {
             result.Error = ExceptionDispatchInfo.Capture(ex);
         }
-        return result;
+        finally
+        {
+            result.Finish();
+        }
+    }
+
+    /// <summary>
+    /// Reads and drops <paramref name="count"/> bytes of <paramref name="reader"/>: data decoded again after a worker
+    /// failed, up to where the reader had got. <paramref name="seen"/> gets them on the way.
+    /// </summary>
+    public static void Skip(Lzma2Reader reader, long count, Action<ReadOnlySpan<byte>>? seen = null)
+    {
+        if (count <= 0)
+            return;
+        var scratch = new byte[Math.Min(count, 1 << 16)];
+        while (count > 0)
+        {
+            var read = reader.Read(scratch.AsSpan(0, (int)Math.Min(count, scratch.Length)));
+            if (read == 0)
+                return;
+            seen?.Invoke(scratch.AsSpan(0, read));
+            count -= read;
+        }
     }
 
     /// <summary>The segments of a 7z LZMA2 coder, decoded ahead on worker threads and read in order.</summary>
@@ -201,10 +275,11 @@ internal static class Lzma2Parallel
         private readonly uint _dictionary;
         private readonly int _workers;
         private readonly CancellationTokenSource _cancel;
-        private readonly Queue<(Segment Segment, Task<Decoded> Work)> _ahead = new();
+        private readonly Queue<(Segment Segment, Decoded Work)> _ahead = new();
         private int _next;
-        private Decoded? _current;
+        private (Segment Segment, Decoded Work)? _current;
         private int _position;
+        private int _ready;
         private Lzma2Reader? _replay; // a failed segment, decoded again here
 
         public SegmentStream(PackedWindow packed, List<Segment> segments, uint dictionary, int workers, CancellationToken cancellationToken)
@@ -234,29 +309,34 @@ internal static class Lzma2Parallel
                 }
                 if (_current is { } current)
                 {
-                    if (_position < current.Count)
+                    if (_position < _ready)
                     {
-                        var count = Math.Min(buffer.Length, current.Count - _position);
-                        current.Output.AsSpan(_position, count).CopyTo(buffer);
+                        var count = Math.Min(buffer.Length, _ready - _position);
+                        current.Work.Output.AsSpan(_position, count).CopyTo(buffer);
                         _position += count;
                         return count;
                     }
+                    _ready = current.Work.WaitBeyond(_position, out var done);
+                    if (_position < _ready || !done)
+                        continue;
                     _current = null;
+                    if (current.Work.Error is { } error)
+                    {
+                        // Decoded again here, as the one-thread reader reads it, from where the worker's output ran out.
+                        if (error.SourceException is OperationCanceledException)
+                            error.Throw();
+                        _replay = Open(current.Segment, _cancel.Token);
+                        Skip(_replay, _position);
+                    }
+                    continue;
                 }
                 _cancel.Token.ThrowIfCancellationRequested();
                 Start();
                 if (!_ahead.TryDequeue(out var next))
                     return 0;
-                var decoded = next.Work.GetAwaiter().GetResult();
-                if (decoded.Error is { } error)
-                {
-                    if (error.SourceException is OperationCanceledException)
-                        error.Throw();
-                    _replay = Open(next.Segment, _cancel.Token);
-                    continue;
-                }
-                _current = decoded;
+                _current = next;
                 _position = 0;
+                _ready = 0;
             }
         }
 
@@ -269,7 +349,9 @@ internal static class Lzma2Parallel
                 var packed = ReadPacked(segment);
                 var dictionary = _dictionary;
                 var token = _cancel.Token;
-                _ahead.Enqueue((segment, Task.Run(() => DecodeSegment(packed, segment.Length, dictionary, segment.Unpacked, token), CancellationToken.None)));
+                var decoded = new Decoded(GC.AllocateUninitializedArray<byte>(segment.Unpacked));
+                _ = Task.Run(() => DecodeSegment(decoded, packed, segment.Length, dictionary, segment.Unpacked, token), CancellationToken.None);
+                _ahead.Enqueue((segment, decoded));
             }
         }
 
@@ -321,7 +403,10 @@ internal sealed class PackedWindow(Stream shared, long offset, long length)
             return 0;
         if (target.Length > length - at)
             target = target[..(int)(length - at)];
-        shared.Position = offset + at;
-        return shared.ReadAtLeast(target, target.Length, throwOnEndOfStream: false);
+        lock (shared) // as SharedWindowStream: other coders of the folder may read on other threads
+        {
+            shared.Position = offset + at;
+            return shared.ReadAtLeast(target, target.Length, throwOnEndOfStream: false);
+        }
     }
 }

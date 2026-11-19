@@ -12,10 +12,14 @@
 // is used up. Positions are stored as buffer index + an offset that grows with each slide, so the tables never need
 // rewriting when the window moves; only every ~1 GiB of input are they rebased (Normalize). 0 marks an empty slot.
 //
-// Searching ahead (binary tree, for the price-based parse, with the whole input in the buffer): a thread of its own
-// searches every position in order, as the parse would search it or step over it (both walk the tree the same way),
-// and hands the matches over in batches; the parse takes each position's list cut to the length it allows there.
-// The lists are exactly those a search in the parse would find, so the output is the same bytes either way.
+// Searching ahead (binary tree, for the price-based parse, with the whole input in the buffer): threads of their own
+// search every position in order, as the parse would search it or step over it (both walk the tree the same way),
+// and hand the matches over in batches; the parse takes each position's list cut to the length it allows there.
+// A position's tree holds only positions with the same four-byte hash, so the trees are split between the threads
+// by hash: each thread walks the positions of its own hashes, in order, and touches no other tree. The last thread
+// to finish a batch adds the close matches of the two- and three-byte tables (kept in order, by one thread at a
+// time) and joins them with the tree's as one search would. The lists are exactly those a search in the parse would
+// find, so the output is the same bytes whatever the number of threads, or with none.
 
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
@@ -31,10 +35,14 @@ internal sealed class MatchFinder
     private const int Hash3Bits = 16;
     private const int MinAhead = 1 << 16;
 
+    /// <summary>The most threads <see cref="StartAhead"/> searches on.</summary>
+    public const int MaxSearchThreads = Ahead.MaxThreads;
+
     /// <summary>Tests lower the offset at which positions are rebased (normally 1 GiB).</summary>
     internal static readonly AsyncLocal<int?> TestNormalizeAt = new();
 
     private readonly int _dictionary;
+    private readonly int _reach; // how far back the tree walks: the dictionary less the search threads' leeway
     private readonly int _mask;
     private readonly bool _tree;
     private readonly int[] _links; // chain: one previous position per slot; tree: left and right child per slot
@@ -58,6 +66,10 @@ internal sealed class MatchFinder
         if (!BitOperations.IsPow2(dictionary) || dictionary < 1 << 12 || dictionary > 1 << 28)
             throw new ArgumentOutOfRangeException(nameof(dictionary));
         _dictionary = dictionary;
+        // A tree slot is reused a dictionary later, possibly by another search thread (they split the trees by hash
+        // and may be up to Ahead.MaxLag positions apart): walks stop that far short of the dictionary, so no thread
+        // reads a slot another has taken over. The same with one thread or none, so the bytes don't depend on it.
+        _reach = tree ? dictionary - Math.Min(Ahead.MaxLag, dictionary >> 2) : dictionary;
         _mask = dictionary - 1;
         _tree = tree;
         _links = new int[tree ? 2L * dictionary : dictionary];
@@ -156,12 +168,6 @@ internal sealed class MatchFinder
     }
 
     /// <summary>
-    /// Enters <see cref="Position"/> in the tables and returns the longest match there of at most
-    /// <paramref name="maxLength"/> bytes (0 when there is none of at least 2), with its distance − 1.
-    /// </summary>
-    public int Find(int maxLength, out uint distance) => Search(Position, maxLength, null, null, out distance);
-
-    /// <summary>
     /// Enters <paramref name="pos"/> in the tables and lists its matches of at most <paramref name="maxLength"/>
     /// bytes, each longer than the one before; returns how many.
     /// </summary>
@@ -169,15 +175,17 @@ internal sealed class MatchFinder
         _ahead is { } ahead ? ahead.Take(pos, maxLength, lengths, distances) : Search(pos, maxLength, lengths, distances, out _);
 
     /// <summary>
-    /// Starts searching every position from <see cref="Position"/> to <see cref="Filled"/> on a thread of its own
-    /// (binary tree only); <see cref="FindAll"/> then takes its results and <see cref="SkipTo"/> does nothing. Call
-    /// <see cref="StopAhead"/> when done.
+    /// Starts searching every position from <see cref="Position"/> to <see cref="Filled"/> on
+    /// <paramref name="threads"/> threads of their own (binary tree only); <see cref="FindAll"/> then takes their
+    /// results and <see cref="SkipTo"/> does nothing. Call <see cref="StopAhead"/> when done.
     /// </summary>
-    public void StartAhead(CancellationToken cancellationToken)
+    public void StartAhead(CancellationToken cancellationToken, int threads = 1)
     {
         if (!_tree)
             throw new InvalidOperationException("only the binary tree searches ahead");
-        _ahead = new Ahead(this, Position, Filled, cancellationToken);
+        if (threads > 1 && _dictionary < 4 * Ahead.MaxLag)
+            threads = 1; // the walks' leeway (a quarter of the dictionary at most) would not cover the threads' lag
+        _ahead = new Ahead(this, Position, Filled, Math.Clamp(threads, 1, Ahead.MaxThreads), cancellationToken);
     }
 
     /// <summary>Stops the search thread (if any) and waits for it.</summary>
@@ -194,6 +202,7 @@ internal sealed class MatchFinder
         public uint Distance;
         public int Count;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Offer(int length, int gap)
         {
             length = Math.Min(length, maxLength);
@@ -206,6 +215,53 @@ internal sealed class MatchFinder
                 lengths[Count] = length;
                 distances![Count] = Distance;
                 Count++;
+            }
+        }
+    }
+
+    /// <summary>The four-byte hash bucket of <paramref name="pos"/> (which has four bytes after it).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int Hash4(int pos) => (int)((BinaryPrimitives.ReadUInt32LittleEndian(Buffer.AsSpan(pos)) * 2654435761u) >> _hash4Shift);
+
+    /// <summary>
+    /// The tree part of a search at <paramref name="pos"/> (which has four bytes after it): enters it in its tree
+    /// and offers what the walk finds.
+    /// </summary>
+    private void TreeSearch(int pos, int h4, ref Found found)
+    {
+        var stored = pos + _offset;
+        ref var slot4 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head4), h4);
+        var candidate = slot4;
+        slot4 = stored;
+        TreeWalk(pos, stored, candidate, ref found);
+    }
+
+    /// <summary>
+    /// The two- and three-byte part of a search at <paramref name="pos"/> (which has four bytes after it): enters it
+    /// in those tables and offers their candidates.
+    /// </summary>
+    private void NearSearch(int pos, int maxLength, ref Found found)
+    {
+        var buffer = Buffer;
+        var value = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(pos));
+        var stored = pos + _offset;
+        var h2 = (int)(value & 0xFFFF);
+        var h3 = (int)(((value & 0xFFFFFF) * 0x9E3779B1u) >> (32 - Hash3Bits));
+        ref var slot2 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head2), h2);
+        ref var slot3 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head3), h3);
+        var candidate2 = slot2;
+        slot2 = stored;
+        var candidate3 = slot3;
+        slot3 = stored;
+        if (maxLength < 2)
+            return;
+        foreach (var near in (ReadOnlySpan<int>)[candidate2, candidate3])
+        {
+            if (near > 0 && stored - near < _dictionary && found.Best < maxLength)
+            {
+                var at = near - _offset;
+                if (buffer[at] == buffer[pos])
+                    found.Offer(Common(buffer, pos, at, maxLength), stored - near);
             }
         }
     }
@@ -225,12 +281,16 @@ internal sealed class MatchFinder
         var h2 = (int)(value & 0xFFFF);
         var h3 = (int)(((value & 0xFFFFFF) * 0x9E3779B1u) >> (32 - Hash3Bits));
         var h4 = (int)((value * 2654435761u) >> _hash4Shift);
-        var candidate2 = _head2[h2];
-        _head2[h2] = stored;
-        var candidate3 = _head3[h3];
-        _head3[h3] = stored;
-        var candidate = _head4[h4];
-        _head4[h4] = stored;
+        // The hashes are below the tables' sizes by construction: 16 bits, Hash3Bits and the shift for _head4.
+        ref var slot2 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head2), h2);
+        ref var slot3 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head3), h3);
+        ref var slot4 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head4), h4);
+        var candidate2 = slot2;
+        slot2 = stored;
+        var candidate3 = slot3;
+        slot3 = stored;
+        var candidate = slot4;
+        slot4 = stored;
 
         var found = new Found(maxLength, lengths, distances);
         if (maxLength >= 2)
@@ -288,25 +348,39 @@ internal sealed class MatchFinder
     private void TreeWalk(int pos, int stored, int candidate, ref Found found)
     {
         var buffer = Buffer;
-        var links = _links;
+        ref var data = ref MemoryMarshal.GetArrayDataReference(buffer);
+        ref var links = ref MemoryMarshal.GetArrayDataReference(_links);
+        var mask = _mask;
+        var reach = _reach;
+        var offset = _offset;
         var limit = Math.Min(_nice, Filled - pos);
-        var leftSlot = (stored & _mask) << 1; // where the next candidate smaller than pos goes
-        var rightSlot = leftSlot + 1;         // where the next candidate larger than pos goes
-        int leftLength = 0, rightLength = 0;  // bytes known to match the bounds on either side
+        // Every candidate checked below lies within the dictionary behind pos, so it and the limit fit the buffer;
+        // every slot is a node's (masked) or the cursor's. The checks stay, cheap next to the walk's cache misses.
+        if ((uint)pos > (uint)(buffer.Length - limit) || limit < 0)
+            throw new ArgumentOutOfRangeException(nameof(pos));
+        ref var cursor = ref Unsafe.Add(ref data, pos);
+        var leftSlot = (stored & mask) << 1; // where the next candidate smaller than pos goes
+        var rightSlot = leftSlot + 1;        // where the next candidate larger than pos goes
+        int leftLength = 0, rightLength = 0; // bytes known to match the bounds on either side
         for (var depth = _depth; ; depth--)
         {
             var gap = stored - candidate;
-            if (candidate <= 0 || gap <= 0 || gap >= _dictionary || depth == 0)
+            var at = candidate - offset;
+            if (candidate <= 0 || gap <= 0 || gap >= reach || depth == 0 || (uint)at > (uint)pos)
             {
-                links[leftSlot] = 0;
-                links[rightSlot] = 0;
+                Unsafe.Add(ref links, leftSlot) = 0;
+                Unsafe.Add(ref links, rightSlot) = 0;
                 return;
             }
-            var at = candidate - _offset;
-            var node = (candidate & _mask) << 1;
+            ref var match = ref Unsafe.Add(ref data, at);
+            var node = (candidate & mask) << 1;
+            // Both children are read before the bytes are compared: the two loads (the node's and the candidate's
+            // bytes, both mostly cache misses) then overlap instead of one waiting for the other.
+            var smaller = Unsafe.Add(ref links, node);
+            var larger = Unsafe.Add(ref links, node + 1);
             var length = Math.Min(leftLength, rightLength);
             // Most candidates differ at the first byte not known to match: only then is the rest compared.
-            if (length < limit && buffer[at + length] == buffer[pos + length])
+            if (length < limit && Unsafe.Add(ref match, length) == Unsafe.Add(ref cursor, length))
             {
                 length++;
                 if (length < limit)
@@ -316,22 +390,22 @@ internal sealed class MatchFinder
             if (length == limit)
             {
                 // Equal as far as the tree looks: the candidate's subtrees become the new root's.
-                links[leftSlot] = links[node];
-                links[rightSlot] = links[node + 1];
+                Unsafe.Add(ref links, leftSlot) = smaller;
+                Unsafe.Add(ref links, rightSlot) = larger;
                 return;
             }
-            if (buffer[at + length] < buffer[pos + length])
+            if (Unsafe.Add(ref match, length) < Unsafe.Add(ref cursor, length))
             {
-                links[leftSlot] = candidate;
+                Unsafe.Add(ref links, leftSlot) = candidate;
                 leftSlot = node + 1;
-                candidate = links[node + 1];
+                candidate = larger;
                 leftLength = length;
             }
             else
             {
-                links[rightSlot] = candidate;
+                Unsafe.Add(ref links, rightSlot) = candidate;
                 rightSlot = node;
-                candidate = links[node];
+                candidate = smaller;
                 rightLength = length;
             }
         }
@@ -378,10 +452,11 @@ internal sealed class MatchFinder
             var h4 = (int)((value * 2654435761u) >> _hash4Shift);
             var h3 = (int)(((value & 0xFFFFFF) * 0x9E3779B1u) >> (32 - Hash3Bits));
             var stored = p + _offset;
-            _head2[(int)(value & 0xFFFF)] = stored;
-            _head3[h3] = stored;
-            var candidate = _head4[h4];
-            _head4[h4] = stored;
+            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head2), (int)(value & 0xFFFF)) = stored;
+            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head3), h3) = stored;
+            ref var slot4 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head4), h4);
+            var candidate = slot4;
+            slot4 = stored;
             if (_tree)
                 TreeWalk(p, stored, candidate, ref found);
             else
@@ -390,72 +465,220 @@ internal sealed class MatchFinder
         _nextInsert = pos;
     }
 
-    /// <summary>The search thread and the batches of match lists it hands over.</summary>
+    /// <summary>The search threads and the batches of match lists they hand over.</summary>
     private sealed class Ahead
     {
+        /// <summary>The most tree threads one match finder starts.</summary>
+        public const int MaxThreads = 4;
+
         private const int BatchSize = 4096;
         private const int Batches = 8;
 
-        private sealed class Batch
+        /// <summary>
+        /// How far apart two search threads may be: a thread takes a batch only when the one eight before it was
+        /// handed to the parse, after every thread finished it, so they are at most nine batches (36 Ki positions)
+        /// apart.
+        /// </summary>
+        public const int MaxLag = 1 << 16;
+
+        /// <summary>One thread's tree matches for the positions of a batch it owns: per position its offset in Data, or -1.</summary>
+        private sealed class Part
         {
-            public int First;
             public readonly int[] Offsets = new int[BatchSize];
-            public int[] Data = new int[BatchSize * 4]; // per position: count, then length and distance per match
+            public int[] Data = new int[BatchSize * 4];
         }
 
-        private readonly BlockingCollection<Batch> _free = new();
-        private readonly BlockingCollection<Batch> _full = new();
+        private sealed class Batch
+        {
+            public int First = -1; // -1: free
+            public int Parts;      // tree threads done with it
+            public bool Ready;
+            public readonly int[] Offsets = new int[BatchSize];
+            public int[] Data = new int[BatchSize * 4]; // per position: count, then length and distance per match
+            public Part[] Trees = [];
+        }
+
+        private readonly MatchFinder _mf;
+        private readonly int _start;
+        private readonly int _end;
+        private readonly int _threads;
+        private readonly Batch[] _ring = new Batch[Batches];
+        private readonly object _gate = new();
         private readonly CancellationTokenSource _stop;
-        private readonly Task _producer;
+        private readonly Task[] _producers;
+        private readonly int[] _lengths = new int[LzmaModel.MatchMaxLength + 1];
+        private readonly uint[] _distances = new uint[LzmaModel.MatchMaxLength + 1];
+        private int _nextMerge; // the first batch (by number) not merged yet
+        private int _taken;     // the first batch (by number) the parse has not handed back
         private ExceptionDispatchInfo? _error;
         private Batch? _current;
 
-        public Ahead(MatchFinder mf, int start, int end, CancellationToken cancellationToken)
+        public Ahead(MatchFinder mf, int start, int end, int threads, CancellationToken cancellationToken)
         {
+            _mf = mf;
+            _start = start;
+            _end = end;
+            _threads = threads;
             for (var i = 0; i < Batches; i++)
-                _free.Add(new Batch());
+            {
+                _ring[i] = new Batch { Trees = new Part[threads] };
+                for (var k = 0; k < threads; k++)
+                    _ring[i].Trees[k] = new Part();
+            }
             _stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var token = _stop.Token;
-            _producer = Task.Factory.StartNew(() => Produce(mf, start, end, token), CancellationToken.None,
-                TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            _producers = new Task[threads];
+            for (var k = 0; k < threads; k++)
+            {
+                var part = k;
+                _producers[k] = Task.Factory.StartNew(() => Produce(part, token), CancellationToken.None,
+                    TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
         }
 
-        private void Produce(MatchFinder mf, int start, int end, CancellationToken token)
+        private int BatchCount => (_end - _start + BatchSize - 1) / BatchSize;
+
+        /// <summary>Thread <paramref name="part"/>: the tree searches of its hashes, batch by batch.</summary>
+        private void Produce(int part, CancellationToken token)
         {
             try
             {
+                var mf = _mf;
                 var lengths = new int[LzmaModel.MatchMaxLength + 1];
                 var distances = new uint[LzmaModel.MatchMaxLength + 1];
-                for (var first = start; first < end; first += BatchSize)
+                for (var number = 0; number < BatchCount; number++)
                 {
-                    var batch = _free.Take(token);
-                    batch.First = first;
+                    var batch = _ring[number % Batches];
+                    lock (_gate)
+                    {
+                        // The slot is free once the parse handed back the batch eight before.
+                        while (number - _taken >= Batches && _error is null)
+                        {
+                            token.ThrowIfCancellationRequested();
+                            Monitor.Wait(_gate, 100);
+                        }
+                        if (_error is not null)
+                            return;
+                    }
+                    var first = _start + number * BatchSize;
+                    var last = Math.Min(_end, first + BatchSize);
+                    var tree = batch.Trees[part];
                     var at = 0;
-                    var last = Math.Min(end, first + BatchSize);
                     for (var p = first; p < last; p++)
                     {
-                        batch.Offsets[p - first] = at;
-                        var count = mf.Search(p, Math.Min(LzmaModel.MatchMaxLength, end - p), lengths, distances, out _);
-                        if (at + 1 + 2 * count > batch.Data.Length)
-                            Array.Resize(ref batch.Data, Math.Max(batch.Data.Length * 2, at + 1 + 2 * count));
-                        var data = batch.Data;
-                        data[at++] = count;
-                        for (var k = 0; k < count; k++)
+                        var h4 = p + 4 <= mf.Filled ? mf.Hash4(p) : -1;
+                        if (h4 < 0 || (_threads > 1 && h4 % _threads != part))
+                        {
+                            tree.Offsets[p - first] = -1;
+                            continue;
+                        }
+                        var found = new Found(Math.Min(LzmaModel.MatchMaxLength, _end - p), lengths, distances);
+                        mf.TreeSearch(p, h4, ref found);
+                        if (at + 1 + 2 * found.Count > tree.Data.Length)
+                            Array.Resize(ref tree.Data, Math.Max(tree.Data.Length * 2, at + 1 + 2 * found.Count));
+                        tree.Offsets[p - first] = at;
+                        var data = tree.Data;
+                        data[at++] = found.Count;
+                        for (var k = 0; k < found.Count; k++)
                         {
                             data[at++] = lengths[k];
                             data[at++] = (int)distances[k];
                         }
                     }
-                    _full.Add(batch, token);
+                    token.ThrowIfCancellationRequested();
+                    bool merge;
+                    lock (_gate)
+                    {
+                        if (batch.Parts == 0)
+                            batch.First = first;
+                        merge = ++batch.Parts == _threads;
+                    }
+                    if (merge)
+                        MergeReady();
                 }
             }
             catch (Exception ex)
             {
-                _error = ExceptionDispatchInfo.Capture(ex);
+                lock (_gate)
+                {
+                    _error ??= ExceptionDispatchInfo.Capture(ex);
+                    Monitor.PulseAll(_gate);
+                }
             }
-            finally
+        }
+
+        /// <summary>Joins the batches whose trees are all done, in order (one thread at a time).</summary>
+        private void MergeReady()
+        {
+            lock (_mergeGate)
             {
-                _full.CompleteAdding();
+                while (true)
+                {
+                    Batch batch;
+                    lock (_gate)
+                    {
+                        if (_nextMerge >= BatchCount)
+                            return;
+                        batch = _ring[_nextMerge % Batches];
+                        if (batch.Parts != _threads || batch.Ready)
+                            return;
+                    }
+                    Merge(batch);
+                    lock (_gate)
+                    {
+                        batch.Ready = true;
+                        _nextMerge++;
+                        Monitor.PulseAll(_gate);
+                    }
+                }
+            }
+        }
+
+        private readonly object _mergeGate = new();
+
+        /// <summary>Adds the close matches to every position of the batch and joins them with its tree's.</summary>
+        private void Merge(Batch batch)
+        {
+            var mf = _mf;
+            var buffer = mf.Buffer;
+            var first = batch.First;
+            var last = Math.Min(_end, first + BatchSize);
+            var at = 0;
+            for (var p = first; p < last; p++)
+            {
+                batch.Offsets[p - first] = at;
+                var maxLength = Math.Min(LzmaModel.MatchMaxLength, _end - p);
+                var found = new Found(maxLength, _lengths, _distances);
+                var count = 0;
+                if (p + 4 <= mf.Filled)
+                {
+                    mf.NearSearch(p, maxLength, ref found);
+                    // The tree's matches longer than the close ones, as one search offers them after those.
+                    var owner = _threads > 1 ? mf.Hash4(p) % _threads : 0;
+                    var tree = batch.Trees[owner];
+                    var from = tree.Offsets[p - first];
+                    var treeData = tree.Data;
+                    var treeCount = treeData[from++];
+                    for (var k = 0; k < treeCount; k++, from += 2)
+                        found.Offer(treeData[from], treeData[from + 1] + 1);
+                    // The tree compares at most the nice length; a match that long may go on.
+                    if (found.Best >= mf._nice && found.Best < maxLength)
+                    {
+                        var longer = Common(buffer, p, p - (int)found.Distance - 1, maxLength);
+                        found.Best = longer;
+                        _lengths[found.Count - 1] = longer;
+                    }
+                    count = found.Best < 2 ? 0 : found.Count;
+                }
+                if (at + 1 + 2 * count > batch.Data.Length)
+                    Array.Resize(ref batch.Data, Math.Max(batch.Data.Length * 2, at + 1 + 2 * count));
+                var data = batch.Data;
+                data[at++] = count;
+                for (var k = 0; k < count; k++)
+                {
+                    data[at++] = _lengths[k];
+                    data[at++] = (int)_distances[k];
+                }
             }
         }
 
@@ -464,15 +687,26 @@ internal sealed class MatchFinder
         {
             while (_current is null || pos >= _current.First + BatchSize)
             {
-                if (_current is not null)
-                    _free.Add(_current);
-                _current = null;
-                if (!_full.TryTake(out var next, Timeout.Infinite))
+                lock (_gate)
                 {
+                    if (_current is not null)
+                    {
+                        // Handed back: its slot takes a later batch.
+                        _current.First = -1;
+                        _current.Parts = 0;
+                        _current.Ready = false;
+                        _current = null;
+                        _taken++;
+                        Monitor.PulseAll(_gate);
+                    }
+                    if (_taken >= BatchCount)
+                        throw new InvalidOperationException("a position past the input was searched");
+                    var batch = _ring[_taken % Batches];
+                    while (!batch.Ready && _error is null)
+                        Monitor.Wait(_gate);
                     _error?.Throw();
-                    throw new InvalidOperationException("a position past the input was searched");
+                    _current = batch;
                 }
-                _current = next;
             }
             if (maxLength < 2)
                 return 0;
@@ -496,17 +730,17 @@ internal sealed class MatchFinder
         public void Stop()
         {
             _stop.Cancel();
+            lock (_gate)
+                Monitor.PulseAll(_gate);
             try
             {
-                _producer.Wait();
+                Task.WaitAll(_producers);
             }
             catch (AggregateException)
             {
-                // The producer catches everything.
+                // The producers catch everything.
             }
             _stop.Dispose();
-            _free.Dispose();
-            _full.Dispose();
         }
     }
 }

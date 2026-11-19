@@ -195,7 +195,7 @@ internal sealed class SizedStream(Stream inner, long size, string name) : ReadOn
 
 /// <summary>
 /// A window of a stream others read too (the packed streams of one 7z folder side by side): every read seeks to
-/// where this window stopped. Disposing it leaves the stream open.
+/// where this window stopped, holding the stream's lock. Disposing it leaves the stream open.
 /// </summary>
 internal sealed class SharedWindowStream(Stream shared, long offset, long length) : ReadOnlyDecoderStream
 {
@@ -215,9 +215,14 @@ internal sealed class SharedWindowStream(Stream shared, long offset, long length
             return 0;
         if (buffer.Length > _end - _position)
             buffer = buffer[..(int)(_end - _position)];
-        if (shared.Position != _position)
-            shared.Position = _position;
-        var read = shared.Read(buffer);
+        int read;
+        // The coders of one folder may read their packed streams on threads of their own (ReadAheadStream).
+        lock (shared)
+        {
+            if (shared.Position != _position)
+                shared.Position = _position;
+            read = shared.Read(buffer);
+        }
         if (read <= 0)
             return 0;
         _position += read;
