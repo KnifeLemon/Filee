@@ -423,16 +423,9 @@ public sealed class NsisReaderTests : IDisposable
         var engineInstaller = new EngineInstaller(new HttpClient(new OneFile(component.Url, installer)), engines,
             new Dictionary<string, EngineComponent> { ["tesseract"] = component });
         var package = new EnginePackage("tesseract", ["tesseract"], 1, ["tesseract"]);
-        var previous = Environment.GetEnvironmentVariable(SevenZip.HideVariable);
-        Environment.SetEnvironmentVariable(SevenZip.HideVariable, "1");
-        try
-        {
+        // Hidden for this test only: a process-wide FILEE_HIDE_7ZIP would hide 7-Zip from tests running beside it.
+        using (SevenZip.Hide())
             await engineInstaller.InstallAsync(package, null, TestContext.Current.CancellationToken);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(SevenZip.HideVariable, previous);
-        }
 
         var folder = Path.Combine(engines, "tesseract");
         // Trimmed as before: no training programs, manuals, uninstaller, language data or installer plug-ins.

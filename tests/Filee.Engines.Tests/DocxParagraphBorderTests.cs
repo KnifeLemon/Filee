@@ -17,7 +17,7 @@ public class DocxParagraphBorderTests(EngineFixture fx) : IClassFixture<EngineFi
         var dir = fx.NewFolder();
         var document = DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media"));
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(document, hwpx);
+        HwpxWriter.Write(document, hwpx, cancellationToken: TestContext.Current.CancellationToken);
         ValidPackage(hwpx);
         return (document.Sections.SelectMany(s => s.Blocks).OfType<HParagraph>().ToList(), hwpx);
     }

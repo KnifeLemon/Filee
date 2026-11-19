@@ -396,6 +396,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _groupKind = GroupKinds.First(k => k.Value == PageOutputs.KindOf(_edit.Pdf));
         _groupSize = PageOutputs.SizeOf(_edit.Pdf);
         _combinePages = _edit.Pdf.CombinePages;
+        _slidePictures = _edit.Pdf.SlidePictures;
         _trimPageMargins = _edit.Pdf.TrimPageMargins;
         _splitTallImage = _edit.Pdf.SplitTallImage;
         _pdfA = _edit.Document.PdfA;
@@ -554,7 +555,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowMergePaper), nameof(ShowMergePaperSettings),
         nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
         nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowAskCompressionImage), nameof(ShowAskCompressionMedia), nameof(ShowAskCompressionPdf),
-        nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
+        nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote), nameof(ShowSlidePictures),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowVideoSplit), nameof(ShowVideoParts),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
@@ -971,6 +972,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             language.ShowDownload(tesseractReads);
     }
 
+    /// <summary>PDF → PPTX: a picture of each page instead of editable slides.</summary>
+    [ObservableProperty] private bool _slidePictures;
+
     /// <summary>PDF → image: one tall image of all pages.</summary>
     [ObservableProperty] private bool _combinePages;
     [ObservableProperty] private bool _trimPageMargins;
@@ -1235,6 +1239,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>XLSX: what a PDF, a Word document or a web page becomes (its tables, PdfTablesConverter and DocumentTablesConverter).</summary>
     public bool ShowPdfTablesNote => TargetId == "xlsx";
+
+    /// <summary>PPTX: what a PDF becomes, editable slides or pictures of its pages (PdfSlidesConverter).</summary>
+    public bool ShowSlidePictures => TargetId == "pptx";
     public bool ShowPdfCompressionOptions => ShowPdfCompression && CompressionLevel.Value != PdfCompression.None;
 
     /// <summary>Text from scans goes into the formats Filee writes from a PDF's text itself (PdfOptions.OcrTargets).</summary>
@@ -1434,6 +1441,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         if (split)
             (pdf.SplitEvery, pdf.SplitParts) = (every, parts);
         pdf.CombinePages = CombinePages;
+        pdf.SlidePictures = SlidePictures;
         pdf.TrimPageMargins = TrimPageMargins;
         pdf.SplitTallImage = SplitTallImage;
         pdf.Compression = CompressionLevel.Value;

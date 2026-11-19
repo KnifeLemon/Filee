@@ -64,8 +64,8 @@ public static class FormatFields
         ]),
         (FormatGrade.General,
         [
-            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "exe", "svg", "svgz", "emf", "vsd", "odg", "canvas",
-            "docm", "dotx", "dotm", "doc", "odt", "ott", "rtf", "wps", "ofd", "udf", "xps", "abw", "pages", "pub", "eml", "msg",
+            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "exe", "svg", "svgz", "emf", "vsd", "odg", "canvas", "crtx",
+            "docm", "dotx", "dotm", "doc", "odt", "ott", "rtf", "wps", "ofd", "udf", "xps", "mm", "xmind", "abw", "pages", "pub", "eml", "msg",
             "p7m", "xlsm", "xltx", "xlsb", "xls", "ods", "ots", "tsv", "et", "numbers", "pptm", "potx", "potm", "ppsx", "ppt",
             "odp", "otp", "key", "dps", "md", "html", "mhtml", "opml", "json", "xml", "vcf", "ics", "epub", "kepub",
             "azw3", "fb2", "cbz", "cbr", "cb7", "cbt", "cbc", "m4v", "mkv", "webm", "avi", "wmv", "mpg", "ts",
@@ -154,6 +154,8 @@ public static class FormatFields
         (["dxf"], ["cad", "vector"]),
         // The video and audio donuts make it (subtitle extraction, AI captions).
         (["srt"], ["subtitle", "video", "audio"]),
+        // Excel's chart templates: made in Excel, drawn as vector pictures.
+        (["crtx"], ["spreadsheet", "vector"]),
     ]);
 
     /// <summary>The fields a format belongs to: its Overlaps row, or else its category's field.</summary>

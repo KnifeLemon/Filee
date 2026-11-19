@@ -34,6 +34,8 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
     private int _coverVersion;
     private int _coverShown;
     private bool _closed;
+    /// <summary>Cancelled when the window closes: stops the picture still being read.</summary>
+    private readonly CancellationTokenSource _closing = new();
 
     /// <summary>The frames of the last picture saved, with their styles, for the next one.</summary>
     private List<(Rect, HideStyle)> _carried = [];
@@ -258,7 +260,7 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
 
         try
         {
-            var (preview, width, height) = await HideService.LoadPreviewAsync(path, _tool);
+            var (preview, width, height) = await HideService.LoadPreviewAsync(path, _tool, _closing.Token);
             var bitmap = await Task.Run(() => HideService.ToBitmap(preview));
             if (_closed)
             {
@@ -533,6 +535,7 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
         if (IsEditing && PreviewImage is not null)
             Remember();
         _closed = true;
+        _closing.Cancel();
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e)

@@ -169,7 +169,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         var fields = Assert.IsType<HTable>(header[0]).Rows[0].Cells[0].Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HField>().ToList();
         Assert.Equal(["1", "2"], fields.Select(f => f.Stored));
         var hwpx = Path.Combine(fx.NewFolder(), "case.hwpx");
-        HwpxWriter.Write(document, hwpx);
+        HwpxWriter.Write(document, hwpx, cancellationToken: TestContext.Current.CancellationToken);
         using var zip = ZipFile.OpenRead(hwpx);
         using var section = new StreamReader(zip.GetEntry("Contents/section0.xml")!.Open());
         Assert.Contains("Page 1 of 2", await section.ReadToEndAsync(Token), StringComparison.Ordinal);
@@ -938,7 +938,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
             document.Sections.Add(section);
         }
         var path = Path.Combine(fx.NewFolder(), "sections.hwpx");
-        HwpxWriter.Write(document, path);
+        HwpxWriter.Write(document, path, cancellationToken: TestContext.Current.CancellationToken);
 
         var pages = Compose(HwpxReader.ReadForLayout(path, Path.Combine(fx.NewFolder(), "media")));
 
@@ -955,7 +955,7 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         var document = new HDocument();
         document.Sections.Add(new HSection { Blocks = { paragraph, Paragraph("다음 문단") } });
         var hwpx = Path.Combine(fx.NewFolder(), "lines.hwpx");
-        HwpxWriter.Write(document, hwpx);
+        HwpxWriter.Write(document, hwpx, cancellationToken: TestContext.Current.CancellationToken);
 
         var txt = (await File.ReadAllTextAsync(await ConvertAsync(hwpx, "txt"), Token)).ReplaceLineEndings("\n");
         var md = (await File.ReadAllTextAsync(await ConvertAsync(hwpx, "md"), Token)).ReplaceLineEndings("\n");

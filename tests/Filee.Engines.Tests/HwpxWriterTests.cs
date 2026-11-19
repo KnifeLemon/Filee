@@ -32,7 +32,7 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         document.Sections.Add(new HSection { Blocks = { paragraph } });
         var hwpx = Path.Combine(dir, "doc.hwpx");
 
-        HwpxWriter.Write(document, hwpx);
+        HwpxWriter.Write(document, hwpx, cancellationToken: TestContext.Current.CancellationToken);
 
         ValidPackage(hwpx, expectImages: 1);
         using var zip = ZipFile.OpenRead(hwpx);
@@ -48,6 +48,22 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var size = Xml(hwpx).Descendants(Hp + "pic").Single().Element(Hp + "sz")!;
         Assert.Equal(("14400", "7200"), ((string)size.Attribute("width")!, (string)size.Attribute("height")!));
+    }
+
+    [Fact]
+    public void A_cancelled_write_stops_before_its_metafile_pictures_are_drawn()
+    {
+        var dir = fx.NewFolder();
+        var picture = Path.Combine(dir, "chart.emf");
+        File.WriteAllBytes(picture, new EmfBuilder(192, 96).Select(EmfBuilder.NullPen).Brush(1, 0x0000FF).Select(1).Rectangle(8, 8, 88, 88).ToArray());
+        var paragraph = new HParagraph();
+        paragraph.Inlines.Add(new HImage(picture));
+        var document = new HDocument();
+        document.Sections.Add(new HSection { Blocks = { paragraph } });
+        var hwpx = Path.Combine(dir, "doc.hwpx");
+
+        Assert.ThrowsAny<OperationCanceledException>(() => HwpxWriter.Write(document, hwpx, cancellationToken: new CancellationToken(canceled: true)));
+        Assert.False(File.Exists(hwpx));
     }
 
     private const string Markdown = """
@@ -293,7 +309,7 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         document.Sections.Add(section);
 
         using (new FileStream(picture, FileMode.Open, FileAccess.Read, FileShare.None))
-            Assert.ThrowsAny<IOException>(() => HwpxWriter.Write(document, Path.Combine(dir, "report.hwpx")));
+            Assert.ThrowsAny<IOException>(() => HwpxWriter.Write(document, Path.Combine(dir, "report.hwpx"), cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal([picture], Directory.GetFiles(dir));
     }
 }

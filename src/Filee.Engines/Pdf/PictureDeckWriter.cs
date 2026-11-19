@@ -1,5 +1,6 @@
 // Writes a PowerPoint presentation (PPTX, PresentationML / ECMA-376) whose slides each show one picture, fitted and
-// centred, with optional speaker notes: the package PDF → PPTX needs. Written by hand like the DOCX writer, on the
+// centred, with optional speaker notes, or one PDF page rebuilt as text boxes, pictures, shapes and tables
+// (PdfSlideXml): the package PDF → PPTX needs. Written by hand like the DOCX writer, on the
 // package code it shares with the document slide writer (Hwp/Hwpx/Pptx/PresentationPackage), as small as PowerPoint,
 // LibreOffice Impress and Keynote accept: presentation, one slide master with one blank layout, a theme,
 // presentation / view / table style properties, the slides with their pictures, a notes master and notes slides when
@@ -107,6 +108,52 @@ internal sealed class PictureDeckWriter : IDisposable
 
         if (hasNotes)
             _package.WriteNotesSlide(number, notes!.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'));
+    }
+
+    /// <summary>
+    /// Adds a slide with the editable content of <paramref name="page"/> (PdfDocumentReader.ReadSlides), scaled and
+    /// centred on the slide like <see cref="Fit"/>; its pictures are copied into the package.
+    /// </summary>
+    public void AddSlide(PdfSlidePage page, string name)
+    {
+        var number = _slideHasNotes.Count + 1;
+        _slideHasNotes.Add(false);
+        var (x, y, cx, _) = Fit(page.Width, page.Height);
+        var placement = new PdfSlideXml.Placement(x, y, cx / Math.Max(page.Width, 1e-6));
+
+        var relationships = new List<(string Id, string Type, string Target, bool External)> { ("rId1", "slideLayout", "../slideLayouts/slideLayout1.xml", false) };
+        var links = new Dictionary<string, string>(StringComparer.Ordinal);
+        string Picture(string path)
+        {
+            var extension = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
+            var (type, partExtension) = extension is "jpg" or "jpeg" ? ("image/jpeg", "jpeg") : ("image/png", "png");
+            var part = $"image{number}_{relationships.Count}.{partExtension}";
+            using (var media = _package.Create($"ppt/media/{part}", partExtension, type, compress: partExtension == "png"))
+            using (var file = File.OpenRead(path))
+                file.CopyTo(media);
+            var id = $"rId{relationships.Count + 1}";
+            relationships.Add((id, "image", $"../media/{part}", false));
+            return id;
+        }
+        string Link(string url)
+        {
+            if (!links.TryGetValue(url, out var id))
+            {
+                id = $"rId{relationships.Count + 1}";
+                relationships.Add((id, "hyperlink", url, true));
+                links[url] = id;
+            }
+            return id;
+        }
+
+        var shapes = PdfSlideXml.Shapes(page, placement, Picture, Link);
+        var background = page.Background is { } color && PdfSlideXml.Hex(color) != "FFFFFF"
+            ? $"<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"{PdfSlideXml.Hex(color)}\"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>"
+            : "";
+        _package.Write($"ppt/slides/slide{number}.xml",
+            $"<p:sld {Namespaces}><p:cSld name=\"{Escape(name)}\">{background}{TreeStart}{shapes}</p:spTree></p:cSld>" +
+            "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>", PresentationTypes + "slide+xml");
+        _package.Write($"ppt/slides/_rels/slide{number}.xml.rels", Rels(relationships));
     }
 
     /// <summary>Writes the parts that list the slides and moves the finished file into place.</summary>

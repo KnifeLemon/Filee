@@ -1,5 +1,5 @@
 // A workbook printed the way Excel prints the entire workbook to PDF: every visible sheet with something on it, each
-// with its own page setup (SheetPagination), its pages drawn by SheetPageRenderer, numbered on from the sheet before
+// with its own page setup (SheetPagination), a chart sheet as one page with its chart filling the margins, its pages drawn by SheetPageRenderer, numbered on from the sheet before
 // unless a sheet sets its first page number, &N counting every page. The pages are written by PdfPageWriter (fonts
 // subset by Filee); a workbook with several sheets gets a bookmark per sheet.
 
@@ -63,7 +63,7 @@ internal static class SheetPrinter
             var guard = new LayoutGuard(limits, cancellationToken);
             var sheets = new List<(Worksheet Sheet, SheetIndex Index, SheetPrintPlan Plan)>();
             var count = 0;
-            foreach (var sheet in book.Sheets)
+            foreach (var sheet in book.Printed())
             {
                 guard.Paragraph();
                 var index = new SheetIndex(sheet);
@@ -77,7 +77,7 @@ internal static class SheetPrinter
             var number = 1;
             foreach (var (sheet, index, plan) in sheets)
             {
-                var conditional = plan.Pages.Count > 0 ? ConditionalFormatting.Apply(sheet, Bounds(plan.Pages), index) : [];
+                var conditional = plan.Pages.Count > 0 && sheet.Chart is null ? ConditionalFormatting.Apply(sheet, Bounds(plan.Pages), index) : [];
                 var drawings = Drawings(sheet, printed.Images);
                 var headerPictures = HeaderPictures(sheet, printed.Images);
                 var renderer = new SheetPageRenderer(book, plan, index, fonts, conditional, drawings);

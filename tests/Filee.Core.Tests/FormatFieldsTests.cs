@@ -145,7 +145,7 @@ public class FormatFieldsTests
             new Dictionary<FormatGrade, int>
             {
                 [FormatGrade.Everyday] = 19,
-                [FormatGrade.General] = 102,
+                [FormatGrade.General] = 105,
                 [FormatGrade.Specialist] = 133,
                 [FormatGrade.Legacy] = 52,
             },

@@ -108,6 +108,9 @@ internal sealed partial class PdfDocumentReader
     private readonly string _mediaFolder;
     private readonly bool _textOnly;
     private readonly bool _ocrLayer;
+
+    /// <summary>Read for editable slides (PdfDocumentReader.Slides): pictures as large as the page are content too.</summary>
+    private bool _slides;
     private byte[]? _pdfBytes;
     private int _pictures;
 
@@ -346,7 +349,8 @@ internal sealed partial class PdfDocumentReader
                 lead.StartBaseLine.Y, Math.Max(1, size), format, link, word.DrawnForward));
         }
 
-        if (words.Count == 0)
+        // On a slide a page of pictures and drawings keeps them as they are; only sideways text needs the rendering.
+        if (words.Count == 0 && !(_slides && !pageLetters.Any(l => !string.IsNullOrWhiteSpace(l.Value) && l.RenderingMode != TextRenderingMode.Neither)))
         {
             // A scan, a page of drawings, or a page whose text runs sideways as shown (a portrait page turned by
             // /Rotate): the rendered page keeps everything.
@@ -464,7 +468,10 @@ internal sealed partial class PdfDocumentReader
 
     // ───────────────────────── Pictures ─────────────────────────
 
-    /// <summary>Pictures of a text page. A picture covering the page behind text is the scan under an OCR layer: skipped.</summary>
+    /// <summary>
+    /// Pictures of a text page. A picture covering the page behind text is the scan under an OCR layer: skipped, but
+    /// on slides (where the invisible text is left out) it is the page's background or the scan itself.
+    /// </summary>
     private IEnumerable<Item> Pictures(Page page, PageContent content)
     {
         var result = new List<Item>();
@@ -477,7 +484,7 @@ internal sealed partial class PdfDocumentReader
                 var bounds = new PdfRectangle(Math.Max(0, box.Left), Math.Max(0, box.Bottom), Math.Min(content.Width, box.Right), Math.Min(content.Height, box.Top));
                 if (bounds.Width < 6 || bounds.Height < 6 || image.IsImageMask)
                     continue;
-                if (bounds.Width * bounds.Height > 0.85 * content.Width * content.Height)
+                if (!_slides && bounds.Width * bounds.Height > 0.85 * content.Width * content.Height)
                     continue;
 
                 string? path = null;

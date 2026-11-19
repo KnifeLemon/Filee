@@ -62,6 +62,13 @@ internal static class SheetPagination
         int pagesBefore, CancellationToken cancellationToken = default)
     {
         var defaultFont = fonts.Pixels(book.DefaultFontName, book.DefaultFontSize);
+        if (sheet.Chart is not null)
+        {
+            // A chart sheet: one page, its chart filling the margins (Excel's "Use full page"), no cells.
+            if (pagesBefore + 1L > limits.MaxPages)
+                throw DocumentLimits.Exceeded($"The workbook prints on more than {DocumentLimits.Count(limits.MaxPages)} pages.");
+            return new SheetPrintPlan(sheet, new SheetGrid([], []), 1, [new SheetPage(new CellRange(0, 0, 0, 0), 0, -1, 0, -1, false, false)], 0, 0, defaultFont);
+        }
         var areas = Areas(sheet);
         var right = areas.Select(a => a.Right).Concat(sheet.TitleColumns is { } tc ? [tc.Last] : []).DefaultIfEmpty(-1).Max();
         var bottom = areas.Select(a => a.Bottom).Concat(sheet.TitleRows is { } tr ? [tr.Last] : []).DefaultIfEmpty(-1).Max();

@@ -597,6 +597,8 @@ internal sealed class WmfPlayer
         if (bitsAt + (long)widthBytes * height > data.Length || widthBytes * 8L < (long)width * bpp)
             throw new DibFormatException($"has a bitmap of {width} × {height} pixels whose pixel data is cut off");
         using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+        if (bitmap.GetPixels() == IntPtr.Zero)
+            throw new InvalidOperationException("Skia could not allocate the bitmap."); // SetPixel would write through nothing
         for (var y = 0; y < height; y++)
         {
             var row = data.Slice(bitsAt + y * widthBytes, widthBytes);

@@ -43,7 +43,7 @@
    The drop is always reported as *Copy* so Explorer never deletes the source files.
 4. **Plan** – for every file, `RoutePlanner` finds the cheapest chain of converter edges from the source format to
    the target (at most 3 hops). Engine priority (Settings → Engines) breaks ties. Some edges are limited: tracing
-   only starts from raster images (`ImageSourcesOnly`), and PDF → PPTX picture slides are only ever a route of their
+   only starts from raster images (`ImageSourcesOnly`), and PDF → PPTX slides are only ever a route of their
    own (`DirectOnly`), never a step of a longer one. An envelope (a signed `.p7m`) is planned from the file inside
    it: its engine (`IEnvelopeOpener`) names that file's format, and the route opens it first, then goes on from there
    (`RoutePlanner.PlanThrough`: P7M → PDF → PNG).

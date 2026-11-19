@@ -101,7 +101,7 @@ public sealed class EbookConverter : IConverter
         var output = step.Output.Allocate(step.To);
         if (output is null)
             return [];
-        Write(book, step, output, work);
+        Write(book, step, output, work, cancellationToken);
         progress?.Report(1);
         return [output];
     }
@@ -158,7 +158,7 @@ public sealed class EbookConverter : IConverter
         }
     }
 
-    private static void Write(Book book, ConversionStep step, string output, string work)
+    private static void Write(Book book, ConversionStep step, string output, string work, CancellationToken cancellationToken)
     {
         switch (step.To)
         {
@@ -167,7 +167,7 @@ public sealed class EbookConverter : IConverter
                 break;
             case "hwpx":
                 book.Document.Title = book.DisplayTitle(step.InputPath);
-                HwpxWriter.Write(book.Document, output);
+                HwpxWriter.Write(book.Document, output, cancellationToken: cancellationToken);
                 break;
             case "txt":
                 File.WriteAllText(output, PlainTextWriter.Write(book.Document), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));

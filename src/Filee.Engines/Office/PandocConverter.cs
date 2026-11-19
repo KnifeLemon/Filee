@@ -167,7 +167,7 @@ public sealed class PandocConverter : IConverter
         if (!File.Exists(output))
             throw new InvalidOperationException($"Pandoc failed (exit {result.ExitCode}). {result.StandardError.Trim()}");
         if (media is not null)
-            MetafilesToPng(output, Path.Combine(outputFolder, media), step.Preset);
+            MetafilesToPng(output, Path.Combine(outputFolder, media), step.Preset, cancellationToken);
         progress?.Report(1);
         return [output];
     }
@@ -256,7 +256,7 @@ public sealed class PandocConverter : IConverter
     /// Word documents often hold EMF/WMF pictures, which browsers and Markdown editors don't show: each extracted one
     /// becomes a PNG and the result links to that. A metafile that can't be drawn (damaged, EMF+ only outside Windows) stays.
     /// </summary>
-    private static void MetafilesToPng(string output, string mediaFolder, Preset preset)
+    private static void MetafilesToPng(string output, string mediaFolder, Preset preset, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(mediaFolder))
             return;
@@ -270,7 +270,7 @@ public sealed class PandocConverter : IConverter
                 continue;
             try
             {
-                using var images = ImageReader.Read(metafile, Path.GetExtension(metafile)[1..].ToLowerInvariant(), preset);
+                using var images = ImageReader.Read(metafile, Path.GetExtension(metafile)[1..].ToLowerInvariant(), preset, cancellationToken);
                 images[0].Write(png, MagickFormat.Png);
             }
             catch (Exception ex) when (ex is MagickException or IOException or InvalidDataException or NotSupportedException

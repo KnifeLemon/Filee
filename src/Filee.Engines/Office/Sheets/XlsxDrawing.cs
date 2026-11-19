@@ -6,7 +6,8 @@
 // shapes, freeform shapes, gradient, pattern and picture fills, arrowheads, turned groups, EMF / WMF / TIFF and linked
 // pictures. SheetCapabilities asks for that name, so such a workbook can go to LibreOffice where it is installed.
 // Charts are read from their chart part (ChartReader, with the workbook's theme) and drawn; those ChartReader doesn't
-// draw (3D, radar, stock, ...) and new chart types (chartex) are named "charts".
+// draw (3D, radar, stock, ...) and new chart types (chartex) are named "charts". A chart sheet's drawing gives its one
+// chart (ChartSheet), which the printer draws alone on the sheet's page.
 //
 // Excel anchors a turned picture or shape by the box it covers on the sheet: one turned by 90° has an anchor as wide as
 // the picture is tall. The unturned size (a:xfrm ext) tells which way round the anchor is (SheetDrawing.Size).
@@ -82,6 +83,20 @@ internal sealed class XlsxDrawing
         foreach (var anchor in package.Part(part)?.Root?.Elements() ?? [])
             drawing.Anchor(anchor);
         return drawing;
+    }
+
+    /// <summary>
+    /// The chart of a chart sheet's drawing part (Excel puts one chart there, on an absolute anchor), printed alone on
+    /// the sheet's page; null when there is none ChartReader draws. <c>LeftOut</c> names what isn't printed: a chart
+    /// ChartReader doesn't draw, or pictures and shapes placed over the chart.
+    /// </summary>
+    /// <param name="charts">The workbook's count of chart points drawn, or null for the check alone.</param>
+    public static (Chart? Chart, string? LeftOut) ChartSheet(OpcPackage package, string part, XElement? theme, ChartBudget? charts = null)
+    {
+        var drawing = Read(package, part, theme, read: true, charts);
+        var chart = drawing.Drawings.OfType<SheetChart>().FirstOrDefault();
+        var other = drawing.Drawings.FirstOrDefault(d => !ReferenceEquals(d, chart));
+        return (chart?.Chart, drawing.FirstLeftOut ?? (chart is null ? "charts" : other is null ? null : other is SheetPicture ? "pictures" : other is SheetChart ? "charts" : "shapes"));
     }
 
     private void LeftOut(string what) => FirstLeftOut ??= what;

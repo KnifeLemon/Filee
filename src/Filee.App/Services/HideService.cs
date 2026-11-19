@@ -27,13 +27,15 @@ public static class HideService
     /// the picture's own. Animations and multi-page files are refused: the frames drawn on the first page would hide
     /// nothing on the others.
     /// </summary>
-    public static Task<(MagickImage Preview, int Width, int Height)> LoadPreviewAsync(string path, Preset tool) =>
+    /// <param name="cancellationToken">Stops the read (between a metafile's records, a GIMP file's rows) when the window closes.</param>
+    public static Task<(MagickImage Preview, int Width, int Height)> LoadPreviewAsync(string path, Preset tool,
+        CancellationToken cancellationToken = default) =>
         Task.Run(() =>
         {
             var format = FormatRegistry.Detect(path)?.Id ?? throw new NotSupportedException("Unknown picture format.");
             if (format == "png" && Apng.IsAnimated(path))
                 throw new NotSupportedException("Animated PNG files can't have parts hidden.");
-            using var images = ImageReader.Read(path, format, tool);
+            using var images = ImageReader.Read(path, format, tool, cancellationToken);
             var frames = ImageEncoder.SelectFrames(images, format, format);
             if (frames.Count != 1)
                 throw new NotSupportedException("Animated or multi-page pictures can't have parts hidden.");
@@ -52,7 +54,7 @@ public static class HideService
                 preview.Dispose();
                 throw;
             }
-        });
+        }, cancellationToken);
 
     /// <summary>
     /// The size of the squares (or the blur) on the preview, for a picture of <paramref name="width"/> × <paramref name="height"/>

@@ -7,7 +7,7 @@
 //    DirectOnly, so a document → PDF never takes the shortcut through slides and LibreOffice's cheap PPTX → PDF;
 //  * as a step towards other presentation formats (Markdown → PPTX → ODP / PPT through LibreOffice) it costs as much
 //    as a fallback (25), so it is only taken where nothing else reaches the target.
-// PDF keeps its picture slides (PdfSlidesConverter); the PowerPoint formats themselves are the OOXML engine's job.
+// PDF has slides of its own (PdfSlidesConverter); the PowerPoint formats themselves are the OOXML engine's job.
 // PowerPoint 97–2003 (PPT) is the exception: its slides are written out as the PPTX package it translates to
 // (Office/Ppt), one edge at the writer's cost, checked so that a PowerPoint 95 file takes LibreOffice.
 
@@ -29,7 +29,7 @@ public sealed class PptxWriterConverter : IConverter, ICapabilityCheck
     /// <summary>As a step to ODP, PPT, ...: as expensive as LibreOffice's fallback edges.</summary>
     internal const int StepCost = 25;
 
-    /// <summary>Formats that don't become document slides: presentations already, and PDF (its picture slides).</summary>
+    /// <summary>Formats that don't become document slides: presentations already, and PDF (its own slides).</summary>
     private static readonly HashSet<string> NotSources = new(StringComparer.OrdinalIgnoreCase) { "pptx", "pptm", "potx", "potm", "ppsx", "pdf", PptReader.Format };
 
     private bool? _pandoc;

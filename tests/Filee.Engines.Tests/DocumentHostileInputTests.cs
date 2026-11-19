@@ -98,7 +98,7 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
         var document = new HDocument();
         document.Sections.Add(new HSection { Blocks = { Paragraph("seed") } });
         var seed = Path.Combine(folder, "seed.hwpx");
-        HwpxWriter.Write(document, seed);
+        HwpxWriter.Write(document, seed, cancellationToken: TestContext.Current.CancellationToken);
         var parts = new Dictionary<string, Action<Stream>>(more ?? [])
         {
             ["Contents/section0.xml"] = Text($"<?xml version=\"1.0\" encoding=\"UTF-8\"?><hs:sec {HwpNamespaces}>{paragraphs}</hs:sec>"),
@@ -306,7 +306,7 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
             var document = new HDocument();
             document.Sections.Add(new HSection { Blocks = { NestedTables(levels) } });
             var path = Path.Combine(fx.NewFolder(), $"nested-{levels}.hwpx");
-            HwpxWriter.Write(document, path);
+            HwpxWriter.Write(document, path, cancellationToken: TestContext.Current.CancellationToken);
             return path;
         }
         HDocument? read = null;
@@ -435,7 +435,7 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
         paragraph.Inlines.Add(new HImage(picture) { Width = 1000, Height = 750 });
         document.Sections.Add(new HSection { Blocks = { paragraph } });
         var seed = Path.Combine(fx.NewFolder(), "picture.hwpx");
-        HwpxWriter.Write(document, seed);
+        HwpxWriter.Write(document, seed, cancellationToken: TestContext.Current.CancellationToken);
         string binData;
         using (var zip = ZipFile.OpenRead(seed))
             binData = zip.Entries.Single(e => e.FullName.StartsWith("BinData/", StringComparison.Ordinal)).FullName;

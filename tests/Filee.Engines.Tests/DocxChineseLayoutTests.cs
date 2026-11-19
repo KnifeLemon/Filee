@@ -99,7 +99,7 @@ public class DocxChineseLayoutTests(EngineFixture fx) : IClassFixture<EngineFixt
         var dir = fx.NewFolder();
         var docx = new DocxBuilder { Styles = ChineseStyles }.Paragraph(P(R("“在线教育平台”、《标题》")));
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx);
+        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx, cancellationToken: TestContext.Current.CancellationToken);
 
         var header = Xml(hwpx, "Contents/header.xml");
         string Face(XElement fontRef, string slot) =>
@@ -125,7 +125,7 @@ public class DocxChineseLayoutTests(EngineFixture fx) : IClassFixture<EngineFixt
         var dir = fx.NewFolder();
         var docx = new DocxBuilder { Styles = ChineseStyles }.Paragraph(P(R("“在线”、‘课’……Web。")));
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx);
+        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx, cancellationToken: TestContext.Current.CancellationToken);
 
         var copy = RhwpInput.Prepare(hwpx, dir, ChineseComputer);
 
@@ -158,7 +158,7 @@ public class DocxChineseLayoutTests(EngineFixture fx) : IClassFixture<EngineFixt
         var dir = fx.NewFolder();
         var docx = new DocxBuilder { Styles = ChineseStyles }.Paragraph(P(R("0～50℃，湿度")));
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx);
+        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx, cancellationToken: TestContext.Current.CancellationToken);
 
         var copy = RhwpInput.Prepare(hwpx, dir, ChineseComputer);
 
@@ -173,7 +173,7 @@ public class DocxChineseLayoutTests(EngineFixture fx) : IClassFixture<EngineFixt
         var dir = fx.NewFolder();
         var docx = new DocxBuilder().Paragraph(P(R("“인용”、《제목》")));
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx);
+        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx, cancellationToken: TestContext.Current.CancellationToken);
 
         // A Korean font: rhwp has its widths.
         Assert.Null(RhwpInput.Prepare(hwpx, dir, _ => new InstalledFont(true, _ => true, _ => 1.0)));

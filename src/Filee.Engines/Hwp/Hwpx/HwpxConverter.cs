@@ -101,7 +101,7 @@ public sealed class HwpxConverter : IConverter, ICapabilityCheck
         var output = step.Output.Allocate("hwpx");
         if (output is null)
             return [];
-        HwpxWriter.Write(document, output);
+        HwpxWriter.Write(document, output, cancellationToken: cancellationToken);
         progress?.Report(1);
         return [output];
     }

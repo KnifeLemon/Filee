@@ -98,6 +98,9 @@ internal static class DocumentReaders
         ["rst"] = RstReader.Read,
         ["org"] = OrgReader.Read,
         ["dbk"] = DocBookReader.Read,
+        // Mind maps, read as an outline (Markup/MindMapReader).
+        [MindMapReader.FreeMind] = MindMapReader.ReadFreeMind,
+        [MindMapReader.XMind] = MindMapReader.ReadXMind,
     };
 
     /// <summary>

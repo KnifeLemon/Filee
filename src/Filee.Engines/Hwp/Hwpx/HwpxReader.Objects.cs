@@ -1,6 +1,8 @@
 // Objects inside runs: pictures (inline or floating), rectangles / ellipses / lines, text boxes (drawing objects with
-// hp:drawText), groups (hp:container), equations and other objects that only carry text. Objects the model cannot
-// hold (OLE, charts, video, form controls, free-form shapes without text) are skipped and counted. Read for layout,
+// hp:drawText), groups (hp:container), equations and other objects that only carry text. Charts (hp:chart, whose
+// chartIDRef names an OOXML chart part in the package) are read by ChartReader and become a picture of the chart that
+// carries it, so the renderer draws it as vectors and the writers get the picture. Objects the model cannot hold (OLE,
+// charts ChartReader doesn't draw, video, form controls, free-form shapes without text) are skipped and counted. Read for layout,
 // polygons, curves and arcs become shapes with their outline, and pictures, shapes and text boxes keep their caption.
 // Every object keeps its rotation, mirroring and z-order, pictures their crop.
 
@@ -13,6 +15,9 @@ internal sealed partial class HwpxReader
 {
     /// <summary>Drawing objects that may appear in a run or a group.</summary>
     private static readonly HashSet<string> ShapeNames = ["pic", "rect", "ellipse", "line", "arc", "polygon", "curve", "connectLine", "container"];
+
+    /// <summary>Chart points drawn in the document.</summary>
+    private readonly Charts.ChartBudget _charts = new();
 
     /// <summary>Size and position of an object: <c>Anchor</c> is null for objects laid out like a character.</summary>
     private readonly record struct Placement(int Width, int Height, HAnchor? Anchor);
@@ -79,6 +84,13 @@ internal sealed partial class HwpxReader
                 break;
             case "btn" or "checkBtn" or "radioBtn" or "edit" or "comboBox" when _forLayout:
                 builder.Add(FormControl(element));
+                break;
+            case "chart" when ChartPicture(element) is { } chart:
+                builder.Add(chart);
+                break;
+            case "chart" when OleFallback(element) is { } ole:
+                // A chart ChartReader doesn't draw: the OLE object 한글 saved beside it (hp:switch's hp:default).
+                DrawingObject(ole, builder, format);
                 break;
             case "ole" when _forLayout && OlePicture(element) is { } picture:
                 builder.Add(picture);
@@ -183,6 +195,63 @@ internal sealed partial class HwpxReader
                 : default,
             BaseLine = placement.Anchor is null ? 85 : null,
         };
+    }
+
+    /// <summary>
+    /// An hp:chart drawn from its OOXML chart part (chartIDRef, a path in the package): a PNG of it for the writers that
+    /// carries the chart for the renderer; null when the part is missing or ChartReader doesn't draw it. HWPX has no
+    /// DrawingML theme: scheme colours are Office's.
+    /// </summary>
+    private HImage? ChartPicture(XElement element)
+    {
+        var part = Attr(element, "chartIDRef")?.Trim().TrimStart('/');
+        if (part is not { Length: > 0 } || part.Contains("..", StringComparison.Ordinal) || part.Contains(':', StringComparison.Ordinal))
+            return null;
+        var placement = PlacementOf(element);
+        if (placement.Width <= 0 || placement.Height <= 0
+            || Charts.ChartReader.Read(ChartPart(part), Slides.DrawingColors.FromTheme(null)).Chart is not { } chart)
+            return null;
+        _budget.Object();
+        _charts.Charge(chart);
+        // Points are HWPUNIT / 100.
+        if (Charts.ChartPicture.Png(chart, placement.Width / 100f, placement.Height / 100f, 150) is not { } png)
+            return null;
+        Directory.CreateDirectory(_mediaFolder);
+        var path = Path.Combine(_mediaFolder, $"hwpx-chart-{_media.Count + 1}.png");
+        File.WriteAllBytes(path, png);
+        _media[$"chart|{path}"] = path;
+        return new HImage(path)
+        {
+            Width = placement.Width,
+            Height = placement.Height,
+            Anchor = placement.Anchor,
+            Transform = Transform(element),
+            ZOrder = ZOrder(element),
+            OuterMargin = Child(element, "outMargin") is { } outMargin
+                ? new HInsets(Int(outMargin, "left"), Int(outMargin, "right"), Int(outMargin, "top"), Int(outMargin, "bottom"))
+                : default,
+            BaseLine = placement.Anchor is null ? 85 : null,
+            Chart = chart,
+        };
+    }
+
+    /// <summary>The OLE object in the hp:default branch of the hp:switch whose hp:case holds <paramref name="chart"/>, or null.</summary>
+    private static XElement? OleFallback(XElement chart) =>
+        chart.Parent is { Name.LocalName: "case" } branch && branch.Parent is { Name.LocalName: "switch" } choice
+            ? choice.Elements().FirstOrDefault(e => e.Name.LocalName == "default")?.Elements().FirstOrDefault(e => e.Name.LocalName == "ole")
+            : null;
+
+    /// <summary>A chart part's root; null when it is missing or isn't well-formed (the chart is then counted, not drawn).</summary>
+    private XElement? ChartPart(string part)
+    {
+        try
+        {
+            return LoadXml(part, required: false)?.Root;
+        }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The model objects for one drawing object; groups give one object per member.</summary>

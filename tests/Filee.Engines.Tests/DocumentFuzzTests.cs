@@ -114,7 +114,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Fact]
     public void SheetPrinter_prints_or_refuses_every_mutated_ods() =>
-        Fuzz("ods-print", "ods", [File.ReadAllBytes(SheetPrintTests.RichOds(fx.NewFolder()))],
+        Fuzz("ods-print", "ods", [File.ReadAllBytes(SheetPrintTests.RichOds(fx.NewFolder())), File.ReadAllBytes(OdfChartTests.SpreadsheetWithChart(fx.NewFolder(), OdfChartBuilder.Columns()))],
             (path, _) => SheetPrinter.ToPdf(OdsReader.Read(path), SheetPrintSource.Of(path)));
 
     [Fact]
@@ -274,7 +274,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var hangul = HwpxReaderTests.HangulStylePackage(folder);
         // DOCX read and written as HWPX: what Filee's own writer makes.
         var written = Path.Combine(folder, "written.hwpx");
-        HwpxWriter.Write(DocxReader.Read(RichDocx(folder), Path.Combine(folder, "media-docx")), written);
+        HwpxWriter.Write(DocxReader.Read(RichDocx(folder), Path.Combine(folder, "media-docx")), written, cancellationToken: TestContext.Current.CancellationToken);
         // The 한글-style package with the equation seed in place of its "x over y".
         var equation = Path.Combine(folder, "equation.hwpx");
         File.Copy(hangul, equation);
@@ -289,7 +289,9 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             writer.BaseStream.SetLength(0);
             writer.Write(xml.Replace("<hp:script>x over y</hp:script>", $"<hp:script>{System.Security.SecurityElement.Escape(EquationSeed)}</hp:script>", StringComparison.Ordinal));
         }
-        return [File.ReadAllBytes(hangul), File.ReadAllBytes(written), File.ReadAllBytes(equation)];
+        // The 한글-style package with its hp:chart drawn from an OOXML chart part.
+        var chart = ChartTests.HwpxChartPackage(fx.NewFolder(), ChartBuilder.Columns());
+        return [File.ReadAllBytes(hangul), File.ReadAllBytes(written), File.ReadAllBytes(equation), File.ReadAllBytes(chart)];
     }
 
     private List<byte[]> DocxSeeds()

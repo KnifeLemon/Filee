@@ -47,6 +47,25 @@ internal sealed class SevenZip(string executable)
     /// </summary>
     public const string HideVariable = "FILEE_HIDE_7ZIP";
 
+    /// <summary>Set by <see cref="Hide"/> for the code that called it and everything it awaits or starts.</summary>
+    private static readonly AsyncLocal<bool> HiddenHere = new();
+
+    /// <summary>
+    /// Makes <see cref="Locate"/> find no 7-Zip for the calling code and what it awaits or starts, until disposed,
+    /// as <see cref="HideVariable"/> does for the whole process (tests running side by side don't see it).
+    /// </summary>
+    internal static IDisposable Hide()
+    {
+        var before = HiddenHere.Value;
+        HiddenHere.Value = true;
+        return new Restore(() => HiddenHere.Value = before);
+    }
+
+    private sealed class Restore(Action restore) : IDisposable
+    {
+        public void Dispose() => restore();
+    }
+
     /// <summary>The program's name in 7-Zip's folder: 7z.exe on Windows, 7zz (the full console build) elsewhere.</summary>
     internal static string ProgramName => OperatingSystem.IsWindows() ? "7z.exe" : "7zz";
 
@@ -57,7 +76,7 @@ internal sealed class SevenZip(string executable)
     /// </summary>
     public static SevenZip? Locate()
     {
-        if (Environment.GetEnvironmentVariable(HideVariable) == "1")
+        if (HiddenHere.Value || Environment.GetEnvironmentVariable(HideVariable) == "1")
             return null;
         var program = EngineEnvironment.OwnProgram("7zip", ProgramName)
                       ?? EngineEnvironment.BundledProgram("7zip", ProgramName);

@@ -1,6 +1,7 @@
-// PDF → PPTX with a picture of each page on its own slide: slide count and size, pictures fitted and centred, the page
-// range, the speaker notes, the Open XML SDK validator, Filee's own PPTX reader as a second reader, clear failures, and
-// routes: the picture deck is reached from a PDF only and is never a step towards another format.
+// PDF → PPTX with a picture of each page on its own slide (PdfOptions.SlidePictures; the editable slides have
+// PdfEditableSlidesTests): slide count and size, pictures fitted and centred, the page range, the speaker notes, the
+// Open XML SDK validator, Filee's own PPTX reader as a second reader, clear failures, and routes: the PDF slides are
+// reached from a PDF only and are never a step towards another format.
 // The test PDFs are generated (PdfPig's writer, PDFsharp for rotation and passwords) and use the standard 14 fonts.
 
 using System.IO.Compression;
@@ -38,7 +39,7 @@ public class PdfSlidesTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     private async Task<ConversionJob> RunAsync(string input, Preset? preset = null) =>
-        await fx.ConvertAsync([input], preset ?? new Preset { TargetFormat = "pptx" });
+        await fx.ConvertAsync([input], preset ?? new Preset { TargetFormat = "pptx", Pdf = { SlidePictures = true } });
 
     private async Task<string> ConvertAsync(string input, Preset? preset = null)
     {
@@ -79,9 +80,9 @@ public class PdfSlidesTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     /// <summary>
     /// No schema or semantic error for PowerPoint (Open XML SDK), every part has a content type and every relationship
-    /// a target.
+    /// inside the package a target.
     /// </summary>
-    private static void ValidPackage(string pptx)
+    internal static void ValidPackage(string pptx)
     {
         using (var document = PresentationDocument.Open(pptx, false))
         {
@@ -103,7 +104,8 @@ public class PdfSlidesTests(EngineFixture fx) : IClassFixture<EngineFixture>
         foreach (var entry in zip.Entries.Where(e => e.FullName.EndsWith(".rels", StringComparison.Ordinal)))
         {
             var folder = entry.FullName[..entry.FullName.IndexOf("_rels/", StringComparison.Ordinal)];
-            foreach (var target in XDocument.Load(entry.Open()).Root!.Elements(rels + "Relationship").Select(r => (string)r.Attribute("Target")!))
+            foreach (var target in XDocument.Load(entry.Open()).Root!.Elements(rels + "Relationship")
+                         .Where(r => (string?)r.Attribute("TargetMode") != "External").Select(r => (string)r.Attribute("Target")!))
             {
                 var resolved = new Uri(new Uri("pptx:///" + folder), target).AbsolutePath.TrimStart('/');
                 Assert.True(zip.GetEntry(resolved) is not null, $"{entry.FullName} → {target}");
@@ -174,7 +176,7 @@ public class PdfSlidesTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task The_page_range_picks_the_slides_and_the_resolution_is_at_least_150_dpi()
     {
         var path = MakePdf(fx.NewFolder(), (A4Width, A4Height), (A4Width, A4Height), (A4Width, A4Height), (A4Width, A4Height));
-        var preset = new Preset { TargetFormat = "pptx", Pdf = { PageRange = "2-3", RenderDpi = 72 } };
+        var preset = new Preset { TargetFormat = "pptx", Pdf = { PageRange = "2-3", RenderDpi = 72, SlidePictures = true } };
 
         var pptx = await ConvertAsync(path, preset);
 

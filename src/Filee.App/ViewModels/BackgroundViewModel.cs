@@ -52,6 +52,8 @@ public sealed partial class BackgroundViewModel : ObservableObject, IDisposable
     private readonly BackdropOptions[] _looks;
     private int _originalWidth, _originalHeight;
     private bool _closed;
+    /// <summary>Cancelled when the window closes: stops the picture still being read.</summary>
+    private readonly CancellationTokenSource _closing = new();
     /// <summary>
     /// The pictures behind read so far (null: can't be read), with their files' stamps when they were read.
     /// </summary>
@@ -347,7 +349,7 @@ public sealed partial class BackgroundViewModel : ObservableObject, IDisposable
         ShowLook();
         try
         {
-            var (preview, width, height) = await HideService.LoadPreviewAsync(path, _tool);
+            var (preview, width, height) = await HideService.LoadPreviewAsync(path, _tool, _closing.Token);
             Bitmap bitmap;
             using (preview)
             {
@@ -369,6 +371,10 @@ public sealed partial class BackgroundViewModel : ObservableObject, IDisposable
             old?.Dispose();
             OnPropertyChanged(nameof(CornersText));
             ShowPreview();
+        }
+        catch (OperationCanceledException) when (_closed)
+        {
+            return;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -732,6 +738,7 @@ public sealed partial class BackgroundViewModel : ObservableObject, IDisposable
         if (!_closed)
             Remember();
         _closed = true;
+        _closing.Cancel();
         _loc.LanguageChanged -= OnLanguageChanged;
         PictureImage?.Dispose();
         PictureImage = null;

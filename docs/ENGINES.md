@@ -13,18 +13,18 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF through the Filee renderer, → DOCX through the DOCX writer) |
-| **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
+| **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)); **FreeMind / Freeplane (MM) and XMind mind maps → Markdown, HTML, TXT, OPML** as outlines (see [Mind maps](#mind-maps)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLSB, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLSB, XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
-| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
-| **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → DOCX** |
-| **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP) → ODT** (OpenDocument text, LibreOffice Writer) |
+| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF, mind maps (MM, XMind) → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
+| **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → DOCX** |
+| **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → ODT** (OpenDocument text, LibreOffice Writer) |
 | **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
 | **ODP writer** | built in | **PPTX (+ PPTM/POTX/POTM/PPSX), PPT → ODP** with masters, shapes, pictures, tables, lists and speaker notes; **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → ODP slides** laid out as the PPTX writer lays them out (see [ODP writer](#odp-writer)); a deck with what the slide model leaves out (charts without a picture, effects, 3D) keeps LibreOffice's route |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
-| PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
+| PDF slides | built in (PdfPig, PDFium) | **PDF → PPTX**: each page rebuilt as an editable slide (text boxes with the PDF's fonts, pictures, shapes, ruled tables); or, as a preset option, a picture of each page with its text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
 | Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT, RTF, HWP, HWPX, HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
@@ -32,14 +32,14 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
+| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats), mind maps as outlines → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP, and Windows app packages MSIX / APPX), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ/ZST), GZ, BZ2, XZ, LZMA, Z, ZST, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs, GMA** (in-process); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
@@ -60,7 +60,7 @@ Documents and slides are laid out by the [Filee renderer](#filee-renderer-pdf-ou
 what it doesn't draw yet, written as HWPX and rendered by rhwp); spreadsheets are printed by Filee's own print engine
 (Excel's page logic, see [Spreadsheet printing](#spreadsheet-printing)). Anything the built-in readers understand
 (including PDF) is written as DOCX by the DOCX writer, as ODT by the ODT writer and as PPTX slides by the PPTX writer
-(PDF keeps its picture slides).
+(PDF has its own slides, see [PDF → PPTX](#pdf--pptx)).
 LibreOffice's and Pandoc's costs are set so the built-in route always wins where one exists.
 
 Except for text that needs shaping. rhwp draws one glyph per character from left to right without OpenType shaping,
@@ -875,7 +875,7 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
 The XLSX donut also offers **PDF + Edit** (`tool-sheet-studio`). This interactive tool preserves the original
 workbook, makes one disposable copy per selected sheet region, applies that region's print settings, and prints it
 with the same engine as an ordinary XLSX → PDF: Filee's own print engine (below), or LibreOffice when **Use
-LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with chart
+LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with XLSB chart
 sheets, 3D charts or other objects the print engine doesn't draw yet; without LibreOffice the studio shows the printer's notice). Every
 studio setting (paper, orientation, margins, scale or fit to pages, page order, print area, hidden rows and columns,
 manual breaks, sheet choice) is written into the copy and read by the print engine; the sheet's own gridlines,
@@ -957,9 +957,12 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   XFD1048576 would be about 35 million pages), and the layout runs under `LayoutGuard`. `DocumentFuzzTests` mutates
   an XLSX and an ODS built in code and prints them.
 - **Charts** (bar, column, line, area, pie, doughnut, scatter) on a sheet are printed from their chart part by the
-  [chart drawer](#charts); 3D, radar, stock, surface and bubble charts, new chart types (`chartex`) and chart sheets
-  are named, so such a workbook takes LibreOffice where it is installed.
-- **Not printed yet.** Chart sheets, shapes with text, text boxes, comments, sparklines; data bars, icon sets and conditional formats
+  [chart drawer](#charts); an XLSX chart sheet prints as one page, its chart filling the margins, with the sheet's
+  header and footer (`Workbook.ChartSheets`, for the printer only); ODS charts (chart objects in frames anchored to a
+  cell or the sheet) are read by `OdfChartReader` and printed the same way. 3D, radar, stock, surface and bubble
+  charts, new chart types (`chartex`), XLSB chart sheets and chart sheets with pictures or shapes over the chart are
+  named, so such a workbook takes LibreOffice where it is installed.
+- **Not printed yet.** XLSB chart sheets, shapes with text, text boxes, comments, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).
@@ -1069,7 +1072,8 @@ test turns it on.
   (`Libreoffice_chosen_for_*`), `RoutePlannerTests` (the costs).
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
   or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects, charts
-  other than the DrawingML ones the [chart drawer](#charts) draws, vertical text, form controls, videos, SmartArt — and a deck for what the slide
+  other than the DrawingML ones the [chart drawer](#charts) draws (Word charts, HWPX `hp:chart` parts) and the ODF ones
+  `OdfChartReader` reads (ODT chart objects), vertical text, form controls, videos, SmartArt — and a deck for what the slide
   renderer doesn't draw (charts the chart drawer doesn't draw without a stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
   without it, so such a file takes its usual route (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
   file is the one the engine looked at. Text formats hold nothing it can't draw.
@@ -1616,8 +1620,10 @@ through the corners); 3D and other charts the chart drawer doesn't draw; notes p
 ## Charts
 
 `Charts/` reads a DrawingML chart part (`c:chartSpace`, ECMA-376 Part 1 §21.2) and draws it with Skia, text as glyph
-runs, for the sheet printer (`XlsxDrawing`, XLSX and XLSB), the document renderer (Word `c:chart` through
-`DocxReader` and `FloatingObjects`) and the slide renderer (`PptxSlideReader`, `SlideRenderer`).
+runs, for the sheet printer (`XlsxDrawing`, XLSX and XLSB, chart sheets too), the document renderer (Word `c:chart`
+through `DocxReader` and `FloatingObjects`, HWPX `hp:chart` through `HwpxReader`) and the slide renderer
+(`PptxSlideReader`, `SlideRenderer`). OpenDocument charts go through the same model (`OdfChartReader`), and Excel
+chart templates are drawn on their own (`ChartTemplate`).
 
 - **Read** (`ChartReader`): bar and column (clustered, stacked, 100 %, horizontal), line (markers, smooth, stacked),
   area, pie (first slice angle, pulled-out slices), doughnut and scatter plots, several in one plot area against
@@ -1635,13 +1641,35 @@ runs, for the sheet printer (`XlsxDrawing`, XLSX and XLSB), the document rendere
   EPUB, ...; the slide's picture in ODP and in a deck's text.
 - **Named instead** (the left-out notice says "charts"; the checks send the file to LibreOffice where it is
   installed): 3D, radar, bubble, stock, surface and bar-of-pie charts and new chart types (`chartex`); a fallback
-  picture, when the file stores one, is drawn for those on slides.
+  picture, when the file stores one, is drawn for those on slides (and an HWPX chart's OLE object in its place).
 - **Hostile input:** the part comes through the package's XML limits; more than 1,024 series or 1,048,576 points per
   chart (a cache's `ptCount` or highest index counts, not only the points it holds) is refused with
   `error.document_too_complex`, as is a document whose charts draw more than ten times that (`ChartBudget`, a chart
   placed many times counting each time); texts are cut at 1,024 characters, values clamped to ±1e100, data labels
   (4,096), markers (100,000), measured category labels (2,000) and ticks per axis (1,000) capped. `ChartTests` builds
-  the charts in code; `ChartFuzzTests` mutates chart parts alone and in a printed workbook.
+  the charts in code; `ChartFuzzTests` mutates chart parts alone, in a printed workbook (a chart sheet too) and in a
+  chart template.
+- **Chart templates** (`.crtx`, `ChartTemplate`, #1354): the package's chart part (its chart template relationship,
+  else the content types, else `chart/chart.xml`) with its theme override's colours and fonts. Series without cached
+  values get Office's sample values (4.3, 2.5, 3.5, 4.5 / 2.4, 4.4, 1.8, 2.8 / 2, 2, 3, 5; a pie 8.2, 3.2, 1.4, 1.2)
+  and "Category 1–4" / "Series N", and a plot without series gets three sample series (one for a pie or doughnut), as
+  Excel's template preview shows a template. 3D bar, line, area and pie plots are drawn flat. Drawn by the
+  [drawing engine](#drawings-visio-odg) on a 5 × 3 in page to PDF, SVG and PNG. Radar, bubble, stock, surface,
+  bar-of-pie and `chartex` templates are refused with `error.chart_template_unsupported`. Read within
+  `DocumentLimits` and the chart limits, charged to a `ChartBudget`. Tests: `ChartTemplateTests`, `CrtxSettingsTests`
+  (settings v109: existing vector donuts learn `.crtx`).
+- **OpenDocument charts** (`OdfChartReader`): an embedded object whose content is `office:chart`, its values from
+  the chart's own table (`table:table` inside `chart:chart`; a range into a Calc sheet falls back to the series'
+  column, or row, of that table). Bar (stacked, percent, horizontal), line (symbols, curves), area, pie (`circle`),
+  doughnut (`ring`) and scatter (`chart:domain`) plots, a series' own class and its secondary Y axis; title and
+  subtitle, axis titles, axes (visible, labels, logarithmic, minimum, maximum, interval, reversed, tick marks, label
+  angle, gridlines), legend position, data labels, fills and strokes of chart area, wall, series and points (with
+  pie offsets) and text properties; series without a fill take LibreOffice's default palette. 3D, radar, bubble,
+  stock, surface and Gantt charts are named. Used by the ODT reader (a picture that carries the chart; a chart it
+  doesn't draw keeps its replacement picture and is counted as `charts_pictured`, or as `charts` without one), the
+  ODP / ODG reader and the ODS reader (sheet printer). Bounded like `ChartReader` (series, points), plus the chart
+  table's cells (4 × 1,048,576, repeats counted before they expand) and style chains. Tests: `OdfChartTests`
+  (with a fuzz target), seeds in `OdtFuzzTests` and `DocumentFuzzTests` (ODS printing).
 
 ## DOCX writer
 
@@ -1910,8 +1938,10 @@ ODP through the [ODP writer](#odp-writer).
   graphic or presentation style → the master's outline style → the text style → paragraph → span chain; bulleted and
   numbered lists; padding, anchoring, wrapping, vertical text and columns of text frames; page number, page count,
   footer, header and date fields; tables with spans, covered cells, fills and borders.
-- **The check** (`FirstUnsupported`, a pass of the reader that draws nothing) names the first chart, OLE or other
-  embedded object, 3D scene or extrusion, Fontwork, shadow, form control, shape type without a preset, or SVG / TIFF
+- **Charts:** chart objects are read by `OdfChartReader` ([Charts](#charts)) and drawn by the slide renderer; the
+  ODP writer and the deck's text take a picture of the chart.
+- **The check** (`FirstUnsupported`, a pass of the reader that draws nothing) names the first chart it doesn't draw,
+  OLE or other embedded object, 3D scene or extrusion, Fontwork, shadow, form control, shape type without a preset, or SVG / TIFF
   picture on a shown page, so such a file keeps LibreOffice's route.
 - **Hostile input:** pages up to `MaxPages`; `DocumentBudget` for paragraphs, objects and nesting (groups, links,
   lists and tables, 32 levels); a limit for the whole deck on path commands, points and equation evaluations (2
@@ -1922,7 +1952,7 @@ ODP through the [ODP writer](#odp-writer).
 - Tests: `OdfDrawTests` (decks and drawings built in code by `OdpBuilder`, checked as model values and as pixels at
   72 dpi) and `OdfDrawRouteTests`.
 
-Not yet: charts, OLE objects, 3D, Fontwork, shadows, form controls (named by the check), notes and animations.
+Not yet: charts `OdfChartReader` doesn't draw, OLE objects, 3D, Fontwork, shadows, form controls (named by the check), notes and animations.
 
 ## PPTX writer
 
@@ -1981,7 +2011,7 @@ Pandoc's slides (20) even with Pandoc first in the engine order, and `DirectOnly
 shortcut through slides and LibreOffice's PPTX → PDF (which costs 0 when LibreOffice is chosen for presentations);
 and PPTX as a step towards PPT and the other presentation formats at 25 (LibreOffice's fallback cost), taken
 only where nothing else reaches them. ODP has a writer of its own, which lays documents out with these rules
-([ODP writer](#odp-writer)). PDF keeps its picture slides, the PowerPoint
+([ODP writer](#odp-writer)). PDF has its own slides ([PDF → PPTX](#pdf--pptx)), the PowerPoint
 variants the Office Open XML engine. `tests/Filee.Engines.Tests/PptxWriterTests.cs` checks the slide rules, the title
 slide, levels, tables, pictures, code, notes, continuation slides, the Open XML SDK validator, Filee's own PPTX
 reader reading every deck back, that every other route keeps its cost, and hostile documents.
@@ -2302,28 +2332,67 @@ out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, s
 
 ## PDF → PPTX
 
-`Pdf/PdfSlidesConverter.cs` turns a PDF into a PowerPoint deck of pictures: every page is rendered (PDFium, as for
-PDF → images) and becomes one picture on its own slide. The slides look exactly like the PDF but are **not
-editable**: there are no text boxes to change, the PDF's layout is not rebuilt. PDF → DOCX is the editable route.
+`Pdf/PdfSlidesConverter.cs` turns a PDF into a PowerPoint deck with one slide per page (#1150). By default every
+page is **rebuilt to be edited** (`Pdf/PdfDocumentReader.Slides.cs`): the page is read as for PDF → DOCX (PdfPig:
+words → lines → paragraphs with their fonts, sizes, colours, bold / italic and links; ruled tables; pictures), but
+each paragraph keeps its place on the page instead of joining a document's flow.
 
-- **Slide size** is the first page's own size (an A4 portrait PDF gives A4 portrait slides, a PDF exported from a
-  16:9 deck gives 16:9 slides), within PowerPoint's limits of 1 to 56 inches a side. Every page, also one of another
-  size or orientation (pages turned in the PDF are shown turned), is fitted onto the slide without cropping and
-  centred on white.
+- **Text** becomes one text box per paragraph, as wide as its lines plus 2 % (room for a wider substitute font), its
+  first baseline where the PDF has it, no insets, growing with its text when edited. A one-line paragraph doesn't wrap
+  (a substitute font never breaks it in two); a longer one wraps at the box's width, so edited text flows, with line
+  breaks only where a line ended early within the paragraph's own width. Runs carry the font (PostScript names
+  mapped to family names, as for DOCX), size, bold, italic, colour and web links; paragraphs their alignment (found in
+  the paragraph's column), indents, tab stops and the line distance (as a share of single spacing, 1.2 em).
+- **Ruled tables** become real tables (`a:tbl`): the PDF's column widths and row heights, merged cells, each cell's
+  text, borders, shading, padding and vertical alignment, as PDF → DOCX reads them. Their rules and shading are not
+  repeated as shapes; pictures in their cells are picture shapes on top.
+- **Pictures** are picture shapes at their place (JPEG kept as it is, others PNG), also one as large as the page (a
+  slide's background picture, or a scan). A page with sideways text only is rendered as one picture (PDFium).
+- **Vector graphics**: an upright rectangle (filled and / or outlined) becomes a rectangle shape and a straight line a
+  line shape, with the PDF's colours, width and dashes; a rectangle filling the page first is the slide's background
+  colour. Everything else (curves, polygons) is drawn by Skia into one transparent PNG of the area the page's
+  remaining graphics cover, at the preset's render DPI (150-600, at most 25 megapixels), in the order the PDF paints
+  them. A page with more than 1,000 simple shapes (a chart of bars) gets them in that picture too. Line widths and
+  dashes are scaled by the transformation they were drawn under (q / Q / cm followed through the page's operations,
+  PdfPig gives them untransformed), when the painting operators match the paths one to one.
+- **Order** back to front: pictures and graphics by size (a background picture, then a coloured bar, then the logo on
+  it), tables, then text.
+- **Limits**: at most 20,000 pages (`DocumentLimits.MaxPages`), the document limits on paragraphs and objects
+  (`DocumentBudget`), and at most 500,000 path segments drawn per page (the rest of a pathological drawing is left
+  out); more is refused with `error.document_too_complex`. The preset's page range picks the pages; cancelling stops
+  between pages and between paths.
+- **Not rebuilt yet**: text that runs sideways or turned on a page that also has upright text, pattern and shading
+  fills (gradients), transparency, clipping of drawings (a clipped drawing is drawn whole, within the page), pictures
+  drawn turned or as stencil masks, form fields and annotations. PDF → DOCX stays the route for a document that
+  should flow.
+
+**Pictures of the pages** (preset option *Pictures of the pages*, `PdfOptions.SlidePictures`) makes the earlier
+picture deck: every page is rendered (PDFium, as for PDF → images) and becomes one picture on its own slide. The slides
+look exactly like the PDF but are not editable.
+
 - **Resolution** is the preset's render DPI, at least 150 and at most 600; a page larger than 25 megapixels at that
-  resolution (a poster) is rendered at a lower one. The preset's page range picks the pages.
+  resolution (a poster) is rendered at a lower one.
 - **Pictures** are JPEG at the preset's quality (90 by default, as the "PPTX (slides)" preset sets it). Pages are
   rendered on white, as PDF viewers show them, so they have no transparency that would need PNG, and JPEG keeps a
   long deck at a size that is easy to send (an A4 text page at 150 dpi is a few hundred KB).
 - **Speaker notes** hold the page's text, read like PDF → TXT (reading order, the invisible OCR layer of scans
   included), so it can still be searched and copied. Pages without text get no notes; when PdfPig cannot read a PDF
   that PDFium renders, the deck is written without notes.
-- The package (`Pdf/PictureDeckWriter.cs`, on the package code it shares with the [PPTX writer](#pptx-writer)) is written by hand: presentation, one slide master with a blank layout,
-  a theme, the slides with their pictures, a notes master and notes slides, and the document properties. The tests
-  validate it with the Open XML SDK and read it back with Filee's own PPTX reader.
+
+Both kinds:
+
+- **Slide size** is the first page's own size (an A4 portrait PDF gives A4 portrait slides, a PDF exported from a
+  16:9 deck gives 16:9 slides), within PowerPoint's limits of 1 to 56 inches a side. Every page, also one of another
+  size or orientation (pages turned in the PDF are shown turned), is fitted onto the slide without cropping and
+  centred; on editable slides its font sizes and line widths scale with it.
+- The package (`Pdf/PictureDeckWriter.cs` with `Pdf/PdfSlideXml.cs`, on the package code it shares with the
+  [PPTX writer](#pptx-writer)) is written by hand: presentation, one slide master with a blank layout, a theme, the
+  slides with their pictures and links, a notes master and notes slides, and the document properties. The tests
+  (`PdfEditableSlidesTests`, `PdfSlidesTests`) validate it with the Open XML SDK and read it back with Filee's own
+  slide reader and renderer.
 - The edge is `DirectOnly`: the route planner uses it only for a PDF converted to PPTX. A Word document or an image is
-  never turned into picture slides through PDF, and a picture deck is never a step towards ODP, PPSX or another
-  format (a test checks that every other pair of formats keeps its route).
+  never turned into slides through PDF, and these slides are never a step towards ODP, PPSX or another format (a test
+  checks that every other pair of formats keeps its route).
 
 Password-protected PDFs fail with the same message as PDF → DOCX.
 
@@ -2791,6 +2860,8 @@ its reader, one line in `Drawings/DrawingFormats.cs`:
 - **ODG and FODG** (OpenDocument drawings, packaged and flat): the [ODP / ODG reader](#odp--odg-reader).
 - **XPS and OpenXPS** (`.xps`, `.oxps`, format id `xps`): not slides; the [XPS reader](#xps-and-openxps-reader) draws
   its pages straight into the page model (`DrawingFormat.ReadPages`, `IFixedPages`).
+- **Excel chart templates** (`.crtx`, format id `crtx`, #1354): `ChartTemplate`, one page of Excel's default chart size
+  (5 × 3 in) with the template's chart ([Charts](#charts)).
 
 Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
 takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a
@@ -3198,8 +3269,12 @@ EPUB without Hancom Office or LibreOffice. It reads files saved by 한글, by rh
 - pictures from `BinData` (inline, or floating with `hp:pos` offsets, alignment and wrapping), rectangles,
   ellipses and lines with outline and solid / gradient fill, text boxes (`hp:drawText`), groups.
 
+Charts (`hp:chart`, whose `chartIDRef` names an OOXML chart part in the package; 한글 writes it in the `ooxmlchart`
+case of an `hp:switch` with the OLE object in `hp:default`) are drawn by the [chart drawer](#charts) as a picture that
+carries the chart; a chart part it doesn't draw (or that is missing or damaged) falls back to that OLE object.
+
 Not kept (the model has no place for them; skipped and counted by the `Read(path, media, skipped)` overload):
-OLE objects, charts, video, form controls, text art (its text is kept), arcs / polygons / curves without text,
+OLE objects, charts the chart drawer doesn't draw, video, form controls, text art (its text is kept), arcs / polygons / curves without text,
 master pages, memos, character ratio, relative size and offset, paragraph borders, picture cropping and rotation.
 Password-protected (encrypted) HWPX and DRM-wrapped files stop with a clear error.
 
@@ -4058,6 +4133,44 @@ inlinemediaobject pictures (linked into `<name>_files`), footnotes, links, ancho
 (format → model → format → model gives the same `MarkupShape`, and text that looks like markup stays text), DOCX /
 HWPX / PDF / HTML / Markdown with Pandoc absent and the hostile inputs (DTDs and entity expansion, nesting, a
 million openers, wide and long tables); `DocumentFuzzTests` mutates each.
+
+### Mind maps
+
+`MindMapReader` (#1543, #1004) reads FreeMind / Freeplane (`.mm`) and XMind (`.xmind`) maps as an **outline**: the
+map isn't drawn, its topics become the document's structure, so every document writer takes it (DOCX, ODT, HWPX, PDF
+through the Filee renderer, slides) and `MarkupConverter` writes it as Markdown, HTML, TXT and OPML. Both are read
+only (`Writable: false`, rule 5 of [FORMAT-RULES](FORMAT-RULES.md)) and sit on the documents donut (settings v108).
+
+- The central topic is heading 1 and the document's title, its main topics heading 2, their subtopics heading 3;
+  deeper topics are bulleted lists, a level deeper per topic (past nine levels they stay at the ninth). Into OPML every
+  topic is a heading instead (one level per topic, past 9 at 9), so the outline keeps the whole tree.
+- A topic's notes (and Freeplane's details, first) follow it as paragraphs, a list item's as its continuation;
+  headings inside a note become plain paragraphs, so they don't take a place in the outline. Freeplane attributes
+  follow as `name: value` lines, XMind labels as `Labels: a, b`.
+- Icons and markers with an obvious symbol come before the topic's text: priorities as ① … ⑨, done ✓, cancel ×, a
+  task under way ◑, star ★, arrows, `?`, `!`, ⚠ (symbols the bundled CJK fonts have). Others are left out.
+- Links to the web, mail and files stay links; a link to another topic (`#ID`, XMind's `xmind:#id`) points at a
+  bookmark on that topic; other schemes (`javascript:`, ...) and links to no topic keep only the text.
+- FreeMind / Freeplane: `<map>` with nested `<node>` elements; the text is `TEXT` (or `LOCALIZED_TEXT`, or the
+  rich text `richcontent TYPE="NODE"` as HTML, with its pictures after the line), notes and details are HTML or
+  Freeplane's plain text / Markdown. A `.mm` that isn't XML is Objective-C++ source, read as plain text.
+- XMind: `content.json` (XMind Zen, 2020 and later: sheets, `rootTopic`, children attached, detached, summary and
+  callout, `notes.realHTML` or `notes.plain`, `href`, `labels`, `markers`, `image`) wins over `content.xml` (XMind 8
+  and before, which newer files keep only as a stub saying to update XMind). A topic's picture (`xap:resources/…`,
+  `xap:attachments/…`) is unpacked and follows the topic. Each sheet after the first starts a new page; an untitled
+  central topic takes the sheet's title. A file saved with a password (`encryption-data` in its manifest) is refused
+  with `error.xmind_password`.
+- Not read: the map's layout, colours, fonts, connectors and relationships, boundaries, FreeMind's `arrowlink` and
+  cloud, Freeplane's external pictures (`ExternalObject`) and XMind's equations and audio notes.
+- Untrusted input: the `.mm` and `content.xml` go through `SafeXml` (no DTD, depth and element limits), the package
+  through `DocumentPackage` (part, package and inflate limits), `content.json` is checked for nesting deeper than
+  three JSON levels per allowed topic level before `JsonDocument` reads it, and both trees are walked with a stack of
+  their own rather than by recursion. Paragraphs and pictures count against `DocumentLimits`.
+
+`MindMapTests` builds a Freeplane map, an XMind Zen and an XMind 8 package in code and checks the outline, notes,
+links, bookmarks, symbols, pictures and sheets, the routes, the conversions to DOCX / HWPX / HTML / Markdown / PDF /
+TXT / OPML without Pandoc and the hostile inputs (DTDs, a hundred thousand levels of nesting in XML and JSON, too
+many topics, an oversized part, a ZIP bomb); `MindMapFuzzTests` mutates the map, the packages and `content.json`.
 
 ## Pandoc
 

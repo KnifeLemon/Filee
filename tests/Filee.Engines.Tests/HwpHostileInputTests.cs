@@ -65,7 +65,7 @@ public sealed partial class HwpHostileInputTests(EngineFixture fx) : IClassFixtu
         paragraph.Inlines.Add(new HText("seed", default));
         document.Sections.Add(new HSection { Blocks = { paragraph } });
         var seed = Path.Combine(folder, "seed.hwpx");
-        HwpxWriter.Write(document, seed);
+        HwpxWriter.Write(document, seed, cancellationToken: TestContext.Current.CancellationToken);
         var target = Path.Combine(folder, "input.hwpx");
         using (var input = ZipFile.OpenRead(seed))
         using (var output = ZipFile.Open(target, ZipArchiveMode.Create))
