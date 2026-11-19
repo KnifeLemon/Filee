@@ -32,7 +32,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
@@ -875,7 +875,7 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
 The XLSX donut also offers **PDF + Edit** (`tool-sheet-studio`). This interactive tool preserves the original
 workbook, makes one disposable copy per selected sheet region, applies that region's print settings, and prints it
 with the same engine as an ordinary XLSX → PDF: Filee's own print engine (below), or LibreOffice when **Use
-LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with chart
+LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with XLSB chart
 sheets, 3D charts or other objects the print engine doesn't draw yet; without LibreOffice the studio shows the printer's notice). Every
 studio setting (paper, orientation, margins, scale or fit to pages, page order, print area, hidden rows and columns,
 manual breaks, sheet choice) is written into the copy and read by the print engine; the sheet's own gridlines,
@@ -957,9 +957,12 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   XFD1048576 would be about 35 million pages), and the layout runs under `LayoutGuard`. `DocumentFuzzTests` mutates
   an XLSX and an ODS built in code and prints them.
 - **Charts** (bar, column, line, area, pie, doughnut, scatter) on a sheet are printed from their chart part by the
-  [chart drawer](#charts); 3D, radar, stock, surface and bubble charts, new chart types (`chartex`) and chart sheets
-  are named, so such a workbook takes LibreOffice where it is installed.
-- **Not printed yet.** Chart sheets, shapes with text, text boxes, comments, sparklines; data bars, icon sets and conditional formats
+  [chart drawer](#charts); an XLSX chart sheet prints as one page, its chart filling the margins, with the sheet's
+  header and footer (`Workbook.ChartSheets`, for the printer only); ODS charts (chart objects in frames anchored to a
+  cell or the sheet) are read by `OdfChartReader` and printed the same way. 3D, radar, stock, surface and bubble
+  charts, new chart types (`chartex`), XLSB chart sheets and chart sheets with pictures or shapes over the chart are
+  named, so such a workbook takes LibreOffice where it is installed.
+- **Not printed yet.** XLSB chart sheets, shapes with text, text boxes, comments, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).
@@ -1069,7 +1072,8 @@ test turns it on.
   (`Libreoffice_chosen_for_*`), `RoutePlannerTests` (the costs).
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
   or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects, charts
-  other than the DrawingML ones the [chart drawer](#charts) draws, vertical text, form controls, videos, SmartArt — and a deck for what the slide
+  other than the DrawingML ones the [chart drawer](#charts) draws (Word charts, HWPX `hp:chart` parts) and the ODF ones
+  `OdfChartReader` reads (ODT chart objects), vertical text, form controls, videos, SmartArt — and a deck for what the slide
   renderer doesn't draw (charts the chart drawer doesn't draw without a stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
   without it, so such a file takes its usual route (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
   file is the one the engine looked at. Text formats hold nothing it can't draw.
@@ -1616,8 +1620,10 @@ through the corners); 3D and other charts the chart drawer doesn't draw; notes p
 ## Charts
 
 `Charts/` reads a DrawingML chart part (`c:chartSpace`, ECMA-376 Part 1 §21.2) and draws it with Skia, text as glyph
-runs, for the sheet printer (`XlsxDrawing`, XLSX and XLSB), the document renderer (Word `c:chart` through
-`DocxReader` and `FloatingObjects`) and the slide renderer (`PptxSlideReader`, `SlideRenderer`).
+runs, for the sheet printer (`XlsxDrawing`, XLSX and XLSB, chart sheets too), the document renderer (Word `c:chart`
+through `DocxReader` and `FloatingObjects`, HWPX `hp:chart` through `HwpxReader`) and the slide renderer
+(`PptxSlideReader`, `SlideRenderer`). OpenDocument charts go through the same model (`OdfChartReader`), and Excel
+chart templates are drawn on their own (`ChartTemplate`).
 
 - **Read** (`ChartReader`): bar and column (clustered, stacked, 100 %, horizontal), line (markers, smooth, stacked),
   area, pie (first slice angle, pulled-out slices), doughnut and scatter plots, several in one plot area against
@@ -1635,13 +1641,35 @@ runs, for the sheet printer (`XlsxDrawing`, XLSX and XLSB), the document rendere
   EPUB, ...; the slide's picture in ODP and in a deck's text.
 - **Named instead** (the left-out notice says "charts"; the checks send the file to LibreOffice where it is
   installed): 3D, radar, bubble, stock, surface and bar-of-pie charts and new chart types (`chartex`); a fallback
-  picture, when the file stores one, is drawn for those on slides.
+  picture, when the file stores one, is drawn for those on slides (and an HWPX chart's OLE object in its place).
 - **Hostile input:** the part comes through the package's XML limits; more than 1,024 series or 1,048,576 points per
   chart (a cache's `ptCount` or highest index counts, not only the points it holds) is refused with
   `error.document_too_complex`, as is a document whose charts draw more than ten times that (`ChartBudget`, a chart
   placed many times counting each time); texts are cut at 1,024 characters, values clamped to ±1e100, data labels
   (4,096), markers (100,000), measured category labels (2,000) and ticks per axis (1,000) capped. `ChartTests` builds
-  the charts in code; `ChartFuzzTests` mutates chart parts alone and in a printed workbook.
+  the charts in code; `ChartFuzzTests` mutates chart parts alone, in a printed workbook (a chart sheet too) and in a
+  chart template.
+- **Chart templates** (`.crtx`, `ChartTemplate`, #1354): the package's chart part (its chart template relationship,
+  else the content types, else `chart/chart.xml`) with its theme override's colours and fonts. Series without cached
+  values get Office's sample values (4.3, 2.5, 3.5, 4.5 / 2.4, 4.4, 1.8, 2.8 / 2, 2, 3, 5; a pie 8.2, 3.2, 1.4, 1.2)
+  and "Category 1–4" / "Series N", and a plot without series gets three sample series (one for a pie or doughnut), as
+  Excel's template preview shows a template. 3D bar, line, area and pie plots are drawn flat. Drawn by the
+  [drawing engine](#drawings-visio-odg) on a 5 × 3 in page to PDF, SVG and PNG. Radar, bubble, stock, surface,
+  bar-of-pie and `chartex` templates are refused with `error.chart_template_unsupported`. Read within
+  `DocumentLimits` and the chart limits, charged to a `ChartBudget`. Tests: `ChartTemplateTests`, `CrtxSettingsTests`
+  (settings v109: existing vector donuts learn `.crtx`).
+- **OpenDocument charts** (`OdfChartReader`): an embedded object whose content is `office:chart`, its values from
+  the chart's own table (`table:table` inside `chart:chart`; a range into a Calc sheet falls back to the series'
+  column, or row, of that table). Bar (stacked, percent, horizontal), line (symbols, curves), area, pie (`circle`),
+  doughnut (`ring`) and scatter (`chart:domain`) plots, a series' own class and its secondary Y axis; title and
+  subtitle, axis titles, axes (visible, labels, logarithmic, minimum, maximum, interval, reversed, tick marks, label
+  angle, gridlines), legend position, data labels, fills and strokes of chart area, wall, series and points (with
+  pie offsets) and text properties; series without a fill take LibreOffice's default palette. 3D, radar, bubble,
+  stock, surface and Gantt charts are named. Used by the ODT reader (a picture that carries the chart; a chart it
+  doesn't draw keeps its replacement picture and is counted as `charts_pictured`, or as `charts` without one), the
+  ODP / ODG reader and the ODS reader (sheet printer). Bounded like `ChartReader` (series, points), plus the chart
+  table's cells (4 × 1,048,576, repeats counted before they expand) and style chains. Tests: `OdfChartTests`
+  (with a fuzz target), seeds in `OdtFuzzTests` and `DocumentFuzzTests` (ODS printing).
 
 ## DOCX writer
 
@@ -1910,8 +1938,10 @@ ODP through the [ODP writer](#odp-writer).
   graphic or presentation style → the master's outline style → the text style → paragraph → span chain; bulleted and
   numbered lists; padding, anchoring, wrapping, vertical text and columns of text frames; page number, page count,
   footer, header and date fields; tables with spans, covered cells, fills and borders.
-- **The check** (`FirstUnsupported`, a pass of the reader that draws nothing) names the first chart, OLE or other
-  embedded object, 3D scene or extrusion, Fontwork, shadow, form control, shape type without a preset, or SVG / TIFF
+- **Charts:** chart objects are read by `OdfChartReader` ([Charts](#charts)) and drawn by the slide renderer; the
+  ODP writer and the deck's text take a picture of the chart.
+- **The check** (`FirstUnsupported`, a pass of the reader that draws nothing) names the first chart it doesn't draw,
+  OLE or other embedded object, 3D scene or extrusion, Fontwork, shadow, form control, shape type without a preset, or SVG / TIFF
   picture on a shown page, so such a file keeps LibreOffice's route.
 - **Hostile input:** pages up to `MaxPages`; `DocumentBudget` for paragraphs, objects and nesting (groups, links,
   lists and tables, 32 levels); a limit for the whole deck on path commands, points and equation evaluations (2
@@ -1922,7 +1952,7 @@ ODP through the [ODP writer](#odp-writer).
 - Tests: `OdfDrawTests` (decks and drawings built in code by `OdpBuilder`, checked as model values and as pixels at
   72 dpi) and `OdfDrawRouteTests`.
 
-Not yet: charts, OLE objects, 3D, Fontwork, shadows, form controls (named by the check), notes and animations.
+Not yet: charts `OdfChartReader` doesn't draw, OLE objects, 3D, Fontwork, shadows, form controls (named by the check), notes and animations.
 
 ## PPTX writer
 
@@ -2791,6 +2821,8 @@ its reader, one line in `Drawings/DrawingFormats.cs`:
 - **ODG and FODG** (OpenDocument drawings, packaged and flat): the [ODP / ODG reader](#odp--odg-reader).
 - **XPS and OpenXPS** (`.xps`, `.oxps`, format id `xps`): not slides; the [XPS reader](#xps-and-openxps-reader) draws
   its pages straight into the page model (`DrawingFormat.ReadPages`, `IFixedPages`).
+- **Excel chart templates** (`.crtx`, format id `crtx`, #1354): `ChartTemplate`, one page of Excel's default chart size
+  (5 × 3 in) with the template's chart ([Charts](#charts)).
 
 Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
 takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a
@@ -3198,8 +3230,12 @@ EPUB without Hancom Office or LibreOffice. It reads files saved by 한글, by rh
 - pictures from `BinData` (inline, or floating with `hp:pos` offsets, alignment and wrapping), rectangles,
   ellipses and lines with outline and solid / gradient fill, text boxes (`hp:drawText`), groups.
 
+Charts (`hp:chart`, whose `chartIDRef` names an OOXML chart part in the package; 한글 writes it in the `ooxmlchart`
+case of an `hp:switch` with the OLE object in `hp:default`) are drawn by the [chart drawer](#charts) as a picture that
+carries the chart; a chart part it doesn't draw (or that is missing or damaged) falls back to that OLE object.
+
 Not kept (the model has no place for them; skipped and counted by the `Read(path, media, skipped)` overload):
-OLE objects, charts, video, form controls, text art (its text is kept), arcs / polygons / curves without text,
+OLE objects, charts the chart drawer doesn't draw, video, form controls, text art (its text is kept), arcs / polygons / curves without text,
 master pages, memos, character ratio, relative size and offset, paragraph borders, picture cropping and rotation.
 Password-protected (encrypted) HWPX and DRM-wrapped files stop with a clear error.
 
