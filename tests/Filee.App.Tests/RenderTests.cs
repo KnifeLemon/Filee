@@ -495,8 +495,11 @@ public class RenderTests
             Assert.Equal(16m, editor.VideoMaxSizeMb);
             editor.VideoMaxSizeMb = 25;
             Assert.True(editor.Apply());
-            Assert.Equal(25, added[^1].Media.MaxSizeMb);
+            Assert.Equal(16, added[^1].Media.MaxSizeMb); // Edits stay separate until the page saves successfully.
+            page.SaveCommand.Execute(null);
+            Assert.Equal(25, page.SelectedPreset!.Preset.Media.MaxSizeMb);
             Assert.Equal(16, whatsapp.Media.MaxSizeMb);
+            editor = page.Editor!;
 
             // Not where nothing could fit it: VOB and DV have a fixed bitrate.
             editor.Target = editor.Targets.Single(t => t.Value == "vob");
@@ -512,7 +515,8 @@ public class RenderTests
             Assert.True(editor.ShowQuality);
             editor.ImageMaxSize = 1.5m;
             Assert.True(editor.Apply());
-            Assert.Equal((0.0, 1.5), (added[^1].Media.MaxSizeMb, added[^1].Image.MaxSizeMb));
+            page.SaveCommand.Execute(null);
+            Assert.Equal((0.0, 1.5), (page.SelectedPreset!.Preset.Media.MaxSizeMb, page.SelectedPreset.Preset.Image.MaxSizeMb));
 
             var window = new MainWindow { DataContext = vm, Width = 1180, Height = 900 };
             window.Show();
@@ -526,7 +530,7 @@ public class RenderTests
         finally
         {
             foreach (var preset in added)
-                store.Presets.Remove(preset);
+                store.Presets.RemoveAll(p => p.Id == preset.Id);
             store.SaveLibrary();
         }
     }
@@ -2557,7 +2561,8 @@ public class RenderTests
         var vm = new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>());
         Assert.Equal("*", vm.Targets[0].Value); // "Same as source" stays first
         Assert.Equal([0, 32, 48, 64, 96, 128, 192, 256, 320], vm.AudioBitrates.Select(b => b.Value)); // 32-64 for speech (#37)
-        Assert.All(vm.Targets.Skip(1), t => Assert.True(Filee.Core.Formats.FormatRegistry.Get(t.Value).Writable));
+        Assert.Equal(Filee.Core.Presets.BuiltInData.SameAsAudio, vm.Targets[1].Value); // then "Same format as the audio" (#1490)
+        Assert.All(vm.Targets.Skip(2), t => Assert.True(Filee.Core.Formats.FormatRegistry.Get(t.Value).Writable));
         Assert.Equal("Video", vm.Target.Detail);
 
         vm.MediaQuality = vm.MediaQualities.Single(q => q.Value == Filee.Core.Presets.MediaQuality.Small);

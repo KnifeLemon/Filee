@@ -286,7 +286,10 @@ public sealed class FolderIso632Tests : IDisposable
         using var stream = File.OpenRead(Assert.Single(job.Outputs));
         using var iso = new CDReader(stream, true);
         Assert.True(iso.DirectoryExists(directory));
-        using var reader = new StreamReader(iso.OpenFile(name, FileMode.Open));
+        // LTRData's reader retains the ISO trailing dot for an extensionless name; the old reader normalized it.
+        var stored = Assert.Single(iso.GetFiles("\\"));
+        Assert.Equal(name, stored.TrimStart('\\', '/').Split(';')[0].TrimEnd('.'));
+        using var reader = new StreamReader(iso.OpenFile(stored, FileMode.Open));
         Assert.Equal("boundary", reader.ReadToEnd());
     }
 

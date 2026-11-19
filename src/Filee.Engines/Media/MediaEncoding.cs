@@ -177,6 +177,10 @@ internal static partial class MediaEncoding
     /// A video target: only this part of the video, cut exactly (the video is always encoded; <see cref="ClipCopy"/>
     /// copies it instead, cut at key frames).
     /// </param>
+    /// <param name="clipSeek">
+    /// With <paramref name="clip"/>: where reading starts, the key frame <see cref="KeyFrames.FindAsync"/> found for
+    /// its start; null seeks to the clip's start itself, where FFmpeg's own seek is exact only in some files.
+    /// </param>
     /// <param name="crop">
     /// A video target: the filters that crop the frame first ("Crop video", <see cref="CropFilter"/>); the video is
     /// always encoded then.
@@ -188,14 +192,16 @@ internal static partial class MediaEncoding
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
     public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
         CoverExtras? cover = null, IReadOnlySet<string>? encoders = null, HardwareEncoder? hardware = null, double animationSpeed = 1,
-        ClipRange? clip = null, string? crop = null, bool subtitles = true)
+        ClipRange? clip = null, string? crop = null, bool subtitles = true, SeekPoint? clipSeek = null, ImageOptions? image = null)
     {
         if (clip is { } part && VideoTargets.TryGetValue(target, out var clipTarget))
-            return [new FfmpegPass(Video(input, output, target, clipTarget, options, info, encoders, hardware, part), 1)];
+            return [new FfmpegPass(Video(input, output, target, clipTarget, options, info, encoders, hardware, part, clipSeek: clipSeek), 1)];
         if (target == "gif")
             return AnimatedGif(input, output, options, info, workDirectory, animationSpeed);
         if (target == "apng")
             return [new FfmpegPass(AnimatedPng(input, output, options, info, animationSpeed), 1)];
+        if (target == "webp")
+            return [new FfmpegPass(AnimatedWebp(input, output, options, image ?? new ImageOptions(), info, animationSpeed), 1)];
         if (target == "png")
             return [new FfmpegPass(PosterFrame(input, output, info), 1)];
         if (VideoTargets.TryGetValue(target, out var video))
@@ -270,7 +276,8 @@ internal static partial class MediaEncoding
             : null;
 
     private static List<string> Video(string input, string output, string target, MediaTarget spec, MediaOptions options, MediaInfo info,
-        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null, string? crop = null, bool keepSubtitles = true)
+        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null, string? crop = null, bool keepSubtitles = true,
+        SeekPoint? clipSeek = null)
     {
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         // An input without sound is fine: the output simply has no audio track. Every track is kept (languages,
@@ -280,8 +287,11 @@ internal static partial class MediaEncoding
             : clip is not null || SingleAudioTargets.Contains(target) ? [.. info.AudioTracks.Take(1)]
             : info.AudioTracks;
 
-        // A clip: FFmpeg seeks the input and decodes from the key frame before the start, so the first frame is exact.
-        List<string> args = [.. Common, .. clip is { } part ? ClipInput(part) : [], "-i", input, "-map", "0:V:0"];
+        // A clip: read from the key frame found before its start (KeyFrames), its first frame time 0, and cut at both
+        // ends by trims, sound and picture alike, so its first and last frames are exact.
+        var seek = clip is { } range ? clipSeek ?? SeekPoint.Plain(range.Start) : (SeekPoint?)null;
+        var cut = clip is { } part && seek is { } at ? at.VideoTrim(part.Start, part.End) + "," : "";
+        List<string> args = [.. Common, .. seek?.EncodeInput ?? [], "-i", input, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
         // Subtitle tracks stay switchable (#789), with their language tags (FFmpeg copies stream tags with each stream). A
@@ -305,13 +315,13 @@ internal static partial class MediaEncoding
         {
             // VA-API's device is a global option, so it goes before the input.
             args.InsertRange(Common.Length, HardwareVideo.InputArguments(hardware));
-            args.AddRange(["-vf", crop + ScaleFilter(options.MaxHeight) + HardwareVideo.FilterSuffix(hardware, HardwareVideo.TenBit(hardware.Codec, video))]);
+            args.AddRange(["-vf", cut + crop + ScaleFilter(options.MaxHeight) + HardwareVideo.FilterSuffix(hardware, HardwareVideo.TenBit(hardware.Codec, video))]);
             args.AddRange(HardwareVideo.CodecArguments(hardware, target, options.Quality, video, options.MaxHeight));
         }
         else
         {
             var pal = IsPal(video.FrameRate);
-            args.AddRange(["-vf", crop + (target is "vob" or "dv" ? DvdOrDvFilter(video, pal) : ScaleFilter(options.MaxHeight))]);
+            args.AddRange(["-vf", cut + crop + (target is "vob" or "dv" ? DvdOrDvFilter(video, pal) : ScaleFilter(options.MaxHeight))]);
             // Only this path keeps alpha: a still picture and an edited clip pass through format=yuv420p first (PlanStill, ClipGraphOf).
             args.AddRange(VideoCodecArguments(target, VideoEncoder(target, spec.VideoCodec!, options.VideoCodec, encoders), options.Quality, video, pal,
                 alpha: video.HasAlpha));
@@ -319,6 +329,8 @@ internal static partial class MediaEncoding
 
         if (tracks.Count == 0)
             args.Add("-an");
+        else if (clip is { } sound && seek is { } from)
+            args.AddRange(["-af", $"atrim=start={from.Clip(sound.Start)}:end={from.Clip(sound.End)}"]);
         for (var i = 0; i < tracks.Count; i++)
         {
             // Each track on its own: copied where the container takes it, else encoded for its own channel count. A
@@ -336,7 +348,7 @@ internal static partial class MediaEncoding
         args.AddRange(MetadataArguments());
         args.AddRange(ContainerArguments(target));
         // Sparse or late-starting streams (subtitles-like audio) otherwise fail with "too many packets buffered".
-        args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
+        args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, .. clip is null ? ["-progress", "pipe:1"] : FrameProgress, output]);
         return args;
     }
 
@@ -395,11 +407,31 @@ internal static partial class MediaEncoding
     /// <see cref="MediaOptions.RemoveAudio"/>), as in an exact or edited clip; the
     /// other options only apply to an exact clip, which is encoded.
     /// </summary>
+    /// <param name="seek">
+    /// Where the copy starts (<see cref="SeekPoint.CopyFrom"/>): in a file without an index (MPEG-TS), the key frame
+    /// <see cref="KeyFrames.FindAsync"/> found, as a seek to the start itself would land between key frames there and
+    /// the copy would begin with frames that can't be decoded.
+    /// </param>
     /// <exception cref="InvalidOperationException">The file has no video stream.</exception>
     /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
-    internal static List<string> ClipCopy(string input, string output, string target, ClipRange clip, MediaOptions options, MediaInfo info)
+    internal static List<string> ClipCopy(string input, string output, string target, ClipRange clip, SeekPoint seek, MediaOptions options,
+        MediaInfo info)
     {
-        var (args, spec) = CopyStreams(input, target, ClipInput(clip), options, info);
+        // A copy keeps what lies between the key frame and -ss, so a clip shorter than the 3/23 s -ss lies past the key
+        // frame ends there (FFmpeg refuses an end before -ss, and the clip was encoded instead).
+        // FFmpeg leaves out what is decoded from -to on; written to the microsecond, a frame decoded at the end itself
+        // (2.1333… s) fell either side, and one shown past the end, kept, left a gap. A tenth of a millisecond before
+        // it, it is always left out.
+        var end = Math.Max((seek.CopyTo ?? clip.End) - 0.0001, seek.CopyFrom + 0.00001);
+        // Where no -ss up to the start lands it on the key frame (a WMV's index): read from the last that lands before
+        // it, kept from the key frame on, in the file's own times: a tenth of a millisecond before its decode time, as
+        // one written to the microsecond can fall just past it.
+        string[] times = seek.CopyAfter is null ? [] : ["-copyts"];
+        var (args, spec) = CopyStreams(input, target, [.. times, .. SeekTo(seek.CopyFrom), "-to", ClipRange.Ffmpeg(end)], options, info);
+        if (seek.CopyAfter is { } after)
+            args.InsertRange(args.IndexOf("-i") + 2, ["-ss", ((seek.Origin ?? 0) + after - 0.0001).ToString("0.000000", CultureInfo.InvariantCulture)]);
+        if (seek.CopyFrames is { } frames)
+            args.InsertRange(args.IndexOf("-i") + 2, ["-frames:v", frames.ToString(CultureInfo.InvariantCulture)]);
         args.AddRange(ContainerArguments(target));
         args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;
@@ -514,19 +546,33 @@ internal static partial class MediaEncoding
     }
 
     /// <summary>
-    /// Input options that read only <paramref name="clip"/> of the file: <c>-ss</c> and <c>-to</c> before <c>-i</c>,
-    /// both positions in the source.
+    /// <c>-ss</c> before <c>-i</c> to start reading at <paramref name="from"/> seconds, a key frame; nothing at 0, so
+    /// the file is read from its very first packet.
     /// </summary>
-    internal static string[] ClipInput(ClipRange clip) => ["-ss", ClipRange.Ffmpeg(clip.Start), "-to", ClipRange.Ffmpeg(clip.End)];
+    internal static string[] SeekTo(double from) => from > 0 ? ["-ss", ClipRange.Ffmpeg(from)] : [];
+
+    /// <summary>
+    /// Progress as the time of each picture encoded (<see cref="FfmpegRunner.FrameTimeKey"/>), for runs that read with
+    /// <c>-copyts</c>: there FFmpeg's <c>-progress</c> counts from its first report, not from 0, and falls short. Its
+    /// lines still show the run is working while it reads past pictures it doesn't keep (the stall watch of
+    /// <see cref="FfmpegRunner.RunAsync"/>), and are otherwise ignored.
+    /// </summary>
+    internal static readonly string[] FrameProgress =
+        ["-progress", "pipe:1", "-stats_enc_pre:v:0", "pipe:1", "-stats_enc_pre_fmt:v:0", FfmpegRunner.FrameTimeKey + "={t}"];
 
     /// <summary>
     /// One frame at <paramref name="seconds"/> as a JPEG at most <paramref name="maxHeight"/> pixels high (square
-    /// pixels, turned upright): the timeline and the large picture of the clip window.
+    /// pixels, turned upright): the timeline and the large picture of the clip window. Reading starts at
+    /// <paramref name="seek"/> (<see cref="KeyFrames.FindAsync"/>), and the frames before the time are dropped before
+    /// they are scaled, counted in microseconds (<c>settb=AVTB</c>; an AVI counts in frames), so the picture is the
+    /// first frame shown at or after the time, as a clip from there starts with. Its time is then made 0: FFmpeg drops
+    /// a picture written before 0, as in a file whose own times start there.
     /// </summary>
-    internal static List<string> FrameAt(string input, double seconds, string output, int maxHeight, VideoStreamInfo? video) =>
+    internal static List<string> FrameAt(string input, double seconds, SeekPoint seek, string output, int maxHeight, VideoStreamInfo? video) =>
     [
-        .. Common, "-ss", ClipRange.Ffmpeg(seconds), "-i", input, "-map", "0:V:0",
-        "-vf", (video is null ? "" : SquarePixels(video)) + $"scale=w=-2:h='trunc(min(ih,{Math.Max(16, maxHeight)})/2)*2'",
+        .. Common, .. seek.Input, "-i", input, "-map", "0:V:0",
+        "-vf", $"settb=AVTB,trim=start={seek.Time(seconds)},setpts=PTS-STARTPTS,"
+            + (video is null ? "" : SquarePixels(video)) + $"scale=w=-2:h='trunc(min(ih,{Math.Max(16, maxHeight)})/2)*2'",
         "-frames:v", "1", "-update", "1", "-c:v", "mjpeg", "-q:v", "3", "-f", "image2", output,
     ];
 
@@ -936,6 +982,37 @@ internal static partial class MediaEncoding
         return MediaCodecs.Effective(target, options.AudioCodec) != Core.Presets.AudioCodec.Alac || codec == "alac";
     }
 
+    // ───────────────────────── Same format as the audio ─────────────────────────
+
+    /// <summary>
+    /// The audio format a track of <paramref name="codec"/> is copied into as it is (#1490): its own file type where
+    /// there is one, else Matroska audio, which holds any codec (AC-3, E-AC-3, DTS, TrueHD, big-endian PCM, …).
+    /// </summary>
+    internal static string CopyTargetFor(string? codec) => codec switch
+    {
+        "aac" or "alac" => "m4a",
+        "mp3" => "mp3",
+        "flac" => "flac",
+        "opus" => "opus",
+        "vorbis" => "ogg",
+        // Little-endian PCM, as WAV holds it; over 4 GB it becomes RF64 (ContainerArguments).
+        "pcm_u8" or "pcm_s16le" or "pcm_s24le" or "pcm_s32le" or "pcm_f32le" or "pcm_f64le" => "wav",
+        _ => "mka",
+    };
+
+    /// <summary>
+    /// "Same format as the audio": <paramref name="track"/> copied into <paramref name="target"/> without an encode, with
+    /// the file's tags; no pictures, subtitles or data.
+    /// </summary>
+    internal static List<string> CopyAudio(string input, string output, string target, AudioStreamInfo track)
+    {
+        List<string> args = [.. Common, "-i", input, "-map", $"0:a:{track.Ordinal}", "-vn", "-sn", "-dn", "-c:a", "copy"];
+        args.AddRange(MetadataArguments());
+        args.AddRange(ContainerArguments(target));
+        args.AddRange(["-f", AudioTargets[target].Muxer, "-progress", "pipe:1", output]);
+        return args;
+    }
+
     // ───────────────────────── Without metadata ─────────────────────────
 
     /// <summary>
@@ -1201,6 +1278,35 @@ internal static partial class MediaEncoding
         [
             .. Common, "-i", input, "-map", "0:V:0", "-vf", chain, "-an",
             "-c:v", "apng", "-pix_fmt", "rgb24", "-pred", "mixed", "-plays", "0", "-f", "apng", "-progress", "pipe:1", output,
+        ];
+    }
+
+    /// <summary>
+    /// Animated WebP with FFmpeg's libwebp_anim encoder: one looping pass. Without this edge a video reached WebP
+    /// through a single still frame (video → PNG → WebP), so the result was not animated.
+    /// </summary>
+    /// <remarks>
+    /// The preset's image options decide the encoding, as for any WebP: "Lossless WEBP" (<see cref="ImageOptions.WebpLossless"/>)
+    /// writes every frame losslessly, otherwise the image quality slider (<see cref="ImageOptions.Quality"/>) sets the lossy
+    /// quality. Lossy output follows the video quality for frame rate and size limits (never upscaled): a 930 × 480 clip
+    /// stays 930 × 480 at every quality, larger videos are scaled down to Full HD, 1280 or 854 px wide. Lossless output
+    /// has no width limit (WebP's own limit is 16,383 px) and keeps up to 30 frames per second, so the files are large.
+    /// </remarks>
+    private static List<string> AnimatedWebp(string input, string output, MediaOptions options, ImageOptions image, MediaInfo info, double speed)
+    {
+        var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
+        var quality = options.Quality;
+        var lossless = image.WebpLossless;
+        var chain = lossless
+            ? GifFrames(video, options.MaxHeight, fps: 30, maxWidth: 16_383, speed)
+            : GifFrames(video, options.MaxHeight, fps: Choose(quality, 20, 15, 12), maxWidth: Choose(quality, 1920, 1280, 854), speed);
+        // Lossless: -q:v is the effort spent on compressing (not the picture quality); 75 is a good size for the time.
+        var webpQuality = lossless ? 75 : Math.Clamp(image.Quality, 1, 100);
+        return
+        [
+            .. Common, "-i", input, "-map", "0:V:0", "-vf", chain, "-an",
+            "-c:v", "libwebp_anim", "-lossless", lossless ? "1" : "0", "-q:v", webpQuality.ToString(CultureInfo.InvariantCulture),
+            "-compression_level", "4", "-loop", "0", "-f", "webp", "-progress", "pipe:1", output,
         ];
     }
 

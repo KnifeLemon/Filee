@@ -391,7 +391,28 @@ internal sealed partial class OdtWriter
     private static string Columns(HColumns columns) =>
         $"<style:columns fo:column-count=\"{Math.Clamp(columns.Count, 1, 255)}\" fo:column-gap=\"{Odf.Points(columns.Gap)}\">" +
         (columns.Separator ? "<style:column-sep style:style=\"solid\" style:width=\"0.5pt\" style:color=\"#000000\" style:height=\"100%\" style:vertical-align=\"top\"/>" : "") +
+        OwnWidths(columns) +
         "</style:columns>";
+
+    /// <summary>
+    /// style:column for each of columns of their own widths: its width with the halves of the gaps either side as its
+    /// relative width (in HWPUNIT), the halves as its indents.
+    /// </summary>
+    private static string OwnWidths(HColumns columns)
+    {
+        if (columns.Sizes is not { } sizes || sizes.Count != columns.Count || columns.Count is < 2 or > 255)
+            return "";
+        var sb = new StringBuilder();
+        var start = 0;
+        for (var i = 0; i < sizes.Count; i++)
+        {
+            var gap = i + 1 < sizes.Count ? sizes[i].Gap : 0;
+            var end = gap / 2;
+            sb.Append($"<style:column style:rel-width=\"{Number(sizes[i].Width + start + end)}*\" fo:start-indent=\"{Odf.Points(start)}\" fo:end-indent=\"{Odf.Points(end)}\"/>");
+            start = gap - end;
+        }
+        return sb.ToString();
+    }
 
     // ───────────────────────── Helpers ─────────────────────────
 

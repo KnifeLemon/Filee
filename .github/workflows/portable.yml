@@ -199,7 +199,7 @@ jobs:
         run: |
           dotnet test tests/Filee.Engines.Tests/Filee.Engines.Tests.csproj --no-build -c Release --logger trx `
             --results-directory TestResults/linux-x64-without-7zip `
-            --filter 'FullyQualifiedName~Filee.Engines.Tests.Archive|FullyQualifiedName~SevenZip|FullyQualifiedName~DiskImage|FullyQualifiedName~LzmaTests|FullyQualifiedName~Bzip2Writer|FullyQualifiedName~FolderArchives|FullyQualifiedName~FolderIso|FullyQualifiedName~GamePack'
+            --filter 'FullyQualifiedName~Filee.Engines.Tests.Archive|FullyQualifiedName~SevenZip|FullyQualifiedName~DiskImage|FullyQualifiedName~LzmaTests|FullyQualifiedName~Bzip2Writer|FullyQualifiedName~FolderArchives|FullyQualifiedName~FolderIso|FullyQualifiedName~GamePack|FullyQualifiedName~GmaTests|FullyQualifiedName~GmaPackTests|FullyQualifiedName~VpkTests|FullyQualifiedName~BspTests'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Linux: rhwp from linux-native instead of the download (see the top).

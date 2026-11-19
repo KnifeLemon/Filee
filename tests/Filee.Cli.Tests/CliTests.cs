@@ -21,6 +21,43 @@ namespace Filee.Cli.Tests;
 public sealed class CliTests : IDisposable
 {
     [Fact]
+    public async Task Udf_filesystem_option_creates_a_readable_image_and_rejects_other_targets()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "udf-source")).FullName;
+        Directory.CreateDirectory(Path.Combine(folder, "empty"));
+        var name = new string('a', 100) + ".txt";
+        File.WriteAllText(Path.Combine(folder, name), "CLI UDF");
+        var result = await Run("convert", folder, "--to", "iso", "--iso-filesystem", "udf201", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        using var image = File.OpenRead(folder + ".iso");
+        using var udf = new DiscUtils.Udf.UdfReader(image);
+        Assert.True(udf.DirectoryExists("empty"));
+        using var reader = new StreamReader(udf.OpenFile(name, FileMode.Open));
+        Assert.Equal("CLI UDF", reader.ReadToEnd());
+        var rejected = await Run("convert", folder, "--to", "zip", "--iso-filesystem", "udf201");
+        Assert.NotEqual(0, rejected.Code);
+        Assert.Contains("requires an ISO target", rejected.Errors);
+    }
+
+    [Fact]
+    public async Task Same_audio_takes_a_films_sound_out_as_it_is()
+    {
+        // #1490: "--to same-audio", the CLI's name for "Same format as the audio".
+        var ffmpeg = new Filee.Engines.Media.FfmpegConverter().GetStatus();
+        Assert.SkipUnless(ffmpeg.IsAvailable, "FFmpeg is not installed.");
+        var film = Path.Combine(_folder, "film.mkv");
+        var made = await ProcessRunner.RunAsync(ffmpeg.Detail!,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=1",
+             "-f", "lavfi", "-i", "sine=duration=1", "-c:v", "mpeg4", "-c:a", "libopus", film],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+
+        var result = await Run("convert", film, "--to", "same-audio", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        Assert.True(File.Exists(Path.Combine(_folder, "film.opus")));
+    }
+
+    [Fact]
     public async Task Folder_to_zip_keeps_the_folder_tree_instead_of_converting_its_individual_files()
     {
         var folder = Directory.CreateDirectory(Path.Combine(_folder, "photos.jpg")).FullName;
@@ -915,6 +952,20 @@ public sealed class CliTests : IDisposable
         store.Load();
         store.Presets.AddRange(presets);
         store.SaveLibrary();
+    }
+
+    [Fact]
+    public async Task The_command_line_never_moves_an_original_to_the_trash()
+    {
+        // A preset saved in the app with "Move the original to the Recycle Bin / Trash" (#1387) runs here without it.
+        AddPresets(new Preset { Id = "trashing", Name = "Trashing", TargetFormat = "jpg", Output = { TrashOriginalAfterConvert = true } });
+        var png = Png("a.png");
+
+        var (code, _, errors) = await Run("convert", png, "--preset", "trashing");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.True(File.Exists(Path.Combine(_folder, "a.jpg")), errors);
+        Assert.True(File.Exists(png));
     }
 
     [Fact]

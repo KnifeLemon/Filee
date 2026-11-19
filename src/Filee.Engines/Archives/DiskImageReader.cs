@@ -220,9 +220,12 @@ internal static class DiskImageReader
         }
     }
 
+    /// <summary>The separators of DiscUtils paths on this system.</summary>
+    private static readonly char[] Separators = Path.DirectorySeparatorChar == '\\' ? ['\\'] : ['\\', Path.DirectorySeparatorChar];
+
     /// <summary>
-    /// Lists a DiscUtils file system. Its paths use "\" ("\folder\file"); each call may read up to
-    /// <see cref="DiskImageGuard.StructureBudget"/>.
+    /// Lists a DiscUtils file system. Its paths use "\" ("\folder\file"), on Linux and macOS LTRData's DiscUtils
+    /// uses "/" ("/folder/file"); each call may read up to <see cref="DiskImageGuard.StructureBudget"/>.
     /// </summary>
     /// <param name="decomposed">HFS+: names are stored decomposed (NFD) and are composed for the files written.</param>
     private static void Walk(DiscFileSystem fs, bool decomposed, List<DiskImageNode> nodes, NameTally names, DiskImageGuard guard,
@@ -240,7 +243,7 @@ internal static class DiskImageReader
             {
                 if (nodes.Count >= ArchiveSafety.EntryLimit)
                     throw ArchiveSafety.TooManyEntries(name);
-                var leaf = entry[(entry.LastIndexOf('\\') + 1)..];
+                var leaf = entry[(entry.LastIndexOfAny(Separators) + 1)..];
                 if (leaf.Length == 0 || leaf is "." or "..")
                     continue;
                 if (decomposed)
@@ -339,12 +342,13 @@ internal static class DiskImageReader
 }
 
 /// <summary>
-/// Tells HFS+ symbolic links from files. DiscUtils.HfsPlus 0.16.13 reads a record's BSD file mode two bytes early
-/// (offset 8 of HFSPlusBSDInfo, the admin and owner flags, instead of 10), so its attributes never say "link" or
+/// Tells HFS+ symbolic links from files. DiscUtils.HfsPlus 0.16.13 read a record's BSD file mode two bytes early
+/// (offset 8 of HFSPlusBSDInfo, the admin and owner flags, instead of 10), so its attributes never said "link" or
 /// "device"; and opening a link follows it (to another file of the volume, or to nothing: a NullReferenceException).
 /// Its directory entries do know a link, by the Finder type "slnk" every HFS+ link carries, but only through the
-/// file system's protected GetDirectoryEntry, reached here by reflection. The package version is pinned; should that
-/// member not be found, the volume is left to 7-Zip rather than unpacked with links followed.
+/// file system's protected GetDirectoryEntry, reached here by reflection (LTRData's 1.0.90 has the same members). The
+/// package version is pinned; should that member not be found, the volume is left to 7-Zip rather than unpacked with
+/// links followed.
 /// </summary>
 internal static class HfsPlusLinks
 {

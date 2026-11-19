@@ -81,9 +81,9 @@ public static class FormatFields
             "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "nov", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "zxp", "nupkg", "apks",
-            "aab", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "cab", "gerber",
+            "aab", "msix", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "cab", "gerber",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
-            "stl", "obj", "3mf", "ply", "fbx", "gcode", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani", "vtf"
+            "stl", "obj", "3mf", "ply", "fbx", "gcode", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani", "vtf", "gma", "vpk", "bsp"
         ]),
         (FormatGrade.Legacy,
         [
@@ -100,7 +100,7 @@ public static class FormatFields
         // Layout, print, photo post-production, signs and embroidery.
         (["psd", "psb", "exr", "hdr", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
         // Game textures and cutscenes, Minecraft packs and modpacks.
-        (["dds", "vtf", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"], ["game"]),
+        (["dds", "vtf", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "gma", "vpk", "bsp"], ["game"]),
         // Medical imaging and astronomy.
         (["dcm", "fits"], ["science"]),
         // Software work: raw image formats of graphics tools, app icons and cursors, config and data files, flat XML
@@ -108,7 +108,7 @@ public static class FormatFields
         ([
             "ppm", "icns", "qoi", "cur", "ani", "xpm", "xbm", "pam", "pfm", "miff", "fodg", "fodt", "fods", "fodp", "man",
             "jsonl", "yaml", "toml", "har", "plist", "m4s", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz",
-            "lz", "lzma", "jar", "zxp", "nupkg", "apks", "aab", "cab", "cpio", "deb", "rpm"
+            "lz", "lzma", "jar", "zxp", "nupkg", "apks", "aab", "msix", "cab", "cpio", "deb", "rpm"
         ], ["developer"]),
         // Markup sources, papers and outlines, maintenance-doc drawings (CGM), Calibre's ebook formats.
         (["cgm", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "textile", "htmlz", "txtz"], ["writing"]),

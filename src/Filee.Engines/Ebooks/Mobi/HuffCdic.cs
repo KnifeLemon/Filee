@@ -5,7 +5,9 @@
 // for the whole book together stop at the limit of one part.
 
 using System.Buffers.Binary;
+using Filee.Core.Conversion;
 using Filee.Engines.Documents;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -16,6 +18,8 @@ internal sealed class HuffCdic
     private readonly ulong[] _minCode = new ulong[33];
     private readonly ulong[] _maxCode = new ulong[33];
     private readonly List<Phrase> _phrases = [];
+    private readonly long _maxBytes;
+    private long _left;
 
     /// <summary>Bytes the unpacked phrases of the dictionary may still take.</summary>
     private long _dictionaryLeft = DocumentLimits.Default.MaxPartBytes;
@@ -29,8 +33,14 @@ internal sealed class HuffCdic
 
     /// <param name="huff">The HUFF record.</param>
     /// <param name="cdics">The CDIC records that follow it.</param>
-    public HuffCdic(ReadOnlySpan<byte> huff, IEnumerable<byte[]> cdics)
+    /// <param name="maxBytes">
+    /// Most bytes unpacked from all records together, the dictionary's own phrases included. A phrase may be made of
+    /// phrases, so each level multiplies the text: a few kilobytes of dictionary can stand for terabytes.
+    /// </param>
+    public HuffCdic(ReadOnlySpan<byte> huff, IEnumerable<byte[]> cdics, long maxBytes = long.MaxValue)
     {
+        _maxBytes = maxBytes;
+        _left = maxBytes;
         if (huff.Length < 24 || !huff[..4].SequenceEqual("HUFF"u8))
             throw new InvalidDataException("The book's HUFF compression table is damaged.");
         var table1 = (int)BinaryPrimitives.ReadUInt32BigEndian(huff[8..]);
@@ -73,9 +83,13 @@ internal sealed class HuffCdic
         }
     }
 
+    /// <summary>Decompresses one text record.</summary>
+    /// <exception cref="ConversionRefusedException">The text has unpacked to more than the limit.</exception>
+    public byte[] Decompress(ReadOnlySpan<byte> data) => Decompress(data, long.MaxValue);
+
     /// <summary>
     /// Decompresses one text record, refused with <see cref="DocumentLimits.Exceeded"/> once it passes
-    /// <paramref name="maxOutput"/> bytes.
+    /// <paramref name="maxOutput"/> bytes, and as too large once the book's text passes the limit of the dictionary.
     /// </summary>
     public byte[] Decompress(ReadOnlySpan<byte> data, long maxOutput)
     {
@@ -133,6 +147,9 @@ internal sealed class HuffCdic
                 phrase.Unpacked = true;
                 phrase.Busy = false;
             }
+            _left -= phrase.Data.Length;
+            if (_left < 0)
+                throw new ConversionRefusedException("error.document_too_large", $"the book's text unpacks to over {BoundedXml.Size(_maxBytes)}");
             if (output.Count + (long)phrase.Data.Length > maxOutput)
                 throw TooLarge(maxOutput);
             output.AddRange(phrase.Data);

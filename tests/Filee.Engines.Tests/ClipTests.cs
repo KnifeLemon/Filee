@@ -30,11 +30,15 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_fast_clip_copies_every_stream_from_the_key_frame_before_the_start()
     {
-        var args = MediaEncoding.ClipCopy("in.mp4", "out.mp4", "mp4", new ClipRange(65.3, 95.3), new MediaOptions(), Movie);
+        // In a file without an index, the copy starts at the key frame KeyFrames found before the start: 63.2 s.
+        var args = MediaEncoding.ClipCopy("in.ts", "out.mp4", "mp4", new ClipRange(65.3, 95.3), new SeekPoint(63.2, 1.4, 63.2, 65.3), new MediaOptions(),
+            Movie);
 
         // Positions in the source, read before the input: FFmpeg seeks instead of decoding up to the start.
-        Assert.Equal("65.300", After(args, "-ss"));
-        Assert.Equal("95.300", After(args, "-to"));
+        Assert.Equal("63.200000", After(args, "-ss"));
+        // A tenth of a millisecond before the end, so a frame decoded at the end itself is always left out.
+        Assert.Equal("95.299900", After(args, "-to"));
+        Assert.DoesNotContain("-copyts", args); // a copy keeps FFmpeg's own timing
         Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
         Assert.True(IndexOf(args, "-to") < IndexOf(args, "-i"));
         Assert.Equal("copy", After(args, "-c"));
@@ -52,7 +56,7 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void Clips_take_the_sound_track_the_probe_chose()
     {
         var info = Movie with { Audio = new AudioStreamInfo(2, 48000, "aac", 1) };
-        var fast = MediaEncoding.ClipCopy("in.mp4", "out.mp4", "mp4", new ClipRange(12.5, 42.5), new MediaOptions(), info);
+        var fast = MediaEncoding.ClipCopy("in.mp4", "out.mp4", "mp4", new ClipRange(12.5, 42.5), SeekPoint.Plain(12.5), new MediaOptions(), info);
         Assert.Equal(["0:V:0", "0:a:1"], fast.Where((a, i) => i > 0 && fast[i - 1] == "-map"));
         var exact = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", new MediaOptions(), info, "work",
             clip: new ClipRange(12.5, 42.5)).Single().Arguments;
@@ -65,12 +69,12 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_fast_clip_without_sound_leaves_the_audio_out()
     {
-        var args = MediaEncoding.ClipCopy("in.mkv", "out.mkv", "mkv", new ClipRange(0, 15), new MediaOptions { RemoveAudio = true }, Movie);
+        var args = MediaEncoding.ClipCopy("in.mkv", "out.mkv", "mkv", new ClipRange(0, 15), SeekPoint.Plain(0), new MediaOptions { RemoveAudio = true }, Movie);
         Assert.DoesNotContain("0:a:0", args);
         Assert.Contains("-an", args);
         Assert.Equal("matroska", After(args, "-f"));
 
-        var silent = MediaEncoding.ClipCopy("in.mkv", "out.mkv", "mkv", new ClipRange(0, 15), new MediaOptions(), Movie with { Audio = null });
+        var silent = MediaEncoding.ClipCopy("in.mkv", "out.mkv", "mkv", new ClipRange(0, 15), SeekPoint.Plain(0), new MediaOptions(), Movie with { Audio = null });
         Assert.Contains("-an", silent);
     }
 
@@ -78,28 +82,37 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void A_fast_hevc_clip_keeps_the_tag_apple_plays()
     {
         var hevc = Movie with { Video = Hd with { Codec = "hevc" } };
-        Assert.Equal("hvc1", After(MediaEncoding.ClipCopy("in.mov", "out.mov", "mov", new ClipRange(1, 2), new MediaOptions(), hevc), "-tag:v"));
-        Assert.DoesNotContain("-tag:v", MediaEncoding.ClipCopy("in.mkv", "out.mkv", "mkv", new ClipRange(1, 2), new MediaOptions(), hevc));
+        Assert.Equal("hvc1", After(MediaEncoding.ClipCopy("in.mov", "out.mov", "mov", new ClipRange(1, 2), SeekPoint.Plain(1), new MediaOptions(), hevc), "-tag:v"));
+        Assert.DoesNotContain("-tag:v", MediaEncoding.ClipCopy("in.mkv", "out.mkv", "mkv", new ClipRange(1, 2), SeekPoint.Plain(1), new MediaOptions(), hevc));
     }
 
     [Fact]
     public void A_fast_clip_needs_a_video_and_a_target_ffmpeg_writes()
     {
         Assert.Throws<InvalidOperationException>(() =>
-            MediaEncoding.ClipCopy("in.mp4", "out.mp4", "mp4", new ClipRange(0, 1), new MediaOptions(), Movie with { Video = null }));
+            MediaEncoding.ClipCopy("in.mp4", "out.mp4", "mp4", new ClipRange(0, 1), SeekPoint.Plain(0), new MediaOptions(), Movie with { Video = null }));
         Assert.Throws<NotSupportedException>(() =>
-            MediaEncoding.ClipCopy("in.rm", "out.rm", "rm", new ClipRange(0, 1), new MediaOptions(), Movie));
+            MediaEncoding.ClipCopy("in.rm", "out.rm", "rm", new ClipRange(0, 1), SeekPoint.Plain(0), new MediaOptions(), Movie));
     }
 
     [Fact]
     public void An_exact_clip_is_encoded_with_the_presets_video_options()
     {
         var options = new MediaOptions { Quality = MediaQuality.High, MaxHeight = 720 };
-        var args = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", options, Movie, "work", clip: new ClipRange(12.5, 42.5)).Single().Arguments;
+        // Read from the key frame at 10 s of a file whose times start at 1.5 s, moved back to a microsecond before
+        // 12.5 s (so the encoder and the muxer count from there), the ends cut by trims in the time base's ticks.
+        var args = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", options, Movie, "work", clip: new ClipRange(12.5, 42.5),
+            clipSeek: new SeekPoint(10, 1.5, 12.5, 12.5, (1, 15360))).Single().Arguments;
 
-        Assert.Equal("12.500", After(args, "-ss"));
-        Assert.Equal("42.500", After(args, "-to"));
-        Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
+        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "10.000000", "-itsoffset", "-13.999999", "-i", "in.mp4"],
+            args.SkipWhile(a => a != "-copyts").Take(8));
+        Assert.DoesNotContain("-to", args); // the trims end every stream
+        Assert.StartsWith("trim=start_pts=0:end_pts=460800,", After(args, "-vf"));
+        Assert.Equal("atrim=start=0:end=30", After(args, "-af"));
+        // Progress as each picture's time: -progress counts from its first report with -copyts, and only shows the run
+        // is working.
+        Assert.Equal("frame_time={t}", After(args, "-stats_enc_pre_fmt:v:0"));
+        Assert.Equal("pipe:1", After(args, "-progress"));
         // Encoded although the video could be copied (H.264 in MP4): only an encode cuts at any frame.
         Assert.Equal("libx264", After(args, "-c:v"));
         Assert.Contains("720", After(args, "-vf"));
@@ -126,9 +139,14 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_frame_for_the_window_is_one_small_jpeg_at_the_time()
     {
-        var args = MediaEncoding.FrameAt("in.mp4", 61.25, "frame.jpg", 96, null);
-        Assert.Equal("61.250", After(args, "-ss"));
+        // Read from the key frame at 60 s, the frames before 61.25 s (in the file's own time) dropped before they are
+        // scaled.
+        var args = MediaEncoding.FrameAt("in.mp4", 61.25, new SeekPoint(60, 0.5, 61.25, 61.25), "frame.jpg", 96, null);
+        Assert.Equal("60.000000", After(args, "-ss"));
         Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
+        Assert.Contains("-copyts", args);
+        // In microseconds, a microsecond early: a frame read that close to the time counts as shown at it.
+        Assert.StartsWith("settb=AVTB,trim=start=61.749999,", After(args, "-vf"));
         Assert.Equal("1", After(args, "-frames:v"));
         Assert.Equal("mjpeg", After(args, "-c:v"));
         Assert.Contains("min(ih,96)", After(args, "-vf"));
@@ -351,16 +369,25 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var graph = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30");
 
         // From the first part to the last, seeking before the input.
-        Assert.Equal(["-ss", "10.000", "-to", "40.000", "-i", "in.mp4"], graph.Inputs);
+        Assert.Equal(["-ss", "10.000000", "-i", "in.mp4"], graph.Inputs);
         Assert.Equal(10 + 2 + 5, graph.Length);
         var filter = graph.Filter;
         Assert.Contains("[0:V:0]split=2[vs0][vs1];", filter);
         Assert.Contains("[0:a:0]asplit=2[as0][as1];", filter);
-        // The parts are cut out of what was read: their times count from the first part's start.
-        Assert.Contains("[vs0]trim=start=0:end=10,setpts=PTS-STARTPTS,fps=30,scale=1920:1080,setsar=1,format=yuv420p[v0]", filter);
-        Assert.Contains("[vs1]trim=start=20:end=30,setpts=(PTS-STARTPTS)/2,", filter);
-        Assert.Contains("[as0]atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0.5,", filter);
-        Assert.Contains("[as1]atrim=start=20:end=30,asetpts=PTS-STARTPTS,atempo=2,", filter);
+        // The parts are cut out of what was read: their times count from the first part's start, in microseconds (a
+        // microsecond early), and each part's picture and sound start where the part does, its first frame at the
+        // picture nearest it, or a quarter into it where two frames come in each picture; its pictures end at its
+        // length.
+        Assert.Contains("[vs0]trim=start=0:end=9.999999,settb=AVTB,setpts=PTS-(STARTPTS-(round((STARTPTS*TB-0)*30/1))*1/(30*TB)),"
+            + "fps=30:start_time=0,scale=1920:1080,setsar=1,format=yuv420p,trim=duration=10[v0]", filter);
+        Assert.Contains("[vs1]trim=start=19.999999:end=29.999999,settb=AVTB,"
+            + "setpts=(PTS-(STARTPTS-(round((STARTPTS*TB-19.999999)*30/2)+0.25)*2/(30*TB)))/2,", filter);
+        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0.5,", filter);
+        Assert.Contains("[as1]atrim=start=19.999999:end=29.999999,asetpts=PTS-19.999999/TB,aresample=first_pts=0,atempo=2,", filter);
+        // From a key frame KeyFrames found: read from it, moved back to just before the first part, video cut in ticks.
+        var seeked = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30", seek: new SeekPoint(9, 2, 10, 10, (1, 15360)));
+        Assert.Equal(["-copyts", "-noaccurate_seek", "-ss", "9.000000", "-itsoffset", "-11.999999", "-i", "in.mp4"], seeked.Inputs);
+        Assert.Contains("[vs1]trim=start_pts=307200:end_pts=460800,settb=AVTB,setpts=(PTS-(STARTPTS-(round((STARTPTS*TB-20)*30/2)", seeked.Filter);
         // The pause: black and silence as long as the part played.
         Assert.Contains("color=c=black:s=1920x1080:r=30:d=2,setsar=1,format=yuv420p[v1]", filter);
         Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=2[a1]", filter);
@@ -415,12 +442,24 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_clip_of_a_video_faster_than_its_rate_places_each_parts_first_frame_for_the_video()
+    {
+        // 240 frames a second, encoded at 120: two frames come in each picture, and the first is put a quarter into it.
+        var fast = new MediaInfo(TimeSpan.FromSeconds(60), new VideoStreamInfo(1920, 1080, 1, 0, 240, "h264", "yuv420p"), null, null);
+        var args = MediaEncoding.ClipEditArguments("in.mp4", "out.mp4", "mp4", ClipEdit.Of(new ClipRange(5, 9)), new MediaOptions(), fast);
+
+        Assert.Contains("*120/1)+0.25)*1/(120*TB))", After(args, "-filter_complex"));
+    }
+
+    [Fact]
     public void The_preview_plays_small_raw_pictures_and_the_sound_as_wav()
     {
         var pictures = MediaEncoding.ClipPreviewVideo("in.mp4", Parts(), Hd, 360, 25, out var width, out var height);
         Assert.Equal((640, 360), (width, height));
         Assert.Equal(("rawvideo", "bgra"), (After(pictures, "-f"), After(pictures, "-pix_fmt")));
         Assert.Contains("format=bgra", After(pictures, "-filter_complex"));
+        // 29.97 frames a second in 25 pictures: the first frame put far enough into its picture that the next isn't.
+        Assert.Contains("(STARTPTS-(round((STARTPTS*TB-0)*25/1)+0.083)*1/(25*TB))", After(pictures, "-filter_complex"));
         Assert.Equal("pipe:1", pictures[^1]);
 
         var sound = MediaEncoding.ClipPreviewAudio("in.mp4", Parts(), Hd);
@@ -443,7 +482,7 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var args = ClipPreview.SilenceArguments("in.mp4", 60, 70);
         Assert.Equal("0:a:0", After(args, "-map"));
         Assert.Equal("0:a:1", After(ClipPreview.SilenceArguments("in.mp4", 60, 70, audioTrack: 1), "-map"));
-        Assert.Equal("60.000", After(args, "-ss"));
+        Assert.Equal("60.000000", After(args, "-ss"));
         Assert.StartsWith("silencedetect=noise=-35dB:d=0.4", After(args, "-af"));
     }
 
@@ -673,10 +712,11 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         edit.Music = new ClipMusic { Path = "song.mp3", Offset = 2.5, From = 30, Length = 100, Volume = 0.5 };
         var graph = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30");
 
-        Assert.Equal(["-ss", "10.000", "-to", "40.000", "-i", "in.mp4", "-ss", "30.000", "-i", "song.mp3"], graph.Inputs);
+        Assert.Equal(["-ss", "10.000000", "-i", "in.mp4", "-ss", "30.000000", "-i", "song.mp3"], graph.Inputs);
         Assert.True(graph.HasAudio);
         var filter = graph.Filter;
-        Assert.Contains("[as0]atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0,", filter); // muted: silent, still there
+        // Muted: silent, still there.
+        Assert.Contains("[as0]atrim=start=0:end=9.999999,asetpts=PTS-0/TB,volume=0,", filter);
         // 17 s of clip, from 2.5 s: 14.5 s of music, faded a second at its ends, 2.5 s late.
         Assert.Contains("[1:a:0]atrim=duration=14.5,asetpts=PTS-STARTPTS,volume=0.5,afade=t=in:st=0:d=1,afade=t=out:st=13.5:d=1,adelay=2500:all=1,", filter);
         var nextTrack = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30", musicTrack: 1).Filter;
@@ -845,10 +885,10 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var args = MediaEncoding.ClipSoundArguments("in.mp3", "out.mp3", "mp3", edit, new MediaOptions(), Song);
 
-        Assert.Equal("65.300", After(args, "-ss"));
-        Assert.Equal("95.300", After(args, "-to"));
+        Assert.Equal("65.300000", After(args, "-ss"));
         Assert.True(IndexOf(args, "-ss") < IndexOf(args, "-i"));
         var graph = After(args, "-filter_complex");
+        Assert.Contains("atrim=start=0:end=29.999999", graph); // the trim ends the sound at the clip's end
         Assert.Contains("[0:a:0]", graph);
         Assert.Contains("afade=t=out", graph);
         Assert.DoesNotContain("[0:V:0]", graph);

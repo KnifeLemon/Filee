@@ -69,11 +69,11 @@
                       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
                         <Button Classes="icon" ToolTip.Tip="{DynamicResource group.move_up}" AutomationProperties.Name="{DynamicResource group.move_up}"
                                 Command="{Binding $parent[ItemsControl].((vm:GroupEditorViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}">
-                          <PathIcon Width="12" Height="12" Data="{StaticResource Icon.ArrowUp}" />
+                          <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ChevronUp}" />
                         </Button>
                         <Button Classes="icon" ToolTip.Tip="{DynamicResource group.move_down}" AutomationProperties.Name="{DynamicResource group.move_down}"
                                 Command="{Binding $parent[ItemsControl].((vm:GroupEditorViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}">
-                          <PathIcon Width="12" Height="12" Data="{StaticResource Icon.ArrowDown}" />
+                          <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ChevronDown}" />
                         </Button>
                         <Button Classes="icon danger" ToolTip.Tip="{DynamicResource group.remove}" AutomationProperties.Name="{DynamicResource group.remove}"
                                 Command="{Binding $parent[ItemsControl].((vm:GroupEditorViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}">

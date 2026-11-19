@@ -166,11 +166,11 @@ public static class FormatRegistry
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
 
         // Plain text / markup
-        // Text logs, source code (Arduino and Processing sketches too), database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
-        // text, never executed, compiled or translated (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660,
-        // #864, #828, #980, #997, #854, #1176).
+        // Text logs (CrossOver's .cxlog too), source code (Arduino and Processing sketches too), database schemas (DBML), proxy
+        // scripts, style sheets and settings files are read as plain text, never executed, compiled or translated (issues
+        // #273, #284, #254, #388, #368, #607, #536, #630, #661, #660, #864, #828, #980, #997, #854, #1176, #1383).
         new("txt", "TXT", FormatCategory.Text,
-            ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
+            ["txt", "log", "cxlog", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
              "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java", "ino", "pde"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
@@ -348,6 +348,8 @@ public static class FormatRegistry
         new("nupkg", "NUPKG (NuGet package)", FormatCategory.Archive, ["nupkg", "snupkg"], Writable: false),
         new("apks", "APKS (Android split APKs)", FormatCategory.Archive, ["apks", "xapk", "apkm"], Writable: false),
         new("aab", "AAB (Android App Bundle)", FormatCategory.Archive, ["aab"], Writable: false),
+        // Windows app packages and bundles are ZIP-based; signed installers are never written by Filee (#1521).
+        new("msix", "MSIX / AppX (Windows app package)", FormatCategory.Archive, ["msix", "appx", "msixbundle", "appxbundle"], Writable: false),
         // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
         // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
         // the top.
@@ -356,6 +358,14 @@ public static class FormatRegistry
         new("mcworld", "Minecraft world", FormatCategory.Archive, ["mcworld"]),
         new("mctemplate", "Minecraft world template", FormatCategory.Archive, ["mctemplate"]),
         new("mrpack", "Modrinth modpack", FormatCategory.Archive, ["mrpack"]),
+        // Garry's Mod addons (Steam Workshop), read and written by Filee as gmad does: addon.json gives the title, type,
+        // tags and ignores, and only the files Garry's Mod loads go in.
+        new("gma", "Garry's Mod addon (GMA)", FormatCategory.Archive, ["gma"]),
+        // Valve paks (Source engine games' files, "pak01_dir.vpk" with its "pak01_000.vpk" … parts), read by Filee; a PS
+        // Vita package under the same extension is a ZIP and goes to 7-Zip.
+        new("vpk", "Valve pak (VPK)", FormatCategory.Archive, ["vpk"], Writable: false),
+        // Source engine maps: the files packed into a map (its pakfile lump, a ZIP) unpack like an archive.
+        new("bsp", "Source map (BSP)", FormatCategory.Archive, ["bsp"], Writable: false),
         new("cab", "CAB", FormatCategory.Archive, ["cab"], Writable: false),
         new("cpio", "CPIO", FormatCategory.Archive, ["cpio"], Writable: false),
         new("deb", "DEB", FormatCategory.Archive, ["deb"], Writable: false),

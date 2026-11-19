@@ -12,7 +12,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
-| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF through the Filee renderer, → DOCX through the DOCX writer) |
+| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF through the Filee renderer, → DOCX through the DOCX writer) |
 | **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
@@ -41,13 +41,13 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
-| Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP), Minecraft and Modrinth packs, 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs** (in-process); "Compress into one archive" for any files |
+| Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP, and Windows app packages MSIX / APPX), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs, GMA** (in-process); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
-| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
+| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG / WebP, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF, PDB, PML, RB, SNB, TCR (MOBI, AZW3 too, below the built-in writer); e-books → PDF (ranked above the HWPX writer with the Filee renderer off, see below) |
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
@@ -267,7 +267,8 @@ app, the command line and Setup for win-arm64, the Explorer menu DLL for ARM64 (
 -Architecture arm64`, packaged as `arm64`), and ARM64 builds of the bundled engines (`fetch-engines.ps1 -Runtime
 win-arm64`). The engines the app downloads stay x64: on Windows 11 on ARM, which runs them under emulation, the app
 offers the win-x64 downloads (`EngineDownloads.DownloadRuntime`); Windows 10 on ARM can't run them and gets none.
-Setup's engine list is made when it is packed (`build/tools/make-setup.cs`), so the ARM64 Setup offers the x64 one.
+Setup's engine list is made when it is packed (`build/tools/make-setup.cs --runtime=win-arm64`, also on the x64 PC
+that signs the release): the x64 downloads, without the packages the ARM64 app has none of (the upscaler).
 
 - **7-Zip** is not bundled (it is an optional download, x64 under emulation like the others). `fetch-engines.ps1
   -Runtime win-arm64 -Only 7zip` still fetches its ARM64 build for the archive tests on the ARM64 runner: the official
@@ -280,8 +281,14 @@ Setup's engine list is made when it is packed (`build/tools/make-setup.cs`), so 
   pin is filled in, a win-arm64 build stops and says so.
 
 HWP / HWPX → TXT, Markdown and HTML are managed code ([HWP text](#hwp-text-markdown-and-html)) and work on ARM64 like
-everywhere else. CI's `build (win-arm64)` job builds and tests on Windows 11 ARM64; once the pins are filled in it also
-builds the package (artifact `windows-arm64-package`).
+everywhere else. CI's `windows / build (win-arm64)` job builds and tests on Windows 11 ARM64 (for pull requests into builtin-engines
+only with the `full-ci` label); once the pins are filled in it also builds the package (artifact
+`windows-arm64-package`). Releases ship it next to the x64 files: the release workflow's `windows-arm64` job builds and
+tests it the same way and keeps it unsigned for `build/sign-release.ps1` (see
+[Releasing](../CONTRIBUTING.md#releasing-maintainers)), and the in-app updater of an ARM64 build takes
+`-win-arm64-Setup.exe` (an x64 build keeps to the x64 Setup, also on Windows on ARM). Both are in the one Windows
+`Filee-<version>-SHA256SUMS.txt`: Filee 2.4.0 and older take the last Windows-looking SHA256SUMS file of a release,
+so a separate ARM64 one would break their updates.
 
 ## Images and vector graphics
 
@@ -296,6 +303,15 @@ builds the package (artifact `windows-arm64-package`).
   one of these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL ↔ AVIF, WebP lossy or lossless as the preset says,
   #988) and becomes a multi-page TIFF;
   other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP and AVIF.
+  - **Video → animated WebP** needs FFmpeg: one looping pass with its `libwebp_anim` encoder (`MediaEncoding.AnimatedWebp`).
+    `FfmpegConverter` has a direct video → WebP edge (cost 15). Without it the route planner took video → still PNG →
+    WebP (10 + 10), cheaper than the animated routes through GIF or APNG (15 + 10), so the WebP was one frame. The
+    preset's image options decide the encoding: the quality slider sets a lossy WebP, *Lossless WEBP* writes every frame
+    losslessly. Lossy output follows the video quality for its limits (20 / 15 / 12 frames a second, at most 1920 / 1280 /
+    854 px wide, never upscaled: a 930 × 480 clip stays 930 × 480); lossless has no width limit (WebP's own is
+    16,383 px) and keeps up to 30 frames a second, so its files are large. "Ask every time" for the compression offers the
+    picture quality for a video → WebP (`AskedCompression.KindOf`); its size estimate reads a picture tile, so it can
+    show "unknown" for a video.
   - **Animated AVIF** (#1200) needs no FFmpeg, but goes much faster with it. ImageMagick reads the frames and applies
     the preset either way. With FFmpeg and its libaom-av1 encoder (Filee's FFmpeg download has it),
     `Media/AvifSequenceWriter.cs` packs the frames into an APNG in the work folder (`Magick/Apng.cs`, exact delays) and
@@ -322,7 +338,7 @@ builds the package (artifact `windows-arm64-package`).
   keeps its new length. Players show a frame of 10 ms or less for 100 ms, so no delay goes below 20 ms (50 frames a
   second): a frame that would start sooner than that after the one before is dropped and its time goes to that one,
   which leaves frames out evenly. Source delays of 10 ms or less count as the 100 ms players show. Loop count and
-  disposal stay; 1× (also every preset saved before the option) leaves the timing untouched. Video → GIF / APNG
+  disposal stay; 1× (also every preset saved before the option) leaves the timing untouched. Video → GIF / APNG / WebP
   (FFmpeg) puts `setpts=PTS/<speed>` before the `fps` filter, so the frame rate limits stay. The speed changes only in
   the step that writes the output (`JobQueue`), never twice on a longer route.
 - **APNG** (`Magick/Apng.cs`) is Filee's own code, written from the APNG specification: ImageMagick reads only an
@@ -997,7 +1013,7 @@ low-level objects (option B).**
 
 `Typesetting/FileeRendererConverter.cs` (id `layout`, "Filee renderer") reads a document into the document model,
 lays it out and writes the PDF in one step, in-process. Settings → Engines → *Use the Filee renderer* turns it on and
-off (`AppSettings.FileeRenderer`, on by default; settings schema 97 turned it on once for everyone, as it had been a
+off (`AppSettings.FileeRenderer`, on by default; settings schema 102 turned it on once for everyone, as it had been a
 preview of unreleased builds). Off, it has no edges and is shown as off, and documents → PDF go through the HWPX
 writer and rhwp again. The engine tests read no settings: there `EngineEnvironment.FileeRenderer` is off unless a
 test turns it on.
@@ -1027,7 +1043,7 @@ test turns it on.
   the renderer: LibreOffice takes them only at its fallback cost, so left out they would go to the HWPX writer and
   rhwp, as they did before the renderer. Without LibreOffice the switches change
   nothing. *Use LibreOffice for presentations* was on by default when the alternative was the HWPX writer and rhwp;
-  settings schema 97 turned it off once, so decks reach the slide renderer, and it is off for new users. The other two
+  settings schema 102 turned it off once, so decks reach the slide renderer, and it is off for new users. The other two
   were always off by default and are left as the user set them. Tests: `FileeRendererConverterTests`
   (`Libreoffice_chosen_for_*`), `RoutePlannerTests` (the costs).
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
@@ -1315,12 +1331,20 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     around the body grown by its offsets (around the header and footer areas too when they are inside), "CONTENT" its
     offsets in from the paper's edges; the background fills the paper, the page inside its margins or the border.
     The section's visibility (border, fill: all pages, all but the first, only the first) and a page's hp:pageHiding
-    (hideBorder, hideFill) leave them out.
+    (hideBorder, hideFill) leave them out. Word's page borders (w:pgBorders) take the same place: w:space points in
+    from the paper's edges (offsetFrom="page") or out from the text and around the header and footer areas, on all
+    pages, the first or all but the first (w:display); line styles it doesn't draw become a single or double line,
+    picture borders a single line.
 - **Columns, footnotes and endnotes** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: multi-column layout,
   footnotes and endnotes*):
   - Columns: a section's newspaper columns at their gap, with a separator line between them when the section has one;
     text fills a column, then the next, then the next page. A column break starts the next column; 한글's stored lines
     that started a column (the stored first-line-of-column flag) start one.
+  - Columns of their own widths (Word w:cols equalWidth="0", 한글 sameSz="0", ODF style:column rel-width): each its
+    width and the gap after it, scaled to the text width, the first at the right in a right-to-left section. A
+    paragraph going on in a column of another width is laid out anew from where it broke; they are not balanced
+    where columns change on a page (their lines are as wide as the column they were laid out for), and a table going
+    on in one keeps its first column's width.
   - Columns changing on a page (한글 다단 설정 나누기, Word's continuous section break): the columns before are balanced,
     the first ones taking the odd line as 한글 does, and the new ones start under them. At the end of a section they
     are left as they are (neither 한글 nor Word balances there).
@@ -1337,14 +1361,21 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - Measured against 한글's own PDFs: hwplib's 각주미주 sample breaks and numbers every line as 한글 (<I>, <II> under a
     full-width line, the endnote on page 2 at 한글's baseline), its separator line at 한글's place and footnotes within
     0.8 pt; hwpxlib's three-column sample has every line as 한글's, on two pages, in the same columns.
-  - Not yet: columns of different widths (한글 sameSz="0") share the width equally; footnotes go across the text
-    width also in columns (한글 puts them under each column); the separator line is solid; a note's own number is not
+  - Not yet: footnotes go across the text width also in columns (한글 puts them under each column); the separator line is solid; a note's own number is not
     raised where the section asks for it.
 - **Tables** (`TableLayout.cs`, GitHub Project 4 item *Layout engine: tables*):
   - Grid: cells take their column (or the next free one past cells spanning down from above) and their row and column
     spans. Columns take the table's absolute widths, else its relative ones (columns without one share the rest), else
     equal shares; tables of other formats (a spreadsheet's columns) are scaled down to the text width when wider, 한글's
     keep the widths 한글 gave them.
+  - Word's column widths: the grid (`w:gridCol`), else the cells' preferred widths (`w:tcW`, a length or a share of the
+    table), else the content. Autofit tables (not `w:tblLayout fixed`) widen a column to its longest word (a cell
+    spanning columns widens them together) and the table to its preferred width (`w:tblW`, a length or a share of the
+    text column). A table wider than its room (from its indent to the column's edge, or its cell for a nested table,
+    which never overflows it) gives up first what its columns have beyond their widest line, then down to their longest
+    words. Cell margins nothing gives are Word's 0.19 cm at the sides. Not yet: the indent of Word 2010 and older
+    documents measured to the cell's text (the table sits a cell margin further left there), `w:tblCellSpacing`,
+    `w:gridBefore` / `w:gridAfter` widths.
   - Cells: padding (the cell's, the table's, else 한글's 1.8 × 0.5 mm), content laid out at the column width less it,
     nested tables included; lines on 한글's stored layout take their stored place in the cell. A row is as high as its
     own height or its tallest single-row cell, whose height is its content without the spacing below its last line (as
@@ -1477,7 +1508,7 @@ use: it turns a deck into flowing pages of text boxes, which is right for DOCX o
 a slide.
 
 - **Cost 0:** with the priority list's penalty it would tie LibreOffice's slides edge (0 when Settings → Engines →
-  *Use LibreOffice for presentations → PDF* is on; off by default since settings schema 97) at the bottom of the list.
+  *Use LibreOffice for presentations → PDF* is on; off by default since settings schema 102) at the bottom of the list.
   While that switch is on and LibreOffice is installed, the renderer leaves the decks out, so LibreOffice takes them.
 - **Slide model** (`SlideModel.cs`): the deck's size and slides; each slide's background and elements in drawing order
   (the master's and layout's own shapes first). Elements have a box in their parent's coordinates, a rotation and
@@ -2345,6 +2376,10 @@ in the preset library only). Video and audio need FFmpeg.
   source goes into the ZIP instead.
 - **Extract audio** copies AAC or ALAC into M4A without an encode (`MediaOptions.CopyAudioWhenPossible`); other sound
   is encoded to AAC.
+- **Same format as the audio** (Convert to, `--to same-audio`; `BuiltInData.SameAsAudio`, #1490) copies a video's sound
+  track as it is, never encoded: the track marked default, else the first, without pictures, subtitles or data. The
+  format comes from its codec (`MediaEncoding.CopyTargetFor`): AAC and ALAC → M4A, MP3, FLAC, Opus → OPUS, Vorbis → OGG,
+  little-endian PCM → WAV (RF64 over 4 GB), anything else (AC-3, E-AC-3, DTS, TrueHD, …) → MKA.
 - **Merge videos** copies the clips with the concat demuxer only when all share the codec setup (ffprobe's extradata
   hash), size, pixel format, frame rate, turn and kind of sound; otherwise every clip is fitted into the first clip's
   frame and encoded, a clip without sound silent for its length. Sound tracks FFmpeg can't decode are skipped: each
@@ -3167,7 +3202,7 @@ files); the e-book writers write it out:
   the document's summary (else its first heading, else the file name) and the language guessed from its text.
 
 The edges cost what Unhwp's did (TXT and Markdown 10, HTML 14) and the engine took Unhwp's place in the engine order
-(settings schema 95 renames `unhwp` to `hwp-text`), so every route keeps its cost.
+(settings schema 100 renames `unhwp` to `hwp-text`), so every route keeps its cost.
 
 Unhwp (a native Rust library through NuGet) did this before. It needed the Visual C++ runtime next to Filee.exe and
 had no Linux or Windows ARM64 build of its own (Filee built one, #236). Measured before it was removed,
@@ -3414,6 +3449,9 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
 | CAB | Filee (`CabReader`: stored, MSZIP, LZX); Quantum and cabinet sets by 7-Zip | — |
 | LHA / LZH | Filee (`LhaReader`: -lh0-, -lz4-, -lh4- to -lh7-); other methods by 7-Zip | — |
 | ARJ | Filee (`ArjReader`: methods 0–4); multi-volume archives and other methods by 7-Zip | — |
+| GMA (Garry's Mod addon) | Filee: versions 1–3, CRCs checked, an `addon.json` written beside the files | Filee, as gmad does (see below) |
+| BSP (Source engine map), its packed files | Filee copies the pakfile lump (a ZIP) out and unpacks it like any ZIP | — |
+| VPK (Valve pak) | Filee: versions 1 and 2, `_dir.vpk` with its `_000.vpk` … parts, CRCs checked; a PS Vita `.vpk` (a ZIP) like any ZIP | — |
 | IMG (raw disk images) | Filee (`DiskImageReader`): GPT, Apple partition map or MBR with extended partitions (`DiskImagePartitions`), a folder `<number> <label>` per volume when there are several; FAT12/16/32 by Filee's own reader (`DiskImageFat`: long names and the lowercase flags), UDF and HFS+ by DiscUtils; a CD or DVD image named .img goes to the disc readers; NTFS, exFAT, APFS, HFSX, classic HFS and ext2/3/4 volumes send the image to 7-Zip; BitLocker and LUKS volumes are refused as encrypted | — |
 | DMG | Filee: DiscUtils.Dmg reads the UDIF blocks (raw, zero fill and ignore, zlib, bzip2, ADC) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); LZFSE and LZMA blocks and APFS volumes by 7-Zip; encrypted DMGs are refused | — |
 
@@ -3431,6 +3469,40 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   an archive or a folder whose only top folder holds the marker gets that folder's content, not the folder
   (`GamePacks.Root`); an add-on (MCADDON, several packs side by side) is packed as it is. The presets (MCPACK …
   MRPACK) are in the palette only.
+- **Garry's Mod addons** (`.gma`, #1526, the Games field; `Archives/Gma.cs`, Filee's own reader): the Steam
+  Workshop's format, a header (title, a JSON description with the type and tags, author, timestamp), a file list
+  (names, sizes, CRC-32s) and the files one after another, ended by a CRC-32 of everything before it. Every name is
+  checked before anything is written (an absolute name, a drive or a `..` stops the addon), the entries are capped at
+  the archive limit and their sizes must fit inside the addon. Unpacking checks every file's CRC (0, as `gmad -nocrc`
+  writes it, is not checked) and writes an `addon.json` with the title, description, type and tags, so the folder packs
+  back into the same addon; the required-content list and the author are not kept (Garry's Mod uses neither). Packing
+  a folder, a ZIP of one or the files dropped onto "Compress into one archive" reads `addon.json` like gmad: `title`
+  (else the folder's name), `type` (else `servercontent`), `tags`, `description` and the `ignore` wildcards. Only
+  files on gmad's whitelist go in (`lua/*.lua`, `materials/*.vtf`, `models/*.mdl` …, the ones Garry's Mod mounts;
+  `addon.json`, `thumbs.db`, `desktop.ini`, `.git*` and `.DS_Store` never), so a `.psd` or a `readme.txt` beside them
+  is left out rather than failing the addon as gmad does without `-warninvalid`; a folder with none of them is
+  refused. Names are stored in lower case, sorted, with a CRC each. The type and tags are written as given (lower
+  case), not checked against the Workshop's lists. The "GMA" preset is in the palette after the game packs (schema
+  96), not on a donut.
+- **Valve paks** (`.vpk`, #1526, the Games field; `Archives/Vpk.cs`): the archives Source engine games keep their files
+  in (`hl2_textures_dir.vpk`, the content Garry's Mod mounts). The directory file holds a tree of extensions, folders
+  and names; each file's content is a few preload bytes stored in the tree plus its data, which follows the tree in the
+  directory file (archive index 0x7FFF) or sits in `<name>_nnn.vpk` next to it. The directory file is what unpacks;
+  a data part on its own is refused with the name of its directory file, a missing part names the part. Every name is
+  checked before anything is written, the tree is capped at 256 MB and the entries at the archive limit, preload bytes
+  must lie inside the tree, parts are `_000` to `_999`, and each file's data must lie inside its part; the total is
+  checked against the free space first. The MD5 and signature sections of version 2 are not read; every file's CRC-32
+  is checked. Nothing writes VPK (Garry's Mod
+  loads addons as folders or GMA). A PS Vita package has the same extension but is a ZIP: it is unpacked like one.
+  Like every in-process reader, both GMA and VPK go through the shared listing checks (`ArchiveSafety.CheckListing`:
+  entry count, name lengths, the bomb ratio, for a VPK against the directory file and its parts together).
+- **Source engine maps** (`.bsp`, #1526, the Games field; `Archives/Bsp.cs`): the custom textures, models and sounds
+  packed into a map (by VBSP, VIDE or bspzip) are a ZIP stored as lump 40, the pakfile. Filee finds it in the lump
+  directory (offset, length, version, code; Left 4 Dead 2's version, offset, length order is used when only that one
+  points inside the file), copies it to the work folder and unpacks it like any ZIP, so a map extracts or converts to any
+  archive like one, with the same checks as any ZIP (names leaving the folder, the entry limit, the free space). The
+  lump must lie inside the map, and its copy is bounded by the lump's length. A map without packed files (an empty ZIP), a compressed pakfile lump and a Quake or GoldSrc map
+  (no `VBSP`) are refused with a message saying so. The map's geometry is not read.
 - **Adobe extension packages** (`.zxp`, #1382, read only like JAR): the panels and plug-ins of After Effects, Premiere
   Pro, Photoshop and the other Creative Cloud apps are signed ZIPs (`mimetype`, the extension's files and
   `META-INF/signatures.xml`). They extract and convert to every archive target with the signature file inside.
@@ -3442,6 +3514,9 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   `BundleConfig.pb`) are ZIPs. They extract and convert to every archive target; the APKs inside stay APK files.
   Nothing writes these: NuGet and the Play Store take only packages their own tools build and sign, and turning a
   bundle or splits into one installable `.apk` needs it signed again, which Filee doesn't do.
+- **Windows app packages** (#1521, read only): `.msix`, `.appx`, `.msixbundle` and `.appxbundle` are ZIP-based
+  packages. Extract them or convert them to archive formats; packages inside a bundle remain files. The extracted
+  contents are not an installer. Encrypted `.emsix` and `.eappx` packages are not supported.
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
   file with the output pattern; files with the same name become `name (2).ext`. No target needs 7-Zip.
@@ -3580,16 +3655,17 @@ still faster, but it is no longer needed for speed. SharpCompress remains only f
 
 ### Disk images
 
-UDF, HFS+ and the UDIF block layer of DMG come from DiscUtils (`DiscUtils.Udf`, `DiscUtils.HfsPlus`, `DiscUtils.Dmg`
-0.16.13, MIT, the same family as the `DiscUtils.Iso9660` that writes ISOs). `DiscUtils.Dmg` brings `lzfse-net`
-(BSD-3-Clause), whose native LZFSE library is not shipped: LZFSE chunks never reach it, they go to 7-Zip. FAT is
+UDF, HFS+ and the UDIF block layer of DMG come from LTRData's DiscUtils (`LTRData.DiscUtils.Udf`, `.HfsPlus`, `.Dmg`
+1.0.90, MIT, the same packages as the `LTRData.DiscUtils.Iso9660` and `.Udf` that write ISOs; the original DiscUtils
+0.16.13 packages ship the same assembly names, so the two can't be mixed). `DiscUtils.Dmg` brings `LzfseSharp`
+(BSD-3-Clause, managed): LZFSE chunks never reach it, they go to 7-Zip. FAT is
 Filee's own (`Archives/DiskImageFat.cs`, from Microsoft's FAT specification) because `DiscUtils.Fat` reads only 8.3
 names in capitals; the tests use `DiscUtils.Fat` as an independent FAT writer. The partition tables
 (`DiskImagePartitions.cs`: MBR and EBRs, GPT from the UEFI specification, Apple partition map) and the checks of the DMG
 trailer and block tables (`DiskImageGuards.cs`) are Filee's own too, so nothing reaches DiscUtils unchecked.
 `DiscUtils.Dmg` doesn't read run type 0 ("zero fill"), which hdiutil writes into its HFS+ disks beside type 2, so
 it reads the DMG through `UdifOverlay`: the block list with those runs relabelled type 2, same length.
-`DiscUtils.HfsPlus` 0.16.13 reads the BSD file mode two bytes early, so its attributes never mark a symbolic link
+`DiscUtils.HfsPlus` 0.16.13 read the BSD file mode two bytes early, so its attributes never mark a symbolic link
 and opening one follows it; `HfsPlusLinks` asks its directory entry instead (the Finder type "slnk"). NTFS
 stays on 7-Zip: `DiscUtils.Ntfs` walks its index blocks recursively from a cache, where an index pointing back at
 itself would overflow the stack without any read Filee could stop.
@@ -3603,15 +3679,21 @@ safely extracts them into its temporary work folder, then writes their contents 
 Password-protected archives fail with a clear message.
 
 CLI: `filee convert "path/to/folder" --to iso` or `filee convert "backup.zip" --to iso`.
-DiscUtils.Iso9660 writes ISO 9660 with Joliet in-process, preserving Unicode BMP names and empty directories.
-There are no filesystem or compression options. ISO writing needs no external program; archive reading uses
-the existing extraction engine. Images are data discs, not bootable clones. UDF is not included.
+LTRData DiscUtils writes ISO 9660 with Joliet (the default) or UDF 2.01 in-process. Choose the filesystem in the ISO
+preset, or use `--iso-filesystem udf201` with `--to iso` in the CLI (`--iso-filesystem joliet` selects the default).
+No new donut slice is added. Existing presets retain Joliet without a schema migration. Images are data discs,
+not bootable clones. Archive reading still uses the existing extraction engine.
 
-Individual names must fit 62 UTF-16 characters, leaving room for DiscUtils' version suffix; relative disc paths
+UDF supports approximately 234 GiB per file and 8 TiB per partition. The library encodes filenames in OSTA compressed
+Unicode (up to 254 bytes before the file identifier prefix); names outside its supported range are refused before replacing the
+destination. Source permissions, extended attributes and per-file timestamps are not imported into UDF images.
+UDF is revision 2.01 only; there are no revision, compression or boot options.
+
+For Joliet, individual names must fit 62 UTF-16 characters, leaving room for DiscUtils' version suffix; relative disc paths
 must fit 240 characters. Control characters, semicolons, backslashes, `*`, `:`, `?` and supplementary Unicode
 characters are rejected clearly. Individual files must be smaller than 4 GiB. Drive roots and symbolic links/junctions
-are refused. Timestamps are clamped to 1900-2155 in the image;
-source timestamps are unchanged. On Windows, a marked input file transfers Mark of the Web to the image.
+are refused for both filesystems. Joliet timestamps are clamped to 1900-2155 in the image;
+source timestamps are unchanged. On Windows, a marked input file transfers Mark of the Web to either image type.
 
 File contents are streamed, progress reports bytes written, and cancellation is checked during enumeration and
 streaming. A previous destination inside the source is excluded. A new image replaces its destination only after
@@ -3625,7 +3707,7 @@ all expected bytes have been written; failures and cancellation preserve any pre
   reader](#hwpx-reader)) and writes DOCX, ODT, HWPX, TXT, Markdown, HTML and EPUB with its own writers; PDF is the
   Filee renderer's (rhwp's with it off). Only HWP → RTF still takes an optional engine, as there is no built-in RTF writer: Filee
   writes Markdown that Pandoc turns into RTF, or, without Pandoc, DOCX or ODT that LibreOffice does. Until settings
-  schema 96 LibreOffice opened HWP with the H2Orestart extension (GPL, Java) and a Java runtime downloaded with it
+  schema 101 LibreOffice opened HWP with the H2Orestart extension (GPL, Java) and a Java runtime downloaded with it
   (about 50 MB, 130 MB on disk); Filee removes the copies an earlier version installed (`EngineInstaller.RemoveRetired`,
   at start-up), and whoever had *Use LibreOffice for HWP·HWPX → PDF* on gets the Filee renderer instead.
 - Before every start the profile's `user/registrymodifications.xcu` gets Filee's settings (`LibreOfficeProfile`): no
@@ -4019,8 +4101,9 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   target but AMR; *AudioSampleRate* (8 to 48 kHz) and *WavFormat* (bit depth) apply to WAV and W64.
 - *VideoCodec* (Default, HEVC, AV1) and *AudioCodec* (Default, ALAC) pick another codec where the target takes it
   (`MediaCodecs` in Filee.Core: HEVC for MP4/M4V/MKV/MOV, AV1 for MP4/M4V/MKV/WEBM, ALAC for M4A/M4B); for any other
-  target the usual codec is written. The presets "MP4 HEVC" (on the video donut), "MP4 AV1" and "ALAC" use them. A
-  video already in the chosen codec is copied (the rules above, with AV1 also into MP4); HEVC and AV1 keep 10 bits
+  target the usual codec is written. The presets "MP4 HEVC" (on the video donut), "MP4 AV1" and "ALAC" use them. With
+  Default, every video the target takes as it is is copied (HEVC into MKV too); with HEVC or AV1 only a video already in
+  that codec is (the rules above, with AV1 also into MP4) and any other is encoded. HEVC and AV1 keep 10 bits
   (`yuv420p10le`, Main 10) for 10-bit and HDR sources and write their colour tags (BT.2020, PQ or HLG), 8-bit 4:2:0
   for the rest. The encoders are looked up with `ffmpeg -encoders` once per FFmpeg, so a copy the user picked without
   x265 or AV1 fails with a clear message instead of an FFmpeg error. x265 and SVT-AV1 log only errors
@@ -4274,8 +4357,10 @@ Transcription runs entirely locally and offline on your computer; no audio or da
 - **Platform**: Windows only (x64). On macOS and Linux, the Whisper package is not offered and the engine reports
   `engine.reason.unsupported_platform` ("Not available on this platform").
 - **Download size**: ~157 MB total (~9 MB for `whisper-cli.exe` and ~148 MB for the default `ggml-base.bin` model; ~160 MB on disk).
-  Downloads are pinned by SHA-256 in `engines.json`. Users can also place larger Whisper models (such as `ggml-small.bin`
-  or `ggml-large-v3-turbo.bin`) into the engine directory or point to a custom installation in Settings → *Engines*.
+  Downloads are pinned by SHA-256 in `engines.json`. Users can also place larger Whisper models (such as `ggml-small.bin`,
+  `ggml-medium.bin` or `ggml-large-v3-turbo.bin`) into the engine directory or point to a custom installation in
+  Settings → *Engines*. Filee transcribes with the largest model file it finds in those folders (a bigger model hears
+  more, and is slower); English-only models (`*.en.bin`) are used only when no multilingual one is there.
 - **FFmpeg requirement**: Whisper operates on 16 kHz mono 16-bit WAV audio. Extracting audio from arbitrary video and audio
   formats requires FFmpeg. FFmpeg must be installed (via Settings → *Engines*, bundled, or found on `PATH`).
 - **Languages**: Whisper supports auto-detection (`auto`) as well as specific language codes (`-l <code>`, e.g. `hi` for

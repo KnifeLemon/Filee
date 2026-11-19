@@ -1,6 +1,7 @@
 // The PDF page editor's window: the file pickers for Add, Insert and Replace, and dragging pages in the strip (#860).
 // A drag moves every selected page to the line drawn between two pages; near the top or bottom edge the strip scrolls,
-// so a page can travel further than the strip shows. Escape puts a drag back.
+// so a page can travel further than the strip shows. Escape puts a drag back. PDFs dragged in from the file manager show
+// the same line and are inserted there (#1596); a drag without a PDF isn't taken.
 
 using Avalonia;
 using Avalonia.Controls;
@@ -48,6 +49,12 @@ public partial class PdfPageEditorWindow : Window
 
     private Point _pointer;
 
+    /// <summary>PDFs from the file manager are being dragged over the strip.</summary>
+    private bool _filesOver;
+
+    /// <summary>The files being dragged in include a PDF; read when the drag enters, not on every move.</summary>
+    private bool _dragOffersPdf;
+
     public PdfPageEditorWindow()
     {
         InitializeComponent();
@@ -62,6 +69,10 @@ public partial class PdfPageEditorWindow : Window
         PageOrder.AddHandler(PointerCaptureLostEvent, (_, _) => EndDrag(), handledEventsToo: true);
         // Before the Cancel button, which Escape would otherwise press.
         AddHandler(KeyDownEvent, OnKeyDownWhileDragging, RoutingStrategies.Tunnel);
+        DragDrop.AddDragEnterHandler(PageOrder, OnFilesDragEnter);
+        DragDrop.AddDragOverHandler(PageOrder, OnFilesDragOver);
+        DragDrop.AddDragLeaveHandler(PageOrder, OnFilesDragLeave);
+        DragDrop.AddDropHandler(PageOrder, OnFilesDropped);
     }
 
     private async void OnOpened(object? sender, EventArgs e)
@@ -216,6 +227,67 @@ public partial class PdfPageEditorWindow : Window
         DropLine.IsVisible = false;
     }
 
+    /// <summary>
+    /// Files dragged over the strip: with a PDF among them the line shows where its pages will go. Always Copy, never
+    /// Move, which would make the file manager delete the dropped files.
+    /// </summary>
+    private void OnFilesDragEnter(object? sender, DragEventArgs e)
+    {
+        if (!_filesOver)
+            _dragOffersPdf = DraggedFiles.Local(e.DataTransfer).Any(PdfPageEditorViewModel.IsPdf);
+        OnFilesDragOver(sender, e);
+    }
+
+    private void OnFilesDragOver(object? sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (DataContext is not PdfPageEditorViewModel { IsBusy: false } || _moving.Count > 0 || !_dragOffersPdf)
+        {
+            e.DragEffects = DragDropEffects.None;
+            EndFileDrag();
+            return;
+        }
+        e.DragEffects = DragDropEffects.Copy;
+        _pointer = e.GetPosition(PageOrder);
+        if (!_filesOver)
+        {
+            _filesOver = true;
+            _scrollTimer.Start();
+        }
+        ShowDropLine();
+    }
+
+    private async void OnFilesDropped(object? sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        var target = DropIndex(e.GetPosition(PageOrder)).Index;
+        EndFileDrag();
+        if (DataContext is not PdfPageEditorViewModel vm || _moving.Count > 0)
+        {
+            e.DragEffects = DragDropEffects.None;
+            return;
+        }
+        var files = DraggedFiles.Local(e.DataTransfer);
+        e.DragEffects = files.Count > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+        await vm.InsertFilesAtAsync(files, target);
+    }
+
+    /// <summary>The drag left the strip; passing from one page to the next inside it leaves only that page.</summary>
+    private void OnFilesDragLeave(object? sender, DragEventArgs e)
+    {
+        if (!new Rect(PageOrder.Bounds.Size).Contains(e.GetPosition(PageOrder)))
+            EndFileDrag();
+    }
+
+    private void EndFileDrag()
+    {
+        if (!_filesOver)
+            return;
+        _filesOver = false;
+        _scrollTimer.Stop();
+        DropLine.IsVisible = false;
+    }
+
     private void ShowDropLine()
     {
         var (_, lineY) = DropIndex(_pointer);
@@ -251,7 +323,7 @@ public partial class PdfPageEditorWindow : Window
 
     private void ScrollWhileDragging()
     {
-        if (_moving.Count == 0 || PageOrder.Scroll is not ScrollViewer scroll)
+        if ((_moving.Count == 0 && !_filesOver) || PageOrder.Scroll is not ScrollViewer scroll)
             return;
         var height = PageOrder.Bounds.Height;
         var step = _pointer.Y < ScrollBand ? -ScrollStep : _pointer.Y > height - ScrollBand ? ScrollStep : 0;

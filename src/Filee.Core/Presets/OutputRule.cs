@@ -116,6 +116,15 @@ public sealed class OutputRule
     public bool ReplaceOriginal { get; set; }
 
     /// <summary>
+    /// The original goes to the Recycle Bin / Trash once its result is complete (#1387). Off by default. Where
+    /// <see cref="ReplaceOriginal"/> covers a result of the source's own format, this covers one in another format
+    /// (DOCX → PDF). Never for watch folders, "Ask every time", files from a browser, the command line, merges and
+    /// packing (a ZIP result, a combined archive), or an "Only if smaller" copy of the source. Only ever moved to the
+    /// Recycle Bin / Trash, never deleted: when that isn't possible the original stays, with a note saying why.
+    /// </summary>
+    public bool TrashOriginalAfterConvert { get; set; }
+
+    /// <summary>
     /// Copy to folder only (#856): the files are moved into <see cref="CustomFolder"/> instead of copied, so they are
     /// gone from where they were. Off by default. An original is removed only once its copy is complete; files from a
     /// browser have no original and are saved as when copying. A Filee from before it ignores it and copies.

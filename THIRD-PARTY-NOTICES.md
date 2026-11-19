@@ -20,8 +20,9 @@ Each component remains under its own license.
 | Svg.Skia (incl. Svg, ShimSkiaSharp, ExCSS; text shaping in `Filee.Engines/Vector/OutlinedTextPlayback.cs` adapted from it) | MIT | https://github.com/wieslawsoltes/Svg.Skia |
 | HarfBuzzSharp | MIT | https://github.com/mono/SkiaSharp |
 | SharpCompress (in-process ZIP, 7z and RAR unpacking; bzip2, xz, LZMA and zstd decompression, also for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
-| DiscUtils.Iso9660, DiscUtils.Udf, DiscUtils.HfsPlus, DiscUtils.Dmg (including DiscUtils.Core and DiscUtils.Streams; ISO creation, reading UDF discs, HFS+ volumes and DMG images) | MIT | https://github.com/DiscUtils/DiscUtils |
-| lzfse-net (used by DiscUtils.Dmg; its managed wrapper only, the native LZFSE library is not shipped) | BSD-3-Clause | https://github.com/quamotion/lzfse-net |
+| LTRData.DiscUtils.Iso9660, LTRData.DiscUtils.Udf, LTRData.DiscUtils.HfsPlus and LTRData.DiscUtils.Dmg (including Core and Streams; Joliet and UDF 2.01 image creation, reading UDF discs, HFS+ volumes and DMG images) | MIT | https://github.com/LTRData/DiscUtils |
+| LTRData.Extensions 1.0.23 (dependency of LTRData.DiscUtils.Streams on .NET 10) | MIT | https://github.com/LTRData/Library |
+| LzfseSharp (used by LTRData.DiscUtils.Dmg; LZFSE chunks never reach it, they go to 7-Zip) | BSD-3-Clause | https://github.com/Erik-White/LzfseSharp |
 | QRCoder | MIT | https://github.com/codebude/QRCoder |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
 | ExifTool (optional engine, downloaded on request: the Metadata tool reads and writes with it) | Perl's licence (Artistic or GPL), separate program | https://exiftool.org |

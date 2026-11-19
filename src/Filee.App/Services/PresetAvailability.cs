@@ -231,6 +231,14 @@ public sealed class PresetAvailability
                 return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
         }
 
+        // "Same format as the audio" (#1490) copies a video's sound: a picture or a song has no video to take it from.
+        if (preset.TargetFormat == BuiltInData.SameAsAudio)
+        {
+            formats = [.. formats.Where(f => f.Category == FormatCategory.Video)];
+            if (formats.Count == 0)
+                return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
+        }
+
         // "Trim transparent borders" on JPG and other formats without transparency would only re-encode them.
         if (preset.Image.TrimTransparent
             && formats.All(f => !Filee.Engines.Magick.ImageEncoder.HoldsAlpha(preset.TargetFormat == BuiltInData.SameAsSource ? f.Id : preset.TargetFormat)))
@@ -316,7 +324,9 @@ public sealed class PresetAvailability
 
         var merge = preset.Pdf.MergeIntoSingle && preset.TargetFormat == "pdf";
         var turns = preset.Image.TurnsOrMirrors;
-        string TargetFor(FileFormat f) => preset.TargetFormat != BuiltInData.SameAsSource ? preset.TargetFormat
+        // The sound's own format is known only from the file: FFmpeg's video → MKA stands for every one of them.
+        string TargetFor(FileFormat f) => preset.TargetFormat == BuiltInData.SameAsAudio ? "mka"
+            : preset.TargetFormat != BuiltInData.SameAsSource ? preset.TargetFormat
             : preset.CropsVideo ? VideoCrop.TargetFor(f.Id) : f.Id;
         var copiesUnturned = false;
         bool Possible(RoutePlanner planner) => formats.Any(f =>

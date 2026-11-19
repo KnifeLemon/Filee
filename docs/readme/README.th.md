@@ -93,6 +93,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **Windows 10/11**: รัน `Filee-<version>-win-Setup.exe` หรือแตกไฟล์ `win-Portable.zip` แล้วเปิด `Filee.exe`
+  - บนพีซี Windows on ARM (การตั้งค่า → ระบบ → เกี่ยวกับ แสดงว่า "ARM-based processor") ให้ใช้ `win-arm64-Setup.exe` หรือ `win-arm64-Portable.zip` แทน ซึ่งทำงานแบบเนทีฟ ไม่ต้องผ่านการจำลอง x64
   - ตัวติดตั้ง Setup เป็นของ Filee เอง มีเมนูภาษาไทย และไม่ต้องติดตั้งโปรแกรมเสริมใดๆ
   - สามารถเพิ่มลงในเมนูคลิกขวาของ Explorer, ตั้งให้เปิดพร้อมระบบ, เพิ่มคำสั่ง `filee` และดาวน์โหลดเครื่องมือแปลงไฟล์เพิ่มเติมได้
   - รองรับการติดตั้งแบบเงียบด้วยพารามิเตอร์ของ Inno Setup (`/VERYSILENT /SUPPRESSMSGBOXES`)
@@ -142,7 +143,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **ประวัติการแปลงล่าสุด**: แสดงในหน้าแรกพร้อมรูปตัวอย่าง เปิดดูผลลัพธ์หรือเปิดด้วยแอปอื่นได้ทันที
 - **ช่องทางอื่นในการแปลง**: เมนูคลิกขวา, ปุ่มลัดแป้นพิมพ์, พื้นที่วางไฟล์ในหน้าแรก และคำสั่ง [`filee`](#การใช้งานผ่านบรรทัดคำสั่ง-command-line)
 - รองรับธีมสว่างและมืด ปรับสีเน้น (accent colour) และความโปร่งใสของโดนัทได้ตามใจ
-  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia และ Tiếng Việt
+  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia, Tiếng Việt, বাংলা, فارسی และ Монгол
 
 ## ภาพหน้าจอ
 
@@ -170,7 +171,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **ข้อความ**: TXT, LOG, โค้ดสคริปต์ (PY, PAC, BAT, COMMAND; อ่านอย่างเดียว ไม่มีการรันสคริปต์), Markdown, HTML;<br>อ่าน MHTML<br>Jupyter, reStructuredText, Org, MediaWiki, DocBook, Textile, OPML<br>LaTeX, AsciiDoc, Typst, man³ | UTF-8 TXT, PDF, DOCX, HWPX, EPUB<br>แปลงสลับกันได้, สไลด์ PPTX³ |
 | **อีบุ๊ก**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB<br>LIT, LRF⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3 |
-| **วิดีโอ**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>คำบรรยาย (SRT, ASS, WebVTT) |
+| **วิดีโอ**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, WEBP, MP3, M4A, 720p,<br>คำบรรยาย (SRT, ASS, WebVTT) |
 | **เสียง**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **คำบรรยาย**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC | แปลงสลับกันเป็น UTF-8 (อ่านไฟล์ SMI/SRT เกาหลีรหัส CP949 ได้ถูกต้อง) |
 | **ไฟล์บีบอัด**: ZIP, ANSYS Workbench (WBPZ), 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | แตกไฟล์, บีบอัดเป็น ZIP, 7Z, TAR, TAR.GZ;<br>รวมทุกไฟล์เป็นหนึ่ง ZIP |

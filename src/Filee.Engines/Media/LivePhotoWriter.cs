@@ -57,8 +57,11 @@ internal static class LivePhotoWriter
 
         var encoder = MediaEncoding.VideoEncoder("mov", "libx264", options.VideoCodec, encoders);
         var audio = options.RemoveAudio ? null : info.Audio;
+        // Both the clip and its photo are decoded from the key frame before the start (KeyFrames), so an MPEG-TS video
+        // or an open group of pictures starts on time too.
+        var seek = await KeyFrames.FindAsync(ffprobe, input, clip.Start, ct);
         await FfmpegConverter.RunPassAsync(ffmpeg, new FfmpegPass(ClipArguments(input, movie, apple ? "mov" : "mp4", clip, video, audio,
-            options, encoder, toneMap), 0.8), TimeSpan.FromSeconds(clip.Length), progress, 0, ct);
+            options, encoder, toneMap, seek), 0.8), TimeSpan.FromSeconds(clip.Length), progress, 0, ct);
 
         // The frame of the photo, within the frames the clip really has (a video may end sooner than it says).
         uint frames;
@@ -67,7 +70,7 @@ internal static class LivePhotoWriter
         if (frames == 0)
             throw new InvalidOperationException("FFmpeg wrote a clip without frames.");
         var cover = Math.Min(clip.CoverFrame, (int)frames - 1);
-        await FfmpegConverter.RunPassAsync(ffmpeg, new FfmpegPass(CoverArguments(input, png, clip.Start, cover, video, toneMap), 0.1),
+        await FfmpegConverter.RunPassAsync(ffmpeg, new FfmpegPass(CoverArguments(input, png, clip.Start, cover, video, toneMap, seek), 0.1),
             null, progress, 0.8, ct);
         if (!File.Exists(png))
             throw new InvalidOperationException("FFmpeg did not write the photo's frame.");
@@ -143,16 +146,20 @@ internal static class LivePhotoWriter
     /// tagged hvc1 for Apple), AAC in stereo or mono. FFmpeg turns the picture upright, so the orientation is kept
     /// in the pixels. The movie header stays at the end, where <see cref="AppleLivePhoto.TagMovie"/> rewrites it.
     /// </summary>
+    /// <param name="seek">
+    /// Where reading starts, the key frame <see cref="KeyFrames.FindAsync"/> found for the clip's start. The frames
+    /// before the start are dropped before the 30 fps timing, so it counts from the start as the photo's does.
+    /// </param>
     internal static List<string> ClipArguments(string input, string output, string muxer, LivePhotoClip clip, VideoStreamInfo video,
-        AudioStreamInfo? audio, MediaOptions options, string encoder, string toneMap)
+        AudioStreamInfo? audio, MediaOptions options, string encoder, string toneMap, SeekPoint seek)
     {
         var (width, height) = ClipSize(video, options.MaxHeight > 0 ? Math.Min(options.MaxHeight, ShortSide) : ShortSide);
         List<string> args =
         [
-            .. MediaEncoding.Common, "-ss", Seconds(clip.Start), "-i", input, "-map", "0:V:0",
-            .. audio is null ? Array.Empty<string>() : ["-map", $"0:a:{audio.Ordinal}"],
+            .. MediaEncoding.Common, .. seek.EncodeInput, "-i", input, "-map", "0:V:0",
+            .. audio is null ? Array.Empty<string>() : ["-map", $"0:a:{audio.Ordinal}", "-af", $"atrim=start={seek.Clip(clip.Start)}"],
             "-t", Seconds(clip.Length),
-            "-vf", $"{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
+            "-vf", $"{seek.VideoTrim(clip.Start)},{FirstFrame(video)}{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
         ];
         var crf = Choose(options.Quality, encoder == "libx265" ? [22, 26, 30] : [18, 23, 28]);
         args.AddRange(encoder == "libx265"
@@ -170,24 +177,35 @@ internal static class LivePhotoWriter
                 "-ac", audio.Channels == 1 ? "1" : "2", "-ar", audio.SampleRate is 44100 or 48000 ? audio.SampleRate.ToString(CultureInfo.InvariantCulture) : "48000"]);
         }
         args.AddRange(["-sn", "-dn", "-map_chapters", "-1", "-map_metadata", "0", "-metadata", "major_brand=", "-metadata", "minor_version=",
-            "-metadata", "compatible_brands=", "-max_muxing_queue_size", "4096", "-f", muxer, "-progress", "pipe:1", output]);
+            "-metadata", "compatible_brands=", "-max_muxing_queue_size", "4096", "-f", muxer, .. MediaEncoding.FrameProgress, output]);
         return args;
     }
 
     /// <summary>
-    /// The photo: frame <paramref name="frame"/> of the clip at the video's full size, picked by the same 30 fps
-    /// timing as the clip so it is exactly the frame the still image time points at.
+    /// The photo: frame <paramref name="frame"/> of the clip at the video's full size, picked by the same 30 fps timing
+    /// as the clip, counted from the same time 0, so it is exactly the frame the still image time points at. Reading
+    /// starts at the same key frame <paramref name="seek"/> as the clip's.
     /// </summary>
-    internal static List<string> CoverArguments(string input, string output, double start, int frame, VideoStreamInfo video, string toneMap)
+    internal static List<string> CoverArguments(string input, string output, double start, int frame, VideoStreamInfo video, string toneMap,
+        SeekPoint seek)
     {
         var square = Math.Abs(video.SampleAspect - 1) > 0.01 && video.SampleAspect > 0 ? "scale=w='trunc(iw*sar/2)*2':h=ih,setsar=1," : "";
         return
         [
-            .. MediaEncoding.Common, "-ss", Seconds(start), "-i", input, "-map", "0:V:0",
-            "-vf", $"{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
+            .. MediaEncoding.Common, .. seek.EncodeInput, "-i", input, "-map", "0:V:0",
+            "-vf", $"{seek.VideoTrim(start)},{FirstFrame(video)}{toneMap}fps={Fps},select=eq(n\\,{frame.ToString(CultureInfo.InvariantCulture)}),{square}format=rgb24",
             "-frames:v", "1", "-fps_mode", "passthrough", "-update", "1", "-c:v", "png", "-f", "image2", "-progress", "pipe:1", output,
         ];
     }
+
+    /// <summary>
+    /// The first frame of a video faster than 30 fps put far enough into its picture that fps keeps it
+    /// (<see cref="MediaEncoding.FirstFrameInto"/>): the frame after it, within half a picture, replaced it. In
+    /// microseconds, as an AVI's whole-frame ticks would cut the move short. Nothing for 30 fps or slower.
+    /// </summary>
+    private static string FirstFrame(VideoStreamInfo video) => MediaEncoding.FirstFrameInto(video.FrameRate, 1, Fps) is var into and > 0
+        ? $"settb=AVTB,setpts=PTS+{into.ToString("0.###", CultureInfo.InvariantCulture)}/({Fps}*TB),"
+        : "";
 
     /// <summary>
     /// The paths of an iPhone pair: the photo where the output rules put it, and the MOV next to it with the same name.
