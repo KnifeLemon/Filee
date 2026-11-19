@@ -258,6 +258,10 @@ internal sealed partial class HwpxReader
         public void Table(HTable table)
         {
             Settle();
+            // A table set as a character sits on its paragraph's line like a letter, so a centred or right-aligned
+            // paragraph moves it. A justified paragraph's last line starts at the left, so the table stays there.
+            if (table.AsCharacter && _format.Align is HAlign.Center or HAlign.Right)
+                table.Align = _format.Align.Value;
             // Breaks and column changes have no place on a table, so they keep an empty paragraph in front of it.
             if (HasContent || Current.PageBreakBefore || Current.ColumnBreakBefore || Current.ColumnsChange is not null)
             {

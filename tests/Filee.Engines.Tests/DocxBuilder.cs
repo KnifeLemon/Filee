@@ -49,6 +49,9 @@ internal sealed class DocxBuilder
     public string? Numbering { get; set; }
     public string? Settings { get; set; }
 
+    /// <summary>Content of w:fonts (word/fontTable.xml: w:font elements), or null for none.</summary>
+    public string? FontTable { get; set; }
+
     public DocxBuilder Paragraph(string xml)
     {
         Body.Append(xml);
@@ -85,6 +88,8 @@ internal sealed class DocxBuilder
             Part("numbering", $"<w:numbering {Namespaces}>{Numbering}</w:numbering>");
         if (Settings is not null)
             Part("settings", $"<w:settings {Namespaces}>{Settings}</w:settings>");
+        if (FontTable is not null)
+            Part("fontTable", $"<w:fonts {Namespaces}>{FontTable}</w:fonts>");
         Part("styles", $"<w:styles {Namespaces}>{Styles}</w:styles>");
 
         using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
@@ -139,6 +144,7 @@ internal sealed class DocxBuilder
         "styles.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
         "numbering.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
         "settings.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml",
+        "fontTable.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml",
         "footnotes.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
         "endnotes.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
         _ when part.StartsWith("header", StringComparison.Ordinal) => "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",

@@ -36,7 +36,8 @@
 // neutral characters of a right-to-left run (Word w:rtl) read right to left, as Word reads them. A right-to-left
 // paragraph starts at the right: its alignment and indents name the start and end side (HParaFormat.RightToLeft).
 // Tab positions are measured from the paragraph's left indent, as 한글 measures them; a hanging indent is a tab stop
-// on the first line (the text after a list number starts there).
+// on the first line (the text after a list number starts there). Default tab stops are 한글's, every 40 pt from the
+// left indent, or Word's, every w:defaultTabStop from the margin.
 //
 // 본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
 
@@ -98,6 +99,28 @@ internal sealed partial class ParagraphLayouter
     /// whose box moves the text in from the margins (see BoxBorder).
     /// </summary>
     public bool WordBorders { get; set; }
+
+    /// <summary>
+    /// The document's other names for its fonts (Word font table w:altName, HDocument.FontAlternates): a font that is
+    /// not installed is drawn with its other name when that one is.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? FontAlternates
+    {
+        get => _alternates;
+        set
+        {
+            _alternates = value;
+            _resolved.Clear();
+        }
+    }
+
+    private IReadOnlyDictionary<string, string>? _alternates;
+
+    /// <summary>
+    /// Word's distance between default tab stops (HDocument.DefaultTabStop), in HWPUNIT, measured from the margin;
+    /// null: 한글's 40 pt from the left indent.
+    /// </summary>
+    public int? DefaultTabStop { get; set; }
 
     /// <summary>Lines laid out between checks of <see cref="Guard"/>.</summary>
     private const int GuardLines = 256;
@@ -290,7 +313,8 @@ internal sealed partial class ParagraphLayouter
             format.Layout?.FontLineHeight == true,
             SpreadEastAsian: breaking?.SpreadEastAsian == true,
             Language: language,
-            HangPunctuation: breaking?.OverflowPunctuation == true);
+            HangPunctuation: breaking?.OverflowPunctuation == true,
+            WordTabInterval: DefaultTabStop is > 0 and var interval ? interval / 100f : 0);
         // A number that indents its paragraph (한글 autoIndent): the lines after the first hang under the text after it.
         if (marker is { Length: > 0 } && paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count
             && levels[level].AutoIndent && marker.Length + 1 <= text.Length)
@@ -454,7 +478,7 @@ internal sealed partial class ParagraphLayouter
     /// <param name="AutoSpace">Per UTF-16 index, the auto-spacing after the cluster starting there; null = none.</param>
     private sealed record Settings(HAlign Align, bool RightToLeft, float Left, float Right, float FirstLine, IReadOnlyList<HTabStop> Tabs,
         HLineWrap Wrap, float Condense, HLineHeight LineHeight, bool FontLineHeight, bool SpreadEastAsian = false, string Language = "",
-        float[]? AutoSpace = null, bool HangPunctuation = false);
+        float[]? AutoSpace = null, bool HangPunctuation = false, float WordTabInterval = 0);
 
     // ───────────────────────── Items ─────────────────────────
 
@@ -537,12 +561,19 @@ internal sealed partial class ParagraphLayouter
         var key = (family, style, language);
         if (!_resolved.TryGetValue(key, out var font))
         {
-            _resolved[key] = font = _fonts.Resolve(family, style, language)
+            _resolved[key] = font = _fonts.Resolve(Alternate(family, style), style, language)
                                     ?? _fonts.Resolve(null, style, language)
                                     ?? throw new InvalidOperationException("No installed font can draw the document's text.");
         }
         return font;
     }
+
+    /// <summary>The font's other name when the font is not installed and that one is; else the font.</summary>
+    private string? Alternate(string? family, FontStyle style) =>
+        family is not null && _alternates is { Count: > 0 } && _alternates.TryGetValue(family.Trim(), out var alternate)
+        && _fonts.Find(family, style) is null && _fonts.Find(alternate, style) is not null
+            ? alternate
+            : family;
 
     /// <summary>The style of the paragraph mark, which gives an empty line its height.</summary>
     private static TextStyle MarkStyle(HParagraph paragraph, string language)
@@ -756,6 +787,14 @@ internal sealed partial class ParagraphLayouter
             best = new TabStop(-settings.FirstLine, HTabKind.Left, "NONE");
         if (best is { } found)
             return found;
+        if (settings.WordTabInterval > 0)
+        {
+            // Word's default stops are every interval from the margin, not from the indent: a list number wider than its
+            // hanging indent sends the text to the next of them.
+            var start = settings.Left + indent;
+            var stop = (MathF.Floor((x + start) / settings.WordTabInterval + Epsilon) + 1) * settings.WordTabInterval - start;
+            return new TabStop(stop, HTabKind.Left, "NONE");
+        }
         var next = (MathF.Floor((x + indent) / DefaultTabInterval + Epsilon) + 1) * DefaultTabInterval - indent;
         return new TabStop(next, HTabKind.Left, "NONE");
     }

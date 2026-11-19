@@ -27,6 +27,18 @@ internal sealed class HDocument
 
     /// <summary>Custom East Asian line breaking characters (Word settings), by language; empty = the usual rules.</summary>
     public List<HKinsoku> Kinsoku { get; } = [];
+
+    /// <summary>
+    /// Other names of the document's fonts (Word font table w:altName), by font name: the font to draw with when the
+    /// named one is not installed. Only the layout engine uses it.
+    /// </summary>
+    public Dictionary<string, string> FontAlternates { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Word's distance between default tab stops (settings w:defaultTabStop), in HWPUNIT, measured from the margin;
+    /// null: 한글's 40 pt from the paragraph's left indent. Only the layout engine uses it.
+    /// </summary>
+    public int? DefaultTabStop { get; set; }
 }
 
 /// <summary>A run of pages sharing page setup, headers and footers (한글 "구역").</summary>
@@ -334,6 +346,27 @@ internal sealed record HNumberingLevel(string Format, string Text, int Start, bo
 
     /// <summary>The lines after the first start under the text after the number (한글 paraHead autoIndent).</summary>
     public bool AutoIndent { get; init; }
+
+    /// <summary>
+    /// What comes between the number and the text (Word w:suff); null: a tab when the paragraph's first line hangs,
+    /// else a space (한글). Only the layout engine uses it, so it takes no part in equality: levels that differ only
+    /// here are written alike.
+    /// </summary>
+    public HNumberSuffix? Suffix { get; init; }
+
+    public bool Equals(HNumberingLevel? other) =>
+        other is not null && Format == other.Format && Text == other.Text && Start == other.Start && Bullet == other.Bullet
+        && MarkerFormat == other.MarkerFormat && AutoIndent == other.AutoIndent;
+
+    public override int GetHashCode() => HashCode.Combine(Format, Text, Start, Bullet, MarkerFormat, AutoIndent);
+}
+
+/// <summary>What follows a list number (Word w:suff).</summary>
+internal enum HNumberSuffix
+{
+    Tab,
+    Space,
+    Nothing,
 }
 
 internal sealed class HTable : HBlock

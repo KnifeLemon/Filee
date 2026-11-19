@@ -289,6 +289,7 @@ internal sealed partial class DocxReader
         public int Start = 1;
         public string Format = "decimal";
         public string Text = "%1.";
+        public string? Suffix;
         public XElement? PPr, RPr;
     }
 
@@ -414,6 +415,7 @@ internal sealed partial class DocxReader
                 level.Start = start;
             level.Format = Val(lvl.Element(W + "numFmt")) ?? level.Format;
             level.Text = Val(lvl.Element(W + "lvlText")) ?? level.Text;
+            level.Suffix = Val(lvl.Element(W + "suff")) ?? level.Suffix;
             level.PPr = lvl.Element(W + "pPr") ?? level.PPr;
             level.RPr = lvl.Element(W + "rPr") ?? level.RPr;
         }
@@ -726,9 +728,17 @@ internal sealed partial class DocxReader
         foreach (var level in levels)
         {
             var bullet = level.Format == "bullet";
-            numbering.Levels.Add(bullet
+            // Word puts a tab after the number unless the level asks for a space or nothing.
+            var suffix = level.Suffix switch
+            {
+                "space" => HNumberSuffix.Space,
+                "nothing" => HNumberSuffix.Nothing,
+                _ => HNumberSuffix.Tab,
+            };
+            var definition = bullet
                 ? new HNumberingLevel("DIGIT", BulletText(level.Text, LevelFont(level.RPr)), level.Start, Bullet: true)
-                : new HNumberingLevel(NumberFormat(level.Format), NumberText(level.Text, level.Format), level.Start, Bullet: false));
+                : new HNumberingLevel(NumberFormat(level.Format), NumberText(level.Text, level.Format), level.Start, Bullet: false);
+            numbering.Levels.Add(definition with { Suffix = suffix });
         }
         _numberings[numId] = numbering;
         return numbering;
