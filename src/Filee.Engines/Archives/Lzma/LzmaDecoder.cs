@@ -8,6 +8,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace Filee.Engines.Archives.Lzma;
 
@@ -190,6 +191,16 @@ internal sealed class LzmaDecoder
 
     private const int FirstWindow = 1 << 16;
 
+    /// <summary>
+    /// Bytes the full window has beyond the dictionary. A match copy may write up to <see cref="CopyChunk"/> − 1
+    /// bytes past its end (whole chunks are quicker than the exact tail); with this much room, the bytes it overwrites
+    /// lie farther back than any distance can reach before they are written again.
+    /// </summary>
+    private const int Guard = 32;
+
+    /// <summary>Match copies move this many bytes at a time where they may (see <see cref="Copy"/>).</summary>
+    private const int CopyChunk = 16;
+
     // The probabilities, in one array: the single-bit decisions, the slot and distance trees, the two length models
     // and, last, the literal coders (0x300 per context, 2^(lc + lp) contexts).
     private const int States = LzmaModel.States;
@@ -225,6 +236,10 @@ internal sealed class LzmaDecoder
     private int _pending; // bytes of the current match not yet copied out
 
     private ushort[] _probabilities = [];
+
+    // Copies MatchRun decoded but has not done yet: target position, distance and length, three ints each.
+    private const int MaxDeferred = 32;
+    private readonly int[] _deferred = new int[MaxDeferred * 3];
     private int _runStop;      // where the current Run stops
     private int _runTotalBase; // pos + this has the low bits of the total
     private int _lc;
@@ -426,9 +441,9 @@ internal sealed class LzmaDecoder
                 {
                     uint p0 = Unsafe.Add(ref literal, symbol * 2);
                     uint p1 = Unsafe.Add(ref literal, symbol * 2 + 1);
-                    var one = BitMask<TInput>(p, ref Unsafe.Add(ref literal, symbol), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
-                    p = p0 ^ ((p0 ^ p1) & one);
-                    symbol = (symbol << 1) - one;
+                    var zero = ZeroMask<TInput>(p, ref Unsafe.Add(ref literal, symbol), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+                    p = p1 ^ ((p0 ^ p1) & zero);
+                    symbol = (symbol << 1) + 1 + zero;
                 }
                 while (symbol < 0x100);
             }
@@ -451,11 +466,11 @@ internal sealed class LzmaDecoder
                     var index1 = offset1 + (after & offset1) + symbol * 2 + 1;
                     uint p0 = Unsafe.Add(ref literal, index0);
                     uint p1 = Unsafe.Add(ref literal, index1);
-                    var one = BitMask<TInput>(p, ref Unsafe.Add(ref literal, index), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
-                    p = p0 ^ ((p0 ^ p1) & one);
-                    index = index0 ^ ((index0 ^ index1) & one);
-                    offset = offset0 ^ ((offset0 ^ offset1) & one);
-                    symbol = (symbol << 1) - one;
+                    var zero = ZeroMask<TInput>(p, ref Unsafe.Add(ref literal, index), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+                    p = p1 ^ ((p0 ^ p1) & zero);
+                    index = index1 ^ ((index0 ^ index1) & zero);
+                    offset = offset1 ^ ((offset0 ^ offset1) & zero);
+                    symbol = (symbol << 1) + 1 + zero;
                     match = after;
                 }
                 while (symbol < 0x100);
@@ -500,6 +515,8 @@ internal sealed class LzmaDecoder
         ref var input = ref MemoryMarshal.GetArrayDataReference(rc.Buffer);
         var inEnd = rc.End;
         rc.Take(out var range, out var code, out var inPos);
+        ref var deferred = ref MemoryMarshal.GetArrayDataReference(_deferred);
+        var copies = 0;
         int next;
         while (true)
         {
@@ -549,28 +566,37 @@ internal sealed class LzmaDecoder
                 lengthModel = MatchLengthAt;
             }
 
+            int copyLength;
             if (shortRep)
             {
                 state = state < LzmaModel.LiteralStates ? 9 : 11;
-                window[pos] = window[ByteAt(pos, rep0, window.Length)];
-                pos++;
+                copyLength = 1;
             }
             else
             {
-                // The length, from the match or the repeat length model.
+                // The length, from the match or the repeat length model: one of three trees (one loop for all three
+                // keeps the method small enough for the coder to stay in registers).
                 ref var model = ref Unsafe.Add(ref probs, lengthModel);
+                int tree, bits;
                 if (Bit<TInput>(ref model, ref range, ref code, ref input, ref inPos, ref inEnd, rc) == 0)
                 {
-                    length = Tree<TInput>(ref Unsafe.Add(ref model, LowAt + (posState << LengthModel.LowBits)), LengthModel.LowBits, ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+                    tree = LowAt + (posState << LengthModel.LowBits);
+                    bits = LengthModel.LowBits;
+                    length = 0;
                 }
                 else if (Bit<TInput>(ref Unsafe.Add(ref model, Choice2At), ref range, ref code, ref input, ref inPos, ref inEnd, rc) == 0)
                 {
-                    length = LengthModel.LowSymbols + Tree<TInput>(ref Unsafe.Add(ref model, MidAt + (posState << LengthModel.MidBits)), LengthModel.MidBits, ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+                    tree = MidAt + (posState << LengthModel.MidBits);
+                    bits = LengthModel.MidBits;
+                    length = LengthModel.LowSymbols;
                 }
                 else
                 {
-                    length = LengthModel.LowSymbols + LengthModel.MidSymbols + Tree<TInput>(ref Unsafe.Add(ref model, HighAt), LengthModel.HighBits, ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+                    tree = HighAt;
+                    bits = LengthModel.HighBits;
+                    length = LengthModel.LowSymbols + LengthModel.MidSymbols;
                 }
+                length += Tree<TInput>(ref Unsafe.Add(ref model, tree), bits, ref range, ref code, ref input, ref inPos, ref inEnd, rc);
 
                 if (lengthModel == RepLengthAt)
                 {
@@ -588,12 +614,24 @@ internal sealed class LzmaDecoder
                         break;
                     }
                 }
-                if (rep0 >= (_full ? (uint)window.Length : (uint)pos))
+                if (rep0 >= (_full ? _dictionary : Math.Min((uint)pos, _dictionary)))
                     throw new InvalidDataException("the LZMA data refers to bytes before the start of the window");
                 var matchLength = (int)length + LzmaModel.MatchMinLength;
-                var fits = Math.Min(matchLength, stop - pos);
-                _pending = matchLength - fits;
-                pos = Copy(window, pos, (int)rep0 + 1, fits);
+                copyLength = Math.Min(matchLength, stop - pos);
+                _pending = matchLength - copyLength;
+            }
+
+            // The bytes are copied later, several matches at a time: the copies' sources are far apart in the window
+            // and mostly not in the cache, and done back to back their loads overlap. Nothing before the copies reads
+            // the window (only literals do), so the bytes come out the same.
+            Unsafe.Add(ref deferred, copies * 3) = pos;
+            Unsafe.Add(ref deferred, copies * 3 + 1) = (int)rep0 + 1;
+            Unsafe.Add(ref deferred, copies * 3 + 2) = copyLength;
+            pos += copyLength;
+            if (++copies == MaxDeferred)
+            {
+                CopyDeferred(window, copies);
+                copies = 0;
             }
 
             if (pos >= stop || (!TInput.Checked && inPos > inEnd - InputMargin))
@@ -608,6 +646,7 @@ internal sealed class LzmaDecoder
                 break;
             }
         }
+        CopyDeferred(window, copies);
         _pos = pos;
         _state = state;
         _rep0 = rep0;
@@ -616,6 +655,14 @@ internal sealed class LzmaDecoder
         _rep3 = rep3;
         rc.Put(range, code, inPos);
         return next;
+    }
+
+    /// <summary>Does the first <paramref name="count"/> copies MatchRun put off, in order.</summary>
+    private void CopyDeferred(byte[] window, int count)
+    {
+        ref var deferred = ref MemoryMarshal.GetArrayDataReference(_deferred);
+        for (var i = 0; i < count; i++)
+            Copy(window, Unsafe.Add(ref deferred, i * 3), Unsafe.Add(ref deferred, i * 3 + 1), Unsafe.Add(ref deferred, i * 3 + 2));
     }
 
     /// <summary>The index of the byte <paramref name="distance"/> + 1 before <paramref name="pos"/>.</summary>
@@ -639,6 +686,20 @@ internal sealed class LzmaDecoder
         if (source < 0)
             source += windowLength;
         ref var win = ref MemoryMarshal.GetArrayDataReference(window);
+        // Most matches: the source at least a chunk behind (or, wrapped, far ahead) and room for whole chunks on both
+        // sides. Chunks read only bytes written before them, and the few bytes written past the end are written
+        // again before anything reads them (Guard).
+        if (distance >= CopyChunk && source + count <= windowLength - CopyChunk && pos + count <= windowLength - CopyChunk)
+        {
+            var i = 0;
+            do
+            {
+                Vector128.LoadUnsafe(ref win, (nuint)(source + i)).StoreUnsafe(ref win, (nuint)(pos + i));
+                i += CopyChunk;
+            }
+            while (i < count);
+            return pos + count;
+        }
         if (source + count <= windowLength)
         {
             // A forward copy is what LZMA means. It equals a block move when source and target don't overlap or the
@@ -680,13 +741,13 @@ internal sealed class LzmaDecoder
         return pos + count;
     }
 
-    /// <summary>The write position reached the end of the window: grow it while it is below the dictionary, else wrap.</summary>
+    /// <summary>The write position reached the end of the window: grow it while it is below the dictionary (and the guard), else wrap.</summary>
     private void WindowEnd()
     {
-        if ((uint)_window.Length < _dictionary)
+        if ((uint)_window.Length < _dictionary + Guard)
         {
-            // Still filling: grow (twice the size, up to the dictionary) instead of wrapping.
-            Array.Resize(ref _window, (int)Math.Min(_dictionary, (long)_window.Length * 2));
+            // Still filling: grow (twice the size, up to the dictionary and the guard) instead of wrapping.
+            Array.Resize(ref _window, (int)Math.Min(_dictionary + Guard, (long)_window.Length * 2));
         }
         else
         {
@@ -761,41 +822,49 @@ internal sealed class LzmaDecoder
     }
 
     /// <summary>
-    /// One adaptive bit without a branch on its value: returns all ones for a 1 and 0 for a 0, so a tree index moves
-    /// on with <c>(m &lt;&lt; 1) − mask</c>. The probability update is the same as in <see cref="Bit{TInput}"/>:
-    /// p − ((p − 2017) &gt;&gt; 5) with an arithmetic shift is p + ((2048 − p) &gt;&gt; 5) for every p in 0 … 2048.
+    /// One adaptive bit, with the probability already read into <paramref name="p"/>, without a branch on its value:
+    /// returns all ones for a 0 and 0 for a 1 (the borrow of code − bound), so a tree index moves on with
+    /// <c>(m &lt;&lt; 1) + 1 + mask</c> and a choice between two values is <c>b ^ ((a ^ b) &amp; mask)</c>. The
+    /// probability update is the same as in <see cref="Bit{TInput}"/>: p − ((p − 2017) &gt;&gt; 5) with an arithmetic
+    /// shift is p + ((2048 − p) &gt;&gt; 5) for every p in 0 … 2048.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint BitMask<TInput>(ref ushort probability, ref uint range, ref uint code, ref byte input, ref int inPos, ref int inEnd, RangeDecoder rc)
-        where TInput : struct, IInputMode =>
-        BitMask<TInput>(probability, ref probability, ref range, ref code, ref input, ref inPos, ref inEnd, rc);
-
-    /// <summary><see cref="BitMask{TInput}(ref ushort, ref uint, ref uint, ref byte, ref int, ref int, RangeDecoder)"/> with the probability already read into <paramref name="p"/>.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint BitMask<TInput>(uint p, ref ushort probability, ref uint range, ref uint code, ref byte input, ref int inPos, ref int inEnd, RangeDecoder rc)
+    private static uint ZeroMask<TInput>(uint p, ref ushort probability, ref uint range, ref uint code, ref byte input, ref int inPos, ref int inEnd, RangeDecoder rc)
         where TInput : struct, IInputMode
     {
         var bound = (range >> RangeCoder.ProbabilityBits) * p;
-        var one = (uint)(((long)bound - code - 1) >> 63); // code >= bound
-        range = bound + ((range - 2 * bound) & one); // bound for a 0, range − bound for a 1
-        code -= bound & one;
-        probability = (ushort)(p - (uint)((int)(p - (~one & (RangeCoder.ProbabilityOne - (1 << RangeCoder.MoveBits) + 1))) >> RangeCoder.MoveBits));
+        var zero = (uint)(((ulong)code - bound) >> 32); // code < bound: the 64-bit difference wraps
+        range = range - bound + ((2 * bound - range) & zero); // bound for a 0, range − bound for a 1
+        code -= bound & ~zero;
+        probability = (ushort)(p - (uint)((int)(p - (zero & (RangeCoder.ProbabilityOne - (1 << RangeCoder.MoveBits) + 1))) >> RangeCoder.MoveBits));
         if (range < Top)
         {
             range <<= 8;
             code = code << 8 | Next<TInput>(ref input, ref inPos, ref inEnd, rc);
         }
-        return one;
+        return zero;
     }
 
-    /// <summary>A <paramref name="bits"/>-bit symbol from a binary tree of probabilities (index 1 is the root).</summary>
+    /// <summary>
+    /// A <paramref name="bits"/>-bit symbol from a binary tree of probabilities (index 1 is the root). Like the
+    /// literals, each step reads both children's probabilities before its bit is known (all but the last, whose
+    /// children lie past the tree), so the next step doesn't wait for a load that depends on this bit.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint Tree<TInput>(ref ushort probs, int bits, ref uint range, ref uint code, ref byte input, ref int inPos, ref int inEnd, RangeDecoder rc)
         where TInput : struct, IInputMode
     {
         uint m = 1;
-        for (var i = 0; i < bits; i++)
-            m = (m << 1) - BitMask<TInput>(ref Unsafe.Add(ref probs, m), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+        uint p = Unsafe.Add(ref probs, 1);
+        for (var i = 1; i < bits; i++)
+        {
+            uint p0 = Unsafe.Add(ref probs, m * 2);
+            uint p1 = Unsafe.Add(ref probs, m * 2 + 1);
+            var zero = ZeroMask<TInput>(p, ref Unsafe.Add(ref probs, m), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+            p = p1 ^ ((p0 ^ p1) & zero);
+            m = (m << 1) + 1 + zero;
+        }
+        m = (m << 1) + 1 + ZeroMask<TInput>(p, ref Unsafe.Add(ref probs, m), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
         return m - (1u << bits);
     }
 
@@ -806,13 +875,19 @@ internal sealed class LzmaDecoder
     {
         uint m = 1;
         uint symbol = 0;
-        for (var i = 0; i < bits; i++)
+        uint p = Unsafe.Add(ref probs, 1);
+        for (var i = 0; i < bits - 1; i++)
         {
-            var bit = 0u - BitMask<TInput>(ref Unsafe.Add(ref probs, m), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+            uint p0 = Unsafe.Add(ref probs, m * 2);
+            uint p1 = Unsafe.Add(ref probs, m * 2 + 1);
+            var zero = ZeroMask<TInput>(p, ref Unsafe.Add(ref probs, m), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+            p = p1 ^ ((p0 ^ p1) & zero);
+            var bit = zero + 1;
             m = (m << 1) + bit;
             symbol |= bit << i;
         }
-        return symbol;
+        var last = 1 + ZeroMask<TInput>(p, ref Unsafe.Add(ref probs, m), ref range, ref code, ref input, ref inPos, ref inEnd, rc);
+        return symbol | (last << (bits - 1));
     }
 
     /// <summary>A match distance minus 1 (0xFFFFFFFF is the end marker): slot, then reverse-coded or direct bits.</summary>
@@ -834,7 +909,9 @@ internal sealed class LzmaDecoder
         {
             range >>= 1;
             code -= range;
-            var t = 0u - (code >> 31); // all ones when the subtraction went below zero (bit 0)
+            // All ones when the subtraction went below zero (bit 0). The range is now below 2^31 and the code was below
+            // twice the range plus one, so a difference that didn't go below zero is below 2^31 too: the sign tells.
+            var t = (uint)((int)code >> 31);
             code += range & t;
             if (code == range)
                 throw new InvalidDataException("the LZMA data is damaged");

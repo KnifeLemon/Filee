@@ -12,7 +12,8 @@
 // whole, then decoded and checked on a worker thread while the next block headers are read (Lzma2Parallel bounds how
 // many and how large). Blocks are handed out in order; a block that fails on its thread is decoded again on the
 // reader's thread as it is read, so damaged data gives the same bytes and the same error, at the same place, as the
-// one-thread reader. An error in a header read ahead is thrown after the blocks before it.
+// one-thread reader. An error in a header read ahead is thrown after the blocks before it. A worker hands out its
+// block as it decodes it (the check is compared at the block's end, as the one-thread reader does).
 
 using System.Buffers.Binary;
 using System.Runtime.ExceptionServices;
@@ -50,7 +51,8 @@ internal sealed class XzReader : Stream
 
     // Blocks decoding on worker threads, in order; the one being handed out; an error met while reading ahead.
     private readonly Queue<AheadBlock> _ahead = new();
-    private Lzma2Parallel.Decoded? _current;
+    private AheadBlock? _current;
+    private int _currentReady;
     private Replay? _replay;
     private int _currentPosition;
     private int _aheadLimit = Environment.ProcessorCount;
@@ -98,32 +100,39 @@ internal sealed class XzReader : Stream
             }
             if (_current is { } current)
             {
-                if (_currentPosition < current.Count)
+                if (_currentPosition < _currentReady)
                 {
-                    var count = Math.Min(buffer.Length, current.Count - _currentPosition);
-                    current.Output.AsSpan(_currentPosition, count).CopyTo(buffer);
+                    var count = Math.Min(buffer.Length, _currentReady - _currentPosition);
+                    current.Work.Output.AsSpan(_currentPosition, count).CopyTo(buffer);
                     _currentPosition += count;
                     _position += count;
                     return count;
                 }
+                // The worker hands its block out as it decodes it.
+                _currentReady = current.Work.WaitBeyond(_currentPosition, out var done);
+                if (_currentPosition < _currentReady || !done)
+                    continue;
                 _current = null;
+                if (current.Work.Error is { } error)
+                {
+                    // Decoded again here, as the one-thread reader reads it, past what the worker handed out.
+                    if (error.SourceException is OperationCanceledException)
+                        error.Throw();
+                    var input = new ByteInput(new MemoryStream(current.Data, 0, current.Length, writable: false));
+                    var again = new Replay(current, input, new Lzma2Reader(input, current.Dictionary, current.DeclaredUnpacked, _cancellationToken),
+                        Check.Create(_checkType));
+                    Lzma2Parallel.Skip(again.Reader, _currentPosition, again.Check.Append);
+                    again.Unpacked = _currentPosition;
+                    _replay = again;
+                }
+                continue;
             }
             ReadAhead();
             if (_ahead.TryDequeue(out var next))
             {
-                var decoded = next.Work.GetAwaiter().GetResult();
-                if (decoded.Error is { } error)
-                {
-                    // Decoded again here, as the one-thread reader reads it.
-                    if (error.SourceException is OperationCanceledException)
-                        error.Throw();
-                    var input = new ByteInput(new MemoryStream(next.Data, 0, next.Length, writable: false));
-                    _replay = new Replay(next, input, new Lzma2Reader(input, next.Dictionary, next.DeclaredUnpacked, _cancellationToken),
-                        Check.Create(_checkType));
-                    continue;
-                }
-                _current = decoded;
+                _current = next;
                 _currentPosition = 0;
+                _currentReady = 0;
                 continue;
             }
             if (_deferred is { } deferred)
@@ -286,14 +295,15 @@ internal sealed class XzReader : Stream
         _blocks.Add((_blockHeaderSize + _declaredPacked + checkSize, _declaredUnpacked));
         _cancel ??= CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken);
         var (token, packed, unpacked, checkType, name) = (_cancel.Token, _declaredPacked, (int)_declaredUnpacked, _checkType, _name);
-        var work = Task.Run(() => DecodeBlock(data, read, dictionary, packed, unpacked, checkType, name, token), CancellationToken.None);
+        var work = new Lzma2Parallel.Decoded(GC.AllocateUninitializedArray<byte>(unpacked));
+        _ = Task.Run(() => DecodeBlock(work, data, read, dictionary, packed, unpacked, checkType, name, token), CancellationToken.None);
         _ahead.Enqueue(new AheadBlock(work, data, read, dictionary, packed, unpacked));
         _step = Step.BlockOrIndex;
         return true;
     }
 
     /// <summary>A block read whole and decoding on a worker thread, with what it takes to decode it again here.</summary>
-    private sealed record AheadBlock(Task<Lzma2Parallel.Decoded> Work, byte[] Data, int Length, uint Dictionary, long DeclaredPacked,
+    private sealed record AheadBlock(Lzma2Parallel.Decoded Work, byte[] Data, int Length, uint Dictionary, long DeclaredPacked,
         int DeclaredUnpacked);
 
     /// <summary>A block that failed on its thread, decoded again on this one as it is read.</summary>
@@ -307,10 +317,9 @@ internal sealed class XzReader : Stream
     }
 
     /// <summary>A block read whole (data, padding and check), decoded and checked as <see cref="FinishBlock"/> does.</summary>
-    private static Lzma2Parallel.Decoded DecodeBlock(byte[] data, int length, uint dictionary, long declaredPacked, int declaredUnpacked,
-        int checkType, string name, CancellationToken cancellationToken)
+    private static void DecodeBlock(Lzma2Parallel.Decoded result, byte[] data, int length, uint dictionary, long declaredPacked,
+        int declaredUnpacked, int checkType, string name, CancellationToken cancellationToken)
     {
-        var result = new Lzma2Parallel.Decoded(GC.AllocateUninitializedArray<byte>(declaredUnpacked));
         try
         {
             var input = new ByteInput(new MemoryStream(data, 0, length, writable: false));
@@ -319,7 +328,9 @@ internal sealed class XzReader : Stream
             var output = result.Output;
             while (true)
             {
-                var read = result.Count < declaredUnpacked ? reader.Read(output.AsSpan(result.Count)) : 0;
+                var read = result.Count < declaredUnpacked
+                    ? reader.Read(output.AsSpan(result.Count, Math.Min(Lzma2Parallel.Decoded.Step, declaredUnpacked - result.Count)))
+                    : 0;
                 if (read == 0)
                 {
                     // All of it, or the data ended; one more byte would be past the header's size.
@@ -330,6 +341,7 @@ internal sealed class XzReader : Stream
                 }
                 check.Append(output.AsSpan(result.Count, read));
                 result.Count += read;
+                result.Publish();
             }
             CheckBlockEnd(input, input.Consumed, declaredPacked, declaredUnpacked, result.Count, checkType, check, name);
         }
@@ -337,7 +349,10 @@ internal sealed class XzReader : Stream
         {
             result.Error = ExceptionDispatchInfo.Capture(ex);
         }
-        return result;
+        finally
+        {
+            result.Finish();
+        }
     }
 
     private void FinishBlock()

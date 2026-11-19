@@ -40,7 +40,8 @@ internal static class CompressedFile
         try
         {
             long declared = -1;
-            using (var decoder = Open(format, input, name, ref declared))
+            // Decoded on a thread of its own while this one writes the file.
+            using (var decoder = ReadAheadStream.Wrap(Open(format, input, name, ref declared), declared, cancellationToken))
             using (var output = new FileStream(outputFile, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16))
             {
                 // Past the room on the drive is "too large"; past a header's size (within that room) is damage.
