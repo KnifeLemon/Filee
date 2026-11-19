@@ -22,8 +22,10 @@ Rename this heading to the version number when you release it.
 level: recommended
 ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서버(dl.filee.sh)에서 받아요
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
+en: In-app updates now install in-place directly on macOS app bundles and Windows Portable without opening download pages
 -->
 
+- **In-app updates now install in-place directly on macOS and Windows Portable**: Previously, portable Windows copies and macOS app bundles directed users to manual browser download pages. Filee now downloads and installs in-place automatically: Windows Portable safely extracts the verified portable zip and swaps files via a detached background PowerShell helper (preserving user `data` and portable settings), while macOS unpacks the verified app bundle and swaps it via a detached helper with quarantine removal and automatic rollback on failure.
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
   gave up when GitHub's download link didn't answer within 20 seconds, which some networks hit every time. Filee now
   takes the same file from its own download server (`dl.filee.sh`) instead, and the rest of that update goes there
