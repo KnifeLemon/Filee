@@ -24,7 +24,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
 | **ODP writer** | built in | **PPTX (+ PPTM/POTX/POTM/PPSX), PPT → ODP** with masters, shapes, pictures, tables, lists and speaker notes; **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → ODP slides** laid out as the PPTX writer lays them out (see [ODP writer](#odp-writer)); a deck with what the slide model leaves out (charts without a picture, effects, 3D) keeps LibreOffice's route |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
-| PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
+| PDF slides | built in (PdfPig, PDFium) | **PDF → PPTX**: each page rebuilt as an editable slide (text boxes with the PDF's fonts, pictures, shapes, ruled tables); or, as a preset option, a picture of each page with its text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
 | Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT, RTF, HWP, HWPX, HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
@@ -60,7 +60,7 @@ Documents and slides are laid out by the [Filee renderer](#filee-renderer-pdf-ou
 what it doesn't draw yet, written as HWPX and rendered by rhwp); spreadsheets are printed by Filee's own print engine
 (Excel's page logic, see [Spreadsheet printing](#spreadsheet-printing)). Anything the built-in readers understand
 (including PDF) is written as DOCX by the DOCX writer, as ODT by the ODT writer and as PPTX slides by the PPTX writer
-(PDF keeps its picture slides).
+(PDF has its own slides, see [PDF → PPTX](#pdf--pptx)).
 LibreOffice's and Pandoc's costs are set so the built-in route always wins where one exists.
 
 Except for text that needs shaping. rhwp draws one glyph per character from left to right without OpenType shaping,
@@ -1981,7 +1981,7 @@ Pandoc's slides (20) even with Pandoc first in the engine order, and `DirectOnly
 shortcut through slides and LibreOffice's PPTX → PDF (which costs 0 when LibreOffice is chosen for presentations);
 and PPTX as a step towards PPT and the other presentation formats at 25 (LibreOffice's fallback cost), taken
 only where nothing else reaches them. ODP has a writer of its own, which lays documents out with these rules
-([ODP writer](#odp-writer)). PDF keeps its picture slides, the PowerPoint
+([ODP writer](#odp-writer)). PDF has its own slides ([PDF → PPTX](#pdf--pptx)), the PowerPoint
 variants the Office Open XML engine. `tests/Filee.Engines.Tests/PptxWriterTests.cs` checks the slide rules, the title
 slide, levels, tables, pictures, code, notes, continuation slides, the Open XML SDK validator, Filee's own PPTX
 reader reading every deck back, that every other route keeps its cost, and hostile documents.
@@ -2302,28 +2302,67 @@ out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, s
 
 ## PDF → PPTX
 
-`Pdf/PdfSlidesConverter.cs` turns a PDF into a PowerPoint deck of pictures: every page is rendered (PDFium, as for
-PDF → images) and becomes one picture on its own slide. The slides look exactly like the PDF but are **not
-editable**: there are no text boxes to change, the PDF's layout is not rebuilt. PDF → DOCX is the editable route.
+`Pdf/PdfSlidesConverter.cs` turns a PDF into a PowerPoint deck with one slide per page (#1150). By default every
+page is **rebuilt to be edited** (`Pdf/PdfDocumentReader.Slides.cs`): the page is read as for PDF → DOCX (PdfPig:
+words → lines → paragraphs with their fonts, sizes, colours, bold / italic and links; ruled tables; pictures), but
+each paragraph keeps its place on the page instead of joining a document's flow.
 
-- **Slide size** is the first page's own size (an A4 portrait PDF gives A4 portrait slides, a PDF exported from a
-  16:9 deck gives 16:9 slides), within PowerPoint's limits of 1 to 56 inches a side. Every page, also one of another
-  size or orientation (pages turned in the PDF are shown turned), is fitted onto the slide without cropping and
-  centred on white.
+- **Text** becomes one text box per paragraph, as wide as its lines plus 2 % (room for a wider substitute font), its
+  first baseline where the PDF has it, no insets, growing with its text when edited. A one-line paragraph doesn't wrap
+  (a substitute font never breaks it in two); a longer one wraps at the box's width, so edited text flows, with line
+  breaks only where a line ended early within the paragraph's own width. Runs carry the font (PostScript names
+  mapped to family names, as for DOCX), size, bold, italic, colour and web links; paragraphs their alignment (found in
+  the paragraph's column), indents, tab stops and the line distance (as a share of single spacing, 1.2 em).
+- **Ruled tables** become real tables (`a:tbl`): the PDF's column widths and row heights, merged cells, each cell's
+  text, borders, shading, padding and vertical alignment, as PDF → DOCX reads them. Their rules and shading are not
+  repeated as shapes; pictures in their cells are picture shapes on top.
+- **Pictures** are picture shapes at their place (JPEG kept as it is, others PNG), also one as large as the page (a
+  slide's background picture, or a scan). A page with sideways text only is rendered as one picture (PDFium).
+- **Vector graphics**: an upright rectangle (filled and / or outlined) becomes a rectangle shape and a straight line a
+  line shape, with the PDF's colours, width and dashes; a rectangle filling the page first is the slide's background
+  colour. Everything else (curves, polygons) is drawn by Skia into one transparent PNG of the area the page's
+  remaining graphics cover, at the preset's render DPI (150-600, at most 25 megapixels), in the order the PDF paints
+  them. A page with more than 1,000 simple shapes (a chart of bars) gets them in that picture too. Line widths and
+  dashes are scaled by the transformation they were drawn under (q / Q / cm followed through the page's operations,
+  PdfPig gives them untransformed), when the painting operators match the paths one to one.
+- **Order** back to front: pictures and graphics by size (a background picture, then a coloured bar, then the logo on
+  it), tables, then text.
+- **Limits**: at most 20,000 pages (`DocumentLimits.MaxPages`), the document limits on paragraphs and objects
+  (`DocumentBudget`), and at most 500,000 path segments drawn per page (the rest of a pathological drawing is left
+  out); more is refused with `error.document_too_complex`. The preset's page range picks the pages; cancelling stops
+  between pages and between paths.
+- **Not rebuilt yet**: text that runs sideways or turned on a page that also has upright text, pattern and shading
+  fills (gradients), transparency, clipping of drawings (a clipped drawing is drawn whole, within the page), pictures
+  drawn turned or as stencil masks, form fields and annotations. PDF → DOCX stays the route for a document that
+  should flow.
+
+**Pictures of the pages** (preset option *Pictures of the pages*, `PdfOptions.SlidePictures`) makes the earlier
+picture deck: every page is rendered (PDFium, as for PDF → images) and becomes one picture on its own slide. The slides
+look exactly like the PDF but are not editable.
+
 - **Resolution** is the preset's render DPI, at least 150 and at most 600; a page larger than 25 megapixels at that
-  resolution (a poster) is rendered at a lower one. The preset's page range picks the pages.
+  resolution (a poster) is rendered at a lower one.
 - **Pictures** are JPEG at the preset's quality (90 by default, as the "PPTX (slides)" preset sets it). Pages are
   rendered on white, as PDF viewers show them, so they have no transparency that would need PNG, and JPEG keeps a
   long deck at a size that is easy to send (an A4 text page at 150 dpi is a few hundred KB).
 - **Speaker notes** hold the page's text, read like PDF → TXT (reading order, the invisible OCR layer of scans
   included), so it can still be searched and copied. Pages without text get no notes; when PdfPig cannot read a PDF
   that PDFium renders, the deck is written without notes.
-- The package (`Pdf/PictureDeckWriter.cs`, on the package code it shares with the [PPTX writer](#pptx-writer)) is written by hand: presentation, one slide master with a blank layout,
-  a theme, the slides with their pictures, a notes master and notes slides, and the document properties. The tests
-  validate it with the Open XML SDK and read it back with Filee's own PPTX reader.
+
+Both kinds:
+
+- **Slide size** is the first page's own size (an A4 portrait PDF gives A4 portrait slides, a PDF exported from a
+  16:9 deck gives 16:9 slides), within PowerPoint's limits of 1 to 56 inches a side. Every page, also one of another
+  size or orientation (pages turned in the PDF are shown turned), is fitted onto the slide without cropping and
+  centred; on editable slides its font sizes and line widths scale with it.
+- The package (`Pdf/PictureDeckWriter.cs` with `Pdf/PdfSlideXml.cs`, on the package code it shares with the
+  [PPTX writer](#pptx-writer)) is written by hand: presentation, one slide master with a blank layout, a theme, the
+  slides with their pictures and links, a notes master and notes slides, and the document properties. The tests
+  (`PdfEditableSlidesTests`, `PdfSlidesTests`) validate it with the Open XML SDK and read it back with Filee's own
+  slide reader and renderer.
 - The edge is `DirectOnly`: the route planner uses it only for a PDF converted to PPTX. A Word document or an image is
-  never turned into picture slides through PDF, and a picture deck is never a step towards ODP, PPSX or another
-  format (a test checks that every other pair of formats keeps its route).
+  never turned into slides through PDF, and these slides are never a step towards ODP, PPSX or another format (a test
+  checks that every other pair of formats keeps its route).
 
 Password-protected PDFs fail with the same message as PDF → DOCX.
 

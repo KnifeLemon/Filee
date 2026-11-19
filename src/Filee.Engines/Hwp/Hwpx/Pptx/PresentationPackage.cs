@@ -1,5 +1,5 @@
 // The package of a PowerPoint presentation (PPTX, PresentationML / ECMA-376) as Filee's two deck writers write it by
-// hand: the picture decks of PDF → PPTX (Pdf/PictureDeckWriter) and the slides of documents (PptxWriter). Parts go
+// hand: the decks of PDF → PPTX (Pdf/PictureDeckWriter) and the slides of documents (PptxWriter). Parts go
 // into the ZIP as they are written, each with its content type, and [Content_Types].xml lists them when the package
 // is saved; the file appears under its name only then. The parts both writers share are here too: the theme, the
 // notes master and notes slides, the presentation / view / table style properties and the document properties.

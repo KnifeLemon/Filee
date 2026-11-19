@@ -1156,6 +1156,8 @@
   "presets.page_numbers": "페이지 번호 (아래쪽에 1 / 5)",
   "presets.combine_pages_hint": "모든 페이지를 위아래로 이어 이미지 한 장으로 만들어요.\n너무 길면 형식의 최대 높이에 맞게 줄여요(JPG 65,500px, WebP 16,383px).",
   "presets.combine_pages": "모든 페이지를 세로로 이어 한 장으로 (PDF를 변환할 때)",
+  "presets.slide_pictures": "페이지를 그림으로 (PDF를 변환할 때)",
+  "presets.slide_pictures_hint": "슬라이드마다 PDF 페이지를 그림으로 넣어요. PDF와 똑같이 보이지만 편집할 수 없어요. 끄면 글자, 그림, 도형을 편집할 수 있는 슬라이드로 만들어요.",
   "presets.trim_page_margins": "페이지마다 위아래 빈 여백 잘라내기",
   "presets.split_tall_image": "형식이 담을 수 있는 높이를 넘으면 여러 장으로 나누기",
   "presets.split_tall_image_hint": "끄면 긴 이미지를 형식의 최대 높이(JPG 65,500px, WebP 16,383px)에 맞게 줄여요.\n켜면 원래 크기 그대로 페이지 사이에서 나눠 여러 파일(이름_1, 이름_2, …)로 저장해요.",

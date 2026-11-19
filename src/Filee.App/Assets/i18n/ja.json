@@ -1141,6 +1141,8 @@
   "presets.page_numbers": "ページ番号（下部に 1 / 5）",
   "presets.combine_pages_hint": "すべてのページを縦に並べて1枚の画像にします。\n長すぎる場合は形式の上限に合わせて縮小されます（JPG：65,500 px、WebP：16,383 px）。",
   "presets.combine_pages": "ページを縦に並べて1枚の画像にする（PDFを変換する場合）",
+  "presets.slide_pictures": "ページを画像にする（PDFを変換する場合）",
+  "presets.slide_pictures_hint": "各スライドにPDFのページを画像として配置します。PDFとまったく同じ見た目ですが、編集はできません。オフにすると、文字・画像・図形を編集できるスライドになります。",
   "presets.trim_page_margins": "各ページの上下の余白を切り取る",
   "presets.split_tall_image": "高さが形式の上限を超えたら、複数の画像に分割",
   "presets.split_tall_image_hint": "オフ：縦長の画像を形式の上限に合わせて縮小します（JPG：65,500 px、WebP：16,383 px）。\nオン：サイズを保ち、ページの境目で分割して複数のファイルに保存します（name_1、name_2、…）。",

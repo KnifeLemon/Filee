@@ -1141,6 +1141,8 @@
   "presets.page_numbers": "Nomor halaman (1 / 5 di bagian bawah)",
   "presets.combine_pages_hint": "Menyusun semua halaman berurutan ke bawah dalam satu gambar utuh.\nHasil yang sangat panjang diskalakan ke batas format (JPG 65.500 px, WebP 16.383 px).",
   "presets.combine_pages": "Tumpuk halaman menjadi satu gambar panjang (saat PDF dikonversi)",
+  "presets.slide_pictures": "Halaman sebagai gambar (saat mengonversi PDF)",
+  "presets.slide_pictures_hint": "Setiap slide menampilkan halaman PDF-nya sebagai gambar: tampak persis seperti PDF, tetapi tidak dapat diedit. Jika dimatikan, teks, gambar, dan bentuk menjadi slide yang dapat diedit.",
   "presets.trim_page_margins": "Potong area kosong di atas dan di bawah setiap halaman",
   "presets.split_tall_image": "Terlalu tinggi untuk format ini: bagi menjadi beberapa gambar",
   "presets.split_tall_image_hint": "Nonaktif: gambar panjang diperkecil skalanya ke batas format (JPG 65.500 px, WebP 16.383 px).\nAktif: ukuran aslinya dipertahankan dan dibagi menjadi beberapa file (nama_1, nama_2, …).",

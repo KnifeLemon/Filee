@@ -230,6 +230,7 @@ internal static class SharedPresetRules
             ("sheetMarginMm", new NumberRule(0, 200)),
             ("sheetGapMm", new NumberRule(0, 200)),
             ("sheetBorders", Flag),
+            ("slidePictures", Flag),
             ("combinePages", Flag),
             ("trimPageMargins", Flag),
             ("splitTallImage", Flag),

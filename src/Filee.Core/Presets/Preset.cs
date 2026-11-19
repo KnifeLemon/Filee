@@ -1349,6 +1349,13 @@ public sealed class PdfOptions
     [JsonIgnore]
     public bool MakesSheets => PagesPerSheet > 1;
 
+    /// <summary>
+    /// For PDF → PPTX: every slide shows a picture of its page, which looks exactly like the PDF but can't be edited
+    /// (the page's text goes into the speaker notes). Off by default: the pages are rebuilt as text boxes, pictures,
+    /// shapes and tables that can be edited (#1150), so a preset saved before it gets editable slides too.
+    /// </summary>
+    public bool SlidePictures { get; set; }
+
     /// <summary>For PDF → image: stack the pages into one tall image instead of one image per page.</summary>
     public bool CombinePages { get; set; }
 
