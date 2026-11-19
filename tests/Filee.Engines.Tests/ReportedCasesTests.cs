@@ -726,6 +726,23 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.InRange(Where(page, "After").Y - Where(page, "Cell").Y, pitch, pitch + 1.5f);
     }
 
+    [Fact]
+    public async Task Issue1194_line_spacing_does_not_stretch_a_picture()
+    {
+        // A 72 pt picture in a paragraph with 1.5 lines: Word adds half the paragraph's text line, not half the picture.
+        async Task<float> After(string line)
+        {
+            var docx = Docx("");
+            var id = docx.Image(HalfRedHalfBlue());
+            docx.Paragraph(P(InlinePicture(id, 914400, 914400), $"<w:spacing w:line=\"{line}\" w:lineRule=\"auto\"/>") + P(R("After")));
+            return Where(Single(await DocxAsync(docx)), "After").Y;
+        }
+
+        var single = await After("240");
+        var half = LineHeight(RepositoryFonts.Latin, 10) / 2;
+        Assert.Equal(single + half, await After("360"), 0.5f);
+    }
+
     // ───────────────────────── Word: right-to-left documents (#202, #216, #620) ─────────────────────────
 
     [Fact]
