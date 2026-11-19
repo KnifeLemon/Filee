@@ -1,8 +1,9 @@
 // Device-independent bitmaps as metafiles carry them ([MS-WMF] 2.2.2.9 DeviceIndependentBitmap): a BITMAPCOREHEADER
 // or BITMAPINFOHEADER (and its V4 / V5 extensions), a colour table, and the pixels in rows padded to 32 bits, bottom-up
 // unless the height is negative. 1, 4, 8, 16, 24 and 32 bits per pixel, uncompressed, RLE4 / RLE8 and bit fields;
-// JPEG and PNG pixels are decoded by Skia. The pixel count is checked against the metafile's budget before anything is
-// allocated.
+// JPEG and PNG pixels are decoded by Skia. The pixel count is checked against the metafile's budget, and the pixel data
+// against the size the header gives, before anything is allocated; the pixels are then decoded straight into the
+// bitmap Skia draws from, the one copy of them.
 
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
@@ -59,23 +60,30 @@ internal static class Dib
         if (header.Compression is Jpeg or Png)
             return Encoded(bits, budget);
 
+        var runLength = header.Compression == Rle8 && header.BitCount == 8 || header.Compression == Rle4 && header.BitCount == 4;
+        if (!runLength && header.Compression is not (Rgb or BitFields or AlphaBitFields))
+            return null; // CMYK or an unknown compression: nothing GDI would draw either
         budget.Bitmap(width, height);
         var colors = ColorTable(info, header, options);
-        var pixels = new uint[(long)width * height]; // BGRA, top-down
+        if (!runLength)
+            CheckUncompressed(bits, header, width, height);
+
+        var alphaType = options.Alpha && header.BitCount == 32 ? SKAlphaType.Premul : SKAlphaType.Unpremul;
+        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, alphaType));
+        if (bitmap.GetPixels() == IntPtr.Zero)
+            throw new InvalidOperationException("Skia could not allocate the bitmap.");
+        if (bitmap.RowBytes != width * 4)
+            throw new InvalidOperationException("Skia gave the bitmap unexpected row bytes.");
+        var pixels = MemoryMarshal.Cast<byte, uint>(bitmap.GetPixelSpan()); // BGRA, top-down
         var bottomUp = header.Height > 0;
-        switch (header.Compression)
+        if (runLength)
         {
-            case Rle8 when header.BitCount == 8:
-            case Rle4 when header.BitCount == 4:
-                RunLength(bits, header.Compression == Rle4, width, height, bottomUp, colors, pixels);
-                break;
-            case Rgb:
-            case BitFields:
-            case AlphaBitFields:
-                Uncompressed(bits, header, info, colors, options, width, height, bottomUp, pixels);
-                break;
-            default:
-                return null; // CMYK or an unknown compression: nothing GDI would draw either
+            pixels.Clear(); // pixels the runs skip stay transparent
+            RunLength(bits, header.Compression == Rle4, width, height, bottomUp, colors, pixels);
+        }
+        else
+        {
+            Uncompressed(bits, header, info, colors, options, width, height, bottomUp, pixels);
         }
 
         if (options.TransparentColor is { } key)
@@ -87,13 +95,6 @@ internal static class Dib
                     pixels[i] = 0;
             }
         }
-
-        var alphaType = options.Alpha && header.BitCount == 32 ? SKAlphaType.Premul : SKAlphaType.Unpremul;
-        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, alphaType));
-        var bytes = MemoryMarshal.AsBytes(pixels.AsSpan());
-        if (bitmap.RowBytes != width * 4)
-            throw new InvalidOperationException("Skia gave the bitmap unexpected row bytes.");
-        Marshal.Copy(bytes.ToArray(), 0, bitmap.GetPixels(), bytes.Length);
         bitmap.SetImmutable();
         var image = SKImage.FromBitmap(bitmap) ?? throw new InvalidOperationException("Skia could not make an image of the bitmap.");
         return new DibImage(image, header.BitCount == 1);
@@ -140,15 +141,25 @@ internal static class Dib
         return colors;
     }
 
-    private static void Uncompressed(ReadOnlySpan<byte> bits, Header header, ReadOnlySpan<byte> info, SKColor[] colors, DibOptions options,
-        int width, int height, bool bottomUp, uint[] pixels)
+    /// <summary>Refuses uncompressed pixels of a depth GDI doesn't have, or fewer than the header's size needs.</summary>
+    private static void CheckUncompressed(ReadOnlySpan<byte> bits, Header header, int width, int height)
     {
         var bpp = header.BitCount;
         if (bpp is not (1 or 2 or 4 or 8 or 16 or 24 or 32))
             throw new DibFormatException($"has a bitmap of {bpp} bits per pixel");
-        var stride = ((long)width * bpp + 31) / 32 * 4;
-        if (stride * height > bits.Length)
+        if (Stride(width, bpp) * height > bits.Length)
             throw new DibFormatException($"has a bitmap of {width} × {height} pixels whose pixel data is cut off");
+    }
+
+    /// <summary>Bytes of one row of pixels, padded to 32 bits.</summary>
+    private static long Stride(int width, int bpp) => ((long)width * bpp + 31) / 32 * 4;
+
+    /// <summary>Uncompressed pixels, once <see cref="CheckUncompressed"/> passed them.</summary>
+    private static void Uncompressed(ReadOnlySpan<byte> bits, Header header, ReadOnlySpan<byte> info, SKColor[] colors, DibOptions options,
+        int width, int height, bool bottomUp, Span<uint> pixels)
+    {
+        var bpp = header.BitCount;
+        var stride = Stride(width, bpp);
         var palette = new uint[colors.Length];
         for (var i = 0; i < colors.Length; i++)
             palette[i] = Bgra(colors[i]);
@@ -217,13 +228,13 @@ internal static class Dib
     }
 
     /// <summary>RLE8 and RLE4 ([MS-WMF] 3.1.6): runs and literal groups, end of line, end of bitmap and deltas.</summary>
-    private static void RunLength(ReadOnlySpan<byte> bits, bool four, int width, int height, bool bottomUp, SKColor[] colors, uint[] pixels)
+    private static void RunLength(ReadOnlySpan<byte> bits, bool four, int width, int height, bool bottomUp, SKColor[] colors, Span<uint> pixels)
     {
         var palette = new uint[colors.Length];
         for (var i = 0; i < colors.Length; i++)
             palette[i] = Bgra(colors[i]);
         int x = 0, y = 0, at = 0;
-        void Put(int index)
+        void Put(Span<uint> pixels, int index)
         {
             if (x < width && y < height)
                 pixels[(bottomUp ? height - 1 - y : y) * width + x] = palette[index % palette.Length];
@@ -236,7 +247,7 @@ internal static class Dib
             if (count > 0)
             {
                 for (var i = 0; i < count; i++)
-                    Put(four ? (i % 2 == 0 ? value >> 4 : value & 0x0F) : value);
+                    Put(pixels, four ? (i % 2 == 0 ? value >> 4 : value & 0x0F) : value);
                 continue;
             }
             switch (value)
@@ -259,7 +270,7 @@ internal static class Dib
                     if (at + bytes > bits.Length)
                         throw new DibFormatException("has a run-length bitmap that is cut off");
                     for (var i = 0; i < value; i++)
-                        Put(four ? (i % 2 == 0 ? bits[at + i / 2] >> 4 : bits[at + i / 2] & 0x0F) : bits[at + i]);
+                        Put(pixels, four ? (i % 2 == 0 ? bits[at + i / 2] >> 4 : bits[at + i / 2] & 0x0F) : bits[at + i]);
                     at += (bytes + 1) & ~1;
                     break;
             }
