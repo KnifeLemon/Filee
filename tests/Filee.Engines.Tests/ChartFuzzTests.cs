@@ -1,7 +1,8 @@
 // Mutation fuzzing of DrawingML charts (Charts/): the seeds are ChartTests' column chart, a pie with labels and a
 // chart with what costs the reader and the drawer the most (several plots on two pairs of axes, stacked bars, smooth
 // lines with markers and data labels, a doughnut's rings, scatter, a log axis, manual layouts, turned labels, dates),
-// written in code, as a chart part alone (XmlFuzzer) and inside a workbook the sheet printer prints (DocumentFuzzer).
+// written in code, as a chart part alone (XmlFuzzer), inside a workbook the sheet printer prints and inside a chart
+// template (.crtx) the drawing engine draws (DocumentFuzzer).
 // Every input must be read or refused with InvalidDataException / ConversionRefusedException, in time and on a 1 MB
 // stack; what is read is drawn small. Run by FuzzHarness: a short fixed run normally, FILEE_FUZZ_SECONDS for a longer
 // random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
@@ -46,6 +47,18 @@ public class ChartFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_workbook_with_charts_is_read_or_refused_whatever_its_parts_say() =>
         new FuzzHarness(fx, QuickIterations, 20261120).Files("chart-xlsx", "xlsx", [Workbook(Columns()), Workbook(Costly()), Workbook(Rings())], FuzzHarness.Packages, Print);
+
+    [Fact]
+    public void A_chart_template_is_drawn_or_refused_whatever_its_parts_say() =>
+        new FuzzHarness(fx, QuickIterations, 20261120).Files("chart-crtx", "crtx",
+            [Template(Columns()), Template(Chart(Bars(""), Axes())), Template(Rings())], FuzzHarness.Packages, (path, _) =>
+            {
+                using var template = ChartTemplate.Open(path);
+                template.Page(0).Render(12).Dispose();
+            });
+
+    private byte[] Template(string chart) =>
+        File.ReadAllBytes(ChartTemplateBuilder.Save(Path.Combine(fx.NewFolder(), "seed.crtx"), chart));
 
     private const string Labels = "<c:dLbls><c:showVal val=\"1\"/><c:showCatName val=\"1\"/><c:showPercent val=\"1\"/><c:dLblPos val=\"outEnd\"/></c:dLbls>";
 
