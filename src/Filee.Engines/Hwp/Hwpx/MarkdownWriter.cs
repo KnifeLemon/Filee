@@ -208,6 +208,9 @@ internal sealed class MarkdownWriter
         {
             switch (inline)
             {
+                case HEquation { Tex: not null } equation:
+                    sb.Append(equation.Text); // TeX math as it was written ($x$, \[x\]), not escaped
+                    break;
                 case HText text:
                     sb.Append(Run(text.Text, text.Format));
                     break;

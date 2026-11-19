@@ -597,12 +597,28 @@ internal class HText(string text, HCharFormat format) : HInline
 }
 
 /// <summary>
-/// An equation (from Word math): a 한글 equation object in HWPX. It is text too, its linear form ("(a)/(b)", "x^2"),
-/// which the writers without equations (HTML, EPUB, Markdown, plain text) write instead.
+/// An equation (from Word math, a 한글 equation or Markdown's TeX math): a 한글 equation object in HWPX, Word math in
+/// DOCX, MathML in HTML and EPUB. It is text too, for the writers without equations (Markdown, plain text …): its TeX
+/// source as written (<paramref name="source"/>, "$\frac{a}{b}$"), else its linear form ("(a)/(b)", "x^2").
 /// </summary>
-internal sealed class HEquation(MathNode math, HCharFormat format) : HText(EquationScript.Linear(math), format)
+internal sealed class HEquation(MathNode math, HCharFormat format, string? source = null)
+    : HText(source ?? EquationScript.Linear(math), format)
 {
     public MathNode Math { get; } = math;
+
+    /// <summary>The TeX of an equation read from TeX math (without its $ or \( delimiters); null for others.</summary>
+    public string? Tex { get; init; }
+
+    /// <summary>A display equation (TeX's $$ … $$ and \[ … \]), on a line of its own; inline ones are false.</summary>
+    public bool Display { get; init; }
+
+    /// <summary>
+    /// Whether <paramref name="paragraph"/> is a display equation: a <see cref="Display"/> one, or a Word equation
+    /// alone in a centred paragraph (as DocxReader reads m:oMathPara).
+    /// </summary>
+    public static bool IsDisplay(HEquation equation, HParagraph paragraph) =>
+        equation.Display
+        || (paragraph.Format.Align is HAlign.Center && paragraph.Inlines.Count(i => i is not HBookmark) == 1 && paragraph.Inlines.Contains(equation));
 
     /// <summary>
     /// The box 한글 laid the equation out in (hp:sz), with its baseline in percent of the height from the top

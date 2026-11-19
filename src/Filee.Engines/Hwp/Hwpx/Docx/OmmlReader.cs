@@ -134,6 +134,9 @@ internal static class OmmlReader
         ['~'] = "SIM",
     };
 
+    /// <summary>The 한글 equation command of a symbol character (α → alpha, ≤ → LEQ), or null; for LatexMath too.</summary>
+    internal static string? Command(char symbol) => Commands.GetValueOrDefault(symbol);
+
     /// <summary>Large operators (m:nary, or the character typed as text) → their command.</summary>
     private static readonly Dictionary<string, string> BigOperators = new()
     {

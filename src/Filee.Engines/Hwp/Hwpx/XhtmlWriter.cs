@@ -1,6 +1,7 @@
 // HDocument → clean XHTML with one small style sheet: the chapters of EPUB files, the page of HTMLZ, and single-page
 // HTML exports. Structure is kept (headings, paragraphs with alignment and indents, lists, tables with spans,
-// pictures, links and anchors, footnotes); page setup, headers and footers are left to the reading system.
+// pictures, links and anchors, footnotes, equations as MathML where the reader takes it); page setup, headers and
+// footers are left to the reading system.
 //
 // Chapters are split at level-1 headings and page breaks (and when a chapter grows very long), and links to
 // bookmarks in other chapters point at the right file.
@@ -24,6 +25,9 @@ internal sealed class XhtmlOptions
 
     /// <summary>Mark footnotes and references with epub:type (EPUB 3 pop-up notes).</summary>
     public bool Epub { get; init; }
+
+    /// <summary>Equations as MathML (HTML, EPUB 3); false writes their text (MOBI).</summary>
+    public bool MathML { get; init; }
 }
 
 /// <summary>One output file of <see cref="XhtmlWriter"/>.</summary>
@@ -69,6 +73,9 @@ internal sealed class XhtmlWriter
     private int _headingCount;
     private int _noteCount;
     private List<XhtmlHeading> _headings = [];
+
+    /// <summary>The paragraph whose inlines are being written (whether an equation in it is a display equation).</summary>
+    private HParagraph? _paragraph;
     private StringBuilder _notes = new();
 
     private XhtmlWriter(XhtmlOptions options, int bodySize)
@@ -217,7 +224,10 @@ internal sealed class XhtmlWriter
             sb.Append(Anchors(paragraph.Inlines)).Append("<hr/>\n");
             return;
         }
+        var outer = _paragraph;
+        _paragraph = paragraph;
         var content = Inlines(paragraph.Inlines, paragraph.HeadingLevel > 0);
+        _paragraph = outer;
         if (!HasVisible(paragraph.Inlines))
         {
             // Empty paragraphs are spacing in word processors; reading systems space paragraphs themselves.
@@ -411,6 +421,12 @@ internal sealed class XhtmlWriter
         {
             switch (inline)
             {
+                case HEquation equation when _options.MathML:
+                    {
+                        var display = _paragraph is { } paragraph && ReferenceEquals(paragraph.Inlines, inlines) && HEquation.IsDisplay(equation, paragraph);
+                        sb.Append(MathMLWriter.Write(equation.Math, display, equation.Tex));
+                        break;
+                    }
                 case HText text:
                     Run(text.Text, text.Format, heading, sb);
                     break;

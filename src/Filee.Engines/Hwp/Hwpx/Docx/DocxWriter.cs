@@ -5,7 +5,8 @@
 // Split over partial files:
 //  * DocxWriter.cs         package: parts, relationships, content types, styles, settings, numbering, notes;
 //  * DocxWriter.Body.cs    sections (page setup, columns, headers/footers), paragraphs, runs and tables;
-//  * DocxWriter.Objects.cs pictures (inline and floating), text boxes and shapes (wps), links, bookmarks, fields.
+//  * DocxWriter.Objects.cs pictures (inline and floating), text boxes and shapes (wps), links, bookmarks, fields;
+//  * OmmlWriter.cs         equations as Word math (m:oMath; m:oMathPara for a display equation).
 //
 // Child elements are written in schema order (Word refuses files where they are not), see the notes in each file.
 
@@ -31,7 +32,8 @@ internal sealed partial class DocxWriter
         "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" " +
         "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" " +
         "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" " +
-        "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"";
+        "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" " +
+        "xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"";
 
     private const string Declaration = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
 
