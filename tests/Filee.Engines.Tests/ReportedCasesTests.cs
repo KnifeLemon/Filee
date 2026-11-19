@@ -673,6 +673,49 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.True(check.Y > code[0].Y && check.Y < 720 + 98, $"second line at {check.Y}");
     }
 
+    // ───────────────────────── Word: floating tables and paragraph spacing (#1194, #1152) ─────────────────────────
+
+    /// <summary>A one-cell table (Table Grid) 2 inches wide holding <paramref name="text"/>, with <paramref name="position"/> in its properties.</summary>
+    private static string OneCellTable(string text, string position = "") =>
+        $"<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/>{position}<w:tblW w:w=\"2880\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"2880\"/></w:tblGrid>" +
+        $"<w:tr><w:tc><w:tcPr><w:tcW w:w=\"2880\" w:type=\"dxa\"/></w:tcPr>{P(R(text))}</w:tc></w:tr></w:tbl>";
+
+    private static SKPoint Where(PageContent page, string text) => Runs(page).First(r => r.Text.Contains(text, StringComparison.Ordinal)).Positions[0];
+
+    [Fact]
+    public async Task Issue1194_text_after_a_floating_table_goes_around_it()
+    {
+        // The report's figure captions are floating tables (w:tblpPr), placed from the top of the paragraph after them;
+        // the empty paragraphs after them sat beside the caption in Word and under it in Filee, a page longer in all.
+        const string Right = "<w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\" w:vertAnchor=\"text\" w:horzAnchor=\"margin\" w:tblpXSpec=\"right\" w:tblpY=\"200\"/>";
+        var floating = Single(await DocxAsync(Docx(P(R("Before")) + OneCellTable("Cell", Right) + P(R("Beside")) + P(R("Next")))));
+        var flowing = Single(await DocxAsync(Docx(P(R("Before")) + OneCellTable("Cell") + P(R("Beside")))));
+
+        var (before, cell, beside, next) = (Where(floating, "Before"), Where(floating, "Cell"), Where(floating, "Beside"), Where(floating, "Next"));
+        // The table at the right margin, 10 pt below the top of the paragraph after it.
+        Assert.Equal(RightMargin - 144 + 5.4f, cell.X, 1f);
+        var pitch = LineHeight(RepositoryFonts.Latin, 10);
+        Assert.Equal(before.Y + pitch + 10, cell.Y, 1f);
+        // The paragraphs after it on their own lines at the left margin, beside it.
+        Assert.Equal(LeftMargin, beside.X, 0.5f);
+        Assert.Equal(before.Y + pitch, beside.Y, 0.5f);
+        Assert.Equal(beside.Y + pitch, next.Y, 0.5f);
+        // In the flow the paragraph goes under the table.
+        Assert.True(Where(flowing, "Beside").Y > Where(flowing, "Cell").Y + pitch - 0.5f);
+    }
+
+    [Fact]
+    public async Task Issue1194_a_table_placed_on_the_page_leaves_the_text_where_it_is()
+    {
+        // A floating table 5 inches down the page (vertAnchor page) takes no room in the text above it.
+        const string Page = "<w:tblpPr w:vertAnchor=\"page\" w:horzAnchor=\"page\" w:tblpX=\"1440\" w:tblpY=\"7200\"/>";
+        var page = Single(await DocxAsync(Docx(P(R("Before")) + OneCellTable("Cell", Page) + P(R("After")))));
+
+        var pitch = LineHeight(RepositoryFonts.Latin, 10);
+        Assert.Equal(Where(page, "Before").Y + pitch, Where(page, "After").Y, 0.5f);
+        Assert.InRange(Where(page, "Cell").Y, 360, 360 + pitch + 1);
+    }
+
     // ───────────────────────── Word: right-to-left documents (#202, #216, #620) ─────────────────────────
 
     [Fact]

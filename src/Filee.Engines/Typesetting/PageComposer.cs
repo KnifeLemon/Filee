@@ -28,7 +28,8 @@
 //   the reader keeps in a text box placed for rhwp, goes with its equation instead (ParagraphLayout.Equations.cs).
 //
 // - Tables (TableLayout): rows bound by spanning cells move to a page together, header rows repeat, and a table splits
-//   by its page break mode.
+//   by its page break mode. A Word floating table (HTable.Float) is placed as a floating object instead, against the
+//   paragraph after it or the page, and the text after it goes around it (see Float).
 // - Columns: a section's newspaper columns, with their gap and separator line; what doesn't fit in a column goes on in
 //   the next, and after the last on the next page. Columns change without a new page where the model says (Word's
 //   continuous section break, 한글's 다단 설정 나누기); the columns before are balanced then, so they end at about the
@@ -488,6 +489,8 @@ internal sealed class PageComposer
                 {
                     var tableBox = next as TableBox ?? Tables.Layout(table, ColumnWidth);
                     next = null;
+                    if (holder is null && table.Float is { } anchor && Float(table, anchor, tableBox, blocks, i, ref next))
+                        continue;
                     PlaceTable(table, tableBox, holder, holder is null ? TableLayout.Follower(blocks, i) : null);
                     holder = null;
                     continue;
@@ -1096,6 +1099,56 @@ internal sealed class PageComposer
             return result;
         }
 
+        /// <summary>A Word floating table laid out, placed as a floating object.</summary>
+        private sealed class FloatingTable(TableBox box) : HObject
+        {
+            public TableBox Box { get; } = box;
+        }
+
+        /// <summary>
+        /// Places a Word floating table where its anchor puts it: down from the top of the paragraph after it (laid out
+        /// ahead into <paramref name="next"/>, so it keeps its list number), never above the text before it, or against
+        /// the page. Text after it goes around it (as around a picture wrapped square). One that moves with the text and
+        /// would run past the column's bottom goes to the next column with its paragraph. False for a table taller than a
+        /// column, which stays in the flow (split by its rows).
+        /// </summary>
+        private bool Float(HTable table, HAnchor anchor, TableBox box, List<HBlock> blocks, int index, ref object? next)
+        {
+            var (width, height) = (box.Width, box.Height);
+            if (height > ColumnHeight + Epsilon || width <= 0)
+                return false;
+            var withText = anchor.VerticalRelativeTo == "PARA";
+            HParagraph? paragraph = null;
+            ParagraphBox? following = null;
+            if (index + 1 < blocks.Count && blocks[index + 1] is HParagraph after && !TableLayout.HoldsTable(blocks, index + 1))
+            {
+                paragraph = composer.Resolve(after, index + 2 < blocks.Count ? blocks[index + 2] : null);
+                following = Layout(paragraph, ColumnWidth);
+                next = following;
+            }
+            SKRect area;
+            while (true)
+            {
+                var top = _y + (_columnEmpty || following is null ? 0 : following.SpaceBefore);
+                area = FloatingObjects.Place(anchor, width, height, Frame(top, paragraph));
+                if (!withText)
+                    break;
+                var y = Math.Max(_y, top + anchor.VerticalOffset / 100f);
+                area = new SKRect(area.Left, y, area.Right, y + height);
+                if (_columnEmpty || area.Bottom <= Bottom + Epsilon)
+                    break;
+                NextColumn();
+                _inStep = false;
+            }
+            Current.Objects.Add(FloatingObjects.Placed(new FloatingTable(box) { OuterMargin = table.FloatDistance }, anchor, area, _objects++));
+            for (; _numberedChecked < _numbered.Count; _numberedChecked++)
+            {
+                if (!_notesPlaced.Contains(_numbered[_numberedChecked]))
+                    AddNote(_numbered[_numberedChecked]);
+            }
+            return true;
+        }
+
         /// <summary>Draws a page's floating objects, behind or in front of its text, lower z-order first.</summary>
         private void DrawObjects(Page page)
         {
@@ -1104,7 +1157,10 @@ internal sealed class PageComposer
             foreach (var item in page.Objects.OrderBy(o => o.Order).ThenBy(o => o.Sequence))
             {
                 var layer = new PageContent(page.Content.Width, page.Content.Height);
-                FloatingObjects.Draw(layer, item.Object, item.Area, (blocks, width) => Tables.Stack(blocks, width));
+                if (item.Object is FloatingTable table)
+                    TableLayout.Draw(layer, table.Box.Rows, item.Area.Left, item.Area.Top);
+                else
+                    FloatingObjects.Draw(layer, item.Object, item.Area, (blocks, width) => Tables.Stack(blocks, width));
                 page.Content.Add(layer, item.Behind);
             }
         }
