@@ -40,9 +40,10 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
 
     /// <summary>
     /// The engines with the renderer on and a LibreOffice that is installed (or not), with the switches of Settings →
-    /// Engines → "When LibreOffice is installed", in the default engine order.
+    /// Engines → "When LibreOffice is installed", in the default engine order (or with LibreOffice moved to its top).
     /// </summary>
-    private RoutePlanner WithLibreOffice(bool slides = false, bool documents = false, bool sheets = false, bool installed = true)
+    private RoutePlanner WithLibreOffice(bool slides = false, bool documents = false, bool sheets = false, bool installed = true,
+        bool libreOfficeFirst = false)
     {
         EngineEnvironment.FileeRenderer = true;
         EngineEnvironment.LibreOfficeForSlides = slides;
@@ -54,6 +55,8 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
         if (installed)
             converters.Add(new InstalledLibreOffice(LibreOfficeConverter.BuildEdges(slides, documents, sheets)));
         var priority = new AppSettings().EnginePriority;
+        if (libreOfficeFirst)
+            priority = ["libreoffice", .. priority.Where(id => id != "libreoffice")];
         return new RoutePlanner(converters, c => Math.Min(priority.IndexOf(c.Id) is >= 0 and var i ? i : priority.Count, 9));
     }
 
@@ -119,6 +122,35 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
         Assert.Equal(["hwp-text"], Engines(WithLibreOffice(installed: false).Plan("rtf", "txt")));
         Assert.Equal(["libreoffice"], Engines(WithLibreOffice().Plan("rtf", "txt")));
         Assert.Equal(["libreoffice"], Engines(WithLibreOffice(documents: true).Plan("rtf", "txt")));
+        Assert.Equal(["libreoffice"], Engines(WithLibreOffice(libreOfficeFirst: true).Plan("rtf", "txt")));
+    }
+
+    [Theory]
+    [InlineData("docx")]
+    [InlineData("docm")]
+    [InlineData("dotx")]
+    [InlineData("dotm")]
+    [InlineData("doc")]
+    [InlineData("dot")]
+    [InlineData("wps")]
+    [InlineData("odt")]
+    public void On_word_and_odt_to_txt_read_the_document_not_the_text_of_its_pdf(string format)
+    {
+        // As RTF (#1204): through the PDF every long line was wrapped and the indentation and the empty lines were lost.
+        // LibreOffice installed at the bottom of the engine list, as by default, and chosen for Word → PDF, which is
+        // about PDF only, leave it to the built-in text too.
+        foreach (var planner in new[] { WithLibreOffice(installed: false), WithLibreOffice(), WithLibreOffice(documents: true) })
+        {
+            var step = Assert.Single(planner.Plan(format, "txt")!.Steps);
+            Assert.Equal("hwp-text", step.Converter.Id);
+            // A Word 6.0 / 95 file with a .doc name goes another way.
+            Assert.Equal(format is "doc" or "dot" or "wps", step.Checked);
+        }
+        // Moved to the top of the engine list, LibreOffice keeps the Word and ODT files it reads.
+        var first = Engines(WithLibreOffice(libreOfficeFirst: true).Plan(format, "txt"));
+        Assert.Equal(format is "docm" or "dotx" or "dotm" ? ["hwp-text"] : ["libreoffice"], first); // LibreOffice has no DOCM, DOTX or DOTM edges
+        // Not a hop: Word → EPUB and the other routes don't start going through a TXT file.
+        Assert.DoesNotContain(WithLibreOffice(installed: false).Plan(format, "epub")?.Steps ?? [], s => s.Converter.Id == "hwp-text");
     }
 
     [Fact]

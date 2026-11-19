@@ -7,7 +7,8 @@
 //
 // RTF → TXT is here too (#1204): RtfReader's document written a line per paragraph, as a word processor saves plain
 // text. Without it the cheapest built-in route went through a PDF (the Filee renderer, then the PDF's text), which
-// wraps long lines and loses the indentation and the empty lines, or through the HWPX writer.
+// wraps long lines and loses the indentation and the empty lines, or through the HWPX writer. Word documents (DOCX and
+// its macro-enabled and template variants, Word 97–2003 DOC, DOT and WPS) and ODT go the same way.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -18,8 +19,8 @@ using Filee.Engines.Text;
 
 namespace Filee.Engines.Hwp;
 
-/// <summary>Writes the text of HWP and HWPX documents as TXT, Markdown or HTML, and of RTF documents as TXT.</summary>
-public sealed class HwpTextConverter : IConverter
+/// <summary>Writes the text of HWP and HWPX documents as TXT, Markdown or HTML, and of Word, ODT and RTF as TXT.</summary>
+public sealed class HwpTextConverter : IConverter, ICapabilityCheck
 {
     /// <summary>The engine's id; settings that named Unhwp ("unhwp", the engine this replaced) are moved to it.</summary>
     public const string EngineId = "hwp-text";
@@ -38,9 +39,24 @@ public sealed class HwpTextConverter : IConverter
         // LibreOffice's chosen edge (10 + 9 in the default order against 16 + 4), so it stays LibreOffice's while that
         // is installed, and cheaper than the renderer's PDF and its text (1 + 9 + 10 + 9).
         new("rtf", "txt", 16, DirectOnly: true),
+        // Word and ODT, direct only as well. LibreOffice's edge for them is its fallback (25), so the cost sits between:
+        // 24 + 4 is cheaper than the renderer's PDF and its text (29) and the routes through Pandoc's Markdown (29) or
+        // the HWPX writer (32), and dearer than LibreOffice moved to the top of the engine list (25 + 0), which keeps
+        // the conversion it had there. The DOC reader checks each file (a Word 6.0 / 95 file goes another way).
+        .. LineFormats.Where(f => f != "rtf")
+            .Select(f => new ConversionEdge(f, "txt", 24, DirectOnly: true, Checked: DocumentReaders.Checked(f))),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("HWP, HWPX → TXT, Markdown, HTML; RTF → TXT", EngineVersions.BuiltIn);
+    /// <summary>
+    /// Word processor documents, whose TXT is a line per paragraph (<see cref="PlainTextWriter.WriteLines"/>) as the
+    /// word processor itself saves plain text.
+    /// </summary>
+    internal static readonly string[] LineFormats = ["rtf", "docx", "docm", "dotx", "dotm", "doc", "dot", "wps", "odt"];
+
+    public EngineStatus GetStatus() => EngineStatus.Available("HWP, HWPX → TXT, Markdown, HTML; Word, ODT, RTF → TXT", EngineVersions.BuiltIn);
+
+    /// <summary>A Word 6.0 / 95 or Works file with a .doc or .wps name, which the DOC reader doesn't read.</summary>
+    public string? FirstUnsupported(string sourcePath, string sourceFormat) => DocumentReaders.Unsupported(sourcePath, sourceFormat);
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
@@ -54,7 +70,7 @@ public sealed class HwpTextConverter : IConverter
             return [];
         var content = step.To switch
         {
-            "txt" when step.From == "rtf" => PlainTextWriter.WriteLines(document),
+            "txt" when LineFormats.Contains(step.From) => PlainTextWriter.WriteLines(document),
             "txt" => PlainTextWriter.Write(document),
             "md" => Markdown(document, step, path),
             "html" => Html(document, step),
