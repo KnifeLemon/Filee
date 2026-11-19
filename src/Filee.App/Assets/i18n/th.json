@@ -63,6 +63,7 @@
   "home.open_file": "เปิดไฟล์",
   "home.open_with": "เปิดด้วย",
   "home.clear_history": "ล้างประวัติ",
+  "home.remove_from_history": "ลบออกจากประวัติ",
   "home.files": "{0} ไฟล์",
   "home.failed_files": "ล้มเหลว {0} ไฟล์",
   "home.undo": "เลิกทำ",
