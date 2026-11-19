@@ -28,6 +28,9 @@ internal static class XlsxWriter
         ["@"] = 49,
     };
 
+    /// <summary>Excel's built-in short date, which it shows in the PC's regional format (#1315).</summary>
+    private const int ShortDateId = 14;
+
     public static void Write(Workbook book, string path)
     {
         var sheets = book.Sheets.Count > 0 ? book.Sheets : [new Worksheet("Sheet1")];
@@ -188,7 +191,12 @@ internal static class XlsxWriter
         {
             if (_xfs.TryGetValue((style, format), out var index))
                 return index;
-            var formatId = format is null ? 0 : BuiltInIds.TryGetValue(format, out var builtIn) ? builtIn : FormatId(format);
+            // The PC's short date (what format 14 is read as here) is written as format 14, not as a format of the
+            // file's own: Excel then shows the date in the short date of whoever opens the file.
+            var formatId = format is null ? 0
+                : BuiltInIds.TryGetValue(format, out var builtIn) ? builtIn
+                : NumberFormatter.IsShortDate(format) ? ShortDateId
+                : FormatId(format);
             var fontId = Add(_fonts, Font(style));
             var fillId = style.Fill is { } fill ? Add(_fills, $"""<fill><patternFill patternType="solid"><fgColor rgb="{Argb(fill)}"/><bgColor indexed="64"/></patternFill></fill>""") : 0;
             var borderId = Add(_borders, $"<border>{Side("left", style.Left)}{Side("right", style.Right)}{Side("top", style.Top)}{Side("bottom", style.Bottom)}<diagonal/></border>");

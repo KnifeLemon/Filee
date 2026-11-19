@@ -27,7 +27,7 @@ internal static class ImageReader
     /// Reads <paramref name="path"/> as format <paramref name="formatId"/>. Layered formats come back as a single,
     /// flattened image; other multi-frame formats (TIFF pages, GIF frames, ICO sizes) keep all frames.
     /// </summary>
-    /// <param name="cancellationToken">Stops the merge of a GIMP file between rows; other formats are read at once.</param>
+    /// <param name="cancellationToken">Stops the merge of a GIMP file between rows and the drawing of an EMF / WMF between records; other formats are read at once.</param>
     public static MagickImageCollection Read(string path, string formatId, Preset preset,
         CancellationToken cancellationToken = default)
     {
@@ -51,7 +51,7 @@ internal static class ImageReader
             return ReadPackaged(ProgramIcon.Read(path), "ico", preset);
         if (formatId == "fits")
             return [FitsRendering.ToMagick(Fits.Read(path), preset.Image.FitsDebayer)];
-        if (formatId is "emf" or "wmf" && ReadMetafile(path, preset) is { } metafile)
+        if (formatId is "emf" or "wmf" && ReadMetafile(path, preset, cancellationToken) is { } metafile)
             return metafile;
 
         var images = new MagickImageCollection();
@@ -106,12 +106,12 @@ internal static class ImageReader
     /// a transparent background. Null for an EMF+ only file on Windows, which ImageMagick then reads through GDI+;
     /// elsewhere such a file fails with the renderer's reason.
     /// </summary>
-    private static MagickImageCollection? ReadMetafile(string path, Preset preset)
+    private static MagickImageCollection? ReadMetafile(string path, Preset preset, CancellationToken cancellationToken)
     {
         var dpi = Math.Max(MinimumMetafileDpi, Math.Clamp(preset.Pdf.RenderDpi, 36, 1200));
         try
         {
-            var (bitmap, used) = Metafile.Render(path, dpi);
+            var (bitmap, used) = Metafile.Render(path, dpi, cancellationToken: cancellationToken);
             using (bitmap)
                 return [SvgRenderer.ToMagick(bitmap, used)];
         }

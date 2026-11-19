@@ -1224,6 +1224,12 @@ internal static class SettingsMigrations
         // v104: Zstandard files (.zst, .tar.zst, .tzst, #1646) learn the archives donut; custom claims stay put.
         if (from < 104)
             changed |= LearnExtensions(profiles, out _, ["tar.zst", "tzst", "zst"]);
+        // v105: XPS and OpenXPS documents (.xps, .oxps, #613) learn their documents donut; custom claims stay put.
+        if (from < 105)
+            changed |= LearnExtensions(profiles, out _, ["xps", "oxps"]);
+        // v106: Excel binary workbooks (.xlsb, #1535) learn the spreadsheets donut; custom claims stay put.
+        if (from < 106)
+            changed |= LearnExtensions(profiles, out _, ["xlsb"]);
         return changed;
     }
 

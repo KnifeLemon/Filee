@@ -14,6 +14,7 @@ using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
+using Filee.Engines.Pdf;
 using ImageMagick;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
@@ -195,7 +196,7 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer, IPdfAr
     {
         try
         {
-            using var document = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+            using var document = PdfObjectNesting.Open(path, PdfDocumentOpenMode.Import);
             if (document.Internals.Catalog.Elements.GetDictionary("/Metadata")?.Stream?.UnfilteredValue is not { } xmp)
                 return false;
             return Encoding.UTF8.GetString(xmp).Contains("pdfaid:part", StringComparison.Ordinal);
@@ -332,7 +333,7 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer, IPdfAr
             return null;
         try
         {
-            using var document = PdfReader.Open(step.InputPath, PdfDocumentOpenMode.Import);
+            using var document = PdfObjectNesting.Open(step.InputPath, PdfDocumentOpenMode.Import);
             return PageRange.Parse(step.Preset.Pdf.PageRange, document.PageCount);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

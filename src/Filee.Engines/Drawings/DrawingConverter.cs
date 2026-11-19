@@ -6,12 +6,17 @@
 // Formats whose reader draws only part of what they hold come with a check (DrawingFormat.FirstUnsupported), which
 // FirstUnsupported (ICapabilityCheck) asks: their edges are Checked, so a file the reader can't draw (a binary .vsd)
 // keeps the route it would take without this converter.
+//
+// Fixed-layout documents (XPS, DrawingFormat.ReadPages) draw their own pages into the page model; the same outputs
+// are written from those pages, and what the reader left out is named in the file's result (ConversionStep.LeftOut).
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
+using Filee.Engines.Rendering;
 using Filee.Engines.Slides;
 using ImageMagick;
+using SkiaSharp;
 
 namespace Filee.Engines.Drawings;
 
@@ -58,7 +63,15 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
         Task.Run<IReadOnlyList<string>>(() =>
         {
             var format = Find(step.From) ?? throw new NotSupportedException($"The drawing converter doesn't read {step.From}.");
-            var deck = format.Read(step.InputPath, cancellationToken);
+            if (format.ReadPages is { } open)
+            {
+                using var document = open(step.InputPath, cancellationToken);
+                var written = WriteFixed(step, document, progress, cancellationToken);
+                if (document.LeftOut.Count > 0)
+                    step.LeftOut?.Invoke(new LeftOutNotice("notice.renderer_left_out", document.LeftOut));
+                return written;
+            }
+            var deck = format.Read!(step.InputPath, cancellationToken);
             if (deck.Slides.Count == 0)
                 throw new InvalidDataException("The drawing has no pages.");
             progress?.Report(0.2);
@@ -76,6 +89,82 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
         }, cancellationToken);
 
     private DrawingFormat? Find(string format) => _formats.FirstOrDefault(f => f.Id == format);
+
+    /// <summary>A fixed-layout document's pages as a PDF, SVG files or pictures.</summary>
+    private static List<string> WriteFixed(ConversionStep step, IFixedPages document, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        progress?.Report(0.1);
+        if (step.To == "pdf")
+        {
+            var all = new List<PageContent>(document.Count);
+            for (var i = 0; i < document.Count; i++)
+            {
+                all.Add(document.Page(i, cancellationToken));
+                progress?.Report(0.1 + 0.4 * (i + 1) / document.Count);
+            }
+            if (step.Output.Allocate("pdf") is not { } target)
+                return [];
+            using (var output = File.Create(target))
+            {
+                PdfPageWriter.Write(output, all, new PdfDocumentInfo { Title = document.Title },
+                    progress is null ? null : new Progress<double>(p => progress.Report(0.5 + 0.5 * p)), cancellationToken);
+            }
+            return [target];
+        }
+        var pages = PageRange.Parse(step.Preset.Pdf.PageRange, document.Count);
+        var extension = step.To == "svg" ? "svg" : ImageEncoder.OutputFormat(step.To, step.Preset.Image).Extension;
+        var written = new List<string>();
+        var done = 0;
+        foreach (var index in pages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var page = document.Page(index, cancellationToken);
+            var suffix = pages.Count > 1 ? $"_p{index + 1}" : null;
+            if (step.To == "svg")
+            {
+                var svg = SlideOutput.Svg(page, cancellationToken);
+                if (step.Output.Allocate(extension, suffix) is { } path)
+                {
+                    File.WriteAllBytes(path, svg);
+                    written.Add(path);
+                }
+            }
+            else
+            {
+                var dpi = Resolution(step, page.Width, page.Height);
+                using var bitmap = page.Render(dpi);
+                if (WritePicture(step, bitmap, dpi, extension, suffix) is { } path)
+                    written.Add(path);
+            }
+            done++;
+            progress?.Report(0.1 + 0.9 * done / pages.Count);
+        }
+        return written;
+    }
+
+    /// <summary>
+    /// The preset's resolution, lowered so a page of <paramref name="width"/> × <paramref name="height"/> points fits
+    /// <see cref="MaxPagePixels"/>: a large page at a high resolution would take gigabytes.
+    /// </summary>
+    private static float Resolution(ConversionStep step, float width, float height)
+    {
+        var dpi = (float)Math.Clamp(step.Preset.Pdf.RenderDpi, 36, 1200);
+        var inches = width / 72.0 * (height / 72.0);
+        return (float)Math.Min(dpi, Math.Sqrt(MaxPagePixels / Math.Max(inches, 1e-6)));
+    }
+
+    /// <summary>Writes a page's picture with the image options applied; null when the output was skipped.</summary>
+    private static string? WritePicture(ConversionStep step, SKBitmap bitmap, float dpi, string extension, string? suffix)
+    {
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        using var image = new MagickImage(data.ToArray());
+        image.Density = new Density(dpi, dpi, DensityUnit.PixelsPerInch);
+        ImageEncoder.ApplyOptions(image, step.Preset.Image, step.To);
+        if (step.Output.Allocate(extension, suffix) is not { } path)
+            return null;
+        ImageEncoder.WriteImage(image, path, step.To);
+        return path;
+    }
 
     private static List<string> WriteSvg(ConversionStep step, SlideDeck deck, IReadOnlyList<int> pages, IProgress<double>? progress, CancellationToken cancellationToken)
     {
@@ -96,26 +185,16 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
 
     private static List<string> WritePictures(ConversionStep step, SlideDeck deck, IReadOnlyList<int> pages, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        var dpi = (float)Math.Clamp(step.Preset.Pdf.RenderDpi, 36, 1200);
-        // A large page at a high resolution would take gigabytes: the resolution comes down to fit.
-        var inches = deck.Width / 72.0 * (deck.Height / 72.0);
-        dpi = (float)Math.Min(dpi, Math.Sqrt(MaxPagePixels / Math.Max(inches, 1e-6)));
+        var dpi = Resolution(step, deck.Width, deck.Height);
         var (_, extension) = ImageEncoder.OutputFormat(step.To, step.Preset.Image);
         var written = new List<string>();
         var done = 0;
         foreach (var bitmap in SlideOutput.ToBitmaps(deck, dpi, pages, cancellationToken))
         {
             using (bitmap)
-            using (var data = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100))
-            using (var image = new MagickImage(data.ToArray()))
             {
-                image.Density = new Density(dpi, dpi, DensityUnit.PixelsPerInch);
-                ImageEncoder.ApplyOptions(image, step.Preset.Image, step.To);
-                if (step.Output.Allocate(extension, pages.Count > 1 ? $"_p{pages[done] + 1}" : null) is { } path)
-                {
-                    ImageEncoder.WriteImage(image, path, step.To);
+                if (WritePicture(step, bitmap, dpi, extension, pages.Count > 1 ? $"_p{pages[done] + 1}" : null) is { } path)
                     written.Add(path);
-                }
             }
             done++;
             progress?.Report(0.2 + 0.8 * done / pages.Count);

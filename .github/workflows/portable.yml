@@ -181,6 +181,10 @@ jobs:
             if ($project -eq 'Filee.App.Tests') {
               $testArguments += @('--blame-crash', '--blame-hang-timeout', '5m', '--logger', 'console;verbosity=normal')
             }
+            # A native crash in the engine tests (Skia, HarfBuzz) names the test that was running and leaves a dump.
+            if ($project -eq 'Filee.Engines.Tests') {
+              $testArguments += @('--blame-crash')
+            }
             if ($IsLinux) {
               xvfb-run -a env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 dotnet @testArguments
             } else {

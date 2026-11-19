@@ -14,8 +14,8 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF through the Filee renderer, → DOCX through the DOCX writer) |
 | **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
-| Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
-| **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
+| Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLSB, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
+| **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLSB, XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
 | **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
@@ -32,7 +32,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
@@ -833,13 +833,14 @@ which is also the equation's alternative text in HWPX.
 
 ## Spreadsheets
 
-`SpreadsheetConverter` (engine id `spreadsheet`) converts between XLSX, XLS (and XLT templates, read only), ODS, CSV and TSV (also
+`SpreadsheetConverter` (engine id `spreadsheet`) converts between XLSX, XLSB (read only), XLS (and XLT templates, read only), ODS, CSV and TSV (also
 `.tab`) in-process; every format goes through one in-memory workbook (`Office/Sheets/Workbook.cs`) whose cells keep
 the text the spreadsheet shows, the value behind it and its Excel number format.
 
 | Format | Read | Written |
 |---|---|---|
 | XLSX | own reader: values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print titles; for printing the page setup, print areas, page breaks, headers and footers, conditional formats and pictures | every sheet, numbers and dates as numbers with their formats, booleans, styles, merges, widths, heights, hidden rows / columns, frozen rows |
+| XLSB (Excel binary workbook) | own reader from [MS-XLSB] (`XlsbReader.cs`): the BIFF12 records of the workbook, shared strings, styles and sheets give what the XLSX reader gives (values, formulas' cached values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print areas and titles, page setup, breaks, headers and footers, pictures); conditional formats and comments are not read | no |
 | XLS (Excel 97–2003, also Excel 5/95) | ExcelDataReader (MIT): values, number formats, merges; fonts, fills, borders and alignment (BIFF8), widths, heights, hidden rows / columns and the page setup from the BIFF records (`XlsLayout.cs`) | no (LibreOffice) |
 | ODS | own reader (`content.xml`, `styles.xml`, `settings.xml`): repeated rows / columns (the empty repeats up to the end of the sheet are skipped), spans, every value type, the text Calc shows (`text:p`), data styles as Excel codes, cell styles, widths, heights, hidden rows / columns / sheets, frozen and header rows | every sheet, typed cells (float, percentage, currency, date, time, boolean) with data styles and the shown text, styles, merges, widths, heights, hidden rows / columns, frozen rows |
 | CSV / TSV | delimiter (CSV: comma, semicolon or tab; TSV: tab) and encoding (UTF-8 / UTF-16 with BOM, CP949 when it looks Korean or on Korean Windows, else the PC's code page) | UTF-8 with BOM, CRLF, one file per sheet |
@@ -852,8 +853,9 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
   measures with its own fonts, so a width can differ by up to a fifth after LibreOffice opens the file.
 - XLS fonts, fills and borders come from the FONT, XF and PALETTE records of BIFF8 files (Excel 97–2003); Excel 5/95
   files keep the default look. XLS output still needs LibreOffice. Password-protected XLS and ODS files stop with a
-  clear message. XLSX and ODS packages are read within `DocumentLimits` (sizes, inflate ratio, XML depth and
-  elements); ODS repeats expand to at most 20,000,000 cells.
+  clear message. XLSX, XLSB and ODS packages are read within `DocumentLimits` (sizes, inflate ratio, XML depth and
+  elements; XLSB records count as elements, a record the reader takes apart holds at most 1 MB); ODS repeats expand
+  to at most 20,000,000 cells.
 - Not converted to other spreadsheets: formulas (their cached results are kept), charts, pictures, comments,
   conditional formatting, data validation, print areas and page breaks (the print engine reads the page setup,
   print areas, breaks, conditional formats and pictures for PDF).
@@ -871,7 +873,7 @@ selected large page.
 
 ## Spreadsheet printing
 
-`SheetPrintConverter` (engine id `sheet-print`) prints XLSX (and XLSM / XLTX), XLS (and XLT) and ODS to PDF the way
+`SheetPrintConverter` (engine id `sheet-print`) prints XLSX (and XLSM / XLTX), XLSB, XLS (and XLT) and ODS to PDF the way
 Excel prints a whole workbook, without Excel or LibreOffice (GitHub Project 4, item *Spreadsheet print layout →
 PDF*). The readers above keep each sheet's page setup; `Office/Sheets/Print` lays the pages out with Excel's page logic
 and draws them with the Filee renderer's PDF writer (`Rendering/PdfPageWriter`, fonts subset by Filee) and its text
@@ -2733,6 +2735,8 @@ its reader, one line in `Drawings/DrawingFormats.cs`:
   WMF). Cells, geometry and text are inherited from master shapes and style sheets; colours by index come from the
   document's colour table, fonts from its face names. Only stored values (`V`) are read; formulas aren't calculated.
 - **ODG and FODG** (OpenDocument drawings, packaged and flat): the [ODP / ODG reader](#odp--odg-reader).
+- **XPS and OpenXPS** (`.xps`, `.oxps`, format id `xps`): not slides; the [XPS reader](#xps-and-openxps-reader) draws
+  its pages straight into the page model (`DrawingFormat.ReadPages`, `IFixedPages`).
 
 Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
 takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a
@@ -2755,6 +2759,55 @@ Not yet (VSDX): theme colours and effects stored as "Themed" (the inherited or d
 sections, shadows, rounding, the full arrowhead table, text backgrounds, formulas beyond stored values, and `.vsdm` /
 `.vssx` / `.vstx`. The slide model has one size per deck, so pages of other sizes sit at the top left of the largest
 page's size. Checked against drawings built from the specification, not against files Visio saved.
+
+## XPS and OpenXPS reader
+
+Built in (#613), in `Xps/`, written from the XPS 1.0 specification and ECMA-388 (OpenXPS); both namespaces are read.
+The [drawing engine](#drawings-visio-odg) converts `.xps` and `.oxps` (one format, id `xps`, documents donut) to PDF,
+SVG and PNG, page by page: `XpsDocument` reads the package's page list once and each page when it is drawn
+(`XpsPageReader` → `XpsPageWriter` → the page model `PageContent`), so pictures of a few pages don't read the rest.
+PDF goes through `PdfPageWriter` (fonts subset, text mapped), PNG through `PageContent.Render`, SVG through the slide
+output's SVG writer.
+
+- **Package:** the fixed representation relationship of either spec (else the `.fdseq` part), its FixedDocuments and
+  their PageContent list, LinkTargets, the title from the core properties. Part names are URIs (`%20`), resolved
+  against the referring part and never outside the package; interleaved parts (`[0].piece` … `[n].last.piece`) are
+  joined, and one with a gap is damage.
+- **Elements:** Canvas, Path and Glyphs with RenderTransform, Clip, Opacity, OpacityMask (a DstIn layer),
+  `RenderOptions.EdgeMode`, `FixedPage.NavigateUri` (URL links and links to link targets, which become named
+  destinations), properties as attributes or property elements, `{StaticResource}` from FixedPage and Canvas
+  resources (inline or a remote ResourceDictionary part), markup compatibility's AlternateContent (Fallback, else the
+  first Choice).
+- **Geometry:** the abbreviated syntax (F, M, L, H, V, C, Q, S, A, Z, relative forms) and PathGeometry with PathFigure
+  (IsFilled, IsClosed), PolyLine, PolyBezier, PolyQuadraticBezier and Arc segments (IsStroked), with its Transform.
+  Strokes: thickness, joins, miter limit, start / dash caps, dash arrays and offsets.
+- **Brushes:** SolidColorBrush (`#RRGGBB`, `#AARRGGBB`, scRGB, ContextColor without its ICC profile),
+  LinearGradientBrush and RadialGradientBrush (spread methods, stops outside 0–1 cut there), ImageBrush (PNG, JPEG,
+  GIF, BMP by Skia, TIFF by ImageMagick; sized by the picture's resolution, 96 dpi when it has none; `TileMode` none
+  draws the picture as it is, so a PDF keeps the JPEG) and VisualBrush (untiled: drawn as vector; tiled: a picture
+  shader, which Skia's PDF writer rasterises).
+- **Glyphs:** embedded fonts, obfuscated `.odttf` ones restored (the first 32 bytes XORed with the GUID of the part
+  name) and read by Filee's SFNT parser before Skia sees them; `Indices` (glyph, advance, offsets, cluster maps),
+  `UnicodeString` (with the `{}` escape), BidiLevel (odd: right to left), StyleSimulations (bold and italic drawn
+  synthetically), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
+  glyph item of the page model (the PDF writer subsets its font and maps its text); others are drawn by
+  `XpsPainter` as text blobs of the whole font. A run whose font is missing or damaged draws its text with an installed
+  font.
+- **Left out and named in the file's result** (`notice.renderer_left_out` with `.pictures`): JPEG XR (HD Photo)
+  pictures and pictures that are damaged or too large. Not drawn: IsSideways glyphs are upright, the Triangle cap is
+  flat, scRGB gradients interpolate in sRGB, ICC profiles aren't applied; print tickets, signatures, document
+  structure and story fragments aren't read.
+- **Hostile input:** parts through `DocumentPackage` (`DocumentLimits`: part and package sizes counted while
+  unpacking, inflate ratio, XML depth and elements, joined pieces included); `XpsLimits`: pages (`MaxPages`), canvas
+  and visual brush nesting (64, which also ends a visual brush that draws itself), elements (2 million), points of all
+  paths and glyphs (40 million), one path's data (32 M characters), dash patterns (1,024 entries, longer ones are
+  drawn solid), page sides cut at 200 inches; pictures within `MaxPartBytes` and `MaxPicturePixels` (read from the
+  header before decoding). Refusals are `error.document_too_complex`. `XpsFuzzTests` fuzzes the reader and the
+  drawing together.
+- Tests: `XpsTests` (packages built in code by `XpsBuilder`, checked as pixels at 96 dpi, one pixel per XPS unit, and
+  as PDF text), `XpsSettingsTests` (settings v105: existing documents donuts learn `.xps` and `.oxps`). Compared by eye
+  with WPF's own rendering of documents its XPS writer saved (text in Latin, Korean, Japanese, Arabic and Hebrew,
+  gradients, pictures at 96 and 192 dpi, dashes, transparency, clips, tiled image and visual brushes, opacity masks).
 
 ## Gerber PCB layers
 
@@ -3777,7 +3830,7 @@ all expected bytes have been written; failures and cancellation preserve any pre
 - It is the only reader of rarer formats, converted to PDF and to the editable formats of their kind: Word 6.0 / 95
   and Microsoft Works documents (a `.doc`, `.dot` or `.wps` the [DOC reader](#doc-reader) names as such), WordPerfect,
   Lotus Word Pro, AbiWord, Apple Pages, StarWriter, ClarisWorks / AppleWorks (`.cwk`), MacWrite (`.mcw`), T602
-  (`.602`) and Pocket Word (`.psw`) (→ DOCX, ODT, FODT, OTT, DOC, RTF, TXT, HTML); WPS Spreadsheets (ET), Apple Numbers, StarCalc and flat ODS (`.fods`) (→ XLSX, ODS, OTS, XLS, XLT, CSV, HTML); Apple
+  (`.602`) and Pocket Word (`.psw`) (→ DOCX, ODT, FODT, OTT, DOC, RTF, TXT, HTML); WPS Spreadsheets (ET), Apple Numbers, StarCalc and flat ODS (`.fods`) (→ XLSX, ODS, OTS, XLS, XLT, CSV, HTML); XLSB too, where the built-in reader has no route (→ XLS, XLT, OTS) and for a workbook with what the print engine doesn't draw; Apple
   Keynote, WPS Presentation (DPS), StarImpress / StarDraw and PowerPoint 95 and older PPT (→ PPTX, ODP, OTP, PPT);
   Publisher, CorelDRAW, binary Visio (`.vsd`) and CGM (→ ODG, SVG, PNG, EMF, WMF). VSDX, ODP, FODP, ODG and FODG
   are read by Filee itself ([Drawings](#drawings-visio-odg), [ODP / ODG reader](#odp--odg-reader)); LibreOffice keeps

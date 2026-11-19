@@ -212,6 +212,7 @@ internal static class Metafile
         if (longEdge > 0)
             scale = Math.Min(scale, Math.Min(MaximumLongEdge / longEdge, MathF.Sqrt(MaximumPixels / Math.Max(1e-6f, size.Width * size.Height))));
         using var drawing = Draw(data, scale, limits, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         return (Rasterize(drawing, scale), scale * 72);
     }
 

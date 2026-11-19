@@ -358,6 +358,9 @@ internal static partial class ComplexScripts
     {
         try
         {
+            // Excel binary workbooks keep their text in records: their cells, as the built-in reader reads them.
+            if (format == XlsbReader.Format)
+                return FindInCells(XlsbReader.Read(path), classifier, skipBelow);
             if (IsZip(path))
                 return FindInPackage(path, format == "hwp" ? "hwpx" : format, classifier, skipBelow); // an .hwp that is HWPX
             // HWP 5.0 is binary: its records written out as the HWPX package 한글 saves, whose sections are scanned.

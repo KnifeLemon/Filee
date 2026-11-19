@@ -6,6 +6,7 @@
 //    SmartArt, embedded objects, ink, text in shapes, freeform shapes, ...); form controls (ctrlProp parts, or legacy
 //    VML controls); embedded OLE objects. Comments are not printed unless the page setup asks for them, and are
 //    left out of the check.
+//  * XLSB: the same relationships as XLSX; the visible sheets come from the binary workbook part.
 //  * XLS: the reader takes no drawing at all, so every object of a visible sheet is named by its OBJ record's type
 //    (charts, pictures, text boxes, shapes, form controls; comments aside), and a visible chart sheet.
 //  * ODS: the reader takes no drawing either: pictures, charts and other embedded objects, shapes, text boxes and
@@ -39,7 +40,7 @@ internal static partial class SheetCapabilities
     private const long MaxVmlBytes = 16L * 1024 * 1024;
 
     /// <summary>The first thing in the workbook the sheet printer doesn't draw; null when it draws everything (or can't read the file).</summary>
-    /// <param name="format">Format id: xlsx, xlsm, xltx, xls, xlt or ods.</param>
+    /// <param name="format">Format id: xlsx, xlsm, xltx, xlsb, xls, xlt or ods.</param>
     public static string? FirstUnsupported(string path, string format)
     {
         try
@@ -47,6 +48,8 @@ internal static partial class SheetCapabilities
             return format switch
             {
                 "xlsx" or "xlsm" or "xltx" => Xlsx(path),
+                // An Excel 97–2003 workbook with an .xlsb name is read as one (XlsbReader).
+                XlsbReader.Format => IsZip(path) ? Xlsb(path) : XlsLayout.FirstObject(path),
                 // Web apps often save XLSX with an .xls name; the XLSX reader reads those (XlsReader).
                 "xls" or "xlt" => IsZip(path) ? Xlsx(path) : XlsLayout.FirstObject(path),
                 "ods" => Ods(path),
@@ -79,27 +82,51 @@ internal static partial class SheetCapabilities
         var relationships = package.Relationships(workbookPath);
         foreach (var sheet in workbook.Element(S + "sheets")?.Elements(S + "sheet") ?? [])
         {
-            if ((string?)sheet.Attribute("state") is "hidden" or "veryHidden"
-                || (string?)sheet.Attribute(R + "id") is not { } id || !relationships.TryGetValue(id, out var relationship) || relationship.External)
+            if ((string?)sheet.Attribute("state") is "hidden" or "veryHidden")
                 continue;
-            if (relationship.Type.EndsWith("/chartsheet", StringComparison.Ordinal))
-                return "charts";
-            if (!relationship.Type.EndsWith("/worksheet", StringComparison.Ordinal))
-                continue;
-            // The sheet's parts tell what it holds, without reading its cells.
-            foreach (var part in package.Relationships(relationship.Target).Values.Where(r => !r.External))
+            if (SheetFeature(package, relationships, (string?)sheet.Attribute(R + "id"), theme) is { } feature)
+                return feature;
+        }
+        return null;
+    }
+
+    private static string? Xlsb(string path)
+    {
+        using var package = new OpcPackage(path, DocumentLimits.Default);
+        var workbookPath = package.MainPartPath ?? "xl/workbook.bin";
+        if (workbookPath.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+            return Xlsx(path); // an XLSX with an .xlsb name (XlsbReader)
+        var theme = package.TargetOfType(workbookPath, "/theme") is { } themePath ? package.Part(themePath)?.Root : null;
+        var relationships = package.Relationships(workbookPath);
+        foreach (var sheet in XlsbReader.ListSheets(package, workbookPath, DocumentLimits.Default))
+        {
+            if (sheet.State == 0 && SheetFeature(package, relationships, sheet.RelationshipId, theme) is { } feature)
+                return feature;
+        }
+        return null;
+    }
+
+    /// <summary>What a visible sheet holds that the printer doesn't draw, from its relationships, without reading its cells.</summary>
+    private static string? SheetFeature(OpcPackage package, Dictionary<string, OpcRelationship> relationships, string? id, XElement? theme)
+    {
+        if (id is null || !relationships.TryGetValue(id, out var relationship) || relationship.External)
+            return null;
+        if (relationship.Type.EndsWith("/chartsheet", StringComparison.Ordinal))
+            return "charts";
+        if (!relationship.Type.EndsWith("/worksheet", StringComparison.Ordinal))
+            return null;
+        foreach (var part in package.Relationships(relationship.Target).Values.Where(r => !r.External))
+        {
+            var feature = part.Type switch
             {
-                var feature = part.Type switch
-                {
-                    var type when type.EndsWith("/drawing", StringComparison.Ordinal) => XlsxDrawing.Read(package, part.Target, theme, read: false).FirstLeftOut,
-                    var type when type.EndsWith("/ctrlProp", StringComparison.Ordinal) => "form controls",
-                    var type when type.EndsWith("/oleObject", StringComparison.Ordinal) || type.EndsWith("/package", StringComparison.Ordinal) => "embedded objects",
-                    var type when type.EndsWith("/vmlDrawing", StringComparison.Ordinal) => Vml(package, part.Target),
-                    _ => null,
-                };
-                if (feature is not null)
-                    return feature;
-            }
+                var type when type.EndsWith("/drawing", StringComparison.Ordinal) => XlsxDrawing.Read(package, part.Target, theme, read: false).FirstLeftOut,
+                var type when type.EndsWith("/ctrlProp", StringComparison.Ordinal) => "form controls",
+                var type when type.EndsWith("/oleObject", StringComparison.Ordinal) || type.EndsWith("/package", StringComparison.Ordinal) => "embedded objects",
+                var type when type.EndsWith("/vmlDrawing", StringComparison.Ordinal) => Vml(package, part.Target),
+                _ => null,
+            };
+            if (feature is not null)
+                return feature;
         }
         return null;
     }
