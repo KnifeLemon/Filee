@@ -217,6 +217,93 @@ public class Bzip2WriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
+    /// <summary>
+    /// The transform of larger blocks against rotations sorted by prefix doubling: text, x86-like code, noise over two
+    /// letters, long repeats with a few changes and a Fibonacci word (whose LMS substrings repeat level after level), so
+    /// the sort's naming and its recursion on the string of names are exercised well past the small blocks above.
+    /// </summary>
+    [Fact]
+    public void The_transform_of_large_blocks_matches_rotations_sorted_by_doubling()
+    {
+        var random = new Random(9);
+        var fibonacci = new StringBuilder("a");
+        var previous = "b";
+        while (fibonacci.Length < 30_000)
+        {
+            var next = fibonacci.ToString() + previous;
+            previous = fibonacci.ToString();
+            fibonacci.Clear().Append(next);
+        }
+        var repeats = Noise(3000, 5);
+        var changed = new byte[40_000];
+        for (var i = 0; i < changed.Length; i++)
+            changed[i] = repeats[i % repeats.Length];
+        for (var i = 0; i < 20; i++)
+            changed[random.Next(changed.Length)] ^= 0x55;
+        List<byte[]> blocks =
+        [
+            LzmaTests.Prose(40_000),
+            Mixed(40_000),
+            [.. Enumerable.Range(0, 40_000).Select(_ => (byte)('a' + random.Next(2)))],
+            changed,
+            Encoding.ASCII.GetBytes(fibonacci.ToString(0, 30_000)),
+        ];
+        foreach (var block in blocks)
+        {
+            var n = block.Length;
+            var order = RotationsByDoubling(block);
+            var expected = order.Select(start => block[(start + n - 1) % n]).ToArray();
+            var output = new byte[n];
+            var origin = Bzip2Sort.Transform(block, output, Ct);
+            Assert.Equal(expected, output);
+            byte[] unrotated = [.. block.AsSpan(order[origin]), .. block.AsSpan(0, order[origin])];
+            Assert.Equal(block, unrotated);
+        }
+    }
+
+    /// <summary>The rotation starts of <paramref name="block"/> in sorted order (equal rotations in any order).</summary>
+    private static int[] RotationsByDoubling(byte[] block)
+    {
+        var n = block.Length;
+        var rank = block.Select(b => (int)b).ToArray();
+        var order = Enumerable.Range(0, n).ToArray();
+        for (var k = 1; ; k *= 2)
+        {
+            var current = rank;
+            var step = k % n;
+            var keys = order.Select(i => ((long)current[i] << 32) | (uint)current[(i + step) % n]).ToArray();
+            Array.Sort(keys, order);
+            var next = new int[n];
+            for (var i = 1; i < n; i++)
+                next[order[i]] = next[order[i - 1]] + (keys[i] != keys[i - 1] ? 1 : 0);
+            rank = next;
+            if (next[order[n - 1]] == n - 1 || k >= n)
+                return order;
+        }
+    }
+
+    /// <summary>The smallest rotation and whether the text is a power of a shorter piece, against trying every rotation.</summary>
+    [Fact]
+    public void The_smallest_rotation_and_periodicity_match_a_plain_search()
+    {
+        var random = new Random(12);
+        for (var i = 0; i < 4000; i++)
+        {
+            var unit = Enumerable.Range(0, random.Next(1, 7)).Select(_ => (byte)('a' + random.Next(random.Next(1, 4)))).ToArray();
+            var text = random.Next(2) == 0
+                ? Enumerable.Range(0, unit.Length * random.Next(1, 6)).Select(k => unit[k % unit.Length]).ToArray()
+                : Enumerable.Range(0, random.Next(1, 40)).Select(_ => (byte)('a' + random.Next(3))).ToArray();
+            var n = text.Length;
+            byte[] Rotation(int start) => [.. text.AsSpan(start), .. text.AsSpan(0, start)];
+            var smallest = Enumerable.Range(0, n).Select(Rotation).Min(Comparer<byte[]>.Create((a, b) => a.AsSpan().SequenceCompareTo(b)))!;
+            var periodic = Enumerable.Range(1, n - 1).Any(start => Rotation(start).AsSpan().SequenceEqual(text));
+
+            var shift = Bzip2Sort.SmallestRotation(text, out var foundPeriodic);
+            Assert.Equal(smallest, Rotation(shift));
+            Assert.Equal(periodic, foundPeriodic);
+        }
+    }
+
     [Fact]
     public void One_thread_and_several_write_the_same_bytes()
     {

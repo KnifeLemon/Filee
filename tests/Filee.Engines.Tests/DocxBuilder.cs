@@ -66,6 +66,14 @@ internal sealed class DocxBuilder
         return Relationship("http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", name);
     }
 
+    /// <summary>Adds a chart part (a c:chartSpace) and returns its relationship id.</summary>
+    public string Chart(string xml)
+    {
+        var name = $"charts/chart{_parts.Keys.Count(k => k.StartsWith("charts/", StringComparison.Ordinal)) + 1}.xml";
+        _parts[name] = xml;
+        return Relationship("http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart", name);
+    }
+
     public string Hyperlink(string url) =>
         Relationship("http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", url, external: true);
 
@@ -148,6 +156,7 @@ internal sealed class DocxBuilder
         "footnotes.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
         "endnotes.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
         _ when part.StartsWith("header", StringComparison.Ordinal) => "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+        _ when part.StartsWith("charts/", StringComparison.Ordinal) => "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
         _ => "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
     };
 

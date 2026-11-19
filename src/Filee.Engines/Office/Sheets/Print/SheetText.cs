@@ -48,6 +48,8 @@ internal sealed class SheetFonts : IDisposable
 
     public Shaper Shaper => _shaper;
 
+    public FontResolver Resolver => _resolver;
+
     /// <summary>The font that draws a family (the family, a font for its script, or the language's default).</summary>
     public ResolvedFont? Font(string family, bool bold, bool italic)
     {
@@ -361,6 +363,8 @@ internal sealed class StyledText
             if (from >= to)
                 continue;
             var size = piece.Size * scale;
+            if (!(size > 0) || !float.IsFinite(size))
+                continue; // a size no font is drawn at (a damaged style)
             var rise = piece.Style.Script > 0 ? -piece.Ascent * 0.35f * scale : piece.Style.Script < 0 ? piece.Ascent * 0.15f * scale : 0;
             var x0 = x;
             // Words one by one when spaces are widened; else the piece in one run.

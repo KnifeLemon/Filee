@@ -28,6 +28,7 @@ internal static class EpubWriter
             ChapterFile = i => $"ch{i + 1:000}.xhtml",
             ImageSource = path => package.AddImage(path, imageFolder),
             Epub = true,
+            MathML = true,
         });
 
         // A cover page for covers the content does not show already (MOBI and FB2 keep the cover apart).
@@ -185,7 +186,11 @@ internal sealed class EpubPackage(string title, string language, BookMetadata me
         sb.Append("<item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/>\n");
         sb.Append("<item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>\n");
         for (var i = 0; i < _pages.Count; i++)
-            sb.Append($"<item id=\"page{i + 1}\" href=\"{E(_pages[i].Href)}\" media-type=\"application/xhtml+xml\"/>\n");
+        {
+            // EPUB 3 names the pages with MathML in them.
+            var mathml = _pages[i].Content.Contains("<math ", StringComparison.Ordinal) ? " properties=\"mathml\"" : "";
+            sb.Append($"<item id=\"page{i + 1}\" href=\"{E(_pages[i].Href)}\" media-type=\"application/xhtml+xml\"{mathml}/>\n");
+        }
         for (var i = 0; i < _images.Count; i++)
             sb.Append($"<item id=\"img{i + 1}\" href=\"{E(_images[i].Href)}\" media-type=\"{_images[i].MediaType}\"{(_images[i].Cover ? " properties=\"cover-image\"" : "")}/>\n");
         sb.Append("</manifest>\n<spine toc=\"ncx\">\n");

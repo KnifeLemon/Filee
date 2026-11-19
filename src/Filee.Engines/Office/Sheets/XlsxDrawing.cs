@@ -5,6 +5,8 @@
 // group's anchor. What the printer doesn't draw is named instead: charts, SmartArt, embedded objects, ink, text in
 // shapes, freeform shapes, gradient, pattern and picture fills, arrowheads, turned groups, EMF / WMF / TIFF and linked
 // pictures. SheetCapabilities asks for that name, so such a workbook can go to LibreOffice where it is installed.
+// Charts are read from their chart part (ChartReader, with the workbook's theme) and drawn; those ChartReader doesn't
+// draw (3D, radar, stock, ...) and new chart types (chartex) are named "charts".
 //
 // Excel anchors a turned picture or shape by the box it covers on the sheet: one turned by 90° has an anchor as wide as
 // the picture is tall. The unturned size (a:xfrm ext) tells which way round the anchor is (SheetDrawing.Size).
@@ -12,6 +14,7 @@
 
 using System.Globalization;
 using System.Xml.Linq;
+using Filee.Engines.Charts;
 using Filee.Engines.Office.Ooxml;
 using Filee.Engines.Slides;
 using SkiaSharp;
@@ -46,6 +49,8 @@ internal sealed class XlsxDrawing
     private readonly string _part;
     private readonly DrawingColors _colors;
     private readonly XElement? _formatScheme;
+    private readonly string? _themeFont;
+    private readonly ChartBudget? _charts;
     private readonly bool _read;
 
     /// <summary>What is drawn, in drawing order; empty when only the check was asked for.</summary>
@@ -54,12 +59,14 @@ internal sealed class XlsxDrawing
     /// <summary>The first thing in the part the printer doesn't draw, or null.</summary>
     public string? FirstLeftOut { get; private set; }
 
-    private XlsxDrawing(OpcPackage package, string part, XElement? theme, bool read)
+    private XlsxDrawing(OpcPackage package, string part, XElement? theme, bool read, ChartBudget? charts)
     {
         _package = package;
         _part = part;
         _colors = DrawingColors.FromTheme(theme);
         _formatScheme = theme?.Descendants(A + "fmtScheme").FirstOrDefault();
+        _themeFont = ChartReader.ThemeFont(theme);
+        _charts = charts;
         _read = read;
     }
 
@@ -68,9 +75,10 @@ internal sealed class XlsxDrawing
     /// no picture is unpacked and only <see cref="FirstLeftOut"/> is found).
     /// </summary>
     /// <param name="theme">The workbook's theme part (colours and line styles shapes refer to), or null.</param>
-    public static XlsxDrawing Read(OpcPackage package, string part, XElement? theme, bool read)
+    /// <param name="charts">The workbook's count of chart points drawn (with <paramref name="read"/>).</param>
+    public static XlsxDrawing Read(OpcPackage package, string part, XElement? theme, bool read, ChartBudget? charts = null)
     {
-        var drawing = new XlsxDrawing(package, part, theme, read);
+        var drawing = new XlsxDrawing(package, part, theme, read, charts);
         foreach (var anchor in package.Part(part)?.Root?.Elements() ?? [])
             drawing.Anchor(anchor);
         return drawing;
@@ -169,12 +177,35 @@ internal sealed class XlsxDrawing
                 Group(element, box, space, depth);
                 break;
             case "graphicFrame":
-                LeftOut(Graphic((string?)element.Element(A + "graphic")?.Element(A + "graphicData")?.Attribute("uri") ?? ""));
+                Frame(element, box, space);
                 break;
             case "contentPart":
                 LeftOut("ink");
                 break;
         }
+    }
+
+    /// <summary>A graphic frame: a chart ChartReader draws, or what else it holds, named.</summary>
+    private void Frame(XElement frame, Box box, Space? space)
+    {
+        var data = frame.Element(A + "graphic")?.Element(A + "graphicData");
+        var uri = (string?)data?.Attribute("uri") ?? "";
+        if (!uri.EndsWith("/chart", StringComparison.Ordinal))
+        {
+            LeftOut(Graphic(uri));
+            return;
+        }
+        var target = _package.Target(_part, (string?)data?.Element(ChartReader.C + "chart")?.Attribute(R + "id"));
+        var read = ChartReader.Read(target is null ? null : _package.Part(target)?.Root, _colors, _themeFont);
+        if (read.Chart is not { } chart)
+        {
+            LeftOut(read.LeftOut ?? "charts");
+            return;
+        }
+        if (!_read)
+            return;
+        _charts?.Charge(chart);
+        Add(Placed(new SheetChart(chart, box.Row, box.Column, box.X, box.Y, box.Width, box.Height), box, space, frame.Element(Xdr + "xfrm")));
     }
 
     /// <summary>What a graphic frame holds, named.</summary>

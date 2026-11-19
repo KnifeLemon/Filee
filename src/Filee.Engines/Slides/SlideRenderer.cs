@@ -9,7 +9,9 @@
 //   unwrapped when the frame doesn't wrap, turned for vertical frames. Text turns with its shape but isn't mirrored
 //   (PowerPoint turns it upside down for a vertically flipped shape).
 // - Tables: rows as high as their content needs at least, cells' fills, text and borders, merged cells over their span.
+// - Charts: drawn by ChartDrawer in the shape's box, turned with it.
 
+using Filee.Engines.Charts;
 using Filee.Engines.Rendering;
 using Filee.Engines.Typesetting;
 using SkiaSharp;
@@ -22,12 +24,14 @@ internal sealed class SlideRenderer : IDisposable
     private const float Unbounded = 100_000;
 
     private readonly ParagraphLayouter _layouter;
+    private readonly ChartFonts _charts;
     private readonly SlideImages _images = new();
     private readonly CancellationToken _cancellationToken;
 
     public SlideRenderer(FontResolver fonts, Shaper shaper, CancellationToken cancellationToken = default)
     {
         _layouter = new ParagraphLayouter(fonts, shaper, storedLines: false);
+        _charts = new ChartFonts(fonts, shaper);
         _cancellationToken = cancellationToken;
     }
 
@@ -96,6 +100,9 @@ internal sealed class SlideRenderer : IDisposable
                 var inner = matrix.PreConcat(SKMatrix.CreateScale(scaleX, scaleY)).PreConcat(SKMatrix.CreateTranslation(-child.Left, -child.Top));
                 foreach (var item in group.Children)
                     Element(page, item, inner);
+                break;
+            case SlideShape { Chart: { } chart } shape:
+                ChartDrawer.Draw(page, chart, new SKRect(0, 0, shape.Bounds.Width, shape.Bounds.Height), _charts, 1, matrix);
                 break;
             case SlideShape shape:
                 Shape(page, shape, matrix);

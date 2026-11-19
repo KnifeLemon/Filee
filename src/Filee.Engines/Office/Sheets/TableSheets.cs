@@ -2,6 +2,8 @@
 // DOCX / HTML → XLSX (DocumentTablesConverter, #1016).
 //
 // - Merged cells stay merged; the rest of a merged area keeps the borders, as Excel draws them from every cell.
+// - A cell is bold or italic when all its text is, and centred or right-aligned when all its paragraphs are; left and
+//   justified text keeps Excel's own alignment (text to the left, numbers to the right).
 // - Cells that read as numbers ("1,234.50", "(120)", "$9.99"), percentages ("12.5%") or dates with the year first
 //   ("2026-10-23", "2026. 10. 23.") become real numbers and dates, in a number format that shows them as the document
 //   did, so they can be calculated with. Anything else stays text: numbers with a leading zero (codes, phone numbers),
@@ -124,6 +126,19 @@ internal static partial class TableSheets
     }
 
     /// <summary>
+    /// The grid positions the table's cells cover (rows × columns of every cell), which <see cref="Place"/> writes one
+    /// cell each.
+    /// </summary>
+    /// <exception cref="Filee.Core.Conversion.ConversionRefusedException">The table is larger than <see cref="Grid"/> takes.</exception>
+    public static long Positions(HTable table)
+    {
+        long positions = 0;
+        foreach (var (_, _, _, rows, columns) in Grid(table))
+            positions += (long)rows * columns;
+        return positions;
+    }
+
+    /// <summary>
     /// Writes the table's rows from <paramref name="top"/> on, leaving out its first <paramref name="skip"/>; returns
     /// the next free row.
     /// </summary>
@@ -146,11 +161,15 @@ internal static partial class TableSheets
         }
         var next = top + Math.Max(0, table.Rows.Count - skip);
         var defaults = table.Borders ?? HBorders.Grid;
+        var merged = new List<(string Text, int Row, int Column, int Rows, int Columns)>();
         foreach (var (cell, row, column, rows, columns) in Grid(table, skip))
         {
             var style = StyleOf(cell, drawn ? null : cell.Borders ?? defaults);
             var at = top + row;
-            sheet.Set(at, column, Shown(Text(cell), style));
+            var text = Text(cell);
+            sheet.Set(at, column, Shown(text, style));
+            if (!drawn && (rows > 1 || columns > 1) && text.Length > 0)
+                merged.Add((text, at, column, rows, columns));
             for (var r = at; r < at + rows; r++)
                 for (var c = column; c < column + columns; c++)
                     if (r != at || c != column)
@@ -158,26 +177,78 @@ internal static partial class TableSheets
             if (rows > 1 || columns > 1)
                 sheet.Merges.Add(new CellRange(at, column, at + rows - 1, column + columns - 1));
         }
+        foreach (var (text, row, column, rows, columns) in merged)
+            FitMergedRows(sheet, text, row, column, rows, columns);
         return next;
     }
 
-    /// <param name="borders">The cell's own borders; null draws a thin line on every side.</param>
-    private static CellStyle StyleOf(HCell cell, HBorders? borders) => new()
+    /// <summary>Points of one line of Excel's default font (Calibri 11), its standard row height.</summary>
+    private const double LineHeight = 15;
+
+    /// <summary>
+    /// Excel and Calc fit a row to the wrapped text of its cells, but not to a merged cell's: the rows under a merged
+    /// cell whose text takes more lines than they show get the height of those lines (shared out evenly), so the text
+    /// isn't cut off. Lines are counted with the merged columns' width in characters, as <see cref="DisplayWidth"/> counts.
+    /// </summary>
+    private static void FitMergedRows(Worksheet sheet, string text, int row, int column, int rows, int columns)
     {
-        Bold = Texts(cell).ToList() is { Count: > 0 } texts && texts.All(t => t.Format.Bold == true || t.Text.Trim().Length == 0),
-        Fill = cell.Fill,
-        Wrap = true,
-        VerticalAlign = cell.VerticalAlign switch
+        var width = 0.0;
+        for (var c = column; c < column + columns; c++)
+            width += sheet.ColumnWidth(c);
+        var perLine = Math.Max(1, (int)Math.Floor(width - 1));
+        var lines = text.Split('\n').Sum(line => Math.Max(1, (DisplayWidth(line.Replace("\t", "    ")) + perLine - 1) / perLine));
+        var height = Math.Round(lines * LineHeight / rows, 2);
+        if (height <= LineHeight)
+            return;
+        for (var r = row; r < row + rows; r++)
+            if (!sheet.RowHeights.TryGetValue(r, out var known) || known < height)
+                sheet.RowHeights[r] = height;
+    }
+
+    /// <param name="borders">The cell's own borders; null draws a thin line on every side.</param>
+    private static CellStyle StyleOf(HCell cell, HBorders? borders)
+    {
+        var texts = Texts(cell).Where(t => t.Text.Trim().Length > 0).ToList();
+        return new()
         {
-            HVerticalAlign.Center => CellVerticalAlign.Center,
-            HVerticalAlign.Bottom => CellVerticalAlign.Bottom,
-            _ => CellVerticalAlign.Top,
-        },
-        Left = borders is { } b ? Side(b.Left) : Thin,
-        Right = borders is { } r ? Side(r.Right) : Thin,
-        Top = borders is { } t ? Side(t.Top) : Thin,
-        Bottom = borders is { } d ? Side(d.Bottom) : Thin,
-    };
+            Bold = texts.Count > 0 && texts.All(t => t.Format.Bold == true),
+            Italic = texts.Count > 0 && texts.All(t => t.Format.Italic == true),
+            Align = AlignOf(cell),
+            Fill = cell.Fill,
+            Wrap = true,
+            VerticalAlign = cell.VerticalAlign switch
+            {
+                HVerticalAlign.Center => CellVerticalAlign.Center,
+                HVerticalAlign.Bottom => CellVerticalAlign.Bottom,
+                _ => CellVerticalAlign.Top,
+            },
+            Left = borders is { } b ? Side(b.Left) : Thin,
+            Right = borders is { } r ? Side(r.Right) : Thin,
+            Top = borders is { } t ? Side(t.Top) : Thin,
+            Bottom = borders is { } d ? Side(d.Bottom) : Thin,
+        };
+    }
+
+    /// <summary>Centred or right-aligned when every paragraph with text is; else Excel's own alignment.</summary>
+    private static CellAlign AlignOf(HCell cell)
+    {
+        HAlign? shared = null;
+        foreach (var paragraph in cell.Blocks.OfType<HParagraph>())
+        {
+            if (!HDocumentWalker.InlinesOf(paragraph.Inlines).OfType<HText>().Any(t => t.Text.Trim().Length > 0))
+                continue;
+            var align = paragraph.Format.Align ?? HAlign.Left;
+            if (shared is { } known && known != align)
+                return CellAlign.General;
+            shared = align;
+        }
+        return shared switch
+        {
+            HAlign.Center => CellAlign.Center,
+            HAlign.Right => CellAlign.Right,
+            _ => CellAlign.General,
+        };
+    }
 
     private static readonly CellBorder Thin = new("thin", "#000000");
 

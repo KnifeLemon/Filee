@@ -27,7 +27,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
-| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders and column widths kept |
+| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT, RTF, HWP, HWPX, HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
@@ -828,8 +828,20 @@ so DOCX → HWPX and HWP keep editable equations and DOCX → PDF draws them wit
 The box an equation is stored with (`hp:sz`) is measured like rhwp lays the script out (estimated character
 widths, script scale 0.7, fraction and root spacing, from rhwp's `equation/layout.rs`): rhwp stretches an equation to
 its stored width, so a wrong box would distort it. 한글 lays the script out again when the equation is edited.
-The model's other writers (HTML, EPUB, Markdown, TXT …) write a linear form instead, `(a+b)/(2c)`, `x_i^2`, `√(x)`,
-which is also the equation's alternative text in HWPX.
+The model's other writers (Markdown, TXT, ODT, PPTX …) write a linear form instead, `(a+b)/(2c)`, `x_i^2`, `√(x)`,
+which is also the equation's alternative text in HWPX. The DOCX writer writes every equation back as Word math
+(`Hwp/Hwpx/Docx/OmmlWriter.cs`), the HTML and EPUB writers as MathML (`Hwp/Hwpx/MathMLWriter.cs`; EPUB pages with it
+carry `properties="mathml"`; MOBI keeps the text).
+
+**TeX math in Markdown** (#1652): `$…$`, `$$…$$`, `\(…\)` and `\[…\]` (`Hwp/Hwpx/MarkdownMath.cs`, Pandoc's rules
+for dollars: no space inside the delimiters, no digit after the closing `$`, code spans win) are read by
+`Hwp/Hwpx/LatexMath.cs` into the same tree: fractions, roots, scripts, Greek letters and symbols, sums, integrals and
+`\lim` with their limits, `\left … \right`, matrices, `cases`, `aligned` and `gather`, accents, `\text`, `\mathbf`,
+`\mathrm`, `\mathbb` and the spacing commands. So Markdown → PDF typesets them, → DOCX gives Word math, → HWPX 한글
+equations, → HTML and EPUB MathML (with the TeX as its annotation). Display math alone in its paragraph is centred.
+An unknown command stays as its text (`\foo`); a formula longer than 32,768 characters or nested deeper than 100
+levels stays its source, and the equations count against `MaxObjects`. Writers without equations keep the TeX
+source as written (`$\frac{a}{b}$`).
 
 ## Spreadsheets
 
@@ -863,8 +875,8 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
 The XLSX donut also offers **PDF + Edit** (`tool-sheet-studio`). This interactive tool preserves the original
 workbook, makes one disposable copy per selected sheet region, applies that region's print settings, and prints it
 with the same engine as an ordinary XLSX → PDF: Filee's own print engine (below), or LibreOffice when **Use
-LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with charts or
-other objects the print engine doesn't draw yet; without LibreOffice the studio shows the printer's notice). Every
+LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with chart
+sheets, 3D charts or other objects the print engine doesn't draw yet; without LibreOffice the studio shows the printer's notice). Every
 studio setting (paper, orientation, margins, scale or fit to pages, page order, print area, hidden rows and columns,
 manual breaks, sheet choice) is written into the copy and read by the print engine; the sheet's own gridlines,
 headings, centring and headers / footers are kept. PDFsharp combines the resulting PDFs. The live preview follows
@@ -944,7 +956,10 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   Each sheet's page count is checked against `MaxPages` before anything is drawn (a cell in A1 and one in
   XFD1048576 would be about 35 million pages), and the layout runs under `LayoutGuard`. `DocumentFuzzTests` mutates
   an XLSX and an ODS built in code and prints them.
-- **Not printed yet.** Charts, shapes, text boxes, comments, sparklines; data bars, icon sets and conditional formats
+- **Charts** (bar, column, line, area, pie, doughnut, scatter) on a sheet are printed from their chart part by the
+  [chart drawer](#charts); 3D, radar, stock, surface and bubble charts, new chart types (`chartex`) and chart sheets
+  are named, so such a workbook takes LibreOffice where it is installed.
+- **Not printed yet.** Chart sheets, shapes with text, text boxes, comments, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).
@@ -1053,9 +1068,9 @@ test turns it on.
   were always off by default and are left as the user set them. Tests: `FileeRendererConverterTests`
   (`Libreoffice_chosen_for_*`), `RoutePlannerTests` (the costs).
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
-  or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects and charts, vertical
-  text, form controls, videos, SmartArt — and a deck for what the slide renderer doesn't draw (charts without a
-  stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
+  or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects, charts
+  other than the DrawingML ones the [chart drawer](#charts) draws, vertical text, form controls, videos, SmartArt — and a deck for what the slide
+  renderer doesn't draw (charts the chart drawer doesn't draw without a stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
   without it, so such a file takes its usual route (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
   file is the one the engine looked at. Text formats hold nothing it can't draw.
 - Its edges aren't `Unshaped`: with it on, Arabic, Hebrew, Indic and Thai documents are shaped by it instead of
@@ -1540,8 +1555,8 @@ a slide.
   fonts (`+mj-lt`, `+mn-ea`, script fonts by the run's language); theme style references (`fillRef`, `lnRef`,
   `fontRef`, `bgRef`); tables with `tableStyles.xml` styles (PowerPoint's default *Medium Style 2 – Accent 1* is built
   in, as files often name it without writing it out); SmartArt through the drawing PowerPoint keeps with it (the data
-  part's `dsp:dataModelExt`); OLE objects and charts through their stored picture; `mc:AlternateContent` through its
-  fallback.
+  part's `dsp:dataModelExt`); charts from their chart part ([Charts](#charts)); OLE objects and other charts through
+  their stored picture; `mc:AlternateContent` through its fallback.
 - **Text frames:** insets, the geometry's text rectangle, anchoring (top, middle, bottom, centred across),
   wrapping on or off, columns, vertical frames (`vert`, `vert270`), the body's own rotation; "shrink text on overflow"
   with the font scale and line spacing reduction PowerPoint stored; line spacing as a multiple of the fonts' own line
@@ -1573,7 +1588,7 @@ a slide.
 - **Pictures of slides:** the PDF options' page range and resolution (`RenderDpi`, lowered so one picture stays within
   200 million pixels), then the image options (`ImageEncoder.ApplyOptions`), one file per slide (`_p2`, ...).
 - **The check** (`SlideCapabilities.cs`) looks at the shown slides and the layouts and masters they use, leaving out
-  what a fallback replaces, and names: charts without a stored picture, SmartArt without its drawing, OLE objects and
+  what a fallback replaces, and names: charts the chart drawer doesn't draw without a stored picture, SmartArt without its drawing, OLE objects and
   other embedded content without a picture, ink, shadows and other effects (on shapes, pictures and text, or through
   the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, preset names outside
   ST_ShapeType, and TIFF and JPEG XR pictures.
@@ -1596,7 +1611,37 @@ Every slide's text reads back, nothing is outside a slide, every font is embedde
 Not yet: shadows, glow, reflection, soft edges and 3D (named by the check); WordArt warps and text outlines; East Asian
 vertical text (upright characters); gradient-filled text (the first stop's colour); tiled pictures at their own
 resolution (taken as 96 dpi); a gradient that doesn't turn with its shape; "rect" path gradients (drawn as an ellipse
-through the corners); charts drawn from their data; notes pages and handouts.
+through the corners); 3D and other charts the chart drawer doesn't draw; notes pages and handouts.
+
+## Charts
+
+`Charts/` reads a DrawingML chart part (`c:chartSpace`, ECMA-376 Part 1 §21.2) and draws it with Skia, text as glyph
+runs, for the sheet printer (`XlsxDrawing`, XLSX and XLSB), the document renderer (Word `c:chart` through
+`DocxReader` and `FloatingObjects`) and the slide renderer (`PptxSlideReader`, `SlideRenderer`).
+
+- **Read** (`ChartReader`): bar and column (clustered, stacked, 100 %, horizontal), line (markers, smooth, stacked),
+  area, pie (first slice angle, pulled-out slices), doughnut and scatter plots, several in one plot area against
+  their own axes; values and categories from the part's caches (`c:numCache`, `c:strCache`, `c:multiLvlStrCache`,
+  literals), so no formula is evaluated; title (rich text, a cell's text, or the lone series' name Office shows),
+  axis titles, category / date / value axes (scaling, logarithmic base, orientation, number format, gridlines, tick
+  marks, label position, crossing, label skip and turn), legend (position, deleted entries), data labels (value,
+  category, series, percent, position), fills and outlines of the chart area, plot area, series and points (solid,
+  first colour of a gradient or pattern, none), the theme's accents in Office's order (then darker and lighter
+  variations), manual layouts of plot area, title and legend.
+- **Drawn** (`ChartDrawer`): Office's automatic layout (title on top, legend on its side, axes' labels and titles
+  around the plot); value axes scale as Excel's (zero kept unless the values sit far from it, 1-2-5 units for the
+  axis' length, a little room above the top value); category labels level, wrapped at spaces, turned 45° or thinned
+  out. Writers that take pictures get a PNG of the chart (`ChartPicture`): the Word chart's picture in HWPX, ODT,
+  EPUB, ...; the slide's picture in ODP and in a deck's text.
+- **Named instead** (the left-out notice says "charts"; the checks send the file to LibreOffice where it is
+  installed): 3D, radar, bubble, stock, surface and bar-of-pie charts and new chart types (`chartex`); a fallback
+  picture, when the file stores one, is drawn for those on slides.
+- **Hostile input:** the part comes through the package's XML limits; more than 1,024 series or 1,048,576 points per
+  chart (a cache's `ptCount` or highest index counts, not only the points it holds) is refused with
+  `error.document_too_complex`, as is a document whose charts draw more than ten times that (`ChartBudget`, a chart
+  placed many times counting each time); texts are cut at 1,024 characters, values clamped to ±1e100, data labels
+  (4,096), markers (100,000), measured category labels (2,000) and ticks per axis (1,000) capped. `ChartTests` builds
+  the charts in code; `ChartFuzzTests` mutates chart parts alone and in a printed workbook.
 
 ## DOCX writer
 
@@ -2225,26 +2270,35 @@ not found.
   workbook. The same tables can be written as ODS, or as CSV (one file per sheet). These edges are direct only: an image
   made into a PDF has no ruled tables, so no picture reaches a spreadsheet through PDF.
 
-## DOCX / HTML → XLSX
+## Documents → XLSX
 
-`Office/DocumentTablesConverter.cs` puts the tables of a Word document (DOCX and its DOCM / DOTX / DOTM variants), a web
-page (HTML) or a saved web page (MHTML) into a workbook (#1016). The tables are the ones the DOCX and HTML readers give
-the HWPX and DOCX writers, with their merged cells (`gridSpan` / `vMerge`, `colspan` / `rowspan`); text outside the
-tables is left out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, shared by both).
+`Office/DocumentTablesConverter.cs` puts the tables of a Word document (DOCX and its DOCM / DOTX / DOTM variants, DOC
+and its DOT / WPS variants), an OpenDocument text (ODT), an RTF file, a 한글 file (HWP, HWPX), a web page (HTML) or a
+saved web page (MHTML) into a workbook (#1016). The tables are the ones the built-in readers give the HWPX and DOCX
+writers, with their merged cells (`gridSpan` / `vMerge`, DOC's merge flags, `number-columns-spanned` /
+`number-rows-spanned`, `\clmgf` / `\clvmgf`, 한글's `cellSpan`, `colspan` / `rowspan`); text outside the tables is left
+out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, shared by both).
 
 - **One sheet per table** ("Table 1", "Table 2" …) in reading order, a table inside a cell too (its text isn't repeated
   in the outer cell). Nothing is joined: a Word table running over a page break is one table already. A table without
   any text, such as a web page's layout table around the real one, gets no sheet.
-- **Numbers and dates** become real values by the same rules as PDF → XLSX (above).
+- **Numbers and dates** become real values by the same rules as PDF → XLSX (above). 한글 files are read as the renderer
+  reads them, so a number typed as an equation (common in 한글 tables) is its text ("40"), not its script ("40~~~").
 - Cells keep their own borders (a Word table style's lines, the HTML grid unless `border="0"`), shading, vertical
-  alignment and bold. Column widths come from the Word grid or the HTML `<col>` / first-row widths (shares of an A4
-  text width); without either, a column is as wide as its longest line, up to 60 characters. Rows fit their text: a
-  Word row height is only a minimum. Leading header rows (Word's "repeat as header row", HTML `<thead>` or rows of
-  `<th>`) are frozen.
+  alignment, bold and italic (when all the cell's text is), and centred or right alignment (when all its paragraphs
+  are; left and justified text keeps Excel's own, numbers to the right). Column widths come from the document's grid
+  (Word, DOC, RTF, ODT, 한글) or the HTML `<col>` / first-row widths (shares of an A4 text width); without either, a
+  column is as wide as its longest line, up to 60 characters. Rows fit their text: a document's row height is only a
+  minimum. Excel doesn't fit a row to a merged cell, so the rows under a merged cell get the height its lines need.
+  Leading header rows (Word's and RTF's "repeat as header row", ODT header rows, 한글's title cells, HTML `<thead>` or
+  rows of `<th>`) are frozen.
 - A file without tables fails with `error.document_no_tables`. The edges are direct only, like PDF → XLSX: a PDF,
   a picture or an e-book that became a DOCX on the way doesn't reach spreadsheets this way, and a document's tables
-  don't go on to JSON or XML. For the same reason DOC (which LibreOffice reads into a DOCX first) isn't an input: the
-  XLSX preset's note says to convert it to DOCX first.
+  don't go on to JSON or XML. DOC edges are checked: a Word 6.0 / 95 or Works file the DOC reader doesn't read gets
+  the reader's own message (LibreOffice has no Writer → spreadsheet route to fall back on).
+- Limits: the tables of one file get at most 10,000 sheets, 1,048,576 rows each (Excel's) and 10,000,000 cell
+  positions together (`HwpxWriter.MaxTableCells`), counted before anything is written; more is refused with
+  `error.document_too_complex`. Nested tables are walked with a stack, not recursion.
 
 ## PDF → PPTX
 

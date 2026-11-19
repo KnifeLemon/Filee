@@ -369,6 +369,7 @@ internal sealed class MatchFinder
         ref var links = ref MemoryMarshal.GetArrayDataReference(_links);
         var mask = _mask;
         Unsafe.Add(ref links, stored & mask) = candidate;
+        PrefetchCandidate(ref links, ref data, candidate, offset, mask, buffer.Length);
         // The next position is searched or entered right after this one: its table slots (mostly not in the cache)
         // are asked for now, so they arrive while this chain is walked.
         if (pos + 5 <= Filled)
@@ -413,6 +414,22 @@ internal sealed class MatchFinder
             value = BinaryPrimitives.ReverseEndianness(value);
         Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head3), (int)(((value & 0xFFFFFF) * 0x9E3779B1u) >> (32 - Hash3Bits)))));
         Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head4), (int)((value * 2654435761u) >> _hash4Shift))));
+    }
+
+    /// <summary>
+    /// A hint to load the first candidate of the chain (its link and its first bytes) into the cache (x86; elsewhere
+    /// nothing), so the walk's first steps don't wait for them after the two- and three-byte candidates are checked.
+    /// Only addresses inside the tables and the buffer are used; nothing is read through them.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void PrefetchCandidate(ref int links, ref byte data, int candidate, int offset, int mask, int length)
+    {
+        if (!Sse.IsSupported || candidate <= 0)
+            return;
+        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref links, candidate & mask)));
+        var at = candidate - offset;
+        if ((uint)at < (uint)length)
+            Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref data, at)));
     }
 
     /// <summary>The chain's two-byte slot for the bytes in the low half of <paramref name="value"/>.</summary>

@@ -116,6 +116,39 @@ public class LzmaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(Crc64.Compute(data), crc.Value);
     }
 
+    /// <summary>
+    /// Long pieces are folded with carry-less multiplies where the processor has them, short ones go through the tables:
+    /// both give the same value, for lengths around the cut-over and the 16-byte steps and for pieces of any split.
+    /// </summary>
+    [Fact]
+    public void Crc64_of_long_pieces_matches_the_tables()
+    {
+        var data = Noise(200_000, 8);
+        static ulong ByteByByte(ReadOnlySpan<byte> bytes)
+        {
+            var crc = new Crc64();
+            foreach (var b in bytes)
+                crc.Append([b]);
+            return crc.Value;
+        }
+        foreach (var length in Enumerable.Range(0, 300).Concat([1000, 4095, 4096, 4097, 65_536, 199_999]))
+            Assert.Equal(ByteByByte(data.AsSpan(0, length)), Crc64.Compute(data.AsSpan(0, length)));
+
+        var random = new Random(8);
+        var expected = ByteByByte(data);
+        for (var round = 0; round < 20; round++)
+        {
+            var crc = new Crc64();
+            for (var at = 0; at < data.Length;)
+            {
+                var count = Math.Min(data.Length - at, random.Next(4) == 0 ? random.Next(1, 20) : random.Next(1, 30_000));
+                crc.Append(data.AsSpan(at, count));
+                at += count;
+            }
+            Assert.Equal(expected, crc.Value);
+        }
+    }
+
     [Theory]
     [InlineData(ArchiveLevel.Store)]
     [InlineData(ArchiveLevel.Fast)]

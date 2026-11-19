@@ -63,9 +63,14 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     [
         "=", "<", ">", "≤", "≥", "≠", "≈", "≡", "≅", "∼", "≃", "∝", "≪", "≫", "∈", "∉", "∋", "⊂", "⊃", "⊆", "⊇", "⊄", "⊅",
         "→", "←", "↔", "⇒", "⇐", "⇔", "↦", "⊥", "∥", "≍", "≐", "≺", "≻", ":",
+        // TeX's further relations and arrows (LatexMath)
+        "⟶", "⟵", "⟷", "⟹", "⟸", "⟺", "⟼", "↪", "↩", "⇌", "⇋", "↑", "↓", "↕", "⇑", "⇓", "⇕", "↗", "↘", "↖", "↙", "⇀", "⇁",
+        "↼", "↽", "⇉", "⇇", "↠", "⇝", "⊨", "⊢", "⊣", "∣", "∤", "∦", "⊊", "⊋", "⊈", "⊉", "≲", "≳", "⪯", "⪰", "⩽", "⩾", "≦",
+        "≧", "≢", "≰", "≱", "≮", "≯", "≁", "≇", "≉", "∌", "⊏", "⊐", "⊑", "⊒", "≔", "≕", "≜", "≊", "≑", "⋈", "≶", "≷", "⋘", "⋙",
     ];
 
-    private static readonly HashSet<string> Binary = ["+", "-", "−", "±", "∓", "×", "÷", "·", "∘", "∪", "∩", "∧", "∨", "⊕", "⊖", "⊗", "⊙", "∗", "⋆", "⊔", "⊓", "\\", "/"];
+    private static readonly HashSet<string> Binary = ["+", "-", "−", "±", "∓", "×", "÷", "·", "∘", "∪", "∩", "∧", "∨", "⊕", "⊖", "⊗", "⊙", "∗", "⋆", "⊔", "⊓", "\\", "/",
+        "∖", "⊎", "⋄", "≀", "⨿", "⊘", "◁", "▷", "⋉", "⋊", "⊞", "⊟", "⊠", "⊡", "∔", "⊼", "⊻", "⋎", "⋏"];
 
     /// <summary>
     /// Levels laid out, above what the readers build (EquationParser.MaxDepth, OmmlReader.MaxDepth): content deeper
@@ -450,18 +455,22 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     {
         var size = style.Size;
         var small = style.Smaller(ScriptScale);
-        var sup = supNode is null ? null : Lay(supNode, small);
+        // A prime (f′, TeX's f' = f^\prime) is already a raised mark: drawn at the base's size on its baseline, after
+        // the base (clear of an italic letter's overhang), not shrunk and raised again.
+        var prime = supNode is not null && IsPrimes(supNode);
+        var sup = supNode is null ? null : Lay(supNode, prime ? style : small);
         var sub = subNode is null ? null : Lay(subNode, small);
         var parts = new List<(float, float, EquationBox)> { (0, 0, body) };
-        var supShift = sup is null ? 0 : Math.Max(size * 0.42f, body.Ascent - sup.Ascent * 0.6f);
+        var supShift = sup is null || prime ? 0 : Math.Max(size * 0.42f, body.Ascent - sup.Ascent * 0.6f);
         var subShift = sub is null ? 0 : Math.Max(size * 0.18f, body.Descent - sub.Descent * 0.2f);
-        if (sup is not null && sub is not null && supShift - sup.Descent - (sub.Ascent - subShift) < size * 0.15f)
+        if (sup is not null && sub is not null && !prime && supShift - sup.Descent - (sub.Ascent - subShift) < size * 0.15f)
             subShift += size * 0.15f - (supShift - sup.Descent - (sub.Ascent - subShift));
         var width = body.Width;
         if (sup is not null)
         {
-            parts.Add((body.Width + (italicBase ? size * 0.03f : 0), -supShift, sup));
-            width = Math.Max(width, body.Width + sup.Width);
+            var x = body.Width + (italicBase ? size * (prime ? 0.08f : 0.03f) : 0);
+            parts.Add((x, -supShift, sup));
+            width = Math.Max(width, x + sup.Width);
         }
         if (sub is not null)
         {
@@ -473,6 +482,14 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         var descent = Math.Max(body.Descent, sub is null ? 0 : subShift + sub.Descent);
         return Place(width, ascent, descent, [.. parts]);
     }
+
+    /// <summary>One or more primes (′ ″ ‴) and nothing else.</summary>
+    private static bool IsPrimes(MathNode node) => node switch
+    {
+        MathCommand { Glyph: "′" or "″" or "‴" } or MathText { Text: "′" or "″" or "‴" } or MathSymbol { Text: "′" or "″" or "‴" } => true,
+        MathRow { Items.Count: > 0 } row => row.Items.All(IsPrimes),
+        _ => false,
+    };
 
     /// <summary><paramref name="body"/> with <paramref name="upper"/> centred above and <paramref name="lower"/> below.</summary>
     private static EquationBox Limits(EquationBox body, EquationBox? upper, EquationBox? lower, float gap)

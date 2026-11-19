@@ -24,14 +24,15 @@ internal static class Bzip2Sort
             block.CopyTo(output);
             return 0;
         }
-        var shift = SmallestRotation(block);
+        var shift = SmallestRotation(block, out var periodic);
         var word = ArrayPool<byte>.Shared.Rent(n);
         var sa = ArrayPool<int>.Shared.Rent(n);
         try
         {
             block[shift..].CopyTo(word);
             block[..shift].CopyTo(word.AsSpan(n - shift));
-            var root = RootLength(word.AsSpan(0, n), sa);
+            // Only a block that equals one of its other rotations has a shorter root (and needs the prefix function).
+            var root = periodic ? RootLength(word.AsSpan(0, n), sa) : n;
             var repeats = n / root;
             SuffixArray(new ByteText(word), root, 256, sa, cancellationToken);
 
@@ -60,8 +61,16 @@ internal static class Bzip2Sort
         }
     }
 
-    /// <summary>Where the lexicographically smallest rotation of <paramref name="text"/> starts (two candidates race).</summary>
-    internal static int SmallestRotation(ReadOnlySpan<byte> text)
+    /// <summary>
+    /// Where the lexicographically smallest rotation of <paramref name="text"/> starts (two candidates race), and whether
+    /// <paramref name="text"/> equals another of its rotations (is a power of a shorter piece).
+    /// </summary>
+    /// <remarks>
+    /// A candidate is only dropped, with the k places after it, when a rotation there is larger than another, so a
+    /// smallest rotation is never dropped. A periodic text has two or more: the candidates end up on two of them and
+    /// match all the way round. A text with one runs out of candidates before.
+    /// </remarks>
+    internal static int SmallestRotation(ReadOnlySpan<byte> text, out bool periodic)
     {
         var n = text.Length;
         int i = 0, j = 1, k = 0;
@@ -83,6 +92,7 @@ internal static class Bzip2Sort
                 j++;
             k = 0;
         }
+        periodic = k >= n;
         return Math.Min(i, j);
     }
 
@@ -111,22 +121,37 @@ internal static class Bzip2Sort
     private interface IText
     {
         int this[int index] { get; }
+
+        /// <summary>Whether the <paramref name="length"/> characters at <paramref name="a"/> and <paramref name="b"/> are the same.</summary>
+        bool Same(int a, int b, int length);
     }
 
     private readonly struct ByteText(byte[] text) : IText
     {
         public int this[int index] => text[index];
+
+        public bool Same(int a, int b, int length) => text.AsSpan(a, length).SequenceEqual(text.AsSpan(b, length));
     }
 
     private readonly struct IntText(int[] text) : IText
     {
         public int this[int index] => text[index];
+
+        public bool Same(int a, int b, int length) => text.AsSpan(a, length).SequenceEqual(text.AsSpan(b, length));
     }
 
     /// <summary>
     /// The suffix array of the first <paramref name="n"/> characters of <paramref name="text"/> (values below
     /// <paramref name="alphabet"/>), with an implied end character smaller than all others, into <paramref name="sa"/>.
     /// </summary>
+    /// <remarks>
+    /// SA-IS, written so that each step reads as little as it can:
+    /// - No array of suffix types: a suffix's type follows from its first two characters and the scan that places it
+    ///   (<see cref="Induce{T}"/>), and a bit per position marks the LMS ones.
+    /// - LMS substrings are named by comparing their characters in one go, their lengths kept in the unused half of
+    ///   the suffix array.
+    /// The string of names is sorted the same way when names repeat; its alphabet is at most half the size.
+    /// </remarks>
     private static void SuffixArray<T>(T text, int n, int alphabet, int[] sa, CancellationToken cancellationToken)
         where T : struct, IText
     {
@@ -143,29 +168,19 @@ internal static class Bzip2Sort
             sa[1] = firstSmaller ? 1 : 0;
             return;
         }
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(n, sa.Length);
         cancellationToken.ThrowIfCancellationRequested();
 
-        // S-type: the suffix is smaller than the one after it. The last character is L-type (the end is smaller).
-        var stype = ArrayPool<bool>.Shared.Rent(n);
         var starts = ArrayPool<int>.Shared.Rent(alphabet);
         var ends = ArrayPool<int>.Shared.Rent(alphabet);
         var fill = ArrayPool<int>.Shared.Rent(alphabet);
-        // Leftmost S-type positions (LMS) are never next to each other, so position / 2 indexes them.
-        var lmsIndex = ArrayPool<int>.Shared.Rent(n / 2 + 1);
         var lms = ArrayPool<int>.Shared.Rent(n / 2 + 1);
+        var isLms = ArrayPool<ulong>.Shared.Rent((n >> 6) + 1);
         int[]? sorted = null;
         int[]? names = null;
         int[]? reducedSa = null;
         try
         {
-            stype[n - 1] = false;
-            for (var i = n - 2; i >= 0; i--)
-            {
-                var a = text[i];
-                var b = text[i + 1];
-                stype[i] = a < b || a == b && stype[i + 1];
-            }
-
             Array.Clear(starts, 0, alphabet);
             for (var i = 0; i < n; i++)
                 starts[text[i]]++;
@@ -178,123 +193,157 @@ internal static class Bzip2Sort
                 ends[c] = sum;
             }
 
+            // LMS positions (an S-type suffix after an L-type one; the last suffix is L-type), found right to left.
+            // S-type: smaller than the suffix after it, so the first character is smaller, or equal and that one S-type.
+            Array.Clear(isLms, 0, (n >> 6) + 1);
             var m = 0;
-            for (var i = 1; i < n; i++)
+            var nextS = 0;
+            var next = text[n - 1];
+            for (var i = n - 2; i >= 0; i--)
             {
-                if (stype[i] && !stype[i - 1])
-                {
-                    lmsIndex[i >> 1] = m;
-                    lms[m++] = i;
-                }
+                var c = text[i];
+                var s = c < next ? 1 : c == next ? nextS : 0;
+                // Written every time and counted only for an LMS position: no branch to mispredict.
+                var lmsHere = nextS & (s ^ 1);
+                lms[m] = i + 1;
+                m += lmsHere;
+                isLms[(i + 1) >> 6] |= (ulong)lmsHere << (i + 1);
+                nextS = s;
+                next = c;
             }
-
-            // First pass: the LMS positions in text order; inducing sorts them by their LMS substrings.
-            Induce(text, n, alphabet, stype, starts, ends, fill, lms.AsSpan(0, m), sa);
             if (m == 0)
+            {
+                // No S-type suffix: the characters never rise, and the L-type ones induce from the last suffix alone.
+                Array.Clear(sa, 0, n);
+                Induce(text, n, sa, starts, ends, fill, alphabet);
                 return;
+            }
+            lms.AsSpan(0, m).Reverse();
+
+            // First pass: the LMS positions at the ends of their buckets; inducing sorts them by their LMS substrings.
+            Array.Clear(sa, 0, n);
+            Array.Copy(ends, fill, alphabet);
+            for (var k = m - 1; k >= 0; k--)
+                sa[--fill[text[lms[k]]]] = lms[k];
+            Induce(text, n, sa, starts, ends, fill, alphabet);
             cancellationToken.ThrowIfCancellationRequested();
 
-            sorted = ArrayPool<int>.Shared.Rent(m);
-            var k = 0;
+            // The LMS positions in that order, to the front.
+            var found = 0;
             for (var i = 0; i < n; i++)
             {
                 var p = sa[i];
-                if (p > 0 && stype[p] && !stype[p - 1])
-                    sorted[k++] = p;
+                sa[found] = p;
+                found += (int)(isLms[p >> 6] >> p) & 1;
             }
 
-            // Name the LMS substrings (from one LMS position to the next, both included) by their sorted order.
-            names = ArrayPool<int>.Shared.Rent(m);
+            // Name the LMS substrings (from one LMS position to the next, both included) in that order. Each one's
+            // length, then its name, goes to sa[m + p / 2] (LMS positions are never next to each other); the last one
+            // runs into the end, so it is unlike any other (length -1).
+            Array.Clear(sa, m, n - m);
+            for (var k = 0; k < m; k++)
+                sa[m + (lms[k] >> 1)] = k + 1 < m ? lms[k + 1] - lms[k] + 1 : -1;
             var name = 0;
-            names[lmsIndex[sorted[0] >> 1]] = 0;
-            for (var i = 1; i < m; i++)
+            int previous = -1, previousLength = 0;
+            for (var i = 0; i < m; i++)
             {
-                if (!SameLmsSubstring(text, n, lms, m, lmsIndex, sorted[i - 1], sorted[i]))
+                var p = sa[i];
+                var length = sa[m + (p >> 1)];
+                if (length < 0 || length != previousLength || !text.Same(p, previous, length))
                     name++;
-                names[lmsIndex[sorted[i] >> 1]] = name;
+                sa[m + (p >> 1)] = name; // 1 and up; 0 is a gap
+                previous = p;
+                previousLength = length;
             }
 
-            if (name + 1 < m)
+            sorted = ArrayPool<int>.Shared.Rent(m);
+            if (name < m)
             {
                 // Some substrings repeat: sort the string of names (in text order) to order the LMS suffixes.
+                names = ArrayPool<int>.Shared.Rent(m);
+                var k = 0;
+                for (var i = m; i < n && k < m; i++)
+                {
+                    if (sa[i] != 0)
+                        names[k++] = sa[i] - 1;
+                }
                 reducedSa = ArrayPool<int>.Shared.Rent(m);
-                SuffixArray(new IntText(names), m, name + 1, reducedSa, cancellationToken);
+                SuffixArray(new IntText(names), m, name, reducedSa, cancellationToken);
                 for (var i = 0; i < m; i++)
                     sorted[i] = lms[reducedSa[i]];
             }
             else
             {
-                for (var i = 0; i < m; i++)
-                    sorted[names[i]] = lms[i];
+                for (var k = 0; k < m; k++)
+                    sorted[sa[m + (lms[k] >> 1)] - 1] = lms[k];
             }
 
-            Induce(text, n, alphabet, stype, starts, ends, fill, sorted.AsSpan(0, m), sa);
+            // Second pass: the sorted LMS suffixes at the ends of their buckets, the rest induced from them.
+            Array.Clear(sa, 0, n);
+            Array.Copy(ends, fill, alphabet);
+            for (var k = m - 1; k >= 0; k--)
+                sa[--fill[text[sorted[k]]]] = sorted[k];
+            Induce(text, n, sa, starts, ends, fill, alphabet);
         }
         finally
         {
             if (reducedSa is not null) ArrayPool<int>.Shared.Return(reducedSa);
             if (names is not null) ArrayPool<int>.Shared.Return(names);
             if (sorted is not null) ArrayPool<int>.Shared.Return(sorted);
+            ArrayPool<ulong>.Shared.Return(isLms);
             ArrayPool<int>.Shared.Return(lms);
-            ArrayPool<int>.Shared.Return(lmsIndex);
             ArrayPool<int>.Shared.Return(fill);
             ArrayPool<int>.Shared.Return(ends);
             ArrayPool<int>.Shared.Return(starts);
-            ArrayPool<bool>.Shared.Return(stype);
         }
     }
 
     /// <summary>
-    /// Induced sorting: the LMS positions go to the ends of their buckets in the given order, the L-type suffixes are
-    /// placed from them left to right, then the S-type ones right to left.
+    /// Induced sorting from the LMS suffixes placed at the ends of their buckets (the rest of <paramref name="sa"/>
+    /// zero): L-type suffixes left to right from the bucket starts, then S-type ones right to left from the bucket ends,
+    /// which places the LMS ones again.
     /// </summary>
-    private static void Induce<T>(T text, int n, int alphabet, bool[] stype, int[] starts, int[] ends, int[] fill,
-        ReadOnlySpan<int> lms, int[] sa)
+    /// <remarks>
+    /// An entry placed as p means that the scan reaching it places p − 1; ~p (below zero) means it has nothing to place
+    /// in that scan. Which it is follows from two characters: in the L scan, p − 1 is L-type when its character is not
+    /// below p's (p being L-type, or LMS, whose character is below the one before it); in the S scan, p − 1 is S-type
+    /// when its character is not above p's (p being S-type). The L scan turns over every entry it passes: an L-type
+    /// suffix whose predecessor is L-type has nothing to place in the S scan, one whose predecessor is S-type has. The
+    /// S scan leaves every entry as the plain position. 0 is both a gap and suffix 0, which never places anything.
+    /// </remarks>
+    private static void Induce<T>(T text, int n, int[] sa, int[] starts, int[] ends, int[] fill, int alphabet)
         where T : struct, IText
     {
-        Array.Fill(sa, -1, 0, n);
-        Array.Copy(ends, fill, alphabet);
-        for (var i = lms.Length - 1; i >= 0; i--)
-        {
-            var p = lms[i];
-            sa[--fill[text[p]]] = p;
-        }
-
         Array.Copy(starts, fill, alphabet);
-        // The suffix before the end: the last character, L-type.
-        sa[fill[text[n - 1]]++] = n - 1;
+        // The last suffix, L-type (the end comes after it), first in its bucket.
+        var last = n - 1;
+        var c = text[last];
+        sa[fill[c]++] = text[last - 1] >= c ? last : ~last;
         for (var i = 0; i < n; i++)
         {
-            var p = sa[i] - 1;
-            if (p >= 0 && !stype[p])
-                sa[fill[text[p]]++] = p;
+            var v = sa[i];
+            sa[i] = ~v;
+            if (v <= 0)
+                continue;
+            var j = v - 1;
+            c = text[j];
+            sa[fill[c]++] = j > 0 && text[j - 1] >= c ? j : ~j;
         }
 
         Array.Copy(ends, fill, alphabet);
         for (var i = n - 1; i >= 0; i--)
         {
-            var p = sa[i] - 1;
-            if (p >= 0 && stype[p])
-                sa[--fill[text[p]]] = p;
+            var v = sa[i];
+            if (v > 0)
+            {
+                var j = v - 1;
+                c = text[j];
+                sa[--fill[c]] = j > 0 && text[j - 1] <= c ? j : ~j;
+            }
+            else if (v < 0)
+            {
+                sa[i] = ~v;
+            }
         }
-    }
-
-    /// <summary>Whether the LMS substrings at <paramref name="a"/> and <paramref name="b"/> are equal.</summary>
-    private static bool SameLmsSubstring<T>(T text, int n, int[] lms, int m, int[] lmsIndex, int a, int b)
-        where T : struct, IText
-    {
-        var nextA = lmsIndex[a >> 1] + 1;
-        var nextB = lmsIndex[b >> 1] + 1;
-        var endA = nextA < m ? lms[nextA] : n;
-        var endB = nextB < m ? lms[nextB] : n;
-        // The substring that runs into the end is unlike any other.
-        if (endA == n || endB == n || endA - a != endB - b)
-            return false;
-        for (; a <= endA; a++, b++)
-        {
-            if (text[a] != text[b])
-                return false;
-        }
-        return true;
     }
 }

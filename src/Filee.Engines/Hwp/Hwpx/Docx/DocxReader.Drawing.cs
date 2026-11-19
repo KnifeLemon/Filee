@@ -1,8 +1,11 @@
 // DOCX graphic objects: DrawingML pictures, text boxes (wps), groups and drawing canvases, plus legacy VML
-// (w:pict / w:object) used by older documents and as the fallback of mc:AlternateContent.
+// (w:pict / w:object) used by older documents and as the fallback of mc:AlternateContent. Charts are read from their
+// chart part (ChartReader) and become a picture of the chart for the writers that carries the chart for the renderer;
+// those ChartReader doesn't draw are left out and counted.
 
 using System.Globalization;
 using System.Xml.Linq;
+using Filee.Engines.Charts;
 using Filee.Engines.Documents;
 using ImageMagick;
 
@@ -21,6 +24,12 @@ internal sealed partial class DocxReader
     private static readonly HInsets DefaultTextBoxPadding = new(720, 720, 360, 360);
 
     private readonly Dictionary<string, string> _themeColors = [];
+
+    /// <summary>The theme part's root (chart colours and fonts), or null.</summary>
+    private XElement? _theme;
+
+    private Slides.DrawingColors? _chartColors;
+    private readonly ChartBudget _charts = new();
 
     private IEnumerable<HInline> Drawing(XElement drawing)
     {
@@ -83,10 +92,14 @@ internal sealed partial class DocxReader
                 foreach (var inline in Group(obj, width, height, anchor, groupTransform))
                     yield return inline;
             }
-            // Charts and SmartArt have no picture in the document part to fall back on: the renderer says so.
+            // Charts ChartReader doesn't draw and SmartArt have no picture in the document part to fall back on: the
+            // renderer says so.
             else if (obj.Name == Chart + "chart")
             {
-                _leftOut.Add(HLeftOutKind.Chart);
+                if (ChartPicture(obj, width, height, anchor) is { } chart)
+                    yield return chart;
+                else
+                    _leftOut.Add(HLeftOutKind.Chart);
             }
             else if (obj.Name == Dgm + "relIds")
             {
@@ -142,6 +155,26 @@ internal sealed partial class DocxReader
         "RIGHT" or "BOTTOM" => position + size - groupSize,
         _ => position,
     };
+
+    /// <summary>A chart from its part, as a picture of it (for the writers) carrying the chart (for the renderer); null when it isn't drawn.</summary>
+    private HImage? ChartPicture(XElement chart, int width, int height, HAnchor? anchor)
+    {
+        var id = Attr(chart, "id", R);
+        if (id is null || !_part.Relationships.TryGetValue(id, out var rel) || rel.External || width <= 0 || height <= 0)
+            return null;
+        _chartColors ??= Slides.DrawingColors.FromTheme(_theme);
+        if (ChartReader.Read(LoadPart(rel.Target)?.Xml.Root, _chartColors, ChartReader.ThemeFont(_theme)).Chart is not { } drawn)
+            return null;
+        _charts.Charge(drawn);
+        // Points are HWPUNIT / 100.
+        if (Charts.ChartPicture.Png(drawn, width / 100f, height / 100f, 150) is not { } png)
+            return null;
+        Directory.CreateDirectory(_mediaFolder);
+        var path = Path.Combine(_mediaFolder, $"docx-chart-{_media.Count + 1}.png");
+        File.WriteAllBytes(path, png);
+        _media[$"chart|{path}"] = path;
+        return new HImage(path) { Width = width, Height = height, Anchor = anchor, Chart = drawn };
+    }
 
     private HImage? Picture(XElement pic, int width, int height, HAnchor? anchor)
     {
@@ -404,6 +437,7 @@ internal sealed partial class DocxReader
 
     private void LoadThemeColors(Part? theme)
     {
+        _theme = theme?.Xml.Root;
         foreach (var color in theme?.Xml.Descendants(A + "clrScheme").FirstOrDefault()?.Elements() ?? [])
         {
             var value = Val(color.Element(A + "srgbClr")) ?? Attr(color.Element(A + "sysClr"), "lastClr");

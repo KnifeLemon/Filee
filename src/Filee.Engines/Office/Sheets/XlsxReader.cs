@@ -3,14 +3,15 @@
 // borders (diagonals too), alignment (wrap, shrink, rotation, indent, justify, fill, centre across), merged cells,
 // column widths, row heights (custom and the autofit Excel saved), hidden rows / columns / sheets, frozen header
 // rows, and what printing needs: the page setup, margins, print options, headers and footers (with their
-// pictures), print areas, print titles, manual page breaks, conditional formats that colour cells, and the pictures
-// and shapes of each sheet's drawing (XlsxDrawing, which names what it leaves out: charts, SmartArt, ...). Comments
-// are not read. The package is read within DocumentLimits.
+// pictures), print areas, print titles, manual page breaks, conditional formats that colour cells, and the pictures,
+// shapes and charts of each sheet's drawing (XlsxDrawing, which names what it leaves out: 3D charts, SmartArt, ...).
+// Comments are not read. The package is read within DocumentLimits; the charts' points within ChartBudget.
 
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Filee.Engines.Charts;
 using Filee.Engines.Documents;
 using Filee.Engines.Office.Ooxml;
 
@@ -42,6 +43,7 @@ internal sealed class XlsxReader
     private NumberFormatter _formatter = new();
     private bool _date1904;
     private int _columnEntries;
+    private readonly ChartBudget _charts = new();
 
     private XlsxReader(OpcPackage package) => _package = package;
 
@@ -232,7 +234,7 @@ internal sealed class XlsxReader
                 Italic = font.Element(S + "i") is { } i ? On(i) : null,
                 Underline = font.Element(S + "u") is { } u ? (string?)u.Attribute("val") != "none" : null,
                 Strike = font.Element(S + "strike") is { } st ? On(st) : null,
-                FontSize = Number(font.Element(S + "sz")?.Attribute("val")),
+                FontSize = FontSize(font.Element(S + "sz")?.Attribute("val")),
                 Color = _colors.Spreadsheet(font.Element(S + "color")),
                 FontName = (string?)font.Element(S + "rFont")?.Attribute("val"),
                 Script = (string?)font.Element(S + "vertAlign")?.Attribute("val") switch { "superscript" => 1, "subscript" => -1, "baseline" => 0, _ => null },
@@ -372,7 +374,7 @@ internal sealed class XlsxReader
             underline != "none",
             underline is "double" or "doubleAccounting",
             On(f.Element(S + "strike")),
-            Number(f.Element(S + "sz")?.Attribute("val")),
+            FontSize(f.Element(S + "sz")?.Attribute("val")),
             _colors.Spreadsheet(f.Element(S + "color")),
             (string?)f.Element(S + "name")?.Attribute("val"),
             (string?)f.Element(S + "vertAlign")?.Attribute("val") switch { "superscript" => 1, "subscript" => -1, _ => 0 });
@@ -416,6 +418,9 @@ internal sealed class XlsxReader
 
     private static int Index(XElement element, string attribute) =>
         int.TryParse((string?)element.Attribute(attribute), out var value) && value >= 0 ? value : 0;
+
+    /// <summary>A font size in points, within Excel's 1 to 409.</summary>
+    private static double? FontSize(XAttribute? attribute) => Number(attribute) is { } size ? Math.Clamp(size, 1, 409) : null;
 
     private static double? Number(XAttribute? attribute) =>
         double.TryParse((string?)attribute, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && double.IsFinite(value) ? value : null;
@@ -525,7 +530,7 @@ internal sealed class XlsxReader
         foreach (var formatting in xml.Elements(S + "conditionalFormatting"))
             ConditionalFormats(formatting, sheet);
         if (_package.Target(partPath, (string?)xml.Element(S + "drawing")?.Attribute(R + "id")) is { } drawing)
-            sheet.Drawings.AddRange(XlsxDrawing.Read(_package, drawing, _theme?.Root, read: true).Drawings);
+            sheet.Drawings.AddRange(XlsxDrawing.Read(_package, drawing, _theme?.Root, read: true, _charts).Drawings);
         return sheet;
     }
 
