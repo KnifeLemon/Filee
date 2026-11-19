@@ -32,7 +32,7 @@ public sealed class XlsbTests(EngineFixture fx) : IClassFixture<EngineFixture>
             .Rich(5, 0, "Bold and red text", (0, 1), (9, 2)).Rk(5, 1, RkDouble(2.5)).Rk(5, 2, RkInteger(-1234, times100: true), Decimals).Error(5, 3, 0x2A)
             .Text(6, 0, "Pattern", Pattern).Text(6, 1, "Gradient", Gradient).Text(6, 2, "Diagonal", Diagonal).Text(6, 3, "Across", Across).Blank(6, 4, Pattern)
             .Height(0, 30).Height(6, 40).Height(7, 15, hidden: true).Text(8, 0, "after the hidden row").Height(8, 21.75, custom: false)
-            .Width(0, 0, 18.7109375).Width(1, 3, 12.5).Width(5, 5, 9, hidden: true)
+            .Width(0, 0, 18.7109375).Width(1, 3, 16.5).Width(5, 5, 9, hidden: true)
             .RowBreak(5).ColumnBreak(3);
         sales.FrozenRows = 2;
         sales.PageSetup = (9, true, 80, false, 1, 0, true, 3);
@@ -140,7 +140,7 @@ public sealed class XlsbTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(21.75, sheet.AutoRowHeights[8]);
         Assert.Contains(7, sheet.HiddenRows);
         Assert.Contains(5, sheet.HiddenColumns);
-        Assert.Equal(12.5, sheet.ColumnWidth(2));
+        Assert.Equal(16.5, sheet.ColumnWidth(2));
         Assert.Equal(new CellRange(0, 0, 0, 4), Assert.Single(sheet.Merges));
         Assert.Equal(2, sheet.FrozenRows);
         Assert.Equal([5], sheet.RowBreaks);
