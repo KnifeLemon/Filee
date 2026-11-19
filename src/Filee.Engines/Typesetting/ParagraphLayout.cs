@@ -1169,7 +1169,7 @@ internal sealed partial class ParagraphLayouter
 
         var (height, baseline, textHeight) = stored is var (segment, _)
             ? ((segment.VerticalSize + segment.Spacing) / 100f, segment.Baseline / 100f, segment.TextHeight / 100f)
-            : LineHeight(parts, settings, mark);
+            : LineHeight(parts, settings, mark, source);
         var bookmarks = ranges.Bookmarks(start, end, text.Length).Select(b => (lineLeft + offset, b.Name)).ToList();
         return new LineBox
         {
@@ -1234,12 +1234,14 @@ internal sealed partial class ParagraphLayouter
     }
 
     /// <summary>The line's pitch, the distance from its top to the baseline and the height of its text.</summary>
-    private (float Height, float Baseline, float TextHeight) LineHeight(List<Part> parts, Settings settings, TextStyle mark)
+    private (float Height, float Baseline, float TextHeight) LineHeight(List<Part> parts, Settings settings, TextStyle mark, ParagraphText source)
     {
         var rule = settings.LineHeight;
         var fromFont = settings.FontLineHeight || rule.Rule == HLineHeightRule.Multiple;
         float objectAscent = 0, objectDescent = 0, textAscent = 0, textDescent = 0;
-        bool anyText = false, anyObject = false;
+        // Word's multiple spaces text and equations, not pictures: their extent apart.
+        float mathAscent = 0, mathDescent = 0;
+        bool anyText = false, anyObject = false, anyMath = false;
         foreach (var part in parts)
         {
             if (part.Item.Kind == ItemKind.Object)
@@ -1248,6 +1250,12 @@ internal sealed partial class ParagraphLayouter
                 objectAscent = Math.Max(objectAscent, part.Size.Height);
                 objectDescent = Math.Max(objectDescent, part.Size.Depth);
                 anyObject = true;
+                if (source.Objects.GetValueOrDefault(part.Start) is HEquation)
+                {
+                    mathAscent = Math.Max(mathAscent, part.Size.Height);
+                    mathDescent = Math.Max(mathDescent, part.Size.Depth);
+                    anyMath = true;
+                }
                 continue;
             }
             if (part.Item.Kind != ItemKind.Text)
@@ -1272,12 +1280,21 @@ internal sealed partial class ParagraphLayouter
             // 한글's percentage adds its share of the text's size, not of an object's height: a line holding a 60 pt
             // picture at 160 % with 10 pt text is 66 pt high, as 한글 stores such lines.
             HLineHeightRule.Percent => textHeight + (fontAscent + fontDescent) * (rule.Value - 100) / 100f,
+            // Word's multiple spaces the line's text and equations; a picture taller than them adds its height unspaced: a
+            // picture on a 1.5 line with 12 pt text is its height and half the text's line, not 1.5 times the picture (as
+            // Word's own PDFs have such lines). A line of pictures only adds the paragraph mark's share, as 한글's does.
+            HLineHeightRule.Multiple when anyObject && (anyText || anyMath) => Spaced(Math.Max(textAscent, mathAscent), Math.Max(textDescent, mathDescent)),
+            HLineHeightRule.Multiple when anyObject => textHeight + (fontAscent + fontDescent) * (rule.Value - 240) / 240f,
             HLineHeightRule.Multiple => textHeight * rule.Value / 240f,
             HLineHeightRule.Exact => value,
             HLineHeightRule.AtLeast => Math.Max(value, textHeight),
             _ => textHeight + value,
         };
         return (Math.Max(0, height), ascent, textHeight);
+
+        // The text's extent spaced by the multiple, with what the pictures reach beyond it.
+        float Spaced(float textUp, float textDown) =>
+            (textUp + textDown) * rule.Value / 240f + Math.Max(0, ascent - textUp) + Math.Max(0, descent - textDown);
     }
 
     /// <summary>Ascent and descent of a style: 한글's share of the size, or the font's own metrics.</summary>

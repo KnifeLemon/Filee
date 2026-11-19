@@ -110,6 +110,7 @@
   "error.p7m_detached": "Este .p7m solo contiene la firma, no el archivo firmado. Convierte el archivo que firma",
   "error.p7m_encrypted": "Este .p7m está cifrado, no solo firmado: solo lo abre la clave del destinatario",
   "error.p7m_unknown_content": "El archivo dentro de este .p7m es de un tipo que Filee no convierte",
+  "error.udf_not_uyap": "Este archivo .udf no es un documento de UYAP. Si es una imagen de disco (Universal Disk Format), ábrelo con «Extraer»",
   "error.p7m_too_large": "El archivo firmado es demasiado grande para abrirlo",
   "error.document_too_large": "Este documento se descomprime en demasiados datos o está anidado a demasiada profundidad para abrirlo de forma segura",
   "format_request.request": "Solicitar este formato",

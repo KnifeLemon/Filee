@@ -1,6 +1,7 @@
 // HDocument → plain text: paragraphs separated by an empty line, list markers and numbers written out, table rows
 // as tab-separated cells, text boxes on lines of their own and footnotes collected at the end. Used for e-books and
-// HWP / HWPX → TXT.
+// HWP / HWPX → TXT. WriteLines is a word processor's "plain text" instead (RTF → TXT): a line per paragraph, an empty
+// paragraph an empty line, and the text's own spaces and tabs as they are.
 
 using System.Globalization;
 using System.Text;
@@ -9,22 +10,72 @@ namespace Filee.Engines.Hwp.Hwpx;
 
 internal static class PlainTextWriter
 {
-    /// <summary>The text of a document.</summary>
-    public static string Write(HDocument document)
+    /// <summary>The text of a document, its paragraphs separated by an empty line.</summary>
+    public static string Write(HDocument document) => Write(document, lines: false);
+
+    /// <summary>
+    /// The text of a document as a word processor saves it as plain text: a line per paragraph and per line break, an
+    /// empty paragraph an empty line, leading spaces, runs of spaces and tabs kept, no indentation added.
+    /// </summary>
+    public static string WriteLines(HDocument document) => Write(document, lines: true);
+
+    private static string Write(HDocument document, bool lines)
     {
         Nesting.Limit(document);
         var sb = new StringBuilder();
         var notes = new List<string>();
         var numbers = new ListNumbers();
         foreach (var section in document.Sections)
-            Blocks(section.Blocks, sb, notes, numbers);
+        {
+            if (lines)
+                Lines(section.Blocks, sb, notes, numbers);
+            else
+                Blocks(section.Blocks, sb, notes, numbers);
+        }
         if (notes.Count > 0)
         {
             sb.AppendLine().AppendLine("----");
             for (var i = 0; i < notes.Count; i++)
                 sb.AppendLine($"[{i + 1}] {notes[i]}");
         }
-        return sb.ToString().TrimEnd() + Environment.NewLine;
+        // Line by line, only the empty paragraphs at the end go: the last line keeps its own spaces.
+        return (lines ? sb.ToString().TrimEnd('\r', '\n') : sb.ToString().TrimEnd()) + Environment.NewLine;
+    }
+
+    /// <summary>The blocks for <see cref="WriteLines"/>: every paragraph and table row ends with a line end.</summary>
+    private static void Lines(List<HBlock> blocks, StringBuilder sb, List<string> notes, ListNumbers numbers)
+    {
+        foreach (var block in blocks)
+        {
+            switch (block)
+            {
+                case HParagraph paragraph:
+                    {
+                        var text = Inlines(paragraph.Inlines, notes, trim: false);
+                        if (paragraph.Inlines.Count > 0 && paragraph.Inlines[^1] is HTextBox)
+                            text = text.TrimEnd('\n'); // the box's own line end, not an empty line
+                        if (paragraph.Inlines.Any(i => i is HShape { Kind: HShapeKind.Line }) && text.Trim().Length == 0)
+                            text = "* * *";
+                        if (paragraph.List is { } list)
+                        {
+                            var marker = list.Numbered ? numbers.Next(list) + " " : "";
+                            var indent = new string(' ', list.Level * 4);
+                            sb.Append(indent).Append(marker)
+                              .Append(text.Replace("\n", Environment.NewLine + indent + new string(' ', marker.Length)));
+                        }
+                        else
+                        {
+                            sb.Append(text.Replace("\n", Environment.NewLine));
+                        }
+                        sb.AppendLine();
+                        break;
+                    }
+                case HTable { Rows.Count: > 0 } table:
+                    foreach (var row in table.Rows)
+                        sb.AppendJoin('\t', row.Cells.Select(c => Cell(c, notes))).AppendLine();
+                    break;
+            }
+        }
     }
 
     private static void Blocks(List<HBlock> blocks, StringBuilder sb, List<string> notes, ListNumbers numbers)
@@ -78,8 +129,11 @@ internal static class PlainTextWriter
     private static string Cell(HCell cell, List<string> notes) =>
         string.Join(" ", cell.Blocks.OfType<HParagraph>().Select(p => Inlines(p.Inlines, notes).Replace('\n', ' ').Replace('\t', ' ')).Where(t => t.Length > 0));
 
-    /// <summary>The text of inlines, lines separated by '\n' (the callers write the line ends).</summary>
-    private static string Inlines(List<HInline> inlines, List<string> notes)
+    /// <summary>
+    /// The text of inlines, lines separated by '\n' (the callers write the line ends), without the white space at the
+    /// end unless <paramref name="trim"/> is false.
+    /// </summary>
+    private static string Inlines(List<HInline> inlines, List<string> notes, bool trim = true)
     {
         var sb = new StringBuilder();
         foreach (var inline in inlines)
@@ -119,7 +173,7 @@ internal static class PlainTextWriter
                     }
             }
         }
-        return sb.ToString().TrimEnd();
+        return trim ? sb.ToString().TrimEnd() : sb.ToString();
     }
 }
 

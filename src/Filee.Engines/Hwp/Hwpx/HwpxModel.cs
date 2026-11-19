@@ -448,6 +448,15 @@ internal sealed class HTable : HBlock
     /// </summary>
     public HTableSizing? Sizing { get; set; }
 
+    /// <summary>
+    /// A Word floating table (w:tblpPr): placed by the anchor (PARA = the paragraph after the table), text going around
+    /// it, kept <see cref="FloatDistance"/> away from that text; null = in the flow. Only the layout engine uses it.
+    /// </summary>
+    public HAnchor? Float { get; set; }
+
+    /// <summary>The distance a floating table keeps from the text around it (w:leftFromText ...).</summary>
+    public HInsets FloatDistance { get; set; }
+
     public List<HBlock> Caption { get; } = [];
 }
 

@@ -110,6 +110,7 @@
   "error.p7m_detached": "Diese .p7m enthält nur die Signatur, nicht die signierte Datei. Konvertiere stattdessen die Datei, die sie signiert",
   "error.p7m_encrypted": "Diese .p7m ist verschlüsselt, nicht nur signiert: Nur der Schlüssel des Empfängers öffnet sie",
   "error.p7m_unknown_content": "Die Datei in dieser .p7m hat ein Format, das Filee nicht konvertiert",
+  "error.udf_not_uyap": "Diese .udf-Datei ist kein UYAP-Dokument. Ist sie ein Disk-Image (Universal Disk Format), öffnen Sie sie mit „Entpacken“",
   "error.p7m_too_large": "Die signierte Datei ist zu groß zum Öffnen",
   "error.document_too_large": "Dieses Dokument entpackt sich zu zu vielen Daten oder ist zu tief verschachtelt, um es sicher zu öffnen",
   "format_request.request": "Dieses Format vorschlagen",

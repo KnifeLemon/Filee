@@ -673,6 +673,93 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.True(check.Y > code[0].Y && check.Y < 720 + 98, $"second line at {check.Y}");
     }
 
+    // ───────────────────────── Word: floating tables and paragraph spacing (#1194, #1152) ─────────────────────────
+
+    /// <summary>A one-cell table (Table Grid) 2 inches wide holding <paramref name="text"/>, with <paramref name="position"/> in its properties.</summary>
+    private static string OneCellTable(string text, string position = "") =>
+        $"<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/>{position}<w:tblW w:w=\"2880\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"2880\"/></w:tblGrid>" +
+        $"<w:tr><w:tc><w:tcPr><w:tcW w:w=\"2880\" w:type=\"dxa\"/></w:tcPr>{P(R(text))}</w:tc></w:tr></w:tbl>";
+
+    private static SKPoint Where(PageContent page, string text) => Runs(page).First(r => r.Text.Contains(text, StringComparison.Ordinal)).Positions[0];
+
+    [Fact]
+    public async Task Issue1194_text_after_a_floating_table_goes_around_it()
+    {
+        // The report's figure captions are floating tables (w:tblpPr), placed from the top of the paragraph after them;
+        // the empty paragraphs after them sat beside the caption in Word and under it in Filee, a page longer in all.
+        const string Right = "<w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\" w:vertAnchor=\"text\" w:horzAnchor=\"margin\" w:tblpXSpec=\"right\" w:tblpY=\"200\"/>";
+        var floating = Single(await DocxAsync(Docx(P(R("Before")) + OneCellTable("Cell", Right) + P(R("Beside")) + P(R("Next")))));
+        var flowing = Single(await DocxAsync(Docx(P(R("Before")) + OneCellTable("Cell") + P(R("Beside")))));
+
+        var (before, cell, beside, next) = (Where(floating, "Before"), Where(floating, "Cell"), Where(floating, "Beside"), Where(floating, "Next"));
+        // The table at the right margin, 10 pt below the top of the paragraph after it.
+        Assert.Equal(RightMargin - 144 + 5.4f, cell.X, 1f);
+        var pitch = LineHeight(RepositoryFonts.Latin, 10);
+        Assert.Equal(before.Y + pitch + 10, cell.Y, 1f);
+        // The paragraphs after it on their own lines at the left margin, beside it.
+        Assert.Equal(LeftMargin, beside.X, 0.5f);
+        Assert.Equal(before.Y + pitch, beside.Y, 0.5f);
+        Assert.Equal(beside.Y + pitch, next.Y, 0.5f);
+        // In the flow the paragraph goes under the table.
+        Assert.True(Where(flowing, "Beside").Y > Where(flowing, "Cell").Y + pitch - 0.5f);
+    }
+
+    [Fact]
+    public async Task Issue1194_a_table_placed_on_the_page_leaves_the_text_where_it_is()
+    {
+        // A floating table 5 inches down the page (vertAnchor page) takes no room in the text above it.
+        const string Page = "<w:tblpPr w:vertAnchor=\"page\" w:horzAnchor=\"page\" w:tblpX=\"1440\" w:tblpY=\"7200\"/>";
+        var page = Single(await DocxAsync(Docx(P(R("Before")) + OneCellTable("Cell", Page) + P(R("After")))));
+
+        var pitch = LineHeight(RepositoryFonts.Latin, 10);
+        Assert.Equal(Where(page, "Before").Y + pitch, Where(page, "After").Y, 0.5f);
+        Assert.InRange(Where(page, "Cell").Y, 360, 360 + pitch + 1);
+    }
+
+    [Fact]
+    public async Task Issue1194_a_word_table_has_no_space_below_it()
+    {
+        // The next paragraph sits right under a Word table; the 5 mm the HWPX writer leaves under one is not Word's.
+        var page = Single(await DocxAsync(Docx(OneCellTable("Cell") + P(R("After")))));
+
+        var pitch = LineHeight(RepositoryFonts.Latin, 10);
+        Assert.InRange(Where(page, "After").Y - Where(page, "Cell").Y, pitch, pitch + 1.5f);
+    }
+
+    [Fact]
+    public async Task Issue1194_line_spacing_does_not_stretch_a_picture()
+    {
+        // A 72 pt picture in a paragraph with 1.5 lines: Word adds half the paragraph's text line, not half the picture.
+        async Task<float> After(string line)
+        {
+            var docx = Docx("");
+            var id = docx.Image(HalfRedHalfBlue());
+            docx.Paragraph(P(InlinePicture(id, 914400, 914400), $"<w:spacing w:line=\"{line}\" w:lineRule=\"auto\"/>") + P(R("After")));
+            return Where(Single(await DocxAsync(docx)), "After").Y;
+        }
+
+        var single = await After("240");
+        var half = LineHeight(RepositoryFonts.Latin, 10) / 2;
+        Assert.Equal(single + half, await After("360"), 0.5f);
+    }
+
+    [Fact]
+    public async Task Issue1152_the_larger_of_the_spaces_between_two_paragraphs_counts()
+    {
+        // Word keeps the larger of a heading's 6 pt after and the next heading's 12 pt before between them (12 pt, not 18),
+        // unless its settings turn its HTML paragraph spacing off.
+        const string Spacing = "<w:spacing w:before=\"240\" w:after=\"120\"/>";
+        var body = P(R("First"), Spacing) + P(R("Second"), Spacing);
+        var larger = Single(await DocxAsync(Docx(body)));
+        var both = Docx(body);
+        both.Settings = "<w:compat><w:doNotUseHTMLParagraphAutoSpacing/></w:compat>";
+        var summed = Single(await DocxAsync(both));
+
+        var single = LineHeight(RepositoryFonts.Latin, 10);
+        Assert.Equal(single + 12, Pitch(larger), 0.1f);
+        Assert.Equal(single + 18, Pitch(summed), 0.1f);
+    }
+
     // ───────────────────────── Word: right-to-left documents (#202, #216, #620) ─────────────────────────
 
     [Fact]

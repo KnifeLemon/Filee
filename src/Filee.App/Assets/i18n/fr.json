@@ -116,6 +116,7 @@
   "error.p7m_detached": "Ce .p7m ne contient que la signature, pas le fichier signé. Convertissez plutôt le fichier qu'il signe",
   "error.p7m_encrypted": "Ce .p7m est chiffré, pas seulement signé : seule la clé du destinataire peut l'ouvrir",
   "error.p7m_unknown_content": "Le fichier contenu dans ce .p7m est d'un type que Filee ne convertit pas",
+  "error.udf_not_uyap": "Ce fichier .udf n'est pas un document UYAP. S'il s'agit d'une image disque (Universal Disk Format), ouvrez-le avec « Extraire »",
   "error.p7m_too_large": "Le fichier signé est trop volumineux pour être ouvert",
   "error.document_too_large": "Ce document se décompresse en trop de données ou est imbriqué trop profondément pour être ouvert en toute sécurité",
   "format_request.request": "Demander ce format",

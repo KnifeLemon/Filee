@@ -110,6 +110,7 @@
   "error.p7m_detached": "Bu .p7m yalnızca imzayı içeriyor, imzalanan dosyayı değil. Bunun yerine imzaladığı dosyayı dönüştürün",
   "error.p7m_encrypted": "Bu .p7m yalnızca imzalı değil, şifreli: yalnızca alıcının anahtarı açabilir",
   "error.p7m_unknown_content": "Bu .p7m içindeki dosya, Filee'nin dönüştürmediği bir türde",
+  "error.udf_not_uyap": "Bu .udf dosyası bir UYAP belgesi değil. Bir disk görüntüsüyse (Universal Disk Format), açmak için Arşivi aç'ı kullanın",
   "error.p7m_too_large": "İmzalı dosya açılamayacak kadar büyük",
   "error.document_too_large": "Bu belge açıldığında çok fazla veriye dönüşüyor ya da çok derin iç içe geçmiş, güvenle açılamıyor",
   "format_request.request": "Bu biçimi talep et",
