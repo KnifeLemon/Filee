@@ -17,7 +17,10 @@ namespace Filee.App.ViewModels;
 
 public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
 {
-    private readonly IReadOnlyList<string> _files;
+    /// <summary>
+    /// The pictures, in order; "Mark this frame" can add one while the window is open (<see cref="Add"/>).
+    /// </summary>
+    private readonly List<string> _files;
     private readonly Preset _preset;
     private readonly ILocalizer _loc;
     private readonly UserDataStore _store;
@@ -27,12 +30,12 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
     private bool _closed;
 
     /// <summary>How each picture went: saved, skipped or failed (none yet while it is open).</summary>
-    private readonly CropItemState?[] _outcomes;
+    private readonly List<CropItemState?> _outcomes;
 
     public AnnotateViewModel(IReadOnlyList<string> files, Preset tool, ILocalizer loc, UserDataStore store,
         Func<string, string> targetFor, Action<string, Preset> export, ILogger? log = null)
     {
-        _files = files;
+        _files = [.. files];
         _preset = tool;
         _loc = loc;
         _store = store;
@@ -42,7 +45,7 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         _color = AnnotateTool.Colors.Contains(tool.Image.AnnotationColor) ? tool.Image.AnnotationColor! : AnnotateTool.Colors[0];
         _width = tool.Image.AnnotationWidth;
         _hasMultipleFiles = files.Count > 1;
-        _outcomes = new CropItemState?[files.Count];
+        _outcomes = [.. Enumerable.Repeat<CropItemState?>(null, files.Count)];
         Swatches = [.. AnnotateTool.Colors.Select((c, i) => new AnnotateSwatch(c, AnnotateTool.ColorNameKeys[i], this) { Name = loc[AnnotateTool.ColorNameKeys[i]] })];
         Marks.Changed += OnMarksChanged;
         loc.LanguageChanged += OnLanguageChanged;
@@ -68,6 +71,15 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
     /// <summary>The picture's own size, upright: the window paints the marks at it, as the file gets them.</summary>
     [ObservableProperty] private Avalonia.PixelSize _pictureSize;
     [ObservableProperty] private string _statusNotice = "";
+
+    /// <summary>A note about the picture shown (<see cref="Add"/>), or empty.</summary>
+    [ObservableProperty] private string _pictureNote = "";
+
+    /// <summary>The notes given with pictures, by path.</summary>
+    private readonly Dictionary<string, string> _notes = [];
+
+    /// <summary>Where the next added picture goes: after the one shown, and after those added before it.</summary>
+    private int _addAt = -1;
 
     /// <summary>
     /// All pictures are done and some could not be opened or saved: the window stays open on <see cref="Summary"/> and
@@ -120,6 +132,9 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
     public string SaveText => _loc[CurrentIndex < _files.Count - 1 ? "annotate.save_next" : "annotate.save"];
 
     public event Action? CloseRequested;
+
+    /// <summary>A picture was skipped: there is no way back to it (one whose save failed isn't).</summary>
+    public event Action<string>? PictureSkipped;
 
     partial void OnModeChanged(AnnotateMode value)
     {
@@ -211,6 +226,55 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
     // ───────── Pictures and saving ─────────
 
     /// <summary>
+    /// Adds <paramref name="path"/> as the next picture ("Mark this frame" again while the window is open): the picture
+    /// being marked stays, with its marks, and frames added one after another keep their order.
+    /// </summary>
+    public void Add(string path, string? note = null)
+    {
+        if (IsDone)
+            return;
+        _addAt = Math.Max(_addAt, CurrentIndex + 1);
+        _files.Insert(_addAt, path);
+        _outcomes.Insert(_addAt, null);
+        for (var i = 0; i < _problemFiles.Count; i++)
+            if (_problemFiles[i] >= _addAt)
+                _problemFiles[i]++;
+        _addAt++;
+        SetNote(path, note);
+        HasMultipleFiles = true;
+        CounterText = _loc.Format("crop.page_counter", CurrentIndex + 1, _files.Count);
+        OnPropertyChanged(nameof(SaveText));
+    }
+
+    /// <summary>A note shown under the picture while <paramref name="path"/> is open (null: none).</summary>
+    public void SetNote(string path, string? note)
+    {
+        if (string.IsNullOrEmpty(note))
+            return;
+        _notes[path] = note;
+        if (_files[CurrentIndex] == path)
+            PictureNote = note;
+    }
+
+    /// <summary>
+    /// The pictures whose marked copy wasn't started: skipped, failed, or not reached when the window closed.
+    /// </summary>
+    public IReadOnlyList<string> UnsavedFiles => [.. _files.Where((_, i) => _outcomes[i] != CropItemState.Done)];
+
+    /// <summary>The picture shown and those after it: what is still to mark.</summary>
+    public IReadOnlyList<string> RemainingFiles => IsDone ? [] : [.. _files.Skip(CurrentIndex)];
+
+    /// <summary>
+    /// All pictures are done, or the window is closing or closed: what is added now needs a window of its own.
+    /// </summary>
+    public bool IsDone => _closing || _closed || IsFinished;
+
+    private bool _closing;
+
+    /// <summary>The window has begun to close (Closed may come a moment later): it takes no more pictures.</summary>
+    public void BeginClosing() => _closing = true;
+
+    /// <summary>
     /// Opens picture <paramref name="index"/> with no marks; past the last one, closes, or shows the summary when a
     /// picture could not be opened or saved.
     /// </summary>
@@ -227,6 +291,7 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         CurrentIndex = index;
         var path = _files[index];
         CurrentFileName = Path.GetFileName(path);
+        PictureNote = _notes.GetValueOrDefault(path, "");
         CounterText = _loc.Format("crop.page_counter", index + 1, _files.Count);
         OnPropertyChanged(nameof(SaveText));
         Marks.Reset();
@@ -293,6 +358,8 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         if (IsBusy || IsFinished)
             return;
         _outcomes[CurrentIndex] ??= CropItemState.Skipped;
+        if (_outcomes[CurrentIndex] == CropItemState.Skipped)
+            PictureSkipped?.Invoke(_files[CurrentIndex]);
         await LoadFileAsync(CurrentIndex + 1);
     }
 
