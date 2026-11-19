@@ -11,7 +11,8 @@
 // \ddot, \overline, \underline, \widehat …); \text, \mathrm, \mathbf, \mathit, \boldsymbol, \mathbb, \mathcal,
 // \mathfrak and the old switches \rm, \bf, \it; spacing (\, \: \; \quad \qquad ~ \hspace); \not; \tag. Commands for
 // layout only (\displaystyle, \limits, \label, \color …) are skipped. A command this reader doesn't know is kept as its
-// text ("\foo"), never dropped, and its arguments follow it as groups.
+// text with its arguments as written ("\foo{x}"), never dropped. Primes (f', f'', f^\prime) are a superscript prime
+// on the item before, which MathLayout draws after it at full size.
 //
 // Bounds: a formula longer than MaxLength characters, or one that nests deeper than MaxDepth (groups, fractions,
 // scripts, brackets, environments), is not read: Parse returns null and the caller keeps the source as text, as
@@ -768,8 +769,34 @@ internal static class LatexMath
                     _tags.Add(RawArgument());
                     return null;
             }
-            // Not known: kept as its text; arguments it takes follow as groups.
-            return new MathQuoted("\\" + name);
+            // Not known: kept as its text, with the [ … ] and { … } arguments right after it as written ("\foo{x}").
+            return new MathQuoted("\\" + name + LiteralArguments());
+        }
+
+        /// <summary>The optional and braced arguments at the position, as their source text (consumed).</summary>
+        private string LiteralArguments()
+        {
+            var start = _i;
+            var end = _i;
+            while (true)
+            {
+                var at = _i;
+                SkipSpace();
+                // [ … ] only before a group: "\foo [0, 1]" alone is an interval, not an argument.
+                if (_i < s.Length && s[_i] == '[' && s.IndexOf(']', _i) is var close and > 0
+                    && s.AsSpan(close + 1).TrimStart().StartsWith("{"))
+                    _i = close + 1;
+                else if (_i < s.Length && s[_i] == '{')
+                    RawArgument();
+                else
+                {
+                    _i = at;
+                    break;
+                }
+                end = _i;
+            }
+            _i = end;
+            return s[start..end].Trim();
         }
 
         private static MathNode Upright(string name) => new MathStyled("rm", new MathRow([.. name.Select(c => (MathNode)new MathText(c.ToString()))]));

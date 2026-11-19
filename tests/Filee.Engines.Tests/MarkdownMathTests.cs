@@ -45,6 +45,8 @@ public sealed partial class MarkdownMathTests(EngineFixture fx) : IClassFixture<
     [InlineData(@"\binom{n}{k}", "LEFT ( {{n} atop {k}} RIGHT )")]
     [InlineData(@"x \in \mathbb{R}", "x IN ℝ")]
     [InlineData(@"f'(x)", "f ^{prime} ( x )")]
+    [InlineData(@"f''(x) + g'''", "f ^{prime prime} ( x ) + g ^{prime prime prime}")]
+    [InlineData(@"f^\prime + f'_i + f'^2", "f ^{prime} + f _{i} ^{prime} + f ^{prime 2}")]
     [InlineData(@"\{x\}", "LBRACE x RBRACE")]
     [InlineData(@"\displaystyle a \over b", "{{a} over {b}}")]
     [InlineData(@"e^{i\pi} + 1 = 0", "e ^{i pi} + 1 = 0")]
@@ -54,7 +56,9 @@ public sealed partial class MarkdownMathTests(EngineFixture fx) : IClassFixture<
         Assert.Equal(script, EquationScript.Script(LatexMath.Parse(tex)!));
 
     [Theory]
-    [InlineData(@"\foo{x} + 1", "\"\\foo\" x + 1")]
+    [InlineData(@"\foo{x} + 1", "\"\\foo{x}\" + 1")]
+    [InlineData(@"\foo[a]{x}{y}", "\"\\foo[a]{x}{y}\"")]
+    [InlineData(@"\foo [0, 1]", "\"\\foo\" [ 0 , 1 ]")] // brackets alone are the formula's, not an argument
     [InlineData(@"\begin{weird} a & b \end{weird}", "\"\\begin{weird}\" {a b} \"\\end{weird}\"")]
     public void An_unknown_command_is_kept_as_its_text(string tex, string script) =>
         Assert.Equal(script, EquationScript.Script(LatexMath.Parse(tex)!));
@@ -254,6 +258,49 @@ public sealed partial class MarkdownMathTests(EngineFixture fx) : IClassFixture<
         Assert.Contains(texts, t => t.Contains('∑'));
         // The fraction bars and the root signs are drawn.
         Assert.True(pages.SelectMany(p => p.Items).Count(i => i is not GlyphItem) >= 5);
+    }
+
+    [Theory]
+    [InlineData(@"f'(x)", "′")]
+    [InlineData(@"f''", "′′")]
+    [InlineData(@"f^\prime", "′")]
+    public void A_prime_is_drawn_after_its_base_at_full_size(string tex, string primes)
+    {
+        var fonts = RepositoryFonts.Load();
+        Assert.SkipUnless(fonts.Has(RepositoryFonts.Latin), "Noto Sans is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        using var shaper = new Shaper();
+        const float size = 20;
+        var page = new PageContent(400, 200);
+
+        new MathLayout(new FontResolver(fonts), shaper).Layout(LatexMath.Parse(tex)!, size, SkiaSharp.SKColors.Black).Paint(page, 10, 100, 1);
+
+        var runs = page.Items.OfType<GlyphItem>().Select(i => i.Run).ToList();
+        var f = runs.First(r => r.Text == "f");
+        var prime = runs.Where(r => r.Text.All(c => c == '′')).ToList();
+        Assert.Equal(primes, string.Concat(prime.Select(r => r.Text)));
+        Assert.All(prime, r =>
+        {
+            Assert.Equal(size, r.Size); // not shrunk to a script's size
+            Assert.True(r.Positions[0].X >= f.Positions[0].X + size * 0.3f, $"prime at {r.Positions[0].X}, f at {f.Positions[0].X}");
+            Assert.True(Math.Abs(r.Positions[0].Y - f.Positions[0].Y) < size * 0.05f, $"prime baseline {r.Positions[0].Y}, f {f.Positions[0].Y}");
+        });
+    }
+
+    [Fact]
+    public void A_prime_is_a_superscript_after_its_base_in_word_math_and_mathml()
+    {
+        var tree = LatexMath.Parse("f'(x)")!;
+
+        XNamespace m = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+        var omml = XElement.Parse($"<r xmlns:m=\"{m}\" xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">{OmmlWriter.Write(tree, display: false)}</r>");
+        var sup = Assert.Single(omml.Descendants(m + "sSup"));
+        Assert.Equal("f", sup.Element(m + "e")!.Value);
+        Assert.Equal("′", sup.Element(m + "sup")!.Value);
+        Assert.Equal("(", ((XElement)sup.NextNode!).Value); // the bracket follows the scripted f
+
+        XNamespace mml = "http://www.w3.org/1998/Math/MathML";
+        var msup = Assert.Single(XElement.Parse(MathMLWriter.Write(tree, display: false)).Descendants(mml + "msup"));
+        Assert.Equal(["f", "′"], msup.Elements().Select(e => e.Value));
     }
 
     // ───────────────────────── Bounds ─────────────────────────
