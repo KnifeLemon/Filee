@@ -35,8 +35,8 @@ public class FormatFieldsTests
         "org", "osm", "otf", "pam", "pcd", "pcx", "pdb", "pdn", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
         "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "s3m", "scc", "sda", "sdc", "sdw", "sgi", "shp", "snb", "spx",
         "ssa", "stl", "sub", "swf", "tak", "tar", "tar7z", "tbz2", "tcr", "tex", "textile", "tgz", "tlz", "toml",
-        "tta", "ttf", "ttml", "txtz", "txz", "typ", "tz", "usm", "vob", "voc", "vpk", "vtf", "w64", "wbmp", "wmf", "woff", "woff2",
-        "wpd", "wtv", "wv", "xbm", "xcf", "xlt", "xm", "xpm", "xz", "yaml", "z", "zxp"
+        "tta", "ttf", "ttml", "txtz", "txz", "typ", "tz", "tzst", "usm", "vob", "voc", "vpk", "vtf", "w64", "wbmp", "wmf", "woff",
+        "woff2", "wpd", "wtv", "wv", "xbm", "xcf", "xlt", "xm", "xpm", "xz", "yaml", "z", "zst", "zxp"
     ];
 
     public static TheoryData<string, string[]> HiddenWithOneFieldOff => new()
@@ -51,7 +51,7 @@ public class FormatFieldsTests
         { "developer", [
                 "aab", "ani", "apks", "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
                 "icns", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "msix", "nupkg", "pam", "pfm", "plist", "ppm", "qoi",
-                "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
+                "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "tzst", "xbm", "xpm", "xz", "yaml", "zst", "zxp"
             ] },
         { "writing", ["adoc", "cgm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
@@ -78,7 +78,8 @@ public class FormatFieldsTests
         { "developer", [
                 "aab", "ani", "apks", "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt",
                 "gz", "har", "icns", "ipynb", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "msix", "nupkg", "pam", "pfm",
-                "plist", "ppm", "qoi", "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
+                "plist", "ppm", "qoi", "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "tzst", "xbm", "xpm", "xz", "yaml",
+                "zst", "zxp"
             ] },
         { "writing", ["adoc", "cgm", "chm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
@@ -145,7 +146,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 99,
-                [FormatGrade.Specialist] = 131,
+                [FormatGrade.Specialist] = 133,
                 [FormatGrade.Legacy] = 52,
             },
             counts);

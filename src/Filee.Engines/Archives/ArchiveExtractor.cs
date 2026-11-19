@@ -38,7 +38,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     public static readonly IReadOnlyList<string> BuiltInFormats =
     [
         "zip", "jar", "zxp", "nupkg", "apks", "aab", "msix", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tlz",
-        "gz", "bz2", "xz", "lzma", "z", "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split", "cab", "lha", "arj", "dmg",
+        "tzst", "gz", "bz2", "xz", "lzma", "z", "lz", "zst", "cpio", "deb", "rpm", "iso", "alz", "egg", "split", "cab", "lha", "arj", "dmg",
         "img", "gma", "vpk", "bsp",
         "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
@@ -46,19 +46,19 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     /// <summary>Formats 7-Zip can read too, so it may try again after an in-process reader gave up.</summary>
     private static readonly HashSet<string> SevenZipAlsoReads =
     [
-        "zip", "jar", "zxp", "nupkg", "apks", "aab", "msix", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz",
-        "bz2", "xz", "lzma", "z", "cpio", "deb", "rpm", "iso", "split", "cab", "lha", "arj", "dmg", "img", "mcpack",
+        "zip", "jar", "zxp", "nupkg", "apks", "aab", "msix", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tzst",
+        "gz", "bz2", "xz", "lzma", "z", "zst", "cpio", "deb", "rpm", "iso", "split", "cab", "lha", "arj", "dmg", "img", "mcpack",
         "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
 
     /// <summary>A TAR inside a compressed stream (or a 7z): unpacking the outer layer yields one .tar file.</summary>
-    private static readonly HashSet<string> TarWrapped = ["tgz", "tbz2", "txz", "tar7z", "tz", "tlz"];
+    private static readonly HashSet<string> TarWrapped = ["tgz", "tbz2", "txz", "tar7z", "tz", "tlz", "tzst"];
 
     /// <summary>
     /// One compressed stream, no names or sizes to check beforehand (bzip2 states no size, gzip one modulo 4 GiB that
     /// its author chose).
     /// </summary>
-    private static readonly HashSet<string> SingleStream = ["gz", "bz2", "xz", "lzma", "z", "zst", "tgz", "tbz2", "txz", "tz"];
+    private static readonly HashSet<string> SingleStream = ["gz", "bz2", "xz", "lzma", "z", "zst", "tgz", "tbz2", "txz", "tz", "tzst"];
 
     /// <summary>Formats an RPM payload comes in (7-Zip shows it as one compressed CPIO file).</summary>
     private static readonly HashSet<string> RpmPayload = ["cpio", "gz", "bz2", "xz", "lzma", "z", "zst"];

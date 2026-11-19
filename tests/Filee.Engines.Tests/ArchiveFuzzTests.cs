@@ -83,9 +83,10 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Fuzz("z", [UnixCompress(Words(20_000)), UnixCompress(Noise(5_000, 1), maxBits: 9)]);
 
     [Fact]
-    public void Lzip_alz_and_egg_readers_unpack_or_refuse_every_mutated_file()
+    public void Lzip_zstd_alz_and_egg_readers_unpack_or_refuse_every_mutated_file()
     {
         Fuzz("lz", [Lzip(Words(20_000))]);
+        Fuzz("zst", [Zstd(Words(20_000)), [.. Zstd(Words(3_000), level: 1), .. Zstd(Noise(2_000, 2))]]);
         var folder = fx.NewFolder();
         var alz = Path.Combine(folder, "seed.alz");
         WriteAlz(alz, [new("폴더\\", null), new("폴더\\a.txt", Words(2000), Method: 2), new("b.txt", Words(1000), Method: 1, Packed: ToAlzBzip2(Bzip2(Words(1000))))]);

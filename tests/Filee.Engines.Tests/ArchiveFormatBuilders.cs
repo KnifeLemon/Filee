@@ -765,6 +765,19 @@ internal static class ArchiveFormatBuilders
         return ms.ToArray();
     }
 
+    /// <summary>One zstd frame of <paramref name="data"/> (SharpCompress's encoder), with a window of 2^windowLog bytes.</summary>
+    public static byte[] Zstd(byte[] data, int level = 3, int? windowLog = null)
+    {
+        using var ms = new MemoryStream();
+        using (var zstd = new SharpCompress.Compressors.ZStandard.CompressionStream(ms, level, leaveOpen: true))
+        {
+            if (windowLog is { } log)
+                zstd.SetParameter(SharpCompress.Compressors.ZStandard.Unsafe.ZSTD_cParameter.ZSTD_c_windowLog, log);
+            zstd.Write(data);
+        }
+        return ms.ToArray();
+    }
+
     /// <summary>A TAR (PAX) of <paramref name="entries"/>.</summary>
     public static byte[] Tar(IReadOnlyList<TestEntry> entries)
     {

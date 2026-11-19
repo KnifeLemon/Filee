@@ -1,14 +1,13 @@
-// Unpacks a compressed single file (.gz, .bz2, .xz, .lzma, .Z, .zst and the outer layer of .tar.gz, .tar.bz2, .tar.xz
-// and .tar.Z) in-process: gzip with .NET's own decoder, zstd with SharpCompress (MIT), bzip2, xz, LZMA and Unix
-// compress with Filee's own decoders (Bzip2Decoder, XzReader, LzmaRawReader, UnixCompressStream; bzip2 with
-// randomised blocks from old encoders goes back to SharpCompress). None of these
+// Unpacks a compressed single file (.gz, .bz2, .xz, .lzma, .Z, .zst and the outer layer of .tar.gz, .tar.bz2, .tar.xz,
+// .tar.Z and .tar.zst) in-process: gzip with .NET's own decoder, zstd with SharpCompress (MIT, see ZstdReader), bzip2,
+// xz, LZMA and Unix compress with Filee's own decoders (Bzip2Decoder, XzReader, LzmaRawReader, UnixCompressStream;
+// bzip2 with randomised blocks from old encoders goes back to SharpCompress). None of these
 // formats declares a size it must keep (gzip's is the size modulo 4 GiB), so what comes out is counted by
 // UnpackBudget against bombs and a full drive.
 
 using System.IO.Compression;
 using Filee.Engines.Archives.Lzma;
 using SharpCompress.Compressors.BZip2;
-using SharpCompress.Compressors.ZStandard;
 using SharpCompressMode = SharpCompress.Compressors.CompressionMode;
 
 namespace Filee.Engines.Archives;
@@ -18,7 +17,7 @@ internal static class CompressedFile
 {
     /// <summary>Formats (and TAR wrappers) <see cref="Decompress"/> reads.</summary>
     public static readonly IReadOnlySet<string> Formats =
-        new HashSet<string> { "gz", "tgz", "bz2", "tbz2", "xz", "txz", "lzma", "z", "tz", "zst" };
+        new HashSet<string> { "gz", "tgz", "bz2", "tbz2", "xz", "txz", "lzma", "z", "tz", "zst", "tzst" };
 
     /// <summary>
     /// The largest dictionary a .lzma (or EGG LZMA) header may name: real files use at most a few hundred MiB. (Filee's
@@ -90,7 +89,8 @@ internal static class CompressedFile
             case "tz":
                 return new UnixCompressStream(new NonClosingStream(input));
             case "zst":
-                return new DecompressionStream(new NonClosingStream(input));
+            case "tzst":
+                return new ZstdReader(input, name);
             case "lzma":
                 {
                     // "LZMA alone": properties (lc/lp/pb, dictionary size), unpacked size u64 (all ones: not known,

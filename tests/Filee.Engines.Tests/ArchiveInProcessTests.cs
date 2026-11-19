@@ -150,6 +150,7 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
         await AssertUnpacksAsync(Write("backup.tar.xz", Xz(tar)), "txz", entries);
         await AssertUnpacksAsync(Write("backup.tar.Z", UnixCompress(tar)), "tz", entries);
         await AssertUnpacksAsync(Write("backup.tar.lz", Lzip(tar)), "tlz", entries);
+        await AssertUnpacksAsync(Write("backup.tar.zst", Zstd(tar)), "tzst", entries);
         await AssertUnpacksAsync(Write("backup.tar.7z", SevenZip([new("backup.tar", tar)])), "tar7z", entries);
     }
 
@@ -160,6 +161,7 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
     [InlineData("lzma")]
     [InlineData("z")]
     [InlineData("lz")]
+    [InlineData("zst")]
     public async Task Compressed_single_files_unpack_in_process(string format)
     {
         var data = Words(1_500_000);
@@ -170,10 +172,44 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
             "xz" => Xz(data),
             "lzma" => [0x5D, 0x00, 0x00, 0x10, 0x00, .. BitConverter.GetBytes((long)data.Length), .. RawLzma(data, endMarker: false)],
             "z" => UnixCompress(data),
+            "zst" => Zstd(data),
             _ => Lzip(data),
         };
         var folder = await UnpackAsync(Write("log.txt." + format, packed), format);
         Assert.Equal(data, await File.ReadAllBytesAsync(Path.Combine(folder, "log.txt"), Ct));
+    }
+
+    [Fact]
+    public async Task Zstd_frames_follow_one_another_and_other_data_damage_or_wide_windows_are_refused()
+    {
+        // Two frames (as "zstd -c a b" writes them) with skippable frames around them, as seekable-format tools add.
+        byte[] skippable = [0x5E, 0x2A, 0x4D, 0x18, 3, 0, 0, 0, 1, 2, 3];
+        var first = Words(400_000);
+        var second = Noise(50_000, 7);
+        var folder = await UnpackAsync(Write("two.txt.zst", [.. skippable, .. Zstd(first), .. Zstd(second, level: 19), .. skippable]), "zst");
+        byte[] expected = [.. first, .. second];
+        Assert.Equal(expected, await File.ReadAllBytesAsync(Path.Combine(folder, "two.txt"), Ct));
+
+        Assert.Contains("not a valid archive", await RefusedAsync(Write("fake.zst", "not zstd at all"u8.ToArray()), "zst"));
+        Assert.Contains("not a valid archive", await RefusedAsync(Write("empty.tar.zst", []), "tzst"));
+        var zst = Zstd(Words(200_000));
+        Assert.Contains("damaged", await RefusedAsync(Write("cut.zst", zst[..(zst.Length / 2)]), "zst"));
+        Assert.Contains("damaged", await RefusedAsync(Write("trailing.zst", [.. zst, 1, 2, 3, 4, 5, 6, 7, 8]), "zst"));
+        // A 256 MiB window (zstd --long=28) is left to 7-Zip, as the zstd tool needs --memory for it.
+        var wide = await Assert.ThrowsAsync<ConversionRefusedException>(
+            () => UnpackAsync(Write("wide.tar.zst", Zstd(Words(300_000), windowLog: 28)), "tzst"));
+        Assert.Equal(ArchiveExtractor.NeedsSevenZip, wide.ErrorKey);
+    }
+
+    [Theory]
+    [InlineData("backup.tar.zst", "tzst")]
+    [InlineData("backup.tzst", "tzst")]
+    [InlineData("BACKUP.TAR.ZST", "tzst")]
+    [InlineData("log.txt.zst", "zst")]
+    public void Zstd_names_are_recognised(string name, string format)
+    {
+        Assert.Equal(format, FormatRegistry.Detect(name)?.Id);
+        Assert.False(FormatRegistry.Get(format).Writable);
     }
 
     [Theory]
@@ -222,11 +258,11 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 
     [Fact]
-    public async Task Rpm_payloads_in_gzip_and_xz_unpack_to_their_files()
+    public async Task Rpm_payloads_in_gzip_xz_and_zstd_unpack_to_their_files()
     {
         var entries = Entries();
         var cpio = Cpio(entries);
-        foreach (var payload in new[] { Gzip(cpio), Xz(cpio), cpio })
+        foreach (var payload in new[] { Gzip(cpio), Xz(cpio), Zstd(cpio), cpio })
             await AssertUnpacksAsync(Write("filee-test.rpm", Rpm(payload)), "rpm", entries);
     }
 
