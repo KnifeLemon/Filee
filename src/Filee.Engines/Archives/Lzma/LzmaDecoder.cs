@@ -670,9 +670,10 @@ internal sealed class LzmaDecoder
             return;
         if (source < 0)
             source += window.Length;
-        ref var start = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(window), source);
-        Sse.Prefetch0(Unsafe.AsPointer(ref start));
-        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref start, count - 1)));
+        // Both addresses stay inside the window (a source that wraps around its end is only hinted up to there).
+        ref var data = ref MemoryMarshal.GetArrayDataReference(window);
+        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref data, source)));
+        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref data, Math.Min(source + count - 1, window.Length - 1))));
     }
 
     /// <summary>Does the first <paramref name="count"/> copies MatchRun put off, in order.</summary>
