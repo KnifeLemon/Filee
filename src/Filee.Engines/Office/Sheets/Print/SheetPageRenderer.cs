@@ -2,8 +2,8 @@
 // when the sheet says so), fills (solid, patterns as their mixed colour, gradients), the gridlines and the row and
 // column headings when they print, borders (shared with the neighbour, merged areas only at their edges, diagonals),
 // text (aligned, indented, wrapped, justified, shrunk, rotated or stacked; text overflowing into empty cells; numbers
-// too wide for their column as ####), pictures (turned, mirrored and cropped) and preset shapes, and the header and
-// footer with their fields.
+// too wide for their column as ####), pictures (turned, mirrored and cropped), preset shapes and charts, and the header
+// and footer with their fields. A chart sheet's page is its chart inside the margins, with the header and footer.
 
 using System.Globalization;
 using Filee.Engines.Charts;
@@ -118,6 +118,15 @@ internal sealed class SheetPageRenderer
 
         // The header first and the footer last, so the page's text reads from top to bottom.
         DrawHeaderFooter(content, fields, (float)width, (float)height, header: true);
+        if (Sheet.Chart is { } chart)
+        {
+            // A chart sheet: the chart fills the page inside the margins.
+            _charts ??= new ChartFonts(_fonts.Resolver, _fonts.Shaper);
+            var (marginLeft, marginTop) = ((float)setup.LeftMargin, (float)setup.TopMargin);
+            ChartDrawer.Draw(content, chart, new SKRect(marginLeft, marginTop, marginLeft + areaWidth, marginTop + areaHeight), _charts);
+            DrawHeaderFooter(content, fields, (float)width, (float)height, header: false);
+            return content;
+        }
         if (columns.Count > 0 && rows.Count > 0)
         {
             var blocks = Blocks(columns, rows);

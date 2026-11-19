@@ -29,6 +29,9 @@ internal sealed partial class HwpxReader
     private const string HwpUnitCharNamespace = "HwpUnitChar";
     private const string Paragraph2016Namespace = "http://www.hancom.co.kr/hwpml/2016/paragraph";
 
+    /// <summary>The case 한글 writes for an OOXML chart (hp:chart), with its OLE object in hp:default.</summary>
+    private const string OoxmlChartNamespace = "http://www.hancom.co.kr/hwpml/2016/ooxmlchart";
+
     /// <summary>
     /// content.hpf metadata (opf:meta with this name and content "estimated") that marks the stored line layouts as
     /// estimated by Filee rather than laid out by 한글. HwpxWriter stores no line segments today; a writer that
@@ -561,7 +564,8 @@ internal sealed partial class HwpxReader
             if (branch.Name.LocalName != "case")
                 continue;
             var required = branch.Attributes().FirstOrDefault(a => a.Name.LocalName == "required-namespace")?.Value ?? "";
-            if (required.Contains(HwpUnitCharNamespace, StringComparison.Ordinal) || required == Paragraph2016Namespace)
+            if (required.Contains(HwpUnitCharNamespace, StringComparison.Ordinal) || required == Paragraph2016Namespace
+                || required == OoxmlChartNamespace)
                 return (branch, true);
         }
         return (switchElement.Elements().FirstOrDefault(e => e.Name.LocalName == "default"), false);

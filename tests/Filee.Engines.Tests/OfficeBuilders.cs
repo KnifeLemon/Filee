@@ -46,7 +46,7 @@ internal static class OpcWriter
 /// <summary>A workbook with shared strings, a fixed style sheet and any number of sheets.</summary>
 internal sealed class XlsxBuilder
 {
-    private const string Namespaces = "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"";
+    public const string Namespaces = "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"";
 
     // Styles (cellXfs index):
     public const int Plain = 0;

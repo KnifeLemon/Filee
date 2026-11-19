@@ -2,11 +2,12 @@
 // into the slide model (one slide per page, the page's size as the slide's) and, when the reader draws only part of
 // what the format can hold, a check that names the first thing it can't draw (once the converter's edges are Checked,
 // see DrawingConverter, such a file keeps the route it would take without the converter, LibreOffice Draw). The
-// readers add their line here: VSDX (Visio/), ODG / FODG (Odf/Draw), XPS / OpenXPS (Xps/).
+// readers add their line here: VSDX (Visio/), ODG / FODG (Odf/Draw), XPS / OpenXPS (Xps/), chart templates (Charts/).
 //
-// Fixed-layout documents (XPS) are not slides: their reader draws pages straight into the page model (IFixedPages).
+// Fixed-layout documents (XPS) and chart templates are not slides: their reader draws pages straight into the page model (IFixedPages).
 
 using Filee.Core.Conversion;
+using Filee.Engines.Charts;
 using Filee.Engines.Odf.Draw;
 using Filee.Engines.Rendering;
 using Filee.Engines.Slides;
@@ -60,6 +61,8 @@ internal static class DrawingFormats
         new("fodg", (path, token) => OdfDrawReader.Read(path, cancellationToken: token), path => OdfDrawReader.FirstUnsupported(path)),
         // XPS and OpenXPS documents (.xps, .oxps): Filee's own reader draws every page.
         new("xps", null) { ReadPages = (path, token) => XpsDocument.Open(path, token) },
+        // Excel chart templates (.crtx): the chart on one page, with sample values where the template has none.
+        new("crtx", null) { ReadPages = (path, token) => ChartTemplate.Open(path, token) },
     ];
 
     /// <summary>What every drawing format is converted to.</summary>

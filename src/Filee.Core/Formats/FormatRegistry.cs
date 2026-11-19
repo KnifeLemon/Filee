@@ -98,6 +98,9 @@ public static class FormatRegistry
         // drawn as SVG (then PDF and pictures), or their text as Markdown. A .canvas that isn't one is refused.
         new("canvas", "Obsidian Canvas", FormatCategory.Vector, ["canvas"], Writable: false),
         new("fodg", "FODG", FormatCategory.Vector, ["fodg"], Writable: false),
+        // Excel chart templates (#1354): the chart drawn by the drawing engine (PDF, SVG, PNG), sample values where the
+        // template holds none, as Excel's template preview shows it.
+        new("crtx", "CRTX", FormatCategory.Vector, ["crtx"], Writable: false),
 
         // PDF
         new("pdf", "PDF", FormatCategory.Pdf, ["pdf"]),

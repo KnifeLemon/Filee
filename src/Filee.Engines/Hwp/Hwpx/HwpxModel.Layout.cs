@@ -463,6 +463,9 @@ internal enum HLeftOutKind
 
     /// <summary>Vertical text (a table cell, text box or section written top to bottom), set horizontally. Not counted.</summary>
     VerticalText,
+
+    /// <summary>A chart Filee doesn't draw, drawn from the picture its program saved with it (an ODF chart's replacement).</summary>
+    ChartPictured,
 }
 
 /// <summary>

@@ -1233,6 +1233,9 @@ internal static class SettingsMigrations
         // v108: mind maps (.mm, .xmind; #1543, #1004) learn the documents donut; custom claims stay put.
         if (from < 108)
             changed |= LearnExtensions(profiles, out _, ["mm", "xmind"]);
+        // v109: Excel chart templates (.crtx, #1354) learn the vector donut; custom claims stay put.
+        if (from < 109)
+            changed |= LearnExtensions(profiles, out _, ["crtx"]);
         return changed;
     }
 
