@@ -1221,6 +1221,9 @@ internal static class SettingsMigrations
         // v103: UYAP documents (.udf, #1338) learn their documents donut; custom claims stay put.
         if (from < 103)
             changed |= LearnExtensions(profiles, out _, ["udf"]);
+        // v106: Excel binary workbooks (.xlsb, #1535) learn the spreadsheets donut; custom claims stay put.
+        if (from < 106)
+            changed |= LearnExtensions(profiles, out _, ["xlsb"]);
         return changed;
     }
 
