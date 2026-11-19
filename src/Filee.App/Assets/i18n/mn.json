@@ -250,6 +250,8 @@
   "notice.renderer_left_out.pictures_one": "1 зураг орхигдлоо",
   "notice.renderer_left_out.objects_pictured": "{0} шигтгэсэн объектыг хадгалсан зургаас нь зурлаа",
   "notice.renderer_left_out.objects_pictured_one": "1 шигтгэсэн объектыг хадгалсан зургаас нь зурлаа",
+  "notice.renderer_left_out.charts_pictured": "{0} диаграмыг хадгалсан зургаас нь зурлаа",
+  "notice.renderer_left_out.charts_pictured_one": "1 диаграмыг хадгалсан зургаас нь зурлаа",
   "notice.renderer_left_out.formulas": "{0} томьёог энгийн текстээр бичлээ",
   "notice.renderer_left_out.formulas_one": "1 томьёог энгийн текстээр бичлээ",
   "notice.renderer_left_out.vertical_text": "босоо текстийг хэвтээгээр байрлууллаа",

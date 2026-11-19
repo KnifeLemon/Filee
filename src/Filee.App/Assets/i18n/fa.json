@@ -265,6 +265,8 @@
   "notice.renderer_left_out.pictures_one": "یک تصویر حذف شد",
   "notice.renderer_left_out.objects_pictured": "{0} شیء جاسازی‌شده از تصویر ذخیره‌شده‌اش رسم شد",
   "notice.renderer_left_out.objects_pictured_one": "یک شیء جاسازی‌شده از تصویر ذخیره‌شده‌اش رسم شد",
+  "notice.renderer_left_out.charts_pictured": "{0} نمودار از تصویر ذخیره‌شده‌اش رسم شد",
+  "notice.renderer_left_out.charts_pictured_one": "یک نمودار از تصویر ذخیره‌شده‌اش رسم شد",
   "notice.renderer_left_out.formulas": "{0} فرمول به‌صورت متن ساده نوشته شد",
   "notice.renderer_left_out.formulas_one": "یک فرمول به‌صورت متن ساده نوشته شد",
   "notice.renderer_left_out.vertical_text": "متن عمودی افقی چیده شد",

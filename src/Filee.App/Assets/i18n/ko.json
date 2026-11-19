@@ -257,6 +257,8 @@
   "notice.renderer_left_out.pictures_one": "그림 1개 빠짐",
   "notice.renderer_left_out.objects_pictured": "삽입된 개체 {0}개는 저장된 그림으로 그림",
   "notice.renderer_left_out.objects_pictured_one": "삽입된 개체 1개는 저장된 그림으로 그림",
+  "notice.renderer_left_out.charts_pictured": "차트 {0}개는 저장된 그림으로 그림",
+  "notice.renderer_left_out.charts_pictured_one": "차트 1개는 저장된 그림으로 그림",
   "notice.renderer_left_out.formulas": "수식 {0}개는 일반 글자로 씀",
   "notice.renderer_left_out.formulas_one": "수식 1개는 일반 글자로 씀",
   "notice.renderer_left_out.vertical_text": "세로쓰기는 가로로 씀",

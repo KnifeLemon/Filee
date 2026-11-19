@@ -257,6 +257,8 @@
   "notice.renderer_left_out.pictures_one": "略過了 1 張圖片",
   "notice.renderer_left_out.objects_pictured": "{0} 個內嵌物件以其儲存的圖片繪製",
   "notice.renderer_left_out.objects_pictured_one": "1 個內嵌物件以其儲存的圖片繪製",
+  "notice.renderer_left_out.charts_pictured": "{0} 個圖表以其儲存的圖片繪製",
+  "notice.renderer_left_out.charts_pictured_one": "1 個圖表以其儲存的圖片繪製",
   "notice.renderer_left_out.formulas": "{0} 個公式以純文字顯示",
   "notice.renderer_left_out.formulas_one": "1 個公式以純文字顯示",
   "notice.renderer_left_out.vertical_text": "直書文字以橫書顯示",

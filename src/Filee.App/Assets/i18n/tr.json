@@ -251,6 +251,8 @@
   "notice.renderer_left_out.pictures_one": "1 resim çıkarıldı",
   "notice.renderer_left_out.objects_pictured": "{0} gömülü nesne kayıtlı resminden çizildi",
   "notice.renderer_left_out.objects_pictured_one": "1 gömülü nesne kayıtlı resminden çizildi",
+  "notice.renderer_left_out.charts_pictured": "{0} grafik kayıtlı resminden çizildi",
+  "notice.renderer_left_out.charts_pictured_one": "1 grafik kayıtlı resminden çizildi",
   "notice.renderer_left_out.formulas": "{0} formül düz metin olarak yazıldı",
   "notice.renderer_left_out.formulas_one": "1 formül düz metin olarak yazıldı",
   "notice.renderer_left_out.vertical_text": "dikey metin yatay dizildi",

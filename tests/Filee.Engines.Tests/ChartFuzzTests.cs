@@ -46,7 +46,8 @@ public class ChartFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Fact]
     public void A_workbook_with_charts_is_read_or_refused_whatever_its_parts_say() =>
-        new FuzzHarness(fx, QuickIterations, 20261120).Files("chart-xlsx", "xlsx", [Workbook(Columns()), Workbook(Costly()), Workbook(Rings())], FuzzHarness.Packages, Print);
+        new FuzzHarness(fx, QuickIterations, 20261120).Files("chart-xlsx", "xlsx", [Workbook(Columns()), Workbook(Costly()), Workbook(Rings()),
+            File.ReadAllBytes(ChartTests.ChartSheetBook(Columns()).Save(Path.Combine(fx.NewFolder(), "chartsheet.xlsx")))], FuzzHarness.Packages, Print);
 
     [Fact]
     public void A_chart_template_is_drawn_or_refused_whatever_its_parts_say() =>

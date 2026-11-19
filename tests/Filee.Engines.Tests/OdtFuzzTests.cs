@@ -17,7 +17,20 @@ public class OdtFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Fact]
     public void OdtReader_reads_or_refuses_every_mutated_package() =>
-        Fuzz([Seed(OdtTests.DocumentBuilder()), Seed(RepeatsBuilder())], (path, media) => OdtReader.Read(path, media));
+        Fuzz([Seed(OdtTests.DocumentBuilder()), Seed(RepeatsBuilder()), Seed(ChartBuilder())], (path, media) => OdtReader.Read(path, media));
+
+    /// <summary>A chart object (OdfChartReader) in a frame, with its replacement picture.</summary>
+    private static OdtBuilder ChartBuilder()
+    {
+        var builder = new OdtBuilder
+        {
+            Body = "<text:p><draw:frame text:anchor-type=\"as-char\" svg:width=\"8cm\" svg:height=\"5cm\"><draw:object xlink:href=\"./Object 1\"/>" +
+                   "<draw:image xlink:href=\"./ObjectReplacements/Object 1\"/></draw:frame></text:p>",
+        };
+        builder.Parts["Object 1/content.xml"] = System.Text.Encoding.UTF8.GetBytes(OdfChartBuilder.Columns());
+        builder.Parts["ObjectReplacements/Object 1"] = DocumentFuzzTests.TinyPng(4, 3);
+        return builder;
+    }
 
     /// <summary>Tables with repeated rows, cells and columns, and the inline content that repeats with them.</summary>
     private static OdtBuilder RepeatsBuilder()

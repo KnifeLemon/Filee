@@ -251,6 +251,8 @@
   "notice.renderer_left_out.pictures_one": "حُذفت صورة واحدة",
   "notice.renderer_left_out.objects_pictured": "كائنات مضمّنة رُسمت من صورها المحفوظة: {0}",
   "notice.renderer_left_out.objects_pictured_one": "رُسم كائن مضمّن واحد من صورته المحفوظة",
+  "notice.renderer_left_out.charts_pictured": "مخططات رُسمت من صورها المحفوظة: {0}",
+  "notice.renderer_left_out.charts_pictured_one": "رُسم مخطط واحد من صورته المحفوظة",
   "notice.renderer_left_out.formulas": "صيغ كُتبت نصًا عاديًا: {0}",
   "notice.renderer_left_out.formulas_one": "كُتبت صيغة واحدة نصًا عاديًا",
   "notice.renderer_left_out.vertical_text": "وُضع النص العمودي أفقيًا",

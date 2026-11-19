@@ -257,6 +257,8 @@
   "notice.renderer_left_out.pictures_one": "1 imagem deixada de fora",
   "notice.renderer_left_out.objects_pictured": "{0} objetos incorporados desenhados a partir da imagem salva",
   "notice.renderer_left_out.objects_pictured_one": "1 objeto incorporado desenhado a partir da imagem salva",
+  "notice.renderer_left_out.charts_pictured": "{0} gráficos desenhados a partir da imagem salva",
+  "notice.renderer_left_out.charts_pictured_one": "1 gráfico desenhado a partir da imagem salva",
   "notice.renderer_left_out.formulas": "{0} fórmulas escritas como texto simples",
   "notice.renderer_left_out.formulas_one": "1 fórmula escrita como texto simples",
   "notice.renderer_left_out.vertical_text": "texto vertical posto na horizontal",

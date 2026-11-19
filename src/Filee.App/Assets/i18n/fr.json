@@ -257,6 +257,8 @@
   "notice.renderer_left_out.pictures_one": "1 image omise",
   "notice.renderer_left_out.objects_pictured": "{0} objets incorporés dessinés d'après leur image enregistrée",
   "notice.renderer_left_out.objects_pictured_one": "1 objet incorporé dessiné d'après son image enregistrée",
+  "notice.renderer_left_out.charts_pictured": "{0} graphiques dessinés d'après leur image enregistrée",
+  "notice.renderer_left_out.charts_pictured_one": "1 graphique dessiné d'après son image enregistrée",
   "notice.renderer_left_out.formulas": "{0} formules écrites en texte brut",
   "notice.renderer_left_out.formulas_one": "1 formule écrite en texte brut",
   "notice.renderer_left_out.vertical_text": "texte vertical mis à l'horizontale",

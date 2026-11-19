@@ -19,7 +19,9 @@
 //   draw:g groups, draw:a links (their content); placement by svg:x / svg:y / svg:width / svg:height and
 //   draw:transform (rotate, translate, scale, skew, matrix), turned and mirrored as the model has it.
 // - Fills, lines and text frames through the graphic and presentation style chains (OdfGraphicStyles, OdfDrawText).
-// Left out: charts, OLE objects, 3D scenes, Fontwork, shadows, form controls, notes, animations; the capability check
+// - Charts (embedded chart objects) through OdfChartReader, drawn by the slide renderer (charts it doesn't draw keep
+//   their replacement picture and are named by the check); their points count against a ChartBudget.
+// Left out: charts OdfChartReader doesn't draw, OLE objects, 3D scenes, Fontwork, shadows, form controls, notes, animations; the capability check
 // (FirstUnsupported, a pass of this reader that draws nothing) names the first of them on a shown page, so such a file
 // can keep LibreOffice's route.
 //
@@ -31,6 +33,7 @@
 
 using System.Globalization;
 using System.Xml.Linq;
+using Filee.Engines.Charts;
 using Filee.Engines.Documents;
 using Filee.Engines.Slides;
 using SkiaSharp;
@@ -84,6 +87,7 @@ internal sealed partial class OdfDrawReader
     private readonly bool _scan;
     private readonly long _maxVisits;
     private readonly Dictionary<XElement, OdfEnhancedGeometry> _geometries = new(ReferenceEqualityComparer.Instance);
+    private readonly ChartBudget _charts = new();
     private readonly Dictionary<string, string> _footers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _dates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _headers = new(StringComparer.Ordinal);
@@ -666,6 +670,16 @@ internal sealed partial class OdfDrawReader
             shape.Text = TextFrame(content, chain, context, scope, null, 0);
             return shape.Fill is null && shape.Line is null && shape.Text is null ? null : shape;
         }
+        if (content.Name == Draw + "object" && ChartObject(content) is { } chart)
+        {
+            // A chart: drawn by the slide renderer, a picture of it for the ODP writer and the deck's text.
+            _charts.Charge(chart);
+            var (width, height) = (shape.Bounds.Width, shape.Bounds.Height);
+            shape.Chart = chart;
+            shape.IsPicture = true;
+            shape.Fill = new PictureFill(new SlideImage(() => ChartPicture.Png(chart, width, height) ?? []), SKRect.Empty, SKRect.Empty);
+            return shape;
+        }
         if (content.Name == Draw + "object" || content.Name == Draw + "object-ole")
             Unsupported(ObjectKind(content));
 
@@ -683,6 +697,16 @@ internal sealed partial class OdfDrawReader
         if (images.Count > 0 && content.Name == Draw + "image")
             Unsupported(PictureKind(Attr(images[0], XLink + "href")));
         return shape.Fill is null && shape.Line is null ? null : shape;
+    }
+
+    /// <summary>An embedded chart object OdfChartReader draws (inline, or its folder's content.xml and styles.xml); null otherwise.</summary>
+    private Chart? ChartObject(XElement embedded)
+    {
+        if (embedded.Element(Office + "document") is { } inline)
+            return OdfChartReader.Read(inline).Chart;
+        var href = Attr(embedded, XLink + "href");
+        var content = _package.XmlPart(href, "content.xml");
+        return OdfChartReader.IsChart(content) ? OdfChartReader.Read(content, _package.XmlPart(href, "styles.xml")).Chart : null;
     }
 
     /// <summary>What an embedded object is: a chart, or another kind of object.</summary>

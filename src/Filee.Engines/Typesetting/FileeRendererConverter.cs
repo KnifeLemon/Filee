@@ -174,9 +174,14 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
                 }
                 using var reader = new StreamReader(package.Open(entry), Encoding.UTF8);
                 var xml = reader.ReadToEnd();
+                // An HWPX's OOXML chart parts (c:chart inside) are looked at through the hp:chart that names them.
+                if (markers == HwpxMarkers && ChartSpaceRoot().IsMatch(xml))
+                    continue;
                 foreach (var (pattern, feature) in markers)
                 {
-                    if (pattern.IsMatch(xml))
+                    // ODT objects are drawn when each is a chart OdfChartReader draws, HWPX charts when ChartReader draws their part.
+                    if (pattern.IsMatch(xml) && !(ReferenceEquals(pattern, OdtObject()) && OdtChartsOnly(package, xml))
+                        && !(ReferenceEquals(pattern, HwpxOle()) && HwpxChartsOnly(package, xml)))
                         return feature;
                 }
                 referencesCharts |= markers == WordMarkers && WordChart().IsMatch(xml);
@@ -188,6 +193,63 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         {
             return null;
         }
+    }
+
+    /// <summary>An object's or chart's part; null when it isn't well-formed XML (the object is then not drawn).</summary>
+    private static System.Xml.Linq.XElement? Loaded(DocumentPackage package, System.IO.Compression.ZipArchiveEntry entry)
+    {
+        try
+        {
+            return package.LoadXml(entry, preserveWhitespace: false).Root;
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Objects checked in one ODT part at most; a part with more goes to LibreOffice.</summary>
+    private const int MaxOdtObjects = 256;
+
+    /// <summary>Whether every embedded object of ODT part <paramref name="xml"/> is a chart OdfChartReader draws.</summary>
+    private static bool OdtChartsOnly(DocumentPackage package, string xml)
+    {
+        var objects = OdtObjectHref().Matches(xml);
+        if (objects.Count == 0 || objects.Count != OdtObject().Count(xml) || objects.Count > MaxOdtObjects)
+            return false;
+        foreach (Match match in objects)
+        {
+            var folder = System.Net.WebUtility.HtmlDecode(match.Groups[1].Value).Trim();
+            if (folder.StartsWith("./", StringComparison.Ordinal))
+                folder = folder[2..];
+            folder = folder.TrimEnd('/');
+            if (folder.Length == 0 || folder.Contains("..", StringComparison.Ordinal) || package.GetEntry(folder + "/content.xml") is not { } content)
+                return false;
+            var styles = package.GetEntry(folder + "/styles.xml") is { } entry ? Loaded(package, entry) : null;
+            if (Charts.OdfChartReader.Read(Loaded(package, content), styles).Chart is null)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Whether every object HwpxOle finds in HWPX part <paramref name="xml"/> is an hp:chart whose chart part ChartReader
+    /// draws; an OLE object in an hp:default branch (the fallback 한글 writes after a chart) doesn't count.
+    /// </summary>
+    private static bool HwpxChartsOnly(DocumentPackage package, string xml)
+    {
+        var text = HwpxDefaultBranch().Replace(xml, "");
+        var charts = HwpxChartRef().Matches(text);
+        if (charts.Count == 0 || charts.Count != HwpxOle().Count(text) || charts.Count > MaxOdtObjects)
+            return false;
+        foreach (Match match in charts)
+        {
+            var part = System.Net.WebUtility.HtmlDecode(match.Groups[1].Value).Trim().TrimStart('/');
+            if (part.Length == 0 || part.Contains("..", StringComparison.Ordinal) || package.GetEntry(part) is not { } entry
+                || Charts.ChartReader.Read(Loaded(package, entry), Filee.Engines.Slides.DrawingColors.FromTheme(null)).Chart is null)
+                return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -320,6 +382,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         HLeftOutKind.FormControl => "form_controls",
         HLeftOutKind.Video => "videos",
         HLeftOutKind.ObjectPictured => "objects_pictured",
+        HLeftOutKind.ChartPictured => "charts_pictured",
         HLeftOutKind.FormulaAsText => "formulas",
         _ => "vertical_text",
     };
@@ -374,6 +437,18 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     [GeneratedRegex(@"<\w+:(?:ole|chart)\b")]
     private static partial Regex HwpxOle();
 
+    /// <summary>A DrawingML chart part: its root element is c:chartSpace.</summary>
+    [GeneratedRegex(@"^\s*(?:<\?xml[^>]*\?>\s*)?<(?:\w+:)?chartSpace\b")]
+    private static partial Regex ChartSpaceRoot();
+
+    /// <summary>An hp:chart with its chartIDRef (the chart part's path).</summary>
+    [GeneratedRegex(@"<\w+:chart\b[^>]*?\schartIDRef=""([^""]*)""")]
+    private static partial Regex HwpxChartRef();
+
+    /// <summary>An hp:default branch of an hp:switch (what a reader without the case's namespace takes).</summary>
+    [GeneratedRegex(@"<(\w+):default\b.*?</\1:default>", RegexOptions.Singleline)]
+    private static partial Regex HwpxDefaultBranch();
+
     [GeneratedRegex(@"textDirection=""VERT")]
     private static partial Regex HwpxVertical();
 
@@ -401,6 +476,10 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
 
     [GeneratedRegex(@"<draw:object(?:-ole)?\b")]
     private static partial Regex OdtObject();
+
+    /// <summary>A draw:object (not -ole) with its xlink:href; an inline one (no href) doesn't match, and isn't drawn here.</summary>
+    [GeneratedRegex(@"<draw:object\b(?!-)[^>]*?\sxlink:href=""([^""]*)""")]
+    private static partial Regex OdtObjectHref();
 
     [GeneratedRegex(@"writing-mode=""tb-")]
     private static partial Regex OdtVertical();

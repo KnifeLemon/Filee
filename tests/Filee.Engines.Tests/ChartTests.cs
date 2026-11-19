@@ -270,7 +270,7 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
     /// A chart sheet "Chart1" (landscape, a footer with the page number) holding <paramref name="chart"/> on an absolute
     /// anchor, before (or after) a worksheet "Data".
     /// </summary>
-    private static XlsxBuilder ChartSheetBook(string chart, bool chartFirst = true, bool hidden = false, string over = "")
+    internal static XlsxBuilder ChartSheetBook(string chart, bool chartFirst = true, bool hidden = false, string over = "")
     {
         var book = new XlsxBuilder();
         book.Sheet(chartFirst ? "Chart1" : "Data", chartFirst ? "" : XlsxBuilder.Row(1, book.Text("A1", "Sales")), hidden: hidden && chartFirst);
@@ -391,6 +391,66 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var document = DocxReader.Read(path, Path.Combine(fx.NewFolder(), "media"));
         Assert.Contains(document.LeftOut.Kinds, k => k.Kind == HLeftOutKind.Chart);
+    }
+
+    // ───────────────────────── HWPX ─────────────────────────
+
+    /// <summary>The 한글-style package with its hp:chart (an OLE object in hp:default) given a size and <paramref name="chart"/> as its part.</summary>
+    private string HwpxWithChart(string? chart) => HwpxChartPackage(fx.NewFolder(), chart);
+
+    /// <inheritdoc cref="HwpxWithChart"/>
+    internal static string HwpxChartPackage(string folder, string? chart)
+    {
+        var path = Path.Combine(folder, "chart.hwpx");
+        File.Copy(HwpxReaderTests.HangulStylePackage(folder), path);
+        using var zip = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Update);
+        var entry = zip.GetEntry("Contents/section0.xml")!;
+        string xml;
+        using (var reader = new StreamReader(entry.Open()))
+            xml = reader.ReadToEnd();
+        entry.Delete();
+        const string Bare = "<hp:chart id=\"50\" chartIDRef=\"Chart/chart1.xml\"/>";
+        Assert.Contains(Bare, xml, StringComparison.Ordinal);
+        xml = xml.Replace(Bare, "<hp:chart id=\"50\" zOrder=\"3\" textWrap=\"TOP_AND_BOTTOM\" chartIDRef=\"Chart/chart1.xml\"><hp:sz width=\"36000\" widthRelTo=\"ABSOLUTE\" height=\"21000\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" +
+            "<hp:pos treatAsChar=\"1\" affectLSpacing=\"0\" flowWithText=\"1\" allowOverlap=\"0\" holdAnchorAndSO=\"0\" vertRelTo=\"PARA\" horzRelTo=\"COLUMN\" vertAlign=\"TOP\" horzAlign=\"LEFT\" vertOffset=\"0\" horzOffset=\"0\"/></hp:chart>", StringComparison.Ordinal);
+        using (var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new System.Text.UTF8Encoding(false)))
+            writer.Write(xml);
+        if (chart is not null)
+        {
+            using var writer = new StreamWriter(zip.CreateEntry("Chart/chart1.xml").Open(), new System.Text.UTF8Encoding(false));
+            writer.Write(chart);
+        }
+        return path;
+    }
+
+    [Fact]
+    public void An_hwpx_chart_is_drawn_from_its_ooxml_part_instead_of_its_ole_fallback()
+    {
+        var path = HwpxWithChart(Columns());
+        Assert.NotEqual("OLE objects and charts", new FileeRendererConverter().FirstUnsupported(path, "hwpx"));
+
+        var document = HwpxReader.ReadForLayout(path, Path.Combine(fx.NewFolder(), "media"));
+        Assert.DoesNotContain(document.LeftOut.Kinds, k => k.Kind is HLeftOutKind.Chart or HLeftOutKind.ObjectLeftOut or HLeftOutKind.ObjectPictured);
+        var picture = document.Sections.SelectMany(s => s.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HImage>().Single(i => i.Chart is not null);
+        Assert.Equal((36000, 21000), (picture.Width, picture.Height));
+        using (var png = SKBitmap.Decode(picture.Path))
+            Assert.True(Count(png, Red) > 300);
+        // The writers' reading gets the picture too.
+        Assert.Contains(HwpxReader.Read(path, Path.Combine(fx.NewFolder(), "media")).Sections.SelectMany(s => s.Blocks).OfType<HParagraph>()
+            .SelectMany(p => p.Inlines).OfType<HImage>(), i => i.Chart is not null);
+    }
+
+    [Fact]
+    public void An_hwpx_chart_Filee_doesnt_draw_falls_back_to_its_ole_object()
+    {
+        var radar = Chart($"<c:radarChart>{Series(0, "S", ["a"], [1])}<c:axId val=\"1\"/><c:axId val=\"2\"/></c:radarChart>", Axes());
+        foreach (var path in new[] { HwpxWithChart(radar), HwpxWithChart(null), HwpxWithChart("<broken") })
+        {
+            Assert.Equal("OLE objects and charts", new FileeRendererConverter().FirstUnsupported(path, "hwpx"));
+            var document = HwpxReader.ReadForLayout(path, Path.Combine(fx.NewFolder(), "media"));
+            Assert.Contains(document.LeftOut.Kinds, k => k.Kind is HLeftOutKind.ObjectLeftOut or HLeftOutKind.ObjectPictured);
+            Assert.DoesNotContain(document.Sections.SelectMany(s => s.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HImage>(), i => i.Chart is not null);
+        }
     }
 
     // ───────────────────────── Slides ─────────────────────────

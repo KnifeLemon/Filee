@@ -257,6 +257,8 @@
   "notice.renderer_left_out.pictures_one": "pominięty 1 obraz",
   "notice.renderer_left_out.objects_pictured": "obiekty osadzone narysowane z zapisanych obrazów: {0}",
   "notice.renderer_left_out.objects_pictured_one": "1 obiekt osadzony narysowany z zapisanego obrazu",
+  "notice.renderer_left_out.charts_pictured": "wykresy narysowane z zapisanych obrazów: {0}",
+  "notice.renderer_left_out.charts_pictured_one": "1 wykres narysowany z zapisanego obrazu",
   "notice.renderer_left_out.formulas": "formuły zapisane zwykłym tekstem: {0}",
   "notice.renderer_left_out.formulas_one": "1 formuła zapisana zwykłym tekstem",
   "notice.renderer_left_out.vertical_text": "tekst pionowy złożony poziomo",

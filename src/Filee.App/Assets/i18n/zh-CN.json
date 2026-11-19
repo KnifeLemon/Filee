@@ -257,6 +257,8 @@
   "notice.renderer_left_out.pictures_one": "省略了 1 张图片",
   "notice.renderer_left_out.objects_pictured": "{0} 个嵌入对象按其保存的图片绘制",
   "notice.renderer_left_out.objects_pictured_one": "1 个嵌入对象按其保存的图片绘制",
+  "notice.renderer_left_out.charts_pictured": "{0} 个图表按其保存的图片绘制",
+  "notice.renderer_left_out.charts_pictured_one": "1 个图表按其保存的图片绘制",
   "notice.renderer_left_out.formulas": "{0} 个公式以纯文本显示",
   "notice.renderer_left_out.formulas_one": "1 个公式以纯文本显示",
   "notice.renderer_left_out.vertical_text": "竖排文字按横排显示",

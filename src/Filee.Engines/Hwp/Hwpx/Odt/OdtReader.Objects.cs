@@ -6,7 +6,9 @@
 // at the end of a table, and empty cells at the end of a row past the declared columns, are kept once however often
 // they repeat (spreadsheet-like tables fill the grid out to a million rows that way). Frames and
 // shapes anchored as characters stay in the text, the others float (HAnchor from the graphic style's position, its
-// relation and wrap). Formulas (embedded Math objects) become their text.
+// relation and wrap). Formulas (embedded Math objects) become their text. Charts (embedded chart objects) are read by
+// OdfChartReader and become a picture of the chart that carries it, so the renderer draws it as vectors; a chart it
+// doesn't draw takes its replacement picture, and both are counted as charts in the left-out notice.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -30,6 +32,9 @@ internal sealed partial class OdtReader
 
     /// <summary>Bytes decoded from office:binary-data (each element once) and written to the media folder.</summary>
     private long _inlineBytes;
+
+    /// <summary>Chart points drawn in the document.</summary>
+    private readonly Charts.ChartBudget _charts = new();
 
     // ───────────────────────── Tables ─────────────────────────
 
@@ -381,14 +386,18 @@ internal sealed partial class OdtReader
             TextBoxContent(content, box.Blocks);
             return box;
         }
-        // An embedded object (a chart, a formula, an OLE object) is drawn from the picture its program saved beside it.
+        // A chart is drawn from its data; another embedded object (a formula, an OLE object), or a chart Filee doesn't
+        // draw, from the picture its program saved beside it.
         var embedded = frame.Element(Draw + "object") ?? frame.Element(Draw + "object-ole");
+        var chart = embedded is not null && embedded.Name == Draw + "object" ? ChartObject(embedded) : null;
+        if (chart is not null && ChartPicture(chart, Size(width), Size(height), anchor, zOrder) is { } drawn)
+            return drawn;
         foreach (var image in frame.Elements(Draw + "image"))
         {
             if (Picture(image) is { } path)
             {
                 if (embedded is not null)
-                    _document.LeftOut.Add(HLeftOutKind.ObjectPictured);
+                    _document.LeftOut.Add(chart is not null ? HLeftOutKind.ChartPictured : HLeftOutKind.ObjectPictured);
                 return new HImage(path)
                 {
                     Width = width is > 0 ? width : null,
@@ -407,8 +416,38 @@ internal sealed partial class OdtReader
             return new HText(formula, CharFormat(text) with { Italic = true });
         }
         if (embedded is not null)
-            _document.LeftOut.Add(HLeftOutKind.ObjectLeftOut);
+            _document.LeftOut.Add(chart is not null ? HLeftOutKind.Chart : HLeftOutKind.ObjectLeftOut);
         return null;
+    }
+
+    /// <summary>The content of an embedded chart object (inline, or its folder's content.xml with styles.xml); null for other objects.</summary>
+    private (XElement Content, XElement? Styles)? ChartObject(XElement embedded)
+    {
+        if (embedded.Element(Office + "document") is { } inline)
+            return Charts.OdfChartReader.IsChart(inline) ? (inline, null) : null;
+        if (Attr(embedded, XLink + "href") is not { } href || InternalPath(href) is not { } folder)
+            return null;
+        folder = folder.TrimEnd('/');
+        return Load(folder + "/content.xml")?.Root is { } content && Charts.OdfChartReader.IsChart(content)
+            ? (content, Load(folder + "/styles.xml")?.Root)
+            : null;
+    }
+
+    /// <summary>A chart object drawn: a PNG of it (for the writers) carrying the chart (for the renderer); null when it isn't drawn.</summary>
+    private HImage? ChartPicture((XElement Content, XElement? Styles)? chart, int width, int height, HAnchor? anchor, int? zOrder)
+    {
+        if (chart is not { } parts || width <= 0 || height <= 0
+            || Charts.OdfChartReader.Read(parts.Content, parts.Styles).Chart is not { } drawn)
+            return null;
+        _charts.Charge(drawn);
+        // Points are HWPUNIT / 100.
+        if (Charts.ChartPicture.Png(drawn, width / 100f, height / 100f, 150) is not { } png)
+            return null;
+        Directory.CreateDirectory(_mediaFolder);
+        var path = Path.Combine(_mediaFolder, $"odt-chart-{_media.Count + 1}.png");
+        File.WriteAllBytes(path, png);
+        _media[$"chart|{path}"] = path;
+        return new HImage(path) { Width = width, Height = height, Anchor = anchor, ZOrder = zOrder, Chart = drawn };
     }
 
     private void TextBoxContent(XElement content, List<HBlock> blocks)

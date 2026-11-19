@@ -251,6 +251,8 @@
   "notice.renderer_left_out.pictures_one": "画像 1 枚を省略",
   "notice.renderer_left_out.objects_pictured": "埋め込みオブジェクト {0} 個を保存済みの画像で描画",
   "notice.renderer_left_out.objects_pictured_one": "埋め込みオブジェクト 1 個を保存済みの画像で描画",
+  "notice.renderer_left_out.charts_pictured": "グラフ {0} 個を保存済みの画像で描画",
+  "notice.renderer_left_out.charts_pictured_one": "グラフ 1 個を保存済みの画像で描画",
   "notice.renderer_left_out.formulas": "数式 {0} 個をプレーンテキストで表示",
   "notice.renderer_left_out.formulas_one": "数式 1 個をプレーンテキストで表示",
   "notice.renderer_left_out.vertical_text": "縦書きを横書きで表示",

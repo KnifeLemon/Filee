@@ -11,8 +11,8 @@
 //    the visible sheets come from the binary workbook part.
 //  * XLS: the reader takes no drawing at all, so every object of a visible sheet is named by its OBJ record's type
 //    (charts, pictures, text boxes, shapes, form controls; comments aside), and a visible chart sheet.
-//  * ODS: the reader takes no drawing either: pictures, charts and other embedded objects, shapes, text boxes and
-//    form controls of a visible table.
+//  * ODS: the reader takes charts OdfChartReader draws (with their frames' replacement pictures) and no other drawing:
+//    pictures, other charts and embedded objects, shapes, text boxes and form controls of a visible table.
 // The parts are read within DocumentLimits; a file that can't be read gets no answer here (null), and the printer
 // then refuses it with the reader's own reason.
 
@@ -213,6 +213,15 @@ internal static partial class SheetCapabilities
                         skipped = true;
                     }
                     break;
+                case (OdfDraw, "frame") when body:
+                    {
+                        // The whole frame: a chart drawn from its data takes its replacement picture with it.
+                        var frame = (XElement)XNode.ReadFrom(reader);
+                        skipped = true;
+                        if (OdsFrame(zip, frame) is { } inFrame)
+                            return inFrame;
+                        break;
+                    }
                 case (OdfDraw, var element) when body:
                     if (OdsDrawing(zip, element, reader) is { } feature)
                         return feature;
@@ -220,6 +229,58 @@ internal static partial class SheetCapabilities
             }
         }
         return null;
+    }
+
+    /// <summary>What a frame in a visible table holds that the printer doesn't draw: nothing for a chart OdfChartReader draws.</summary>
+    private static string? OdsFrame(DocumentPackage zip, XElement frame)
+    {
+        XNamespace draw = OdfDraw;
+        var chart = false;
+        if (frame.Element(draw + "object") is { } embedded && DrawnChart(zip, (string?)embedded.Attribute((XNamespace)XLink + "href"), embedded, out chart))
+            return null;
+        foreach (var element in frame.DescendantsAndSelf().Where(e => e.Name.NamespaceName == OdfDraw))
+        {
+            var feature = element.Name.LocalName switch
+            {
+                "object" or "object-ole" => chart || IsChart(zip, (string?)element.Attribute((XNamespace)XLink + "href")) ? "charts" : "embedded objects",
+                "image" => "pictures",
+                "text-box" => "text boxes",
+                "control" => "form controls",
+                "plugin" or "applet" or "floating-frame" => "embedded objects",
+                _ => null,
+            };
+            if (feature is not null)
+                return feature;
+        }
+        return null;
+    }
+
+    /// <summary>Whether the object at <paramref name="href"/> (or inline in <paramref name="embedded"/>) is a chart OdfChartReader draws.</summary>
+    /// <param name="chart">Whether the object is a chart, drawn or not.</param>
+    private static bool DrawnChart(DocumentPackage zip, string? href, XElement embedded, out bool chart)
+    {
+        XNamespace office = OdfOffice;
+        chart = false;
+        if (embedded.Element(office + "document") is { } inline)
+        {
+            chart = Charts.OdfChartReader.IsChart(inline);
+            return Charts.OdfChartReader.Read(inline).Chart is not null;
+        }
+        var folder = href?.Trim() is { } path && path.StartsWith("./", StringComparison.Ordinal) ? path[2..] : href?.Trim();
+        folder = folder?.TrimEnd('/');
+        if (string.IsNullOrEmpty(folder) || folder.Contains("..", StringComparison.Ordinal) || zip.GetEntry(folder + "/content.xml") is not { } content)
+            return false;
+        try
+        {
+            var root = zip.LoadXml(content).Root;
+            chart = Charts.OdfChartReader.IsChart(root);
+            var styles = zip.GetEntry(folder + "/styles.xml") is { } entry ? zip.LoadXml(entry).Root : null;
+            return chart && Charts.OdfChartReader.Read(root, styles).Chart is not null;
+        }
+        catch (XmlException)
+        {
+            return false;
+        }
     }
 
     /// <summary>What an element of the drawing namespace in a visible table is, named; null for a frame or another container.</summary>

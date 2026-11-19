@@ -251,6 +251,8 @@
   "notice.renderer_left_out.pictures_one": "1 चित्र छोड़ दिया गया",
   "notice.renderer_left_out.objects_pictured": "{0} एम्बेड किए गए ऑब्जेक्ट उनकी सहेजी गई तस्वीर से बनाए गए",
   "notice.renderer_left_out.objects_pictured_one": "1 एम्बेड किया गया ऑब्जेक्ट उसकी सहेजी गई तस्वीर से बनाया गया",
+  "notice.renderer_left_out.charts_pictured": "{0} चार्ट उनकी सहेजी गई तस्वीर से बनाए गए",
+  "notice.renderer_left_out.charts_pictured_one": "1 चार्ट उसकी सहेजी गई तस्वीर से बनाया गया",
   "notice.renderer_left_out.formulas": "{0} सूत्र सादे टेक्स्ट के रूप में लिखे गए",
   "notice.renderer_left_out.formulas_one": "1 सूत्र सादे टेक्स्ट के रूप में लिखा गया",
   "notice.renderer_left_out.vertical_text": "खड़ा टेक्स्ट आड़ा रखा गया",

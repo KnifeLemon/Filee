@@ -4,7 +4,8 @@
 // Excel codes (OdsNumberStyles), cell styles (font, colour, fill, borders, alignment, wrapping), column widths, row
 // heights, hidden rows / columns / sheets and frozen rows, and for printing each sheet's page style (paper, margins,
 // scale, page order, centring, grid and headings, headers and footers with their fields), print ranges, repeated
-// rows and columns, manual page breaks, rotation, indent and shrink to fit. Charts, images, comments and
+// rows and columns, manual page breaks, rotation, indent and shrink to fit, and charts (embedded chart objects in
+// frames anchored to a cell or the sheet, read by OdfChartReader) for the printer. Images, other objects, comments and
 // conditional formats are not read.
 //
 // A small file can stand for a huge sheet (repeats of rows, cells and spaces): the cells the repeats expand to, the
@@ -30,6 +31,12 @@ internal sealed class OdsReader
     private static readonly XNamespace Style = OdsNumberStyles.Style;
     private static readonly XNamespace Fo = OdsNumberStyles.Fo;
     private static readonly XNamespace Number = OdsNumberStyles.Number;
+    private static readonly XNamespace Draw = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
+    private static readonly XNamespace Svg = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0";
+    private static readonly XNamespace XLink = "http://www.w3.org/1999/xlink";
+
+    /// <summary>Chart frames of one sheet read at most; the rest are left out.</summary>
+    private const int MaxCharts = 1000;
 
     /// <summary>Excel's sheet size; ODS sheets repeat their last empty row and column up to (at least) it.</summary>
     private const int MaxRows = 1_048_576;
@@ -69,6 +76,8 @@ internal sealed class OdsReader
 
     private long _cells;
     private long _characters;
+    private DocumentPackage? _zip;
+    private readonly Charts.ChartBudget _charts = new();
     private long _merges;
 
     /// <summary>Characters of the cell being read that are counted already (counted as its text grows).</summary>
@@ -87,7 +96,7 @@ internal sealed class OdsReader
         var spreadsheet = content.Root?.Element(Office + "body")?.Element(Office + "spreadsheet")
                           ?? throw new InvalidDataException("The file is not an OpenDocument spreadsheet (no office:spreadsheet).");
 
-        var reader = new OdsReader();
+        var reader = new OdsReader { _zip = zip };
         reader.ReadStyles(Load(zip, "styles.xml"), content);
         reader.ReadSettings(Load(zip, "settings.xml"));
         var book = new Workbook();
@@ -560,6 +569,9 @@ internal sealed class OdsReader
     {
         var name = (string?)table.Attribute(Table + "name") ?? "Sheet";
         var sheet = new Worksheet(name) { WidthsInPoints = true };
+        // Frames anchored to the sheet (table:shapes) sit from its top-left corner.
+        foreach (var frame in table.Element(Table + "shapes")?.Elements(Draw + "frame") ?? [])
+            ChartFrame(frame, 0, 0, sheet);
         int? firstHeaderColumn = null, lastHeaderColumn = null;
 
         var columns = new List<Span>();
@@ -610,6 +622,7 @@ internal sealed class OdsReader
             }
 
             var cells = Cells(row, columns);
+            ChartFrames(row, r, sheet);
             var hasText = cells.Any(run => run.Cell is { Text.Length: > 0 } || run.ColumnSpan > 1 || run.RowSpan > 1);
             var copies = hasText ? count : cells.Any(run => run.Cell is not null) && count <= MaxStyledRepeat ? count : 0;
             // Repeats multiply: a row of text repeated a million times across every column is billions of cells.
@@ -679,6 +692,71 @@ internal sealed class OdsReader
         if (firstHeaderColumn is { } firstColumn && lastHeaderColumn is { } lastColumn)
             sheet.TitleColumns = (firstColumn, lastColumn);
         return sheet;
+    }
+
+    // ───────────────────────── Charts ─────────────────────────
+
+    /// <summary>The chart frames of the cells of row <paramref name="row"/> (a repeated row's first copy).</summary>
+    private void ChartFrames(XElement element, int row, Worksheet sheet)
+    {
+        var column = 0;
+        foreach (var cell in element.Elements())
+        {
+            if (cell.Name != Table + "table-cell" && cell.Name != Table + "covered-table-cell")
+                continue;
+            foreach (var frame in cell.Elements(Draw + "frame"))
+                ChartFrame(frame, row, column, sheet);
+            column += Math.Min(Repeat(cell, "number-columns-repeated"), MaxColumns);
+            if (column >= MaxColumns)
+                break;
+        }
+    }
+
+    /// <summary>A frame holding a chart object OdfChartReader draws, as a chart on the sheet; other frames are left out.</summary>
+    private void ChartFrame(XElement frame, int row, int column, Worksheet sheet)
+    {
+        if (frame.Element(Draw + "object") is not { } embedded || ChartObject(embedded) is not { } chart
+            || sheet.Drawings.Count(d => d is SheetChart) >= MaxCharts)
+            return;
+        var width = Points((string?)frame.Attribute(Svg + "width")) ?? 0;
+        var height = Points((string?)frame.Attribute(Svg + "height")) ?? 0;
+        if (!(width > 0 && height > 0 && width < 100_000 && height < 100_000))
+            return;
+        _charts.Charge(chart);
+        var x = Math.Clamp(Points((string?)frame.Attribute(Svg + "x")) ?? 0, 0, 100_000);
+        var y = Math.Clamp(Points((string?)frame.Attribute(Svg + "y")) ?? 0, 0, 100_000);
+        // A frame that moves and sizes with its cells names the cell its far corner is in.
+        (int, int, double, double)? to = null;
+        if (PrintRanges((string?)frame.Attribute(Table + "end-cell-address")) is [var end] && end.Top >= row && end.Left >= column)
+        {
+            to = (end.Top, end.Left, Math.Clamp(Points((string?)frame.Attribute(Table + "end-x")) ?? 0, 0, 100_000),
+                Math.Clamp(Points((string?)frame.Attribute(Table + "end-y")) ?? 0, 0, 100_000));
+        }
+        sheet.Drawings.Add(new SheetChart(chart, row, column, x, y, width, height) { To = to });
+    }
+
+    /// <summary>The chart of an embedded object (inline, or its folder's content.xml with styles.xml); null when it isn't one OdfChartReader draws.</summary>
+    private Charts.Chart? ChartObject(XElement embedded)
+    {
+        if (embedded.Element(Office + "document") is { } inline)
+            return Charts.OdfChartReader.Read(inline).Chart;
+        var href = ((string?)embedded.Attribute(XLink + "href"))?.Trim();
+        if (_zip is null || href is null)
+            return null;
+        if (href.StartsWith("./", StringComparison.Ordinal))
+            href = href[2..];
+        href = href.TrimEnd('/');
+        if (href.Length == 0 || href.Contains("..", StringComparison.Ordinal) || href.Contains(':', StringComparison.Ordinal) || href.StartsWith('/'))
+            return null;
+        try
+        {
+            var content = Load(_zip, href + "/content.xml")?.Root;
+            return Charts.OdfChartReader.IsChart(content) ? Charts.OdfChartReader.Read(content, Load(_zip, href + "/styles.xml")?.Root).Chart : null;
+        }
+        catch (InvalidDataException)
+        {
+            return null; // an object that isn't well-formed XML: left out, as other objects are
+        }
     }
 
     /// <summary>Rows (or columns) of a table in order, also inside groups; the flag marks header rows.</summary>

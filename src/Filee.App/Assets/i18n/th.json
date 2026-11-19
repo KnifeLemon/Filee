@@ -251,6 +251,8 @@
   "notice.renderer_left_out.pictures_one": "ละรูปภาพ 1 รายการ",
   "notice.renderer_left_out.objects_pictured": "วาดวัตถุที่ฝังไว้ {0} รายการจากรูปที่บันทึกไว้",
   "notice.renderer_left_out.objects_pictured_one": "วาดวัตถุที่ฝังไว้ 1 รายการจากรูปที่บันทึกไว้",
+  "notice.renderer_left_out.charts_pictured": "วาดแผนภูมิ {0} รายการจากรูปที่บันทึกไว้",
+  "notice.renderer_left_out.charts_pictured_one": "วาดแผนภูมิ 1 รายการจากรูปที่บันทึกไว้",
   "notice.renderer_left_out.formulas": "เขียนสูตร {0} รายการเป็นข้อความธรรมดา",
   "notice.renderer_left_out.formulas_one": "เขียนสูตร 1 รายการเป็นข้อความธรรมดา",
   "notice.renderer_left_out.vertical_text": "จัดข้อความแนวตั้งเป็นแนวนอน",
