@@ -80,12 +80,17 @@ internal sealed class SevenZipWriter
     }
 
     /// <summary>
-    /// The most data one solid block takes at <paramref name="level"/>: 16 × the LZMA2 dictionary (64 MiB fast,
-    /// 256 MiB normal, 1 GiB maximum). Beyond the dictionary a new block costs only a little ratio, and a reader that
-    /// wants one file decodes at most this much before it. The store level puts every file into its own folder.
+    /// The most data one solid block takes at <paramref name="level"/>: 64 MiB at the fast level, else 16 × the
+    /// LZMA2 dictionary (256 MiB normal, 1 GiB maximum). Beyond the dictionary a new block costs only a little ratio,
+    /// and a reader that wants one file decodes at most this much before it. The store level puts every file into its
+    /// own folder.
     /// </summary>
-    public static long SolidBlockSize(ArchiveLevel level) =>
-        level == ArchiveLevel.Store ? 0 : 16L * Lzma2Settings.For(level).Dictionary;
+    public static long SolidBlockSize(ArchiveLevel level) => level switch
+    {
+        ArchiveLevel.Store => 0,
+        ArchiveLevel.Fast => 64L << 20,
+        _ => 16L * Lzma2Settings.For(level).Dictionary,
+    };
 
     /// <summary>Entries added so far.</summary>
     public int Count => _entries.Count;

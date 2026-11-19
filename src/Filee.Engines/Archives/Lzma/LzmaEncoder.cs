@@ -3,8 +3,10 @@
 // and a new match from the MatchFinder.
 //
 // Two parsers:
-// - Greedy (the fast level): take the longest match. A repeat is preferred over a slightly longer new match, since it
-//   needs no distance; literal against short repeat is decided by their bit prices.
+// - Lazy (the fast level): take the longest match, unless the next position starts a better one (longer, or as long
+//   and nearer), in which case a literal goes first. A repeat is preferred over a slightly longer new match, since
+//   it needs no distance, and a match one shorter is preferred when it is far nearer; literal against short repeat
+//   is decided by their bit prices.
 // - Price-based (normal and maximum): a shortest-path search over the next positions. Every position in a window
 //   gets all its matches (one per length, the nearest distance), its four repeats, a literal and a short repeat;
 //   each choice is priced in 1/16 bits with the current probabilities and the cheapest way to reach every later
@@ -13,6 +15,7 @@
 //   its end is coded. Prices are refreshed from the probabilities every few KB.
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Filee.Engines.Archives.Lzma;
 
@@ -33,6 +36,12 @@ internal sealed class LzmaEncoder : LzmaModel
     private int _cachedAt = -1;
     private int _cachedLength;
     private uint _cachedDistance;
+
+    // The lazy parse's look at the next position: its matches, kept for the next call when a literal went first.
+    private int _nextAt = -1;
+    private int _nextCount;
+    private readonly int[] _nextLengths = new int[MatchMaxLength + 1];
+    private readonly uint[] _nextDistances = new uint[MatchMaxLength + 1];
 
     // The price-based parser: matches of the current position, the path nodes, and price tables.
     private const int OptimalWindow = 2048;
@@ -91,6 +100,7 @@ internal sealed class LzmaEncoder : LzmaModel
         ResetState();
         _total = 0;
         _cachedAt = -1;
+        _nextAt = -1;
     }
 
     /// <summary>The window moved back by <paramref name="shift"/> bytes (a slide); the cached search moves with it.</summary>
@@ -98,6 +108,8 @@ internal sealed class LzmaEncoder : LzmaModel
     {
         if (_cachedAt >= 0)
             _cachedAt -= shift;
+        if (_nextAt >= 0)
+            _nextAt -= shift;
     }
 
     private void EncodeOne(RangeEncoder rc, int end)
@@ -106,30 +118,26 @@ internal sealed class LzmaEncoder : LzmaModel
         var pos = _mf.Position;
         var available = Math.Min(MatchMaxLength, end - pos);
 
-        var mainLength = _mf.Find(available, out var mainDistance);
-
-        // The longest repeat of one of the last four distances.
-        var repLength = 0;
-        var repIndex = 0;
-        if (available >= 2)
+        // This position's matches (searched by the last call when it looked ahead), each longer than the one before.
+        int count;
+        if (_nextAt == pos)
         {
-            for (var i = 0; i < 4; i++)
+            count = _nextCount;
+            for (var k = 0; k < count; k++)
             {
-                var distance = Rep(i);
-                if (distance >= _total)
-                    continue;
-                var from = pos - (int)distance - 1;
-                if (buffer[from] != buffer[pos] || buffer[from + 1] != buffer[pos + 1])
-                    continue;
-                var length = MatchFinder.Common(buffer, pos, from, available);
-                if (length > repLength)
-                {
-                    repLength = length;
-                    repIndex = i;
-                }
+                _lengths[k] = Math.Min(_nextLengths[k], available);
+                _distances[k] = _nextDistances[k];
             }
         }
+        else
+        {
+            count = _mf.FindAll(pos, available, _lengths, _distances);
+        }
+        _nextAt = -1;
+        var mainLength = count > 0 ? _lengths[count - 1] : 0;
+        var mainDistance = count > 0 ? _distances[count - 1] : 0;
 
+        var repLength = LongestRep(buffer, pos, available, out var repIndex);
         if (repLength >= _settings.Nice)
         {
             EmitRep(rc, repIndex, repLength);
@@ -139,6 +147,14 @@ internal sealed class LzmaEncoder : LzmaModel
         {
             EmitMatch(rc, mainLength, mainDistance);
             return;
+        }
+
+        // One byte shorter but far nearer is cheaper.
+        while (count > 1 && _lengths[count - 2] + 1 == mainLength && FarNearer(_distances[count - 2], mainDistance))
+        {
+            count--;
+            mainLength = _lengths[count - 1];
+            mainDistance = _distances[count - 1];
         }
 
         // Short matches far back cost more than the literals they replace.
@@ -153,10 +169,84 @@ internal sealed class LzmaEncoder : LzmaModel
             return;
         }
 
-        if (mainLength >= 2)
-            EmitMatch(rc, mainLength, mainDistance);
-        else
+        if (mainLength < 2)
+        {
             EmitLiteralOrShortRep(rc);
+            return;
+        }
+
+        // A look at the next position: a better match there (or a repeat nearly as long) makes this one a literal.
+        if (available > 2)
+        {
+            var nextAvailable = Math.Min(MatchMaxLength, end - pos - 1);
+            _nextCount = _mf.FindAll(pos + 1, nextAvailable, _nextLengths, _nextDistances);
+            _nextAt = pos + 1;
+            if (_nextCount > 0)
+            {
+                var nextLength = _nextLengths[_nextCount - 1];
+                var nextDistance = _nextDistances[_nextCount - 1];
+                if (nextLength >= mainLength && nextDistance < mainDistance
+                    || nextLength == mainLength + 1 && !FarNearer(mainDistance, nextDistance)
+                    || nextLength > mainLength + 1
+                    || nextLength + 1 >= mainLength && mainLength >= 3 && FarNearer(nextDistance, mainDistance))
+                {
+                    EmitLiteral(rc);
+                    return;
+                }
+            }
+            if (RepReaches(buffer, pos + 1, nextAvailable, Math.Max(mainLength - 1, 2)))
+            {
+                EmitLiteral(rc);
+                return;
+            }
+        }
+        EmitMatch(rc, mainLength, mainDistance);
+    }
+
+    /// <summary>True when the distance <paramref name="near"/> is less than 1/128 of <paramref name="far"/>.</summary>
+    private static bool FarNearer(uint near, uint far) => far >> 7 > near;
+
+    /// <summary>The longest repeat of one of the last four distances at <paramref name="pos"/> (0 when none of 2 or more).</summary>
+    private int LongestRep(byte[] buffer, int pos, int available, out int repIndex)
+    {
+        repIndex = 0;
+        var repLength = 0;
+        if (available < 2)
+            return 0;
+        for (var i = 0; i < 4; i++)
+        {
+            var distance = Rep(i);
+            if (distance >= _total)
+                continue;
+            var from = pos - (int)distance - 1;
+            if (buffer[from] != buffer[pos] || buffer[from + 1] != buffer[pos + 1])
+                continue;
+            var length = MatchFinder.Common(buffer, pos, from, available);
+            if (length > repLength)
+            {
+                repLength = length;
+                repIndex = i;
+            }
+        }
+        return repLength;
+    }
+
+    /// <summary>True when one of the last four distances repeats at least <paramref name="length"/> bytes at <paramref name="pos"/> (one byte past the cursor).</summary>
+    private bool RepReaches(byte[] buffer, int pos, int available, int length)
+    {
+        if (available < length)
+            return false;
+        for (var i = 0; i < 4; i++)
+        {
+            var distance = Rep(i);
+            if (distance > _total)
+                continue;
+            var from = pos - (int)distance - 1;
+            if (buffer[from] == buffer[pos] && buffer[from + 1] == buffer[pos + 1]
+                && MatchFinder.Common(buffer, pos, from, length) == length)
+                return true;
+        }
+        return false;
     }
 
     // ───────── Price-based parse ─────────
@@ -430,6 +520,7 @@ internal sealed class LzmaEncoder : LzmaModel
             _alignPrices[i] = BitPrice.ReverseTree(Align, AlignBits, i);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private uint Rep(int index) => index switch { 0 => Rep0, 1 => Rep1, 2 => Rep2, _ => Rep3 };
 
     private void EmitLiteralOrShortRep(RangeEncoder rc)
@@ -469,35 +560,12 @@ internal sealed class LzmaEncoder : LzmaModel
         var pos = _mf.Position;
         var posState = (int)_total & PbMask;
         rc.EncodeBit(ref IsMatch[(State << 4) + posState], 0);
-        var probs = Literal.AsSpan(LiteralBase(_total, _total > 0 ? buffer[pos - 1] : 0), 0x300);
+        ref var probs = ref Literal.AsSpan(LiteralBase(_total, _total > 0 ? buffer[pos - 1] : 0), 0x300)[0];
         uint symbol = buffer[pos];
         if (State >= LiteralStates)
-        {
-            // Matched literal: while the bits agree with the byte at the last distance, a second set of
-            // probabilities (chosen by that byte's bit) is used.
-            uint matchByte = buffer[pos - (int)Rep0 - 1];
-            uint m = 1;
-            var same = true;
-            for (var i = 7; i >= 0; i--)
-            {
-                var bit = (int)((symbol >> i) & 1);
-                if (same)
-                {
-                    var matchBit = (matchByte >> i) & 1;
-                    rc.EncodeBit(ref probs[(int)(((1 + matchBit) << 8) + m)], bit);
-                    same = matchBit == (uint)bit;
-                }
-                else
-                {
-                    rc.EncodeBit(ref probs[(int)m], bit);
-                }
-                m = (m << 1) | (uint)bit;
-            }
-        }
+            rc.EncodeMatchedLiteral(ref probs, symbol, buffer[pos - (int)Rep0 - 1]);
         else
-        {
-            rc.EncodeTree(probs, 8, symbol);
-        }
+            rc.EncodeLiteral(ref probs, symbol);
         State = AfterLiteral(State);
         Advance(1);
     }

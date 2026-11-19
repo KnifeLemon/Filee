@@ -1,7 +1,7 @@
 // Writes .bz2 files with Filee's own encoder, from the bzip2 format: the "BZh9" stream header, blocks of at most
 // 900,000 bytes, and the end marker with the CRC of all block CRCs. The input goes through bzip2's first run-length
 // step here (runs of 4 to 255 equal bytes become 4 bytes and a count) while the block CRC is taken over the bytes as
-// they came; full blocks are encoded (Bzip2BlockEncoder) on up to four threads at once, and written in order. Memory
+// they came; full blocks are encoded (Bzip2BlockEncoder) on up to eight threads at once, and written in order. Memory
 // stays bounded by the number of blocks in flight (about 20 MB each while sorting). It is a write-only stream, so a TAR
 // can be compressed while it is written (.tar.bz2) without a temporary file.
 
@@ -45,8 +45,8 @@ internal sealed class Bzip2Writer : Stream
         public Task? Work { get; set; }
     }
 
-    /// <summary>Blocks encoded at once by default: a few cores, leaving the rest to the machine.</summary>
-    internal static int DefaultThreads => Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
+    /// <summary>Blocks encoded at once by default: one per processor, at most eight (about 20 MB each while sorting).</summary>
+    internal static int DefaultThreads => Math.Clamp(Environment.ProcessorCount, 1, 8);
 
     /// <param name="threads">Blocks encoded at once (1 encodes on the writing thread).</param>
     public Bzip2Writer(Stream output, ArchiveLevel level, CancellationToken cancellationToken = default, bool leaveOpen = false,

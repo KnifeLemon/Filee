@@ -1,7 +1,7 @@
-// Archives coded and decoded on several threads (Lzma2Writer blocks, Lzma2Parallel, XzReader blocks, Bzip2Decoder's
-// stream): the same bytes as on one thread, the same errors at the same place, 7-Zip reads what Filee writes (skipped
-// when it is missing), and cancellation stops the workers. Block sizes are made small so that little data gives many
-// blocks.
+// Archives coded and decoded on several threads (Lzma2Writer blocks, the match finder's search threads, Lzma2Parallel,
+// XzReader blocks, Bzip2Decoder's stream, ReadAheadStream): the same bytes as on one thread, the same errors at the
+// same place, 7-Zip reads what Filee writes (skipped when it is missing), and cancellation stops the workers. Block
+// sizes are made small so that little data gives many blocks.
 
 using Filee.Core.Presets;
 using Filee.Engines.Archives;
@@ -379,5 +379,212 @@ public class ArchiveThreadTests(EngineFixture fx) : IClassFixture<EngineFixture>
             {
             }
         });
+    }
+    // ───────── Match finder threads ─────────
+
+    [Fact]
+    public void The_match_finder_split_over_threads_gives_the_same_bytes()
+    {
+        // A dictionary smaller than the block, so tree slots are taken over a dictionary later (by another thread).
+        var data = Bzip2WriterTests.Mixed(1_400_000);
+        var settings = new Lzma2Settings(1 << 18, new LzmaEncoderSettings(Depth: 32, Nice: 32, Optimal: true, Tree: true), Store: false);
+        byte[] Coded(int searchThreads)
+        {
+            Lzma2Writer.TestThreads.Value = 1;
+            Lzma2Writer.TestBlockSize.Value = 1 << 20;
+            Lzma2Writer.TestSearchAhead.Value = searchThreads > 0;
+            Lzma2Writer.TestSearchThreads.Value = searchThreads;
+            try
+            {
+                using var output = new MemoryStream();
+                var writer = new Lzma2Writer(output, settings, data.Length, Ct);
+                for (var at = 0; at < data.Length; at += 65_536)
+                    writer.Write(data.AsSpan(at, Math.Min(65_536, data.Length - at)));
+                writer.Finish();
+                return output.ToArray();
+            }
+            finally
+            {
+                Lzma2Writer.TestThreads.Value = null;
+                Lzma2Writer.TestBlockSize.Value = null;
+                Lzma2Writer.TestSearchAhead.Value = null;
+                Lzma2Writer.TestSearchThreads.Value = null;
+            }
+        }
+        var alone = Coded(0);
+        foreach (var threads in new[] { 1, 2, 4 })
+            Assert.Equal(alone, Coded(threads));
+        var reader = new Lzma2Reader(new ByteInput(new MemoryStream(alone)), 1 << 18, data.Length, Ct);
+        Assert.Equal(data, ReadAll(new Lzma2Stream(reader)));
+    }
+
+    [Fact]
+    public void A_distance_past_the_dictionary_is_damage_even_within_the_windows_guard()
+    {
+        // A 100-byte repeat from 4,100 bytes back, once 4,200 bytes are out: fine with an 8 KiB dictionary, beyond a
+        // 4 KiB one (the decoder's window has a few bytes more than the dictionary; they don't count).
+        var random = Noise(4_200, 9);
+        byte[] data = [.. random, .. random.AsSpan(100, 100), .. Noise(300, 10)];
+        var settings = new Lzma2Settings(1 << 13, new LzmaEncoderSettings(Depth: 32, Nice: 32, Optimal: true, Tree: true), Store: false);
+        using var output = new MemoryStream();
+        var writer = new Lzma2Writer(output, settings, data.Length, Ct);
+        writer.Write(data);
+        writer.Finish();
+        var coded = output.ToArray();
+        byte[] Decode(uint dictionary) =>
+            ReadAll(new Lzma2Stream(new Lzma2Reader(new ByteInput(new MemoryStream(coded)), dictionary, data.Length, Ct)));
+        Assert.Equal(data, Decode(1 << 13));
+        Assert.Contains("before the start of the window", Assert.Throws<InvalidDataException>(() => Decode(1 << 12)).Message);
+    }
+
+    // ───────── Read-ahead ─────────
+
+    /// <summary>Counts up byte by byte, a thousand at a time, and fails past <paramref name="failAt"/> (-1: never ends).</summary>
+    private sealed class Counting(long failAt) : Stream
+    {
+        private long _position;
+        private int _reads;
+
+        public int Reads => Volatile.Read(ref _reads);
+
+        public bool Disposed { get; private set; }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            Interlocked.Increment(ref _reads);
+            if (failAt >= 0 && _position >= failAt)
+                throw new InvalidDataException("the test data is damaged here");
+            var n = Math.Min(buffer.Length, 1000);
+            for (var i = 0; i < n; i++)
+                buffer[i] = (byte)(_position + i);
+            _position += n;
+            return n;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private static Stream Ahead(Stream inner, CancellationToken cancellationToken)
+    {
+        ReadAheadStream.TestMode.Value = true;
+        try
+        {
+            var stream = ReadAheadStream.Wrap(inner, 10, cancellationToken);
+            Assert.NotSame(inner, stream);
+            return stream;
+        }
+        finally
+        {
+            ReadAheadStream.TestMode.Value = null;
+        }
+    }
+
+    [Fact]
+    public void Read_ahead_hands_out_every_byte_then_the_decoders_error()
+    {
+        var inner = new Counting(failAt: 3_456_000);
+        using var stream = Ahead(inner, Ct);
+        var buffer = new byte[70_001];
+        var random = new Random(3);
+        long total = 0;
+        var error = Assert.Throws<InvalidDataException>(() =>
+        {
+            int read;
+            while ((read = stream.Read(buffer, 0, random.Next(1, buffer.Length))) > 0)
+            {
+                for (var i = 0; i < read; i++)
+                    Assert.Equal((byte)(total + i), buffer[i]);
+                total += read;
+            }
+        });
+        Assert.Equal("the test data is damaged here", error.Message);
+        // Everything the decoder gave before it failed, nothing more.
+        Assert.Equal(inner.Position, total);
+        Assert.True(total >= 3_456_000);
+    }
+
+    [Fact]
+    public void Read_ahead_ends_where_the_decoder_ends_and_stops_with_the_stream()
+    {
+        var data = LzmaTests.Prose(2_500_000);
+        using (var stream = Ahead(new MemoryStream(data), Ct))
+            Assert.Equal(data, ReadAll(stream));
+
+        // Disposed half way: the worker stops, the decoder is disposed and read no more.
+        var inner = new Counting(failAt: -1);
+        var ahead = Ahead(inner, Ct);
+        var buffer = new byte[100_000];
+        ahead.ReadExactly(buffer);
+        ahead.Dispose();
+        Assert.True(inner.Disposed);
+        var reads = inner.Reads;
+        Thread.Sleep(50);
+        Assert.Equal(reads, inner.Reads);
+    }
+
+    [Fact]
+    public void A_cancelled_read_ahead_stops()
+    {
+        using var cancel = new CancellationTokenSource();
+        using var stream = Ahead(new Counting(failAt: -1), cancel.Token);
+        var buffer = new byte[1 << 16];
+        Assert.True(stream.Read(buffer) > 0);
+        cancel.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+        {
+            while (stream.Read(buffer) > 0)
+            {
+            }
+        });
+    }
+
+    [Fact]
+    public async Task BCJ_and_BCJ2_folders_unpack_alike_with_their_coders_on_threads_or_not()
+    {
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip makes the archives this test reads (optional engine, not installed)");
+        var dir = fx.NewFolder();
+        var source = Directory.CreateDirectory(Path.Combine(dir, "code")).FullName;
+        for (var i = 0; i < 4; i++)
+            File.WriteAllBytes(Path.Combine(source, $"part{i}.bin"), SevenZipReaderTests.X86Like(400_000 + i * 54_321, i));
+        foreach (var filter in new[] { "BCJ", "BCJ2" })
+        {
+            var archive = Path.Combine(dir, filter + ".7z");
+            await Run7zAsync("a", "-t7z", "-mf=" + filter, "-mx5", archive, source);
+            foreach (var ahead in new[] { false, true })
+            {
+                var opened = ReadAheadStream.Opened;
+                ReadAheadStream.TestMode.Value = ahead;
+                var target = fx.NewFolder();
+                try
+                {
+                    using var file = File.OpenRead(archive);
+                    SevenZipReader.Extract(file, Path.GetFileName(archive), target, Ct);
+                }
+                finally
+                {
+                    ReadAheadStream.TestMode.Value = null;
+                }
+                if (ahead)
+                    Assert.True(ReadAheadStream.Opened > opened, "no coder was read ahead");
+                foreach (var part in Directory.GetFiles(source))
+                    Assert.Equal(File.ReadAllBytes(part), File.ReadAllBytes(Path.Combine(target, "code", Path.GetFileName(part))));
+            }
+        }
     }
 }
