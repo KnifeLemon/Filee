@@ -72,7 +72,7 @@ internal static class ZipReader
 
             ArchiveSafety.CheckListing([.. entries.Select(e => new ArchiveItem(e.FullName, IsFolder(e), IsFolder(e) ? 0 : e.Length, IsLink: IsLink(e)))],
                 name, stream.Length, folder);
-            var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
+            using var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
             foreach (var entry in entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();

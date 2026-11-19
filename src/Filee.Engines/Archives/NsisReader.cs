@@ -387,7 +387,7 @@ internal static class NsisReader
             // Sizes are known only once decoded: the listing checks names, paths and counts, the budget the bytes.
             ArchiveSafety.CheckListing([.. files.Select(f => new ArchiveItem(f.Path, false, 0))], _name, _file.Length, folder);
             CheckFolders(files, folder);
-            var writer = new EntryWriter(folder, new UnpackBudget(_name, _file.Length, folder), cancellationToken);
+            using var writer = new EntryWriter(folder, new UnpackBudget(_name, _file.Length, folder), cancellationToken);
             long position = 0; // in a solid stream, after the header block
             foreach (var group in files.GroupBy(f => f.Offset).OrderBy(g => g.Key))
             {
@@ -411,10 +411,7 @@ internal static class NsisReader
                 }
                 // The same data under other names: copies of the file just written.
                 foreach (var other in group.Skip(1))
-                {
-                    using var copy = new FileStream(written, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
-                    writer.AddFile(other.Path, copy, copy.Length, null, other.Modified);
-                }
+                    writer.AddCopy(other.Path, written, other.Modified);
             }
             writer.Finish();
         }

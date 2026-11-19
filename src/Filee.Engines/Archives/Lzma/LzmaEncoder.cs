@@ -85,6 +85,14 @@ internal sealed class LzmaEncoder : LzmaModel
         _pricedAt = -1;
     }
 
+    /// <summary>Starts over for a new block (after a dictionary reset): state, position and the cached search.</summary>
+    public void Restart()
+    {
+        ResetState();
+        _total = 0;
+        _cachedAt = -1;
+    }
+
     /// <summary>The window moved back by <paramref name="shift"/> bytes (a slide); the cached search moves with it.</summary>
     public void Shifted(int shift)
     {
@@ -113,7 +121,7 @@ internal sealed class LzmaEncoder : LzmaModel
                 var from = pos - (int)distance - 1;
                 if (buffer[from] != buffer[pos] || buffer[from + 1] != buffer[pos + 1])
                     continue;
-                var length = buffer.AsSpan(pos, available).CommonPrefixLength(buffer.AsSpan(from, available));
+                var length = MatchFinder.Common(buffer, pos, from, available);
                 if (length > repLength)
                 {
                     repLength = length;
@@ -211,7 +219,7 @@ internal sealed class LzmaEncoder : LzmaModel
                 var from = cur - (int)distance - 1;
                 if (buffer[from] != buffer[cur] || buffer[from + 1] != buffer[cur + 1])
                     continue;
-                var length = buffer.AsSpan(cur, available).CommonPrefixLength(buffer.AsSpan(from, available));
+                var length = MatchFinder.Common(buffer, cur, from, available);
                 _repLengths[r] = length;
                 if (length > bestRep)
                 {

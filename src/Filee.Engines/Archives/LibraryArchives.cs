@@ -139,7 +139,7 @@ internal static class LibraryArchives
         ArchiveSafety.CheckListing([.. entries.Select(e => new ArchiveItem(e.Key ?? "", e.IsDirectory, e.IsDirectory ? 0 : e.Size, Encrypted(archive, e), IsLink(e)))],
             name, length, folder);
 
-        var writer = new EntryWriter(folder, new UnpackBudget(name, length, folder), cancellationToken);
+        using var writer = new EntryWriter(folder, new UnpackBudget(name, length, folder), cancellationToken);
         var checksCrc = archive.Type is ArchiveType.Zip or ArchiveType.SevenZip;
         if (archive.IsSolid || archive.Type == ArchiveType.SevenZip)
         {

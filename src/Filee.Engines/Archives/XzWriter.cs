@@ -1,8 +1,11 @@
 // Writes .xz files (The .xz File Format 1.2.1) with Filee's own LZMA2 encoder (Archives/Lzma): one stream with a
-// CRC-64 check, one block whose header names the LZMA2 filter and its dictionary (no sizes, since the data is
-// written as it comes), the index with that block's unpadded and unpacked size, and the footer. Nothing is written
-// for an empty input but the stream header, an empty index and the footer, as xz does. It is a write-only stream, so a
-// TAR can be compressed while it is written (.tar.xz) without a temporary file.
+// CRC-64 check and one block per LZMA2 block (Lzma2Writer cuts the input into blocks of a few dictionaries and codes
+// them on several threads). Each block header names the LZMA2 filter, its dictionary and both sizes, so readers can
+// unpack the blocks side by side (as xz and 7-Zip do with several threads, and Filee's XzReader); then the block's
+// data, padding to four bytes and the CRC-64 of what it unpacks to. The index lists every block's unpadded and
+// unpacked size, then the footer. Nothing is written for an empty input but the stream header, an empty index and the
+// footer, as xz does. It is a write-only stream, so a TAR can be compressed while it is written (.tar.xz) without a
+// temporary file.
 
 using System.Buffers.Binary;
 using Filee.Core.Presets;
@@ -13,17 +16,15 @@ namespace Filee.Engines.Archives;
 /// <summary>A write-only stream that compresses into an .xz file.</summary>
 internal sealed class XzWriter : Stream
 {
-    private const int BlockHeaderSize = 12;
     private const int CheckSize = 8;
 
     private readonly Stream _output;
     private readonly bool _leaveOpen;
-    private readonly Lzma2Settings _settings;
-    private readonly long _expectedSize;
-    private readonly CancellationToken _cancellationToken;
-    private readonly Crc64 _check = new();
+    private readonly Lzma2Writer _lzma2;
+    private readonly byte _property;
     private readonly byte[] _flags = [0x00, XzFormat.CheckCrc64];
-    private Lzma2Writer? _block;
+    private readonly List<(long Unpadded, long Unpacked)> _records = [];
+    private readonly CancellationToken _cancellationToken;
     private long _unpacked;
     private bool _finished;
 
@@ -36,9 +37,10 @@ internal sealed class XzWriter : Stream
     {
         _output = output;
         _leaveOpen = leaveOpen;
-        _settings = Lzma2Settings.For(level, expectedSize);
-        _expectedSize = expectedSize;
+        var settings = Lzma2Settings.For(level, expectedSize);
+        _property = XzFormat.PropertyFor((uint)settings.Dictionary);
         _cancellationToken = cancellationToken;
+        _lzma2 = new Lzma2Writer(output, settings, expectedSize, cancellationToken, WriteBlock);
 
         Span<byte> header = stackalloc byte[12];
         XzFormat.HeaderMagic.CopyTo(header);
@@ -55,53 +57,53 @@ internal sealed class XzWriter : Stream
         if (buffer.IsEmpty)
             return;
         _cancellationToken.ThrowIfCancellationRequested();
-        if (_block is null)
-            StartBlock();
-        _check.Append(buffer);
         _unpacked += buffer.Length;
-        _block!.Write(buffer);
+        _lzma2.Write(buffer);
     }
 
-    private void StartBlock()
+    /// <summary>One .xz block: header with both sizes, the LZMA2 data and its end byte, padding, CRC-64.</summary>
+    private void WriteBlock(Lzma2Block block)
     {
-        // Size / 4 − 1, flags (one filter, no sizes), filter id 0x21, 1 property byte, the dictionary, padding, CRC-32.
-        Span<byte> header = stackalloc byte[BlockHeaderSize];
+        var packed = block.Chunks.Length + 1L;
+        // Size / 4 − 1, flags (one filter, both sizes), the sizes, filter id 0x21, 1 property byte, the dictionary,
+        // padding to four bytes, CRC-32.
+        Span<byte> header = stackalloc byte[32];
         header.Clear();
-        header[0] = BlockHeaderSize / 4 - 1;
-        header[1] = 0x00;
-        header[2] = (byte)XzFormat.Lzma2FilterId;
-        header[3] = 1;
-        header[4] = XzFormat.PropertyFor((uint)_settings.Dictionary);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[8..], Crc32.Compute(header[..8]));
-        _output.Write(header);
-        _block = new Lzma2Writer(_output, _settings, _expectedSize, _cancellationToken);
+        header[1] = 0xC0;
+        var at = 2;
+        at += XzFormat.WriteVarint(header[at..], (ulong)packed);
+        at += XzFormat.WriteVarint(header[at..], (ulong)block.Unpacked);
+        header[at++] = (byte)XzFormat.Lzma2FilterId;
+        header[at++] = 1;
+        header[at++] = _property;
+        at = (at + 3) & ~3;
+        header[0] = (byte)(at / 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[at..], Crc32.Compute(header[..at]));
+        at += 4;
+        _output.Write(header[..at]);
+        _output.Write(block.Chunks);
+
+        Span<byte> tail = stackalloc byte[1 + 3 + CheckSize];
+        tail.Clear();
+        var padding = (int)((4 - packed % 4) % 4);
+        BinaryPrimitives.WriteUInt64LittleEndian(tail[(1 + padding)..], block.Check);
+        _output.Write(tail[..(1 + padding + CheckSize)]);
+        _records.Add((at + packed + CheckSize, block.Unpacked));
     }
 
-    /// <summary>Compresses what is left and writes the block's end, the index and the footer.</summary>
+    /// <summary>Compresses what is left and writes the last blocks, the index and the footer.</summary>
     public void Finish()
     {
         if (_finished)
             return;
         _finished = true;
-
-        var records = new List<(long Unpadded, long Unpacked)>();
-        if (_block is not null)
-        {
-            _block.Finish();
-            var packed = _block.Written;
-            Span<byte> tail = stackalloc byte[3 + CheckSize];
-            tail.Clear();
-            var padding = (int)((4 - packed % 4) % 4);
-            BinaryPrimitives.WriteUInt64LittleEndian(tail[padding..], _check.Value);
-            _output.Write(tail[..(padding + CheckSize)]);
-            records.Add((BlockHeaderSize + packed + CheckSize, _unpacked));
-        }
+        _lzma2.Finish();
 
         // Index: indicator 0, record count, (unpadded, unpacked) per block, padding to four bytes, CRC-32.
-        var index = new byte[1 + 9 + records.Count * 18 + 3 + 4];
+        var index = new byte[1 + 9 + _records.Count * 18 + 3 + 4];
         var at = 1;
-        at += XzFormat.WriteVarint(index.AsSpan(at), (ulong)records.Count);
-        foreach (var (unpadded, unpacked) in records)
+        at += XzFormat.WriteVarint(index.AsSpan(at), (ulong)_records.Count);
+        foreach (var (unpadded, unpacked) in _records)
         {
             at += XzFormat.WriteVarint(index.AsSpan(at), (ulong)unpadded);
             at += XzFormat.WriteVarint(index.AsSpan(at), (ulong)unpacked);

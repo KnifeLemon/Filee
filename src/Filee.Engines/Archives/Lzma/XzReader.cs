@@ -7,8 +7,15 @@
 // Limits: the dictionary each block names is refused past the caller's limit before anything is allocated, and the
 // window grows with the output (LzmaDecoder). What the stream unpacks to is not limited here: the caller copies it
 // through ArchiveFiles.CopyLimited with an UnpackBudget, like every other single-stream decoder.
+//
+// Threads: a block whose header names both sizes (as xz, 7-Zip and Filee write them with several threads) is read
+// whole, then decoded and checked on a worker thread while the next block headers are read (Lzma2Parallel bounds how
+// many and how large). Blocks are handed out in order; a block that fails on its thread is decoded again on the
+// reader's thread as it is read, so damaged data gives the same bytes and the same error, at the same place, as the
+// one-thread reader. An error in a header read ahead is thrown after the blocks before it.
 
 using System.Buffers.Binary;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 
 namespace Filee.Engines.Archives.Lzma;
@@ -41,6 +48,15 @@ internal sealed class XzReader : Stream
     private long _blockUnpacked;
     private long _position;
 
+    // Blocks decoding on worker threads, in order; the one being handed out; an error met while reading ahead.
+    private readonly Queue<AheadBlock> _ahead = new();
+    private Lzma2Parallel.Decoded? _current;
+    private Replay? _replay;
+    private int _currentPosition;
+    private int _aheadLimit = Environment.ProcessorCount;
+    private ExceptionDispatchInfo? _deferred;
+    private CancellationTokenSource? _cancel;
+
     /// <param name="name">The file name used in error messages.</param>
     /// <param name="maxDictionary">Dictionaries larger than this are refused (<see cref="ArchiveSafety.Oversized"/>).</param>
     public XzReader(Stream input, string name, uint maxDictionary = DefaultMaxDictionary,
@@ -63,6 +79,58 @@ internal sealed class XzReader : Stream
         while (true)
         {
             _cancellationToken.ThrowIfCancellationRequested();
+            if (_replay is { } replay)
+            {
+                var n = replay.Reader.Read(buffer);
+                if (n > 0)
+                {
+                    replay.Check.Append(buffer[..n]);
+                    replay.Unpacked += n;
+                    _position += n;
+                    if (replay.Unpacked > replay.Block.DeclaredUnpacked)
+                        throw Damaged("a block unpacks to more than its header says");
+                    return n;
+                }
+                CheckBlockEnd(replay.Input, replay.Input.Consumed, replay.Block.DeclaredPacked, replay.Block.DeclaredUnpacked, replay.Unpacked,
+                    _checkType, replay.Check, _name);
+                _replay = null;
+                continue;
+            }
+            if (_current is { } current)
+            {
+                if (_currentPosition < current.Count)
+                {
+                    var count = Math.Min(buffer.Length, current.Count - _currentPosition);
+                    current.Output.AsSpan(_currentPosition, count).CopyTo(buffer);
+                    _currentPosition += count;
+                    _position += count;
+                    return count;
+                }
+                _current = null;
+            }
+            ReadAhead();
+            if (_ahead.TryDequeue(out var next))
+            {
+                var decoded = next.Work.GetAwaiter().GetResult();
+                if (decoded.Error is { } error)
+                {
+                    // Decoded again here, as the one-thread reader reads it.
+                    if (error.SourceException is OperationCanceledException)
+                        error.Throw();
+                    var input = new ByteInput(new MemoryStream(next.Data, 0, next.Length, writable: false));
+                    _replay = new Replay(next, input, new Lzma2Reader(input, next.Dictionary, next.DeclaredUnpacked, _cancellationToken),
+                        Check.Create(_checkType));
+                    continue;
+                }
+                _current = decoded;
+                _currentPosition = 0;
+                continue;
+            }
+            if (_deferred is { } deferred)
+            {
+                _deferred = null;
+                deferred.Throw();
+            }
             switch (_step)
             {
                 case Step.StreamHeader:
@@ -91,6 +159,25 @@ internal sealed class XzReader : Stream
                     break;
                 default:
                     return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads the next block headers (and the blocks that name both sizes) while blocks decode on worker threads; an
+    /// error is kept until the blocks before it are handed out.
+    /// </summary>
+    private void ReadAhead()
+    {
+        while (_ahead.Count > 0 && _ahead.Count < _aheadLimit && _step == Step.BlockOrIndex && _deferred is null)
+        {
+            try
+            {
+                ReadBlockHeaderOrIndex();
+            }
+            catch (Exception ex)
+            {
+                _deferred = ExceptionDispatchInfo.Capture(ex);
             }
         }
     }
@@ -168,31 +255,126 @@ internal sealed class XzReader : Stream
 
         _blockHeaderSize = size;
         _blockUnpacked = 0;
+        if (TryDecodeAhead(dictionary!.Value))
+            return;
         _check = Check.Create(_checkType);
-        _block = new Lzma2Reader(_input, dictionary!.Value, _declaredUnpacked, _cancellationToken);
+        _block = new Lzma2Reader(_input, dictionary.Value, _declaredUnpacked, _cancellationToken);
         _step = Step.BlockData;
+    }
+
+    /// <summary>
+    /// Reads a block whose header names both sizes whole and decodes it on a worker thread, when threads are allowed
+    /// and it fits in memory beside the others; false to decode it here as it is read.
+    /// </summary>
+    private bool TryDecodeAhead(uint dictionary)
+    {
+        if (!Lzma2Parallel.Enabled || _declaredPacked < 0 || _declaredUnpacked < 0
+            || _declaredPacked > Lzma2Parallel.MaxSegment || _declaredUnpacked > Lzma2Parallel.MaxSegment)
+            return false;
+        // A block that hardly shrank is mostly stored chunks: copying them here is quicker than a thread.
+        if (!Lzma2Parallel.Forced && _declaredPacked > _declaredUnpacked / 10 * 9)
+            return false;
+        var checkSize = XzFormat.CheckSize(_checkType);
+        var length = (int)_declaredPacked + (int)((4 - _declaredPacked % 4) % 4) + checkSize;
+        var workers = Lzma2Parallel.Workers(_declaredUnpacked, length, dictionary);
+        if (workers < 2)
+            return false;
+        _aheadLimit = workers;
+        var data = GC.AllocateUninitializedArray<byte>(length);
+        var read = _input.ReadAtMost(data);
+        // Recorded as the header says: a block that differs fails on its own thread, before the index is compared.
+        _blocks.Add((_blockHeaderSize + _declaredPacked + checkSize, _declaredUnpacked));
+        _cancel ??= CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken);
+        var (token, packed, unpacked, checkType, name) = (_cancel.Token, _declaredPacked, (int)_declaredUnpacked, _checkType, _name);
+        var work = Task.Run(() => DecodeBlock(data, read, dictionary, packed, unpacked, checkType, name, token), CancellationToken.None);
+        _ahead.Enqueue(new AheadBlock(work, data, read, dictionary, packed, unpacked));
+        _step = Step.BlockOrIndex;
+        return true;
+    }
+
+    /// <summary>A block read whole and decoding on a worker thread, with what it takes to decode it again here.</summary>
+    private sealed record AheadBlock(Task<Lzma2Parallel.Decoded> Work, byte[] Data, int Length, uint Dictionary, long DeclaredPacked,
+        int DeclaredUnpacked);
+
+    /// <summary>A block that failed on its thread, decoded again on this one as it is read.</summary>
+    private sealed class Replay(AheadBlock block, ByteInput input, Lzma2Reader reader, Check check)
+    {
+        public AheadBlock Block { get; } = block;
+        public ByteInput Input { get; } = input;
+        public Lzma2Reader Reader { get; } = reader;
+        public Check Check { get; } = check;
+        public long Unpacked { get; set; }
+    }
+
+    /// <summary>A block read whole (data, padding and check), decoded and checked as <see cref="FinishBlock"/> does.</summary>
+    private static Lzma2Parallel.Decoded DecodeBlock(byte[] data, int length, uint dictionary, long declaredPacked, int declaredUnpacked,
+        int checkType, string name, CancellationToken cancellationToken)
+    {
+        var result = new Lzma2Parallel.Decoded(GC.AllocateUninitializedArray<byte>(declaredUnpacked));
+        try
+        {
+            var input = new ByteInput(new MemoryStream(data, 0, length, writable: false));
+            var reader = new Lzma2Reader(input, dictionary, declaredUnpacked, cancellationToken);
+            var check = Check.Create(checkType);
+            var output = result.Output;
+            while (true)
+            {
+                var read = result.Count < declaredUnpacked ? reader.Read(output.AsSpan(result.Count)) : 0;
+                if (read == 0)
+                {
+                    // All of it, or the data ended; one more byte would be past the header's size.
+                    Span<byte> probe = stackalloc byte[1];
+                    if (result.Count == declaredUnpacked && reader.Read(probe) > 0)
+                        throw ArchiveSafety.Damaged(name, "a block unpacks to more than its header says");
+                    break;
+                }
+                check.Append(output.AsSpan(result.Count, read));
+                result.Count += read;
+            }
+            CheckBlockEnd(input, input.Consumed, declaredPacked, declaredUnpacked, result.Count, checkType, check, name);
+        }
+        catch (Exception ex)
+        {
+            result.Error = ExceptionDispatchInfo.Capture(ex);
+        }
+        return result;
     }
 
     private void FinishBlock()
     {
         var packed = _input.Consumed - _blockStart - _blockHeaderSize;
-        if (_declaredPacked >= 0 && packed != _declaredPacked)
-            throw Damaged("a block's packed size does not match its header");
-        if (_declaredUnpacked >= 0 && _blockUnpacked != _declaredUnpacked)
-            throw Damaged("a block's unpacked size does not match its header");
-        for (var padding = (4 - (int)(packed % 4)) % 4; padding > 0; padding--)
-            if (Next() != 0)
-                throw Damaged("a block has data in its padding");
-
-        var stored = new byte[XzFormat.CheckSize(_checkType)];
-        _input.ReadExactly(stored);
-        if (!_check!.Matches(stored))
-            throw Damaged("the check of the unpacked data does not match");
-
-        _blocks.Add((_blockHeaderSize + packed + stored.Length, _blockUnpacked));
+        var checkSize = CheckBlockEnd(_input, packed, _declaredPacked, _declaredUnpacked, _blockUnpacked, _checkType, _check!, _name);
+        _blocks.Add((_blockHeaderSize + packed + checkSize, _blockUnpacked));
         _block = null;
         _check = null;
         _step = Step.BlockOrIndex;
+    }
+
+    /// <summary>
+    /// Compares a block's sizes with its header, reads its padding and check from <paramref name="input"/> and
+    /// compares the check; returns the check's size.
+    /// </summary>
+    private static int CheckBlockEnd(ByteInput input, long packed, long declaredPacked, long declaredUnpacked, long unpacked, int checkType,
+        Check check, string name)
+    {
+        if (declaredPacked >= 0 && packed != declaredPacked)
+            throw ArchiveSafety.Damaged(name, "a block's packed size does not match its header");
+        if (declaredUnpacked >= 0 && unpacked != declaredUnpacked)
+            throw ArchiveSafety.Damaged(name, "a block's unpacked size does not match its header");
+        for (var padding = (4 - (int)(packed % 4)) % 4; padding > 0; padding--)
+        {
+            var b = input.ReadByte();
+            if (b < 0)
+                throw ArchiveSafety.Damaged(name, "the data ends too early");
+            if (b != 0)
+                throw ArchiveSafety.Damaged(name, "a block has data in its padding");
+        }
+
+        var stored = new byte[XzFormat.CheckSize(checkType)];
+        input.ReadExactly(stored);
+        if (!check.Matches(stored))
+            throw ArchiveSafety.Damaged(name, "the check of the unpacked data does not match");
+        return stored.Length;
     }
 
     private void ReadIndexAndFooter()
@@ -315,8 +497,13 @@ internal sealed class XzReader : Stream
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing && !_leaveOpen)
-            _stream.Dispose();
+        if (disposing)
+        {
+            _cancel?.Cancel();
+            _cancel?.Dispose();
+            if (!_leaveOpen)
+                _stream.Dispose();
+        }
         base.Dispose(disposing);
     }
 

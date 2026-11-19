@@ -49,7 +49,7 @@ internal static class CpioReader
         ArchiveSafety.CheckListing([.. entries.Select(e => new ArchiveItem(e.Name, e.Type == 0x4000, SizeOf(e), IsLink: e.Type is not (0x4000 or 0x8000)))],
             name, stream.Length, folder);
 
-        var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
+        using var writer = new EntryWriter(folder, new UnpackBudget(name, stream.Length, folder), cancellationToken);
         // Hard links of a newc group without data yet: (device, inode) → names waiting for it.
         var waiting = new Dictionary<(long, long), List<Entry>>();
         foreach (var entry in entries)
