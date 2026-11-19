@@ -63,6 +63,7 @@
   "home.open_file": "فتح الملف",
   "home.open_with": "فتح باستخدام",
   "home.clear_history": "مسح",
+  "home.remove_from_history": "إزالة من السجل",
   "home.files": "عدد الملفات: {0}",
   "home.failed_files": "فشل: {0}",
   "home.undo": "تراجع",

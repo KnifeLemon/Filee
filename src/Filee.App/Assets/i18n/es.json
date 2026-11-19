@@ -63,6 +63,7 @@
   "home.open_file": "Abrir archivo",
   "home.open_with": "Abrir con",
   "home.clear_history": "Borrar",
+  "home.remove_from_history": "Quitar del historial",
   "home.files": "{0} archivos",
   "home.failed_files": "{0} con error",
   "home.undo": "Deshacer",
