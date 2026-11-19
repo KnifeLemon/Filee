@@ -743,6 +743,23 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Equal(single + half, await After("360"), 0.5f);
     }
 
+    [Fact]
+    public async Task Issue1152_the_larger_of_the_spaces_between_two_paragraphs_counts()
+    {
+        // Word keeps the larger of a heading's 6 pt after and the next heading's 12 pt before between them (12 pt, not 18),
+        // unless its settings turn its HTML paragraph spacing off.
+        const string Spacing = "<w:spacing w:before=\"240\" w:after=\"120\"/>";
+        var body = P(R("First"), Spacing) + P(R("Second"), Spacing);
+        var larger = Single(await DocxAsync(Docx(body)));
+        var both = Docx(body);
+        both.Settings = "<w:compat><w:doNotUseHTMLParagraphAutoSpacing/></w:compat>";
+        var summed = Single(await DocxAsync(both));
+
+        var single = LineHeight(RepositoryFonts.Latin, 10);
+        Assert.Equal(single + 12, Pitch(larger), 0.1f);
+        Assert.Equal(single + 18, Pitch(summed), 0.1f);
+    }
+
     // ───────────────────────── Word: right-to-left documents (#202, #216, #620) ─────────────────────────
 
     [Fact]

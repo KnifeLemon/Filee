@@ -54,6 +54,9 @@ internal sealed partial class DocxReader
     private bool _bordersAroundHeader = true;
     private bool _bordersAroundFooter = true;
 
+    /// <summary>Neighbouring paragraphs keep the larger of their spaces between them, not both (see <see cref="CollapseSpacing"/>).</summary>
+    private bool _collapseSpacing = true;
+
     /// <summary>Width of each section's text column (HWPUNIT), for equations that don't fit a line.</summary>
     private readonly List<int> _columnWidths = [];
 
@@ -225,6 +228,7 @@ internal sealed partial class DocxReader
         _evenAndOddHeaders = settings?.Element(W + "evenAndOddHeaders") is { } evenOdd && Val(evenOdd) is not ("0" or "false");
         _bordersAroundHeader = !(settings?.Element(W + "bordersDoNotSurroundHeader") is { } noHeader && Val(noHeader) is not ("0" or "false"));
         _bordersAroundFooter = !(settings?.Element(W + "bordersDoNotSurroundFooter") is { } noFooter && Val(noFooter) is not ("0" or "false"));
+        _collapseSpacing = !(settings?.Element(W + "compat")?.Element(W + "doNotUseHTMLParagraphAutoSpacing") is { } sum && Val(sum) is not ("0" or "false"));
         _footnotesPart = RelatedPart(main, "/footnotes");
         _endnotesPart = RelatedPart(main, "/endnotes");
         foreach (var note in _footnotesPart?.Xml.Root?.Elements(W + "footnote") ?? [])
@@ -521,6 +525,19 @@ internal sealed partial class DocxReader
             previous.Format = previous.Format with { After = 0 };
         if (props.ContextualSpacing == true)
             current.Format = current.Format with { Before = 0 };
+    }
+
+    /// <summary>
+    /// Word puts the larger of a paragraph's space below and the next one's space above between them, not both (its HTML
+    /// paragraph spacing, which only w:doNotUseHTMLParagraphAutoSpacing turns off): 6 pt below a heading and 12 pt above
+    /// the next is 12 pt, as Word's own PDFs have it (#1152). The space below the first gives way to the space above.
+    /// </summary>
+    private void CollapseSpacing(HParagraph previous, HParagraph current)
+    {
+        if (!_collapseSpacing || current.PageBreakBefore || current.ColumnBreakBefore)
+            return;
+        if (previous.Format.After is > 0 and var after && current.Format.Before is > 0 and var before)
+            previous.Format = previous.Format with { After = Math.Max(0, after - before) };
     }
 
     /// <summary>
@@ -973,6 +990,7 @@ internal sealed partial class DocxReader
             {
                 JoinBorders(previous, Current);
                 _reader.ApplyContextualSpacing(previous, Current, _props);
+                _reader.CollapseSpacing(previous, Current);
             }
             _reader.RememberParagraphStyle(Current, _props);
             _output.Add(Current);
