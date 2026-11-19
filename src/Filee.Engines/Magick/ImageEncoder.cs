@@ -407,7 +407,7 @@ internal static class ImageEncoder
         // ImageMagick write 16-bit files (or 12-bit AVIF) padded with duplicated 8-bit samples (#1547).
         if (image.Depth > 8)
             image.Depth = 8;
-        
+
         var quality = (uint)Math.Clamp(options.Quality, 1, 100);
         // Turning a JPEG has to re-encode it: at the photo's own quality (Magick's estimate when it read the file), not
         // above it, or a phone photo saved at 75 comes back at 95, bigger and no better.
