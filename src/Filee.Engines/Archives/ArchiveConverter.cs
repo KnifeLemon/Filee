@@ -80,7 +80,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 return await new FolderIsoConverter().ConvertAsync(
-                    step with { InputPath = unpacked, From = FormatRegistry.Folder },
+                    step with { InputPath = unpacked, From = FormatRegistry.Folder, OriginalSourcePath = step.OriginalSourcePath ?? step.InputPath },
                     Scaled(progress, 0.5, 1), cancellationToken);
             }
             if (GamePacks.Formats.Contains(step.To))

@@ -1171,6 +1171,14 @@
   "presets.audio_codec.alac": "ALAC (sem perdas)",
   "presets.group.archive": "Arquivo compactado",
   "presets.iso_filesystem": "Sistema de arquivos ISO",
+  "presets.iso_label": "Rótulo do volume",
+  "presets.iso_label_joliet_hint": "Até 16 caracteres BMP. Vazio usa o nome da origem.",
+  "presets.iso_label_udf_hint": "Até 30 caracteres Latin-1 ou 15 unidades UTF-16. Vazio usa o nome da origem.",
+  "error.iso_label_length": "O rótulo de volume é longo demais para {0}.",
+  "error.iso_label_characters": "Remova caracteres não suportados ou espaços no início e no fim.",
+
+  "presets.iso_label_hint": "Vazio usa o nome da pasta ou arquivo. Joliet: até 16 caracteres Unicode BMP, preservando maiúsculas e hífens. UDF: 30 caracteres Latin-1 ou 15 unidades UTF-16.",
+  "presets.ask_iso_label_hint": "Escolha um rótulo de volume para cada entrada antes da conversão. O rótulo acima é preenchido; vazio usa o nome da origem. Pastas monitoradas e a linha de comando não perguntam.",
   "presets.archive_level": "Compactação",
   "presets.archive_level.Store": "Nenhuma (só armazenar)",
   "presets.archive_level.Fast": "Rápida",
@@ -1819,6 +1827,8 @@
   "error.iso_root": "Não é possível criar uma ISO a partir da raiz de uma unidade ou sistema de arquivos. Selecione uma pasta dentro da unidade.",
   "error.iso_link": "A criação de ISO não segue links simbólicos nem junções. Selecione uma pasta original sem itens vinculados.",
   "error.iso_name": "Os nomes Joliet devem ter no máximo 62 caracteres Unicode BMP, sem caracteres de controle, ponto e vírgula ou barras invertidas, *, : ou ?. Os caminhos relativos devem ter no máximo 240 caracteres. Para nomes mais longos ou arquivos maiores, selecione UDF 2.01 na opção de sistema de arquivos ISO da predefinição.",
+
+  "error.iso_label": "Rótulo ISO inválido. Joliet: até 16 caracteres Unicode BMP, sem * / : ; ? nem barra invertida. UDF: 30 caracteres Latin-1 ou 15 unidades UTF-16. Sem controles nem espaços no início ou fim.",
   "error.iso_file_size": "Para criar uma ISO, cada arquivo deve ter menos de 4 GiB. Para nomes mais longos ou arquivos maiores, selecione UDF 2.01 na opção de sistema de arquivos ISO da predefinição.",
   "error.iso_udf_name": "Os nomes UDF devem ser Unicode válido, sem barras, barras invertidas ou caracteres nulos, e não podem ser . ou ... O limite é de 254 caracteres Latin-1, ou 127 unidades UTF-16 se houver algum caractere fora de Latin-1.",
   "error.iso_changed": "A criação de ISO parou antes de gravar todos os dados. Um arquivo de origem pode ter mudado durante a conversão.",

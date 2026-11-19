@@ -1155,6 +1155,14 @@
 "presets.audio_codec.alac": "ALAC (senza perdita)",
 "presets.group.archive": "Archivio",
   "presets.iso_filesystem": "File system ISO",
+  "presets.iso_label": "Etichetta del volume",
+  "presets.iso_label_joliet_hint": "Fino a 16 caratteri BMP. Vuoto usa il nome di origine.",
+  "presets.iso_label_udf_hint": "Fino a 30 caratteri Latin-1 o 15 unità UTF-16. Vuoto usa il nome di origine.",
+  "error.iso_label_length": "L\u0027etichetta di volume è troppo lunga per {0}.",
+  "error.iso_label_characters": "Rimuovi i caratteri non supportati o gli spazi iniziali e finali.",
+
+  "presets.iso_label_hint": "Vuoto usa il nome della cartella o dell’archivio. Joliet: fino a 16 caratteri Unicode BMP, mantenendo maiuscole e trattini. UDF: 30 caratteri Latin-1 o 15 unità UTF-16.",
+  "presets.ask_iso_label_hint": "Scegli un\u0027etichetta di volume per ogni elemento prima della conversione. Viene proposta quella sopra; se vuota, si usa il nome di origine. Le cartelle monitorate e la riga di comando non chiedono conferma.",
 "presets.archive_level": "Compressione",
 "presets.archive_level.Store": "Nessuna (solo archiviazione)",
 "presets.archive_level.Fast": "Veloce",
@@ -1796,6 +1804,8 @@
   "error.iso_root": "La creazione ISO non supporta la radice di un’unità o di un file system. Seleziona una cartella all’interno dell’unità.",
   "error.iso_link": "La creazione ISO non segue collegamenti simbolici o giunzioni. Seleziona una cartella originale senza elementi collegati.",
   "error.iso_name": "I nomi Joliet possono contenere al massimo 62 caratteri Unicode BMP, senza caratteri di controllo, punti e virgola o barre rovesciate, *, : o ?. I percorsi relativi non possono superare 240 caratteri. Per nomi più lunghi o file più grandi, seleziona UDF 2.01 nel file system ISO della preimpostazione.",
+
+  "error.iso_label": "Etichetta ISO non valida. Joliet: fino a 16 caratteri Unicode BMP, senza * / : ; ? né barre inverse. UDF: 30 caratteri Latin-1 o 15 unità UTF-16. Nessun controllo né spazio iniziale o finale.",
   "error.iso_file_size": "Per creare un’immagine ISO, ogni file deve essere più piccolo di 4 GiB. Per nomi più lunghi o file più grandi, seleziona UDF 2.01 nel file system ISO della preimpostazione.",
   "error.iso_udf_name": "I nomi UDF devono essere Unicode valido, senza barre, barre inverse o caratteri nulli, e non possono essere . o ... Il limite è di 254 caratteri Latin-1, oppure 127 unità UTF-16 se un carattere non rientra in Latin-1.",
   "error.iso_changed": "La creazione ISO si è interrotta prima della scrittura di tutti i dati. Un file di origine potrebbe essere cambiato durante la conversione.",

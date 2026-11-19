@@ -1171,6 +1171,14 @@
   "presets.audio_codec.alac": "ALAC (không mất dữ liệu)",
   "presets.group.archive": "Tệp nén",
   "presets.iso_filesystem": "Hệ thống tệp ISO",
+  "presets.iso_label": "Nhãn ổ đĩa",
+  "presets.iso_label_joliet_hint": "Tối đa 16 ký tự BMP. Để trống dùng tên nguồn.",
+  "presets.iso_label_udf_hint": "Tối đa 30 ký tự Latin-1 hoặc 15 đơn vị UTF-16. Để trống dùng tên nguồn.",
+  "error.iso_label_length": "Nhãn ổ đĩa quá dài đối với {0}.",
+  "error.iso_label_characters": "Xóa ký tự không hỗ trợ hoặc khoảng trắng ở đầu/cuối.",
+
+  "presets.iso_label_hint": "Để trống dùng tên thư mục hoặc tệp nén. Joliet: tối đa 16 ký tự Unicode BMP, giữ nguyên hoa/thường và dấu gạch nối. UDF: 30 ký tự Latin-1 hoặc 15 đơn vị UTF-16.",
+  "presets.ask_iso_label_hint": "Chọn nhãn ổ đĩa cho từng đầu vào trước khi chuyển đổi. Nhãn ở trên được điền sẵn; để trống sẽ dùng tên nguồn. Thư mục theo dõi và dòng lệnh không hỏi.",
   "presets.archive_level": "Mức nén",
   "presets.archive_level.Store": "Không nén (chỉ lưu)",
   "presets.archive_level.Fast": "Nhanh",
@@ -1819,6 +1827,8 @@
   "error.iso_root": "Không hỗ trợ tạo ISO từ thư mục gốc của ổ đĩa hoặc hệ thống tệp. Hãy chọn một thư mục bên trong ổ đĩa.",
   "error.iso_link": "Quá trình tạo ISO không đi theo liên kết tượng trưng hoặc điểm nối. Hãy chọn thư mục gốc không chứa mục liên kết.",
   "error.iso_name": "Tên Joliet có tối đa 62 ký tự Unicode BMP, không có ký tự điều khiển, dấu chấm phẩy hoặc dấu gạch chéo ngược, *, : hoặc ?. Đường dẫn tương đối có tối đa 240 ký tự. Với tên dài hơn hoặc tệp lớn hơn, hãy chọn UDF 2.01 trong tùy chọn hệ thống tệp ISO của thiết lập sẵn.",
+
+  "error.iso_label": "Nhãn ISO không hợp lệ. Joliet: tối đa 16 ký tự Unicode BMP, không có * / : ; ? hay gạch chéo ngược. UDF: 30 ký tự Latin-1 hoặc 15 đơn vị UTF-16. Không có ký tự điều khiển hay khoảng trắng đầu/cuối.",
   "error.iso_file_size": "Để tạo ISO, mỗi tệp phải nhỏ hơn 4 GiB. Với tên dài hơn hoặc tệp lớn hơn, hãy chọn UDF 2.01 trong tùy chọn hệ thống tệp ISO của thiết lập sẵn.",
   "error.iso_udf_name": "Tên UDF phải là Unicode hợp lệ, không chứa dấu gạch chéo, gạch chéo ngược hay ký tự null và không được là . hoặc ... Giới hạn là 254 ký tự Latin-1, hoặc 127 đơn vị UTF-16 nếu có ký tự ngoài Latin-1.",
   "error.iso_changed": "Quá trình tạo ISO đã dừng trước khi ghi đủ dữ liệu. Tệp nguồn có thể đã thay đổi trong khi chuyển đổi.",

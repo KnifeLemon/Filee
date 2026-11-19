@@ -324,6 +324,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _selectedUpscaleModel = UpscaleModels.FirstOrDefault(m => string.Equals(m.Id, _edit.Upscale.Model, StringComparison.OrdinalIgnoreCase))
             ?? UpscaleModels.FirstOrDefault();
         _isoFileSystem = IsoFileSystems.First(v => v.Value == _edit.Archive.IsoFileSystem);
+        _isoVolumeLabel = _edit.Archive.IsoVolumeLabel;
+        _askIsoVolumeLabel = _edit.Archive.AskIsoVolumeLabel;
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -559,7 +561,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowVideoSplit), nameof(ShowVideoParts),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec), nameof(ShowRingtone),
-        nameof(ShowIso), nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
+        nameof(ShowIso), nameof(IsoLabelError), nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
         nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowGcode), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
         nameof(ShowImageSize), nameof(SizeRangeError), nameof(CustomSizeError), nameof(IsValid))]
@@ -1052,7 +1054,16 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _caption;
     /// <summary>Language spoken in the audio for Whisper transcription (MediaOptions.SpokenLanguage).</summary>
     [ObservableProperty] private Choice<string> _spokenLanguage;
-    [ObservableProperty] private Choice<IsoFileSystem> _isoFileSystem;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsoLabelError), nameof(IsValid), nameof(IsoLabelCounter), nameof(IsoLabelHint), nameof(IsoLabelLengthError))] private Choice<IsoFileSystem> _isoFileSystem;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsoLabelError), nameof(IsValid), nameof(IsoLabelCounter))] private string _isoVolumeLabel;
+    [ObservableProperty] private bool _askIsoVolumeLabel;
+
+    /// <summary>A custom label must fit without being silently changed by either descriptor.</summary>
+    public string? IsoLabelError => ShowIso ? IsoLabelText.Error(IsoVolumeLabel, IsoFileSystem.Value, _loc) : null;
+    public string IsoLabelCounter => IsoLabelText.Counter(IsoVolumeLabel, IsoFileSystem.Value);
+    public string IsoLabelHint => IsoLabelText.Hint(IsoFileSystem.Value, _loc);
+    public string IsoLabelLengthError => _loc.Format("error.iso_label_length", IsoFileSystem.Value == Filee.Core.Presets.IsoFileSystem.Joliet ? "Joliet" : "UDF 2.01");
+    public string IsoLabelCharactersError => _loc["error.iso_label_characters"];
 
     partial void OnIsoFileSystemChanged(Choice<IsoFileSystem>? oldValue, Choice<IsoFileSystem> newValue) =>
         Choices.Restore(oldValue, newValue, value => IsoFileSystem = value);
@@ -1328,7 +1339,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private static double SizeLimit(decimal? megabytes) => (double)Math.Clamp(megabytes ?? 0, 0, 4096);
 
     public string? NameError => string.IsNullOrWhiteSpace(Name) ? _loc["presets.name_required"] : null;
-    public bool IsValid => NameError is null && SizeRangeError is null && DestinationError is null && CustomSizeError is null;
+    public bool IsValid => NameError is null && SizeRangeError is null && DestinationError is null && CustomSizeError is null && IsoLabelError is null;
 
     /// <summary>
     /// The width × height boxes, while shown: a stretch needs both sides, a box that keeps the aspect at least one.
@@ -1533,6 +1544,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.RingtoneLength = Seconds(RingtoneLength, MediaOptions.DefaultRingtoneLength, MediaOptions.MinRingtoneLength, MediaOptions.MaxRingtoneLength);
         media.AskRingtonePart = ShowRingtone && AskRingtonePart;
         _original.Archive.IsoFileSystem = IsoFileSystem.Value;
+        _original.Archive.IsoVolumeLabel = IsoVolumeLabel;
+        _original.Archive.AskIsoVolumeLabel = AskIsoVolumeLabel;
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = TargetId != "iso" && CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;
