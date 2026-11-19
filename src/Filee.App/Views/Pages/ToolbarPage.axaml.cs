@@ -95,6 +95,11 @@ public partial class ToolbarPage : UserControl
         // drag goes on.
         Root.AddHandler(PointerCaptureLostEvent, OnRootCaptureLost, RoutingStrategies.Direct, handledEventsToo: true);
         AddHandler(GotFocusEvent, (_, e) => _lastFocused = e.Source as Control, RoutingStrategies.Bubble, handledEventsToo: true);
+        // The last input decides whether a focus the page gives (KeepFocus) draws the focus ring: a key press, yes; a
+        // click, no. Taken from the input itself, not from the last focus change, which doesn't happen at all when the
+        // clicked control already has the keyboard.
+        AddHandler(KeyDownEvent, (_, _) => _focusByKeyboard = true, RoutingStrategies.Tunnel, handledEventsToo: true);
+        AddHandler(PointerPressedEvent, (_, _) => _focusByKeyboard = false, RoutingStrategies.Tunnel, handledEventsToo: true);
         // Before the list box, which doesn't move between the rows of its wrap panel.
         PaletteTabs.AddHandler(KeyDownEvent, OnTabsKeyDown, RoutingStrategies.Tunnel);
 
@@ -170,11 +175,16 @@ public partial class ToolbarPage : UserControl
             || !hidden.GetVisualAncestors().Contains(this))
             return;
         Control next = vm.IsAdjustingLook ? LookDone : vm.IsEditingGroup ? GroupBack : EditSize;
-        next.Focus(NavigationMethod.Tab);
+        // The focus ring is for the keyboard: after a click on Edit Donut Size or Done, the button that takes over keeps
+        // the keyboard but doesn't draw the ring (Tab would draw it, as if the user had tabbed there).
+        next.Focus(_focusByKeyboard ? NavigationMethod.Tab : NavigationMethod.Pointer);
     }
 
     // The control of this page that last had the keyboard (see KeepFocus).
     private Control? _lastFocused;
+
+    /// <summary>The last input was a key press, not a click.</summary>
+    private bool _focusByKeyboard;
 
     /// <summary>
     /// The donut on screen while it's wanted: refilled when what is on it changed (<paramref name="reload"/>, and only
