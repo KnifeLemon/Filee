@@ -15,7 +15,10 @@
 
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace Filee.Engines.Archives;
 
@@ -299,15 +302,7 @@ internal sealed class Bzip2Decoder
             if (index >= inUseCount)
                 throw new InvalidDataException("invalid bzip2 symbol");
             var front = mtf[index];
-            if (index < 16)
-            {
-                for (var k = index; k > 0; k--)
-                    mtf[k] = mtf[k - 1];
-            }
-            else
-            {
-                mtf[..index].CopyTo(mtf[1..]);
-            }
+            MoveUp(mtf, index);
             mtf[0] = front;
             var b = seqToUnseq[front];
             counts[b]++;
@@ -338,6 +333,25 @@ internal sealed class Bzip2Decoder
             }
             return table.Slow(this, peek);
         }
+    }
+
+    /// <summary>
+    /// Moves the first <paramref name="count"/> bytes of the 256-byte move-to-front list one place up (count below
+    /// 256): 16 bytes at a time from the top while there are that many, each load taken before the store above it,
+    /// then byte by byte. One thread decodes the symbols of every block (the inverse transforms run on others), so
+    /// this step sets the pace; Bzip2BlockEncoder uses it too.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void MoveUp(Span<byte> mtf, int count)
+    {
+        if ((uint)count >= (uint)mtf.Length || mtf.Length < 256)
+            throw new ArgumentOutOfRangeException(nameof(count));
+        ref var list = ref MemoryMarshal.GetReference(mtf);
+        var i = count;
+        for (; i >= 16; i -= 16)
+            Vector128.LoadUnsafe(ref list, (nuint)(i - 16)).StoreUnsafe(ref list, (nuint)(i - 15));
+        for (; i > 0; i--)
+            Unsafe.Add(ref list, i) = Unsafe.Add(ref list, i - 1);
     }
 
     /// <summary>

@@ -6,7 +6,8 @@
 //   rebuilds the tree on the way with the cursor as the new root (everything smaller to its left, larger to its
 //   right). Bytes already known to match on both sides are not compared again, so the longest matches are found in
 //   far fewer steps than a chain needs; inserting a position costs the same walk.
-// Two chainless tables keyed by the next two and three bytes catch close short matches either way.
+// Two chainless tables keyed by the next two and three bytes catch close short matches either way (the two-byte one
+// a small hash of them with the chain, so the fast level's tables stay in the cache).
 //
 // The window is one array: the dictionary behind the cursor plus room ahead for new input, slid back when the room
 // is used up. Positions are stored as buffer index + an offset that grows with each slide, so the tables never need
@@ -27,6 +28,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 
 namespace Filee.Engines.Archives.Lzma;
 
@@ -48,7 +50,10 @@ internal sealed class MatchFinder
     private readonly int[] _links; // chain: one previous position per slot; tree: left and right child per slot
     private readonly int[] _head4;
     private readonly int[] _head3 = new int[1 << Hash3Bits];
-    private readonly int[] _head2 = new int[1 << 16];
+    // Two-byte table: the bytes themselves with the tree (every pair its slot); a 10-bit hash of them with the chain,
+    // whose small dictionary and many threads want tables that stay in the cache.
+    private const int ChainHash2Bits = 10;
+    private readonly int[] _head2;
     private readonly int _hash4Shift;
     private readonly int _depth;
     private readonly int _nice;
@@ -73,6 +78,7 @@ internal sealed class MatchFinder
         _mask = dictionary - 1;
         _tree = tree;
         _links = new int[tree ? 2L * dictionary : dictionary];
+        _head2 = new int[tree ? 1 << 16 : 1 << ChainHash2Bits];
         var hashBits = Math.Clamp(BitOperations.Log2((uint)dictionary) - 1, 16, 24);
         _head4 = new int[1 << hashBits];
         _hash4Shift = 32 - hashBits;
@@ -85,7 +91,7 @@ internal sealed class MatchFinder
     public static long TableBytes(int dictionary, bool tree)
     {
         var hashBits = Math.Clamp(BitOperations.Log2((uint)dictionary) - 1, 16, 24);
-        return 4L * ((tree ? 2L : 1L) * dictionary + (1 << hashBits) + (1 << Hash3Bits) + (1 << 16));
+        return 4L * ((tree ? 2L : 1L) * dictionary + (1 << hashBits) + (1 << Hash3Bits) + (tree ? 1 << 16 : 1 << ChainHash2Bits));
     }
 
     /// <summary>Forgets the input and every position entered, keeping the buffer and the tables' memory.</summary>
@@ -172,7 +178,9 @@ internal sealed class MatchFinder
     /// bytes, each longer than the one before; returns how many.
     /// </summary>
     public int FindAll(int pos, int maxLength, int[] lengths, uint[] distances) =>
-        _ahead is { } ahead ? ahead.Take(pos, maxLength, lengths, distances) : Search(pos, maxLength, lengths, distances, out _);
+        _ahead is { } ahead ? ahead.Take(pos, maxLength, lengths, distances)
+        : _tree ? Search(pos, maxLength, lengths, distances, out _)
+        : ChainSearch(pos, maxLength, lengths, distances);
 
     /// <summary>
     /// Starts searching every position from <see cref="Position"/> to <see cref="Filled"/> on
@@ -266,8 +274,10 @@ internal sealed class MatchFinder
         }
     }
 
+    /// <summary>A search of the binary tree (the hash chain has <see cref="ChainSearch"/>).</summary>
     private int Search(int pos, int maxLength, int[]? lengths, uint[]? distances, out uint distance)
     {
+        System.Diagnostics.Debug.Assert(_tree, "the chain searches with ChainSearch");
         distance = 0;
         System.Diagnostics.Debug.Assert(pos >= _nextInsert, "a position is searched twice");
         SkipTo(pos);
@@ -306,39 +316,119 @@ internal sealed class MatchFinder
             }
         }
 
-        if (_tree)
+        TreeWalk(pos, stored, candidate, ref found);
+        // The tree compares at most the nice length; a match that long may go on.
+        if (found.Best >= _nice && found.Best < maxLength)
         {
-            TreeWalk(pos, stored, candidate, ref found);
-            // The tree compares at most the nice length; a match that long may go on.
-            if (found.Best >= _nice && found.Best < maxLength)
-            {
-                var at = pos - (int)found.Distance - 1;
-                var longer = Common(buffer, pos, at, maxLength);
-                found.Best = longer;
-                if (lengths is not null)
-                    lengths[found.Count - 1] = longer;
-            }
-        }
-        else
-        {
-            _links[stored & _mask] = candidate;
-            for (var depth = _depth; candidate > 0 && depth > 0 && found.Best < maxLength && found.Best < _nice; depth--)
-            {
-                var gap = stored - candidate;
-                if (gap <= 0 || gap >= _dictionary)
-                    break;
-                var at = candidate - _offset;
-                candidate = _links[candidate & _mask];
-                if (buffer[at + found.Best] != buffer[pos + found.Best] || buffer[at] != buffer[pos])
-                    continue;
-                found.Offer(Common(buffer, pos, at, maxLength), gap);
-            }
+            var at = pos - (int)found.Distance - 1;
+            var longer = Common(buffer, pos, at, maxLength);
+            found.Best = longer;
+            if (lengths is not null)
+                lengths[found.Count - 1] = longer;
         }
 
         distance = found.Distance;
         if (found.Best < 2)
             return 0;
         return lengths is null ? found.Best : found.Count;
+    }
+
+    /// <summary>
+    /// <see cref="Search"/> for the hash chain (the fast level), on its own so its loop keeps its values in registers:
+    /// the same tables, candidates and lists. A candidate is only measured when its two bytes ending at the best length
+    /// so far agree with the cursor's (a match longer than the best has them), which takes one load per candidate.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int ChainSearch(int pos, int maxLength, int[] lengths, uint[] distances)
+    {
+        System.Diagnostics.Debug.Assert(pos >= _nextInsert, "a position is searched twice");
+        SkipTo(pos);
+        _nextInsert = pos + 1;
+        var buffer = Buffer;
+        if (pos + 4 > Filled || (uint)pos > (uint)(buffer.Length - Math.Max(4, maxLength)))
+            return 0;
+
+        ref var data = ref MemoryMarshal.GetArrayDataReference(buffer);
+        ref var cursor = ref Unsafe.Add(ref data, pos);
+        var value = Unsafe.ReadUnaligned<uint>(ref cursor);
+        if (!BitConverter.IsLittleEndian)
+            value = BinaryPrimitives.ReverseEndianness(value);
+        var offset = _offset;
+        var dictionary = _dictionary;
+        var stored = pos + offset;
+        // The hashes are below the tables' sizes by construction: 16 bits, Hash3Bits and the shift for _head4.
+        ref var slot2 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head2), ChainHash2(value));
+        ref var slot3 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head3), (int)(((value & 0xFFFFFF) * 0x9E3779B1u) >> (32 - Hash3Bits)));
+        ref var slot4 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head4), (int)((value * 2654435761u) >> _hash4Shift));
+        var candidate2 = slot2;
+        slot2 = stored;
+        var candidate3 = slot3;
+        slot3 = stored;
+        var candidate = slot4;
+        slot4 = stored;
+        ref var links = ref MemoryMarshal.GetArrayDataReference(_links);
+        var mask = _mask;
+        Unsafe.Add(ref links, stored & mask) = candidate;
+        // The next position is searched or entered right after this one: its table slots (mostly not in the cache)
+        // are asked for now, so they arrive while this chain is walked.
+        if (pos + 5 <= Filled)
+            PrefetchSlots(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref cursor, 1)));
+
+        // Candidates lie within the dictionary behind pos, so they and maxLength bytes after them fit the buffer.
+        var best = 1;
+        var count = 0;
+        if (maxLength >= 2)
+        {
+            if (candidate2 > 0 && stored - candidate2 < dictionary && Unsafe.Add(ref data, candidate2 - offset) == cursor)
+                Offer(Common(buffer, pos, candidate2 - offset, maxLength), stored - candidate2, ref best, ref count, lengths, distances);
+            if (candidate3 > 0 && stored - candidate3 < dictionary && best < maxLength && Unsafe.Add(ref data, candidate3 - offset) == cursor)
+                Offer(Common(buffer, pos, candidate3 - offset, maxLength), stored - candidate3, ref best, ref count, lengths, distances);
+        }
+        var stopAt = Math.Min(maxLength, _nice);
+        for (var depth = _depth; candidate > 0 && depth > 0 && best < stopAt; depth--)
+        {
+            var gap = stored - candidate;
+            if (gap <= 0 || gap >= dictionary)
+                break;
+            var at = candidate - offset;
+            candidate = Unsafe.Add(ref links, candidate & mask);
+            if (Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref data, at + best - 1)) != Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref cursor, best - 1)))
+                continue;
+            Offer(Common(buffer, pos, at, maxLength), gap, ref best, ref count, lengths, distances);
+        }
+        return best < 2 ? 0 : count;
+    }
+
+    /// <summary>
+    /// A hint to load the three- and four-byte table slots of the position whose first bytes are
+    /// <paramref name="value"/> (little-endian) into the cache (x86; elsewhere nothing). Nothing is read through the
+    /// addresses.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe void PrefetchSlots(uint value)
+    {
+        if (!Sse.IsSupported)
+            return;
+        if (!BitConverter.IsLittleEndian)
+            value = BinaryPrimitives.ReverseEndianness(value);
+        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head3), (int)(((value & 0xFFFFFF) * 0x9E3779B1u) >> (32 - Hash3Bits)))));
+        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head4), (int)((value * 2654435761u) >> _hash4Shift))));
+    }
+
+    /// <summary>The chain's two-byte slot for the bytes in the low half of <paramref name="value"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ChainHash2(uint value) => (int)(((value & 0xFFFF) * 2654435761u) >> (32 - ChainHash2Bits));
+
+    /// <summary><see cref="Found.Offer"/> on locals.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Offer(int length, int gap, ref int best, ref int count, int[] lengths, uint[] distances)
+    {
+        if (length <= best)
+            return;
+        best = length;
+        lengths[count] = length;
+        distances[count] = (uint)(gap - 1);
+        count++;
     }
 
     /// <summary>
@@ -448,11 +538,13 @@ internal sealed class MatchFinder
         var found = new Found(0, null, null);
         for (var p = _nextInsert; p < end; p++)
         {
+            if (!_tree && p + 8 < end)
+                PrefetchSlots(BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(p + 4)));
             var value = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(p));
             var h4 = (int)((value * 2654435761u) >> _hash4Shift);
             var h3 = (int)(((value & 0xFFFFFF) * 0x9E3779B1u) >> (32 - Hash3Bits));
             var stored = p + _offset;
-            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head2), (int)(value & 0xFFFF)) = stored;
+            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head2), _tree ? (int)(value & 0xFFFF) : ChainHash2(value)) = stored;
             Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head3), h3) = stored;
             ref var slot4 = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head4), h4);
             var candidate = slot4;

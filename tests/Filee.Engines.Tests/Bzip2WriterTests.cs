@@ -169,6 +169,23 @@ public class Bzip2WriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.True(bz2.Length < data.Length / 2, $"{bz2.Length} bytes for {data.Length}");
     }
 
+    /// <summary>The move-to-front shift (16 bytes at a time, then single bytes) against a plain byte loop, for every count.</summary>
+    [Fact]
+    public void The_move_to_front_shift_matches_a_byte_loop()
+    {
+        var random = new Random(9);
+        for (var count = 0; count < 256; count++)
+        {
+            var list = new byte[256];
+            random.NextBytes(list);
+            var expected = (byte[])list.Clone();
+            for (var k = count; k > 0; k--)
+                expected[k] = expected[k - 1];
+            Bzip2Decoder.MoveUp(list, count);
+            Assert.Equal(expected, list);
+        }
+    }
+
     /// <summary>
     /// The transform against sorting every rotation by comparing it whole, for short blocks over small alphabets, where
     /// periodic blocks, repeats and ties are common: the same last column, and the origin row is the unrotated block.
