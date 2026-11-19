@@ -297,9 +297,9 @@ public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     /// <summary>
-/// #1547: Magick.NET-Q8 holds 8 bits per channel, so converting a 16-bit source must write an 8-bit file rather
-/// than a 16-bit (or 12-bit AVIF) file padded with duplicated 8-bit samples.
-/// </summary>
+    /// #1547: Magick.NET-Q8 holds 8 bits per channel, so converting a 16-bit source must write an 8-bit file rather
+    /// than a 16-bit (or 12-bit AVIF) file padded with duplicated 8-bit samples.
+    /// </summary>
     [Theory]
     [InlineData("tiff")]
     [InlineData("psd")]
@@ -312,8 +312,8 @@ public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("avif")]
     public async Task Sixteen_bit_source_converts_to_eight_bit_output(string format)
     {
-    var dir = fx.NewFolder();
-    var source = Path.Combine(dir, "source16.tiff");
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "source16.tiff");
         using (var img = new MagickImage(MagickColors.CornflowerBlue, 32, 24))
         {
             img.Depth = 16;
@@ -330,10 +330,10 @@ public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(result.Depth <= 8, $"{format} wrote {result.Depth}-bit output for a 16-bit source");
     }
 
-/// <summary>
-/// #1547: Depth clamping in <see cref="ImageEncoder"/> only lowers depths above 8, leaving 1-bit monochrome
-/// sources untouched.
-/// </summary>
+    /// <summary>
+    /// #1547: Depth clamping in <see cref="ImageEncoder"/> only lowers depths above 8, leaving 1-bit monochrome
+    /// sources untouched.
+    /// </summary>
     [Fact]
     public void ApplyOptions_keeps_sub_eight_bit_depth_and_caps_sixteen_bit_depth()
     {
