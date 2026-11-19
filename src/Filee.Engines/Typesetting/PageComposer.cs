@@ -617,8 +617,9 @@ internal sealed class PageComposer
                 // paragraph's text right under it, without the space before.
                 _skipSpaceBefore = true;
             }
-            // A table of another format has the outer margin the HWPX writer gives it: 5 mm below unless it is tight.
-            var margin = table.OuterMargin ?? (composer._styles is not null && !table.Tight ? new HInsets(0, 0, 0, 1417) : default);
+            // A table of another format has the outer margin the HWPX writer gives it: 5 mm below unless it is tight. A
+            // Word table (sized by Word's rules) has none: Word puts the next paragraph right under it.
+            var margin = table.OuterMargin ?? (composer._styles is not null && !table.Tight && table.Sizing is null ? new HInsets(0, 0, 0, 1417) : default);
             _y += (table.VerticalOffset + margin.Top) / 100f;
             // Filee's rows are not 한글's unless the table is as high as 한글's (its line for it, else its stored size);
             // else the stored places hold again on 한글's next page.

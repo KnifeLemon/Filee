@@ -716,6 +716,16 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.InRange(Where(page, "Cell").Y, 360, 360 + pitch + 1);
     }
 
+    [Fact]
+    public async Task Issue1194_a_word_table_has_no_space_below_it()
+    {
+        // The next paragraph sits right under a Word table; the 5 mm the HWPX writer leaves under one is not Word's.
+        var page = Single(await DocxAsync(Docx(OneCellTable("Cell") + P(R("After")))));
+
+        var pitch = LineHeight(RepositoryFonts.Latin, 10);
+        Assert.InRange(Where(page, "After").Y - Where(page, "Cell").Y, pitch, pitch + 1.5f);
+    }
+
     // ───────────────────────── Word: right-to-left documents (#202, #216, #620) ─────────────────────────
 
     [Fact]
