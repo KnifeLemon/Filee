@@ -32,9 +32,26 @@ internal sealed class PageFont : IDisposable
     /// <summary>Index of the face in a TTC collection; 0 otherwise.</summary>
     public int FaceIndex { get; }
 
-    /// <summary>A Skia typeface over the whole font.</summary>
-    public SKTypeface Typeface => _typeface ??= MakeTypeface() ?? _installed
-        ?? throw new InvalidDataException("Skia can't read the font.");
+    /// <summary>
+    /// A Skia typeface over the whole font. Made once: pages drawn on several threads share installed fonts, and a
+    /// typeface one of them lost to another would be left to the finalizer while it may still draw.
+    /// </summary>
+    public SKTypeface Typeface
+    {
+        get
+        {
+            if (Volatile.Read(ref _typeface) is { } made)
+                return made;
+            var typeface = MakeTypeface() ?? _installed ?? throw new InvalidDataException("Skia can't read the font.");
+            if (Interlocked.CompareExchange(ref _typeface, typeface, null) is { } first)
+            {
+                if (!ReferenceEquals(typeface, _installed))
+                    typeface.Dispose(); // nobody has seen it
+                return first;
+            }
+            return typeface;
+        }
+    }
 
     /// <summary>
     /// The typeface over <see cref="Data"/>; for a face of a collection Skia can't open (macOS), over that face
@@ -42,13 +59,13 @@ internal sealed class PageFont : IDisposable
     /// </summary>
     private SKTypeface? MakeTypeface()
     {
-        if (SKTypeface.FromData(SKData.CreateCopy(Data), FaceIndex) is { } typeface)
+        if (Typefaces.FromBytes(Data, FaceIndex) is { } typeface)
             return typeface;
         if (FaceIndex == 0)
             return null;
         try
         {
-            return SKTypeface.FromData(SKData.CreateCopy(Sfnt.Write()));
+            return Typefaces.FromBytes(Sfnt.Write());
         }
         catch (InvalidDataException)
         {
@@ -86,5 +103,19 @@ internal sealed class PageFont : IDisposable
     {
         if (!ReferenceEquals(_typeface, _installed))
             _typeface?.Dispose();
+    }
+}
+
+/// <summary>Skia typefaces made from font bytes.</summary>
+internal static class Typefaces
+{
+    /// <summary>
+    /// A typeface over a copy of <paramref name="data"/>, or null when Skia can't read it. The copy stays referenced
+    /// until Skia holds it: a temporary SKData can be finalized, and its memory freed, while Skia still reads it.
+    /// </summary>
+    public static SKTypeface? FromBytes(byte[] data, int faceIndex = 0)
+    {
+        using var copy = SKData.CreateCopy(data);
+        return SKTypeface.FromData(copy, faceIndex);
     }
 }

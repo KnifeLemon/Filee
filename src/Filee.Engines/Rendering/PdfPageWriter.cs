@@ -166,7 +166,7 @@ internal static partial class PdfPageWriter
         if (!FontSubsetter.CanSubset(font.Sfnt, out _))
             return font.Typeface;
         var subset = FontSubsetter.Subset(font.Sfnt, glyphs, cancellationToken, codePoints).Write();
-        return SKTypeface.FromData(SKData.CreateCopy(subset)) ?? font.Typeface;
+        return Typefaces.FromBytes(subset) ?? font.Typeface;
     }
 
     /// <summary>

@@ -31,14 +31,14 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var dir = fx.NewFolder();
         var first = Path.Combine(dir, name + ".hwpx");
-        HwpxWriter.Write(source, first);
+        HwpxWriter.Write(source, first, cancellationToken: TestContext.Current.CancellationToken);
         var skipped = new Dictionary<string, int>();
         var read = HwpxReader.Read(first, Path.Combine(dir, "media-1"), skipped);
         Assert.Empty(skipped); // everything Filee writes has a place in the model
         HDocumentAssert.Similar(source, read);
 
         var second = Path.Combine(dir, name + "-again.hwpx");
-        HwpxWriter.Write(read, second);
+        HwpxWriter.Write(read, second, cancellationToken: TestContext.Current.CancellationToken);
         var again = HwpxReader.Read(second, Path.Combine(dir, "media-2"));
         Assert.Equal(HDocumentAssert.Dump(read, layout: false), HDocumentAssert.Dump(again, layout: false));
         var heights = (HDocument d) => d.Sections.SelectMany(s => s.Blocks).OfType<HTable>().SelectMany(t => t.Rows).Select(r => r.Height ?? 0).ToList();
@@ -319,7 +319,7 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.All(tables, t => Assert.True(t.Rows[0].Header));
         var dir = fx.NewFolder();
         var hwpx = Path.Combine(dir, "목록.hwpx");
-        HwpxWriter.Write(source, hwpx);
+        HwpxWriter.Write(source, hwpx, cancellationToken: TestContext.Current.CancellationToken);
         using var zip = System.IO.Compression.ZipFile.OpenRead(hwpx);
         using var reader = new StreamReader(zip.GetEntry("Contents/section0.xml")!.Open());
         Assert.Equal(2, System.Text.RegularExpressions.Regex.Count(reader.ReadToEnd(), "pageBreak=\"1\""));
@@ -376,7 +376,7 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.SkipUnless(fx.Catalog.StatusOf(rhwp).IsAvailable, "rhwp not available");
         var dir = fx.NewFolder();
         var hwpx = Path.Combine(dir, "original.hwpx");
-        HwpxWriter.Write(DocxReader.Read(RichDocx(dir), Path.Combine(dir, "docx-media")), hwpx);
+        HwpxWriter.Write(DocxReader.Read(RichDocx(dir), Path.Combine(dir, "docx-media")), hwpx, cancellationToken: TestContext.Current.CancellationToken);
 
         // HWPX → HWP → HWPX: the HWPX rhwp writes for an HWP file, the way HWP documents reach the reader.
         async Task<string> Convert(string input, string from, string to)
@@ -724,7 +724,7 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         document.Sections.Add(section);
         var dir = fx.NewFolder();
         var path = Path.Combine(dir, "long.hwpx");
-        HwpxWriter.Write(document, path);
+        HwpxWriter.Write(document, path, cancellationToken: TestContext.Current.CancellationToken);
 
         HwpxReader.Read(path, Path.Combine(dir, "warm-up")); // JIT
         var best = TimeSpan.MaxValue;

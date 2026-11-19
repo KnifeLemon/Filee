@@ -37,6 +37,12 @@ internal sealed record DocumentLimits
     /// <summary>Bytes all parts read from one package may unpack to together.</summary>
     public long MaxPackageBytes { get; init; } = 1024L * 1024 * 1024;
 
+    /// <summary>
+    /// Bytes one PDF stream PDFsharp unpacks may unpack to (content, object and cross-reference streams, fonts). Those
+    /// of one file count against <see cref="MaxPackageBytes"/> together while it is opened (Pdf/PdfStreamLimits).
+    /// </summary>
+    public long MaxPdfStreamBytes { get; init; } = 256L * 1024 * 1024;
+
     /// <summary>Entries in a package (real documents have a few per page or picture).</summary>
     public int MaxPackageEntries { get; init; } = 100_000;
 

@@ -33,7 +33,7 @@ public class DocxHeaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var dir = fx.NewFolder();
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx);
+        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx, cancellationToken: TestContext.Current.CancellationToken);
         ValidPackage(hwpx);
         var margin = Xml(hwpx).Descendants(Hp + "pagePr").Single().Element(Hp + "margin")!;
         return ((int)margin.Attribute("top")!, (int)margin.Attribute("header")!);

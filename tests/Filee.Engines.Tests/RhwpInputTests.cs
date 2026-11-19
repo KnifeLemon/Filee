@@ -273,7 +273,7 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
         pptx.Slide(pptx.Title("Centred"));
         var source = PptxReader.Read(pptx.Save(Path.Combine(dir, "title.pptx")), Path.Combine(dir, "pptx-media"));
         var hwpx = Path.Combine(dir, "title.hwpx");
-        HwpxWriter.Write(source, hwpx);
+        HwpxWriter.Write(source, hwpx, cancellationToken: TestContext.Current.CancellationToken);
         return hwpx;
     }
 

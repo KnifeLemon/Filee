@@ -37,7 +37,7 @@ public class HwpReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private List<string> HwpxSources(string folder)
     {
         var rich = Path.Combine(folder, "rich.hwpx");
-        HwpxWriter.Write(DocxReader.Read(DocumentFuzzTests.RichDocx(folder), Path.Combine(folder, "docx-media")), rich);
+        HwpxWriter.Write(DocxReader.Read(DocumentFuzzTests.RichDocx(folder), Path.Combine(folder, "docx-media")), rich, cancellationToken: TestContext.Current.CancellationToken);
         List<string> sources = [rich];
         sources.AddRange(RenderFeatures.All.Select(feature => feature.Write(Path.Combine(folder, feature.Name))));
         return sources;

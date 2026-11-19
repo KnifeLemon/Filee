@@ -25,6 +25,8 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
     private readonly Action<string, Preset> _export;
     private readonly ILogger? _log;
     private bool _closed;
+    /// <summary>Cancelled when the window closes: stops the picture still being read.</summary>
+    private readonly CancellationTokenSource _closing = new();
 
     /// <summary>How each picture went: saved, skipped or failed (none yet while it is open).</summary>
     private readonly CropItemState?[] _outcomes;
@@ -232,7 +234,7 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         Marks.Reset();
         try
         {
-            var (preview, width, height) = await HideService.LoadPreviewAsync(path, _preset);
+            var (preview, width, height) = await HideService.LoadPreviewAsync(path, _preset, _closing.Token);
             Bitmap bitmap;
             using (preview)
                 bitmap = await Task.Run(() => HideService.ToBitmap(preview));
@@ -245,6 +247,10 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
             PictureSize = new Avalonia.PixelSize(width, height);
             PreviewImage = bitmap;
             old?.Dispose();
+        }
+        catch (OperationCanceledException) when (_closed)
+        {
+            return;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -385,6 +391,7 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         if (!_closed && PreviewImage is not null)
             Remember();
         _closed = true;
+        _closing.Cancel();
         _loc.LanguageChanged -= OnLanguageChanged;
         Marks.Changed -= OnMarksChanged;
         PreviewImage?.Dispose();

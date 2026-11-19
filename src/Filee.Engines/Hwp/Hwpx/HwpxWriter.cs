@@ -46,7 +46,8 @@ internal sealed partial class HwpxWriter
     /// <summary>Writes <paramref name="document"/> as an HWPX file.</summary>
     /// <param name="outputPath">HWPX file to create (replaced atomically).</param>
     /// <param name="template">Reference HWPX supplying styles and the default page; the built-in blank.hwpx when null.</param>
-    public static void Write(HDocument document, string outputPath, Stream? template = null)
+    /// <param name="cancellationToken">Stops the pictures written (an EMF / WMF is drawn record by record).</param>
+    public static void Write(HDocument document, string outputPath, Stream? template = null, CancellationToken cancellationToken = default)
     {
         Nesting.Limit(document); // the writer recurses per table, text box and note level
         using var templateStream = template ?? OpenBuiltInTemplate();
@@ -61,7 +62,7 @@ internal sealed partial class HwpxWriter
 
         var sections = document.Sections.Count > 0 ? document.Sections : [new HSection()];
         var sectionXml = sections.Select(writer.Section).ToList();
-        writer.WritePackage(reference, outputPath, sectionXml, document.Title);
+        writer.WritePackage(reference, outputPath, sectionXml, document.Title, cancellationToken);
     }
 
     internal static Stream OpenBuiltInTemplate() =>
@@ -70,7 +71,7 @@ internal sealed partial class HwpxWriter
 
     // ───────────────────────── Package ─────────────────────────
 
-    private void WritePackage(ZipArchive reference, string outputPath, List<string> sections, string? title)
+    private void WritePackage(ZipArchive reference, string outputPath, List<string> sections, string? title, CancellationToken cancellationToken)
     {
         var header = SerializeHeader(sections.Count);
         var temp = outputPath + ".tmp";
@@ -114,6 +115,7 @@ internal sealed partial class HwpxWriter
 
                 foreach (var (id, path, extension) in _images)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var ext = HwpImageTypes.Contains(extension) ? extension : "png";
                     using var target = output.CreateEntry($"BinData/{id}.{ext}", CompressionLevel.Optimal).Open();
                     if (ext == extension)
@@ -125,7 +127,8 @@ internal sealed partial class HwpxWriter
                     {
                         // EMF / WMF → PNG with Filee's own metafile renderer, on every platform (ImageMagick reads them only
                         // through GDI+ on Windows).
-                        using var frames = ImageReader.Read(path, Metafile.Detect(Head(path)) == MetafileFormat.Emf ? "emf" : "wmf", new Preset());
+                        using var frames = ImageReader.Read(path, Metafile.Detect(Head(path)) == MetafileFormat.Emf ? "emf" : "wmf", new Preset(),
+                            cancellationToken);
                         frames[0].Write(target, MagickFormat.Png);
                     }
                     else

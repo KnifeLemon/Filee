@@ -16,6 +16,9 @@
 // doesn't need /Type /ObjStm, so every stream whose dictionary has /N is unpacked (with PDFsharp's own filters, which
 // it also applies without decrypting first, so the check sees exactly what the parser gets) and each object read from
 // the offset the stream's header gives.
+//
+// What PDFsharp unpacks is bounded by PdfStreamLimits: the check unpacks object streams inside its budget, and Open
+// runs PDFsharp's open inside another.
 
 using System.Globalization;
 using System.Text;
@@ -47,7 +50,7 @@ internal static class PdfObjectNesting
     public static PdfDocument Open(string path, PdfDocumentOpenMode mode, CancellationToken cancellationToken = default)
     {
         Check(path, cancellationToken);
-        return PdfReader.Open(path, mode);
+        return PdfStreamLimits.Open(() => PdfReader.Open(path, mode), cancellationToken);
     }
 
     /// <summary>Opens a PDF in memory with PDFsharp after checking it.</summary>
@@ -55,7 +58,7 @@ internal static class PdfObjectNesting
     public static PdfDocument Open(byte[] pdf, PdfDocumentOpenMode mode, CancellationToken cancellationToken = default)
     {
         Check(pdf, cancellationToken);
-        return PdfReader.Open(new MemoryStream(pdf), mode);
+        return PdfStreamLimits.Open(() => PdfReader.Open(new MemoryStream(pdf), mode), cancellationToken);
     }
 
     /// <summary>Checks the PDF at <paramref name="path"/>, reading it in windows (it is not loaded whole).</summary>
@@ -63,13 +66,13 @@ internal static class PdfObjectNesting
     public static void Check(string path, CancellationToken cancellationToken = default)
     {
         using var file = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        new Checker(new Source(file), cancellationToken).Run();
+        PdfStreamLimits.Run(() => new Checker(new Source(file), cancellationToken).Run(), cancellationToken);
     }
 
     /// <summary>Checks a PDF in memory.</summary>
     /// <exception cref="Core.Conversion.ConversionRefusedException">The file nests too deeply.</exception>
     public static void Check(byte[] pdf, CancellationToken cancellationToken = default) =>
-        new Checker(new Source(pdf), cancellationToken).Run();
+        PdfStreamLimits.Run(() => new Checker(new Source(pdf), cancellationToken).Run(), cancellationToken);
 
     private static Core.Conversion.ConversionRefusedException TooDeep() =>
         DocumentLimits.Exceeded($"The PDF nests arrays or dictionaries more than {MaxDepth} deep.");
@@ -84,7 +87,7 @@ internal static class PdfObjectNesting
         private long _read;
         private long _allowed = file.Length * MaxReadsPerByte + ReadFloor;
 
-        public void Run()
+        public bool Run()
         {
             var starts = new List<long>();
             Keywords("obj"u8, starts, numbered: true);
@@ -96,6 +99,7 @@ internal static class PdfObjectNesting
                 if (streamAt >= 0 && hasN)
                     ObjectStream(start, streamAt);
             }
+            return true;
         }
 
         /// <summary>Every <paramref name="keyword"/> standing as a token of its own, with where the reading starts after it.</summary>
@@ -298,7 +302,7 @@ internal static class PdfObjectNesting
                         return null;
                 }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException and not Core.Conversion.ConversionRefusedException)
             {
                 return null;
             }

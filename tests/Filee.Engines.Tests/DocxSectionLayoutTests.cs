@@ -61,7 +61,7 @@ public sealed class DocxSectionLayoutTests(EngineFixture fx) : IClassFixture<Eng
         Assert.Equal(columns, Assert.Single(DocxReader.Read(docx, Path.Combine(dir, "media-docx")).Sections).Columns);
 
         var hwpx = Path.Combine(dir, "again.hwpx");
-        HwpxWriter.Write(document, hwpx);
+        HwpxWriter.Write(document, hwpx, cancellationToken: TestContext.Current.CancellationToken);
         HwpxAssert.ValidPackage(hwpx);
         Assert.Equal(columns with { RightToLeft = false }, Assert.Single(HwpxReader.Read(hwpx, Path.Combine(dir, "media-hwpx")).Sections).Columns);
     }

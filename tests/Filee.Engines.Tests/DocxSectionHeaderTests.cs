@@ -105,7 +105,7 @@ public class DocxSectionHeaderTests(EngineFixture fx) : IClassFixture<EngineFixt
         docx.Paragraph(P(R("First")) + SectionEnd() + P(R("Second")));
         docx.SectionProperties = Reference(header) + Reference(footer, "footer") + Continuous + DefaultPage;
         var hwpx = Path.Combine(dir, "out.hwpx");
-        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx);
+        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx, cancellationToken: TestContext.Current.CancellationToken);
         ValidPackage(hwpx);
 
         var paragraph = Xml(hwpx).Elements(Hp + "p").Single(p => p.Elements(Hp + "run").Any(r => r.Descendants(Hp + "header").Any()));
