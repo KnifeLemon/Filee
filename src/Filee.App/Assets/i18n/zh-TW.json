@@ -1156,6 +1156,8 @@
   "presets.page_numbers": "頁碼（底部顯示 1 / 5）",
   "presets.combine_pages_hint": "把所有頁面上下相接，產生一張圖片。\n過長時會縮小到該格式的最大高度（JPG 65,500 像素，WebP 16,383 像素）。",
   "presets.combine_pages": "把所有頁面上下拼成一張長圖（轉換 PDF 時）",
+  "presets.slide_pictures": "將頁面作為圖片（轉換 PDF 時）",
+  "presets.slide_pictures_hint": "每張投影片以圖片顯示對應的 PDF 頁面：外觀與 PDF 完全相同，但無法編輯。關閉時，文字、圖片和圖形會成為可編輯的投影片。",
   "presets.trim_page_margins": "裁掉每頁上下的空白",
   "presets.split_tall_image": "超過格式能儲存的高度時，分成多張圖片",
   "presets.split_tall_image_hint": "關閉時，長圖會縮小到該格式的最大高度（JPG 65,500 像素，WebP 16,383 像素）。\n開啟時保持原尺寸，在頁面之間分開，儲存成多個檔案（名稱_1、名稱_2……）。",

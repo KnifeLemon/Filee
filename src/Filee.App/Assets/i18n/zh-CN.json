@@ -1156,6 +1156,8 @@
   "presets.page_numbers": "页码（底部显示 1 / 5）",
   "presets.combine_pages_hint": "把所有页面上下相接，生成一张图片。\n过长时会缩小到该格式的最大高度（JPG 65,500 像素，WebP 16,383 像素）。",
   "presets.combine_pages": "把所有页面上下拼成一张长图（转换 PDF 时）",
+  "presets.slide_pictures": "将页面作为图片（转换 PDF 时）",
+  "presets.slide_pictures_hint": "每张幻灯片以图片显示对应的 PDF 页面：外观与 PDF 完全一致，但无法编辑。关闭时，文字、图片和形状会成为可编辑的幻灯片。",
   "presets.trim_page_margins": "裁掉每页上下的空白",
   "presets.split_tall_image": "超过格式能保存的高度时，分成多张图片",
   "presets.split_tall_image_hint": "关闭时，长图会缩小到该格式的最大高度（JPG 65,500 像素，WebP 16,383 像素）。\n打开时保持原尺寸，在页面之间分开，保存成多个文件（名称_1、名称_2……）。",

@@ -1156,6 +1156,8 @@
   "presets.page_numbers": "Numery stron (1 / 5 na dole)",
   "presets.combine_pages_hint": "Układa wszystkie strony jedna pod drugą w jednym obrazie.\nBardzo długie wyniki są skalowane do limitu formatu (JPG 65 500 px, WebP 16 383 px).",
   "presets.combine_pages": "Złóż strony w jeden wysoki obraz (przy konwersji PDF)",
+  "presets.slide_pictures": "Strony jako obrazy (przy konwersji PDF)",
+  "presets.slide_pictures_hint": "Każdy slajd pokazuje swoją stronę PDF jako obraz: wygląda dokładnie jak PDF, ale nie można go edytować. Po wyłączeniu tekst, obrazy i kształty stają się edytowalnymi slajdami.",
   "presets.trim_page_margins": "Wytnij puste miejsce nad i pod każdą stroną",
   "presets.split_tall_image": "Za wysoki dla formatu: podziel na kilka obrazów",
   "presets.split_tall_image_hint": "Wyłączone: długi obraz jest zmniejszany do limitu formatu (JPG 65 500 px, WebP 16 383 px).\nWłączone: zachowuje rozmiar i jest dzielony między stronami na kilka plików (nazwa_1, nazwa_2, …).",

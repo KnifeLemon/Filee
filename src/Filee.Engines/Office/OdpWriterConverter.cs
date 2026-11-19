@@ -32,7 +32,7 @@ public sealed class OdpWriterConverter : IConverter, ICapabilityCheck
     /// <summary>The PowerPoint decks the slide reader reads.</summary>
     internal static readonly string[] Decks = [.. SlideFormats.Decks.Where(f => !OdfDrawReader.Presentations.Contains(f))];
 
-    /// <summary>Formats that don't become slides through the PPTX writer: decks (their own slides), PDF (its picture slides) and ODF presentations.</summary>
+    /// <summary>Formats that don't become slides through the PPTX writer: decks (their own slides), PDF (its own slides) and ODF presentations.</summary>
     private static readonly HashSet<string> NotDocuments = new([.. SlideFormats.Decks, "pdf"], StringComparer.OrdinalIgnoreCase);
 
     private bool? _pandoc;

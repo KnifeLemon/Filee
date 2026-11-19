@@ -1156,6 +1156,8 @@
   "presets.page_numbers": "Números de página (1 / 5 no rodapé)",
   "presets.combine_pages_hint": "Coloca todas as páginas umas por baixo das outras numa só imagem.\nOs resultados muito longos são reduzidos ao limite do formato (JPG 65 500 px, WebP 16 383 px).",
   "presets.combine_pages": "Empilhar as páginas numa imagem longa (ao converter um PDF)",
+  "presets.slide_pictures": "Páginas como imagens (ao converter um PDF)",
+  "presets.slide_pictures_hint": "Cada diapositivo mostra a sua página do PDF como imagem: fica igual ao PDF, mas não pode ser editado. Desligado, o texto, as imagens e as formas tornam-se diapositivos editáveis.",
   "presets.trim_page_margins": "Recortar o espaço em branco acima e abaixo de cada página",
   "presets.split_tall_image": "Se exceder a altura do formato: dividir em várias imagens",
   "presets.split_tall_image_hint": "Desativado: uma imagem longa é reduzida ao limite do formato (JPG 65 500 px, WebP 16 383 px).\nAtivado: mantém o tamanho e é dividida entre páginas em vários ficheiros (name_1, name_2, …).",

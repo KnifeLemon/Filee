@@ -1156,6 +1156,8 @@
   "presets.page_numbers": "Page numbers (1 / 5 at the bottom)",
   "presets.combine_pages_hint": "Puts all pages one under another in a single image.\nVery long results are scaled to the format's limit (JPG 65,500 px, WebP 16,383 px).",
   "presets.combine_pages": "Stack the pages into one tall image (when a PDF is converted)",
+  "presets.slide_pictures": "Pictures of the pages (when a PDF is converted)",
+  "presets.slide_pictures_hint": "Each slide shows its PDF page as a picture: it looks exactly like the PDF but can't be edited. When off, the text, pictures and shapes become editable slides.",
   "presets.trim_page_margins": "Cut the blank space above and below each page",
   "presets.split_tall_image": "Too tall for the format: split into several images",
   "presets.split_tall_image_hint": "Off: a long image is scaled down to the format's limit (JPG 65,500 px, WebP 16,383 px).\nOn: it keeps its size and is split between pages into several files (name_1, name_2, …).",

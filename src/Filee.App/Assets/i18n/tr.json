@@ -1141,6 +1141,8 @@
   "presets.page_numbers": "Sayfa numaraları (altta 1 / 5)",
   "presets.combine_pages_hint": "Tüm sayfaları tek görselde alt alta yerleştirir.\nÇok uzun sonuçlar biçim sınırına küçültülür (JPG 65.500 px, WebP 16.383 px).",
   "presets.combine_pages": "Sayfaları tek uzun görselde birleştir (PDF dönüştürürken)",
+  "presets.slide_pictures": "Sayfalar resim olarak (PDF dönüştürülürken)",
+  "presets.slide_pictures_hint": "Her slayt PDF sayfasını resim olarak gösterir: PDF'nin tam aynısı görünür ama düzenlenemez. Kapalıyken metin, resimler ve şekiller düzenlenebilir slaytlara dönüşür.",
   "presets.trim_page_margins": "Her sayfanın üst ve alt boşluklarını kırp",
   "presets.split_tall_image": "Biçim için fazla uzunsa birkaç görsele böl",
   "presets.split_tall_image_hint": "Kapalı: uzun görsel biçim sınırına küçültülür (JPG 65.500 px, WebP 16.383 px).\nAçık: boyutu korunur ve sayfa aralarından birkaç dosyaya bölünür (ad_1, ad_2, …).",

@@ -1156,6 +1156,8 @@
   "presets.page_numbers": "Số trang (1 / 5 ở cuối trang)",
   "presets.combine_pages_hint": "Đặt mọi trang nối tiếp nhau từ trên xuống trong một ảnh duy nhất.\nKết quả quá dài được thu nhỏ theo giới hạn của định dạng (JPG 65.500 px, WebP 16.383 px).",
   "presets.combine_pages": "Xếp chồng các trang thành một ảnh dài (khi chuyển đổi PDF)",
+  "presets.slide_pictures": "Trang dưới dạng hình ảnh (khi chuyển đổi PDF)",
+  "presets.slide_pictures_hint": "Mỗi trang chiếu hiển thị trang PDF dưới dạng hình ảnh: trông giống hệt PDF nhưng không chỉnh sửa được. Khi tắt, chữ, hình ảnh và hình dạng trở thành trang chiếu có thể chỉnh sửa.",
   "presets.trim_page_margins": "Cắt khoảng trống phía trên và phía dưới mỗi trang",
   "presets.split_tall_image": "Quá cao so với định dạng: tách thành nhiều ảnh",
   "presets.split_tall_image_hint": "Tắt: ảnh dài được thu nhỏ theo giới hạn của định dạng (JPG 65.500 px, WebP 16.383 px).\nBật: ảnh giữ nguyên kích thước và được tách giữa các trang thành nhiều tệp (name_1, name_2, …).",

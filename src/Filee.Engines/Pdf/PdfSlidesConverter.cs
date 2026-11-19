@@ -1,16 +1,24 @@
-// PDF → PPTX: one slide per page showing the page as a picture, so the slides look exactly like the PDF (they are not
-// editable). Pages are rendered with PDFium (via PDFtoImage) at the preset's resolution and written by
-// PictureDeckWriter; the text of each page (PdfPig, reading order, like PDF → TXT) goes into the slide's speaker notes,
-// so it can still be searched and copied.
+// PDF → PPTX, one slide per page, the slide the size of the first page.
+//
+// Editable slides (the default, #1150): each page is rebuilt from the PDF's drawing (PdfDocumentReader.ReadSlides) as
+// text boxes with the PDF's fonts, sizes, colours and bold / italic, picture shapes, rectangles and lines, ruled
+// tables as tables, and one picture of the graphics that are no simple shapes; PictureDeckWriter writes them
+// (PdfSlideXml). PdfPig reads the pages, so a PDF it can't read fails as PDF → DOCX does.
+//
+// Picture slides (PdfOptions.SlidePictures): each slide shows its page as a picture, so the slides look exactly like
+// the PDF (they are not editable). Pages are rendered with PDFium (via PDFtoImage) at the preset's resolution and
+// written by PictureDeckWriter; the text of each page (PdfPig, reading order, like PDF → TXT) goes into the slide's
+// speaker notes, so it can still be searched and copied.
 //
 // - Slide size: the first page's own size, so A4 portrait gives portrait slides and a 16:9 PDF 16:9 slides. Every
-//   page, also one of another size or orientation, is fitted onto the slide without cropping and centred on white.
-// - Resolution: the preset's render DPI, at least 150 (sharp on a projector) and at most 600; a page over 25
-//   megapixels at that resolution (a poster) is rendered smaller, so memory and file size stay reasonable.
+//   page, also one of another size or orientation, is fitted onto the slide without cropping and centred.
+// - Resolution: the preset's render DPI, at least 150 (sharp on a projector) and at most 600, for the page pictures
+//   and for the drawn graphics of editable slides; a page over 25 megapixels at that resolution (a poster) is
+//   rendered smaller, so memory and file size stay reasonable.
 // - Pictures are JPEG at the preset's quality (90 by default). Pages are rendered on white as every PDF viewer shows
 //   them, so they have no transparency that would need PNG, and JPEG keeps a 100-page deck a manageable size.
-// - The edge is DirectOnly: only a PDF becomes picture slides, and a picture deck is never a step towards another
-//   format (ODP, PPSX, ...).
+// - The edge is DirectOnly: only a PDF becomes these slides, and they are never a step towards another format (ODP,
+//   PPSX, ...).
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
@@ -23,7 +31,7 @@ using SkiaSharp;
 
 namespace Filee.Engines.Pdf;
 
-/// <summary>PDF → PPTX with a picture of each page on its own slide.</summary>
+/// <summary>PDF → PPTX with each page on its own slide, rebuilt to be edited or as a picture.</summary>
 public sealed class PdfSlidesConverter : IConverter
 {
     internal const int MinDpi = 150;
@@ -44,70 +52,123 @@ public sealed class PdfSlidesConverter : IConverter
         EngineStatus.Available("PDF → PPTX", $"{EngineVersions.BuiltIn} · {EngineVersions.Library("PDFtoImage", typeof(Conversion))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
-        Task.Run<IReadOnlyList<string>>(() =>
-        {
-            var pdf = File.ReadAllBytes(step.InputPath);
-            int pageCount;
-            IList<System.Drawing.SizeF> sizes;
-            try
-            {
-                pageCount = Conversion.GetPageCount(pdf, null);
-                sizes = Conversion.GetPageSizes(pdf, null);
-            }
-            catch (PdfPasswordProtectedException)
-            {
-                throw PdfDocumentReader.PasswordProtected();
-            }
-            var pages = PageRange.Parse(step.Preset.Pdf.PageRange, pageCount);
-            if (pages.Count == 0)
-                throw new InvalidOperationException("The PDF has no pages.");
+        Task.Run(() => step.Preset.Pdf.SlidePictures ? Pictures(step, progress, cancellationToken) : Editable(step, progress, cancellationToken), cancellationToken);
 
-            var output = step.Output.Allocate("pptx");
+    /// <summary>Each page rebuilt as text boxes, pictures, shapes and tables.</summary>
+    private static IReadOnlyList<string> Editable(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        var media = Path.Combine(step.WorkDirectory, $"slides-{Guid.NewGuid():N}");
+        var dpi = Math.Clamp(step.Preset.Pdf.RenderDpi, MinDpi, MaxDpi);
+        IReadOnlyList<int> pages = [];
+        string? output = null;
+        PictureDeckWriter? deck = null;
+        try
+        {
+            var done = 0;
+            PdfDocumentReader.ReadSlides(step.InputPath, count =>
+            {
+                pages = PageRange.Parse(step.Preset.Pdf.PageRange, count);
+                if (pages.Count == 0)
+                    throw new InvalidOperationException("The PDF has no pages.");
+                output = step.Output.Allocate("pptx");
+                return output is null ? [] : pages;
+            }, media, dpi, page =>
+            {
+                if (deck is null)
+                {
+                    var (slideWidth, slideHeight) = PictureDeckWriter.SlideSize(page.Width, page.Height);
+                    deck = new PictureDeckWriter(output!, slideWidth, slideHeight);
+                }
+                deck.AddSlide(page, $"Page {pages[done] + 1}");
+                done++;
+                progress?.Report(0.05 + 0.9 * done / pages.Count);
+            }, cancellationToken);
             if (output is null)
                 return [];
-
-            var notes = PageTexts(step.InputPath, pages, cancellationToken);
-            progress?.Report(0.1);
-            var dpi = Math.Clamp(step.Preset.Pdf.RenderDpi, MinDpi, MaxDpi);
-            var quality = Math.Clamp(step.Preset.Image.Quality, 1, 100);
-
-            PictureDeckWriter? deck = null;
+            (deck ?? throw new InvalidOperationException("The PDF has no pages.")).Save();
+        }
+        finally
+        {
+            deck?.Dispose();
             try
             {
-                var done = 0;
-                // Pages that render at the same resolution go through PDFium together (one document load).
-                foreach (var run in Runs(pages, page => PageDpi(sizes[page].Width, sizes[page].Height, dpi)))
-                {
-                    var options = new RenderOptions(Dpi: run.Dpi, WithAnnotations: true, WithFormFill: true, BackgroundColor: SKColors.White);
-                    var index = 0;
-                    foreach (var bitmap in Conversion.ToImages(pdf, run.Pages, null, options))
-                    {
-                        using (bitmap)
-                        {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            var page = run.Pages[index++];
-                            var (width, height) = Shown(sizes[page], bitmap);
-                            if (deck is null)
-                            {
-                                var (slideWidth, slideHeight) = PictureDeckWriter.SlideSize(width, height);
-                                deck = new PictureDeckWriter(output, slideWidth, slideHeight);
-                            }
-                            using var jpeg = bitmap.Encode(SKEncodedImageFormat.Jpeg, quality);
-                            deck.AddSlide(jpeg.AsSpan(), width, height, $"Page {page + 1}", notes?[done]);
-                        }
-                        done++;
-                        progress?.Report(0.1 + 0.85 * done / pages.Count);
-                    }
-                }
-                (deck ?? throw new InvalidOperationException("PDFium rendered no page of the PDF.")).Save();
+                if (Directory.Exists(media))
+                    Directory.Delete(media, recursive: true);
             }
-            finally
+            catch (IOException)
             {
-                deck?.Dispose();
+                // The work folder goes with the job anyway.
             }
-            progress?.Report(1);
-            return [output];
-        }, cancellationToken);
+        }
+        progress?.Report(1);
+        return [output];
+    }
+
+    /// <summary>Each page as a picture, its text in the speaker notes.</summary>
+    private static IReadOnlyList<string> Pictures(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        var pdf = File.ReadAllBytes(step.InputPath);
+        int pageCount;
+        IList<System.Drawing.SizeF> sizes;
+        try
+        {
+            pageCount = Conversion.GetPageCount(pdf, null);
+            sizes = Conversion.GetPageSizes(pdf, null);
+        }
+        catch (PdfPasswordProtectedException)
+        {
+            throw PdfDocumentReader.PasswordProtected();
+        }
+        var pages = PageRange.Parse(step.Preset.Pdf.PageRange, pageCount);
+        if (pages.Count == 0)
+            throw new InvalidOperationException("The PDF has no pages.");
+
+        var output = step.Output.Allocate("pptx");
+        if (output is null)
+            return [];
+
+        var notes = PageTexts(step.InputPath, pages, cancellationToken);
+        progress?.Report(0.1);
+        var dpi = Math.Clamp(step.Preset.Pdf.RenderDpi, MinDpi, MaxDpi);
+        var quality = Math.Clamp(step.Preset.Image.Quality, 1, 100);
+
+        PictureDeckWriter? deck = null;
+        try
+        {
+            var done = 0;
+            // Pages that render at the same resolution go through PDFium together (one document load).
+            foreach (var run in Runs(pages, page => PageDpi(sizes[page].Width, sizes[page].Height, dpi)))
+            {
+                var options = new RenderOptions(Dpi: run.Dpi, WithAnnotations: true, WithFormFill: true, BackgroundColor: SKColors.White);
+                var index = 0;
+                foreach (var bitmap in Conversion.ToImages(pdf, run.Pages, null, options))
+                {
+                    using (bitmap)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var page = run.Pages[index++];
+                        var (width, height) = Shown(sizes[page], bitmap);
+                        if (deck is null)
+                        {
+                            var (slideWidth, slideHeight) = PictureDeckWriter.SlideSize(width, height);
+                            deck = new PictureDeckWriter(output, slideWidth, slideHeight);
+                        }
+                        using var jpeg = bitmap.Encode(SKEncodedImageFormat.Jpeg, quality);
+                        deck.AddSlide(jpeg.AsSpan(), width, height, $"Page {page + 1}", notes?[done]);
+                    }
+                    done++;
+                    progress?.Report(0.1 + 0.85 * done / pages.Count);
+                }
+            }
+            (deck ?? throw new InvalidOperationException("PDFium rendered no page of the PDF.")).Save();
+        }
+        finally
+        {
+            deck?.Dispose();
+        }
+        progress?.Report(1);
+        return [output];
+    }
 
     /// <summary>
     /// Resolution for a page of <paramref name="width"/> × <paramref name="height"/> points: <paramref name="dpi"/>, or
