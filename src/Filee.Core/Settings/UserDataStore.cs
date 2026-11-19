@@ -1221,6 +1221,9 @@ internal static class SettingsMigrations
         // v103: UYAP documents (.udf, #1338) learn their documents donut; custom claims stay put.
         if (from < 103)
             changed |= LearnExtensions(profiles, out _, ["udf"]);
+        // v104: Zstandard files (.zst, .tar.zst, .tzst, #1646) learn the archives donut; custom claims stay put.
+        if (from < 104)
+            changed |= LearnExtensions(profiles, out _, ["tar.zst", "tzst", "zst"]);
         return changed;
     }
 

@@ -5,6 +5,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <RootNamespace>Filee.Engines</RootNamespace>
+    <!-- Only for prefetch hints in the LZMA decoder (Sse.Prefetch0 takes a pointer); nothing reads through a pointer. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

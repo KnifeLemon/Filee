@@ -404,7 +404,10 @@ internal sealed class BcjStream(Stream inner, uint start) : ReadOnlyDecoderStrea
 /// </summary>
 internal sealed class Bcj2Stream : ReadOnlyDecoderStream
 {
-    private readonly ByteInput _main;
+    private readonly Stream _main;
+    private readonly byte[] _mainBuffer = new byte[1 << 16];
+    private int _mainPosition;
+    private int _mainEnd;
     private readonly ByteInput _call;
     private readonly ByteInput _jump;
     private readonly RangeDecoder _rc = new();
@@ -418,7 +421,7 @@ internal sealed class Bcj2Stream : ReadOnlyDecoderStream
 
     public Bcj2Stream(Stream main, Stream call, Stream jump, Stream rc, long size)
     {
-        _main = new ByteInput(main);
+        _main = main;
         _call = new ByteInput(call);
         _jump = new ByteInput(jump);
         _size = size;
@@ -437,17 +440,41 @@ internal sealed class Bcj2Stream : ReadOnlyDecoderStream
                 _done++;
                 continue;
             }
-            var b = _main.ReadByte();
-            if (b < 0)
-                throw new InvalidDataException("the BCJ2 main stream ends too early");
-            buffer[n++] = (byte)b;
-            _done++;
-            if (!IsJump(_previous, (byte)b) || _done == _size)
+            if (_mainPosition == _mainEnd)
             {
-                _previous = (byte)b;
+                _mainPosition = 0;
+                _mainEnd = Math.Max(0, _main.Read(_mainBuffer, 0, _mainBuffer.Length));
+                if (_mainEnd == 0)
+                    throw new InvalidDataException("the BCJ2 main stream ends too early");
+            }
+            // The main stream's bytes up to and with the next opcode that may have a target taken out, in one copy.
+            var run = _mainBuffer.AsSpan(_mainPosition, (int)Math.Min(Math.Min(_mainEnd - _mainPosition, buffer.Length - n), _size - _done));
+            var previous = _previous;
+            var length = 0;
+            var jump = false;
+            while (length < run.Length)
+            {
+                var c = run[length++];
+                if (IsJump(previous, c))
+                {
+                    jump = true;
+                    previous = c;
+                    break;
+                }
+                previous = c;
+            }
+            run[..length].CopyTo(buffer[n..]);
+            n += length;
+            _done += length;
+            _mainPosition += length;
+            var b = run[length - 1];
+            var before = length >= 2 ? run[length - 2] : _previous;
+            if (!jump || _done == _size)
+            {
+                _previous = previous;
                 continue;
             }
-            var index = b == 0xE8 ? _previous : b == 0xE9 ? 256 : 257;
+            var index = b == 0xE8 ? before : b == 0xE9 ? 256 : 257;
             if (_rc.DecodeBit(ref _probabilities[index]) == 0)
             {
                 _previous = (byte)b;

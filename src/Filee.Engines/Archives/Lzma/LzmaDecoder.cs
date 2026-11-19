@@ -9,6 +9,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace Filee.Engines.Archives.Lzma;
 
@@ -511,7 +512,9 @@ internal sealed class LzmaDecoder
         var pbMask = _pbMask;
         ref var probs = ref MemoryMarshal.GetArrayDataReference(_probabilities);
         var state = _state;
-        uint rep0 = _rep0, rep1 = _rep1, rep2 = _rep2, rep3 = _rep3;
+        // The last distance stays in a register; the three before it, used only by repeats, stay in the fields, so the
+        // coder and the loop's other values have the registers.
+        var rep0 = _rep0;
         ref var input = ref MemoryMarshal.GetArrayDataReference(rc.Buffer);
         var inEnd = rc.End;
         rc.Take(out var range, out var code, out var inPos);
@@ -539,30 +542,30 @@ internal sealed class LzmaDecoder
                     uint distance;
                     if (Bit<TInput>(ref Unsafe.Add(ref probs, IsRepG1At + state), ref range, ref code, ref input, ref inPos, ref inEnd, rc) == 0)
                     {
-                        distance = rep1;
+                        distance = _rep1;
                     }
                     else
                     {
                         if (Bit<TInput>(ref Unsafe.Add(ref probs, IsRepG2At + state), ref range, ref code, ref input, ref inPos, ref inEnd, rc) == 0)
                         {
-                            distance = rep2;
+                            distance = _rep2;
                         }
                         else
                         {
-                            distance = rep3;
-                            rep3 = rep2;
+                            distance = _rep3;
+                            _rep3 = _rep2;
                         }
-                        rep2 = rep1;
+                        _rep2 = _rep1;
                     }
-                    rep1 = rep0;
+                    _rep1 = rep0;
                     rep0 = distance;
                 }
             }
             else
             {
-                rep3 = rep2;
-                rep2 = rep1;
-                rep1 = rep0;
+                _rep3 = _rep2;
+                _rep2 = _rep1;
+                _rep1 = rep0;
                 lengthModel = MatchLengthAt;
             }
 
@@ -623,7 +626,9 @@ internal sealed class LzmaDecoder
 
             // The bytes are copied later, several matches at a time: the copies' sources are far apart in the window
             // and mostly not in the cache, and done back to back their loads overlap. Nothing before the copies reads
-            // the window (only literals do), so the bytes come out the same.
+            // the window (only literals do), so the bytes come out the same. The source is asked into the cache now,
+            // so it arrives while the next symbols are decoded.
+            Prefetch(window, pos - (int)rep0 - 1, copyLength);
             Unsafe.Add(ref deferred, copies * 3) = pos;
             Unsafe.Add(ref deferred, copies * 3 + 1) = (int)rep0 + 1;
             Unsafe.Add(ref deferred, copies * 3 + 2) = copyLength;
@@ -650,11 +655,25 @@ internal sealed class LzmaDecoder
         _pos = pos;
         _state = state;
         _rep0 = rep0;
-        _rep1 = rep1;
-        _rep2 = rep2;
-        _rep3 = rep3;
         rc.Put(range, code, inPos);
         return next;
+    }
+
+    /// <summary>
+    /// A hint to load the source of a copy into the cache (x86; elsewhere nothing). <paramref name="source"/> may be
+    /// below zero (the source wrapped to the window's end); only the address is used, nothing is read through it.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void Prefetch(byte[] window, int source, int count)
+    {
+        if (!Sse.IsSupported)
+            return;
+        if (source < 0)
+            source += window.Length;
+        // Both addresses stay inside the window (a source that wraps around its end is only hinted up to there).
+        ref var data = ref MemoryMarshal.GetArrayDataReference(window);
+        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref data, source)));
+        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref data, Math.Min(source + count - 1, window.Length - 1))));
     }
 
     /// <summary>Does the first <paramref name="count"/> copies MatchRun put off, in order.</summary>

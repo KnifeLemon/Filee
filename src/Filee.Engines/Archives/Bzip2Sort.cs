@@ -44,7 +44,11 @@ internal static class Bzip2Sort
                 var at = sa[i];
                 if (at == start)
                     origin = row;
-                output.Slice(row, repeats).Fill(word[at == 0 ? root - 1 : at - 1]);
+                var last = word[at == 0 ? root - 1 : at - 1];
+                if (repeats == 1)
+                    output[row] = last; // nearly every block: no repeating root
+                else
+                    output.Slice(row, repeats).Fill(last);
                 row += repeats;
             }
             return origin;

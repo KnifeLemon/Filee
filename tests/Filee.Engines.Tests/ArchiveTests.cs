@@ -57,6 +57,8 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("egg")]
     [InlineData("lz")]
     [InlineData("tlz")]
+    [InlineData("tzst")]
+    [InlineData("zst")]
     [InlineData("split")]
     public void Every_readable_archive_converts_in_one_step(string from)
     {
@@ -75,6 +77,8 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var planner = fx.Catalog.CreatePlanner(["archive"]);
         Assert.Single(planner.Plan("lz", "gz")!.Steps);
+        Assert.Single(planner.Plan("zst", "xz")!.Steps);
+        Assert.Null(planner.Plan("gz", "zst")); // zstd is read, not written
         Assert.Single(planner.Plan("xz", "gz")!.Steps);
         Assert.Single(planner.Plan("gz", "xz")!.Steps); // Filee's own XZ writer
         Assert.Single(planner.Plan("lzma", "bz2")!.Steps); // and its own bzip2 writer

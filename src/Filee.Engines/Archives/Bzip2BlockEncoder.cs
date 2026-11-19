@@ -192,7 +192,7 @@ internal sealed class Bzip2BlockEncoder
                 run = 0;
             }
             var j = list[1..inUse].IndexOf(value) + 1;
-            list[..j].CopyTo(list[1..]);
+            Bzip2Decoder.MoveUp(list, j);
             list[0] = value;
             symbols[count++] = (ushort)(j + 1);
             frequencies[j + 1]++;
