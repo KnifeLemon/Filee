@@ -1,7 +1,7 @@
 // HDocument → plain text: paragraphs separated by an empty line, list markers and numbers written out, table rows
 // as tab-separated cells, text boxes on lines of their own and footnotes collected at the end. Used for e-books and
-// HWP / HWPX → TXT. WriteLines is a word processor's "plain text" instead (RTF → TXT): a line per paragraph, an empty
-// paragraph an empty line, and the text's own spaces and tabs as they are.
+// HWP / HWPX → TXT. WriteLines is a word processor's "plain text" instead (RTF, Word and ODT → TXT): a line per
+// paragraph, an empty paragraph an empty line, and the text's own spaces and tabs as they are.
 
 using System.Globalization;
 using System.Text;
@@ -126,8 +126,27 @@ internal static class PlainTextWriter
     private static bool IsCode(HParagraph paragraph) =>
         paragraph.Inlines.Count > 0 && paragraph.Inlines.All(i => i is HText { Format.Shade: HtmlReader.CodeShade });
 
-    private static string Cell(HCell cell, List<string> notes) =>
-        string.Join(" ", cell.Blocks.OfType<HParagraph>().Select(p => Inlines(p.Inlines, notes).Replace('\n', ' ').Replace('\t', ' ')).Where(t => t.Length > 0));
+    /// <summary>A cell's text on one line: its paragraphs, and the cells of a table inside it, separated by a space.</summary>
+    private static string Cell(HCell cell, List<string> notes) => string.Join(" ", CellTexts(cell.Blocks, notes));
+
+    private static IEnumerable<string> CellTexts(List<HBlock> blocks, List<string> notes)
+    {
+        foreach (var block in blocks)
+        {
+            IEnumerable<string> texts = block switch
+            {
+                HParagraph p => [Inlines(p.Inlines, notes).Replace('\n', ' ').Replace('\t', ' ')],
+                // A table in the cell (Word, ODT and RTF nest them); Nesting.Limit bounds how deep this goes.
+                HTable table => table.Rows.SelectMany(r => r.Cells).SelectMany(c => CellTexts(c.Blocks, notes)),
+                _ => [],
+            };
+            foreach (var text in texts)
+            {
+                if (text.Length > 0)
+                    yield return text;
+            }
+        }
+    }
 
     /// <summary>
     /// The text of inlines, lines separated by '\n' (the callers write the line ends), without the white space at the
