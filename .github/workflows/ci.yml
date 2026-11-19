@@ -143,10 +143,25 @@ jobs:
         with:
           global-json-file: global.json
 
+      # Ubuntu's FFmpeg pulls in about a hundred packages. The runner's man-db trigger rebuilds the manual index after
+      # them (minutes on its own), and a slow mirror has stalled the step past the job's limit, so: no man-db update,
+      # no recommends, apt timeouts and retries, and a step limit that fails fast instead of eating the job's.
       - name: FFmpeg for the video test
+        timeout-minutes: 12
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          set -euo pipefail
+          sudo rm -f /var/lib/man-db/auto-update
+          apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Dpkg::Use-Pty=0"
+          for attempt in 1 2 3; do
+            if sudo timeout 240 apt-get $apt update -q &&
+               sudo DEBIAN_FRONTEND=noninteractive timeout 420 apt-get $apt install -y -q --no-install-recommends ffmpeg; then
+              break
+            fi
+            [ "$attempt" = 3 ] && exit 1
+            echo "::warning::apt attempt $attempt failed; trying again"
+            sleep 10
+          done
+          ffmpeg -hide_banner -version | sed -n 1p
 
       - name: Fetch ExifTool
         run: |
