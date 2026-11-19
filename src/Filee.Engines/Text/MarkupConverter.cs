@@ -4,6 +4,8 @@
 // ODT, PDF). The edges cost 8 like the DOCX writer's, below Pandoc's (10, and 11 into a markup language), so the
 // built-in route wins; Pandoc keeps what only it does (LaTeX, Typst, AsciiDoc, man pages, slides, RTF and EPUB out).
 // Pictures of a text result go into a "<name>_files" folder next to it (MarkdownPictures), a notebook embeds its own.
+// Mind maps (MindMapReader), read only, are written as Markdown, HTML and text here too; into OPML every topic is a
+// heading, so the outline keeps its whole tree.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -57,7 +59,7 @@ public sealed class MarkupConverter : IConverter
            from source in DocumentReaders.BuiltInFormats
            where source != to
            select new ConversionEdge(source, to, source == "pdf" ? Cost + DocumentReaders.PdfPenalty : Cost, DirectOnly: true),
-        .. from source in Writers.Keys
+        .. from source in Writers.Keys.Concat(MindMapReader.Formats)
            from to in TextTargets
            select new ConversionEdge(source, to, Cost),
     ];
@@ -68,8 +70,10 @@ public sealed class MarkupConverter : IConverter
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         progress?.Report(0.1);
-        var document = await DocumentReaders.ReadAsync(step.InputPath, step.From, step.WorkDirectory, cancellationToken,
-            ocrLayer: step.Preset.Pdf.Ocr);
+        var document = step.To == "opml" && MindMapReader.Formats.Contains(step.From, StringComparer.OrdinalIgnoreCase)
+            ? await Task.Run(() => MindMapReader.Read(step.InputPath, step.From, Path.Combine(step.WorkDirectory, $"media-{Guid.NewGuid():N}"),
+                headingsOnly: true), cancellationToken)
+            : await DocumentReaders.ReadAsync(step.InputPath, step.From, step.WorkDirectory, cancellationToken, ocrLayer: step.Preset.Pdf.Ocr);
         progress?.Report(0.6);
         cancellationToken.ThrowIfCancellationRequested();
 
