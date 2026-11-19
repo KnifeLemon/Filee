@@ -4,6 +4,10 @@
 // Markdown puts the pictures into a "<name>_files" folder next to it (MarkdownPictures); the HTML page embeds them as
 // data: URIs, so it stays one file. "Leave out pictures" (DocumentOptions.LeaveOutPictures) leaves all of them out of
 // the Markdown.
+//
+// RTF → TXT is here too (#1204): RtfReader's document written a line per paragraph, as a word processor saves plain
+// text. Without it the cheapest built-in route went through a PDF (the Filee renderer, then the PDF's text), which
+// wraps long lines and loses the indentation and the empty lines, or through the HWPX writer.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -14,7 +18,7 @@ using Filee.Engines.Text;
 
 namespace Filee.Engines.Hwp;
 
-/// <summary>Writes the text of HWP and HWPX documents as TXT, Markdown or HTML.</summary>
+/// <summary>Writes the text of HWP and HWPX documents as TXT, Markdown or HTML, and of RTF documents as TXT.</summary>
 public sealed class HwpTextConverter : IConverter
 {
     /// <summary>The engine's id; settings that named Unhwp ("unhwp", the engine this replaced) are moved to it.</summary>
@@ -30,9 +34,13 @@ public sealed class HwpTextConverter : IConverter
         new("hwp", "txt"), new("hwpx", "txt"),
         new("hwp", "md"), new("hwpx", "md"),
         new("hwp", "html", 14), new("hwpx", "html", 14),
+        // Direct only, as LibreOffice's RTF → TXT: a TXT step in another route would lose the formatting. Dearer than
+        // LibreOffice's chosen edge (10 + 9 in the default order against 16 + 4), so it stays LibreOffice's while that
+        // is installed, and cheaper than the renderer's PDF and its text (1 + 9 + 10 + 9).
+        new("rtf", "txt", 16, DirectOnly: true),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("HWP, HWPX → TXT, Markdown, HTML", EngineVersions.BuiltIn);
+    public EngineStatus GetStatus() => EngineStatus.Available("HWP, HWPX → TXT, Markdown, HTML; RTF → TXT", EngineVersions.BuiltIn);
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
@@ -46,6 +54,7 @@ public sealed class HwpTextConverter : IConverter
             return [];
         var content = step.To switch
         {
+            "txt" when step.From == "rtf" => PlainTextWriter.WriteLines(document),
             "txt" => PlainTextWriter.Write(document),
             "md" => Markdown(document, step, path),
             "html" => Html(document, step),
