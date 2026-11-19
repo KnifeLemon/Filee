@@ -1218,6 +1218,9 @@ internal static class SettingsMigrations
         // v99: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put.
         if (from < 99)
             changed |= LearnExtensions(profiles, out _, ["cxlog"]);
+        // v103: UYAP documents (.udf, #1338) learn their documents donut; custom claims stay put.
+        if (from < 103)
+            changed |= LearnExtensions(profiles, out _, ["udf"]);
         return changed;
     }
 
