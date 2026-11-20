@@ -49,6 +49,10 @@ internal static class FileeRenderer
         }
     }
 
+    /// <summary>The document's pages, laid out, for a caller that writes them itself (a drawing's fixed pages).</summary>
+    internal static List<PageContent> Pages(HDocument document, StyleResolver? styles = null, CancellationToken cancellationToken = default) =>
+        Compose(document, cancellationToken, storedLines: true, styles).Pages;
+
     private static ComposedDocument Compose(HDocument document, CancellationToken cancellationToken, bool storedLines, StyleResolver? styles)
     {
         using var shaper = new Shaper();

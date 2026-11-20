@@ -50,7 +50,7 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
         [
             .. from format in formats
                from target in DrawingFormats.Targets
-               select new ConversionEdge(format.Id, target, Checked: format.FirstUnsupported is not null),
+               select new ConversionEdge(format.Id, target, format.Cost, Checked: format.FirstUnsupported is not null),
             .. from format in formats
                where format.Slides
                from target in DrawingFormats.SlideTargets
