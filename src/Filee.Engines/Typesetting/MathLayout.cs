@@ -4,7 +4,9 @@
 //
 // Text: variables (Latin letters) italic, numbers, function names, Greek letters, symbols and rm text upright, bold
 // where asked; in 한글's equation fonts when installed (HancomEQN, HYhwpEQ), else Times New Roman or another serif,
-// with the font fallback for characters a font lacks. Relations (=, ≤, ∈, →, …) get 0.13 of the size on each side,
+// with the font fallback for characters a font lacks. Word's and TeX's equations are set in the math font instead (as
+// Word sets them in Cambria Math), their variables and lowercase Greek letters in its math italic alphabet (U+1D434 …),
+// bold ones in its bold alphabets; text (\text, quoted) stays in the text font. Relations (=, ≤, ∈, →, …) get 0.13 of the size on each side,
 // binary operators (+, −, ×, ∪, …) a tenth, unless they start the row (a sign); - is drawn as the minus sign.
 //
 // Structure (sizes as fractions of the equation's size): scripts at 0.7 of their base, raised to 0.42 or lowered by
@@ -18,12 +20,17 @@
 // (MathMode.Display / Text): an inline one (and a display fraction's parts) sets fractions' parts at script size and
 // large operators little larger than the text with their limits at the side; scripts of scripts shrink less; matrix
 // rows are evenly spaced and closer, and brackets fall a little short of their content, as Word draws them (#356).
+// A display formula wider than its column is broken into lines before its binary and relation operators, the lines
+// after the first indented (Word's rule: m:brkBin "before", m:wrapIndent 1 inch), the whole centred as a group.
 //
-// Brackets and radical signs come from a math font when one is installed (Cambria Math, STIX Two Math, Latin Modern
-// Math ...: a font with an OpenType MATH table, see MathTable): the glyph itself, a taller variant of it, or for taller
-// content an assembly of its parts, as Word draws them. Without one, a bracket no taller than a letter is the text
-// font's own, and taller ones are drawn: round brackets and braces heavy in the middle and thin at the ends.
+// Brackets and radical signs come from a math font when one is installed (Cambria Math on Windows, STIX Two Math on
+// macOS, Latin Modern Math, DejaVu Math TeX Gyre ... on Linux: a font with an OpenType MATH table, see MathTable): the
+// glyph itself, a taller variant of it, or for taller content an assembly of its parts, as Word draws them; so do a
+// display formula's large operators (the font's display ∑ and ∫). Without one, a bracket no taller than a letter is
+// the text font's own, and taller ones are drawn: round brackets and braces heavy in the middle and thin at the ends;
+// the text is in the text font and large operators are its glyphs scaled up.
 
+using System.Text;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Rendering;
 using SkiaSharp;
@@ -109,6 +116,7 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     private readonly Dictionary<FontStyle, ResolvedFont?> _primary = [];
     private (PageFont Font, MathTable Table)? _mathFont;
+    private ResolvedFont? _mathFace;
     private bool _mathFontLooked;
     private int _depth;
 
@@ -141,8 +149,8 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     public EquationBox Layout(MathNode node, float size, SKColor color, MathMode mode = MathMode.Fixed) => Lay(node, new Style(size, color, false, false, mode));
 
     /// <summary>
-    /// Lays out the lines of an equation array as <see cref="Layout"/> does, with where each line's baseline is (down
-    /// from the array's) in <paramref name="baselines"/>.
+    /// Lays out the lines of an equation array as <see cref="Layout(MathNode, float, SKColor, MathMode)"/> does, with
+    /// where each line's baseline is (down from the array's) in <paramref name="baselines"/>.
     /// </summary>
     public EquationBox Lines(MathPile pile, float size, SKColor color, List<float> baselines, MathMode mode = MathMode.Fixed) =>
         Pile(pile.Rows, pile.Align, new Style(size, color, false, false, mode), baselines);
@@ -151,10 +159,26 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     /// The width <paramref name="node"/> takes as an item in the middle of a row, operators with the room on their
     /// sides (for breaking a long equation into lines).
     /// </summary>
-    public float ItemWidth(MathNode node, float size)
+    /// <param name="mode">How the equation is set: as Word's display equations (DocxReader breaks those) by default.</param>
+    public float ItemWidth(MathNode node, float size, MathMode mode = MathMode.Display)
     {
-        var (before, after) = Spacing(node, new MathText("x"), size);
-        return before + Layout(node, size, SKColors.Black).Width + after;
+        var (before, after) = Spacing(node, new MathText("x"), new Style(size, SKColors.Black, false, false, mode));
+        return before + Layout(node, size, SKColors.Black, mode).Width + after;
+    }
+
+    /// <summary>
+    /// <see cref="Layout(MathNode, float, SKColor, MathMode)"/>, with a display formula wider than
+    /// <paramref name="width"/> broken into lines before its binary and relation operators as Word breaks one: the
+    /// lines after the first indented by an inch (a third of the width at most) and left-aligned with each other in the
+    /// box, which the paragraph centres. An inline formula, or one without such an operator between its parts, stays on
+    /// one line.
+    /// </summary>
+    public EquationBox Layout(MathNode node, float size, SKColor color, MathMode mode, float width)
+    {
+        var box = Layout(node, size, color, mode);
+        if (mode != MathMode.Display || !(width > 0) || box.Width <= width)
+            return box;
+        return Wrapped(node, new Style(size, color, false, false, mode), width) ?? box;
     }
 
     private EquationBox Lay(MathNode node, Style style)
@@ -175,12 +199,7 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     private EquationBox LayNode(MathNode node, Style style) => node switch
     {
         MathRow row => Row(row.Items, style),
-        MathText text => Text(text.Text, style, italic: !style.Upright && text.Text.All(char.IsAsciiLetter)),
-        MathNumber number => Text(number.Digits, style, italic: false),
-        MathSymbol symbol => Text(symbol.Text == "-" ? "−" : symbol.Text, style, italic: false),
-        MathCommand command => Text(command.Glyph, style, italic: false),
-        MathQuoted quoted => Text(quoted.Text, style, italic: false),
-        MathFunction function => Text(function.Name, style, italic: false),
+        MathText or MathNumber or MathSymbol or MathCommand or MathQuoted or MathFunction => Atom(node, style),
         MathSpace space => new EquationBox((float)space.Width * 0.5f * style.Size, 0, 0, (_, _, _, _) => { }),
         MathFraction fraction => Fraction(fraction, style),
         MathRoot root => Root(root, style),
@@ -205,6 +224,22 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     // ───────────────────────── Text ─────────────────────────
 
+    /// <summary>
+    /// A letter, number, symbol, function name or text (kept out of <see cref="LayNode"/>, whose frame each level of a
+    /// deep equation takes again).
+    /// </summary>
+    private EquationBox Atom(MathNode node, Style style) => node switch
+    {
+        MathText text => Text(text.Text, style, italic: !style.Upright && (text.Text.All(char.IsAsciiLetter) || style.Tex && IsSmallGreek(text.Text))),
+        MathNumber number => Text(number.Digits, style, italic: false),
+        MathSymbol symbol => Text(symbol.Text == "-" ? "−" : symbol.Text, style, italic: false),
+        // Word and TeX lean lowercase Greek letters like Latin ones; capitals stay upright.
+        MathCommand command => Text(command.Glyph, style, italic: style.Tex && !style.Upright && IsSmallGreek(command.Glyph)),
+        MathQuoted quoted => Text(quoted.Text, style, italic: false, prose: true),
+        MathFunction function => Text(function.Name, style, italic: false),
+        _ => EquationBox.Empty,
+    };
+
     private ResolvedFont? Primary(FontStyle style)
     {
         if (_primary.TryGetValue(style, out var font))
@@ -223,19 +258,96 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         {
             // Another name can find a font without the table (Cambria Math → Caladea): only a MATH table counts.
             if (fonts.Find(family, FontStyle.Regular) is { Face.Cff2: false } found && MathTable.Of(found.Font) is { } table)
+            {
+                _mathFace = found;
                 return _mathFont = (found.Font, table);
+            }
         }
         return null;
     }
 
-    /// <summary>A run of text in the equation's fonts (with fallback for characters they lack).</summary>
-    private EquationBox Text(string text, Style style, bool italic, float scale = 1)
+    /// <summary>
+    /// A run of text in the equation's fonts (with fallback for characters they lack): Word's and TeX's in the math
+    /// font, its letters from the font's math alphabets.
+    /// </summary>
+    /// <param name="prose">Text written as text (\text, a quoted word): the text font in any mode.</param>
+    private EquationBox Text(string text, Style style, bool italic, float scale = 1, bool prose = false)
     {
         if (text.Length == 0)
             return EquationBox.Empty;
+        if (style.Tex && !prose && InMathFont(text, italic, style.Bold) is { } math && _mathFace is { } face)
+            return Glyphs(math, style, face, FontStyle.Regular, italic, scale);
         var fontStyle = new FontStyle(style.Bold ? 700 : 400, italic);
         if (Primary(fontStyle) is not { } primary)
             return EquationBox.Empty;
+        return Glyphs(text, style, primary, fontStyle, italic, scale);
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> in the math font's alphabets: italic letters (and lowercase Greek) in math italic, bold
+    /// letters and digits in math bold; null without a math font, when the font lacks one of them, or for bold text
+    /// with characters outside those alphabets (the text font's bold draws it).
+    /// </summary>
+    private string? InMathFont(string text, bool italic, bool bold)
+    {
+        if (MathFont() is null || _mathFace is not { } face)
+            return null;
+        var sb = new StringBuilder(text.Length * 2);
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var mapped = Alphabet(rune.Value, italic, bold);
+            if (mapped != rune.Value && !face.Face.Has(mapped))
+                return null;
+            if (bold && mapped == rune.Value && !Rune.IsWhiteSpace(rune))
+                return null;
+            sb.Append(char.ConvertFromUtf32(mapped));
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// A letter or digit in Unicode's mathematical alphanumerics (U+1D400 …): italic and bold italic Latin letters and
+    /// lowercase Greek, bold Latin letters and digits; any other character as it is.
+    /// </summary>
+    internal static int Alphabet(int c, bool italic, bool bold)
+    {
+        switch (c)
+        {
+            case >= 'A' and <= 'Z':
+                return !italic && !bold ? c : (italic ? bold ? 0x1D468 : 0x1D434 : 0x1D400) + c - 'A';
+            case 'h' when italic && !bold:
+                // Planck's constant stands in the italic alphabet's gap.
+                return 0x210E;
+            case >= 'a' and <= 'z':
+                return !italic && !bold ? c : (italic ? bold ? 0x1D482 : 0x1D44E : 0x1D41A) + c - 'a';
+            case >= '0' and <= '9':
+                return bold && !italic ? 0x1D7CE + c - '0' : c;
+            case >= 0x3B1 and <= 0x3C9 when italic:
+                return (bold ? 0x1D736 : 0x1D6FC) + c - 0x3B1;
+        }
+        if (!italic)
+            return c;
+        // ϵ ϑ ϰ ϕ ϱ ϖ follow the italic small omega and ∂.
+        var variant = c switch
+        {
+            0x3F5 => 1,
+            0x3D1 => 2,
+            0x3F0 => 3,
+            0x3D5 => 4,
+            0x3F1 => 5,
+            0x3D6 => 6,
+            _ => 0,
+        };
+        return variant == 0 ? c : (bold ? 0x1D74F : 0x1D715) + variant;
+    }
+
+    /// <summary>One lowercase Greek letter (or one of its variant forms ϵ ϑ ϰ ϕ ϱ ϖ).</summary>
+    private static bool IsSmallGreek(string text) =>
+        text.Length == 1 && text[0] is >= 'α' and <= 'ω' or 'ϵ' or 'ϑ' or 'ϰ' or 'ϕ' or 'ϱ' or 'ϖ';
+
+    /// <summary>The glyphs of <paramref name="text"/> in <paramref name="primary"/> and the fonts it falls back to.</summary>
+    private EquationBox Glyphs(string text, Style style, ResolvedFont primary, FontStyle fontStyle, bool italic, float scale)
+    {
         var size = style.Size * scale;
         var runs = new List<PlacedRun>();
         float x = 0;
@@ -289,7 +401,8 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     }
 
     /// <summary><paramref name="character"/> from the math font at least <paramref name="height"/> tall; null without one.</summary>
-    private Stretched? Stretch(string character, float height, float size)
+    /// <param name="variantOnly">Only one of its variants (see <see cref="MathTable.Stretch"/>).</param>
+    private Stretched? Stretch(string character, float height, float size, bool variantOnly = false)
     {
         if (character.Length == 0 || !(size > 0) || MathFont() is not var (font, table))
             return null;
@@ -304,7 +417,7 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
             measure.GetGlyphWidths([g], width, bounds);
             return bounds[0].Height;
         }
-        var parts = table.Stretch(glyph, height * table.UnitsPerEm / size, InkHeight);
+        var parts = table.Stretch(glyph, height * table.UnitsPerEm / size, InkHeight, variantOnly);
         var glyphs = parts.Select(p => p.Glyph).ToArray();
         var widths = new float[glyphs.Length];
         var outlines = new SKRect[glyphs.Length];
@@ -332,7 +445,7 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         foreach (var item in items)
         {
             var box = Lay(item, style);
-            var (before, after) = Spacing(item, previous, style.Size);
+            var (before, after) = Spacing(item, previous, style);
             x += before;
             parts.Add((x, box));
             x += box.Width + after;
@@ -341,9 +454,17 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         return Combine(parts, x);
     }
 
-    /// <summary>Space around an operator: relations more than binary operators, none for a sign.</summary>
-    private static (float Before, float After) Spacing(MathNode item, MathNode? previous, float size)
+    /// <summary>
+    /// Space around an operator: relations more than binary operators, none for a sign. Word and TeX space them as TeX
+    /// does (a thick space, 5/18 em, around relations, a medium one, 4/18 em, around binary operators, a thin one
+    /// after a function name or a comma) and leave the operators of scripts unspaced.
+    /// </summary>
+    private static (float Before, float After) Spacing(MathNode item, MathNode? previous, in Style style)
     {
+        var size = style.Size;
+        var tex = style.Tex;
+        if (tex && style.Level > 0)
+            return (0, 0);
         var text = item switch
         {
             MathSymbol symbol => symbol.Text,
@@ -353,13 +474,13 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
             _ => null,
         };
         if (text is null)
-            return item is MathFunction ? (0, size * 0.08f) : (0, 0);
+            return item is MathFunction ? (0, size * (tex ? 1 / 6f : 0.08f)) : (0, 0);
         if (Relations.Contains(text))
-            return (size * 0.13f, size * 0.13f);
+            return tex ? (size * 5 / 18f, size * 5 / 18f) : (size * 0.13f, size * 0.13f);
         var sign = previous is null || previous is MathSymbol { Text: "(" or "[" or "{" or "," } || previous is MathSymbol or MathCommand && IsOperator(previous);
         if (Binary.Contains(text) && !sign)
-            return (size * 0.1f, size * 0.1f);
-        return text == "," ? (0, size * 0.1f) : (0, 0);
+            return tex ? (size * 4 / 18f, size * 4 / 18f) : (size * 0.1f, size * 0.1f);
+        return text == "," ? (0, size * (tex ? 1 / 6f : 0.1f)) : (0, 0);
     }
 
     private static bool IsOperator(MathNode node) => node switch
@@ -368,6 +489,113 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         MathCommand command => Relations.Contains(command.Glyph) || Binary.Contains(command.Glyph),
         _ => false,
     };
+
+    /// <summary>A relation (=, ≤, ∈ …) or an arrow, set with a relation's spacing.</summary>
+    internal static bool IsRelation(string text) => Relations.Contains(text);
+
+    /// <summary>
+    /// Whether a line of a formula may break before <paramref name="item"/> (Word's rule): a relation (an arrow with
+    /// text over it too) or a binary operator, not a sign (after an operator, an opening bracket or a comma) and not a
+    /// slash.
+    /// </summary>
+    internal static bool BreaksBefore(MathNode item, MathNode? previous)
+    {
+        if (previous is null || previous is MathAlign)
+            return false;
+        var text = item switch
+        {
+            MathSymbol symbol => symbol.Text,
+            MathCommand command => command.Glyph,
+            MathStack stack => Glyph(stack.Base),
+            _ => null,
+        };
+        if (text is null or "/" or "\\" or ":")
+            return false;
+        if (Relations.Contains(text))
+            return !IsOperator(previous);
+        return Binary.Contains(text) && Spacing(item, previous, new Style(1, SKColors.Black, false, false)).Before > 0;
+    }
+
+    /// <summary>
+    /// A display formula broken into lines no wider than <paramref name="width"/> where it can be (see
+    /// <see cref="BreaksBefore"/>); null when it can't be broken.
+    /// </summary>
+    private EquationBox? Wrapped(MathNode node, Style style, float width)
+    {
+        var inner = node;
+        while (inner is MathRow { Items: [MathRow only] })
+            inner = only;
+        if (inner is not MathRow { Items.Count: > 1 } row || row.Items.Any(i => i is MathAlign))
+            return null;
+        var items = row.Items;
+        var size = style.Size;
+        // Word indents the lines after the first by an inch (m:wrapIndent).
+        var indent = Math.Min(72f, width / 3);
+        var boxes = new EquationBox[items.Count];
+        var spacing = new (float Before, float After)[items.Count];
+        var starts = new List<int> { 0 };
+        for (var i = 0; i < items.Count; i++)
+        {
+            var previous = i > 0 ? items[i - 1] : null;
+            boxes[i] = Lay(items[i], style);
+            spacing[i] = Spacing(items[i], previous, style);
+            if (i > 0 && BreaksBefore(items[i], previous))
+                starts.Add(i);
+        }
+        if (starts.Count < 2)
+            return null;
+        // The width of items [from, to) on a line, the room before the first left out when it starts the line.
+        float Span(int from, int to, bool first)
+        {
+            float w = 0;
+            for (var i = from; i < to; i++)
+                w += (i == from && first ? 0 : spacing[i].Before) + boxes[i].Width + spacing[i].After;
+            return w;
+        }
+        // As many pieces (from one break to the next) as fit on each line.
+        var lines = new List<(int Start, int End)>();
+        var (lineStart, used) = (0, 0f);
+        for (var p = 0; p < starts.Count; p++)
+        {
+            var (from, to) = (starts[p], p + 1 < starts.Count ? starts[p + 1] : items.Count);
+            var piece = Span(from, to, from == lineStart);
+            var room = lines.Count == 0 ? width : width - indent;
+            if (from > lineStart && used + piece > room)
+            {
+                lines.Add((lineStart, from));
+                (lineStart, used) = (from, Span(from, to, true));
+            }
+            else
+            {
+                used += piece;
+            }
+        }
+        lines.Add((lineStart, items.Count));
+        if (lines.Count < 2)
+            return null;
+        var placed = new List<(float X, float Y, EquationBox Box)>();
+        float y = 0, total = 0;
+        EquationBox? last = null;
+        foreach (var (start, end) in lines)
+        {
+            var parts = new List<(float X, EquationBox Box)>();
+            float x = 0;
+            for (var i = start; i < end; i++)
+            {
+                x += i == start ? 0 : spacing[i].Before;
+                parts.Add((x, boxes[i]));
+                x += boxes[i].Width + spacing[i].After;
+            }
+            var line = Combine(parts, x);
+            if (last is not null)
+                y += last.Descent + size * 0.3f + line.Ascent;
+            var left = last is null ? 0 : indent;
+            placed.Add((left, y, line));
+            total = Math.Max(total, left + line.Width);
+            last = line;
+        }
+        return Place(total, placed[0].Box.Ascent, y + last!.Descent, [.. placed]);
+    }
 
     /// <summary>Boxes side by side on one baseline.</summary>
     private static EquationBox Combine(List<(float X, EquationBox Box)> parts, float width) =>
@@ -509,7 +737,8 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     // ───────────────────────── Scripts and limits ─────────────────────────
 
-    private EquationBox Scripts(EquationBox body, MathNode? subNode, MathNode? supNode, Style style, bool italicBase)
+    /// <param name="italic">How far the base reaches past its width at the top (a slanted integral): the superscript goes that much further.</param>
+    private EquationBox Scripts(EquationBox body, MathNode? subNode, MathNode? supNode, Style style, bool italicBase, float italic = 0)
     {
         var size = style.Size;
         var small = style.Script();
@@ -526,7 +755,7 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         var width = body.Width;
         if (sup is not null)
         {
-            var x = body.Width + (italicBase ? size * (prime ? 0.08f : 0.03f) : 0);
+            var x = body.Width + italic + (italicBase ? size * (prime ? 0.08f : 0.03f) : 0);
             parts.Add((x, -supShift, sup));
             width = Math.Max(width, x + sup.Width);
         }
@@ -577,14 +806,23 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         // Word's inline equations and TeX's $…$ (text style) draw the operator little larger than the text, with its
         // limits at the side as scripts.
         var inline = style.Mode == MathMode.Text;
-        var glyph = Text(big.Glyph, style, italic: false, inline ? (integral ? 1.15f : 1.05f) : integral ? 1.6f : 1.4f);
-        // Centred on the math axis.
-        var shift = (glyph.Ascent - glyph.Descent) / 2 - size * Axis;
-        var symbol = Place(glyph.Width, glyph.Ascent - shift, glyph.Descent + shift, (0, shift, glyph));
+        EquationBox symbol;
+        float italic = 0;
+        if (style.Tex && Large(big.Glyph, display: !inline, style) is var (large, correction))
+        {
+            (symbol, italic) = (large, correction);
+        }
+        else
+        {
+            var glyph = Text(big.Glyph, style, italic: false, inline ? (integral ? 1.15f : 1.05f) : integral ? 1.6f : 1.4f);
+            // Centred on the math axis.
+            var shift = (glyph.Ascent - glyph.Descent) / 2 - size * Axis;
+            symbol = Place(glyph.Width, glyph.Ascent - shift, glyph.Descent + shift, (0, shift, glyph));
+        }
         EquationBox box;
         if (integral || inline)
         {
-            box = Scripts(symbol, big.Lower, big.Upper, style, italicBase: integral);
+            box = Scripts(symbol, big.Lower, big.Upper, style, italicBase: integral && italic == 0, italic);
         }
         else
         {
@@ -595,6 +833,22 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
             box = Limits(symbol, upper, lower, size * 0.08f);
         }
         return Place(box.Width + size * 0.05f, box.Ascent, box.Descent, (0, 0, box));
+    }
+
+    /// <summary>
+    /// A large operator from the math font, centred on the math axis: its own glyph inline, in a display formula its
+    /// variant at least as tall as the font asks (Cambria Math's display ∑ and ∫, as Word draws them), with its italic
+    /// correction (points); null without a math font or when it lacks the glyph.
+    /// </summary>
+    private (EquationBox Box, float Italic)? Large(string glyph, bool display, Style style)
+    {
+        if (MathFont() is not var (_, table) || _mathFace is not { } face || glyph.EnumerateRunes().Count() != 1 || !face.Face.Has(char.ConvertToUtf32(glyph, 0)))
+            return null;
+        var size = style.Size;
+        var height = display ? table.DisplayOperatorMinHeight * size / table.UnitsPerEm : 0;
+        if (Stretch(glyph, height, size, variantOnly: true) is not { Glyphs.Length: 1 } large)
+            return null;
+        return (large.Box(0, size * Axis - large.Height / 2, style.Color), table.ItalicCorrection(large.Glyphs[0]) * size / table.UnitsPerEm);
     }
 
     /// <summary>

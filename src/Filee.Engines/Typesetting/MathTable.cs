@@ -1,11 +1,13 @@
 // The OpenType MATH table of a math font (Cambria Math, STIX Two Math, Latin Modern Math ...), as far as MathLayout
-// draws with it: the constants for the math axis and radicals, and the vertical glyph constructions that make
-// brackets, braces and radical signs as tall as what they hold. A construction is a list of ever taller variants of
-// the glyph and, for heights past the largest, an assembly of parts (ends, middle, extenders repeated as often as
-// needed) that overlap at their connectors.
+// draws with it: the constants for the math axis, display operators and radicals, the italic corrections that place an
+// integral's limits, and the vertical glyph constructions that make brackets, braces, radical signs and display
+// operators as tall as they need to be. A construction is a list of ever taller variants of the glyph and, for
+// heights past the largest, an assembly of parts (ends, middle, extenders repeated as often as needed) that overlap at
+// their connectors.
 //
-// Format: OpenType 1.9, "MATH - The Mathematical Typesetting Table" (MathConstants, MathVariants, Coverage). Fonts
-// can come from documents, so every offset is checked; a table that doesn't read counts as none.
+// Format: OpenType 1.9, "MATH - The Mathematical Typesetting Table" (MathConstants, MathGlyphInfo's italics
+// corrections, MathVariants, Coverage). Fonts can come from documents, so every offset is checked; a table that
+// doesn't read counts as none.
 
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
@@ -36,6 +38,9 @@ internal sealed class MathTable
     /// <summary>Height of the math axis above the baseline (font units).</summary>
     public int AxisHeight { get; private init; }
 
+    /// <summary>How tall a large operator (∑, ∫ …) of a display formula is at least (font units).</summary>
+    public int DisplayOperatorMinHeight { get; private init; }
+
     public int RadicalVerticalGap { get; private init; }
     public int RadicalDisplayStyleVerticalGap { get; private init; }
     public int RadicalRuleThickness { get; private init; }
@@ -46,6 +51,14 @@ internal sealed class MathTable
 
     /// <summary>Overlap two parts of an assembly need at least (font units).</summary>
     public int MinConnectorOverlap { get; private init; }
+
+    private IReadOnlyDictionary<ushort, int> Italics { get; init; } = new Dictionary<ushort, int>();
+
+    /// <summary>
+    /// How far a slanted glyph (a display integral) reaches past its advance at the top (font units): its upper limit
+    /// goes that much further right than its lower one.
+    /// </summary>
+    public int ItalicCorrection(ushort glyph) => Italics.GetValueOrDefault(glyph);
 
     private sealed record Holder(MathTable? Table);
 
@@ -93,8 +106,22 @@ internal sealed class MathTable
             var construction = variants + reader.U16(variants + 10 + index * 2);
             vertical[glyph] = ReadConstruction(reader, construction);
         }
+        // MathGlyphInfo → MathItalicsCorrectionInfo: a coverage and a value record (value, device offset) per glyph.
+        var italics = new Dictionary<ushort, int>();
+        if (reader.U16(6) is var glyphInfo and > 0 && reader.U16(glyphInfo) is var italic and > 0)
+        {
+            var at = glyphInfo + italic;
+            var corrections = reader.U16(at + 2);
+            foreach (var (glyph, index) in Coverage(reader, at + reader.U16(at)))
+            {
+                if (index < corrections)
+                    italics[glyph] = reader.I16(at + 4 + index * 4);
+            }
+        }
         return new MathTable(unitsPerEm, vertical)
         {
+            Italics = italics,
+            DisplayOperatorMinHeight = reader.U16(constants + 6),
             AxisHeight = Value(12),
             RadicalVerticalGap = Value(188),
             RadicalDisplayStyleVerticalGap = Value(192),
@@ -161,18 +188,22 @@ internal sealed class MathTable
     /// first variant that is, else the assembly of its parts (bottom to top), else its largest variant.
     /// </summary>
     /// <param name="inkHeight">The height of a glyph's outline in font units (its variants are measured by advance).</param>
-    public IReadOnlyList<StretchedGlyph> Stretch(ushort glyph, float height, Func<ushort, float> inkHeight)
+    /// <param name="variantOnly">
+    /// Only a variant, the first whose advance is the height (a display operator, whose own glyph may reach as high
+    /// with its descender): no assembly.
+    /// </param>
+    public IReadOnlyList<StretchedGlyph> Stretch(ushort glyph, float height, Func<ushort, float> inkHeight, bool variantOnly = false)
     {
         if (!_vertical.TryGetValue(glyph, out var construction))
             return [new StretchedGlyph(glyph, 0)];
-        if (inkHeight(glyph) >= height)
+        if (!variantOnly && inkHeight(glyph) >= height)
             return [new StretchedGlyph(glyph, 0)];
         foreach (var (variant, advance) in construction.Variants)
         {
             if (advance >= height)
                 return [new StretchedGlyph(variant, 0)];
         }
-        if (Assemble(construction.Assembly, height) is { } assembled)
+        if (!variantOnly && Assemble(construction.Assembly, height) is { } assembled)
             return assembled;
         var largest = construction.Variants.Count > 0 ? construction.Variants[^1].Glyph : glyph;
         return [new StretchedGlyph(largest, 0)];

@@ -206,7 +206,9 @@ public sealed class WordEquationLayoutTests : IDisposable
 
         var sum = Single(page, "∑");
         var (sign, n, lower) = (Ink(sum), Single(page, "n"), Runs(page, "i").OrderBy(r => r.Positions[0].X).First());
-        Assert.Equal(20 * 1.4f, sum.Size, 0.01f);
+        // The math font's display variant, taller than the text's ∑ (an em at most), not the glyph scaled up.
+        Assert.Equal(20f, sum.Size, 0.01f);
+        Assert.True(sign.Height > 20, $"{sign}");
         Assert.Equal(20 * 0.7f, n.Size, 0.01f);
         Assert.True(Ink(n).Bottom < sign.Top && Ink(lower).Top > sign.Bottom, $"{Ink(n)} / {sign} / {Ink(lower)}");
         var ones = Runs(page, "1").Where(r => r.Size < 15).OrderBy(r => r.Positions[0].Y).ToList();
@@ -316,7 +318,7 @@ public sealed class WordEquationLayoutTests : IDisposable
         var page = Render(new DocxBuilder().Paragraph(P(Display(MR("y=") + terms), "<w:jc w:val=\"center\"/>")))[0];
 
         var glyphs = page.Items.OfType<GlyphItem>().Select(i => i.Run).ToList();
-        var baselines = glyphs.Where(r => r.Text == "x").Select(r => MathF.Round(r.Positions[0].Y)).Distinct().ToList();
+        var baselines = glyphs.Where(r => Plain(r.Text) == "x").Select(r => MathF.Round(r.Positions[0].Y)).Distinct().ToList();
         Assert.True(baselines.Count >= 2, $"{baselines.Count} lines");
         Assert.All(glyphs.Select(Ink), r => Assert.InRange(r.Right, 72 - 1, 595.3f - 72 + 1));
         Assert.All(glyphs.Select(Ink), r => Assert.True(r.Left >= 72 - 1, $"{r}"));
@@ -422,8 +424,19 @@ public sealed class WordEquationLayoutTests : IDisposable
         return new PageComposer(_system, _shaper, styles: StyleResolver.FromTemplate()).Compose(document, TestContext.Current.CancellationToken).Pages;
     }
 
+    /// <summary>The runs of <paramref name="text"/>, its letters also in the math font's alphabets (𝑥 for x).</summary>
     private static List<GlyphRun> Runs(PageContent page, string text) =>
-        [.. page.Items.OfType<GlyphItem>().Select(i => i.Run).Where(r => r.Text == text)];
+        [.. page.Items.OfType<GlyphItem>().Select(i => i.Run).Where(r => Plain(r.Text) == text)];
+
+    /// <summary>Letters and digits of the mathematical alphanumerics (U+1D400 …) as plain ones.</summary>
+    internal static string Plain(string text) => string.Concat(text.EnumerateRunes().Select(rune => rune.Value switch
+    {
+        0x210E => "h",
+        >= 0x1D400 and <= 0x1D6A3 => ((char)((rune.Value - 0x1D400) % 52 is var i && i < 26 ? 'A' + i : 'a' + i - 26)).ToString(),
+        >= 0x1D6FC and <= 0x1D714 => ((char)('α' + rune.Value - 0x1D6FC)).ToString(),
+        >= 0x1D7CE and <= 0x1D7FF => ((char)('0' + (rune.Value - 0x1D7CE) % 10)).ToString(),
+        _ => rune.ToString(),
+    }));
 
     private static GlyphRun Single(PageContent page, string text) => Assert.Single(Runs(page, text));
 

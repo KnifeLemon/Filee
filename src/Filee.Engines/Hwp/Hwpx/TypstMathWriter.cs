@@ -5,11 +5,12 @@
 // from running into one multi-letter name or shorthands like "->" from forming). Symbols are their Unicode characters,
 // which Typst's math takes as they are; the characters with a meaning in its syntax are escaped (\( \, \_ …), words
 // and CJK text are quoted. Fractions frac(a, b), roots sqrt / root, scripts x_(i)^(n) (attach() for a base of several
-// atoms, primes as '), stacked content limits(x)_( … )^( … ), large operators with their limits, function names as op("…") (with limits for lim, max …),
-// matrices mat(delim: …), cases(…), piles as lines (\) with & marks at the top or as a matrix inside, stretched
-// brackets ( … ) or lr(…), abs / norm / floor / ceil, accents (hat, tilde, overline, arrow …), upright / italic /
-// bold, spaces (thin, med, thick, quad, wide or #h). Cells and arguments are separated by the writer's own commas, so
-// a comma or semicolon in their content is escaped.
+// atoms, primes as '), stacked content limits(x)_( … )^( … ) (an arrow stretch(→)_( … )^( … ), which grows with what
+// it carries: Typst sets a relation's attachments over and under it), large operators with their limits, function
+// names as op("…") (with limits for lim, max …), matrices mat(delim: …), cases(…), piles as lines (\) with & marks
+// at the top or as a matrix inside, stretched brackets ( … ) or lr(…), abs / norm / floor / ceil, accents (hat, tilde,
+// overline, arrow …), upright / italic / bold, spaces (thin, med, thick, quad, wide or #h). Cells and arguments are
+// separated by the writer's own commas, so a comma or semicolon in their content is escaped.
 //
 // A tree deeper than MaxDepth is not written (null), as in TexMathWriter.
 
@@ -158,6 +159,12 @@ internal static class TypstMathWriter
                 case MathScripts scripts:
                     Scripts(scripts.Base, scripts.Sub, scripts.Sup);
                     break;
+                case MathStack stack when Stretchable(stack.Base) is { } arrow:
+                    // \xrightarrow: stretch() as the base of the attachments makes the arrow as long as they are.
+                    Atom("stretch");
+                    _sb.Append('(').Append(arrow).Append(')');
+                    Attachments(stack.Under, stack.Over);
+                    break;
                 case MathStack stack:
                     // limits() sets the attachments over and under the base.
                     Call("limits", stack.Base);
@@ -292,6 +299,30 @@ internal static class TypstMathWriter
                 _sb.Append(')');
             }
         }
+
+        /// <summary>
+        /// An arrow Typst's math fonts stretch sideways, the long forms (⟶ …) as their short ones (the fonts' variants
+        /// are of those); null for any other base.
+        /// </summary>
+        private static string? Stretchable(MathNode node) => (node switch
+        {
+            MathCommand command => command.Glyph,
+            MathSymbol symbol => symbol.Text,
+            _ => null,
+        }) switch
+        {
+            "→" or "⟶" => "→",
+            "←" or "⟵" => "←",
+            "↔" or "⟷" => "↔",
+            "⇒" or "⟹" => "⇒",
+            "⇐" or "⟸" => "⇐",
+            "⇔" or "⟺" => "⇔",
+            "↦" or "⟼" => "↦",
+            "↪" => "↪",
+            "↩" => "↩",
+            "⇌" => "⇌",
+            _ => null,
+        };
 
         private static int Primes(MathNode node)
         {
