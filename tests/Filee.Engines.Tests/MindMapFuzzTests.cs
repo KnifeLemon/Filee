@@ -1,12 +1,14 @@
 // Mutation fuzzing of the mind map reader (Hwp/Hwpx/Markup/MindMapReader): FreeMind / Freeplane maps as XML
 // (XmlFuzzer), XMind packages (DocumentFuzzer: parts changed, dropped, swapped) and XMind's content.json on its own
-// (JsonFuzzer, packed into a map for each input). The seeds are MindMapTests' maps; every input must be read or refused
+// (JsonFuzzer, packed into a map for each input), and the drawn maps (MindMapDrawingTests' styled ones, laid out and
+// drawn). The seeds are those tests' maps; every input must be read or refused
 // with InvalidDataException / ConversionRefusedException, in time. Run by FuzzHarness: a short fixed run normally,
 // FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
 
 using System.IO.Compression;
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx.Markup;
+using Filee.Engines.MindMaps;
 
 namespace Filee.Engines.Tests;
 
@@ -28,6 +30,28 @@ public class MindMapFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void XMind_packages_are_read_or_refused() =>
         new FuzzHarness(fx, QuickIterations, 20261120).Files("xmind", "xmind", [MindMapTests.XMindZen(), MindMapTests.XMind8()], FuzzHarness.Packages,
             (path, media) => MindMapReader.ReadXMind(path, media));
+
+    [Fact]
+    public void Drawn_freemind_maps_are_drawn_or_refused() =>
+        new FuzzHarness(fx, QuickIterations, 20261121).Files("mm-drawn", "mm", [System.Text.Encoding.UTF8.GetBytes(MindMapDrawingTests.StyledFreeMind)],
+            FuzzHarness.Xml(["<node TEXT=\"x\">", "</node>", " FOLDED=\"true\"", " POSITION=\"left\"", "<cloud COLOR=\"#ff0000\"/>",
+                "<arrowlink DESTINATION=\"ID_root\"/>", "<edge WIDTH=\"1e9\" STYLE=\"horizontal\"/>", "<font SIZE=\"-1\"/>", " STYLE=\"oval\"",
+                " BACKGROUND_COLOR=\"#12\"", "<hook NAME=\"ExternalObject\" URI=\"../../x.png\"/>"]),
+            (path, _) => Draw(MindMapPages.Open(path, MindMapReader.FreeMind, TestContext.Current.CancellationToken)));
+
+    [Fact]
+    public void Drawn_xmind_maps_are_drawn_or_refused() =>
+        new FuzzHarness(fx, QuickIterations, 20261121).Files("xmind-drawn", "xmind", [MindMapDrawingTests.StyledXMind()], FuzzHarness.Packages,
+            (path, _) => Draw(MindMapPages.Open(path, MindMapReader.XMind, TestContext.Current.CancellationToken)));
+
+    private static void Draw(MindMapPages pages)
+    {
+        using (pages)
+        {
+            for (var i = 0; i < pages.Count; i++)
+                pages.Page(i);
+        }
+    }
 
     [Fact]
     public void XMind_content_json_is_read_or_refused()
