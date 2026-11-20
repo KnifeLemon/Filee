@@ -411,7 +411,8 @@ internal sealed partial class HwpxWriter
     /// Grid position of every cell: explicit cell columns (DOCX) or the next free position (Pandoc), skipping
     /// positions covered by cells spanning rows from above. Spans are clamped to the table (its last row, and
     /// <see cref="Documents.DocumentLimits.MaxTableColumns"/> columns) on the cells themselves, so every writer
-    /// reading them afterwards stays inside the grid; a table of more than <see cref="MaxTableCells"/> positions is
+    /// reading them afterwards stays inside the grid; a cell that finds no free column before that edge is left out
+    /// of <c>Placed</c>; a table of more than <see cref="MaxTableCells"/> positions is
     /// refused. Covered positions are tracked per column (the first row a cell placed so far leaves free), so a span
     /// costs its columns, not its rows × columns.
     /// </summary>
@@ -438,8 +439,12 @@ internal sealed partial class HwpxWriter
                 if (cell.Column >= 0)
                     column = Math.Min(cell.Column, maxColumns - 1);
                 column = FirstFree(column, r);
+                // Every column up to the widest table is taken (by row spans from above or the cells before it):
+                // left out, as the spreadsheet writers leave out cells past the sheet.
+                if (column >= maxColumns)
+                    continue;
                 var rowSpan = Math.Clamp(cell.RowSpan, 1, rows - r);
-                var colSpan = Math.Clamp(cell.ColSpan, 1, Math.Max(1, maxColumns - column));
+                var colSpan = Math.Clamp(cell.ColSpan, 1, maxColumns - column);
                 (cell.RowSpan, cell.ColSpan) = (rowSpan, colSpan);
                 // Only cells running over each other cover more positions than the grid has.
                 positions += colSpan;

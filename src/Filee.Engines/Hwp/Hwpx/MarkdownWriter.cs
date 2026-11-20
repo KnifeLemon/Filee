@@ -78,14 +78,16 @@ internal sealed class MarkdownWriter
 
     private void Paragraph(HParagraph paragraph, StringBuilder sb, string prefix, HBlock? next)
     {
+        // Headings are bold by nature: a heading whose text is all bold (as Word headings often are) gets no ** inside.
+        var inlines = paragraph.HeadingLevel > 0 && AllBold(paragraph.Inlines) ? WithoutBold(paragraph.Inlines) : paragraph.Inlines;
         // An equation alone on its line is display math, also when tabs or spaces centre it (Word and 한글 do that).
-        var shown = paragraph.Inlines.Where(i => i is not (HBookmark or HTab) && !(i is HText run && string.IsNullOrWhiteSpace(run.Text))).ToList();
+        var shown = inlines.Where(i => i is not (HBookmark or HTab) && !(i is HText run && string.IsNullOrWhiteSpace(run.Text))).ToList();
         _display = shown.Count == 1 && shown[0] is HEquation lone ? lone : null;
         // Tabs at the start would write spaces that make the paragraph an indented code block, at the end a line break.
-        var first = paragraph.Inlines.FindIndex(i => i is not HTab);
-        var last = paragraph.Inlines.FindLastIndex(i => i is not HTab);
+        var first = inlines.FindIndex(i => i is not HTab);
+        var last = inlines.FindLastIndex(i => i is not HTab);
         var text = _display is not null ? Inlines(shown)
-            : first < 0 ? "" : Inlines(paragraph.Inlines.GetRange(first, last - first + 1));
+            : first < 0 ? "" : Inlines(inlines.GetRange(first, last - first + 1));
         _display = null;
         if (paragraph.Inlines.Any(i => i is HShape { Kind: HShapeKind.Line }) && text.Trim().Length == 0)
         {
@@ -172,6 +174,36 @@ internal sealed class MarkdownWriter
     /// A cell's paragraphs on one line, joined by &lt;br&gt;: empty ones left out, list items marked "•" or "1." (counted
     /// within the cell), as a Markdown table can't hold a list.
     /// </summary>
+    /// <summary>There is text (equations aside, links' text included) and all of it is bold.</summary>
+    private static bool AllBold(List<HInline> inlines)
+    {
+        var runs = Runs(inlines).Where(t => t is not HEquation && t.Text.Trim().Length > 0).ToList();
+        return runs.Count > 0 && runs.All(t => t.Format.Bold is true);
+
+        static IEnumerable<HText> Runs(List<HInline> inlines) =>
+            inlines.SelectMany(i => i switch
+            {
+                HText text => new[] { text },
+                HLink link => Runs(link.Content),
+                _ => Enumerable.Empty<HText>(),
+            });
+    }
+
+    /// <summary>The runs with their bold taken off (links' content too); equations and other inlines as they are.</summary>
+    private static List<HInline> WithoutBold(List<HInline> inlines) => [.. inlines.Select(inline => inline switch
+    {
+        HText text when text.GetType() == typeof(HText) => new HText(text.Text, text.Format with { Bold = null }),
+        HLink link => Relinked(link),
+        _ => inline,
+    })];
+
+    private static HLink Relinked(HLink link)
+    {
+        var copy = new HLink(link.Target);
+        copy.Content.AddRange(WithoutBold(link.Content));
+        return copy;
+    }
+
     private string Cell(HCell cell, bool header)
     {
         var parts = new List<string>();

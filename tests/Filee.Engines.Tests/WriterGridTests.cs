@@ -79,11 +79,34 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var huge = table.Rows[0].Cells[0];
         Assert.Equal((3, DocumentLimits.Default.MaxTableColumns), (huge.RowSpan, huge.ColSpan));
-        Assert.Equal(0, placed[0][0].Column);
-        // The other cells go past the span, which holds every column of the rows below too.
-        Assert.Equal(DocumentLimits.Default.MaxTableColumns, placed[0][1].Column);
-        Assert.Equal(DocumentLimits.Default.MaxTableColumns, placed[2][0].Column);
-        Assert.Equal(DocumentLimits.Default.MaxTableColumns + 1, columns);
+        Assert.Equal(0, Assert.Single(placed[0]).Column);
+        // The span holds every column of its rows: the other cells find no column before the edge and are left out.
+        Assert.Empty(placed[1]);
+        Assert.Empty(placed[2]);
+        Assert.Equal(DocumentLimits.Default.MaxTableColumns, columns);
+    }
+
+    [Fact]
+    public void A_cell_beside_a_span_over_the_last_column_stays_inside_the_widest_table()
+    {
+        // Row 0: a cell in the last column spanning both rows. Row 1: a cell sent there too, and one after it.
+        var last = DocumentLimits.Default.MaxTableColumns - 1;
+        var table = new HTable { ColumnCount = 1 };
+        var first = new HRow();
+        first.Cells.Add(Cell("tall", column: last, rowSpan: 2));
+        var second = new HRow();
+        second.Cells.Add(Cell("left", column: last - 1));
+        second.Cells.Add(Cell("under the span", column: last));
+        second.Cells.Add(Cell("after", colSpan: 3));
+        table.Rows.Add(first);
+        table.Rows.Add(second);
+
+        var (placed, columns) = HwpxWriter.PlaceCells(table);
+
+        Assert.Equal(DocumentLimits.Default.MaxTableColumns, columns);
+        Assert.Equal([last], placed[0].Select(p => p.Column));
+        Assert.Equal([last - 1], placed[1].Select(p => p.Column));
+        Assert.All(placed.SelectMany(r => r), p => Assert.True(p.Column + p.Cell.ColSpan <= DocumentLimits.Default.MaxTableColumns));
     }
 
     [Fact]
@@ -139,8 +162,10 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void Cells_sent_back_to_column_zero_are_placed_without_searching_the_row_again()
     {
-        // 100,000 cells in one row, each with an explicit column 0: each goes to the next free column.
+        // 100,000 cells in one row, each with an explicit column 0: each goes to the next free column, up to the
+        // widest table; the rest find no free column and are left out.
         const int cells = 100_000;
+        var widest = DocumentLimits.Default.MaxTableColumns;
         var table = new HTable { ColumnCount = 1 };
         var row = new HRow();
         for (var i = 0; i < cells; i++)
@@ -150,8 +175,8 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var watch = Stopwatch.StartNew();
         var (placed, columns) = HwpxWriter.PlaceCells(table);
 
-        Assert.Equal(cells, columns);
-        Assert.Equal(Enumerable.Range(0, cells), placed[0].Select(p => p.Column));
+        Assert.Equal(widest, columns);
+        Assert.Equal(Enumerable.Range(0, widest), placed[0].Select(p => p.Column));
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
     }
 

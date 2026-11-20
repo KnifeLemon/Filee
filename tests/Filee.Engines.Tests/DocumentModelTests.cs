@@ -671,14 +671,14 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void Layout_detail_does_not_change_written_files()
     {
-        HDocument Build(bool detail)
+        HDocument Build(bool detail, bool box = true)
         {
             var slots = HLanguageSlots.All(new HSlotFormat("궁서", 80, 5, 90, 10));
             HCharFormat Char(HCharFormat format) => detail
                 ? format with { Layout = new HCharLayout(slots, new HWordFonts("A", "B", "C", "D"), 90, 100, 50) }
                 : format;
             var paraLayout = new HParaLayout(new HLineHeight(HLineHeightRule.Multiple, 276, 1800),
-                new HParaBorder(HBorders.Grid, "#FFFF00", new HInsets(1, 2, 3, 4), true), new HLineBreaking(HLatinBreak.BreakWord, Kinsoku: false), true, true);
+                box ? new HParaBorder(HBorders.Grid, "#FFFF00", new HInsets(1, 2, 3, 4), true) : null, new HLineBreaking(HLatinBreak.BreakWord, Kinsoku: false), true, true);
 
             var document = new HDocument { Title = "제목" };
             var section = new HSection();
@@ -722,14 +722,15 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
 
         var dir = fx.NewFolder();
-        string Write(string name, Action<HDocument, string> writer, bool detail)
+        string Write(string name, Action<HDocument, string> writer, bool detail, bool box = true)
         {
             var path = Path.Combine(dir, name);
-            writer(Build(detail), path);
+            writer(Build(detail, box), path);
             return path;
         }
         Assert.Equal(Parts(Write("plain.hwpx", (d, p) => HwpxWriter.Write(d, p, cancellationToken: TestContext.Current.CancellationToken), false)), Parts(Write("detail.hwpx", (d, p) => HwpxWriter.Write(d, p, cancellationToken: TestContext.Current.CancellationToken), true)));
-        Assert.Equal(Parts(Write("plain.docx", DocxWriter.Write, false)), Parts(Write("detail.docx", DocxWriter.Write, true)));
+        // DOCX writes the paragraph's box (its lines, distances, line between and background), as RTF does; nothing else.
+        Assert.Equal(Parts(Write("plain.docx", DocxWriter.Write, false)), Parts(Write("detail.docx", DocxWriter.Write, true, box: false)));
         Assert.Equal(PlainTextWriter.Write(Build(false)), PlainTextWriter.Write(Build(true)));
         Assert.Equal(MarkdownWriter.Write(Build(false), _ => null), MarkdownWriter.Write(Build(true), _ => null));
     }

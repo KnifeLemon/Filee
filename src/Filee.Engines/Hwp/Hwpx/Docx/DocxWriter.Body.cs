@@ -248,9 +248,8 @@ internal sealed partial class DocxWriter
             sb.Append("<w:widowControl w:val=\"0\"/>");
         if (paragraph.List is { Numbered: true } list)
             sb.Append($"<w:numPr><w:ilvl w:val=\"{Number(Math.Clamp(list.Level, 0, 8))}\"/><w:numId w:val=\"{Number(NumberingId(list.Numbering))}\"/></w:numPr>");
-        if (format.LeftBar is { } bar)
-            sb.Append("<w:pBdr>").Append(Border("left", bar, space: 6)).Append("</w:pBdr>");
-        if (Hex(format.Fill) is { } paragraphFill)
+        sb.Append(ParagraphBorders(format));
+        if (Hex(format.Fill ?? format.Layout?.Border?.Fill) is { } paragraphFill)
             sb.Append($"<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"{paragraphFill}\"/>");
 
         if (format.Tabs is { Count: > 0 } tabs)
@@ -639,6 +638,41 @@ internal sealed partial class DocxWriter
     }
 
     /// <summary>A border edge: style, width in eighths of a point (2..96), colour, and its distance from the text in points.</summary>
+    /// <summary>
+    /// w:pBdr in CT_PBdr order (top, left, bottom, right, between): the source's own box where the model keeps it (its
+    /// distances and the line between paragraphs too), else the paragraph's borders, with a quote's bar on the left.
+    /// Word joins paragraphs with the same borders into one box, so the whole box goes on every paragraph of it.
+    /// </summary>
+    private static string ParagraphBorders(HParaFormat format)
+    {
+        var box = format.Layout?.Border;
+        var own = box is { Borders: var b } && (b.Left.Style != HBorderStyle.None || b.Right.Style != HBorderStyle.None
+            || b.Top.Style != HBorderStyle.None || b.Bottom.Style != HBorderStyle.None);
+        var sides = own ? box!.Borders : format.Borders ?? HBorders.Empty;
+        var offsets = own ? box!.Offsets : default;
+        var between = box?.Between is { Style: not HBorderStyle.None } line ? line : (HBorder?)null;
+        var leftSpace = Space(offsets.Left);
+        if (sides.Left.Style == HBorderStyle.None && format.LeftBar is { } bar)
+            (sides, leftSpace) = (sides with { Left = bar }, 6);
+
+        var sb = new StringBuilder();
+        void Edge(string edge, HBorder border, int space)
+        {
+            if (border.Style != HBorderStyle.None)
+                sb.Append(Border(edge, border, space));
+        }
+        Edge("top", sides.Top, Space(offsets.Top));
+        Edge("left", sides.Left, leftSpace);
+        Edge("bottom", sides.Bottom, Space(offsets.Bottom));
+        Edge("right", sides.Right, Space(offsets.Right));
+        if (between is { } inner)
+            Edge("between", inner, Space(offsets.Top));
+        return sb.Length == 0 ? "" : $"<w:pBdr>{sb}</w:pBdr>";
+
+        // HWPUNIT (1/100 pt) to w:space's whole points, which Word keeps to 0-31.
+        static int Space(int offset) => Math.Clamp((int)Math.Round(offset / 100.0), 0, 31);
+    }
+
     private static string Border(string edge, HBorder border, int space = 0)
     {
         if (border.Style == HBorderStyle.None)
