@@ -1775,6 +1775,8 @@
   "sheet_studio.apply_fix": "اعمال چیدمان پیشنهادی",
   "sheet_studio.add_region": "+ افزودن ناحیه دیگر",
   "sheet_studio.region_name": "{0} · ناحیه {1}",
+  "sheet_studio.drawn_by_builtin": "پیش‌نمایش با چاپ داخلی صفحه‌گسترده Filee کشیده شده است",
+  "sheet_studio.drawn_by_libreoffice": "پیش‌نمایش با LibreOffice کشیده شده است",
   "whats_new.title": "چه چیزهایی در Filee {0} جدید است",
   "whats_new.previous": "قبلی",
   "whats_new.next": "بعدی",

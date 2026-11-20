@@ -1776,6 +1776,8 @@
   "sheet_studio.apply_fix": "تطبيق التخطيط المقترح",
   "sheet_studio.add_region": "+ إضافة نطاق آخر",
   "sheet_studio.region_name": "{0} · النطاق {1}",
+  "sheet_studio.drawn_by_builtin": "رُسمت المعاينة بطابعة الجداول المدمجة في Filee",
+  "sheet_studio.drawn_by_libreoffice": "رُسمت المعاينة بواسطة LibreOffice",
 
   "whats_new.title": "الجديد في Filee {0}",
   "whats_new.previous": "السابق",

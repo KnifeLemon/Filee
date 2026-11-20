@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "Aplicar layout sugerido",
   "sheet_studio.add_region": "+ Adicionar outra área",
   "sheet_studio.region_name": "{0} · área {1}",
+  "sheet_studio.drawn_by_builtin": "Prévia desenhada pela impressão de planilhas integrada do Filee",
+  "sheet_studio.drawn_by_libreoffice": "Prévia desenhada pelo LibreOffice",
 
   "whats_new.title": "Novidades do Filee {0}",
   "whats_new.previous": "Anterior",

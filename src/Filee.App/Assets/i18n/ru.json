@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "Применить рекомендуемую разметку",
   "sheet_studio.add_region": "+ Добавить ещё область",
   "sheet_studio.region_name": "{0} · область {1}",
+  "sheet_studio.drawn_by_builtin": "Предпросмотр нарисован встроенной печатью таблиц Filee",
+  "sheet_studio.drawn_by_libreoffice": "Предпросмотр нарисован LibreOffice",
 
   "whats_new.title": "Что нового в Filee {0}",
   "whats_new.previous": "Назад",

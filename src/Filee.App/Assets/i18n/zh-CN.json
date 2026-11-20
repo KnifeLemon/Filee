@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "应用建议布局",
   "sheet_studio.add_region": "+ 添加另一个区域",
   "sheet_studio.region_name": "{0} · 区域 {1}",
+  "sheet_studio.drawn_by_builtin": "预览由 Filee 内置的电子表格打印绘制",
+  "sheet_studio.drawn_by_libreoffice": "预览由 LibreOffice 绘制",
 
   "whats_new.title": "Filee {0} 新功能",
   "whats_new.previous": "上一页",

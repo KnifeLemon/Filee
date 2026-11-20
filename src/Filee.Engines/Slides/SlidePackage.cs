@@ -24,7 +24,13 @@ internal sealed class SlidePackage : IDisposable
     private readonly Dictionary<string, byte[]?> _binaries = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string?> _diagramDrawings = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The package is someone else's (a Word document's, for its SmartArt): not closed with this.</summary>
+    private bool _borrowed;
+
     private SlidePackage(DocumentPackage package) => _package = package;
+
+    /// <summary>A view of another reader's open package (a Word document's SmartArt drawings), which stays open after this.</summary>
+    public static SlidePackage Borrow(DocumentPackage package) => new(package) { _borrowed = true };
 
     public static SlidePackage Open(string path, DocumentLimits? limits = null)
     {
@@ -43,7 +49,11 @@ internal sealed class SlidePackage : IDisposable
 
     public DocumentLimits Limits => _package.Limits;
 
-    public void Dispose() => _package.Dispose();
+    public void Dispose()
+    {
+        if (!_borrowed)
+            _package.Dispose();
+    }
 
     /// <summary>The part named by the package's officeDocument relationship.</summary>
     public string? MainPart => Relationships("").Values.FirstOrDefault(r => r.Type.EndsWith("/officeDocument", StringComparison.Ordinal)).Target;

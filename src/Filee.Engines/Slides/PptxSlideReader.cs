@@ -107,6 +107,37 @@ internal sealed partial class PptxSlideReader
         return deck;
     }
 
+    /// <summary>
+    /// A reader of the SmartArt drawings a Word document keeps with its diagrams (see <see cref="Diagram"/>), over the
+    /// document reader's open package; its budget and parts are shared by every diagram of the document.
+    /// </summary>
+    internal static PptxSlideReader ForDiagrams(SlidePackage package, CancellationToken cancellationToken = default) =>
+        new(package, cancellationToken);
+
+    /// <summary>
+    /// SmartArt of a Word document part (its a:graphicData) as the drawing Word saved with it, drawn into a box
+    /// <paramref name="width"/> × <paramref name="height"/> points: a deck of one slide that size, with no background.
+    /// Null when there is no drawing. Scheme colours and theme fonts come from the document's theme.
+    /// </summary>
+    internal SlideDeck? Diagram(string part, XElement graphicData, float width, float height)
+    {
+        if (width <= 0 || height <= 0 || !float.IsFinite(width) || !float.IsFinite(height))
+            return null;
+        var themePart = _package.TargetOfType(_package.MainPart ?? part, "/theme") ?? _package.TargetOfType(part, "/theme") ?? "";
+        var theme = Theme(themePart);
+        var context = new SlideContext { SlidePart = part, Slide = graphicData, Colors = theme.Colors, Fonts = theme.Fonts, FormatScheme = theme.FormatScheme };
+        var xfrm = new XElement(A + "xfrm",
+            new XElement(A + "off", new XAttribute("x", 0), new XAttribute("y", 0)),
+            new XElement(A + "ext", new XAttribute("cx", Math.Round(width * EmuPerPoint)), new XAttribute("cy", Math.Round(height * EmuPerPoint))));
+        if (SmartArt(context, part, graphicData, xfrm) is not { Children.Count: > 0 } group)
+            return null;
+        var deck = new SlideDeck { Width = width, Height = height };
+        var slide = new Slide();
+        slide.Elements.Add(group);
+        deck.Slides.Add(slide);
+        return deck;
+    }
+
     private static float Points(double emu) => (float)(emu / EmuPerPoint);
 
     private static double Number(XAttribute? attribute, double fallback = 0) =>

@@ -46,7 +46,15 @@ internal sealed class StyleResolver
             shape.SetAttributeValue("useFontSpace", 1);
         _shapes = HwpxReader.ForHeader(head);
         _styles = HwpxWriter.FindStyles(head);
+        Faces = head.Descendants().Where(e => e.Name.LocalName == "font").Select(e => (string?)e.Attribute("face"))
+            .OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// The fonts the template names (its hh:font faces): what text resolved here gets when its source names none, so
+    /// not a font the document chose.
+    /// </summary>
+    public IReadOnlySet<string> Faces { get; }
 
     /// <summary>A resolver for the styles of <paramref name="template"/>; the built-in blank.hwpx when null.</summary>
     public static StyleResolver FromTemplate(Stream? template = null)

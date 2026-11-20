@@ -1776,6 +1776,8 @@
   "sheet_studio.apply_fix": "Terapkan tata letak yang disarankan",
   "sheet_studio.add_region": "+ Tambah area lain",
   "sheet_studio.region_name": "{0} · area {1}",
+  "sheet_studio.drawn_by_builtin": "Pratinjau digambar oleh pencetakan lembar bawaan Filee",
+  "sheet_studio.drawn_by_libreoffice": "Pratinjau digambar oleh LibreOffice",
   "whats_new.title": "Apa yang baru di Filee {0}",
   "whats_new.previous": "Sebelumnya",
   "whats_new.next": "Berikutnya",

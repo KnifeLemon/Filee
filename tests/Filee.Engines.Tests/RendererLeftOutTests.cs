@@ -182,7 +182,7 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
         $"<w:r><w:instrText xml:space=\"preserve\"> {instruction} </w:instrText></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r>";
 
     [Fact]
-    public async Task Vertical_text_boxes_and_activex_controls_are_named_and_legacy_form_fields_drawn()
+    public async Task Activex_controls_are_named_and_vertical_text_boxes_and_legacy_form_fields_drawn()
     {
         var builder = new DocxBuilder();
         var picture = builder.Image(DocumentFuzzTests.TinyPng(4, 3));
@@ -198,14 +198,15 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
 
         var notice = Assert.Single(await ConvertAsync(source, "docx"));
 
-        // The legacy check boxes and drop-down are drawn as Word prints them, so the note doesn't name them.
+        // The legacy check boxes and drop-down are drawn as Word prints them, and the text boxes written top to bottom
+        // turned into their boxes, so the note doesn't name them.
         Assert.Equal(WithLibreOffice, notice.Key);
-        Assert.Equal([Part("form_controls", 1), Part("form_controls_pictured", 1), Part("vertical_text")], notice.Parts);
+        Assert.Equal([Part("form_controls", 1), Part("form_controls_pictured", 1)], notice.Parts);
         var document = DocxReader.Read(source, Path.Combine(fx.NewFolder(), "media"));
         var text = string.Concat(document.Sections.SelectMany(s => s.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HText>().Select(t => t.Text));
         Assert.Contains("Agree ☒☐ Pick Beta", text);
 
-        // The check names them too, so such a file keeps LibreOffice's route while LibreOffice is there.
+        // The check names the controls too, so such a file keeps LibreOffice's route while LibreOffice is there.
         var renderer = new FileeRendererConverter();
         var vertical = new DocxBuilder().Paragraph(DocxBuilder.P(TextBox("vert", "Down"))).Save(Path.Combine(fx.NewFolder(), "vertical.docx"));
         var vml = new DocxBuilder().Paragraph(DocxBuilder.P(VmlVerticalTextBox)).Save(Path.Combine(fx.NewFolder(), "vml.docx"));
@@ -213,8 +214,8 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
         var fields = new DocxBuilder().Paragraph(DocxBuilder.P(FormField("FORMCHECKBOX", "<w:checkBox><w:sizeAuto/><w:default w:val=\"1\"/></w:checkBox>")))
             .Save(Path.Combine(fx.NewFolder(), "fields.docx"));
         var across = new DocxBuilder().Paragraph(DocxBuilder.P(TextBox("horz", "Across"))).Save(Path.Combine(fx.NewFolder(), "across.docx"));
-        Assert.Equal("vertical text", renderer.FirstUnsupported(vertical, "docx"));
-        Assert.Equal("vertical text", renderer.FirstUnsupported(vml, "docx"));
+        Assert.Null(renderer.FirstUnsupported(vertical, "docx"));
+        Assert.Null(renderer.FirstUnsupported(vml, "docx"));
         Assert.Equal("form controls", renderer.FirstUnsupported(control, "docx"));
         Assert.Null(renderer.FirstUnsupported(fields, "docx"));
         Assert.Null(renderer.FirstUnsupported(across, "docx"));

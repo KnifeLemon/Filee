@@ -81,7 +81,12 @@ internal sealed class PageComposer
     public PageComposer(FontResolver fonts, Shaper shaper, IReadOnlyList<HKinsoku>? kinsoku = null, StyleResolver? styles = null, bool storedLines = true)
     {
         // Paragraph borders and equation numbers of models of other formats are Word's (borders outside the text), 한글's otherwise.
-        _layouter = new ParagraphLayouter(fonts, shaper, kinsoku, storedLines) { WordBorders = styles is not null, WordEquations = styles is not null };
+        _layouter = new ParagraphLayouter(fonts, shaper, kinsoku, storedLines)
+        {
+            WordBorders = styles is not null,
+            WordEquations = styles is not null,
+            TemplateFaces = styles?.Faces,
+        };
         _styles = styles;
     }
 

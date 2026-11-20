@@ -444,6 +444,29 @@ internal enum HArcKind
     Chord,
 }
 
+// ───────────────────────── Vertical text ─────────────────────────
+
+/// <summary>How the text of a table cell or text box runs (VerticalText draws it). Read for layout only.</summary>
+internal enum HTextFlow
+{
+    Horizontal,
+
+    /// <summary>
+    /// East Asian vertical writing: top to bottom, the next line to the left, CJK characters upright and other text
+    /// turned 90° clockwise (Word tbRl, 한글 세로쓰기, DrawingML eaVert, VML layout-flow vertical).
+    /// </summary>
+    Vertical,
+
+    /// <summary>Turned 90° clockwise, every character with it (DrawingML vert).</summary>
+    Down,
+
+    /// <summary>Turned 270°: bottom to top, the next line to the right (Word btLr, DrawingML vert270).</summary>
+    Up,
+
+    /// <summary>Every character upright, one below the other (DrawingML wordArtVert, 한글 영문 세움).</summary>
+    Stacked,
+}
+
 // ───────────────────────── What the renderer can't draw ─────────────────────────
 
 /// <summary>
@@ -455,7 +478,7 @@ internal enum HLeftOutKind
     /// <summary>A chart (DOCX c:chart, HWPX hp:chart): nothing of it is drawn.</summary>
     Chart,
 
-    /// <summary>SmartArt (DOCX dgm:relIds): nothing of it is drawn.</summary>
+    /// <summary>SmartArt (DOCX dgm:relIds) without the drawing Word saves with it: nothing of it is drawn.</summary>
     SmartArt,
 
     /// <summary>An embedded (OLE or ODF) object without a saved picture to draw.</summary>
@@ -477,8 +500,8 @@ internal enum HLeftOutKind
     FormulaAsText,
 
     /// <summary>
-    /// Vertical text (a table cell, text box or section written top to bottom; a DOCX text box's wps:bodyPr vert or VML
-    /// layout-flow), set horizontally. Not counted.
+    /// Vertical text the renderer sets horizontally (a section written top to bottom, a header or note, ODT writing
+    /// modes); vertical cells and text boxes are drawn (HTextFlow). Not counted.
     /// </summary>
     VerticalText,
 

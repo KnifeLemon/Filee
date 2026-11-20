@@ -8,12 +8,16 @@ namespace Filee.App.Views;
 
 public partial class SpreadsheetPrintStudioWindow : Window
 {
+    /// <summary>The page each item of the strip shows (a recycled item shows another page next).</summary>
+    private readonly Dictionary<Control, SpreadsheetPreviewPage> _shown = [];
+
     public SpreadsheetPrintStudioWindow()
     {
         InitializeComponent();
         Motion.Track(this);
         Closed += (_, _) => (DataContext as IDisposable)?.Dispose();
         PageList.ContainerPrepared += OnPageShown;
+        PageList.ContainerClearing += OnPageHidden;
     }
 
     // The strip only makes items for the pages in view (and a few beside them): those are the thumbnails rendered.
@@ -21,7 +25,20 @@ public partial class SpreadsheetPrintStudioWindow : Window
     {
         // The container isn't indexed yet while it is being prepared (ItemFromContainer gives null): go by its index.
         if (DataContext is SpreadsheetPrintStudioViewModel vm && e.Index >= 0 && e.Index < vm.Pages.Count)
-            vm.RequestThumbnail(vm.Pages[e.Index]);
+        {
+            var page = vm.Pages[e.Index];
+            if (_shown.TryGetValue(e.Container, out var before) && before != page)
+                vm.ReleaseThumbnail(before);
+            _shown[e.Container] = page;
+            vm.RequestThumbnail(page);
+        }
+    }
+
+    // An item scrolled out of the strip (or recycled for another page) lets go of its thumbnail.
+    private void OnPageHidden(object? sender, ContainerClearingEventArgs e)
+    {
+        if (_shown.Remove(e.Container, out var page) && DataContext is SpreadsheetPrintStudioViewModel vm)
+            vm.ReleaseThumbnail(page);
     }
 
     private async void OnExport(object? sender, RoutedEventArgs e)

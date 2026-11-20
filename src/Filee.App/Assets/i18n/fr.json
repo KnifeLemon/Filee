@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "Appliquer la mise en page suggérée",
   "sheet_studio.add_region": "+ Ajouter une autre zone",
   "sheet_studio.region_name": "{0} · zone {1}",
+  "sheet_studio.drawn_by_builtin": "Aperçu dessiné par l'impression de feuilles intégrée de Filee",
+  "sheet_studio.drawn_by_libreoffice": "Aperçu dessiné par LibreOffice",
 
   "whats_new.title": "Nouveautés de Filee {0}",
   "whats_new.previous": "Précédent",

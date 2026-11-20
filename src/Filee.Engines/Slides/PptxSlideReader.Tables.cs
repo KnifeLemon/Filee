@@ -161,10 +161,11 @@ internal sealed partial class PptxSlideReader
         };
         cell.Text.Direction = (string?)properties?.Attribute("vert") switch
         {
-            "vert" or "eaVert" or "wordArtVert" or "mongolianVert" => TextDirection.Down,
+            "vert" or "eaVert" or "wordArtVert" or "wordArtVertRtl" or "mongolianVert" => TextDirection.Down,
             "vert270" => TextDirection.Up,
             _ => TextDirection.Horizontal,
         };
+        cell.Text.Upright = Upright((string?)properties?.Attribute("vert"));
         return cell;
     }
 

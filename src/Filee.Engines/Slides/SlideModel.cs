@@ -178,6 +178,12 @@ internal sealed class SlideTextFrame
 
     public TextDirection Direction { get; set; }
 
+    /// <summary>
+    /// Which glyphs of vertical text stand upright: the CJK ones in East Asian vertical text (eaVert, mongolianVert),
+    /// every one in stacked text (wordArtVert); the rest lie turned with <see cref="Direction"/>.
+    /// </summary>
+    public Typesetting.UprightGlyphs Upright { get; set; }
+
     public int Columns { get; set; } = 1;
     public float ColumnGap { get; set; }
 

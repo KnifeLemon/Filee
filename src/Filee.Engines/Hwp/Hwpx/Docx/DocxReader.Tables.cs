@@ -102,7 +102,6 @@ internal sealed partial class DocxReader
             foreach (var tc in tr.Elements().SelectMany(e => e.Name == W + "tc" ? [e] : FlattenCells(e)))
             {
                 var tcPr = tc.Element(W + "tcPr");
-                CountVerticalText(tcPr);
                 var span = Math.Clamp(Twips(tcPr?.Element(W + "gridSpan"), "val") ?? 1, 1, maxColumns);
                 var vMerge = tcPr?.Element(W + "vMerge");
                 var cellConditions = conditions(r, column, span);
@@ -135,7 +134,7 @@ internal sealed partial class DocxReader
                     continue;
                 }
 
-                var cell = new HCell { Column = column, ColSpan = span };
+                var cell = new HCell { Column = column, ColSpan = span, TextFlow = TextFlow(tcPr) };
                 // Word puts the table style's paragraph and run formatting (with that of the header row, banded rows
                 // ... the cell falls in) between the document defaults and the paragraph style (#1152).
                 var outerLayer = _tableStyleLayer;
