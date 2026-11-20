@@ -1,8 +1,9 @@
 // Documents → XLSX (#1016): each table of a Word (DOCX, DOC), OpenDocument, RTF, 한글 (HWP, HWPX) document or web page
-// on its own sheet, with merged cells, numbers and dates as real values, the cells' own borders, fill, bold and
-// alignment and frozen header rows; rows tall enough for a merged cell's text; a clear failure when there is no table;
-// no route that reaches spreadsheets through a document made from something else; and hostile tables (spans over
-// millions of cells, thousands of tables, deep nesting) refused or written quickly.
+// on its own sheet, tables in text boxes and shapes too, with merged cells, numbers and dates as real values, equations
+// as plain text, the cells' own borders, fill, bold and alignment and frozen header rows; rows tall enough for a merged
+// cell's text as measured in its font; one-cell boxes left out beside real tables; a clear failure when there is no
+// table; no route that reaches spreadsheets through a document made from something else; and hostile tables (spans
+// over millions of cells, thousands of tables, deep nesting) refused or written quickly.
 
 using System.Diagnostics;
 using Filee.Core.Conversion;
@@ -113,6 +114,127 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.Null(prices.Get(3, 0));
         Assert.Equal(1, prices.FrozenRows);
         Assert.Equal("배", book.Sheets[1].Get(0, 1)!.Text);
+    }
+
+    /// <summary>A floating DrawingML shape of <paramref name="geometry"/> holding <paramref name="content"/> (w:p and w:tbl).</summary>
+    private static string ShapeWith(string geometry, string content) =>
+        Anchor(ShapeUri,
+            $"<wps:wsp><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"3657600\" cy=\"914400\"/></a:xfrm><a:prstGeom prst=\"{geometry}\"/></wps:spPr>" +
+            $"<wps:txbx><w:txbxContent>{content}</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp>",
+            3657600, 914400, "<wp:positionH relativeFrom=\"column\"><wp:posOffset>0</wp:posOffset></wp:positionH>",
+            "<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV>");
+
+    [Fact]
+    public async Task Tables_in_text_boxes_and_shapes_get_sheets_where_they_stand()
+    {
+        // A table in the body, one in a text box and one in a callout shape (a shape with text), in this order.
+        var docx = new DocxBuilder();
+        docx.Paragraph(Table([2000, 2000], Row(Cell("Body") + Cell("1")) + Row(Cell("b") + Cell("2"))));
+        docx.Paragraph(P(ShapeWith("rect", P(R("Prices")) + Table([2000, 2000], Row(Cell("Boxed") + Cell("3")) + Row(Cell("c") + Cell("4"))) + P("")) + R("Beside the box.")));
+        docx.Paragraph(P(ShapeWith("wedgeRectCallout", Table([2000, 2000], Row(Cell("Callout") + Cell("5")) + Row(Cell("d") + Cell("6"))) + P(""))));
+        var word = docx.Save(Path.Combine(fx.NewFolder(), "boxes.docx"));
+
+        var book = await ConvertAsync(word);
+        Assert.Equal(["Body", "Boxed", "Callout"], book.Sheets.Select(s => s.Get(0, 0)!.Text));
+        Assert.Equal(6, book.Sheets[2].Get(1, 1)!.Value);
+
+        // The same through 한글: Filee's HWPX keeps the text boxes as 글상자 with their tables.
+        var hwpx = Assert.Single((await fx.ConvertAsync([word], new Preset { TargetFormat = "hwpx" })).Outputs);
+        Assert.Equal(["Body", "Boxed", "Callout"], (await ConvertAsync(hwpx)).Sheets.Select(s => s.Get(0, 0)!.Text));
+    }
+
+    [Fact]
+    public void One_cell_boxes_get_no_sheet_beside_real_tables_and_share_one_when_alone()
+    {
+        // A 보기 box, a two-cell table and a source tag: only the table is data.
+        var mixed = DocumentTablesConverter.Build(Document(Box("<보기> ㄱ. ㄴ."), Pair("Score", "80"), Box("출처: 2022년")),
+            TestContext.Current.CancellationToken);
+        var sheet = Assert.Single(mixed.Sheets);
+        Assert.Equal("Score", sheet.Get(0, 0)!.Text);
+        Assert.Equal(80, sheet.Get(0, 1)!.Value);
+
+        // Only boxes: their text still arrives, one sheet, a box a row in reading order.
+        var boxes = DocumentTablesConverter.Build(Document(Box("Title"), Box("Note"), Box("42")), TestContext.Current.CancellationToken);
+        var only = Assert.Single(boxes.Sheets);
+        Assert.Equal(["Title", "Note", "42"], Enumerable.Range(0, 3).Select(r => only.Get(r, 0)!.Text));
+        Assert.Equal(42, only.Get(2, 0)!.Value);
+    }
+
+    /// <summary>A one-row table whose first cell holds the 한글 equation <paramref name="script"/>.</summary>
+    private static HTable EquationRow(string script)
+    {
+        var table = Pair("", "x");
+        table.Rows[0].Cells[0].Blocks.OfType<HParagraph>().Single().Inlines.Add(new HEquation(EquationParser.Parse(script), default));
+        return table;
+    }
+
+    [Theory]
+    [InlineData("20 ^{이상}", "20 이상")] // 한글 frequency tables raise 이상 / 미만 after the class bound
+    [InlineData("{9} over {2} ` rm cm ^{3}", "9/2 cm³")]
+    [InlineData("x ^{2} -4x-12=0", "x²-4x-12=0")]
+    [InlineData("f ^{-1} (4)", "f⁻¹(4)")]
+    [InlineData("a _{n+1}", "aₙ₊₁")]
+    [InlineData("x ^{a+b}", "x^(a+b)")] // no superscript a or b in the set Filee uses: the linear form
+    [InlineData("40~~~", "40")]
+    public void Equations_in_cells_are_plain_text(string script, string text)
+    {
+        var sheet = Assert.Single(DocumentTablesConverter.Build(Document(EquationRow(script)), TestContext.Current.CancellationToken).Sheets);
+        Assert.Equal(text, sheet.Get(0, 0)!.Text);
+        // Formats without equations keep the linear form as before.
+        Assert.Equal(EquationScript.Linear(EquationParser.Parse(script)), new HEquation(EquationParser.Parse(script), default).Text);
+    }
+
+    [Fact]
+    public void Rows_under_a_merged_cell_fit_its_wrapped_text_and_keep_their_own()
+    {
+        // Three columns of 1000 twips (1764 HWPUNIT, about 9 characters each). Row 1: one long line over two columns
+        // that wraps at words, beside a short cell. Rows 2-3: six short lines over both rows, beside a cell of four
+        // lines in row 2.
+        var table = new HTable { ColumnCount = 3, ColumnWidths = [1764, 1764, 1764] };
+        table.Rows.Add(RowOf(Spanned(string.Join(' ', Enumerable.Repeat("word", 40)), columns: 2), Spanned("x")));
+        table.Rows.Add(RowOf(Spanned("1\n2\n3\n4\n5\n6", rows: 2), Spanned("a\nb\nc\nd")));
+        table.Rows.Add(RowOf(Spanned("y")));
+        var sheet = Assert.Single(DocumentTablesConverter.Build(Document(table), TestContext.Current.CancellationToken).Sheets);
+
+        // 40 words of 4 letters in about 18 characters: at least 8 lines of 15 pt (a line of Excel's Calibri 11).
+        Assert.True(sheet.RowHeights.GetValueOrDefault(0) >= 8 * 15, $"row 1: {sheet.RowHeights.GetValueOrDefault(0)}");
+        // Six lines over two rows: row 2 keeps the four lines its own cell needs, row 3 gets the rest.
+        var (second, third) = (sheet.RowHeights.GetValueOrDefault(1), sheet.RowHeights.GetValueOrDefault(2));
+        Assert.True(second >= 4 * 15 && second + third >= 6 * 15, $"rows 2, 3: {second}, {third}");
+    }
+
+    [Fact]
+    public void Many_merged_cells_are_measured_quickly()
+    {
+        // 50,000 merged cells of a few lines each: every one is measured in its font, once.
+        var table = new HTable { ColumnCount = 3, ColumnWidths = [1764, 1764, 1764] };
+        for (var r = 0; r < 50_000; r++)
+            table.Rows.Add(RowOf(Spanned($"row {r} of the table\nsecond line\nthird line", columns: 2), Spanned("x")));
+        var watch = Stopwatch.StartNew();
+        var sheet = Assert.Single(DocumentTablesConverter.Build(Document(table), TestContext.Current.CancellationToken).Sheets);
+
+        Assert.True(sheet.RowHeights.GetValueOrDefault(49_999) >= 3 * 15);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), $"took {watch.Elapsed}");
+    }
+
+    private static HRow RowOf(params HCell[] cells)
+    {
+        var row = new HRow();
+        row.Cells.AddRange(cells);
+        return row;
+    }
+
+    /// <summary>A cell of lines (a paragraph each) over <paramref name="rows"/> rows and <paramref name="columns"/> columns.</summary>
+    private static HCell Spanned(string lines, int rows = 1, int columns = 1)
+    {
+        var cell = new HCell { RowSpan = rows, ColSpan = columns };
+        foreach (var line in lines.Split('\n'))
+        {
+            var paragraph = new HParagraph();
+            paragraph.Inlines.Add(new HText(line, default));
+            cell.Blocks.Add(paragraph);
+        }
+        return cell;
     }
 
     [Fact]
@@ -352,6 +474,27 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         return table;
     }
 
+    /// <summary>A table of one row: a cell of <paramref name="first"/> (then <paramref name="inner"/>) and one of <paramref name="second"/>.</summary>
+    private static HTable Pair(string first, string second, HBlock? inner = null)
+    {
+        var table = Box(first);
+        if (inner is not null)
+            table.Rows[0].Cells[0].Blocks.Add(inner);
+        table.Rows[0].Cells.Add(Spanned(second));
+        table.ColumnCount = 2;
+        return table;
+    }
+
+    /// <summary>A paragraph holding a text box of <paramref name="blocks"/>.</summary>
+    private static HParagraph InTextBox(params HBlock[] blocks)
+    {
+        var box = new HTextBox();
+        box.Blocks.AddRange(blocks);
+        var paragraph = new HParagraph();
+        paragraph.Inlines.Add(box);
+        return paragraph;
+    }
+
     private static HDocument Document(params HBlock[] blocks)
     {
         var section = new HSection();
@@ -364,12 +507,13 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
     [Fact]
     public void Deeply_nested_tables_are_walked_without_recursion()
     {
-        // Far deeper than any reader lets through (DocumentLimits.MaxNestingDepth): each level is a sheet.
+        // Far deeper than any reader lets through (DocumentLimits.MaxNestingDepth): each level is a sheet, every other
+        // one in a text box in its cell.
         HTable? table = null;
         for (var level = 5000; level > 0; level--)
-            table = Box($"level {level}", table);
+            table = Pair($"level {level}", "x", table is null ? null : level % 2 == 0 ? InTextBox(table) : table);
         var watch = Stopwatch.StartNew();
-        var book = DocumentTablesConverter.Build(Document(table!));
+        var book = DocumentTablesConverter.Build(Document(table!), TestContext.Current.CancellationToken);
 
         Assert.Equal(5000, book.Sheets.Count);
         Assert.Equal("level 1", book.Sheets[0].Get(0, 0)!.Text);
@@ -380,9 +524,9 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
     [Fact]
     public void More_tables_or_cells_than_a_workbook_takes_are_refused()
     {
-        var tables = Enumerable.Range(0, DocumentTablesConverter.MaxSheets + 1).Select(i => (HBlock)Box($"t{i}")).ToArray();
+        var tables = Enumerable.Range(0, DocumentTablesConverter.MaxSheets + 1).Select(i => (HBlock)Pair($"t{i}", "x")).ToArray();
         Assert.Equal("error.document_too_complex",
-            Assert.Throws<ConversionRefusedException>(() => DocumentTablesConverter.Build(Document(tables))).ErrorKey);
+            Assert.Throws<ConversionRefusedException>(() => DocumentTablesConverter.Build(Document(tables), TestContext.Current.CancellationToken)).ErrorKey);
 
         // The tables share one budget of cells: eleven tables of a million positions each, none too large alone.
         var wide = Enumerable.Range(0, 11).Select(_ =>
@@ -399,7 +543,7 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         }).ToArray();
         var watch = Stopwatch.StartNew();
         Assert.Equal("error.document_too_complex",
-            Assert.Throws<ConversionRefusedException>(() => DocumentTablesConverter.Build(Document(wide))).ErrorKey);
+            Assert.Throws<ConversionRefusedException>(() => DocumentTablesConverter.Build(Document(wide), TestContext.Current.CancellationToken)).ErrorKey);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
     }
 }
