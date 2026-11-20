@@ -1,5 +1,6 @@
 // Mutation fuzzing of the DjVu reader (Djvu/): the seeds are a page with a JB2 mask, a palette and hidden text, a
-// bundled document with a shared dictionary, and a photo page (IW44 in two chunks), all written in code (DjvuBuilder).
+// bundled document with a shared dictionary, a photo page (IW44 in two chunks), and a bundled document with bookmarks,
+// hyperlinks and a G4 (Smmr) mask in stripes, all written in code (DjvuBuilder).
 // Every input must be read or refused with InvalidDataException / ConversionRefusedException, in time and on a 1 MB
 // stack; every page read is drawn and written as a PDF page. Run by FuzzHarness: a short fixed run normally,
 // FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
@@ -45,20 +46,38 @@ public class DjvuFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         return DjvuFile(Form("DJVU", [Info(24, 16, 75, flags: 5), .. chunks]));
     }
 
+    private static byte[] LinkedBook()
+    {
+        var stride = 5;
+        var bits = new byte[stride * 24];
+        for (var i = 0; i < bits.Length; i++)
+            bits[i] = (byte)(i * 37 % 7 == 0 ? 0xF0 : i % 3 == 0 ? 0x18 : 0);
+        var smmr = Page(40, 24, 100, Smmr(bits, 40, 24, rowsPerStripe: 10), AnnotationChunk("(maparea \"#2\" \"x\" (rect 1 1 10 10)) (maparea (url \"http://example.com/\" \"\") \"\" (poly 1 1 9 9 20 1))"));
+        var plain = Page(40, 24, 100, Chunk("Sjbz", new Jb2Writer().Start(40, 24).New(Letter, 5, 5).End()), AnnotationChunk("(maparea \"#-1\" \"\" (oval 2 2 8 8))", compressed: false));
+        var outline = Outline(new Bookmark("One", "#1", new Bookmark("Two", "#p2")), new Bookmark("Web", "https://example.org/"));
+        return Bundle([outline], ("p1", smmr, true), ("p2", plain, true));
+    }
+
     [Fact]
     public void DjvuDocument_reads_or_refuses_every_mutated_file() =>
-        new FuzzHarness(fx, QuickIterations, 20261120).Files("djvu", "djvu", [MaskPage(), BundledBook(), Photo()], FuzzHarness.Bytes, (path, _) =>
+        new FuzzHarness(fx, QuickIterations, 20261120).Files("djvu", "djvu", [MaskPage(), BundledBook(), Photo(), LinkedBook()], FuzzHarness.Bytes, (path, _) =>
         {
             // Smaller limits than real books need keep each input quick.
             var limits = DjvuLimits.Default with { MaxPagePixels = 4_000_000, MaxIw44Pixels = 1_000_000, MaxShapePixels = 4_000_000 };
             using var document = DjvuDocument.Open(path, limits, TestContext.Current.CancellationToken);
             using var writer = new OcrPdfWriter();
+            var pages = new List<PdfSharp.Pdf.PdfPage>();
+            var links = new List<(int Page, IReadOnlyList<DjvuLink> Links, double Scale)>();
             for (var i = 0; i < Math.Min(document.Count, 4); i++)
             {
                 var page = document.ReadPage(i, TestContext.Current.CancellationToken);
                 DjvuRenderer.Compose(page, TestContext.Current.CancellationToken);
-                DjvuPdfWriter.AddPage(writer, page, TestContext.Current.CancellationToken);
+                pages.Add(DjvuPdfWriter.AddPage(writer, page, TestContext.Current.CancellationToken));
+                links.Add((i, page.Links, DjvuPdfWriter.Scale(page)));
             }
+            foreach (var (page, pageLinks, scale) in links)
+                DjvuPdfWriter.AddLinks(writer.Document, pages[page], pageLinks, scale, pages);
+            DjvuPdfWriter.AddOutline(writer.Document, pages, document.Bookmarks, url => document.PageOf(url), TestContext.Current.CancellationToken);
             if (writer.PageCount > 0)
                 writer.Document.Save(new MemoryStream());
         });

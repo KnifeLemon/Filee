@@ -112,8 +112,8 @@ public class HwpTextTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var hwpx = HwpxReaderTests.HangulStylePackage(fx.NewFolder());
         var text = Read(await ConvertAsync(hwpx, "txt"));
 
-        Assert.Contains("1. 제1장 개요", text);       // the outline number 한글 shows
-        Assert.Contains("● 글머리 항목", text);
+        Assert.Contains("1.\t제1장 개요", text);      // the outline number 한글 shows, and a tab as in Word's and RTF's TXT
+        Assert.Contains("●\t글머리 항목", text);
         Assert.Contains("병합\t세로", text);           // table rows as tab-separated cells
         Assert.Contains("각주 참조[1][2]", text);      // notes collected at the end
         Assert.EndsWith("[1] 각주 내용\n[2] 미주 내용\n", text);

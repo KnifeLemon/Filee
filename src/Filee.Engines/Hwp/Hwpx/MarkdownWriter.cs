@@ -78,9 +78,14 @@ internal sealed class MarkdownWriter
 
     private void Paragraph(HParagraph paragraph, StringBuilder sb, string prefix, HBlock? next)
     {
-        _display = paragraph.Inlines.Count(i => i is not HBookmark) == 1 && paragraph.Inlines.OfType<HEquation>().FirstOrDefault() is { } lone
-            && HEquation.IsDisplay(lone, paragraph) ? lone : null;
-        var text = Inlines(paragraph.Inlines);
+        // An equation alone on its line is display math, also when tabs or spaces centre it (Word and 한글 do that).
+        var shown = paragraph.Inlines.Where(i => i is not (HBookmark or HTab) && !(i is HText run && string.IsNullOrWhiteSpace(run.Text))).ToList();
+        _display = shown.Count == 1 && shown[0] is HEquation lone ? lone : null;
+        // Tabs at the start would write spaces that make the paragraph an indented code block, at the end a line break.
+        var first = paragraph.Inlines.FindIndex(i => i is not HTab);
+        var last = paragraph.Inlines.FindLastIndex(i => i is not HTab);
+        var text = _display is not null ? Inlines(shown)
+            : first < 0 ? "" : Inlines(paragraph.Inlines.GetRange(first, last - first + 1));
         _display = null;
         if (paragraph.Inlines.Any(i => i is HShape { Kind: HShapeKind.Line }) && text.Trim().Length == 0)
         {
@@ -146,13 +151,9 @@ internal sealed class MarkdownWriter
                     break;
                 if (cell.ColSpan <= 1)
                     alignments.Add(column, cell);
-                // Header cells are bold by nature: no ** inside them. A cell is one line: its line breaks are <br>,
-                // which MarkdownReader and the usual Markdown renderers read as breaks.
-                var header = table.Rows[r].Header;
-                cells[column] = string.Join(" ", cell.Blocks.OfType<HParagraph>()
-                        .Select(p => header ? p.Inlines.Select(i => i is HText t ? new HText(t.Text, t.Format with { Bold = null }) : i).ToList() : p.Inlines)
-                        .Select(inlines => Inlines(inlines).Replace(HardBreak, "<br>", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal)))
-                    .Replace("|", "\\|", StringComparison.Ordinal);
+                // Header cells are bold by nature: no ** inside them. A cell is one line: its line breaks and its
+                // paragraphs are <br>, which MarkdownReader and the usual Markdown renderers read as breaks (#391).
+                cells[column] = Cell(cell, table.Rows[r].Header).Replace("|", "\\|", StringComparison.Ordinal);
             }
             grid.Add(cells);
         }
@@ -165,6 +166,29 @@ internal sealed class MarkdownWriter
         foreach (var row in grid.Skip(1))
             sb.Append(prefix).Append("| ").AppendJoin(" | ", row.Select(c => c ?? "")).Append(" |\n");
         sb.Append('\n');
+    }
+
+    /// <summary>
+    /// A cell's paragraphs on one line, joined by &lt;br&gt;: empty ones left out, list items marked "•" or "1." (counted
+    /// within the cell), as a Markdown table can't hold a list.
+    /// </summary>
+    private string Cell(HCell cell, bool header)
+    {
+        var parts = new List<string>();
+        var number = 0;
+        foreach (var paragraph in cell.Blocks.OfType<HParagraph>())
+        {
+            var inlines = header
+                ? paragraph.Inlines.Select(i => i is HText t ? new HText(t.Text, t.Format with { Bold = null }) : i).ToList()
+                : paragraph.Inlines;
+            var text = Inlines(inlines).Replace(HardBreak, "<br>", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal).Trim();
+            var list = paragraph.List is { Numbered: true } item ? item : null;
+            number = list is not null && !IsBullet(list) ? number + 1 : 0;
+            if (text.Length == 0)
+                continue;
+            parts.Add(list is null ? text : (IsBullet(list) ? "• " : $"{number}. ") + text);
+        }
+        return string.Join("<br>", parts);
     }
 
     /// <summary>

@@ -2,7 +2,9 @@
 // reader decodes, written from the DjVu v3 specification as the mirror image of the decoders — the ZP-coder, BZZ (a
 // plain suffix sort for the block transform), JB2 (new shapes, copies, refinements, non-mark data, dictionaries,
 // comments, resets), IW44 (the forward lifting transform and a slice coder that decides each bit from the true
-// coefficients), hidden text zones, palettes, INFO and the IFF container, one page or bundled with a directory.
+// coefficients), hidden text zones, palettes, bookmarks (NAVM), annotations (ANTa / ANTz), G4 masks (Smmr, with the
+// reader's own CCITT G4 encoder, which PDFtoImage checks independently), INFO and the IFF container, one page, bundled
+// with a directory or indirect (an index file naming the component files).
 
 using System.Text;
 using Filee.Engines.Djvu;
@@ -1098,6 +1100,9 @@ internal static class Iw44Encoder
     }
 }
 
+/// <summary>A bookmark to write: its title, URL and children.</summary>
+internal sealed record Bookmark(string Title, string Url, params Bookmark[] Children);
+
 /// <summary>A text zone to write, with its box in page pixels (row 0 at the bottom) and the text it covers.</summary>
 internal sealed record TextZone(int Type, int Left, int Bottom, int Width, int Height, int Start, int Length, params TextZone[] Children);
 
@@ -1194,10 +1199,95 @@ internal static class DjvuBuilder
         }
     }
 
+    /// <summary>NAVM: the bookmarks, depth first, BZZ-compressed.</summary>
+    public static byte[] Outline(params Bookmark[] bookmarks)
+    {
+        var data = new List<byte>();
+        var count = 0;
+        void Write(Bookmark bookmark)
+        {
+            count++;
+            data.Add((byte)bookmark.Children.Length);
+            foreach (var text in new[] { bookmark.Title, bookmark.Url })
+            {
+                var bytes = Encoding.UTF8.GetBytes(text);
+                data.AddRange(BigEndian(bytes.Length, 3));
+                data.AddRange(bytes);
+            }
+            foreach (var child in bookmark.Children)
+                Write(child);
+        }
+        foreach (var bookmark in bookmarks)
+            Write(bookmark);
+        return Chunk("NAVM", BzzEncoder.Encode([.. BigEndian(count, 2), .. data]));
+    }
+
+    /// <summary>Annotations: ANTz (BZZ-compressed) or ANTa (plain).</summary>
+    public static byte[] AnnotationChunk(string text, bool compressed = true) =>
+        compressed ? Chunk("ANTz", BzzEncoder.Encode(Encoding.UTF8.GetBytes(text))) : Chunk("ANTa", Encoding.UTF8.GetBytes(text));
+
+    /// <summary>
+    /// Smmr: a G4 mask of rows of (width + 7) / 8 bytes, a set bit black; in stripes of <paramref name="rowsPerStripe"/>
+    /// rows when given, with black and white swapped in the data when <paramref name="inverted"/>.
+    /// </summary>
+    public static byte[] Smmr(byte[] bits, int width, int height, int rowsPerStripe = 0, bool inverted = false)
+    {
+        var stride = (width + 7) / 8;
+        var rows = bits;
+        if (inverted)
+        {
+            rows = [.. bits.Select(b => (byte)~b)];
+            for (var y = 0; y < height && width % 8 != 0; y++)
+                rows[y * stride + stride - 1] &= (byte)(0xFF << (8 - width % 8));
+        }
+        var data = new List<byte> { (byte)'M', (byte)'M', (byte)'R', (byte)((inverted ? 1 : 0) | (rowsPerStripe > 0 ? 2 : 0)) };
+        data.AddRange(BigEndian(width, 2));
+        data.AddRange(BigEndian(height, 2));
+        if (rowsPerStripe == 0)
+        {
+            data.AddRange(CcittG4.Encode(rows, width, height));
+        }
+        else
+        {
+            data.AddRange(BigEndian(rowsPerStripe, 2));
+            for (var y = 0; y < height; y += rowsPerStripe)
+            {
+                var count = Math.Min(rowsPerStripe, height - y);
+                var stripe = CcittG4.Encode(rows[(y * stride)..((y + count) * stride)], width, count);
+                data.AddRange(BigEndian(stripe.Length, 4));
+                data.AddRange(stripe);
+            }
+        }
+        return Chunk("Smmr", [.. data]);
+    }
+
+    /// <summary>
+    /// An indirect document: the index file (its directory and <paramref name="extra"/> chunks, e.g. NAVM) and the files
+    /// it names, given as (id, form, kind: 0 included file, 1 page, 2 thumbnails).
+    /// </summary>
+    public static (byte[] Index, (string Id, byte[] File)[] Files) Indirect(byte[][] extra, params (string Id, byte[] Form, int Kind)[] components)
+    {
+        var table = new List<byte>();
+        foreach (var c in components)
+            table.AddRange(BigEndian(c.Form.Length - 8, 3));
+        foreach (var c in components)
+            table.Add((byte)c.Kind);
+        foreach (var c in components)
+        {
+            table.AddRange(Encoding.UTF8.GetBytes(c.Id));
+            table.Add(0);
+        }
+        var dirm = Chunk("DIRM", [0x01, .. BigEndian(components.Length, 2), .. BzzEncoder.Encode([.. table])]);
+        return (DjvuFile(Form("DJVM", [dirm, .. extra])), [.. components.Select(c => (c.Id, DjvuFile(c.Form)))]);
+    }
+
     /// <summary>
     /// A bundled document: its directory and components, given as (id, form, is a page). Offsets are worked out here.
     /// </summary>
-    public static byte[] Bundle(params (string Id, byte[] Form, bool Page)[] components)
+    public static byte[] Bundle(params (string Id, byte[] Form, bool Page)[] components) => Bundle([], components);
+
+    /// <summary>A bundled document with <paramref name="extra"/> chunks (e.g. NAVM) after its directory.</summary>
+    public static byte[] Bundle(byte[][] extra, params (string Id, byte[] Form, bool Page)[] components)
     {
         var count = components.Length;
         byte[] Dirm(long[] offsets)
@@ -1221,13 +1311,14 @@ internal static class DjvuBuilder
         }
         var dirmSize = Dirm(new long[count]).Length;
         var offsets = new long[count];
-        long at = 4 + 12 + dirmSize;
+        long at = 4 + 12 + dirmSize + extra.Sum(c => c.Length);
         for (var i = 0; i < count; i++)
         {
             offsets[i] = at;
             at += components[i].Form.Length + (components[i].Form.Length & 1);
         }
         var parts = new List<byte[]> { Dirm(offsets) };
+        parts.AddRange(extra);
         foreach (var c in components)
             parts.Add((c.Form.Length & 1) != 0 ? [.. c.Form, 0] : c.Form);
         return DjvuFile(Form("DJVM", [.. parts]));

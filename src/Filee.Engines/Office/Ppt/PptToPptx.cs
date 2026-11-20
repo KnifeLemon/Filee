@@ -18,7 +18,8 @@
 // Left for later: adjust values of presets (they take their default shape), tables as tables (they are drawn as the
 // group of shapes PowerPoint 97–2003 keeps them as), headers and footers on slides, numbered lists, hyperlinks,
 // animations, sounds, OLE objects other than their picture.
-// What the translation leaves out that shows is in Dropped, which the capability check names.
+// What the translation leaves out that shows is in Dropped, which the capability check names, and counted by kind in
+// DroppedKinds for the deck's note (SlideLeftOut).
 //
 // Hostile input: everything PptFile bounds, plus DocumentBudget for shapes (MaxObjects), paragraphs (MaxParagraphs)
 // and group nesting (MaxNestingDepth); copies of masters for colour schemes are capped (MaxVariants); pictures inflate
@@ -66,17 +67,27 @@ internal sealed partial class PptToPptx
     /// <summary>The first thing in the deck the translation leaves out that would show on a slide, or null.</summary>
     public string? Dropped { get; private set; }
 
+    private readonly Dictionary<string, int> _droppedKinds = new(StringComparer.Ordinal);
+
     /// <summary>Writes the PPTX package of <paramref name="file"/> to <paramref name="output"/> (left open).</summary>
+    /// <param name="droppedKinds">Filled with what was left out by the deck note's kind (SlideLeftOut) and how often.</param>
     /// <returns>What the translation left out that shows (for the capability check), or null.</returns>
-    public static string? Write(PptFile file, Stream output, CancellationToken cancellationToken = default)
+    public static string? Write(PptFile file, Stream output, CancellationToken cancellationToken = default, Dictionary<string, int>? droppedKinds = null)
     {
         using var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true);
         var writer = new PptToPptx(file, zip, cancellationToken);
         writer.WritePackage();
+        foreach (var (kind, count) in writer._droppedKinds)
+            droppedKinds?.Add(kind, count);
         return writer.Dropped;
     }
 
-    private void Drop(string feature) => Dropped ??= feature;
+    /// <summary>Names <paramref name="feature"/> for the check and counts one <paramref name="kind"/> for the note.</summary>
+    private void Drop(string feature, string kind)
+    {
+        Dropped ??= feature;
+        _droppedKinds[kind] = _droppedKinds.GetValueOrDefault(kind) + 1;
+    }
 
     // ───────────────────────── Package ─────────────────────────
 
@@ -208,7 +219,7 @@ internal sealed partial class PptToPptx
         }
         else
         {
-            Drop("pictures in a format Filee doesn't read (PICT)");
+            Drop("pictures in a format Filee doesn't read (PICT)", "pictures");
         }
         _media[pib] = name;
         return name;

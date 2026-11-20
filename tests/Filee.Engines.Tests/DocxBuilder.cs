@@ -49,6 +49,10 @@ internal sealed class DocxBuilder
     public string? Numbering { get; set; }
     public string? Settings { get; set; }
 
+    /// <summary>Settings of a document Word 2013 or later saved (compatibility mode 15), for <see cref="Settings"/>.</summary>
+    public const string Word2013Settings =
+        "<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat>";
+
     /// <summary>Content of w:fonts (word/fontTable.xml: w:font elements), or null for none.</summary>
     public string? FontTable { get; set; }
 

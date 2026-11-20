@@ -18,11 +18,14 @@ internal static class SlideFormats
     /// <summary>What a deck becomes through the slide renderer.</summary>
     public static readonly string[] Targets = ["pdf", "png", "jpg"];
 
-    /// <summary>Reads a deck of format <paramref name="format"/> with its reader (PPT goes through PptxSlideReader too).</summary>
+    /// <summary>
+    /// Reads a deck of format <paramref name="format"/> with its reader (PPT goes through PptxSlideReader too), with what
+    /// the renderer leaves out of it or draws another way (<see cref="SlideDeck.LeftOut"/>).
+    /// </summary>
     public static SlideDeck Read(string path, string format, CancellationToken cancellationToken) =>
         OdfDrawReader.Presentations.Contains(format, StringComparer.OrdinalIgnoreCase)
             ? OdfDrawReader.Read(path, cancellationToken: cancellationToken)
-            : PptxSlideReader.Read(path, cancellationToken: cancellationToken);
+            : PptxSlideReader.Read(path, cancellationToken: cancellationToken, leftOut: true);
 
     /// <summary>The first thing in the deck its reader doesn't draw (the capability check of the format); null when it draws everything.</summary>
     public static string? FirstUnsupported(string path, string format, CancellationToken cancellationToken = default) =>

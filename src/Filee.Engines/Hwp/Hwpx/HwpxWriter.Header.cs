@@ -512,7 +512,8 @@ internal sealed partial class HwpxWriter
         var container = RefList("tabProperties");
         var id = (MaxId(container.Elements(Hh + "tabPr")) + 1).ToString(CultureInfo.InvariantCulture);
         var element = new XElement(Hh + "tabPr", new XAttribute("id", id), new XAttribute("autoTabLeft", 0), new XAttribute("autoTabRight", 0));
-        foreach (var tab in tabs)
+        // 한글's stops lie right of the left indent; a Word stop on a hanging first line before it is left out.
+        foreach (var tab in tabs.Where(t => t.Position > 0))
         {
             var type = tab.Kind switch
             {

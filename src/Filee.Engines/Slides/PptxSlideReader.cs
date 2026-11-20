@@ -16,7 +16,8 @@
 //   picture stored for them, mc:AlternateContent through its fallback.
 // - Fills: solid, gradient (linear, circle, rectangle; group fill), picture, pattern. Lines: width, dash, cap, join,
 //   compound, arrowheads.
-// Shadows, glow, reflection, 3D and WordArt warps are left out; the capability check (SlideCapabilities) names them.
+// Shadows, glow, reflection, 3D and WordArt warps are left out; the capability check (SlideCapabilities) names them,
+// and its pass run to the end is the deck's note when the renderer draws the deck anyway (SlideDeck.LeftOut).
 //
 // Hostile input: parts through DocumentPackage (sizes, inflate ratio, XML depth and elements), DocumentBudget for
 // paragraphs, objects and group nesting, and limits for the whole deck on path commands (each path counts as one more,
@@ -92,10 +93,18 @@ internal sealed partial class PptxSlideReader
     }
 
     /// <summary>Reads the deck at <paramref name="path"/>.</summary>
-    public static SlideDeck Read(string path, DocumentLimits? limits = null, CancellationToken cancellationToken = default)
+    /// <param name="leftOut">Also count what the renderer leaves out or draws another way, for the deck's note (<see cref="SlideDeck.LeftOut"/>).</param>
+    public static SlideDeck Read(string path, DocumentLimits? limits = null, CancellationToken cancellationToken = default, bool leftOut = false)
     {
         using var package = SlidePackage.Open(path, limits);
-        return new PptxSlideReader(package, cancellationToken).ReadDeck();
+        var deck = new PptxSlideReader(package, cancellationToken).ReadDeck();
+        if (leftOut)
+        {
+            var counted = new SlideLeftOut();
+            SlideCapabilities.Count(package, counted, cancellationToken);
+            deck.LeftOut.AddRange(counted.Parts);
+        }
+        return deck;
     }
 
     private static float Points(double emu) => (float)(emu / EmuPerPoint);

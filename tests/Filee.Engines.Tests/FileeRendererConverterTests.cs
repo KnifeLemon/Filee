@@ -7,6 +7,7 @@ using System.IO.Compression;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
+using Filee.Engines.Hwp;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Office;
 using Filee.Engines.Typesetting;
@@ -40,10 +41,11 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
 
     /// <summary>
     /// The engines with the renderer on and a LibreOffice that is installed (or not), with the switches of Settings →
-    /// Engines → "When LibreOffice is installed", in the default engine order (or with LibreOffice moved to its top).
+    /// Engines → "When LibreOffice is installed", in the default engine order (or with LibreOffice moved to its top, or
+    /// to <paramref name="libreOfficeAt"/>).
     /// </summary>
     private RoutePlanner WithLibreOffice(bool slides = false, bool documents = false, bool sheets = false, bool installed = true,
-        bool libreOfficeFirst = false)
+        bool libreOfficeFirst = false, int? libreOfficeAt = null)
     {
         EngineEnvironment.FileeRenderer = true;
         EngineEnvironment.LibreOfficeForSlides = slides;
@@ -56,7 +58,12 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
             converters.Add(new InstalledLibreOffice(LibreOfficeConverter.BuildEdges(slides, documents, sheets)));
         var priority = new AppSettings().EnginePriority;
         if (libreOfficeFirst)
-            priority = ["libreoffice", .. priority.Where(id => id != "libreoffice")];
+            libreOfficeAt = 0;
+        if (libreOfficeAt is { } at)
+        {
+            priority = [.. priority.Where(id => id != "libreoffice")];
+            priority.Insert(at, "libreoffice");
+        }
         return new RoutePlanner(converters, c => Math.Min(priority.IndexOf(c.Id) is >= 0 and var i ? i : priority.Count, 9));
     }
 
@@ -118,11 +125,12 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     [Fact]
     public void On_rtf_to_txt_reads_the_rtf_not_the_text_of_its_pdf()
     {
-        // #1204: through the PDF the text came out wrapped, without its indentation and its empty lines.
+        // #1204: through the PDF the text came out wrapped, without its indentation and its empty lines. With
+        // LibreOffice installed the built-in reader keeps it too: it writes the text line for line as LibreOffice does.
         Assert.Equal(["hwp-text"], Engines(WithLibreOffice(installed: false).Plan("rtf", "txt")));
-        Assert.Equal(["libreoffice"], Engines(WithLibreOffice().Plan("rtf", "txt")));
-        Assert.Equal(["libreoffice"], Engines(WithLibreOffice(documents: true).Plan("rtf", "txt")));
-        Assert.Equal(["libreoffice"], Engines(WithLibreOffice(libreOfficeFirst: true).Plan("rtf", "txt")));
+        Assert.Equal(["hwp-text"], Engines(WithLibreOffice().Plan("rtf", "txt")));
+        Assert.Equal(["hwp-text"], Engines(WithLibreOffice(documents: true).Plan("rtf", "txt")));
+        Assert.Equal(["hwp-text"], Engines(WithLibreOffice(libreOfficeFirst: true).Plan("rtf", "txt")));
     }
 
     [Theory]
@@ -137,20 +145,39 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     public void On_word_and_odt_to_txt_read_the_document_not_the_text_of_its_pdf(string format)
     {
         // As RTF (#1204): through the PDF every long line was wrapped and the indentation and the empty lines were lost.
-        // LibreOffice installed at the bottom of the engine list, as by default, and chosen for Word → PDF, which is
-        // about PDF only, leave it to the built-in text too.
-        foreach (var planner in new[] { WithLibreOffice(installed: false), WithLibreOffice(), WithLibreOffice(documents: true) })
+        // LibreOffice installed, wherever it stands in the engine list, and chosen for Word → PDF, which is about PDF
+        // only, leave it to the built-in text too.
+        foreach (var planner in new[] { WithLibreOffice(installed: false), WithLibreOffice(), WithLibreOffice(documents: true), WithLibreOffice(libreOfficeFirst: true) })
         {
             var step = Assert.Single(planner.Plan(format, "txt")!.Steps);
             Assert.Equal("hwp-text", step.Converter.Id);
             // A Word 6.0 / 95 file with a .doc name goes another way.
             Assert.Equal(format is "doc" or "dot" or "wps", step.Checked);
         }
-        // Moved to the top of the engine list, LibreOffice keeps the Word and ODT files it reads.
-        var first = Engines(WithLibreOffice(libreOfficeFirst: true).Plan(format, "txt"));
-        Assert.Equal(format is "docm" or "dotx" or "dotm" ? ["hwp-text"] : ["libreoffice"], first); // LibreOffice has no DOCM, DOTX or DOTM edges
+        // A Word 6.0 / 95 file goes to LibreOffice.
+        if (format is "doc" or "dot" or "wps")
+            Assert.Equal(["libreoffice"], Engines(WithLibreOffice().Plan(format, "txt", withoutChecked: true)));
         // Not a hop: Word → EPUB and the other routes don't start going through a TXT file.
         Assert.DoesNotContain(WithLibreOffice(installed: false).Plan(format, "epub")?.Steps ?? [], s => s.Converter.Id == "hwp-text");
+    }
+
+    [Fact]
+    public void Built_in_text_wins_wherever_libreoffice_stands_in_the_engine_list()
+    {
+        // LibreOffice's fallback edge (25) against the built-in one (15): neither engine's place in the list (a penalty of
+        // 0 to 9) makes them tie, so the route doesn't depend on where the two stand.
+        var engines = new AppSettings().EnginePriority.Count;
+        for (var at = 0; at < engines; at++)
+        {
+            var planner = WithLibreOffice(libreOfficeAt: at);
+            foreach (var format in HwpTextConverter.LineFormats)
+            {
+                var route = planner.Plan(format, "txt")!;
+                Assert.Equal("hwp-text", Assert.Single(route.Steps).Converter.Id);
+                Assert.True(route.Cost < LibreOfficeConverter.BuildEdges(false).Where(e => e.From == format && e.To == "txt").Select(e => e.Cost).DefaultIfEmpty(25).Min(),
+                    $"{format} with LibreOffice at {at}");
+            }
+        }
     }
 
     [Fact]

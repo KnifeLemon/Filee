@@ -169,6 +169,12 @@ internal enum HPageFillArea
 internal sealed record HPageBorder(HPageType Pages, HBorders Borders, string? Fill, string? Picture, HInsets Offsets, bool AroundBody,
     bool HeaderInside, bool FooterInside, HPageFillArea FillArea)
 {
+    /// <summary>
+    /// The border's lines go over the page's text and objects (Word w:pgBorders zOrder="front", its default), else
+    /// under them with the background. Only the layout engine uses it.
+    /// </summary>
+    public bool InFront { get; init; }
+
     /// <summary>Draws nothing.</summary>
     public bool IsEmpty => Fill is null && Picture is null && Borders == HBorders.Empty;
 }
@@ -292,6 +298,13 @@ internal abstract class HBlock
     /// of a section); null = none. Read for layout only.
     /// </summary>
     public int? NewPageNumber { get; set; }
+
+    /// <summary>
+    /// Word paragraphs that held nothing after their page break, right before this block: the layout leaves them out
+    /// (Word keeps their marks on the old page), and plain text writes each as an empty line, as Word and LibreOffice save
+    /// it.
+    /// </summary>
+    public int BreakParagraphsBefore { get; set; }
 }
 
 /// <summary>
@@ -343,7 +356,20 @@ internal sealed class HParagraph : HBlock
 /// <param name="Numbering">List definition (shared by all items of one list).</param>
 /// <param name="Level">0-based nesting level.</param>
 /// <param name="Numbered">False for continuation paragraphs of an item (no bullet or number).</param>
-internal sealed record HListRef(HNumbering Numbering, int Level, bool Numbered);
+internal sealed record HListRef(HNumbering Numbering, int Level, bool Numbered)
+{
+    /// <summary>
+    /// The character format of this paragraph's number (Word: the paragraph mark's run format with the level's w:rPr
+    /// over it); null: the level's <see cref="HNumberingLevel.MarkerFormat"/>, else the text's. Only the layout engine
+    /// uses it, so it takes no part in equality.
+    /// </summary>
+    public HCharFormat? MarkerFormat { get; init; }
+
+    public bool Equals(HListRef? other) =>
+        other is not null && ReferenceEquals(Numbering, other.Numbering) && Level == other.Level && Numbered == other.Numbered;
+
+    public override int GetHashCode() => HashCode.Combine(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Numbering), Level, Numbered);
+}
 
 /// <summary>A list definition: one entry per nesting level.</summary>
 internal sealed class HNumbering
@@ -367,6 +393,12 @@ internal sealed record HNumberingLevel(string Format, string Text, int Start, bo
     /// here are written alike.
     /// </summary>
     public HNumberSuffix? Suffix { get; init; }
+
+    /// <summary>
+    /// How the number lines up with its place, the first line's indent (Word w:lvlJc): it starts there (null, left),
+    /// centres on it or ends there. Only the layout engine uses it, so it takes no part in equality.
+    /// </summary>
+    public HAlign? Align { get; init; }
 
     public bool Equals(HNumberingLevel? other) =>
         other is not null && Format == other.Format && Text == other.Text && Start == other.Start && Bullet == other.Bullet
@@ -396,6 +428,12 @@ internal sealed class HTable : HBlock
     public int ColumnCount { get; set; }
     public HAlign Align { get; set; } = HAlign.Left;
     public int Indent { get; set; }
+
+    /// <summary>
+    /// How far the table's edge lies before <see cref="Indent"/> (HWPUNIT): a Word 2010 (or older) document measures its
+    /// indent to the first cell's text, so the edge is that cell's start margin further out. Only the layout engine uses it.
+    /// </summary>
+    public int EdgeBeforeIndent { get; set; }
 
     /// <summary>
     /// The columns run from the right (Word w:bidiVisual, RTF \rtlrow): the first column is the rightmost, and
@@ -465,6 +503,18 @@ internal sealed class HTable : HBlock
     /// <summary>The distance a floating table keeps from the text around it (w:leftFromText ...).</summary>
     public HInsets FloatDistance { get; set; }
 
+    /// <summary>
+    /// Space around each cell, inside the table (Word w:tblCellSpacing), in HWPUNIT: cells this far from the table's edge
+    /// and twice this far from each other; 0 = cells touch. Only the layout engine uses it.
+    /// </summary>
+    public int CellSpacing { get; set; }
+
+    /// <summary>
+    /// The table's own outer border, drawn around its cells when they are spaced apart (<see cref="CellSpacing"/>); null =
+    /// none. Only the layout engine uses it.
+    /// </summary>
+    public HBorders? Frame { get; set; }
+
     public List<HBlock> Caption { get; } = [];
 }
 
@@ -504,6 +554,18 @@ internal sealed class HRow
 
     /// <summary>The row is not split across pages (Word w:cantSplit).</summary>
     public bool CantSplit { get; set; }
+
+    /// <summary>
+    /// The width of the grid columns the row leaves empty before its first cell (Word w:gridBefore with w:wBefore); null
+    /// when it gives none. Only the layout engine uses it.
+    /// </summary>
+    public HPreferredWidth? WidthBefore { get; set; }
+
+    /// <summary>Grid columns the row leaves empty after its last cell (Word w:gridAfter). Only the layout engine uses it.</summary>
+    public int GridAfter { get; set; }
+
+    /// <summary>The width of those columns (w:wAfter); null when it gives none. Only the layout engine uses it.</summary>
+    public HPreferredWidth? WidthAfter { get; set; }
 }
 
 internal sealed class HCell
@@ -730,6 +792,12 @@ internal sealed class HField(HFieldKind kind, HCharFormat format) : HInline
     /// a page number in a table in a text box blank); null when it writes the field. The layout engine always counts.
     /// </summary>
     public string? Stored { get; set; }
+
+    /// <summary>
+    /// The number the source showed for the field when it was saved (Word's field result, the text of ODT's
+    /// text:page-number, RTF's \fldrslt); null when it has none. Plain text, which has no pages to count, writes it.
+    /// </summary>
+    public string? Shown { get; set; }
 }
 
 /// <summary>

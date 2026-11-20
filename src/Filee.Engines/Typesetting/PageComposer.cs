@@ -16,7 +16,8 @@
 //   break, or from the break's page when the break starts it. Word models: the footer grows up from the bottom of its
 //   area, and a header or footer taller than its area moves the body (see Dress).
 // - Master pages (바탕쪽): drawn behind the page's body (or in front of it) from the top of the body; see MasterPages.
-// - Page borders and backgrounds (쪽 테두리/배경) under everything else; see PageBorder.
+// - Page borders and backgrounds (쪽 테두리/배경) under everything else; a Word page border in front of the text (its
+//   default, w:pgBorders zOrder) over everything instead. See PageBorder.
 // - Paragraph borders and backgrounds (BoxBorder): consecutive paragraphs with the same border share one box, which
 //   takes room above its first line and below its last, is drawn under the text a line at a time and stays open where a
 //   page or column break splits it.
@@ -413,6 +414,8 @@ internal sealed class PageComposer
                 // objects behind the text too, as Word draws them.
                 HeadersAndFooters(page);
                 DrawObjects(page);
+                // A page border in front of the text (Word's default) goes over everything on the page.
+                PageBorder(page, front: true);
             }
             return new ComposedDocument([.. _pages.Select(p => p.Content)], _outline);
         }
@@ -488,11 +491,14 @@ internal sealed class PageComposer
                 _guard.Paragraph();
                 if (blocks[i] is HTable table)
                 {
+                    // In columns of their own widths the table may go on in a column of another width and be laid out
+                    // again: its list numbers then count from where they were before it.
+                    var numbers = next is null && _columns.Sizes is not null ? _numbers.Save() : null;
                     var tableBox = next as TableBox ?? Tables.Layout(table, ColumnWidth);
                     next = null;
                     if (holder is null && table.Float is { } anchor && Float(table, anchor, tableBox, blocks, i, ref next))
                         continue;
-                    PlaceTable(table, tableBox, holder, holder is null ? TableLayout.Follower(blocks, i) : null);
+                    PlaceTable(table, tableBox, holder, holder is null ? TableLayout.Follower(blocks, i) : null, numbers);
                     holder = null;
                     continue;
                 }
@@ -591,7 +597,11 @@ internal sealed class PageComposer
         /// <paramref name="holder"/> is the 한글 paragraph whose line the table is, or null.
         /// </summary>
         /// <param name="follower">The rest of the 한글 paragraph the table starts, whose text follows right under it.</param>
-        private void PlaceTable(HTable table, TableBox box, HParagraph? holder, HParagraph? follower)
+        /// <param name="numbers">
+        /// The list counters before the table was laid out: in columns of their own widths, a table going on in a column
+        /// of another width is laid out again for it from there (its rows from the next group on). Null keeps its widths.
+        /// </param>
+        private void PlaceTable(HTable table, TableBox box, HParagraph? holder, HParagraph? follower, IReadOnlyDictionary<HNumbering, int[]>? numbers = null)
         {
             if (table.PageBreakBefore && !_empty)
                 HangulPage();
@@ -626,7 +636,7 @@ internal sealed class PageComposer
             // else the stored places hold again on 한글's next page.
             _inStep = _inStep && TableLayout.AsStored(table, box.Height, line);
             // A table set as a character is centred or set right with its outer margins, like a character that wide.
-            var x = box.Offset + (table.AsCharacter && !table.RightToLeft
+            var shift = (table.AsCharacter && !table.RightToLeft
                 ? table.Align switch
                 {
                     HAlign.Center => (margin.Left - margin.Right) / 2f,
@@ -634,10 +644,26 @@ internal sealed class PageComposer
                     _ => margin.Left,
                 }
                 : margin.Left) / 100f;
+            var x = box.Offset + shift;
             var header = box.Rows.Take(box.HeaderRows).ToList();
+            // A column of another width than the one the table was laid out for (columns of their own widths): the
+            // table is laid out again for it, its list numbers counted from where they were before it.
+            bool Refit()
+            {
+                if (numbers is null || _columns.Sizes is null || Math.Abs(box.Column - ColumnWidth) < Epsilon)
+                    return false;
+                _numbers.Restore(numbers);
+                box = Tables.Layout(table, ColumnWidth);
+                x = box.Offset + shift;
+                header = [.. box.Rows.Take(box.HeaderRows)];
+                return true;
+            }
             // A table that must not split goes to the next column whole when it fits in one.
             if (box.PageBreak == HTablePageBreak.None && !_columnEmpty && _y + box.Height > Bottom + Epsilon && box.Height <= ColumnHeight)
+            {
                 NextColumn();
+                Refit();
+            }
 
             // The column holds nothing yet but, perhaps, this table's repeated header rows.
             var fresh = _columnEmpty;
@@ -647,15 +673,19 @@ internal sealed class PageComposer
                 Put(x, height, (page, left, top) => TableLayout.Draw(page, rows, left, top));
                 _y += height;
             }
-            void NextPage(bool repeat)
+            // On in the next column or page: true when the table was laid out again for it.
+            bool NextPage(bool repeat)
             {
                 NextColumn();
                 _inStep = false;
+                var refitted = Refit();
                 if (repeat && header.Count > 0)
                     Draw(header);
                 fresh = true;
+                return refitted;
             }
 
+            // The groups come from the table itself (cells spanning rows), so laid out again it has the same ones.
             foreach (var (first, count) in box.Groups())
             {
                 IReadOnlyList<RowBox> rows = [.. box.Rows.Skip(first).Take(count)];
@@ -675,6 +705,7 @@ internal sealed class PageComposer
                     var splits = rows.Count == 1 && !rows[0].CantSplit && box.PageBreak is not (HTablePageBreak.Cell or HTablePageBreak.None);
                     if ((splits || fresh) && rows.Count == 1 && TableLayout.Split(rows[0], room) is var (part, rest))
                     {
+                        // The rest of a split row keeps the widths its first part had.
                         Draw([part]);
                         NextPage(repeat);
                         rows = [rest];
@@ -682,7 +713,8 @@ internal sealed class PageComposer
                     }
                     if (!fresh)
                     {
-                        NextPage(repeat);
+                        if (NextPage(repeat))
+                            rows = [.. box.Rows.Skip(first).Take(count)];
                         continue;
                     }
                     // Taller than an empty column and it can't split: placed as it is.
@@ -1357,7 +1389,11 @@ internal sealed class PageComposer
         /// draws something, else the one for both pages. 한글 places the border around the body grown by its offsets
         /// (around the header and footer areas too when they are inside), or its offsets in from the paper's edges.
         /// </summary>
-        private void PageBorder(Page page)
+        /// <summary>
+        /// Draws the page's border and background under everything (<paramref name="front"/> false: the background, and the
+        /// border unless it goes in front), or the border that goes in front of the text over everything (true).
+        /// </summary>
+        private void PageBorder(Page page, bool front = false)
         {
             var section = page.Section;
             static bool Shows(HFirstPageRule rule, bool first) => rule switch
@@ -1369,8 +1405,9 @@ internal sealed class PageComposer
             var side = page.Number % 2 == 0 ? HPageType.Even : HPageType.Odd;
             if ((section.PageBorders.LastOrDefault(b => b.Pages == side) ?? section.PageBorders.LastOrDefault(b => b.Pages == HPageType.Both)) is not { } border)
                 return;
-            var showBorder = Shows(section.PageBorderShows, page.FirstOfSection) && page.Hiding?.Border != true;
-            var showFill = Shows(section.PageFillShows, page.FirstOfSection) && page.Hiding?.Fill != true;
+            var showBorder = Shows(section.PageBorderShows, page.FirstOfSection) && page.Hiding?.Border != true && border.InFront == front;
+            var showFill = Shows(section.PageFillShows, page.FirstOfSection) && page.Hiding?.Fill != true && !front
+                && (border.Fill is not null || border.Picture is not null);
             if (!showBorder && !showFill)
                 return;
 
@@ -1412,7 +1449,7 @@ internal sealed class PageComposer
                 if (showBorder)
                     TableLayout.Borders(canvas, border.Borders, frame);
             });
-            page.Content.Add(layer, under: true);
+            page.Content.Add(layer, under: !front);
         }
 
         // ───────────────────────── Master pages ─────────────────────────
@@ -1670,7 +1707,8 @@ internal sealed class PageComposer
             Format = format,
             MarkFormat = _styles.Mark(paragraph) is var mark && code ? _styles.Character(paragraph.MarkFormat with { Font = paragraph.MarkFormat.Font ?? FontNames.MonospaceFamily }, paragraph) : mark,
             HeadingLevel = paragraph.HeadingLevel,
-            List = paragraph.List,
+            // A number's own format (Word's) is resolved as the text's.
+            List = paragraph.List is { MarkerFormat: { } marker } list ? list with { MarkerFormat = _styles.Character(marker, paragraph) } : paragraph.List,
             PageBreakBefore = paragraph.PageBreakBefore,
             ColumnBreakBefore = paragraph.ColumnBreakBefore,
             ColumnsChange = paragraph.ColumnsChange,

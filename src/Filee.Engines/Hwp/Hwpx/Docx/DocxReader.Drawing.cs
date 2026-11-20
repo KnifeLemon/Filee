@@ -306,6 +306,9 @@ internal sealed partial class DocxReader
         var warp = Attr(bodyPr?.Element(A + "prstTxWarp"), "prst");
         if (warp is not null || Attr(bodyPr, "fromWordArt") is "1" or "true")
             box.TextArt = new HTextArt(warp is not (null or "textNoShape"), TextOpacity(content));
+        // Text written top to bottom (turned, or East Asian vertical) is set horizontally in the box: the note says so.
+        if (Attr(bodyPr, "vert") is "vert" or "vert270" or "eaVert" or "wordArtVert" or "wordArtVertRtl" or "mongolianVert")
+            _leftOut.Add(HLeftOutKind.VerticalText);
         ReadTextBoxContent(content, box.Blocks);
         return box;
     }
@@ -641,8 +644,11 @@ internal sealed partial class DocxReader
                     OuterMargin = distance,
                 };
             }
-            else if (shape.Element(V + "textbox")?.Element(W + "txbxContent") is { } content)
+            else if (shape.Element(V + "textbox") is { } textbox && textbox.Element(W + "txbxContent") is { } content)
             {
+                // A VML text box written top to bottom (layout-flow: vertical or vertical-ideographic) is set horizontally.
+                if (VmlStyle((string?)textbox.Attribute("style")).GetValueOrDefault("layout-flow") is { } flow && flow.StartsWith("vertical", StringComparison.Ordinal))
+                    _leftOut.Add(HLeftOutKind.VerticalText);
                 var box = new TextBoxBuilder(width, height, anchor)
                 {
                     Fill = VmlFill(shape),

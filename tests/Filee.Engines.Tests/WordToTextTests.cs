@@ -1,6 +1,7 @@
 // Word (DOCX, DOC) and ODT → TXT on the built-in route, as RTF → TXT (#1204, RtfToBuiltInTextTests): the document's
-// own paragraphs a line each, with their leading spaces, tabs, runs of spaces and empty paragraphs, list numbers and
-// table rows on lines of their own. Before, with the Filee renderer on, the text came from the renderer's PDF. The
+// own paragraphs a line each, with their leading spaces, tabs, runs of spaces and empty paragraphs, list numbers (and
+// the tab after them, as Word and LibreOffice write it) and table rows on lines of their own, page numbers as the file
+// showed them and a paragraph that holds only a page break as an empty line. Before, with the Filee renderer on, the text came from the renderer's PDF. The
 // routes with LibreOffice are in FileeRendererConverterTests. The documents are built here.
 
 using Filee.Core.Conversion;
@@ -21,9 +22,9 @@ public sealed class WordToBuiltInTextTests(EngineFixture fx) : IClassFixture<Eng
         "Notes on the build",
         "", // the empty paragraph, and no empty line between the others
         "Steps:",
-        "1. Install the tools",
-        "2. Run the build",
-        "    • on Windows",
+        "1.\tInstall the tools", // a tab after the number, as Word and LibreOffice write it
+        "2.\tRun the build",
+        "    •\ton Windows",
         "int main(void) {",
         "    int total = 0;  // two spaces",
         "\tfor (int i = 0; i < 3; i++)",
@@ -167,6 +168,115 @@ public sealed class WordToBuiltInTextTests(EngineFixture fx) : IClassFixture<Eng
         await File.WriteAllBytesAsync(source, doc.Build(), TestContext.Current.CancellationToken);
 
         Assert.Equal(string.Join("\n", Expected), await ConvertAsync(source, "doc"));
+    }
+
+    [Fact]
+    public async Task Page_fields_write_the_number_the_file_showed()
+    {
+        // LibreOffice writes the number too; before, the field came out empty ("Page  of ").
+        var docx = new DocxBuilder()
+            .Paragraph(P(R("Page ") + Field("PAGE", "3") + R(" of ") + Field("NUMPAGES", "7")))
+            .Paragraph(P(R("Simple ") + "<w:fldSimple w:instr=\" PAGE \">" + R("iv") + "</w:fldSimple>"))
+            .Save(Path.Combine(fx.NewFolder(), "pages.docx"));
+        Assert.Equal("Page 3 of 7\nSimple iv\n", await ConvertAsync(docx, "docx"));
+
+        var odt = new OdtBuilder
+        {
+            Body = """
+                <text:p>Page <text:page-number text:select-page="current">3</text:page-number> of <text:page-count>7</text:page-count></text:p>
+                <text:p>Placeholder <text:page-number>&lt;number&gt;</text:page-number></text:p>
+                """,
+        }.Save(Path.Combine(fx.NewFolder(), "pages.odt"));
+        // A field without a number of its own (Impress's placeholder) is counted from the page breaks.
+        Assert.Equal("Page 3 of 7\nPlaceholder 1\n", await ConvertAsync(odt, "odt"));
+    }
+
+    [Fact]
+    public void A_page_field_without_a_number_counts_the_page_breaks_and_sections()
+    {
+        var document = new HDocument();
+        var first = new HSection();
+        first.Blocks.Add(Paragraph("a", new HField(HFieldKind.PageNumber, default)));
+        var broken = Paragraph("b", new HField(HFieldKind.PageNumber, default), new HText(" of ", default), new HField(HFieldKind.TotalPages, default));
+        broken.PageBreakBefore = true;
+        first.Blocks.Add(broken);
+        var second = new HSection { StartPageNumber = 10 };
+        second.Blocks.Add(Paragraph("c", new HField(HFieldKind.PageNumber, default) { NumberFormat = "ROMAN_SMALL" }));
+        document.Sections.AddRange([first, second]);
+
+        Assert.Equal("a1\nb2 of 3\ncx\n", PlainTextWriter.WriteLines(document).ReplaceLineEndings("\n"));
+        Assert.Equal("a1\n\nb2 of 3\n\ncx\n", PlainTextWriter.Write(document).ReplaceLineEndings("\n"));
+
+        static HParagraph Paragraph(string text, params HInline[] inlines)
+        {
+            var paragraph = new HParagraph();
+            paragraph.Inlines.Add(new HText(text, default));
+            paragraph.Inlines.AddRange(inlines);
+            return paragraph;
+        }
+    }
+
+    [Fact]
+    public async Task A_paragraph_that_holds_only_a_page_break_is_an_empty_line()
+    {
+        // Word keeps the paragraph's mark on the old page and the layout leaves it out, but its plain text has the line,
+        // as LibreOffice's has. No form feed: neither writes one.
+        const string PageBreak = "<w:r><w:br w:type=\"page\"/></w:r>";
+        var docx = new DocxBuilder()
+            .Paragraph(P(R("before")))
+            .Paragraph(P(PageBreak))
+            .Paragraph(P(R("after")))
+            .Paragraph(P(R("end of a page") + PageBreak)) // the break ends the paragraph: its mark is an empty line too
+            .Paragraph(P(R("next")))
+            .Paragraph(P(PageBreak))
+            .Paragraph(P(PageBreak))
+            .Paragraph(P(R("two pages on")))
+            .Paragraph(P(R("in the") + PageBreak + R("middle"))) // no empty line
+            .Save(Path.Combine(fx.NewFolder(), "breaks.docx"));
+        var text = await ConvertAsync(docx, "docx");
+
+        Assert.Equal("before\n\nafter\nend of a page\n\nnext\n\n\ntwo pages on\nin the\nmiddle\n", text);
+        Assert.DoesNotContain('\f', text);
+        // The layout's model is as it was: the break paragraphs are left out, the next paragraph starts the page.
+        var model = Hwp.Hwpx.Docx.DocxReader.Read(docx, fx.NewFolder());
+        var paragraphs = model.Sections.Single().Blocks.OfType<HParagraph>().ToList();
+        Assert.Equal(["before", "after", "end of a page", "next", "two pages on", "in the", "middle"],
+            paragraphs.Select(p => string.Concat(p.Inlines.OfType<HText>().Select(t => t.Text))));
+        Assert.Equal([0, 1, 0, 1, 2, 0, 0], paragraphs.Select(p => p.BreakParagraphsBefore));
+    }
+
+    [Fact]
+    public async Task A_list_number_is_followed_by_what_its_word_level_asks_for()
+    {
+        var docx = new DocxBuilder
+        {
+            Numbering = """
+                <w:abstractNum w:abstractNumId="1">
+                  <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:suff w:val="space"/><w:lvlText w:val="%1."/></w:lvl>
+                  <w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:suff w:val="nothing"/><w:lvlText w:val="(%2)"/></w:lvl>
+                </w:abstractNum>
+                <w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>
+                """,
+        };
+        static string Item(string text, int level) => P(R(text), $"<w:numPr><w:ilvl w:val=\"{level}\"/><w:numId w:val=\"1\"/></w:numPr>");
+        docx.Paragraph(Item("spaced", 0)).Paragraph(Item("tight", 1)).Paragraph(P(R("line") + "<w:r><w:br/></w:r>" + R("break"),
+            "<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>"));
+        var source = docx.Save(Path.Combine(fx.NewFolder(), "suffix.docx"));
+
+        Assert.Equal("1. spaced\n    (a)tight\n2. line\n   break\n", await ConvertAsync(source, "docx"));
+    }
+
+    [Fact]
+    public void A_line_break_in_a_list_item_lines_up_under_its_text()
+    {
+        var numbering = new HNumbering { Levels = { new HNumberingLevel("DIGIT", "^1.", 1, Bullet: false) } };
+        var item = new HParagraph { List = new HListRef(numbering, 0, Numbered: true) };
+        item.Inlines.AddRange([new HText("first", default), new HLineBreak(default), new HText("second", default)]);
+        var document = new HDocument();
+        document.Sections.Add(new HSection { Blocks = { item } });
+
+        // The tab under the number's tab reaches the same tab stop in an editor.
+        Assert.Equal("1.\tfirst\n  \tsecond\n", PlainTextWriter.WriteLines(document).ReplaceLineEndings("\n"));
     }
 
     [Fact]

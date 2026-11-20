@@ -289,8 +289,11 @@ internal sealed partial class DocxReader
         public int Start = 1;
         public string Format = "decimal";
         public string Text = "%1.";
-        public string? Suffix;
+        public string? Suffix, Jc;
         public XElement? PPr, RPr;
+
+        /// <summary>The level's w:rPr without its fonts (a bullet keeps the text's: its character is mapped to Unicode).</summary>
+        public XElement? RPrWithoutFonts;
     }
 
     // ───────────────────────── Loading ─────────────────────────
@@ -416,6 +419,7 @@ internal sealed partial class DocxReader
             level.Format = Val(lvl.Element(W + "numFmt")) ?? level.Format;
             level.Text = Val(lvl.Element(W + "lvlText")) ?? level.Text;
             level.Suffix = Val(lvl.Element(W + "suff")) ?? level.Suffix;
+            level.Jc = Val(lvl.Element(W + "lvlJc")) ?? level.Jc;
             level.PPr = lvl.Element(W + "pPr") ?? level.PPr;
             level.RPr = lvl.Element(W + "rPr") ?? level.RPr;
         }
@@ -598,9 +602,10 @@ internal sealed partial class DocxReader
             // Left to right unless w:bidi says otherwise (null: left to the style, which is left to right).
             RightToLeft: p.Bidi,
             Borders: ParagraphBorders(p),
-            // Word measures tab stops from the left margin, 한글 from the paragraph's left indent.
+            // Word measures tab stops from the left margin, 한글 from the paragraph's left indent. Stops between a
+            // hanging first line's start and the left indent count on that line (before the indent: negative).
             Tabs: p.Tabs.Count == 0 ? null : p.Tabs
-                .Where(t => t.Kind is not ("bar" or "num") && t.Position > (left ?? 0))
+                .Where(t => t.Kind is not ("bar" or "num") && t.Position != (left ?? 0) && t.Position > (left ?? 0) + Math.Min(0, firstLine))
                 .Select(t => new HTabStop(HwpxUnits.FromTwips(t.Position - (left ?? 0)), t.Kind switch
                 {
                     "right" or "end" => HTabKind.Right,
@@ -738,10 +743,43 @@ internal sealed partial class DocxReader
             var definition = bullet
                 ? new HNumberingLevel("DIGIT", BulletText(level.Text, LevelFont(level.RPr)), level.Start, Bullet: true)
                 : new HNumberingLevel(NumberFormat(level.Format), NumberText(level.Text, level.Format), level.Start, Bullet: false);
-            numbering.Levels.Add(definition with { Suffix = suffix });
+            numbering.Levels.Add(definition with
+            {
+                Suffix = suffix,
+                Align = level.Jc switch
+                {
+                    "center" => HAlign.Center,
+                    "right" or "end" => HAlign.Right,
+                    _ => null,
+                },
+            });
         }
         _numberings[numId] = numbering;
         return numbering;
+    }
+
+    /// <summary>
+    /// The format Word draws a list number in: the paragraph mark's run format (<paramref name="mark"/>) with the
+    /// level's w:rPr over it. A bullet keeps the mark's fonts, as its character is mapped from the symbol font to Unicode.
+    /// </summary>
+    private HCharFormat? MarkerFormat(string? numId, int ilvl, RunProps mark)
+    {
+        if (numId is null || !_numberingLevels.TryGetValue(numId, out var levels) || ilvl < 0 || ilvl >= levels.Length)
+            return null;
+        var level = levels[ilvl];
+        var rPr = level.RPr;
+        if (level.Format == "bullet" && rPr?.Element(W + "rFonts") is not null)
+        {
+            if (level.RPrWithoutFonts is null)
+            {
+                level.RPrWithoutFonts = new XElement(rPr);
+                level.RPrWithoutFonts.Elements(W + "rFonts").Remove();
+            }
+            rPr = level.RPrWithoutFonts;
+        }
+        var run = mark.Clone();
+        run.Apply(rPr);
+        return CharFormat(run);
     }
 
     private static string NumberFormat(string wordFormat) => wordFormat switch

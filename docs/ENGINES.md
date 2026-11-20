@@ -11,7 +11,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
-| **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
+| **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML); **RTF, Word (DOCX + DOCM/DOTX/DOTM, DOC + DOT, WPS Office WPS) and ODT → TXT** a line per paragraph, as a word processor saves plain text, **and → Markdown** (equations as TeX math) (see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF through the Filee renderer, → DOCX through the DOCX writer) |
 | **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)); **FreeMind / Freeplane (MM) and XMind mind maps → Markdown, HTML, TXT, OPML** as outlines (see [Mind maps](#mind-maps)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLSB, XLS, ODS (+ OTS, FODS), CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet; OTS and FODS out through the next engine) |
@@ -36,7 +36,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, PDB, PML, TCR, RB, SNB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/PDB/PML/TCR/RB/SNB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
-| **DjVu** | built in | **DjVu (.djvu, .djv; one page or bundled) → PDF** (the layers kept: background JPEG, 1-bit masks; the hidden text searchable) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
+| **DjVu** | built in | **DjVu (.djvu, .djv; one page, bundled or indirect) → PDF** (the layers kept: background JPEG, 1-bit JBIG2 / G4 masks; the hidden text searchable; links and bookmarks) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
@@ -1341,6 +1341,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - 한글's numbers: a list number in its own character format (paraHead charPrIDRef), the lines after it hanging under
     the text when the number indents its paragraph (autoIndent); a note's reference in its run's format (an exam's
     endnote numbers are white); a page that hides its header or footer (hp:pageHiding) shows none.
+  - Word's numbers: in the paragraph mark's run format with the level's `w:rPr` over it (a bullet keeps the mark's
+    font, its character being mapped to Unicode), starting at, centred on or ending at the first line's indent
+    (`w:lvlJc`); a tab stop between a hanging first line's start and the left indent counts on that line.
   - Headers and footers: both, odd or even pages by page number, none on a section's first page where it hides them,
     laid out in the header and footer areas. Page numbers count on across sections unless one restarts them; page
     number fields show their page's number, total pages fields the count (a first pass finds it when the body has one).
@@ -1369,7 +1372,7 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     (hideBorder, hideFill) leave them out. Word's page borders (w:pgBorders) take the same place: w:space points in
     from the paper's edges (offsetFrom="page") or out from the text and around the header and footer areas, on all
     pages, the first or all but the first (w:display); line styles it doesn't draw become a single or double line,
-    picture borders a single line.
+    picture borders a single line. Word draws its page border over the text and objects unless w:zOrder="back".
 - **Columns, footnotes and endnotes** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: multi-column layout,
   footnotes and endnotes*):
   - Columns: a section's newspaper columns at their gap, with a separator line between them when the section has one;
@@ -1377,9 +1380,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     that started a column (the stored first-line-of-column flag) start one.
   - Columns of their own widths (Word w:cols equalWidth="0", 한글 sameSz="0", ODF style:column rel-width): each its
     width and the gap after it, scaled to the text width, the first at the right in a right-to-left section. A
-    paragraph going on in a column of another width is laid out anew from where it broke; they are not balanced
-    where columns change on a page (their lines are as wide as the column they were laid out for), and a table going
-    on in one keeps its first column's width.
+    paragraph going on in a column of another width is laid out anew from where it broke, a table from its next group
+    of rows (a row split across the columns keeps its first part's widths); they are not balanced where columns change
+    on a page (their lines are as wide as the column they were laid out for).
   - Columns changing on a page (한글 다단 설정 나누기, Word's continuous section break): the columns before are balanced,
     the first ones taking the odd line as 한글 does, and the new ones start under them. At the end of a section they
     are left as they are (neither 한글 nor Word balances there).
@@ -1408,9 +1411,12 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     spanning columns widens them together) and the table to its preferred width (`w:tblW`, a length or a share of the
     text column). A table wider than its room (from its indent to the column's edge, or its cell for a nested table,
     which never overflows it) gives up first what its columns have beyond their widest line, then down to their longest
-    words. Cell margins nothing gives are Word's 0.19 cm at the sides. Not yet: the indent of Word 2010 and older
-    documents measured to the cell's text (the table sits a cell margin further left there), `w:tblCellSpacing`,
-    `w:gridBefore` / `w:gridAfter` widths.
+    words; a fixed table in the body keeps its widths and runs into the margin (both when centred). Cell margins
+    nothing gives are Word's 0.19 cm at the sides. Grid columns a row leaves empty take its `w:wBefore` / `w:wAfter`;
+    cells spaced apart (`w:tblCellSpacing`) sit that far in from their columns and rows, the table's border around
+    them. Documents in Word 2010's compatibility mode or older (and those whose settings don't say) measure `w:tblInd`
+    to the first cell's text, so the table sits a cell margin further out. RTF rows with `\trautofit1` are sized as
+    Word's autofit tables.
   - Cells: padding (the cell's, the table's, else 한글's 1.8 × 0.5 mm), content laid out at the column width less it,
     nested tables included; lines on 한글's stored layout take their stored place in the cell. A row is as high as its
     own height or its tallest single-row cell, whose height is its content without the spacing below its last line (as
@@ -3688,9 +3694,10 @@ managed code only, so it works on every platform Filee runs on (Windows, Linux a
 files); the e-book writers write it out:
 
 - **TXT** (`PlainTextWriter`, UTF-8 with a byte order mark): paragraphs separated by an empty line; list items with the
-  number or bullet 한글 shows ("1.", "가)", "●") and indented by level; table rows as tab-separated cells; a text box
-  on lines of its own; footnotes and endnotes as `[1]` with their text after a `----` line at the end; equations as
-  their script. Headers, footers and page numbers are left out, as are tracked deletions.
+  number or bullet 한글 shows ("1.", "가)", "●") and a tab after it, indented by level; table rows as tab-separated
+  cells; a text box on lines of its own; footnotes and endnotes as `[1]` with their text after a `----` line at the
+  end; equations as their script. Headers and footers are left out, as are tracked deletions; a page number field in
+  the text writes the page counted from the sections and page breaks (plain text has no pages to lay out).
 - **Markdown** (`MarkdownWriter`): headings (outline paragraphs and heading styles), bold / italic / strikeout /
   super- and subscript, lists (numbered ones as `1.`, nested by level), pipe tables, links, footnotes (`[^1]`), and
   pictures in a `<name>_files` folder next to the Markdown file (`MarkdownPictures`: `img0001.png`, formats editors
@@ -3701,6 +3708,24 @@ files); the e-book writers write it out:
 
 The edges cost what Unhwp's did (TXT and Markdown 10, HTML 14) and the engine took Unhwp's place in the engine order
 (settings schema 100 renames `unhwp` to `hwp-text`), so every route keeps its cost.
+
+**RTF, Word and ODT → TXT** (#1204) go through the same engine: the RTF, DOCX, [DOC](#doc-reader) and
+ODT readers read the document model and `PlainTextWriter.WriteLines` writes it as Word and LibreOffice save plain
+text. Each paragraph and each line break is a line, an empty paragraph an empty line (a paragraph that holds only a
+page break too), and the text's own leading spaces, runs of spaces and tabs stay; the paragraph's indentation isn't
+added. A list number or bullet is followed by a tab, or by the space or nothing a Word list level asks for (`w:suff`),
+as Word and LibreOffice write it. Table rows are tab-separated cells (a table in a cell joins the cell's text), notes
+come at the end as above. A PAGE or NUMPAGES field writes the number the file showed when it was saved (Word's field
+result, the text of ODT's `text:page-number`, RTF's `\fldrslt`), else the count from the page breaks. These edges are
+direct only (a TXT step in another route would lose the formatting) and cost 15: with any engine order's penalty
+(0 to 9) that stays below LibreOffice's fallback edge (25), so they win wherever LibreOffice stands in the list, and
+*Use LibreOffice for Word documents → PDF* is about PDF only. The DOC reader checks each file: a Word 6.0 / 95 file
+goes to LibreOffice. Without them the cheapest route went through the Filee renderer's PDF and its text, which
+wrapped long lines and lost the indentation and the empty lines.
+
+**RTF, Word and ODT → Markdown** take the same one step (also cost 15, direct only) with `MarkdownWriter`, as HWP
+does: equations come out as TeX math (`$…$`, `$$…$$` for one alone on its line, also when tabs centre it). The route
+before went through the HWPX writer, which gave the equations back as 한글 equation script, or through Pandoc.
 
 Unhwp (a native Rust library through NuGet) did this before. It needed the Visual C++ runtime next to Filee.exe and
 had no Linux or Windows ARM64 build of its own (Filee built one, #236). Measured before it was removed,
@@ -4568,39 +4593,58 @@ and `.djv`, documents donut). `DjvuConverter` turns a DjVu document into **PDF**
 TIFF** pictures of its pages (the PDF options' page range, each page at its own resolution, then the image options;
 TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from the PDF.
 
-- **Container:** IFF85 (`AT&T`, then a FORM chunk). One page (`FORM:DJVU`) or a bundled document (`FORM:DJVM`): the
-  `DIRM` directory (versions 0 and 1, its BZZ tables of sizes, flags and names) gives the components at their offsets
-  — pages, included files (`FORM:DJVI`) and thumbnails (skipped). An **indirect** document (pages in separate files)
-  is refused with `error.djvu_indirect`, which says to bundle it in a DjVu viewer first. A file cut short keeps the
-  chunks it still holds.
+- **Container:** IFF85 (`AT&T`, then a FORM chunk). One page (`FORM:DJVU`) or a multi-page document (`FORM:DJVM`):
+  the `DIRM` directory (versions 0 and 1, its BZZ tables of sizes, flags, ids, names and titles) lists the components
+  — pages, included files (`FORM:DJVI`) and thumbnails (skipped) — and `NAVM` holds the bookmarks. A **bundled**
+  document has the components at offsets in the file. An **indirect** one names them as separate files next to its
+  index file: each is read only from below the index file's folder (a name with `..`, a drive, a root, a `:`, a
+  Windows device name, or a path through a symbolic link or junction counts as missing), with the same limits as a
+  bundled document. A missing page or included file refuses the document with `error.djvu_indirect` (which says to
+  bundle it in a DjVu viewer first); missing thumbnails don't matter. A file cut short keeps the chunks it still holds.
 - **Page:** `INFO` (size, resolution 25–6000 dpi, else 300; rotation → the PDF page's `/Rotate`, the picture turned),
   `INCL` (followed depth first, each file once, so include loops end), the mask `Sjbz` with its shared dictionary
   `Djbz` (in the page or an included file; a dictionary may build on another; decoded once per file and kept for the
-  next pages), the background `BG44` (or `BGjp`), foreground colours `FG44` (or `FGjp`) or the palette `FGbz`
-  (colours and a colour per shape), hidden text `TXTz` / `TXTa`.
+  next pages) or the G4 mask `Smmr` (whole or in stripes, black and white possibly swapped), the background `BG44` (or
+  `BGjp`), foreground colours `FG44` (or `FGjp`) or the palette `FGbz` (colours and a colour per shape), hidden text
+  `TXTz` / `TXTa`, and the hyperlinks of the annotations `ANTa` / `ANTz` (the page's and its included files').
 - **Decoders:** the ZP-coder (the specification's probability table), BZZ (block sort transform, move-to-front with
   the specification's rank estimator), JB2 (all record types: new shapes coded directly, refinements against library
-  shapes, copies, non-mark data, comments, dictionary requests and number-coder resets) and IW44 (luminance and
+  shapes, copies, non-mark data, comments, dictionary requests and number-coder resets), IW44 (luminance and
   chrominance maps of 32 × 32 blocks, all bands and slices over several chunks, chrominance at half resolution or
-  starting late, the backward lifting transform, the YCbCr transform; grey pictures).
+  starting late, the backward lifting transform, the YCbCr transform; grey pictures) and CCITT G4 (`CcittG4`, written
+  from ITU-T T.6 and T.4's code tables; also the PDF writer's encoder).
+- **Links and bookmarks:** a `(maparea url comment area …)` annotation with a `rect`, `oval`, `text` or `poly` area
+  (a polygon by its bounding box; lines aren't links) becomes a PDF link annotation. `#…` URLs go to a page — by its
+  id, name or title in the directory, its number from 1, or `#+n` / `#-n` pages from the link's page; other URLs only
+  when they are `http`, `https`, `ftp` or `mailto` addresses (a URI action), so `javascript:`, `file:`, relative files
+  and the like are no links. The bookmarks become the PDF outline (the first level open, at most 32 levels; deeper
+  ones go in at the 32nd); a bookmark Filee can't follow keeps its title without an action.
 - **Composition:** the background scaled up to the page (bilinear, by the reduction its size gives), then each mask
   pixel in its foreground colour (the FG44 picture, the shape's palette colour, or black); white without a background.
 - **PDF:** the layers stay layers (`DjvuPdfWriter`), so a scanned book stays small: the background as a JPEG at its
-  own resolution, the mask as 1-bit image masks (Flate) painted in their colour — one per palette colour, or the FG44
-  picture shown through the mask (explicit masking). A page with more than 64 palette colours is one JPEG. The hidden
+  own resolution, the mask as 1-bit image masks painted in their colour — one per palette colour, or the FG44 picture
+  shown through the mask (explicit masking). Each mask is coded the smallest of three ways: **JBIG2** (`Jbig2Encoder`,
+  written from ITU-T T.88: the mask's JB2 shapes become a symbol dictionary and an immediate text region places them,
+  all MQ-coded — symbol heights and widths, generic template 0 bitmaps, strips of four rows, symbol ids), **CCITT G4**
+  (`/CCITTFaxDecode`, `/K -1`), or **Flate** (finely dithered pictures neither packs well). A text page's mask is
+  about the DjVu file's own size: the DjVu 3 specification (472 KB) went from 6.0 MB to 1.45 MB, a 115-page scanned
+  book (732 KB) from 13.9 MB to 1.5 MB. The masks draw exactly as before (checked pixel for pixel with PDFtoImage). A page with more than 64 palette colours is one JPEG. The hidden
   text's lines and words become an invisible text layer (the OCR layer's glyphless font, `Ocr/OcrTextLayer.cs`), so
   the PDF can be searched and its text copied in any script.
 - **Limits** (`DjvuLimits`, refusals with `error.document_too_complex`): 20,000 pages and 40,000 components; 64 MB per
   chunk and per BZZ stream; 150 million pixels per page; 64 million pixels per IW44 picture and 10,000 slices;
   2 million shapes, 4 million placed shapes and 400 million shape pixels per mask (counted before a shape is
-  allocated); 20 million number-coder cells; 2 million text zones; 65,535 palette colours. Decoding is iterative (no
-  recursion over files or zones) and checks cancellation.
-- **Left out:** `Smmr` masks (G4), JPEG 2000 layers (`BG2k`, `FG2k`) and JPEG layers Skia can't decode are counted as
-  pictures left out in the file's result. Not read: annotations (`ANTa`/`ANTz`: hyperlinks, highlights, background
-  colour), bookmarks (`NAVM`), thumbnails, standalone IW44 files (`FORM:PM44`/`BM44`), and hidden text of a page with
-  no zones below the page.
+  allocated); 20 million number-coder cells; 2 million text zones; 65,535 palette colours; 1 million parts (brackets,
+  words, strings) of one page's annotations. Annotations nested more than 64 deep or not balanced count as damage and
+  leave the page without links. Decoding is iterative (no recursion over files, zones, annotations or bookmarks) and
+  checks cancellation.
+- **Left out:** JPEG 2000 layers (`BG2k`, `FG2k`) and JPEG layers Skia can't decode are counted as pictures left out
+  in the file's result. Not read: the other annotations (highlights, borders, background colour, zoom, metadata),
+  thumbnails, standalone IW44 files (`FORM:PM44`/`BM44`), and hidden text of a page with no zones below the page.
 - Tests (`DjvuTests.cs`, `DjvuFuzzTests.cs`) build every file in code: `DjvuBuilder.cs` has encoders for each piece
-  (ZP-coder, BZZ, JB2, IW44 with the forward transform, text zones, palettes, the bundled directory).
+  (ZP-coder, BZZ, JB2, IW44 with the forward transform, text zones, palettes, bookmarks, annotations, Smmr masks, the
+  bundled directory and indirect documents). The PDF's JBIG2, G4 and Flate masks are drawn back with PDFtoImage
+  (pdfium's own decoders) and compared with the page.
 
 ## FFmpeg
 

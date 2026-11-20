@@ -518,6 +518,13 @@ internal sealed partial class OdtReader
         public bool Space { get; set; } = true;
     }
 
+    /// <summary>
+    /// The number a text:page-number or text:page-count showed when the file was saved ("3", "iv"); null for none and
+    /// for a placeholder such as Impress's "&lt;number&gt;".
+    /// </summary>
+    private static string? Shown(XElement field) =>
+        field.Value.Trim() is { Length: > 0 and <= 32 } shown && shown.All(char.IsLetterOrDigit) ? shown : null;
+
     private void Inlines(XElement container, TextProps text, List<HInline> output, TextState state)
     {
         if (text.Hidden)
@@ -600,11 +607,11 @@ internal sealed partial class OdtReader
                     state.Space = false;
                     break;
                 case "page-number":
-                    output.Add(new HField(HFieldKind.PageNumber, CharFormat(text)));
+                    output.Add(new HField(HFieldKind.PageNumber, CharFormat(text)) { Shown = Shown(element) });
                     state.Space = false;
                     break;
                 case "page-count":
-                    output.Add(new HField(HFieldKind.TotalPages, CharFormat(text)));
+                    output.Add(new HField(HFieldKind.TotalPages, CharFormat(text)) { Shown = Shown(element) });
                     state.Space = false;
                     break;
                 case "ruby":

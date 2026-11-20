@@ -15,16 +15,21 @@
 //   is narrower; a cell spanning columns spreads what it needs over them. A table wider than its room (from its indent
 //   to the far edge: the text column, or the cell a nested table is in, which it never overflows) gives up first what
 //   its columns have beyond their widest line, then down to their longest words, then shrinks evenly; a fixed table
-//   outside cells shrinks evenly at once, keeping its shape (Word lets it run into the margin). Content widths
+//   outside cells keeps its widths and runs into the margin (both margins when centred), as Word lets it. Content widths
 //   come from ParagraphLayouter.ContentWidths, once per table (nested tables measure as the widths they need), for
-//   its first MaxMeasuredCells cells.
+//   its first MaxMeasuredCells cells. Grid columns a row leaves empty before or after its cells (w:gridBefore,
+//   w:gridAfter) take the width the row gives them (w:wBefore, w:wAfter) as a cell's preferred width. The indent is to
+//   the table's edge, or to the first cell's text in Word 2010's compatibility mode (HTable.EdgeBeforeIndent); a Word
+//   table may start in the margin.
 // - Cells: their blocks are laid out at the columns' width less the padding (the cell's, else the table's, else
 //   한글's default 1.8 mm by 0.5 mm), nested tables too; a row is as high as its tallest single-row cell or its own
 //   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it. A
 //   한글 cell holds its content down to its last line's text; a Word cell (WordCells) holds the whole last line and
 //   the space after its last paragraph too, as Word sizes rows.
 //   Content sits at the top, middle or bottom of the cell. Paragraph borders and backgrounds in a stack (a cell, a
-//   header) are drawn as in the body (BoxBorder), each line with its part of the box.
+//   header) are drawn as in the body (BoxBorder), each line with its part of the box. Cells spaced apart (Word's
+//   w:tblCellSpacing) sit that far in from their grid columns and their row on every side (twice that between two
+//   cells), measured with it, and the table's outer border (HTable.Frame) is drawn around them.
 // - Right to left (Word w:bidiVisual, RTF \rtlrow): the first column is the rightmost, and the table's alignment and
 //   indent and each cell's left and right borders and padding name the start and the end side, so they change places.
 // - Drawing: each cell's fill (a colour, a picture; EMF / WMF as vector drawing), then its content, then its borders (the cell's, else the table's, else a thin grid);
@@ -82,9 +87,15 @@ internal sealed class CellBox
     /// <summary>The height of the content the cell holds and centres: Word's down to <see cref="Extent"/>, 한글's <see cref="InkHeight"/>.</summary>
     public float Held => Extent is { } extent ? Math.Max(ContentHeight, extent) : InkHeight;
 
-    /// <summary>The height the cell needs: the content it holds and its padding.</summary>
-    public float Needed => Held + (Padding.Top + Padding.Bottom) / 100f;
+    /// <summary>The space between the cell and its row's top and bottom (Word's cell spacing; across it is in X and Width).</summary>
+    public float Spacing { get; init; }
+
+    /// <summary>The height the cell needs: the content it holds, its padding and the space above and below it.</summary>
+    public float Needed => Held + (Padding.Top + Padding.Bottom) / 100f + 2 * Spacing;
 }
+
+/// <summary>A table's outer border around cells spaced apart, <paramref name="Width"/> wide (Word's tblBorders with tblCellSpacing).</summary>
+internal sealed record TableFrame(HBorders Borders, float Width);
 
 /// <summary>A row: its height and the cells that start in it.</summary>
 internal sealed class RowBox
@@ -93,12 +104,20 @@ internal sealed class RowBox
     public required IReadOnlyList<CellBox> Cells { get; init; }
     public bool Header { get; init; }
     public bool CantSplit { get; init; }
+
+    /// <summary>The table's border around spaced cells, drawn at the row's sides; its top over the first row, its bottom under the last.</summary>
+    public TableFrame? Frame { get; init; }
+    public bool FrameTop { get; init; }
+    public bool FrameBottom { get; init; }
 }
 
 /// <summary>A laid out table.</summary>
 /// <param name="Offset">Left edge from the column's left edge.</param>
 internal sealed record TableBox(float Offset, float Width, IReadOnlyList<RowBox> Rows, HTablePageBreak? PageBreak, IReadOnlyList<Piece> Caption)
 {
+    /// <summary>The width of the column the table was laid out in.</summary>
+    public float Column { get; init; }
+
     public float Height => Rows.Sum(r => r.Height);
 
     /// <summary>Rows bound together by cells spanning them, as (first, count).</summary>
@@ -330,6 +349,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         for (var r = 0; r < rowCount; r++)
             cells[r] = [];
         var mirror = table.RightToLeft;
+        // Cells spaced apart (Word's cell spacing) sit this far in from their grid columns and their row on every side.
+        var spacing = Math.Max(0, table.CellSpacing / 100f);
         foreach (var (row, column, cell) in placed)
         {
             var span = Math.Clamp(cell.ColSpan, 0, columns - column);
@@ -340,7 +361,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 padding = padding with { Left = padding.Right, Right = padding.Left };
                 borders = borders with { Left = borders.Right, Right = borders.Left };
             }
-            var cellWidth = left[column + span] - left[column];
+            var cellWidth = spacing > 0 ? Math.Max(0, left[column + span] - left[column] - 2 * spacing) : left[column + span] - left[column];
             var contentWidth = Math.Max(1, cellWidth - (padding.Left + padding.Right) / 100f);
             List<Piece> content;
             float extent;
@@ -357,8 +378,9 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             {
                 Row = row,
                 RowSpan = Math.Max(1, Math.Min(cell.RowSpan, rowCount - row)),
-                X = mirror ? tableWidth - left[column + span] : left[column],
+                X = (mirror ? tableWidth - left[column + span] : left[column]) + spacing,
                 Width = cellWidth,
+                Spacing = spacing,
                 Padding = padding,
                 VerticalAlign = cell.VerticalAlign,
                 Borders = borders,
@@ -371,11 +393,23 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
 
         // Row heights: the row's own, its single-row cells; then the cells spanning rows stretch their last row.
         var rows = new List<RowBox>(rowCount);
+        var outerFrame = spacing > 0 && table.Frame is { } outer
+            ? new TableFrame(mirror ? outer with { Left = outer.Right, Right = outer.Left } : outer, tableWidth)
+            : null;
         for (var r = 0; r < rowCount; r++)
         {
             var source = table.Rows[r];
             var height = Math.Max((source.Height ?? 0) / 100f, cells[r].Where(c => c.RowSpan == 1).Select(c => c.Needed).DefaultIfEmpty(0).Max());
-            rows.Add(new RowBox { Height = height, Cells = cells[r], Header = source.Header, CantSplit = source.CantSplit });
+            rows.Add(new RowBox
+            {
+                Height = height,
+                Cells = cells[r],
+                Header = source.Header,
+                CantSplit = source.CantSplit,
+                Frame = outerFrame,
+                FrameTop = r == 0,
+                FrameBottom = r == rowCount - 1,
+            });
         }
         // The rows' heights are summed through a Fenwick tree, so a table of many cells spanning many rows costs a
         // logarithm per cell rather than its rows.
@@ -397,12 +431,17 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             (HAlign.Center, _) => (width - tableWidth) / 2,
             (HAlign.Right, false) => width - tableWidth,
             (HAlign.Right, true) => 0,
-            (_, true) => width - tableWidth - table.Indent / 100f,
-            _ => table.Indent / 100f,
+            (_, true) => width - tableWidth - EdgeIndent(table),
+            _ => EdgeIndent(table),
         };
         var caption = table.Caption.Count > 0 ? Stack(table.Caption, tableWidth) : [];
-        return new TableBox(Math.Max(0, offset), tableWidth, rows, table.PageBreak, caption);
+        // A Word table may start in the margin (a negative indent, Word 2010's indent to the cell's text) and run into
+        // both margins when it is centred and wider than the column; other formats' tables start at the column's edge.
+        return new TableBox(table.Sizing is null ? Math.Max(0, offset) : offset, tableWidth, rows, table.PageBreak, caption) { Column = width };
     }
+
+    /// <summary>Where a table's edge is from the column's start side, in points: its indent, less what lies before it (HTable.EdgeBeforeIndent).</summary>
+    private static float EdgeIndent(HTable table) => (table.Indent - table.EdgeBeforeIndent) / 100f;
 
     /// <summary>
     /// Columns a table has at most (<see cref="DocumentLimits.MaxTableColumns"/>): cells of a damaged or hostile model
@@ -598,14 +637,14 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     private float[] WordColumnWidths(HTable table, HTableSizing sizing, List<(int Row, int Column, HCell Cell)> placed, int columns, float width)
     {
         // The room the table has: from its indent to the column's far edge (a negative indent reaches into the margin).
-        var room = Math.Max(1, table.Align == HAlign.Left ? width - table.Indent / 100f : width);
+        var room = Math.Max(1, table.Align == HAlign.Left ? width - EdgeIndent(table) : width);
         float? tableWidth = sizing.Width.Type switch
         {
             HWidthType.Absolute => (float)(sizing.Width.Value / 100),
             HWidthType.Percent => (float)(sizing.Width.Value * width),
             _ => null,
         };
-        var widths = Preferred(sizing, placed, columns, tableWidth ?? room);
+        var widths = Preferred(table, sizing, placed, columns, tableWidth ?? room);
         var open = widths.Contains(0f);
         var content = !sizing.Fixed || open || (_inCell > 0 && widths.Sum() > room + 0.5f) ? Measure(table, placed, columns) : null;
         if (content is { } measured)
@@ -638,45 +677,62 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 widths[c] *= scale;
             total = widths.Sum();
         }
-        // A fixed table in the body keeps its shape, narrowed evenly as other formats' tables (Word lets it run into the
-        // margin); one in a cell, and an autofit table, gives up what its content doesn't need first.
-        if (total > room + 0.5f)
-            Shrink(widths, sizing.Fixed && _inCell == 0 ? null : content ?? Measure(table, placed, columns), room);
+        // A fixed table in the body keeps its widths and runs into the margin, as Word lets it; one in a cell, and an
+        // autofit table, gives up what its content doesn't need first.
+        if (total > room + 0.5f && !(sizing.Fixed && _inCell == 0))
+            Shrink(widths, content ?? Measure(table, placed, columns), room);
         return widths;
     }
 
     /// <summary>
     /// Each column's preferred width in points: the grid's, else the widest a cell of the column gives (a cell spanning
-    /// only such columns spreads its own over them), else 0.
+    /// only such columns spreads its own over them), else 0. The grid columns a row leaves empty before its first cell
+    /// and after its last take the width the row gives them (Word's w:wBefore, w:wAfter) the same way.
     /// </summary>
     /// <param name="basis">What a cell's share of the table's width is a share of.</param>
-    private static float[] Preferred(HTableSizing sizing, List<(int Row, int Column, HCell Cell)> placed, int columns, float basis)
+    private static float[] Preferred(HTable table, HTableSizing sizing, List<(int Row, int Column, HCell Cell)> placed, int columns, float basis)
     {
         var widths = new float[columns];
         for (var c = 0; c < Math.Min(columns, sizing.Grid.Length); c++)
             widths[c] = Math.Max(0, sizing.Grid[c]) / 100f;
         var gridded = widths.Select(w => w > 0).ToArray();
-        var spanning = new List<(int Column, int Span, float Width)>();
-        foreach (var (_, column, cell) in placed)
+        float? Given(HPreferredWidth? width) => width switch
         {
-            float? given = cell.Width switch
-            {
-                { Type: HWidthType.Absolute, Value: var length } => (float)(length / 100),
-                { Type: HWidthType.Percent, Value: var share } => (float)(share * basis),
-                _ => null,
-            };
-            if (given is not > 0 || column >= columns)
+            { Type: HWidthType.Absolute, Value: var length } => (float)(length / 100),
+            { Type: HWidthType.Percent, Value: var share } => (float)(share * basis),
+            _ => null,
+        };
+        var given = new List<(int Column, int Span, float Width)>();
+        // Each row's first column and the column after its last cell.
+        var extents = new Dictionary<int, (int First, int End)>();
+        foreach (var (row, column, cell) in placed)
+        {
+            if (column >= columns)
                 continue;
             var span = Math.Clamp(cell.ColSpan, 1, columns - column);
-            if (span > 1)
-                spanning.Add((column, span, given.Value));
-            else if (!gridded[column])
-                widths[column] = Math.Max(widths[column], given.Value);
+            extents[row] = extents.TryGetValue(row, out var known) ? (Math.Min(known.First, column), Math.Max(known.End, column + span)) : (column, column + span);
+            if (Given(cell.Width) is > 0 and var width)
+                given.Add((column, span, width));
         }
-        foreach (var (column, span, given) in spanning.OrderBy(s => s.Span))
+        foreach (var (row, (first, end)) in extents)
+        {
+            if (row >= table.Rows.Count)
+                continue;
+            var source = table.Rows[row];
+            if (first > 0 && Given(source.WidthBefore) is > 0 and var before)
+                given.Add((0, first, before));
+            if (source.GridAfter > 0 && end < columns && Given(source.WidthAfter) is > 0 and var after)
+                given.Add((end, Math.Min(source.GridAfter, columns - end), after));
+        }
+        foreach (var (column, _, width) in given.Where(g => g.Span == 1))
+        {
+            if (!gridded[column])
+                widths[column] = Math.Max(widths[column], width);
+        }
+        foreach (var (column, span, width) in given.Where(g => g.Span > 1).OrderBy(g => g.Span))
         {
             if (!gridded.AsSpan(column, span).Contains(true))
-                Spread(widths, column, span, given);
+                Spread(widths, column, span, width);
         }
         return widths;
     }
@@ -696,7 +752,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             if (column >= columns)
                 continue;
             var padding = cell.CellMargin ?? table.CellMargin ?? DefaultPadding;
-            var sides = Math.Max(0, (padding.Left + padding.Right) / 100f);
+            var sides = Math.Max(0, (padding.Left + padding.Right) / 100f) + 2 * Math.Max(0, table.CellSpacing / 100f);
             var (least, natural) = Measure(cell.Blocks);
             var span = Math.Clamp(cell.ColSpan, 1, columns - column);
             if (span > 1)
@@ -747,7 +803,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             var placed = Place(table);
             var columns = Math.Max(1, Math.Max(Math.Min(table.ColumnCount, MaxColumns), placed.Count == 0 ? 0 : placed.Max(c => c.Column + ColumnSpan(c.Column, c.Cell))));
             var margin = table.OuterMargin ?? default;
-            var around = Math.Max(0, (margin.Left + margin.Right) / 100f) + Math.Max(0, table.Indent / 100f);
+            var around = Math.Max(0, (margin.Left + margin.Right) / 100f) + Math.Max(0, EdgeIndent(table));
             if (table.Sizing is not { } sizing)
             {
                 var given = table.ColumnWidths is { } absolute ? absolute.Take(columns).Sum(w => Math.Max(0, w) / 100f) : 0;
@@ -755,7 +811,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             }
             var content = Measure(table, placed, columns);
             var length = sizing.Width.Type == HWidthType.Absolute ? (float)(sizing.Width.Value / 100) : 0;
-            var preferred = Preferred(sizing, placed, columns, length);
+            var preferred = Preferred(table, sizing, placed, columns, length);
             float min = 0, max = 0;
             for (var c = 0; c < columns; c++)
             {
@@ -831,7 +887,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         var any = false;
         foreach (var cell in row.Cells)
         {
-            var room = available - (cell.Padding.Top + cell.Padding.Bottom) / 100f;
+            var room = available - (cell.Padding.Top + cell.Padding.Bottom) / 100f - 2 * cell.Spacing;
             var fits = cell.Content.Where(p => p.Top + p.Height <= room + 0.01f).ToList();
             var after = cell.Content.Skip(fits.Count).ToList();
             any |= fits.Count > 0;
@@ -841,8 +897,24 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         }
         if (!any)
             return null;
-        var firstRow = new RowBox { Height = available, Cells = first, Header = row.Header, CantSplit = row.CantSplit };
-        var restRow = new RowBox { Height = rest.Select(c => c.Needed).DefaultIfEmpty(0).Max(), Cells = rest, Header = row.Header, CantSplit = row.CantSplit };
+        var firstRow = new RowBox
+        {
+            Height = available,
+            Cells = first,
+            Header = row.Header,
+            CantSplit = row.CantSplit,
+            Frame = row.Frame,
+            FrameTop = row.FrameTop,
+        };
+        var restRow = new RowBox
+        {
+            Height = rest.Select(c => c.Needed).DefaultIfEmpty(0).Max(),
+            Cells = rest,
+            Header = row.Header,
+            CantSplit = row.CantSplit,
+            Frame = row.Frame,
+            FrameBottom = row.FrameBottom,
+        };
         return (firstRow, restRow);
     }
 
@@ -859,6 +931,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         FillPicture = cell.FillPicture,
         Content = content,
         Extent = extent,
+        Spacing = cell.Spacing,
     };
 
     // ───────────────────────── Drawing ─────────────────────────
@@ -876,7 +949,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             foreach (var cell in rows[r].Cells)
             {
                 var bottom = tops[Math.Min(rows.Count, r + cell.RowSpan)];
-                cells.Add((cell, new SKRect(x + cell.X, tops[r], x + cell.X + cell.Width, bottom)));
+                cells.Add((cell, new SKRect(x + cell.X, tops[r] + cell.Spacing, x + cell.X + cell.Width, Math.Max(tops[r] + cell.Spacing, bottom - cell.Spacing))));
             }
         }
         var fills = cells.Where(c => c.Cell.Fill is not null || c.Cell.FillPicture is not null).ToList();
@@ -926,6 +999,19 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         {
             foreach (var (cell, area) in cells)
                 Borders(canvas, cell.Borders, area);
+            // The table's own border around cells spaced apart: at each row's sides, over the first and under the last.
+            for (var r = 0; r < rows.Count; r++)
+            {
+                if (rows[r].Frame is not { } around)
+                    continue;
+                var (left, right) = (x, x + around.Width);
+                Line(canvas, around.Borders.Left, left, tops[r], left, tops[r + 1]);
+                Line(canvas, around.Borders.Right, right, tops[r], right, tops[r + 1]);
+                if (rows[r].FrameTop)
+                    Line(canvas, around.Borders.Top, left, tops[r], right, tops[r]);
+                if (rows[r].FrameBottom)
+                    Line(canvas, around.Borders.Bottom, left, tops[r + 1], right, tops[r + 1]);
+            }
         });
     }
 

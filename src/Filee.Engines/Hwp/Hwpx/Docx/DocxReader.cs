@@ -7,6 +7,7 @@
 // DocxReader.Tables and DocxReader.Drawing handle tables and graphic objects. The package is read within
 // DocumentLimits (Documents/DocumentPackage); embedded fonts (word/fonts) are not read.
 
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Xml;
@@ -46,6 +47,10 @@ internal sealed partial class DocxReader
     private readonly Dictionary<string, XElement> _endnotes = [];
     private readonly List<FieldState> _fields = [];
     private readonly HLeftOut _leftOut = new();
+
+    /// <summary>Header and footer parts read so far (see <see cref="HeaderFooterBlocks"/>).</summary>
+    private readonly HashSet<string> _headerFooterParts = new(StringComparer.OrdinalIgnoreCase);
+
     private Part? _footnotesPart;
     private Part? _endnotesPart;
     private bool _evenAndOddHeaders;
@@ -56,6 +61,12 @@ internal sealed partial class DocxReader
 
     /// <summary>Neighbouring paragraphs keep the larger of their spaces between them, not both (see <see cref="CollapseSpacing"/>).</summary>
     private bool _collapseSpacing = true;
+
+    /// <summary>
+    /// Word's compatibility mode (settings w:compatSetting compatibilityMode): 15 for Word 2013 and later, 14 or less for
+    /// documents kept in the way of Word 2010 and older, 12 (Word 2007) when the settings don't say.
+    /// </summary>
+    private int _compatibilityMode = 12;
 
     /// <summary>Width of each section's text column (HWPUNIT), for equations that don't fit a line.</summary>
     private readonly List<int> _columnWidths = [];
@@ -74,6 +85,9 @@ internal sealed partial class DocxReader
     /// such a paragraph's mark on the old page.
     /// </summary>
     private List<HBlock>? _pageBreakFor;
+
+    /// <summary>The paragraph marks left out so for the next block (<see cref="HBlock.BreakParagraphsBefore"/>).</summary>
+    private int _pageBreakMarks;
 
     /// <summary>Table cells, text boxes and notes around the blocks being read (see <see cref="ReadNestedBlocks"/>).</summary>
     private int _depth;
@@ -229,6 +243,7 @@ internal sealed partial class DocxReader
         _bordersAroundHeader = !(settings?.Element(W + "bordersDoNotSurroundHeader") is { } noHeader && Val(noHeader) is not ("0" or "false"));
         _bordersAroundFooter = !(settings?.Element(W + "bordersDoNotSurroundFooter") is { } noFooter && Val(noFooter) is not ("0" or "false"));
         _collapseSpacing = !(settings?.Element(W + "compat")?.Element(W + "doNotUseHTMLParagraphAutoSpacing") is { } sum && Val(sum) is not ("0" or "false"));
+        _compatibilityMode = CompatibilityMode(settings);
         _footnotesPart = RelatedPart(main, "/footnotes");
         _endnotesPart = RelatedPart(main, "/endnotes");
         foreach (var note in _footnotesPart?.Xml.Root?.Elements(W + "footnote") ?? [])
@@ -379,13 +394,22 @@ internal sealed partial class DocxReader
         if (Attr(reference, "id", R) is { } id && _part.Relationships.TryGetValue(id, out var rel) && LoadPart(rel.Target) is { } part)
         {
             _inFirstPageHeader = reference.Name == W + "headerReference" && Attr(reference, "type") == "first";
-            WithPart(part, () =>
+            // A header or footer is read again for every section that names it; what it leaves out is counted once.
+            _leftOut.Muted = !_headerFooterParts.Add(rel.Target);
+            try
             {
-                foreach (var element in Flatten(part.Xml.Root?.Elements() ?? []))
-                    ReadBlock(element, blocks);
-                return 0;
-            });
-            _inFirstPageHeader = false;
+                WithPart(part, () =>
+                {
+                    foreach (var element in Flatten(part.Xml.Root?.Elements() ?? []))
+                        ReadBlock(element, blocks);
+                    return 0;
+                });
+            }
+            finally
+            {
+                _inFirstPageHeader = false;
+                _leftOut.Muted = false;
+            }
         }
         return blocks;
     }
@@ -474,6 +498,20 @@ internal sealed partial class DocxReader
             _ => HGridKind.None,
         };
         return kind == HGridKind.None ? null : new HDocumentGrid(kind, HwpxUnits.FromTwips(Twips(grid, "linePitch") ?? 0), CharSpace: Twips(grid, "charSpace") ?? 0);
+    }
+
+    /// <summary>
+    /// The compatibility mode the settings give (w:compat/w:compatSetting name="compatibilityMode", Word's own uri), or
+    /// 12 when they give none: Word opens such a document as a Word 2007 one.
+    /// </summary>
+    private static int CompatibilityMode(XElement? settings)
+    {
+        foreach (var setting in settings?.Element(W + "compat")?.Elements(W + "compatSetting") ?? [])
+        {
+            if (Attr(setting, "name") == "compatibilityMode" && int.TryParse(Attr(setting, "val"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var mode))
+                return Math.Clamp(mode, 0, 1000);
+        }
+        return 12;
     }
 
     /// <summary>Custom East Asian line breaking characters of the document (settings: w:noLineBreaksBefore / After).</summary>
@@ -662,7 +700,11 @@ internal sealed partial class DocxReader
         var border = new HPageBorder(HPageType.Both, new HBorders(left, right, top, bottom), Fill: null, Picture: null,
             new HInsets(leftSpace, rightSpace, topSpace, bottomSpace),
             AroundBody: Attr(borders, "offsetFrom") != "page",
-            HeaderInside: _bordersAroundHeader, FooterInside: _bordersAroundFooter, HPageFillArea.Paper);
+            HeaderInside: _bordersAroundHeader, FooterInside: _bordersAroundFooter, HPageFillArea.Paper)
+        {
+            // Over the text unless the border says it goes behind it.
+            InFront = Attr(borders, "zOrder") != "back",
+        };
         if (border.IsEmpty)
             return;
         section.PageBorders.Add(border);
@@ -778,6 +820,8 @@ internal sealed partial class DocxReader
         {
             if (ReferenceEquals(_pageBreakFor, output))
                 _pageBreakFor = null;
+            output[count].BreakParagraphsBefore = _pageBreakMarks;
+            _pageBreakMarks = 0;
             switch (output[count])
             {
                 case HParagraph paragraph:
@@ -908,7 +952,10 @@ internal sealed partial class DocxReader
             _format = reader.ParaFormat(props, mark.Size);
             _mark = reader.CharFormat(mark);
             _heading = reader.HeadingLevel(props, pPr);
-            _list = reader.Numbering(props.NumId) is { } numbering ? new HListRef(numbering, Math.Clamp(props.Ilvl ?? 0, 0, 8), Numbered: true) : null;
+            var ilvl = Math.Clamp(props.Ilvl ?? 0, 0, 8);
+            _list = reader.Numbering(props.NumId) is { } numbering
+                ? new HListRef(numbering, ilvl, Numbered: true) { MarkerFormat = reader.MarkerFormat(props.NumId, ilvl, mark) }
+                : null;
             Current = NewParagraph(_list);
             Current.PageBreakBefore = props.PageBreakBefore == true;
 
@@ -976,7 +1023,10 @@ internal sealed partial class DocxReader
             // with the next paragraph, not with an empty line and the paragraph's space after.
             if (_pageBroken && Current.Inlines.Count == 0 && Current.List is not { Numbered: true } && !endsSection)
             {
+                if (!ReferenceEquals(_reader._pageBreakFor, _output))
+                    _reader._pageBreakMarks = 0;
                 _reader._pageBreakFor = _output;
+                _reader._pageBreakMarks++;
                 return;
             }
             Emit();
@@ -1123,9 +1173,11 @@ internal sealed partial class DocxReader
                     foreach (var text in SymbolFonts.Runs(child.Value, format))
                         builder.Add(text);
                 }
-                else if (StoredResult() is { } stored && stored.Stored!.Length < 32)
+                else if (NumberResult() is { } number && (number.Shown?.Length ?? 0) < 32)
                 {
-                    stored.Stored += child.Value;
+                    number.Shown += child.Value;
+                    if (number.Stored is not null)
+                        number.Stored += child.Value;
                 }
                 break;
             case "tab" or "ptab":
@@ -1191,6 +1243,9 @@ internal sealed partial class DocxReader
                     }
                     if (child.Element(O + "OLEObject") is not null)
                         _leftOut.Add(pictured ? HLeftOutKind.ObjectPictured : HLeftOutKind.ObjectLeftOut);
+                    // An ActiveX control (w:control): only the picture Word saved of it is drawn.
+                    else if (child.Element(W + "control") is not null)
+                        _leftOut.Add(pictured ? HLeftOutKind.FormControlPictured : HLeftOutKind.FormControl);
                 }
                 break;
             case "footnoteReference":
@@ -1380,11 +1435,17 @@ internal sealed partial class DocxReader
         public bool Suppress;
         public string? Target;
 
-        /// <summary>The page number field whose result text is kept as <see cref="HField.Stored"/>.</summary>
-        public HField? Stored;
+        /// <summary>
+        /// The page number field whose result text is kept as <see cref="HField.Shown"/>, and as
+        /// <see cref="HField.Stored"/> where that isn't null.
+        /// </summary>
+        public HField? Number;
 
         /// <summary>A table of contents (TOC): its entries don't take the Hyperlink character style's look.</summary>
         public bool TableOfContents;
+
+        /// <summary>A legacy form field's settings (w:ffData in the begin w:fldChar): a check box's state, a drop-down's entries.</summary>
+        public XElement? FormData;
     }
 
     /// <summary>Text is in the entries of a table of contents.</summary>
@@ -1394,9 +1455,9 @@ internal sealed partial class DocxReader
     private bool ShowsText() => _fields.All(f => f.Result && !f.Suppress);
 
     /// <summary>The page number whose result text is being read, when only that field hides it.</summary>
-    private HField? StoredResult() =>
-        _fields.Count > 0 && _fields[^1] is { Result: true, Stored: { } stored } && _fields.Take(_fields.Count - 1).All(f => f.Result && !f.Suppress)
-            ? stored
+    private HField? NumberResult() =>
+        _fields.Count > 0 && _fields[^1] is { Result: true, Number: { } number } && _fields.Take(_fields.Count - 1).All(f => f.Result && !f.Suppress)
+            ? number
             : null;
 
     private void FieldChar(XElement fldChar, ParagraphBuilder builder, HCharFormat format)
@@ -1410,7 +1471,7 @@ internal sealed partial class DocxReader
                 if (_fields.Count >= Nesting.MaxDepth)
                     _untrackedFields++;
                 else
-                    _fields.Add(new FieldState());
+                    _fields.Add(new FieldState { FormData = fldChar.Element(W + "ffData") });
                 break;
             case "separate":
                 if (_untrackedFields == 0 && _fields.LastOrDefault() is { Result: false } field)
@@ -1441,7 +1502,7 @@ internal sealed partial class DocxReader
                     // which comes next, as text. The layout engine counts the pages, as for any other page number.
                     var number = new HField(words[0].Equals("PAGE", StringComparison.OrdinalIgnoreCase) ? HFieldKind.PageNumber : HFieldKind.TotalPages, format) { Stored = "" };
                     builder.Add(number);
-                    field.Stored = number;
+                    field.Number = number;
                     field.Suppress = true;
                     break;
                 }
@@ -1466,15 +1527,45 @@ internal sealed partial class DocxReader
                         builder.OpenLink(field.Target);
                     break;
                 }
-            case "PAGE":
-                builder.Add(new HField(HFieldKind.PageNumber, format));
-                field.Suppress = true;
-                break;
-            case "NUMPAGES" or "SECTIONPAGES":
-                builder.Add(new HField(HFieldKind.TotalPages, format));
+            case "PAGE" or "NUMPAGES" or "SECTIONPAGES":
+                {
+                    var number = new HField(words[0].Equals("PAGE", StringComparison.OrdinalIgnoreCase) ? HFieldKind.PageNumber : HFieldKind.TotalPages, format);
+                    builder.Add(number);
+                    field.Number = number;
+                    field.Suppress = true;
+                    break;
+                }
+            case "FORMCHECKBOX" or "FORMDROPDOWN" when ShowsText() && FormFieldText(field.FormData) is { } shown:
+                // A legacy check box or drop-down has no result text: Word prints the box (checked or not) and the
+                // chosen entry.
+                builder.Add(new HText(shown, format));
                 field.Suppress = true;
                 break;
         }
+    }
+
+    /// <summary>
+    /// What a legacy form field shows (w:ffData): a check box as ☒ or ☐ (w:checked, else its default), a drop-down as
+    /// its chosen entry (w:result, else w:default, else the first); null for other fields.
+    /// </summary>
+    private static string? FormFieldText(XElement? formData)
+    {
+        if (formData?.Element(W + "checkBox") is { } checkBox)
+        {
+            var state = checkBox.Element(W + "checked") ?? checkBox.Element(W + "default");
+            var on = state is not null && Val(state) is not ("0" or "false" or "off")
+                     && (state.Name.LocalName == "checked" || Val(state) is "1" or "true" or "on");
+            return on ? "☒" : "☐";
+        }
+        if (formData?.Element(W + "ddList") is { } list)
+        {
+            var entries = list.Elements(W + "listEntry").Select(Val).ToList();
+            if (entries.Count == 0)
+                return null;
+            var chosen = int.TryParse(Val(list.Element(W + "result")) ?? Val(list.Element(W + "default")), out var index) ? index : 0;
+            return entries[chosen >= 0 && chosen < entries.Count ? chosen : 0] ?? "";
+        }
+        return null;
     }
 
     private void EndField(ParagraphBuilder builder)

@@ -31,12 +31,15 @@ internal sealed class SlidePackage : IDisposable
         static Exception NotAPackage() => new InvalidDataException("The file is not a PowerPoint presentation (not a ZIP package). It may be damaged.");
         if (!CompoundFile.HasSignature(path))
             return new(DocumentPackage.Open(path, limits, NotAPackage));
-        var package = PptReader.ToPptx(path, limits ?? DocumentLimits.Default, out var dropped);
-        return new(DocumentPackage.Open(package, limits, NotAPackage)) { Dropped = dropped };
+        var package = PptReader.ToPptx(path, limits ?? DocumentLimits.Default, out var dropped, out var kinds);
+        return new(DocumentPackage.Open(package, limits, NotAPackage)) { Dropped = dropped, DroppedKinds = kinds };
     }
 
     /// <summary>For a PowerPoint 97–2003 deck: what its translation left out that would show on a slide.</summary>
     public string? Dropped { get; private init; }
+
+    /// <summary>For a PowerPoint 97–2003 deck: what its translation left out, counted by the deck note's kind (SlideLeftOut).</summary>
+    public IReadOnlyDictionary<string, int> DroppedKinds { get; private init; } = new Dictionary<string, int>();
 
     public DocumentLimits Limits => _package.Limits;
 
