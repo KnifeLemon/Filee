@@ -203,16 +203,16 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Docx_to_markdown_extracts_the_pictures_or_leaves_them_out()
     {
-        SkipUnlessInstalled();
+        // DOCX → Markdown is built in (hwp-text) wherever Pandoc stands; Pandoc isn't needed.
         var source = await WriteAsync("memo.md", "# Memo\n\nBefore the chart.\n\n![](chart.png)\n\nAfter the chart.\n");
         EngineFixture.MakeImage(Path.GetDirectoryName(source)!, "chart.png", ImageMagick.MagickFormat.Png);
         var docx = await ConvertAsync(source, "docx");
         File.Delete(source);
-        Assert.Equal("pandoc", Assert.Single(fx.Catalog.CreatePlanner().Plan("docx", "md")!.Steps).Converter.Id);
+        Assert.Equal("hwp-text", Assert.Single(fx.Catalog.CreatePlanner().Plan("docx", "md")!.Steps).Converter.Id);
 
         var withPictures = await File.ReadAllTextAsync(await ConvertAsync(docx, "md"), TestContext.Current.CancellationToken);
         // Linked relative to the Markdown file, so both can be moved together (#391).
-        Assert.Contains("](memo_files/media/", withPictures);
+        Assert.Matches(@"\]\(<?memo_files/", withPictures);
         Assert.DoesNotContain(Path.GetDirectoryName(docx)!, withPictures);
 
         var job = await fx.ConvertAsync([docx], new Preset { TargetFormat = "md", Document = { LeaveOutPictures = true } });
@@ -228,8 +228,7 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task Word_tables_with_merged_cells_become_markdown_tables()
     {
         // Merged cells, a cell of two paragraphs, a list in a cell and no header row: Pandoc alone writes this as an
-        // HTML <table>, which Markdown editors show as code (#391).
-        SkipUnlessInstalled();
+        // HTML <table>, which Markdown editors show as code (#391). DOCX → Markdown is built in; Pandoc isn't needed.
         var html = await WriteAsync("history.html", """
             <table>
             <tr><td>Version</td><td colspan="3">Date and author</td></tr>
