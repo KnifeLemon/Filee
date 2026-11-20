@@ -16,6 +16,9 @@
 // its slides; the most common background of the group becomes the master's and a slide with another one keeps its own.
 // Each master also gets Impress's title and outline placeholders, so slides added later in Impress have them.
 //
+// Drawings (.odg, WriteDrawing) are the same pages in office:drawing with the drawing media type: no notes pages,
+// no presentation placeholders or styles, the pages showing no footer fields (LibreOffice Draw has none).
+//
 // Hostile input: the model comes from bounded readers (sizes, counts, nesting); the writer adds a cap on the XML it
 // makes, on group nesting and on the bytes of pictures, each refused through DocumentLimits, and stops when cancelled.
 
@@ -51,13 +54,17 @@ internal sealed partial class OdpWriter : IDisposable
     private readonly DocumentLimits _limits;
     private readonly StyleSet _contentStyles = new("");
     private readonly StyleSet _masterStyles = new("M");
+
+    /// <summary>A drawing (office:drawing) rather than a presentation.</summary>
+    private readonly bool _drawing;
     private StyleSet _styles;
     private long _characters;
 
-    private OdpWriter(SlideDeck deck, IReadOnlyList<IReadOnlyList<string>>? notes, DocumentLimits limits, CancellationToken token)
+    private OdpWriter(SlideDeck deck, IReadOnlyList<IReadOnlyList<string>>? notes, DocumentLimits limits, CancellationToken token, bool drawing = false)
     {
         _deck = deck;
         _notes = notes;
+        _drawing = drawing;
         _limits = limits;
         _token = token;
         _styles = _contentStyles;
@@ -75,6 +82,14 @@ internal sealed partial class OdpWriter : IDisposable
         using var writer = new OdpWriter(deck, notes, limits ?? DocumentLimits.Default, cancellationToken);
         var parts = writer.Parts();
         OdfPackageWriter.Write(outputPath, OdfNames.PresentationMimeType, Version, parts, cancellationToken);
+    }
+
+    /// <summary>Writes <paramref name="deck"/> as an OpenDocument drawing (.odg), a page per slide (replaced atomically).</summary>
+    public static void WriteDrawing(SlideDeck deck, string outputPath, DocumentLimits? limits = null, CancellationToken cancellationToken = default)
+    {
+        using var writer = new OdpWriter(deck, null, limits ?? DocumentLimits.Default, cancellationToken, drawing: true);
+        var parts = writer.Parts();
+        OdfPackageWriter.Write(outputPath, OdfNames.GraphicsMimeType, Version, parts, cancellationToken);
     }
 
     // ───────────────────────── Masters ─────────────────────────
@@ -171,7 +186,7 @@ internal sealed partial class OdpWriter : IDisposable
         _styles = _masterStyles;
         var slideLayout = _masterStyles.Add("page-layout", "PM", "",
             $"<style:page-layout-properties fo:margin-top=\"0pt\" fo:margin-bottom=\"0pt\" fo:margin-left=\"0pt\" fo:margin-right=\"0pt\" fo:page-width=\"{Pt(_deck.Width)}\" fo:page-height=\"{Pt(_deck.Height)}\" style:print-orientation=\"{(_deck.Width >= _deck.Height ? "landscape" : "portrait")}\"/>");
-        var notesLayout = _masterStyles.Add("page-layout", "PM", "",
+        var notesLayout = _drawing ? "" : _masterStyles.Add("page-layout", "PM", "",
             $"<style:page-layout-properties fo:margin-top=\"0pt\" fo:margin-bottom=\"0pt\" fo:margin-left=\"0pt\" fo:margin-right=\"0pt\" fo:page-width=\"{Pt(NotesWidth)}\" fo:page-height=\"{Pt(NotesHeight)}\" style:print-orientation=\"portrait\"/>");
         var masterPages = new StringBuilder();
         foreach (var master in masters)
@@ -181,6 +196,12 @@ internal sealed partial class OdpWriter : IDisposable
             masterPages.Append($"<style:master-page style:name=\"{OdfXml.Escape(master.Name)}\" style:page-layout-name=\"{slideLayout}\" draw:style-name=\"{pageStyle}\">");
             foreach (var element in master.Elements)
                 Element(masterPages, element, SKMatrix.Identity, 0, onMaster: true);
+            if (_drawing)
+            {
+                masterPages.Append("</style:master-page>");
+                Count(masterPages.Length);
+                continue;
+            }
             masterPages.Append(MasterPlaceholders(master.Name));
             masterPages.Append($"<presentation:notes style:page-layout-name=\"{notesLayout}\">")
                 .Append(NotesThumbnail(null))
@@ -198,24 +219,28 @@ internal sealed partial class OdpWriter : IDisposable
             var slide = _deck.Slides[i];
             var master = ofSlide[i];
             var own = PageFill(slide.Background);
-            var pageProperties = "presentation:display-footer=\"false\" presentation:display-page-number=\"false\" presentation:display-date-time=\"false\"" +
-                                 (own == master.BackgroundKey ? "" : own);
-            var pageStyle = _contentStyles.Add("drawing-page", "dp", "", $"<style:drawing-page-properties {pageProperties}/>");
+            var fill = own == master.BackgroundKey ? "" : own;
+            var pageProperties = _drawing
+                ? fill
+                : " presentation:display-footer=\"false\" presentation:display-page-number=\"false\" presentation:display-date-time=\"false\"" + fill;
+            var pageStyle = _contentStyles.Add("drawing-page", "dp", "", $"<style:drawing-page-properties{pageProperties}/>");
             var start = pages.Length;
             pages.Append($"<draw:page draw:name=\"page{N(i + 1)}\" draw:style-name=\"{pageStyle}\" draw:master-page-name=\"{OdfXml.Escape(master.Name)}\">");
             for (var e = skip[i]; e < slide.Elements.Count; e++)
                 Element(pages, slide.Elements[e], SKMatrix.Identity, 0, onMaster: false);
-            pages.Append(Notes(i, master.Name)).Append("</draw:page>");
+            if (!_drawing)
+                pages.Append(Notes(i, master.Name));
+            pages.Append("</draw:page>");
             Count(pages.Length - start);
         }
 
         var content = OdfPackageWriter.Xml(
             $"<office:document-content {Namespaces} office:version=\"{Version}\">" +
             $"<office:automatic-styles>{_contentStyles.Xml}</office:automatic-styles>" +
-            $"<office:body><office:presentation>{pages}</office:presentation></office:body></office:document-content>");
+            $"<office:body><office:{Body}>{pages}</office:{Body}></office:body></office:document-content>");
         var styles = OdfPackageWriter.Xml(
             $"<office:document-styles {Namespaces} office:version=\"{Version}\">" +
-            $"<office:styles>{DefaultStyles()}{_named.Xml}{PresentationStyles(masters)}</office:styles>" +
+            $"<office:styles>{DefaultStyles()}{_named.Xml}{(_drawing ? "" : PresentationStyles(masters))}</office:styles>" +
             $"<office:automatic-styles>{_masterStyles.Xml}</office:automatic-styles>" +
             "<office:master-styles><draw:layer-set><draw:layer draw:name=\"layout\"/><draw:layer draw:name=\"background\"/>" +
             "<draw:layer draw:name=\"backgroundobjects\"/><draw:layer draw:name=\"controls\"/><draw:layer draw:name=\"measurelines\"/></draw:layer-set>" +
@@ -235,6 +260,9 @@ internal sealed partial class OdpWriter : IDisposable
         parts.AddRange(_media.Parts);
         return parts;
     }
+
+    /// <summary>The office:body child: office:drawing or office:presentation.</summary>
+    private string Body => _drawing ? "drawing" : "presentation";
 
     /// <summary>Counts XML against <see cref="MaxXmlCharacters"/>.</summary>
     private void Count(long characters)

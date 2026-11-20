@@ -26,6 +26,7 @@ public class OdfVariantTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static readonly XNamespace Draw = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
     private static readonly XNamespace XLink = "http://www.w3.org/1999/xlink";
     private static readonly XNamespace Manifest = "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0";
+    private static readonly XNamespace Svg = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0";
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -143,6 +144,90 @@ public class OdfVariantTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var header = root.Element(Office + "master-styles")!.Descendants().Single(e => e.Name.LocalName == "p");
         Assert.Equal("MP1", (string?)header.Attribute("{urn:oasis:names:tc:opendocument:xmlns:text:1.0}style-name"));
         Assert.Equal("P1", (string?)root.Element(Office + "body")!.Descendants().Single(e => e.Name.LocalName == "p").Attribute("{urn:oasis:names:tc:opendocument:xmlns:text:1.0}style-name"));
+    }
+
+    [Fact]
+    public void Renaming_a_clashing_automatic_style_keeps_to_its_family_and_leaves_parents_alone()
+    {
+        // P1 clashes in the paragraph family (renamed), T1 is a text style in content.xml and a paragraph style in
+        // styles.xml (no clash), and Head is a common style an automatic style of styles.xml inherits from while an
+        // automatic one of content.xml has its name too.
+        var builder = new OdtBuilder
+        {
+            ContentStyles = "<style:style style:name=\"P1\" style:family=\"paragraph\"/>" +
+                            "<style:style style:name=\"T1\" style:family=\"text\"><style:text-properties fo:color=\"#ff0000\"/></style:style>" +
+                            "<style:style style:name=\"Head\" style:family=\"paragraph\"/>",
+            Styles = "<style:style style:name=\"Head\" style:family=\"paragraph\"><style:text-properties fo:font-size=\"20pt\"/></style:style>",
+            StylesAutomatic = "<style:page-layout style:name=\"PM1\"><style:page-layout-properties fo:page-width=\"21cm\" fo:page-height=\"29.7cm\"/></style:page-layout>" +
+                              "<style:style style:name=\"P1\" style:family=\"paragraph\"/>" +
+                              "<style:style style:name=\"T1\" style:family=\"paragraph\"/>" +
+                              "<style:style style:name=\"MP2\" style:family=\"paragraph\" style:parent-style-name=\"Head\"/>" +
+                              "<style:style style:name=\"Head\" style:family=\"paragraph\"/>",
+            MasterStyles = "<style:master-page style:name=\"Standard\" style:page-layout-name=\"PM1\"><style:header>" +
+                           "<text:p text:style-name=\"P1\">one</text:p><text:p text:style-name=\"T1\">two</text:p><text:p text:style-name=\"MP2\">three</text:p>" +
+                           "</style:header></style:master-page>",
+            Body = "<text:p text:style-name=\"P1\">body</text:p>",
+        };
+        var root = XDocument.Load(Convert(Odt(builder), "odt", "fodt")).Root!;
+        var automatic = root.Element(Office + "automatic-styles")!.Elements().Select(e => (string?)e.Attribute(Style + "name")).ToList();
+        Assert.Equal(["P1", "T1", "Head", "PM1", "MP1", "T1", "MP2", "MHead"], automatic);
+        var header = root.Element(Office + "master-styles")!.Descendants().Where(e => e.Name.LocalName == "p")
+            .Select(e => (string?)e.Attribute("{urn:oasis:names:tc:opendocument:xmlns:text:1.0}style-name")).ToList();
+        Assert.Equal(["MP1", "T1", "MP2"], header);
+        // The parent is the common style, not the renamed automatic one.
+        var inherits = root.Element(Office + "automatic-styles")!.Elements().Single(e => (string?)e.Attribute(Style + "name") == "MP2");
+        Assert.Equal("Head", (string?)inherits.Attribute(Style + "parent-style-name"));
+    }
+
+    [Fact]
+    public void A_flat_file_keeps_embedded_fonts_and_binary_data_of_elements_it_does_not_know()
+    {
+        var font = new byte[] { 0, 1, 0, 0, 0, 4, 0, 0, 1, 2, 3, 4 };
+        var path = Path.Combine(fx.NewFolder(), "fonts.fodt");
+        File.WriteAllText(path, $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><office:document {Namespaces} xmlns:ext=\"urn:example:extension\" office:version=\"1.3\" " +
+                                "office:mimetype=\"application/vnd.oasis.opendocument.text\">" +
+                                "<office:font-face-decls><style:font-face style:name=\"Embedded\" svg:font-family=\"Embedded\"><svg:font-face-src>" +
+                                $"<svg:font-face-uri><office:binary-data>{System.Convert.ToBase64String(font)}</office:binary-data></svg:font-face-uri>" +
+                                "</svg:font-face-src></style:font-face></office:font-face-decls>" +
+                                "<office:body><office:text><text:p>kept</text:p>" +
+                                "<ext:blob><office:binary-data>AAECAw==</office:binary-data></ext:blob></office:text></office:body></office:document>");
+
+        var odt = Convert(path, "fodt", "odt");
+        var manifest = XDocument.Parse(Encoding.UTF8.GetString(Part(odt, "META-INF/manifest.xml"))).Root!;
+        var fontEntry = manifest.Elements(Manifest + "file-entry").Single(e => ((string?)e.Attribute(Manifest + "full-path"))!.StartsWith("Fonts/", StringComparison.Ordinal));
+        Assert.Equal("application/x-font-ttf", (string?)fontEntry.Attribute(Manifest + "media-type"));
+        var fontPath = (string)fontEntry.Attribute(Manifest + "full-path")!;
+        Assert.Equal(font, Part(odt, fontPath));
+        foreach (var name in new[] { "content.xml", "styles.xml" })
+        {
+            var uri = XDocument.Parse(Encoding.UTF8.GetString(Part(odt, name))).Root!.Descendants(Svg + "font-face-uri").Single();
+            Assert.Equal(fontPath, (string?)uri.Attribute(XLink + "href"));
+        }
+        // The extension's data stays where it was, in content.xml.
+        var content = XDocument.Parse(Encoding.UTF8.GetString(Part(odt, "content.xml"))).Root!;
+        Assert.Equal("AAECAw==", content.Descendants(XName.Get("blob", "urn:example:extension")).Single().Element(Office + "binary-data")!.Value);
+        Assert.Contains("kept", Text(OdtReader.Read(odt, Media())), StringComparison.Ordinal);
+
+        // And back into a flat file, the font in it again.
+        var back = XDocument.Load(Convert(odt, "odt", "fodt")).Root!;
+        Assert.Equal(System.Convert.ToBase64String(font), back.Descendants(Svg + "font-face-uri").Single().Element(Office + "binary-data")!.Value);
+    }
+
+    [Fact]
+    public void A_flat_file_that_says_it_is_a_template_is_read_as_a_template()
+    {
+        var flat = Flat("<text:p>template text</text:p>", "application/vnd.oasis.opendocument.text-template", "template.fodt");
+        using (var package = OdfVariants.AsPackage(flat, "fodt", fx.NewFolder()))
+        {
+            Assert.Equal("application/vnd.oasis.opendocument.text-template", Mimetype(package.Path));
+            Assert.Contains("template text", Text(OdtReader.Read(package.Path, Media())), StringComparison.Ordinal);
+        }
+        // Converted, it becomes the form asked for.
+        Assert.Equal("application/vnd.oasis.opendocument.text", Mimetype(Convert(flat, "fodt", "odt")));
+        Assert.Equal("application/vnd.oasis.opendocument.text-template", Mimetype(Convert(flat, "fodt", "ott")));
+        // A plain flat file stays a document.
+        using var plain = OdfVariants.AsPackage(Flat("<text:p>x</text:p>"), "fodt", fx.NewFolder());
+        Assert.Equal("application/vnd.oasis.opendocument.text", Mimetype(plain.Path));
     }
 
     [Fact]

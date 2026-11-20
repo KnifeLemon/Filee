@@ -198,8 +198,8 @@ public sealed class IwbTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal((FormatCategory.Presentation, false), (format.Category, format.Writable));
         Assert.Same(format, FormatRegistry.Detect("board.IWB"));
         var engine = fx.Converters.OfType<DrawingConverter>().Single();
-        Assert.Equal(["pdf", "svg", "png", "odp", "pptx"], engine.Edges.Where(e => e.From == "iwb").Select(e => e.To));
-        Assert.Equal(["pdf", "svg", "png", "odp", "pptx"], engine.Edges.Where(e => e.From == "notebook").Select(e => e.To));
+        Assert.Equal(["pdf", "svg", "png", "odp", "pptx", "odg", "otg", "fodg"], engine.Edges.Where(e => e.From == "iwb").Select(e => e.To));
+        Assert.Equal(["pdf", "svg", "png", "odp", "pptx", "odg", "otg", "fodg"], engine.Edges.Where(e => e.From == "notebook").Select(e => e.To));
         Assert.Equal(FormatCategory.Presentation, FormatRegistry.Detect("class.notebook")!.Category);
         Assert.All(engine.Edges.Where(e => e.From == "iwb" && e.To is "odp" or "pptx"), e => Assert.True(e.DirectOnly));
         Assert.False(engine.Transforms("iwb", "odp"));

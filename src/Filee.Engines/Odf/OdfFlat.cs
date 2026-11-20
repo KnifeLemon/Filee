@@ -2,12 +2,17 @@
 // file is one office:document holding what the package keeps in its parts: office:meta (meta.xml), office:settings
 // (settings.xml), office:scripts, office:font-face-decls and office:automatic-styles (content.xml and styles.xml),
 // office:styles and office:master-styles (styles.xml) and office:body (content.xml). Pictures are base64 in
-// office:binary-data where the package has an xlink:href to a part, and an embedded object (a chart) is an
-// office:document of its own inside draw:object where the package has a folder ("Object 1/").
+// office:binary-data where the package has an xlink:href to a part (embedded fonts too, in svg:font-face-uri), and an
+// embedded object (a chart) is an office:document of its own inside draw:object where the package has a folder
+// ("Object 1/").
 //
 // Taking a flat file apart, the automatic styles go into both content.xml and styles.xml (the master pages use them
-// too) and each picture becomes a part under Pictures/ (one part for a picture stored more than once). Putting a package together, the automatic styles of styles.xml
-// that have the name of one in content.xml are renamed (with what refers to them) so both sets fit in one element.
+// too) and each picture becomes a part under Pictures/, each font under Fonts/ (one part for one stored more than
+// once); office:binary-data in an element that has no part in a package (an extension's) stays where it is. A flat
+// file that says it is a template becomes a template package when it is read (OdfVariants.AsPackage). Putting a
+// package together, the automatic styles of styles.xml that have the name of one of the same family in content.xml
+// are renamed, with what refers to them in styles.xml's automatic styles and master pages (a reference names a style
+// of the families its attribute can name; an automatic style's parent is always a common style, never renamed).
 //
 // Limits: a flat file is read through SafeXml within the document limits' depth and element counts and at most
 // FlatPartFactor times what one package part may hold (as the ODP / ODG reader reads one, Odf/Draw/OdfDrawPackage); a
@@ -42,11 +47,16 @@ internal static class OdfFlat
     private static readonly XNamespace Draw = OdfNames.Draw;
     private static readonly XNamespace XLink = OdfNames.XLink;
     private static readonly XNamespace Manifest = OdfNames.Manifest;
+    private static readonly XNamespace Svg = OdfNames.Svg;
+    private static readonly XNamespace Presentation = OdfNames.Presentation;
+    private static readonly XNamespace Table = OdfNames.Table;
+    private static readonly XNamespace Chart = OdfNames.Chart;
+    private static readonly XNamespace Number = "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0";
 
-    /// <summary>The elements whose picture (or OLE object) is a part in a package and office:binary-data in a flat file.</summary>
+    /// <summary>The elements whose picture (OLE object, font) is a part in a package and office:binary-data in a flat file.</summary>
     private static readonly HashSet<XName> Binaries =
     [
-        Draw + "image", Draw + "fill-image", Draw + "object-ole", Style + "background-image", Text + "list-level-style-image",
+        Draw + "image", Draw + "fill-image", Draw + "object-ole", Style + "background-image", Text + "list-level-style-image", Svg + "font-face-uri",
     ];
 
     /// <summary>The most a flat file may be, read or written, within <paramref name="limits"/>.</summary>
@@ -57,12 +67,18 @@ internal static class OdfFlat
     /// <summary>Writes the flat file <paramref name="input"/> as the package <paramref name="output"/> with <paramref name="mimeType"/>.</summary>
     /// <param name="accepted">The media types the flat file may say it has.</param>
     /// <param name="kind">The type for messages ("an OpenDocument text").</param>
+    /// <param name="template">
+    /// The template media type of the type: written instead of <paramref name="mimeType"/> when the flat file says it
+    /// is a template; null to write <paramref name="mimeType"/> whatever it says.
+    /// </param>
     public static void ToPackage(string input, string output, string mimeType, IReadOnlyCollection<string> accepted, string kind,
-        DocumentLimits limits, CancellationToken cancellationToken)
+        DocumentLimits limits, CancellationToken cancellationToken, string? template = null)
     {
         var document = Load(input, kind, limits);
         if ((string?)document.Attribute(Office + "mimetype") is { Length: > 0 } type && !accepted.Contains(type.Trim()))
             throw new InvalidDataException($"The file is not {kind} ({type.Trim()}).");
+        if (template is not null && string.Equals(((string?)document.Attribute(Office + "mimetype"))?.Trim(), template, StringComparison.Ordinal))
+            mimeType = template;
         var split = new Splitter(limits, cancellationToken);
         split.Split(document, "", mimeType, 0);
         OdfPackageWriter.Write(output, mimeType, (string?)document.Attribute(Office + "version") ?? OdfNames.Version, split.Parts, cancellationToken);
@@ -172,9 +188,10 @@ internal static class OdfFlat
         private void Picture(XElement data, string folder)
         {
             var owner = data.Parent!;
-            data.Remove();
+            // Data in an element that has no part in a package (an extension's) stays in it.
             if (!Binaries.Contains(owner.Name))
                 return;
+            data.Remove();
             var text = data.Value;
             if (text.Length / 4L * 3 > limits.MaxPartBytes)
                 throw DocumentLimits.Exceeded($"A picture stored in the file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
@@ -198,8 +215,11 @@ internal static class OdfFlat
             }
             if (Parts.Count >= limits.MaxPackageEntries)
                 throw DocumentLimits.Exceeded($"The file holds more than {DocumentLimits.Count(limits.MaxPackageEntries)} pictures and objects.");
-            var (extension, mediaType) = owner.Name == Draw + "object-ole" ? ("", "application/vnd.sun.star.oleobject") : Kind(bytes);
-            var name = (owner.Name == Draw + "object-ole" ? "OleObject" : "Pictures/image")
+            var font = owner.Name == Svg + "font-face-uri";
+            var (extension, mediaType) = owner.Name == Draw + "object-ole" ? ("", "application/vnd.sun.star.oleobject")
+                : font ? FontKind(bytes)
+                : Kind(bytes);
+            var name = (owner.Name == Draw + "object-ole" ? "OleObject" : font ? "Fonts/font" : "Pictures/image")
                        + (Parts.Count + 1).ToString(CultureInfo.InvariantCulture) + extension;
             Parts.Add(new OdfPart(folder + name, mediaType, Bytes: bytes));
             _stored[key] = name;
@@ -226,6 +246,19 @@ internal static class OdfFlat
             element.SetAttributeValue(XLink + "show", "embed");
             element.SetAttributeValue(XLink + "actuate", "onLoad");
         }
+    }
+
+    /// <summary>The extension and media type of an embedded font, by its signature (as LibreOffice names them).</summary>
+    internal static (string Extension, string MediaType) FontKind(byte[] data)
+    {
+        var span = data.AsSpan();
+        if (span.StartsWith("OTTO"u8))
+            return (".otf", "application/vnd.ms-opentype");
+        if (span.StartsWith("ttcf"u8))
+            return (".ttc", "application/x-font-ttf");
+        if (span.StartsWith("wOFF"u8) || span.StartsWith("wOF2"u8))
+            return (".woff", "application/font-woff");
+        return (".ttf", "application/x-font-ttf");
     }
 
     /// <summary>The extension and media type of a picture, by its signature.</summary>
@@ -311,7 +344,7 @@ internal static class OdfFlat
             Add(document, content.Element(Office + "scripts"));
             Add(document, Merged(Office + "font-face-decls", content.Element(Office + "font-face-decls"), styles?.Element(Office + "font-face-decls"), [], master: null));
             Add(document, styles?.Element(Office + "styles"));
-            var renames = new Dictionary<string, string>(StringComparer.Ordinal);
+            var renames = new Dictionary<(string Family, string Name), string>();
             Add(document, Merged(Office + "automatic-styles", content.Element(Office + "automatic-styles"), styles?.Element(Office + "automatic-styles"),
                 renames, styles?.Element(Office + "master-styles")));
             Add(document, styles?.Element(Office + "master-styles"));
@@ -331,69 +364,125 @@ internal static class OdfFlat
 
         /// <summary>
         /// One element with the children of <paramref name="first"/> and <paramref name="second"/>. A child of the second
-        /// with the style:name of one of the first is renamed, and so is what refers to it in the second and in
-        /// <paramref name="master"/>; for font faces, the first one of a name is kept.
+        /// with the family and style:name of one of the first is renamed, and so is what refers to it in the second and
+        /// in <paramref name="master"/>; for font faces, the first one of a name is kept.
         /// </summary>
-        private static XElement? Merged(XName name, XElement? first, XElement? second, Dictionary<string, string> renames, XElement? master)
+        private static XElement? Merged(XName name, XElement? first, XElement? second, Dictionary<(string Family, string Name), string> renames,
+            XElement? master)
         {
             if (first is null && second is null)
                 return null;
             var merged = new XElement(name);
-            var names = new HashSet<string>(StringComparer.Ordinal);
+            var fonts = name == Office + "font-face-decls";
+            var names = new HashSet<(string, string)>();
             foreach (var child in first?.Elements().ToList() ?? [])
             {
                 if ((string?)child.Attribute(Style + "name") is { } styleName)
-                    names.Add(styleName);
+                    names.Add((fonts ? "" : Family(child), styleName));
                 child.Remove();
                 merged.Add(child);
             }
-            var fonts = name == Office + "font-face-decls";
-            var all = new HashSet<string>(names, StringComparer.Ordinal);
+            var all = new HashSet<(string, string)>(names);
             foreach (var child in second?.Elements() ?? [])
             {
                 if ((string?)child.Attribute(Style + "name") is { } styleName)
-                    all.Add(styleName);
+                    all.Add((fonts ? "" : Family(child), styleName));
             }
-            foreach (var child in second?.Elements().ToList() ?? [])
+            if (!fonts)
             {
-                if ((string?)child.Attribute(Style + "name") is { } styleName && names.Contains(styleName))
+                foreach (var child in second?.Elements() ?? [])
                 {
-                    if (fonts)
+                    if ((string?)child.Attribute(Style + "name") is not { } styleName)
                         continue;
-                    if (!renames.ContainsKey(styleName))
-                    {
-                        var renamed = "M" + styleName;
-                        for (var i = 2; all.Contains(renamed); i++)
-                            renamed = "M" + styleName + "_" + i.ToString(CultureInfo.InvariantCulture);
-                        all.Add(renamed);
-                        renames[styleName] = renamed;
-                    }
+                    var key = (Family(child), styleName);
+                    if (!names.Contains(key) || renames.ContainsKey(key))
+                        continue;
+                    var renamed = "M" + styleName;
+                    for (var i = 2; all.Contains((key.Item1, renamed)); i++)
+                        renamed = "M" + styleName + "_" + i.ToString(CultureInfo.InvariantCulture);
+                    all.Add((key.Item1, renamed));
+                    renames[key] = renamed;
                 }
             }
             if (renames.Count > 0 && second is not null)
             {
                 foreach (var child in second.Elements())
                 {
-                    if (child.Attribute(Style + "name") is { } own && renames.TryGetValue(own.Value, out var renamed))
+                    if (child.Attribute(Style + "name") is { } own && renames.TryGetValue((Family(child), own.Value), out var renamed))
                         own.Value = renamed;
                 }
                 foreach (var element in second.Descendants().Concat(master?.DescendantsAndSelf() ?? []))
                 {
                     foreach (var attribute in element.Attributes())
                     {
-                        if (IsStyleReference(attribute.Name) && renames.TryGetValue(attribute.Value, out var renamed))
+                        if (IsStyleReference(attribute.Name) && Renamed(attribute, renames) is { } renamed)
                             attribute.Value = renamed;
                     }
                 }
             }
             foreach (var child in second?.Elements().ToList() ?? [])
             {
-                if (fonts && (string?)child.Attribute(Style + "name") is { } font && names.Contains(font))
+                if (fonts && (string?)child.Attribute(Style + "name") is { } font && names.Contains(("", font)))
                     continue;
                 child.Remove();
                 merged.Add(child);
             }
             return merged;
+        }
+
+        /// <summary>The family a style's name is unique in: style:family, else the kind of element (page layouts, lists, data styles).</summary>
+        private static string Family(XElement style)
+        {
+            if (style.Name == Style + "style" || style.Name == Style + "default-style")
+                return (string?)style.Attribute(Style + "family") ?? "";
+            if (style.Name == Text + "list-style")
+                return "list";
+            if (style.Name.Namespace == Number)
+                return "data";
+            return style.Name.LocalName;
+        }
+
+        /// <summary>The new name of the style a reference names, or null: the renamed style of a family the attribute can name.</summary>
+        private static string? Renamed(XAttribute attribute, Dictionary<(string Family, string Name), string> renames)
+        {
+            var local = attribute.Name.LocalName;
+            // An automatic style's parent is a common style, never one of the automatic ones renamed.
+            if (local == "parent-style-name")
+                return null;
+            var owner = attribute.Parent!.Name.LocalName;
+            var space = attribute.Name.Namespace;
+            string[]? families = local switch
+            {
+                "page-layout-name" => ["page-layout"],
+                "list-style-name" => ["list"],
+                "data-style-name" or "percentage-data-style-name" => ["data"],
+                "text-style-name" => ["text", "paragraph"],
+                "style-name" when space == Draw => owner is "page" or "master-page" ? ["drawing-page"] : ["graphic"],
+                "style-name" when space == Presentation => ["presentation"],
+                "style-name" when space == Chart => ["chart"],
+                "style-name" when space == Table => [owner is "table" or "table-column" or "table-row" ? owner : "table-cell"],
+                "style-name" when space == Text => owner switch
+                {
+                    "p" or "h" => ["paragraph"],
+                    "list" or "list-item" or "numbered-paragraph" => ["list"],
+                    "section" => ["section"],
+                    "ruby" => ["ruby"],
+                    _ => ["text"],
+                },
+                _ => null,
+            };
+            if (families is null)
+            {
+                // A reference of no known family: renamed when one style of that name was.
+                var matches = renames.Where(r => r.Key.Name == attribute.Value).Select(r => r.Value).Distinct().ToList();
+                return matches.Count == 1 ? matches[0] : null;
+            }
+            foreach (var family in families)
+            {
+                if (renames.TryGetValue((family, attribute.Value), out var renamed))
+                    return renamed;
+            }
+            return null;
         }
 
         /// <summary>An attribute that names a style: text:style-name, style:parent-style-name, style:page-layout-name and the like.</summary>
