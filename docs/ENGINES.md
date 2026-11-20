@@ -44,7 +44,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP, and Windows app packages MSIX / APPX), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ/ZST), GZ, BZ2, XZ, LZMA, Z, ZST, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs, GMA** (in-process); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
-| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
+| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for what the built-in PDF/A writer refuses; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG / WebP, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
@@ -2612,20 +2612,67 @@ wrote it (PDFsharp, rhwp, LibreOffice, Ghostscript …), and once on a merged PD
 ## PDF/A
 
 A preset with *PDF/A (archival)* ticked (`DocumentOptions.PdfA`; the built-in "PDF/A" preset, #1367) makes every PDF
-it writes a PDF/A-2b, PDF → PDF too. `JobQueue` runs `IPdfArchiver` (Ghostscript) after the finishing, on each PDF a
-file became and once on a merged PDF, so the box means the same whichever engine wrote the PDF.
+it writes a PDF/A-2b, PDF → PDF too. `JobQueue` runs the `IPdfArchiver`s after the finishing, on each PDF a file
+became and once on a merged PDF, so the box means the same whichever engine wrote the PDF. They are tried in engine
+order (PDFsharp before Ghostscript by default): one that refuses a PDF (`ConversionRefusedException`) hands it to the
+next.
 
-- **Already PDF/A**: LibreOffice (`SelectPdfVersion` 2) and SVG → PDF (Skia) write PDF/A themselves. A PDF whose
-  catalog XMP has `pdfaid:part` is kept as it is, unless a watermark or page numbers were added since: then it is
-  rewritten like any other.
-- **Ghostscript** (`GhostscriptConverter.ConvertToPdfAAsync`): `pdfwrite` with `-dPDFA=2 -dPDFACompatibilityPolicy=1
-  -sColorConversionStrategy=RGB`, after a small PostScript prelude (as Ghostscript's `PDFA_def.ps`) that adds the sRGB
-  output intent; the profile is Magick.NET's sRGB, written into the prelude as a hex string so safe mode needn't read
-  a file. Colours become RGB, fonts are embedded, what PDF/A forbids is left out (policy 1), and a tagged PDF loses its
-  tags (part B doesn't need them).
-- **Without Ghostscript**: a preset whose files are all PDFs is greyed out with the usual engine reason. Other files
-  are converted and the PDF is left as it is, with `notice.pdfa_needs_ghostscript` in the result, unless LibreOffice
-  made it PDF/A.
+- **Already PDF/A**: the Filee renderer (below), LibreOffice (`SelectPdfVersion` 2) and SVG → PDF (Skia) write PDF/A
+  themselves. A PDF whose catalog XMP has `pdfaid:part` is kept as it is, unless a watermark or page numbers were
+  added since: then it is rewritten like any other.
+- **Built in** (`PdfSharpConverter.ArchiveAsync` → `Pdf/PdfAConformance.cs`, `PdfAMetadata.cs`): the PDF is opened with
+  PDFsharp and changed in place to keep the PDF/A-2b rules (ISO 19005-2), form fields staying fields:
+  - one `GTS_PDFA1` output intent: a CMYK or RGB PDF/A intent the PDF already has for the device colours it draws in
+    (a PDF/X file keeps its CMYK profile), else **sRGB made in code** (`SrgbProfile`, below); PDFsharp's page
+    transparency groups get the intent's colour space;
+  - no encryption, no LZW (unpacked and deflated), no external stream data; graphics states lose `TR`, `TR2` (but
+    `/Default`), `HT`, `HTO`, unknown `RI` and blend modes; pictures lose `Alternates`, `OPI`, `Interpolate`; forms
+    lose `OPI`, `PS`, `Ref`;
+  - annotations: 3D, sound, screen, movie, rich media, file attachments and hidden ones go; the rest print and keep
+    only their normal appearance (a button's single stream becomes its one state, a state set outside buttons the
+    state shown); popups lose flags PDF/A forbids;
+  - JavaScript, launch and the other forbidden actions (also in `/Next` chains, open actions, outlines), every `AA`,
+    the actions of fields and widgets, XFA, `NeedAppearances`, embedded files, alternate presentations, `PresSteps`,
+    `Requirements`, `Collection`, other `Perms` than UR3/DocMDP, XMP of pages and pictures; optional-content
+    configurations get unique names, no `AS`, and an `Order` that lists every group; CIDFontType2 gets
+    `CIDToGIDMap /Identity` when it has none; PDF 2.0 is written as 1.7.
+
+  Saving: PDFsharp always replaces `/Metadata` with an XMP packet of its own (no `pdfaid`, dates that don't always
+  match) and puts its name in the producer, and it can't be told not to (`SetPdfA` claims PDF/A-1a). So the PDF is
+  saved by PDFsharp, then an **incremental update** (which PDF/A allows) writes the document information and the XMP
+  packet again under their own object numbers: `pdfaid:part 2`, `conformance B`, title, author, subject, keywords,
+  creator tool, producer and dates the same in both (text cleaned of what XML can't carry, so both always match),
+  the trailer's `/ID` kept, `/Prev` to PDFsharp's table. Custom information entries and `Trapped` are dropped.
+
+  It **refuses** (`pdfa.reason.*`, the PDF left as it is) a font drawn with that isn't embedded (any font listed in a
+  `/Resources` dictionary; a form's `/DR` doesn't count), device CMYK without a CMYK intent or CMYK and RGB together,
+  an annotation or field without its own appearance (but links, popups, zero-size ones), XFA-only forms, PostScript
+  XObjects, external stream data, LZW mixed with filters PDFsharp can't unpack, inline pictures with LZW or
+  interpolation, content streams it can't read, a password-protected PDF, and (`error.document_too_complex`) more
+  than `MaxObjects` objects or more content than `PdfFontUses` reads.
+
+  **Not checked**: that embedded fonts hold every glyph drawn and their widths match the dictionary, TrueType
+  symbolic/non-symbolic encodings and cmaps, the document's own ICC-based colour spaces, JPEG 2000 specifics, halftone
+  details beyond dropping `HT`, the implementation limits (string, name and number sizes, `q` nesting), page-level
+  colour spaces through `DefaultCMYK`, and content stream operators outside ISO 32000-1. Conformance is tested by a
+  structural check of the rules above (`tests/Filee.Engines.Tests/PdfA2bChecks.cs`); veraPDF isn't run.
+- **sRGB profile** (`Pdf/SrgbProfile.cs`): built from the numbers of IEC 61966-2-1 rather than shipped: primaries
+  and D65 adapted to D50 with the Bradford transform, the sRGB curve sampled at 1024 points shared by the three
+  channels, an ICC version 2.1 display profile of about 2.3 KB with the description "sRGB IEC61966-2.1" and the
+  copyright "No copyright, use freely". No one's profile file is copied, so there is no licence to carry; skcms
+  (Skia) reads it as sRGB's gamut and curve.
+- **Filee renderer** (`PdfPageWriter`, `PdfDocumentInfo.PdfA`): DOCX, HWP/HWPX, sheets, slides and drawings drawn by
+  the renderer are written as PDF/A-2b directly: Skia's PDF/A mode, then the PDFsharp pass with `PdfAConformance` and
+  `PdfAMetadata`, creator and producer "Filee". Fonts are already embedded and subset with ToUnicode maps, links get
+  the print flag. Should the pass refuse, the plain PDF is written and the job queue's archivers try again.
+- **Ghostscript** (`GhostscriptConverter.ConvertToPdfAAsync`), for what the built-in one refuses: `pdfwrite` with
+  `-dPDFA=2 -dPDFACompatibilityPolicy=1 -sColorConversionStrategy=RGB`, after a small PostScript prelude (as
+  Ghostscript's `PDFA_def.ps`) that adds the sRGB output intent; the profile is Magick.NET's sRGB, written into the
+  prelude as a hex string so safe mode needn't read a file. Colours become RGB, fonts are embedded, what PDF/A forbids
+  is left out (policy 1), form fields become page content, and a tagged PDF loses its tags (part B doesn't need them).
+- **When none makes it PDF/A**: the PDF is left as it is, with `notice.pdfa_needs_ghostscript` and the built-in one's
+  reason in brackets. A preset whose files are all PDFs is greyed out only when neither PDFsharp nor Ghostscript is
+  among the engines.
 
 ## Office Open XML variants
 

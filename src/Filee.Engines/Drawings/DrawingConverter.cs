@@ -77,7 +77,8 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
             progress?.Report(0.2);
             if (step.To == "pdf")
             {
-                var pdf = SlideOutput.ToPdf(deck, progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p)), cancellationToken);
+                var pdf = SlideOutput.ToPdf(deck, progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p)), cancellationToken,
+                    step.Preset.Document.PdfA);
                 if (step.Output.Allocate("pdf") is not { } target)
                     return [];
                 File.WriteAllBytes(target, pdf);
@@ -106,7 +107,7 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
                 return [];
             using (var output = File.Create(target))
             {
-                PdfPageWriter.Write(output, all, new PdfDocumentInfo { Title = document.Title },
+                PdfPageWriter.Write(output, all, new PdfDocumentInfo { Title = document.Title, PdfA = step.Preset.Document.PdfA },
                     progress is null ? null : new Progress<double>(p => progress.Report(0.5 + 0.5 * p)), cancellationToken);
             }
             return [target];

@@ -17,12 +17,13 @@ internal static class FileeRenderer
     /// whose formats are complete.
     /// </param>
     /// <param name="progress">Pages written, as a fraction of all pages.</param>
+    /// <param name="pdfA">Write it as PDF/A-2b.</param>
     public static byte[] ToPdf(HDocument document, CancellationToken cancellationToken = default, bool storedLines = true,
-        StyleResolver? styles = null, IProgress<double>? progress = null)
+        StyleResolver? styles = null, IProgress<double>? progress = null, bool pdfA = false)
     {
         var composed = Compose(document, cancellationToken, storedLines, styles);
         using var output = new MemoryStream();
-        PdfPageWriter.Write(output, composed.Pages, new PdfDocumentInfo { Title = document.Title, Outline = composed.Outline },
+        PdfPageWriter.Write(output, composed.Pages, new PdfDocumentInfo { Title = document.Title, Outline = composed.Outline, PdfA = pdfA },
             progress, cancellationToken);
         return output.ToArray();
     }

@@ -25,13 +25,14 @@ internal static class SheetPrinter
     /// <summary>The workbook as a PDF.</summary>
     /// <param name="progress">Pages drawn and written, as a fraction.</param>
     /// <param name="fonts">The fonts to draw with; the installed ones when null.</param>
+    /// <param name="pdfA">Write it as PDF/A-2b.</param>
     public static byte[] ToPdf(Workbook book, SheetPrintSource source, CancellationToken cancellationToken = default,
-        IProgress<double>? progress = null, DocumentLimits? limits = null, DateTime? now = null, FontResolver? fonts = null)
+        IProgress<double>? progress = null, DocumentLimits? limits = null, DateTime? now = null, FontResolver? fonts = null, bool pdfA = false)
     {
         using var printed = Print(book, source, limits ?? DocumentLimits.Default, now ?? DateTime.Now,
             progress is null ? null : new Progress<double>(p => progress.Report(p * 0.5)), cancellationToken, fonts);
         using var output = new MemoryStream();
-        PdfPageWriter.Write(output, printed.Pages, new PdfDocumentInfo { Outline = printed.Outline },
+        PdfPageWriter.Write(output, printed.Pages, new PdfDocumentInfo { Outline = printed.Outline, PdfA = pdfA },
             progress is null ? null : new Progress<double>(p => progress.Report(0.5 + p * 0.5)), cancellationToken);
         return output.ToArray();
     }

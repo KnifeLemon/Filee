@@ -1,6 +1,8 @@
 // Builds PDFs from images, splits / extracts PDF pages, merges PDFs, makes PDFs smaller (PDFsharp, MIT; the
 // compression itself is in PdfCompressor, with Ghostscript as an optional second try) and removes their metadata.
-// It also finishes every PDF a job writes with a watermark, page numbers or a password (PdfFinishing).
+// It also finishes every PDF a job writes with a watermark, page numbers or a password (PdfFinishing), and makes
+// every PDF of a PDF/A preset PDF/A-2b (PdfAConformance, PdfAMetadata): first in the engine order, so Ghostscript
+// gets only the PDFs this can't make conform (a font that isn't embedded, CMYK without a profile, ...).
 
 using System.Runtime.ExceptionServices;
 using Filee.Core.Conversion;
@@ -16,7 +18,7 @@ using PdfSharp.Pdf.IO;
 namespace Filee.Engines.Pdf;
 
 /// <summary>Image → PDF, PDF → PDF (split / page range / compression) and PDF merging.</summary>
-public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, IImageTransformer
+public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, IPdfArchiver, IImageTransformer
 {
     private const double PointsPerInch = 72.0;
     private const double MillimetresPerInch = 25.4;
@@ -48,6 +50,51 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// <summary>Watermark, page numbers and password (PdfFinishing).</summary>
     public Task FinishAsync(string path, PdfOptions options, CancellationToken cancellationToken) =>
         Task.Run(() => PdfFinishing.Finish(path, options, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// PDF/A-2b without Ghostscript (<see cref="IPdfArchiver"/>): a PDF that says it is PDF/A and wasn't changed since
+    /// stays as it is; any other is rewritten in place. Form fields stay fields.
+    /// </summary>
+    /// <exception cref="ConversionRefusedException">It can't conform (a <c>pdfa.reason.*</c> key): the job queue tries
+    /// the next archiver (Ghostscript), and the PDF is left as it is.</exception>
+    public Task<PdfArchiveOutcome> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken) =>
+        Task.Run(() => Archive(path, changed, workDirectory, cancellationToken), cancellationToken);
+
+    internal static PdfArchiveOutcome Archive(string path, bool changed, string workDirectory, CancellationToken cancellationToken)
+    {
+        if (!changed && GhostscriptConverter.DeclaresPdfA(path))
+            return PdfArchiveOutcome.Archived;
+        PdfDocument document;
+        try
+        {
+            document = Open(path, PdfDocumentOpenMode.Modify, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not ConversionRefusedException)
+        {
+            throw new ConversionRefusedException(ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase)
+                ? PdfAConformance.Locked : PdfAConformance.Unreadable);
+        }
+        var target = Path.Combine(workDirectory, $"pdfa-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            using (document)
+            {
+                var info = PdfAMetadata.InfoOf(document);
+                PdfAConformance.Prepare(document, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                Directory.CreateDirectory(workDirectory);
+                using var stream = File.Create(target);
+                PdfAMetadata.Save(document, stream, info);
+            }
+            File.Move(target, path, overwrite: true);
+            return PdfArchiveOutcome.Archived;
+        }
+        finally
+        {
+            if (File.Exists(target))
+                File.Delete(target);
+        }
+    }
 
     /// <summary>Imports PDFs and their supported structure, optionally fitting every page to one paper.</summary>
     public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks,
