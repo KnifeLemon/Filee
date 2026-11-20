@@ -156,8 +156,13 @@ public sealed class WordEquationLayoutTests : IDisposable
         Assert.True(three.Positions[0].Y > one.Positions[0].Y + 20);
         Assert.Equal(Centre(Ink(one)), Centre(Ink(three)), 0.5f);
         Assert.Equal(Centre(Ink(two)), Centre(Ink(four)), 0.5f);
+        // The bracket reaches over both rows; like Word's it may fall a little short of the digits' ink (#356: Word's
+        // 1.64 em bracket around two rows of letters stops 0.1 em inside them, and ours of the same size here up to
+        // 0.16 em inside the taller digits).
         var bracket = Ink(Single(page, "("));
-        Assert.True(bracket.Top <= Ink(one).Top && bracket.Bottom >= Ink(three).Bottom, $"{bracket}");
+        var slack = 20 * 0.2f;
+        Assert.True(bracket.Top <= Ink(one).Top + slack && bracket.Bottom >= Ink(three).Bottom - slack, $"{bracket} / {Ink(one).Top}…{Ink(three).Bottom}");
+        Assert.True(bracket.Top < Ink(one).Bottom && bracket.Bottom > Ink(three).Top);
         Assert.True(bracket.Right <= Ink(three).Left && Ink(Single(page, ")")).Left >= Ink(four).Right);
     }
 

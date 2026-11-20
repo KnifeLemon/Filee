@@ -50,6 +50,16 @@ internal sealed record MathRoot(MathNode? Index, MathNode Body) : MathNode;
 /// <summary>Subscript and / or superscript.</summary>
 internal sealed record MathScripts(MathNode Base, MathNode? Sub, MathNode? Sup) : MathNode;
 
+/// <summary>
+/// Content centred over and / or under a base at script size: TeX's \overset, \underset and \xrightarrow, Word's
+/// m:limUpp and m:limLow. 한글's script and the linear text write it as scripts.
+/// </summary>
+internal sealed record MathStack(MathNode Base, MathNode? Over, MathNode? Under) : MathNode
+{
+    /// <summary>The same as scripts (base, under as the subscript, over as the superscript), for writers without stacking.</summary>
+    public MathScripts AsScripts() => new(Base, Under, Over);
+}
+
 /// <summary>A large operator with limits: SUM, PROD ... above and below, INT, OINT ... at the side.</summary>
 internal sealed record MathBigOperator(string Command, string Glyph, MathNode? Lower, MathNode? Upper) : MathNode
 {
@@ -135,6 +145,7 @@ internal static class EquationScript
             MathFraction fraction => [fraction.Numerator, fraction.Denominator],
             MathRoot root => [root.Index, root.Body],
             MathScripts scripts => [scripts.Base, scripts.Sub, scripts.Sup],
+            MathStack stack => [stack.Base, stack.Over, stack.Under],
             MathBigOperator big => [big.Lower, big.Upper],
             MathLimit limit => [limit.Lower],
             MathMatrix matrix => matrix.Rows.SelectMany(r => r),
@@ -275,6 +286,9 @@ internal static class EquationScript
                     sb.Append(" of ");
                 }
                 Group(root.Body, sb);
+                break;
+            case MathStack stack:
+                Write(stack.AsScripts(), sb);
                 break;
             case MathScripts scripts:
                 if (IsAtom(scripts.Base))
@@ -457,6 +471,9 @@ internal static class EquationScript
                 sb.Append('√');
                 LinearOperand(root.Body, sb);
                 break;
+            case MathStack stack:
+                Linear(stack.AsScripts(), sb);
+                break;
             case MathScripts scripts:
                 Linear(scripts.Base, sb);
                 LinearScripts(scripts.Sub, scripts.Sup, sb);
@@ -595,6 +612,7 @@ internal static class EquationScript
         MathFraction fraction => MeasureFraction(fraction, size),
         MathRoot root => MeasureRoot(root, size),
         MathScripts scripts => MeasureScripts(Measure(scripts.Base, size), scripts.Sub, scripts.Sup, size),
+        MathStack stack => Measure(stack.AsScripts(), size),
         MathBigOperator big => big.Integral ? MeasureIntegral(big, size) : MeasureBigOperator(big, size),
         MathLimit limit => MeasureLimit(limit, size),
         MathMatrix matrix => MeasureMatrix(matrix, size),

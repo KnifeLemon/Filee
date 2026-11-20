@@ -1294,7 +1294,8 @@ internal sealed partial class DocxReader
         _budget.Object();
         var rPr = math.Descendants(M + "r").Select(r => r.Element(W + "rPr")).FirstOrDefault(p => p is not null);
         var format = CharFormat(RunProperties(rPr, styleRun)) with { Italic = true };
-        var lines = math.Name.LocalName == "oMathPara" ? math.Elements(M + "oMath").ToList() : [math];
+        var display = math.Name.LocalName == "oMathPara";
+        var lines = display ? math.Elements(M + "oMath").ToList() : [math];
 
         if (math.Name.LocalName == "oMathPara" && math.Parent is { } paragraph
             && !paragraph.Descendants(W + "t").Any(t => t.Value.Trim().Length > 0 && !t.Ancestors(M + "oMathPara").Any()))
@@ -1326,7 +1327,7 @@ internal sealed partial class DocxReader
             if (number is not null)
             {
                 var text = new HText(EquationScript.Linear(number), format with { Italic = false });
-                var numbered = new HEquation(body, format);
+                var numbered = new HEquation(body, format) { Display = display };
                 if (width > 0)
                 {
                     builder.Add(NumberBox(numbered, text, width));
@@ -1359,7 +1360,7 @@ internal sealed partial class DocxReader
                 // Paragraphs of their own: rhwp draws the first equation of a paragraph split by a page again on the next page.
                 if (i > 0)
                     builder.NextRow();
-                builder.Add(new HEquation(rows[i], format));
+                builder.Add(new HEquation(rows[i], format) { Display = display });
             }
         }
     }

@@ -28,13 +28,22 @@ internal static class OmmlWriter
 
     /// <summary>
     /// One equation: an m:oMath, or for a display equation an m:oMathPara (a paragraph of its own, centred).
-    /// <paramref name="runProperties"/> is the content of each run's w:rPr after its font (size, colour).
+    /// <paramref name="runProperties"/> is the content of each run's w:rPr after its font (size, colour);
+    /// <paramref name="align"/> places a display equation (left, right, else centred).
     /// </summary>
-    public static string Write(MathNode node, bool display, string runProperties = "")
+    public static string Write(MathNode node, bool display, string runProperties = "", HAlign? align = null)
     {
         var sb = new StringBuilder();
         if (display)
-            sb.Append("<m:oMathPara><m:oMathParaPr><m:jc m:val=\"center\"/></m:oMathParaPr>");
+        {
+            var jc = align switch
+            {
+                HAlign.Left => "left",
+                HAlign.Right => "right",
+                _ => "center",
+            };
+            sb.Append("<m:oMathPara><m:oMathParaPr><m:jc m:val=\"").Append(jc).Append("\"/></m:oMathParaPr>");
+        }
         sb.Append("<m:oMath>");
         Node(node, sb, new Style(false, false, runProperties));
         sb.Append("</m:oMath>");
@@ -114,6 +123,27 @@ internal static class OmmlWriter
                     sb.Append("</m:").Append(kind).Append('>');
                     break;
                 }
+            case MathStack stack:
+                // Word's lower and upper limits: m:limLow inside m:limUpp when both are there.
+                if (stack.Over is not null)
+                {
+                    sb.Append("<m:limUpp>");
+                    Argument("e", stack with { Over = null }, sb, style);
+                    Argument("lim", stack.Over, sb, style);
+                    sb.Append("</m:limUpp>");
+                }
+                else if (stack.Under is not null)
+                {
+                    sb.Append("<m:limLow>");
+                    Argument("e", stack.Base, sb, style);
+                    Argument("lim", stack.Under, sb, style);
+                    sb.Append("</m:limLow>");
+                }
+                else
+                {
+                    Node(stack.Base, sb, style);
+                }
+                break;
             case MathBigOperator big:
                 Nary(big, [], sb, style);
                 break;
