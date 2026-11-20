@@ -14,37 +14,40 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF through the Filee renderer, → DOCX through the DOCX writer) |
 | **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)); **FreeMind / Freeplane (MM) and XMind mind maps → Markdown, HTML, TXT, OPML** as outlines (see [Mind maps](#mind-maps)) |
-| Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLSB, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
-| **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLSB, XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
+| Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLSB, XLS, ODS (+ OTS, FODS), CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet; OTS and FODS out through the next engine) |
+| **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLSB, XLS (+ XLT), ODS (+ OTS, FODS) → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
+| **OpenDocument templates and flat files** | built in | **ODT ↔ OTT ↔ FODT, ODS ↔ OTS ↔ FODS, ODP ↔ OTP ↔ FODP, ODG ↔ OTG ↔ FODG** without reading the document into a model, so nothing is lost (see [OpenDocument templates and flat files](#opendocument-templates-and-flat-files)); after the ODT writer and the spreadsheet engine, every document → OTT / FODT and every workbook → OTS / FODS |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
-| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF, mind maps (MM, XMind) → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
-| **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → DOCX** |
-| **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → ODT** (OpenDocument text, LibreOffice Writer) |
-| **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
-| **ODP writer** | built in | **PPTX (+ PPTM/POTX/POTM/PPSX), PPT → ODP** with masters, shapes, pictures, tables, lists and speaker notes; **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → ODP slides** laid out as the PPTX writer lays them out (see [ODP writer](#odp-writer)); a deck with what the slide model leaves out (charts without a picture, effects, 3D) keeps LibreOffice's route |
+| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT (+ OTT, FODT), XLSX (+ XLSM/XLTX), XLS, ODS (+ OTS, FODS), CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF, mind maps (MM, XMind) → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
+| **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT (+ OTT, FODT), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS (+ OTS, FODS), CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → DOCX** |
+| **RTF writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → RTF** (Rich Text Format, see [RTF writer](#rtf-writer)) |
+| **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS (+ OTS, FODS), CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → ODT** (OpenDocument text, LibreOffice Writer) |
+| **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT (+ OTT, FODT), HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS (+ OTS, FODS), CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
+| **ODP writer** | built in | **PPTX (+ PPTM/POTX/POTM/PPSX), PPT → ODP, OTP, FODP** with masters, shapes, pictures, tables, lists and speaker notes; **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT (+ OTT, FODT), HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → ODP slides** laid out as the PPTX writer lays them out (see [ODP writer](#odp-writer)); a deck with what the slide model leaves out (charts without a picture, effects, 3D) keeps LibreOffice's route |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PdfPig, PDFium) | **PDF → PPTX**: each page rebuilt as an editable slide (text boxes with the PDF's fonts, pictures, shapes, ruled tables); or, as a preset option, a picture of each page with its text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
-| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT, RTF, HWP, HWPX, HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
+| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT (+ OTT, FODT), RTF, HWP, HWPX, HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **DjVu** | built in | **DjVu (.djvu, .djv; one page or bundled) → PDF** (the layers kept: background JPEG, 1-bit masks; the hidden text searchable) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT, RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats), mind maps as outlines → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
+| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT (+ OTT, FODT), RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats), mind maps as outlines → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP, and Windows app packages MSIX / APPX), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ/ZST), GZ, BZ2, XZ, LZMA, Z, ZST, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs, GMA** (in-process); "Compress into one archive" for any files |
-| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
-| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
-| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
+| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
+| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
+| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for what the built-in PDF/A writer refuses; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG / WebP, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
@@ -774,11 +777,15 @@ those shapes, which `Read` leaves out as before; it also takes an OLE object as 
 - **RTF** (`RtfReader.cs`, no Pandoc needed) as Word, WordPad, LibreOffice and 한글 write it: text in the code page
   of its font (`\fcharset`, `\cpg`) or the document's (`\ansicpg`, so Korean, Chinese and Japanese RTF reads right)
   and `\uN` characters; bold, italic, underline, strike-through, raised / lowered, size, font, colour and highlight;
-  alignment, indents, spacing, line spacing and keep options; the style sheet (headings by `heading N` or
+  alignment, indents, spacing, line spacing, keep options and tab stops (`\tx` with their kind and leader, measured
+  from the indent as the model has them); the font table's other names (`{\*\falt …}`, used like Word's
+  `w:altName` where a font is not installed) and the default tab interval (`\deftab`, Word's 720 twips when the file
+  gives none, from the margin); the style sheet (headings by `heading N` or
   `\outlinelevel`); lists from `\listtable` / `\listoverridetable`; tables (`\trowd` … `\row`, merged and shaded
   cells, borders as a grid or none, nested tables flattened into their cell); PNG, JPEG, EMF and WMF pictures sized
-  by `\picwgoal`; footnotes and endnotes; hyperlink, page and page count fields; bookmarks; headers and footers
-  (first-page ones are left out); sections with their paper, margins, orientation and columns. Unknown `\*`
+  by `\picwgoal`; footnotes and endnotes (the space after a note's own number is dropped, as in the DOCX reader);
+  hyperlink, page and page count fields; bookmarks; headers and footers (`\header` / `\footer` for every page,
+  `\headerr` / `\headerl` for odd and even ones; first-page ones are left out); sections with their paper, margins, orientation and columns. Unknown `\*`
   destinations, index entries, comments and object data are skipped; group depth, paragraphs and pictures count
   against the reader limits.
 - Markdown, HTML and Pandoc keep structure only, so page setup comes from the built-in template (A4).
@@ -1737,7 +1744,10 @@ specification, so ODT → DOCX / HWPX / PDF / Markdown / HTML and anything → O
   text boxes, as characters or floating with position, relation, wrap, outer margins, border and padding; rectangles,
   rounded rectangles, ellipses (also LibreOffice's custom shapes of those kinds) and lines, with fill and stroke;
   shapes with text become text boxes; formulas (embedded Math objects) become their StarMath text;
-- footnotes and endnotes with their numbering (`text:notes-configuration`).
+- footnotes and endnotes with their numbering (`text:notes-configuration`);
+- default tab stops as LibreOffice sets them: every `style:tab-stop-distance` of the default paragraph style, else
+  LibreOffice's 1.25 cm, counted from the paragraph's indent unless `settings.xml` has `TabsRelativeToIndent` false
+  (documents that came from Word); the layout engine then puts a tab after the text at the next of them.
 
 The package is read within DocumentLimits (see **Limits** under *HWPX reader*): `DocumentPackage` counts every part, SafeXml
 reads the XML, `DocumentBudget` counts paragraphs, objects and nesting (tables, notes, frames, groups and lists);
@@ -1760,7 +1770,68 @@ so it wins over Pandoc and LibreOffice. ODT → PDF goes through the Filee rende
 Not yet: numbering restarts in the middle of a list (only an item's start value on the first item counts), outline numbering
 of headings (`text:outline-style`), different first-page headers with content, gradients (a gradient fills with its
 start colour), rotated or cropped pictures, charts and other OLE objects, drop caps, change tracking, fields other
-than page number / count (their text is kept), flat ODT (`.fodt`) and templates (`.ott`, still LibreOffice's).
+than page number / count (their text is kept).
+
+Templates (`.ott`) and flat files (`.fodt`) are read by the same reader and written from its ODT, see
+[OpenDocument templates and flat files](#opendocument-templates-and-flat-files).
+
+## RTF writer
+
+`Hwp/Hwpx/RtfWriter*.cs` writes Rich Text Format from the document model, by hand from the RTF 1.9 specification, so
+anything Filee reads becomes an RTF file without LibreOffice or Pandoc. `RtfWriterConverter` (engine `rtf-writer`)
+offers every built-in reader's format → RTF at cost 8 (PDF at 14), like the DOCX and ODT writers, so it wins over
+Pandoc (Markdown and the markup languages → RTF) and LibreOffice (Word, ODT, HWP → RTF).
+
+- **The file:** `{\rtf1\ansi\ansicpg1252\deff0\uc1` with the font table (each font with its `\fcharset` and, where
+  one is known, its other name in `{\*\falt …}`: the document's own (DOCX `w:altName`), the Korean or English name
+  of a Korean font, a font of the same widths), the colour table, Normal and `heading 1`..`heading 9` with outline
+  levels, `\listtable` / `\listoverridetable`, `\info` (title, authors), the first section's page, `\deftab` (the
+  model's default tab interval, else 한글's 40 pt) and note numbering. The body is written first into a temporary
+  file beside the output (the tables fill as it is written), then the header and the body go into the output through
+  a temporary file of their own.
+- **Text:** ASCII only. Other characters are `\uN` (negative past 32767, surrogate pairs as two) followed by the
+  same character in the code page of its font's `\fcharset`, with `\ucN` saying how many bytes that is (two for
+  Korean in CP949), or `?` where the code page has none. Text is split where its script changes: Hangul, kana and
+  Chinese characters in the East Asian font with an East Asian `\fcharset` (which Word and Filee's reader take as
+  the East Asian font), Greek, Cyrillic, Hebrew, Arabic and Thai in the Latin font with their own `\fcharset`;
+  spaces and punctuation stay with the text around them. Arabic and Hebrew pieces are `\rtlch`.
+- **Paragraphs** repeat their style's formatting after `\pard\plain` (RTF paragraphs carry it themselves), then
+  alignment, indents (`\lin` / `\rin` too, for right-to-left paragraphs), spacing, line spacing (as the DOCX writer
+  converts it), keeps, widow control, page breaks, tab stops (measured from the margin), borders and shading, and the
+  list (`\ls`, `\ilvl`; continuation paragraphs indented to the item's text). Runs are groups with only the
+  control words that differ from the paragraph mark's formatting.
+- **Links, fields, notes:** HYPERLINK fields (`\l` for a bookmark), bookmarks, PAGE / NUMPAGES fields with a result,
+  footnotes and endnotes (`\footnote`, `\ftnalt`) after their reference mark; a note outside the body text and
+  its tables (in a header, note or text box) stays in place in brackets, as in the DOCX writer. Equations are their
+  text (TeX source or linear form).
+- **Tables:** `\trowd` with the row's padding, indent, alignment, height, header and keep, a cell definition per
+  grid column (`\clmgf` / `\clmrg` across columns, `\clvmgf` / `\clvmrg` down rows, vertical alignment, borders,
+  shading, padding, width, `\cellx` at its right edge), the cells' paragraphs (`\intbl`, each cell ending with
+  `\cell`) and `\row`. Tables in cells are nested tables (`\itapN`, `\nestcell`, `\nesttableprops` with
+  `\nestrow`). Column widths come from the model as in the DOCX writer, and the cell grid goes through
+  `HwpxWriter.PlaceCells` with its limits.
+- **Pictures:** `\pict` groups, PNG and JPEG as they are (`\pngblip`, `\jpegblip`), EMF as `\emfblip`, WMF as
+  `\wmetafile8` (without the placeable header), any other picture converted to PNG; sized by `\picwgoal` /
+  `\pichgoal`, in the text like a character. **Text boxes and shapes** are Word drawing objects (`\shp` with their
+  placement, wrap, fill and outline); a text box's paragraphs are in `\shptxt`, and its text in `\shprslt` too,
+  for programs (Filee's reader among them) that don't draw shapes.
+- **Sections:** `\sectd` with the paper, margins (the model's Top / Header become `\margtsxn` and `\headery`),
+  gutter, orientation, columns (own widths, separator, right to left), page number restarts, headers and footers
+  (`\header`, or `\headerr` / `\headerl` with facing pages; `\titlepg` with `\headerf` for a first page that
+  hides or has its own); columns that change in a section start a section without a page break (`\sbknone`).
+- **Limits:** the model is opened up past 32 levels of nesting (`Nesting.Limit`); a file that would pass
+  `DocumentLimits.MaxPackageBytes` (what the RTF reader takes), tables past the cell limit and font, colour or list
+  tables past `MaxObjects` are refused (`error.document_too_complex`) and leave no file; pictures past
+  `MaxPartBytes` or claiming more than `MaxPicturePixels` are left out before anything decodes them; cancelling stops
+  the write and removes its temporary files.
+- Tests: `RtfWriterTests` builds models in code, writes them and reads them back with the RTF reader into the same
+  model (`HDocumentAssert.Similar`), checks the file is valid RTF (one balanced `{\rtf1` group, ASCII only), the
+  Unicode fallbacks, the fonts and their other names, the routes, and the refusals.
+
+Not yet: floating pictures stay in the text (no `\shp` with a picture), picture crops and rotation, first-page
+headers' own content when the model has none (`\headerf` repeats the others), paragraph styles other than Normal
+and the headings, table and paragraph borders other than solid lines on all sides, comments and tracked changes.
+Checked by reading the files back with Filee's RTF reader, not with Word or LibreOffice.
 
 ## DOC reader
 
@@ -1909,7 +1980,7 @@ Checked against decks built from the specification, not against files PowerPoint
 
 ## ODP / ODG reader
 
-OpenDocument presentations (`.odp`, templates `.otp`, flat `.fodp`) and drawings (`.odg`, flat `.fodg`) are read
+OpenDocument presentations (`.odp`, templates `.otp`, flat `.fodp`) and drawings (`.odg`, templates `.otg`, flat `.fodg`) are read
 in-process into the slide model, written from OpenDocument 1.3 Part 3 (`Odf/Draw`), without LibreOffice:
 presentations to PDF, PNG and JPG through the [slide renderer](#filee-renderer-slides) (the Filee renderer,
 `Slides/SlideFormats.cs`), drawings to PDF, SVG and PNG through the [drawing engine](#drawings-visio-odg).
@@ -2065,8 +2136,10 @@ same model, which the tests check shape by shape and as pictures.
   columns and turned text (`draw:text-rotate-angle`).
 - **Routes.** Its edges cost 8, as the PPTX writer's, below LibreOffice's fallback (25), and are `DirectOnly`. Deck
   edges are checked with the renderer's capability check (charts without a picture, effects, 3D, WordArt, …), so such
-  a deck keeps LibreOffice's route where it is installed. OpenDocument presentations (ODP, OTP, FODP) are not
-  sources: ODP → PPTX and the template formats stay with LibreOffice.
+  a deck keeps LibreOffice's route where it is installed. Every source also goes to OTP and FODP: the writer
+  writes the ODP and turns it into the template or the flat file (`Odf/OdfVariants.cs`), since a `DirectOnly`
+  edge can't lead on. OpenDocument presentations (ODP, OTP, FODP) are not sources: they become each other through
+  the [forms engine](#opendocument-templates-and-flat-files), and ODP → PPTX stays with LibreOffice.
 - **Hostile input:** the model comes from the bounded readers; the writer caps the XML it makes (512 million
   characters), group nesting (`MaxNestingDepth`) and the pictures' bytes (`MaxPackageBytes`), refused with
   `error.document_too_complex`; non-finite boxes and turns are left out, coordinates cut at ±10 km, characters XML
@@ -2077,7 +2150,7 @@ same model, which the tests check shape by shape and as pictures.
 
 Not yet: shapes as placeholders (`presentation:class`; the model doesn't say which shapes were), the preset name and
 adjust handles of a shape (its outline is written, not the formula), shadows and other effects, charts, SmartArt as
-anything but its drawing, animations and transitions, compound lines, ODG output, OTP and FODP output. Checked against
+anything but its drawing, animations and transitions, compound lines, ODG output. Checked against
 Filee's own reader; not yet opened in LibreOffice by the tests.
 
 ## PDF reader
@@ -2612,20 +2685,111 @@ wrote it (PDFsharp, rhwp, LibreOffice, Ghostscript …), and once on a merged PD
 ## PDF/A
 
 A preset with *PDF/A (archival)* ticked (`DocumentOptions.PdfA`; the built-in "PDF/A" preset, #1367) makes every PDF
-it writes a PDF/A-2b, PDF → PDF too. `JobQueue` runs `IPdfArchiver` (Ghostscript) after the finishing, on each PDF a
-file became and once on a merged PDF, so the box means the same whichever engine wrote the PDF.
+it writes a PDF/A-2b, PDF → PDF too. `JobQueue` runs the `IPdfArchiver`s after the finishing, on each PDF a file
+became and once on a merged PDF, so the box means the same whichever engine wrote the PDF. They are tried in engine
+order (PDFsharp before Ghostscript by default): one that refuses a PDF (`ConversionRefusedException`) hands it to the
+next.
 
-- **Already PDF/A**: LibreOffice (`SelectPdfVersion` 2) and SVG → PDF (Skia) write PDF/A themselves. A PDF whose
-  catalog XMP has `pdfaid:part` is kept as it is, unless a watermark or page numbers were added since: then it is
-  rewritten like any other.
-- **Ghostscript** (`GhostscriptConverter.ConvertToPdfAAsync`): `pdfwrite` with `-dPDFA=2 -dPDFACompatibilityPolicy=1
-  -sColorConversionStrategy=RGB`, after a small PostScript prelude (as Ghostscript's `PDFA_def.ps`) that adds the sRGB
-  output intent; the profile is Magick.NET's sRGB, written into the prelude as a hex string so safe mode needn't read
-  a file. Colours become RGB, fonts are embedded, what PDF/A forbids is left out (policy 1), and a tagged PDF loses its
-  tags (part B doesn't need them).
-- **Without Ghostscript**: a preset whose files are all PDFs is greyed out with the usual engine reason. Other files
-  are converted and the PDF is left as it is, with `notice.pdfa_needs_ghostscript` in the result, unless LibreOffice
-  made it PDF/A.
+- **Already PDF/A**: the Filee renderer (below), LibreOffice (`SelectPdfVersion` 2) and SVG → PDF (Skia) write PDF/A
+  themselves. A PDF whose catalog XMP has `pdfaid:part` is kept as it is, unless a watermark or page numbers were
+  added since: then it is rewritten like any other.
+- **Built in** (`PdfSharpConverter.ArchiveAsync` → `Pdf/PdfAConformance.cs`, `PdfAMetadata.cs`): the PDF is opened with
+  PDFsharp and changed in place to keep the PDF/A-2b rules (ISO 19005-2), form fields staying fields:
+  - one `GTS_PDFA1` output intent: a CMYK or RGB PDF/A intent the PDF already has for the device colours it draws in
+    (a PDF/X file keeps its CMYK profile), else **sRGB made in code** (`SrgbProfile`, below); PDFsharp's page
+    transparency groups get the intent's colour space;
+  - no encryption, no LZW (unpacked and deflated), no external stream data; graphics states lose `TR`, `TR2` (but
+    `/Default`), `HT`, `HTO`, unknown `RI` and blend modes; pictures lose `Alternates`, `OPI`, `Interpolate`; forms
+    lose `OPI`, `PS`, `Ref`;
+  - annotations: 3D, sound, screen, movie, rich media, file attachments and hidden ones go; the rest print and keep
+    only their normal appearance (a button's single stream becomes its one state, a state set outside buttons the
+    state shown); popups lose flags PDF/A forbids;
+  - JavaScript, launch and the other forbidden actions (also in `/Next` chains, open actions, outlines), every `AA`,
+    the actions of fields and widgets, XFA, `NeedAppearances`, embedded files, alternate presentations, `PresSteps`,
+    `Requirements`, `Collection`, other `Perms` than UR3/DocMDP, XMP of pages and pictures; optional-content
+    configurations get unique names, no `AS`, and an `Order` that lists every group; CIDFontType2 gets
+    `CIDToGIDMap /Identity` when it has none; PDF 2.0 is written as 1.7.
+
+  Saving: PDFsharp always replaces `/Metadata` with an XMP packet of its own (no `pdfaid`, dates that don't always
+  match) and puts its name in the producer, and it can't be told not to (`SetPdfA` claims PDF/A-1a). So the PDF is
+  saved by PDFsharp, then an **incremental update** (which PDF/A allows) writes the document information and the XMP
+  packet again under their own object numbers: `pdfaid:part 2`, `conformance B`, title, author, subject, keywords,
+  creator tool, producer and dates the same in both (text cleaned of what XML can't carry, so both always match),
+  the trailer's `/ID` kept, `/Prev` to PDFsharp's table. Custom information entries and `Trapped` are dropped.
+
+  It **refuses** (`pdfa.reason.*`, the PDF left as it is) a font drawn with that isn't embedded (any font listed in a
+  `/Resources` dictionary; a form's `/DR` doesn't count), device CMYK without a CMYK intent or CMYK and RGB together,
+  an annotation or field without its own appearance (but links, popups, zero-size ones), XFA-only forms, PostScript
+  XObjects, external stream data, LZW mixed with filters PDFsharp can't unpack, inline pictures with LZW or
+  interpolation, content streams it can't read, a password-protected PDF, and (`error.document_too_complex`) more
+  than `MaxObjects` objects or more content than `PdfFontUses` reads.
+
+  **Not checked**: that embedded fonts hold every glyph drawn and their widths match the dictionary, TrueType
+  symbolic/non-symbolic encodings and cmaps, the document's own ICC-based colour spaces, JPEG 2000 specifics, halftone
+  details beyond dropping `HT`, the implementation limits (string, name and number sizes, `q` nesting), page-level
+  colour spaces through `DefaultCMYK`, and content stream operators outside ISO 32000-1. Conformance is tested by a
+  structural check of the rules above (`tests/Filee.Engines.Tests/PdfA2bChecks.cs`); veraPDF isn't run.
+- **sRGB profile** (`Pdf/SrgbProfile.cs`): built from the numbers of IEC 61966-2-1 rather than shipped: primaries
+  and D65 adapted to D50 with the Bradford transform, the sRGB curve sampled at 1024 points shared by the three
+  channels, an ICC version 2.1 display profile of about 2.3 KB with the description "sRGB IEC61966-2.1" and the
+  copyright "No copyright, use freely". No one's profile file is copied, so there is no licence to carry; skcms
+  (Skia) reads it as sRGB's gamut and curve.
+- **Filee renderer** (`PdfPageWriter`, `PdfDocumentInfo.PdfA`): DOCX, HWP/HWPX, sheets, slides and drawings drawn by
+  the renderer are written as PDF/A-2b directly: Skia's PDF/A mode, then the PDFsharp pass with `PdfAConformance` and
+  `PdfAMetadata`, creator and producer "Filee". Fonts are already embedded and subset with ToUnicode maps, links get
+  the print flag. Should the pass refuse, the plain PDF is written and the job queue's archivers try again.
+- **Ghostscript** (`GhostscriptConverter.ConvertToPdfAAsync`), for what the built-in one refuses: `pdfwrite` with
+  `-dPDFA=2 -dPDFACompatibilityPolicy=1 -sColorConversionStrategy=RGB`, after a small PostScript prelude (as
+  Ghostscript's `PDFA_def.ps`) that adds the sRGB output intent; the profile is Magick.NET's sRGB, written into the
+  prelude as a hex string so safe mode needn't read a file. Colours become RGB, fonts are embedded, what PDF/A forbids
+  is left out (policy 1), form fields become page content, and a tagged PDF loses its tags (part B doesn't need them).
+- **When none makes it PDF/A**: the PDF is left as it is, with `notice.pdfa_needs_ghostscript` and the built-in one's
+  reason in brackets. A preset whose files are all PDFs is greyed out only when neither PDFsharp nor Ghostscript is
+  among the engines.
+
+## OpenDocument templates and flat files
+
+An OpenDocument type comes in three forms (OpenDocument 1.3 Part 2 and Part 3): the package (`.odt`, `.ods`, `.odp`,
+`.odg`), the template (`.ott`, `.ots`, `.otp`, `.otg`: the same package with the `-template` media type) and the flat
+XML file (`.fodt`, `.fods`, `.fodp`, `.fodg`: one `office:document` with meta, settings, scripts, font faces, styles,
+automatic styles, master styles and body, pictures as base64 `office:binary-data` and embedded objects as
+`office:document`s inside `draw:object`). `OdfVariantConverter` (engine `odf-variants`, cost 2) turns each form into
+the others of its type without LibreOffice and without reading the document into a model (`Odf/OdfVariants.cs`,
+`Odf/OdfFlat.cs`), so macros, settings, thumbnails and everything the readers don't know stay:
+
+- **Package ↔ template:** every part copied as it is through `DocumentPackage`, with the new media type in `mimetype`
+  (first, stored) and on the manifest's root entry.
+- **Package → flat file:** the parts put together; the automatic styles of `styles.xml` that have the name of one in
+  `content.xml` are renamed (with the references in its automatic and master styles) so both fit in one element; each
+  picture and OLE object an `xlink:href` names inside the package becomes `office:binary-data`, each object folder
+  (`Object 1/`, a chart) an `office:document` with the media type from the manifest.
+- **Flat file → package:** the reverse: `content.xml`, `styles.xml` (both with the automatic styles and font faces),
+  `meta.xml`, `settings.xml`, a part under `Pictures/` per picture (one for a picture stored more than once, named by
+  its signature: PNG, JPEG, GIF, BMP, TIFF, WebP, EMF, WMF, SVG), an `Object N/` folder per embedded document, and the
+  manifest. Pictures that aren't base64 are left out, as the readers leave them out.
+
+The readers read every form: the ODT reader takes `.ott`, the spreadsheet reader `.ots`, the ODP / ODG reader the
+templates and flat files itself; a `.fodt` or `.fods` is read as the package it splits into, in a temporary file
+(`OdfVariants.AsPackage`), so FODT / OTT go to PDF through the Filee renderer, to DOCX, HWPX, PPTX, ODP and tables
+through the writers, and FODS / OTS to PDF through sheet printing and to XLSX / CSV / TSV. The renderer and sheet
+printing check a flat file as that package. Out: DOCX → ODT (ODT writer) → OTT / FODT, XLSX → ODS (spreadsheet engine)
+→ OTS / FODS; the ODP writer writes OTP and FODP itself. All of it costs far less than LibreOffice's fallback, whose
+FODT and template edges stay for the formats only it reads.
+
+- **Hostile input:** a flat file is read through `SafeXml` within `DocumentLimits`' XML depth and element counts and
+  at most four times what a package part may hold (256 MB, as the ODP / ODG reader reads one); a picture decodes to at
+  most a part (64 MB), all pictures to at most the package size, in at most as many parts as a package may have,
+  objects at most `MaxObjects` and eight deep. A package is read through `DocumentPackage` (part, package and inflate
+  limits); the flat file made from it may hold at most what a flat file may be read with, so a picture used again and
+  again can't make it grow without end. Each refusal is `error.document_too_complex`; another type's media type,
+  damaged XML and encrypted packages are refused with their reason.
+- Tests: `OdfVariantTests` (packages built in code by `OdtBuilder` / `OdpBuilder` / the ODS writer: round trips with
+  text, pictures, styles and a chart object, the readers, routes, DOCX and PPTX conversions, hostile flat files and
+  packages) and `OdfVariantFuzzTests` (mutated flat texts and spreadsheets, mutated packages turned flat).
+
+Not yet: a flat file's `office:binary-data` in elements other than pictures, fill images, background images, list
+images and OLE objects is dropped; a flat file is read as its document even when it says it is a template. Checked
+against Filee's own readers; not yet opened in LibreOffice by the tests.
 
 ## Office Open XML variants
 
@@ -2857,7 +3021,7 @@ its reader, one line in `Drawings/DrawingFormats.cs`:
   rows, groups, connectors (the geometry they carry) and pictures (Foreign shapes: PNG, JPEG, GIF, BMP, TIFF, EMF,
   WMF). Cells, geometry and text are inherited from master shapes and style sheets; colours by index come from the
   document's colour table, fonts from its face names. Only stored values (`V`) are read; formulas aren't calculated.
-- **ODG and FODG** (OpenDocument drawings, packaged and flat): the [ODP / ODG reader](#odp--odg-reader).
+- **ODG, OTG and FODG** (OpenDocument drawings, packaged, templates and flat): the [ODP / ODG reader](#odp--odg-reader).
 - **XPS and OpenXPS** (`.xps`, `.oxps`, format id `xps`): not slides; the [XPS reader](#xps-and-openxps-reader) draws
   its pages straight into the page model (`DrawingFormat.ReadPages`, `IFixedPages`).
 - **Excel chart templates** (`.crtx`, format id `crtx`, #1354): `ChartTemplate`, one page of Excel's default chart size
@@ -3933,9 +4097,8 @@ all expected bytes have been written; failures and cancellation preserve any pre
 - Each parallel worker gets its own profile under `%APPDATA%\Filee\libreoffice-profiles` (LibreOffice silently
   fails when two conversions share a profile).
 - LibreOffice doesn't open HWP or HWPX: Filee reads them itself ([HWP reader](#hwp-reader), [HWPX
-  reader](#hwpx-reader)) and writes DOCX, ODT, HWPX, TXT, Markdown, HTML and EPUB with its own writers; PDF is the
-  Filee renderer's (rhwp's with it off). Only HWP → RTF still takes an optional engine, as there is no built-in RTF writer: Filee
-  writes Markdown that Pandoc turns into RTF, or, without Pandoc, DOCX or ODT that LibreOffice does. Until settings
+  reader](#hwpx-reader)) and writes DOCX, ODT, RTF, HWPX, TXT, Markdown, HTML and EPUB with its own writers; PDF is the
+  Filee renderer's (rhwp's with it off), and RTF with the [RTF writer](#rtf-writer). Until settings
   schema 101 LibreOffice opened HWP with the H2Orestart extension (GPL, Java) and a Java runtime downloaded with it
   (about 50 MB, 130 MB on disk); Filee removes the copies an earlier version installed (`EngineInstaller.RemoveRetired`,
   at start-up), and whoever had *Use LibreOffice for HWP·HWPX → PDF* on gets the Filee renderer instead.
@@ -3959,19 +4122,19 @@ all expected bytes have been written; failures and cancellation preserve any pre
 - It is the only reader of rarer formats, converted to PDF and to the editable formats of their kind: Word 6.0 / 95
   and Microsoft Works documents (a `.doc`, `.dot` or `.wps` the [DOC reader](#doc-reader) names as such), WordPerfect,
   Lotus Word Pro, AbiWord, Apple Pages, StarWriter, ClarisWorks / AppleWorks (`.cwk`), MacWrite (`.mcw`), T602
-  (`.602`) and Pocket Word (`.psw`) (→ DOCX, ODT, FODT, OTT, DOC, RTF, TXT, HTML); WPS Spreadsheets (ET), Apple Numbers, StarCalc and flat ODS (`.fods`) (→ XLSX, ODS, OTS, XLS, XLT, CSV, HTML); XLSB too, where the built-in reader has no route (→ XLS, XLT, OTS) and for a workbook with what the print engine doesn't draw; Apple
+  (`.602`) and Pocket Word (`.psw`) (→ DOCX, ODT, DOC, RTF, TXT, HTML, and on to OTT and FODT); WPS Spreadsheets (ET), Apple Numbers and StarCalc (→ XLSX, ODS, XLS, XLT, CSV, HTML, and on to OTS and FODS); XLSB too, where the built-in reader has no route (→ XLS, XLT) and for a workbook with what the print engine doesn't draw; Apple
   Keynote, WPS Presentation (DPS), StarImpress / StarDraw and PowerPoint 95 and older PPT (→ PPTX, ODP, OTP, PPT);
-  Publisher, CorelDRAW, binary Visio (`.vsd`) and CGM (→ ODG, SVG, PNG, EMF, WMF). VSDX, ODP, FODP, ODG and FODG
-  are read by Filee itself ([Drawings](#drawings-visio-odg), [ODP / ODG reader](#odp--odg-reader)); LibreOffice keeps
+  Publisher, CorelDRAW, binary Visio (`.vsd`) and CGM (→ ODG, SVG, PNG, EMF, WMF). VSDX, ODP, OTP, FODP, ODG, OTG and FODG
+  are read by Filee itself (FODT, OTT, FODS and OTS too, by the text and spreadsheet readers) ([Drawings](#drawings-visio-odg), [ODP / ODG reader](#odp--odg-reader)); LibreOffice keeps
   them when their check names what Filee doesn't draw yet (charts, OLE objects, 3D), and converts them to the editable
   formats (ODP → PPTX, ODG → EMF, …). The `--convert-to`
   filter follows the application that opens the file (checked against LibreOffice's filter registry): Publisher,
   CorelDRAW and Visio open in Draw, CGM in Impress, and "SDA" files in Draw (.sda) or Impress (.sdd). ClarisWorks
   files can also be spreadsheets or drawings; Filee treats them as text documents, the common case. SVG, PNG, EMF
   and WMF export the first page.
-- Written only by LibreOffice: FODT (`OpenDocument Text Flat XML`), the OpenDocument templates OTT / OTS / OTP
-  (`writer8_template`, `calc8_template`, `impress8_template`) and XLT (`MS Excel 97 Vorlage/Template`). XLT is read
-  by the built-in spreadsheet engine like XLS.
+- Written only by LibreOffice: XLT (`MS Excel 97 Vorlage/Template`), read by the built-in spreadsheet engine like
+  XLS. Its FODT and template filters (`OpenDocument Text Flat XML`, `writer8_template`, `calc8_template`,
+  `impress8_template`) stay as edges, but the [forms engine](#opendocument-templates-and-flat-files) costs less.
 - SVG opens in Draw only for EMF, WMF and ODG; the vector engine keeps SVG → PDF and images. PDF opens in Draw
   (`draw_pdf_import`) only for SVG and ODG: Draw's SVG export draws every page of a PDF on top of each other, so Filee
   first copies the first page of the preset's page range into a PDF of its own (PDFsharp). EPS and PS reach SVG
@@ -4238,11 +4401,44 @@ SRT or SAMI file in CP949 comes out as UTF-8).
 
 ## DjVu
 
-Not supported: DjVuLibre (GPL) has no pinned, redistributable Windows build in an archive the installer can unpack.
-The official Windows release is an NSIS installer (`DjVuLibre-3.5.29_DjView-4.12_Setup.exe` on SourceForge), which
-would have to be run (a system install) or unpacked with 7-Zip; MSYS2's packages are `.pkg.tar.zst` archives with
-five dependency packages. A DjVu engine needs a zip of `ddjvu.exe` / `djvutxt.exe` and their DLLs published for
-Filee (with the GPL source offer), then an `engines.json` component and an optional package.
+Built in (#346), in `Djvu/`, written from the DjVu v3 specification (engine id `djvu`, format id `djvu` for `.djvu`
+and `.djv`, documents donut). `DjvuConverter` turns a DjVu document into **PDF** (every page) and into **PNG, JPG and
+TIFF** pictures of its pages (the PDF options' page range, each page at its own resolution, then the image options;
+TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from the PDF.
+
+- **Container:** IFF85 (`AT&T`, then a FORM chunk). One page (`FORM:DJVU`) or a bundled document (`FORM:DJVM`): the
+  `DIRM` directory (versions 0 and 1, its BZZ tables of sizes, flags and names) gives the components at their offsets
+  — pages, included files (`FORM:DJVI`) and thumbnails (skipped). An **indirect** document (pages in separate files)
+  is refused with `error.djvu_indirect`, which says to bundle it in a DjVu viewer first. A file cut short keeps the
+  chunks it still holds.
+- **Page:** `INFO` (size, resolution 25–6000 dpi, else 300; rotation → the PDF page's `/Rotate`, the picture turned),
+  `INCL` (followed depth first, each file once, so include loops end), the mask `Sjbz` with its shared dictionary
+  `Djbz` (in the page or an included file; a dictionary may build on another; decoded once per file and kept for the
+  next pages), the background `BG44` (or `BGjp`), foreground colours `FG44` (or `FGjp`) or the palette `FGbz`
+  (colours and a colour per shape), hidden text `TXTz` / `TXTa`.
+- **Decoders:** the ZP-coder (the specification's probability table), BZZ (block sort transform, move-to-front with
+  the specification's rank estimator), JB2 (all record types: new shapes coded directly, refinements against library
+  shapes, copies, non-mark data, comments, dictionary requests and number-coder resets) and IW44 (luminance and
+  chrominance maps of 32 × 32 blocks, all bands and slices over several chunks, chrominance at half resolution or
+  starting late, the backward lifting transform, the YCbCr transform; grey pictures).
+- **Composition:** the background scaled up to the page (bilinear, by the reduction its size gives), then each mask
+  pixel in its foreground colour (the FG44 picture, the shape's palette colour, or black); white without a background.
+- **PDF:** the layers stay layers (`DjvuPdfWriter`), so a scanned book stays small: the background as a JPEG at its
+  own resolution, the mask as 1-bit image masks (Flate) painted in their colour — one per palette colour, or the FG44
+  picture shown through the mask (explicit masking). A page with more than 64 palette colours is one JPEG. The hidden
+  text's lines and words become an invisible text layer (the OCR layer's glyphless font, `Ocr/OcrTextLayer.cs`), so
+  the PDF can be searched and its text copied in any script.
+- **Limits** (`DjvuLimits`, refusals with `error.document_too_complex`): 20,000 pages and 40,000 components; 64 MB per
+  chunk and per BZZ stream; 150 million pixels per page; 64 million pixels per IW44 picture and 10,000 slices;
+  2 million shapes, 4 million placed shapes and 400 million shape pixels per mask (counted before a shape is
+  allocated); 20 million number-coder cells; 2 million text zones; 65,535 palette colours. Decoding is iterative (no
+  recursion over files or zones) and checks cancellation.
+- **Left out:** `Smmr` masks (G4), JPEG 2000 layers (`BG2k`, `FG2k`) and JPEG layers Skia can't decode are counted as
+  pictures left out in the file's result. Not read: annotations (`ANTa`/`ANTz`: hyperlinks, highlights, background
+  colour), bookmarks (`NAVM`), thumbnails, standalone IW44 files (`FORM:PM44`/`BM44`), and hidden text of a page with
+  no zones below the page.
+- Tests (`DjvuTests.cs`, `DjvuFuzzTests.cs`) build every file in code: `DjvuBuilder.cs` has encoders for each piece
+  (ZP-coder, BZZ, JB2, IW44 with the forward transform, text zones, palettes, the bundled directory).
 
 ## FFmpeg
 

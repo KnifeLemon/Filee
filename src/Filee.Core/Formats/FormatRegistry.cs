@@ -94,10 +94,12 @@ public static class FormatRegistry
         // Tajima embroidery designs: the stitches drawn as lines (issue #397).
         new("dst", "DST", FormatCategory.Vector, ["dst"], Writable: false),
         new("odg", "ODG", FormatCategory.Vector, ["odg"]),
+        // OpenDocument drawing templates: the ODG package with the template media type.
+        new("otg", "OTG", FormatCategory.Vector, ["otg"]),
         // Obsidian's visual boards (JSON Canvas 1.0): cards, groups and the lines between them, read by Filee itself and
         // drawn as SVG (then PDF and pictures), or their text as Markdown. A .canvas that isn't one is refused.
         new("canvas", "Obsidian Canvas", FormatCategory.Vector, ["canvas"], Writable: false),
-        new("fodg", "FODG", FormatCategory.Vector, ["fodg"], Writable: false),
+        new("fodg", "FODG", FormatCategory.Vector, ["fodg"]),
         // Excel chart templates (#1354): the chart drawn by the drawing engine (PDF, SVG, PNG), sample values where the
         // template holds none, as Excel's template preview shows it.
         new("crtx", "CRTX", FormatCategory.Vector, ["crtx"], Writable: false),
@@ -124,6 +126,8 @@ public static class FormatRegistry
         new("udf", "UYAP (UDF)", FormatCategory.Document, ["udf"], Writable: false),
         // XPS and OpenXPS (ECMA-388) fixed-layout documents (#613), read by the built-in XPS reader (drawing engine).
         new("xps", "XPS", FormatCategory.Document, ["xps", "oxps"], Writable: false),
+        // DjVu scanned books and documents (#346), one page or bundled, read by the built-in DjVu reader.
+        new("djvu", "DjVu", FormatCategory.Document, ["djvu", "djv"], Writable: false),
         // Mind maps (#1543, #1004), read by Filee itself as an outline: topics as headings and lists, notes under them (the
         // map isn't drawn). A .mm that isn't XML is Objective-C++ source, read as plain text.
         new("mm", "FreeMind / Freeplane (MM)", FormatCategory.Document, ["mm"], Writable: false),
@@ -158,7 +162,7 @@ public static class FormatRegistry
         new("xlt", "XLT", FormatCategory.Spreadsheet, ["xlt"]),
         new("ods", "ODS", FormatCategory.Spreadsheet, ["ods"]),
         new("ots", "OTS", FormatCategory.Spreadsheet, ["ots"]),
-        new("fods", "FODS", FormatCategory.Spreadsheet, ["fods"], Writable: false),
+        new("fods", "FODS", FormatCategory.Spreadsheet, ["fods"]),
         new("csv", "CSV", FormatCategory.Spreadsheet, ["csv"]),
         new("tsv", "TSV", FormatCategory.Spreadsheet, ["tsv", "tab"]),
         new("et", "ET", FormatCategory.Spreadsheet, ["et"], Writable: false),
@@ -174,7 +178,7 @@ public static class FormatRegistry
         new("ppt", "PPT", FormatCategory.Presentation, ["ppt", "pps", "pot"]),
         new("odp", "ODP", FormatCategory.Presentation, ["odp"]),
         new("otp", "OTP", FormatCategory.Presentation, ["otp"]),
-        new("fodp", "FODP", FormatCategory.Presentation, ["fodp"], Writable: false),
+        new("fodp", "FODP", FormatCategory.Presentation, ["fodp"]),
         new("key", "Keynote", FormatCategory.Presentation, ["key"], Writable: false),
         new("dps", "DPS", FormatCategory.Presentation, ["dps"], Writable: false),
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),

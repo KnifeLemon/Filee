@@ -334,9 +334,10 @@ public interface IPdfFinisher
 }
 
 /// <summary>
-/// Makes a finished PDF a PDF/A (<see cref="Presets.DocumentOptions.PdfA"/>). Implemented by the Ghostscript engine;
-/// <see cref="JobQueue"/> runs it after the finishing on every PDF a job writes, whichever engine made it, and on a
-/// merged PDF once, so the box means the same for every route.
+/// Makes a finished PDF a PDF/A (<see cref="Presets.DocumentOptions.PdfA"/>). Implemented by the PDF engine (built in)
+/// and the Ghostscript engine; <see cref="JobQueue"/> runs them after the finishing on every PDF a job writes,
+/// whichever engine made it, and on a merged PDF once, so the box means the same for every route. They are tried in
+/// engine order until one makes the PDF PDF/A.
 /// </summary>
 public interface IPdfArchiver
 {
@@ -346,6 +347,8 @@ public interface IPdfArchiver
     /// </summary>
     /// <returns>What it did; <see cref="PdfArchiveOutcome.NotArchived"/> when it can't (Ghostscript isn't installed):
     /// the PDF is left as it is.</returns>
+    /// <exception cref="ConversionRefusedException">This PDF can't be made to conform here (its error key says why);
+    /// the PDF is left as it is and the next archiver gets it.</exception>
     Task<PdfArchiveOutcome> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken);
 }
 

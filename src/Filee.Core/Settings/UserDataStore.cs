@@ -1236,6 +1236,12 @@ internal static class SettingsMigrations
         // v109: Excel chart templates (.crtx, #1354) learn the vector donut; custom claims stay put.
         if (from < 109)
             changed |= LearnExtensions(profiles, out _, ["crtx"]);
+        // v111: OpenDocument drawing templates (.otg) learn the vector donut; custom claims stay put.
+        if (from < 111)
+            changed |= LearnExtensions(profiles, out _, ["otg"]);
+        // v112: DjVu documents (.djvu, .djv, #346) learn the documents donut; custom claims stay put.
+        if (from < 112)
+            changed |= LearnExtensions(profiles, out _, ["djvu", "djv"]);
         return changed;
     }
 

@@ -2,7 +2,7 @@
 // into the slide model (one slide per page, the page's size as the slide's) and, when the reader draws only part of
 // what the format can hold, a check that names the first thing it can't draw (once the converter's edges are Checked,
 // see DrawingConverter, such a file keeps the route it would take without the converter, LibreOffice Draw). The
-// readers add their line here: VSDX (Visio/), ODG / FODG (Odf/Draw), XPS / OpenXPS (Xps/), chart templates (Charts/).
+// readers add their line here: VSDX (Visio/), ODG / OTG / FODG (Odf/Draw), XPS / OpenXPS (Xps/), chart templates (Charts/).
 //
 // Fixed-layout documents (XPS) and chart templates are not slides: their reader draws pages straight into the page model (IFixedPages).
 
@@ -56,8 +56,10 @@ internal static class DrawingFormats
     [
         // Format id vsd is both .vsdx and binary .vsd: the binary one is left to LibreOffice Draw.
         new("vsd", VisioReader.Read, VisioReader.FirstUnsupported),
-        // OpenDocument drawings, packaged and flat; charts, OLE objects and 3D scenes are left to LibreOffice Draw.
+        // OpenDocument drawings, packaged, templates and flat; charts, OLE objects and 3D scenes are left to LibreOffice
+        // Draw (a template through the ODG it becomes, OdfVariantConverter).
         new("odg", (path, token) => OdfDrawReader.Read(path, cancellationToken: token), path => OdfDrawReader.FirstUnsupported(path)),
+        new("otg", (path, token) => OdfDrawReader.Read(path, cancellationToken: token), path => OdfDrawReader.FirstUnsupported(path)),
         new("fodg", (path, token) => OdfDrawReader.Read(path, cancellationToken: token), path => OdfDrawReader.FirstUnsupported(path)),
         // XPS and OpenXPS documents (.xps, .oxps): Filee's own reader draws every page.
         new("xps", null) { ReadPages = (path, token) => XpsDocument.Open(path, token) },

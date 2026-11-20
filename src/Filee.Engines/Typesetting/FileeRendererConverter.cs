@@ -55,17 +55,18 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// </summary>
     private static readonly string[] Documents =
     [
-        "hwpx", "hwp", "docx", "docm", "dotx", "dotm", "doc", "dot", "wps", "odt", "rtf", "txt", "md", "html", "mhtml",
+        "hwpx", "hwp", "docx", "docm", "dotx", "dotm", "doc", "dot", "wps", "odt", "ott", "fodt", "rtf", "txt", "md", "html", "mhtml",
         "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "chm", "pdb", "pml", "tcr", "rb", "snb", "oeb",
         "ipynb", "opml", "textile", "mediawiki", "rst", "org", "dbk", "csv", "tsv", "ofd", "udf", "mm", "xmind",
     ];
 
     /// <summary>
     /// Word processor files left to LibreOffice when Settings → Engines chooses it for Word documents: the ones its chosen
-    /// edge reads (10 + 9, which loses to this engine's 1 + 9). The variants (DOCM, DOTX, DOTM, DOT, WPS) stay: LibreOffice
-    /// takes them only at its fallback cost, so without this engine they would go to the HWPX writer and rhwp instead.
+    /// edge reads (10 + 9, which loses to this engine's 1 + 9), the OpenDocument template and flat file among them. The
+    /// variants (DOCM, DOTX, DOTM, DOT, WPS) stay: LibreOffice takes them only at its fallback cost, so without this
+    /// engine they would go to the HWPX writer and rhwp instead.
     /// </summary>
-    private static readonly string[] WordProcessor = ["docx", "doc", "odt", "rtf"];
+    private static readonly string[] WordProcessor = ["docx", "doc", "odt", "ott", "fodt", "rtf"];
 
     /// <summary>
     /// Tables left to LibreOffice when Settings → Engines chooses it for spreadsheets, as XLSX goes to it. Not TSV, which
@@ -148,7 +149,9 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
             return HwpUnsupported(sourcePath);
         if (DocumentReaders.Checked(sourceFormat))
             return DocReader.Unsupported(sourcePath) ?? DocUnsupported(sourcePath);
-        var markers = sourceFormat == "hwpx" ? HwpxMarkers : sourceFormat == "odt" ? OdtMarkers : WordFormats.Contains(sourceFormat) ? WordMarkers : null;
+        if (sourceFormat == "fodt")
+            return FlatUnsupported(sourcePath);
+        var markers = sourceFormat == "hwpx" ? HwpxMarkers : sourceFormat is "odt" or "ott" ? OdtMarkers : WordFormats.Contains(sourceFormat) ? WordMarkers : null;
         if (markers is null)
             return null;
         // Parts are read through the document limits (counted as they unpack, whatever their headers claim); a package
@@ -274,6 +277,19 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         }
     }
 
+    /// <summary>A flat OpenDocument text looked through as the ODT package it splits into (as an HWP is, above).</summary>
+    private string? FlatUnsupported(string sourcePath)
+    {
+        try
+        {
+            return Odf.OdfVariants.Read(sourcePath, "fodt", Path.GetTempPath(), package => FirstUnsupported(package, "odt"));
+        }
+        catch (Exception ex) when (ex is InvalidDataException or ConversionRefusedException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>A Word 97–2003 document looked through as the DOCX package it becomes (as an HWP is, above).</summary>
     private string? DocUnsupported(string sourcePath)
     {
@@ -342,7 +358,8 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
 
         // Reading takes the first fifth; pages written the rest.
         var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
-        var pdf = await Task.Run(() => FileeRenderer.ToPdf(document, cancellationToken, styles: styles, progress: pages), cancellationToken);
+        var pdf = await Task.Run(() => FileeRenderer.ToPdf(document, cancellationToken, styles: styles, progress: pages,
+            pdfA: step.Preset.Document.PdfA), cancellationToken);
         var target = step.Output.Allocate("pdf");
         if (target is null)
             return [];
@@ -395,7 +412,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
         if (step.To == "pdf")
         {
-            var pdf = await Task.Run(() => SlideOutput.ToPdf(deck, pages, cancellationToken), cancellationToken);
+            var pdf = await Task.Run(() => SlideOutput.ToPdf(deck, pages, cancellationToken, step.Preset.Document.PdfA), cancellationToken);
             if (step.Output.Allocate("pdf") is not { } target)
                 return [];
             await File.WriteAllBytesAsync(target, pdf, cancellationToken);

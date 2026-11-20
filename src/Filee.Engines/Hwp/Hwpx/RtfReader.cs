@@ -42,6 +42,9 @@ internal sealed partial class RtfReader
         Picture,
         FieldInstruction,
         BookmarkStart,
+
+        /// <summary>The other name of the font being defined (\falt).</summary>
+        FontAlternate,
     }
 
     /// <summary>Where text and paragraphs go: the body of a section, a note, a header or a footer.</summary>
@@ -79,9 +82,11 @@ internal sealed partial class RtfReader
     /// <param name="Left">\li and \ri: the left and right side.</param>
     /// <param name="Start">\lin and \rin: the start and end side (the right and left one in a right-to-left paragraph); they win.</param>
     /// <param name="RightToLeft">\rtlpar.</param>
+    /// <param name="Tabs">Tab stops (\tx, measured from the margin, with their kind and leader), or null.</param>
+    /// <param name="TabKind">The kind and leader the next \tx takes (\tqr, \tldot ...).</param>
     private record struct ParaProps(HAlign? Align, int Left, int Right, int FirstLine, int Before, int After, int Line, bool Multiple,
         bool KeepNext, bool Keep, bool PageBreakBefore, bool InTable, int Style, int ListOverride, int ListLevel, int Outline,
-        int? Start = null, int? End = null, bool RightToLeft = false)
+        int? Start = null, int? End = null, bool RightToLeft = false, TabList? Tabs = null, (HTabKind Kind, string? Leader) TabKind = default)
     {
         public static ParaProps Default => new() { Style = -1, ListOverride = -1, Outline = -1 };
     }
@@ -141,6 +146,7 @@ internal sealed partial class RtfReader
     private int _fontCharset = -1;
     private int _fontCodePage;
     private readonly StringBuilder _collected = new();
+    private readonly StringBuilder _fontAlternate = new();
     private int _red, _green, _blue;
     private int _styleId = -1;
 
@@ -262,6 +268,8 @@ internal sealed partial class RtfReader
         foreach (var list in _runs.Keys.ToList())
             EndRun(list);
         ApplyPage();
+        // Default tab stops every \deftab from the margin, as Word sets them; RTF's default is half an inch.
+        _document.DefaultTabStop ??= HwpxUnits.FromTwips(720);
         return _document;
     }
 
@@ -302,6 +310,7 @@ internal sealed partial class RtfReader
             case "pc": _ansiCodePage = 437; return;
             case "pca": _ansiCodePage = 850; return;
             case "deff": _defaultFont = value; return;
+            case "deftab": _document.DefaultTabStop = parameter is > 0 ? HwpxUnits.FromTwips(Math.Min(parameter.Value, 31680)) : _document.DefaultTabStop; return;
             case "uc": _g.Uc = Math.Clamp(value, 0, 16); return;
             case "u": Unicode(value); return;
 
@@ -370,6 +379,15 @@ internal sealed partial class RtfReader
             case "ls": _g.Para = p with { ListOverride = value }; return;
             case "ilvl": _g.Para = p with { ListLevel = Math.Clamp(value, 0, 8) }; return;
             case "outlinelevel": _g.Para = p with { Outline = value }; return;
+            case "tqr": _g.Para = p with { TabKind = (HTabKind.Right, p.TabKind.Leader) }; return;
+            case "tqc": _g.Para = p with { TabKind = (HTabKind.Center, p.TabKind.Leader) }; return;
+            case "tqdec": _g.Para = p with { TabKind = (HTabKind.Decimal, p.TabKind.Leader) }; return;
+            case "tldot" or "tlmdot": _g.Para = p with { TabKind = (p.TabKind.Kind, "DOT") }; return;
+            case "tlhyph": _g.Para = p with { TabKind = (p.TabKind.Kind, "DASH") }; return;
+            case "tlul" or "tlth" or "tleq": _g.Para = p with { TabKind = (p.TabKind.Kind, "SOLID") }; return;
+            case "tx" or "tb":
+                _g.Para = p with { Tabs = (p.Tabs ?? TabList.Empty).Add(value, p.TabKind.Kind, p.TabKind.Leader ?? "NONE"), TabKind = default };
+                return;
 
             // Text
             case "par" or "line" or "tab" or "page" or "emdash" or "endash" or "bullet" or "lquote" or "rquote" or "ldblquote"
@@ -467,6 +485,11 @@ internal sealed partial class RtfReader
                     if (_collected.ToString().Trim() is { Length: > 0 } name)
                         AddInline(new HBookmark(name));
                 };
+                return true;
+            case "falt" when _g.Dest == Dest.FontTable:
+                // The font's other name, used where the font is not installed (as Word's w:altName).
+                _g.Dest = Dest.FontAlternate;
+                _fontAlternate.Clear();
                 return true;
             case "nonshppict" or "listtext" or "pntext" or "xe" or "tc" or "txe" or "rxe" or "bkmkend" or "annotation" or "atnid"
                 or "atnauthor" or "template" or "comment" or "author" or "operator" or "company" or "manager" or "category"
@@ -589,6 +612,10 @@ internal sealed partial class RtfReader
             case Dest.Title or Dest.LevelText or Dest.BookmarkStart:
                 _collected.Append(text);
                 break;
+            case Dest.FontAlternate:
+                if (_fontAlternate.Length < 256)
+                    _fontAlternate.Append(text);
+                break;
             case Dest.FieldInstruction:
                 _g.Field?.Instruction.Append(text);
                 break;
@@ -610,8 +637,12 @@ internal sealed partial class RtfReader
                     Definitions(_fonts.Count, "fonts");
                 var codePage = _fontCodePage > 0 ? _fontCodePage : CharsetCodePage(_fontCharset);
                 var eastAsian = _fontCharset is 128 or 129 or 130 or 134 or 136;
-                _fonts[_fontIndex] = (_collected.ToString().Trim(), codePage, eastAsian);
+                var name = _collected.ToString().Trim();
+                _fonts[_fontIndex] = (name, codePage, eastAsian);
+                if (name.Length > 0 && _fontAlternate.ToString().Trim() is { Length: > 0 } alternate && !alternate.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    _document.FontAlternates.TryAdd(name, alternate);
             }
+            _fontAlternate.Clear();
             _collected.Clear();
             _fontIndex = _fontCharset = -1;
             _fontCodePage = 0;
@@ -621,7 +652,7 @@ internal sealed partial class RtfReader
     /// <summary>The code page text is decoded with: the font's, else the document's.</summary>
     private int CodePage()
     {
-        if (_g.Dest == Dest.FontTable)
+        if (_g.Dest is Dest.FontTable or Dest.FontAlternate)
             return _fontCodePage > 0 ? _fontCodePage : CharsetCodePage(_fontCharset) is > 0 and var charset ? charset : _ansiCodePage;
         var font = _g.Char.Font >= 0 ? _g.Char.Font : _defaultFont;
         return _fonts.TryGetValue(font, out var entry) && entry.CodePage > 0 ? entry.CodePage : _ansiCodePage;
@@ -754,7 +785,48 @@ internal sealed partial class RtfReader
             _ => new HLineSpacing(HLineSpacingKind.AtLeast, HwpxUnits.FromTwips(p.Line)),
         },
         KeepWithNext: p.KeepNext ? true : null,
-        KeepLines: p.Keep ? true : null);
+        KeepLines: p.Keep ? true : null,
+        Tabs: TabStops(p));
+
+    /// <summary>
+    /// The paragraph's tab stops as the model has them: measured from its start indent (RTF measures from the margin),
+    /// in order; null when it has none.
+    /// </summary>
+    private static List<HTabStop>? TabStops(ParaProps p)
+    {
+        if (p.Tabs is not { Count: > 0 } tabs)
+            return null;
+        var indent = p.Start ?? (p.RightToLeft ? p.Right : p.Left);
+        return [.. tabs.Stops.OrderBy(t => t.Position).Select(t => t with { Position = Math.Max(0, HwpxUnits.FromTwips(t.Position - indent)) })];
+    }
+
+    /// <summary>
+    /// A paragraph's tab stops as read (positions in twips from the margin). It is never changed, so the copies of the
+    /// properties each group makes share it.
+    /// </summary>
+    private sealed class TabList
+    {
+        /// <summary>Stops a paragraph keeps (Word allows 64); further \tx are ignored.</summary>
+        private const int MaxStops = 256;
+
+        public static readonly TabList Empty = new([]);
+
+        private TabList(List<HTabStop> stops) => Stops = stops;
+
+        public IReadOnlyList<HTabStop> Stops { get; }
+
+        public int Count => Stops.Count;
+
+        /// <summary>A list with one more stop (one at the same position is replaced).</summary>
+        public TabList Add(int position, HTabKind kind, string leader)
+        {
+            if (Stops.Count >= MaxStops)
+                return this;
+            var stops = Stops.Where(t => t.Position != position).ToList();
+            stops.Add(new HTabStop(position, kind, leader));
+            return new TabList(stops);
+        }
+    }
 
     // ───────────────────────── Paragraphs and sections ─────────────────────────
 
@@ -832,6 +904,10 @@ internal sealed partial class RtfReader
             level.Dispose();
             var note = new HNote(group.Endnote);
             note.Blocks.AddRange(story.Blocks);
+            // Word's notes start with their number (\chftn) and a space; the layout puts the number there itself.
+            if (note.Blocks.FirstOrDefault() is HParagraph first && first.Inlines.FindIndex(i => i is not HNoteNumber) is var index and > 0
+                && first.Inlines[index] is HText { Text: var leading } text)
+                first.Inlines[index] = new HText(leading.TrimStart(), text.Format);
             EndRun(parent);
             parent.Add(note);
         };
@@ -855,7 +931,7 @@ internal sealed partial class RtfReader
             // First-page headers and footers have no place in the model: the others apply.
             if (word.EndsWith('f'))
                 return;
-            var pages = word.EndsWith('l') ? HPageType.Even : word.EndsWith('r') ? HPageType.Odd : HPageType.Both;
+            var pages = word is "headerl" or "footerl" ? HPageType.Even : word is "headerr" or "footerr" ? HPageType.Odd : HPageType.Both;
             var part = new HHeaderFooter(pages);
             part.Blocks.AddRange(story.Blocks);
             (word.StartsWith("header", StringComparison.Ordinal) ? section.Headers : section.Footers).Add(part);

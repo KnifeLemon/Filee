@@ -19,9 +19,12 @@ public sealed class OdtWriterConverter : IConverter, ICapabilityCheck
     public string DisplayName => "ODT writer (built-in)";
     public int MaxParallelism => 0;
 
-    /// <summary>ODT → ODT is no conversion.</summary>
+    /// <summary>
+    /// ODT → ODT is no conversion; the template and the flat file (OTT, FODT) become ODT through OdfVariantConverter,
+    /// which keeps the whole document. OTT and FODT come from the ODT the same way (DOCX → ODT → OTT).
+    /// </summary>
     public IReadOnlyList<ConversionEdge> Edges { get; } =
-        DocumentReaders.BuiltInFormats.Where(f => f != "odt")
+        DocumentReaders.BuiltInFormats.Where(f => f is not ("odt" or "ott" or "fodt"))
             .Select(f => new ConversionEdge(f, "odt", f == "pdf" ? Cost + DocumentReaders.PdfPenalty : Cost, Checked: DocumentReaders.Checked(f))).ToList();
 
     /// <summary>A Word 6.0 / 95 or Works file with a .doc or .wps name, which the DOC reader doesn't read.</summary>

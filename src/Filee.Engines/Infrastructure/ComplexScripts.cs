@@ -384,7 +384,7 @@ internal static partial class ComplexScripts
                 return FindInString(message.HtmlBody ?? message.TextBody ?? "", classifier, skipBelow);
             }
             return format is "txt" or "md" or "html" or "csv" or "tsv" or "fb2" or "rtf" or "rst" or "tex" or "org" or "adoc"
-                or "typ" or "mediawiki" or "dbk" or "textile" or "man" or "opml" or "mm"
+                or "typ" or "mediawiki" or "dbk" or "textile" or "man" or "opml" or "mm" or "fodt" or "fods" or "fodp" or "fodg"
                 ? FindInText(path, classifier, skipBelow)
                 : null; // other binary formats (MOBI, ...): left to the engines
         }
@@ -503,7 +503,7 @@ internal static partial class ComplexScripts
             "pptx" or "pptm" or "potx" or "potm" or "ppsx" => Xml("ppt/slides/", "slide"),
             "xlsx" or "xlsm" or "xltx" => Xml("xl/", "sharedStrings") || Xml("xl/worksheets/", "sheet"),
             "hwpx" => Xml("Contents/", "section"),
-            "odt" or "ods" or "odp" or "udf" => name.Equals("content.xml", StringComparison.OrdinalIgnoreCase),
+            "odt" or "ott" or "ods" or "ots" or "odp" or "otp" or "odg" or "otg" or "udf" => name.Equals("content.xml", StringComparison.OrdinalIgnoreCase),
             "xmind" => name.Equals("content.json", StringComparison.OrdinalIgnoreCase) || name.Equals("content.xml", StringComparison.OrdinalIgnoreCase),
             // OFD: the pages and templates (Doc_0/Pages/Page_0/Content.xml, Doc_0/Tpls/Tpl_0/Content.xml).
             "ofd" => name.EndsWith("/Content.xml", StringComparison.OrdinalIgnoreCase),

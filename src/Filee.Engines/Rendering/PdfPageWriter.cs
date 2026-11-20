@@ -8,6 +8,11 @@
 // /ActualText for glyphs that don't map one to one (see PageContent.DrawRun). Links and named destinations are Skia
 // annotations; the outline (bookmarks) is added afterwards with PDFsharp, which Skia has no API for.
 //
+// PDF/A (PdfDocumentInfo.PdfA, a preset's "PDF/A" box): the PDF goes through PDFsharp too and is made PDF/A-2b there
+// (PdfAConformance: the sRGB output intent, links that print, nothing PDF/A forbids) and saved with matching XMP and
+// document information (PdfAMetadata). Every font is embedded already, subset, with its ToUnicode map. Should that
+// ever fail, the PDF is written as it is and the job queue's PDF/A step tries again.
+//
 // A glyph no character of the cmap leads to (a font feature put it in place of the character's own glyph: Noto Sans
 // CJK's digits after a Latin letter, small caps, a ligature) is written to the ToUnicode map as U+0000, its text only
 // as /ActualText, which many readers ignore (they copy "H" and a NUL for "H1"). Where such a glyph always draws the
@@ -18,6 +23,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Filee.Engines.Fonts;
+using Filee.Engines.Pdf;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using SkiaSharp;
@@ -33,6 +39,9 @@ internal sealed record PdfDocumentInfo
 
     /// <summary>Outline (bookmark) entries in document order.</summary>
     public IReadOnlyList<OutlineEntry> Outline { get; init; } = [];
+
+    /// <summary>Write the PDF as PDF/A-2b.</summary>
+    public bool PdfA { get; init; }
 }
 
 /// <summary>Page model → PDF.</summary>
@@ -45,7 +54,7 @@ internal static partial class PdfPageWriter
     {
         info ??= new PdfDocumentInfo();
         using var fonts = SubsetFonts(pages, cancellationToken);
-        if (info.Outline.Count == 0 && fonts.Unmapped.Count == 0 && pages.All(p => !NeedsExactSize(p)))
+        if (!info.PdfA && info.Outline.Count == 0 && fonts.Unmapped.Count == 0 && pages.All(p => !NeedsExactSize(p)))
         {
             WritePages(output, pages, info, fonts, progress, cancellationToken);
             return;
@@ -53,7 +62,7 @@ internal static partial class PdfPageWriter
         using var buffer = new MemoryStream();
         WritePages(buffer, pages, info, fonts, progress, cancellationToken);
         buffer.Position = 0;
-        Finish(buffer, output, pages, info.Outline, fonts.Unmapped);
+        Finish(buffer, output, pages, info, fonts.Unmapped, cancellationToken);
     }
 
     /// <summary>
@@ -77,7 +86,7 @@ internal static partial class PdfPageWriter
             Modified = DateTime.Now,
             RasterDpi = SKDocument.DefaultRasterDpi,
             EncodingQuality = 100,
-            PdfA = false,
+            PdfA = info.PdfA,
         };
         using var stream = new SKManagedWStream(output);
         using var document = SKDocument.CreatePdf(stream, metadata) ?? throw new InvalidOperationException("Skia can't write PDF.");
@@ -171,10 +180,10 @@ internal static partial class PdfPageWriter
 
     /// <summary>
     /// What Skia can't write, added to the PDF it wrote: exact page sizes (a media box that ends at the top edge Skia
-    /// drew from, so nothing moves) and the outline.
+    /// drew from, so nothing moves), the outline and PDF/A.
     /// </summary>
-    private static void Finish(Stream pdf, Stream output, IReadOnlyList<PageContent> pages, IReadOnlyList<OutlineEntry> entries,
-        IReadOnlyDictionary<string, Dictionary<ushort, string?>> unmapped)
+    private static void Finish(Stream pdf, Stream output, IReadOnlyList<PageContent> pages, PdfDocumentInfo info,
+        IReadOnlyDictionary<string, Dictionary<ushort, string?>> unmapped, CancellationToken cancellationToken)
     {
         using var document = PdfReader.Open(pdf, PdfDocumentOpenMode.Modify);
         AddGlyphText(document, unmapped);
@@ -188,8 +197,34 @@ internal static partial class PdfPageWriter
                 box.Elements.Add(new PdfReal(Math.Round(value, 3)));
             document.Pages[i].Elements["/MediaBox"] = box;
         }
-        AddOutline(document, pages, entries);
+        AddOutline(document, pages, info.Outline);
+        if (info.PdfA && TryPdfA(document, cancellationToken))
+        {
+            PdfAMetadata.Save(document, output, new PdfAInfo
+            {
+                Title = info.Title,
+                Author = info.Author,
+                Subject = info.Subject,
+                Creator = "Filee",
+                Producer = "Filee",
+            });
+            return;
+        }
         document.Save(output, closeStream: false);
+    }
+
+    /// <summary>Makes the PDF keep the PDF/A-2b rules; false when it can't (it is saved as a plain PDF then).</summary>
+    private static bool TryPdfA(PdfDocument document, CancellationToken cancellationToken)
+    {
+        try
+        {
+            PdfAConformance.Prepare(document, cancellationToken);
+            return true;
+        }
+        catch (Core.Conversion.ConversionRefusedException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

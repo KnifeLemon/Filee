@@ -1,5 +1,6 @@
-// Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice (XLS / XLT, XLSB and the XLSM / XLTX
-// variants are read, not written).
+// Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice (XLS / XLT, XLSB, the XLSM / XLTX
+// variants and the OpenDocument template and flat file, OTS / FODS, are read, not written: OTS and FODS come from the
+// ODS through OdfVariantConverter).
 // XLSX / XLS / ODS → PDF are printed by SheetPrintConverter; CSV / TSV → PDF and every sheet → HWPX and HTML go
 // through the HWPX writer (sheets become 한글 tables), see HwpxConverter and SheetDocument.
 
@@ -12,7 +13,7 @@ namespace Filee.Engines.Office;
 /// <summary>Converts between spreadsheet formats in-process.</summary>
 public sealed class SpreadsheetConverter : IConverter
 {
-    private static readonly string[] Sources = ["xlsx", "xlsm", "xltx", "xlsb", "xls", "xlt", "ods", "csv", "tsv"];
+    private static readonly string[] Sources = ["xlsx", "xlsm", "xltx", "xlsb", "xls", "xlt", "ods", "ots", "fods", "csv", "tsv"];
     private static readonly string[] Targets = ["xlsx", "ods", "csv", "tsv"];
 
     public string Id => "spreadsheet";
@@ -20,12 +21,13 @@ public sealed class SpreadsheetConverter : IConverter
     public int MaxParallelism => 0;
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
-        // XLSM / XLTX → XLSX is left to the ooxml engine, which keeps the whole package instead of rewriting the sheets.
-        [.. Sources.SelectMany(from => Targets.Where(to => to != from && !(to == "xlsx" && from is "xlsm" or "xltx"))
+        // XLSM / XLTX → XLSX is left to the ooxml engine, which keeps the whole package instead of rewriting the sheets,
+        // and OTS / FODS → ODS to the OpenDocument forms engine, which keeps the whole document.
+        [.. Sources.SelectMany(from => Targets.Where(to => to != from && !(to == "xlsx" && from is "xlsm" or "xltx") && !(to == "ods" && from is "ots" or "fods"))
             .Select(to => new ConversionEdge(from, to)))];
 
     public EngineStatus GetStatus() =>
-        EngineStatus.Available("XLSX, XLSB, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV",
+        EngineStatus.Available("XLSX, XLSB, XLS, ODS, OTS, FODS, CSV, TSV → XLSX, ODS, CSV, TSV",
             $"{EngineVersions.BuiltIn} · {EngineVersions.Library("ExcelDataReader", typeof(ExcelDataReader.ExcelReaderFactory))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
@@ -80,7 +82,9 @@ public sealed class SpreadsheetConverter : IConverter
     {
         "xls" or "xlt" => XlsReader.Read(path),
         XlsbReader.Format => XlsbReader.Read(path),
-        "ods" => OdsReader.Read(path),
+        // An OpenDocument template is the package with another media type; a flat file is read as the package it splits into.
+        "ods" or "ots" => OdsReader.Read(path),
+        "fods" => Odf.OdfVariants.Read(path, "fods", Path.GetTempPath(), OdsReader.Read),
         "csv" => CsvFormat.Read(path),
         "tsv" => CsvFormat.ReadTsv(path),
         _ => XlsxReader.Read(path),
