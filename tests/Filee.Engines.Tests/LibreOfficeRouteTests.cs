@@ -53,13 +53,10 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
         foreach (var to in new[] { "pdf", "png", "docx", "odt", "hwp", "hwpx", "txt", "md", "html", "epub" }.Where(to => to != from))
             Assert.DoesNotContain(planner.Plan(from, to)!.Steps, s => s.Converter.Id == "libreoffice");
 
-        // RTF has no built-in writer: Filee writes Markdown that Pandoc turns into RTF, or DOCX / ODT that LibreOffice does.
-        Assert.Equal(["hwp-text", "pandoc"], planner.Plan(from, "rtf")!.Steps.Select(s => s.Converter.Id));
+        // RTF comes from the built-in writer, with or without Pandoc.
+        Assert.Equal("rtf-writer", Assert.Single(planner.Plan(from, "rtf")!.Steps).Converter.Id);
         var withoutPandoc = Planner(slides: true, documents: true, sheets: true, without: "pandoc");
-        var rtf = withoutPandoc.Plan(from, "rtf")!.Steps.Select(s => s.Converter.Id).ToList();
-        Assert.Equal(2, rtf.Count);
-        Assert.Contains(rtf[0], new[] { "docx-writer", "odt-writer" });
-        Assert.Equal("libreoffice", rtf[1]);
+        Assert.Equal("rtf-writer", Assert.Single(withoutPandoc.Plan(from, "rtf")!.Steps).Converter.Id);
     }
 
     [Theory]

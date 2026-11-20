@@ -293,6 +293,8 @@
   "engine.docx-writer.description": "PDF、OFD、HWP/HWPX、Markdown、HTML、表計算ファイル、スライド、電子書籍からWord文書（DOCX）を作成します。",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "Word文書、PDF、OFD、HWP/HWPX、Markdown、HTML、表計算ファイル、スライド、電子書籍からOpenDocumentテキスト（ODT）を作成します。",
+  "engine.rtf-writer.name": "RTF writer (built-in)",
+  "engine.rtf-writer.description": "Word 文書、ODT、PDF、OFD、HWP/HWPX、Markdown、HTML、スプレッドシート、スライド、電子書籍からリッチテキスト形式 (RTF、Word・ワードパッド用) を作成します。",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "Pandocなしで Jupyter ノートブック、OPML、Textile、MediaWiki、reStructuredText、Org、DocBook を読み書きします。\n文書をこれらの形式に、これらをMarkdown、HTML、テキスト、DOCX、HWPX、PDFに変換します。\nFreeMind / Freeplane と XMind のマインドマップもアウトラインとして読み込みます。",
   "engine.pptx-writer.name": "PPTX ライター（組み込み）",

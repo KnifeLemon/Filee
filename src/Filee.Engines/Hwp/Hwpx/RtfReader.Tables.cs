@@ -258,6 +258,8 @@ internal sealed partial class RtfReader
             };
             var left = def.Left;
             HCell? previous = null;
+            // The cell before was below a cell spanning rows (\clvmrg): \clmrg cells after it belong to that cell too.
+            var continuing = false;
             for (var i = 0; i < contents.Count; i++)
             {
                 var cellDef = i < def.Cells.Count ? def.Cells[i] : new CellDef { Right = left + 1440 };
@@ -272,12 +274,16 @@ internal sealed partial class RtfReader
                     previous.ColSpan += span;
                     continue;
                 }
+                if (cellDef.Horizontal == Merge.Continue && continuing)
+                    continue;
                 if (cellDef.Vertical == Merge.Continue && openVertical.TryGetValue(from, out var above))
                 {
                     above.RowSpan++;
                     previous = null;
+                    continuing = true;
                     continue;
                 }
+                continuing = false;
                 var cell = new HCell
                 {
                     Column = from,
@@ -429,6 +435,11 @@ internal sealed partial class RtfReader
                 2 => "ROMAN_SMALL",
                 3 => "LATIN_CAPITAL",
                 4 => "LATIN_SMALL",
+                10 => "IDEOGRAPH",
+                18 => "CIRCLED_DIGIT",
+                24 => "HANGUL_SYLLABLE",
+                25 => "HANGUL_JAMO",
+                40 => "HANGUL_PHONETIC",
                 _ => "DIGIT",
             };
             numbering.Levels.Add(new HNumberingLevel(format, level.Text.Length > 0 ? level.Text : $"^{numbering.Levels.Count + 1}.", level.Start, Bullet: false));

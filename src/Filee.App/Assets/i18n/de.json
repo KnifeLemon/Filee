@@ -293,6 +293,8 @@
   "engine.docx-writer.description": "Erstellt Word-Dokumente (DOCX) aus PDF, OFD, HWP/HWPX, Markdown, HTML, Tabellen, Folien und E-Books.",
   "engine.odt-writer.name": "ODT-Writer (integriert)",
   "engine.odt-writer.description": "Erstellt OpenDocument-Textdokumente (ODT) aus Word-Dokumenten, PDF, OFD, HWP/HWPX, Markdown, HTML, Tabellen, Folien und E-Books.",
+  "engine.rtf-writer.name": "RTF-Writer (integriert)",
+  "engine.rtf-writer.description": "Erstellt Rich-Text-Dateien (RTF, für Word und WordPad) aus Word-Dokumenten, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, Tabellen, Folien und E-Books.",
   "engine.markup.name": "Auszeichnungssprachen (integriert)",
   "engine.markup.description": "Jupyter-Notebooks, OPML, Textile, MediaWiki, reStructuredText, Org und DocBook ohne Pandoc.\nDokumente in diese Formate und diese in Markdown, HTML, Text, DOCX, HWPX und PDF.\nAußerdem Mindmaps aus FreeMind / Freeplane und XMind, als Gliederung gelesen.",
   "engine.pptx-writer.name": "PPTX-Writer (integriert)",

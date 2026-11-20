@@ -104,6 +104,7 @@ internal sealed partial class OdtReader
         var styles = Load("styles.xml");
         LoadStyles(styles, content);
         NotesConfiguration(styles?.Root?.Element(Office + "styles"));
+        DefaultTabs();
         _document.Title = Load("meta.xml")?.Root?.Element(Office + "meta")?.Element(Dc + "title")?.Value is { } title && title.Trim().Length > 0 ? title.Trim() : null;
 
         var body = new Sink([], body: true);
@@ -113,6 +114,35 @@ internal sealed partial class OdtReader
             StartSection(null, null, body);
         return _document;
     }
+
+    /// <summary>LibreOffice's distance between default tab stops when the default paragraph style gives none: 1.25 cm.</summary>
+    private const int LibreOfficeTabStop = 3543;
+
+    /// <summary>
+    /// Default tab stops as LibreOffice sets them: every style:tab-stop-distance of the default paragraph style (else
+    /// 1.25 cm), measured from the paragraph's indent unless settings.xml turns TabsRelativeToIndent off (documents
+    /// that came from Word measure from the margin).
+    /// </summary>
+    private void DefaultTabs()
+    {
+        var distance = _defaults.TryGetValue("paragraph", out var defaults)
+            ? Odf.Length(Attr(defaults.Element(Style + "paragraph-properties"), Style + "tab-stop-distance"))
+            : null;
+        _document.DefaultTabStop = distance is > 0 and < 7_200_000 ? distance : LibreOfficeTabStop;
+        string? relative;
+        try
+        {
+            relative = Load("settings.xml")?.Descendants(Config + "config-item")
+                .FirstOrDefault(item => Attr(item, Config + "name") == "TabsRelativeToIndent")?.Value.Trim();
+        }
+        catch (InvalidDataException)
+        {
+            relative = null; // damaged view settings don't stop the text from being read
+        }
+        _document.DefaultTabStopFromIndent = !string.Equals(relative, "false", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static readonly XNamespace Config = "urn:oasis:names:tc:opendocument:xmlns:config:1.0";
 
     private void NotesConfiguration(XElement? styles)
     {

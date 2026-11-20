@@ -63,6 +63,7 @@ public static class EngineRegistry
         new FontConverter(),
         new DocxWriterConverter(),
         new OdtWriterConverter(),
+        new RtfWriterConverter(),
         new MarkupConverter(),
         new PptxWriterConverter(),
         new OdpWriterConverter(),

@@ -300,6 +300,8 @@
   "engine.docx-writer.description": "Создаёт документы Word (DOCX) из PDF, OFD, HWP/HWPX, Markdown, HTML, таблиц, презентаций и электронных книг.",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "Создаёт текстовые документы OpenDocument (ODT) из документов Word, PDF, OFD, HWP/HWPX, Markdown, HTML, таблиц, презентаций и электронных книг.",
+  "engine.rtf-writer.name": "Запись RTF (встроенная)",
+  "engine.rtf-writer.description": "Создаёт файлы Rich Text Format (RTF, для Word и WordPad) из документов Word, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, таблиц, слайдов и электронных книг.",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "Блокноты Jupyter, OPML, Textile, MediaWiki, reStructuredText, Org и DocBook без Pandoc.\nДокументы — в эти форматы, а их — в Markdown, HTML, текст, DOCX, HWPX и PDF.\nА также интеллект-карты FreeMind / Freeplane и XMind, читаемые как план.",
   "engine.pptx-writer.name": "Генератор PPTX (встроенный)",

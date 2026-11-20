@@ -307,6 +307,8 @@
   "engine.docx-writer.description": "পিডিএফ, OFD, HWP/HWPX, মার্কডাউন , এইচটিএমএল, স্প্রেডশিট, স্লাইড এবং ই-বুক থেকে ওয়ার্ড ডকুমেন্ট (DOCX) তৈরি করে।",
   "engine.odt-writer.name": "ODT রাইটার (বিল্ট-ইন)",
   "engine.odt-writer.description": "ওয়ার্ড ডকুমেন্ট, পিডিএফ, OFD, HWP/HWPX, মার্কডাউন, এইচটিএমএল, স্প্রেডশিট, স্লাইড এবং ই-বুক থেকে OpenDocument টেক্সট (ODT, LibreOffice Writer) তৈরি করে।",
+  "engine.rtf-writer.name": "RTF রাইটার (বিল্ট-ইন)",
+  "engine.rtf-writer.description": "ওয়ার্ড ডকুমেন্ট, ODT, পিডিএফ, OFD, HWP/HWPX, মার্কডাউন, এইচটিএমএল, স্প্রেডশিট, স্লাইড এবং ই-বুক থেকে রিচ টেক্সট ফরম্যাট (RTF, Word ও WordPad-এর জন্য) তৈরি করে।",
   "engine.markup.name": "মার্কআপ ভাষা (বিল্ট-ইন)",
   "engine.markup.description": "Pandoc ছাড়াই Jupyter নোটবুক, OPML, Textile, MediaWiki, reStructuredText, Org এবং DocBook।\nডকুমেন্ট থেকে এই ফরম্যাটগুলোতে, এবং এগুলো থেকে মার্কডাউন, এইচটিএমএল, টেক্সট, DOCX, HWPX ও পিডিএফ-এ।\nএছাড়া FreeMind / Freeplane ও XMind মাইন্ড ম্যাপ, আউটলাইন হিসেবে পড়া হয়।",
   "engine.pptx-writer.name": "PPTX রাইটার (বিল্ট-ইন)",

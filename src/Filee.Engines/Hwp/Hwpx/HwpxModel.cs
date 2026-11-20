@@ -41,10 +41,18 @@ internal sealed class HDocument
     public Dictionary<string, string> FontAlternates { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Word's distance between default tab stops (settings w:defaultTabStop), in HWPUNIT, measured from the margin;
-    /// null: 한글's 40 pt from the paragraph's left indent. Only the layout engine uses it.
+    /// The distance between default tab stops of the source's application (Word's w:defaultTabStop, RTF \deftab,
+    /// ODF style:tab-stop-distance), in HWPUNIT, measured from the margin (or the indent, see
+    /// <see cref="DefaultTabStopFromIndent"/>); null: 한글's 40 pt from the paragraph's left indent. Only the layout
+    /// engine and the RTF writer use it.
     /// </summary>
     public int? DefaultTabStop { get; set; }
+
+    /// <summary>
+    /// <see cref="DefaultTabStop"/> counts from the paragraph's left indent, as LibreOffice's own documents have it
+    /// (TabsRelativeToIndent), not from the margin as Word's. Only the layout engine uses it.
+    /// </summary>
+    public bool DefaultTabStopFromIndent { get; set; }
 }
 
 /// <summary>A run of pages sharing page setup, headers and footers (한글 "구역").</summary>

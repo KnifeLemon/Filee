@@ -293,6 +293,8 @@
   "engine.docx-writer.description": "PDF, OFD, HWP/HWPX, Markdown, HTML, स्प्रेडशीट, स्लाइड और ई-बुक से Word दस्तावेज़ (DOCX) लिखता है।",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "Word दस्तावेज़, PDF, OFD, HWP/HWPX, Markdown, HTML, स्प्रेडशीट, स्लाइड और ई-बुक से OpenDocument टेक्स्ट (ODT) लिखता है।",
+  "engine.rtf-writer.name": "RTF writer (built-in)",
+  "engine.rtf-writer.description": "Word दस्तावेज़, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, स्प्रेडशीट, स्लाइड और ई-बुक से रिच टेक्स्ट फ़ॉर्मेट (RTF, Word और WordPad के लिए) लिखता है।",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "Pandoc के बिना Jupyter नोटबुक, OPML, Textile, MediaWiki, reStructuredText, Org और DocBook।\nदस्तावेज़ों से ये फ़ॉर्मैट, और इनसे Markdown, HTML, टेक्स्ट, DOCX, HWPX और PDF।\nसाथ ही FreeMind / Freeplane और XMind माइंड मैप, आउटलाइन के रूप में पढ़े जाते हैं।",
   "engine.pptx-writer.name": "PPTX लेखक (अंतर्निहित)",
