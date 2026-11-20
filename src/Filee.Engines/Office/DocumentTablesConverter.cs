@@ -1,6 +1,6 @@
-// Word, OpenDocument, RTF, 한글 and web pages → XLSX (#1016): the tables of a DOCX, DOC, ODT, RTF, HWP, HWPX or HTML
-// file, one sheet each, so they can be calculated with. The readers that turn these files into HWPX and DOCX already
-// know the rows, merged cells and column widths; text outside the tables is left out.
+// Word, OpenDocument, RTF, 한글, web pages and UYAP documents → XLSX (#1016, #1588): the tables of a DOCX, DOC, ODT,
+// RTF, HWP, HWPX, HTML or UDF file, one sheet each, so they can be calculated with. The readers that turn these files
+// into HWPX and DOCX already know the rows, merged cells and column widths; text outside the tables is left out.
 //
 // - Every table is its own sheet ("Table 1", "Table 2" …), a table inside a cell too. Unlike PDF → XLSX nothing is
 //   joined: a Word table that runs over a page break is one table already, and sections aren't pages.
@@ -26,10 +26,10 @@ public sealed class DocumentTablesConverter : IConverter, ICapabilityCheck
 {
     /// <summary>
     /// Word documents (and their macro and template variants, Word 97–2003 and WPS), OpenDocument text (and its template
-    /// and flat file), RTF, 한글 files, web pages and saved web pages.
+    /// and flat file), RTF, 한글 files, web pages, saved web pages and UYAP documents.
     /// </summary>
     private static readonly string[] Sources =
-        ["docx", "docm", "dotx", "dotm", .. Hwp.Hwpx.Doc.DocReader.Formats, "odt", "ott", "fodt", "rtf", "hwp", "hwpx", "html", "mhtml"];
+        ["docx", "docm", "dotx", "dotm", .. Hwp.Hwpx.Doc.DocReader.Formats, "odt", "ott", "fodt", "rtf", "hwp", "hwpx", "html", "mhtml", "udf"];
 
     public string Id => "document-tables";
     public string DisplayName => "Document tables (built-in)";
@@ -45,7 +45,7 @@ public sealed class DocumentTablesConverter : IConverter, ICapabilityCheck
             .Select(to => new ConversionEdge(from, to, DirectOnly: true, Checked: DocumentReaders.Checked(from))))];
 
     public EngineStatus GetStatus() =>
-        EngineStatus.Available("DOCX, DOC, ODT, RTF, HWP, HWPX, HTML, MHTML → XLSX, ODS, CSV", EngineVersions.BuiltIn);
+        EngineStatus.Available("DOCX, DOC, ODT, RTF, HWP, HWPX, HTML, MHTML, UDF → XLSX, ODS, CSV", EngineVersions.BuiltIn);
 
     /// <summary>A Word 6.0 / 95 or Works file with a .doc or .wps name, which the DOC reader doesn't read.</summary>
     public string? FirstUnsupported(string sourcePath, string sourceFormat) => DocumentReaders.Unsupported(sourcePath, sourceFormat);

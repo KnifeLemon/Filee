@@ -310,6 +310,8 @@
   "engine.odt-writer.description": "نوشتن متن OpenDocument (ODT، LibreOffice Writer) از اسناد Word، PDF، OFD، HWP/HWPX، مارک‌داون، HTML، صفحه‌گسترده‌ها، اسلایدها و کتاب‌های الکترونیکی.",
   "engine.rtf-writer.name": "نویسنده RTF (داخلی)",
   "engine.rtf-writer.description": "نوشتن متن قالب‌دار (RTF، برای Word و WordPad) از اسناد Word، ODT، PDF، OFD، HWP/HWPX، مارک‌داون، HTML، صفحه‌گسترده‌ها، اسلایدها و کتاب‌های الکترونیکی.",
+  "engine.udf-writer.name": "نویسنده UYAP (داخلی)",
+  "engine.udf-writer.description": "نوشتن اسناد UYAP (UDF، برای ویرایشگر اسناد UYAP) از اسناد Word، ODT، RTF، PDF، OFD، HWP/HWPX، مارک‌داون، HTML، صفحه‌گسترده‌ها، اسلایدها و کتاب‌های الکترونیکی.",
   "engine.markup.name": "زبان‌های نشانه‌گذاری (داخلی)",
   "engine.markup.description": "دفترچه‌های Jupyter، OPML، Textile، MediaWiki، reStructuredText، Org و DocBook بدون Pandoc.\nاسناد به این قالب‌ها، و این قالب‌ها به مارک‌داون، HTML، متن، DOCX، HWPX و PDF.\nهمچنین نقشه‌های ذهنی FreeMind / Freeplane و XMind که به‌صورت طرح کلی خوانده می‌شوند.",
   "engine.pptx-writer.name": "نویسنده PPTX (داخلی)",

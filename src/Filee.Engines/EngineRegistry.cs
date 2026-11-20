@@ -64,6 +64,7 @@ public static class EngineRegistry
         new DocxWriterConverter(),
         new OdtWriterConverter(),
         new RtfWriterConverter(),
+        new Uyap.UyapWriterConverter(),
         new MarkupConverter(),
         new PptxWriterConverter(),
         new OdpWriterConverter(),
