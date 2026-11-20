@@ -351,7 +351,7 @@ internal sealed class Lzma2BlockEncoder
     // Compiled fully optimised on first use, with the fast level's per-symbol code (LzmaEncoder.Encode and EncodeOne
     // and the helpers marked AggressiveInlining) inlined, as the tiered compiler ends up doing; the methods it calls
     // stay separate and are compiled the same way. A chunk then runs at full speed from the first one, where the
-    // ReadyToRun and instrumented code made the first second of a fast job about a third slower, more so with many
+    // ReadyToRun and instrumented code made a fast job of a few dozen megabytes about a third longer, more so with many
     // threads.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void EncodeChunk(int end, CancellationToken cancellationToken)

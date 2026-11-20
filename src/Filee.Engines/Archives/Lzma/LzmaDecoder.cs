@@ -318,8 +318,8 @@ internal sealed class LzmaDecoder
     }
 
     // The decoding loops are compiled fully optimised on first use (AggressiveOptimization) instead of starting from
-    // the ReadyToRun code and going through the instrumented tier: those ran the first half second or so of every job
-    // slower, and the job is usually over before the tiered code would come.
+    // the ReadyToRun code and going through the instrumented tier: those ran the start of every job slower, and a job
+    // is often over before the tiered code would come.
     /// <summary>
     /// Decodes until <paramref name="output"/> is full or, with <paramref name="allowEndMarker"/>, the end marker
     /// comes. Returns the bytes written.

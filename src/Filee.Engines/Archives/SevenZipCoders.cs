@@ -438,7 +438,7 @@ internal sealed class Bcj2Stream : ReadOnlyDecoderStream
 
     /// <remarks>
     /// The main stream's bytes are copied while they are scanned, one at a time, and everything the loop changes stays
-    /// in locals until the end: x86 code has an opcode to look at every few dozen bytes, so the work per opcode (the
+    /// in locals until the end: x86 code has an opcode to look at every dozen bytes or so, so the work per opcode (the
     /// bit, the target) has to be small next to the copying.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]

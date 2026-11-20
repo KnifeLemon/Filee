@@ -14,8 +14,8 @@ namespace Filee.Engines.Archives;
 internal static class Bzip2Sort
 {
     // The sort's methods are compiled fully optimised on first use (AggressiveOptimization): each runs for a whole
-    // block per call, so a job of a few dozen blocks never left their ReadyToRun code, which sorted at about two thirds
-    // the speed.
+    // block per call, so a job of a few dozen blocks never left their ReadyToRun code, which made it about half as long
+    // again.
     /// <summary>
     /// Writes the last column of the sorted rotations of <paramref name="block"/> to <paramref name="output"/> and returns
     /// the row of the unrotated block (bzip2's origin pointer).
