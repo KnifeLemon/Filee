@@ -82,7 +82,8 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
         var planner = Planner(slides: false);
 
         Assert.Equal("hwp-text", Assert.Single(planner.Plan("rtf", "txt")!.Steps).Converter.Id);
-        Assert.Equal("pandoc", Assert.Single(planner.Plan("rtf", "md")!.Steps).Converter.Id);
+        // RTF → Markdown is built in too: one step through the document model, which keeps equations as math.
+        Assert.Equal("hwp-text", Assert.Single(planner.Plan("rtf", "md")!.Steps).Converter.Id);
         Assert.DoesNotContain(planner.Plan("rtf", "epub")!.Steps, s => s.From == "rtf" && s.To == "txt"); // not a hop
     }
 

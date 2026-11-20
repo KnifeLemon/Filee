@@ -5,6 +5,7 @@
 
 using System.Diagnostics;
 using System.Xml.Linq;
+using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
 
@@ -172,6 +173,32 @@ public class TexMathWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var read = MarkdownReader.Read("Area $\\pi r^2$ here.\n", fx.NewFolder());
         Assert.Contains("$\\pi r^2$", MarkdownWriter.Write(read, _ => null), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_equation_set_between_tabs_is_display_math_and_tabs_make_no_code_block()
+    {
+        // Word and 한글 often centre an equation with tabs on a left-aligned line.
+        var centred = new HParagraph();
+        centred.Inlines.AddRange([new HTab(default), new HEquation(new MathText("x"), default), new HTab(default), new HText(" ", default)]);
+        var indented = new HParagraph();
+        indented.Inlines.AddRange([new HTab(default), new HText("Indented text.", default), new HTab(default)]);
+
+        var markdown = MarkdownWriter.Write(Document(centred, indented), _ => null);
+        Assert.Contains("\n$$x$$\n", "\n" + markdown, StringComparison.Ordinal);
+        Assert.Contains("\nIndented text.\n", "\n" + markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("    ", markdown, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("docx")]
+    [InlineData("odt")]
+    [InlineData("rtf")]
+    public void Word_odt_and_rtf_reach_markdown_in_one_built_in_step(string source)
+    {
+        // Through the HWPX writer the equations came back as 한글 equation script.
+        var route = fx.Catalog.CreatePlanner().Plan(source, "md");
+        Assert.Equal(HwpTextConverter.EngineId, Assert.Single(route!.Steps).Converter.Id);
     }
 
     // ───────────────────────── Depth ─────────────────────────

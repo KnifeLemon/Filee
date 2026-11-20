@@ -20,7 +20,7 @@ using Filee.Engines.Text;
 
 namespace Filee.Engines.Hwp;
 
-/// <summary>Writes the text of HWP and HWPX documents as TXT, Markdown or HTML, and of Word, ODT and RTF as TXT.</summary>
+/// <summary>Writes the text of HWP and HWPX documents as TXT, Markdown or HTML, and of Word, ODT and RTF as TXT or Markdown.</summary>
 public sealed class HwpTextConverter : IConverter, ICapabilityCheck
 {
     /// <summary>The engine's id; settings that named Unhwp ("unhwp", the engine this replaced) are moved to it.</summary>
@@ -43,6 +43,9 @@ public sealed class HwpTextConverter : IConverter, ICapabilityCheck
         // routes through Pandoc's Markdown (29) or the HWPX writer (32). The DOC reader checks each file (a Word 6.0 /
         // 95 file goes another way).
         .. LineFormats.Select(f => new ConversionEdge(f, "txt", LineCost, DirectOnly: true, Checked: DocumentReaders.Checked(f))),
+        // RTF, Word and ODT → Markdown in one step, at the same cost: through the HWPX writer (the route before) the
+        // equations came back as 한글 equation script, while the document model keeps them as math for $…$.
+        .. LineFormats.Select(f => new ConversionEdge(f, "md", LineCost, DirectOnly: true, Checked: DocumentReaders.Checked(f))),
     ];
 
     /// <summary>
@@ -54,7 +57,7 @@ public sealed class HwpTextConverter : IConverter, ICapabilityCheck
     /// <summary>The cost of RTF, Word and ODT → TXT: below LibreOffice's fallback (25) with any engine order's penalty (0 to 9).</summary>
     internal const int LineCost = 15;
 
-    public EngineStatus GetStatus() => EngineStatus.Available("HWP, HWPX → TXT, Markdown, HTML; Word, ODT, RTF → TXT", EngineVersions.BuiltIn);
+    public EngineStatus GetStatus() => EngineStatus.Available("HWP, HWPX → TXT, Markdown, HTML; Word, ODT, RTF → TXT, Markdown", EngineVersions.BuiltIn);
 
     /// <summary>A Word 6.0 / 95 or Works file with a .doc or .wps name, which the DOC reader doesn't read.</summary>
     public string? FirstUnsupported(string sourcePath, string sourceFormat) => DocumentReaders.Unsupported(sourcePath, sourceFormat);

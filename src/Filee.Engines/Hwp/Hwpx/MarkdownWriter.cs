@@ -78,9 +78,14 @@ internal sealed class MarkdownWriter
 
     private void Paragraph(HParagraph paragraph, StringBuilder sb, string prefix, HBlock? next)
     {
-        _display = paragraph.Inlines.Count(i => i is not HBookmark) == 1 && paragraph.Inlines.OfType<HEquation>().FirstOrDefault() is { } lone
-            && HEquation.IsDisplay(lone, paragraph) ? lone : null;
-        var text = Inlines(paragraph.Inlines);
+        // An equation alone on its line is display math, also when tabs or spaces centre it (Word and 한글 do that).
+        var shown = paragraph.Inlines.Where(i => i is not (HBookmark or HTab) && !(i is HText run && string.IsNullOrWhiteSpace(run.Text))).ToList();
+        _display = shown.Count == 1 && shown[0] is HEquation lone ? lone : null;
+        // Tabs at the start would write spaces that make the paragraph an indented code block, at the end a line break.
+        var first = paragraph.Inlines.FindIndex(i => i is not HTab);
+        var last = paragraph.Inlines.FindLastIndex(i => i is not HTab);
+        var text = _display is not null ? Inlines(shown)
+            : first < 0 ? "" : Inlines(paragraph.Inlines.GetRange(first, last - first + 1));
         _display = null;
         if (paragraph.Inlines.Any(i => i is HShape { Kind: HShapeKind.Line }) && text.Trim().Length == 0)
         {
