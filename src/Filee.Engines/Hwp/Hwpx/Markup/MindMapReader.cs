@@ -1,4 +1,6 @@
-// Mind maps → HDocument as an outline (#1543, #1004): the map isn't drawn, its topics become the document's structure.
+// Mind maps → HDocument as an outline (#1543, #1004): its topics become the document's structure. The same reader
+// reads a map for drawing (ReadForDrawing, MindMaps/MindMapDrawing): its sheets with each topic's look (MindStyle),
+// folding, side, floating place, boundaries, summaries, clouds, arrow links, relationships and theme.
 //  * FreeMind and Freeplane (.mm): XML, <map> holding <node> elements in <node> elements. A node's text is its TEXT
 //    attribute (LOCALIZED_TEXT when it has none) or its rich text (richcontent TYPE="NODE", HTML); its notes and
 //    details are rich text too (HTML, or Freeplane's plain text and Markdown); LINK is its link, <icon BUILTIN> its
@@ -17,7 +19,9 @@
 // unpacked and follows the topic. Each sheet of an XMind file starts a new page.
 // Untrusted input: the XML goes through SafeXml and DocumentPackage (no DTD, depth, element, part, package and inflate
 // limits), the JSON is parsed with a depth limit, both trees are walked with a stack of their own rather than by
-// recursion, and every paragraph and picture counts against DocumentLimits (DocumentBudget).
+// recursion, and every paragraph and picture counts against DocumentLimits (DocumentBudget). Freeplane's external
+// pictures are read only from inside the map's folder (DocumentFiles); relationships past what the drawing draws are
+// refused while reading.
 
 using System.Text;
 using System.Text.Json;
@@ -26,6 +30,9 @@ using System.Xml.Linq;
 using Filee.Core.Conversion;
 using Filee.Engines.Documents;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.MindMaps;
+using Filee.Engines.Slides;
+using SkiaSharp;
 
 namespace Filee.Engines.Hwp.Hwpx.Markup;
 
@@ -65,6 +72,10 @@ internal sealed class MindMapReader
     private HNumbering? _list;
     private bool _pageBreak;
     private int _pictures;
+    private readonly List<Sheet> _sheets = [];
+
+    /// <summary>Read for the drawing: the sheets are kept, with their themes and relationships.</summary>
+    private bool _drawing;
 
     private MindMapReader(string baseFolder, string media, DocumentLimits limits, bool headingsOnly)
     {
@@ -74,8 +85,8 @@ internal sealed class MindMapReader
         _headingLevels = headingsOnly ? int.MaxValue : HeadingLevels;
     }
 
-    /// <summary>A topic as the map holds it, before it becomes paragraphs.</summary>
-    private sealed class Topic
+    /// <summary>A topic as the map holds it, before it becomes paragraphs or is drawn (MindMaps/MindMapDrawing).</summary>
+    internal sealed class Topic
     {
         public string? Id;
         public string Text = "";
@@ -89,16 +100,87 @@ internal sealed class MindMapReader
         public readonly List<Note> Notes = [];
         public readonly List<string> Pictures = [];
         public readonly List<Topic> Children = [];
+
+        // What the drawn map takes besides: how the topic looks and where it goes.
+        public MindStyle Style = MindStyle.Empty;
+        public TopicKind Kind;
+
+        /// <summary>Its subtopics are hidden (FreeMind FOLDED, XMind branch "folded").</summary>
+        public bool Folded;
+
+        /// <summary>The side of the central topic a main topic goes on: -1 left, 1 right, 0 the drawing's choice.</summary>
+        public int Side;
+
+        /// <summary>A floating topic's place, from the central topic's centre (XMind position), in points.</summary>
+        public SKPoint? Position;
+
+        /// <summary>The size XMind gives the topic's picture, in points; null = its own.</summary>
+        public SKSize? PictureSize;
+
+        /// <summary>An XMind equation's TeX.</summary>
+        public string? Equation;
+
+        public MindCloud? Cloud;
+        public readonly List<MindBoundary> Boundaries = [];
+        public readonly List<MindSummary> Summaries = [];
+
+        /// <summary>FreeMind / Freeplane arrow links from this topic.</summary>
+        public readonly List<MindLink> Links = [];
     }
 
-    private enum NoteKind
+    /// <summary>Where a topic hangs off its parent.</summary>
+    internal enum TopicKind
+    {
+        Attached,
+
+        /// <summary>A floating topic (XMind detached).</summary>
+        Detached,
+
+        /// <summary>The topic of a summary (XMind children.summary).</summary>
+        Summary,
+
+        Callout,
+    }
+
+    /// <summary>One sheet of a map, for the drawing: its central topic, relationships and theme.</summary>
+    internal sealed class Sheet(Topic root)
+    {
+        public Topic Root { get; } = root;
+
+        /// <summary>XMind's structure of the central topic ("org.xmind.ui.map.clockwise", "org.xmind.ui.logic.right", ...).</summary>
+        public string? Structure { get; set; }
+
+        public SKColor? Background { get; set; }
+
+        /// <summary>The sheet's theme by topic class: centralTopic, mainTopic, subTopic, floatingTopic, summaryTopic, calloutTopic, boundary, relationship.</summary>
+        public Dictionary<string, MindStyle> Theme { get; } = new(StringComparer.Ordinal);
+
+        public List<MindLink> Relationships { get; } = [];
+
+        /// <summary>Colours of the main topics' branches in turn (XMind multi-line-colors); empty = the drawing's.</summary>
+        public List<SKColor> BranchColors { get; } = [];
+    }
+
+    /// <summary>A map read for drawing: its sheets, and the text of each topic as the outline would write it.</summary>
+    internal sealed class Drawn(List<Sheet> sheets, MindMapReader reader)
+    {
+        public List<Sheet> Sheets { get; } = sheets;
+
+        /// <summary>The topic's text (rich text with its formatting, lines with line breaks) and the pictures its rich text holds.</summary>
+        public (List<HInline> Inlines, List<string> Pictures) Text(Topic topic) => reader.TitleInlines(topic);
+
+        /// <summary>The folder relative references are resolved against (Freeplane's external pictures).</summary>
+        public string BaseFolder => reader._baseFolder;
+    }
+
+    internal enum NoteKind
     {
         Plain,
         Markdown,
         Html,
     }
 
-    private readonly record struct Note(NoteKind Kind, string Content);
+    internal readonly record struct Note(NoteKind Kind, string Content);
 
     // ───────────────────────── Entry points ─────────────────────────
 
@@ -129,6 +211,38 @@ internal sealed class MindMapReader
 
     private static string Folder(string path) => Path.GetDirectoryName(Path.GetFullPath(path))!;
 
+    /// <summary>
+    /// Reads a map of <paramref name="format"/> for drawing (MindMaps/MindMapDrawing): its sheets with what they say
+    /// about the look of each topic. A .mm that isn't XML (Objective-C++ source) is refused as no mind map.
+    /// </summary>
+    public static Drawn ReadForDrawing(string path, string format, string media)
+    {
+        var limits = DocumentLimits.Default;
+        if (string.Equals(format, XMind, StringComparison.OrdinalIgnoreCase))
+        {
+            using var stream = File.OpenRead(path);
+            return DrawXMind(stream, Folder(path), media, limits);
+        }
+        if (new FileInfo(path).Length > limits.MaxPartBytes)
+            throw DocumentLimits.Exceeded($"The mind map is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+        return DrawFreeMind(File.ReadAllBytes(path), Folder(path), media, limits);
+    }
+
+    /// <summary>Whether the .mm file at <paramref name="path"/> starts like XML (a mind map) rather than source code.</summary>
+    public static bool IsFreeMindMap(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            var head = new byte[4096];
+            return LooksLikeXml(head.AsSpan(0, stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false)).ToArray());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     // ───────────────────────── FreeMind and Freeplane ─────────────────────────
 
     internal static HDocument ReadFreeMind(byte[] bytes, string baseFolder, string media, DocumentLimits limits, bool headingsOnly = false)
@@ -136,6 +250,21 @@ internal sealed class MindMapReader
         // Objective-C++ source shares the extension; a mind map is XML, so anything else is read as the text it is.
         if (!LooksLikeXml(bytes))
             return DocumentReaders.TextDocument(bytes);
+        var reader = new MindMapReader(baseFolder, media, limits, headingsOnly);
+        return reader.Build(reader.FreeMindRoots(bytes));
+    }
+
+    internal static Drawn DrawFreeMind(byte[] bytes, string baseFolder, string media, DocumentLimits limits)
+    {
+        if (!LooksLikeXml(bytes))
+            throw new InvalidDataException("The file is not a FreeMind or Freeplane mind map (it is not XML).");
+        var reader = new MindMapReader(baseFolder, media, limits, headingsOnly: false) { _drawing = true };
+        return new Drawn([.. reader.FreeMindRoots(bytes).Select(root => new Sheet(root))], reader);
+    }
+
+    private List<Topic> FreeMindRoots(byte[] bytes)
+    {
+        var limits = _budget.Limits;
         XDocument xml;
         try
         {
@@ -148,7 +277,6 @@ internal sealed class MindMapReader
         if (xml.Root is not { } root || root.Name.LocalName != "map")
             throw new InvalidDataException("The file is not a FreeMind or Freeplane mind map.");
 
-        var reader = new MindMapReader(baseFolder, media, limits, headingsOnly);
         var roots = new List<Topic>();
         // Node elements and the topic they go into (null for the map's own), walked without recursion.
         var stack = new Stack<(XElement Element, Topic? Parent)>();
@@ -157,12 +285,12 @@ internal sealed class MindMapReader
         while (stack.Count > 0)
         {
             var (element, parent) = stack.Pop();
-            var topic = reader.FreeMindTopic(element);
+            var topic = FreeMindTopic(element);
             (parent?.Children ?? roots).Add(topic);
             foreach (var child in Nodes(element).Reverse())
                 stack.Push((child, topic));
         }
-        return reader.Build(roots);
+        return roots;
     }
 
     private static IEnumerable<XElement> Nodes(XElement parent) => parent.Elements().Where(e => e.Name.LocalName == "node");
@@ -198,11 +326,68 @@ internal sealed class MindMapReader
         }
         Remember(topic);
         topic.Link = Link((string?)node.Attribute("LINK"));
+        topic.Folded = string.Equals((string?)node.Attribute("FOLDED"), "true", StringComparison.OrdinalIgnoreCase);
+        topic.Side = ((string?)node.Attribute("POSITION"))?.Trim().ToLowerInvariant() switch
+        {
+            "left" => -1,
+            "right" => 1,
+            _ => 0,
+        };
+        var style = new MindStyle
+        {
+            TextColor = MindStyle.Color((string?)node.Attribute("COLOR")),
+            Fill = MindStyle.Color((string?)node.Attribute("BACKGROUND_COLOR")),
+            BorderColor = MindStyle.Color((string?)node.Attribute("BORDER_COLOR")),
+            BorderWidth = MindStyle.Length((string?)node.Attribute("BORDER_WIDTH")),
+            Shape = FreeMindShape((string?)node.Attribute("STYLE")),
+        };
 
         foreach (var child in node.Elements())
         {
             switch (child.Name.LocalName)
             {
+                case "font":
+                    style = style with
+                    {
+                        FontSize = MindStyle.Length((string?)child.Attribute("SIZE")),
+                        Bold = True(child, "BOLD"),
+                        Italic = True(child, "ITALIC"),
+                        Font = MindStyle.FontName((string?)child.Attribute("NAME") ?? ""),
+                    };
+                    break;
+                case "edge":
+                    style = style with
+                    {
+                        LineColor = MindStyle.Color((string?)child.Attribute("COLOR")),
+                        LineWidth = ((string?)child.Attribute("WIDTH"))?.Trim() is "thin" ? 0.75f : MindStyle.Length((string?)child.Attribute("WIDTH")),
+                        Line = ((string?)child.Attribute("STYLE"))?.Trim().ToLowerInvariant() switch
+                        {
+                            "linear" or "sharp_linear" => BranchLine.Straight,
+                            "bezier" or "sharp_bezier" => BranchLine.Curve,
+                            "horizontal" or "summary" => BranchLine.Elbow,
+                            "hide_edge" => BranchLine.None,
+                            _ => BranchLine.Default,
+                        },
+                    };
+                    break;
+                case "cloud":
+                    topic.Cloud = new MindCloud(MindStyle.Color((string?)child.Attribute("COLOR")));
+                    break;
+                case "arrowlink" when ((string?)child.Attribute("DESTINATION"))?.Trim() is { Length: > 0 } destination:
+                    topic.Links.Add(new MindLink(topic.Id ?? "", destination,
+                        ((string?)child.Attribute("MIDDLE_LABEL"))?.Trim() is { Length: > 0 } label ? label : null,
+                        new MindStyle
+                        {
+                            LineColor = MindStyle.Color((string?)child.Attribute("COLOR")),
+                            LineWidth = MindStyle.Length((string?)child.Attribute("WIDTH")),
+                            Dashed = ((string?)child.Attribute("DASH"))?.Trim() is { Length: > 0 } dash && dash != "SOLID" ? true : null,
+                            ArrowStart = Arrow((string?)child.Attribute("STARTARROW"), LineEndKind.None),
+                            ArrowEnd = Arrow((string?)child.Attribute("ENDARROW"), LineEndKind.Triangle),
+                        }));
+                    break;
+                case "hook" when string.Equals((string?)child.Attribute("NAME"), "ExternalObject", StringComparison.Ordinal):
+                    ExternalPicture((string?)child.Attribute("URI"), (string?)child.Attribute("SIZE"), topic);
+                    break;
                 case "richcontent":
                     var type = ((string?)child.Attribute("TYPE"))?.ToUpperInvariant();
                     var html = child.Elements().FirstOrDefault(e => e.Name.LocalName == "html");
@@ -234,14 +419,67 @@ internal sealed class MindMapReader
                     break;
             }
         }
+        topic.Style = style;
         return topic;
+    }
+
+    private static bool? True(XElement element, string name) =>
+        (string?)element.Attribute(name) is { } value ? string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase) : null;
+
+    /// <summary>A FreeMind / Freeplane node STYLE: fork (a line under the text), bubble, and Freeplane's other shapes.</summary>
+    private static TopicShape FreeMindShape(string? style) => style?.Trim().ToLowerInvariant() switch
+    {
+        "fork" or "combined" => TopicShape.Underline,
+        "bubble" => TopicShape.RoundedRect,
+        "rectangle" => TopicShape.Rect,
+        "oval" => TopicShape.Ellipse,
+        "wide_hexagon" or "narrow_hexagon" => TopicShape.Hexagon,
+        _ => TopicShape.Default,
+    };
+
+    /// <summary>An arrow link's end: "None" draws none, anything else (FreeMind's "Default") an arrowhead.</summary>
+    private static LineEndKind Arrow(string? value, LineEndKind absent) =>
+        value is null ? absent : string.Equals(value.Trim(), "None", StringComparison.OrdinalIgnoreCase) ? LineEndKind.None : LineEndKind.Triangle;
+
+    /// <summary>A finite number, or null.</summary>
+    private static float? Number(string? text) =>
+        float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number)
+        && float.IsFinite(number) ? number : null;
+
+    /// <summary>
+    /// A Freeplane external picture (hook ExternalObject URI, SIZE its zoom): a picture file beside the map, taken
+    /// only from inside the map's folder (DocumentFiles) and when its size is within the picture limit.
+    /// </summary>
+    private void ExternalPicture(string? uri, string? size, Topic topic)
+    {
+        if (DocumentFiles.Find(uri, _baseFolder) is not { } file || !PictureExtensions.Contains(DocumentPackage.SafeExtension(file))
+            || PictureSize.Read(file) is not { } pixels || (long)pixels.Width * pixels.Height > _budget.Limits.MaxPicturePixels)
+            return;
+        var (width, height) = pixels;
+        _budget.Object();
+        topic.Pictures.Add(file);
+        if (Number(size) is { } zoom && zoom is > 0.01f and <= 10)
+            topic.PictureSize = new SKSize(width * 0.75f * zoom, height * 0.75f * zoom);
     }
 
     // ───────────────────────── XMind ─────────────────────────
 
     internal static HDocument ReadXMind(Stream stream, string baseFolder, string media, DocumentLimits limits, bool headingsOnly = false)
     {
-        using var package = DocumentPackage.Open(stream, limits, () => new InvalidDataException("The file is not an XMind mind map (it is not a ZIP package)."));
+        var reader = new MindMapReader(baseFolder, media, limits, headingsOnly);
+        return reader.Build(reader.XMindRoots(stream));
+    }
+
+    internal static Drawn DrawXMind(Stream stream, string baseFolder, string media, DocumentLimits limits)
+    {
+        var reader = new MindMapReader(baseFolder, media, limits, headingsOnly: false) { _drawing = true };
+        reader.XMindRoots(stream);
+        return new Drawn(reader._sheets, reader);
+    }
+
+    private List<Topic> XMindRoots(Stream stream)
+    {
+        using var package = DocumentPackage.Open(stream, _budget.Limits, () => new InvalidDataException("The file is not an XMind mind map (it is not a ZIP package)."));
         foreach (var name in new[] { "META-INF/manifest.xml", "manifest.json" })
         {
             if (package.GetEntry(name) is { } manifest && package.ReadBytes(manifest, 4 * 1024 * 1024) is { } bytes
@@ -249,15 +487,11 @@ internal sealed class MindMapReader
                 throw new ConversionRefusedException(PasswordKey);
         }
 
-        var reader = new MindMapReader(baseFolder, media, limits, headingsOnly);
-        List<Topic> roots;
         if (package.GetEntry("content.json") is { } json)
-            roots = reader.XMindJson(package, json);
-        else if (package.GetEntry("content.xml") is { } xml)
-            roots = reader.XMindXml(package, xml);
-        else
-            throw new InvalidDataException("The file is not an XMind mind map (it has no content.json or content.xml).");
-        return reader.Build(roots);
+            return XMindJson(package, json);
+        if (package.GetEntry("content.xml") is { } xml)
+            return XMindXml(package, xml);
+        throw new InvalidDataException("The file is not an XMind mind map (it has no content.json or content.xml).");
     }
 
     private List<Topic> XMindJson(DocumentPackage package, System.IO.Compression.ZipArchiveEntry entry)
@@ -265,6 +499,9 @@ internal sealed class MindMapReader
         var limits = _budget.Limits;
         var bytes = package.ReadBytes(entry, limits.MaxPartBytes)
                     ?? throw DocumentLimits.Exceeded($"content.json is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+        // Strings that aren't UTF-8 would fail only when read, as no damage the caller knows.
+        if (!System.Text.Unicode.Utf8.IsValid(bytes))
+            throw new InvalidDataException("The file is not an XMind mind map (its content.json isn't UTF-8 text).");
         var maxDepth = JsonLevelsPerTopic * limits.MaxXmlDepth + 16;
         if (NestsDeeper(bytes, maxDepth))
             throw DocumentLimits.Exceeded($"The mind map nests topics more than {limits.MaxXmlDepth} levels deep.");
@@ -292,39 +529,122 @@ internal sealed class MindMapReader
                 throw new InvalidDataException("The file is not an XMind mind map (content.json holds no sheets).");
 
             var roots = new List<Topic>();
-            var stack = new Stack<(JsonElement Element, Topic? Parent, int Depth)>();
+            var stack = new Stack<(JsonElement Element, Topic? Parent, int Depth, TopicKind Kind)>();
             foreach (var sheet in sheets.EnumerateArray())
             {
                 if (sheet.ValueKind != JsonValueKind.Object || !sheet.TryGetProperty("rootTopic", out var rootTopic) || rootTopic.ValueKind != JsonValueKind.Object)
                     continue;
                 var first = roots.Count;
-                stack.Push((rootTopic, null, 0));
+                stack.Push((rootTopic, null, 0, TopicKind.Attached));
                 while (stack.Count > 0)
                 {
-                    var (element, parent, depth) = stack.Pop();
+                    var (element, parent, depth, kind) = stack.Pop();
                     if (depth > limits.MaxXmlDepth)
                         throw DocumentLimits.Exceeded($"The mind map nests topics more than {limits.MaxXmlDepth} levels deep.");
                     var topic = JsonTopic(package, element);
+                    topic.Kind = kind;
                     (parent?.Children ?? roots).Add(topic);
                     if (!element.TryGetProperty("children", out var children) || children.ValueKind != JsonValueKind.Object)
                         continue;
-                    var kids = new List<JsonElement>();
-                    foreach (var kind in new[] { "attached", "detached", "summary", "callout" })
+                    var kids = new List<(JsonElement, TopicKind)>();
+                    foreach (var (name, childKind) in new[]
+                             {
+                                 ("attached", TopicKind.Attached), ("detached", TopicKind.Detached), ("summary", TopicKind.Summary), ("callout", TopicKind.Callout),
+                             })
                     {
-                        if (children.TryGetProperty(kind, out var list) && list.ValueKind == JsonValueKind.Array)
-                            kids.AddRange(list.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.Object));
+                        if (children.TryGetProperty(name, out var list) && list.ValueKind == JsonValueKind.Array)
+                            kids.AddRange(list.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.Object).Select(t => (t, childKind)));
                     }
                     for (var i = kids.Count - 1; i >= 0; i--)
-                        stack.Push((kids[i], topic, depth + 1));
+                        stack.Push((kids[i].Item1, topic, depth + 1, kids[i].Item2));
                 }
-                if (roots.Count > first && first > 0)
-                    roots[first].NewPage = true;
-                if (roots.Count > first && roots[first].Text.Trim().Length == 0 && roots[first].Html is null
-                    && String(sheet, "title") is { } sheetTitle)
-                    roots[first].Text = sheetTitle;
+                if (roots.Count <= first)
+                    continue;
+                var root = roots[first];
+                if (first > 0)
+                    root.NewPage = true;
+                if (root.Text.Trim().Length == 0 && root.Html is null && String(sheet, "title") is { } sheetTitle)
+                    root.Text = sheetTitle;
+                if (_drawing)
+                    _sheets.Add(JsonSheet(sheet, rootTopic, root));
             }
             return roots;
         }
+    }
+
+    /// <summary>A content.json sheet for the drawing: structure, background, theme, colours of the branches, relationships.</summary>
+    private static Sheet JsonSheet(JsonElement sheet, JsonElement rootTopic, Topic root)
+    {
+        var drawn = new Sheet(root) { Structure = String(rootTopic, "structureClass") };
+        var sheetStyle = JsonStyle(sheet);
+        if (sheetStyle.Fill is { Alpha: > 0 } background)
+            drawn.Background = background;
+        if (sheet.TryGetProperty("theme", out var theme) && theme.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var part in theme.EnumerateObject())
+            {
+                if (part.Value.ValueKind != JsonValueKind.Object)
+                    continue;
+                drawn.Theme[part.Name] = JsonStyle(part.Value);
+                if (Properties(part.Value).FirstOrDefault(p => p.Key is "multi-line-colors").Value is { } colors)
+                    drawn.BranchColors.AddRange(BranchColors(colors));
+            }
+        }
+        if (sheet.TryGetProperty("relationships", out var relationships) && relationships.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var relationship in relationships.EnumerateArray())
+            {
+                if (String(relationship, "end1Id") is not { Length: > 0 } from || String(relationship, "end2Id") is not { Length: > 0 } to)
+                    continue;
+                Relate(drawn, new MindLink(from, to, String(relationship, "title"), JsonStyle(relationship)));
+            }
+        }
+        return drawn;
+    }
+
+    /// <summary>Adds a relationship to the sheet; more than the drawing draws are refused as it would refuse them.</summary>
+    private static void Relate(Sheet sheet, MindLink link)
+    {
+        if (sheet.Relationships.Count >= MindMapDrawing.MaxMarks)
+            throw DocumentLimits.Exceeded($"The mind map has more than {DocumentLimits.Count(MindMapDrawing.MaxMarks)} relationships, boundaries and summaries to draw.");
+        sheet.Relationships.Add(link);
+    }
+
+    /// <summary>XMind's multi-line-colors: colours separated by spaces.</summary>
+    private static IEnumerable<SKColor> BranchColors(string colors) =>
+        colors.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(64).Select(MindStyle.Color).OfType<SKColor>().Where(c => c.Alpha > 0);
+
+    /// <summary>The string properties of an element's style (style.properties; a theme's parts hold properties themselves).</summary>
+    private static IEnumerable<KeyValuePair<string, string>> Properties(JsonElement owner)
+    {
+        if (owner.ValueKind != JsonValueKind.Object)
+            return [];
+        if (!owner.TryGetProperty("properties", out var properties)
+            && (!owner.TryGetProperty("style", out var style) || style.ValueKind != JsonValueKind.Object || !style.TryGetProperty("properties", out properties)))
+            return [];
+        if (properties.ValueKind != JsonValueKind.Object)
+            return [];
+        return properties.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String)
+            .Select(p => KeyValuePair.Create(p.Name, p.Value.GetString()!)).ToList();
+    }
+
+    private static MindStyle JsonStyle(JsonElement owner) => MindStyle.FromXMind(Properties(owner));
+
+    private static float? JsonNumber(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out var number) && float.IsFinite(number)
+            ? number
+            : null;
+
+    /// <summary>An XMind range of subtopics, "(0,2)" (from 0, both ends in), or "master" for the whole topic.</summary>
+    private static (int Start, int End, bool Master)? Range(string? range)
+    {
+        var text = range?.Trim();
+        if (text is "master")
+            return (0, 0, true);
+        var parts = text?.Trim('(', ')', '[', ']').Split(',', StringSplitOptions.TrimEntries);
+        if (parts is not { Length: 2 } || !int.TryParse(parts[0], out var start) || !int.TryParse(parts[1], out var end) || start < 0 || end < start)
+            return null;
+        return (start, end, false);
     }
 
     /// <summary>
@@ -392,8 +712,72 @@ internal sealed class MindMapReader
             }
         }
         if (element.TryGetProperty("image", out var image) && image.ValueKind == JsonValueKind.Object)
+        {
             Picture(package, String(image, "src"), topic);
+            if (JsonNumber(image, "width") is { } width && JsonNumber(image, "height") is { } height && width > 0 && height > 0)
+                topic.PictureSize = new SKSize(Math.Min(width, 2000), Math.Min(height, 2000));
+        }
+
+        // What the drawing takes: the look, folding, a floating topic's place, boundaries, summaries, an equation.
+        topic.Style = JsonStyle(element);
+        topic.Folded = String(element, "branch") is "folded";
+        if (element.TryGetProperty("position", out var position) && position.ValueKind == JsonValueKind.Object
+            && JsonNumber(position, "x") is { } px && JsonNumber(position, "y") is { } py)
+            topic.Position = new SKPoint(px, py);
+        if (element.TryGetProperty("boundaries", out var boundaries) && boundaries.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var boundary in boundaries.EnumerateArray())
+            {
+                if (Range(String(boundary, "range")) is (var start, var end, var master))
+                    topic.Boundaries.Add(new MindBoundary(start, end, master, String(boundary, "title"), JsonStyle(boundary)));
+            }
+        }
+        if (element.TryGetProperty("summaries", out var summaries) && summaries.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var summary in summaries.EnumerateArray())
+            {
+                if (Range(String(summary, "range")) is (var start, var end, false))
+                    topic.Summaries.Add(new MindSummary(start, end, String(summary, "topicId")));
+            }
+        }
+        topic.Equation = JsonEquation(element);
         return topic;
+    }
+
+    /// <summary>
+    /// The TeX of a topic's equation: an extension whose provider names math (XMind's LaTeX equations), its content the
+    /// first string found in it (looked through a few levels at most); null without one.
+    /// </summary>
+    private static string? JsonEquation(JsonElement element)
+    {
+        if (!element.TryGetProperty("extensions", out var extensions) || extensions.ValueKind != JsonValueKind.Array)
+            return null;
+        foreach (var extension in extensions.EnumerateArray())
+        {
+            if (String(extension, "provider") is not { } provider || !provider.Contains("math", StringComparison.OrdinalIgnoreCase)
+                || !extension.TryGetProperty("content", out var content))
+                continue;
+            var queue = new Queue<(JsonElement Value, int Depth)>();
+            queue.Enqueue((content, 0));
+            while (queue.Count > 0)
+            {
+                var (value, depth) = queue.Dequeue();
+                switch (value.ValueKind)
+                {
+                    case JsonValueKind.String when value.GetString()!.Trim() is { Length: > 0 and <= 4096 } tex:
+                        return tex;
+                    case JsonValueKind.Object when depth < 4:
+                        foreach (var property in value.EnumerateObject().Take(16))
+                            queue.Enqueue((property.Value, depth + 1));
+                        break;
+                    case JsonValueKind.Array when depth < 4:
+                        foreach (var item in value.EnumerateArray().Take(16))
+                            queue.Enqueue((item, depth + 1));
+                        break;
+                }
+            }
+        }
+        return null;
     }
 
     private static string? String(JsonElement element, string name) =>
@@ -414,34 +798,112 @@ internal sealed class MindMapReader
         }
         if (xml.Root is not { } root || root.Name.LocalName != "xmap-content")
             throw new InvalidDataException("The file is not an XMind mind map.");
+        var styles = XmlStyles(package);
 
         var roots = new List<Topic>();
-        var stack = new Stack<(XElement Element, Topic? Parent)>();
+        var stack = new Stack<(XElement Element, Topic? Parent, TopicKind Kind)>();
         foreach (var sheet in Children(root, "sheet"))
         {
             var first = roots.Count;
             foreach (var rootTopic in Children(sheet, "topic").Take(1))
-                stack.Push((rootTopic, null));
+                stack.Push((rootTopic, null, TopicKind.Attached));
             while (stack.Count > 0)
             {
-                var (element, parent) = stack.Pop();
-                var topic = XmlTopic(package, element);
+                var (element, parent, kind) = stack.Pop();
+                var topic = XmlTopic(package, element, styles);
+                topic.Kind = kind;
                 (parent?.Children ?? roots).Add(topic);
-                var kids = Children(element, "children").SelectMany(c => Children(c, "topics")).SelectMany(t => Children(t, "topic")).ToList();
+                var kids = Children(element, "children").SelectMany(c => Children(c, "topics"))
+                    .OrderBy(t => XmlKind((string?)t.Attribute("type")))
+                    .SelectMany(t => Children(t, "topic").Select(topic => (topic, XmlKind((string?)t.Attribute("type"))))).ToList();
                 for (var i = kids.Count - 1; i >= 0; i--)
-                    stack.Push((kids[i], topic));
+                    stack.Push((kids[i].topic, topic, kids[i].Item2));
             }
-            if (roots.Count > first && first > 0)
-                roots[first].NewPage = true;
-            if (roots.Count > first && roots[first].Text.Trim().Length == 0 && Children(sheet, "title").FirstOrDefault()?.Value is { } sheetTitle)
-                roots[first].Text = sheetTitle;
+            if (roots.Count <= first)
+                continue;
+            var sheetRoot = roots[first];
+            if (first > 0)
+                sheetRoot.NewPage = true;
+            if (sheetRoot.Text.Trim().Length == 0 && Children(sheet, "title").FirstOrDefault()?.Value is { } sheetTitle)
+                sheetRoot.Text = sheetTitle;
+            if (_drawing)
+                _sheets.Add(XmlSheet(sheet, sheetRoot, styles));
         }
         return roots;
     }
 
+    private static TopicKind XmlKind(string? type) => type switch
+    {
+        "detached" => TopicKind.Detached,
+        "summary" => TopicKind.Summary,
+        "callout" => TopicKind.Callout,
+        _ => TopicKind.Attached,
+    };
+
+    /// <summary>XMind 8's styles.xml: each style's properties by id, and a theme's default style id by topic class.</summary>
+    private sealed record XmlStyleSheet(Dictionary<string, MindStyle> Styles, Dictionary<string, Dictionary<string, string>> Themes);
+
+    private static XmlStyleSheet XmlStyles(DocumentPackage package)
+    {
+        var sheet = new XmlStyleSheet(new(StringComparer.Ordinal), new(StringComparer.Ordinal));
+        if (package.GetEntry("styles.xml") is not { } entry)
+            return sheet;
+        XDocument xml;
+        try
+        {
+            xml = package.LoadXml(entry, preserveWhitespace: false);
+        }
+        catch (XmlException)
+        {
+            return sheet; // damaged styles: the map is drawn with the drawing's own
+        }
+        foreach (var style in xml.Descendants().Where(e => e.Name.LocalName == "style"))
+        {
+            if ((string?)style.Attribute("id") is not { Length: > 0 } id)
+                continue;
+            var properties = style.Elements().Where(e => e.Name.LocalName.EndsWith("-properties", StringComparison.Ordinal)).ToList();
+            sheet.Styles[id] = MindStyle.FromXMind(properties.SelectMany(p => p.Attributes())
+                .Select(a => KeyValuePair.Create(a.Name.LocalName, a.Value)));
+            var defaults = properties.SelectMany(p => p.Elements().Where(e => e.Name.LocalName == "default-style"))
+                .Select(d => ((string?)d.Attribute("style-family"), (string?)d.Attribute("style-id")))
+                .Where(d => d.Item1 is { Length: > 0 } && d.Item2 is { Length: > 0 })
+                .ToList();
+            if (defaults.Count > 0)
+                sheet.Themes[id] = defaults.GroupBy(d => d.Item1!).ToDictionary(g => g.Key, g => g.First().Item2!, StringComparer.Ordinal);
+        }
+        return sheet;
+    }
+
+    private static MindStyle XmlStyle(XElement element, XmlStyleSheet styles) =>
+        (string?)element.Attribute("style-id") is { } id && styles.Styles.TryGetValue(id, out var style) ? style : MindStyle.Empty;
+
+    /// <summary>A content.xml sheet for the drawing: structure, background, the theme's styles, relationships.</summary>
+    private static Sheet XmlSheet(XElement sheet, Topic root, XmlStyleSheet styles)
+    {
+        var rootTopic = Children(sheet, "topic").First();
+        var drawn = new Sheet(root) { Structure = (string?)rootTopic.Attribute("structure-class") };
+        if (XmlStyle(sheet, styles).Fill is { Alpha: > 0 } background)
+            drawn.Background = background;
+        if ((string?)sheet.Attribute("theme") is { } themeId && styles.Themes.TryGetValue(themeId, out var theme))
+        {
+            foreach (var (family, id) in theme)
+            {
+                if (styles.Styles.TryGetValue(id, out var style))
+                    drawn.Theme[family] = style;
+            }
+        }
+        foreach (var relationship in Children(sheet, "relationships").SelectMany(r => Children(r, "relationship")))
+        {
+            if ((string?)relationship.Attribute("end1") is not { Length: > 0 } from || (string?)relationship.Attribute("end2") is not { Length: > 0 } to)
+                continue;
+            Relate(drawn, new MindLink(from, to, Children(relationship, "title").FirstOrDefault()?.Value, XmlStyle(relationship, styles)));
+        }
+        return drawn;
+    }
+
     private static IEnumerable<XElement> Children(XElement parent, string name) => parent.Elements().Where(e => e.Name.LocalName == name);
 
-    private Topic XmlTopic(DocumentPackage package, XElement element)
+    private Topic XmlTopic(DocumentPackage package, XElement element, XmlStyleSheet styles)
     {
         var topic = new Topic
         {
@@ -464,7 +926,29 @@ internal sealed class MindMapReader
                 topic.Symbols.Add(symbol);
         }
         foreach (var img in Children(element, "img"))
+        {
             Picture(package, (string?)img.Attributes().FirstOrDefault(a => a.Name.LocalName == "src"), topic);
+            if (Number((string?)img.Attributes().FirstOrDefault(a => a.Name.LocalName == "width")) is { } width
+                && Number((string?)img.Attributes().FirstOrDefault(a => a.Name.LocalName == "height")) is { } height && width > 0 && height > 0)
+                topic.PictureSize = new SKSize(Math.Min(width, 2000), Math.Min(height, 2000));
+        }
+
+        topic.Style = XmlStyle(element, styles);
+        topic.Folded = (string?)element.Attribute("branch") is "folded";
+        if (Children(element, "position").FirstOrDefault() is { } position
+            && Number((string?)position.Attributes().FirstOrDefault(a => a.Name.LocalName == "x")) is { } px
+            && Number((string?)position.Attributes().FirstOrDefault(a => a.Name.LocalName == "y")) is { } py)
+            topic.Position = new SKPoint(px, py);
+        foreach (var boundary in Children(element, "boundaries").SelectMany(b => Children(b, "boundary")))
+        {
+            if (Range((string?)boundary.Attribute("range")) is (var start, var end, var master))
+                topic.Boundaries.Add(new MindBoundary(start, end, master, Children(boundary, "title").FirstOrDefault()?.Value, XmlStyle(boundary, styles)));
+        }
+        foreach (var summary in Children(element, "summaries").SelectMany(s => Children(s, "summary")))
+        {
+            if (Range((string?)summary.Attribute("range")) is (var start, var end, false))
+                topic.Summaries.Add(new MindSummary(start, end, (string?)summary.Attribute("topic-id")));
+        }
         return topic;
     }
 

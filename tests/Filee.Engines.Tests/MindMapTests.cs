@@ -1,7 +1,7 @@
 // Mind maps as outlines (Hwp/Hwpx/Markup/MindMapReader): FreeMind / Freeplane and XMind maps written here as those
 // apps save them read into headings, nested lists, notes, links, bookmarks, symbols and pictures; they convert to
-// DOCX / HWPX / PDF / HTML / Markdown / TXT / OPML without Pandoc, and hostile maps (entities, nesting, bombs, sizes)
-// are refused quickly.
+// DOCX / HWPX / HTML / Markdown / TXT / OPML without Pandoc (PDF draws the map: MindMapDrawingTests), and hostile
+// maps (entities, nesting, bombs, sizes) are refused quickly.
 
 using System.IO.Compression;
 using System.Text;
@@ -9,6 +9,7 @@ using System.Text.Json;
 using Filee.Core.Conversion;
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Markup;
 using Filee.Engines.Infrastructure;
 using static Filee.Engines.Tests.MarkupTestKit;
@@ -284,9 +285,12 @@ public class MindMapTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         foreach (var source in new[] { mm, xmind })
         {
-            await ConvertsEverywhereWithoutPandocAsync(fx, source, "Launch plan", "Research", "papers", "Deep detail");
+            // The PDF is the drawn map, which shows the topics but not their notes ("papers").
+            await ConvertsEverywhereWithoutPandocAsync(fx, source, "Launch plan", "Research", "Deep detail");
 
             var catalog = WithoutPandoc(fx);
+            var docx = DocxReader.Read(await ConvertAsync(catalog, source, "docx"), fx.NewFolder());
+            Assert.Contains(Texts(docx), t => t.Contains("papers", StringComparison.Ordinal));
             var text = await File.ReadAllTextAsync(await ConvertAsync(catalog, source, "txt"), TestContext.Current.CancellationToken);
             Assert.Contains("Deep detail", text, StringComparison.Ordinal);
             // OPML keeps the whole tree: the deepest topic is an outline six levels down.
@@ -308,13 +312,14 @@ public class MindMapTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 Assert.Equal(engine, Assert.Single(planner.Plan(format, to)!.Steps).Converter.Id);
         }
 
+        // PDF draws the map (MindMapDrawingTests), with the Filee renderer on too.
         var renderer = EngineEnvironment.FileeRenderer;
         EngineEnvironment.FileeRenderer = true;
         try
         {
             fx.Catalog.Refresh();
             foreach (var format in MindMapReader.Formats)
-                Assert.Equal("layout", Assert.Single(fx.Catalog.CreatePlanner().Plan(format, "pdf")!.Steps).Converter.Id);
+                Assert.Equal("drawing", Assert.Single(fx.Catalog.CreatePlanner().Plan(format, "pdf")!.Steps).Converter.Id);
         }
         finally
         {

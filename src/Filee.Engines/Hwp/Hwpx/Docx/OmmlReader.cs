@@ -1,7 +1,9 @@
 // Word equations (Office Math, m:oMath) → the equation tree of EquationScript, which the HWPX writer stores as a 한글
 // equation (and other writers as linear text). Covers what Word's equation editor makes: fractions, scripts, roots,
 // sums and integrals with limits, brackets, matrices, equation arrays and cases, functions and limits, accents and bars.
-// Boxes, border boxes, phantoms and group characters keep their content. Plain (m:sty="p") and normal text is upright.
+// Boxes, border boxes, phantoms and group characters keep their content. Plain (m:sty="p") and normal text is upright,
+// m:sty="b" upright bold and "bi" bold italic. Spaces of a set width (em, quarter-em, thin ...) are spacing; plain
+// spaces show only in normal text, as in Word.
 
 using System.Text;
 using System.Xml.Linq;
@@ -346,11 +348,11 @@ internal static class OmmlReader
                 {
                     var name = Argument(element, "e", roman);
                     var limit = Argument(element, "lim");
-                    output.Add(name.Items is [MathLimit] ? new MathLimit(limit) : Scripts(name, limit, null));
+                    output.Add(name.Items is [MathLimit] ? new MathLimit(limit) : Stack(name, null, limit));
                     break;
                 }
             case "limUpp":
-                output.Add(Scripts(Argument(element, "e", roman), null, Argument(element, "lim")));
+                output.Add(Stack(Argument(element, "e", roman), Argument(element, "lim"), null));
                 break;
             case "acc":
                 {
@@ -393,6 +395,23 @@ internal static class OmmlReader
         if (baseRow.Items is [MathBigOperator { Lower: null, Upper: null } big])
             return big with { Lower = sub, Upper = sup };
         return new MathScripts(baseRow.Items.Count == 1 ? baseRow.Items[0] : baseRow, sub, sup);
+    }
+
+    /// <summary>
+    /// Word's upper and lower limits (m:limUpp, m:limLow): content over or under the base. A large operator takes them
+    /// as its limits, and the two nested make one stack.
+    /// </summary>
+    private static MathNode Stack(MathRow baseRow, MathRow? over, MathRow? under)
+    {
+        if (baseRow.Items is [MathBigOperator])
+            return Scripts(baseRow, under, over);
+        var baseNode = baseRow.Items.Count == 1 ? baseRow.Items[0] : baseRow;
+        return baseNode switch
+        {
+            MathStack { Over: null } inner when over is not null => inner with { Over = over },
+            MathStack { Under: null } inner when under is not null => inner with { Under = under },
+            _ => new MathStack(baseNode, over, under),
+        };
     }
 
     private static void Nary(XElement nary, List<MathNode> output)
@@ -495,7 +514,8 @@ internal static class OmmlReader
     {
         Italic,
         Plain,
-        Bold,
+        Bold, // upright bold (m:sty="b", TeX's \mathbf)
+        BoldItalic, // m:sty="bi" (TeX's \boldsymbol)
         Normal, // non-math text: upright, spaces kept
     }
 
@@ -506,7 +526,8 @@ internal static class OmmlReader
             : Val(properties?.Element(M + "sty")) switch
             {
                 "p" => Style.Plain,
-                "b" or "bi" => Style.Bold,
+                "b" => Style.Bold,
+                "bi" => Style.BoldItalic,
                 _ => roman ? Style.Plain : Style.Italic,
             };
         var text = new StringBuilder();
@@ -559,10 +580,22 @@ internal static class OmmlReader
                 else
                     items.AddRange(word.Select(letter => new MathText(letter.ToString())));
             }
-            else if (c is ' ' or '\u00A0' or '\u2009' or '\u2005' or '\u2006' or '\u200A')
+            else if (c is ' ' or '\u00A0')
             {
+                // Word sets math with its own spacing: a typed space shows only in normal text.
                 if (style == Style.Normal)
                     items.Add(new MathSpace());
+            }
+            else if (SpaceWidth(c) is { } em)
+            {
+                // Spaces of a set width (TeX's \quad as an em space, \, as a thin one) Word draws: spacing. A run of
+                // them is one space, so that what OmmlWriter writes as several quarter-em spaces comes back as one.
+                while (i + 1 < text.Length && SpaceWidth(text[i + 1]) is { } more)
+                {
+                    em += more;
+                    i++;
+                }
+                items.Add(new MathSpace(Math.Round(em * 2, 3)));
             }
             else if (c == '&')
             {
@@ -603,7 +636,10 @@ internal static class OmmlReader
             }
         }
 
-        if (style is not (Style.Plain or Style.Normal or Style.Bold) || !items.Any(i => i is MathText))
+        // Upright changes letters only; bold digits and symbols too.
+        var bold = style is Style.Bold or Style.BoldItalic;
+        bool Styled(MathNode item) => item is MathText || (bold && item is MathNumber or MathCommand);
+        if (style == Style.Italic || !items.Any(Styled))
         {
             output.AddRange(items);
             return;
@@ -612,10 +648,20 @@ internal static class OmmlReader
         var piece = new List<MathNode>();
         void Flush()
         {
-            if (piece.Any(i => i is MathText))
-                output.Add(new MathStyled(style == Style.Bold ? "bold" : "rm", new MathRow(piece)));
+            if (piece.Any(Styled))
+            {
+                var row = new MathRow(piece);
+                output.Add(style switch
+                {
+                    Style.Bold => new MathStyled("bold", new MathStyled("rm", row)),
+                    Style.BoldItalic => new MathStyled("bold", row),
+                    _ => new MathStyled("rm", row),
+                });
+            }
             else
+            {
                 output.AddRange(piece);
+            }
             piece = [];
         }
         foreach (var item in items)
@@ -632,6 +678,22 @@ internal static class OmmlReader
         }
         Flush();
     }
+
+    /// <summary>
+    /// The width in ems of a Unicode space of a set width (en, em, a third to a twelfth of an em, thin, medium
+    /// mathematical, ideographic); null for any other character.
+    /// </summary>
+    private static double? SpaceWidth(char c) => c switch
+    {
+        ' ' or ' ' or ' ' => 0.5,
+        ' ' or ' ' or '　' => 1,
+        ' ' => 1 / 3.0,
+        ' ' or ' ' => 0.25,
+        ' ' or ' ' => 1 / 6.0,
+        ' ' => 1 / 12.0,
+        ' ' => 4 / 18.0,
+        _ => null,
+    };
 
     /// <summary>
     /// Mathematical alphanumeric symbols (U+1D400…, italic 𝑥 from some converters) → the plain letter or digit; the

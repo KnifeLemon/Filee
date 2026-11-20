@@ -436,8 +436,9 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         };
         var caption = table.Caption.Count > 0 ? Stack(table.Caption, tableWidth) : [];
         // A Word table may start in the margin (a negative indent, Word 2010's indent to the cell's text) and run into
-        // both margins when it is centred and wider than the column; other formats' tables start at the column's edge.
-        return new TableBox(table.Sizing is null ? Math.Max(0, offset) : offset, tableWidth, rows, table.PageBreak, caption) { Column = width };
+        // both margins when it is centred and wider than the column, as may an RTF table with a negative \trleft (Word
+        // writes \trleft-108 for its 108 twips of padding); other formats' tables start at the column's edge.
+        return new TableBox(table.Sizing is null && table.Indent >= 0 ? Math.Max(0, offset) : offset, tableWidth, rows, table.PageBreak, caption) { Column = width };
     }
 
     /// <summary>Where a table's edge is from the column's start side, in points: its indent, less what lies before it (HTable.EdgeBeforeIndent).</summary>

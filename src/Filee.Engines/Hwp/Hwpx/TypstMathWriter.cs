@@ -5,7 +5,7 @@
 // from running into one multi-letter name or shorthands like "->" from forming). Symbols are their Unicode characters,
 // which Typst's math takes as they are; the characters with a meaning in its syntax are escaped (\( \, \_ …), words
 // and CJK text are quoted. Fractions frac(a, b), roots sqrt / root, scripts x_(i)^(n) (attach() for a base of several
-// atoms, primes as '), large operators with their limits, function names as op("…") (with limits for lim, max …),
+// atoms, primes as '), stacked content limits(x)_( … )^( … ), large operators with their limits, function names as op("…") (with limits for lim, max …),
 // matrices mat(delim: …), cases(…), piles as lines (\) with & marks at the top or as a matrix inside, stretched
 // brackets ( … ) or lr(…), abs / norm / floor / ceil, accents (hat, tilde, overline, arrow …), upright / italic /
 // bold, spaces (thin, med, thick, quad, wide or #h). Cells and arguments are separated by the writer's own commas, so
@@ -157,6 +157,11 @@ internal static class TypstMathWriter
                     break;
                 case MathScripts scripts:
                     Scripts(scripts.Base, scripts.Sub, scripts.Sup);
+                    break;
+                case MathStack stack:
+                    // limits() sets the attachments over and under the base.
+                    Call("limits", stack.Base);
+                    Attachments(stack.Under, stack.Over);
                     break;
                 case MathBigOperator big:
                     Symbols(big.Glyph);

@@ -324,6 +324,9 @@ internal static class LatexMath
 
         private static MathNode Single(List<MathNode> items) => items.Count == 1 ? items[0] : new MathRow(items);
 
+        /// <summary>An empty group ({}), as \xrightarrow{} leaves above its arrow.</summary>
+        private static bool IsEmpty(MathNode node) => node is MathRow { Items.Count: 0 };
+
         private void Enter()
         {
             if (++_depth > MaxDepth)
@@ -721,13 +724,16 @@ internal static class LatexMath
                     }
                 case "overset" or "stackrel":
                     {
+                        // \overset{a}{\underset{b}{X}} is one stack.
                         var over = Argument();
-                        return new MathScripts(Argument(), null, over);
+                        var body = Argument();
+                        return body is MathStack { Over: null } inner ? inner with { Over = over } : new MathStack(body, over, null);
                     }
                 case "underset":
                     {
                         var under = Argument();
-                        return new MathScripts(Argument(), under, null);
+                        var body = Argument();
+                        return body is MathStack { Under: null } inner ? inner with { Under = under } : new MathStack(body, null, under);
                     }
                 case "xrightarrow" or "xleftarrow" or "xLeftarrow" or "xRightarrow" or "xleftrightarrow":
                     {
@@ -746,7 +752,8 @@ internal static class LatexMath
                             "xleftrightarrow" => "↔",
                             _ => "→",
                         };
-                        return new MathScripts(Glyph(arrow, Kind.Relation), below, Argument());
+                        var above = Argument();
+                        return new MathStack(Glyph(arrow, Kind.Relation), IsEmpty(above) ? null : above, below is null || IsEmpty(below) ? null : below);
                     }
                 case "substack":
                     {

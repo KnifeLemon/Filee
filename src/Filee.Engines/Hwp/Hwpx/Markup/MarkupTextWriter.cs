@@ -179,9 +179,16 @@ internal abstract class MarkupTextWriter
         Budget.Characters(sb.Length + _noteCharacters);
     }
 
-    /// <summary>The equation a paragraph holds alone (bookmarks aside) when it is a display equation, else null.</summary>
-    private static HEquation? LoneEquation(HParagraph paragraph) =>
-        paragraph.Inlines.Where(i => i is not HBookmark).ToList() is [HEquation equation] && HEquation.IsDisplay(equation, paragraph) ? equation : null;
+    /// <summary>
+    /// The equation a paragraph holds alone when it is a display equation, else null: a display one
+    /// (<see cref="HEquation.IsDisplay"/>), or one alone on its line with only bookmarks, tabs or spaces around it, as
+    /// Word and 한글 centre an equation with tabs (as MarkdownWriter reads such a line too).
+    /// </summary>
+    private static HEquation? LoneEquation(HParagraph paragraph)
+    {
+        var shown = paragraph.Inlines.Where(i => i is not (HBookmark or HTab) && !(i is HText run && string.IsNullOrWhiteSpace(run.Text))).ToList();
+        return shown is [HEquation equation] ? equation : null;
+    }
 
     /// <summary>
     /// The table as a grid; a cell's paragraphs are joined by line breaks. Spans are placed arithmetically

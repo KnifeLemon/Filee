@@ -1,6 +1,7 @@
 // Equations in a paragraph's lines, and Word's equation numbers on Filee's own route.
 //
-// - An equation is laid out once (MathLayout) at its size, its own or else its text's, in its colour.
+// - An equation is laid out once (MathLayout) at its size, its own or else its text's, in its colour: 한글's at one size
+//   (MathMode.Fixed), Word's and TeX's as display formulas (m:oMathPara, $$…$$) or inline ones (MathMode.Text).
 // - Word's equation numbers ("E#(1)", a model read from Word): the reader keeps the number of a one-line equation in a
 //   text box placed for rhwp (DocxReader.NumberBox), which the page composer hands over instead (Number). The lines of
 //   an equation array each with their own number ("a&=b#(1)" in every line) keep them in the equation. On this route
@@ -48,16 +49,18 @@ internal sealed partial class ParagraphLayouter
         var size = (equation.Size ?? equation.Format.Size ?? 1000) / 100f;
         var color = ParagraphText.Color(equation.Color ?? equation.Format.Color) ?? SKColors.Black;
         var axis = size * MathLayout.Axis;
+        // Word's and TeX's equations (models of other formats) are set as display or inline formulas, 한글's at one size.
+        var mode = !WordEquations ? MathMode.Fixed : equation.Display ? MathMode.Display : MathMode.Text;
         if (_equations.Count > 10_000)
             _equations.Clear();
         if (_numbers.TryGetValue(equation, out var number))
         {
-            laid = new LaidEquation(_math.Layout(equation.Math, size, color), [Placed(number, -axis)]);
+            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode), [Placed(number, -axis)]);
         }
         else if (WordEquations && LineNumbers(equation.Math) is var (pile, numbers))
         {
             var baselines = new List<float>();
-            var box = _math.Lines(pile, size, color, baselines);
+            var box = _math.Lines(pile, size, color, baselines, mode);
             var format = equation.Format with { Italic = false };
             var placed = new List<EquationNumber>();
             for (var i = 0; i < numbers.Count && i < baselines.Count; i++)
@@ -69,7 +72,7 @@ internal sealed partial class ParagraphLayouter
         }
         else
         {
-            laid = new LaidEquation(_math.Layout(equation.Math, size, color), []);
+            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode), []);
         }
         return _equations[equation] = laid;
     }

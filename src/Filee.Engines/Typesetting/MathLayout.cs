@@ -11,7 +11,13 @@
 // 0.18 (further for taller bases); fractions on the math axis (0.27 above the baseline) with a rule of 0.05; roots with
 // a radical sign over their body; brackets of LEFT … RIGHT as tall as their content; sums, products and unions at 1.4
 // with their limits above and below, integrals at 1.6 with them to the right; matrices, cases and piles centred on the
-// axis, the lines of a Word equation array lined up at their & marks; accents drawn over (or under) their content.
+// axis, the lines of a Word equation array lined up at their & marks; accents drawn over (or under) their content;
+// stacked content (\overset, Word's m:limUpp) centred over or under its base, an arrow drawn as long as its text.
+//
+// That is how 한글 sets an equation (MathMode.Fixed). Word's and TeX's equations follow TeX's styles instead
+// (MathMode.Display / Text): an inline one (and a display fraction's parts) sets fractions' parts at script size and
+// large operators little larger than the text with their limits at the side; scripts of scripts shrink less; matrix
+// rows are evenly spaced and closer, and brackets fall a little short of their content, as Word draws them (#356).
 //
 // Brackets and radical signs come from a math font when one is installed (Cambria Math, STIX Two Math, Latin Modern
 // Math ...: a font with an OpenType MATH table, see MathTable): the glyph itself, a taller variant of it, or for taller
@@ -39,6 +45,26 @@ internal sealed class EquationBox(float width, float ascent, float descent, Acti
     public Action<PageContent, float, float, float> Paint { get; } = paint;
 }
 
+/// <summary>How the parts of a formula are sized.</summary>
+internal enum MathMode
+{
+    /// <summary>한글's equations: fractions, operators and matrices at the size of the equation wherever they are.</summary>
+    Fixed,
+
+    /// <summary>
+    /// A display formula of Word (m:oMathPara) or TeX ($$…$$): large operators with limits above and below; the parts
+    /// of a fraction are in text style.
+    /// </summary>
+    Display,
+
+    /// <summary>
+    /// An inline formula of Word (m:oMath among the text, also when tabs centre it) or TeX ($…$), and the parts of a
+    /// display fraction: a fraction's parts in script size, large operators little larger than the text with their
+    /// limits at the side.
+    /// </summary>
+    Text,
+}
+
 internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 {
     private const float ScriptScale = 0.7f;
@@ -48,6 +74,9 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     private const float Rule = 0.05f;
     private const float Gap = 0.12f;
+
+    /// <summary>The room between the rows of Word's and TeX's matrices, equation arrays and cases, of the size.</summary>
+    private const float RowGap = 0.16f;
 
     /// <summary>한글's equation fonts first, then common serif fonts.</summary>
     private static readonly string[] Families = ["HancomEQN", "HYhwpEQ", "Times New Roman", "Liberation Serif", "Tinos", "Noto Serif", "DejaVu Serif"];
@@ -83,21 +112,40 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     private bool _mathFontLooked;
     private int _depth;
 
-    /// <summary>The style text takes: italic Latin letters unless upright (rm), bold when asked.</summary>
-    private readonly record struct Style(float Size, SKColor Color, bool Upright, bool Bold)
+    /// <summary>
+    /// The style text takes: italic Latin letters unless upright (rm), bold when asked; <c>Mode</c> and <c>Level</c>
+    /// (0 for the formula, 1 for scripts, 2 for scripts of scripts) size Word's and TeX's math (see <see cref="MathMode"/>).
+    /// </summary>
+    private readonly record struct Style(float Size, SKColor Color, bool Upright, bool Bold, MathMode Mode = MathMode.Fixed, int Level = 0)
     {
         public Style Smaller(float scale) => this with { Size = Size * scale };
+
+        /// <summary>Word and TeX: a display formula's parts (a fraction's, a matrix cell) are in text style.</summary>
+        public bool Tex => Mode != MathMode.Fixed;
+
+        /// <summary>
+        /// The style of a script (and of a fraction's parts in text style): 0.7 of the size; Word and TeX shrink a
+        /// script of a script less and stop there (Cambria Math's script sizes are 73% and 60%).
+        /// </summary>
+        public Style Script() => Mode switch
+        {
+            MathMode.Fixed => Smaller(ScriptScale),
+            _ => this with { Size = Size * (Level switch { 0 => ScriptScale, 1 => 0.82f, _ => 1 }), Mode = MathMode.Text, Level = Math.Min(Level + 1, 2) },
+        };
     }
 
-    /// <summary>Lays out <paramref name="node"/> at <paramref name="size"/> points in <paramref name="color"/>.</summary>
-    public EquationBox Layout(MathNode node, float size, SKColor color) => Lay(node, new Style(size, color, false, false));
+    /// <summary>
+    /// Lays out <paramref name="node"/> at <paramref name="size"/> points in <paramref name="color"/>, as a 한글
+    /// equation (<see cref="MathMode.Fixed"/>) or as Word or TeX set a display or an inline formula.
+    /// </summary>
+    public EquationBox Layout(MathNode node, float size, SKColor color, MathMode mode = MathMode.Fixed) => Lay(node, new Style(size, color, false, false, mode));
 
     /// <summary>
     /// Lays out the lines of an equation array as <see cref="Layout"/> does, with where each line's baseline is (down
     /// from the array's) in <paramref name="baselines"/>.
     /// </summary>
-    public EquationBox Lines(MathPile pile, float size, SKColor color, List<float> baselines) =>
-        Pile(pile.Rows, pile.Align, new Style(size, color, false, false), baselines);
+    public EquationBox Lines(MathPile pile, float size, SKColor color, List<float> baselines, MathMode mode = MathMode.Fixed) =>
+        Pile(pile.Rows, pile.Align, new Style(size, color, false, false, mode), baselines);
 
     /// <summary>
     /// The width <paramref name="node"/> takes as an item in the middle of a row, operators with the room on their
@@ -137,6 +185,7 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         MathFraction fraction => Fraction(fraction, style),
         MathRoot root => Root(root, style),
         MathScripts scripts => Scripts(Lay(scripts.Base, style), scripts.Sub, scripts.Sup, style, italicBase: scripts.Base is MathText),
+        MathStack stack => Stack(stack, style),
         MathBigOperator big => BigOperator(big, style),
         MathLimit limit => Limit(limit, style),
         MathMatrix matrix => Matrix(matrix, style),
@@ -299,6 +348,8 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         {
             MathSymbol symbol => symbol.Text,
             MathCommand command => command.Glyph,
+            // An arrow with text over it (\xrightarrow) is still a relation.
+            MathStack stack => Glyph(stack.Base),
             _ => null,
         };
         if (text is null)
@@ -352,27 +403,34 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     private EquationBox Fraction(MathFraction fraction, Style style)
     {
-        var (top, bottom) = (Lay(fraction.Numerator, style), Lay(fraction.Denominator, style));
+        // Word and TeX: a display fraction's parts are in text style, a text style one's in script size.
+        var parts = style.Mode switch
+        {
+            MathMode.Display => style with { Mode = MathMode.Text },
+            MathMode.Text => style.Script(),
+            _ => style,
+        };
+        var (top, bottom) = (Lay(fraction.Numerator, parts), Lay(fraction.Denominator, parts));
         var size = style.Size;
-        var (axis, rule, gap) = (size * Axis, fraction.Bar ? Math.Max(0.4f, size * Rule) : 0, size * Gap);
+        var (axis, rule, gap) = (size * Axis, fraction.Bar ? Math.Max(0.4f, size * Rule) : 0, size * (style.Mode == MathMode.Text ? Gap / 2 : Gap));
         var width = Math.Max(top.Width, bottom.Width) + size * 0.12f;
         var topY = -(axis + rule / 2 + gap + top.Descent);
         var bottomY = -axis + rule / 2 + gap + bottom.Ascent;
-        var parts = new List<(float, float, EquationBox)>
+        var placed = new List<(float, float, EquationBox)>
         {
             ((width - top.Width) / 2, topY, top),
             ((width - bottom.Width) / 2, bottomY, bottom),
         };
         if (fraction.Bar)
         {
-            parts.Add((0, 0, new EquationBox(width, 0, 0, Drawn((canvas, x, y) =>
+            placed.Add((0, 0, new EquationBox(width, 0, 0, Drawn((canvas, x, y) =>
             {
                 using var pen = Pen(style.Color, rule);
                 pen.StrokeCap = SKStrokeCap.Butt;
                 canvas.DrawLine(x + size * 0.05f, y - axis, x + width - size * 0.05f, y - axis, pen);
             }))));
         }
-        return Place(width, -topY + top.Ascent, bottomY + bottom.Descent, [.. parts]);
+        return Place(width, -topY + top.Ascent, bottomY + bottom.Descent, [.. placed]);
     }
 
     private EquationBox Root(MathRoot root, Style style)
@@ -454,7 +512,7 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     private EquationBox Scripts(EquationBox body, MathNode? subNode, MathNode? supNode, Style style, bool italicBase)
     {
         var size = style.Size;
-        var small = style.Smaller(ScriptScale);
+        var small = style.Script();
         // A prime (f′, TeX's f' = f^\prime) is already a raised mark: drawn at the base's size on its baseline, after
         // the base (clear of an italic letter's overhang), not shrunk and raised again.
         var prime = supNode is not null && IsPrimes(supNode);
@@ -516,19 +574,22 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     {
         var size = style.Size;
         var integral = big.Glyph is "∫" or "∬" or "∭" or "∮" or "∯" or "∰";
-        var glyph = Text(big.Glyph, style, italic: false, integral ? 1.6f : 1.4f);
+        // Word's inline equations and TeX's $…$ (text style) draw the operator little larger than the text, with its
+        // limits at the side as scripts.
+        var inline = style.Mode == MathMode.Text;
+        var glyph = Text(big.Glyph, style, italic: false, inline ? (integral ? 1.15f : 1.05f) : integral ? 1.6f : 1.4f);
         // Centred on the math axis.
         var shift = (glyph.Ascent - glyph.Descent) / 2 - size * Axis;
         var symbol = Place(glyph.Width, glyph.Ascent - shift, glyph.Descent + shift, (0, shift, glyph));
         EquationBox box;
-        if (integral)
+        if (integral || inline)
         {
-            box = Scripts(symbol, big.Lower, big.Upper, style, italicBase: true);
+            box = Scripts(symbol, big.Lower, big.Upper, style, italicBase: integral);
         }
         else
         {
             // Laid out here only: an integral lays its limits out as scripts, and doing both doubled the work per level.
-            var small = style.Smaller(ScriptScale);
+            var small = style.Script();
             var lower = big.Lower is null ? null : Lay(big.Lower, small);
             var upper = big.Upper is null ? null : Lay(big.Upper, small);
             box = Limits(symbol, upper, lower, size * 0.08f);
@@ -536,10 +597,80 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         return Place(box.Width + size * 0.05f, box.Ascent, box.Descent, (0, 0, box));
     }
 
+    /// <summary>
+    /// Content centred over and under a base at script size (\overset, \underset, Word's m:limUpp and m:limLow); an
+    /// arrow as the base (\xrightarrow) is drawn as long as what it carries.
+    /// </summary>
+    private EquationBox Stack(MathStack stack, Style style)
+    {
+        var size = style.Size;
+        var small = style.Script();
+        var over = stack.Over is null ? null : Lay(stack.Over, small);
+        var under = stack.Under is null ? null : Lay(stack.Under, small);
+        var carried = Math.Max(over?.Width ?? 0, under?.Width ?? 0);
+        var body = Glyph(stack.Base) is { } arrow && Arrows.Contains(arrow) && carried > 0
+            ? Arrow(arrow, carried + size * 0.5f, style)
+            : Lay(stack.Base, style);
+        return Limits(body, over, under, size * 0.06f);
+    }
+
+    /// <summary>Arrows that grow under what they carry (\xrightarrow and its kin).</summary>
+    private static readonly HashSet<string> Arrows = ["→", "←", "↔", "⇒", "⇐", "⇔", "⟶", "⟵", "⟷", "⟹", "⟸", "⟺", "↦", "⟼"];
+
+    private static string? Glyph(MathNode node) => node switch
+    {
+        MathSymbol symbol => symbol.Text,
+        MathCommand command => command.Glyph,
+        _ => null,
+    };
+
+    /// <summary>An arrow <paramref name="width"/> long on the math axis: single or double, its heads where it points.</summary>
+    private static EquationBox Arrow(string arrow, float width, Style style)
+    {
+        var size = style.Size;
+        var axis = size * Axis;
+        var stroke = Math.Max(0.4f, size * 0.05f);
+        var head = size * 0.2f;
+        var twin = arrow is "⇒" or "⇐" or "⇔" or "⟹" or "⟸" or "⟺";
+        var left = arrow is "←" or "⇐" or "⟵" or "⟸" or "↔" or "⇔" or "⟷" or "⟺";
+        var right = arrow is not ("←" or "⇐" or "⟵" or "⟸");
+        var bar = arrow is "↦" or "⟼";
+        return new EquationBox(width, axis + head, 0, Drawn((canvas, x, y) =>
+        {
+            using var pen = Pen(style.Color, stroke);
+            using var path = new SKPath();
+            var middle = y - axis;
+            var (from, to) = (x + size * 0.05f, x + width - size * 0.05f);
+            foreach (var offset in twin ? new[] { -size * 0.08f, size * 0.08f } : [0f])
+            {
+                path.MoveTo(from + (left && twin ? head * 0.5f : 0), middle + offset);
+                path.LineTo(to - (right && twin ? head * 0.5f : 0), middle + offset);
+            }
+            if (right)
+            {
+                path.MoveTo(to - head, middle - head * 0.6f);
+                path.LineTo(to, middle);
+                path.LineTo(to - head, middle + head * 0.6f);
+            }
+            if (left)
+            {
+                path.MoveTo(from + head, middle - head * 0.6f);
+                path.LineTo(from, middle);
+                path.LineTo(from + head, middle + head * 0.6f);
+            }
+            if (bar)
+            {
+                path.MoveTo(from, middle - head * 0.5f);
+                path.LineTo(from, middle + head * 0.5f);
+            }
+            canvas.DrawPath(path, pen);
+        }));
+    }
+
     private EquationBox Limit(MathLimit limit, Style style)
     {
         var name = Text("lim", style, italic: false);
-        var lower = limit.Lower is null ? null : Lay(limit.Lower, style.Smaller(ScriptScale));
+        var lower = limit.Lower is null ? null : Lay(limit.Lower, style.Script());
         var box = Limits(name, null, lower, style.Size * 0.05f);
         return Place(box.Width + style.Size * 0.12f, box.Ascent, box.Descent, (0, 0, box));
     }
@@ -547,13 +678,14 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     // ───────────────────────── Grids ─────────────────────────
 
     /// <summary>Rows of cells in columns: centred (or to one side) and the whole centred on the math axis.</summary>
-    private EquationBox Grid(IReadOnlyList<IReadOnlyList<MathNode>> rows, Style style, string align, float columnGap) =>
-        Grid([.. rows.Select(r => r.Select(c => Lay(c, style)).ToList())], style, _ => align, _ => columnGap);
+    private EquationBox Grid(IReadOnlyList<IReadOnlyList<MathNode>> rows, Style style, string align, float columnGap, bool even = false) =>
+        Grid([.. rows.Select(r => r.Select(c => Lay(c, style)).ToList())], style, _ => align, _ => columnGap, even: even);
 
     /// <summary>Laid out cells in columns, each column aligned as <paramref name="align"/> says, with its gap after it.</summary>
     /// <param name="baselines">Collects each row's baseline (down from the grid's), or null.</param>
+    /// <param name="even">Every row as tall as the tallest (Word's matrices).</param>
     private static EquationBox Grid(List<List<EquationBox>> cells, Style style, Func<int, string> align, Func<int, float> gapAfter,
-        List<float>? baselines = null)
+        List<float>? baselines = null, bool even = false)
     {
         var size = style.Size;
         var columns = cells.Count == 0 ? 0 : cells.Max(r => r.Count);
@@ -561,9 +693,16 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         foreach (var row in cells)
             for (var c = 0; c < row.Count; c++)
                 widths[c] = Math.Max(widths[c], row[c].Width);
-        var rowGap = size * 0.25f;
+        // Word and TeX keep the rows of a matrix closer than 한글 (#356: 1.16 em apart for rows of plain letters in Word).
+        var rowGap = size * (style.Tex ? RowGap : 0.25f);
         var ascents = cells.Select(r => Math.Max(size * 0.75f, r.Count == 0 ? 0 : r.Max(b => b.Ascent))).ToList();
         var descents = cells.Select(r => Math.Max(size * 0.25f, r.Count == 0 ? 0 : r.Max(b => b.Descent))).ToList();
+        if (even && cells.Count > 0)
+        {
+            var (ascent, descent) = (ascents.Max(), descents.Max());
+            ascents = [.. ascents.Select(_ => ascent)];
+            descents = [.. descents.Select(_ => descent)];
+        }
         var height = ascents.Sum() + descents.Sum() + rowGap * Math.Max(0, cells.Count - 1);
         var top = -(height / 2 + size * Axis);
         var parts = new List<(float, float, EquationBox)>();
@@ -593,7 +732,8 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     private EquationBox Matrix(MathMatrix matrix, Style style)
     {
-        var grid = Grid(matrix.Rows, style, "pile", style.Size * 0.8f);
+        // Word spaces the rows of a matrix evenly (#356: rows with and without an integral 18 pt apart at 12 pt).
+        var grid = Grid(matrix.Rows, style, "pile", style.Size * 0.8f, even: style.Tex);
         return matrix.Command switch
         {
             "pmatrix" => Brackets("(", grid, ")", style),
@@ -641,8 +781,14 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     {
         var size = style.Size;
         var axis = size * Axis;
-        var half = Math.Max(Math.Max(body.Ascent - axis, body.Descent + axis), size * 0.5f) + size * 0.05f;
-        var (leftBox, rightBox) = (Delimiter(left, half, style, closing: false), Delimiter(right, half, style, closing: true));
+        var reach = Math.Max(body.Ascent - axis, body.Descent + axis);
+        var cover = Math.Max(reach, size * 0.5f) + size * 0.05f;
+        // Word (and TeX, by its delimiter factor and shortfall) picks a bracket's size a little short of the boxes of
+        // its content, whose letters don't reach their tops and bottoms: a subscript doesn't make a bracket grow, and
+        // two rows of letters take Cambria Math's 1.64 em variant, as in Word (#356). Brackets built of parts (taller
+        // than the font's largest) and drawn ones cover the content.
+        var half = style.Tex ? Math.Max(Math.Max(reach * 0.7f, reach - size * 0.3f), size * 0.45f) : cover;
+        var (leftBox, rightBox) = (Delimiter(left, half, cover, style, closing: false), Delimiter(right, half, cover, style, closing: true));
         var pad = size * 0.05f;
         var width = leftBox.Width + pad + body.Width + pad + rightBox.Width;
         return Place(width, Math.Max(body.Ascent, Math.Max(leftBox.Ascent, rightBox.Ascent)), Math.Max(body.Descent, Math.Max(leftBox.Descent, rightBox.Descent)),
@@ -653,7 +799,8 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     /// One bracket reaching <paramref name="half"/> above and below the axis: from the math font, else the text font's
     /// own for content no taller than a letter, else drawn.
     /// </summary>
-    private EquationBox Delimiter(string bracket, float half, Style style, bool closing)
+    /// <param name="cover">The reach a bracket built of parts or drawn takes, at least <paramref name="half"/>.</param>
+    private EquationBox Delimiter(string bracket, float half, float cover, Style style, bool closing)
     {
         if (bracket.Length == 0)
             return EquationBox.Empty;
@@ -666,9 +813,14 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
             _ => bracket,
         };
         if (Stretch(character, half * 2, size) is { } glyph)
+        {
+            if (glyph.Glyphs.Length > 1 && cover > half && Stretch(character, cover * 2, size) is { } built)
+                glyph = built;
             return glyph.Box(0, axis - glyph.Height / 2, style.Color);
+        }
         if (half <= size * 0.6f && Text(bracket, style, italic: false) is { Width: > 0 } text)
             return text;
+        half = Math.Max(half, cover);
         var width = BracketWidth(bracket, size, half);
         var (top, bottom) = (-(axis + half), -(axis - half));
         return new EquationBox(width, axis + half, half - axis, Drawn((canvas, x, y) => Bracket(canvas, bracket, x, y + top, y + bottom, width, size, style.Color, closing)));

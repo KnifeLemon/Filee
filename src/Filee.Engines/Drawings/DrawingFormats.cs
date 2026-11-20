@@ -3,12 +3,14 @@
 // what the format can hold, a check that names the first thing it can't draw (once the converter's edges are Checked,
 // see DrawingConverter, such a file keeps the route it would take without the converter, LibreOffice Draw). The
 // readers add their line here: VSDX (Visio/), ODG / OTG / FODG (Odf/Draw), XPS / OpenXPS (Xps/), chart templates (Charts/),
-// interactive whiteboards (Whiteboard/).
+// interactive whiteboards (Whiteboard/), mind maps (MindMaps/).
 //
-// Fixed-layout documents (XPS) and chart templates are not slides: their reader draws pages straight into the page model (IFixedPages).
+// Fixed-layout documents (XPS), chart templates and mind maps are not slides: their reader draws pages straight into the page model (IFixedPages).
 
 using Filee.Core.Conversion;
 using Filee.Engines.Charts;
+using Filee.Engines.Hwp.Hwpx.Markup;
+using Filee.Engines.MindMaps;
 using Filee.Engines.Odf.Draw;
 using Filee.Engines.Rendering;
 using Filee.Engines.Slides;
@@ -38,6 +40,9 @@ internal sealed record DrawingFormat(
     /// its PDF (the PDF slides engine's editable slides), as routes of their own (<see cref="DrawingFormats.SlideTargets"/>).
     /// </summary>
     public bool Slides { get; init; }
+
+    /// <summary>The cost of the format's edges (ConversionEdge.Cost).</summary>
+    public int Cost { get; init; } = 10;
 }
 
 /// <summary>
@@ -76,6 +81,10 @@ internal static class DrawingFormats
         // Interactive whiteboard files (.iwb, IEC 62874, #1665) and SMART Notebook files: a slide per page of their SVG.
         new(IwbReader.Format, (path, token) => IwbReader.Read(path, cancellationToken: token)) { Slides = true },
         new(SmartNotebookReader.Format, (path, token) => SmartNotebookReader.Read(path, cancellationToken: token)) { Slides = true },
+        // Mind maps (.mm, .xmind) drawn as maps, a page per sheet (MindMaps/; a .mm of Objective-C++ source as its text).
+        // Cost 0: below the Filee renderer's outline → PDF (1).
+        new(MindMapReader.FreeMind, null) { ReadPages = (path, token) => MindMapPages.Open(path, MindMapReader.FreeMind, token), Cost = 0 },
+        new(MindMapReader.XMind, null) { ReadPages = (path, token) => MindMapPages.Open(path, MindMapReader.XMind, token), Cost = 0 },
     ];
 
     /// <summary>What every drawing format is converted to.</summary>

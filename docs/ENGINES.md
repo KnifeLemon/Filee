@@ -35,7 +35,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, PDB, PML, TCR, RB, SNB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/PDB/PML/TCR/RB/SNB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); **mind maps (FreeMind / Freeplane MM, XMind) → PDF, SVG, PNG** drawn as maps, a page per sheet ([Mind maps](#mind-maps)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | **DjVu** | built in | **DjVu (.djvu, .djv; one page, bundled or indirect) → PDF** (the layers kept: background JPEG, 1-bit JBIG2 / G4 masks; the hidden text searchable; links and bookmarks) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
@@ -43,7 +43,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT (+ OTT, FODT), RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats), mind maps as outlines → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
+| **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT (+ OTT, FODT), RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP, and Windows app packages MSIX / APPX), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ/ZST), GZ, BZ2, XZ, LZMA, Z, ZST, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs, GMA** (in-process); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
@@ -4485,10 +4485,11 @@ back as the same equations; `MarkupWriterLimitTests` puts the four writers throu
 
 ### Mind maps
 
-`MindMapReader` (#1543, #1004) reads FreeMind / Freeplane (`.mm`) and XMind (`.xmind`) maps as an **outline**: the
-map isn't drawn, its topics become the document's structure, so every document writer takes it (DOCX, ODT, HWPX, PDF
-through the Filee renderer, slides) and `MarkupConverter` writes it as Markdown, HTML, TXT and OPML. Both are read
-only (`Writable: false`, rule 5 of [FORMAT-RULES](FORMAT-RULES.md)) and sit on the documents donut (settings v108).
+`MindMapReader` (#1543, #1004) reads FreeMind / Freeplane (`.mm`) and XMind (`.xmind`) maps. **→ PDF, SVG, PNG** the
+map is drawn (`MindMaps/`, through the drawing converter, below); everywhere else it is an **outline**: its topics
+become the document's structure, so every document writer takes it (DOCX, ODT, HWPX, slides) and `MarkupConverter`
+writes it as Markdown, HTML, TXT and OPML. Both are read only (`Writable: false`, rule 5 of
+[FORMAT-RULES](FORMAT-RULES.md)) and sit on the documents donut (settings v108).
 
 - The central topic is heading 1 and the document's title, its main topics heading 2, their subtopics heading 3;
   deeper topics are bulleted lists, a level deeper per topic (past nine levels they stay at the ninth). Into OPML every
@@ -4509,17 +4510,55 @@ only (`Writable: false`, rule 5 of [FORMAT-RULES](FORMAT-RULES.md)) and sit on t
   `xap:attachments/…`) is unpacked and follows the topic. Each sheet after the first starts a new page; an untitled
   central topic takes the sheet's title. A file saved with a password (`encryption-data` in its manifest) is refused
   with `error.xmind_password`.
-- Not read: the map's layout, colours, fonts, connectors and relationships, boundaries, FreeMind's `arrowlink` and
-  cloud, Freeplane's external pictures (`ExternalObject`) and XMind's equations and audio notes.
+- Freeplane's external pictures (`hook NAME="ExternalObject"`) follow their topic too, read only from inside the
+  map's folder (`DocumentFiles`). Not in the outline: the map's layout, colours, relationships, boundaries, arrow links
+  and clouds (the drawing has them); not read at all: XMind's audio notes.
 - Untrusted input: the `.mm` and `content.xml` go through `SafeXml` (no DTD, depth and element limits), the package
   through `DocumentPackage` (part, package and inflate limits), `content.json` is checked for nesting deeper than
   three JSON levels per allowed topic level before `JsonDocument` reads it, and both trees are walked with a stack of
   their own rather than by recursion. Paragraphs and pictures count against `DocumentLimits`.
 
+**The drawn map** (`MindMaps/MindMapDrawing.cs`, `MindMapPages`, a fixed-page format of `Drawings/DrawingFormats.cs` at
+cost 0, so it wins over the Filee renderer's outline → PDF; a `.mm` that isn't XML, Objective-C++ source, becomes
+pages of its text laid out by the Filee renderer):
+
+- A page per sheet, sized to its map with a 30 pt margin; a map wider or taller than PDF's 200 inches (14,400 pt) is
+  scaled down to fit. Pictures go on from the page (resolution lowered past 200 million pixels), SVG as outlines.
+- Layout: the central topic in the middle; main topics half on the right (the first ones) and half on the left
+  (XMind's map structures, bottom to top on the left for the clockwise one; FreeMind's `POSITION` where set), all on
+  the right for XMind's logic, tree and org structures (all left for the `.left` ones). Each topic's subtopics are
+  stacked beside it and centred on it, every subtree in a band of its own, so no two topics overlap.
+- Topics: the text (rich text keeps its formatting) wrapped at 260 / 220 / 200 pt by level, markers' symbols before
+  it, an XMind equation (an extension whose provider names math; its TeX through `LatexMath`) under it, the picture
+  above it. Shapes: rounded, rectangle, ellipse, diamond, hexagon, parallelogram, stadium, underline (FreeMind's fork)
+  or none. The file's look: XMind's topic styles and the sheet's theme (`content.json` `style.properties` / `theme`,
+  `content.xml` with `styles.xml`, its theme's default styles), fill, text colour, border, font, size, bold, italic,
+  shape, line colour, width and kind (curve, straight, elbow), `multi-line-colors`; FreeMind's `COLOR`,
+  `BACKGROUND_COLOR`, `STYLE`, `font` and `edge` (inherited down the branch). What it leaves out: a colour per main
+  branch, the main topics boxed in a tint of it, subtopics underlined in it, a dark central topic.
+- Folded branches (FreeMind `FOLDED`, XMind `branch: folded`) are drawn folded: the subtopics hidden, their count in
+  a circle; a relationship to a hidden topic ends at its folded one.
+- XMind relationships and FreeMind / Freeplane arrow links: curves bowed away from the central topic with their
+  arrowheads (dashed for XMind) and title, placed on the curve where it covers no topic; the control points the files
+  keep belong to the apps' own layout and aren't used. XMind boundaries around a range of subtopics or a whole branch
+  (dashed, tinted, the title in a tab), summaries (a brace and the summary topic beyond it), floating topics where the
+  file puts them or in rows below the map when that would cover it; FreeMind / Freeplane clouds behind a branch. Room
+  is kept in the bands for clouds and boundaries.
+- Untrusted input: the reader's limits, then at most 20,000 topics and 20,000 relationships, boundaries and summaries
+  drawn (`DocumentLimits`' error; relationships past that are refused while reading); the tree is walked with stacks
+  of its own; numbers in styles are kept to 0–400 pt and colours to `#rgb` / `#rrggbb` / `#rrggbbaa`.
+- Not drawn yet: Freeplane's map styles (`MapStyle` hook, `STYLE_REF`), XMind's fishbone, timeline and matrix
+  structures (drawn as logic to the right), tapered branches, labels, notes and audio notes, and XMind's own control
+  points.
+
 `MindMapTests` builds a Freeplane map, an XMind Zen and an XMind 8 package in code and checks the outline, notes,
 links, bookmarks, symbols, pictures and sheets, the routes, the conversions to DOCX / HWPX / HTML / Markdown / PDF /
 TXT / OPML without Pandoc and the hostile inputs (DTDs, a hundred thousand levels of nesting in XML and JSON, too
 many topics, an oversized part, a ZIP bomb); `MindMapFuzzTests` mutates the map, the packages and `content.json`.
+`MindMapDrawingTests` builds styled Freeplane, XMind Zen and XMind 8 maps and checks the layout (sides, no overlaps,
+wrapping, folding, the page size and its cap), the colours and shapes, clouds, arrow links, relationships, boundaries,
+summaries, floating topics, pictures and equations, the routes and the PDF / PNG / SVG conversions, and the hostile maps
+(too many topics or relationships, absurd numbers, deep nesting).
 
 ## Pandoc
 

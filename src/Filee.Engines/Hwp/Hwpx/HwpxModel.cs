@@ -53,6 +53,12 @@ internal sealed class HDocument
     /// (TabsRelativeToIndent), not from the margin as Word's. Only the layout engine uses it.
     /// </summary>
     public bool DefaultTabStopFromIndent { get; set; }
+
+    /// <summary>
+    /// Lines are as high as Word makes its fonts' lines: an East Asian font's (one for a Chinese, Japanese or Korean code
+    /// page) ascent and descent and 30% more (DOCX, DOC). Only the layout engine uses it.
+    /// </summary>
+    public bool WordLineHeights { get; set; }
 }
 
 /// <summary>A run of pages sharing page setup, headers and footers (한글 "구역").</summary>
@@ -679,7 +685,9 @@ internal sealed class HEquation(MathNode math, HCharFormat format, string? sourc
     /// <summary>The TeX of an equation read from TeX math (without its $ or \( delimiters); null for others.</summary>
     public string? Tex { get; init; }
 
-    /// <summary>A display equation (TeX's $$ … $$ and \[ … \]), on a line of its own; inline ones are false.</summary>
+    /// <summary>
+    /// A display equation (TeX's $$ … $$ and \[ … \], Word's m:oMathPara), on a line of its own; inline ones are false.
+    /// </summary>
     public bool Display { get; init; }
 
     /// <summary>

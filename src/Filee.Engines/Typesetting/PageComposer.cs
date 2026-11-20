@@ -91,6 +91,7 @@ internal sealed class PageComposer
         _layouter.FontAlternates = document.FontAlternates;
         _layouter.DefaultTabStop = document.DefaultTabStop;
         _layouter.DefaultTabFromIndent = document.DefaultTabStopFromIndent;
+        _layouter.WordLineHeights = document.WordLineHeights;
         // The body's total pages fields need the count first: a first pass finds it.
         int? total = null;
         if (document.Sections.Any(s => Fields(s.Blocks).Any(f => f.Kind == HFieldKind.TotalPages)))
@@ -1740,6 +1741,7 @@ internal sealed class PageComposer
                 case HEquation equation:
                     var resolved = new HEquation(equation.Math, Format(equation.Format))
                     {
+                        Display = equation.Display,
                         Width = equation.Width,
                         Height = equation.Height,
                         BaseLine = equation.BaseLine,

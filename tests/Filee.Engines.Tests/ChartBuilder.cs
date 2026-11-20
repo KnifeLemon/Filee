@@ -116,4 +116,60 @@ internal static class ChartBuilder
             $"<c:dPt><c:idx val=\"{i}\"/><c:bubble3D val=\"0\"/><c:spPr><a:solidFill><a:srgbClr val=\"{rgb}\"/></a:solidFill></c:spPr></c:dPt>"));
         return Chart(Pie(Series(0, "Budget", names, [40, 30, 20, 10], points + labels)), title: "Budget");
     }
+
+    /// <summary>A line of a colour (c:spPr a:ln), <paramref name="width"/> EMU wide.</summary>
+    public static string LineOf(string rgb, int width = 28575) =>
+        $"<c:spPr><a:ln w=\"{width}\"><a:solidFill><a:srgbClr val=\"{rgb}\"/></a:solidFill></a:ln></c:spPr>";
+
+    /// <summary>Two column series (red, green) and a blue line series against the same axes: a combination chart.</summary>
+    public static string Combo(string legend = "r")
+    {
+        string[] quarters = ["Q1", "Q2", "Q3", "Q4"];
+        var bars = Series(0, "North", quarters, [40, 55, 70, 62], Solid("C00000")) + Series(1, "South", quarters, [30, 45, 35, 50], Solid("00B050"));
+        var line = Series(2, "Target", quarters, [45, 50, 55, 60], LineOf("0070C0"));
+        return Chart(Bars(bars) + Lines(line, markers: false), Axes(), "Sales", legend);
+    }
+
+    /// <summary>A c:trendline of <paramref name="type"/> with more elements (c:order, c:forward, c:dispEq, ...), in <paramref name="rgb"/>.</summary>
+    public static string Trendline(string type, string extra = "", string rgb = "7030A0") =>
+        $"<c:trendline>{LineOf(rgb, 19050)}<c:trendlineType val=\"{type}\"/>{extra}</c:trendline>";
+
+    /// <summary>c:errBars of a value type and amount, on both sides with caps unless told otherwise, in <paramref name="rgb"/>.</summary>
+    public static string ErrorBars(string valueType, double value = 0, string direction = "y", string type = "both", string extra = "", string rgb = "000000") =>
+        $"<c:errBars><c:errDir val=\"{direction}\"/><c:errBarType val=\"{type}\"/><c:errValType val=\"{valueType}\"/><c:noEndCap val=\"0\"/>{extra}" +
+        $"<c:val val=\"{N(value)}\"/>{LineOf(rgb, 12700)}</c:errBars>";
+
+    /// <summary>Literal numbers (c:numLit) inside an element: c:plus or c:minus of custom error bars.</summary>
+    public static string Literal(string element, params double[] values) =>
+        $"<c:{element}><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val=\"{values.Length}\"/>" +
+        string.Concat(values.Select((v, i) => $"<c:pt idx=\"{i}\"><c:v>{N(v)}</c:v></c:pt>")) + $"</c:numLit></c:{element}>";
+
+    /// <summary>Two-level categories (c:multiLvlStrRef): the inner labels and the outer groups (label at each group's first category).</summary>
+    public static string MultiLevel(string[] inner, (int Start, string Label)[] outer)
+    {
+        var sb = new StringBuilder($"<c:cat><c:multiLvlStrRef><c:f>Sheet1!$A$2:$B${inner.Length + 1}</c:f><c:multiLvlStrCache><c:ptCount val=\"{inner.Length}\"/><c:lvl>");
+        for (var i = 0; i < inner.Length; i++)
+            sb.Append($"<c:pt idx=\"{i}\"><c:v>{inner[i]}</c:v></c:pt>");
+        sb.Append("</c:lvl><c:lvl>");
+        foreach (var (start, label) in outer)
+            sb.Append($"<c:pt idx=\"{start}\"><c:v>{label}</c:v></c:pt>");
+        sb.Append("</c:lvl></c:multiLvlStrCache></c:multiLvlStrRef></c:cat>");
+        return sb.ToString();
+    }
+
+    /// <summary>A rich title: a bold red run, a plain run, and a raised run (a:rPr baseline).</summary>
+    public static string RichTitle(string first, string second, string raised) =>
+        "<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:pPr><a:defRPr sz=\"1400\"/></a:pPr>" +
+        $"<a:r><a:rPr lang=\"en-US\" b=\"1\"><a:solidFill><a:srgbClr val=\"C00000\"/></a:solidFill></a:rPr><a:t>{first}</a:t></a:r>" +
+        $"<a:r><a:rPr lang=\"en-US\" b=\"0\"/><a:t>{second}</a:t></a:r>" +
+        $"<a:r><a:rPr lang=\"en-US\" b=\"0\" baseline=\"30000\"/><a:t>{raised}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>";
+
+    /// <summary>A two-stop linear gradient fill (a:gradFill a:lin) from <paramref name="from"/> to <paramref name="to"/>, at <paramref name="angle"/> degrees.</summary>
+    public static string Gradient(string from, string to, int angle = 90) =>
+        $"<c:spPr><a:gradFill rotWithShape=\"1\"><a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"{from}\"/></a:gs><a:gs pos=\"100000\"><a:srgbClr val=\"{to}\"/></a:gs></a:gsLst>" +
+        $"<a:lin ang=\"{angle * 60000}\" scaled=\"0\"/></a:gradFill></c:spPr>";
+
+    /// <summary>A pattern fill (a:pattFill) of a preset in <paramref name="fore"/> over <paramref name="back"/>.</summary>
+    public static string Pattern(string preset, string fore, string back = "FFFFFF") =>
+        $"<c:spPr><a:pattFill prst=\"{preset}\"><a:fgClr><a:srgbClr val=\"{fore}\"/></a:fgClr><a:bgClr><a:srgbClr val=\"{back}\"/></a:bgClr></a:pattFill></c:spPr>";
 }

@@ -116,6 +116,9 @@ internal static class MathMLWriter
             case MathScripts scripts:
                 Scripts(scripts.Base, scripts.Sub, scripts.Sup, sb, style, under: false);
                 break;
+            case MathStack stack:
+                Scripts(stack.Base, stack.Under, stack.Over, sb, style, under: true);
+                break;
             case MathBigOperator big:
                 Scripts(new MathSymbol(big.Glyph), big.Lower, big.Upper, sb, style, under: !big.Integral, large: true);
                 break;
