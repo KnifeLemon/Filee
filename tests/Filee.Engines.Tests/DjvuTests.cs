@@ -340,6 +340,38 @@ public sealed class DjvuTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
     // ---- documents ----
 
     [Fact]
+    public async Task Words_that_all_have_their_lines_box_are_spread_over_the_line()
+    {
+        // Some files, the DjVu v3 specification among them, give every word the box of its whole line.
+        const string text = "Hello DjVu\n";
+        var hello = new TextZone(6, 5, 38, 60, 12, 0, 6);
+        var djvu = new TextZone(6, 5, 38, 60, 12, 6, 5);
+        var line = new TextZone(5, 5, 38, 60, 12, 0, 11, hello, djvu);
+        var page = new TextZone(1, 0, 0, 120, 60, 0, 11, line);
+        var source = Save(DjvuFile(BilevelPage(100, 1, DjvuBuilder.Text(text, page))));
+        using (var document = DjvuDocument.Open(source, cancellationToken: Token))
+        {
+            var words = Assert.Single(DjvuPdfWriter.Lines(document.ReadPage(0, Token))).Words;
+            Assert.Equal(["Hello", "DjVu"], words.Select(w => w.Text));
+            Assert.True(words[0].Left + words[0].Width <= words[1].Left, "the words don't overlap");
+        }
+        var pdfPath = Assert.Single(await Convert(source, "pdf"));
+        using var pdf = PdfDocument.Open(pdfPath);
+        var pdfWords = Assert.Single(pdf.GetPages()).GetWords().Select(w => w.Text).ToList();
+        Assert.Equal(["Hello", "DjVu"], pdfWords);
+    }
+
+    [Fact]
+    public void Words_with_boxes_of_their_own_keep_them()
+    {
+        var source = Save(DjvuFile(BilevelPage(100, 1, HelloText())));
+        using var document = DjvuDocument.Open(source, cancellationToken: Token);
+        var words = DjvuPdfWriter.Lines(document.ReadPage(0, Token))[0].Words;
+        Assert.Equal(5 / 120.0, words[0].Left, 6);
+        Assert.Equal(35 / 120.0, words[1].Left, 6);
+    }
+
+    [Fact]
     public async Task A_bilevel_page_becomes_a_pdf_page_of_its_size_with_a_mask_and_searchable_text()
     {
         var source = Save(DjvuFile(BilevelPage(100, 1, HelloText())));

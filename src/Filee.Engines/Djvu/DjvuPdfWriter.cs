@@ -126,7 +126,7 @@ internal static class DjvuPdfWriter
         foreach (var line in page.Text)
         {
             var box = line.Box;
-            if (line.Words.Count == 0)
+            if (line.Words.Count == 0 || !LaidOut(line.Words))
             {
                 lines.Add(OcrLine.Estimate(line.Text, box.Left / w, box.Bottom / h, box.Width / w, box.Height / h));
                 continue;
@@ -135,6 +135,22 @@ internal static class DjvuPdfWriter
             lines.Add(new OcrLine(box.Left / w, box.Bottom / h, box.Width / w, box.Height / h, words));
         }
         return lines;
+    }
+
+    /// <summary>
+    /// Whether a line's word boxes follow each other left to right. Some files give every word the box of its whole
+    /// line; their words are spread over the line by their length instead, so they don't overlap in the PDF.
+    /// </summary>
+    private static bool LaidOut(IReadOnlyList<DjvuWord> words)
+    {
+        for (var i = 1; i < words.Count; i++)
+        {
+            var previous = words[i - 1].Box;
+            var word = words[i].Box;
+            if (previous.Left + previous.Width - word.Left > Math.Min(previous.Width, word.Width) / 2)
+                return false;
+        }
+        return true;
     }
 
     /// <summary>An image mask of the page's shapes (one palette colour's, or all), a set sample painted.</summary>
