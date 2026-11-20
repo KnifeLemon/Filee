@@ -2,7 +2,8 @@
 //
 // A table is a run of rows: \trowd starts a row's definition (its cells' right edges \cellxN, merges, shading and
 // borders), the paragraphs marked \intbl fill its cells, \cell ends a cell and \row the row. The columns of the
-// table are every cell edge of every row, so rows with other divisions keep their cells where they are. Nested
+// table are every cell edge of every row, so rows with other divisions keep their cells where they are. A first row
+// with \trautofit1 makes the layout size the columns as Word's autofit tables (HTableSizing, with \trwWidth). Nested
 // tables (\itap > 1) are read as the paragraphs of their outer cell.
 //
 // Lists come from \listtable (levels with their number format and \leveltext) through \listoverridetable (\lsN →
@@ -44,6 +45,13 @@ internal sealed partial class RtfReader
         /// <summary>\rtlrow: the cells run from the right.</summary>
         public bool RightToLeft { get; set; }
 
+        /// <summary>\trautofit1: the columns fit their content (Word's autofit); else they keep their \cellx widths.</summary>
+        public bool AutoFit { get; set; }
+
+        /// <summary>The row's preferred width (\trwWidth) and its unit (\trftsWidth: 2 fiftieths of a percent, 3 twips).</summary>
+        public int Width { get; set; }
+        public int WidthUnit { get; set; }
+
         /// <summary>The cells, shared with the rows before that kept this definition; copied when it changes.</summary>
         public List<CellDef> Cells { get; private set; } = [];
         private bool _shared;
@@ -60,7 +68,18 @@ internal sealed partial class RtfReader
         }
 
         /// <summary>The definition of the next row when it doesn't give its own: this one's, sharing its cells.</summary>
-        public RowDef Next() => new() { Left = Left, Height = Height, Align = Align, RightToLeft = RightToLeft, Cells = Cells, _shared = true };
+        public RowDef Next() => new()
+        {
+            Left = Left,
+            Height = Height,
+            Align = Align,
+            RightToLeft = RightToLeft,
+            AutoFit = AutoFit,
+            Width = Width,
+            WidthUnit = WidthUnit,
+            Cells = Cells,
+            _shared = true,
+        };
     }
 
     private sealed class TableBuilder
@@ -107,6 +126,15 @@ internal sealed partial class RtfReader
                 return true;
             case "rtlrow" or "ltrrow":
                 TableOf(story).Def.RightToLeft = word == "rtlrow";
+                return true;
+            case "trautofit":
+                TableOf(story).Def.AutoFit = (parameter ?? 1) != 0;
+                return true;
+            case "trwWidth":
+                TableOf(story).Def.Width = value;
+                return true;
+            case "trftsWidth":
+                TableOf(story).Def.WidthUnit = value;
                 return true;
             case "clmgf":
                 TableOf(story).Def.Pending.Horizontal = Merge.First;
@@ -248,6 +276,18 @@ internal sealed partial class RtfReader
         };
         if (table.RightToLeft && builder.Rows[0].Def.Align is HAlign.Left or HAlign.Right)
             table.Align = builder.Rows[0].Def.Align == HAlign.Left ? HAlign.Right : HAlign.Left;
+        // \trautofit1: Word sizes the columns as its autofit tables, from the \cellx widths and the cells' content (and
+        // the preferred width); without it they keep their widths, as the other formats' tables.
+        if (builder.Rows[0].Def is { AutoFit: true } autoFit)
+        {
+            var width = autoFit switch
+            {
+                { WidthUnit: 3, Width: > 0 } => new HPreferredWidth(HWidthType.Absolute, HwpxUnits.FromTwips(Math.Min(autoFit.Width, 31680))),
+                { WidthUnit: 2, Width: > 0 } => new HPreferredWidth(HWidthType.Percent, Math.Min(10, autoFit.Width / 5000.0)),
+                _ => HPreferredWidth.Auto,
+            };
+            table.Sizing = new HTableSizing(false, width, table.ColumnWidths ?? []);
+        }
         var openVertical = new Dictionary<int, HCell>();
         foreach (var (def, contents) in builder.Rows)
         {

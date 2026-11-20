@@ -36,7 +36,9 @@
 // neutral characters of a right-to-left run (Word w:rtl) read right to left, as Word reads them. A right-to-left
 // paragraph starts at the right: its alignment and indents name the start and end side (HParaFormat.RightToLeft).
 // Tab positions are measured from the paragraph's left indent, as 한글 measures them; a hanging indent is a tab stop
-// on the first line (the text after a list number starts there). Default tab stops are 한글's, every 40 pt from the
+// on the first line (the text after a list number starts there), and stops between the first line's start and the left
+// indent count on that line only. A Word number centred on or ending at its place (w:lvlJc) starts the first line that
+// much earlier. Default tab stops are 한글's, every 40 pt from the
 // left indent, or Word's, every w:defaultTabStop from the margin.
 //
 // 본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
@@ -319,12 +321,20 @@ internal sealed partial class ParagraphLayouter
             HangPunctuation: breaking?.OverflowPunctuation == true,
             WordTabInterval: DefaultTabStop is > 0 and var interval ? interval / 100f : 0,
             TabIntervalFromIndent: DefaultTabFromIndent);
+        var listLevel = marker is { Length: > 0 } && paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count
+            ? levels[level] : null;
         // A number that indents its paragraph (한글 autoIndent): the lines after the first hang under the text after it.
-        if (marker is { Length: > 0 } && paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count
-            && levels[level].AutoIndent && marker.Length + 1 <= text.Length)
+        if (listLevel is { AutoIndent: true } && marker!.Length + 1 <= text.Length)
         {
             var hang = advances.AsSpan(0, marker.Length + 1).ToArray().Sum();
             settings = settings with { Left = settings.Left + hang, FirstLine = settings.FirstLine - hang };
+        }
+        // A number centred on or ending at its place (Word w:lvlJc): the first line starts that much earlier, so the
+        // number is where Word draws it and what follows it goes to the stops it would from a number starting there.
+        if (listLevel is { Align: HAlign.Center or HAlign.Right } && marker!.Length <= text.Length)
+        {
+            var number = advances.AsSpan(0, marker.Length).ToArray().Sum();
+            settings = settings with { FirstLine = settings.FirstLine - (listLevel.Align == HAlign.Center ? number / 2 : number) };
         }
         return new Prepared(format, source, language, border, items, advances, starts, breaking, rules, breaks, settings);
     }

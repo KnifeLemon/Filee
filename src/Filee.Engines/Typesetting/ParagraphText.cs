@@ -199,7 +199,8 @@ internal sealed class ParagraphText
         if (marker is { Length: > 0 })
         {
             var listLevel = paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count ? levels[level] : null;
-            var format = listLevel?.MarkerFormat ?? paragraph.Inlines.OfType<HText>().FirstOrDefault()?.Format ?? paragraph.MarkFormat;
+            // The paragraph's own number format (Word's), the level's (한글's), else the text's.
+            var format = paragraph.List?.MarkerFormat ?? listLevel?.MarkerFormat ?? paragraph.Inlines.OfType<HText>().FirstOrDefault()?.Format ?? paragraph.MarkFormat;
             // Word's level says what follows the number; 한글 puts a tab after a hanging number, else a space.
             Add(marker + (listLevel?.Suffix switch
             {

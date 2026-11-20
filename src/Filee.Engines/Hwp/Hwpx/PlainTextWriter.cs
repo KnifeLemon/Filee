@@ -226,6 +226,18 @@ internal sealed class ListNumbers
         return text;
     }
 
+    /// <summary>The counters as they are now, to go back to (<see cref="Restore"/>) before laying something out again.</summary>
+    public IReadOnlyDictionary<HNumbering, int[]> Save() =>
+        _counters.ToDictionary(p => p.Key, p => (int[])p.Value.Clone(), (IEqualityComparer<HNumbering>)ReferenceEqualityComparer.Instance);
+
+    /// <summary>Puts the counters back as <see cref="Save"/> found them.</summary>
+    public void Restore(IReadOnlyDictionary<HNumbering, int[]> saved)
+    {
+        _counters.Clear();
+        foreach (var (numbering, counters) in saved)
+            _counters[numbering] = (int[])counters.Clone();
+    }
+
     /// <summary>The marker <see cref="Next"/> would give, without counting the item (to measure it ahead).</summary>
     public string Peek(HListRef item)
     {
