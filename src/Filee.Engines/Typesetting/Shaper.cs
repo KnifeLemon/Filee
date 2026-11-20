@@ -16,6 +16,7 @@
 // Variable fonts shape at their default instance: HarfBuzzSharp has no binding for variation coordinates, and the PDF
 // writer subsets the default instance too (see FontFace.Variable).
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Filee.Engines.Rendering;
@@ -135,10 +136,14 @@ internal sealed class ShapedRun
 /// <param name="Ascender">The typographic ascender HarfBuzz uses (OS/2 typo with USE_TYPO_METRICS, else hhea).</param>
 /// <param name="WinAscent">OS/2 usWinAscent (Word's line height on Windows comes from the Win metrics).</param>
 /// <param name="WinDescent">OS/2 usWinDescent, as a positive distance below the baseline.</param>
+/// <param name="EastAsian">
+/// The font is for a Chinese, Japanese or Korean code page (OS/2 ulCodePageRange1 bits 17–21: 932, 936, 949, 950, 1361).
+/// </param>
+/// <param name="Math">The font has a MATH table (Cambria Math): its Win metrics reach far out for big operators.</param>
 internal sealed record FontMetrics(
     int UnitsPerEm, int Ascender, int Descender, int LineGap, int WinAscent, int WinDescent, int XHeight, int CapHeight,
     int UnderlinePosition, int UnderlineThickness, int StrikeoutPosition, int StrikeoutThickness,
-    int SuperscriptYOffset, int SuperscriptYSize, int SubscriptYOffset, int SubscriptYSize);
+    int SuperscriptYOffset, int SuperscriptYSize, int SubscriptYOffset, int SubscriptYSize, bool EastAsian = false, bool Math = false);
 
 /// <summary>Shapes runs with HarfBuzz and caches the results; one per layout job (not thread-safe).</summary>
 internal sealed class Shaper : IDisposable
@@ -202,7 +207,7 @@ internal sealed class Shaper : IDisposable
             Get(OpenTypeMetricsTag.UnderlineOffset), Get(OpenTypeMetricsTag.UnderlineSize),
             Get(OpenTypeMetricsTag.StrikeoutOffset), Get(OpenTypeMetricsTag.StrikeoutSize),
             Get(OpenTypeMetricsTag.SuperScriptEmYOffset), Get(OpenTypeMetricsTag.SuperScriptEmYSize),
-            Get(OpenTypeMetricsTag.SubScriptEmYOffset), Get(OpenTypeMetricsTag.SubScriptEmYSize));
+            Get(OpenTypeMetricsTag.SubScriptEmYOffset), Get(OpenTypeMetricsTag.SubScriptEmYSize), hb.EastAsian, hb.Math);
     }
 
     private static ShapedRun Run(HarfBuzzFont hb, ShapeKey key, IReadOnlyList<FontFeature>? features)
@@ -309,6 +314,9 @@ internal sealed class Shaper : IDisposable
     /// <summary>A HarfBuzz font over a PageFont's data, which stays pinned while HarfBuzz may read it.</summary>
     private sealed class HarfBuzzFont : IDisposable
     {
+        /// <summary>OS/2 ulCodePageRange1 bits 17–21: code pages 932, 936, 949, 950 and 1361.</summary>
+        private const uint EastAsianCodePages = 0x1Fu << 17;
+
         private readonly Blob _blob;
         private readonly Face _face;
 
@@ -329,6 +337,30 @@ internal sealed class Shaper : IDisposable
         public HbFont Font { get; }
 
         public int UnitsPerEm { get; }
+
+        /// <summary>See <see cref="FontMetrics.EastAsian"/>; read from the OS/2 table on first use.</summary>
+        public bool EastAsian => _eastAsian ??= CodePages();
+
+        /// <summary>See <see cref="FontMetrics.Math"/>.</summary>
+        public bool Math => _math ??= HasTable("MATH");
+
+        private bool? _eastAsian, _math;
+
+        private bool HasTable(string tag)
+        {
+            using var table = _face.ReferenceTable(Tag.Parse(tag));
+            return table.Length > 0;
+        }
+
+        private bool CodePages()
+        {
+            using var table = _face.ReferenceTable(Tag.Parse("OS/2"));
+            var os2 = table.AsSpan();
+            // ulCodePageRange1 is at offset 78 from version 1 on.
+            if (os2.Length < 82 || BinaryPrimitives.ReadUInt16BigEndian(os2) < 1)
+                return false;
+            return (BinaryPrimitives.ReadUInt32BigEndian(os2[78..]) & EastAsianCodePages) != 0;
+        }
 
         public void Dispose()
         {

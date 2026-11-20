@@ -77,6 +77,12 @@ internal sealed partial class DocxReader
     private int _textBoxDepth;
     private int _tableDepth;
 
+    /// <summary>The document's main part (word/document.xml): the layout snaps its lines to the grid, not other parts'.</summary>
+    private Part? _body;
+
+    /// <summary>Lines in table cells snap to the grid too (settings w:compat/w:adjustLineHeightInTable).</summary>
+    private bool _gridInTables;
+
     /// <summary>Reading the header for the first page only, which becomes a text box (see <see cref="HSection.FirstPageHeader"/>).</summary>
     private bool _inFirstPageHeader;
 
@@ -244,6 +250,8 @@ internal sealed partial class DocxReader
         _bordersAroundFooter = !(settings?.Element(W + "bordersDoNotSurroundFooter") is { } noFooter && Val(noFooter) is not ("0" or "false"));
         _collapseSpacing = !(settings?.Element(W + "compat")?.Element(W + "doNotUseHTMLParagraphAutoSpacing") is { } sum && Val(sum) is not ("0" or "false"));
         _compatibilityMode = CompatibilityMode(settings);
+        _body = main;
+        _gridInTables = settings?.Element(W + "compat")?.Element(W + "adjustLineHeightInTable") is { } inTables && Val(inTables) is not ("0" or "false");
         _footnotesPart = RelatedPart(main, "/footnotes");
         _endnotesPart = RelatedPart(main, "/endnotes");
         foreach (var note in _footnotesPart?.Xml.Root?.Elements(W + "footnote") ?? [])
@@ -251,7 +259,7 @@ internal sealed partial class DocxReader
         foreach (var note in _endnotesPart?.Xml.Root?.Elements(W + "endnote") ?? [])
             _endnotes[Attr(note, "id") ?? ""] = note;
 
-        var document = new HDocument { Title = Title(), LeftOut = _leftOut };
+        var document = new HDocument { Title = Title(), LeftOut = _leftOut, WordLineHeights = true };
         Kinsoku(settings, document);
         FontAlternates(RelatedPart(main, "/fontTable")?.Xml.Root, document);
         // Word's default tab stops: every half inch unless the settings say otherwise.
@@ -465,7 +473,9 @@ internal sealed partial class DocxReader
     /// <summary>
     /// Word's document grid ("lines") puts every line on a multiple of the grid pitch: a single-spaced 10 pt line
     /// with an 18 pt grid is 18 pt high. 한글 has no such grid for body text, so the paragraph gets an "at least"
-    /// line spacing of the snapped height (larger content such as pictures can still grow the line).
+    /// line spacing of the snapped height (larger content such as pictures can still grow the line). The layout gets the
+    /// pitch (HLineHeight.GridPitch) for the body's paragraphs, in table cells only where the settings say so
+    /// (w:adjustLineHeightInTable): headers, footers, notes and text boxes keep their lines.
     /// </summary>
     private void SnapToGrid(HParagraph paragraph, ParaProps props)
     {
@@ -482,7 +492,13 @@ internal sealed partial class DocxReader
         paragraph.Format = paragraph.Format with
         {
             LineSpacing = new HLineSpacing(HLineSpacingKind.AtLeast, (int)Math.Round(lines * cell * multiple)),
-            Layout = layout with { LineHeight = (layout.LineHeight ?? new HLineHeight(HLineHeightRule.Multiple, props.Line ?? 240)) with { GridPitch = cell } },
+            Layout = layout with
+            {
+                LineHeight = (layout.LineHeight ?? new HLineHeight(HLineHeightRule.Multiple, props.Line ?? 240)) with
+                {
+                    GridPitch = ReferenceEquals(_part, _body) && (_tableDepth == 0 || _gridInTables) ? cell : 0,
+                },
+            },
         };
     }
 
