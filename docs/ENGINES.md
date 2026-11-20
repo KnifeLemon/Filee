@@ -2123,7 +2123,7 @@ target and PNG frames. FFmpeg has no FLIC encoder, so nothing writes them.
 A Video CD's `MPEGAV/AVSEQ01.DAT` (MPEG-1 in a RIFF/CDXA wrapper) counts as MPEG: `.dat` is an extension of that
 format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fails instead of making a file.
 
-- The download is the gyan.dev **9.0.2 "full_build-shared"** Windows build (GPL-3.0, run as a separate program).
+- The download is the gyan.dev **9.1 "full_build-shared"** Windows build (GPL-3.0, run as a separate program).
   It is smaller than the "essentials" build (100 vs 115 MB download, 272 vs 329 MB on disk, because ffmpeg.exe and
   ffprobe.exe share their libraries) and has a superset of its encoders. It links only Windows system DLLs; GPU
   and Vulkan libraries are loaded only if present. Being over 60 MB, it is offered but not ticked on first run.
