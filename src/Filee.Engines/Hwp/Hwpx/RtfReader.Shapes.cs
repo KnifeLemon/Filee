@@ -1,10 +1,13 @@
-// RtfReader: Word drawing objects (\shp) holding a picture, and the properties of pictures.
+// RtfReader: Word drawing objects (\shp) holding a picture or text, and the properties of pictures.
 //
 // A floating picture is a shape: {\shp{\*\shpinst \shpleft ... \shpbottom, what they are measured from (\shpbx*,
 // \shpby*), the wrap (\shpwr, \shpfblwtxt) and properties {\sp{\sn name}{\sv value}}, the picture in the pib
-// property's value}{\shprslt a copy for programs without shapes}}. Such a shape becomes a floating HImage (its
-// \shprslt is skipped); other shapes (text boxes) are read from their \shprslt as before. A picture's own properties
-// (\*\picprop, as Word writes for pictures in the text) give its rotation and mirroring.
+// property's value}{\shprslt a copy for programs without shapes}}. Such a shape becomes a floating HImage. A text box
+// is a shape with its paragraphs in {\shptxt ...} inside \shpinst: it becomes an HTextBox with the shape's size,
+// place, fill (fillColor), outline (lineColor, lineWidth, lineDashing), padding (dxTextLeft ...) and vertical
+// alignment (anchorText). Either way the \shprslt copy is skipped; other shapes (rectangles, lines) are still read
+// from their \shprslt. A picture's own properties (\*\picprop, as Word writes for pictures in the text) give its
+// rotation and mirroring.
 
 using System.Globalization;
 using System.Text;
@@ -46,6 +49,9 @@ internal sealed partial class RtfReader
 
         /// <summary>The value being read is the pib property's: its \pict group is the shape's picture.</summary>
         public bool PictureValue { get; set; }
+
+        /// <summary>The paragraphs of a text box (\shptxt), once read; null for a shape without text.</summary>
+        public List<HBlock>? Text { get; set; }
 
         public void Set(string name, string value)
         {
@@ -110,17 +116,61 @@ internal sealed partial class RtfReader
         }
     }
 
-    /// <summary>A shape with a picture ends: the picture, floating where the shape is.</summary>
+    /// <summary>
+    /// The text of a text box (\shptxt): read like a note's, into a story of its own, and kept for the shape, which
+    /// becomes the box when it ends.
+    /// </summary>
+    private void StartShapeText(ShapeContext shape)
+    {
+        var story = new Story();
+        _g.Dest = Dest.Text;
+        _g.Story = story;
+        _g.Sink = null;
+        _g.Field = null;
+        _g.Para = ParaProps.Default;
+        // Shape words in the box's text are for shapes in it, not for this one.
+        _g.Shape = null;
+        _budget.Object();
+        var level = _budget.Enter();
+        var group = _g;
+        _g.Closer = () =>
+        {
+            var inner = _g;
+            _g = group; // end the box's last paragraph with its own properties
+            EndParagraph(story, force: false);
+            CloseTable(story);
+            _g = inner;
+            level.Dispose();
+            shape.Text = story.Blocks;
+        };
+    }
+
+    /// <summary>The shape's box (twips), each side kept to a few pages.</summary>
+    private static (int Width, int Height) Size(ShapeContext shape) =>
+        ((int)Math.Clamp((long)shape.Right - shape.Left, 0, 31680 * 4), (int)Math.Clamp((long)shape.Bottom - shape.Top, 0, 31680 * 4));
+
+    /// <summary>The distance text keeps from a floating shape (EMU), as far as it gives one; Word's own default is 1/8 inch at the sides.</summary>
+    private static HInsets WrapDistance(ShapeContext shape)
+    {
+        int Distance(string name, int fallback) => shape.Number(name) is { } emu ? (int)Math.Clamp(emu / 127.0, 0, 31680 * 5) : fallback;
+        return new HInsets(Distance("dxWrapDistLeft", 900), Distance("dxWrapDistRight", 900), Distance("dyWrapDistTop", 0), Distance("dyWrapDistBottom", 0));
+    }
+
+    /// <summary>A shape ends: its picture or its text box, floating where the shape is (or in the text, fPseudoInline).</summary>
     private void EndShape(ShapeContext shape)
     {
         if (shape.Picture is not { } image)
+        {
+            if (shape.Text is { } text)
+                AddInline(TextBox(shape, text));
             return;
+        }
         // The shape's box is the picture's size.
-        var (width, height) = (Math.Clamp((long)shape.Right - shape.Left, 0, 31680 * 4), Math.Clamp((long)shape.Bottom - shape.Top, 0, 31680 * 4));
+        var (width, height) = Size(shape);
         if (width > 0 && height > 0)
         {
-            image.Width = HwpxUnits.FromTwips((int)width);
-            image.Height = HwpxUnits.FromTwips((int)height);
+            image.Width = HwpxUnits.FromTwips(width);
+            image.Height = HwpxUnits.FromTwips(height);
         }
         image.Transform = shape.Transform() ?? image.Transform;
         if (image.Crop is null && Crop(shape) is { } crop)
@@ -130,15 +180,69 @@ internal sealed partial class RtfReader
             image.Anchor = Anchor(shape);
         if (shape.Z is { } z && image.Anchor is not null)
             image.ZOrder = z;
-        // The distance text keeps from it (EMU), as far as the shape gives one; Word's own default is 1/8 inch at the sides.
-        int Distance(string name, int fallback) => shape.Number(name) is { } emu ? (int)Math.Clamp(emu / 127.0, 0, 31680 * 5) : fallback;
         if (image.Anchor is not null)
-        {
-            image.OuterMargin = new HInsets(Distance("dxWrapDistLeft", 900), Distance("dxWrapDistRight", 900),
-                Distance("dyWrapDistTop", 0), Distance("dyWrapDistBottom", 0));
-        }
+            image.OuterMargin = WrapDistance(shape);
         AddInline(image);
     }
+
+    /// <summary>
+    /// A text box from a shape with text: shapeType 202 (text box), 1 (rectangle), 2 (rounded, adjustValue the corner
+    /// in 1/21600 of the shorter side) or 3 (ellipse). Without the properties Word's defaults apply: white fill, a
+    /// black 0.75 pt outline, 0.1 inch padding at the sides and 0.05 inch above and below.
+    /// </summary>
+    private static HTextBox TextBox(ShapeContext shape, List<HBlock> text)
+    {
+        var (width, height) = Size(shape);
+        var box = new HTextBox
+        {
+            Width = HwpxUnits.FromTwips(Math.Max(1, width)),
+            Height = HwpxUnits.FromTwips(Math.Max(1, height)),
+            Transform = shape.Transform(),
+            Shape = shape.Number("shapeType") == 3 ? HShapeKind.Ellipse : HShapeKind.Rectangle,
+            Fill = shape.Number("fFilled") is not 0 ? ShapeColor(shape.Number("fillColor") ?? 0xFFFFFF) : null,
+            Line = shape.Number("fLine") is 0 ? HBorder.None : Outline(shape),
+            Padding = new HInsets(Emu(shape, "dxTextLeft", 91440), Emu(shape, "dxTextRight", 91440), Emu(shape, "dyTextTop", 45720),
+                Emu(shape, "dyTextBottom", 45720)),
+            VerticalAlign = shape.Number("anchorText") switch
+            {
+                1 or 4 => HVerticalAlign.Center,
+                2 or 5 => HVerticalAlign.Bottom,
+                _ => HVerticalAlign.Top,
+            },
+        };
+        if (shape.Number("shapeType") == 2)
+            box.CornerRatio = (int)Math.Round(Math.Clamp(shape.Number("adjustValue") ?? 3600, 0, 10800) * 100.0 / 21600);
+        if (!shape.Flag("fPseudoInline"))
+        {
+            box.Anchor = Anchor(shape);
+            box.OuterMargin = WrapDistance(shape);
+            if (shape.Z is { } z)
+                box.ZOrder = z;
+        }
+        box.Blocks.AddRange(text);
+        return box;
+
+        // A length in EMU as HWPUNIT, kept to a few pages.
+        static int Emu(ShapeContext shape, string name, int fallback) => (int)Math.Clamp((shape.Number(name) ?? fallback) / 127.0, 0, 31680 * 5);
+    }
+
+    /// <summary>A shape's outline: lineColor, lineWidth (EMU; Word's default 0.75 pt), lineDashing and lineStyle (1 double).</summary>
+    private static HBorder Outline(ShapeContext shape)
+    {
+        var style = shape.Number("lineStyle") is 1 ? HBorderStyle.Double : shape.Number("lineDashing") switch
+        {
+            1 or 6 or 7 => HBorderStyle.Dash,
+            2 or 5 => HBorderStyle.Dot,
+            3 or 4 or 8 or 9 or 10 => HBorderStyle.DashDot,
+            _ => HBorderStyle.Solid,
+        };
+        var width = Math.Clamp((shape.Number("lineWidth") ?? 9525) / 36000.0, 0.05, 20);
+        return new HBorder(style, width, ShapeColor(shape.Number("lineColor") ?? 0) ?? "#000000");
+    }
+
+    /// <summary>A shape property's colour (0x00BBGGRR) as "#RRGGBB"; null for system and scheme colours (higher bits set).</summary>
+    private static string? ShapeColor(int value) =>
+        value is < 0 or > 0xFFFFFF ? null : $"#{value & 0xFF:X2}{value >> 8 & 0xFF:X2}{value >> 16 & 0xFF:X2}";
 
     /// <summary>cropFromLeft ... (fractions in 1/65536 of the picture) of a shape; null for none.</summary>
     private static HCrop? Crop(ShapeContext shape)

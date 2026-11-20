@@ -93,6 +93,9 @@ internal sealed partial class RtfReader
         /// <summary>The row's borders: left, right, top, bottom, between rows (\trbrdrh) and between cells (\trbrdrv).</summary>
         public HBorder?[] Borders { get; private init; } = new HBorder?[6];
 
+        /// <summary>A floating table's place (\tpos*, \tph*, \tpv*); null for a table in the text.</summary>
+        public TablePlace? Place { get; set; }
+
         /// <summary>The cells, shared with the rows before that kept this definition; copied when it changes.</summary>
         public List<CellDef> Cells { get; private set; } = [];
         private bool _shared;
@@ -122,10 +125,19 @@ internal sealed partial class RtfReader
             Padding = [.. Padding],
             PaddingUnits = [.. PaddingUnits],
             Borders = [.. Borders],
+            Place = Place,
             Cells = Cells,
             _shared = true,
         };
     }
+
+    /// <summary>
+    /// Where a floating table is: what it is measured from (\tphcol / \tphmrg / \tphpg across, \tpvmrg / \tpvpara /
+    /// \tpvpg down; Word's defaults are the column and the margin), its offsets in twips or alignment, the distance text
+    /// keeps from it (\tdfrmtxt*) and \tabsnoovrlp.
+    /// </summary>
+    private sealed record TablePlace(string Across = "COLUMN", string Down = "PAGE", int X = 0, int Y = 0, string AlignX = "LEFT",
+        string AlignY = "TOP", int Left = 0, int Right = 0, int Top = 0, int Bottom = 0, bool NoOverlap = false);
 
     private sealed class TableBuilder
     {
@@ -207,11 +219,19 @@ internal sealed partial class RtfReader
             or "trpaddl" or "trpaddr" or "trpaddt" or "trpaddb" or "trpaddfl" or "trpaddfr" or "trpaddft" or "trpaddfb" or "clwWidth"
             or "clftsWidth" or "trautofit" or "trwWidth" or "trftsWidth" or "clmgf" or "clmrg" or "clvmgf" or "clvmrg" or "clcbpat"
             or "clcfpat" or "clshdng" or "clvertalc" or "clvertalb" or "clvertalt" or "clpadl" or "clpadr" or "clpadt" or "clpadb"
-            or "clpadfl" or "clpadfr" or "clpadft" or "clpadfb" or "cellx"))
+            or "clpadfl" or "clpadfr" or "clpadft" or "clpadfb" or "cellx" or "tphcol" or "tphmrg" or "tphpg" or "tpvmrg" or "tpvpara"
+            or "tpvpg" or "tposx" or "tposnegx" or "tposxc" or "tposxi" or "tposxo" or "tposxr" or "tposxl" or "tposy" or "tposnegy"
+            or "tposyt" or "tposyil" or "tposyc" or "tposyb" or "tposyin" or "tposyout" or "tposyoutv" or "tdfrmtxtLeft" or "tdfrmtxtRight"
+            or "tdfrmtxtTop" or "tdfrmtxtBottom" or "tabsnoovrlp"))
             return false;
         if (RowLevel() is not (> 0 and var rowLevel))
             return true; // a row of a table nested deeper than kept
         var def = TableAt(story, rowLevel).Def;
+        if (word.StartsWith("tp", StringComparison.Ordinal) || word.StartsWith("tdfrmtxt", StringComparison.Ordinal) || word == "tabsnoovrlp")
+        {
+            def.Place = TablePosition(def.Place ?? new TablePlace(), word, parameter);
+            return true;
+        }
         switch (word)
         {
             case "trowd": TableAt(story, rowLevel).Def = new RowDef(); break;
@@ -257,12 +277,51 @@ internal sealed partial class RtfReader
         return true;
     }
 
+    /// <summary>A floating table's place with one more of its words.</summary>
+    private static TablePlace TablePosition(TablePlace place, string word, int? parameter)
+    {
+        var value = parameter ?? 0;
+        // Offsets and distances in twips, kept to a few pages.
+        var twips = Math.Clamp(value, -31680 * 4, 31680 * 4);
+        var distance = Math.Clamp(value, 0, 31680);
+        return word switch
+        {
+            "tphcol" => place with { Across = "COLUMN" },
+            "tphmrg" => place with { Across = "PAGE" },
+            "tphpg" => place with { Across = "PAPER" },
+            "tpvmrg" => place with { Down = "PAGE" },
+            "tpvpara" => place with { Down = "PARA" },
+            "tpvpg" => place with { Down = "PAPER" },
+            "tposx" or "tposnegx" => place with { X = twips, AlignX = "LEFT" },
+            "tposxl" => place with { X = 0, AlignX = "LEFT" },
+            "tposxc" => place with { X = 0, AlignX = "CENTER" },
+            "tposxr" => place with { X = 0, AlignX = "RIGHT" },
+            "tposxi" => place with { X = 0, AlignX = "INSIDE" },
+            "tposxo" => place with { X = 0, AlignX = "OUTSIDE" },
+            "tposy" or "tposnegy" => place with { Y = twips, AlignY = "TOP" },
+            "tposyt" or "tposyil" => place with { Y = 0, AlignY = "TOP" },
+            "tposyc" => place with { Y = 0, AlignY = "CENTER" },
+            "tposyb" => place with { Y = 0, AlignY = "BOTTOM" },
+            "tposyin" => place with { Y = 0, AlignY = "INSIDE" },
+            "tposyout" or "tposyoutv" => place with { Y = 0, AlignY = "OUTSIDE" },
+            "tdfrmtxtLeft" => place with { Left = distance },
+            "tdfrmtxtRight" => place with { Right = distance },
+            "tdfrmtxtTop" => place with { Top = distance },
+            "tdfrmtxtBottom" => place with { Bottom = distance },
+            "tabsnoovrlp" => place with { NoOverlap = parameter != 0 },
+            _ => place,
+        };
+    }
+
     /// <summary>Ends the cell of the table at <paramref name="depth"/>: its last paragraph, the tables nested in it, the cell.</summary>
     private void EndCell(Story story, int depth)
     {
         if (TableDepth(_g.Para) == 0)
             _g.Para = _g.Para with { InTable = true };
-        EndParagraph(story, force: false);
+        // \cell ends the cell's last paragraph. An empty cell keeps its paragraph, with its format (line spacing, the
+        // mark's font size), which the row's height depends on; after other paragraphs an empty one is left out, as
+        // writers that end every paragraph with \par before \cell (Pandoc) mean none.
+        EndParagraph(story, force: TableAt(story, depth).Cell.Count == 0);
         CloseTables(story, depth);
         var builder = TableAt(story, depth);
         TableCells(1);
@@ -400,6 +459,14 @@ internal sealed partial class RtfReader
             // \trqr (the right side) is the start, and a row that doesn't say starts at the right too.
             RightToLeft = builder.Rows[0].Def.RightToLeft,
         };
+        // A floating table (\tpos* on its first row): placed where the row says, text going around it.
+        if (builder.Rows[0].Def.Place is { } place)
+        {
+            table.Float = new HAnchor(place.Across, place.AlignX, HwpxUnits.FromTwips(place.X), place.Down, place.AlignY,
+                HwpxUnits.FromTwips(place.Y), "SQUARE", !place.NoOverlap);
+            table.FloatDistance = new HInsets(HwpxUnits.FromTwips(place.Left), HwpxUnits.FromTwips(place.Right),
+                HwpxUnits.FromTwips(place.Top), HwpxUnits.FromTwips(place.Bottom));
+        }
         if (table.RightToLeft && builder.Rows[0].Def.Align is HAlign.Left or HAlign.Right)
             table.Align = builder.Rows[0].Def.Align == HAlign.Left ? HAlign.Right : HAlign.Left;
         // \trautofit1: Word sizes the columns as its autofit tables, from the \cellx widths and the cells' content (and
@@ -675,6 +742,31 @@ internal sealed partial class RtfReader
         public int Format { get; set; }
         public int Start { get; set; } = 1;
         public string Text { get; set; } = "";
+
+        /// <summary>\leveljc: 0 left, 1 centre, 2 right.</summary>
+        public int Align { get; set; }
+
+        /// <summary>\levelfollow: 0 a tab, 1 a space, 2 nothing.</summary>
+        public int Follow { get; set; }
+
+        /// <summary>The number's own character formatting (\b, \fs ... in \listlevel), over the paragraph mark's; null members unset.</summary>
+        public bool? Bold { get; set; }
+        public bool? Italic { get; set; }
+        public bool? Underline { get; set; }
+        public int? HalfPoints { get; set; }
+        public int? Font { get; set; }
+        public int? Color { get; set; }
+
+        /// <summary>The paragraph mark's formatting <paramref name="mark"/> with this level's over it.</summary>
+        public CharProps Over(CharProps mark) => mark with
+        {
+            Bold = Bold ?? mark.Bold,
+            Italic = Italic ?? mark.Italic,
+            Underline = Underline ?? mark.Underline,
+            HalfPoints = HalfPoints ?? mark.HalfPoints,
+            Font = Font ?? mark.Font,
+            Color = Color ?? mark.Color,
+        };
     }
 
     /// <summary>Levels a list keeps (the model's numberings have nine); the words of further levels are read and dropped.</summary>
@@ -719,6 +811,33 @@ internal sealed partial class RtfReader
                     return true;
                 case "levelstartat" when _level is { } level:
                     level.Start = value;
+                    return true;
+                case "leveljc" when _level is { } level:
+                    level.Align = value;
+                    return true;
+                case "levelfollow" when _level is { } level:
+                    level.Follow = value;
+                    return true;
+                case "b" when _level is { } level:
+                    level.Bold = parameter != 0;
+                    return true;
+                case "i" when _level is { } level:
+                    level.Italic = parameter != 0;
+                    return true;
+                case "ul" when _level is { } level:
+                    level.Underline = parameter != 0;
+                    return true;
+                case "ulnone" when _level is { } level:
+                    level.Underline = false;
+                    return true;
+                case "fs" when _level is { } level:
+                    level.HalfPoints = Math.Clamp(parameter ?? 24, 2, 3276);
+                    return true;
+                case "f" when _level is { } level:
+                    level.Font = value;
+                    return true;
+                case "cf" when _level is { } level:
+                    level.Color = value;
                     return true;
             }
             return true;
@@ -765,13 +884,34 @@ internal sealed partial class RtfReader
         level.Text = text.ToString();
     }
 
-    private HListRef? ListOf(ParaProps p)
+    /// <summary>
+    /// The list the paragraph is an item of, or null. Its number is drawn as Word draws it: in the paragraph mark's
+    /// formatting (<paramref name="mark"/>, a bold "1." before plain text) with the level's own over it.
+    /// </summary>
+    private HListRef? ListOf(ParaProps p, CharProps mark)
     {
         if (p.ListOverride <= 0 || !_overrides.TryGetValue(p.ListOverride, out var id) || !_listsById.TryGetValue(id, out var list))
             return null;
         list.Numbering ??= Numbering(list);
-        return list.Numbering.Levels.Count == 0 ? null : new HListRef(list.Numbering, Math.Min(p.ListLevel, list.Numbering.Levels.Count - 1), Numbered: true);
+        if (list.Numbering.Levels.Count == 0)
+            return null;
+        var level = Math.Min(p.ListLevel, list.Numbering.Levels.Count - 1);
+        return new HListRef(list.Numbering, level, Numbered: true) { MarkerFormat = Format(list.Levels[level].Over(mark)) };
     }
+
+    private static HNumberSuffix Suffix(LevelDef level) => level.Follow switch
+    {
+        1 => HNumberSuffix.Space,
+        2 => HNumberSuffix.Nothing,
+        _ => HNumberSuffix.Tab,
+    };
+
+    private static HAlign? Align(LevelDef level) => level.Align switch
+    {
+        1 => HAlign.Center,
+        2 => HAlign.Right,
+        _ => null,
+    };
 
     private static HNumbering Numbering(ListDef list)
     {
@@ -782,7 +922,11 @@ internal sealed partial class RtfReader
             {
                 var bullet = level.Text.Trim();
                 // Symbol-font bullets come as private-use characters.
-                numbering.Levels.Add(new HNumberingLevel("DIGIT", bullet.Length == 0 || bullet[0] >= '' && bullet[0] <= '' ? "•" : bullet[..1], 1, Bullet: true));
+                numbering.Levels.Add(new HNumberingLevel("DIGIT", bullet.Length == 0 || bullet[0] >= '' && bullet[0] <= '' ? "•" : bullet[..1], 1, Bullet: true)
+                {
+                    Suffix = Suffix(level),
+                    Align = Align(level),
+                });
                 continue;
             }
             var format = level.Format switch
@@ -798,7 +942,11 @@ internal sealed partial class RtfReader
                 40 => "HANGUL_PHONETIC",
                 _ => "DIGIT",
             };
-            numbering.Levels.Add(new HNumberingLevel(format, level.Text.Length > 0 ? level.Text : $"^{numbering.Levels.Count + 1}.", level.Start, Bullet: false));
+            numbering.Levels.Add(new HNumberingLevel(format, level.Text.Length > 0 ? level.Text : $"^{numbering.Levels.Count + 1}.", level.Start, Bullet: false)
+            {
+                Suffix = Suffix(level),
+                Align = Align(level),
+            });
         }
         return numbering;
     }

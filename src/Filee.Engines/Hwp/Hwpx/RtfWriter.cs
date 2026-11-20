@@ -542,7 +542,21 @@ internal sealed partial class RtfWriter
                 var definition = level < numbering.Levels.Count ? numbering.Levels[level] : new HNumberingLevel("DIGIT", $"^{level + 1}.", 1, Bullet: false);
                 o.Open();
                 var format = definition.Bullet ? 23 : LevelFormat(definition.Format);
-                o.Control($"\\listlevel\\levelnfc{Number(format)}\\levelnfcn{Number(format)}\\leveljc0\\leveljcn0\\levelfollow0\\levelstartat{Number(Math.Max(0, definition.Start))}");
+                // How the number lines up at its place (0 left, 1 centre, 2 right) and what follows it (0 a tab, 1 a
+                // space, 2 nothing).
+                var align = definition.Align switch
+                {
+                    HAlign.Center => 1,
+                    HAlign.Right => 2,
+                    _ => 0,
+                };
+                var follow = definition.Suffix switch
+                {
+                    HNumberSuffix.Space => 1,
+                    HNumberSuffix.Nothing => 2,
+                    _ => 0,
+                };
+                o.Control($"\\listlevel\\levelnfc{Number(format)}\\levelnfcn{Number(format)}\\leveljc{Number(align)}\\leveljcn{Number(align)}\\levelfollow{Number(follow)}\\levelstartat{Number(Math.Max(0, definition.Start))}");
                 var (text, numbers) = LevelText(definition);
                 o.Open();
                 o.Control("\\leveltext");
@@ -564,6 +578,13 @@ internal sealed partial class RtfWriter
                 o.Raw(";");
                 o.Close();
                 o.Control($"\\fi-400\\li{Number(ListIndent(level))}\\lin{Number(ListIndent(level))}");
+                if (_markers.TryGetValue((numbering, level), out var marker))
+                {
+                    // Every property, so that none of the paragraph mark's shows through the number's own.
+                    var c = marker.Chars;
+                    o.Control((c.Bold ? "\\b" : "\\b0") + (c.Italic ? "\\i" : "\\i0") + (c.Underline ? "\\ul" : "\\ulnone") +
+                        $"\\fs{Number(c.HalfPoints)}\\f{Number(marker.Font)}\\cf{Number(c.Color)}");
+                }
                 o.Close();
             }
             o.Open();

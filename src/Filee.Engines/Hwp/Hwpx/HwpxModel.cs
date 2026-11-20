@@ -996,8 +996,9 @@ internal readonly record struct HLineSpacing(HLineSpacingKind Kind, int Value);
 /// </param>
 /// <param name="LineSpacing">Line spacing in 한글's terms, as the writers write it (Word spacing converted).</param>
 /// <param name="Layout">
-/// Rendering detail the writers do not write (the source's own line rule, borders, line breaking ...). It takes no
-/// part in equality: formats that differ only here are written alike. <see cref="SameLayout"/> compares it too.
+/// Rendering detail the writers do not write (the source's own line rule, borders, line breaking ...), but for the
+/// paragraph's box, which the DOCX and RTF writers write. It takes no part in equality: formats that differ only here
+/// are written alike in HWPX. <see cref="SameLayout"/> compares it too.
 /// </param>
 /// <param name="LeftBar">A line down the paragraph's left side (a block quote), joined up with the next paragraph's.</param>
 /// <param name="Fill">Background colour behind the paragraph ("#RRGGBB").</param>

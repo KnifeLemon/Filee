@@ -360,7 +360,11 @@ public class RtfWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var nested = Assert.IsType<HTable>(cellBlocks[1]);
         Assert.Equal(["inner one", "inner two"], nested.Rows.Single().Cells.Select(c => string.Concat(c.Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HText>().Select(t => t.Text))));
         var last = Assert.IsType<HParagraph>(read.Sections[0].Blocks[2]);
-        Assert.Contains("Boxed text", string.Concat(last.Inlines.OfType<HText>().Select(t => t.Text)), StringComparison.Ordinal);
+        // The text box comes back as one (its copy in \shprslt is for programs without shapes).
+        var readBox = Assert.Single(last.Inlines.OfType<HTextBox>());
+        Assert.Equal("Boxed text", string.Concat(readBox.Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HText>().Select(t => t.Text)));
+        Assert.Equal("#FFEECC", readBox.Fill);
+        Assert.DoesNotContain("Boxed text", string.Concat(last.Inlines.OfType<HText>().Select(t => t.Text)), StringComparison.Ordinal);
         // GIF and BMP become PNG.
         Assert.Equal(2, last.Inlines.OfType<HImage>().Count());
         Assert.All(last.Inlines.OfType<HImage>(), image => Assert.Equal(".png", Path.GetExtension(image.Path)));
@@ -510,6 +514,70 @@ public class RtfWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(new HInsets(400, 400, 100, 100), border.Offsets);
         Assert.Equal(HBorderStyle.Dot, border.Between!.Value.Style);
         Assert.Equal((HBorderStyle.Dot, "#336699"), (border.Borders.Left.Style, border.Borders.Left.Color));
+    }
+
+    [Fact]
+    public void Floating_tables_text_boxes_and_list_numbers_come_back()
+    {
+        var floating = new HTable
+        {
+            ColumnCount = 1,
+            ColumnWidths = [20000],
+            Float = new HAnchor("PAGE", "CENTER", 0, "PAPER", "TOP", 7200, "SQUARE", false),
+            FloatDistance = new HInsets(900, 900, 0, 450),
+        };
+        var row = new HRow();
+        row.Cells.Add(Cell("floating"));
+        floating.Rows.Add(row);
+
+        var box = new HTextBox
+        {
+            Width = 20000,
+            Height = 6000,
+            Anchor = new HAnchor("COLUMN", "LEFT", 1000, "PARA", "TOP", 500, "SQUARE", true),
+            Fill = "#DDEEFF",
+            Line = new HBorder(HBorderStyle.Dash, 0.5, "#C00000"),
+            Padding = new HInsets(400, 400, 200, 200),
+            VerticalAlign = HVerticalAlign.Bottom,
+            CornerRatio = 10,
+        };
+        box.Blocks.Add(Para("In the box"));
+
+        // A level whose numbers are bold and smaller than the mark, right-aligned with a space after them (#1011).
+        var numbers = new HNumbering();
+        numbers.Levels.Add(new HNumberingLevel("DIGIT", "^1.", 1, Bullet: false) { Suffix = HNumberSuffix.Space, Align = HAlign.Right });
+        var marker = new HCharFormat(Bold: true, Size: 1200);
+        var item = new HParagraph
+        {
+            List = new HListRef(numbers, 0, true) { MarkerFormat = marker },
+            MarkFormat = new HCharFormat(Bold: true, Size: 1400),
+            Inlines = { new HText("answer", new HCharFormat(Size: 1200)) },
+        };
+
+        var document = new HDocument();
+        var section = new HSection();
+        section.Blocks.Add(floating);
+        section.Blocks.Add(Para(new HText("Text ", default), box));
+        section.Blocks.Add(item);
+        document.Sections.Add(section);
+
+        var (read, rtf) = RoundTrip(document);
+
+        Assert.Contains("\\tphmrg\\tpvpg\\tposxc", rtf, StringComparison.Ordinal);
+        var table = read.Sections[0].Blocks.OfType<HTable>().Single();
+        Assert.Equal(floating.Float, table.Float);
+        Assert.Equal(floating.FloatDistance, table.FloatDistance);
+
+        var readBox = read.Sections[0].Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HTextBox>().Single();
+        Assert.Equal((box.Width, box.Height, box.Anchor), (readBox.Width, readBox.Height, readBox.Anchor));
+        Assert.Equal((box.Fill, box.Line.Style, box.Line.Color), (readBox.Fill, readBox.Line.Style, readBox.Line.Color));
+        Assert.Equal(box.Line.WidthMm, readBox.Line.WidthMm, 3);
+        Assert.Equal((box.Padding, box.VerticalAlign, box.CornerRatio), (readBox.Padding, readBox.VerticalAlign, readBox.CornerRatio));
+        Assert.Equal("In the box", string.Concat(readBox.Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HText>().Select(t => t.Text)));
+
+        var list = read.Sections[0].Blocks.OfType<HParagraph>().Single(p => p.List is not null).List!;
+        Assert.Equal((HNumberSuffix.Space, HAlign.Right), (list.Numbering.Levels[0].Suffix, list.Numbering.Levels[0].Align));
+        Assert.Equal((true, 1200), (list.MarkerFormat!.Value.Bold, list.MarkerFormat!.Value.Size));
     }
 
     [Fact]

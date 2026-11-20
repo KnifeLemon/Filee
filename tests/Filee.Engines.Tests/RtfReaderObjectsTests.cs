@@ -198,6 +198,100 @@ public sealed class RtfReaderObjectsTests(EngineFixture fx) : IClassFixture<Engi
     }
 
     [Fact]
+    public void Text_boxes_are_read_from_their_shape_and_their_copy_is_skipped()
+    {
+        // As Word writes a text box: its paragraphs in \shptxt, and a copy in \shprslt (a framed paragraph) for programs
+        // without shapes. The second shape gives no properties: Word's defaults.
+        var document = Read(Head + @"\pard Before "
+            + @"{\shp{\*\shpinst\shpleft1440\shptop720\shpright4320\shpbottom2160\shpfhdr0\shpbxcolumn\shpbxignore\shpbypara\shpbyignore"
+            + @"\shpwr2\shpwrk0\shpfblwtxt0\shpz2\shplid1026{\sp{\sn shapeType}{\sv 202}}{\sp{\sn fillColor}{\sv 13434879}}"
+            + @"{\sp{\sn lineColor}{\sv 255}}{\sp{\sn lineWidth}{\sv 25400}}{\sp{\sn lineDashing}{\sv 1}}"
+            + @"{\sp{\sn dxTextLeft}{\sv 127000}}{\sp{\sn dyTextTop}{\sv 63500}}{\sp{\sn anchorText}{\sv 1}}{\sp{\sn posrelh}{\sv 2}}{\sp{\sn posrelv}{\sv 2}}"
+            + @"{\shptxt \pard\plain\qc\b Inside\b0  the box\par\pard second line\par}}"
+            + @"{\shprslt{\*\do\dobxcolumn\dobypara\dodhgt8192\dptxbx{\dptxbxtext\pard\plain copy for old programs\par}}}}"
+            + @"{\shp{\*\shpinst\shpleft0\shptop0\shpright1440\shpbottom720\shpwr3{\sp{\sn shapeType}{\sv 3}}"
+            + @"{\shptxt \pard\plain round\par}}{\shprslt\pard\plain round copy\par}}"
+            + @" after\par}");
+
+        var paragraph = Assert.IsType<HParagraph>(document.Sections[0].Blocks.Single());
+        Assert.Equal("Before  after", string.Concat(paragraph.Inlines.OfType<HText>().Select(t => t.Text)));
+        var boxes = paragraph.Inlines.OfType<HTextBox>().ToList();
+        Assert.Equal(2, boxes.Count);
+
+        var box = boxes[0];
+        Assert.Equal((HwpxUnits.FromTwips(2880), HwpxUnits.FromTwips(1440)), (box.Width, box.Height));
+        Assert.Equal(new HAnchor("COLUMN", "LEFT", HwpxUnits.FromTwips(1440), "PARA", "TOP", HwpxUnits.FromTwips(720), "SQUARE", true), box.Anchor);
+        Assert.Equal(2, box.ZOrder);
+        Assert.Equal("#FFFFCC", box.Fill);
+        Assert.Equal((HBorderStyle.Dash, "#FF0000"), (box.Line.Style, box.Line.Color));
+        Assert.Equal(25400 / 36000.0, box.Line.WidthMm, 3);
+        Assert.Equal(new HInsets(1000, 720, 500, 360), box.Padding);
+        Assert.Equal(HVerticalAlign.Center, box.VerticalAlign);
+        Assert.Equal(HShapeKind.Rectangle, box.Shape);
+        Assert.Equal(["Inside the box", "second line"], box.Blocks.Select(Text));
+        var first = Assert.IsType<HParagraph>(box.Blocks[0]);
+        Assert.Equal(HAlign.Center, first.Format.Align);
+        Assert.True(first.Inlines.OfType<HText>().First().Format.Bold);
+
+        var round = boxes[1];
+        Assert.Equal(HShapeKind.Ellipse, round.Shape);
+        Assert.Equal("#FFFFFF", round.Fill);
+        Assert.Equal((HBorderStyle.Solid, "#000000"), (round.Line.Style, round.Line.Color));
+        Assert.Equal("IN_FRONT_OF_TEXT", round.Anchor!.Wrap);
+        Assert.Equal(["round"], round.Blocks.Select(Text));
+    }
+
+    [Fact]
+    public void Floating_tables_are_placed_as_their_first_row_says()
+    {
+        var document = Read(Head
+            + @"\trowd\trgaph108\tphmrg\tpvpg\tposx1440\tposy2880\tdfrmtxtLeft180\tdfrmtxtRight360\tdfrmtxtTop90\tdfrmtxtBottom45\cellx3000"
+            + @"\pard\plain\intbl Floating\cell\row"
+            + @"\pard\plain Between\par"
+            + @"\trowd\trgaph108\tphpg\tpvpara\tposxc\tposyb\tposnegx-500\tabsnoovrlp\cellx3000"
+            + @"\pard\plain\intbl Second\cell\row"
+            + @"\pard\plain\par"
+            + @"\trowd\trgaph108\cellx3000\pard\plain\intbl In the text\cell\row}");
+
+        var tables = document.Sections[0].Blocks.OfType<HTable>().ToList();
+        Assert.Equal(new HAnchor("PAGE", "LEFT", HwpxUnits.FromTwips(1440), "PAPER", "TOP", HwpxUnits.FromTwips(2880), "SQUARE", true), tables[0].Float);
+        Assert.Equal(new HInsets(HwpxUnits.FromTwips(180), HwpxUnits.FromTwips(360), HwpxUnits.FromTwips(90), HwpxUnits.FromTwips(45)), tables[0].FloatDistance);
+        // The last word for a side wins: \tposnegx after \tposxc gives an offset again.
+        Assert.Equal(new HAnchor("PAPER", "LEFT", HwpxUnits.FromTwips(-500), "PARA", "BOTTOM", 0, "SQUARE", false), tables[1].Float);
+        Assert.Null(tables[2].Float);
+    }
+
+    [Fact]
+    public void A_list_number_takes_the_mark_s_format_with_the_level_s_over_it_and_empty_cells_keep_theirs()
+    {
+        // #1011 through RTF: bold numbers before plain answers (the number in the paragraph mark's \b, at the level's
+        // \fs24), right-aligned with a space after them; an empty cell keeps its paragraph's line spacing and size.
+        var document = Read(Head
+            + @"{\*\listtable{\list\listtemplateid1{\listlevel\levelnfc0\leveljc2\levelfollow1\levelstartat1{\leveltext\'02\'00.;}{\levelnumbers\'01;}\fs24\i0\fi-360\li720}\listid1}}"
+            + @"{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}}"
+            + @"\trowd\trgaph108\cellx2000\cellx4000"
+            + @"\pard\plain\intbl\ls1\ilvl0\b\fs28{\b0\fs24 B}\cell"
+            + @"\pard\plain\intbl\sl-400\slmult0\b\fs28\cell\row}");
+
+        var row = Assert.IsType<HTable>(document.Sections[0].Blocks.Single()).Rows.Single();
+        var item = Assert.IsType<HParagraph>(row.Cells[0].Blocks.Single());
+        var list = item.List!;
+        Assert.Equal(new HCharFormat(Bold: true, Size: 1200, Font: "Arial"), list.MarkerFormat);
+        Assert.Equal((HNumberSuffix.Space, HAlign.Right), (list.Numbering.Levels[0].Suffix, list.Numbering.Levels[0].Align));
+        Assert.True(item.MarkFormat.Bold);
+        var empty = Assert.IsType<HParagraph>(row.Cells[1].Blocks.Single());
+        Assert.Empty(empty.Inlines);
+        Assert.Equal(new HLineSpacing(HLineSpacingKind.Fixed, HwpxUnits.FromTwips(400)), empty.Format.LineSpacing);
+        Assert.Equal(1400, empty.MarkFormat.Size);
+
+        // Pandoc ends every paragraph with \par, the cell's last one too: no empty paragraph after it.
+        var pandoc = Read(Head + @"\trowd\cellx2000\cellx4000{\pard\intbl one\par}{\pard\intbl two\par}\cell{\pard\intbl\par}\cell\row}");
+        var cells = Assert.IsType<HTable>(pandoc.Sections[0].Blocks.Single()).Rows.Single().Cells;
+        Assert.Equal(["one", "two"], cells[0].Blocks.Select(Text));
+        Assert.Single(cells[1].Blocks);
+    }
+
+    [Fact]
     public void Cropped_and_mirrored_pictures_in_the_text()
     {
         var image = Read(Head + @"\pard {\*\shppict{\pict{\*\picprop\shplid1025{\sp{\sn shapeType}{\sv 75}}{\sp{\sn fFlipH}{\sv 1}}}"

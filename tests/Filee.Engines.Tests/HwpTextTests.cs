@@ -82,8 +82,9 @@ public class HwpTextTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var markdown = Read(await ConvertAsync(hwpx, "md"));
         Assert.DoesNotContain("title:", markdown); // the text starts with the document
-        Assert.Contains("# **회의 메모**", markdown);
-        Assert.Contains("## **안건**", markdown);
+        // The headings' runs are bold in HWPX; headings are bold anyway, so no ** inside them.
+        Assert.Contains("# 회의 메모\n", markdown);
+        Assert.Contains("## 안건\n", markdown);
         Assert.Contains("- 첫째 항목\n- 둘째 항목\n", markdown);
         Assert.Contains("1. 번호 하나\n2. 번호 둘\n", markdown);
         Assert.Contains("| 이름 | 값 |\n|---|---|\n| 가 | 1 |", markdown);
