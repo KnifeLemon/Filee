@@ -47,6 +47,10 @@ internal readonly record struct TextSpan(int Start, int Length, HCharFormat Form
 /// <param name="SpacingRatio">
 /// Space added after each character as a share of its own advance (한글's 자간), on top of <paramref name="LetterSpacing"/>.
 /// </param>
+/// <param name="Symbol">
+/// The font the characters were read from as codes (HCharLayout.Symbol: Word's w:sym, text in Wingdings): where it is
+/// installed, the layout draws the codes (<see cref="ParagraphText.Drawn"/>) in it.
+/// </param>
 internal sealed record TextStyle(
     string? Family,
     FontStyle Style,
@@ -62,7 +66,8 @@ internal sealed record TextStyle(
     string Language,
     float? SpaceWidth = null,
     bool Kerning = true,
-    float SpacingRatio = 0);
+    float SpacingRatio = 0,
+    string? Symbol = null);
 
 /// <summary>A paragraph's text with the character format of each piece.</summary>
 internal sealed class ParagraphText
@@ -77,9 +82,10 @@ internal sealed class ParagraphText
     public const float DefaultSize = 10;
 
     private ParagraphText(string text, List<TextSpan> spans, List<(int Position, string Name)> bookmarks, Dictionary<int, HInline> pictures,
-        Dictionary<int, HNote> notes, List<(int Position, int Length)> insertions, Dictionary<HInline, int> floating)
+        Dictionary<int, HNote> notes, List<(int Position, int Length)> insertions, Dictionary<HInline, int> floating, string? drawn)
     {
         Text = text;
+        Drawn = drawn;
         Floating = floating;
         Spans = spans;
         Bookmarks = bookmarks;
@@ -106,6 +112,12 @@ internal sealed class ParagraphText
 
     public string Text { get; }
 
+    /// <summary>
+    /// The text with the codes of symbol-font characters (HCharLayout.Symbol) in place of their Unicode characters, one
+    /// for one, for drawing them in the symbol font; null when the paragraph has none.
+    /// </summary>
+    public string? Drawn { get; }
+
     /// <summary>Pieces in text order, covering the text without gaps.</summary>
     public IReadOnlyList<TextSpan> Spans { get; }
 
@@ -128,6 +140,7 @@ internal sealed class ParagraphText
         var floating = new Dictionary<HInline, int>(ReferenceEqualityComparer.Instance);
         var markerLength = 0;
         var inserted = 0;
+        StringBuilder? drawn = null;
 
         // Text of the layout's own, which the model's count doesn't hold.
         void Insert(string piece, HCharFormat format, string? link)
@@ -144,6 +157,10 @@ internal sealed class ParagraphText
             if (piece.Length == 0)
                 return;
             spans.Add(new TextSpan(text.Length, piece.Length, format, link));
+            if (format.Layout?.Symbol is { } symbol && symbol.Codes.Length == piece.Length)
+                (drawn ??= new StringBuilder().Append(text)).Append(symbol.Codes);
+            else
+                drawn?.Append(piece);
             text.Append(piece);
         }
 
@@ -212,7 +229,7 @@ internal sealed class ParagraphText
             markerLength = text.Length;
         }
         Inlines(paragraph.Inlines, null);
-        return new ParagraphText(text.ToString(), spans, bookmarks, pictures, references, insertions, floating);
+        return new ParagraphText(text.ToString(), spans, bookmarks, pictures, references, insertions, floating, drawn?.ToString());
     }
 
     /// <summary>The Unicode control that starts or ends an explicit direction.</summary>
@@ -372,7 +389,8 @@ internal sealed class ParagraphText
             // 한글 without "글꼴에 어울리는 빈칸": a space is half the size wide.
             format.Layout?.FontSpace == false ? size / 2 : null,
             format.Layout?.Kerning != false,
-            spacingRatio);
+            spacingRatio,
+            format.Layout?.Symbol?.Font);
     }
 
     /// <summary>A "#RRGGBB" colour, or null for none or an unreadable one.</summary>

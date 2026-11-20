@@ -28,6 +28,11 @@ namespace Filee.Engines.Hwp.Hwpx;
 /// <param name="ComplexSize">Size of complex-script characters (Word w:szCs), 1/100 pt; null = the run's size.</param>
 /// <param name="ComplexBold">Complex-script characters are bold (Word w:bCs; w:b does not reach them); null = as the run.</param>
 /// <param name="ComplexItalic">Complex-script characters are italic (Word w:iCs); null = as the run.</param>
+/// <param name="Symbol">
+/// The font and codes a run's characters were read from (Word w:sym, text in Wingdings &amp; co.): the run holds their
+/// Unicode characters in the text font, and the layout draws the codes in this font where it is installed. Only the run
+/// itself has it: <see cref="Over"/> doesn't pass it on.
+/// </param>
 internal sealed record HCharLayout(
     HLanguageSlots? Slots = null,
     HWordFonts? WordFonts = null,
@@ -40,7 +45,8 @@ internal sealed record HCharLayout(
     bool? ComplexScript = null,
     int? ComplexSize = null,
     bool? ComplexBold = null,
-    bool? ComplexItalic = null)
+    bool? ComplexItalic = null,
+    HSymbol? Symbol = null)
 {
     /// <summary>This layout with the members it leaves open taken from <paramref name="baseline"/>.</summary>
     public HCharLayout Over(HCharLayout? baseline) => baseline is null ? this : new HCharLayout(
@@ -55,8 +61,14 @@ internal sealed record HCharLayout(
         ComplexScript ?? baseline.ComplexScript,
         ComplexSize ?? baseline.ComplexSize,
         ComplexBold ?? baseline.ComplexBold,
-        ComplexItalic ?? baseline.ComplexItalic);
+        ComplexItalic ?? baseline.ComplexItalic,
+        Symbol);
 }
+
+/// <summary>Characters of a symbol font as the document stores them (see <see cref="HCharLayout.Symbol"/>).</summary>
+/// <param name="Font">The font the codes are in ("Wingdings 2").</param>
+/// <param name="Codes">One code per UTF-16 character of the run's text: F020–F0FF for a symbol font (Word's w:char).</param>
+internal sealed record HSymbol(string Font, string Codes);
 
 /// <summary>한글's seven language slots (글꼴 언어): each character takes the properties of the slot its script falls into.</summary>
 internal enum HLanguage
