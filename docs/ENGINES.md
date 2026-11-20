@@ -1341,6 +1341,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - 한글's numbers: a list number in its own character format (paraHead charPrIDRef), the lines after it hanging under
     the text when the number indents its paragraph (autoIndent); a note's reference in its run's format (an exam's
     endnote numbers are white); a page that hides its header or footer (hp:pageHiding) shows none.
+  - Word's numbers: in the paragraph mark's run format with the level's `w:rPr` over it (a bullet keeps the mark's
+    font, its character being mapped to Unicode), starting at, centred on or ending at the first line's indent
+    (`w:lvlJc`); a tab stop between a hanging first line's start and the left indent counts on that line.
   - Headers and footers: both, odd or even pages by page number, none on a section's first page where it hides them,
     laid out in the header and footer areas. Page numbers count on across sections unless one restarts them; page
     number fields show their page's number, total pages fields the count (a first pass finds it when the body has one).
@@ -1369,7 +1372,7 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     (hideBorder, hideFill) leave them out. Word's page borders (w:pgBorders) take the same place: w:space points in
     from the paper's edges (offsetFrom="page") or out from the text and around the header and footer areas, on all
     pages, the first or all but the first (w:display); line styles it doesn't draw become a single or double line,
-    picture borders a single line.
+    picture borders a single line. Word draws its page border over the text and objects unless w:zOrder="back".
 - **Columns, footnotes and endnotes** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: multi-column layout,
   footnotes and endnotes*):
   - Columns: a section's newspaper columns at their gap, with a separator line between them when the section has one;
@@ -1377,9 +1380,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     that started a column (the stored first-line-of-column flag) start one.
   - Columns of their own widths (Word w:cols equalWidth="0", 한글 sameSz="0", ODF style:column rel-width): each its
     width and the gap after it, scaled to the text width, the first at the right in a right-to-left section. A
-    paragraph going on in a column of another width is laid out anew from where it broke; they are not balanced
-    where columns change on a page (their lines are as wide as the column they were laid out for), and a table going
-    on in one keeps its first column's width.
+    paragraph going on in a column of another width is laid out anew from where it broke, a table from its next group
+    of rows (a row split across the columns keeps its first part's widths); they are not balanced where columns change
+    on a page (their lines are as wide as the column they were laid out for).
   - Columns changing on a page (한글 다단 설정 나누기, Word's continuous section break): the columns before are balanced,
     the first ones taking the odd line as 한글 does, and the new ones start under them. At the end of a section they
     are left as they are (neither 한글 nor Word balances there).
@@ -1408,9 +1411,12 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     spanning columns widens them together) and the table to its preferred width (`w:tblW`, a length or a share of the
     text column). A table wider than its room (from its indent to the column's edge, or its cell for a nested table,
     which never overflows it) gives up first what its columns have beyond their widest line, then down to their longest
-    words. Cell margins nothing gives are Word's 0.19 cm at the sides. Not yet: the indent of Word 2010 and older
-    documents measured to the cell's text (the table sits a cell margin further left there), `w:tblCellSpacing`,
-    `w:gridBefore` / `w:gridAfter` widths.
+    words; a fixed table in the body keeps its widths and runs into the margin (both when centred). Cell margins
+    nothing gives are Word's 0.19 cm at the sides. Grid columns a row leaves empty take its `w:wBefore` / `w:wAfter`;
+    cells spaced apart (`w:tblCellSpacing`) sit that far in from their columns and rows, the table's border around
+    them. Documents in Word 2010's compatibility mode or older (and those whose settings don't say) measure `w:tblInd`
+    to the first cell's text, so the table sits a cell margin further out. RTF rows with `\trautofit1` are sized as
+    Word's autofit tables.
   - Cells: padding (the cell's, the table's, else 한글's 1.8 × 0.5 mm), content laid out at the column width less it,
     nested tables included; lines on 한글's stored layout take their stored place in the cell. A row is as high as its
     own height or its tallest single-row cell, whose height is its content without the spacing below its last line (as

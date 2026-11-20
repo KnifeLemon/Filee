@@ -2,8 +2,11 @@
 // row, banded rows ... formatting), the table and each cell, cell shading, cell margins, vertical alignment, row
 // heights, repeated header rows and rows that do not split across pages. The table style's paragraph and run
 // formatting reaches the text in the cells. What the layout sizes the columns by (HTableSizing): fixed or autofit
-// (w:tblLayout), the table's preferred width (w:tblW), the grid and each cell's preferred width (w:tcW); cell margins
-// none of the table, its style or the cell give are Word's 0.19 cm left and right, none at the top and bottom.
+// (w:tblLayout), the table's preferred width (w:tblW), the grid, each cell's preferred width (w:tcW) and the widths of
+// the grid columns a row leaves empty (w:gridBefore / w:wBefore, w:gridAfter / w:wAfter); cell margins none of the
+// table, its style or the cell give are Word's 0.19 cm left and right, none at the top and bottom. Cells spaced apart
+// (w:tblCellSpacing) keep the table's outer border around them. A document in Word 2010's compatibility mode (or older)
+// measures w:tblInd to the first cell's text, so the table's edge is that cell's start margin further out.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -32,7 +35,7 @@ internal sealed partial class DocxReader
                 "right" or "end" => HAlign.Right,
                 _ => HAlign.Left,
             },
-            Indent = HwpxUnits.FromTwips(Twips(tblPr?.Element(W + "tblInd"), "w") ?? 0),
+            Indent = HwpxUnits.FromTwips(tableProperties.Select(p => Twips(p.Element(W + "tblInd"), "w")).LastOrDefault(w => w is not null) ?? 0),
             // A right-to-left table: its first grid column is the rightmost, and jc, tblInd and the cells' left / right
             // borders and margins name the start and the end side (the layout mirrors them).
             RightToLeft = styleChain.Select(s => s.TblPr).Append(tblPr).OfType<XElement>()
@@ -60,6 +63,15 @@ internal sealed partial class DocxReader
         table.Borders = HBorders.Empty;
 
         var rows = tbl.Elements().SelectMany(e => e.Name == W + "tr" ? [e] : FlattenRows(e)).ToList();
+        // Cells spaced apart: the table's, else its first row's spacing; the table's outer border then goes around them.
+        var spacing = tableProperties.Select(p => CellSpacing(p.Element(W + "tblCellSpacing"))).LastOrDefault(v => v is not null)
+            ?? CellSpacing(rows.FirstOrDefault()?.Element(W + "trPr")?.Element(W + "tblCellSpacing")) ?? 0;
+        if (spacing > 0)
+        {
+            table.CellSpacing = spacing;
+            table.Frame = new HBorders(borders.GetValueOrDefault("left", HBorder.None), borders.GetValueOrDefault("right", HBorder.None),
+                borders.GetValueOrDefault("top", HBorder.None), borders.GetValueOrDefault("bottom", HBorder.None));
+        }
         var conditions = TableConditions(tblPr, styleChain, rows.Count, grid.Length);
 
         // vMerge: the cell that restarts a vertical merge, per grid column.
@@ -79,6 +91,14 @@ internal sealed partial class DocxReader
             // Column numbers and spans of damaged files stay within the limit, so they can't overflow.
             var maxColumns = _budget.Limits.MaxTableColumns;
             var column = Math.Clamp(Twips(trPr?.Element(W + "gridBefore"), "val") ?? 0, 0, maxColumns);
+            if (column > 0)
+                row.WidthBefore = PreferredWidth(trPr?.Element(W + "wBefore"));
+            var after = Math.Clamp(Twips(trPr?.Element(W + "gridAfter"), "val") ?? 0, 0, maxColumns);
+            if (after > 0)
+            {
+                row.GridAfter = after;
+                row.WidthAfter = PreferredWidth(trPr?.Element(W + "wAfter"));
+            }
             foreach (var tc in tr.Elements().SelectMany(e => e.Name == W + "tc" ? [e] : FlattenCells(e)))
             {
                 var tcPr = tc.Element(W + "tcPr");
@@ -158,8 +178,13 @@ internal sealed partial class DocxReader
                 column = Math.Min(column + span, maxColumns);
             }
             table.Rows.Add(row);
-            table.ColumnCount = Math.Max(table.ColumnCount, column);
+            table.ColumnCount = Math.Max(table.ColumnCount, Math.Min(column + after, maxColumns));
         }
+        // Word 2010 and older (and Word in their compatibility mode) measure w:tblInd to the text of the first cell, not
+        // to the table's edge: the edge sits the first cell's start margin before it, in the margin at an indent of 0.
+        if (_compatibilityMode < 15 && table.Float is null && table.Align == HAlign.Left
+            && table.Rows.FirstOrDefault(r => r.Cells.Count > 0)?.Cells[0] is { } first)
+            table.EdgeBeforeIndent = Math.Max(0, (first.CellMargin ?? table.CellMargin ?? WordCellMargin).Left);
         return table;
     }
 
@@ -339,6 +364,12 @@ internal sealed partial class DocxReader
                 return Twips(element, "w") is > 0 and var twips ? new HPreferredWidth(HWidthType.Absolute, HwpxUnits.FromTwips(twips)) : HPreferredWidth.Auto;
         }
     }
+
+    /// <summary>A cell spacing (w:tblCellSpacing, twips) in HWPUNIT: null when the element is missing, 0 for nil or none.</summary>
+    private static int? CellSpacing(XElement? element) =>
+        element is null ? null
+        : Attr(element, "type") is "nil" or "auto" or "pct" ? 0
+        : HwpxUnits.FromTwips(Math.Clamp(Twips(element, "w") ?? 0, 0, 31680));
 
     private static HInsets CellMargins(XElement cellMar, HInsets? current)
     {

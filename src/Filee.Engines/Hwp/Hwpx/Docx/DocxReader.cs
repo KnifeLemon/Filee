@@ -7,6 +7,7 @@
 // DocxReader.Tables and DocxReader.Drawing handle tables and graphic objects. The package is read within
 // DocumentLimits (Documents/DocumentPackage); embedded fonts (word/fonts) are not read.
 
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Xml;
@@ -56,6 +57,12 @@ internal sealed partial class DocxReader
 
     /// <summary>Neighbouring paragraphs keep the larger of their spaces between them, not both (see <see cref="CollapseSpacing"/>).</summary>
     private bool _collapseSpacing = true;
+
+    /// <summary>
+    /// Word's compatibility mode (settings w:compatSetting compatibilityMode): 15 for Word 2013 and later, 14 or less for
+    /// documents kept in the way of Word 2010 and older, 12 (Word 2007) when the settings don't say.
+    /// </summary>
+    private int _compatibilityMode = 12;
 
     /// <summary>Width of each section's text column (HWPUNIT), for equations that don't fit a line.</summary>
     private readonly List<int> _columnWidths = [];
@@ -229,6 +236,7 @@ internal sealed partial class DocxReader
         _bordersAroundHeader = !(settings?.Element(W + "bordersDoNotSurroundHeader") is { } noHeader && Val(noHeader) is not ("0" or "false"));
         _bordersAroundFooter = !(settings?.Element(W + "bordersDoNotSurroundFooter") is { } noFooter && Val(noFooter) is not ("0" or "false"));
         _collapseSpacing = !(settings?.Element(W + "compat")?.Element(W + "doNotUseHTMLParagraphAutoSpacing") is { } sum && Val(sum) is not ("0" or "false"));
+        _compatibilityMode = CompatibilityMode(settings);
         _footnotesPart = RelatedPart(main, "/footnotes");
         _endnotesPart = RelatedPart(main, "/endnotes");
         foreach (var note in _footnotesPart?.Xml.Root?.Elements(W + "footnote") ?? [])
@@ -476,6 +484,20 @@ internal sealed partial class DocxReader
         return kind == HGridKind.None ? null : new HDocumentGrid(kind, HwpxUnits.FromTwips(Twips(grid, "linePitch") ?? 0), CharSpace: Twips(grid, "charSpace") ?? 0);
     }
 
+    /// <summary>
+    /// The compatibility mode the settings give (w:compat/w:compatSetting name="compatibilityMode", Word's own uri), or
+    /// 12 when they give none: Word opens such a document as a Word 2007 one.
+    /// </summary>
+    private static int CompatibilityMode(XElement? settings)
+    {
+        foreach (var setting in settings?.Element(W + "compat")?.Elements(W + "compatSetting") ?? [])
+        {
+            if (Attr(setting, "name") == "compatibilityMode" && int.TryParse(Attr(setting, "val"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var mode))
+                return Math.Clamp(mode, 0, 1000);
+        }
+        return 12;
+    }
+
     /// <summary>Custom East Asian line breaking characters of the document (settings: w:noLineBreaksBefore / After).</summary>
     private static void Kinsoku(XElement? settings, HDocument document)
     {
@@ -662,7 +684,11 @@ internal sealed partial class DocxReader
         var border = new HPageBorder(HPageType.Both, new HBorders(left, right, top, bottom), Fill: null, Picture: null,
             new HInsets(leftSpace, rightSpace, topSpace, bottomSpace),
             AroundBody: Attr(borders, "offsetFrom") != "page",
-            HeaderInside: _bordersAroundHeader, FooterInside: _bordersAroundFooter, HPageFillArea.Paper);
+            HeaderInside: _bordersAroundHeader, FooterInside: _bordersAroundFooter, HPageFillArea.Paper)
+        {
+            // Over the text unless the border says it goes behind it.
+            InFront = Attr(borders, "zOrder") != "back",
+        };
         if (border.IsEmpty)
             return;
         section.PageBorders.Add(border);
@@ -908,7 +934,10 @@ internal sealed partial class DocxReader
             _format = reader.ParaFormat(props, mark.Size);
             _mark = reader.CharFormat(mark);
             _heading = reader.HeadingLevel(props, pPr);
-            _list = reader.Numbering(props.NumId) is { } numbering ? new HListRef(numbering, Math.Clamp(props.Ilvl ?? 0, 0, 8), Numbered: true) : null;
+            var ilvl = Math.Clamp(props.Ilvl ?? 0, 0, 8);
+            _list = reader.Numbering(props.NumId) is { } numbering
+                ? new HListRef(numbering, ilvl, Numbered: true) { MarkerFormat = reader.MarkerFormat(props.NumId, ilvl, mark) }
+                : null;
             Current = NewParagraph(_list);
             Current.PageBreakBefore = props.PageBreakBefore == true;
 
