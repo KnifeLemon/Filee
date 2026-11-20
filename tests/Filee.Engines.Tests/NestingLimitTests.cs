@@ -1,7 +1,7 @@
 // Documents nested far deeper than any real one (thousands of tables in table cells, groups in groups, links in links,
 // a note that refers to itself) and packages whose XML unpacks to more than Filee reads. A stack overflow cannot be
 // caught and ended the whole app, with every watch folder; these must give a document with the deep part as plain
-// text, or a clear refusal (error.document_too_large). The DOCX and HWPX readers of the built-in engines branch read
+// text, or a clear refusal (error.document_too_complex for the depth, error.document_too_large for the size). The DOCX and HWPX readers of the built-in engines branch read
 // through DocumentPackage / DocumentBudget, which refuse a document past their limits (error.document_too_complex)
 // instead of opening it up. Every input is built here.
 
@@ -229,7 +229,7 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var path = pptx.Save(Path.Combine(fx.NewFolder(), "groups.pptx"));
 
         var error = Assert.Throws<ConversionRefusedException>(() => PptxReader.Read(path, Path.Combine(fx.NewFolder(), "media")));
-        Assert.Equal(TooLarge, error.ErrorKey);
+        Assert.Equal(TooComplex, error.ErrorKey);
         Assert.Contains("ppt/slides/slide1.xml", error.Detail);
     }
 
@@ -356,7 +356,7 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         // DocumentPackage stops a part at 64 MB, well before BoundedXml's 256.
         var error = Assert.Throws<ConversionRefusedException>(() => DocxReader.Read(path, Path.Combine(fx.NewFolder(), "media")));
-        Assert.Equal(TooComplex, error.ErrorKey);
+        Assert.Equal(TooLarge, error.ErrorKey);
         Assert.Contains("word/document.xml", error.Detail);
     }
 
@@ -450,7 +450,7 @@ public class NestingLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         File.WriteAllText(path, xml);
 
         var error = Assert.Throws<ConversionRefusedException>(() => Fb2Reader.Read(path, fx.NewFolder()));
-        Assert.Equal(TooLarge, error.ErrorKey);
+        Assert.Equal(TooComplex, error.ErrorKey);
     }
 
     // ───────────────────────── Markdown ─────────────────────────

@@ -87,7 +87,9 @@ internal static partial class TableSheets
 
     /// <summary>
     /// Every cell of the table with its grid row (0-based within the table), column and the rows and columns it covers,
-    /// row spans skipped. Spans end at the table's last row and at <see cref="HwpxWriter.MaxTableColumns"/>.
+    /// row spans skipped. Spans end at the table's last row and at <see cref="HwpxWriter.MaxTableColumns"/> (the sheet's
+    /// width); a cell naming a column past it goes to the last column, and one that finds no free column before the
+    /// edge is left out, as the spreadsheet readers leave out cells past the sheet.
     /// </summary>
     /// <exception cref="Filee.Core.Conversion.ConversionRefusedException">The cells cover more than <see cref="HwpxWriter.MaxTableCells"/> positions.</exception>
     private static IEnumerable<(HCell Cell, int Row, int Column, int Rows, int Columns)> Grid(HTable table, int skip = 0)
@@ -103,11 +105,11 @@ internal static partial class TableSheets
             foreach (var cell in source.Cells)
             {
                 if (cell.Column >= 0)
-                    column = Math.Min(cell.Column, HwpxWriter.MaxTableColumns);
+                    column = Math.Min(cell.Column, HwpxWriter.MaxTableColumns - 1);
                 while (column < freeFrom.Count && freeFrom[column] > row)
                     column++;
                 if (column >= HwpxWriter.MaxTableColumns)
-                    throw HwpxWriter.TableTooLarge();
+                    continue;
                 // An HTML rowspan may claim more rows than the table has; the merge ends at its last row.
                 var rows = Math.Clamp(cell.RowSpan, 1, Math.Max(1, rowCount - row));
                 var columns = Math.Clamp(cell.ColSpan, 1, HwpxWriter.MaxTableColumns - column);
@@ -140,7 +142,8 @@ internal static partial class TableSheets
 
     /// <summary>
     /// Writes the table's rows from <paramref name="top"/> on, leaving out its first <paramref name="skip"/>; returns
-    /// the next free row.
+    /// the next free row. Rows past the sheet's last (<see cref="SheetPagination.MaxRow"/>) are left out and merges end
+    /// there, as Excel and Calc load a sheet too long for them.
     /// </summary>
     /// <param name="drawn">
     /// The table was found by the lines drawn around its cells (PDF): every cell gets a thin border and the rows keep
@@ -154,18 +157,23 @@ internal static partial class TableSheets
             var r = top;
             foreach (var source in table.Rows.Skip(skip))
             {
+                if (r > SheetPagination.MaxRow)
+                    break;
                 if (source.Height is { } height && height > 0)
                     sheet.RowHeights[r] = Math.Round(height / 100.0, 2);
                 r++;
             }
         }
-        var next = top + Math.Max(0, table.Rows.Count - skip);
+        var next = (int)Math.Min((long)top + Math.Max(0, table.Rows.Count - skip), SheetPagination.MaxRow + 1L);
         var defaults = table.Borders ?? HBorders.Grid;
         var merged = new List<(string Text, int Row, int Column, int Rows, int Columns)>();
-        foreach (var (cell, row, column, rows, columns) in Grid(table, skip))
+        foreach (var (cell, row, column, spanned, columns) in Grid(table, skip))
         {
-            var style = StyleOf(cell, drawn ? null : cell.Borders ?? defaults);
+            if ((long)top + row > SheetPagination.MaxRow)
+                break;
             var at = top + row;
+            var rows = Math.Min(spanned, SheetPagination.MaxRow - at + 1);
+            var style = StyleOf(cell, drawn ? null : cell.Borders ?? defaults);
             var text = Text(cell);
             sheet.Set(at, column, Shown(text, style));
             if (!drawn && (rows > 1 || columns > 1) && text.Length > 0)

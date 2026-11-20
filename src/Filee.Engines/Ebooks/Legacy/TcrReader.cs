@@ -17,7 +17,7 @@ internal static class TcrReader
     {
         var limits = DocumentLimits.Default;
         if (new FileInfo(path).Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The TCR file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The TCR file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         var text = Decompress(File.ReadAllBytes(path), cancellationToken);
         return new Book(PlainText.ToDocument(MobiReader.DecodeText(text)), new BookMetadata());
     }

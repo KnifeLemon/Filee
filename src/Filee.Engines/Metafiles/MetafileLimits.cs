@@ -1,7 +1,7 @@
 // How much of an untrusted EMF or WMF file the metafile renderer reads and draws, so a hostile file can't hang,
 // exhaust the memory or crash Filee. Every limit is far above what real metafiles need (clip art has hundreds of
-// records, a chart a few thousand): a file that passes one is refused with error.document_too_complex rather than
-// drawn in part. Damaged files (a record longer than the file, a count its record can't hold, an object index outside
+// records, a chart a few thousand): a file that passes one is refused rather than drawn in part, with
+// error.document_too_large for its bytes and pixels and error.document_too_complex for the rest. Damaged files (a record longer than the file, a count its record can't hold, an object index outside
 // the table) stop with an InvalidDataException that says which record is wrong.
 //
 // Where they apply:
@@ -62,6 +62,9 @@ internal sealed record MetafileLimits
 
     /// <summary>The refusal for a file that passes a limit; <paramref name="detail"/> says which (in English).</summary>
     public static Core.Conversion.ConversionRefusedException Exceeded(string detail) => DocumentLimits.Exceeded(detail);
+
+    /// <summary>The refusal for a file too large (bytes, pixels); <paramref name="detail"/> says which (in English).</summary>
+    public static Core.Conversion.ConversionRefusedException TooLarge(string detail) => DocumentLimits.TooLarge(detail);
 }
 
 /// <summary>What one metafile has used of its <see cref="MetafileLimits"/> so far.</summary>
@@ -77,10 +80,10 @@ internal sealed class MetafileBudget(MetafileLimits limits)
     {
         var pixels = width * height;
         if (pixels > Limits.MaxBitmapPixels)
-            throw MetafileLimits.Exceeded($"A bitmap in the metafile has {DocumentLimits.Count(width)} × {DocumentLimits.Count(height)} pixels, more than {DocumentLimits.Count(Limits.MaxBitmapPixels)}.");
+            throw MetafileLimits.TooLarge($"A bitmap in the metafile has {DocumentLimits.Count(width)} × {DocumentLimits.Count(height)} pixels, more than {DocumentLimits.Count(Limits.MaxBitmapPixels)}.");
         _pixels += pixels;
         if (_pixels > Limits.MaxTotalBitmapPixels)
-            throw MetafileLimits.Exceeded($"The bitmaps in the metafile have more than {DocumentLimits.Count(Limits.MaxTotalBitmapPixels)} pixels together.");
+            throw MetafileLimits.TooLarge($"The bitmaps in the metafile have more than {DocumentLimits.Count(Limits.MaxTotalBitmapPixels)} pixels together.");
     }
 
     /// <summary>Counts <paramref name="count"/> drawing operations of <paramref name="what"/> (in English, for the refusal).</summary>

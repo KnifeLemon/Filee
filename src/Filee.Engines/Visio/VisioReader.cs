@@ -203,7 +203,7 @@ internal sealed class VisioReader
         {
             _cancellationToken.ThrowIfCancellationRequested();
             if (pages.Count >= _package.Limits.MaxPages)
-                throw DocumentLimits.Exceeded($"The drawing has more than {DocumentLimits.Count(_package.Limits.MaxPages)} pages.");
+                throw DocumentLimits.TooLarge($"The drawing has more than {DocumentLimits.Count(_package.Limits.MaxPages)} pages.");
             var sheet = Sheet(element.Element(V + "PageSheet") ?? new XElement(V + "PageSheet"), pagesPart!);
             double Cell(string name, double fallback) =>
                 sheet.Cells.TryGetValue(name, out var cell) && VisioValues.Number((string?)cell.Attribute("V")) is { } value ? value : fallback;

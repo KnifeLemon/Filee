@@ -39,12 +39,14 @@ public class DocHostileInputTests(EngineFixture fx) : IClassFixture<EngineFixtur
         Assert.True(task.Wait(TimeSpan.FromSeconds(seconds)), $"Still running after {seconds} s");
     }
 
-    private static ConversionRefusedException Refused(Action action)
+    private static ConversionRefusedException Refused(Action action, string key = DocumentLimits.ErrorKey)
     {
         var refusal = Assert.ThrowsAny<ConversionRefusedException>(action);
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(key, refusal.ErrorKey);
         return refusal;
     }
+
+    private static ConversionRefusedException RefusedTooLarge(Action action) => Refused(action, DocumentLimits.TooLargeKey);
 
     private static string Part(string docx, string name)
     {
@@ -100,7 +102,7 @@ public class DocHostileInputTests(EngineFixture fx) : IClassFixture<EngineFixtur
         builder.Paragraph(R("bomb "), builder.PictureOf(EmfBlip(new byte[16 << 20]), 1440, 1440));
         var doc = Doc(builder);
         var docx = Path.Combine(fx.NewFolder(), "out.docx");
-        Assert.Contains("times its packed size", Refused(() => DocReader.ToDocx(doc, docx)).Detail);
+        Assert.Contains("times its packed size", RefusedTooLarge(() => DocReader.ToDocx(doc, docx)).Detail);
         Assert.False(File.Exists(docx), "No partial DOCX is left behind");
     }
 
@@ -113,7 +115,7 @@ public class DocHostileInputTests(EngineFixture fx) : IClassFixture<EngineFixtur
         builder.Paragraph(runs);
         var doc = Doc(builder);
         var limits = DocumentLimits.Default with { MaxPackageBytes = 8L << 20 };
-        Assert.Contains("unpacks to more than 8 MB", Refused(() => DocReader.ToDocx(doc, Path.Combine(fx.NewFolder(), "out.docx"), limits)).Detail);
+        Assert.Contains("unpacks to more than 8 MB", RefusedTooLarge(() => DocReader.ToDocx(doc, Path.Combine(fx.NewFolder(), "out.docx"), limits)).Detail);
         // Within the default limits the same document is written, each picture once.
         using var zip = ZipFile.OpenRead(ToDocx(doc));
         Assert.Equal(6, zip.Entries.Count(e => e.FullName.StartsWith("word/media/", StringComparison.Ordinal)));

@@ -28,7 +28,7 @@ internal static partial class PmlReader
     {
         var limits = DocumentLimits.Default;
         if (new FileInfo(path).Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The PML file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The PML file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         var folder = Path.GetDirectoryName(Path.GetFullPath(path))!;
         var pictures = new[] { folder, Path.Combine(folder, Path.GetFileNameWithoutExtension(path) + "_img"), Path.Combine(folder, "images") };
         var html = ToHtml(Decode(File.ReadAllBytes(path)), name => Picture(pictures, folder, name), cancellationToken, limits);
@@ -129,7 +129,7 @@ internal static partial class PmlReader
     private static string Escape(string text) => XhtmlWriter.Escape(text);
 
     private static Exception TooLarge(long maxChars) =>
-        DocumentLimits.Exceeded($"The PML file grows to more than {DocumentLimits.Megabytes(maxChars)} of HTML.");
+        DocumentLimits.TooLarge($"The PML file grows to more than {DocumentLimits.Megabytes(maxChars)} of HTML.");
 
     private sealed class Converter(StringBuilder html, Func<string, string?> picture, long maxChars, CancellationToken cancellationToken)
     {

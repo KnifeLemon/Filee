@@ -276,7 +276,7 @@ internal static class PdfObjectNesting
             if (end < 0)
                 end = file.Length;
             if (end - dataAt > DocumentLimits.Default.MaxPartBytes)
-                throw DocumentLimits.Exceeded($"An object stream of the PDF is larger than {DocumentLimits.Megabytes(DocumentLimits.Default.MaxPartBytes)}.");
+                throw DocumentLimits.TooLarge($"An object stream of the PDF is larger than {DocumentLimits.Megabytes(DocumentLimits.Default.MaxPartBytes)}.");
             var data = file.Read(dataAt, (int)(end - dataAt));
 
             var filters = Resolve(dictionary.GetValueOrDefault("Filter")) switch

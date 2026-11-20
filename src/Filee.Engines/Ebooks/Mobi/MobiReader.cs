@@ -203,7 +203,7 @@ internal static partial class MobiReader
     {
         var limit = Documents.DocumentLimits.Default.MaxPartBytes;
         if (length > limit)
-            throw Documents.DocumentLimits.Exceeded($"The book's text is larger than {Documents.DocumentLimits.Megabytes(limit)}.");
+            throw Documents.DocumentLimits.TooLarge($"The book's text is larger than {Documents.DocumentLimits.Megabytes(limit)}.");
     }
 
     /// <summary>
@@ -214,7 +214,7 @@ internal static partial class MobiReader
     {
         var limits = Documents.DocumentLimits.Default;
         if (length > limits.InflateRatioFloor && length / Math.Max(1, fileLength) > limits.MaxInflateRatio)
-            throw Documents.DocumentLimits.Exceeded($"The book's text unpacks to more than {limits.MaxInflateRatio} times its size.");
+            throw Documents.DocumentLimits.TooLarge($"The book's text unpacks to more than {limits.MaxInflateRatio} times its size.");
     }
 
     /// <summary>A PalmDOC (TEXtREAd) book as text; its title is the database name.</summary>

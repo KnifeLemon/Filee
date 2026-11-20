@@ -82,7 +82,7 @@ public class CompoundFileTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         entries.Add(("One too many", 2, None, None, None));
         var refused = Assert.Throws<ConversionRefusedException>(() => Documents.CompoundFile.Open(new MemoryStream(Directory(entries))));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
     }
 
     [Fact]

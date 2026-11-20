@@ -428,10 +428,10 @@ public sealed class XpsTests(EngineFixture fx) : IClassFixture<EngineFixture>, I
         var many = new XpsBuilder();
         for (var i = 0; i < 4; i++)
             many.Page("");
-        Assert.Equal(DocumentLimits.ErrorKey, Assert.Throws<ConversionRefusedException>(() => XpsDocument.Open(Save(many, "pages.xps"), Token, limits)).ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, Assert.Throws<ConversionRefusedException>(() => XpsDocument.Open(Save(many, "pages.xps"), Token, limits)).ErrorKey);
         var data = "M 0,0" + string.Concat(Enumerable.Repeat(" ", 200_000));
         using (var document = XpsDocument.Open(Save(new XpsBuilder().Page($"<Path Data='{data}' Fill='#000000'/>"), "data.xps"), Token, limits))
-            Assert.Equal(DocumentLimits.ErrorKey, Assert.Throws<ConversionRefusedException>(() => document.Page(0, Token)).ErrorKey);
+            Assert.Equal(DocumentLimits.TooLargeKey, Assert.Throws<ConversionRefusedException>(() => document.Page(0, Token)).ErrorKey);
 
         // A picture whose header claims 100,000 × 100,000 pixels is left out, not decoded.
         var bomb = DocumentFuzzTests.TinyPng(4, 4);

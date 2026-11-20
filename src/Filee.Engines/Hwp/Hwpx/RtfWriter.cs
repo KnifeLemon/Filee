@@ -120,7 +120,7 @@ internal sealed partial class RtfWriter
         {
             _written += text.Length;
             if (_written > limit)
-                throw DocumentLimits.Exceeded($"The RTF file would be larger than {limit / (1024 * 1024)} MB.");
+                throw DocumentLimits.TooLarge($"The RTF file would be larger than {limit / (1024 * 1024)} MB.");
             if (_written - _checked > 1 << 16)
             {
                 _checked = _written;
@@ -132,7 +132,7 @@ internal sealed partial class RtfWriter
         private void Put(char c)
         {
             if (++_written > limit)
-                throw DocumentLimits.Exceeded($"The RTF file would be larger than {limit / (1024 * 1024)} MB.");
+                throw DocumentLimits.TooLarge($"The RTF file would be larger than {limit / (1024 * 1024)} MB.");
             _writer.Write(c);
         }
 

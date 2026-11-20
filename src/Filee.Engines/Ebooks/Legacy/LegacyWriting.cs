@@ -57,7 +57,7 @@ internal static class LegacyWriting
     {
         var limit = DocumentLimits.Default.MaxPartBytes;
         if (bytes > limit)
-            throw DocumentLimits.Exceeded($"The {format} book's text would be larger than {DocumentLimits.Megabytes(limit)}.");
+            throw DocumentLimits.TooLarge($"The {format} book's text would be larger than {DocumentLimits.Megabytes(limit)}.");
     }
 
     /// <summary>

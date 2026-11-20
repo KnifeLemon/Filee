@@ -208,10 +208,13 @@ internal sealed partial class RtfReader
                 return true;
             case "cellx":
                 var table = TableOf(story);
-                if (table.Def.Cells.Count >= _budget.Limits.MaxTableColumns)
-                    throw DocumentLimits.Exceeded($"A table row has more than {_budget.Limits.MaxTableColumns} cells.");
-                table.Def.Pending.Right = value;
-                table.Def.Add(table.Def.Pending);
+                // Cells a row defines past the widest table are cut, as the other readers cut columns past it; their
+                // text goes to its last column.
+                if (table.Def.Cells.Count < _budget.Limits.MaxTableColumns)
+                {
+                    table.Def.Pending.Right = value;
+                    table.Def.Add(table.Def.Pending);
+                }
                 table.Def.Pending = new CellDef();
                 return true;
             case "cell" or "nestcell":
@@ -286,7 +289,7 @@ internal sealed partial class RtfReader
     {
         _tableCells += count;
         if (_tableCells > _budget.Limits.MaxParagraphs)
-            throw DocumentLimits.Exceeded($"The tables of the document have more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} cells.");
+            throw DocumentLimits.TooLarge($"The tables of the document have more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} cells.");
     }
 
     /// <summary>Ends the row of <paramref name="builder"/>, if it has cells (counted at \cell; its other defined cells here).</summary>
@@ -327,9 +330,8 @@ internal sealed partial class RtfReader
             foreach (var cell in def.Cells)
                 edges.Add(cell.Right);
         }
-        if (edges.Count - 1 > _budget.Limits.MaxTableColumns)
-            throw DocumentLimits.Exceeded($"A table has more than {DocumentLimits.Count(_budget.Limits.MaxTableColumns)} columns.");
-        var grid = edges.ToList();
+        // Edges past the widest table are cut there: cells beyond it go to its last column.
+        var grid = edges.Take(_budget.Limits.MaxTableColumns + 1).ToList();
         var table = new HTable
         {
             ColumnCount = Math.Max(1, grid.Count - 1),
@@ -641,7 +643,7 @@ internal sealed partial class RtfReader
         if (_picture is not { } picture)
             return;
         if (picture.Data.Length >= _budget.Limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"A picture in the RTF file is larger than {_budget.Limits.MaxPartBytes / (1024 * 1024)} MB.");
+            throw DocumentLimits.TooLarge($"A picture in the RTF file is larger than {_budget.Limits.MaxPartBytes / (1024 * 1024)} MB.");
         picture.Data.WriteByte(value);
     }
 

@@ -178,7 +178,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         {
             var output = Path.Combine(folder, $"wide-{Guid.NewGuid():N}");
             var error = Assert.Throws<ConversionRefusedException>(() => write(Wide(), output));
-            Assert.Equal(DocumentLimits.ErrorKey, error.ErrorKey);
+            Assert.Equal(DocumentLimits.TooLargeKey, error.ErrorKey);
             Assert.Contains("cells", error.Detail);
             Assert.False(File.Exists(output));
         }
@@ -196,7 +196,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         table.Rows.Add(row);
 
         var error = Assert.Throws<ConversionRefusedException>(() => HwpxWriter.PlaceCells(table));
-        Assert.Equal(DocumentLimits.ErrorKey, error.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, error.ErrorKey);
     }
 
     [Fact]
@@ -208,7 +208,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var output = Path.Combine(fx.NewFolder(), "wide.pptx");
 
         var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(Document(table), output, TestContext.Current.CancellationToken));
-        Assert.Equal(DocumentLimits.ErrorKey, error.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, error.ErrorKey);
         Assert.False(File.Exists(output));
     }
 
@@ -248,7 +248,7 @@ public class WriterGridTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var watch = Stopwatch.StartNew();
         var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(Document(Text(text)), output, TestContext.Current.CancellationToken));
 
-        Assert.Equal(DocumentLimits.ErrorKey, error.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, error.ErrorKey);
         Assert.False(File.Exists(output));
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60), $"took {watch.Elapsed}");
     }

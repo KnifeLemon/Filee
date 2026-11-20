@@ -738,7 +738,7 @@ internal sealed partial class RstReader
                 cells.Add((r, c, rowSpan, colSpan));
                 cellLines += borders[r + rowSpan] - firstLine;
                 if (cellLines > _budget.Limits.MaxParagraphs)
-                    throw DocumentLimits.Exceeded($"A table has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} lines of cell text.");
+                    throw DocumentLimits.TooLarge($"A table has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} lines of cell text.");
             }
         }
 
@@ -1121,7 +1121,7 @@ internal sealed partial class RstReader
                         // The text is copied at every use: a long one used thousands of times is counted.
                         _substituted += replacement.Length;
                         if (_substituted > _budget.Limits.MaxPartBytes)
-                            throw DocumentLimits.Exceeded($"Substitutions put in more than {DocumentLimits.Megabytes(_budget.Limits.MaxPartBytes)} of text.");
+                            throw DocumentLimits.TooLarge($"Substitutions put in more than {DocumentLimits.Megabytes(_budget.Limits.MaxPartBytes)} of text.");
                         sink.Text(replacement, format);
                     }
                     i = after;

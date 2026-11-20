@@ -141,7 +141,7 @@ internal sealed class UyapWriter
     }
 
     private static ConversionRefusedException TooLarge(DocumentLimits limits) =>
-        DocumentLimits.Exceeded($"The UYAP document's content.xml would be larger than {limits.MaxPartBytes / (1024 * 1024)} MB.");
+        DocumentLimits.TooLarge($"The UYAP document's content.xml would be larger than {limits.MaxPartBytes / (1024 * 1024)} MB.");
 
     /// <summary>The ZIP with its one part: the text (ready for its CDATA block), the page, the elements written before, the styles.</summary>
     private static void Package(Stream file, string text, string properties, FileStream elements, CompressionLevel level, CancellationToken token)

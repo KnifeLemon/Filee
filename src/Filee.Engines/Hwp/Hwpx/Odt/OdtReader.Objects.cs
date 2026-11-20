@@ -156,7 +156,7 @@ internal sealed partial class OdtReader
     private HRow ReadRow(XElement element, bool header, int maxColumns, int declaredColumns)
     {
         if (++_rows > _budget.Limits.MaxParagraphs)
-            throw DocumentLimits.Exceeded($"The document has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} table rows.");
+            throw DocumentLimits.TooLarge($"The document has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} table rows.");
         var props = Chain("table-row", Attr(element, Table + "style-name"), withDefault: false).Select(s => s.Element(Style + "table-row-properties")).ToList();
         var row = new HRow
         {
@@ -189,7 +189,7 @@ internal sealed partial class OdtReader
     private HCell ReadCell(XElement element, int column, int maxColumns)
     {
         if (++_cells > _budget.Limits.MaxParagraphs)
-            throw DocumentLimits.Exceeded($"The document has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} table cells.");
+            throw DocumentLimits.TooLarge($"The document has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} table cells.");
         var props = Chain("table-cell", Attr(element, Table + "style-name")).Select(s => s.Element(Style + "table-cell-properties")).ToList();
         CountVerticalText(props);
         var fill = Inherited(props, Fo + "background-color");
@@ -688,7 +688,7 @@ internal sealed partial class OdtReader
         // Decoded pictures count with the parts unpacked from the package against what one document may unpack to.
         _inlineBytes += bytes.Length;
         if (_package.BytesRead + _inlineBytes > _budget.Limits.MaxPackageBytes)
-            throw DocumentLimits.Exceeded($"The document and the pictures stored in its XML unpack to more than {DocumentLimits.Megabytes(_budget.Limits.MaxPackageBytes)}.");
+            throw DocumentLimits.TooLarge($"The document and the pictures stored in its XML unpack to more than {DocumentLimits.Megabytes(_budget.Limits.MaxPackageBytes)}.");
         Directory.CreateDirectory(_mediaFolder);
         var file = Path.Combine(_mediaFolder, $"odt-media-{_media.Count + 1}");
         _media[$"\0inline-{_media.Count}"] = file;

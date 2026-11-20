@@ -9,7 +9,8 @@
 // MaxStorageDepth deep, and stream sizes stay within DocumentLimits (MaxPartBytes per stream, MaxPackageBytes in all).
 // Entries keep their parent rather than their full path (in a chain of storages, each inside the last, every entry
 // would otherwise hold the names of all its ancestors), and a path is looked up one name at a time. A damaged file
-// fails with InvalidDataException, one past a limit with error.document_too_complex.
+// fails with InvalidDataException, one past a limit with error.document_too_large (sizes, entries) or
+// error.document_too_complex (nesting, records).
 
 using System.Buffers.Binary;
 using System.Text;
@@ -118,7 +119,7 @@ internal sealed class CompoundFile : IDisposable
         if (Find(path) is not { Type: 2 } entry)
             return null;
         if (entry.Size > _limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"A part of the document is larger than {DocumentLimits.Megabytes(_limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"A part of the document is larger than {DocumentLimits.Megabytes(_limits.MaxPartBytes)}.");
         Count(entry.Size);
         return entry.Size < _miniCutoff ? ReadMini(entry) : ReadChain(entry.Start, entry.Size, PathOf(entry));
     }
@@ -128,7 +129,7 @@ internal sealed class CompoundFile : IDisposable
     {
         _total += bytes;
         if (_total > _limits.MaxPackageBytes)
-            throw DocumentLimits.Exceeded($"The document unpacks to more than {DocumentLimits.Megabytes(_limits.MaxPackageBytes)}.");
+            throw DocumentLimits.TooLarge($"The document unpacks to more than {DocumentLimits.Megabytes(_limits.MaxPackageBytes)}.");
     }
 
     public DocumentLimits Limits => _limits;
@@ -213,7 +214,7 @@ internal sealed class CompoundFile : IDisposable
         var chain = Chain(_fat, start, _sectorCount, size < 0 ? -1 : (size + _sectorSize - 1) / _sectorSize, what);
         var length = size < 0 ? (long)chain.Count * _sectorSize : size;
         if (length > _limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"A part of the document is larger than {DocumentLimits.Megabytes(_limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"A part of the document is larger than {DocumentLimits.Megabytes(_limits.MaxPartBytes)}.");
         var bytes = new byte[length];
         var buffer = new byte[_sectorSize];
         for (var i = 0; i < chain.Count; i++)
@@ -273,7 +274,7 @@ internal sealed class CompoundFile : IDisposable
         var bytes = ReadChain(start, -1, "the directory");
         var count = bytes.Length / DirectoryEntrySize;
         if (count > _limits.MaxPackageEntries)
-            throw DocumentLimits.Exceeded($"The package has more than {DocumentLimits.Count(_limits.MaxPackageEntries)} parts.");
+            throw DocumentLimits.TooLarge($"The package has more than {DocumentLimits.Count(_limits.MaxPackageEntries)} parts.");
         var entries = new List<Entry>(count);
         for (var i = 0; i < count; i++)
         {

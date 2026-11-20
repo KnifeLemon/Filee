@@ -76,9 +76,6 @@ public sealed class DocumentTablesConverter : IConverter, ICapabilityCheck
         return format == "hwp" ? Hwp.Binary.HwpReader.ReadForLayout(path, media) : HwpxReader.ReadForLayout(path, media);
     }
 
-    /// <summary>Rows of a worksheet (Excel's limit): a longer table can't be one sheet.</summary>
-    internal const int MaxSheetRows = 1_048_576;
-
     /// <summary>
     /// Sheets of one workbook. A document may hold up to <see cref="Documents.DocumentLimits.MaxObjects"/> tables, far
     /// more than a workbook should get as tabs: Excel opens a few thousand sheets slowly.
@@ -87,8 +84,9 @@ public sealed class DocumentTablesConverter : IConverter, ICapabilityCheck
 
     /// <summary>The document's tables as sheets, in reading order: one per table that has any text.</summary>
     /// <exception cref="ConversionRefusedException">
-    /// The tables need more sheets, rows or cells than a workbook takes (<see cref="Documents.DocumentLimits"/>): counted
-    /// before anything is written, so a span over thousands of rows and columns is refused at once.
+    /// The tables need more sheets or cells than a workbook takes (<see cref="Documents.DocumentLimits"/>): counted
+    /// before anything is written, so a span over thousands of rows and columns is refused at once. Rows and columns
+    /// past the sheet's edge are left out (<see cref="TableSheets.Place"/>), as Excel loads a sheet too large for it.
     /// </exception>
     internal static Workbook Build(HDocument document)
     {
@@ -99,14 +97,12 @@ public sealed class DocumentTablesConverter : IConverter, ICapabilityCheck
             if (!table.Rows.SelectMany(r => r.Cells).Any(c => TableSheets.Text(c).Length > 0))
                 continue;
             if (tables.Count == MaxSheets)
-                throw Documents.DocumentLimits.Exceeded($"The document has more than {Documents.DocumentLimits.Count(MaxSheets)} tables, one sheet each.");
-            if (table.Rows.Count > MaxSheetRows)
-                throw Documents.DocumentLimits.Exceeded($"A table has more than {Documents.DocumentLimits.Count(MaxSheetRows)} rows.");
+                throw Documents.DocumentLimits.TooLarge($"The document has more than {Documents.DocumentLimits.Count(MaxSheets)} tables, one sheet each.");
             // Every position a cell covers is written (a merged area keeps its borders); the whole workbook gets the
             // budget of one table.
             cells += TableSheets.Positions(table);
             if (cells > HwpxWriter.MaxTableCells)
-                throw Documents.DocumentLimits.Exceeded(
+                throw Documents.DocumentLimits.TooLarge(
                     $"The tables have more than {Documents.DocumentLimits.Count(HwpxWriter.MaxTableCells)} cells (rows × columns) together.");
             tables.Add(table);
         }

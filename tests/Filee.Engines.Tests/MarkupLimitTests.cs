@@ -36,11 +36,13 @@ public class MarkupLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         return result;
     }
 
-    private static void RefusedInTime(Action read)
+    private static void TooLargeInTime(Action read) => RefusedInTime(read, DocumentLimits.TooLargeKey);
+
+    private static void RefusedInTime(Action read, string key = DocumentLimits.ErrorKey)
     {
         var watch = Stopwatch.StartNew();
         var refusal = Assert.Throws<ConversionRefusedException>(read);
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(key, refusal.ErrorKey);
         Assert.True(watch.Elapsed < Quick, $"{watch.Elapsed}");
     }
 
@@ -56,17 +58,17 @@ public class MarkupLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         // A border of 16,384 columns over 100,000 short "+-+" lines: 1.6 billion grid cells.
         var table = "+" + Repeat("-+", 16_384) + "\n" + Repeat("+-+\n", 100_000);
-        RefusedInTime(() => Rst(table));
+        TooLargeInTime(() => Rst(table));
         // One row of 16,384 cells over 100,000 lines: the lines the cells take are counted before any is cut out.
         var tall = "+" + Repeat("-+", 16_384) + "\n|" + Repeat("x|", 16_384) + "\n" + Repeat("|\n", 100_000) + "+" + Repeat("-+", 16_384) + "\n";
-        RefusedInTime(() => Rst(tall));
+        TooLargeInTime(() => Rst(tall));
     }
 
     [Fact]
     public void Rst_simple_table_is_counted_before_its_rows_are_made()
     {
         var border = Repeat("= ", 16_384) + "\n";
-        RefusedInTime(() => Rst(border + Repeat("x\n", 100_000) + border));
+        TooLargeInTime(() => Rst(border + Repeat("x\n", 100_000) + border));
         // Lines that go on with the row above cost the columns they reach, not every column.
         var tall = border + "a\n" + Repeat(" b\n", 200_000) + border;
         var cell = InTime(() => Rst(tall)).Sections[0].Blocks.OfType<HTable>().Single().Rows[0].Cells[0];
@@ -92,8 +94,8 @@ public class MarkupLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(2, wiki.Rows[0].Cells[0].RowSpan);
         Assert.Equal(16_384, wiki.Rows[0].Cells[0].ColSpan);
         // One very wide row over many narrow ones: the grid the writers lay out is counted.
-        RefusedInTime(() => Wiki("{|\n|" + Repeat("x||", 16_383) + "x\n" + Repeat("|-\n| y\n", 100_000) + "|}\n"));
-        RefusedInTime(() => DocBook("<article xmlns=\"http://docbook.org/ns/docbook\"><informaltable><tgroup cols=\"16384\"><tbody>"
+        TooLargeInTime(() => Wiki("{|\n|" + Repeat("x||", 16_383) + "x\n" + Repeat("|-\n| y\n", 100_000) + "|}\n"));
+        TooLargeInTime(() => DocBook("<article xmlns=\"http://docbook.org/ns/docbook\"><informaltable><tgroup cols=\"16384\"><tbody>"
                                     + Repeat("<row/>", 1_000) + "</tbody></tgroup></informaltable></article>"));
     }
 
@@ -103,10 +105,10 @@ public class MarkupLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void A_footnote_referenced_many_times_is_read_once_and_counted_at_every_reference()
     {
         var note = Repeat("lorem ", 120_000); // 720 KB, 144 MB at 200 references
-        RefusedInTime(() => Rst("Text" + Repeat(" [1]_", 200) + "\n\n.. [1] " + note + "\n"));
-        RefusedInTime(() => Org("Text" + Repeat(" [fn:1]", 200) + "\n\n[fn:1] " + note + "\n"));
-        RefusedInTime(() => Textile("Text" + Repeat(" [1]", 200) + "\n\nfn1. " + note + "\n"));
-        RefusedInTime(() => Wiki("<ref name=\"a\">" + note + "</ref>" + Repeat(" <ref name=\"a\" />", 200) + "\n"));
+        TooLargeInTime(() => Rst("Text" + Repeat(" [1]_", 200) + "\n\n.. [1] " + note + "\n"));
+        TooLargeInTime(() => Org("Text" + Repeat(" [fn:1]", 200) + "\n\n[fn:1] " + note + "\n"));
+        TooLargeInTime(() => Textile("Text" + Repeat(" [1]", 200) + "\n\nfn1. " + note + "\n"));
+        TooLargeInTime(() => Wiki("<ref name=\"a\">" + note + "</ref>" + Repeat(" <ref name=\"a\" />", 200) + "\n"));
 
         // A few references to a short note each show it, and share the paragraphs.
         var notes = Notes(Rst("One [1]_ two [1]_ three [1]_.\n\n.. [1] The note.\n")).ToList();
@@ -167,7 +169,7 @@ public class MarkupLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void A_substitution_counts_its_text_at_every_use()
     {
         var limits = DocumentLimits.Default with { MaxPartBytes = 1024 * 1024 };
-        RefusedInTime(() => Rst(Repeat("|s| ", 200) + "\n\n.. |s| replace:: " + Repeat("x", 10_000) + "\n", limits));
+        TooLargeInTime(() => Rst(Repeat("|s| ", 200) + "\n\n.. |s| replace:: " + Repeat("x", 10_000) + "\n", limits));
         Assert.Equal("aaa bbb", MarkupTestKit.InlineText(((HParagraph)Rst("|a| |b|\n\n.. |a| replace:: aaa\n.. |b| replace:: bbb\n").Sections[0].Blocks[0]).Inlines));
     }
 

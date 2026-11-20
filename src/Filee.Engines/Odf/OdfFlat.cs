@@ -73,13 +73,13 @@ internal static class OdfFlat
     {
         var maxBytes = MaxBytes(limits);
         if (new FileInfo(path).Length > maxBytes)
-            throw DocumentLimits.Exceeded($"The file is larger than {DocumentLimits.Megabytes(maxBytes)}.");
+            throw DocumentLimits.TooLarge($"The file is larger than {DocumentLimits.Megabytes(maxBytes)}.");
         XDocument document;
         using (var stream = File.OpenRead(path))
         {
             try
             {
-                document = SafeXml.Load(stream, new XmlLimits(limits.MaxXmlDepth, limits.MaxXmlElements, maxBytes), DocumentLimits.Exceeded);
+                document = SafeXml.Load(stream, new XmlLimits(limits.MaxXmlDepth, limits.MaxXmlElements, maxBytes), DocumentLimits.Exceeded, DocumentLimits.TooLarge);
             }
             catch (Exception ex) when (ex is XmlException or DecoderFallbackException or ArgumentException)
             {
@@ -177,7 +177,7 @@ internal static class OdfFlat
                 return;
             var text = data.Value;
             if (text.Length / 4L * 3 > limits.MaxPartBytes)
-                throw DocumentLimits.Exceeded($"A picture stored in the file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+                throw DocumentLimits.TooLarge($"A picture stored in the file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
             byte[] bytes;
             try
             {
@@ -189,7 +189,7 @@ internal static class OdfFlat
             }
             _bytes += bytes.Length;
             if (_bytes > limits.MaxPackageBytes)
-                throw DocumentLimits.Exceeded($"The pictures stored in the file are larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)} together.");
+                throw DocumentLimits.TooLarge($"The pictures stored in the file are larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)} together.");
             var key = folder + ":" + System.Convert.ToHexString(SHA256.HashData(bytes));
             if (_stored.TryGetValue(key, out var known))
             {
@@ -197,7 +197,7 @@ internal static class OdfFlat
                 return;
             }
             if (Parts.Count >= limits.MaxPackageEntries)
-                throw DocumentLimits.Exceeded($"The file holds more than {DocumentLimits.Count(limits.MaxPackageEntries)} pictures and objects.");
+                throw DocumentLimits.TooLarge($"The file holds more than {DocumentLimits.Count(limits.MaxPackageEntries)} pictures and objects.");
             var (extension, mediaType) = owner.Name == Draw + "object-ole" ? ("", "application/vnd.sun.star.oleobject") : Kind(bytes);
             var name = (owner.Name == Draw + "object-ole" ? "OleObject" : "Pictures/image")
                        + (Parts.Count + 1).ToString(CultureInfo.InvariantCulture) + extension;
@@ -443,7 +443,7 @@ internal static class OdfFlat
             if (package.GetEntry(path) is not { } entry)
                 return null;
             var bytes = package.ReadBytes(entry, limits.MaxPartBytes)
-                        ?? throw DocumentLimits.Exceeded($"The part {path} of the package is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+                        ?? throw DocumentLimits.TooLarge($"The part {path} of the package is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
             _pictures[path] = bytes;
             return bytes;
         }
@@ -461,7 +461,7 @@ internal static class OdfFlat
         {
             _stored += bytes;
             if (_stored > MaxBytes(limits))
-                throw DocumentLimits.Exceeded($"The flat file would be larger than {DocumentLimits.Megabytes(MaxBytes(limits))}.");
+                throw DocumentLimits.TooLarge($"The flat file would be larger than {DocumentLimits.Megabytes(MaxBytes(limits))}.");
         }
 
         private XElement? Load(string name)

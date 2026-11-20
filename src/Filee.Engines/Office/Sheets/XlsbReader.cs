@@ -177,7 +177,7 @@ internal sealed class XlsbReader
                 case BundleSh:
                     // Sheet ids run from 1 to 0xFFFF: more sheets than that is no workbook Excel wrote.
                     if (result.Sheets.Count >= 0xFFFF)
-                        throw DocumentLimits.Exceeded("The workbook lists more than 65,535 sheets.");
+                        throw DocumentLimits.TooLarge("The workbook lists more than 65,535 sheets.");
                     var sheet = records.Fields();
                     var state = sheet.U32();
                     sheet.U32(); // iTabID
@@ -972,7 +972,7 @@ internal sealed class XlsbReader
 
         /// <summary>The fields of the current record.</summary>
         public Fields Fields() => _tooLarge
-            ? throw DocumentLimits.Exceeded($"A record of {part} holds more than {DocumentLimits.Megabytes(MaxRecordBytes)}.")
+            ? throw DocumentLimits.TooLarge($"A record of {part} holds more than {DocumentLimits.Megabytes(MaxRecordBytes)}.")
             : new Fields(_data.AsSpan(0, _length), part);
 
         private int Byte()

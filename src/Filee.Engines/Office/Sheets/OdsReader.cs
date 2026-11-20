@@ -635,7 +635,7 @@ internal sealed class OdsReader
             // Repeats multiply: a row of text repeated a million times across every column is billions of cells.
             _cells += (long)copies * cells.Sum(run => (long)run.Count);
             if (_cells > MaxCells)
-                throw DocumentLimits.Exceeded($"The spreadsheet repeats its cells more than {DocumentLimits.Count(MaxCells)} times.");
+                throw DocumentLimits.TooLarge($"The spreadsheet repeats its cells more than {DocumentLimits.Count(MaxCells)} times.");
             // Every copy of a cell's text is printed (reading it counted one), and every copy of a merged cell is a
             // merged area.
             Characters(cells.Sum(run => ((long)copies * run.Count - 1) * (run.Cell?.Text.Length ?? 0)));
@@ -857,7 +857,7 @@ internal sealed class OdsReader
     {
         _characters += Math.Max(0, count);
         if (_characters > MaxCharacters)
-            throw DocumentLimits.Exceeded($"The spreadsheet's cells hold more than {DocumentLimits.Count(MaxCharacters)} characters.");
+            throw DocumentLimits.TooLarge($"The spreadsheet's cells hold more than {DocumentLimits.Count(MaxCharacters)} characters.");
     }
 
     private SheetCell Cell(XElement element, string? styleName)

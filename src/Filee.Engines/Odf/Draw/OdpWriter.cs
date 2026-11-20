@@ -241,7 +241,7 @@ internal sealed partial class OdpWriter : IDisposable
     {
         _characters += characters;
         if (_characters > MaxXmlCharacters)
-            throw DocumentLimits.Exceeded($"The presentation would need more than {DocumentLimits.Count(MaxXmlCharacters)} characters of XML.");
+            throw DocumentLimits.TooLarge($"The presentation would need more than {DocumentLimits.Count(MaxXmlCharacters)} characters of XML.");
     }
 
     /// <summary>The default graphic and paragraph styles: Impress's text distances, no shadow, text 18 pt.</summary>

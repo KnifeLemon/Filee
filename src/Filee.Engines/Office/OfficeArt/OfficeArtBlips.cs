@@ -111,7 +111,7 @@ internal static class OfficeArtBlips
                 output.Write(buffer, 0, read);
                 count(read);
                 if (output.Length > limits.InflateRatioFloor && output.Length / packed > limits.MaxInflateRatio)
-                    throw DocumentLimits.Exceeded($"A picture of the document unpacks to more than {limits.MaxInflateRatio} times its packed size.");
+                    throw DocumentLimits.TooLarge($"A picture of the document unpacks to more than {limits.MaxInflateRatio} times its packed size.");
             }
             return output.ToArray();
         }

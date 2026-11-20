@@ -205,7 +205,7 @@ internal sealed partial class RtfReader
     }
 
     private static Filee.Core.Conversion.ConversionRefusedException TooLarge(DocumentLimits limits) =>
-        DocumentLimits.Exceeded($"The RTF file is larger than {limits.MaxPackageBytes / (1024 * 1024)} MB.");
+        DocumentLimits.TooLarge($"The RTF file is larger than {limits.MaxPackageBytes / (1024 * 1024)} MB.");
 
     private HDocument Run()
     {

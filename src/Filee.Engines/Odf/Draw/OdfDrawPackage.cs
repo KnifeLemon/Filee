@@ -94,13 +94,13 @@ internal sealed class OdfDrawPackage : IDisposable
     {
         var maxBytes = limits.MaxPartBytes * FlatPartFactor;
         if (new FileInfo(path).Length > maxBytes)
-            throw DocumentLimits.Exceeded($"The file is larger than {DocumentLimits.Megabytes(maxBytes)}.");
+            throw DocumentLimits.TooLarge($"The file is larger than {DocumentLimits.Megabytes(maxBytes)}.");
         XDocument document;
         using (var stream = File.OpenRead(path))
         {
             try
             {
-                document = SafeXml.Load(stream, new XmlLimits(limits.MaxXmlDepth, limits.MaxXmlElements, maxBytes), DocumentLimits.Exceeded);
+                document = SafeXml.Load(stream, new XmlLimits(limits.MaxXmlDepth, limits.MaxXmlElements, maxBytes), DocumentLimits.Exceeded, DocumentLimits.TooLarge);
             }
             catch (Exception ex) when (ex is XmlException or System.Text.DecoderFallbackException or ArgumentException)
             {
@@ -198,7 +198,7 @@ internal sealed class OdfDrawPackage : IDisposable
         {
             _inlineBytes += bytes.Length;
             if ((_package?.BytesRead ?? 0) + _inlineBytes > Limits.MaxPackageBytes)
-                throw DocumentLimits.Exceeded($"The document and the pictures stored in its XML unpack to more than {DocumentLimits.Megabytes(Limits.MaxPackageBytes)}.");
+                throw DocumentLimits.TooLarge($"The document and the pictures stored in its XML unpack to more than {DocumentLimits.Megabytes(Limits.MaxPackageBytes)}.");
         }
         _inline[data] = bytes;
         return bytes;

@@ -31,7 +31,7 @@ internal sealed class OpmlReader
     {
         var limits = DocumentLimits.Default;
         if (new FileInfo(path).Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The OPML file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The OPML file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         using var stream = File.OpenRead(path);
         return Read(stream, Path.GetDirectoryName(Path.GetFullPath(path))!, media, limits);
     }
@@ -41,7 +41,7 @@ internal sealed class OpmlReader
         XDocument xml;
         try
         {
-            xml = SafeXml.Load(stream, limits.Xml(0, preserveWhitespace: false), DocumentLimits.Exceeded);
+            xml = SafeXml.Load(stream, limits.Xml(0, preserveWhitespace: false), DocumentLimits.Exceeded, DocumentLimits.TooLarge);
         }
         catch (XmlException ex)
         {

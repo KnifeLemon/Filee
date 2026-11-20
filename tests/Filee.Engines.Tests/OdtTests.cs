@@ -598,12 +598,14 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         return error;
     }
 
-    private static ConversionRefusedException Refused(Action action)
+    private static ConversionRefusedException Refused(Action action, string key = DocumentLimits.ErrorKey)
     {
         var refusal = Assert.IsType<ConversionRefusedException>(OnSmallStack(action));
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(key, refusal.ErrorKey);
         return refusal;
     }
+
+    private static ConversionRefusedException RefusedTooLarge(Action action) => Refused(action, DocumentLimits.TooLargeKey);
 
     private string Odt(string body, Action<OdtBuilder>? setup = null)
     {
@@ -644,7 +646,7 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void Zip_bombs_and_deep_xml_are_refused()
     {
         var bomb = Odt("<text:p>" + new string(' ', 6 << 20) + "</text:p>");
-        Assert.Contains("times its packed size", Refused(() => OdtReader.Read(bomb, Media())).Detail);
+        Assert.Contains("times its packed size", RefusedTooLarge(() => OdtReader.Read(bomb, Media())).Detail);
 
         var nested = string.Concat(Enumerable.Repeat("<text:span>", 100_000)) + "x" + string.Concat(Enumerable.Repeat("</text:span>", 100_000));
         Assert.Contains("512 levels deep", Refused(() => OdtReader.Read(Odt($"<text:p>{nested}</text:p>"), Media())).Detail);
@@ -693,7 +695,7 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
                     "<table:table-row table:number-rows-repeated=\"2147483647\"><table:table-cell table:number-columns-repeated=\"2147483647\" " +
                     "table:number-columns-spanned=\"2147483647\" table:number-rows-spanned=\"2147483647\"/></table:table-row></table:table>";
         var limits = DocumentLimits.Default with { MaxParagraphs = 10_000 };
-        Assert.Contains("table cells", Refused(() => OdtReader.Read(Odt(table), Media(), limits)).Detail);
+        Assert.Contains("table cells", RefusedTooLarge(() => OdtReader.Read(Odt(table), Media(), limits)).Detail);
 
         var small = "<table:table><table:table-column table:number-columns-repeated=\"2147483647\"/>" +
                     "<table:table-row><table:table-cell table:number-columns-spanned=\"2147483647\" table:number-rows-spanned=\"2147483647\"><text:p>x</text:p></table:table-cell></table:table-row></table:table>" +
@@ -706,12 +708,14 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     /// <summary>Refused within <paramref name="seconds"/> with error.document_too_complex.</summary>
-    private static ConversionRefusedException RefusedWithin(int seconds, Action action)
+    private static ConversionRefusedException RefusedWithin(int seconds, Action action, string key = DocumentLimits.ErrorKey)
     {
         var refusal = Assert.IsType<ConversionRefusedException>(OnSmallStack(action, seconds));
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(key, refusal.ErrorKey);
         return refusal;
     }
+
+    private static ConversionRefusedException TooLargeWithin(int seconds, Action action) => RefusedWithin(seconds, action, DocumentLimits.TooLargeKey);
 
     [Fact]
     public void Repeated_cells_and_spaces_count_against_the_text_budget()
@@ -720,10 +724,10 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var table = "<table:table><table:table-column table:number-columns-repeated=\"1000\"/><table:table-row table:number-rows-repeated=\"999\">" +
                     "<table:table-cell table:number-columns-repeated=\"1000\"><text:p><text:s text:c=\"10000\"/></text:p></table:table-cell></table:table-row></table:table>";
         var limits = DocumentLimits.Default with { MaxPartBytes = 4 << 20 };
-        Assert.Contains("longer than 4,194,304 characters", RefusedWithin(20, () => OdtReader.Read(Odt(table), Media(), limits)).Detail);
+        Assert.Contains("longer than 4,194,304 characters", TooLargeWithin(20, () => OdtReader.Read(Odt(table), Media(), limits)).Detail);
 
         var spaces = string.Concat(Enumerable.Repeat("<text:s text:c=\"10000\"/>", 420));
-        Assert.Contains("characters", RefusedWithin(20, () => OdtReader.Read(Odt($"<text:p>{spaces}</text:p>"), Media(), limits)).Detail);
+        Assert.Contains("characters", TooLargeWithin(20, () => OdtReader.Read(Odt($"<text:p>{spaces}</text:p>"), Media(), limits)).Detail);
     }
 
     [Fact]
@@ -744,7 +748,7 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var rows = string.Concat(Enumerable.Repeat("<table:table-row table:number-rows-repeated=\"1000\"/>", 20_000)) +
                    "<table:table-row><table:table-cell><text:p>x</text:p></table:table-cell></table:table-row>";
         var limits = DocumentLimits.Default with { MaxParagraphs = 10_000 };
-        Assert.Contains("more than 10,000 table rows", RefusedWithin(20, () => OdtReader.Read(Odt($"<table:table>{rows}</table:table>"), Media(), limits)).Detail);
+        Assert.Contains("more than 10,000 table rows", TooLargeWithin(20, () => OdtReader.Read(Odt($"<table:table>{rows}</table:table>"), Media(), limits)).Detail);
     }
 
     private static string InlineFrame(byte[] bytes) =>
@@ -772,7 +776,7 @@ public class OdtTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // 400 KB of XML pass 450 KB with the first.
         var three = Odt("<text:p>" + InlineFrame(Padded(100_000, 1)) + InlineFrame(Padded(100_000, 2)) + InlineFrame(Padded(100_000, 3)) + "</text:p>");
         var limits = DocumentLimits.Default with { MaxPackageBytes = 450_000 };
-        Assert.Contains("pictures stored in its XML", RefusedWithin(20, () => OdtReader.Read(three, Media(), limits)).Detail);
+        Assert.Contains("pictures stored in its XML", TooLargeWithin(20, () => OdtReader.Read(three, Media(), limits)).Detail);
     }
 
     [Fact]

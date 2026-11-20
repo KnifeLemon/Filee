@@ -30,7 +30,7 @@ internal static class SnbReader
     {
         var limits = DocumentLimits.Default;
         if (new FileInfo(path).Length > limits.MaxPackageBytes)
-            throw DocumentLimits.Exceeded($"The SNB file is larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+            throw DocumentLimits.TooLarge($"The SNB file is larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
         var data = File.ReadAllBytes(path);
         var folder = EbookFiles.NewFolder(workFolder, "snb");
         var files = Unpack(data, limits, cancellationToken);
@@ -142,9 +142,9 @@ internal static class SnbReader
         if (fileCount < 0 || tableSize < 0 || tablePacked < 0 || binarySize < 0 || textSize < 0 || 44L + tablePacked > data.Length)
             throw new InvalidDataException("The SNB file's header is damaged.");
         if (fileCount > limits.MaxPackageEntries)
-            throw DocumentLimits.Exceeded($"The SNB file has more than {DocumentLimits.Count(limits.MaxPackageEntries)} files.");
+            throw DocumentLimits.TooLarge($"The SNB file has more than {DocumentLimits.Count(limits.MaxPackageEntries)} files.");
         if ((long)binarySize + textSize > limits.MaxPackageBytes || tableSize > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The SNB file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+            throw DocumentLimits.TooLarge($"The SNB file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
 
         var table = Inflate(data.AsSpan(44, tablePacked), tableSize, "file table");
         if (table.Length < fileCount * 12L)
@@ -192,7 +192,7 @@ internal static class SnbReader
             }
             // After every block, not only at the end: the header's text size alone allows a gigabyte.
             if (text.Length > limits.InflateRatioFloor && text.Length / Math.Max(1, data.Length) > limits.MaxInflateRatio)
-                throw DocumentLimits.Exceeded($"The SNB file's text unpacks to more than {limits.MaxInflateRatio} times its size.");
+                throw DocumentLimits.TooLarge($"The SNB file's text unpacks to more than {limits.MaxInflateRatio} times its size.");
         }
 
         var files = new List<(string, byte[])>();
