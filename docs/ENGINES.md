@@ -35,7 +35,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, PDB, PML, TCR, RB, SNB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/PDB/PML/TCR/RB/SNB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); **mind maps (FreeMind / Freeplane MM, XMind) → PDF, SVG, PNG** drawn as maps, a page per sheet ([Mind maps](#mind-maps)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); **mind maps (FreeMind / Freeplane MM, XMind) → PDF, SVG, PNG** drawn as maps, a page per sheet ([Mind maps](#mind-maps)); **SVG, EMF, WMF, VSDX, PDF, slide decks, whiteboards and mind maps → ODG, OTG, FODG** ([ODG output](#odg-output)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | **DjVu** | built in | **DjVu (.djvu, .djv; one page, bundled or indirect) → PDF** (the layers kept: background JPEG, 1-bit JBIG2 / G4 masks; the hidden text searchable; links and bookmarks) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
@@ -46,7 +46,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT (+ OTT, FODT), RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP, and Windows app packages MSIX / APPX), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ/ZST), GZ, BZ2, XZ, LZMA, Z, ZST, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs, GMA** (in-process); "Compress into one archive" for any files |
-| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
+| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; XLT out; SVG → EMF/WMF (and → ODG for what the [drawing engine](#odg-output) checks off), a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for what the built-in PDF/A writer refuses; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
@@ -2159,7 +2159,8 @@ same model, which the tests check shape by shape and as pictures.
 
 Not yet: shapes as placeholders (`presentation:class`; the model doesn't say which shapes were), the preset name and
 adjust handles of a shape (its outline is written, not the formula), shadows and other effects, charts, SmartArt as
-anything but its drawing, animations and transitions, compound lines, ODG output. Checked against
+anything but its drawing, animations and transitions, compound lines. ODG output is the same writer's drawing mode
+([ODG output](#odg-output)). Checked against
 Filee's own reader; not yet opened in LibreOffice by the tests.
 
 ## PDF reader
@@ -2825,18 +2826,21 @@ the others of its type without LibreOffice and without reading the document into
 
 - **Package ↔ template:** every part copied as it is through `DocumentPackage`, with the new media type in `mimetype`
   (first, stored) and on the manifest's root entry.
-- **Package → flat file:** the parts put together; the automatic styles of `styles.xml` that have the name of one in
-  `content.xml` are renamed (with the references in its automatic and master styles) so both fit in one element; each
-  picture and OLE object an `xlink:href` names inside the package becomes `office:binary-data`, each object folder
-  (`Object 1/`, a chart) an `office:document` with the media type from the manifest.
+- **Package → flat file:** the parts put together; the automatic styles of `styles.xml` that have the family and name
+  of one in `content.xml` are renamed (with the references in its automatic and master styles that can name a style of
+  that family; an automatic style's parent is a common style and keeps its name) so both fit in one element; each
+  picture, OLE object and embedded font an `xlink:href` names inside the package becomes `office:binary-data`, each
+  object folder (`Object 1/`, a chart) an `office:document` with the media type from the manifest.
 - **Flat file → package:** the reverse: `content.xml`, `styles.xml` (both with the automatic styles and font faces),
   `meta.xml`, `settings.xml`, a part under `Pictures/` per picture (one for a picture stored more than once, named by
-  its signature: PNG, JPEG, GIF, BMP, TIFF, WebP, EMF, WMF, SVG), an `Object N/` folder per embedded document, and the
-  manifest. Pictures that aren't base64 are left out, as the readers leave them out.
+  its signature: PNG, JPEG, GIF, BMP, TIFF, WebP, EMF, WMF, SVG), a part under `Fonts/` per embedded font
+  (`svg:font-face-uri`), an `Object N/` folder per embedded document, and the manifest. Pictures that aren't base64
+  are left out, as the readers leave them out; `office:binary-data` in an element that has no part in a package (an
+  extension's) stays where it is.
 
 The readers read every form: the ODT reader takes `.ott`, the spreadsheet reader `.ots`, the ODP / ODG reader the
 templates and flat files itself; a `.fodt` or `.fods` is read as the package it splits into, in a temporary file
-(`OdfVariants.AsPackage`), so FODT / OTT go to PDF through the Filee renderer, to DOCX, HWPX, PPTX, ODP and tables
+(`OdfVariants.AsPackage`; a template package when the flat file says it is a template), so FODT / OTT go to PDF through the Filee renderer, to DOCX, HWPX, PPTX, ODP and tables
 through the writers, and FODS / OTS to PDF through sheet printing and to XLSX / CSV / TSV. The renderer and sheet
 printing check a flat file as that package. Out: DOCX → ODT (ODT writer) → OTT / FODT, XLSX → ODS (spreadsheet engine)
 → OTS / FODS; the ODP writer writes OTP and FODP itself. All of it costs far less than LibreOffice's fallback, whose
@@ -2853,9 +2857,8 @@ FODT and template edges stay for the formats only it reads.
   text, pictures, styles and a chart object, the readers, routes, DOCX and PPTX conversions, hostile flat files and
   packages) and `OdfVariantFuzzTests` (mutated flat texts and spreadsheets, mutated packages turned flat).
 
-Not yet: a flat file's `office:binary-data` in elements other than pictures, fill images, background images, list
-images and OLE objects is dropped; a flat file is read as its document even when it says it is a template. Checked
-against Filee's own readers; not yet opened in LibreOffice by the tests.
+Converting a flat file that says it is a template writes the form asked for (`.odt` a document, `.ott` a template).
+Checked against Filee's own readers; not yet opened in LibreOffice by the tests.
 
 ## Office Open XML variants
 
@@ -3093,6 +3096,31 @@ its reader, one line in `Drawings/DrawingFormats.cs`:
 - **Excel chart templates** (`.crtx`, format id `crtx`, #1354): `ChartTemplate`, one page of Excel's default chart size
   (5 × 3 in) with the template's chart ([Charts](#charts)).
 - **Interactive whiteboards and SMART Notebook** (`.iwb`, `.notebook`): [their own section](#interactive-whiteboards-iwb-smart-notebook).
+
+### ODG output
+
+`Drawings/DrawingConverter.Odg.cs` writes ODG without LibreOffice: `OdpWriter.WriteDrawing` is the
+[ODP writer](#odp-writer) in drawing mode (`office:drawing`, the drawing media type, no notes pages, presentation
+placeholders or styles), a page per slide of the model; OTG and FODG are that drawing turned into them
+([forms engine](#opendocument-templates-and-flat-files)). Sources, each into the slide model:
+
+- the drawing formats above that are read as slides (VSDX, whiteboards; ODG / OTG / FODG themselves go through the
+  forms engine), with their checks;
+- **SVG and SVGZ** (`Drawings/SvgDrawingReader.cs`, the whiteboards' `SvgSlideReader`): shapes, text and `data:`
+  pictures stay editable, a page of the drawing's size; a file with what it doesn't draw (filters, masks, clip paths,
+  markers, patterns, CSS style sheets, text on a path, linked pictures) is checked off: LibreOffice Draw where it is
+  installed, else the vector engine's PDF rebuilt like a PDF page;
+- **EMF and WMF**: the metafile as it is, one picture filling a page of its size (as Draw opens one);
+- **mind maps**: each sheet as drawn ([Mind maps](#mind-maps)), on pages of the largest sheet's size;
+- **slide decks** (PowerPoint, OpenDocument presentations) with the slide renderer's check, speaker notes left out;
+- **PDF**: each page rebuilt by the [PDF slides engine](#pdf-reader) (editable text boxes, shapes, tables, pictures;
+  pictures of the pages with *slides as pictures*), read back from its PPTX; slides of the first page's size. This
+  edge alone isn't direct-only, so XPS, chart templates and documents reach ODG through their PDF.
+
+Costs are the ODP writer's (8), below LibreOffice's fallback. Hostile input: the readers' limits (an SVG and an
+unpacked SVGZ at most `MaxPartBytes`, `SafeXml`, `SvgSlideReader`'s limits; a metafile at most
+`MetafileLimits.MaxFileBytes`) and the writer's. Tests: `OdgWriterTests` (each source built in code, read back by the
+ODP / ODG reader and drawn, routes, the SVG check, hostile SVG and metafiles).
 
 Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
 takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a
@@ -4282,7 +4310,8 @@ all expected bytes have been written; failures and cancellation preserve any pre
 - Written only by LibreOffice: XLT (`MS Excel 97 Vorlage/Template`), read by the built-in spreadsheet engine like
   XLS. Its FODT and template filters (`OpenDocument Text Flat XML`, `writer8_template`, `calc8_template`,
   `impress8_template`) stay as edges, but the [forms engine](#opendocument-templates-and-flat-files) costs less.
-- SVG opens in Draw only for EMF, WMF and ODG; the vector engine keeps SVG → PDF and images. PDF opens in Draw
+- SVG opens in Draw only for EMF and WMF, and for ODG when the [drawing engine](#odg-output) checks it off; the vector
+  engine keeps SVG → PDF and images. PDF opens in Draw
   (`draw_pdf_import`) only for SVG and ODG: Draw's SVG export draws every page of a PDF on top of each other, so Filee
   first copies the first page of the preset's page range into a PDF of its own (PDFsharp). EPS and PS reach SVG
   through Ghostscript's PDF; Draw would only show their preview picture.

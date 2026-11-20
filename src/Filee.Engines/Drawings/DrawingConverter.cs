@@ -13,6 +13,8 @@
 // Slides no other engine reads (DrawingFormat.Slides: interactive whiteboards) also become ODP (OdpWriter) and PPTX
 // (their PDF, rebuilt as editable slides by PdfSlidesConverter), routes of their own (DirectOnly) at the ODP writer's
 // cost.
+//
+// ODG, OTG and FODG output (from these drawings, SVG, metafiles, decks and PDF): DrawingConverter.Odg.cs.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
@@ -28,7 +30,7 @@ using SkiaSharp;
 namespace Filee.Engines.Drawings;
 
 /// <summary>Drawings → PDF, SVG and PNG through the slide renderer.</summary>
-public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilityCheck
+public sealed partial class DrawingConverter : IConverter, IImageTransformer, ICapabilityCheck
 {
     /// <summary>Pixels of one page picture at most; a larger picture is drawn at a lower resolution.</summary>
     private const long MaxPagePixels = 200_000_000;
@@ -38,12 +40,13 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
     /// <summary>One deck at a time through the PDF slides engine, which renders with PDFium (as its own engine gate does).</summary>
     private static readonly SemaphoreSlim PdfSlides = new(1, 1);
 
-    public DrawingConverter() : this(DrawingFormats.BuiltIn)
+    public DrawingConverter() : this(DrawingFormats.BuiltIn, odg: true)
     {
     }
 
     /// <summary>A converter of <paramref name="formats"/> instead of the built-in ones (tests).</summary>
-    internal DrawingConverter(IReadOnlyList<DrawingFormat> formats)
+    /// <param name="odg">Also ODG output, of these formats and of the other sources (SVG, metafiles, decks, PDF).</param>
+    internal DrawingConverter(IReadOnlyList<DrawingFormat> formats, bool odg = false)
     {
         _formats = formats;
         Edges =
@@ -55,6 +58,7 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
                where format.Slides
                from target in DrawingFormats.SlideTargets
                select new ConversionEdge(format.Id, target, OdpWriterConverter.Cost, DirectOnly: true, Checked: format.FirstUnsupported is not null),
+            .. odg ? OdgEdges(formats, others: true) : [],
         ];
     }
 
@@ -65,17 +69,19 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
     public IReadOnlyList<ConversionEdge> Edges { get; }
 
     /// <summary>Pictures of pages are drawn here, with the image options (turn, mirror, size) applied.</summary>
-    public bool Transforms(string from, string to) => to is not ("pdf" or "svg" or "odp" or "pptx");
+    public bool Transforms(string from, string to) => to is not ("pdf" or "svg" or "odp" or "pptx" or "odg" or "otg" or "fodg");
 
     public EngineStatus GetStatus() => EngineStatus.Available(version: EngineVersions.BuiltIn);
 
     /// <summary>The first thing in the file its format's reader can't draw, or null.</summary>
     public string? FirstUnsupported(string sourcePath, string sourceFormat) =>
-        Find(sourceFormat)?.FirstUnsupported?.Invoke(sourcePath);
+        Find(sourceFormat) is { } format ? format.FirstUnsupported?.Invoke(sourcePath) : FirstUnsupportedForOdg(sourcePath, sourceFormat);
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>
         {
+            if (IsOdg(step.To))
+                return WriteOdg(step, progress, cancellationToken);
             var format = Find(step.From) ?? throw new NotSupportedException($"The drawing converter doesn't read {step.From}.");
             if (format.ReadPages is { } open)
             {

@@ -181,7 +181,7 @@ internal static class IwbReader
         }
 
         /// <summary>The bytes of a data: URI (base64 or percent-encoded); null when they can't be read.</summary>
-        private static byte[]? DataUri(string uri)
+        internal static byte[]? DataUri(string uri)
         {
             var comma = uri.IndexOf(',');
             if (comma < 0)

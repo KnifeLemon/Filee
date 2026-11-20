@@ -115,7 +115,9 @@ public sealed class DrawingConverterTests : IDisposable
     {
         var engine = Assert.Single(EngineRegistry.CreateAll(new Infrastructure.EngineEnvironment(_folder)).OfType<DrawingConverter>());
         Assert.Equal("drawing", engine.Id);
-        Assert.Equal(["vsd", "odg", "otg", "fodg", "xps", "crtx", "iwb", "notebook", "mm", "xmind"], engine.Edges.Select(e => e.From).Distinct());
+        // The drawing formats, then the other sources of ODG output (OdgWriterTests).
+        Assert.Equal(["vsd", "odg", "otg", "fodg", "xps", "crtx", "iwb", "notebook", "mm", "xmind",
+            "svg", "svgz", "emf", "wmf", "pptx", "pptm", "potx", "potm", "ppsx", "ppt", "odp", "otp", "fodp", "pdf"], engine.Edges.Select(e => e.From).Distinct());
         Assert.True(engine.GetStatus().IsAvailable);
         Assert.Null(engine.FirstUnsupported(Path.Combine(_folder, "a.odg"), "odg"));
     }
