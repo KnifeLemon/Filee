@@ -23,7 +23,8 @@
 //   their replacement picture and are named by the check); their points count against a ChartBudget.
 // Left out: charts OdfChartReader doesn't draw, OLE objects, 3D scenes, Fontwork, shadows, form controls, notes, animations; the capability check
 // (FirstUnsupported, a pass of this reader that draws nothing) names the first of them on a shown page, so such a file
-// can keep LibreOffice's route.
+// can keep LibreOffice's route. Read for drawing, the same places count each kind once per element for the deck's note
+// (SlideDeck.LeftOut, SlideLeftOut), with objects drawn from their replacement pictures.
 //
 // Hostile input: the package through DocumentPackage, a flat file through SafeXml (OdfDrawPackage); pages up to
 // MaxPages; DocumentBudget for paragraphs, objects and nesting (groups, lists); a character count for text; limits for
@@ -97,6 +98,12 @@ internal sealed partial class OdfDrawReader
     /// <summary>The first thing on a shown page this reader doesn't draw, found while reading.</summary>
     private string? _unsupported;
 
+    /// <summary>What the renderer leaves out or draws another way, for the deck's note (not counted by the check).</summary>
+    private readonly SlideLeftOut _leftOut = new();
+
+    /// <summary>Elements counted for the note, with the kind: a master's shapes are read again for every page on it.</summary>
+    private readonly HashSet<(XElement Element, string Kind)> _counted = [];
+
     private OdfDrawReader(OdfDrawPackage package, CancellationToken cancellationToken, bool scan)
     {
         _package = package;
@@ -134,6 +141,20 @@ internal sealed partial class OdfDrawReader
     }
 
     private void Unsupported(string feature) => _unsupported ??= feature;
+
+    /// <summary>Names <paramref name="feature"/> for the check and counts <paramref name="kind"/> for the note.</summary>
+    private void Unsupported(string feature, string kind, XElement? element)
+    {
+        Unsupported(feature);
+        LeftOut(kind, element);
+    }
+
+    /// <summary>Counts <paramref name="kind"/> (SlideLeftOut) for the note, once per <paramref name="element"/>.</summary>
+    private void LeftOut(string kind, XElement? element)
+    {
+        if (!_scan && (element is null || _counted.Add((element, kind))))
+            _leftOut.Add(kind);
+    }
 
     private static float? Points(string? value) => OdfGraphicStyles.Points(value) is { } points ? Math.Clamp(points, -MaxLength, MaxLength) : null;
 
@@ -221,7 +242,9 @@ internal sealed partial class OdfDrawReader
             };
             deck.Slides.Add(ReadPage(page, pageProps, context));
         }
-        return deck ?? NewDeck(_styles.MasterPages.Values.FirstOrDefault());
+        deck ??= NewDeck(_styles.MasterPages.Values.FirstOrDefault());
+        deck.LeftOut.AddRange(_leftOut.Parts);
+        return deck;
     }
 
     private SlideDeck NewDeck(XElement? master)
@@ -266,7 +289,7 @@ internal sealed partial class OdfDrawReader
                 return;
             if (element.Name == Dr3d + "scene")
             {
-                Unsupported("3D scenes");
+                Unsupported("3D scenes", "shapes_left_out", element);
                 continue;
             }
             if (element.Name.Namespace != Draw)
@@ -319,7 +342,7 @@ internal sealed partial class OdfDrawReader
             case "polyline" or "polygon" or "path":
                 return PathShape(element, context, scope);
             case "control":
-                Unsupported("form controls");
+                Unsupported("form controls", "form_controls", element);
                 return null;
             default:
                 return null;
@@ -490,11 +513,11 @@ internal sealed partial class OdfDrawReader
             if (!_geometries.TryGetValue(geometryElement, out var geometry))
                 _geometries[geometryElement] = geometry = OdfEnhancedGeometry.Parse(geometryElement);
             if (geometry.Extruded)
-                Unsupported("3D effects");
+                Unsupported("3D effects", "effects", element);
             if (geometry.Fontwork)
-                Unsupported("Fontwork");
+                Unsupported("Fontwork", "wordart", element);
             if (!geometry.HasPath && OdfEnhancedGeometry.Preset(geometry.Type) is null)
-                Unsupported($"the shape {geometry.Type}");
+                Unsupported($"the shape {geometry.Type}", "shapes", element);
             Commands(geometry.Cost);
             var result = geometry.Evaluate(shape.Bounds.Width, shape.Bounds.Height, shape.Fill is not null, shape.Line is not null);
             shape.Paths = result.Paths;
@@ -639,7 +662,7 @@ internal sealed partial class OdfDrawReader
     private void Shadow(OdfProps props)
     {
         if (props[Draw + "shadow"] == "visible")
-            Unsupported("shadows");
+            Unsupported("shadows", "effects", null);
     }
 
     // ───────────────────────── Frames ─────────────────────────
@@ -680,8 +703,10 @@ internal sealed partial class OdfDrawReader
             shape.Fill = new PictureFill(new SlideImage(() => ChartPicture.Png(chart, width, height) ?? []), SKRect.Empty, SKRect.Empty);
             return shape;
         }
-        if (content.Name == Draw + "object" || content.Name == Draw + "object-ole")
-            Unsupported(ObjectKind(content));
+        // An object the renderer doesn't draw: its replacement picture, when there is one, stands in for it.
+        var embedded = content.Name == Draw + "object" || content.Name == Draw + "object-ole" ? ObjectKind(content) : null;
+        if (embedded is not null)
+            Unsupported(embedded);
 
         // A picture, or an object's replacement picture: the first one Filee can draw.
         var images = element.Elements(Draw + "image").ToList();
@@ -691,11 +716,15 @@ internal sealed partial class OdfDrawReader
             {
                 shape.Fill = new PictureFill(new SlideImage(bytes), SKRect.Empty, SKRect.Empty);
                 shape.IsPicture = true;
+                if (embedded is not null)
+                    LeftOut(embedded == "charts" ? "charts_pictured" : "objects_pictured", element);
                 return shape;
             }
         }
+        if (embedded is not null)
+            LeftOut(embedded == "charts" ? "charts" : "objects", element);
         if (images.Count > 0 && content.Name == Draw + "image")
-            Unsupported(PictureKind(Attr(images[0], XLink + "href")));
+            Unsupported(PictureKind(Attr(images[0], XLink + "href")), "pictures", element);
         return shape.Fill is null && shape.Line is null ? null : shape;
     }
 

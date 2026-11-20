@@ -11,8 +11,8 @@
 // presentations or spreadsheets, the engine leaves those files to it (its edge would win on cost otherwise).
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
-// doesn't draw yet (OLE objects, charts other than the DrawingML ones ChartReader draws, vertical text, form controls,
-// SmartArt), and such a file takes the route
+// doesn't draw yet (OLE objects, charts other than the DrawingML ones ChartReader draws, vertical text, form controls
+// and ActiveX controls, SmartArt), and such a file takes the route
 // it would take without the engine (JobQueue). An HWP is looked through as the HWPX package it becomes; a deck by
 // SlideCapabilities (charts, effects, ...). Pictures of document pages go on from the PDF through PDFium, which applies
 // the image options; pictures of slides are drawn directly, with the image options applied here.
@@ -20,7 +20,8 @@
 // A document the engine converts anyway (no other route, or the user's choice) says what it left out: the readers count
 // what they meet that the engine can't draw (HDocument.LeftOut: charts, embedded objects drawn from their saved
 // pictures or left out, vertical text, ...) and the file's result names each kind once, with LibreOffice to install
-// when it would draw a Word or OpenDocument file faithfully (LeftOutNotice).
+// when it would draw a Word or OpenDocument file faithfully (LeftOutNotice). A deck says the same from what the slide
+// readers met (SlideDeck.LeftOut: charts, objects drawn from their pictures, effects, ...).
 
 using System.Text;
 using System.Text.RegularExpressions;
@@ -322,6 +323,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         (WordOle(), "OLE objects and charts"),
         (WordVertical(), "vertical text"),
         (WordSmartArt(), "SmartArt"),
+        (WordControl(), "form controls"),
     ];
 
     private static readonly (Regex Pattern, string Feature)[] OdtMarkers =
@@ -399,16 +401,33 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         HLeftOutKind.FormControl => "form_controls",
         HLeftOutKind.Video => "videos",
         HLeftOutKind.ObjectPictured => "objects_pictured",
+        HLeftOutKind.FormControlPictured => "form_controls_pictured",
         HLeftOutKind.ChartPictured => "charts_pictured",
         HLeftOutKind.FormulaAsText => "formulas",
         _ => "vertical_text",
     };
 
+    /// <summary>
+    /// What the slide readers met in <paramref name="deck"/> that the slide renderer leaves out or draws another way, as
+    /// the file's note (as for documents, above); null when it drew everything.
+    /// </summary>
+    internal LeftOutNotice? LeftOutNotice(SlideDeck deck) =>
+        deck.LeftOut.Count == 0 ? null
+        : new LeftOutNotice((_libreOffice ??= _findLibreOffice()) ? "notice.renderer_left_out" : "notice.renderer_left_out_libreoffice", deck.LeftOut);
+
     /// <summary>A deck → one PDF, or a picture per slide (the PDF options' page range and resolution, then the image options).</summary>
-    private static async Task<IReadOnlyList<string>> ConvertSlidesAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>> ConvertSlidesAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var deck = await Task.Run(() => SlideFormats.Read(step.InputPath, step.From, cancellationToken), cancellationToken);
         progress?.Report(0.2);
+        var written = await WriteSlidesAsync(step, deck, progress, cancellationToken);
+        if (written.Count > 0 && LeftOutNotice(deck) is { } leftOut)
+            step.LeftOut?.Invoke(leftOut);
+        return written;
+    }
+
+    private static async Task<IReadOnlyList<string>> WriteSlidesAsync(ConversionStep step, SlideDeck deck, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
         var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
         if (step.To == "pdf")
         {
@@ -485,8 +504,13 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     [GeneratedRegex(@"^word/charts/chart(?:Ex)?\d*\.xml$", RegexOptions.IgnoreCase)]
     private static partial Regex WordChartPart();
 
-    [GeneratedRegex(@"<w:textDirection w:val=""(?:tbRl|btLr|tbRlV|tbLrV)""")]
+    /// <summary>Vertical text: a section or table cell (w:textDirection), a text box (wps:bodyPr vert, VML layout-flow).</summary>
+    [GeneratedRegex(@"<w:textDirection w:val=""(?:tbRl|btLr|tbRlV|tbLrV)""|<wps:bodyPr\b[^>]*?\svert=""(?:vert|vert270|eaVert|wordArtVert|wordArtVertRtl|mongolianVert)""|layout-flow:\s*vertical")]
     private static partial Regex WordVertical();
+
+    /// <summary>An ActiveX control (w:control in a w:object), drawn only as the picture Word saved of it.</summary>
+    [GeneratedRegex(@"<w:control\b")]
+    private static partial Regex WordControl();
 
     [GeneratedRegex(@"<dgm:relIds\b")]
     private static partial Regex WordSmartArt();

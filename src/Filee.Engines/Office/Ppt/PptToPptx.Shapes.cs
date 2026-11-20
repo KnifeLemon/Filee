@@ -318,7 +318,7 @@ internal sealed partial class PptToPptx
         }
         if ((shape.Flags & OleShape) != 0)
         {
-            Drop("OLE objects without a picture");
+            Drop("OLE objects without a picture", "objects");
             return;
         }
         if (WordArtText(shape, properties) is { } wordArt)
@@ -334,7 +334,8 @@ internal sealed partial class PptToPptx
             geometry = custom;
         else
         {
-            Drop("freeform shapes");
+            // Its text stays, in a rectangle; without text nothing of it is drawn.
+            Drop("freeform shapes", text is null ? "shapes_left_out" : "shapes");
             if (text is null)
                 return;
         }

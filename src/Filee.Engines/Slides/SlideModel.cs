@@ -28,7 +28,7 @@ internal sealed class SlideDeck
     public string? Title { get; init; }
     public List<Slide> Slides { get; } = [];
 
-    /// <summary>What the reader left out (videos, pictures it can't decode), for the file's result.</summary>
+    /// <summary>What the reader left out (videos, pictures it can't decode) or drew another way, for the file's result.</summary>
     public List<Core.Conversion.LeftOutPart> LeftOut { get; } = [];
 }
 

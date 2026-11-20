@@ -12,6 +12,10 @@
 //
 // Each slide, layout and master is looked through once, in one pass over its elements, however often the presentation
 // lists it or slides use it; the scan stops when the conversion is cancelled.
+//
+// The same pass, run to the end (Count), is the deck's note when the renderer draws it anyway (no LibreOffice, or the
+// user's choice): each kind it met with its count (SlideLeftOut), and objects and charts drawn from their stored
+// pictures, which the check lets through.
 
 using System.Xml.Linq;
 using Filee.Engines.Documents;
@@ -35,7 +39,7 @@ internal static class SlideCapabilities
             if (PptReader.Unsupported(path) is { } old)
                 return old;
             using var package = SlidePackage.Open(path);
-            return package.Dropped ?? Scan(package, cancellationToken);
+            return package.Dropped ?? Scan(package, null, cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or Core.Conversion.ConversionRefusedException)
         {
@@ -44,7 +48,20 @@ internal static class SlideCapabilities
         }
     }
 
-    private static string? Scan(SlidePackage package, CancellationToken cancellationToken)
+    /// <summary>
+    /// What the renderer leaves out of or draws another way in the deck in <paramref name="package"/>, counted by kind
+    /// for the deck's note: what a PowerPoint 97–2003 translation left out, everything the check would name, and
+    /// embedded objects and charts drawn from the picture stored for them. The check's pass, to the end.
+    /// </summary>
+    public static void Count(SlidePackage package, SlideLeftOut leftOut, CancellationToken cancellationToken = default)
+    {
+        foreach (var (kind, count) in package.DroppedKinds)
+            leftOut.Add(kind, count);
+        Scan(package, leftOut, cancellationToken);
+    }
+
+    /// <summary>The first feature named; with <paramref name="leftOut"/>, every element is looked at and counted.</summary>
+    private static string? Scan(SlidePackage package, SlideLeftOut? leftOut, CancellationToken cancellationToken)
     {
         var presentationPart = package.MainPart ?? "ppt/presentation.xml";
         var presentation = package.Part(presentationPart);
@@ -86,13 +103,17 @@ internal static class SlideCapabilities
             }
         }
 
+        string? first = null;
         foreach (var part in parts)
         {
-            if (package.Part(part) is not { } root || Part(package, part, root, themedEffects, cancellationToken) is not { } feature)
+            if (package.Part(part) is not { } root)
                 continue;
-            return feature;
+            var feature = Part(package, part, root, themedEffects, leftOut, cancellationToken);
+            first ??= feature;
+            if (first is not null && leftOut is null)
+                return first;
         }
-        return null;
+        return first;
     }
 
     /// <summary>
@@ -121,64 +142,86 @@ internal static class SlideCapabilities
         }
     }
 
-    private static string? Part(SlidePackage package, string part, XElement root, HashSet<int> themedEffects, CancellationToken cancellationToken)
+    /// <summary>
+    /// What an element is to the check (<c>Feature</c>, null when it is drawn as it is) and to the note (<c>Kind</c>,
+    /// null when nothing is lost).
+    /// </summary>
+    private readonly record struct Finding(string? Feature, string? Kind);
+
+    private static string? Part(SlidePackage package, string part, XElement root, HashSet<int> themedEffects, SlideLeftOut? leftOut,
+        CancellationToken cancellationToken)
     {
         var count = 0;
+        string? first = null;
         foreach (var element in Drawn(root))
         {
             if (++count % 4096 == 0)
                 cancellationToken.ThrowIfCancellationRequested();
-            var feature = element.Name.LocalName switch
+            var finding = element.Name.LocalName switch
             {
                 "graphicData" => Graphic(package, part, element),
-                "contentPart" => "ink",
-                "effectLst" when element.Elements().Any(e => Effects.Contains(e.Name.LocalName)) => "shadows and effects",
-                "effectDag" => "shadows and effects",
-                "effectRef" when int.TryParse((string?)element.Attribute("idx"), out var index) && themedEffects.Contains(index) => "shadows and effects",
-                "sp3d" when element.HasElements || element.Attributes().Any(a => a.Name.LocalName is "extrusionH" or "contourW" or "z") => "3D effects",
-                "prstTxWarp" when (string?)element.Attribute("prst") is { } warp && warp != "textNoShape" => "WordArt text warp",
+                "contentPart" => new Finding("ink", "ink"),
+                "effectLst" when element.Elements().Any(e => Effects.Contains(e.Name.LocalName)) => new Finding("shadows and effects", "effects"),
+                "effectDag" => new Finding("shadows and effects", "effects"),
+                "effectRef" when int.TryParse((string?)element.Attribute("idx"), out var index) && themedEffects.Contains(index) =>
+                    new Finding("shadows and effects", "effects"),
+                "sp3d" when element.HasElements || element.Attributes().Any(a => a.Name.LocalName is "extrusionH" or "contourW" or "z") =>
+                    new Finding("3D effects", "effects"),
+                "prstTxWarp" when (string?)element.Attribute("prst") is { } warp && warp != "textNoShape" => new Finding("WordArt text warp", "wordart"),
                 "ln" when element.Parent?.Name.LocalName is "rPr" or "defRPr" or "endParaRPr" && element.Elements().Any(e => e.Name.LocalName != "noFill") =>
-                    "outlined text",
-                "bodyPr" when (string?)element.Attribute("vert") is "eaVert" or "wordArtVert" or "mongolianVert" or "wordArtVertRtl" => "vertical East Asian text",
-                "prstGeom" when (string?)element.Attribute("prst") is { } preset && !PresetShapes.Known(preset) => $"the preset shape {preset}",
+                    new Finding("outlined text", "effects"),
+                "bodyPr" when (string?)element.Attribute("vert") is "eaVert" or "wordArtVert" or "mongolianVert" or "wordArtVertRtl" =>
+                    new Finding("vertical East Asian text", "vertical_text_turned"),
+                "prstGeom" when (string?)element.Attribute("prst") is { } preset && !PresetShapes.Known(preset) =>
+                    new Finding($"the preset shape {preset}", "shapes"),
                 "blip" => Picture(package, part, element),
-                _ => null,
+                _ => default,
             };
-            if (feature is not null)
-                return feature;
+            if (finding.Kind is { } kind)
+                leftOut?.Add(kind);
+            first ??= finding.Feature;
+            if (first is not null && leftOut is null)
+                return first;
         }
-        return null;
+        return first;
     }
 
-    /// <summary>A graphic frame's content: tables are drawn; charts, SmartArt and objects only with what they store for drawing.</summary>
-    private static string? Graphic(SlidePackage package, string part, XElement data)
+    /// <summary>
+    /// A graphic frame's content: tables are drawn; charts, SmartArt and objects only with what they store for drawing.
+    /// An object, or a chart ChartReader doesn't draw, is drawn from its stored picture when it has one (the note says so).
+    /// </summary>
+    private static Finding Graphic(SlidePackage package, string part, XElement data)
     {
         var uri = (string?)data.Attribute("uri") ?? "";
-        if (data.Element(A + "tbl") is not null || data.Descendants(P + "pic").Any())
-            return null;
+        if (data.Element(A + "tbl") is not null)
+            return default;
+        var pictured = data.Descendants(P + "pic").Any();
         if (uri.EndsWith("/chart", StringComparison.Ordinal))
         {
             var target = package.Target(part, (string?)data.Element(Charts.ChartReader.C + "chart")?.Attribute(R + "id"));
-            return Charts.ChartReader.Read(target is null ? null : package.Part(target), DrawingColors.FromTheme(null)).LeftOut;
+            if (Charts.ChartReader.Read(target is null ? null : package.Part(target), DrawingColors.FromTheme(null)).LeftOut is not { } chart)
+                return default;
+            return pictured ? new Finding(null, "charts_pictured") : new Finding(chart, "charts");
         }
         if (uri.EndsWith("/chartex", StringComparison.Ordinal))
-            return "charts";
+            return pictured ? new Finding(null, "charts_pictured") : new Finding("charts", "charts");
+        // SmartArt is drawn from the drawing PowerPoint keeps with it, never from a picture.
         if (uri.EndsWith("/diagram", StringComparison.Ordinal))
-            return package.Part(package.DiagramDrawing(part, data)) is null ? "SmartArt" : null;
-        if (uri.EndsWith("/ole", StringComparison.Ordinal))
-            return "OLE objects";
-        return "embedded objects";
+            return package.Part(package.DiagramDrawing(part, data)) is not null ? default : new Finding(pictured ? null : "SmartArt", "smartart");
+        if (pictured)
+            return new Finding(null, "objects_pictured");
+        return new Finding(uri.EndsWith("/ole", StringComparison.Ordinal) ? "OLE objects" : "embedded objects", "objects");
     }
 
-    private static string? Picture(SlidePackage package, string part, XElement blip)
+    private static Finding Picture(SlidePackage package, string part, XElement blip)
     {
         var target = package.Target(part, (string?)blip.Attribute(R + "embed"));
         var extension = target is null ? "" : DocumentPackage.SafeExtension(target);
         return extension switch
         {
-            ".tif" or ".tiff" => "TIFF pictures",
-            ".wdp" or ".jxr" or ".hdp" => "JPEG XR pictures",
-            _ => null,
+            ".tif" or ".tiff" => new Finding("TIFF pictures", "pictures"),
+            ".wdp" or ".jxr" or ".hdp" => new Finding("JPEG XR pictures", "pictures"),
+            _ => default,
         };
     }
 }

@@ -64,11 +64,21 @@ internal static class PptReader
     /// The PPTX package of the presentation at <paramref name="path"/> in memory, with what the translation left out that
     /// would show (<paramref name="dropped"/>).
     /// </summary>
-    public static MemoryStream ToPptx(string path, DocumentLimits limits, out string? dropped, CancellationToken cancellationToken = default)
+    public static MemoryStream ToPptx(string path, DocumentLimits limits, out string? dropped, CancellationToken cancellationToken = default) =>
+        ToPptx(path, limits, out dropped, out _, cancellationToken);
+
+    /// <summary>
+    /// The PPTX package of the presentation at <paramref name="path"/> in memory, with what the translation left out that
+    /// would show (<paramref name="dropped"/>), and by the deck note's kind (<paramref name="droppedKinds"/>).
+    /// </summary>
+    public static MemoryStream ToPptx(string path, DocumentLimits limits, out string? dropped, out IReadOnlyDictionary<string, int> droppedKinds,
+        CancellationToken cancellationToken = default)
     {
         using var file = PptFile.Open(path, limits);
         var stream = new MemoryStream();
-        dropped = PptToPptx.Write(file, stream, cancellationToken);
+        var kinds = new Dictionary<string, int>(StringComparer.Ordinal);
+        dropped = PptToPptx.Write(file, stream, cancellationToken, kinds);
+        droppedKinds = kinds;
         stream.Position = 0;
         return stream;
     }

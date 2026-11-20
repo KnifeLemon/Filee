@@ -449,7 +449,7 @@ internal enum HLeftOutKind
     /// <summary>An embedded (OLE or ODF) object without a saved picture to draw.</summary>
     ObjectLeftOut,
 
-    /// <summary>A form control the reader doesn't draw (ODT draw:control).</summary>
+    /// <summary>A form control the reader doesn't draw (ODT draw:control, a DOCX ActiveX control without a picture).</summary>
     FormControl,
 
     /// <summary>A video (HWPX hp:video).</summary>
@@ -458,10 +458,16 @@ internal enum HLeftOutKind
     /// <summary>An embedded object drawn from the picture its program saved with it (an OLE preview, an ODF replacement).</summary>
     ObjectPictured,
 
+    /// <summary>A form control drawn from the picture its program saved with it (a DOCX ActiveX control's picture).</summary>
+    FormControlPictured,
+
     /// <summary>An ODF formula object written as its formula text.</summary>
     FormulaAsText,
 
-    /// <summary>Vertical text (a table cell, text box or section written top to bottom), set horizontally. Not counted.</summary>
+    /// <summary>
+    /// Vertical text (a table cell, text box or section written top to bottom; a DOCX text box's wps:bodyPr vert or VML
+    /// layout-flow), set horizontally. Not counted.
+    /// </summary>
     VerticalText,
 
     /// <summary>A chart Filee doesn't draw, drawn from the picture its program saved with it (an ODF chart's replacement).</summary>
@@ -476,7 +482,17 @@ internal sealed class HLeftOut
 {
     private readonly Dictionary<HLeftOutKind, int> _counts = [];
 
-    public void Add(HLeftOutKind kind) => _counts[kind] = _counts.GetValueOrDefault(kind) + 1;
+    /// <summary>
+    /// While set, nothing is counted: a part read again for another place that shows it (a DOCX header shared by
+    /// several sections) was counted the first time.
+    /// </summary>
+    public bool Muted { get; set; }
+
+    public void Add(HLeftOutKind kind)
+    {
+        if (!Muted)
+            _counts[kind] = _counts.GetValueOrDefault(kind) + 1;
+    }
 
     public int this[HLeftOutKind kind] => _counts.GetValueOrDefault(kind);
 

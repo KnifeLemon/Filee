@@ -96,13 +96,8 @@ internal sealed partial class PptToPptx
             ? ArrayElements(segmentData).Select(s => (ushort)(s[0] | s[1] << 8)).ToList()
             : DefaultSegments(properties.GetValueOrDefault(ShapePath, 4u), points.Count);
         var builder = new PathBuilder(this, left, top, width, height);
-        return builder.Build(points, segments) ? builder.ToXml() : Drop("freeform shapes", null);
-    }
-
-    private string? Drop(string feature, string? result)
-    {
-        Drop(feature);
-        return result;
+        // A path Filee can't draw: the shape is named and counted where it is written (WriteShape).
+        return builder.Build(points, segments) ? builder.ToXml() : null;
     }
 
     /// <summary>The segments shapePath means when there is no segment information: lines or Béziers, open or closed.</summary>

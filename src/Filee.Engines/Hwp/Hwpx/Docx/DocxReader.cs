@@ -46,6 +46,10 @@ internal sealed partial class DocxReader
     private readonly Dictionary<string, XElement> _endnotes = [];
     private readonly List<FieldState> _fields = [];
     private readonly HLeftOut _leftOut = new();
+
+    /// <summary>Header and footer parts read so far (see <see cref="HeaderFooterBlocks"/>).</summary>
+    private readonly HashSet<string> _headerFooterParts = new(StringComparer.OrdinalIgnoreCase);
+
     private Part? _footnotesPart;
     private Part? _endnotesPart;
     private bool _evenAndOddHeaders;
@@ -379,13 +383,22 @@ internal sealed partial class DocxReader
         if (Attr(reference, "id", R) is { } id && _part.Relationships.TryGetValue(id, out var rel) && LoadPart(rel.Target) is { } part)
         {
             _inFirstPageHeader = reference.Name == W + "headerReference" && Attr(reference, "type") == "first";
-            WithPart(part, () =>
+            // A header or footer is read again for every section that names it; what it leaves out is counted once.
+            _leftOut.Muted = !_headerFooterParts.Add(rel.Target);
+            try
             {
-                foreach (var element in Flatten(part.Xml.Root?.Elements() ?? []))
-                    ReadBlock(element, blocks);
-                return 0;
-            });
-            _inFirstPageHeader = false;
+                WithPart(part, () =>
+                {
+                    foreach (var element in Flatten(part.Xml.Root?.Elements() ?? []))
+                        ReadBlock(element, blocks);
+                    return 0;
+                });
+            }
+            finally
+            {
+                _inFirstPageHeader = false;
+                _leftOut.Muted = false;
+            }
         }
         return blocks;
     }
@@ -1191,6 +1204,9 @@ internal sealed partial class DocxReader
                     }
                     if (child.Element(O + "OLEObject") is not null)
                         _leftOut.Add(pictured ? HLeftOutKind.ObjectPictured : HLeftOutKind.ObjectLeftOut);
+                    // An ActiveX control (w:control): only the picture Word saved of it is drawn.
+                    else if (child.Element(W + "control") is not null)
+                        _leftOut.Add(pictured ? HLeftOutKind.FormControlPictured : HLeftOutKind.FormControl);
                 }
                 break;
             case "footnoteReference":
@@ -1385,6 +1401,9 @@ internal sealed partial class DocxReader
 
         /// <summary>A table of contents (TOC): its entries don't take the Hyperlink character style's look.</summary>
         public bool TableOfContents;
+
+        /// <summary>A legacy form field's settings (w:ffData in the begin w:fldChar): a check box's state, a drop-down's entries.</summary>
+        public XElement? FormData;
     }
 
     /// <summary>Text is in the entries of a table of contents.</summary>
@@ -1410,7 +1429,7 @@ internal sealed partial class DocxReader
                 if (_fields.Count >= Nesting.MaxDepth)
                     _untrackedFields++;
                 else
-                    _fields.Add(new FieldState());
+                    _fields.Add(new FieldState { FormData = fldChar.Element(W + "ffData") });
                 break;
             case "separate":
                 if (_untrackedFields == 0 && _fields.LastOrDefault() is { Result: false } field)
@@ -1474,7 +1493,37 @@ internal sealed partial class DocxReader
                 builder.Add(new HField(HFieldKind.TotalPages, format));
                 field.Suppress = true;
                 break;
+            case "FORMCHECKBOX" or "FORMDROPDOWN" when ShowsText() && FormFieldText(field.FormData) is { } shown:
+                // A legacy check box or drop-down has no result text: Word prints the box (checked or not) and the
+                // chosen entry.
+                builder.Add(new HText(shown, format));
+                field.Suppress = true;
+                break;
         }
+    }
+
+    /// <summary>
+    /// What a legacy form field shows (w:ffData): a check box as ☒ or ☐ (w:checked, else its default), a drop-down as
+    /// its chosen entry (w:result, else w:default, else the first); null for other fields.
+    /// </summary>
+    private static string? FormFieldText(XElement? formData)
+    {
+        if (formData?.Element(W + "checkBox") is { } checkBox)
+        {
+            var state = checkBox.Element(W + "checked") ?? checkBox.Element(W + "default");
+            var on = state is not null && Val(state) is not ("0" or "false" or "off")
+                     && (state.Name.LocalName == "checked" || Val(state) is "1" or "true" or "on");
+            return on ? "☒" : "☐";
+        }
+        if (formData?.Element(W + "ddList") is { } list)
+        {
+            var entries = list.Elements(W + "listEntry").Select(Val).ToList();
+            if (entries.Count == 0)
+                return null;
+            var chosen = int.TryParse(Val(list.Element(W + "result")) ?? Val(list.Element(W + "default")), out var index) ? index : 0;
+            return entries[chosen >= 0 && chosen < entries.Count ? chosen : 0] ?? "";
+        }
+        return null;
     }
 
     private void EndField(ParagraphBuilder builder)
