@@ -783,12 +783,19 @@ those shapes, which `Read` leaves out as before; it also takes an OLE object as 
   `w:altName` where a font is not installed) and the default tab interval (`\deftab`, Word's 720 twips when the file
   gives none, from the margin); the style sheet (headings by `heading N` or
   `\outlinelevel`); lists from `\listtable` / `\listoverridetable`; tables (`\trowd` … `\row`, merged and shaded
-  cells, borders as a grid or none, nested tables flattened into their cell); PNG, JPEG, EMF and WMF pictures sized
-  by `\picwgoal`; footnotes and endnotes (the space after a note's own number is dropped, as in the DOCX reader);
+  cells, cell borders with their style, width and colour, the row's `\trbrdr*` where a cell gives none, per-cell
+  padding read as Word reads it: `\clpadl` is the top and `\clpadt` the left; tables in cells as nested tables,
+  `\itapN` / `\nestcell` / `\nesttableprops`, kept 32 deep); paragraph borders (`\brdrt` … `\box`, `\brdrbtw`,
+  `\brsp`) and backgrounds (`\cbpat`, `\shading` of `\cfpat`); PNG, JPEG, EMF and WMF pictures sized by
+  `\picwgoal` and cropped by `\piccrop*`, mirrored or turned by their `\*\picprop`; floating pictures (a `\shp`
+  with a pib property: its place, wrap, distance from the text, crop and rotation; its `\shprslt` copy is
+  skipped); footnotes and endnotes (the space after a note's own number is dropped, as in the DOCX reader);
   hyperlink, page and page count fields; bookmarks; headers and footers (`\header` / `\footer` for every page,
-  `\headerr` / `\headerl` for odd and even ones; first-page ones are left out); sections with their paper, margins, orientation and columns. Unknown `\*`
-  destinations, index entries, comments and object data are skipped; group depth, paragraphs and pictures count
-  against the reader limits.
+  `\headerr` / `\headerl` for odd and even ones, `\headerf` / `\footerf` with `\titlepg`: the first page's own, or
+  none there); sections with their paper, margins, orientation and columns. Unknown `\*` destinations, index entries,
+  comments and object data are skipped; group depth, paragraphs and pictures count against the reader limits. The
+  missing-font notice (`DocumentFonts`) looks at the fonts the RTF's text is set in (`RtfReader.Fonts`, one pass
+  over the tokens), with their `\falt` names.
 - Markdown, HTML and Pandoc keep structure only, so page setup comes from the built-in template (A4).
 - Pictures (and HTML style sheets) a Markdown, HTML or Pandoc document links to are read only from the document's
   own folder and its subfolders (`DocumentFiles.cs`, also for e-books, MHTML and translation): `../`, absolute paths
@@ -1818,10 +1825,15 @@ Pandoc (Markdown and the markup languages → RTF) and LibreOffice (Word, ODT, H
   shading, padding, width, `\cellx` at its right edge), the cells' paragraphs (`\intbl`, each cell ending with
   `\cell`) and `\row`. Tables in cells are nested tables (`\itapN`, `\nestcell`, `\nesttableprops` with
   `\nestrow`). Column widths come from the model as in the DOCX writer, and the cell grid goes through
-  `HwpxWriter.PlaceCells` with its limits.
+  `HwpxWriter.PlaceCells` with its limits. A Word autofit table (`HTableSizing` not fixed) is `\trautofit1` with
+  its preferred width (`\trftsWidth`) and each cell's own (`\clftsWidth`, auto where it has none), so readers size it
+  by its content again.
 - **Pictures:** `\pict` groups, PNG and JPEG as they are (`\pngblip`, `\jpegblip`), EMF as `\emfblip`, WMF as
   `\wmetafile8` (without the placeable header), any other picture converted to PNG; sized by `\picwgoal` /
-  `\pichgoal`, in the text like a character. **Text boxes and shapes** are Word drawing objects (`\shp` with their
+  `\pichgoal` (a cropped picture's whole size, with `\piccrop*` cutting it to what shows), turned or mirrored by a
+  `\*\picprop`. A floating picture is a drawing object (`\shp`, shape type 75) placed by its anchor (`posrelh` /
+  `posrelv`, `posh` / `posv`, wrap, distance from the text, rotation) with the picture in its pib property, as
+  Word writes it; it has no `\shprslt` copy. **Text boxes and shapes** are Word drawing objects (`\shp` with their
   placement, wrap, fill and outline); a text box's paragraphs are in `\shptxt`, and its text in `\shprslt` too,
   for programs (Filee's reader among them) that don't draw shapes.
 - **Sections:** `\sectd` with the paper, margins (the model's Top / Header become `\margtsxn` and `\headery`),
@@ -1837,9 +1849,10 @@ Pandoc (Markdown and the markup languages → RTF) and LibreOffice (Word, ODT, H
   model (`HDocumentAssert.Similar`), checks the file is valid RTF (one balanced `{\rtf1` group, ASCII only), the
   Unicode fallbacks, the fonts and their other names, the routes, and the refusals.
 
-Not yet: floating pictures stay in the text (no `\shp` with a picture), picture crops and rotation, first-page
-headers' own content when the model has none (`\headerf` repeats the others), paragraph styles other than Normal
-and the headings, table and paragraph borders other than solid lines on all sides, comments and tracked changes.
+Not yet: first-page headers' own content when the model has none (`\headerf` repeats the others), paragraph and
+character styles other than Normal and the headings, floating tables (`\tpos*`), comments and tracked changes (the
+document model has no character style names, comments or revisions: the DOCX reader applies styles to the runs,
+drops comments and shows the document with its changes accepted).
 Checked by reading the files back with Filee's RTF reader, not with Word or LibreOffice.
 
 ## DOC reader

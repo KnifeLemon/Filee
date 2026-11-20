@@ -1,16 +1,25 @@
-// RtfReader: tables, lists and pictures.
+// RtfReader: tables, borders, lists and pictures.
 //
 // A table is a run of rows: \trowd starts a row's definition (its cells' right edges \cellxN, merges, shading and
 // borders), the paragraphs marked \intbl fill its cells, \cell ends a cell and \row the row. The columns of the
 // table are every cell edge of every row, so rows with other divisions keep their cells where they are. A first row
 // with \trautofit1 makes the layout size the columns as Word's autofit tables (HTableSizing, with \trwWidth and each
 // cell's \clwWidth). The first row's \trgaph and \trpadd* give the cells' padding and its \trleft the table's indent,
-// negative into the margin as Word writes it (\trleft-108 for \trgaph108). Nested tables (\itap > 1) are read as the
-// paragraphs of their outer cell.
+// negative into the margin as Word writes it (\trleft-108 for \trgaph108); a cell's own \clpad* (with \clpadf* 3,
+// twips) wins, read as Word reads them: \clpadl is the top padding and \clpadt the left one.
+//
+// A table in a cell is a nested table: its paragraphs say how deep (\itapN, 2 for a table in a cell of a table in the
+// text), \nestcell ends its cells, and each row's definition comes at the row's end in {\*\nesttableprops ... \nestrow}.
+// Tables nested deeper than Nesting.MaxDepth stay in the cells of the deepest one kept.
+//
+// Borders: a border word (\clbrdrt, \trbrdrh, \brdrb, \box ...) says what the style (\brdrs, \brdrdb, \brdrdot ...),
+// width (\brdrw, twips), colour (\brdrcf) and distance (\brsp) after it are for. A cell side without its own border
+// takes the row's (\trbrdr*: outer sides, \trbrdrh / \trbrdrv between cells). Paragraphs keep their borders and their
+// background (\cbpat, with \shading of \cfpat over it) with Word's distances, as the DOCX reader has them.
 //
 // Lists come from \listtable (levels with their number format and \leveltext) through \listoverridetable (\lsN →
-// list). Pictures are \pict groups (PNG, JPEG, EMF, WMF) as hex or \bin data, sized by \picwgoal / \pichgoal and
-// their scale.
+// list). Pictures are \pict groups (PNG, JPEG, EMF, WMF) as hex or \bin data, sized by \picwgoal / \pichgoal, their
+// scale and crop (\piccrop*); see RtfReader.Shapes.cs for pictures in drawing objects.
 
 using System.Text;
 using Filee.Engines.Documents;
@@ -19,6 +28,9 @@ namespace Filee.Engines.Hwp.Hwpx;
 
 internal sealed partial class RtfReader
 {
+    /// <summary>Tables kept inside each other; deeper ones stay in the cells of the deepest one.</summary>
+    private const int MaxTableDepth = Nesting.MaxDepth;
+
     private enum Merge
     {
         None,
@@ -32,12 +44,22 @@ internal sealed partial class RtfReader
         public Merge Horizontal { get; set; }
         public Merge Vertical { get; set; }
         public int Shade { get; set; }
+
+        /// <summary>\clcfpat and \clshdng: a pattern colour over <see cref="Shade"/>, in hundredths of a percent.</summary>
+        public int PatternColor { get; set; }
+        public int Pattern { get; set; }
         public HVerticalAlign Align { get; set; }
-        public bool Bordered { get; set; }
+
+        /// <summary>The cell's own borders (left, right, top, bottom); null where it gives none (the row's apply).</summary>
+        public HBorder?[] Borders { get; } = new HBorder?[4];
 
         /// <summary>The cell's preferred width (\clwWidth) and its unit (\clftsWidth: 2 fiftieths of a percent, 3 twips).</summary>
         public int Width { get; set; }
         public int WidthUnit { get; set; }
+
+        /// <summary>The cell's padding (left, right, top, bottom) and their units (3 twips; else not given).</summary>
+        public int[] Padding { get; } = new int[4];
+        public int[] PaddingUnits { get; } = new int[4];
     }
 
     private sealed class RowDef
@@ -68,6 +90,9 @@ internal sealed partial class RtfReader
         public int[] Padding { get; private init; } = new int[4];
         public int[] PaddingUnits { get; private init; } = new int[4];
 
+        /// <summary>The row's borders: left, right, top, bottom, between rows (\trbrdrh) and between cells (\trbrdrv).</summary>
+        public HBorder?[] Borders { get; private init; } = new HBorder?[6];
+
         /// <summary>The cells, shared with the rows before that kept this definition; copied when it changes.</summary>
         public List<CellDef> Cells { get; private set; } = [];
         private bool _shared;
@@ -96,6 +121,7 @@ internal sealed partial class RtfReader
             Gap = Gap,
             Padding = [.. Padding],
             PaddingUnits = [.. PaddingUnits],
+            Borders = [.. Borders],
             Cells = Cells,
             _shared = true,
         };
@@ -107,143 +133,156 @@ internal sealed partial class RtfReader
         public List<HBlock> Cell { get; set; } = [];
         public List<List<HBlock>> Cells { get; } = [];
         public List<(RowDef Def, List<List<HBlock>> Cells)> Rows { get; } = [];
-
-        /// <summary>The last border word was for a cell edge, so the border style that follows marks it.</summary>
-        public bool CellBorder { get; set; }
     }
 
-    private TableBuilder TableOf(Story story) => story.Table ??= new TableBuilder();
+    /// <summary>The level of the table a paragraph is in: \itap, else 1 for \intbl, else 0; at most <see cref="MaxTableDepth"/>.</summary>
+    private static int TableDepth(ParaProps p) => Math.Min(RawTableDepth(p), MaxTableDepth);
+
+    private static int RawTableDepth(ParaProps p) => p.Itap > 0 ? p.Itap : p.InTable ? 1 : 0;
+
+    /// <summary>
+    /// The level of the table row definition words are for: 1 (the table in the text), or in \*\nesttableprops the
+    /// nested table of the paragraph; 0 for one nested deeper than kept, whose words are ignored.
+    /// </summary>
+    private int RowLevel()
+    {
+        if (!_g.NestedRow)
+            return 1;
+        var depth = Math.Max(2, RawTableDepth(_g.Para));
+        return depth > MaxTableDepth ? 0 : depth;
+    }
+
+    /// <summary>The open table at <paramref name="depth"/> (1 = in the text) of <paramref name="story"/>, opening it and those around it.</summary>
+    private static TableBuilder TableAt(Story story, int depth)
+    {
+        while (story.Tables.Count < depth)
+            story.Tables.Add(new TableBuilder());
+        return story.Tables[depth - 1];
+    }
+
+    /// <summary>Closes the tables of <paramref name="story"/> nested deeper than <paramref name="depth"/>, each into the cell around it.</summary>
+    private void CloseTables(Story story, int depth)
+    {
+        while (story.Tables.Count > Math.Max(0, depth))
+        {
+            var builder = story.Tables[^1];
+            story.Tables.RemoveAt(story.Tables.Count - 1);
+            BuildTable(builder, story.Tables.Count > 0 ? story.Tables[^1].Cell : story.Blocks);
+        }
+    }
+
+    /// <summary>Adds the open tables of <paramref name="story"/> to its blocks.</summary>
+    private void CloseTable(Story story) => CloseTables(story, 0);
 
     private bool Table(string word, int? parameter)
     {
         if (_g.Dest != Dest.Text)
-            return word is "trowd" or "cell" or "row" or "cellx";
+            return word is "trowd" or "cell" or "row" or "cellx" or "nestcell" or "nestrow";
         var value = parameter ?? 0;
         var story = _g.Story;
         switch (word)
         {
-            case "trowd":
-                TableOf(story).Def = new RowDef();
+            case "cell":
+                EndCell(story, 1);
                 return true;
-            case "trleft":
-                TableOf(story).Def.Left = value;
-                return true;
-            case "trrh":
-                TableOf(story).Def.Height = value;
-                return true;
-            case "trhdr":
-                TableOf(story).Def.Header = true;
-                return true;
-            case "trql":
-                TableOf(story).Def.Align = HAlign.Left;
-                return true;
-            case "trqc":
-                TableOf(story).Def.Align = HAlign.Center;
-                return true;
-            case "trqr":
-                TableOf(story).Def.Align = HAlign.Right;
-                return true;
-            case "rtlrow" or "ltrrow":
-                TableOf(story).Def.RightToLeft = word == "rtlrow";
-                return true;
-            case "trgaph":
-                TableOf(story).Def.Gap = value;
-                return true;
-            case "trpaddl" or "trpaddr" or "trpaddt" or "trpaddb":
-                TableOf(story).Def.Padding[Side(word[^1])] = value;
-                return true;
-            case "trpaddfl" or "trpaddfr" or "trpaddft" or "trpaddfb":
-                TableOf(story).Def.PaddingUnits[Side(word[^1])] = value;
-                return true;
-            case "clwWidth":
-                TableOf(story).Def.Pending.Width = value;
-                return true;
-            case "clftsWidth":
-                TableOf(story).Def.Pending.WidthUnit = value;
-                return true;
-            case "trautofit":
-                TableOf(story).Def.AutoFit = (parameter ?? 1) != 0;
-                return true;
-            case "trwWidth":
-                TableOf(story).Def.Width = value;
-                return true;
-            case "trftsWidth":
-                TableOf(story).Def.WidthUnit = value;
-                return true;
-            case "clmgf":
-                TableOf(story).Def.Pending.Horizontal = Merge.First;
-                return true;
-            case "clmrg":
-                TableOf(story).Def.Pending.Horizontal = Merge.Continue;
-                return true;
-            case "clvmgf":
-                TableOf(story).Def.Pending.Vertical = Merge.First;
-                return true;
-            case "clvmrg":
-                TableOf(story).Def.Pending.Vertical = Merge.Continue;
-                return true;
-            case "clcbpat":
-                TableOf(story).Def.Pending.Shade = value;
-                return true;
-            case "clvertalc":
-                TableOf(story).Def.Pending.Align = HVerticalAlign.Center;
-                return true;
-            case "clvertalb":
-                TableOf(story).Def.Pending.Align = HVerticalAlign.Bottom;
-                return true;
-            case "clbrdrt" or "clbrdrl" or "clbrdrb" or "clbrdrr":
-                TableOf(story).CellBorder = true;
-                return true;
-            case "brdrnone" or "brdrnil" or "brdrtbl":
-                if (story.Table is { } none)
-                    none.CellBorder = false;
-                return true;
-            case "brdrs" or "brdrth" or "brdrsh" or "brdrdb" or "brdrdot" or "brdrdash" or "brdrhair" or "brdrdashsm" or "brdrdashd"
-                or "brdrdashdd" or "brdrtriple" or "brdrwavy" or "brdrinset" or "brdroutset":
-                if (story.Table is { CellBorder: true } bordered)
-                {
-                    bordered.Def.Pending.Bordered = true;
-                    bordered.CellBorder = false;
-                }
-                return true;
-            case "cellx":
-                var table = TableOf(story);
-                if (table.Def.Cells.Count >= _budget.Limits.MaxTableColumns)
-                    throw DocumentLimits.Exceeded($"A table row has more than {_budget.Limits.MaxTableColumns} cells.");
-                table.Def.Pending.Right = value;
-                table.Def.Add(table.Def.Pending);
-                table.Def.Pending = new CellDef();
-                return true;
-            case "cell" or "nestcell":
-                if (word == "nestcell")
-                {
+            case "nestcell":
+                // A cell of a nested table ends; one nested deeper than kept (or a paragraph not nested) ends a paragraph.
+                if (RawTableDepth(_g.Para) is var depth and >= 2 and <= MaxTableDepth)
+                    EndCell(story, depth);
+                else
                     EndParagraph(story, force: false);
-                    return true;
-                }
-                var current = TableOf(story);
-                _g.Para = _g.Para with { InTable = true };
-                EndParagraph(story, force: false);
-                TableCells(1);
-                current.Cells.Add(current.Cell);
-                current.Cell = [];
                 return true;
             case "row":
-                var finished = TableOf(story);
-                EndRun(story.Inlines);
-                if (story.Inlines.Count > 0)
-                {
-                    _g.Para = _g.Para with { InTable = true };
-                    EndParagraph(story, force: false);
-                }
-                EndRow(finished);
-                finished.Cell = [];
-                // The next row repeats its definition, or keeps this one when it doesn't.
-                finished.Def = finished.Def.Next();
+                EndTableRow(story, 1);
                 return true;
-            case "nestrow" or "nesttableprops" or "itap":
+            case "nestrow":
+                // A nested table's row ends (in \*\nesttableprops, or after its cells); one nested deeper than kept doesn't.
+                var level = _g.NestedRow ? RowLevel() : RawTableDepth(_g.Para) is var nested and >= 2 and <= MaxTableDepth ? nested : 0;
+                if (level >= 2)
+                    EndTableRow(story, level);
                 return true;
         }
-        return false;
+
+        if (word is not ("trowd" or "trleft" or "trrh" or "trhdr" or "trql" or "trqc" or "trqr" or "rtlrow" or "ltrrow" or "trgaph"
+            or "trpaddl" or "trpaddr" or "trpaddt" or "trpaddb" or "trpaddfl" or "trpaddfr" or "trpaddft" or "trpaddfb" or "clwWidth"
+            or "clftsWidth" or "trautofit" or "trwWidth" or "trftsWidth" or "clmgf" or "clmrg" or "clvmgf" or "clvmrg" or "clcbpat"
+            or "clcfpat" or "clshdng" or "clvertalc" or "clvertalb" or "clvertalt" or "clpadl" or "clpadr" or "clpadt" or "clpadb"
+            or "clpadfl" or "clpadfr" or "clpadft" or "clpadfb" or "cellx"))
+            return false;
+        if (RowLevel() is not (> 0 and var rowLevel))
+            return true; // a row of a table nested deeper than kept
+        var def = TableAt(story, rowLevel).Def;
+        switch (word)
+        {
+            case "trowd": TableAt(story, rowLevel).Def = new RowDef(); break;
+            case "trleft": def.Left = value; break;
+            case "trrh": def.Height = value; break;
+            case "trhdr": def.Header = true; break;
+            case "trql": def.Align = HAlign.Left; break;
+            case "trqc": def.Align = HAlign.Center; break;
+            case "trqr": def.Align = HAlign.Right; break;
+            case "rtlrow" or "ltrrow": def.RightToLeft = word == "rtlrow"; break;
+            case "trgaph": def.Gap = value; break;
+            case "trpaddl" or "trpaddr" or "trpaddt" or "trpaddb": def.Padding[Side(word[^1])] = value; break;
+            case "trpaddfl" or "trpaddfr" or "trpaddft" or "trpaddfb": def.PaddingUnits[Side(word[^1])] = value; break;
+            case "clwWidth": def.Pending.Width = value; break;
+            case "clftsWidth": def.Pending.WidthUnit = value; break;
+            case "trautofit": def.AutoFit = (parameter ?? 1) != 0; break;
+            case "trwWidth": def.Width = value; break;
+            case "trftsWidth": def.WidthUnit = value; break;
+            case "clmgf": def.Pending.Horizontal = Merge.First; break;
+            case "clmrg": def.Pending.Horizontal = Merge.Continue; break;
+            case "clvmgf": def.Pending.Vertical = Merge.First; break;
+            case "clvmrg": def.Pending.Vertical = Merge.Continue; break;
+            case "clcbpat": def.Pending.Shade = value; break;
+            case "clcfpat": def.Pending.PatternColor = value; break;
+            case "clshdng": def.Pending.Pattern = Math.Clamp(value, 0, 10000); break;
+            case "clvertalc": def.Pending.Align = HVerticalAlign.Center; break;
+            case "clvertalb": def.Pending.Align = HVerticalAlign.Bottom; break;
+            case "clvertalt": def.Pending.Align = HVerticalAlign.Top; break;
+            // Word writes the top padding as \clpadl and the left one as \clpadt, and reads them so.
+            case "clpadl" or "clpadr" or "clpadt" or "clpadb": def.Pending.Padding[CellSide(word[^1])] = value; break;
+            case "clpadfl" or "clpadfr" or "clpadft" or "clpadfb": def.Pending.PaddingUnits[CellSide(word[^1])] = value; break;
+            case "cellx":
+                if (def.Cells.Count >= _budget.Limits.MaxTableColumns)
+                    throw DocumentLimits.Exceeded($"A table row has more than {_budget.Limits.MaxTableColumns} cells.");
+                def.Pending.Right = value;
+                def.Add(def.Pending);
+                def.Pending = new CellDef();
+                break;
+        }
+        return true;
+    }
+
+    /// <summary>Ends the cell of the table at <paramref name="depth"/>: its last paragraph, the tables nested in it, the cell.</summary>
+    private void EndCell(Story story, int depth)
+    {
+        if (TableDepth(_g.Para) == 0)
+            _g.Para = _g.Para with { InTable = true };
+        EndParagraph(story, force: false);
+        CloseTables(story, depth);
+        var builder = TableAt(story, depth);
+        TableCells(1);
+        builder.Cells.Add(builder.Cell);
+        builder.Cell = [];
+    }
+
+    /// <summary>Ends the row of the table at <paramref name="depth"/>.</summary>
+    private void EndTableRow(Story story, int depth)
+    {
+        EndRun(story.Inlines);
+        if (story.Inlines.Count > 0)
+        {
+            if (TableDepth(_g.Para) == 0)
+                _g.Para = _g.Para with { InTable = true };
+            EndParagraph(story, force: false);
+        }
+        CloseTables(story, depth);
+        var finished = TableAt(story, depth);
+        EndRow(finished);
+        finished.Cell = [];
+        // The next row repeats its definition, or keeps this one when it doesn't.
+        finished.Def = finished.Def.Next();
     }
 
     /// <summary>The index of a padding side by the last letter of its word: left, right, top, bottom.</summary>
@@ -253,6 +292,14 @@ internal sealed partial class RtfReader
         'r' => 1,
         't' => 2,
         _ => 3,
+    };
+
+    /// <summary>The side a cell's \clpad* word is for: Word's \clpadl is the top and \clpadt the left.</summary>
+    private static int CellSide(char letter) => letter switch
+    {
+        'l' => 2,
+        't' => 0,
+        _ => Side(letter),
     };
 
     /// <summary>
@@ -268,6 +315,19 @@ internal sealed partial class RtfReader
         var gap = Math.Clamp(def.Gap ?? 0, 0, 31680);
         return new HInsets(HwpxUnits.FromTwips(left ?? gap), HwpxUnits.FromTwips(right ?? gap), HwpxUnits.FromTwips(top ?? 0),
             HwpxUnits.FromTwips(bottom ?? 0));
+    }
+
+    /// <summary>Word's cell padding where a table gives none: 108 twips at the sides.</summary>
+    private static readonly HInsets WordCellPadding = new(HwpxUnits.FromTwips(108), HwpxUnits.FromTwips(108), 0, 0);
+
+    /// <summary>A cell's own padding (\clpad* in twips) over the table's; null when it gives none.</summary>
+    private static HInsets? Padding(CellDef cell, HInsets? table)
+    {
+        if (!cell.PaddingUnits.Contains(3))
+            return null;
+        var around = table ?? WordCellPadding;
+        int Side(int i, int fallback) => cell.PaddingUnits[i] == 3 ? HwpxUnits.FromTwips(Math.Clamp(cell.Padding[i], 0, 31680)) : fallback;
+        return new HInsets(Side(0, around.Left), Side(1, around.Right), Side(2, around.Top), Side(3, around.Bottom));
     }
 
     /// <summary>A cell's preferred width (\clwWidth with \clftsWidth 3, twips, or 2, fiftieths of a percent); null for none.</summary>
@@ -299,21 +359,16 @@ internal sealed partial class RtfReader
         builder.Cells.Clear();
     }
 
-    /// <summary>Adds the open table of <paramref name="story"/> to its blocks.</summary>
-    private void CloseTable(Story story)
+    /// <summary>Adds the table <paramref name="builder"/> read to <paramref name="target"/>: the blocks around it or the cell it is in.</summary>
+    private void BuildTable(TableBuilder builder, List<HBlock> target)
     {
-        if (story.Table is not { } builder)
-            return;
-        story.Table = null;
         EndRow(builder);
-        if (builder.Cell.Count > 0 && builder.Rows.Count == 0)
+        if (builder.Rows.Count == 0)
         {
             // Paragraphs marked \intbl without any row: plain paragraphs.
-            story.Blocks.AddRange(builder.Cell);
+            target.AddRange(builder.Cell);
             return;
         }
-        if (builder.Rows.Count == 0)
-            return;
         _budget.Object();
 
         // The grid: every cell edge of every row (rows that share their cells add them once).
@@ -358,8 +413,9 @@ internal sealed partial class RtfReader
             table.Sizing = new HTableSizing(false, width, table.ColumnWidths ?? []);
         }
         var openVertical = new Dictionary<int, HCell>();
-        foreach (var (def, contents) in builder.Rows)
+        for (var r = 0; r < builder.Rows.Count; r++)
         {
+            var (def, contents) = builder.Rows[r];
             var row = new HRow
             {
                 Height = def.Height == 0 ? null : HwpxUnits.FromTwips(Math.Abs(def.Height)),
@@ -374,13 +430,16 @@ internal sealed partial class RtfReader
                 var cellDef = i < def.Cells.Count ? def.Cells[i] : new CellDef { Right = left + 1440 };
                 var l = grid.BinarySearch(left);
                 var from = Math.Max(0, l >= 0 ? l : ~l);
-                var r = grid.BinarySearch(cellDef.Right);
-                var to = r >= 0 ? r : Math.Max(from + 1, ~r);
+                var right = grid.BinarySearch(cellDef.Right);
+                var to = right >= 0 ? right : Math.Max(from + 1, ~right);
                 left = cellDef.Right;
                 var span = Math.Max(1, to - from);
                 if (cellDef.Horizontal == Merge.Continue && previous is not null)
                 {
                     previous.ColSpan += span;
+                    // The merged cell ends where the last of its parts does: that part's right border is its.
+                    if (previous.Borders is { } merged)
+                        previous.Borders = merged with { Right = CellBorders(cellDef, def, r, builder.Rows.Count, i, contents.Count).Right };
                     continue;
                 }
                 if (cellDef.Horizontal == Merge.Continue && continuing)
@@ -388,6 +447,8 @@ internal sealed partial class RtfReader
                 if (cellDef.Vertical == Merge.Continue && openVertical.TryGetValue(from, out var above))
                 {
                     above.RowSpan++;
+                    if (above.Borders is { } spanning)
+                        above.Borders = spanning with { Bottom = CellBorders(cellDef, def, r, builder.Rows.Count, i, contents.Count).Bottom };
                     previous = null;
                     continuing = true;
                     continue;
@@ -398,9 +459,10 @@ internal sealed partial class RtfReader
                     Column = from,
                     ColSpan = span,
                     VerticalAlign = cellDef.Align,
-                    Fill = cellDef.Shade > 0 && cellDef.Shade < _colors.Count ? _colors[cellDef.Shade] : null,
-                    Borders = cellDef.Bordered ? HBorders.Grid : HBorders.Empty,
+                    Fill = Fill(new Shading(cellDef.Shade, cellDef.PatternColor, cellDef.Pattern)),
+                    Borders = CellBorders(cellDef, def, r, builder.Rows.Count, i, contents.Count),
                     Width = Preferred(cellDef),
+                    CellMargin = Padding(cellDef, table.CellMargin),
                 };
                 cell.Blocks.AddRange(contents[i].Count > 0 ? contents[i] : [new HParagraph()]);
                 if (cellDef.Vertical == Merge.First)
@@ -412,7 +474,189 @@ internal sealed partial class RtfReader
             }
             table.Rows.Add(row);
         }
-        story.Blocks.Add(table);
+        target.Add(table);
+        // Paragraphs after the last row that no \cell ended keep their text after the table.
+        target.AddRange(builder.Cell);
+    }
+
+    /// <summary>
+    /// A cell's borders: its own sides, else the row's: \trbrdrl / \trbrdrr at the row's ends and \trbrdrv between
+    /// cells, \trbrdrt / \trbrdrb in the first and last rows and \trbrdrh between rows.
+    /// </summary>
+    private static HBorders CellBorders(CellDef cell, RowDef row, int rowIndex, int rows, int cellIndex, int cells)
+    {
+        var own = cell.Borders;
+        var around = row.Borders;
+        return new HBorders(
+            own[0] ?? (cellIndex == 0 ? around[0] : around[5]) ?? HBorder.None,
+            own[1] ?? (cellIndex == cells - 1 ? around[1] : around[5]) ?? HBorder.None,
+            own[2] ?? (rowIndex == 0 ? around[2] : around[4]) ?? HBorder.None,
+            own[3] ?? (rowIndex == rows - 1 ? around[3] : around[4]) ?? HBorder.None);
+    }
+
+    // ───────────────────────── Borders and shading ─────────────────────────
+
+    /// <summary>What the border words after a border's side word are for.</summary>
+    private enum BorderOwner
+    {
+        None,
+        Paragraph,
+        Cell,
+        Row,
+    }
+
+    /// <summary>The side of the border being read (as <see cref="ParaBox.With"/> numbers them) and the words read for it so far.</summary>
+    private BorderOwner _borderOwner;
+    private int _borderSide;
+    private HBorderStyle _borderStyle;
+    private bool _borderThick;
+
+    /// <summary>\brdrtbl: no border of its own; a cell side then takes the row's.</summary>
+    private bool _borderUnset;
+    private int _borderWidth = -1;
+    private int _borderColor;
+    private int _borderSpace;
+
+    /// <summary>A paragraph's borders and their distances from the text (HWPUNIT).</summary>
+    private sealed record ParaBox(HBorder Left, HBorder Right, HBorder Top, HBorder Bottom, HBorder Between, HInsets Space)
+    {
+        public static readonly ParaBox Empty = new(HBorder.None, HBorder.None, HBorder.None, HBorder.None, HBorder.None, default);
+
+        public HBorders Borders => new(Left, Right, Top, Bottom);
+
+        public bool Visible => new[] { Left, Right, Top, Bottom, Between }.Any(b => b.Style != HBorderStyle.None);
+
+        /// <summary>This box with <paramref name="side"/> (0 left, 1 right, 2 top, 3 bottom, 4 between, 5 all four) set.</summary>
+        public ParaBox With(int side, HBorder border, int space) => side switch
+        {
+            0 => this with { Left = border, Space = Space with { Left = space } },
+            1 => this with { Right = border, Space = Space with { Right = space } },
+            2 => this with { Top = border, Space = Space with { Top = space } },
+            3 => this with { Bottom = border, Space = Space with { Bottom = space } },
+            4 => this with { Between = border },
+            _ => new ParaBox(border, border, border, border, Between, new HInsets(space, space, space, space)),
+        };
+    }
+
+    /// <summary>A background: a colour (\cbpat), with a pattern colour (\cfpat) over it at \shading hundredths of a percent.</summary>
+    private readonly record struct Shading(int Back, int Fore, int Percent);
+
+    /// <summary>The colour a background shows ("#RRGGBB"), or null for none.</summary>
+    private string? Fill(Shading shading)
+    {
+        var back = shading.Back > 0 && shading.Back < _colors.Count ? _colors[shading.Back] : null;
+        if (shading.Percent <= 0)
+            return back;
+        var fore = shading.Fore > 0 && shading.Fore < _colors.Count ? _colors[shading.Fore] ?? "#000000" : "#000000";
+        var under = back ?? "#FFFFFF";
+        var share = shading.Percent / 10000.0;
+        int Channel(string color, int shift) => Convert.ToInt32(color[1..], 16) >> shift & 0xFF;
+        int Mix(int shift) => (int)Math.Round(Channel(under, shift) * (1 - share) + Channel(fore, shift) * share);
+        return $"#{Mix(16):X2}{Mix(8):X2}{Mix(0):X2}";
+    }
+
+    /// <summary>The paragraph's border and background as the layout draws Word's (each line its distance outside the text).</summary>
+    private HParaLayout? ParagraphBox(ParaProps p)
+    {
+        var fill = Fill(p.Shading);
+        if (p.Box is not { Visible: true } box)
+            return fill is null ? null : new HParaLayout(Border: new HParaBorder(HBorders.Empty, fill, default, Connect: true));
+        return new HParaLayout(Border: new HParaBorder(box.Borders, fill, box.Space, Connect: true,
+            Between: box.Between.Style == HBorderStyle.None ? null : box.Between));
+    }
+
+    /// <summary>Border words: a side (\clbrdrt, \trbrdrh, \brdrb, \box ...) and the style, width, colour and distance of its line.</summary>
+    private bool Borders(string word, int? parameter)
+    {
+        var (owner, side) = word switch
+        {
+            "brdrl" => (BorderOwner.Paragraph, 0),
+            "brdrr" => (BorderOwner.Paragraph, 1),
+            "brdrt" => (BorderOwner.Paragraph, 2),
+            "brdrb" => (BorderOwner.Paragraph, 3),
+            "brdrbtw" => (BorderOwner.Paragraph, 4),
+            "box" => (BorderOwner.Paragraph, 5),
+            "clbrdrl" => (BorderOwner.Cell, 0),
+            "clbrdrr" => (BorderOwner.Cell, 1),
+            "clbrdrt" => (BorderOwner.Cell, 2),
+            "clbrdrb" => (BorderOwner.Cell, 3),
+            "trbrdrl" => (BorderOwner.Row, 0),
+            "trbrdrr" => (BorderOwner.Row, 1),
+            "trbrdrt" => (BorderOwner.Row, 2),
+            "trbrdrb" => (BorderOwner.Row, 3),
+            "trbrdrh" => (BorderOwner.Row, 4),
+            "trbrdrv" => (BorderOwner.Row, 5),
+            _ => (BorderOwner.None, -1),
+        };
+        if (owner != BorderOwner.None)
+        {
+            (_borderOwner, _borderSide) = (owner, side);
+            (_borderStyle, _borderThick, _borderWidth, _borderColor, _borderSpace, _borderUnset) = (HBorderStyle.None, false, -1, 0, 0, false);
+            return true;
+        }
+        var value = parameter ?? 0;
+        switch (word)
+        {
+            case "brdrw":
+                _borderWidth = Math.Clamp(value, 0, 255);
+                break;
+            case "brdrcf":
+                _borderColor = value;
+                break;
+            case "brsp":
+                _borderSpace = Math.Clamp(value, 0, 31680);
+                break;
+            default:
+                if (BorderStyle(word) is not { } style)
+                    return word is "brdrbar" or "brdrframe"; // a bar outside the paragraph: not drawn
+                (_borderStyle, _borderThick) = style;
+                _borderUnset = word == "brdrtbl";
+                break;
+        }
+        SetBorder();
+        return true;
+    }
+
+    /// <summary>The model's style of a border style word, and whether the line is twice as thick (\brdrth); null for others.</summary>
+    private static (HBorderStyle, bool)? BorderStyle(string word) => word switch
+    {
+        "brdrnone" or "brdrnil" or "brdrtbl" => (HBorderStyle.None, false),
+        "brdrs" or "brdrsh" or "brdrhair" or "brdrinset" or "brdroutset" or "brdrwavy" or "brdremboss" or "brdrengrave" => (HBorderStyle.Solid, false),
+        "brdrth" => (HBorderStyle.Solid, true),
+        "brdrdot" => (HBorderStyle.Dot, false),
+        "brdrdash" or "brdrdashsm" => (HBorderStyle.Dash, false),
+        "brdrdashd" or "brdrdashdd" or "brdrdashdotstr" => (HBorderStyle.DashDot, false),
+        "brdrdb" or "brdrtriple" or "brdrwavydb" => (HBorderStyle.Double, false),
+        _ when word.StartsWith("brdrtnth", StringComparison.Ordinal) || word.StartsWith("brdrthtn", StringComparison.Ordinal) => (HBorderStyle.Double, false),
+        _ => null,
+    };
+
+    /// <summary>The border read so far into what its side word was for.</summary>
+    private void SetBorder()
+    {
+        // Paragraph borders in the text and in paragraph styles; cell and row ones in the text.
+        if (_borderOwner == BorderOwner.None || _g.Dest != Dest.Text && !(_g.Dest == Dest.StyleSheet && _borderOwner == BorderOwner.Paragraph))
+            return;
+        var border = HBorder.None;
+        if (_borderStyle != HBorderStyle.None)
+        {
+            // \brdrw is in twips; without it, the thin line other cells have.
+            var mm = _borderWidth < 0 ? HBorder.Thin.WidthMm : Math.Max(0.05, _borderWidth / 1440.0 * 25.4);
+            var color = _borderColor > 0 && _borderColor < _colors.Count ? _colors[_borderColor] ?? "#000000" : "#000000";
+            border = new HBorder(_borderStyle, _borderThick ? mm * 2 : mm, color);
+        }
+        switch (_borderOwner)
+        {
+            case BorderOwner.Paragraph:
+                _g.Para = _g.Para with { Box = (_g.Para.Box ?? ParaBox.Empty).With(_borderSide, border, HwpxUnits.FromTwips(_borderSpace)) };
+                break;
+            case BorderOwner.Cell when RowLevel() is > 0 and var level:
+                TableAt(_g.Story, level).Def.Pending.Borders[_borderSide] = _borderUnset ? null : border;
+                break;
+            case BorderOwner.Row when RowLevel() is > 0 and var level:
+                TableAt(_g.Story, level).Def.Borders[_borderSide] = border;
+                break;
+        }
     }
 
     // ───────────────────────── Lists ─────────────────────────
@@ -568,6 +812,18 @@ internal sealed partial class RtfReader
         public int GoalHeight { get; set; }
         public int ScaleX { get; set; } = 100;
         public int ScaleY { get; set; } = 100;
+
+        /// <summary>\piccropl, \piccropt, \piccropr, \piccropb: twips cut off each side of \picwgoal × \pichgoal.</summary>
+        public int CropLeft { get; set; }
+        public int CropTop { get; set; }
+        public int CropRight { get; set; }
+        public int CropBottom { get; set; }
+
+        /// <summary>The picture's own properties (\*\picprop): rotation and mirroring.</summary>
+        public ShapeContext Properties { get; } = new();
+
+        /// <summary>The shape whose picture this is (its pib property), or null for a picture in the text.</summary>
+        public ShapeContext? Owner { get; init; }
         public MemoryStream Data { get; } = new();
         public int HighNibble { get; set; } = -1;
     }
@@ -576,13 +832,14 @@ internal sealed partial class RtfReader
 
     private void StartPicture()
     {
-        if (_g.Dest != Dest.Text)
+        var owner = _g.Dest == Dest.ShapeValue && _g.Shape is { PictureValue: true } shape ? shape : null;
+        if (_g.Dest != Dest.Text && owner is null)
         {
             _g.Dest = Dest.Skip;
             return;
         }
         _g.Dest = Dest.Picture;
-        var picture = _picture = new PictureContext();
+        var picture = _picture = new PictureContext { Owner = owner };
         _g.Closer = () =>
         {
             _picture = null;
@@ -607,6 +864,10 @@ internal sealed partial class RtfReader
             case "pichgoal": picture.GoalHeight = value; break;
             case "picscalex": picture.ScaleX = value; break;
             case "picscaley": picture.ScaleY = value; break;
+            case "piccropl": picture.CropLeft = value; break;
+            case "piccropt": picture.CropTop = value; break;
+            case "piccropr": picture.CropRight = value; break;
+            case "piccropb": picture.CropBottom = value; break;
         }
         return true;
     }
@@ -663,14 +924,27 @@ internal sealed partial class RtfReader
         Directory.CreateDirectory(_mediaFolder);
         var path = Path.Combine(_mediaFolder, $"rtf-{Guid.NewGuid():N}{extension}");
         File.WriteAllBytes(path, picture.Data.GetBuffer().AsSpan(0, (int)picture.Data.Length));
-        // \picwgoal is in twips; \picw is in pixels for bitmaps and 0.01 mm for metafiles.
+        // \picwgoal is in twips; \picw is in pixels for bitmaps and 0.01 mm for metafiles. The crop (in twips of the
+        // goal size, cutting toward the centre; negative values add space, which is left out) makes it smaller.
         var width = picture.GoalWidth > 0 ? picture.GoalWidth : 0;
         var height = picture.GoalHeight > 0 ? picture.GoalHeight : 0;
         var image = new HImage(path);
         if (width > 0 && height > 0)
         {
-            image.Width = HwpxUnits.FromTwips(width * Math.Max(1, picture.ScaleX) / 100.0);
-            image.Height = HwpxUnits.FromTwips(height * Math.Max(1, picture.ScaleY) / 100.0);
+            var (left, right) = (Math.Max(0, picture.CropLeft), Math.Max(0, picture.CropRight));
+            var (top, bottom) = (Math.Max(0, picture.CropTop), Math.Max(0, picture.CropBottom));
+            if ((long)left + right >= width || (long)top + bottom >= height)
+                (left, right, top, bottom) = (0, 0, 0, 0);
+            if (left + right + top + bottom > 0)
+                image.Crop = new HCrop((double)left / width, (double)top / height, (double)right / width, (double)bottom / height);
+            image.Width = HwpxUnits.FromTwips((width - left - right) * Math.Max(1, picture.ScaleX) / 100.0);
+            image.Height = HwpxUnits.FromTwips((height - top - bottom) * Math.Max(1, picture.ScaleY) / 100.0);
+        }
+        image.Transform = picture.Properties.Transform();
+        if (picture.Owner is { } shape)
+        {
+            shape.Picture = image; // placed when the shape ends
+            return;
         }
         AddInline(image);
     }

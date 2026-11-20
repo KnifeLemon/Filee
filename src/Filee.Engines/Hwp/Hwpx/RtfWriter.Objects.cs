@@ -2,7 +2,9 @@
 //
 // A picture keeps its PNG or JPEG bytes (\pngblip, \jpegblip), an EMF or WMF stays a metafile (\emfblip, \wmetafile8
 // without the placeable header WMF files start with); any other picture becomes PNG. Its bytes are hex, 64 to a line.
-// Pictures stay in the text like characters (floating ones too, where they were anchored).
+// A cropped picture keeps its whole size in \picwgoal / \pichgoal and what is cut off in \piccrop*, so it shows at its
+// size. A picture in the text is a \pict (turned or mirrored by its \*\picprop); a floating one is a Word drawing object
+// (\shp, shape type 75) placed as its anchor says, the picture in its pib property, as Word writes them.
 //
 // A text box is a shape (\shp) with its paragraphs in \shptxt, and the same text in \shprslt for programs that don't
 // draw shapes (RtfReader reads it from there); shapes without text have no result.
@@ -42,13 +44,82 @@ internal sealed partial class RtfWriter
             w = _width;
         }
 
+        if (image.Anchor is { } anchor)
+        {
+            FloatingPicture(image, picture, anchor, w, h);
+            return;
+        }
+        Pict(picture, w, h, image.Crop, image.Transform);
+    }
+
+    /// <summary>
+    /// A floating picture: a drawing object of shape type 75 (picture frame) where its anchor puts it, the picture in
+    /// its pib property; without a result for programs that don't draw shapes.
+    /// </summary>
+    private void FloatingPicture(HImage image, PictureBytes picture, HAnchor anchor, int w, int h)
+    {
         var o = _out;
         o.Open();
+        o.Control("\\shp");
+        o.Open();
+        o.Control("\\*\\shpinst" + ShapePlacement(anchor, w, h, image.ZOrder));
+        Property("shapeType", "75");
+        Transform(image.Transform);
+        Property("fAllowOverlap", anchor.AllowOverlap ? "1" : "0");
+        // The distance the text keeps from it.
+        Property("dxWrapDistLeft", Number(Emu(Math.Max(0, image.OuterMargin.Left))));
+        Property("dxWrapDistRight", Number(Emu(Math.Max(0, image.OuterMargin.Right))));
+        Property("dyWrapDistTop", Number(Emu(Math.Max(0, image.OuterMargin.Top))));
+        Property("dyWrapDistBottom", Number(Emu(Math.Max(0, image.OuterMargin.Bottom))));
+        o.Open();
+        o.Control("\\sp");
+        o.Open();
+        o.Control("\\sn");
+        o.Raw("pib");
+        o.Close();
+        o.Open();
+        o.Control("\\sv");
+        Pict(picture, w, h, image.Crop, null);
+        o.Close();
+        o.Close();
+        o.Close();
+        o.Close();
+    }
+
+    /// <summary>
+    /// A \pict group of <paramref name="w"/> × <paramref name="h"/> (HWPUNIT, what shows): a cropped picture's whole size
+    /// with what is cut off each side, and its rotation and mirroring in its \*\picprop.
+    /// </summary>
+    private void Pict(PictureBytes picture, int w, int h, HCrop? crop, HTransform? transform)
+    {
+        var o = _out;
+        // The whole picture's size: what shows is what the crop leaves of it.
+        var (fullW, fullH) = ((double)w, (double)h);
+        if (crop is { IsEmpty: false } c && c.Left >= 0 && c.Right >= 0 && c.Top >= 0 && c.Bottom >= 0 && c.Left + c.Right < 0.99 && c.Top + c.Bottom < 0.99)
+            (fullW, fullH) = (w / (1 - c.Left - c.Right), h / (1 - c.Top - c.Bottom));
+        else
+            crop = null;
+        var (goalW, goalH) = (Math.Max(1, (int)Math.Round(fullW / 5)), Math.Max(1, (int)Math.Round(fullH / 5)));
+        o.Open();
+        o.Control("\\pict");
+        if (transform is { IsIdentity: false })
+        {
+            o.Open();
+            o.Control("\\*\\picprop");
+            Property("shapeType", "75");
+            Transform(transform);
+            o.Close();
+        }
         // \picw and \pich: pixels for bitmaps, 0.01 mm for metafiles.
         var (picW, picH) = picture.Blip is "emfblip" or "wmetafile8"
-            ? ((int)Math.Round(w / HwpxUnits.PerMm * 100), (int)Math.Round(h / HwpxUnits.PerMm * 100))
-            : (picture.Pixels?.Width ?? Math.Max(1, (int)(w / HwpxUnits.PerPixel)), picture.Pixels?.Height ?? Math.Max(1, (int)(h / HwpxUnits.PerPixel)));
-        o.Control($"\\pict\\{picture.Blip}\\picw{Number(picW)}\\pich{Number(picH)}\\picwgoal{Number(Twips(w))}\\pichgoal{Number(Twips(h))}");
+            ? ((int)Math.Round(fullW / HwpxUnits.PerMm * 100), (int)Math.Round(fullH / HwpxUnits.PerMm * 100))
+            : (picture.Pixels?.Width ?? Math.Max(1, (int)(fullW / HwpxUnits.PerPixel)), picture.Pixels?.Height ?? Math.Max(1, (int)(fullH / HwpxUnits.PerPixel)));
+        o.Control($"\\{picture.Blip}\\picw{Number(picW)}\\pich{Number(picH)}\\picwgoal{Number(goalW)}\\pichgoal{Number(goalH)}");
+        if (crop is { } cut)
+        {
+            o.Control($"\\piccropl{Number((int)Math.Round(goalW * cut.Left))}\\piccropr{Number((int)Math.Round(goalW * cut.Right))}" +
+                      $"\\piccropt{Number((int)Math.Round(goalH * cut.Top))}\\piccropb{Number((int)Math.Round(goalH * cut.Bottom))}");
+        }
         o.Line();
         var data = picture.Bytes;
         const int PerLine = 64;
@@ -221,9 +292,12 @@ internal sealed partial class RtfWriter
             _ => "\\shpwr2\\shpwrk0",
         };
         var id = ++_shapes;
+        // \shpbxignore / \shpbyignore: Word takes what the position is measured from from posrelh / posrelv.
+        var relative = $"{{\\sp{{\\sn posrelh}}{{\\sv {Number(anchor?.HorizontalRelativeTo switch { "PAPER" => 1, "PAGE" => 0, _ => 2 })}}}}}" +
+                       $"{{\\sp{{\\sn posrelv}}{{\\sv {Number(anchor?.VerticalRelativeTo switch { "PAPER" => 1, "PAGE" => 0, _ => 2 })}}}}}";
         return $"\\shpleft{Number(x)}\\shptop{Number(y)}\\shpright{Number(x + Twips(width))}\\shpbottom{Number(y + Twips(height))}" +
                $"\\shpfhdr0{horizontal}\\shpbxignore{vertical}\\shpbyignore{wrap}\\shpz{Number(Math.Max(0, zOrder ?? id))}\\shplid{Number(1024 + id)}" +
-               PositionProperties(anchor);
+               relative + PositionProperties(anchor);
     }
 
     private int _shapes;
