@@ -277,7 +277,7 @@
   "engine.pdfsharp.description": "画像からPDFを作成し、PDFの結合、分割、ページ範囲の切り出しを行います。\n画像を縮小してPDFのファイルサイズを小さくすることもできます。",
   "engine.rhwp.description": "HWPとHWPXを相互変換し、Fileeレンダラーがオフのときやまだ描画できないファイルでは、HWP/HWPXをPDFに変換します。\nそのときはHWPXを経由してPDFにする文書（DOCX、PPTX、電子書籍など）の描画にも使われます。",
   "engine.hwp-text.name": "HWP テキスト (内蔵)",
-  "engine.hwp-text.description": "HWPとHWPXからテキスト、Markdown、HTMLを抽出します。",
+  "engine.hwp-text.description": "HWPとHWPXからテキスト、Markdown、HTMLを、Word、ODT、RTFからプレーンテキストを抽出します。",
   "engine.markdown.name": "Markdown (built-in)",
   "engine.markdown.description": "MarkdownをHTMLまたはプレーンテキストに変換します。\nテキストとスクリプトのソースファイル → UTF-8 TXT。スクリプトは実行しません。",
   "engine.spreadsheet.name": "Spreadsheets (built-in)",

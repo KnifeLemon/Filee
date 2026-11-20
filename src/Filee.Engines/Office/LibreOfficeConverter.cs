@@ -444,11 +444,9 @@ public sealed class LibreOfficeConverter : IConverter
         // turn into DOCX (Excel → DOCX → LibreOffice would cost 17 + 19). The Filee renderer costs less (1 + 9): it
         // leaves a chosen kind of file to LibreOffice itself (FileeRendererConverter.Edges).
         const int Chosen = 10;
+        // Word, ODT and RTF → TXT are the fallback too: Filee's own readers write their text a line per paragraph, as
+        // LibreOffice does, and win wherever LibreOffice stands in the engine list (HwpTextConverter.LineCost).
         Add(Writer, [.. Writer, "txt", "html"], Fallback);
-        // RTF → TXT (#1204): the built-in routes read RTF through Pandoc, which makes a code span of every run in a
-        // monospace font (through Markdown, about 29) or loses the line breaks (through the HWPX writer, about 32).
-        // Direct only, so it stays the fallback as a step towards other formats.
-        edges.Add(new ConversionEdge("rtf", "txt", Chosen, DirectOnly: true));
         Add(Writer, ["pdf"], documents ? Chosen : Fallback);
         Add(Calc, [.. Calc, "html"], Fallback);
         Add(Calc, ["pdf"], sheets ? Chosen : Fallback);

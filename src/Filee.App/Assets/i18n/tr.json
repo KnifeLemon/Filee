@@ -277,7 +277,7 @@
   "engine.pdfsharp.description": "Görsellerden PDF oluşturur; PDF'leri birleştirir, böler veya sayfa aralıklarını çıkarır.\nİçlerindeki görselleri küçülterek PDF boyutunu da azaltır.",
   "engine.rhwp.description": "HWP ↔ HWPX dönüştürür; Filee işleyicisi kapalıyken ya da bir dosyayı henüz çizemediğinde HWP/HWPX'i PDF'ye dönüştürür.\nO zaman PDF'ye HWPX üzerinden dönüştürülen belgeleri de işler (DOCX, PPTX, e-kitaplar…).",
   "engine.hwp-text.name": "HWP metin (yerleşik)",
-  "engine.hwp-text.description": "HWP ve HWPX'ten metin, Markdown ve HTML çıkarır.",
+  "engine.hwp-text.description": "HWP ve HWPX'ten metin, Markdown ve HTML; Word, ODT ve RTF'den düz metin çıkarır.",
   "engine.markdown.name": "Markdown (yerleşik)",
   "engine.markdown.description": "Markdown → HTML ve düz metin.\nMetin ve betik kaynak dosyaları → UTF-8 TXT; betikler çalıştırılmaz.",
   "engine.spreadsheet.name": "Elektronik tablolar (yerleşik)",

@@ -284,7 +284,7 @@
   "engine.pdfsharp.description": "用圖片產生 PDF，合併、拆分 PDF 或擷取指定頁碼。\n還能縮小 PDF 中的圖片來減小檔案。",
   "engine.rhwp.description": "在 HWP ↔ HWPX 之間轉換；Filee 轉譯器關閉或暫時無法繪製某個檔案時，將 HWP/HWPX 渲染為 PDF。\n此時經 HWPX 轉為 PDF 的文件（DOCX、PPTX、電子書等）也由它渲染。",
   "engine.hwp-text.name": "HWP 文字（內建）",
-  "engine.hwp-text.description": "從 HWP 和 HWPX 中擷取文字、Markdown 和 HTML。",
+  "engine.hwp-text.description": "從 HWP 和 HWPX 中擷取文字、Markdown 和 HTML，並從 Word、ODT 和 RTF 中擷取純文字。",
   "engine.markdown.name": "Markdown (built-in)",
   "engine.markdown.description": "Markdown → HTML 和純文字。\n文字和指令碼來源檔案 → UTF-8 TXT，不會執行指令碼。",
   "engine.spreadsheet.name": "Spreadsheets (built-in)",

@@ -277,7 +277,7 @@
   "engine.pdfsharp.description": "สร้าง PDF จากรูปภาพ รวม แยก หรือตัดช่วงหน้าออกจาก PDF\nและช่วยลดขนาด PDF โดยการย่อขนาดรูปภาพภายในไฟล์",
   "engine.rhwp.description": "แปลงระหว่าง HWP ↔ HWPX และเรนเดอร์ HWP/HWPX เป็น PDF เมื่อปิดตัวเรนเดอร์ของ Filee หรือเมื่อยังวาดไฟล์นั้นไม่ได้\nในกรณีนั้นจะแสดงผลเอกสารที่แปลงเป็น PDF ผ่าน HWPX ด้วย (DOCX, PPTX, อีบุ๊ก…)",
   "engine.hwp-text.name": "ข้อความ HWP (ในตัว)",
-  "engine.hwp-text.description": "แยกข้อความ, Markdown และ HTML ออกจาก HWP และ HWPX",
+  "engine.hwp-text.description": "แยกข้อความ, Markdown และ HTML ออกจาก HWP และ HWPX และแยกข้อความล้วนออกจาก Word, ODT และ RTF",
   "engine.markdown.name": "Markdown (built-in)",
   "engine.markdown.description": "Markdown → HTML และข้อความล้วน\nไฟล์ต้นฉบับข้อความและสคริปต์ → UTF-8 TXT โดยไม่เรียกใช้สคริปต์",
   "engine.spreadsheet.name": "Spreadsheets (built-in)",

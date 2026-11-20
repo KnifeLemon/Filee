@@ -284,7 +284,7 @@
   "engine.pdfsharp.description": "Делает PDF из картинок, объединяет и разделяет PDF, вырезает диапазоны страниц.\nА ещё уменьшает PDF, сжимая картинки внутри.",
   "engine.rhwp.description": "Конвертирует HWP ↔ HWPX и превращает HWP/HWPX в PDF, когда рендерер Filee выключен или пока не может нарисовать файл.\nТогда он же отрисовывает документы, которые идут в PDF через HWPX (DOCX, PPTX, электронные книги…).",
   "engine.hwp-text.name": "Текст HWP (встроенный)",
-  "engine.hwp-text.description": "Достаёт текст, Markdown и HTML из HWP и HWPX.",
+  "engine.hwp-text.description": "Достаёт текст, Markdown и HTML из HWP и HWPX, а простой текст — из Word, ODT и RTF.",
   "engine.markdown.name": "Markdown (built-in)",
   "engine.markdown.description": "Markdown → HTML и простой текст.\nТекстовые файлы и исходники скриптов → TXT в UTF-8 без выполнения скриптов.",
   "engine.spreadsheet.name": "Spreadsheets (built-in)",

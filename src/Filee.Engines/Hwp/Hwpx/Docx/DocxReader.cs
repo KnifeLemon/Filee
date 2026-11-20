@@ -82,6 +82,9 @@ internal sealed partial class DocxReader
     /// </summary>
     private List<HBlock>? _pageBreakFor;
 
+    /// <summary>The paragraph marks left out so for the next block (<see cref="HBlock.BreakParagraphsBefore"/>).</summary>
+    private int _pageBreakMarks;
+
     /// <summary>Table cells, text boxes and notes around the blocks being read (see <see cref="ReadNestedBlocks"/>).</summary>
     private int _depth;
 
@@ -804,6 +807,8 @@ internal sealed partial class DocxReader
         {
             if (ReferenceEquals(_pageBreakFor, output))
                 _pageBreakFor = null;
+            output[count].BreakParagraphsBefore = _pageBreakMarks;
+            _pageBreakMarks = 0;
             switch (output[count])
             {
                 case HParagraph paragraph:
@@ -1005,7 +1010,10 @@ internal sealed partial class DocxReader
             // with the next paragraph, not with an empty line and the paragraph's space after.
             if (_pageBroken && Current.Inlines.Count == 0 && Current.List is not { Numbered: true } && !endsSection)
             {
+                if (!ReferenceEquals(_reader._pageBreakFor, _output))
+                    _reader._pageBreakMarks = 0;
                 _reader._pageBreakFor = _output;
+                _reader._pageBreakMarks++;
                 return;
             }
             Emit();
@@ -1152,9 +1160,11 @@ internal sealed partial class DocxReader
                     foreach (var text in SymbolFonts.Runs(child.Value, format))
                         builder.Add(text);
                 }
-                else if (StoredResult() is { } stored && stored.Stored!.Length < 32)
+                else if (NumberResult() is { } number && (number.Shown?.Length ?? 0) < 32)
                 {
-                    stored.Stored += child.Value;
+                    number.Shown += child.Value;
+                    if (number.Stored is not null)
+                        number.Stored += child.Value;
                 }
                 break;
             case "tab" or "ptab":
@@ -1409,8 +1419,11 @@ internal sealed partial class DocxReader
         public bool Suppress;
         public string? Target;
 
-        /// <summary>The page number field whose result text is kept as <see cref="HField.Stored"/>.</summary>
-        public HField? Stored;
+        /// <summary>
+        /// The page number field whose result text is kept as <see cref="HField.Shown"/>, and as
+        /// <see cref="HField.Stored"/> where that isn't null.
+        /// </summary>
+        public HField? Number;
 
         /// <summary>A table of contents (TOC): its entries don't take the Hyperlink character style's look.</summary>
         public bool TableOfContents;
@@ -1423,9 +1436,9 @@ internal sealed partial class DocxReader
     private bool ShowsText() => _fields.All(f => f.Result && !f.Suppress);
 
     /// <summary>The page number whose result text is being read, when only that field hides it.</summary>
-    private HField? StoredResult() =>
-        _fields.Count > 0 && _fields[^1] is { Result: true, Stored: { } stored } && _fields.Take(_fields.Count - 1).All(f => f.Result && !f.Suppress)
-            ? stored
+    private HField? NumberResult() =>
+        _fields.Count > 0 && _fields[^1] is { Result: true, Number: { } number } && _fields.Take(_fields.Count - 1).All(f => f.Result && !f.Suppress)
+            ? number
             : null;
 
     private void FieldChar(XElement fldChar, ParagraphBuilder builder, HCharFormat format)
@@ -1470,7 +1483,7 @@ internal sealed partial class DocxReader
                     // which comes next, as text. The layout engine counts the pages, as for any other page number.
                     var number = new HField(words[0].Equals("PAGE", StringComparison.OrdinalIgnoreCase) ? HFieldKind.PageNumber : HFieldKind.TotalPages, format) { Stored = "" };
                     builder.Add(number);
-                    field.Stored = number;
+                    field.Number = number;
                     field.Suppress = true;
                     break;
                 }
@@ -1495,14 +1508,14 @@ internal sealed partial class DocxReader
                         builder.OpenLink(field.Target);
                     break;
                 }
-            case "PAGE":
-                builder.Add(new HField(HFieldKind.PageNumber, format));
-                field.Suppress = true;
-                break;
-            case "NUMPAGES" or "SECTIONPAGES":
-                builder.Add(new HField(HFieldKind.TotalPages, format));
-                field.Suppress = true;
-                break;
+            case "PAGE" or "NUMPAGES" or "SECTIONPAGES":
+                {
+                    var number = new HField(words[0].Equals("PAGE", StringComparison.OrdinalIgnoreCase) ? HFieldKind.PageNumber : HFieldKind.TotalPages, format);
+                    builder.Add(number);
+                    field.Number = number;
+                    field.Suppress = true;
+                    break;
+                }
         }
     }
 

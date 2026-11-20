@@ -277,7 +277,7 @@
   "engine.pdfsharp.description": "Membuat PDF dari gambar, serta menggabungkan, memisahkan, atau memotong rentang halaman PDF.\nJuga memperkecil ukuran PDF dengan memperkecil resolusi gambarnya.",
   "engine.rhwp.description": "Mengonversi HWP ↔ HWPX dan merender HWP/HWPX ke PDF saat perender Filee mati atau belum bisa menggambar suatu berkas.\nSaat itu engine ini juga menggambar dokumen yang mencapai PDF melalui alur HWPX (DOCX, PPTX, e-book…).",
   "engine.hwp-text.name": "Teks HWP (bawaan)",
-  "engine.hwp-text.description": "Mengekstrak teks, Markdown, dan HTML dari file HWP dan HWPX.",
+  "engine.hwp-text.description": "Mengekstrak teks, Markdown, dan HTML dari file HWP dan HWPX, serta teks biasa dari file Word, ODT, dan RTF.",
   "engine.markdown.name": "Markdown (bawaan)",
   "engine.markdown.description": "Markdown → HTML dan teks polos.\nFile kode sumber skrip dan teks → UTF-8 TXT, tanpa mengeksekusi skrip.",
   "engine.spreadsheet.name": "Spreadsheet (bawaan)",

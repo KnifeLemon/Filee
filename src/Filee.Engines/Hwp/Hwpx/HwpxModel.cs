@@ -298,6 +298,13 @@ internal abstract class HBlock
     /// of a section); null = none. Read for layout only.
     /// </summary>
     public int? NewPageNumber { get; set; }
+
+    /// <summary>
+    /// Word paragraphs that held nothing after their page break, right before this block: the layout leaves them out
+    /// (Word keeps their marks on the old page), and plain text writes each as an empty line, as Word and LibreOffice save
+    /// it.
+    /// </summary>
+    public int BreakParagraphsBefore { get; set; }
 }
 
 /// <summary>
@@ -785,6 +792,12 @@ internal sealed class HField(HFieldKind kind, HCharFormat format) : HInline
     /// a page number in a table in a text box blank); null when it writes the field. The layout engine always counts.
     /// </summary>
     public string? Stored { get; set; }
+
+    /// <summary>
+    /// The number the source showed for the field when it was saved (Word's field result, the text of ODT's
+    /// text:page-number, RTF's \fldrslt); null when it has none. Plain text, which has no pages to count, writes it.
+    /// </summary>
+    public string? Shown { get; set; }
 }
 
 /// <summary>

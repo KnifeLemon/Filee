@@ -276,7 +276,7 @@
   "engine.pdfsharp.description": "Зургуудаас PDF үүсгэж, PDF-үүдийг нэгтгэх, хуваах эсвэл хуудасны мужийг тасалж авна.\nМөн доторх зургуудыг нь жижигрүүлж PDF-ийн хэмжээг багасгана.",
   "engine.rhwp.description": "HWP ↔ HWPX хооронд хөрвүүлж, Filee буулгагч унтраалттай эсвэл файлыг одоогоор зурж чадахгүй үед HWP/HWPX-ийг PDF болгон буулгана.\nТэгэхэд HWPX-ээр дамжуулан PDF болдог баримтуудыг (DOCX, PPTX, цахим ном…) мөн зурна.",
   "engine.hwp-text.name": "HWP текст (суурилагдсан)",
-  "engine.hwp-text.description": "HWP болон HWPX-ээс текст, Markdown болон HTML-ийг гаргаж авна.",
+  "engine.hwp-text.description": "HWP болон HWPX-ээс текст, Markdown болон HTML-ийг, Word, ODT, RTF-ээс энгийн текстийг гаргаж авна.",
   "engine.markdown.name": "Markdown (суурилагдсан)",
   "engine.markdown.description": "Markdown → HTML болон энгийн текст.\nТекст болон скриптийн эх файлууд → скриптийг ажиллуулахгүйгээр UTF-8 TXT болгоно.",
   "engine.spreadsheet.name": "Хүснэгт (суурилагдсан)",

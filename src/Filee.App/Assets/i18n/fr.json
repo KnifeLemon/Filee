@@ -284,7 +284,7 @@
   "engine.pdfsharp.description": "Crée des PDF à partir d'images, fusionne et divise des PDF ou en extrait des plages de pages.\nRéduit aussi la taille des PDF en réduisant leurs images.",
   "engine.rhwp.description": "Convertit HWP ↔ HWPX, et HWP/HWPX en PDF quand le moteur de rendu Filee est désactivé ou ne sait pas encore dessiner un fichier.\nIl dessine alors aussi les documents qui passent par HWPX pour devenir des PDF (DOCX, PPTX, livres numériques…).",
   "engine.hwp-text.name": "Texte HWP (intégré)",
-  "engine.hwp-text.description": "Extrait le texte, le Markdown et le HTML des fichiers HWP et HWPX.",
+  "engine.hwp-text.description": "Extrait le texte, le Markdown et le HTML des fichiers HWP et HWPX, et le texte brut des fichiers Word, ODT et RTF.",
   "engine.markdown.name": "Markdown (built-in)",
   "engine.markdown.description": "Markdown → HTML et texte brut.\nFichiers texte et sources de scripts → TXT UTF-8, sans exécuter les scripts.",
   "engine.spreadsheet.name": "Spreadsheets (built-in)",
