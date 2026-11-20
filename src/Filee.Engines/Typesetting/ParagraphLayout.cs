@@ -122,6 +122,9 @@ internal sealed partial class ParagraphLayouter
     /// </summary>
     public int? DefaultTabStop { get; set; }
 
+    /// <summary><see cref="DefaultTabStop"/> counts from the left indent (HDocument.DefaultTabStopFromIndent: LibreOffice).</summary>
+    public bool DefaultTabFromIndent { get; set; }
+
     /// <summary>Lines laid out between checks of <see cref="Guard"/>.</summary>
     private const int GuardLines = 256;
     private readonly string? _notAtLineStart;
@@ -314,7 +317,8 @@ internal sealed partial class ParagraphLayouter
             SpreadEastAsian: breaking?.SpreadEastAsian == true,
             Language: language,
             HangPunctuation: breaking?.OverflowPunctuation == true,
-            WordTabInterval: DefaultTabStop is > 0 and var interval ? interval / 100f : 0);
+            WordTabInterval: DefaultTabStop is > 0 and var interval ? interval / 100f : 0,
+            TabIntervalFromIndent: DefaultTabFromIndent);
         // A number that indents its paragraph (한글 autoIndent): the lines after the first hang under the text after it.
         if (marker is { Length: > 0 } && paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count
             && levels[level].AutoIndent && marker.Length + 1 <= text.Length)
@@ -478,7 +482,7 @@ internal sealed partial class ParagraphLayouter
     /// <param name="AutoSpace">Per UTF-16 index, the auto-spacing after the cluster starting there; null = none.</param>
     private sealed record Settings(HAlign Align, bool RightToLeft, float Left, float Right, float FirstLine, IReadOnlyList<HTabStop> Tabs,
         HLineWrap Wrap, float Condense, HLineHeight LineHeight, bool FontLineHeight, bool SpreadEastAsian = false, string Language = "",
-        float[]? AutoSpace = null, bool HangPunctuation = false, float WordTabInterval = 0);
+        float[]? AutoSpace = null, bool HangPunctuation = false, float WordTabInterval = 0, bool TabIntervalFromIndent = false);
 
     // ───────────────────────── Items ─────────────────────────
 
@@ -790,8 +794,8 @@ internal sealed partial class ParagraphLayouter
         if (settings.WordTabInterval > 0)
         {
             // Word's default stops are every interval from the margin, not from the indent: a list number wider than its
-            // hanging indent sends the text to the next of them.
-            var start = settings.Left + indent;
+            // hanging indent sends the text to the next of them. LibreOffice's own documents count from the indent.
+            var start = (settings.TabIntervalFromIndent ? 0 : settings.Left) + indent;
             var stop = (MathF.Floor((x + start) / settings.WordTabInterval + Epsilon) + 1) * settings.WordTabInterval - start;
             return new TabStop(stop, HTabKind.Left, "NONE");
         }

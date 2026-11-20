@@ -287,6 +287,8 @@
   "engine.docx-writer.description": "PDF, OFD, HWP/HWPX, Markdown, HTML, elektronik tablo, slayt ve e-kitaplardan Word belgesi (DOCX) oluşturur.",
   "engine.odt-writer.name": "ODT oluşturucu (yerleşik)",
   "engine.odt-writer.description": "Word belgeleri, PDF, OFD, HWP/HWPX, Markdown, HTML, elektronik tablo, slayt ve e-kitaplardan OpenDocument metin belgesi (ODT) oluşturur.",
+  "engine.rtf-writer.name": "RTF yazıcı (yerleşik)",
+  "engine.rtf-writer.description": "Word belgeleri, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, elektronik tablolar, slaytlar ve e-kitaplardan Zengin Metin Biçimi (RTF, Word ve WordPad için) yazar.",
   "engine.markup.name": "İşaretleme dilleri (yerleşik)",
   "engine.markup.description": "Pandoc olmadan Jupyter not defterleri, OPML, Textile, MediaWiki, reStructuredText, Org ve DocBook.\nBelgeleri bu biçimlere, bunları da Markdown, HTML, metin, DOCX, HWPX ve PDF'ye dönüştürür.\nAyrıca FreeMind / Freeplane ve XMind zihin haritaları, ana hat olarak okunur.",
   "engine.pptx-writer.name": "PPTX oluşturucu (yerleşik)",

@@ -294,6 +294,8 @@
   "engine.docx-writer.description": "Cria documentos Word (DOCX) a partir de PDF, OFD, HWP/HWPX, Markdown, HTML, folhas de cálculo, diapositivos e livros digitais.",
   "engine.odt-writer.name": "Gerador ODT (motor integrado)",
   "engine.odt-writer.description": "Cria documentos de texto OpenDocument (ODT) a partir de documentos Word, PDF, OFD, HWP/HWPX, Markdown, HTML, folhas de cálculo, diapositivos e livros digitais.",
+  "engine.rtf-writer.name": "Escritor RTF (integrado)",
+  "engine.rtf-writer.description": "Escreve documentos Rich Text Format (RTF, para Word e WordPad) a partir de documentos do Word, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, folhas de cálculo, diapositivos e livros eletrónicos.",
   "engine.markup.name": "Linguagens de marcação (motor integrado)",
   "engine.markup.description": "Blocos de notas Jupyter, OPML, Textile, MediaWiki, reStructuredText, Org e DocBook sem Pandoc.\nDocumentos para estes formatos e estes para Markdown, HTML, texto, DOCX, HWPX e PDF.\nTambém mapas mentais do FreeMind / Freeplane e do XMind, lidos como esquemas.",
   "engine.pptx-writer.name": "Gerador PPTX (motor integrado)",

@@ -294,6 +294,8 @@
   "engine.docx-writer.description": "用 PDF、OFD、HWP/HWPX、Markdown、HTML、表格、幻灯片和电子书生成 Word 文档（DOCX）。",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "用 Word 文档、PDF、OFD、HWP/HWPX、Markdown、HTML、表格、幻灯片和电子书生成 OpenDocument 文本（ODT）。",
+  "engine.rtf-writer.name": "RTF 写入器（内置）",
+  "engine.rtf-writer.description": "从 Word 文档、ODT、PDF、OFD、HWP/HWPX、Markdown、HTML、电子表格、幻灯片和电子书写出 RTF 富文本（供 Word 和写字板使用）。",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "无需 Pandoc 即可读写 Jupyter 笔记本、OPML、Textile、MediaWiki、reStructuredText、Org 和 DocBook。\n把文档转为这些格式，也把它们转为 Markdown、HTML、文本、DOCX、HWPX 和 PDF。\n还可把 FreeMind / Freeplane 和 XMind 思维导图读成大纲。",
   "engine.pptx-writer.name": "PPTX 生成器（内置）",

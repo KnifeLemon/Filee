@@ -294,6 +294,8 @@
   "engine.docx-writer.description": "Zapisuje dokumenty Word (DOCX) z PDF, OFD, HWP/HWPX, Markdown, HTML, arkuszy, slajdów i e-booków.",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "Zapisuje dokumenty tekstowe OpenDocument (ODT) z dokumentów Word, PDF, OFD, HWP/HWPX, Markdown, HTML, arkuszy, slajdów i e-booków.",
+  "engine.rtf-writer.name": "Zapis RTF (wbudowany)",
+  "engine.rtf-writer.description": "Zapisuje pliki Rich Text Format (RTF, dla Worda i WordPada) z dokumentów Word, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, arkuszy kalkulacyjnych, slajdów i e-booków.",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "Notatniki Jupyter, OPML, Textile, MediaWiki, reStructuredText, Org i DocBook bez Pandoc.\nDokumenty do tych formatów, a te do Markdown, HTML, tekstu, DOCX, HWPX i PDF.\nTakże mapy myśli FreeMind / Freeplane i XMind, czytane jako konspekt.",
   "engine.pptx-writer.name": "Generator PPTX (wbudowany)",

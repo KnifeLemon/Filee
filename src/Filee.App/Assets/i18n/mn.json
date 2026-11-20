@@ -286,6 +286,8 @@
   "engine.docx-writer.description": "PDF, OFD, HWP/HWPX, Markdown, HTML, хүснэгт, слайд болон цахим номноос Word баримт (DOCX) бичнэ.",
   "engine.odt-writer.name": "ODT бичигч (суурилагдсан)",
   "engine.odt-writer.description": "Word баримт, PDF, OFD, HWP/HWPX, Markdown, HTML, хүснэгт, слайд болон цахим номноос OpenDocument текст (ODT, LibreOffice Writer) бичнэ.",
+  "engine.rtf-writer.name": "RTF бичигч (суурилуулсан)",
+  "engine.rtf-writer.description": "Word баримт, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, хүснэгт, слайд, цахим номоос Rich Text Format (RTF, Word болон WordPad-д) файл бичнэ.",
   "engine.markup.name": "Тэмдэглэгээний хэлүүд (суурилагдсан)",
   "engine.markup.description": "Jupyter notebook, OPML, Textile, MediaWiki, reStructuredText, Org болон DocBook-ийг Pandoc-гүйгээр.\nБаримтыг эдгээр формат руу, эдгээрийг Markdown, HTML, текст, DOCX, HWPX болон PDF руу.\nМөн FreeMind / Freeplane болон XMind оюун ухааны газрын зургийг тойм хэлбэрээр уншина.",
   "engine.pptx-writer.name": "PPTX бичигч (суурилагдсан)",

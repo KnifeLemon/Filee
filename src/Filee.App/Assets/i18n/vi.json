@@ -294,6 +294,8 @@
   "engine.docx-writer.description": "Ghi tài liệu Word (DOCX) từ PDF, OFD, HWP/HWPX, Markdown, HTML, bảng tính, trang chiếu và sách điện tử.",
   "engine.odt-writer.name": "Trình ghi ODT (tích hợp)",
   "engine.odt-writer.description": "Ghi văn bản OpenDocument (ODT, LibreOffice Writer) từ tài liệu Word, PDF, OFD, HWP/HWPX, Markdown, HTML, bảng tính, trang chiếu và sách điện tử.",
+  "engine.rtf-writer.name": "Trình ghi RTF (tích hợp)",
+  "engine.rtf-writer.description": "Ghi tệp Rich Text Format (RTF, cho Word và WordPad) từ tài liệu Word, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, bảng tính, trang chiếu và sách điện tử.",
   "engine.markup.name": "Ngôn ngữ đánh dấu (tích hợp)",
   "engine.markup.description": "Sổ tay Jupyter, OPML, Textile, MediaWiki, reStructuredText, Org và DocBook mà không cần Pandoc.\nTài liệu sang các định dạng này, và các định dạng này sang Markdown, HTML, văn bản, DOCX, HWPX và PDF.\nCả sơ đồ tư duy FreeMind / Freeplane và XMind, được đọc dưới dạng dàn ý.",
   "engine.pptx-writer.name": "Trình ghi PPTX (tích hợp)",
