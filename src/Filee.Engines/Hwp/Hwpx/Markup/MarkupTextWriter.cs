@@ -49,11 +49,18 @@ internal abstract class MarkupTextWriter
     /// <summary>The caps of this document's tables and text.</summary>
     protected MarkupWriteBudget Budget => _budget ??= new(Limits);
 
+    /// <summary>The document being written (for its metadata), set by <see cref="Write"/>.</summary>
+    protected HDocument? Source { get; private set; }
+
+    /// <summary>Stops the walk between blocks when the conversion is cancelled.</summary>
+    public CancellationToken Cancellation { get; init; }
+
     /// <summary>The text of the document.</summary>
     public string Write(HDocument document)
     {
         // The walk recurses per table, link, note and text box level: deeper content is opened up into paragraphs.
         Nesting.Limit(document);
+        Source = document;
         var sb = new StringBuilder();
         Start(sb, string.IsNullOrWhiteSpace(document.Title) ? null : document.Title.Trim());
         foreach (var section in document.Sections)
@@ -97,6 +104,15 @@ internal abstract class MarkupTextWriter
     /// <summary>The reference to footnote <paramref name="number"/> (its text is <c>Notes[number - 1]</c>).</summary>
     protected abstract string NoteReference(int number);
 
+    /// <summary>An equation among the text, or null to write its text (TeX source or linear form) as a run.</summary>
+    protected virtual string? Equation(HEquation equation) => null;
+
+    /// <summary>
+    /// A paragraph that is a display equation alone (<see cref="HEquation.IsDisplay"/>); false leaves it to
+    /// <see cref="Paragraph"/>.
+    /// </summary>
+    protected virtual bool DisplayEquation(StringBuilder sb, HEquation equation, int quote) => false;
+
     // ───────────────────────── The walk ─────────────────────────
 
     /// <summary>Quote level of a paragraph: the readers indent quotes by 2000 HWPUNIT per level.</summary>
@@ -107,6 +123,7 @@ internal abstract class MarkupTextWriter
         for (var i = 0; i < blocks.Count;)
         {
             Budget.Characters(sb.Length + _noteCharacters);
+            Cancellation.ThrowIfCancellationRequested();
             var block = blocks[i];
             if (MarkupBlocks.IsCode(block))
             {
@@ -145,6 +162,8 @@ internal abstract class MarkupTextWriter
                 case HParagraph paragraph when paragraph.Inlines.Any(x => x is HShape { Kind: HShapeKind.Line }) && HDocumentWalker.Text(paragraph.Inlines).Length == 0:
                     Rule(sb);
                     break;
+                case HParagraph paragraph when LoneEquation(paragraph) is { } equation && DisplayEquation(sb, equation, Quote(paragraph)):
+                    break;
                 case HParagraph paragraph:
                     {
                         var text = Inlines(paragraph.Inlines);
@@ -159,6 +178,10 @@ internal abstract class MarkupTextWriter
         }
         Budget.Characters(sb.Length + _noteCharacters);
     }
+
+    /// <summary>The equation a paragraph holds alone (bookmarks aside) when it is a display equation, else null.</summary>
+    private static HEquation? LoneEquation(HParagraph paragraph) =>
+        paragraph.Inlines.Where(i => i is not HBookmark).ToList() is [HEquation equation] && HEquation.IsDisplay(equation, paragraph) ? equation : null;
 
     /// <summary>
     /// The table as a grid; a cell's paragraphs are joined by line breaks. Spans are placed arithmetically
@@ -209,6 +232,12 @@ internal abstract class MarkupTextWriter
 
         foreach (var inline in inlines)
         {
+            if (inline is HEquation equation && Equation(equation) is { } math)
+            {
+                Flush();
+                sb.Append(math);
+                continue;
+            }
             if (inline is HText t)
             {
                 var plain = WithoutLayout(t.Format);

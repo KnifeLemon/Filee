@@ -22,6 +22,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT (+ OTT, FODT), XLSX (+ XLSM/XLTX), XLS, ODS (+ OTS, FODS), CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF, mind maps (MM, XMind) → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
 | **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT (+ OTT, FODT), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS (+ OTS, FODS), CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → DOCX** |
 | **RTF writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → RTF** (Rich Text Format, see [RTF writer](#rtf-writer)) |
+| **UYAP writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), ODT (+ OTT, FODT), RTF, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → UDF** (the UYAP Document Editor's file, see [UYAP writer](#uyap-writer)) |
 | **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS (+ OTS, FODS), CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → ODT** (OpenDocument text, LibreOffice Writer) |
 | **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT (+ OTT, FODT), HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS (+ OTS, FODS), CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
 | **ODP writer** | built in | **PPTX (+ PPTM/POTX/POTM/PPSX), PPT → ODP, OTP, FODP** with masters, shapes, pictures, tables, lists and speaker notes; **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT (+ OTT, FODT), HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → ODP slides** laid out as the PPTX writer lays them out (see [ODP writer](#odp-writer)); a deck with what the slide model leaves out (charts without a picture, effects, 3D) keeps LibreOffice's route |
@@ -29,12 +30,12 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF slides | built in (PdfPig, PDFium) | **PDF → PPTX**: each page rebuilt as an editable slide (text boxes with the PDF's fonts, pictures, shapes, ruled tables); or, as a preset option, a picture of each page with its text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
-| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT (+ OTT, FODT), RTF, HWP, HWPX, HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
+| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT (+ OTT, FODT), RTF, HWP, HWPX, HTML, MHTML, UYAP (UDF) → XLSX, ODS, CSV** (#1016, #1588): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
-| **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, PDB, PML, TCR, RB, SNB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/PDB/PML/TCR/RB/SNB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
+| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | **DjVu** | built in | **DjVu (.djvu, .djv; one page or bundled) → PDF** (the layers kept: background JPEG, 1-bit masks; the hidden text searchable) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
@@ -51,7 +52,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG / WebP, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
-| Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF, PDB, PML, RB, SNB, TCR (MOBI, AZW3 too, below the built-in writer); e-books → PDF (ranked above the HWPX writer with the Filee renderer off, see below) |
+| Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF (MOBI, AZW3, PDB, PML, RB, SNB, TCR too, below the built-in writers); e-books → PDF (ranked above the HWPX writer with the Filee renderer off, see below) |
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
@@ -848,7 +849,9 @@ for dollars: no space inside the delimiters, no digit after the closing `$`, cod
 equations, → HTML and EPUB MathML (with the TeX as its annotation). Display math alone in its paragraph is centred.
 An unknown command stays as its text (`\foo`); a formula longer than 32,768 characters or nested deeper than 100
 levels stays its source, and the equations count against `MaxObjects`. Writers without equations keep the TeX
-source as written (`$\frac{a}{b}$`).
+source as written (`$\frac{a}{b}$`). The other way, Word math, 한글 equations and MathML become TeX in Markdown,
+LaTeX and AsciiDoc (`Hwp/Hwpx/TexMathWriter.cs`) and Typst math in Typst (`TypstMathWriter.cs`), so DOCX or HWP →
+Markdown keeps them as equations.
 
 ## Spreadsheets
 
@@ -2315,9 +2318,10 @@ full 140 mm invoice opened there puts its last line on a second page (rhwp's PDF
 UYAP's `.udf` (#1338) is the file of the UYAP Document Editor (UYAP Doküman Editörü), which Turkish courts, lawyers and
 citizens write petitions and decisions in. `Uyap/UyapReader.cs` reads it into the document model with no external
 engine, so UDF → PDF is one step through the Filee renderer (two, HWPX writer and rhwp, with it off), UDF → DOCX, ODT
-and HWPX one through their writers, and TXT, Markdown, HTML and EPUB follow from there. UDF is read only
-(`Writable: false`) and sits on the office donut (new libraries; an existing library learns `.udf` through a settings
-migration).
+and HWPX one through their writers, and TXT, Markdown, HTML and EPUB follow from there. Pictures of the pages (PNG,
+JPEG, #1633) are drawn from that PDF as a Word document's are, and the tables go to XLSX, ODS and CSV through Document
+tables. UDF is written too ([UYAP writer](#uyap-writer)) and sits on the office donut (new libraries; an existing
+library learns `.udf` through a settings migration).
 
 - **Package**: a ZIP with one part, `content.xml`, read within `DocumentLimits` (`Documents/DocumentPackage`: part
   sizes counted while unpacking, the inflate ratio, no DTD, depth and element limits). Its `<template>` holds the whole
@@ -2329,8 +2333,12 @@ migration).
   print. Family, size (points), bold, italic, underline, strikethrough, super- and subscript, foreground and background
   (Java ARGB integers); Java's logical fonts (Dialog, Serif, Monospaced) become Arial, Times New Roman and Courier New.
   Paragraphs: Swing alignment (0 left, 1 centre, 2 right, 3 justified), left, right and first-line indents, space
-  above and below, line spacing, and the TabSet (`position:alignment:leader`, from the left indent). Text is drawn
-  without kerning, as Java draws it, and Swing's default tab stops are every 72 pt.
+  above and below, line spacing, and the TabSet (`position:alignment:leader`, from the left indent; Swing's alignments
+  1 right, 2 centre, 4 decimal). Text is drawn without kerning, as Java draws it, and Swing's default tab stops are
+  every 72 pt.
+- **Lists**: `Numbered` / `Bulleted` paragraphs with the same `ListId` are one list, at `ListLevel`; each level is
+  numbered as its first item says (`NumberType`: digits, small or capital letters, small or capital Roman numerals,
+  each followed by "." or ")"; `BulletType`: ellipse, rectangle, arrow, diamonds, triangle, open rectangle).
 - **Line height**: Java's (`FontMetrics.getHeight`: the ascent rounded up, descent and leading rounded up together),
   for the fonts UYAP documents use (Times New Roman, Calibri, Arial, Courier New, Tahoma, Verdana, Cambria, Georgia,
   Segoe UI), as an "at least" height: a 12 pt Calibri or Times New Roman line is 15 pt as in the PDF the editor
@@ -2339,18 +2347,70 @@ migration).
   orientations 0 and 2; margins in points, the header and footer distances (`headerFOffset`, `footerFOffset`) as the
   top of the header and footer areas.
 - **Tables** (`<table columnCount columnSpans border><row><cell>`): the column spans as shares of the text width,
-  `borderNone` without lines, cell spans and fill where a cell gives them; tables nested past `Nesting.MaxDepth`
-  become plain paragraphs. **Pictures** (`<image imageData>`, Base64 in the XML): PNG, JPEG, GIF and BMP up to 32 MB
+  `borderNone` without lines, cell spans (`colspan`), fill (`fillColor`, white is none) and vertical alignment
+  (`align` top, vcenter, bottom) where a cell gives them, the sides `borderSpec` names (1 top, 2 right, 4 bottom,
+  8 left) in `borderStyle`, `borderWidth` and `borderColor`; a `headerRow` repeats as a header row, a row `height` is
+  its least height; tables nested past `Nesting.MaxDepth` become plain paragraphs. **Pictures** (`<image imageData>`, Base64 in the XML): PNG, JPEG, GIF and BMP up to 32 MB
   each and 2,000 a document, left out when their header claims more pixels than `DocumentLimits` allows.
   **Page breaks**, **headers and footers** (paragraphs in `<header>` / `<footer>`) and page-number fields are read.
 - **The other `.udf`**: a Universal Disk Format disc image has the same extension. The content tells them apart
   (`UyapReader.IsUyap`): a ZIP whose `content.xml` has a `<template>` root is UYAP. Given to a document route, a disc
   is refused with `error.udf_not_uyap`, which points to Extract; the archive engine has a UDF → folder edge (Extract
-  only, no repacking) and unpacks a disc as an ISO (`ArchiveExtractor`), a UYAP file as the ZIP it is.
+  only, no repacking, and only from a `.udf` itself, never from a document written as UDF on the way) and unpacks a
+  disc as an ISO (`ArchiveExtractor`), a UYAP file as the ZIP it is.
 
 Compared with the PDF the editor prints, a petition in Calibri comes out on the same pages with the same page breaks,
 fonts, alignment and indents. Lines inside a paragraph may break a word earlier or later: Java lays text out with
 whole-point glyph advances, the Filee renderer with the font's own.
+
+## UYAP writer
+
+`Uyap/UyapWriter.cs` writes UYAP documents (#1546, #1633) from the document model, the counterpart of the
+[UYAP reader](#uyap-reader): `udf-writer` (`Uyap/UyapWriterConverter.cs`) takes every format the built-in readers read
+(not UDF itself) to UDF in one step, cost 8 (PDF + 6), like the RTF and ODT writers. It writes the file as the editor
+writes it, checked against a petition the editor saved (#1338): read and written back through DOCX, the text and every
+paragraph's and run's attributes come out the same (one empty run names Times New Roman, which DOCX made explicit;
+the margins move by less than 0.05 pt through DOCX).
+
+- **Package**: a ZIP with `content.xml` (`<template format_id="1.8">`). The text of the header, the body and the footer
+  in that order is one CDATA block, every paragraph ended by "\n" in its last run (in a run of its own when the
+  paragraph mark is formatted otherwise), and one "\n" more at the end that no element covers, as in the editor's
+  files. Every run, picture and page break covers the next stretch of the text, so the offsets tile it. The styles
+  are the editor's `default` and `hvl-default`.
+- **Runs** say only what differs from `hvl-default` (Times New Roman 12 pt, black): family (the East Asian font for
+  Hangul, kana or Han text), size, bold, italic, underline, strikethrough, super- and subscript, foreground and
+  background as Java ARGB integers; runs alike are joined. Tabs stay in the text, line breaks are "\n" inside the
+  paragraph's runs (Filee reads a line break; the editor breaks the line).
+- **Paragraphs**: alignment (distributed is justified; right to left swaps left and right), indents and space above
+  and below in points (0 left out, as the editor does), `LineSpacing` from the source's own multiple, a percentage
+  (130 % in 한글's terms is one line) or a height against Java's line for the runs, and the TabSet; a hanging paragraph
+  without stops gets the editor's `0.0:0:0`. Headings are bold and larger where their runs don't say. Lists are
+  `Numbered` / `Bulleted` with the closest `NumberType` / `BulletType`, a `ListId` per list and the `ListLevel`; items
+  without their own indent get 18 pt a level with the number hanging. A list's start number is not kept.
+- **Page**: A4 (`mediaSizeName` 1, the only size known), landscape as orientation 0, margins in points with the header
+  and footer distances. One header and one footer: the first section's (both pages, else odd, else the first one).
+  Later sections start on a new page (`<page-break>` with its own paragraph).
+- **Tables**: `columnSpans` in points (`HwpxWriter.ColumnWidths` over the text width), `colspan`, `align`, `fillColor`,
+  and each cell's borders as `borderSpec` with style, width and colour (`borderNone` without any). UYAP merges columns
+  only, so a cell over several rows keeps its text and loses its bottom border, and the rows under it get cells of
+  their own without the borders between; nested tables stay nested; header rows are `headerRow`.
+- **Pictures**: PNG and JPEG as they are, anything else (GIF, BMP, WebP, metafiles …) as PNG, Base64 in `imageData` on
+  a U+FFFC in the text, with their size in points, never wider than the text (or the cell).
+- **Left out or flattened**: page-number fields (the editor keeps its page number on the footer, in a form not known
+  yet; a field's stored number is written as text), notes (a raised number in the text and the note's text after its
+  section's body), text boxes (their paragraphs after the paragraph they were in), shapes, bookmarks and link targets
+  (the link text stays).
+- **Safety and limits**: text XML can't hold is left out (and "\r", which a parser would turn into "\n" and shift the
+  offsets), lone surrogates become U+FFFD and "]]>" splits the CDATA block, so the offsets stay right; attribute values
+  are escaped. `content.xml` stays within what the reader takes: `DocumentLimits.MaxPartBytes`, `MaxXmlElements`,
+  `MaxParagraphs` and `MaxObjects` (refused with `error.document_too_complex`), the inflate ratio (a part so repetitive
+  that it would pass it is stored uncompressed), and the reader's picture limits (pictures past them, or claiming more
+  pixels than `MaxPicturePixels`, are left out). Tables go through `HwpxWriter.PlaceCells`' cell limit and the model
+  through `Nesting.Limit`. The elements are written to a temporary file first and the package through one of its own,
+  so a refusal, a failure or a cancellation leaves no file.
+
+Not checked yet in the UYAP Document Editor itself: tables, pictures, lists, headers and footers, nested tables and
+page breaks follow what is known of the format, not a file the editor saved with them.
 
 ## PDF → XLSX
 
@@ -3026,6 +3086,7 @@ its reader, one line in `Drawings/DrawingFormats.cs`:
   its pages straight into the page model (`DrawingFormat.ReadPages`, `IFixedPages`).
 - **Excel chart templates** (`.crtx`, format id `crtx`, #1354): `ChartTemplate`, one page of Excel's default chart size
   (5 × 3 in) with the template's chart ([Charts](#charts)).
+- **Interactive whiteboards and SMART Notebook** (`.iwb`, `.notebook`): [their own section](#interactive-whiteboards-iwb-smart-notebook).
 
 Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
 takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a
@@ -3048,6 +3109,51 @@ Not yet (VSDX): theme colours and effects stored as "Themed" (the inherited or d
 sections, shadows, rounding, the full arrowhead table, text backgrounds, formulas beyond stored values, and `.vsdm` /
 `.vssx` / `.vstx`. The slide model has one size per deck, so pages of other sizes sit at the top left of the largest
 page's size. Checked against drawings built from the specification, not against files Visio saved.
+
+## Interactive whiteboards (IWB, SMART Notebook)
+
+Built in (#1665), in `Whiteboard/`, read by the drawing engine (`DrawingFormats`, a slide per page) into the slide
+model, so they become **PDF, SVG and PNG** (JPG and the other pictures from PNG) like the other drawings, and, as
+`DrawingFormat.Slides`, **ODP** (OdpWriter, shapes and text stay editable) and **PPTX** (the deck's PDF rebuilt as
+editable slides by the [PDF slides engine](#pdf--pptx), one deck at a time). The ODP and PPTX edges are DirectOnly at
+the ODP writer's cost (8). Presentations donut; settings v115 teaches existing libraries `.iwb` and `.notebook`.
+
+- **IWB** (`.iwb`, format id `iwb`; the Interactive Whiteboard Common File Format, IEC 62874, first published by
+  Becta; SMART Notebook, ActivInspire and OpenBoard export it), `IwbReader`: a ZIP whose `content.xml` holds an `iwb`
+  root with one `svg` (SVG Tiny 1.2 with SVG 1.2's `pageSet` / `page`, also written `pageset`) and `iwb:element`
+  entries by id; elements marked `invisible="true"` aren't drawn. Each page of the pageSet is a slide (without one,
+  the svg is one page); what the svg holds outside the pageSet is drawn on every page first. Slide size: the svg's
+  width and height, else its viewBox (pixels at 96 dpi; 1024 × 768 when it names none), its viewBox fitted onto it; a
+  page's own viewBox is fitted onto that size; `viewport-fill` is the background.
+- **SMART Notebook** (`.notebook`, format id `notebook`), `SmartNotebookReader`: the same kind of ZIP with a page per
+  SVG file (`page0.svg`, ...), in `imsmanifest.xml`'s order (by number without one); the deck takes the first page's
+  size. Written from the packages SMART Notebook 10 and later save (SMART publishes no specification); not checked
+  against a file SMART saved.
+- **SVG** (`SvgSlideReader`, `SvgStyle`; Svg.Skia reads neither pageSet nor textArea, and the slide model keeps the
+  shapes editable in ODP): svg (nested, viewBox, preserveAspectRatio), g / a (several drawn things become a group),
+  switch, use (loops cut), rect (rounded), circle, ellipse, line, polyline, polygon, path, with their transforms
+  baked into the outlines (turned, skewed, mirrored shapes keep their form); fill and stroke (colours, currentColor,
+  opacities, fill-rule, width, dashes, caps, joins), linear and radial gradients (stops through xlink:href; a linear
+  gradient turned with its shape; a radial one as an ellipse over the box from its centre); text / tspan (a text box
+  per positioned run at its baseline, text-anchor, unwrapped, turned with its transform), textArea / tbreak (wrapped
+  at its width, text-align, display-align), foreignObject XHTML text (paragraphs, line breaks, inline CSS); font
+  family, size, weight, style, underline and line-through per run. Pictures: PNG, JPEG, GIF, BMP, WebP, EMF, WMF (what
+  the slide renderer decodes), from the package or `data:` URIs, fitted by preserveAspectRatio (meet, slice, none); an SVG picture
+  is read as more of the drawing (gzip too, a DOCTYPE without an internal subset dropped, nested 8 deep at most).
+- **Left out**, named in the file's result (`SlideDeck.LeftOut` → `notice.renderer_left_out`): video ("videos"),
+  audio, animation and foreignObject without text ("embedded objects"), pictures that can't be decoded or aren't in the
+  package ("pictures"). Not drawn: filters, masks, clip paths, markers, patterns, CSS style sheets (`style=""` and
+  presentation attributes are read), per-glyph positions (x / y lists beyond the first), text on a path's curve.
+  Text widths for `text-anchor` and turning are estimated (0.55 em a character), baselines placed with Arial's ascent.
+- **Hostile input:** the package through `DocumentPackage` (entries, part and package sizes, inflate ratio); hrefs are
+  only names inside the package, resolved against their SVG's folder and never above the top (no URLs, `file:` or
+  local paths); XML through SafeXml (no DTD, depth and element limits for all parts together); elements followed at
+  most 256 deep, 50,000 uses followed, 2 million visited (each use expansion again), 10 million outline points, the document budget's
+  objects and paragraphs, pages up to `MaxPages`; numbers clamped and finite, boxes beyond 1,000,000 pt dropped;
+  pictures within `MaxPartBytes` and `MaxPicturePixels`; cancellation checked per element. Refusals are
+  `error.document_too_complex`. `IwbFuzzTests` fuzzes the reader with the renderer, the PDF and the ODP writer.
+- Tests: `IwbTests` (files built in code by `IwbBuilder`, checked as model values and as pixels at 96 dpi),
+  `IwbSettingsTests`. **No real IWB or SMART Notebook file was tried** (#1665 has none attached).
 
 ## XPS and OpenXPS reader
 
@@ -3665,7 +3771,7 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
   naturally ("page2" before "page10"). → PDF has one page per picture sized like the picture (JPEGs are embedded
   as they are), → EPUB is fixed-layout, → CBZ repacks. PDF → CBZ renders the pages with PDFium at the preset DPI.
 - **Older formats** (`Ebooks/Legacy`, `Ebooks/Chm`, written from the formats' public descriptions), so calibre is
-  needed only for LIT and LRF:
+  needed only for LIT and LRF (reading and writing):
   - **CHM** (Compiled HTML Help): the ITSF header, the ITSP directory and its PMGL listing chunks, files stored or in
     the LZX section. The LZX decoder is Filee's own (`Chm/LzxDecoder.cs`): verbatim, aligned offset and uncompressed
     blocks, pretree deltas, repeat offsets, 16-bit realignment after each 32 KB frame, the reset interval and window
@@ -3692,19 +3798,35 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
     outside the file, trees with too many codes, matches before the start of the data, records out of order) is
     `InvalidDataException`. `DocumentFuzzTests` fuzzes the CHM, PDB, TCR, RB and SNB readers and the LZX decoder on
     its own. Test inputs are written in code, CHM's LZX section too (`LzxEncoder`, a test-only compressor).
+  - **Writers** (cost 19 like AZW3 and MOBI: they win in the default engine order, calibre's EPUB → them wins once
+    calibre is ranked first). Text is Windows-1252 when every character fits, else UTF-8 (PDB, TCR, the RB info page).
+    **PDB** is PalmDOC: the plain text in 4 KB PalmDOC-compressed records, the 16-byte header, the title as the
+    database name and a bookmark record (name and byte offset) per heading of the top three levels. **TCR**: a
+    dictionary of every byte the text uses plus pairs merged by frequency on a sample of up to 512 KB, the text coded
+    by longest match. **PML**: ASCII with `\aNNN` / `\UXXXX` characters, chapters `\x` and `\X1`-`\X4`, bold / italic /
+    underline / strike-through / super- and subscript, centred and right-aligned paragraphs, list markers, links and
+    anchors, footnotes in `<footnote>` blocks, page breaks, rules; pictures as PNG in the `<name>_img` folder, reserved
+    through the output allocator like Markdown's picture folder. **RB**: the XhtmlWriter page (no style sheet,
+    non-ASCII as character references) in 4 KB zlib chunks, the info page (TITLE, AUTHOR, BODY) and the pictures as
+    PNG. **SNB**: book.snbf, toc.snbf and a chapter file per top-level heading (paragraphs and pictures: SNB has no
+    styles), the text stream in 32 KB bzip2 blocks (Filee's own encoder), the binary stream, the file table and the
+    block tail. Each writer stays within the limits its reader applies (64 MB of text, 65,535 Palm records, 10,000 RB
+    files, 100,000 SNB files, 1 GB), checks for cancellation and writes through a temporary file, so a failed or
+    cancelled conversion leaves nothing behind. `LegacyEbookWriterTests` reads every format back with Filee's readers
+    and checks the headers, records, dictionaries and blocks.
 - Books with DRM (Adobe, Apple, Kindle) are refused with a clear message; Filee does not remove DRM. KFX and
   Topaz books are recognised and refused too.
 
 ## Calibre
 
 calibre's `ebook-convert` (GPL-3.0) is an optional download for the formats Filee does not read or write itself:
-LIT and LRF → EPUB, and EPUB → LIT, LRF, PDB, PML, RB, SNB and TCR. CHM, PDB, PML, RB, SNB, TCR and OEB are read,
-and MOBI and AZW3 written, by the built-in engine (see [E-books](#e-books)); calibre keeps its edges for them, below
+LIT and LRF → EPUB, and EPUB → LIT and LRF. CHM, PDB, PML, RB, SNB, TCR and OEB are read, and MOBI, AZW3, PDB, PML,
+RB, SNB and TCR written, by the built-in engine (see [E-books](#e-books)); calibre keeps its edges for them, below
 the built-in ones. EPUB is the hub, so for example FB2 → LIT is FB2 → EPUB (built in) → LIT (calibre). Its edges
 cost 20, so built-in routes always win where they exist.
 
-calibre's other outputs (LIT, LRF, PDB, PML, RB, SNB, TCR) are kept: they cost nothing while calibre isn't installed,
-and nothing built in writes them.
+calibre's other outputs (LIT, LRF) are kept: they cost nothing while calibre isn't installed, and nothing built in
+writes them.
 
 calibre also makes PDFs of EPUB, MOBI, AZW3, AZW, PRC, FB2, HTMLZ, TXTZ and the formats only it reads (one
 `ebook-convert` run: A4 with `--paper-size a4`, page numbers with `--pdf-page-numbers`, calibre's margins and font
@@ -4152,8 +4274,9 @@ Filee renderer take it: → HWPX, DOCX, ODT, PDF), and a writer from the model. 
 `markup`) offers every built-in reader's format → each of these languages, and each of them → Markdown
 (`MarkdownWriter`, pictures in a `<name>_files` folder), HTML (one page, pictures embedded) and TXT. Its edges cost 8
 like the DOCX writer's, below Pandoc's (10 out of a markup language, 11 into one), so the built-in route wins
-wherever both exist. Pandoc keeps what only it does: LaTeX, Typst, AsciiDoc and man pages (macro and scripting
-languages), slides (PPTX), and RTF and EPUB written straight from a markup language.
+wherever both exist. LaTeX, AsciiDoc, Typst and man pages (macro and scripting languages) are written here too, from
+every built-in reader's format ([below](#latex-asciidoc-typst-and-man-pages)); Pandoc keeps reading them, slides
+(PPTX), and RTF and EPUB written straight from a markup language.
 
 What the readers share (`MarkupBlocks`): code blocks are shaded paragraphs as the Markdown and HTML readers make them
 (a blank line inside one is an empty shaded run, so a block stays one block), quotes are indented 2000 HWPUNIT per
@@ -4297,6 +4420,44 @@ inlinemediaobject pictures (linked into `<name>_files`), footnotes, links, ancho
 HWPX / PDF / HTML / Markdown with Pandoc absent and the hostile inputs (DTDs and entity expansion, nesting, a
 million openers, wide and long tables); `DocumentFuzzTests` mutates each.
 
+### LaTeX, AsciiDoc, Typst and man pages
+
+Written, not read (`MarkupConverter.WriteOnly`, cost 8 like the other writers, below Pandoc's 11): `LatexWriter`,
+`AsciiDocWriter`, `TypstWriter` and `ManWriter` in `Hwp/Hwpx/Markup/`, on the walk the other text markup writers
+share (`MarkupTextWriter`: `Nesting.Limit` first, the table grid and text caps of `MarkupWriteBudget`, cancellation
+between blocks). The result is written through a temporary file beside it.
+
+- **LaTeX**: a whole article for pdfLaTeX, XeLaTeX or LuaLaTeX (`iftex`: fontenc / inputenc or fontspec; xeCJK or
+  luatexja when there is CJK text, which needs XeLaTeX or LuaLaTeX). The preamble loads only what the body uses:
+  amsmath / amssymb, graphicx (pictures no wider than the text), longtable / array / multirow, ulem, hyperref.
+  Unnumbered `\section` … `\subparagraph`, `quote`, itemize / enumerate to LaTeX's four levels (numbers as item
+  labels), `verbatim` (typewriter lines in table cells or when the code holds `\end{verbatim}`), longtable (tabular
+  in a cell) with p columns, `\multicolumn`, `\multirow` and `\cline` rules that leave merged cells open, header
+  rows repeated, `\href`, `\includegraphics`, `\footnote`. Every special character is escaped (`\ { } $ & # _ % ~
+  ^`, brackets braced so `\` and `\item` don't take them as options, `< > | "` and backticks, the `--` `''`
+  ligatures).
+- **AsciiDoc** (Asciidoctor): `= Title`, `:stem: latexmath` when there are equations, `==` sections, `+` line
+  breaks, `____` quotes, `*` / `.` lists (`[start=N]`), `----` listings (callouts and preprocessor directives
+  defused), `|===` tables with `2.3+|` spans and `a|` cells holding blocks (one nested `!===` level), roles for
+  underline and strike, `link:++…++[…]`, `image:`, `footnote:[…]`. Text that would format, substitute, link or start a
+  block goes into `++passthroughs++`, `{plus}` / `{vbar}`, or gets `{empty}` at the line start.
+- **Typst** (0.11 or later): `#set document`, `=` headings, `\` line breaks, `#quote`, `-` / `N.` lists, raw blocks,
+  `#table` with `table.header` and `table.cell(colspan:, rowspan:)`, `#strong` `#emph` `#underline` `#strike`
+  `#super` `#sub` `#highlight`, `#link`, `#image`, `#footnote`; every markup character escaped.
+- **man**: `.TH`, `.SH` / `.SS`, `.PP`, `.RS` / `.RE`, `.IP` items, `.EX` / `.EE`, tbl tables (`s` and `^` for
+  merged cells, `T{ … T}` cells), fonts `\fB \fI \f(CR`, links as text and `<URL>`, footnotes under NOTES. ASCII
+  only (`\e`, `\-`, `\(dq`, `\(aq`, `\[uXXXX]`); a line that would be a request gets `\&`. No pictures.
+- Equations: TeX (`$…$`, `\[…\]`; a source that is a display environment of its own as it is) in LaTeX, Markdown and
+  AsciiDoc, from the equation's TeX source or written from its tree by `Hwp/Hwpx/TexMathWriter.cs` (Word math, 한글
+  equations, MathML: symbols by the commands `LatexMath` reads, amsmath environments, `\text` for words);
+  `Hwp/Hwpx/TypstMathWriter.cs` writes Typst's own math (`frac(a, b)`, `x_(i)^(2)`, `mat(…)`, `cases(…)`, Unicode
+  symbols, escaped syntax). man pages get the linear text. A tree deeper than 256 levels keeps its text.
+
+`MacroMarkupWriterTests` builds one model in code with all of the above and checks each language's text and
+structure (balanced braces and environments, requests, brackets), the routes and cancellation; `TexMathWriterTests`
+reads TeX, writes it back and reads it again to the same tree, and reads Markdown written from Word and 한글 equations
+back as the same equations; `MarkupWriterLimitTests` puts the four writers through its hostile models.
+
 ### Mind maps
 
 `MindMapReader` (#1543, #1004) reads FreeMind / Freeplane (`.mm`) and XMind (`.xmind`) maps as an **outline**: the
@@ -4338,7 +4499,8 @@ many topics, an oversized part, a ZIP bomb); `MindMapFuzzTests` mutates the map,
 ## Pandoc
 
 `Office/PandocConverter.cs` runs Pandoc for the markup languages Filee doesn't read itself: LaTeX, AsciiDoc
-(`.adoc`, `.asciidoc`), Typst (`.typ`) and man pages (`.man`) — macro and scripting languages. Pandoc 3.12 also
+(`.adoc`, `.asciidoc`), Typst (`.typ`) and man pages (`.man`) — macro and scripting languages (Filee writes them
+itself, [above](#latex-asciidoc-typst-and-man-pages): Pandoc reads them and converts between them). Pandoc 3.12 also
 reads and writes reStructuredText, Org (`.org`), MediaWiki (`.mediawiki`, `.wiki`), DocBook (`.dbk`, `.docbook`;
 written as DocBook 5), Jupyter notebooks (`.ipynb`), Textile (`.textile`) and OPML (`.opml`), but Filee reads and
 writes those itself ([above](#lightweight-markup-languages)) and its routes win; Pandoc's stay for RTF and EPUB

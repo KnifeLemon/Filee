@@ -1,7 +1,7 @@
 // E-book formats Filee does not read or write itself, with calibre's ebook-convert (GPL-3.0, a separate program the
-// user downloads in Settings → Engines): LIT and LRF → EPUB, and EPUB → LIT, LRF, PDB, PML, RB, SNB and TCR. CHM,
-// PDB, PML, RB, SNB, TCR and OEB are read, and MOBI and AZW3 written (MobiWriter), by the built-in engine too;
-// calibre's edges for them stay as the fallback a user can rank first. EPUB is the hub: the built-in engine handles
+// user downloads in Settings → Engines): LIT and LRF → EPUB, and EPUB → LIT and LRF. CHM, PDB, PML, RB, SNB, TCR and
+// OEB are read, and MOBI, AZW3, PDB, PML, RB, SNB and TCR written (MobiWriter, Ebooks/Legacy), by the built-in engine
+// too; calibre's edges for them stay as the fallback a user can rank first. EPUB is the hub: the built-in engine handles
 // every other step, and calibre's edges cost more so built-in routes always win where they exist.
 //
 // calibre also makes PDFs of e-books, much faster than the built-in route (HWPX writer → rhwp) for long books (#127).
@@ -33,7 +33,7 @@ public sealed partial class CalibreConverter : IConverter
     /// <summary>Formats only calibre reads.</summary>
     internal static readonly string[] OnlyCalibreReads = ["lit", "lrf"];
 
-    /// <summary>Formats calibre writes (MOBI and AZW3 are written by the built-in engine too).</summary>
+    /// <summary>Formats calibre writes (all but LIT and LRF are written by the built-in engine too).</summary>
     internal static readonly string[] Outputs = ["mobi", "azw3", "lit", "lrf", "pdb", "pml", "rb", "snb", "tcr"];
 
     /// <summary>Books calibre makes PDFs of: the ones the built-in engines read too, and <see cref="Inputs"/>.</summary>

@@ -27,6 +27,10 @@ public class MarkupWriterLimitTests(EngineFixture fx) : IClassFixture<EngineFixt
         ("md", d => MarkdownWriter.Write(d, _ => null)),
         ("ipynb", d => NotebookWriter.Write(d, fx.NewFolder(), pictures: false)),
         ("opml", d => OpmlWriter.Write(d, _ => null)),
+        ("tex", d => LatexWriter.Write(d, _ => null)),
+        ("adoc", d => AsciiDocWriter.Write(d, _ => null)),
+        ("typ", d => TypstWriter.Write(d, _ => null)),
+        ("man", d => new ManWriter().Write(d)),
     ];
 
     private static T InTime<T>(Func<T> write)

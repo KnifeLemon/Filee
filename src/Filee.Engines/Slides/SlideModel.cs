@@ -27,6 +27,9 @@ internal sealed class SlideDeck
     public required float Height { get; init; }
     public string? Title { get; init; }
     public List<Slide> Slides { get; } = [];
+
+    /// <summary>What the reader left out (videos, pictures it can't decode), for the file's result.</summary>
+    public List<Core.Conversion.LeftOutPart> LeftOut { get; } = [];
 }
 
 /// <summary>One slide as it is shown: background, then the elements in drawing order (master and layout ones first).</summary>

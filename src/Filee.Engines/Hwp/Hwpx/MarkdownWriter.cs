@@ -1,6 +1,7 @@
 // HDocument → Markdown (the dialect MarkdownReader reads back: GitHub tables, ~sub~, ^sup^, footnotes): headings,
-// emphasis, code, lists, block quotes, pipe tables (with column alignment), links, pictures and footnotes. Used for
-// e-books, PDF and HWP / HWPX → MD, and TXTZ.
+// emphasis, code, lists, block quotes, pipe tables (with column alignment), links, pictures, footnotes and equations
+// ($…$ and $$…$$: TeX math as it was read, or written from the equation tree of Word math, 한글 equations and MathML).
+// Used for e-books, PDF and HWP / HWPX → MD, and TXTZ.
 
 using System.Text;
 
@@ -12,6 +13,9 @@ internal sealed class MarkdownWriter
     private readonly List<string> _notes = [];
     private readonly ListNumbers _numbers = new();
     private readonly Markup.MarkupWriteBudget _budget;
+
+    /// <summary>The display equation the paragraph being written holds alone, written as $$…$$.</summary>
+    private HEquation? _display;
 
     private MarkdownWriter(Func<string, string?> imageTarget, Markup.MarkupWriteBudget? budget)
     {
@@ -74,7 +78,10 @@ internal sealed class MarkdownWriter
 
     private void Paragraph(HParagraph paragraph, StringBuilder sb, string prefix, HBlock? next)
     {
+        _display = paragraph.Inlines.Count(i => i is not HBookmark) == 1 && paragraph.Inlines.OfType<HEquation>().FirstOrDefault() is { } lone
+            && HEquation.IsDisplay(lone, paragraph) ? lone : null;
         var text = Inlines(paragraph.Inlines);
+        _display = null;
         if (paragraph.Inlines.Any(i => i is HShape { Kind: HShapeKind.Line }) && text.Trim().Length == 0)
         {
             sb.Append(prefix).Append("---\n\n");
@@ -210,6 +217,10 @@ internal sealed class MarkdownWriter
             {
                 case HEquation { Tex: not null } equation:
                     sb.Append(equation.Text); // TeX math as it was written ($x$, \[x\]), not escaped
+                    break;
+                case HEquation equation when TexMathWriter.Write(equation.Math) is { Length: > 0 } tex:
+                    // Word math, 한글 equations, MathML: TeX math too, which MarkdownReader reads back as equations.
+                    sb.Append(equation.Display || _display == equation ? $"$${tex}$$" : $"${tex}$");
                     break;
                 case HText text:
                     sb.Append(Run(text.Text, text.Format));

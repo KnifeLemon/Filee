@@ -67,7 +67,7 @@ public static class FormatFields
             "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "exe", "svg", "svgz", "emf", "vsd", "odg", "otg", "canvas", "crtx",
             "docm", "dotx", "dotm", "doc", "odt", "ott", "rtf", "wps", "ofd", "udf", "xps", "djvu", "mm", "xmind", "abw", "pages", "pub", "eml", "msg",
             "p7m", "xlsm", "xltx", "xlsb", "xls", "ods", "ots", "tsv", "et", "numbers", "pptm", "potx", "potm", "ppsx", "ppt",
-            "odp", "otp", "key", "dps", "md", "html", "mhtml", "opml", "json", "xml", "vcf", "ics", "epub", "kepub",
+            "odp", "otp", "key", "dps", "iwb", "notebook", "md", "html", "mhtml", "opml", "json", "xml", "vcf", "ics", "epub", "kepub",
             "azw3", "fb2", "cbz", "cbr", "cb7", "cbt", "cbc", "m4v", "mkv", "webm", "avi", "wmv", "mpg", "ts",
             "m2ts", "ogv", "m4b", "m4r", "aac", "flac", "ogg", "opus", "wma", "aiff", "weba", "mka", "qta", "7z", "rar",
             "dmg", "iso", "img", "alz", "egg", "split", "dxf", "srt", "vtt", "smi", "lrc",
