@@ -331,6 +331,9 @@ public sealed class PptReaderTests(EngineFixture fx) : IClassFixture<EngineFixtu
         ppt.Slides.Add(slide);
         Assert.Equal("freeform shapes", new FileeRendererConverter().FirstUnsupported(Save(ppt), "ppt"));
         Assert.Null(new FileeRendererConverter().FirstUnsupported(Save(RichDeck()), "ppt"));
+        // And counted for the deck's note: the shape has no text to keep, so nothing of it is drawn.
+        Assert.Equal([new LeftOutPart("notice.renderer_left_out.shapes_left_out", 1)],
+            PptxSlideReader.Read(Save(ppt), cancellationToken: Token, leftOut: true).LeftOut);
     }
 
     // ───────────────────────── Hostile input ─────────────────────────
