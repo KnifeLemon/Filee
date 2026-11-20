@@ -9,6 +9,7 @@
 
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 using Filee.Engines.Archives.Lzma;
 using SharpCompress.Compressors.BZip2;
 using SharpCompressMode = SharpCompress.Compressors.CompressionMode;
@@ -330,7 +331,10 @@ internal sealed class BcjStream(Stream inner, uint start) : ReadOnlyDecoderStrea
         return count;
     }
 
+    // Compiled fully optimised on first use (AggressiveOptimization), as the BCJ2 loop below: each call converts a
+    // whole buffer, so the ReadyToRun code would run for most of a job.
     /// <summary>Converts what it can of <paramref name="data"/> (starting at <see cref="_ip"/>); returns how many bytes are done.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private int Convert(Span<byte> data)
     {
         if (data.Length < 5)
@@ -341,10 +345,14 @@ internal sealed class BcjStream(Stream inner, uint start) : ReadOnlyDecoderStrea
         var limit = data.Length - 4;
         while (true)
         {
-            while (at < limit && (data[at] & 0xFE) != 0xE8)
-                at++;
-            if (at >= limit)
+            // The next E8 or E9, found many bytes at a time.
+            var next = at < limit ? data[at..limit].IndexOfAny((byte)0xE8, (byte)0xE9) : -1;
+            if (next < 0)
+            {
+                at = Math.Max(at, limit);
                 break;
+            }
+            at += next;
             var gap = at - lastOpcode;
             if (gap > 3)
             {
@@ -414,7 +422,6 @@ internal sealed class Bcj2Stream : ReadOnlyDecoderStream
     private readonly ushort[] _probabilities = new ushort[256 + 2];
     private readonly long _size;
     private readonly byte[] _pending = new byte[4];
-    private readonly byte[] _target = new byte[4];
     private int _pendingAt = 4;
     private long _done;
     private byte _previous;
@@ -429,70 +436,78 @@ internal sealed class Bcj2Stream : ReadOnlyDecoderStream
         _rc.Start(rc, new byte[1 << 12]);
     }
 
+    /// <remarks>
+    /// The main stream's bytes are copied while they are scanned, one at a time, and everything the loop changes stays
+    /// in locals until the end: x86 code has an opcode to look at every few dozen bytes, so the work per opcode (the
+    /// bit, the target) has to be small next to the copying.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public override int Read(Span<byte> buffer)
     {
+        // At most what the stream still has; a target cut off by the end is not handed out.
+        var limit = (int)Math.Min(buffer.Length, _size - _done);
         var n = 0;
-        while (n < buffer.Length && _done < _size)
+        while (_pendingAt < 4 && n < limit)
+            buffer[n++] = _pending[_pendingAt++];
+        var previous = _previous;
+        var main = _mainBuffer;
+        var at = _mainPosition;
+        var end = _mainEnd;
+        while (n < limit)
         {
-            if (_pendingAt < 4)
+            if (at == end)
             {
-                buffer[n++] = _pending[_pendingAt++];
-                _done++;
-                continue;
-            }
-            if (_mainPosition == _mainEnd)
-            {
-                _mainPosition = 0;
-                _mainEnd = Math.Max(0, _main.Read(_mainBuffer, 0, _mainBuffer.Length));
-                if (_mainEnd == 0)
+                at = 0;
+                end = Math.Max(0, _main.Read(main, 0, main.Length));
+                if (end == 0)
+                {
+                    _mainPosition = _mainEnd = 0;
                     throw new InvalidDataException("the BCJ2 main stream ends too early");
+                }
             }
-            // The main stream's bytes up to and with the next opcode that may have a target taken out, in one copy.
-            var run = _mainBuffer.AsSpan(_mainPosition, (int)Math.Min(Math.Min(_mainEnd - _mainPosition, buffer.Length - n), _size - _done));
-            var previous = _previous;
-            var length = 0;
+            // The main stream's bytes up to and with the next opcode that may have a target taken out.
+            var stop = at + Math.Min(end - at, limit - n);
+            var before = previous;
+            var b = (byte)0;
             var jump = false;
-            while (length < run.Length)
+            while (at < stop)
             {
-                var c = run[length++];
-                if (IsJump(previous, c))
+                b = main[at++];
+                buffer[n++] = b;
+                if ((b & 0xFE) == 0xE8 || previous == 0x0F && (b & 0xF0) == 0x80)
                 {
                     jump = true;
-                    previous = c;
+                    before = previous;
+                    previous = b;
                     break;
                 }
-                previous = c;
+                previous = b;
             }
-            run[..length].CopyTo(buffer[n..]);
-            n += length;
-            _done += length;
-            _mainPosition += length;
-            var b = run[length - 1];
-            var before = length >= 2 ? run[length - 2] : _previous;
-            if (!jump || _done == _size)
-            {
-                _previous = previous;
+            // The last byte of the stream has no bit, whatever it is.
+            if (!jump || _done + n == _size)
                 continue;
-            }
             var index = b == 0xE8 ? before : b == 0xE9 ? 256 : 257;
             if (_rc.DecodeBit(ref _probabilities[index]) == 0)
+                continue;
+            var relative = (b == 0xE8 ? _call : _jump).ReadUInt32BigEndian() - (uint)(_done + n + 4);
+            previous = (byte)(relative >> 24);
+            if (limit - n >= 4)
             {
-                _previous = (byte)b;
+                BinaryPrimitives.WriteUInt32LittleEndian(buffer[n..], relative);
+                n += 4;
                 continue;
             }
-            (b == 0xE8 ? _call : _jump).ReadExactly(_target);
-            var relative = BinaryPrimitives.ReadUInt32BigEndian(_target) - (uint)(_done + 4);
-            _pending[0] = (byte)relative;
-            _pending[1] = (byte)(relative >> 8);
-            _pending[2] = (byte)(relative >> 16);
-            _pending[3] = (byte)(relative >> 24);
+            BinaryPrimitives.WriteUInt32LittleEndian(_pending, relative);
             _pendingAt = 0;
-            _previous = _pending[3];
+            while (_pendingAt < 4 && n < limit)
+                buffer[n++] = _pending[_pendingAt++];
         }
+        _mainPosition = at;
+        _mainEnd = end;
+        _previous = previous;
+        _done += n;
         return n;
     }
-
-    private static bool IsJump(byte previous, byte b) => (b & 0xFE) == 0xE8 || previous == 0x0F && (b & 0xF0) == 0x80;
 }
 
 /// <summary>

@@ -11,6 +11,7 @@
 // threads of its own (MatchFinder.StartAhead, the trees split between them by hash), which gives the same bytes too.
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Filee.Core.Presets;
 
 namespace Filee.Engines.Archives.Lzma;
@@ -31,7 +32,8 @@ internal readonly record struct Lzma2Settings(int Dictionary, LzmaEncoderSetting
         var settings = level switch
         {
             ArchiveLevel.Store => new Lzma2Settings(1 << 12, default, Store: true),
-            ArchiveLevel.Fast => new Lzma2Settings(1 << 18, new LzmaEncoderSettings(Depth: 8, Nice: 32, Optimal: false, Tree: false), false),
+            // Six chain candidates: against eight, about 4 % less work for 0.25 % larger output.
+            ArchiveLevel.Fast => new Lzma2Settings(1 << 18, new LzmaEncoderSettings(Depth: 6, Nice: 32, Optimal: false, Tree: false), false),
             ArchiveLevel.Maximum => new Lzma2Settings(1 << 26, new LzmaEncoderSettings(Depth: 64, Nice: 64, Optimal: true, Tree: true), false),
             _ => new Lzma2Settings(1 << 24, new LzmaEncoderSettings(Depth: 32, Nice: 32, Optimal: true, Tree: true), false),
         };
@@ -346,6 +348,12 @@ internal sealed class Lzma2BlockEncoder
         }
     }
 
+    // Compiled fully optimised on first use, with the fast level's per-symbol code (LzmaEncoder.Encode and EncodeOne
+    // and the helpers marked AggressiveInlining) inlined, as the tiered compiler ends up doing; the methods it calls
+    // stay separate and are compiled the same way. A chunk then runs at full speed from the first one, where the
+    // ReadyToRun and instrumented code made the first second of a fast job about a third slower, more so with many
+    // threads.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void EncodeChunk(int end, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

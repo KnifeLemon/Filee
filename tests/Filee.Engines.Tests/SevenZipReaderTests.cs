@@ -8,6 +8,7 @@ using System.Buffers.Binary;
 using System.Text;
 using Filee.Core.Presets;
 using Filee.Engines.Archives;
+using Filee.Engines.Archives.Lzma;
 using static Filee.Engines.Tests.ArchiveBuilders;
 using static Filee.Engines.Tests.ArchiveFormatBuilders;
 
@@ -278,6 +279,100 @@ public class SevenZipReaderTests(EngineFixture fx) : IClassFixture<EngineFixture
             await Run7zAsync("a", "-t7z", "-mf=" + filter, "-mx1", output, source);
             Assert.Contains(filter, Methods(output));
             Assert.Equal(Snapshot(source), Snapshot(Path.Combine(ReadOwn(output, dir), "code")));
+        }
+    }
+
+    [Fact]
+    public void BCJ2_streams_decode_alike_in_reads_of_any_size()
+    {
+        // Lengths around the decoder's 64 KiB main buffer, and opcodes in the last bytes: a target cut by a read's end
+        // waits for the next read, one cut by the end of the data is dropped, and the last byte never has a bit.
+        foreach (var length in new[] { 1, 2, 5, 6, 9, 64, 65_535, 65_541, 200_003 })
+        {
+            var data = X86Like(Math.Max(length, 16), length).AsSpan(0, length).ToArray();
+            foreach (var back in new[] { 1, 3, 5, 6 })
+            {
+                if (back <= length)
+                    data[^back] = 0xE8;
+            }
+            var (main, call, jump, rc) = Bcj2Encode(data, length);
+            foreach (var seed in new[] { 1, 2, 3 })
+            {
+                using var decoder = new Bcj2Stream(new MemoryStream(main), new MemoryStream(call), new MemoryStream(jump),
+                    new MemoryStream(rc), data.Length);
+                Assert.Equal(data, ReadInPieces(decoder, seed));
+            }
+        }
+
+        // A main stream that ends early is damage.
+        var code = X86Like(50_000, 9);
+        var (m, c, j, r) = Bcj2Encode(code, 9);
+        using var cut = new Bcj2Stream(new MemoryStream(m[..^10]), new MemoryStream(c), new MemoryStream(j), new MemoryStream(r),
+            code.Length);
+        Assert.Throws<InvalidDataException>(() => ReadInPieces(cut, 1));
+    }
+
+    /// <summary>
+    /// A BCJ2 encoder as the format describes it (Filee only decodes BCJ2): three of four opcodes that have four bytes
+    /// after them get their target taken out, made absolute and big-endian, to the call stream (E8) or the jump stream
+    /// (E9, 0F 8x); a range-coded bit per opcode (none for the last byte) says which.
+    /// </summary>
+    private static (byte[] Main, byte[] Call, byte[] Jump, byte[] Rc) Bcj2Encode(byte[] data, int seed)
+    {
+        var random = new Random(seed);
+        var probabilities = new ushort[256 + 2];
+        RangeCoder.Reset(probabilities);
+        var rc = new RangeEncoder(data.Length + 1024);
+        using var main = new MemoryStream();
+        using var call = new MemoryStream();
+        using var jump = new MemoryStream();
+        Span<byte> target = stackalloc byte[4];
+        byte previous = 0;
+        for (var i = 0; i < data.Length; i++)
+        {
+            var b = data[i];
+            main.WriteByte(b);
+            var opcode = (b & 0xFE) == 0xE8 || previous == 0x0F && (b & 0xF0) == 0x80;
+            if (!opcode || i == data.Length - 1)
+            {
+                previous = b;
+                continue;
+            }
+            var convert = i + 4 < data.Length && random.Next(4) != 0;
+            rc.EncodeBit(ref probabilities[b == 0xE8 ? previous : b == 0xE9 ? 256 : 257], convert ? 1 : 0);
+            if (!convert)
+            {
+                previous = b;
+                continue;
+            }
+            var absolute = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(i + 1)) + (uint)(i + 5);
+            BinaryPrimitives.WriteUInt32BigEndian(target, absolute);
+            (b == 0xE8 ? call : jump).Write(target);
+            previous = data[i + 4];
+            i += 4;
+        }
+        rc.Flush();
+        return (main.ToArray(), call.ToArray(), jump.ToArray(), rc.Output.ToArray());
+    }
+
+    /// <summary>Reads <paramref name="stream"/> to its end in pieces of random size (1 byte … 70 KB).</summary>
+    private static byte[] ReadInPieces(Stream stream, int seed)
+    {
+        var random = new Random(seed);
+        var buffer = new byte[70_000];
+        using var output = new MemoryStream();
+        while (true)
+        {
+            var want = random.Next(3) switch
+            {
+                0 => random.Next(1, 6),
+                1 => random.Next(1, 300),
+                _ => random.Next(1, buffer.Length),
+            };
+            var read = stream.Read(buffer, 0, want);
+            if (read == 0)
+                return output.ToArray();
+            output.Write(buffer, 0, read);
         }
     }
 

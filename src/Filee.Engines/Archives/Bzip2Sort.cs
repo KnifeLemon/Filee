@@ -6,16 +6,21 @@
 // Equal rows (a periodic block) may come in any order among themselves; the transform is the same.
 
 using System.Buffers;
+using System.Runtime.CompilerServices;
 
 namespace Filee.Engines.Archives;
 
 /// <summary>Sorts the rotations of a block and writes its Burrows-Wheeler transform.</summary>
 internal static class Bzip2Sort
 {
+    // The sort's methods are compiled fully optimised on first use (AggressiveOptimization): each runs for a whole
+    // block per call, so a job of a few dozen blocks never left their ReadyToRun code, which sorted at about two thirds
+    // the speed.
     /// <summary>
     /// Writes the last column of the sorted rotations of <paramref name="block"/> to <paramref name="output"/> and returns
     /// the row of the unrotated block (bzip2's origin pointer).
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static int Transform(ReadOnlySpan<byte> block, Span<byte> output, CancellationToken cancellationToken)
     {
         var n = block.Length;
@@ -70,6 +75,7 @@ internal static class Bzip2Sort
     /// smallest rotation is never dropped. A periodic text has two or more: the candidates end up on two of them and
     /// match all the way round. A text with one runs out of candidates before.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal static int SmallestRotation(ReadOnlySpan<byte> text, out bool periodic)
     {
         var n = text.Length;
@@ -100,6 +106,7 @@ internal static class Bzip2Sort
     /// The length of the shortest piece <paramref name="text"/> is a whole number of copies of (its length when it is
     /// none), from the prefix function, kept in <paramref name="scratch"/>.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static int RootLength(ReadOnlySpan<byte> text, int[] scratch)
     {
         var n = text.Length;
@@ -152,6 +159,7 @@ internal static class Bzip2Sort
     ///   the suffix array.
     /// The string of names is sorted the same way when names repeat; its alphabet is at most half the size.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void SuffixArray<T>(T text, int n, int alphabet, int[] sa, CancellationToken cancellationToken)
         where T : struct, IText
     {
@@ -311,6 +319,7 @@ internal static class Bzip2Sort
     /// suffix whose predecessor is L-type has nothing to place in the S scan, one whose predecessor is S-type has. The
     /// S scan leaves every entry as the plain position. 0 is both a gap and suffix 0, which never places anything.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void Induce<T>(T text, int n, int[] sa, int[] starts, int[] ends, int[] fill, int alphabet)
         where T : struct, IText
     {

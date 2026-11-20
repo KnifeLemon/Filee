@@ -317,10 +317,14 @@ internal sealed class LzmaDecoder
         }
     }
 
+    // The decoding loops are compiled fully optimised on first use (AggressiveOptimization) instead of starting from
+    // the ReadyToRun code and going through the instrumented tier: those ran the first half second or so of every job
+    // slower, and the job is usually over before the tiered code would come.
     /// <summary>
     /// Decodes until <paramref name="output"/> is full or, with <paramref name="allowEndMarker"/>, the end marker
     /// comes. Returns the bytes written.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public int Decode(RangeDecoder rc, Span<byte> output, bool allowEndMarker)
     {
         // The literal coders come with the properties; without them the probabilities below would not be there.
@@ -365,6 +369,7 @@ internal sealed class LzmaDecoder
     /// hand over when the IsMatch bit changes. Each keeps the range coder in registers for its whole run: one method
     /// for both had more live values than the CPU has registers, and the JIT spilled the coder in the literal loop.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool Run<TInput>(RangeDecoder rc, int stop, bool allowEndMarker) where TInput : struct, IInputMode
     {
         var start = _pos;
@@ -412,7 +417,7 @@ internal sealed class LzmaDecoder
     /// Decodes literals (the first one's IsMatch bit was read) until a match comes (<see cref="MatchNext"/>) or Run
     /// has to stop (<see cref="Stopped"/>).
     /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
     private int LiteralRun<TInput>(RangeDecoder rc) where TInput : struct, IInputMode
     {
         ref var win = ref MemoryMarshal.GetArrayDataReference(_window);
@@ -502,7 +507,7 @@ internal sealed class LzmaDecoder
     /// (the rest stays pending), until a literal comes (<see cref="LiteralNext"/>), Run has to stop
     /// (<see cref="Stopped"/>) or the end marker (<see cref="EndMarker"/>).
     /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
     private int MatchRun<TInput>(RangeDecoder rc, bool allowEndMarker) where TInput : struct, IInputMode
     {
         var window = _window;
@@ -677,6 +682,7 @@ internal sealed class LzmaDecoder
     }
 
     /// <summary>Does the first <paramref name="count"/> copies MatchRun put off, in order.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void CopyDeferred(byte[] window, int count)
     {
         ref var deferred = ref MemoryMarshal.GetArrayDataReference(_deferred);

@@ -77,6 +77,7 @@ internal sealed class LzmaEncoder : LzmaModel
     /// Codes symbols from the cursor until <paramref name="end"/> (no match crosses it) or until the coder's output
     /// would pass <paramref name="packedLimit"/> bytes.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Encode(RangeEncoder rc, int end, long packedLimit)
     {
         while (_mf.Position < end && rc.FlushedSize < packedLimit)
@@ -112,6 +113,7 @@ internal sealed class LzmaEncoder : LzmaModel
             _nextAt -= shift;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EncodeOne(RangeEncoder rc, int end)
     {
         var buffer = _mf.Buffer;
@@ -207,6 +209,7 @@ internal sealed class LzmaEncoder : LzmaModel
     private static bool FarNearer(uint near, uint far) => far >> 7 > near;
 
     /// <summary>The longest repeat of one of the last four distances at <paramref name="pos"/> (0 when none of 2 or more).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int LongestRep(byte[] buffer, int pos, int available, out int repIndex)
     {
         repIndex = 0;
@@ -232,6 +235,7 @@ internal sealed class LzmaEncoder : LzmaModel
     }
 
     /// <summary>True when one of the last four distances repeats at least <paramref name="length"/> bytes at <paramref name="pos"/> (one byte past the cursor).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool RepReaches(byte[] buffer, int pos, int available, int length)
     {
         if (available < length)
@@ -523,6 +527,7 @@ internal sealed class LzmaEncoder : LzmaModel
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private uint Rep(int index) => index switch { 0 => Rep0, 1 => Rep1, 2 => Rep2, _ => Rep3 };
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void EmitLiteralOrShortRep(RangeEncoder rc)
     {
         var buffer = _mf.Buffer;
@@ -543,6 +548,7 @@ internal sealed class LzmaEncoder : LzmaModel
         EmitLiteral(rc);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void EmitShortRep(RangeEncoder rc)
     {
         var state2 = (State << 4) + ((int)_total & PbMask);
@@ -554,6 +560,7 @@ internal sealed class LzmaEncoder : LzmaModel
         Advance(1);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EmitLiteral(RangeEncoder rc)
     {
         var buffer = _mf.Buffer;
@@ -599,6 +606,7 @@ internal sealed class LzmaEncoder : LzmaModel
         return price;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void EmitMatch(RangeEncoder rc, int length, uint distance)
     {
         var posState = (int)_total & PbMask;
@@ -615,6 +623,7 @@ internal sealed class LzmaEncoder : LzmaModel
         Advance(length);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void EmitRep(RangeEncoder rc, int index, int length)
     {
         var posState = (int)_total & PbMask;

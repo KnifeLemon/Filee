@@ -84,6 +84,7 @@ internal sealed class RangeEncoder(int capacity)
     }
 
     /// <summary>A literal (8 bits through the tree at <paramref name="probabilities"/>, most significant first).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void EncodeLiteral(ref ushort probabilities, uint symbol)
     {
         var low = _low;
@@ -103,6 +104,7 @@ internal sealed class RangeEncoder(int capacity)
     /// A literal after a match: while its bits agree with <paramref name="matchByte"/>'s, the probabilities picked by
     /// that byte's bit (0x100 or 0x200 on) are used, after the first difference the plain ones.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void EncodeMatchedLiteral(ref ushort probabilities, uint symbol, uint matchByte)
     {
         var low = _low;
@@ -147,6 +149,7 @@ internal sealed class RangeEncoder(int capacity)
     }
 
     /// <summary>The low <paramref name="count"/> bits of <paramref name="value"/> at probability one half, most significant first.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void EncodeDirectBits(uint value, int count)
     {
         var low = _low;
@@ -166,6 +169,7 @@ internal sealed class RangeEncoder(int capacity)
     }
 
     /// <summary>A <paramref name="bits"/>-bit symbol through a binary tree of probabilities, most significant bit first.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void EncodeTree(Span<ushort> probabilities, int bits, uint symbol)
     {
         if (probabilities.Length < 1 << bits)
@@ -185,6 +189,7 @@ internal sealed class RangeEncoder(int capacity)
     }
 
     /// <summary>Like <see cref="EncodeTree"/>, least significant bit first.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void EncodeReverseTree(Span<ushort> probabilities, int bits, uint symbol)
     {
         if (probabilities.Length < 1 << bits)
