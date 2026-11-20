@@ -111,7 +111,7 @@ public sealed class DocumentTablesConverter : IConverter, ICapabilityCheck
             if (!box && tables.Count == MaxSheets)
                 throw Documents.DocumentLimits.TooLarge($"The document has more than {Documents.DocumentLimits.Count(MaxSheets)} tables, one sheet each.");
             // Boxes past the shared sheet's last row are left out, as rows past a sheet's edge are.
-            if (box && boxes.Count == MaxSheetRows)
+            if (box && boxes.Count > SheetPagination.MaxRow)
                 continue;
             // Every position a cell covers is written (a merged area keeps its borders); the whole workbook gets the
             // budget of one table.

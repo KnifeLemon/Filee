@@ -325,12 +325,12 @@ public sealed class OdgWriterTests(EngineFixture fx) : IClassFixture<EngineFixtu
 
     // ───────────────────────── Hostile files ─────────────────────────
 
-    private static ConversionRefusedException RefusedQuickly(Action action)
+    private static ConversionRefusedException RefusedQuickly(Action action, string key = DocumentLimits.TooLargeKey)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var refusal = Assert.Throws<ConversionRefusedException>(action);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}");
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(key, refusal.ErrorKey);
         return refusal;
     }
 
@@ -354,7 +354,7 @@ public sealed class OdgWriterTests(EngineFixture fx) : IClassFixture<EngineFixtu
         RefusedQuickly(() => SvgDrawingReader.Read(large, limits, Token));
         var deep = Path.Combine(folder, "deep.svg");
         File.WriteAllText(deep, "<svg xmlns=\"http://www.w3.org/2000/svg\">" + string.Concat(Enumerable.Repeat("<g>", 600)) + string.Concat(Enumerable.Repeat("</g>", 600)) + "</svg>");
-        RefusedQuickly(() => SvgDrawingReader.Read(deep, cancellationToken: Token));
+        RefusedQuickly(() => SvgDrawingReader.Read(deep, cancellationToken: Token), DocumentLimits.ErrorKey);
         // Not SVG: the reader's reason.
         var html = Path.Combine(folder, "page.svg");
         File.WriteAllText(html, "<html><body>no drawing</body></html>");
@@ -364,7 +364,7 @@ public sealed class OdgWriterTests(EngineFixture fx) : IClassFixture<EngineFixtu
         var emf = Path.Combine(folder, "big.emf");
         File.WriteAllBytes(emf, new EmfBuilder(100, 100).Rectangle(0, 0, 50, 50).ToArray());
         var refused = Assert.Throws<ConversionRefusedException>(() => DrawingConverter.MetafilePage(emf, new MetafileLimits { MaxFileBytes = 64 }));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
         var broken = Path.Combine(folder, "broken.wmf");
         File.WriteAllBytes(broken, Encoding.ASCII.GetBytes("not a metafile at all, just text"));
         Assert.Throws<InvalidDataException>(() => DrawingConverter.MetafilePage(broken));

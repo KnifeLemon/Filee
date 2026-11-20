@@ -113,13 +113,13 @@ internal static class SvgDrawingReader
     {
         var length = new FileInfo(path).Length;
         if (length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The SVG file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The SVG file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         var bytes = File.ReadAllBytes(path);
         if (!SvgRenderer.IsGzip(bytes))
             return bytes;
         using var gzip = new GZipStream(new MemoryStream(bytes, writable: false), CompressionMode.Decompress);
         using var limited = new LimitedStream(gzip, limits.MaxPartBytes,
-            () => DocumentLimits.Exceeded($"The SVGZ file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPartBytes)}."));
+            () => DocumentLimits.TooLarge($"The SVGZ file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPartBytes)}."));
         using var copy = new MemoryStream();
         limited.CopyTo(copy);
         return copy.ToArray();

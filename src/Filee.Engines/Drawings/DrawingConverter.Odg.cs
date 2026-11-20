@@ -124,7 +124,7 @@ public sealed partial class DrawingConverter
         limits ??= MetafileLimits.Default;
         var length = new FileInfo(path).Length;
         if (length > limits.MaxFileBytes)
-            throw MetafileLimits.Exceeded($"The metafile is {Documents.DocumentLimits.Megabytes(length)}, more than {Documents.DocumentLimits.Megabytes(limits.MaxFileBytes)}.");
+            throw MetafileLimits.TooLarge($"The metafile is {Documents.DocumentLimits.Megabytes(length)}, more than {Documents.DocumentLimits.Megabytes(limits.MaxFileBytes)}.");
         var data = File.ReadAllBytes(path);
         if (Metafile.Detect(data) is null)
             throw new InvalidDataException("The file is neither an EMF nor a WMF metafile.");
