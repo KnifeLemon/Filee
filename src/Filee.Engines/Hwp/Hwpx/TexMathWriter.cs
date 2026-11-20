@@ -5,8 +5,8 @@
 // What it writes stays within amsmath and amssymb: symbols by the command LatexMath reads them from (≤ → \leq), large
 // operators with limits, \frac / \genfrac, \sqrt[n], scripts (primes as '), \lim, function names (\sin, else
 // \operatorname), matrix / pmatrix / bmatrix / vmatrix, cases, aligned / gathered / array for piles, \left … \right,
-// accents (wide ones over several characters), \mathrm \mathit \mathbf \boldsymbol, the letters of \mathbb \mathcal
-// \mathfrak, spaces, \not, and \text{…} for
+// accents (wide ones over several characters), \overset / \underset / \xrightarrow / \xleftarrow for stacked content,
+// \mathrm \mathit \mathbf \boldsymbol, the letters of \mathbb \mathcal \mathfrak, spaces, \not, and \text{…} for
 // words and characters without a command. Greek capitals that look Latin are Latin letters, as TeX has no command for
 // them. A character with no command at all is written as itself inside \text, which XeLaTeX and LuaLaTeX set.
 //
@@ -177,6 +177,9 @@ internal static class TexMathWriter
                     Base(scripts.Base);
                     Scripts(scripts.Sub, scripts.Sup);
                     break;
+                case MathStack stack:
+                    Stack(stack);
+                    break;
                 case MathBigOperator big:
                     if (BigOperators.TryGetValue(big.Glyph, out var name))
                         Word(name);
@@ -264,6 +267,57 @@ internal static class TexMathWriter
                 Raw("^");
                 Group(sup);
             }
+        }
+
+        /// <summary>
+        /// Stacked content: an arrow carrying text as \xrightarrow[under]{over} (\xleftarrow), anything else as \overset
+        /// and \underset.
+        /// </summary>
+        private void Stack(MathStack stack)
+        {
+            var arrow = stack.Base switch
+            {
+                MathCommand { Glyph: "→" or "⟶" } or MathSymbol { Text: "→" } => "xrightarrow",
+                MathCommand { Glyph: "←" or "⟵" } or MathSymbol { Text: "←" } => "xleftarrow",
+                _ => null,
+            };
+            if (arrow is not null)
+            {
+                Word(arrow);
+                if (stack.Under is not null)
+                {
+                    // Braced, so that a ] in it doesn't end the optional argument.
+                    Raw("[");
+                    Group(stack.Under);
+                    Raw("]");
+                }
+                Group(stack.Over ?? MathRow.Empty);
+                return;
+            }
+            // \overset{over}{\underset{under}{base}} when both are there.
+            if (stack.Over is not null)
+            {
+                Word("overset");
+                Group(stack.Over);
+                if (stack.Under is null)
+                {
+                    Group(stack.Base);
+                    return;
+                }
+                Raw("{");
+            }
+            if (stack.Under is not null)
+            {
+                Word("underset");
+                Group(stack.Under);
+                Group(stack.Base);
+            }
+            else
+            {
+                Node(stack.Base, aligned: false);
+            }
+            if (stack.Over is not null)
+                Raw("}");
         }
 
         private static int Primes(MathNode node)

@@ -679,7 +679,9 @@ internal sealed class HEquation(MathNode math, HCharFormat format, string? sourc
     /// <summary>The TeX of an equation read from TeX math (without its $ or \( delimiters); null for others.</summary>
     public string? Tex { get; init; }
 
-    /// <summary>A display equation (TeX's $$ … $$ and \[ … \]), on a line of its own; inline ones are false.</summary>
+    /// <summary>
+    /// A display equation (TeX's $$ … $$ and \[ … \], Word's m:oMathPara), on a line of its own; inline ones are false.
+    /// </summary>
     public bool Display { get; init; }
 
     /// <summary>

@@ -357,7 +357,7 @@ internal sealed partial class DocxWriter
                         // Word math; its runs take the equation's size and colour, the math font and style their own.
                         var display = _paragraph is { } paragraph && HEquation.IsDisplay(equation, paragraph);
                         var format = equation.Format with { Font = null, EastAsianFont = null, Bold = null, Italic = null, Underline = null, Strike = null, Superscript = null, Subscript = null };
-                        sb.Append(OmmlWriter.Write(equation.Math, display, RunProperties(format, context with { Link = false, StyleBold = false })));
+                        sb.Append(OmmlWriter.Write(equation.Math, display, RunProperties(format, context with { Link = false, StyleBold = false }), _paragraph?.Format.Align));
                         break;
                     }
                 case HText text:

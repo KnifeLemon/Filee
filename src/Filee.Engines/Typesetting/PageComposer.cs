@@ -1740,6 +1740,7 @@ internal sealed class PageComposer
                 case HEquation equation:
                     var resolved = new HEquation(equation.Math, Format(equation.Format))
                     {
+                        Display = equation.Display,
                         Width = equation.Width,
                         Height = equation.Height,
                         BaseLine = equation.BaseLine,
