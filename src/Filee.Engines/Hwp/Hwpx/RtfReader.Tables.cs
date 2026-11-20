@@ -3,8 +3,10 @@
 // A table is a run of rows: \trowd starts a row's definition (its cells' right edges \cellxN, merges, shading and
 // borders), the paragraphs marked \intbl fill its cells, \cell ends a cell and \row the row. The columns of the
 // table are every cell edge of every row, so rows with other divisions keep their cells where they are. A first row
-// with \trautofit1 makes the layout size the columns as Word's autofit tables (HTableSizing, with \trwWidth). Nested
-// tables (\itap > 1) are read as the paragraphs of their outer cell.
+// with \trautofit1 makes the layout size the columns as Word's autofit tables (HTableSizing, with \trwWidth and each
+// cell's \clwWidth). The first row's \trgaph and \trpadd* give the cells' padding and its \trleft the table's indent,
+// negative into the margin as Word writes it (\trleft-108 for \trgaph108). Nested tables (\itap > 1) are read as the
+// paragraphs of their outer cell.
 //
 // Lists come from \listtable (levels with their number format and \leveltext) through \listoverridetable (\lsN →
 // list). Pictures are \pict groups (PNG, JPEG, EMF, WMF) as hex or \bin data, sized by \picwgoal / \pichgoal and
@@ -32,6 +34,10 @@ internal sealed partial class RtfReader
         public int Shade { get; set; }
         public HVerticalAlign Align { get; set; }
         public bool Bordered { get; set; }
+
+        /// <summary>The cell's preferred width (\clwWidth) and its unit (\clftsWidth: 2 fiftieths of a percent, 3 twips).</summary>
+        public int Width { get; set; }
+        public int WidthUnit { get; set; }
     }
 
     private sealed class RowDef
@@ -51,6 +57,16 @@ internal sealed partial class RtfReader
         /// <summary>The row's preferred width (\trwWidth) and its unit (\trftsWidth: 2 fiftieths of a percent, 3 twips).</summary>
         public int Width { get; set; }
         public int WidthUnit { get; set; }
+
+        /// <summary>\trgaph: half the space between cells, the cells' left and right padding unless \trpaddl / \trpaddr say.</summary>
+        public int? Gap { get; set; }
+
+        /// <summary>
+        /// \trpaddl, \trpaddr, \trpaddt, \trpaddb: the cells' padding (left, right, top, bottom), counted when its unit
+        /// (\trpaddfl, \trpaddfr, \trpaddft, \trpaddfb) is 3, twips; 0 or none ignores it (\trgaph's, Word 97).
+        /// </summary>
+        public int[] Padding { get; private init; } = new int[4];
+        public int[] PaddingUnits { get; private init; } = new int[4];
 
         /// <summary>The cells, shared with the rows before that kept this definition; copied when it changes.</summary>
         public List<CellDef> Cells { get; private set; } = [];
@@ -77,6 +93,9 @@ internal sealed partial class RtfReader
             AutoFit = AutoFit,
             Width = Width,
             WidthUnit = WidthUnit,
+            Gap = Gap,
+            Padding = [.. Padding],
+            PaddingUnits = [.. PaddingUnits],
             Cells = Cells,
             _shared = true,
         };
@@ -126,6 +145,21 @@ internal sealed partial class RtfReader
                 return true;
             case "rtlrow" or "ltrrow":
                 TableOf(story).Def.RightToLeft = word == "rtlrow";
+                return true;
+            case "trgaph":
+                TableOf(story).Def.Gap = value;
+                return true;
+            case "trpaddl" or "trpaddr" or "trpaddt" or "trpaddb":
+                TableOf(story).Def.Padding[Side(word[^1])] = value;
+                return true;
+            case "trpaddfl" or "trpaddfr" or "trpaddft" or "trpaddfb":
+                TableOf(story).Def.PaddingUnits[Side(word[^1])] = value;
+                return true;
+            case "clwWidth":
+                TableOf(story).Def.Pending.Width = value;
+                return true;
+            case "clftsWidth":
+                TableOf(story).Def.Pending.WidthUnit = value;
                 return true;
             case "trautofit":
                 TableOf(story).Def.AutoFit = (parameter ?? 1) != 0;
@@ -212,6 +246,39 @@ internal sealed partial class RtfReader
         return false;
     }
 
+    /// <summary>The index of a padding side by the last letter of its word: left, right, top, bottom.</summary>
+    private static int Side(char letter) => letter switch
+    {
+        'l' => 0,
+        'r' => 1,
+        't' => 2,
+        _ => 3,
+    };
+
+    /// <summary>
+    /// The cells' padding Word gives a row (HWPUNIT): \trgaph left and right unless \trpaddl / \trpaddr in twips say
+    /// otherwise, \trpaddt / \trpaddb above and below; null when the row gives none (the layout's default).
+    /// </summary>
+    private static HInsets? Padding(RowDef def)
+    {
+        int? Side(int i) => def.PaddingUnits[i] == 3 ? Math.Clamp(def.Padding[i], 0, 31680) : null;
+        var (left, right, top, bottom) = (Side(0), Side(1), Side(2), Side(3));
+        if (def.Gap is null && left is null && right is null && top is null && bottom is null)
+            return null;
+        var gap = Math.Clamp(def.Gap ?? 0, 0, 31680);
+        return new HInsets(HwpxUnits.FromTwips(left ?? gap), HwpxUnits.FromTwips(right ?? gap), HwpxUnits.FromTwips(top ?? 0),
+            HwpxUnits.FromTwips(bottom ?? 0));
+    }
+
+    /// <summary>A cell's preferred width (\clwWidth with \clftsWidth 3, twips, or 2, fiftieths of a percent); null for none.</summary>
+    private static HPreferredWidth? Preferred(CellDef cell) => cell switch
+    {
+        { WidthUnit: 3, Width: > 0 } => new HPreferredWidth(HWidthType.Absolute, HwpxUnits.FromTwips(Math.Min(cell.Width, 31680))),
+        { WidthUnit: 2, Width: > 0 } => new HPreferredWidth(HWidthType.Percent, Math.Min(10, cell.Width / 5000.0)),
+        { WidthUnit: 1 } => HPreferredWidth.Auto,
+        _ => null,
+    };
+
     /// <summary>Table cells read so far, in every table of the document; cells a row defines without content count too.</summary>
     private long _tableCells;
 
@@ -268,7 +335,9 @@ internal sealed partial class RtfReader
             ColumnCount = Math.Max(1, grid.Count - 1),
             ColumnWidths = grid.Count > 1 ? [.. grid.Zip(grid.Skip(1), (a, b) => HwpxUnits.FromTwips(Math.Max(1, b - a)))] : null,
             Align = builder.Rows[0].Def.Align ?? HAlign.Left,
-            Indent = HwpxUnits.FromTwips(Math.Max(0, builder.Rows[0].Def.Left)),
+            // Word's rows start \trgaph before the text (\trleft-108 with \trgaph108): in the margin.
+            Indent = HwpxUnits.FromTwips(Math.Max(-31680, builder.Rows[0].Def.Left)),
+            CellMargin = Padding(builder.Rows[0].Def),
             Borders = HBorders.Empty,
             // The cells of a right-to-left row run from the right; the model's Align then names the start side, so
             // \trqr (the right side) is the start, and a row that doesn't say starts at the right too.
@@ -331,6 +400,7 @@ internal sealed partial class RtfReader
                     VerticalAlign = cellDef.Align,
                     Fill = cellDef.Shade > 0 && cellDef.Shade < _colors.Count ? _colors[cellDef.Shade] : null,
                     Borders = cellDef.Bordered ? HBorders.Grid : HBorders.Empty,
+                    Width = Preferred(cellDef),
                 };
                 cell.Blocks.AddRange(contents[i].Count > 0 ? contents[i] : [new HParagraph()]);
                 if (cellDef.Vertical == Merge.First)

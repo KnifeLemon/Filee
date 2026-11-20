@@ -53,6 +53,12 @@ internal sealed class HDocument
     /// (TabsRelativeToIndent), not from the margin as Word's. Only the layout engine uses it.
     /// </summary>
     public bool DefaultTabStopFromIndent { get; set; }
+
+    /// <summary>
+    /// Lines are as high as Word makes its fonts' lines: an East Asian font's (one for a Chinese, Japanese or Korean code
+    /// page) ascent and descent and 30% more (DOCX, DOC). Only the layout engine uses it.
+    /// </summary>
+    public bool WordLineHeights { get; set; }
 }
 
 /// <summary>A run of pages sharing page setup, headers and footers (한글 "구역").</summary>

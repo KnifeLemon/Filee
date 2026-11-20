@@ -1253,9 +1253,11 @@ internal sealed partial class ParagraphLayouter
         var rule = settings.LineHeight;
         var fromFont = settings.FontLineHeight || rule.Rule == HLineHeightRule.Multiple;
         float objectAscent = 0, objectDescent = 0, textAscent = 0, textDescent = 0;
-        // Word's multiple spaces text and equations, not pictures: their extent apart.
+        // Other formats' multiple spaces text and equations, not pictures: their extent apart.
         float mathAscent = 0, mathDescent = 0;
         bool anyText = false, anyObject = false, anyMath = false;
+        // Word: symbols that don't make a line taller than its text (see Symbols).
+        float symbolAscent = 0, symbolDescent = 0;
         foreach (var part in parts)
         {
             if (part.Item.Kind == ItemKind.Object)
@@ -1275,14 +1277,29 @@ internal sealed partial class ParagraphLayouter
             if (part.Item.Kind != ItemKind.Text)
                 continue;
             // 한글's line height follows the font size alone; raised or lowered text takes room only with font metrics.
-            var (a, d) = Extent(part.Item.Style, part.Item.Font, fromFont);
+            var (a, d) = Extent(part.Item.Style, Measured(part.Item, settings.Language), fromFont);
             var rise = fromFont ? part.Item.Style.Rise : 0;
+            if (Symbols(part, source.Text))
+            {
+                symbolAscent = Math.Max(symbolAscent, a + rise);
+                symbolDescent = Math.Max(symbolDescent, d - rise);
+                continue;
+            }
             textAscent = Math.Max(textAscent, a + rise);
             textDescent = Math.Max(textDescent, d - rise);
             anyText = true;
         }
+        if (!anyText && symbolAscent + symbolDescent > 0)
+            (textAscent, textDescent, anyText) = (symbolAscent, symbolDescent, true);
         // The text's size; a line without text has the paragraph mark's, which a line of objects only adds no height of.
         var (fontAscent, fontDescent) = anyText ? (textAscent, textDescent) : Extent(mark, Font(mark.Family, mark.Style, mark.Language), fromFont);
+        // Word's document grid: the text takes whole grid lines, in their middle.
+        if (GridRoom(rule, fontAscent + fontDescent) is > 0 and var room)
+        {
+            (fontAscent, fontDescent) = (fontAscent + room, fontDescent + room);
+            if (anyText)
+                (textAscent, textDescent) = (fontAscent, fontDescent);
+        }
         if (!anyText && !anyObject)
             (textAscent, textDescent) = (fontAscent, fontDescent);
         var ascent = Math.Max(objectAscent, textAscent);
@@ -1294,10 +1311,13 @@ internal sealed partial class ParagraphLayouter
             // 한글's percentage adds its share of the text's size, not of an object's height: a line holding a 60 pt
             // picture at 160 % with 10 pt text is 66 pt high, as 한글 stores such lines.
             HLineHeightRule.Percent => textHeight + (fontAscent + fontDescent) * (rule.Value - 100) / 100f,
-            // Word's multiple spaces the line's text and equations; a picture taller than them adds its height unspaced: a
+            // Word's multiple spaces the line's text; a picture or an equation taller than it adds its height unspaced: a
             // picture on a 1.5 line with 12 pt text is its height and half the text's line, not 1.5 times the picture (as
-            // Word's own PDFs have such lines). A line of pictures only adds the paragraph mark's share, as 한글's does.
-            HLineHeightRule.Multiple when anyObject && (anyText || anyMath) => Spaced(Math.Max(textAscent, mathAscent), Math.Max(textDescent, mathDescent)),
+            // Word's own PDFs have such lines). A line of pictures or equations only adds the paragraph mark's share, as
+            // 한글's does (#356: 16 pt between two display equations at 1.5 lines, as in Word). Other formats space an
+            // equation like the text.
+            HLineHeightRule.Multiple when anyObject && WordLineHeights && anyText => Spaced(textAscent, textDescent),
+            HLineHeightRule.Multiple when anyObject && !WordLineHeights && (anyText || anyMath) => Spaced(Math.Max(textAscent, mathAscent), Math.Max(textDescent, mathDescent)),
             HLineHeightRule.Multiple when anyObject => textHeight + (fontAscent + fontDescent) * (rule.Value - 240) / 240f,
             HLineHeightRule.Multiple => textHeight * rule.Value / 240f,
             HLineHeightRule.Exact => value,
@@ -1311,12 +1331,14 @@ internal sealed partial class ParagraphLayouter
             (textUp + textDown) * rule.Value / 240f + Math.Max(0, ascent - textUp) + Math.Max(0, descent - textDown);
     }
 
-    /// <summary>Ascent and descent of a style: 한글's share of the size, or the font's own metrics.</summary>
+    /// <summary>Ascent and descent of a style: 한글's share of the size, or the font's own metrics (Word's: see WordExtent).</summary>
     private (float Ascent, float Descent) Extent(TextStyle style, ResolvedFont font, bool fromFont)
     {
         if (!fromFont)
             return (style.FontSize * HwpAscent, style.FontSize * (1 - HwpAscent));
         var metrics = _shaper.Metrics(font.Font);
+        if (WordLineHeights)
+            return WordExtent(style, font, metrics);
         var scale = style.Size / metrics.UnitsPerEm;
         if (metrics.WinAscent > 0 || metrics.WinDescent > 0)
             return (metrics.WinAscent * scale, metrics.WinDescent * scale);
