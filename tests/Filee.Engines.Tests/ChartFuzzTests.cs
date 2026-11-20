@@ -1,6 +1,7 @@
-// Mutation fuzzing of DrawingML charts (Charts/): the seeds are ChartTests' column chart, a pie with labels and a
-// chart with what costs the reader and the drawer the most (several plots on two pairs of axes, stacked bars, smooth
-// lines with markers and data labels, a doughnut's rings, scatter, a log axis, manual layouts, turned labels, dates),
+// Mutation fuzzing of DrawingML charts (Charts/): the seeds are ChartTests' column chart, a pie with labels, a chart
+// with what costs the reader and the drawer the most (several plots on two pairs of axes, stacked bars, smooth lines
+// with markers and data labels, a doughnut's rings, scatter, a log axis, manual layouts, turned labels, dates) and one
+// with trendlines, error bars, point labels, two category levels, a rich title and gradient and pattern fills,
 // written in code, as a chart part alone (XmlFuzzer), inside a workbook the sheet printer prints and inside a chart
 // template (.crtx) the drawing engine draws (DocumentFuzzer).
 // Every input must be read or refused with InvalidDataException / ConversionRefusedException, in time and on a 1 MB
@@ -37,12 +38,20 @@ public class ChartFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         "<c:txPr><a:bodyPr rot=\"-5400000\"/><a:p><a:pPr><a:defRPr sz=\"40000\" b=\"1\"/></a:pPr></a:p></c:txPr>",
         "<c:marker><c:symbol val=\"star\"/><c:size val=\"72\"/></c:marker>", "<c:dLbls><c:showVal/><c:showPercent/><c:dLblPos val=\"outEnd\"/></c:dLbls>",
         "<c:dispBlanksAs val=\"span\"/>", "<c:min val=\"5\"/><c:max val=\"-5\"/>", "&amp;", "<![CDATA[x]]>",
+        "<c:trendline><c:trendlineType val=\"poly\"/><c:order val=\"99\"/><c:forward val=\"1e308\"/><c:intercept val=\"NaN\"/><c:dispEq/><c:dispRSqr/></c:trendline>",
+        "<c:trendline><c:trendlineType val=\"movingAvg\"/><c:period val=\"-3\"/></c:trendline>", "<c:trendlineType val=\"power\"/>",
+        "<c:errBars><c:errDir val=\"x\"/><c:errValType val=\"cust\"/><c:plus><c:numLit><c:ptCount val=\"99999999\"/></c:numLit></c:plus></c:errBars>",
+        "<c:errValType val=\"stdDev\"/>", "<c:val val=\"1e308\"/>", "<c:noEndCap val=\"1\"/>",
+        "<c:dLbl><c:idx val=\"1048575\"/><c:tx><c:rich><a:p><a:r><a:rPr baseline=\"-9999999\"/><a:t>x</a:t></a:r></a:p></c:rich></c:tx></c:dLbl>",
+        "<c:separator></c:separator>", "<c:style val=\"48\"/>", "<a:pattFill prst=\"pct90\"/>",
+        "<a:gradFill><a:gsLst><a:gs pos=\"-5\"><a:srgbClr val=\"FF0000\"/></a:gs><a:gs pos=\"1e9\"><a:srgbClr val=\"0000FF\"/></a:gs></a:gsLst><a:path path=\"circle\"><a:fillToRect l=\"1e9\"/></a:path></a:gradFill>",
+        "<c:lvl><c:pt idx=\"99999\"><c:v>x</c:v></c:pt></c:lvl>",
     ];
 
     [Fact]
     public void ChartReader_reads_or_refuses_every_mutated_chart_part() =>
         new FuzzHarness(fx, QuickIterations, 20261120).Data("chart", "xml",
-            [.. new[] { Columns(), Slices(Labels), Costly(), Rings(), Points() }.Select(Encoding.UTF8.GetBytes)], FuzzHarness.Xml(Tokens), DrawPart);
+            [.. new[] { Columns(), Slices(Labels), Costly(), Rings(), Points(), Polished() }.Select(Encoding.UTF8.GetBytes)], FuzzHarness.Xml(Tokens), DrawPart);
 
     [Fact]
     public void A_workbook_with_charts_is_read_or_refused_whatever_its_parts_say() =>
@@ -147,4 +156,18 @@ public class ChartFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                       ScatterSeries(1, "Dots", [5, 50, 500], [1, 2, 3], "<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>"), "smoothMarker"),
             Axes(scatter: true).Replace("<c:orientation val=\"minMax\"/></c:scaling>", "<c:logBase val=\"10\"/><c:orientation val=\"minMax\"/></c:scaling>", StringComparison.Ordinal),
             "Points", legend: "l");
+
+    /// <summary>Trendlines, error bars, a point's own label, two category levels, a rich title and gradient and pattern fills.</summary>
+    internal static string Polished()
+    {
+        var levels = MultiLevel(["Q1", "Q2", "Q1", "Q2"], [(0, "2025"), (2, "2026")]);
+        var labels = "<c:dLbls><c:dLbl><c:idx val=\"1\"/><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Own</a:t></a:r></a:p></c:rich></c:tx><c:showVal val=\"1\"/></c:dLbl>" +
+                     "<c:dLbl><c:idx val=\"2\"/><c:delete val=\"1\"/></c:dLbl><c:showVal val=\"1\"/><c:separator>; </c:separator></c:dLbls>";
+        var first = Series(0, "Up", [], [1, 4, 9, 16], Gradient("FF0000", "0000FF") + labels + Trendline("poly", "<c:order val=\"3\"/><c:forward val=\"2\"/><c:dispEq val=\"1\"/><c:dispRSqr val=\"1\"/>") +
+                                                       Trendline("movingAvg", "<c:period val=\"2\"/>") + ErrorBars("percentage", 10) + levels);
+        var second = Series(1, "Down", [], [5, 3, 4, 2], Pattern("dkDnDiag", "00B050") + Trendline("exp", "<c:dispEq val=\"1\"/>") +
+                                                         ErrorBars("cust", extra: Literal("plus", 1, 2) + Literal("minus", 0.5)) + levels);
+        var line = Series(2, "Line", [], [3, 3, 5, 6], LineOf("7030A0") + Trendline("log") + ErrorBars("stdErr", type: "minus") + levels);
+        return Chart(Bars(first + second) + Lines(line), Axes(), "x", legend: "b").Replace(Title("x"), RichTitle("Rich ", "title", "2"), StringComparison.Ordinal);
+    }
 }

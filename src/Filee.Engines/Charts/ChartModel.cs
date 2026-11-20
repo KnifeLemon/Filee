@@ -1,7 +1,7 @@
 // A DrawingML chart as ChartDrawer draws it (ECMA-376 Part 1, 21.2): the plots of the plot area with their series
-// (the values cached in the chart part), the axes they use, the title, the legend and the chart's and plot area's
-// fills. ChartReader builds it from a c:chartSpace part; the sheet printer, the document renderer and the slide
-// renderer draw it.
+// (the values cached in the chart part, their trendlines, error bars and labels), the axes they use, the title, the
+// legend and the chart's and plot area's fills. ChartReader builds it from a c:chartSpace part and OdfChartReader from
+// an OpenDocument chart object; the sheet printer, the document renderer and the slide renderer draw it.
 
 using SkiaSharp;
 
@@ -36,11 +36,31 @@ internal sealed record ChartLine(SKColor? Color = null, float? Width = null, flo
     public static readonly ChartLine Hidden = new(None: true);
 }
 
+/// <summary>
+/// A gradient fill: colour stops (positions 0 to 1) along a line turned <see cref="Angle"/> degrees clockwise from
+/// left to right, or out from a centre (fractions of the shape's box) when <see cref="Radial"/>.
+/// </summary>
+internal sealed record ChartGradient(IReadOnlyList<(float Position, SKColor Color)> Stops, double Angle = 0, bool Radial = false, float CenterX = 0.5f, float CenterY = 0.5f);
+
+/// <summary>
+/// A hatch or pattern fill: lines of <see cref="Color"/> every <see cref="Spacing"/> points, turned <see cref="Angle"/>
+/// degrees anticlockwise from level, <see cref="Crossings"/> sets of them (1 single, 2 crossed, 3 triple), over
+/// <see cref="Background"/> (null = clear). <see cref="Blend"/> instead fills with the colour mixed into the
+/// background by that much (a dotted pattern).
+/// </summary>
+internal sealed record ChartHatch(SKColor Color, SKColor? Background, float Spacing, double Angle, int Crossings = 1, float? Blend = null);
+
 /// <summary>How a bar, slice, area, marker or box is filled and outlined; null parts are the automatic ones.</summary>
 internal sealed record ChartShapeStyle
 {
-    /// <summary>The fill; null = automatic (the series colour), <see cref="SKColors.Transparent"/> = none.</summary>
+    /// <summary>The fill; null = automatic (the series colour), <see cref="SKColors.Transparent"/> = none. A gradient's or hatch's main colour.</summary>
     public SKColor? Fill { get; init; }
+
+    /// <summary>A gradient drawn instead of <see cref="Fill"/>, or null.</summary>
+    public ChartGradient? Gradient { get; init; }
+
+    /// <summary>A hatch or pattern drawn instead of <see cref="Fill"/>, or null.</summary>
+    public ChartHatch? Hatch { get; init; }
 
     /// <summary>The outline; null = automatic.</summary>
     public ChartLine? Line { get; init; }
@@ -54,20 +74,111 @@ internal sealed record ChartTextStyle(string? Family, float Size, bool Bold, boo
     public static readonly ChartTextStyle Default = new(null, 10, false, false, SKColors.Black);
 }
 
+/// <summary>A piece of rich text in its own style; <see cref="Raise"/> lifts it (a superscript) by that part of its size.</summary>
+internal sealed record ChartRun(string Text, ChartTextStyle Style, float Raise = 0);
+
 /// <summary>A title (chart or axis): its lines and how they look.</summary>
 internal sealed record ChartTitle(IReadOnlyList<string> Lines, ChartTextStyle Style, bool Overlay = false)
 {
     /// <summary>Where the file places the title (fractions of the chart), or null for the automatic place.</summary>
     public ChartLayout? Layout { get; init; }
+
+    /// <summary>The lines as runs in their own styles (rich text), or null when all of it is in <see cref="Style"/>.</summary>
+    public IReadOnlyList<IReadOnlyList<ChartRun>>? Runs { get; init; }
 }
 
 /// <summary>c:manualLayout: a box as fractions of the chart area; <see cref="Inner"/> = the plot without its axis labels.</summary>
 internal readonly record struct ChartLayout(double X, double Y, double? Width, double? Height, bool Inner);
 
-/// <summary>What data labels show and where (c:dLbls).</summary>
+/// <summary>What data labels show and where (c:dLbls, or one point's c:dLbl).</summary>
 internal sealed record ChartLabels(bool Value, bool Category, bool Series, bool Percent, string? Position, string? Format, ChartTextStyle Style)
 {
-    public bool Any => Value || Category || Series || Percent;
+    /// <summary>A label's own text (c:dLbl c:tx), lines of runs, shown instead of what the flags say; or null.</summary>
+    public IReadOnlyList<IReadOnlyList<ChartRun>>? Text { get; init; }
+
+    /// <summary>What goes between the parts (c:separator), or null for ", ".</summary>
+    public string? Separator { get; init; }
+
+    public bool Any => Value || Category || Series || Percent || Text is { Count: > 0 };
+}
+
+/// <summary>The curves a trendline fits (c:trendlineType, chart:regression-type).</summary>
+internal enum TrendKind
+{
+    Linear,
+    Exponential,
+    Logarithmic,
+    Polynomial,
+    Power,
+    MovingAverage,
+}
+
+/// <summary>A trendline of a series (c:trendline): the curve, how far it runs on past the points, and its label.</summary>
+internal sealed record ChartTrendline(TrendKind Kind)
+{
+    /// <summary>The polynomial's order (2 to 6).</summary>
+    public int Order { get; init; } = 2;
+
+    /// <summary>The moving average's period (2 or more points).</summary>
+    public int Period { get; init; } = 2;
+
+    /// <summary>How far the line runs on past the last point and before the first, in X units (categories count 1).</summary>
+    public double Forward { get; init; }
+
+    public double Backward { get; init; }
+
+    /// <summary>Where the curve must cross the Y axis (c:intercept), or null to fit it.</summary>
+    public double? Intercept { get; init; }
+
+    public bool ShowEquation { get; init; }
+
+    public bool ShowRSquared { get; init; }
+
+    /// <summary>The line; null = automatic (the series colour, thin).</summary>
+    public ChartLine? Line { get; init; }
+
+    /// <summary>The label's number format (c:trendlineLbl c:numFmt), or null for the automatic one.</summary>
+    public string? Format { get; init; }
+
+    public ChartTextStyle Style { get; init; } = ChartTextStyle.Default;
+}
+
+/// <summary>How long error bars are (c:errValType, chart:error-category).</summary>
+internal enum ErrorAmount
+{
+    Fixed,
+    Percentage,
+    StandardDeviation,
+    StandardError,
+    Variance,
+    Custom,
+}
+
+/// <summary>Error bars of a series (c:errBars): along X or Y, which side, how long, with caps or not.</summary>
+internal sealed record ChartErrorBars(ErrorAmount Amount, double Value)
+{
+    /// <summary>Along the X axis (a scatter series' c:errDir x) instead of the value axis.</summary>
+    public bool AlongX { get; init; }
+
+    public bool Plus { get; init; } = true;
+
+    public bool Minus { get; init; } = true;
+
+    public bool EndCap { get; init; } = true;
+
+    /// <summary>Custom lengths per point (c:plus, c:minus), or null.</summary>
+    public IReadOnlyList<double?>? PlusValues { get; init; }
+
+    public IReadOnlyList<double?>? MinusValues { get; init; }
+
+    /// <summary>The line; null = automatic.</summary>
+    public ChartLine? Line { get; init; }
+
+    /// <summary>
+    /// Excel's statistics: standard deviation bars around the series' mean and its standard error √(Σy² / (n(n − 1)));
+    /// false for LibreOffice's (around each point, s / √n).
+    /// </summary>
+    public bool Office { get; init; } = true;
 }
 
 /// <summary>A marker of a line or scatter series: symbol (none, circle, square, ...), size in points, style.</summary>
@@ -83,6 +194,12 @@ internal sealed class ChartSeries
 
     /// <summary>Category labels (c:cat), or null for 1, 2, 3, ....</summary>
     public IReadOnlyList<string?>? Categories { get; init; }
+
+    /// <summary>
+    /// The outer levels of multi-level categories (c:multiLvlStrCache), from the one next to <see cref="Categories"/>
+    /// outwards; a label stands at the first category of its group, blanks for the rest. Null when there's one level.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<string?>>? CategoryLevels { get; init; }
 
     /// <summary>X values of a scatter series (c:xVal numbers), or null for 1, 2, 3, ....</summary>
     public IReadOnlyList<double?>? XValues { get; init; }
@@ -105,8 +222,15 @@ internal sealed class ChartSeries
 
     public ChartLabels? Labels { get; init; }
 
+    /// <summary>Labels of single points (c:dLbl), by index, over <see cref="Labels"/>.</summary>
+    public IReadOnlyDictionary<int, ChartLabels> PointLabels { get; init; } = new Dictionary<int, ChartLabels>();
+
     /// <summary>A line or scatter series drawn as a smooth curve.</summary>
     public bool Smooth { get; init; }
+
+    public IReadOnlyList<ChartTrendline> Trendlines { get; init; } = [];
+
+    public IReadOnlyList<ChartErrorBars> ErrorBars { get; init; } = [];
 }
 
 /// <summary>One plot of the plot area (c:barChart, c:lineChart, ...): its series, drawn against two axes.</summary>
@@ -132,6 +256,9 @@ internal sealed class ChartPlot
 
     /// <summary>Where a pie's first slice starts, in degrees clockwise from the top.</summary>
     public double FirstSliceAngle { get; init; }
+
+    /// <summary>A pie's slices follow one another clockwise (Office's always do; LibreOffice's unless told otherwise).</summary>
+    public bool Clockwise { get; init; } = true;
 
     /// <summary>Lines (and markers) of a line or scatter plot: c:marker of c:lineChart, c:scatterStyle.</summary>
     public bool Lines { get; init; } = true;

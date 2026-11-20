@@ -1,17 +1,20 @@
 // An OpenDocument chart (an embedded object whose content is office:chart, ODF 1.3 Part 3 §11) → the chart model
 // ChartDrawer draws, so ODT, ODP and ODG charts are drawn the way Word and PowerPoint charts are. The values come from
 // the chart's own table (the table:table inside chart:chart, which LibreOffice writes with every chart, its "local
-// table"): a series' cell range address is looked up there, and a range into another table (a Calc chart's sheet)
-// falls back to the local table's column (or row) of that series. No formula is evaluated.
+// table"): a series' cell range address is looked up there; a range into another table (a Calc chart's sheet) is
+// looked up in the host's sheets when the host hands them over (OdsReader does), else it falls back to the local
+// table's column (or row) of that series. No formula is evaluated.
 //
 // Read: bar and column (stacked, percent, horizontal with chart:vertical), line (symbols, cubic or B-spline curves),
 // area, pie (circle), doughnut (ring) and scatter (X from chart:domain) plots, a series' own chart:class in a
 // combination and its attached axis (primary or secondary Y); the title and subtitle, axis titles, axes (visible,
 // labels shown, logarithmic, minimum, maximum, major interval, reversed, tick marks, label angle, gridlines), the
 // legend's position, data labels (value, percent, category, series, position), fills and strokes of the chart area,
-// the wall (plot area), series and data points (chart:repeated runs), pie offsets, and text properties. Series
-// without a fill take LibreOffice's default palette. 3D charts, radar, bubble, stock, surface and Gantt charts are
-// left out ("charts").
+// the wall (plot area), series and data points (chart:repeated runs): solid, gradient (draw:gradient) and hatch
+// (draw:hatch) fills; pie offsets, the pie's start angle (chart:angle-offset) and direction (anticlockwise unless the
+// angle axis is reversed), trendlines (chart:regression-curve, with the equation and R²), error bars
+// (chart:error-indicator, or the series' own error properties) and text properties. Series without a fill take
+// LibreOffice's default palette. 3D charts, radar, bubble, stock, surface and Gantt charts are left out ("charts").
 //
 // Hostile input: the object comes through its package's XML limits; series per chart and points per chart are bounded
 // as in ChartReader (refused with error.document_too_complex), the local table's cells (repeats counted before they
@@ -55,6 +58,9 @@ internal sealed class OdfChartReader
     };
 
     private readonly Dictionary<string, XElement> _styles = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, XElement> _gradients = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, XElement> _hatches = new(StringComparer.Ordinal);
+    private readonly Func<string, Func<int, int, (string Text, double? Value)?>?>? _sheets;
     private readonly List<List<Cell>> _table = [];
     private string? _tableName;
     private long _points;
@@ -62,8 +68,9 @@ internal sealed class OdfChartReader
     /// <summary>A cell of the chart's table: its text and, for a number, its value.</summary>
     private readonly record struct Cell(string Text, double? Value);
 
-    private OdfChartReader()
+    private OdfChartReader(Func<string, Func<int, int, (string Text, double? Value)?>?>? sheets)
     {
+        _sheets = sheets;
     }
 
     /// <summary>Whether <paramref name="content"/> (an object's content.xml root, or an inline office:document) is a chart.</summary>
@@ -74,14 +81,16 @@ internal sealed class OdfChartReader
 
     /// <summary>
     /// Reads the chart object <paramref name="content"/> (its content.xml root, or an inline office:document) with
-    /// <paramref name="styles"/> (its styles.xml root, or null).
+    /// <paramref name="styles"/> (its styles.xml root, or null). <paramref name="sheets"/> gives the cells (by 0-based row
+    /// and column) of a sheet of the spreadsheet the chart sits in, by name, for ranges into it (null for a sheet it
+    /// doesn't know); null when there is no spreadsheet.
     /// </summary>
     /// <exception cref="Core.Conversion.ConversionRefusedException">The chart has more series, points or cells than Filee draws.</exception>
-    public static ChartRead Read(XElement? content, XElement? styles = null)
+    public static ChartRead Read(XElement? content, XElement? styles = null, Func<string, Func<int, int, (string Text, double? Value)?>?>? sheets = null)
     {
         if (ChartElement(content) is not { } chart)
             return new(null, "charts");
-        var reader = new OdfChartReader();
+        var reader = new OdfChartReader(sheets);
         foreach (var root in new[] { styles, content })
         {
             foreach (var group in new[] { "styles", "automatic-styles" })
@@ -91,6 +100,16 @@ internal sealed class OdfChartReader
                     if ((string?)style.Attribute(Style + "name") is { } name)
                         reader._styles[name] = style;
                 }
+            }
+            // Gradients and hatches a fill names (draw:fill-gradient-name, draw:fill-hatch-name).
+            foreach (var element in root?.Element(Office + "styles")?.Elements() ?? [])
+            {
+                if ((string?)element.Attribute(Draw + "name") is not { } name)
+                    continue;
+                if (element.Name == Draw + "gradient")
+                    reader._gradients[name] = element;
+                else if (element.Name == Draw + "hatch")
+                    reader._hatches[name] = element;
             }
         }
         return reader.ReadChart(chart);
@@ -131,7 +150,7 @@ internal sealed class OdfChartReader
             var entry = plots.FirstOrDefault(p => p.Kind == seriesKind && p.Secondary == secondary);
             if (entry.Plot is null)
             {
-                entry = (seriesKind.Value, secondary, Plot(seriesKind.Value, plotProps, horizontal, secondary, text));
+                entry = (seriesKind.Value, secondary, Plot(seriesKind.Value, plotProps, horizontal, secondary, text, xAxis));
                 plots.Add(entry);
             }
             entry.Plot.Series.Add(Series(element, seriesKind.Value, categories, position, seriesSource, text));
@@ -159,9 +178,13 @@ internal sealed class OdfChartReader
 
     // ───────────────────────── Plots and series ─────────────────────────
 
-    private ChartPlot Plot(ChartKind kind, XElement? props, bool horizontal, bool secondary, ChartTextStyle text) => new()
+    private ChartPlot Plot(ChartKind kind, XElement? props, bool horizontal, bool secondary, ChartTextStyle text, XElement? xAxis) => new()
     {
         Kind = kind,
+        // chart:angle-offset: where the first slice starts, anticlockwise from three o'clock (90 = the top); the
+        // slices follow anticlockwise unless the angle (X) axis is reversed.
+        FirstSliceAngle = ((90 - (Number(Attr(props, C + "angle-offset")) ?? 90)) % 360 + 360) % 360,
+        Clockwise = On(Props(xAxis, "chart-properties"), "reverse-direction"),
         Grouping = kind is ChartKind.Pie or ChartKind.Doughnut or ChartKind.Scatter ? ChartGrouping.Standard
             : On(props, "percentage") ? ChartGrouping.PercentStacked : On(props, "stacked") ? ChartGrouping.Stacked : ChartGrouping.Standard,
         Horizontal = kind == ChartKind.Bar && horizontal,
@@ -226,14 +249,134 @@ internal sealed class OdfChartReader
             XValues = xValues,
             Values = [.. values.Select(c => c.Value)],
             // A pie's or ring's slices vary by point: a slice without a style of its own takes the palette, not the series' fill.
-            Style = kind is ChartKind.Pie or ChartKind.Doughnut ? shape with { Fill = null } : shape,
+            Style = kind is ChartKind.Pie or ChartKind.Doughnut ? shape with { Fill = null, Gradient = null, Hatch = null } : shape,
             Points = points,
             Explosion = explosion,
             Marker = symbol is null ? null : new ChartMarker(symbol == "none" ? "none" : Symbol(Attr(props, C + "symbol-name")),
                 (float)Math.Clamp(Points(Attr(props, C + "symbol-width")) ?? 5, 2, 72), shape),
             Labels = Labels(props, text),
             Smooth = Attr(props, C + "interpolation") is "cubic-spline" or "b-spline",
+            Trendlines = Trendlines(element, props, text),
+            ErrorBars = ErrorBars(element, props, values, kind == ChartKind.Scatter, byColumn),
         };
+    }
+
+    /// <summary>
+    /// The trendlines of a series: its chart:regression-curve elements (their style's regression type, degree,
+    /// period, extrapolation, forced intercept and line, and chart:equation's display flags), or the regression
+    /// type of the series' own style (ODF 1.1).
+    /// </summary>
+    private List<ChartTrendline> Trendlines(XElement series, XElement? seriesProps, ChartTextStyle text)
+    {
+        var result = new List<ChartTrendline>();
+        var curves = series.Elements(C + "regression-curve").Take(ChartReader.MaxTrendlines).ToList();
+        if (curves.Count == 0 && Trendline(seriesProps, null, null, text) is { } own)
+            result.Add(own);
+        foreach (var curve in curves)
+        {
+            var equation = curve.Element(C + "equation");
+            var props = Props(curve, "chart-properties") ?? seriesProps;
+            if (Trendline(props, Props(curve, "graphic-properties"), equation, text) is { } trend)
+                result.Add(trend);
+        }
+        return result;
+    }
+
+    private ChartTrendline? Trendline(XElement? props, XElement? graphic, XElement? equation, ChartTextStyle text)
+    {
+        TrendKind? kind = Attr(props, C + "regression-type") switch
+        {
+            "linear" => TrendKind.Linear,
+            "logarithmic" => TrendKind.Logarithmic,
+            "exponential" => TrendKind.Exponential,
+            "power" => TrendKind.Power,
+            "polynomial" => TrendKind.Polynomial,
+            "moving-average" => TrendKind.MovingAverage,
+            _ => null,
+        };
+        if (kind is not { } trend)
+            return null;
+        var force = On(props, "regression-force-intercept");
+        bool Shown(string name) => (string?)equation?.Attribute(C + name) == "true";
+        return new ChartTrendline(trend)
+        {
+            Order = (int)Math.Clamp(Number(Attr(props, C + "regression-max-degree")) ?? 2, 2, 6),
+            Period = (int)Math.Clamp(Number(Attr(props, C + "regression-period")) ?? 2, 2, 255),
+            Forward = Math.Clamp(Number(Attr(props, C + "regression-extrapolate-forward")) ?? 0, 0, ChartReader.MaxValue),
+            Backward = Math.Clamp(Number(Attr(props, C + "regression-extrapolate-backward")) ?? 0, 0, ChartReader.MaxValue),
+            Intercept = force ? Clamp(Number(Attr(props, C + "regression-intercept-value")) ?? 0) : null,
+            ShowEquation = Shown("display-equation"),
+            ShowRSquared = Shown("display-r-square"),
+            Line = graphic is null ? null : Shape(graphic).Line,
+            Style = TextStyle(Props(equation, "text-properties"), text),
+        };
+    }
+
+    /// <summary>
+    /// The error bars of a series: its chart:error-indicator elements (Y, or X for a scatter), or the error properties
+    /// of its own style (ODF 1.1, Y): the category (constant, percentage, error margin, standard deviation, variance,
+    /// standard error, cell ranges), the limits and which sides are shown.
+    /// </summary>
+    private List<ChartErrorBars> ErrorBars(XElement series, XElement? seriesProps, List<Cell> values, bool scatter, bool byColumn)
+    {
+        var result = new List<ChartErrorBars>();
+        var indicators = series.Elements(C + "error-indicator").Take(2).ToList();
+        if (indicators.Count == 0 && ErrorBars(seriesProps, null, values, byColumn) is { } own)
+            result.Add(own);
+        foreach (var indicator in indicators)
+        {
+            var alongX = (string?)indicator.Attribute(C + "dimension") == "x";
+            if (alongX && !scatter)
+                continue;
+            var props = Props(indicator, "chart-properties") ?? seriesProps;
+            if (ErrorBars(props, Props(indicator, "graphic-properties"), values, byColumn) is { } bars)
+                result.Add(bars with { AlongX = alongX });
+        }
+        return result;
+    }
+
+    private ChartErrorBars? ErrorBars(XElement? props, XElement? graphic, List<Cell> values, bool byColumn)
+    {
+        var category = Attr(props, C + "error-category");
+        if (category is null or "none")
+            return null;
+        var upper = Clamp(Number(Attr(props, C + "error-upper-limit"))) ?? 0;
+        var lower = Clamp(Number(Attr(props, C + "error-lower-limit"))) ?? 0;
+        var percentage = Math.Clamp(Number(Attr(props, C + "error-percentage")) ?? 0, 0, ChartReader.MaxValue);
+        var margin = Math.Clamp(Number(Attr(props, C + "error-margin")) ?? 0, 0, ChartReader.MaxValue);
+        ChartErrorBars? bars = category switch
+        {
+            "constant" => new ChartErrorBars(ErrorAmount.Custom, 0) { PlusValues = [Math.Abs(upper)], MinusValues = [Math.Abs(lower)] },
+            "percentage" => new ChartErrorBars(ErrorAmount.Percentage, percentage),
+            // An error margin is a percentage of the series' largest value.
+            "error-margin" => new ChartErrorBars(ErrorAmount.Fixed, Math.Min(values.Max(c => Math.Abs(c.Value ?? 0)) * margin / 100, ChartReader.MaxValue)),
+            "standard-deviation" => new ChartErrorBars(ErrorAmount.StandardDeviation, 1),
+            "variance" => new ChartErrorBars(ErrorAmount.Variance, 1),
+            "standard-error" => new ChartErrorBars(ErrorAmount.StandardError, 1),
+            "cell-range" => new ChartErrorBars(ErrorAmount.Custom, 0)
+            {
+                PlusValues = Values(Range(Attr(props, C + "error-upper-range"), -1, byColumn)),
+                MinusValues = Values(Range(Attr(props, C + "error-lower-range"), -1, byColumn)),
+            },
+            _ => null,
+        };
+        if (bars is null)
+            return null;
+        return bars with
+        {
+            Plus = Attr(props, C + "error-upper-indicator") != "false",
+            Minus = Attr(props, C + "error-lower-indicator") != "false",
+            Line = graphic is null ? null : Shape(graphic).Line,
+            Office = false,
+        };
+    }
+
+    private List<double?>? Values(List<Cell>? cells)
+    {
+        if (cells is null)
+            return null;
+        Count(cells.Count);
+        return [.. cells.Select(c => c.Value)];
     }
 
     private void Count(int points)
@@ -413,7 +556,7 @@ internal sealed class OdfChartReader
     /// </summary>
     private List<Cell>? Range(string? address, int fallback, bool byColumn, bool label = false)
     {
-        if (string.IsNullOrWhiteSpace(address) || _table.Count == 0)
+        if (string.IsNullOrWhiteSpace(address) || _table.Count == 0 && _sheets is null)
             return null;
         var cells = new List<Cell>();
         foreach (var part in address.Split(' ', StringSplitOptions.RemoveEmptyEntries))
@@ -423,19 +566,27 @@ internal sealed class OdfChartReader
                 return null;
             var end = ends.Length == 2 ? Reference(ends[1]) ?? start : start;
             var tableName = start.Table ?? end.Table;
-            if (tableName is not null && _tableName is not null && tableName != _tableName)
+            var sheet = tableName is not null && tableName != _tableName ? _sheets?.Invoke(tableName) : null;
+            if (tableName is not null && tableName != _tableName && sheet is null)
             {
-                // A range into a sheet: the series' place in the chart's own table instead.
+                // A range into a sheet the host doesn't hand over: the series' place in the chart's own table instead.
+                if (fallback < 0)
+                    return null;
                 return label ? Fallback(fallback, byColumn, header: true) : Fallback(fallback, byColumn, header: false);
             }
             var (top, bottom) = (Math.Min(start.Row, end.Row), Math.Max(start.Row, end.Row));
             var (left, right) = (Math.Min(start.Column, end.Column), Math.Max(start.Column, end.Column));
             if ((long)(bottom - top + 1) * (right - left + 1) + cells.Count > ChartReader.MaxPoints)
                 throw DocumentLimits.Exceeded($"A chart has more than {DocumentLimits.Count(ChartReader.MaxPoints)} points.");
-            for (var r = top; r <= bottom && r < _table.Count; r++)
+            for (var r = top; r <= bottom && (sheet is not null || r < _table.Count); r++)
             {
                 for (var c = left; c <= right; c++)
-                    cells.Add(At(r, c) ?? new Cell("", null));
+                {
+                    if (sheet is not null)
+                        cells.Add(sheet(r, c) is { } found ? new Cell(Cut(found.Text), Clamp(found.Value)) : new Cell("", null));
+                    else
+                        cells.Add(At(r, c) ?? new Cell("", null));
+                }
             }
         }
         return cells.Count == 0 ? null : cells;
@@ -491,24 +642,84 @@ internal sealed class OdfChartReader
         return null;
     }
 
-    private static ChartShapeStyle Shape(XElement? graphic)
+    private ChartShapeStyle Shape(XElement? graphic)
     {
         if (graphic is null)
             return ChartShapeStyle.Auto;
-        SKColor? fill = Attr(graphic, Draw + "fill") switch
+        var kind = Attr(graphic, Draw + "fill");
+        SKColor? fill = kind switch
         {
             "none" => SKColors.Transparent,
-            "gradient" or "hatch" or "bitmap" => Color(Attr(graphic, Draw + "fill-color")),
             _ => Color(Attr(graphic, Draw + "fill-color")),
         };
+        ChartGradient? gradient = null;
+        ChartHatch? hatch = null;
+        if (kind == "gradient" && Attr(graphic, Draw + "fill-gradient-name") is { } gradientName && _gradients.TryGetValue(gradientName, out var g))
+            gradient = Gradient(g);
+        else if (kind == "hatch" && Attr(graphic, Draw + "fill-hatch-name") is { } hatchName && _hatches.TryGetValue(hatchName, out var h))
+            hatch = Hatch(h, Attr(graphic, Draw + "fill-hatch-solid") == "true" ? fill ?? SKColors.White : null);
+        fill = gradient?.Stops[0].Color ?? hatch?.Color ?? fill;
         var stroke = Attr(graphic, Draw + "stroke");
         ChartLine? line = stroke == "none" ? ChartLine.Hidden
             : Color(Attr(graphic, Svg + "stroke-color")) is { } color || Points(Attr(graphic, Svg + "stroke-width")) is > 0
                 ? new ChartLine(Color(Attr(graphic, Svg + "stroke-color")), Points(Attr(graphic, Svg + "stroke-width")) is > 0 and var width ? Math.Min(width, 100) : null,
                     stroke == "dash" ? [4, 3] : null)
                 : null;
-        return new ChartShapeStyle { Fill = fill, Line = line };
+        return new ChartShapeStyle { Fill = fill, Gradient = gradient, Hatch = hatch, Line = line };
     }
+
+    /// <summary>
+    /// A draw:gradient: linear (start colour first, along draw:angle anticlockwise from top to bottom), axial (start
+    /// colour at both edges), or radial, ellipsoid, square and rectangular (start colour outside, out from draw:cx,
+    /// draw:cy); draw:border keeps the start colour over that part, intensities darken the colours.
+    /// </summary>
+    private static ChartGradient? Gradient(XElement gradient)
+    {
+        static SKColor Dim(SKColor color, string? intensity) =>
+            Percent(intensity) is { } f and < 1 ? new SKColor((byte)(color.Red * f), (byte)(color.Green * f), (byte)(color.Blue * f), color.Alpha) : color;
+        if (Color(Attr(gradient, Draw + "start-color")) is not { } start0 || Color(Attr(gradient, Draw + "end-color")) is not { } end0)
+            return null;
+        var start = Dim(start0, Attr(gradient, Draw + "start-intensity"));
+        var end = Dim(end0, Attr(gradient, Draw + "end-intensity"));
+        var border = (float)Math.Clamp(Percent(Attr(gradient, Draw + "border")) ?? 0, 0, 0.99);
+        var angle = Angle(Attr(gradient, Draw + "angle")) ?? 0;
+        switch (Attr(gradient, Draw + "style"))
+        {
+            case "axial":
+                return new ChartGradient([(0, start), (border / 2, start), (0.5f, end), (1 - border / 2, start), (1, start)], 90 - angle);
+            case "radial" or "ellipsoid" or "square" or "rectangular":
+                return new ChartGradient([(0, end), (1 - border, start), (1, start)], 0, Radial: true,
+                    (float)Math.Clamp(Percent(Attr(gradient, Draw + "cx")) ?? 0.5, 0, 1), (float)Math.Clamp(Percent(Attr(gradient, Draw + "cy")) ?? 0.5, 0, 1));
+            default:
+                return new ChartGradient([(0, start), (border, start), (1, end)], 90 - angle);
+        }
+    }
+
+    /// <summary>A draw:hatch: lines of draw:color every draw:distance, turned draw:rotation, single, double (crossed) or triple.</summary>
+    private static ChartHatch? Hatch(XElement hatch, SKColor? background)
+    {
+        var color = Color(Attr(hatch, Draw + "color")) ?? SKColors.Black;
+        var distance = Points(Attr(hatch, Draw + "distance")) is > 0 and var d ? Math.Clamp(d, 0.5f, 1000) : 4;
+        var crossings = Attr(hatch, Draw + "style") switch { "double" => 2, "triple" => 3, _ => 1 };
+        return new ChartHatch(color, background, distance, Angle(Attr(hatch, Draw + "rotation")) ?? 0, crossings);
+    }
+
+    /// <summary>An ODF angle: degrees with deg, rad or grad, else tenths of a degree (ODF 1.2's integers).</summary>
+    private static double? Angle(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        value = value.Trim();
+        double? degrees = value.EndsWith("deg", StringComparison.Ordinal) ? Number(value[..^3])
+            : value.EndsWith("grad", StringComparison.Ordinal) ? Number(value[..^4]) * 0.9
+            : value.EndsWith("rad", StringComparison.Ordinal) ? Number(value[..^3]) * 180 / Math.PI
+            : Number(value) / 10;
+        return degrees is { } a && double.IsFinite(a) ? (a % 360 + 360) % 360 : null;
+    }
+
+    /// <summary>A percentage ("20%") as a fraction.</summary>
+    private static double? Percent(string? value) =>
+        value is { Length: > 1 } && value.EndsWith('%') && Number(value[..^1]) is { } p ? p / 100 : null;
 
     private static ChartTextStyle TextStyle(XElement? props, ChartTextStyle inherited)
     {

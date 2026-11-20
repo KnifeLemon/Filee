@@ -6,14 +6,20 @@
 // axes' labels and titles, or where a manual layout puts it. Value axes scale themselves as Excel does when the file
 // sets no bounds: zero is kept unless the values sit far from it, the unit is 1, 2 or 5 times a power of ten giving
 // a readable number of gridlines for the axis' length, and the top gets a little room above the highest value.
-// Category labels are drawn level, wrapped at spaces, turned 45° or thinned out, whichever fits first.
+// Category labels are drawn level, wrapped at spaces, turned 45° or thinned out, whichever fits first; outer category
+// levels beyond them, each group's label centred on its categories between dividers. Each legend entry's text follows
+// its own key (a bar's square, a line's stroke).
 //
 // Plots: bars and columns (clustered with gap width and overlap, stacked, 100 %), lines (stacked, smooth, markers),
-// areas, scatter (lines and markers), pies (first slice angle, pulled-out slices) and doughnuts (one ring per series),
-// with data labels where the file asks for them. Combined plots share the plot area, each against its own axes.
+// areas, scatter (lines and markers), pies (first slice angle, either way round, pulled-out slices) and doughnuts (one
+// ring per series), with data labels (a point's own over its series') where the file asks for them, trendlines with
+// their equation and R² (ChartTrend fits them), and error bars along the value axis or a scatter's X axis. Combined
+// plots share the plot area, each against its own axes. Fills are colours, gradients (linear or out from a centre)
+// or hatching; titles and labels keep the look of each run of rich text.
 //
-// Bounds: data labels and markers drawn per chart are capped (MaxLabels, MaxMarkers), category labels are measured
-// for at most MaxMeasured of them (the rest thinned out), and gridlines and ticks per axis at most MaxTicks.
+// Bounds: data labels and markers (and error bars and trendline points) drawn per chart are capped (MaxLabels,
+// MaxMarkers), points fitted by trendlines too (MaxFitted), category labels are measured for at most MaxMeasured of
+// them (the rest thinned out), and gridlines, ticks and hatch lines per axis or fill at most MaxTicks.
 
 using System.Globalization;
 using Filee.Engines.Office.Sheets;
@@ -28,6 +34,9 @@ internal sealed class ChartDrawer
     private const int MaxMarkers = 100_000;
     private const int MaxMeasured = 2000;
     private const int MaxTicks = 1000;
+
+    /// <summary>Points trendlines fit per chart at most (each trendline counts its series' points).</summary>
+    private const long MaxFitted = 2L * ChartReader.MaxPoints;
 
     private static readonly string[] AutoSymbols = ["diamond", "square", "triangle", "x", "star", "circle", "plus", "dash", "dot"];
 
@@ -45,6 +54,7 @@ internal sealed class ChartDrawer
     private readonly List<(ChartTextLine Line, float X, float Baseline, SKMatrix? Local)> _texts = [];
     private int _labels;
     private int _markers;
+    private long _fitted;
 
     private ChartDrawer(Chart chart, PageContent page, ChartFonts fonts, float scale, SKMatrix? transform, SKRect? clip)
     {
@@ -110,13 +120,90 @@ internal sealed class ChartDrawer
         canvas.Restore();
     });
 
-    private static void FillPath(SKCanvas canvas, SKPath path, SKColor? fill)
+    /// <summary>A fill: a colour, or a gradient or hatch (their lines <see cref="Scale"/> times their size).</summary>
+    private readonly record struct Brush(SKColor Color, ChartGradient? Gradient = null, ChartHatch? Hatch = null, float Scale = 1);
+
+    private static void FillPath(SKCanvas canvas, SKPath path, Brush? fill)
     {
-        if (fill is not { } color || color.Alpha == 0)
+        if (fill is not { } brush)
             return;
-        using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = color };
+        if (brush.Hatch is { } hatch)
+        {
+            HatchPath(canvas, path, hatch, brush.Scale);
+            return;
+        }
+        if (brush.Color.Alpha == 0 && brush.Gradient is null)
+            return;
+        using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = brush.Color };
+        using var shader = brush.Gradient is { } gradient ? Shader(gradient, path.Bounds) : null;
+        if (shader is not null)
+        {
+            paint.Color = SKColors.Black;
+            paint.Shader = shader;
+        }
         canvas.DrawPath(path, paint);
     }
+
+    /// <summary>A gradient over <paramref name="box"/>: along its angle through the box's centre, or out from its centre to the farthest corner.</summary>
+    private static SKShader? Shader(ChartGradient gradient, SKRect box)
+    {
+        if (gradient.Stops.Count < 2 || box.Width <= 0 || box.Height <= 0)
+            return null;
+        var colors = gradient.Stops.Select(s => s.Color).ToArray();
+        var positions = gradient.Stops.Select(s => Math.Clamp(s.Position, 0, 1)).ToArray();
+        if (gradient.Radial)
+        {
+            var center = new SKPoint(box.Left + gradient.CenterX * box.Width, box.Top + gradient.CenterY * box.Height);
+            var radius = new[] { new SKPoint(box.Left, box.Top), new SKPoint(box.Right, box.Top), new SKPoint(box.Left, box.Bottom), new SKPoint(box.Right, box.Bottom) }
+                .Max(corner => SKPoint.Distance(center, corner));
+            return SKShader.CreateRadialGradient(center, Math.Max(radius, 0.01f), colors, positions, SKShaderTileMode.Clamp);
+        }
+        var radians = gradient.Angle * Math.PI / 180;
+        var (dx, dy) = ((float)Math.Cos(radians), (float)Math.Sin(radians));
+        var half = Math.Max(Math.Abs(box.Width / 2 * dx) + Math.Abs(box.Height / 2 * dy), 0.01f);
+        var mid = new SKPoint(box.MidX, box.MidY);
+        return SKShader.CreateLinearGradient(new SKPoint(mid.X - dx * half, mid.Y - dy * half), new SKPoint(mid.X + dx * half, mid.Y + dy * half),
+            colors, positions, SKShaderTileMode.Clamp);
+    }
+
+    /// <summary>Hatching: the background, then lines across the shape (crossed for a grid), or the two colours mixed.</summary>
+    private static void HatchPath(SKCanvas canvas, SKPath path, ChartHatch hatch, float scale)
+    {
+        using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
+        if (hatch.Blend is { } blend)
+        {
+            var back = hatch.Background ?? SKColors.White;
+            paint.Color = new SKColor(Mix(back.Red, hatch.Color.Red, blend), Mix(back.Green, hatch.Color.Green, blend), Mix(back.Blue, hatch.Color.Blue, blend),
+                hatch.Background is null ? (byte)Math.Round(hatch.Color.Alpha * blend) : Mix(back.Alpha, hatch.Color.Alpha, blend));
+            canvas.DrawPath(path, paint);
+            return;
+        }
+        if (hatch.Background is { } background)
+        {
+            paint.Color = background;
+            canvas.DrawPath(path, paint);
+        }
+        var bounds = path.Bounds;
+        var spacing = Math.Max(hatch.Spacing * scale, 1f);
+        var reach = (float)Math.Sqrt(bounds.Width * bounds.Width + bounds.Height * bounds.Height) / 2 + spacing;
+        if (reach / spacing > MaxTicks)
+            spacing = reach / MaxTicks;
+        using var line = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, Color = hatch.Color, StrokeWidth = Math.Max(0.5f * scale, 0.25f) };
+        canvas.Save();
+        canvas.ClipPath(path, antialias: true);
+        var turns = hatch.Crossings switch { >= 3 => new[] { 0.0, 90, 45 }, 2 => [0.0, 90], _ => [0.0] };
+        foreach (var turn in turns)
+        {
+            canvas.Save();
+            canvas.RotateDegrees((float)-(hatch.Angle + turn), bounds.MidX, bounds.MidY);
+            for (var y = -reach; y <= reach; y += spacing)
+                canvas.DrawLine(bounds.MidX - reach, bounds.MidY + y, bounds.MidX + reach, bounds.MidY + y, line);
+            canvas.Restore();
+        }
+        canvas.Restore();
+    }
+
+    private static byte Mix(byte from, byte to, float amount) => (byte)Math.Round(from + (to - from) * Math.Clamp(amount, 0, 1));
 
     private static void StrokePath(SKCanvas canvas, SKPath path, Pen? pen, bool round = false)
     {
@@ -153,8 +240,15 @@ internal sealed class ChartDrawer
         return new Pen(c, Math.Max(width, 0.25f) * _s, line?.Dash);
     }
 
-    private static SKColor? FillOf(ChartShapeStyle style, SKColor? auto) =>
-        style.Fill is { } fill ? fill.Alpha == 0 ? null : fill : auto;
+    /// <summary>The fill of a shape: its gradient, hatch or colour, or <paramref name="auto"/> colour; null for none.</summary>
+    private Brush? FillOf(ChartShapeStyle style, SKColor? auto)
+    {
+        if (style.Gradient is { Stops.Count: >= 2 } gradient)
+            return new Brush(gradient.Stops[0].Color, Gradient: gradient);
+        if (style.Hatch is { } hatch)
+            return new Brush(hatch.Color, Hatch: hatch, Scale: _s);
+        return style.Fill is { } fill ? fill.Alpha == 0 ? null : new Brush(fill) : auto is { } color ? new Brush(color) : null;
+    }
 
     private ChartTextLine Text(string text, ChartTextStyle style) => _fonts.Line(text, style, style.Size * _s);
 
@@ -171,6 +265,78 @@ internal sealed class ChartDrawer
         }
         var local = SKMatrix.CreateTranslation(cx, cy).PreConcat(SKMatrix.CreateRotationDegrees(degrees));
         _texts.Add((line, -line.Width / 2, -line.Height / 2 + line.Ascent, local));
+    }
+
+    /// <summary>Lines of text, each of pieces (shaped in their own styles, raised by some points) side by side.</summary>
+    private sealed class TextBlock
+    {
+        public List<TextRow> Rows { get; } = [];
+        public float Width => Rows.Count == 0 ? 0 : Rows.Max(r => r.Width);
+        public float Height => Rows.Sum(r => r.Height);
+    }
+
+    private sealed class TextRow(List<(ChartTextLine Line, float Raise)> pieces)
+    {
+        public List<(ChartTextLine Line, float Raise)> Pieces { get; } = pieces;
+        public float Width { get; } = pieces.Sum(p => p.Line.Width);
+        public float Ascent { get; } = pieces.Count == 0 ? 0 : pieces.Max(p => p.Line.Ascent + p.Raise);
+        public float Descent { get; } = pieces.Count == 0 ? 0 : pieces.Max(p => p.Line.Descent - p.Raise);
+        public float Height => Ascent + Descent;
+    }
+
+    private static TextBlock Block(params ChartTextLine[] lines)
+    {
+        var block = new TextBlock();
+        foreach (var line in lines)
+            block.Rows.Add(new TextRow([(line, 0)]));
+        return block;
+    }
+
+    /// <summary>Lines of runs as a block; a raised run is lifted by that part of its own size.</summary>
+    private TextBlock Block(IEnumerable<IReadOnlyList<ChartRun>> lines)
+    {
+        var block = new TextBlock();
+        foreach (var runs in lines)
+        {
+            var pieces = runs.Take(64).Select(r => (Text(r.Text, r.Style), r.Raise * r.Style.Size * _s)).ToList();
+            if (pieces.Count > 0)
+                block.Rows.Add(new TextRow(pieces));
+        }
+        return block;
+    }
+
+    /// <summary>A title's lines: its runs, or its text in its style.</summary>
+    private TextBlock Block(ChartTitle title) =>
+        title.Runs is { Count: > 0 } runs ? Block(runs) : Block([.. title.Lines.Select(l => Text(l, title.Style))]);
+
+    /// <summary>
+    /// A block with its top at <paramref name="top"/>, each line centred on <paramref name="x"/> (or starting at it when
+    /// not <paramref name="centred"/>), in <paramref name="local"/>'s frame.
+    /// </summary>
+    private void BlockAt(TextBlock block, float x, float top, bool centred, SKMatrix? local = null)
+    {
+        var y = top;
+        foreach (var row in block.Rows)
+        {
+            var pen = centred ? x - row.Width / 2 : x;
+            foreach (var (line, raise) in row.Pieces)
+            {
+                _texts.Add((line, pen, y + row.Ascent - raise, local));
+                pen += line.Width;
+            }
+            y += row.Height;
+        }
+    }
+
+    /// <summary>A block centred on (cx, cy), turned by <paramref name="degrees"/> clockwise about that point.</summary>
+    private void TextCentred(TextBlock block, float cx, float cy, float degrees = 0)
+    {
+        if (degrees == 0)
+        {
+            BlockAt(block, cx, cy - block.Height / 2, centred: true);
+            return;
+        }
+        BlockAt(block, 0, -block.Height / 2, centred: true, SKMatrix.CreateTranslation(cx, cy).PreConcat(SKMatrix.CreateRotationDegrees(degrees)));
     }
 
     private string Format(double value, string? format)
@@ -216,20 +382,12 @@ internal sealed class ChartDrawer
     {
         if (_chart.Title is not { Lines.Count: > 0 } title)
             return content;
-        var lines = title.Lines.Select(l => Text(l, title.Style)).ToList();
-        var height = lines.Sum(l => l.Height);
-        var y = content.Top;
-        float? x = null;
+        var block = Block(title);
+        var height = block.Height;
         if (title.Layout is { } layout)
-        {
-            x = box.Left + (float)layout.X * box.Width;
-            y = box.Top + (float)layout.Y * box.Height;
-        }
-        foreach (var line in lines)
-        {
-            TextAt(line, x ?? content.MidX - line.Width / 2, y);
-            y += line.Height;
-        }
+            BlockAt(block, box.Left + (float)layout.X * box.Width, box.Top + (float)layout.Y * box.Height, centred: false);
+        else
+            BlockAt(block, content.MidX, content.Top, centred: true);
         if (title.Overlay || title.Layout is not null)
             return content;
         return new SKRect(content.Left, content.Top + height + 6 * _s, content.Right, content.Bottom);
@@ -243,7 +401,7 @@ internal sealed class ChartDrawer
         Line,
     }
 
-    private sealed record LegendEntry(string Text, KeyKind Kind, SKColor? Fill, Pen? Line, ChartMarker? Marker, SKColor MarkerColor);
+    private sealed record LegendEntry(string Text, KeyKind Kind, Brush? Fill, Pen? Line, ChartMarker? Marker, SKColor MarkerColor);
 
     private List<LegendEntry> LegendEntries()
     {
@@ -295,12 +453,13 @@ internal sealed class ChartDrawer
             return content;
         var s = _s;
         var texts = entries.Select(e => Text(e.Text, legend.Style)).ToList();
-        var keyWidth = entries.Any(e => e.Kind == KeyKind.Line) ? 20 * s : 7 * s;
+        // Each entry's text follows its own key: a line's is wider than a bar's square.
+        float KeyWidth(int i) => entries[i].Kind == KeyKind.Line ? 20 * s : 7 * s;
         var gap = 4 * s;
         var lineHeight = Math.Max(texts.Max(t => t.Height), 7 * s);
         var vertical = legend.Position is "r" or "l" or "tr";
         var maxText = Math.Min(texts.Max(t => t.Width), (vertical ? 0.45f : 0.9f) * content.Width);
-        var entryWidth = keyWidth + gap + maxText;
+        var entryWidth = Enumerable.Range(0, entries.Count).Max(i => KeyWidth(i) + gap + Math.Min(texts[i].Width, maxText));
 
         // Entries in rows (top, bottom) or one column (right, left).
         var placed = new List<(int Index, float X, float Y)>();
@@ -320,7 +479,7 @@ internal sealed class ChartDrawer
             var x = 0f;
             for (var i = 0; i < entries.Count; i++)
             {
-                var w = keyWidth + gap + Math.Min(texts[i].Width, maxText);
+                var w = KeyWidth(i) + gap + Math.Min(texts[i].Width, maxText);
                 if (row.Count > 0 && x + w > content.Width - 2 * gap)
                 {
                     rows.Add(row);
@@ -371,6 +530,7 @@ internal sealed class ChartDrawer
             var entry = entries[index];
             var keyLeft = left + x;
             var middle = top + y + lineHeight / 2;
+            var keyWidth = KeyWidth(index);
             LegendKey(entry, new SKRect(keyLeft, middle - 3.5f * s, keyLeft + keyWidth, middle + 3.5f * s));
             var text = texts[index];
             TextAt(text, keyLeft + keyWidth + gap, middle - text.Height / 2);
@@ -430,6 +590,9 @@ internal sealed class ChartDrawer
         public Scale? Scale { get; set; }
         public int Count { get; set; }
         public IReadOnlyList<string> Labels { get; set; } = [];
+
+        /// <summary>The outer levels of multi-level categories, inside out: each a list of groups of categories with their label.</summary>
+        public List<List<(int Start, int End, string Text)>> Levels { get; } = [];
 
         /// <summary>Points between the category ticks (bars always are).</summary>
         public bool Between { get; set; } = true;
@@ -687,6 +850,11 @@ internal sealed class ChartDrawer
             first.Count = Math.Max(first.Count, count);
             if (first.Labels.Count < count)
                 first.Labels = Enumerable.Range(0, Math.Min(count, ChartReader.MaxPoints)).Select(i => Category(series, i)).ToList();
+            if (first.Levels.Count == 0 && series.FirstOrDefault(s => s.CategoryLevels is { Count: > 0 })?.CategoryLevels is { } levels)
+            {
+                foreach (var level in levels)
+                    first.Levels.Add(Groups(level, count));
+            }
             // Bars sit between ticks; lines and areas wherever the value axis says.
             first.HasBars |= plot.Kind == ChartKind.Bar;
             first.Between = first.HasBars || second.Definition.Between;
@@ -823,6 +991,23 @@ internal sealed class ChartDrawer
         var power = Math.Pow(10, Math.Floor(Math.Log10(value)));
         var f = value / power;
         return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * power;
+    }
+
+    /// <summary>The groups of an outer category level: each runs from a label to the category before the next one.</summary>
+    private static List<(int Start, int End, string Text)> Groups(IReadOnlyList<string?> level, int count)
+    {
+        var groups = new List<(int Start, int End, string Text)>();
+        count = Math.Min(count, ChartReader.MaxPoints);
+        for (var i = 0; i < count; i++)
+        {
+            var label = i < level.Count ? level[i] : null;
+            if (label is null && groups.Count > 0)
+                continue;
+            if (groups.Count > 0)
+                groups[^1] = groups[^1] with { End = i - 1 };
+            groups.Add((i, count - 1, label ?? ""));
+        }
+        return groups;
     }
 
     /// <summary>The label of category <paramref name="index"/>: the first series' that has one, else its number.</summary>
@@ -974,9 +1159,26 @@ internal sealed class ChartDrawer
                 }
             }
         }
+        if (definition.LabelPosition != "none")
+            need += LevelSizes(axis).Sum(size => size + LevelPad);
         if (definition.Title is { Lines.Count: > 0 } title)
-            need += title.Lines.Sum(l => Text(l, title.Style).Height) + 4 * _s;
+            need += Block(title).Height + 4 * _s;
         return Math.Min(need, cap);
+    }
+
+    /// <summary>The space between one category level and the next, in points (scaled).</summary>
+    private float LevelPad => 4 * _s;
+
+    /// <summary>How far each outer category level reaches out from the one inside it: a row's height, or a column's width.</summary>
+    private List<float> LevelSizes(Axis axis)
+    {
+        var sizes = new List<float>(axis.Levels.Count);
+        foreach (var level in axis.Levels)
+        {
+            var texts = level.Take(MaxMeasured).Select(g => Text(g.Text, axis.Definition.Style)).ToList();
+            sizes.Add(texts.Count == 0 ? 0 : axis.Horizontal ? texts.Max(t => t.Height) : texts.Max(t => t.Width));
+        }
+        return sizes;
     }
 
     private float Along(Axis axis, double fraction, SKRect inner) =>
@@ -1167,22 +1369,63 @@ internal sealed class ChartDrawer
             }
         }
 
+        // Outer category levels beyond the labels, each group's label centred on its categories and divided from the
+        // next by a line from the axis out through its level.
+        if (definition.LabelPosition != "none" && axis.Levels.Count > 0)
+        {
+            var sizes = LevelSizes(axis);
+            var dividers = new List<(float Position, float Reach)>();
+            for (var l = 0; l < axis.Levels.Count; l++)
+            {
+                var from = reach + LevelPad;
+                foreach (var (start, end, label) in axis.Levels[l].Take(MaxMeasured))
+                {
+                    var a = axis.Edge(start);
+                    var b = axis.Edge(end + 1);
+                    var middle = Along(axis, (a + b) / 2, inner);
+                    if (label.Length > 0)
+                        Place(Text(label, definition.Style), axis.Horizontal, middle, labelsAt, from, outward);
+                    dividers.Add((Along(axis, a, inner), from + sizes[l]));
+                    dividers.Add((Along(axis, b, inner), from + sizes[l]));
+                }
+                reach = from + sizes[l];
+            }
+            if (pen is { } divider)
+            {
+                var horizontal = axis.Horizontal;
+                var start = labelsAt;
+                Shape(canvas =>
+                {
+                    using var path = new SKPath();
+                    foreach (var (position, length) in dividers)
+                    {
+                        if (horizontal)
+                        {
+                            path.MoveTo(position, start);
+                            path.LineTo(position, start + outward * length);
+                        }
+                        else
+                        {
+                            path.MoveTo(start, position);
+                            path.LineTo(start + outward * length, position);
+                        }
+                    }
+                    StrokePath(canvas, path, divider);
+                });
+            }
+        }
+
         // The title beyond the labels, turned for a vertical axis.
         if (definition.Title is { Lines.Count: > 0 } title)
         {
-            var lines = title.Lines.Select(l => Text(l, title.Style)).ToList();
-            var height = lines.Sum(l => l.Height);
+            var block = Block(title);
+            var height = block.Height;
             var edge = axis.Horizontal ? (outward > 0 ? Math.Max(labelsAt, inner.Bottom) : Math.Min(labelsAt, inner.Top)) : (outward > 0 ? Math.Max(labelsAt, inner.Right) : Math.Min(labelsAt, inner.Left));
             var distance = reach + 4 * _s;
-            var y = -height / 2;
-            foreach (var line in lines)
-            {
-                if (axis.Horizontal)
-                    TextCentred(line, inner.MidX, edge + outward * (distance + height / 2) + y + line.Height / 2);
-                else
-                    TextCentred(line, edge + outward * (distance + height / 2) + (y + line.Height / 2) * -outward, inner.MidY, outward > 0 ? 90 : -90);
-                y += line.Height;
-            }
+            if (axis.Horizontal)
+                TextCentred(block, inner.MidX, edge + outward * (distance + height / 2));
+            else
+                TextCentred(block, edge + outward * (distance + height / 2), inner.MidY, outward > 0 ? 90 : -90);
         }
     }
 
@@ -1226,8 +1469,9 @@ internal sealed class ChartDrawer
         var baseline = scale.Crossing(category.Definition);
         var count = Math.Min(category.Count, ChartReader.MaxPoints);
         var totals = percent ? Totals(series, count) : null;
-        var rects = new List<(SKRect Rect, SKColor? Fill, Pen? Line)>();
+        var rects = new List<(SKRect Rect, Brush? Fill, Pen? Line)>();
         var labels = new List<(ChartSeries Series, int Index, double Value, SKRect Rect, bool Negative)>();
+        var anchors = new Dictionary<ChartSeries, List<Anchor>>();
         var up = new double[count];
         var down = new double[count];
         for (var k = 0; k < n; k++)
@@ -1275,6 +1519,13 @@ internal sealed class ChartDrawer
                 var auto = SeriesColor(plot, s, i);
                 rects.Add((rect, FillOf(style, auto), PenOf(style.Line, null, 0.75f)));
                 labels.Add((s, i, v, rect, to < from));
+                if (s.ErrorBars.Count > 0)
+                {
+                    if (!anchors.TryGetValue(s, out var list))
+                        anchors[s] = list = [];
+                    var end = Along(value, v1, inner);
+                    list.Add(new Anchor(i, category.Horizontal ? new SKPoint(rect.MidX, end) : new SKPoint(end, rect.MidY), to, v, null));
+                }
             }
         }
         Clipped(inner, canvas =>
@@ -1287,9 +1538,16 @@ internal sealed class ChartDrawer
                 StrokePath(canvas, path, line);
             }
         });
+        foreach (var s in series)
+        {
+            if (anchors.TryGetValue(s, out var list))
+                ErrorBars(s, list, value, null, inner);
+            if (!stacked)
+                Trendlines(s, category, value, inner, SeriesColor(plot, s, 0));
+        }
         foreach (var (s, i, v, rect, negative) in labels)
         {
-            if ((s.Labels ?? plot.Labels) is not { Any: true } options || DataLabel(plot, s, i, v, options) is not { } text)
+            if (LabelsAt(plot, s, i) is not { Any: true } options || DataLabel(plot, s, i, v, options) is not { } text)
                 continue;
             var position = options.Position ?? (stacked ? "ctr" : "outEnd");
             // Along the bar: its far end is the top of a column (or bottom of a negative one), the right of a bar.
@@ -1336,10 +1594,16 @@ internal sealed class ChartDrawer
     }
 
     /// <summary>The text of a data label (series name, category, value, percent), or null when it shows nothing or too many are drawn.</summary>
-    private ChartTextLine? DataLabel(ChartPlot plot, ChartSeries series, int index, double value, ChartLabels options, double? percent = null)
+    /// <summary>What point <paramref name="index"/>'s label shows: its own (c:dLbl), the series' or the plot's.</summary>
+    private static ChartLabels? LabelsAt(ChartPlot plot, ChartSeries series, int index) =>
+        series.PointLabels.GetValueOrDefault(index) ?? series.Labels ?? plot.Labels;
+
+    private TextBlock? DataLabel(ChartPlot plot, ChartSeries series, int index, double value, ChartLabels options, double? percent = null)
     {
         if (++_labels > MaxLabels)
             return null;
+        if (options.Text is { Count: > 0 } own)
+            return Block(own);
         var parts = new List<string>(4);
         if (options.Series && series.Name is { Length: > 0 } name)
             parts.Add(name);
@@ -1350,7 +1614,163 @@ internal sealed class ChartDrawer
         if (options.Percent && percent is { } share)
             parts.Add(Format(share, "0%"));
         _ = plot;
-        return parts.Count == 0 ? null : Text(string.Join(", ", parts), options.Style);
+        // A separator may be a line break.
+        return parts.Count == 0 ? null : Block([.. string.Join(options.Separator ?? ", ", parts).Split('\n').Take(ChartReader.MaxLines).Select(l => Text(l, options.Style))]);
+    }
+
+    // ───────────────────────── Error bars and trendlines ─────────────────────────
+
+    /// <summary>A point error bars start from: where it's drawn, its value as drawn (stacked) and as given, and its X (scatter).</summary>
+    private readonly record struct Anchor(int Index, SKPoint At, double Value, double Raw, double? X);
+
+    /// <summary>Error bars of <paramref name="series"/> at its points, along the value axis (or X axis), clipped to the plot.</summary>
+    private void ErrorBars(ChartSeries series, List<Anchor> anchors, Axis value, Axis? x, SKRect inner)
+    {
+        foreach (var bars in series.ErrorBars)
+        {
+            var alongX = bars.AlongX && x?.Scale is not null;
+            var axis = alongX ? x! : value;
+            if (axis.Scale is not { } scale || PenOf(bars.Line, new SKColor(0x40, 0x40, 0x40), 0.75f) is not { } pen)
+                continue;
+            var (mean, deviation, error) = ChartTrend.Statistics(alongX
+                ? anchors.Select(a => a.X ?? double.NaN)
+                : series.Values.Where(v => v is not null).Select(v => v!.Value), bars.Office);
+            var cap = bars.EndCap ? 3 * _s : 0;
+            var segments = new List<(SKPoint From, SKPoint To)>();
+            foreach (var anchor in anchors)
+            {
+                if (++_markers > MaxMarkers)
+                    break;
+                var own = alongX ? anchor.X ?? double.NaN : anchor.Raw;
+                // Standard deviation bars stand around the series' mean, as Excel draws them.
+                var centre = bars is { Amount: ErrorAmount.StandardDeviation, Office: true } ? mean : alongX ? own : anchor.Value;
+                double Custom(IReadOnlyList<double?>? values) =>
+                    values is null || values.Count == 0 ? 0 : values.Count == 1 ? values[0] ?? 0 : anchor.Index < values.Count ? values[anchor.Index] ?? 0 : 0;
+                var (plus, minus) = bars.Amount switch
+                {
+                    ErrorAmount.Percentage => (Math.Abs(own) * bars.Value / 100, Math.Abs(own) * bars.Value / 100),
+                    ErrorAmount.StandardDeviation => (bars.Value * deviation, bars.Value * deviation),
+                    ErrorAmount.StandardError => (error, error),
+                    ErrorAmount.Variance => (deviation * deviation, deviation * deviation),
+                    ErrorAmount.Custom => (Math.Abs(Custom(bars.PlusValues)), Math.Abs(Custom(bars.MinusValues))),
+                    _ => (bars.Value, bars.Value),
+                };
+                if (!double.IsFinite(centre) || !double.IsFinite(plus) || !double.IsFinite(minus))
+                    continue;
+                var middle = Along(axis, scale.Fraction(centre), inner);
+                var high = bars.Plus ? Along(axis, scale.Fraction(centre + plus), inner) : middle;
+                var low = bars.Minus ? Along(axis, scale.Fraction(centre - minus), inner) : middle;
+                var across = axis.Horizontal ? anchor.At.Y : anchor.At.X;
+                SKPoint P(float along, float side) => axis.Horizontal ? new SKPoint(along, across + side) : new SKPoint(across + side, along);
+                segments.Add((P(low, 0), P(high, 0)));
+                if (cap > 0)
+                {
+                    if (bars.Plus)
+                        segments.Add((P(high, -cap), P(high, cap)));
+                    if (bars.Minus)
+                        segments.Add((P(low, -cap), P(low, cap)));
+                }
+            }
+            if (segments.Count == 0)
+                continue;
+            Clipped(inner, canvas =>
+            {
+                using var path = new SKPath();
+                foreach (var (from, to) in segments)
+                {
+                    path.MoveTo(from);
+                    path.LineTo(to);
+                }
+                StrokePath(canvas, path, pen);
+            });
+        }
+    }
+
+    /// <summary>Points of a trendline's curve drawn at most.</summary>
+    private const int TrendSamples = 200;
+
+    /// <summary>Trendlines of <paramref name="series"/> (categories count 1, 2, 3, ... along X), each with its label.</summary>
+    private void Trendlines(ChartSeries series, Axis x, Axis y, SKRect inner, SKColor auto)
+    {
+        if (series.Trendlines.Count == 0 || y.Scale is not { } yScale)
+            return;
+        var data = new List<(double X, double Y)>();
+        for (var i = 0; i < series.Values.Count; i++)
+        {
+            if (series.Values[i] is not { } v)
+                continue;
+            double? xv = x.Scale is not null && series.XValues is { } xs ? i < xs.Count ? xs[i] : null : i + 1;
+            if (xv is { } xValue)
+                data.Add((xValue, v));
+        }
+        // Fitting costs a pass over the points per trendline: a chart fits so many points at most.
+        if (data.Count < 2 || (_fitted += (long)data.Count * series.Trendlines.Count) > MaxFitted)
+            return;
+        SKPoint Point(double xv, double yv)
+        {
+            var along = Along(x, x.Scale is { } xScale ? xScale.Fraction(xv) : x.Fraction(xv - 1), inner);
+            var across = Along(y, yScale.Fraction(yv), inner);
+            return x.Horizontal ? new SKPoint(along, across) : new SKPoint(across, along);
+        }
+        foreach (var trend in series.Trendlines)
+        {
+            if ((_markers += TrendSamples) > MaxMarkers)
+                return;
+            var pen = PenOf(trend.Line, auto, 1.5f);
+            var runs = new List<SKPoint[]>();
+            TrendFit? fit = null;
+            if (trend.Kind == TrendKind.MovingAverage)
+            {
+                runs.Add([.. ChartTrend.MovingAverage(data, trend.Period).Select(p => Point(p.X, p.Y))]);
+            }
+            else if ((fit = ChartTrend.Fit(trend, data)) is { } fitted)
+            {
+                var low = data.Min(p => p.X) - trend.Backward;
+                var high = data.Max(p => p.X) + trend.Forward;
+                if (trend.Kind is TrendKind.Logarithmic or TrendKind.Power && low <= 0)
+                    low = data.Where(p => p.X > 0).Select(p => p.X).DefaultIfEmpty(1).Min() / 100;
+                // Sampled (also a straight line, so its label finds the last point inside the plot).
+                const int samples = TrendSamples;
+                var current = new List<SKPoint>();
+                for (var k = 0; k < samples; k++)
+                {
+                    var xv = low + (high - low) * k / (samples - 1);
+                    var yv = fitted.Curve(xv);
+                    if (double.IsFinite(yv) && (yScale.Log is null || yv > 0))
+                    {
+                        current.Add(Point(xv, Math.Clamp(yv, -ChartReader.MaxValue, ChartReader.MaxValue)));
+                        continue;
+                    }
+                    if (current.Count > 1)
+                        runs.Add([.. current]);
+                    current.Clear();
+                }
+                if (current.Count > 1)
+                    runs.Add([.. current]);
+            }
+            if (pen is { } line && runs.Any(r => r.Length > 1))
+            {
+                Clipped(inner, canvas =>
+                {
+                    foreach (var run in runs.Where(r => r.Length > 1))
+                    {
+                        using var path = Polyline(run, smooth: false);
+                        StrokePath(canvas, path, line, round: true);
+                    }
+                });
+            }
+            // The equation and R² by the end of the line, inside the plot.
+            if (fit is not null && (trend.ShowEquation || trend.ShowRSquared) && runs.LastOrDefault(r => r.Length > 0) is { } last)
+            {
+                var text = Block(ChartTrend.Label(trend, fit, trend.Style, v => trend.Format is { } code ? Format(v, code) : ChartTrend.Number(v)));
+                var visible = SKRect.Inflate(inner, 0.5f, 0.5f);
+                var end = last.LastOrDefault(visible.Contains, last[^1]);
+                var pad = 4 * _s;
+                var cx = Math.Clamp(end.X - text.Width / 2, inner.Left + text.Width / 2, Math.Max(inner.Left + text.Width / 2, inner.Right - text.Width / 2));
+                var cy = Math.Clamp(end.Y - pad - text.Height / 2, inner.Top + text.Height / 2, Math.Max(inner.Top + text.Height / 2, inner.Bottom - text.Height / 2));
+                TextCentred(text, cx, cy);
+            }
+        }
     }
 
     // ───────────────────────── Lines, areas, scatter ─────────────────────────
@@ -1379,6 +1799,7 @@ internal sealed class ChartDrawer
         foreach (var series in plot.Series)
         {
             var points = new List<SKPoint?>(series.Values.Count);
+            var anchors = new List<Anchor>();
             for (var i = 0; i < series.Values.Count; i++)
             {
                 var v = series.Values[i];
@@ -1412,6 +1833,11 @@ internal sealed class ChartDrawer
                 var px = Along(x, position, inner);
                 var py = Along(y, scale.Fraction(value), inner);
                 points.Add(x.Horizontal ? new SKPoint(px, py) : new SKPoint(py, px));
+                if (series.ErrorBars.Count > 0)
+                {
+                    double? xValue = scatter ? series.XValues is { } xv ? xv[i] : i + 1 : null;
+                    anchors.Add(new Anchor(i, points[^1]!.Value, value, series.Values[i] ?? 0, xValue));
+                }
             }
             var auto = _chart.Palette.Color(series.Index);
             var pen = plot.Lines ? PenOf(series.Style.Line, auto, scatter ? 1.5f : 2.25f) : null;
@@ -1429,6 +1855,10 @@ internal sealed class ChartDrawer
                     }
                 });
             }
+            if (anchors.Count > 0)
+                ErrorBars(series, anchors, y, scatter ? x : null, inner);
+            if (!stacked)
+                Trendlines(series, x, y, inner, auto);
             if (MarkerOf(plot, series) is { } marker)
             {
                 for (var i = 0; i < points.Count; i++)
@@ -1437,23 +1867,21 @@ internal sealed class ChartDrawer
                         Marker(marker with { Style = series.Points.GetValueOrDefault(i) is { } own ? own : marker.Style }, auto, point, counted: true);
                 }
             }
-            if ((series.Labels ?? plot.Labels) is { Any: true } options)
+            for (var i = 0; i < points.Count; i++)
             {
-                for (var i = 0; i < points.Count; i++)
+                if (LabelsAt(plot, series, i) is not { Any: true } options || points[i] is not { } point || series.Values[i] is not { } v
+                    || DataLabel(plot, series, i, v, options) is not { } text)
+                    continue;
+                var pad = 4 * _s + (MarkerOf(plot, series)?.Size ?? 0) * _s / 2;
+                var (cx, cy) = (options.Position ?? "r") switch
                 {
-                    if (points[i] is not { } point || series.Values[i] is not { } v || DataLabel(plot, series, i, v, options) is not { } text)
-                        continue;
-                    var pad = 4 * _s + (MarkerOf(plot, series)?.Size ?? 0) * _s / 2;
-                    var (cx, cy) = (options.Position ?? "r") switch
-                    {
-                        "t" => (point.X, point.Y - pad - text.Height / 2),
-                        "b" => (point.X, point.Y + pad + text.Height / 2),
-                        "l" => (point.X - pad - text.Width / 2, point.Y),
-                        "ctr" => (point.X, point.Y),
-                        _ => (point.X + pad + text.Width / 2, point.Y),
-                    };
-                    TextCentred(text, cx, cy);
-                }
+                    "t" => (point.X, point.Y - pad - text.Height / 2),
+                    "b" => (point.X, point.Y + pad + text.Height / 2),
+                    "l" => (point.X - pad - text.Width / 2, point.Y),
+                    "ctr" => (point.X, point.Y),
+                    _ => (point.X + pad + text.Width / 2, point.Y),
+                };
+                TextCentred(text, cx, cy);
             }
         }
     }
@@ -1568,7 +1996,7 @@ internal sealed class ChartDrawer
             }
             if (!open)
                 FillPath(canvas, path, fill);
-            StrokePath(canvas, path, open ? line ?? (fill is { } f ? new Pen(f, 0.75f, null) : null) : line);
+            StrokePath(canvas, path, open ? line ?? (fill is { } f ? new Pen(f.Color, 0.75f, null) : null) : line);
         });
     }
 
@@ -1621,13 +2049,12 @@ internal sealed class ChartDrawer
                 FillPath(canvas, path, fill);
                 StrokePath(canvas, path, line);
             });
-            if ((series.Labels ?? plot.Labels) is { Any: true } options)
+            if (!stacked)
+                Trendlines(series, category, value, inner, auto);
+            for (var i = 0; i < count; i++)
             {
-                for (var i = 0; i < count; i++)
-                {
-                    if (i < series.Values.Count && series.Values[i] is { } v && DataLabel(plot, series, i, v, options) is { } text)
-                        TextCentred(text, (top[i].X + bottom[i].X) / 2, (top[i].Y + bottom[i].Y) / 2);
-                }
+                if (LabelsAt(plot, series, i) is { Any: true } options && i < series.Values.Count && series.Values[i] is { } v && DataLabel(plot, series, i, v, options) is { } text)
+                    TextCentred(text, (top[i].X + bottom[i].X) / 2, (top[i].Y + bottom[i].Y) / 2);
             }
         }
     }
@@ -1639,7 +2066,7 @@ internal sealed class ChartDrawer
         var rings = plot.Kind == ChartKind.Doughnut ? plot.Series : plot.Series.Take(1).ToList();
         if (rings.Count == 0)
             return;
-        var labelled = rings.Any(s => (s.Labels ?? plot.Labels) is { Any: true, Position: "outEnd" });
+        var labelled = rings.Any(s => (s.Labels ?? plot.Labels) is { Any: true, Position: "outEnd" } || s.PointLabels.Values.Any(l => l is { Any: true, Position: "outEnd" }));
         var radius = Math.Min(area.Width, area.Height) / 2 * (labelled ? 0.75f : 0.95f);
         var pulled = rings.SelectMany(s => s.Explosion.Values).DefaultIfEmpty(0).Max();
         radius /= 1 + pulled / 100f;
@@ -1657,7 +2084,7 @@ internal sealed class ChartDrawer
             if (!(total > 0))
                 continue;
             var angle = -90 + plot.FirstSliceAngle;
-            var slices = new List<(float Start, float Sweep, SKPoint Center, SKColor? Fill, Pen? Line)>();
+            var slices = new List<(float Start, float Sweep, SKPoint Center, Brush? Fill, Pen? Line)>();
             for (var i = 0; i < series.Values.Count; i++)
             {
                 var v = Math.Abs(series.Values[i] ?? 0);
@@ -1667,11 +2094,13 @@ internal sealed class ChartDrawer
                 var style = series.Points.GetValueOrDefault(i) ?? series.Style;
                 var auto = plot.VaryColors ? _chart.Palette.Color(i) : _chart.Palette.Color(series.Index);
                 var explosion = series.Explosion.TryGetValue(i, out var own) ? own : series.Explosion.GetValueOrDefault(-1);
-                var middle = (angle + sweep / 2) * Math.PI / 180;
+                // Anticlockwise slices end where the one before starts.
+                var start = plot.Clockwise ? angle : angle - sweep;
+                var middle = (start + sweep / 2) * Math.PI / 180;
                 var shift = plot.Kind == ChartKind.Pie ? radius * explosion / 100f : 0;
                 var c = new SKPoint(center.X + (float)Math.Cos(middle) * shift, center.Y + (float)Math.Sin(middle) * shift);
-                slices.Add(((float)angle, sweep, c, FillOf(style, auto), PenOf(style.Line, SKColors.White, 0.75f)));
-                if ((series.Labels ?? plot.Labels) is { Any: true } options && DataLabel(plot, series, i, series.Values[i] ?? 0, options, v / total) is { } text)
+                slices.Add(((float)start, sweep, c, FillOf(style, auto), PenOf(style.Line, SKColors.White, 0.75f)));
+                if (LabelsAt(plot, series, i) is { Any: true } options && DataLabel(plot, series, i, series.Values[i] ?? 0, options, v / total) is { } text)
                 {
                     var position = options.Position ?? "bestFit";
                     var distance = position switch
@@ -1683,7 +2112,7 @@ internal sealed class ChartDrawer
                     };
                     TextCentred(text, c.X + (float)Math.Cos(middle) * distance, c.Y + (float)Math.Sin(middle) * distance);
                 }
-                angle += sweep;
+                angle += plot.Clockwise ? sweep : -sweep;
             }
             var (innerRadius, outerRadius) = (inner, outer);
             Shape(canvas =>

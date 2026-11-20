@@ -3,18 +3,22 @@
 // workbook is opened: what Excel, Word and PowerPoint saved is what is drawn.
 //
 // Read: bar and column (clustered, stacked, 100 %), line (with markers, stacked), area, pie, doughnut and scatter plots,
-// several in one plot area (a column and line combination on two value axes); the title (rich text or a cell's text,
-// or the series name Office shows for a lone series), axis titles, category, date and value axes with their scaling,
-// number format, gridlines, tick marks, label position and crossing; the legend with deleted entries; data labels;
-// fills and outlines of the chart area, plot area, series and single points (c:spPr: solid, the first colour of a
-// gradient or pattern, none) and the theme's accent colours for the rest; manual layouts of the plot area and legend.
+// several in one plot area (a column and line combination on two value axes); the title (rich text with each run's
+// look, or a cell's text, or the series name Office shows for a lone series), axis titles, category (also several
+// levels), date and value axes with their scaling, number format, gridlines, tick marks, label position and crossing;
+// the legend with deleted entries; data labels and single points' own labels (c:dLbl: text, what they show, format,
+// position, separator); trendlines (c:trendline) and error bars (c:errBars); fills and outlines of the chart area,
+// plot area, series and single points (c:spPr: solid, gradient, pattern, none) and the automatic colours the chart
+// style (c:style) picks from the theme's accents for the rest; manual layouts of the plot area and legend.
 // 3D charts, radar, bubble, stock, surface and bar-of-pie charts are named instead (LeftOut), and their documents say
 // "charts" were left out, or take LibreOffice where the capability checks send them.
 //
 // Hostile input: the part comes through the package's XML limits; series per chart and points per chart (a cache's
 // ptCount or highest c:idx, not only the points it holds) are bounded and a part beyond is refused with
-// error.document_too_complex; texts are cut at MaxText characters and titles at MaxLines lines; numbers that aren't
-// finite are blanks and the rest are clamped to ±MaxValue, so scaling can't overflow.
+// error.document_too_complex (custom error bar values and category levels count as points); texts are cut at MaxText
+// characters and titles at MaxLines lines, rich text at MaxRuns runs a line, trendlines at MaxTrendlines a series and
+// category levels at MaxLevels; numbers that aren't finite are blanks and the rest are clamped to ±MaxValue, so
+// scaling can't overflow.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -128,7 +132,7 @@ internal sealed class ChartReader
             BlanksAs = Val(chart.Element(C + "dispBlanksAs")) is ("zero" or "span") and var blanks ? blanks : "gap",
             Date1904 = date1904,
             Text = text,
-            Palette = new ChartPalette([.. Enumerable.Range(1, 6).Select(i => _colors.Scheme($"accent{i}"))]),
+            Palette = Palette(root, plots),
             ThemeFont = _themeFont,
         };
         result.Plots.AddRange(plots);
@@ -138,6 +142,37 @@ internal sealed class ChartReader
                 result.Axes.Add(Axis(axis, text));
         }
         return new(result, null);
+    }
+
+    private static readonly XNamespace Mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+    private static readonly XNamespace C14 = "http://schemas.microsoft.com/office/drawing/2007/8/2/chart";
+
+    /// <summary>
+    /// The automatic colours the chart style (c:style 1 to 48, or c14:style 101 to 148) picks: its column of eight
+    /// is greys (1), the theme's accents (2, Office's default) or shades of one accent (3 to 8), from darker to
+    /// lighter across the series (or the points of a plot in varied colours).
+    /// </summary>
+    private ChartPalette Palette(XElement root, List<ChartPlot> plots)
+    {
+        var accents = Enumerable.Range(1, 6).Select(i => _colors.Scheme($"accent{i}")).ToList();
+        var style = Number(root.Element(C + "style"))
+            ?? root.Elements(Mc + "AlternateContent").Elements(Mc + "Choice").Elements(C14 + "style").Select(s => Number(s) - 100).FirstOrDefault(s => s is >= 1 and <= 48)
+            ?? root.Elements(Mc + "AlternateContent").Elements(Mc + "Fallback").Elements(C + "style").Select(Number).FirstOrDefault();
+        var column = style is >= 1 and <= 48 ? ((int)style - 1) % 8 : 1;
+        if (column == 1)
+            return new ChartPalette(accents);
+        var baseColor = column == 0 ? new SKColor(0x80, 0x80, 0x80) : accents[column - 2];
+        var count = Math.Clamp(plots.Max(p => p.VaryColors && p.Series.Count == 1 ? p.Series[0].Values.Count : p.Series.Count), 1, 64);
+        baseColor.ToHsl(out var h, out var s, out var l);
+        var shades = new List<SKColor>(count);
+        for (var i = 0; i < count; i++)
+        {
+            // From half the colour's luminance (a shade) to halfway to white (a tint).
+            var t = count == 1 ? 0 : -0.5 + i / (double)(count - 1);
+            var luminance = t < 0 ? l * (1 + t) : l + (100 - l) * t;
+            shades.Add(SKColor.FromHsl(h, s, (float)Math.Clamp(luminance, 0, 100)));
+        }
+        return new ChartPalette(shades);
     }
 
     // ───────────────────────── Plots and series ─────────────────────────
@@ -190,13 +225,14 @@ internal sealed class ChartReader
         var scatter = kind == ChartKind.Scatter;
         var values = Numbers(ser.Element(C + (scatter ? "yVal" : "val")), out var format);
         IReadOnlyList<string?>? categories = null;
+        IReadOnlyList<IReadOnlyList<string?>>? levels = null;
         IReadOnlyList<double?>? xValues = null;
         if (ser.Element(C + (scatter ? "xVal" : "cat")) is { } cat)
         {
             if (scatter && (cat.Element(C + "numRef") is not null || cat.Element(C + "numLit") is not null))
                 xValues = Numbers(cat, out _);
             else
-                categories = Labels(cat);
+                (categories, levels) = Labels(cat);
         }
         var points = new Dictionary<int, ChartShapeStyle>();
         var explosion = new Dictionary<int, int>();
@@ -210,11 +246,13 @@ internal sealed class ChartReader
             if (Number(point.Element(C + "explosion")) is { } pulled)
                 explosion[(int)index] = (int)Math.Clamp(pulled, 0, 400);
         }
+        var labels = Labels(ser.Element(C + "dLbls"), text);
         return new ChartSeries
         {
             Name = SeriesName(ser.Element(C + "tx")),
             Index = (int)Math.Clamp(Number(ser.Element(C + "idx")) ?? position, 0, MaxSeries * 64),
             Categories = categories,
+            CategoryLevels = levels,
             XValues = xValues,
             Values = values,
             Format = format,
@@ -222,8 +260,66 @@ internal sealed class ChartReader
             Points = points,
             Explosion = explosion,
             Marker = ser.Element(C + "marker") is { } marker ? Marker(marker) : null,
-            Labels = Labels(ser.Element(C + "dLbls"), text),
+            Labels = labels,
+            PointLabels = PointLabels(ser.Element(C + "dLbls"), labels, text),
             Smooth = Bool(ser.Element(C + "smooth"), false),
+            Trendlines = [.. ser.Elements(C + "trendline").Take(MaxTrendlines).Select(t => Trendline(t, text))],
+            ErrorBars = [.. ser.Elements(C + "errBars").Take(2).Select(e => ErrorBars(e, scatter))],
+        };
+    }
+
+    /// <summary>Trendlines of one series kept at most.</summary>
+    internal const int MaxTrendlines = 8;
+
+    private ChartTrendline Trendline(XElement trendline, ChartTextStyle text)
+    {
+        var kind = Val(trendline.Element(C + "trendlineType")) switch
+        {
+            "exp" => TrendKind.Exponential,
+            "log" => TrendKind.Logarithmic,
+            "poly" => TrendKind.Polynomial,
+            "power" => TrendKind.Power,
+            "movingAvg" => TrendKind.MovingAverage,
+            _ => TrendKind.Linear,
+        };
+        var label = trendline.Element(C + "trendlineLbl");
+        var numberFormat = label?.Element(C + "numFmt");
+        return new ChartTrendline(kind)
+        {
+            Order = (int)Math.Clamp(Number(trendline.Element(C + "order")) ?? 2, 2, 6),
+            Period = (int)Math.Clamp(Number(trendline.Element(C + "period")) ?? 2, 2, 255),
+            Forward = Math.Clamp(Number(trendline.Element(C + "forward")) ?? 0, 0, MaxValue),
+            Backward = Math.Clamp(Number(trendline.Element(C + "backward")) ?? 0, 0, MaxValue),
+            Intercept = Number(trendline.Element(C + "intercept")) is { } intercept ? Math.Clamp(intercept, -MaxValue, MaxValue) : null,
+            ShowEquation = Bool(trendline.Element(C + "dispEq"), false),
+            ShowRSquared = Bool(trendline.Element(C + "dispRSqr"), false),
+            Line = Line(trendline.Element(C + "spPr")?.Element(A + "ln")),
+            Format = numberFormat is not null && !Bool(numberFormat.Attribute("sourceLinked"), false) ? (string?)numberFormat.Attribute("formatCode") : null,
+            Style = Style(text, DefaultRun(label?.Element(C + "txPr"))),
+        };
+    }
+
+    private ChartErrorBars ErrorBars(XElement bars, bool scatter)
+    {
+        var amount = Val(bars.Element(C + "errValType")) switch
+        {
+            "percentage" => ErrorAmount.Percentage,
+            "stdDev" => ErrorAmount.StandardDeviation,
+            "stdErr" => ErrorAmount.StandardError,
+            "cust" => ErrorAmount.Custom,
+            _ => ErrorAmount.Fixed,
+        };
+        var type = Val(bars.Element(C + "errBarType")) ?? "both";
+        var custom = amount == ErrorAmount.Custom;
+        return new ChartErrorBars(amount, Math.Clamp(Number(bars.Element(C + "val")) ?? (amount == ErrorAmount.StandardDeviation ? 1 : amount == ErrorAmount.Percentage ? 5 : 0), 0, MaxValue))
+        {
+            AlongX = scatter && Val(bars.Element(C + "errDir")) == "x",
+            Plus = type is "both" or "plus",
+            Minus = type is "both" or "minus",
+            EndCap = !Bool(bars.Element(C + "noEndCap"), false),
+            PlusValues = custom && bars.Element(C + "plus") is { } plus ? Numbers(plus, out _) : null,
+            MinusValues = custom && bars.Element(C + "minus") is { } minus ? Numbers(minus, out _) : null,
+            Line = Line(bars.Element(C + "spPr")?.Element(A + "ln")),
         };
     }
 
@@ -242,21 +338,29 @@ internal sealed class ChartReader
         return cache?.Elements(C + "pt").FirstOrDefault()?.Element(C + "v")?.Value is { } name ? Cut(name) : null;
     }
 
-    /// <summary>Category labels of c:cat: text, numbers in their format, or the innermost level of several.</summary>
-    private IReadOnlyList<string?>? Labels(XElement cat)
+    /// <summary>Levels of multi-level categories kept (Excel's are rarely more than three).</summary>
+    internal const int MaxLevels = 8;
+
+    /// <summary>Category labels of c:cat: text, numbers in their format, or the levels of several (innermost first).</summary>
+    private (IReadOnlyList<string?>? Inner, IReadOnlyList<IReadOnlyList<string?>>? Outer) Labels(XElement cat)
     {
         if ((cat.Element(C + "strRef")?.Element(C + "strCache") ?? cat.Element(C + "strLit")) is { } strings)
-            return Points(strings, v => Cut(v));
+            return (Points(strings, v => Cut(v)), null);
         if ((cat.Element(C + "numRef")?.Element(C + "numCache") ?? cat.Element(C + "numLit")) is { } numbers)
         {
             var code = (string?)numbers.Element(C + "formatCode");
-            return Points(numbers, v => Finite(v) is { } value ? Cut(_formatter.Format(value, code)) : Cut(v));
+            return (Points(numbers, v => Finite(v) is { } value ? Cut(_formatter.Format(value, code)) : Cut(v)), null);
         }
-        if (cat.Element(C + "multiLvlStrRef")?.Element(C + "multiLvlStrCache") is { } levels && levels.Element(C + "lvl") is { } inner)
+        if ((cat.Element(C + "multiLvlStrRef")?.Element(C + "multiLvlStrCache") ?? cat.Element(C + "multiLvlStrLit")) is { } levels
+            && levels.Elements(C + "lvl").Take(MaxLevels).ToList() is [var inner, .. var outer])
         {
-            return Points(inner, v => Cut(v), Count(levels));
+            var count = Count(levels);
+            var first = Points(inner, v => Cut(v), count);
+            // The outer levels: as long as the inner one, a label where each group starts.
+            List<IReadOnlyList<string?>> rest = [.. outer.Select(level => (IReadOnlyList<string?>)Points(level, v => Cut(v), first.Count))];
+            return (first, rest.Count > 0 ? rest : null);
         }
-        return null;
+        return (null, null);
     }
 
     /// <summary>The numbers of c:val, c:yVal or c:xVal (blanks null), with their format code.</summary>
@@ -365,41 +469,68 @@ internal sealed class ChartReader
         var tx = title.Element(C + "tx");
         if (tx?.Element(C + "rich") is { } rich)
         {
-            var lines = new List<string>();
-            var first = true;
-            foreach (var paragraph in rich.Elements(A + "p").Take(MaxLines))
-            {
-                var defaults = paragraph.Element(A + "pPr")?.Element(A + "defRPr");
-                if (first)
-                    style = Style(style, defaults);
-                var line = new System.Text.StringBuilder();
-                foreach (var run in paragraph.Elements())
-                {
-                    if (run.Name == A + "br")
-                    {
-                        lines.Add(Cut(line.ToString()));
-                        line.Clear();
-                        continue;
-                    }
-                    if (run.Name != A + "r" && run.Name != A + "fld")
-                        continue;
-                    if (first)
-                    {
-                        style = Style(style, run.Element(A + "rPr"));
-                        first = false;
-                    }
-                    if (line.Length < MaxText)
-                        line.Append(run.Element(A + "t")?.Value);
-                }
-                lines.Add(Cut(line.ToString()));
-                if (lines.Count >= MaxLines)
-                    break;
-            }
-            return new ChartTitle([.. lines.Take(MaxLines)], style, overlay) { Layout = layout };
+            var (lines, runs, first) = RichLines(rich, style);
+            // Runs are kept when they don't all look like the first one.
+            var mixed = runs.Any(line => line.Any(run => run.Style != first || run.Raise != 0));
+            return new ChartTitle(lines, first, overlay) { Layout = layout, Runs = mixed ? runs : null };
         }
         if (tx?.Element(C + "strRef")?.Element(C + "strCache")?.Elements(C + "pt").FirstOrDefault()?.Element(C + "v")?.Value is { } cell)
             return new ChartTitle([.. Cut(cell).Split('\n').Take(MaxLines)], style, overlay) { Layout = layout };
         return automatic is null ? null : new ChartTitle([automatic], style, overlay) { Layout = layout };
+    }
+
+    /// <summary>Runs of rich text kept per line at most.</summary>
+    private const int MaxRuns = 64;
+
+    /// <summary>
+    /// The paragraphs of a c:rich (a:p, broken at a:br) as lines of text and of runs in their own styles, and the
+    /// style of the first run (what the text is in when it's all alike).
+    /// </summary>
+    private (List<string> Lines, List<IReadOnlyList<ChartRun>> Runs, ChartTextStyle First) RichLines(XElement rich, ChartTextStyle style)
+    {
+        var lines = new List<string>();
+        var runs = new List<IReadOnlyList<ChartRun>>();
+        style = Style(style, DefaultRun(rich));
+        ChartTextStyle? first = null;
+        foreach (var paragraph in rich.Elements(A + "p").Take(MaxLines))
+        {
+            var paragraphStyle = Style(style, paragraph.Element(A + "pPr")?.Element(A + "defRPr"));
+            var line = new System.Text.StringBuilder();
+            var pieces = new List<ChartRun>();
+            void Break()
+            {
+                lines.Add(Cut(line.ToString()));
+                runs.Add(pieces.Count > 0 ? pieces : [new ChartRun("", paragraphStyle)]);
+                line.Clear();
+                pieces = [];
+            }
+            foreach (var run in paragraph.Elements())
+            {
+                if (run.Name == A + "br")
+                {
+                    if (lines.Count < MaxLines)
+                        Break();
+                    continue;
+                }
+                if (run.Name != A + "r" && run.Name != A + "fld")
+                    continue;
+                var runStyle = Style(paragraphStyle, run.Element(A + "rPr"));
+                first ??= runStyle;
+                var piece = run.Element(A + "t")?.Value ?? "";
+                if (line.Length >= MaxText || pieces.Count >= MaxRuns)
+                    continue;
+                piece = piece.Length > MaxText - line.Length ? piece[..(MaxText - line.Length)] : piece;
+                line.Append(piece);
+                // A baseline shift (a:rPr baseline, thousandths of a percent of the size) raises or lowers the run, made smaller.
+                var raise = Number(run.Element(A + "rPr")?.Attribute("baseline")) is { } baseline ? (float)Math.Clamp(baseline / 100_000 * 1.5, -1.5, 1.5) : 0;
+                if (raise != 0)
+                    runStyle = runStyle with { Size = runStyle.Size * 2 / 3 };
+                pieces.Add(new ChartRun(piece, runStyle, raise));
+            }
+            if (lines.Count < MaxLines)
+                Break();
+        }
+        return (lines, runs, first ?? style);
     }
 
     private ChartLegend? Legend(XElement? legend, ChartTextStyle text)
@@ -436,7 +567,57 @@ internal sealed class ChartReader
             Bool(labels.Element(C + "showPercent"), false),
             Val(labels.Element(C + "dLblPos")),
             format,
-            Style(text, DefaultRun(labels.Element(C + "txPr"))));
+            Style(text, DefaultRun(labels.Element(C + "txPr"))))
+        {
+            Separator = Separator(labels),
+        };
+    }
+
+    /// <summary>
+    /// What goes between a label's parts (c:separator), or null. Excel writes a line break as the element's only text,
+    /// which a part read without its whitespace loses: an empty separator is a line break.
+    /// </summary>
+    private static string? Separator(XElement labels) =>
+        labels.Element(C + "separator") is { } separator ? separator.Value.Length == 0 ? "\n" : Cut(separator.Value) : null;
+
+    /// <summary>
+    /// The labels of single points (c:dLbl in c:dLbls): what each shows (the series' choice where it says nothing),
+    /// its own text, position, format and style; a deleted one shows nothing.
+    /// </summary>
+    private Dictionary<int, ChartLabels> PointLabels(XElement? labels, ChartLabels? series, ChartTextStyle text)
+    {
+        var result = new Dictionary<int, ChartLabels>();
+        if (labels is null)
+            return result;
+        var inherited = series ?? new ChartLabels(false, false, false, false, null, null, text);
+        foreach (var label in labels.Elements(C + "dLbl"))
+        {
+            if (Number(label.Element(C + "idx")) is not { } index || index < 0 || index >= MaxPoints || result.Count >= MaxPoints)
+                continue;
+            if (Bool(label.Element(C + "delete"), false))
+            {
+                result[(int)index] = new ChartLabels(false, false, false, false, null, null, inherited.Style);
+                continue;
+            }
+            var style = Style(inherited.Style, DefaultRun(label.Element(C + "txPr")));
+            var numFmt = label.Element(C + "numFmt");
+            result[(int)index] = new ChartLabels(
+                Bool(label.Element(C + "showVal"), inherited.Value),
+                Bool(label.Element(C + "showCatName"), inherited.Category),
+                Bool(label.Element(C + "showSerName"), inherited.Series),
+                Bool(label.Element(C + "showPercent"), inherited.Percent),
+                Val(label.Element(C + "dLblPos")) ?? inherited.Position,
+                numFmt is not null ? Bool(numFmt.Attribute("sourceLinked"), false) ? null : (string?)numFmt.Attribute("formatCode") : inherited.Format,
+                style)
+            {
+                Separator = Separator(label) ?? inherited.Separator,
+                Text = label.Element(C + "tx")?.Element(C + "rich") is { } rich ? RichLines(rich, style).Runs
+                    : label.Element(C + "tx")?.Element(C + "strRef")?.Element(C + "strCache")?.Elements(C + "pt").FirstOrDefault()?.Element(C + "v")?.Value is { } cell
+                        ? [.. Cut(cell).Split('\n').Take(MaxLines).Select(l => (IReadOnlyList<ChartRun>)[new ChartRun(l, style)])]
+                        : null,
+            };
+        }
+        return result;
     }
 
     private static ChartLayout? Layout(XElement? layout)
@@ -455,7 +636,66 @@ internal sealed class ChartReader
     // ───────────────────────── Fills, lines, text ─────────────────────────
 
     private ChartShapeStyle Shape(XElement? properties) =>
-        properties is null ? ChartShapeStyle.Auto : new ChartShapeStyle { Fill = Fill(properties), Line = Line(properties.Element(A + "ln")) };
+        properties is null ? ChartShapeStyle.Auto : new ChartShapeStyle
+        {
+            Fill = Fill(properties),
+            Gradient = Gradient(properties.Element(A + "gradFill")),
+            Hatch = Pattern(properties.Element(A + "pattFill")),
+            Line = Line(properties.Element(A + "ln")),
+        };
+
+    /// <summary>Colour stops of one gradient kept at most.</summary>
+    private const int MaxStops = 64;
+
+    /// <summary>An a:gradFill: its stops, along a:lin's angle or out from a:path's centre (a:fillToRect).</summary>
+    private ChartGradient? Gradient(XElement? fill)
+    {
+        if (fill is null || fill.Parent?.Elements().FirstOrDefault(e => e.Name.Namespace == A && e.Name.LocalName is "noFill" or "solidFill" or "gradFill" or "pattFill") != fill)
+            return null;
+        var stops = new List<(float, SKColor)>();
+        foreach (var gs in fill.Element(A + "gsLst")?.Elements(A + "gs").Take(MaxStops) ?? [])
+        {
+            if (_colors.Color(gs) is { } color)
+                stops.Add(((float)Math.Clamp((Number(gs.Attribute("pos")) ?? 0) / 100_000, 0, 1), color));
+        }
+        if (stops.Count < 2)
+            return null;
+        stops.Sort((a, b) => a.Item1.CompareTo(b.Item1));
+        if (fill.Element(A + "path") is { } path)
+        {
+            var to = path.Element(A + "fillToRect");
+            double Inset(string side) => Math.Clamp((Number(to?.Attribute(side)) ?? 50_000) / 100_000, -1, 2);
+            // The stops run from the centre (position 0) out to the edge.
+            return new ChartGradient(stops, 0, Radial: true,
+                (float)Math.Clamp((Inset("l") + 1 - Inset("r")) / 2, 0, 1), (float)Math.Clamp((Inset("t") + 1 - Inset("b")) / 2, 0, 1));
+        }
+        var angle = Number(fill.Element(A + "lin")?.Attribute("ang")) is { } ang ? ang / 60_000 % 360 : 90;
+        return new ChartGradient(stops, angle);
+    }
+
+    /// <summary>An a:pattFill as hatching (lines and grids) or its two colours mixed (dots and the rest).</summary>
+    private ChartHatch? Pattern(XElement? fill)
+    {
+        if (fill is null || fill.Parent?.Elements().FirstOrDefault(e => e.Name.Namespace == A && e.Name.LocalName is "noFill" or "solidFill" or "gradFill" or "pattFill") != fill)
+            return null;
+        var fore = _colors.Color(fill.Element(A + "fgClr")) ?? SKColors.Black;
+        var back = _colors.Color(fill.Element(A + "bgClr")) ?? SKColors.White;
+        var preset = (string?)fill.Attribute("prst") ?? "pct5";
+        if (preset.StartsWith("pct", StringComparison.Ordinal) && int.TryParse(preset.AsSpan(3), NumberStyles.None, CultureInfo.InvariantCulture, out var percent))
+            return new ChartHatch(fore, back, 4, 0, Blend: Math.Clamp(percent, 0, 100) / 100f);
+        var spacing = preset.StartsWith("nar", StringComparison.Ordinal) || preset.StartsWith("sm", StringComparison.Ordinal) || preset.StartsWith("dk", StringComparison.Ordinal) ? 2.5f
+            : preset.StartsWith("wd", StringComparison.Ordinal) || preset.StartsWith("lg", StringComparison.Ordinal) ? 6f : 4f;
+        return preset switch
+        {
+            "horz" or "ltHorz" or "dkHorz" or "narHorz" or "dashHorz" => new ChartHatch(fore, back, spacing, 0),
+            "vert" or "ltVert" or "dkVert" or "narVert" or "dashVert" => new ChartHatch(fore, back, spacing, 90),
+            "upDiag" or "ltUpDiag" or "dkUpDiag" or "wdUpDiag" or "dashUpDiag" => new ChartHatch(fore, back, spacing, 45),
+            "dnDiag" or "ltDnDiag" or "dkDnDiag" or "wdDnDiag" or "dashDnDiag" => new ChartHatch(fore, back, spacing, -45),
+            "cross" or "smGrid" or "lgGrid" or "dotGrid" => new ChartHatch(fore, back, spacing, 0, Crossings: 2),
+            "diagCross" or "smCheck" or "lgCheck" or "openDmnd" or "dotDmnd" or "trellis" => new ChartHatch(fore, back, spacing, 45, Crossings: 2),
+            _ => new ChartHatch(fore, back, 4, 0, Blend: 0.5f),
+        };
+    }
 
     private SKColor? Fill(XElement properties)
     {

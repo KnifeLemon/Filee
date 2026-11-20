@@ -1,8 +1,9 @@
 // DrawingML charts (Charts/): the chart part read into the model (ChartReader), drawn as vectors with text as glyph
 // runs (ChartDrawer), and drawn where they appear: on printed sheets (XlsxDrawing, SheetCapabilities), in Word
 // documents (DocxReader, FloatingObjects, the renderer's check) and on slides (PptxSlideReader, SlideRenderer,
-// SlideCapabilities). Charts are built in code (ChartBuilder); pictures are checked by how much of each series' colour
-// they hold, not by where the fonts put the text, so Linux fonts don't move the goal posts.
+// SlideCapabilities), with trendlines, error bars, point labels, multi-level categories, rich titles, gradient and
+// pattern fills and the chart style's colours. Charts are built in code (ChartBuilder); pictures are checked by how
+// much of each series' colour they hold, not by where the fonts put the text, so Linux fonts don't move the goal posts.
 
 using System.Diagnostics;
 using System.Xml.Linq;
@@ -174,6 +175,314 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var png = ChartPicture.Png(Drawn(Columns()), 240, 150, 96);
         using var bitmap = SKBitmap.Decode(png);
         Assert.Equal((320, 200), (bitmap.Width, bitmap.Height));
+    }
+
+    // ───────────────────────── Legend, trendlines, error bars, labels, levels, titles, fills ─────────────────────────
+
+    /// <summary>The first glyph run whose text starts with <paramref name="text"/>.</summary>
+    private static GlyphRun Glyphs(PageContent page, string text) =>
+        page.Items.OfType<GlyphItem>().Select(g => g.Run).First(r => r.Text.StartsWith(text, StringComparison.Ordinal));
+
+    /// <summary>Pixels of a kind (a hue more than an exact colour, as lines are antialiased).</summary>
+    private static int Pixels(SKBitmap bitmap, Func<SKColor, bool> kind)
+    {
+        var n = 0;
+        for (var x = 0; x < bitmap.Width; x++)
+        {
+            for (var y = 0; y < bitmap.Height; y++)
+                n += kind(bitmap.GetPixel(x, y)) ? 1 : 0;
+        }
+        return n;
+    }
+
+    private static bool Magenta(SKColor p) => p.Red > 150 && p.Blue > 150 && p.Green < 110;
+
+    private static bool Purple(SKColor p) => p.Red is > 70 and < 190 && p.Green < 110 && p.Blue > 110 && p.Blue > p.Red;
+
+    /// <summary>The rightmost column left of <paramref name="x"/> with a pixel near <paramref name="color"/> within a few rows of <paramref name="y"/>.</summary>
+    private static int RightmostBefore(SKBitmap bitmap, SKColor color, float x, float y)
+    {
+        for (var column = (int)x - 1; column >= 0; column--)
+        {
+            for (var row = Math.Max(0, (int)y - 6); row < Math.Min(bitmap.Height, (int)y + 2); row++)
+            {
+                var p = bitmap.GetPixel(column, row);
+                if (Math.Abs(p.Red - color.Red) <= 30 && Math.Abs(p.Green - color.Green) <= 30 && Math.Abs(p.Blue - color.Blue) <= 30)
+                    return column;
+            }
+        }
+        return -1;
+    }
+
+    [Theory]
+    [InlineData("b")]
+    [InlineData("r")]
+    public void A_bar_entry_text_follows_its_square_in_a_combination_legend(string position)
+    {
+        var (bitmap, page) = Picture(Combo(position));
+        using (bitmap)
+        {
+            // Each entry's text starts a small gap after its own key: the bar's square, the line's stroke.
+            foreach (var (name, color) in new[] { ("North", Red), ("South", Green), ("Target", Blue) })
+            {
+                var run = Glyphs(page, name);
+                var start = run.Positions[0].X;
+                var key = RightmostBefore(bitmap, color, start, run.Positions[0].Y);
+                Assert.InRange(start - key, 1, 8);
+            }
+        }
+    }
+
+    [Fact]
+    public void Trendlines_are_read_with_their_extrapolation_intercept_and_label()
+    {
+        string[] q = ["Q1", "Q2", "Q3", "Q4"];
+        var xml = Chart(Bars(Series(0, "North", q, [40, 55, 70, 62], Solid("C00000") +
+            Trendline("poly", "<c:order val=\"3\"/><c:forward val=\"1.5\"/><c:backward val=\"0.5\"/><c:intercept val=\"10\"/><c:dispRSqr val=\"1\"/><c:dispEq val=\"1\"/>") +
+            Trendline("movingAvg", "<c:period val=\"3\"/>") + Trendline("exp") + Trendline("log") + Trendline("power") + Trendline("linear"))), Axes());
+        var trends = Drawn(xml).Plots[0].Series[0].Trendlines;
+
+        Assert.Equal([TrendKind.Polynomial, TrendKind.MovingAverage, TrendKind.Exponential, TrendKind.Logarithmic, TrendKind.Power, TrendKind.Linear], trends.Select(t => t.Kind));
+        Assert.Equal((3, 1.5, 0.5, 10.0, true, true), (trends[0].Order, trends[0].Forward, trends[0].Backward, trends[0].Intercept, trends[0].ShowEquation, trends[0].ShowRSquared));
+        Assert.Equal(3, trends[1].Period);
+        Assert.Equal(new SKColor(0x70, 0x30, 0xA0), trends[0].Line!.Color);
+    }
+
+    [Fact]
+    public void Trendlines_fit_lines_curves_and_moving_averages_as_Office_does()
+    {
+        static (double X, double Y)[] Points(Func<double, double> f) => [.. Enumerable.Range(1, 6).Select(i => ((double)i, f(i)))];
+        static IReadOnlyList<double> Fit(TrendKind kind, Func<double, double> f, int order = 2, double? intercept = null) =>
+            ChartTrend.Fit(new ChartTrendline(kind) { Order = order, Intercept = intercept }, Points(f))!.Coefficients;
+
+        Assert.Equal([2.0, 1.0], Fit(TrendKind.Linear, x => 2 * x + 1).Select(c => Math.Round(c, 9)));
+        Assert.Equal([0.0, 0.0, 1.0], Fit(TrendKind.Polynomial, x => x * x).Select(c => Math.Round(c, 9)));
+        Assert.Equal([3.0, 0.5], Fit(TrendKind.Exponential, x => 3 * Math.Exp(0.5 * x)).Select(c => Math.Round(c, 9)));
+        Assert.Equal([2.0, 1.0], Fit(TrendKind.Logarithmic, x => 2 * Math.Log(x) + 1).Select(c => Math.Round(c, 9)));
+        Assert.Equal([2.0, 1.5], Fit(TrendKind.Power, x => 2 * Math.Pow(x, 1.5)).Select(c => Math.Round(c, 9)));
+        // A forced intercept: the line through (0, 0) closest to y = x + 1.
+        var forced = Fit(TrendKind.Linear, x => x + 1, intercept: 0);
+        Assert.Equal(0, forced[1]);
+        Assert.InRange(forced[0], 1.2, 1.3);
+
+        var noisy = ChartTrend.Fit(new ChartTrendline(TrendKind.Linear), [(1, 1), (2, 3), (3, 2), (4, 5)])!;
+        Assert.InRange(noisy.RSquared, 0.6, 0.7);
+        Assert.Equal(1, ChartTrend.Fit(new ChartTrendline(TrendKind.Linear), Points(x => 3 * x))!.RSquared, 9);
+        Assert.Equal([2.0, 3, 4], ChartTrend.MovingAverage([(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)], 3).Select(p => p.Y));
+        // Too few or unusable points: no fit.
+        Assert.Null(ChartTrend.Fit(new ChartTrendline(TrendKind.Polynomial) { Order = 6 }, Points(x => x)[..3]));
+        Assert.Null(ChartTrend.Fit(new ChartTrendline(TrendKind.Exponential), [(1, -1), (2, -2)]));
+
+        // The label: "y = 2x + 1" and "R² = 1", the powers raised.
+        var fit = ChartTrend.Fit(new ChartTrendline(TrendKind.Linear), Points(x => 2 * x + 1))!;
+        var label = ChartTrend.Label(new ChartTrendline(TrendKind.Linear) { ShowEquation = true, ShowRSquared = true }, fit, ChartTextStyle.Default, ChartTrend.Number);
+        Assert.Equal(["y = 2x + 1", "R2 = 1"], label.Select(line => string.Concat(line.Select(r => r.Text))));
+        Assert.True(label[1][1].Raise > 0);
+        var square = ChartTrend.Label(new ChartTrendline(TrendKind.Polynomial) { ShowEquation = true },
+            ChartTrend.Fit(new ChartTrendline(TrendKind.Polynomial), Points(x => x * x - 3))!, ChartTextStyle.Default, ChartTrend.Number);
+        Assert.Equal("y = x2 - 3", string.Concat(square[0].Select(r => r.Text)));
+        Assert.Equal("1.2346E+7", ChartTrend.Number(12_345_678));
+        Assert.Equal("0.3333", ChartTrend.Number(1 / 3.0));
+    }
+
+    [Fact]
+    public void A_trendline_and_its_equation_are_drawn_over_the_series()
+    {
+        string[] q = ["Q1", "Q2", "Q3", "Q4"];
+        var trend = Trendline("linear", "<c:forward val=\"1\"/><c:dispRSqr val=\"1\"/><c:dispEq val=\"1\"/>");
+        var (bitmap, page) = Picture(Chart(Bars(Series(0, "North", q, [40, 50, 60, 70], Solid("C00000") + trend)), Axes()));
+        using (bitmap)
+            Assert.True(Pixels(bitmap, Purple) > 60);
+        var text = Text(page);
+        Assert.Contains("y = 10x + 30", text);
+        Assert.Contains("R", text);
+    }
+
+    [Fact]
+    public void Error_bars_are_read_and_drawn_at_each_point()
+    {
+        string[] q = ["Q1", "Q2", "Q3", "Q4"];
+        var custom = ErrorBars("cust", extra: Literal("plus", 1, 2, 3, 4) + Literal("minus", 5), rgb: "FF00FF");
+        var xml = Chart(Bars(Series(0, "North", q, [40, 55, 70, 62], Solid("C00000") + custom) +
+                             Series(1, "South", q, [30, 45, 35, 50], Solid("00B050") + ErrorBars("stdDev", 2, type: "plus", extra: "<c:noEndCap val=\"1\"/>", rgb: "FF00FF"))), Axes());
+        var series = Drawn(xml).Plots[0].Series;
+
+        var bars = Assert.Single(series[0].ErrorBars);
+        Assert.Equal((ErrorAmount.Custom, true, true), (bars.Amount, bars.Plus, bars.Minus));
+        Assert.Equal([1.0, 2, 3, 4], bars.PlusValues!.Select(v => v!.Value));
+        Assert.Equal([5.0], bars.MinusValues!.Select(v => v!.Value));
+        var deviation = Assert.Single(series[1].ErrorBars);
+        Assert.Equal((ErrorAmount.StandardDeviation, 2.0, true, false), (deviation.Amount, deviation.Value, deviation.Plus, deviation.Minus));
+
+        var (bitmap, _) = Picture(xml);
+        using (bitmap)
+            Assert.True(Pixels(bitmap, Magenta) > 40);
+        var (plain, _) = Picture(Columns());
+        using (plain)
+            Assert.Equal(0, Pixels(plain, Magenta));
+
+        // Excel's statistics: the standard deviation, and its standard error √(Σy² / (n(n − 1))).
+        var (mean, sd, se) = ChartTrend.Statistics([1, 2, 3, 4]);
+        Assert.Equal((2.5, 1.291, 1.581), (mean, Math.Round(sd, 3), Math.Round(se, 3)));
+        Assert.Equal(0.645, Math.Round(ChartTrend.Statistics([1, 2, 3, 4], office: false).Error, 3));
+    }
+
+    [Fact]
+    public void Scatter_error_bars_run_along_x_or_y()
+    {
+        var xml = Chart(Scatter(ScatterSeries(0, "A", [1, 2, 4], [3, 1, 2], ErrorBars("fixedVal", 0.5, "x", rgb: "FF00FF") + ErrorBars("percentage", 10, rgb: "00FFFF"))), Axes(scatter: true));
+        var bars = Drawn(xml).Plots[0].Series[0].ErrorBars;
+        Assert.Equal([true, false], bars.Select(b => b.AlongX));
+        var (bitmap, _) = Picture(xml);
+        using (bitmap)
+            Assert.True(Pixels(bitmap, Magenta) > 20 && Pixels(bitmap, p => p.Green > 150 && p.Blue > 150 && p.Red < 110) > 10);
+    }
+
+    [Fact]
+    public void A_point_label_of_its_own_overrides_the_series_labels()
+    {
+        string[] q = ["Q1", "Q2", "Q3", "Q4"];
+        var labels = "<c:dLbls><c:dLbl><c:idx val=\"2\"/><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:rPr b=\"1\"/><a:t>Best</a:t></a:r><a:r><a:rPr/><a:t> quarter</a:t></a:r></a:p></c:rich></c:tx>" +
+                     "<c:dLblPos val=\"outEnd\"/><c:showVal val=\"1\"/></c:dLbl><c:dLbl><c:idx val=\"0\"/><c:delete val=\"1\"/></c:dLbl>" +
+                     "<c:dLbl><c:idx val=\"3\"/><c:numFmt formatCode=\"0.0\" sourceLinked=\"0\"/><c:showVal val=\"1\"/><c:showCatName val=\"1\"/><c:separator>; </c:separator></c:dLbl>" +
+                     "<c:showVal val=\"1\"/></c:dLbls>";
+        var xml = Chart(Bars(Series(0, "North", q, [41, 57, 73, 63], Solid("C00000") + labels)), Axes());
+        var series = Drawn(xml).Plots[0].Series[0];
+
+        Assert.False(series.PointLabels[0].Any);
+        Assert.Equal(["Best", " quarter"], series.PointLabels[2].Text![0].Select(r => r.Text));
+        Assert.True(series.PointLabels[2].Text![0][0].Style.Bold);
+        Assert.Equal(("0.0", "; ", true, true), (series.PointLabels[3].Format, series.PointLabels[3].Separator, series.PointLabels[3].Value, series.PointLabels[3].Category));
+
+        var (bitmap, page) = Picture(xml);
+        bitmap.Dispose();
+        var text = Text(page);
+        Assert.Contains("57", text);
+        Assert.Contains("Best quarter", text);
+        Assert.Contains("Q4; 63.0", text);
+        Assert.DoesNotContain("41", text);
+        Assert.DoesNotContain("73", text);
+    }
+
+    [Fact]
+    public void Multi_level_categories_draw_their_outer_level_beyond_the_inner_one()
+    {
+        var levels = MultiLevel(["Q1", "Q2", "Q3", "Q1", "Q2", "Q3"], [(0, "2025"), (3, "2026")]);
+        foreach (var direction in new[] { "col", "bar" })
+        {
+            var xml = Chart(Bars(Series(0, "North", [], [40, 55, 70, 62, 48, 75], Solid("C00000") + levels), direction), Axes(horizontal: direction == "bar"));
+            var series = Drawn(xml).Plots[0].Series[0];
+            Assert.Equal(["Q1", "Q2", "Q3", "Q1", "Q2", "Q3"], series.Categories!);
+            Assert.Equal(["2025", null, null, "2026", null, null], Assert.Single(series.CategoryLevels!));
+
+            var (bitmap, page) = Picture(xml);
+            bitmap.Dispose();
+            var inner = Glyphs(page, "Q1").Positions[0];
+            var outer = Glyphs(page, "2025").Positions[0];
+            if (direction == "col")
+                Assert.True(outer.Y > inner.Y + 5, $"{outer} {inner}");
+            else
+                Assert.True(outer.X < inner.X - 5, $"{outer} {inner}");
+            Assert.Contains("2026", Text(page));
+        }
+    }
+
+    [Fact]
+    public void A_rich_title_keeps_the_look_of_each_run()
+    {
+        var xml = Chart(Bars(Series(0, "North", ["a", "b"], [1, 2])), Axes(), "x").Replace(Title("x"), RichTitle("Area ", "in km", "2"), StringComparison.Ordinal);
+        var title = Drawn(xml).Title!;
+
+        Assert.Equal(["Area in km2"], title.Lines);
+        var runs = Assert.Single(title.Runs!);
+        Assert.Equal([true, false, false], runs.Select(r => r.Style.Bold));
+        Assert.Equal(Red, runs[0].Style.Color);
+        Assert.Equal(14, runs[1].Style.Size);
+        Assert.True(runs[2].Raise > 0 && runs[2].Style.Size < 14);
+
+        var (bitmap, page) = Picture(xml);
+        bitmap.Dispose();
+        var first = Glyphs(page, "Area");
+        var plain = Glyphs(page, "in km");
+        var raised = page.Items.OfType<GlyphItem>().Select(g => g.Run).First(r => r.Text == "2" && r.Positions[0].X > plain.Positions[0].X);
+        Assert.Equal(Red, first.Color);
+        Assert.True(raised.Positions[0].Y < plain.Positions[0].Y - 1);
+        Assert.True(plain.Positions[0].X > first.Positions[0].X);
+
+        // A title all in one style keeps no runs.
+        Assert.Null(Drawn(Columns()).Title!.Runs);
+    }
+
+    [Fact]
+    public void Gradient_and_pattern_fills_are_drawn_as_such()
+    {
+        string[] q = ["Q1", "Q2", "Q3", "Q4"];
+        var xml = Chart(Bars(Series(0, "Gradient", q, [40, 55, 70, 62], Gradient("FF0000", "0000FF")) + Series(1, "Hatch", q, [30, 45, 35, 50], Pattern("dkUpDiag", "00B050")) +
+                             Series(2, "Dots", q, [20, 25, 40, 30], Pattern("pct50", "000000"))), Axes());
+        var series = Drawn(xml).Plots[0].Series;
+
+        Assert.Equal([new SKColor(0xFF, 0, 0), new SKColor(0, 0, 0xFF)], series[0].Style.Gradient!.Stops.Select(s => s.Color));
+        Assert.Equal(90, series[0].Style.Gradient!.Angle);
+        Assert.Equal(new SKColor(0xFF, 0, 0), series[0].Style.Fill);
+        Assert.Equal((45.0, 1, (SKColor?)SKColors.White), (series[1].Style.Hatch!.Angle, series[1].Style.Hatch.Crossings, series[1].Style.Hatch.Background));
+        Assert.Equal(0.5f, series[2].Style.Hatch!.Blend);
+
+        static bool Greenish(SKColor p) => p.Green > p.Red + 40 && p.Green > p.Blue + 20;
+        var (bitmap, _) = Picture(xml);
+        var (solid, _) = Picture(xml.Replace(Pattern("dkUpDiag", "00B050"), Solid("00B050"), StringComparison.Ordinal));
+        using (bitmap)
+        using (solid)
+        {
+            // The gradient runs from red to blue through purples; the hatch leaves white between green lines; the dots mix to grey.
+            Assert.True(Pixels(bitmap, p => p.Red > 200 && p.Blue < 80 && p.Green < 60) > 30);
+            Assert.True(Pixels(bitmap, p => p.Blue > 200 && p.Red < 80 && p.Green < 60) > 30);
+            Assert.True(Pixels(bitmap, p => p.Red is > 90 and < 170 && p.Blue is > 90 and < 170 && p.Green < 40) > 100);
+            var hatched = Pixels(bitmap, Greenish);
+            Assert.InRange(hatched / (double)Pixels(solid, Greenish), 0.1, 0.9);
+            Assert.True(Count(bitmap, new SKColor(0x80, 0x80, 0x80)) > 2000);
+        }
+    }
+
+    [Theory]
+    [InlineData("<c:style val=\"3\"/>")]
+    [InlineData("<mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"><mc:Choice Requires=\"c14\" xmlns:c14=\"http://schemas.microsoft.com/office/drawing/2007/8/2/chart\"><c14:style val=\"103\"/></mc:Choice><mc:Fallback><c:style val=\"3\"/></mc:Fallback></mc:AlternateContent>")]
+    public void The_chart_style_picks_shades_of_one_accent(string style)
+    {
+        string[] q = ["Q1", "Q2"];
+        var plain = Series(0, "A", q, [4, 5]) + Series(1, "B", q, [3, 4]) + Series(2, "C", q, [2, 3]);
+        var xml = Chart(Bars(plain), Axes()).Replace("<c:roundedCorners val=\"0\"/>", "<c:roundedCorners val=\"0\"/>" + style, StringComparison.Ordinal);
+        var palette = Drawn(xml).Palette;
+
+        // All three are the first accent (blue), from darker to lighter.
+        var lightness = new List<float>();
+        for (var i = 0; i < 3; i++)
+        {
+            palette.Color(i).ToHsl(out var h, out _, out var l);
+            Assert.InRange(h, 210, 225);
+            lightness.Add(l);
+        }
+        Assert.True(lightness[0] < lightness[1] && lightness[1] < lightness[2]);
+        // Style 2 (Office's default) is the accents in turn.
+        Assert.Equal(new SKColor(0xED, 0x7D, 0x31), Drawn(xml.Replace("val=\"3\"", "val=\"2\"", StringComparison.Ordinal).Replace("val=\"103\"", "val=\"102\"", StringComparison.Ordinal)).Palette.Color(1));
+    }
+
+    [Fact]
+    public void Trendlines_error_bars_and_labels_with_extreme_numbers_are_drawn_in_time()
+    {
+        var count = 20_000;
+        var values = Enumerable.Range(0, count).Select(i => (double?)(i % 2 == 0 ? 1e100 : -1e100)).ToArray();
+        var extras = string.Concat(Enumerable.Range(0, 12).Select(_ => Trendline("poly", "<c:order val=\"6\"/><c:forward val=\"1e100\"/><c:dispEq val=\"1\"/><c:dispRSqr val=\"1\"/>"))) +
+                     Trendline("movingAvg", "<c:period val=\"999999\"/>") + Trendline("exp", "<c:intercept val=\"-5\"/>") + Trendline("power") +
+                     ErrorBars("stdDev", 1e100) + ErrorBars("cust", extra: Literal("plus", 1e100) + Literal("minus", -1e100));
+        var labels = "<c:dLbls>" + string.Concat(Enumerable.Range(0, 3000).Select(i => $"<c:dLbl><c:idx val=\"{i}\"/><c:showVal val=\"1\"/></c:dLbl>")) + "<c:showVal val=\"1\"/></c:dLbls>";
+        var xml = Chart(Lines(Series(0, "S", [], values, extras + labels)), Axes());
+        var watch = Stopwatch.StartNew();
+
+        var chart = Drawn(xml);
+        Assert.Equal(ChartReader.MaxTrendlines, chart.Plots[0].Series[0].Trendlines.Count);
+        var (bitmap, _) = Picture(xml);
+        bitmap.Dispose();
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60), $"took {watch.Elapsed}");
     }
 
     // ───────────────────────── Hostile input ─────────────────────────
