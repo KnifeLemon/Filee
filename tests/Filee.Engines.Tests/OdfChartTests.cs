@@ -1,7 +1,9 @@
 // OpenDocument charts (Charts/OdfChartReader): an embedded chart object read into the chart model from its own table,
-// and drawn where it appears: in ODT documents (OdtReader, the renderer and its check, the left-out notice) and on ODP
-// slides (OdfDrawReader, the slide renderer). Charts are built in code (OdfChartBuilder); pictures are checked by how
-// much of each series' colour they hold, not by where the fonts put the text.
+// and drawn where it appears: in ODT documents (OdtReader, the renderer and its check, the left-out notice), on ODP
+// slides (OdfDrawReader, the slide renderer) and on ODS sheets (OdsReader, whose sheets its ranges look into); with
+// pie angles and directions, gradient and hatch fills, trendlines and error bars. Charts are built in code
+// (OdfChartBuilder); pictures are checked by how much of each series' colour they hold, not by where the fonts put the
+// text.
 
 using System.Diagnostics;
 using System.Text;
@@ -146,6 +148,120 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
         Assert.False(OdfChartReader.IsChart(XDocument.Parse($"<office:document-content {OdfChartBuilder.Namespaces}><office:body><office:text/></office:body></office:document-content>").Root));
     }
 
+    [Fact]
+    public void A_pie_starts_at_its_angle_offset_and_turns_anticlockwise_unless_reversed()
+    {
+        var pie = OdfChartBuilder.Columns("chart:circle", series: 1);
+        var plot = Assert.Single(Drawn(pie).Plots);
+        Assert.Equal((0.0, false), (plot.FirstSliceAngle, plot.Clockwise));
+
+        var turned = OdfChartBuilder.Columns("chart:circle", series: 1, plotProps: "chart:angle-offset=\"0\"")
+            .Replace("<chart:axis chart:dimension=\"x\" chart:name=\"primary-x\" chart:style-name=\"ch4\">", "<chart:axis chart:dimension=\"x\" chart:name=\"primary-x\" chart:style-name=\"rev\">", StringComparison.Ordinal)
+            .Replace("</office:automatic-styles>", "<style:style style:name=\"rev\" style:family=\"chart\"><style:chart-properties chart:reverse-direction=\"true\"/></style:style></office:automatic-styles>", StringComparison.Ordinal);
+        plot = Assert.Single(Drawn(turned).Plots);
+        Assert.Equal((90.0, true), (plot.FirstSliceAngle, plot.Clockwise));
+
+        // The first slice (Q1, LibreOffice's first colour) sits left of the top when it turns anticlockwise from there.
+        var first = new SKColor(0x00, 0x45, 0x86);
+        using var bitmap = Picture(Drawn(pie));
+        int Half(int from, int to)
+        {
+            var n = 0;
+            for (var x = from; x < to; x++)
+            {
+                for (var y = 0; y < bitmap.Height * 3 / 4; y++)
+                {
+                    var p = bitmap.GetPixel(x, y);
+                    n += Math.Abs(p.Red - first.Red) <= 12 && Math.Abs(p.Green - first.Green) <= 12 && Math.Abs(p.Blue - first.Blue) <= 12 ? 1 : 0;
+                }
+            }
+            return n;
+        }
+        Assert.True(Half(0, bitmap.Width / 2) > 10 * Math.Max(1, Half(bitmap.Width / 2, bitmap.Width)));
+    }
+
+    /// <summary>The chart with a linear gradient, a crossed hatch over white and a radial gradient as its three series' fills.</summary>
+    private static string Filled() => OdfChartBuilder.Columns()
+        .Replace("<office:automatic-styles>", "<office:styles><draw:gradient draw:name=\"g1\" draw:style=\"linear\" draw:start-color=\"#ff0000\" draw:end-color=\"#0000ff\" draw:angle=\"0deg\" draw:border=\"10%\"/>" +
+            "<draw:gradient draw:name=\"g2\" draw:style=\"radial\" draw:start-color=\"#004586\" draw:end-color=\"#ffffff\" draw:cx=\"25%\" draw:cy=\"50%\" draw:end-intensity=\"50%\"/>" +
+            "<draw:hatch draw:name=\"h1\" draw:style=\"double\" draw:color=\"#00b050\" draw:distance=\"0.1cm\" draw:rotation=\"450\"/></office:styles><office:automatic-styles>", StringComparison.Ordinal)
+        .Replace("draw:fill-color=\"#c00000\" svg:stroke-color=\"#c00000\"", "draw:fill=\"gradient\" draw:fill-gradient-name=\"g1\" draw:fill-color=\"#c00000\"", StringComparison.Ordinal)
+        .Replace("draw:fill-color=\"#00b050\" svg:stroke-color=\"#00b050\"", "draw:fill=\"hatch\" draw:fill-hatch-name=\"h1\" draw:fill-hatch-solid=\"true\" draw:fill-color=\"#ffffff\"", StringComparison.Ordinal)
+        .Replace("draw:fill-color=\"#0070c0\" svg:stroke-color=\"#0070c0\"", "draw:fill=\"gradient\" draw:fill-gradient-name=\"g2\" draw:fill-color=\"#0070c0\"", StringComparison.Ordinal);
+
+    [Fact]
+    public void Gradient_and_hatch_fills_are_read_from_their_definitions()
+    {
+        var series = Assert.Single(Drawn(Filled()).Plots).Series;
+
+        var linear = series[0].Style.Gradient!;
+        Assert.Equal([(0f, new SKColor(0xFF, 0, 0)), (0.1f, new SKColor(0xFF, 0, 0)), (1f, new SKColor(0, 0, 0xFF))], linear.Stops);
+        Assert.Equal((90.0, false), (linear.Angle, linear.Radial));
+        var hatch = series[1].Style.Hatch!;
+        Assert.Equal((Green, (SKColor?)SKColors.White, 2, 45.0), (hatch.Color, hatch.Background, hatch.Crossings, hatch.Angle));
+        Assert.Equal(2.83, hatch.Spacing, 2);
+        var radial = series[2].Style.Gradient!;
+        Assert.True(radial.Radial);
+        Assert.Equal((0.25f, 0.5f), (radial.CenterX, radial.CenterY));
+        // The end colour (at the centre) at half intensity.
+        Assert.Equal(new SKColor(0x7F, 0x7F, 0x7F), radial.Stops[0].Color);
+
+        using var bitmap = Picture(Drawn(Filled()));
+        Assert.True(Count(bitmap, new SKColor(0xFF, 0, 0)) > 100 && Count(bitmap, new SKColor(0, 0, 0xFF)) > 100);
+    }
+
+    [Fact]
+    public void Trendlines_and_error_bars_are_read_from_regression_curves_and_error_indicators()
+    {
+        var styles = "<style:style style:name=\"reg\" style:family=\"chart\"><style:chart-properties chart:regression-type=\"polynomial\" chart:regression-max-degree=\"3\" " +
+                     "chart:regression-extrapolate-forward=\"1\" chart:regression-force-intercept=\"true\" chart:regression-intercept-value=\"5\"/><style:graphic-properties svg:stroke-color=\"#7030a0\" svg:stroke-width=\"0.05cm\"/></style:style>" +
+                     "<style:style style:name=\"err\" style:family=\"chart\"><style:chart-properties chart:error-category=\"constant\" chart:error-upper-limit=\"8\" chart:error-lower-limit=\"4\" chart:error-lower-indicator=\"false\"/></style:style>" +
+                     "<style:style style:name=\"old\" style:family=\"chart\"><style:chart-properties chart:regression-type=\"exponential\" chart:error-category=\"percentage\" chart:error-percentage=\"10\"/><style:graphic-properties svg:stroke-color=\"#00b050\"/></style:style>";
+        var xml = OdfChartBuilder.Columns("chart:line", seriesExtra: [
+                ("", "<chart:regression-curve chart:style-name=\"reg\"><chart:equation chart:display-equation=\"true\" chart:display-r-square=\"true\"/></chart:regression-curve><chart:error-indicator chart:style-name=\"err\" chart:dimension=\"y\"/>"),
+                ("", ""),
+                ("", ""),
+            ])
+            .Replace("</office:automatic-styles>", styles + "</office:automatic-styles>", StringComparison.Ordinal)
+            .Replace("<chart:series chart:style-name=\"s1\"", "<chart:series chart:style-name=\"old\"", StringComparison.Ordinal);
+        var series = Assert.Single(Drawn(xml).Plots).Series;
+
+        var trend = Assert.Single(series[0].Trendlines);
+        Assert.Equal((TrendKind.Polynomial, 3, 1.0, 5.0, true, true), (trend.Kind, trend.Order, trend.Forward, trend.Intercept, trend.ShowEquation, trend.ShowRSquared));
+        Assert.Equal(new SKColor(0x70, 0x30, 0xA0), trend.Line!.Color);
+        var bars = Assert.Single(series[0].ErrorBars);
+        Assert.Equal((ErrorAmount.Custom, true, false, false), (bars.Amount, bars.Plus, bars.Minus, bars.Office));
+        Assert.Equal((8.0, 4.0), (bars.PlusValues![0], bars.MinusValues![0]));
+        // ODF 1.1: the regression and error properties on the series' own style.
+        Assert.Equal(TrendKind.Exponential, Assert.Single(series[1].Trendlines).Kind);
+        Assert.Equal((ErrorAmount.Percentage, 10.0), (Assert.Single(series[1].ErrorBars).Amount, series[1].ErrorBars[0].Value));
+
+        using var bitmap = Picture(Drawn(xml));
+        Assert.True(Count(bitmap, new SKColor(0x70, 0x30, 0xA0)) > 30);
+    }
+
+    [Fact]
+    public void A_calc_chart_takes_its_values_from_the_sheet_its_ranges_name()
+    {
+        // The chart's own table says 40, 55, 70, 62 for North; the sheet says otherwise.
+        var chart = OdfChartBuilder.Columns().Replace("local-table.$", "Data.$", StringComparison.Ordinal).Replace(":.$", ":Data.$", StringComparison.Ordinal);
+        var data = "<table:table table:name=\"Data\"><table:table-row><table:table-cell/><table:table-cell office:value-type=\"string\"><text:p>East</text:p></table:table-cell></table:table-row>" +
+                   string.Concat(Enumerable.Range(0, 4).Select(i => $"<table:table-row><table:table-cell office:value-type=\"string\"><text:p>M{i + 1}</text:p></table:table-cell>" +
+                       $"<table:table-cell office:value-type=\"float\" office:value=\"{(i + 1) * 100}\"><text:p>{(i + 1) * 100}</text:p></table:table-cell></table:table-row>")) +
+                   "</table:table>";
+        var path = SpreadsheetWithChart(fx.NewFolder(), chart, data);
+
+        var book = Office.Sheets.OdsReader.Read(path);
+        var drawn = Assert.IsType<Office.Sheets.SheetChart>(Assert.Single(book.Sheets[0].Drawings)).Chart;
+        var series = Assert.Single(drawn.Plots).Series;
+        Assert.Equal("East", series[0].Name);
+        Assert.Equal([100.0, 200, 300, 400], series[0].Values.Select(v => v!.Value));
+        Assert.Equal(["M1", "M2", "M3", "M4"], series[0].Categories!);
+        // Columns the sheet leaves empty are blanks; without the sheets (a document's chart), the chart's own table.
+        Assert.All(series[2].Values, v => Assert.Null(v));
+        Assert.Equal([40.0, 55, 70, 62], Drawn(chart).Plots[0].Series[0].Values.Select(v => v!.Value));
+    }
+
     // ───────────────────────── ODT ─────────────────────────
 
     private string Document(string? chart, bool picture = false)
@@ -226,13 +342,14 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
     private string Spreadsheet(string? chart) => SpreadsheetWithChart(fx.NewFolder(), chart);
 
     /// <inheritdoc cref="Spreadsheet"/>
-    internal static string SpreadsheetWithChart(string folder, string? chart)
+    /// <param name="tables">More sheets after the one with the chart.</param>
+    internal static string SpreadsheetWithChart(string folder, string? chart, string tables = "")
     {
         const string Draw = "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"";
         var frame = $"<draw:frame {Draw} table:end-cell-address=\"Sheet1.G16\" table:end-x=\"0.5cm\" table:end-y=\"0.2cm\" svg:x=\"0.1cm\" svg:y=\"0.1cm\" svg:width=\"12cm\" svg:height=\"7cm\">" +
                     "<draw:object xlink:href=\"./Object 1\"/><draw:image xlink:href=\"./ObjectReplacements/Object 1\"/></draw:frame>";
-        var tables = "<table:table table:name=\"Sheet1\"><table:table-row><table:table-cell office:value-type=\"string\"><text:p>Sales</text:p></table:table-cell></table:table-row>" +
-                     $"<table:table-row><table:table-cell/><table:table-cell>{frame}</table:table-cell></table:table-row></table:table>";
+        tables = "<table:table table:name=\"Sheet1\"><table:table-row><table:table-cell office:value-type=\"string\"><text:p>Sales</text:p></table:table-cell></table:table-row>" +
+                     $"<table:table-row><table:table-cell/><table:table-cell>{frame}</table:table-cell></table:table-row></table:table>" + tables;
         var path = OdsBuilder.Save(Path.Combine(folder, "book.ods"), "", tables);
         if (chart is not null)
         {
@@ -291,12 +408,17 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
     [Trait("Category", "Fuzz")]
     public void OdfChartReader_reads_or_refuses_every_mutated_chart_object() =>
         new FuzzHarness(fx, 40, 20261120).Data("odf-chart", "xml",
-            [.. new[] { OdfChartBuilder.Columns(), OdfChartBuilder.Columns("chart:circle", series: 1), OdfChartBuilder.Columns(plotProps: "chart:percentage=\"true\" chart:vertical=\"true\"") }
+            [.. new[] { OdfChartBuilder.Columns(), OdfChartBuilder.Columns("chart:circle", series: 1), OdfChartBuilder.Columns(plotProps: "chart:percentage=\"true\" chart:vertical=\"true\""), Filled() }
                 .Select(Encoding.UTF8.GetBytes)],
             FuzzHarness.Xml(["table:number-rows-repeated=\"99999999\"", "table:number-columns-repeated=\"1048576\"", "chart:repeated=\"2147483647\"",
                 "office:value=\"1e309\"", "office:value=\"NaN\"", "chart:class=\"chart:line\"", "chart:attached-axis=\"secondary-y\"",
                 "chart:logarithmic=\"true\"", "chart:minimum=\"5\" chart:maximum=\"-5\"", "chart:interval-major=\"1e-300\"", "style:rotation-angle=\"1e9\"",
-                "fo:font-size=\"40000pt\"", "local-table.$A$1:.$ZZ$99", "Sheet1.$B$2:.$B$5", "chart:pie-offset=\"1e9\""]),
+                "fo:font-size=\"40000pt\"", "local-table.$A$1:.$ZZ$99", "Sheet1.$B$2:.$B$5", "chart:pie-offset=\"1e9\"",
+                "chart:regression-type=\"polynomial\" chart:regression-max-degree=\"1e9\" chart:regression-extrapolate-forward=\"1e308\"",
+                "chart:regression-type=\"moving-average\" chart:regression-period=\"0\"", "chart:error-category=\"standard-deviation\"",
+                "chart:error-category=\"cell-range\" chart:error-upper-range=\"local-table.$A$1:.$ZZZ$1048576\"", "chart:error-category=\"error-margin\" chart:error-margin=\"1e308\"",
+                "chart:angle-offset=\"1e308\"", "chart:reverse-direction=\"true\"", "draw:angle=\"1e9rad\"", "draw:distance=\"0cm\"", "draw:style=\"triple\"",
+                "draw:border=\"500%\"", "draw:fill=\"hatch\" draw:fill-hatch-name=\"h1\""]),
             bytes =>
             {
                 XDocument xml;

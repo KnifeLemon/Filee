@@ -5,8 +5,8 @@
 // heights, hidden rows / columns / sheets and frozen rows, and for printing each sheet's page style (paper, margins,
 // scale, page order, centring, grid and headings, headers and footers with their fields), print ranges, repeated
 // rows and columns, manual page breaks, rotation, indent and shrink to fit, and charts (embedded chart objects in
-// frames anchored to a cell or the sheet, read by OdfChartReader) for the printer. Images, other objects, comments and
-// conditional formats are not read.
+// frames anchored to a cell or the sheet, read by OdfChartReader once every sheet is read, so their ranges into the
+// sheets take the cells' values) for the printer. Images, other objects, comments and conditional formats are not read.
 //
 // A small file can stand for a huge sheet (repeats of rows, cells and spaces): the cells the repeats expand to, the
 // characters of all cells as repeated, and the merged areas are counted, and a file past a limit is refused.
@@ -78,6 +78,10 @@ internal sealed class OdsReader
     private long _characters;
     private DocumentPackage? _zip;
     private readonly Charts.ChartBudget _charts = new();
+
+    /// <summary>Chart frames found while reading the sheets, read once all of them are (their ranges look into any).</summary>
+    private readonly List<(XElement Frame, int Row, int Column, Worksheet Sheet)> _chartFrames = [];
+    private Workbook? _book;
     private long _merges;
 
     /// <summary>Characters of the cell being read that are counted already (counted as its text grows).</summary>
@@ -117,6 +121,9 @@ internal sealed class OdsReader
             sheet.PrintArea.AddRange(PrintRanges((string?)table.Attribute(Table + "print-ranges")));
             book.Sheets.Add(sheet);
         }
+        reader._book = book;
+        foreach (var (frame, row, column, sheet) in reader._chartFrames)
+            reader.PlaceChart(frame, row, column, sheet);
         return book;
     }
 
@@ -712,11 +719,18 @@ internal sealed class OdsReader
         }
     }
 
-    /// <summary>A frame holding a chart object OdfChartReader draws, as a chart on the sheet; other frames are left out.</summary>
+    /// <summary>A frame that may hold a chart, read when all sheets are.</summary>
     private void ChartFrame(XElement frame, int row, int column, Worksheet sheet)
     {
-        if (frame.Element(Draw + "object") is not { } embedded || ChartObject(embedded) is not { } chart
-            || sheet.Drawings.Count(d => d is SheetChart) >= MaxCharts)
+        if (frame.Element(Draw + "object") is not null)
+            _chartFrames.Add((frame, row, column, sheet));
+    }
+
+    /// <summary>A frame holding a chart object OdfChartReader draws, as a chart on the sheet; other frames are left out.</summary>
+    private void PlaceChart(XElement frame, int row, int column, Worksheet sheet)
+    {
+        if (sheet.Drawings.Count(d => d is SheetChart) >= MaxCharts || frame.Element(Draw + "object") is not { } embedded
+            || ChartObject(embedded) is not { } chart)
             return;
         var width = Points((string?)frame.Attribute(Svg + "width")) ?? 0;
         var height = Points((string?)frame.Attribute(Svg + "height")) ?? 0;
@@ -735,11 +749,19 @@ internal sealed class OdsReader
         sheet.Drawings.Add(new SheetChart(chart, row, column, x, y, width, height) { To = to });
     }
 
+    /// <summary>The cells of the sheet named <paramref name="name"/> as a chart's ranges see them, or null for a sheet not read.</summary>
+    private Func<int, int, (string Text, double? Value)?>? SheetCells(string name)
+    {
+        if (_book?.Sheets.FirstOrDefault(s => s.Name == name) is not { } sheet)
+            return null;
+        return (row, column) => sheet.Get(row, column) is { } cell ? (cell.Text, cell.IsError ? null : cell.Value) : null;
+    }
+
     /// <summary>The chart of an embedded object (inline, or its folder's content.xml with styles.xml); null when it isn't one OdfChartReader draws.</summary>
     private Charts.Chart? ChartObject(XElement embedded)
     {
         if (embedded.Element(Office + "document") is { } inline)
-            return Charts.OdfChartReader.Read(inline).Chart;
+            return Charts.OdfChartReader.Read(inline, null, SheetCells).Chart;
         var href = ((string?)embedded.Attribute(XLink + "href"))?.Trim();
         if (_zip is null || href is null)
             return null;
@@ -751,7 +773,7 @@ internal sealed class OdsReader
         try
         {
             var content = Load(_zip, href + "/content.xml")?.Root;
-            return Charts.OdfChartReader.IsChart(content) ? Charts.OdfChartReader.Read(content, Load(_zip, href + "/styles.xml")?.Root).Chart : null;
+            return Charts.OdfChartReader.IsChart(content) ? Charts.OdfChartReader.Read(content, Load(_zip, href + "/styles.xml")?.Root, SheetCells).Chart : null;
         }
         catch (InvalidDataException)
         {
