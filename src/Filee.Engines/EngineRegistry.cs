@@ -84,6 +84,7 @@ public static class EngineRegistry
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
         new DrawingConverter(),
+        new Djvu.DjvuConverter(),
         new Gcode.GcodeConverter(loggers?.CreateLogger<Gcode.GcodeConverter>()),
         new ModelConverter(),
         new ImageTo3DConverter(),

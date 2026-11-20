@@ -35,6 +35,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **DjVu** | built in | **DjVu (.djvu, .djv; one page or bundled) → PDF** (the layers kept: background JPEG, 1-bit masks; the hidden text searchable) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
@@ -4400,11 +4401,44 @@ SRT or SAMI file in CP949 comes out as UTF-8).
 
 ## DjVu
 
-Not supported: DjVuLibre (GPL) has no pinned, redistributable Windows build in an archive the installer can unpack.
-The official Windows release is an NSIS installer (`DjVuLibre-3.5.29_DjView-4.12_Setup.exe` on SourceForge), which
-would have to be run (a system install) or unpacked with 7-Zip; MSYS2's packages are `.pkg.tar.zst` archives with
-five dependency packages. A DjVu engine needs a zip of `ddjvu.exe` / `djvutxt.exe` and their DLLs published for
-Filee (with the GPL source offer), then an `engines.json` component and an optional package.
+Built in (#346), in `Djvu/`, written from the DjVu v3 specification (engine id `djvu`, format id `djvu` for `.djvu`
+and `.djv`, documents donut). `DjvuConverter` turns a DjVu document into **PDF** (every page) and into **PNG, JPG and
+TIFF** pictures of its pages (the PDF options' page range, each page at its own resolution, then the image options;
+TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from the PDF.
+
+- **Container:** IFF85 (`AT&T`, then a FORM chunk). One page (`FORM:DJVU`) or a bundled document (`FORM:DJVM`): the
+  `DIRM` directory (versions 0 and 1, its BZZ tables of sizes, flags and names) gives the components at their offsets
+  — pages, included files (`FORM:DJVI`) and thumbnails (skipped). An **indirect** document (pages in separate files)
+  is refused with `error.djvu_indirect`, which says to bundle it in a DjVu viewer first. A file cut short keeps the
+  chunks it still holds.
+- **Page:** `INFO` (size, resolution 25–6000 dpi, else 300; rotation → the PDF page's `/Rotate`, the picture turned),
+  `INCL` (followed depth first, each file once, so include loops end), the mask `Sjbz` with its shared dictionary
+  `Djbz` (in the page or an included file; a dictionary may build on another; decoded once per file and kept for the
+  next pages), the background `BG44` (or `BGjp`), foreground colours `FG44` (or `FGjp`) or the palette `FGbz`
+  (colours and a colour per shape), hidden text `TXTz` / `TXTa`.
+- **Decoders:** the ZP-coder (the specification's probability table), BZZ (block sort transform, move-to-front with
+  the specification's rank estimator), JB2 (all record types: new shapes coded directly, refinements against library
+  shapes, copies, non-mark data, comments, dictionary requests and number-coder resets) and IW44 (luminance and
+  chrominance maps of 32 × 32 blocks, all bands and slices over several chunks, chrominance at half resolution or
+  starting late, the backward lifting transform, the YCbCr transform; grey pictures).
+- **Composition:** the background scaled up to the page (bilinear, by the reduction its size gives), then each mask
+  pixel in its foreground colour (the FG44 picture, the shape's palette colour, or black); white without a background.
+- **PDF:** the layers stay layers (`DjvuPdfWriter`), so a scanned book stays small: the background as a JPEG at its
+  own resolution, the mask as 1-bit image masks (Flate) painted in their colour — one per palette colour, or the FG44
+  picture shown through the mask (explicit masking). A page with more than 64 palette colours is one JPEG. The hidden
+  text's lines and words become an invisible text layer (the OCR layer's glyphless font, `Ocr/OcrTextLayer.cs`), so
+  the PDF can be searched and its text copied in any script.
+- **Limits** (`DjvuLimits`, refusals with `error.document_too_complex`): 20,000 pages and 40,000 components; 64 MB per
+  chunk and per BZZ stream; 150 million pixels per page; 64 million pixels per IW44 picture and 10,000 slices;
+  2 million shapes, 4 million placed shapes and 400 million shape pixels per mask (counted before a shape is
+  allocated); 20 million number-coder cells; 2 million text zones; 65,535 palette colours. Decoding is iterative (no
+  recursion over files or zones) and checks cancellation.
+- **Left out:** `Smmr` masks (G4), JPEG 2000 layers (`BG2k`, `FG2k`) and JPEG layers Skia can't decode are counted as
+  pictures left out in the file's result. Not read: annotations (`ANTa`/`ANTz`: hyperlinks, highlights, background
+  colour), bookmarks (`NAVM`), thumbnails, standalone IW44 files (`FORM:PM44`/`BM44`), and hidden text of a page with
+  no zones below the page.
+- Tests (`DjvuTests.cs`, `DjvuFuzzTests.cs`) build every file in code: `DjvuBuilder.cs` has encoders for each piece
+  (ZP-coder, BZZ, JB2, IW44 with the forward transform, text zones, palettes, the bundled directory).
 
 ## FFmpeg
 

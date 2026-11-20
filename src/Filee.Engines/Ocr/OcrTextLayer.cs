@@ -94,6 +94,15 @@ internal sealed class OcrPdfWriter : IDisposable
         using (var gfx = XGraphics.FromPdfPage(page))
         using (var image = XImage.FromFile(picture))
             gfx.DrawImage(image, 0, 0, width, height);
+        AddText(page, lines, width, height);
+    }
+
+    /// <summary>The document the pages go into (for a writer that draws its pages itself, DjvuPdfWriter).</summary>
+    internal PdfDocument Document => _document;
+
+    /// <summary>Adds <paramref name="lines"/> as invisible text over a page of <paramref name="width"/> × <paramref name="height"/> points.</summary>
+    internal void AddText(PdfPage page, IReadOnlyList<OcrLine> lines, double width, double height)
+    {
         var text = TextLayer(lines, width, height);
         if (text.Length == 0)
             return;
