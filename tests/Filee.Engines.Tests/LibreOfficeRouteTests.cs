@@ -75,12 +75,13 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 
     [Fact]
-    public void Rtf_goes_to_txt_through_libreoffice()
+    public void Rtf_goes_to_txt_through_the_built_in_reader()
     {
-        // Issue #1204: through Markdown, code copied from an IDE came out full of backticks.
+        // Issue #1204: through Markdown, code copied from an IDE came out full of backticks. LibreOffice took it until
+        // the built-in RTF reader wrote the text line for line as LibreOffice does; now that reader keeps it.
         var planner = Planner(slides: false);
 
-        Assert.Equal("libreoffice", Assert.Single(planner.Plan("rtf", "txt")!.Steps).Converter.Id);
+        Assert.Equal("hwp-text", Assert.Single(planner.Plan("rtf", "txt")!.Steps).Converter.Id);
         Assert.Equal("pandoc", Assert.Single(planner.Plan("rtf", "md")!.Steps).Converter.Id);
         Assert.DoesNotContain(planner.Plan("rtf", "epub")!.Steps, s => s.From == "rtf" && s.To == "txt"); // not a hop
     }

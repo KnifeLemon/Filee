@@ -45,6 +45,9 @@ internal sealed partial class RtfReader
 
         /// <summary>The other name of the font being defined (\falt).</summary>
         FontAlternate,
+
+        /// <summary>The result of a PAGE or NUMPAGES field: the number it showed, kept as <see cref="HField.Shown"/>.</summary>
+        FieldNumber,
     }
 
     /// <summary>Where text and paragraphs go: the body of a section, a note, a header or a footer.</summary>
@@ -105,6 +108,9 @@ internal sealed partial class RtfReader
         public List<HInline>? Sink { get; set; }
         public FieldContext? Field { get; set; }
 
+        /// <summary>The page number field whose result is being read (<see cref="Dest.FieldNumber"/>).</summary>
+        public HField? Number { get; set; }
+
         /// <summary>The note this group started is an endnote (\ftnalt).</summary>
         public bool Endnote { get; set; }
 
@@ -123,6 +129,7 @@ internal sealed partial class RtfReader
             Story = Story,
             Sink = Sink,
             Field = Field,
+            Number = Number,
         };
     }
 
@@ -616,6 +623,9 @@ internal sealed partial class RtfReader
                 if (_fontAlternate.Length < 256)
                     _fontAlternate.Append(text);
                 break;
+            case Dest.FieldNumber when _g.Number is { } number && (number.Shown?.Length ?? 0) < 32:
+                number.Shown += text;
+                break;
             case Dest.FieldInstruction:
                 _g.Field?.Instruction.Append(text);
                 break;
@@ -952,13 +962,10 @@ internal sealed partial class RtfReader
                 _g.Link = _budget.Enter();
                 _g.Sink = link.Content;
                 break;
-            case "PAGE":
-                AddInline(new HField(HFieldKind.PageNumber, Format(_g.Char)));
-                _g.Dest = Dest.Skip;
-                break;
-            case "NUMPAGES" or "SECTIONPAGES":
-                AddInline(new HField(HFieldKind.TotalPages, Format(_g.Char)));
-                _g.Dest = Dest.Skip;
+            case "PAGE" or "NUMPAGES" or "SECTIONPAGES":
+                _g.Number = new HField(name == "PAGE" ? HFieldKind.PageNumber : HFieldKind.TotalPages, Format(_g.Char));
+                AddInline(_g.Number);
+                _g.Dest = Dest.FieldNumber;
                 break;
         }
     }

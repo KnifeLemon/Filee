@@ -157,6 +157,21 @@ public sealed class RtfToBuiltInTextTests(EngineFixture fx) : IClassFixture<Engi
     }
 
     [Fact]
+    public async Task Page_fields_and_page_breaks_come_out_as_word_saved_them()
+    {
+        // The number Word showed (\fldrslt), not an empty field; a paragraph holding only \page is an empty line.
+        const string Rtf = """
+            {\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}
+            \pard Page {\field{\*\fldinst { PAGE }}{\fldrslt {\b 3}}} of {\field{\*\fldinst NUMPAGES}{\fldrslt 7}}\par
+            before\par
+            \page\par
+            after\par
+            }
+            """;
+        Assert.Equal("Page 3 of 7\nbefore\n\nafter\n", await ConvertAsync(Rtf));
+    }
+
+    [Fact]
     public void Lists_and_tables_take_a_line_each()
     {
         var document = new HDocument();
@@ -179,7 +194,8 @@ public sealed class RtfToBuiltInTextTests(EngineFixture fx) : IClassFixture<Engi
         section.Blocks.Add(table);
         section.Blocks.Add(Paragraph("  end"));
 
-        Assert.Equal("Steps:\n1. one\n2. two\na\tb\nc\td\n  end\n", PlainTextWriter.WriteLines(document).ReplaceLineEndings("\n"));
+        // A tab after the number, as Word and LibreOffice write it.
+        Assert.Equal("Steps:\n1.\tone\n2.\ttwo\na\tb\nc\td\n  end\n", PlainTextWriter.WriteLines(document).ReplaceLineEndings("\n"));
 
         static HParagraph Paragraph(string text)
         {

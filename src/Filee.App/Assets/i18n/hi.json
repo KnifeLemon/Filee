@@ -277,7 +277,7 @@
   "engine.pdfsharp.description": "इमेज से PDF बनाता है और PDF को मर्ज करता है, बाँटता है या उनमें से पेज रेंज काटता है।\nPDF की तस्वीरों का आकार घटाकर उन्हें छोटा भी करता है।",
   "engine.rhwp.description": "HWP ↔ HWPX कन्वर्ट करता है, और जब Filee रेंडरर बंद हो या कोई फ़ाइल अभी न बना सके तब HWP/HWPX को PDF में रेंडर करता है।\nतब यह उन दस्तावेज़ों को भी बनाता है जो HWPX के रास्ते PDF तक पहुँचते हैं (DOCX, PPTX, ई-बुक…)।",
   "engine.hwp-text.name": "HWP टेक्स्ट (अंतर्निहित)",
-  "engine.hwp-text.description": "HWP और HWPX से टेक्स्ट, Markdown और HTML निकालता है।",
+  "engine.hwp-text.description": "HWP और HWPX से टेक्स्ट, Markdown और HTML, और Word, ODT व RTF से सादा टेक्स्ट निकालता है।",
   "engine.markdown.name": "Markdown (built-in)",
   "engine.markdown.description": "Markdown → HTML और सादा टेक्स्ट।\nटेक्स्ट और स्क्रिप्ट की सोर्स फ़ाइलें → UTF-8 TXT, स्क्रिप्ट चलाए बिना।",
   "engine.spreadsheet.name": "Spreadsheets (built-in)",

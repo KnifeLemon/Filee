@@ -180,7 +180,7 @@ public class EbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var epub = EbookBuilders.Epub(fx.NewFolder());
 
         var text = await File.ReadAllTextAsync(await ConvertAsync(epub, "txt"), TestContext.Current.CancellationToken);
-        foreach (var expected in new[] { "첫 번째 장", "밤하늘에 별이 반짝였다.", "주석 내용입니다.", "● 목록 하나", "이름\t값" })
+        foreach (var expected in new[] { "첫 번째 장", "밤하늘에 별이 반짝였다.", "주석 내용입니다.", "●\t목록 하나", "이름\t값" }) // a tab after the bullet, as in Word's TXT
             Assert.Contains(expected, text);
         Assert.DoesNotContain("<", text);
 

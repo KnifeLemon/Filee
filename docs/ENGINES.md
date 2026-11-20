@@ -11,7 +11,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
-| **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
+| **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML); **RTF, Word (DOCX + DOCM/DOTX/DOTM, DOC + DOT, WPS Office WPS) and ODT → TXT** a line per paragraph, as a word processor saves plain text (see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF through the Filee renderer, → DOCX through the DOCX writer) |
 | **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)); **FreeMind / Freeplane (MM) and XMind mind maps → Markdown, HTML, TXT, OPML** as outlines (see [Mind maps](#mind-maps)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLSB, XLS, ODS (+ OTS, FODS), CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet; OTS and FODS out through the next engine) |
@@ -3688,9 +3688,10 @@ managed code only, so it works on every platform Filee runs on (Windows, Linux a
 files); the e-book writers write it out:
 
 - **TXT** (`PlainTextWriter`, UTF-8 with a byte order mark): paragraphs separated by an empty line; list items with the
-  number or bullet 한글 shows ("1.", "가)", "●") and indented by level; table rows as tab-separated cells; a text box
-  on lines of its own; footnotes and endnotes as `[1]` with their text after a `----` line at the end; equations as
-  their script. Headers, footers and page numbers are left out, as are tracked deletions.
+  number or bullet 한글 shows ("1.", "가)", "●") and a tab after it, indented by level; table rows as tab-separated
+  cells; a text box on lines of its own; footnotes and endnotes as `[1]` with their text after a `----` line at the
+  end; equations as their script. Headers and footers are left out, as are tracked deletions; a page number field in
+  the text writes the page counted from the sections and page breaks (plain text has no pages to lay out).
 - **Markdown** (`MarkdownWriter`): headings (outline paragraphs and heading styles), bold / italic / strikeout /
   super- and subscript, lists (numbered ones as `1.`, nested by level), pipe tables, links, footnotes (`[^1]`), and
   pictures in a `<name>_files` folder next to the Markdown file (`MarkdownPictures`: `img0001.png`, formats editors
@@ -3701,6 +3702,20 @@ files); the e-book writers write it out:
 
 The edges cost what Unhwp's did (TXT and Markdown 10, HTML 14) and the engine took Unhwp's place in the engine order
 (settings schema 100 renames `unhwp` to `hwp-text`), so every route keeps its cost.
+
+**RTF, Word and ODT → TXT** (#1204) go through the same engine: the RTF, DOCX, [DOC](#doc-reader) and
+ODT readers read the document model and `PlainTextWriter.WriteLines` writes it as Word and LibreOffice save plain
+text. Each paragraph and each line break is a line, an empty paragraph an empty line (a paragraph that holds only a
+page break too), and the text's own leading spaces, runs of spaces and tabs stay; the paragraph's indentation isn't
+added. A list number or bullet is followed by a tab, or by the space or nothing a Word list level asks for (`w:suff`),
+as Word and LibreOffice write it. Table rows are tab-separated cells (a table in a cell joins the cell's text), notes
+come at the end as above. A PAGE or NUMPAGES field writes the number the file showed when it was saved (Word's field
+result, the text of ODT's `text:page-number`, RTF's `\fldrslt`), else the count from the page breaks. These edges are
+direct only (a TXT step in another route would lose the formatting) and cost 15: with any engine order's penalty
+(0 to 9) that stays below LibreOffice's fallback edge (25), so they win wherever LibreOffice stands in the list, and
+*Use LibreOffice for Word documents → PDF* is about PDF only. The DOC reader checks each file: a Word 6.0 / 95 file
+goes to LibreOffice. Without them the cheapest route went through the Filee renderer's PDF and its text, which
+wrapped long lines and lost the indentation and the empty lines.
 
 Unhwp (a native Rust library through NuGet) did this before. It needed the Visual C++ runtime next to Filee.exe and
 had no Linux or Windows ARM64 build of its own (Filee built one, #236). Measured before it was removed,

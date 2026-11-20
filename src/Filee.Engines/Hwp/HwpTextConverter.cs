@@ -8,7 +8,8 @@
 // RTF → TXT is here too (#1204): RtfReader's document written a line per paragraph, as a word processor saves plain
 // text. Without it the cheapest built-in route went through a PDF (the Filee renderer, then the PDF's text), which
 // wraps long lines and loses the indentation and the empty lines, or through the HWPX writer. Word documents (DOCX and
-// its macro-enabled and template variants, Word 97–2003 DOC, DOT and WPS) and ODT go the same way.
+// its macro-enabled and template variants, Word 97–2003 DOC, DOT and WPS) and ODT go the same way. These take the
+// conversion from LibreOffice too, wherever it stands in the engine list.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -35,16 +36,13 @@ public sealed class HwpTextConverter : IConverter, ICapabilityCheck
         new("hwp", "txt"), new("hwpx", "txt"),
         new("hwp", "md"), new("hwpx", "md"),
         new("hwp", "html", 14), new("hwpx", "html", 14),
-        // Direct only, as LibreOffice's RTF → TXT: a TXT step in another route would lose the formatting. Dearer than
-        // LibreOffice's chosen edge (10 + 9 in the default order against 16 + 4), so it stays LibreOffice's while that
-        // is installed, and cheaper than the renderer's PDF and its text (1 + 9 + 10 + 9).
-        new("rtf", "txt", 16, DirectOnly: true),
-        // Word and ODT, direct only as well. LibreOffice's edge for them is its fallback (25), so the cost sits between:
-        // 24 + 4 is cheaper than the renderer's PDF and its text (29) and the routes through Pandoc's Markdown (29) or
-        // the HWPX writer (32), and dearer than LibreOffice moved to the top of the engine list (25 + 0), which keeps
-        // the conversion it had there. The DOC reader checks each file (a Word 6.0 / 95 file goes another way).
-        .. LineFormats.Where(f => f != "rtf")
-            .Select(f => new ConversionEdge(f, "txt", 24, DirectOnly: true, Checked: DocumentReaders.Checked(f))),
+        // RTF, Word and ODT → TXT, direct only: a TXT step in another route would lose the formatting. LibreOffice's
+        // edge for them is its fallback (25), and this one wins wherever either engine stands in the engine list
+        // (15 + 9 at most against 25 + 0 at least): the text is the document's own, line for line, as LibreOffice
+        // writes it. It is cheaper than the renderer's PDF and its text (1 + 9 + 10 + 9 in the default order) and the
+        // routes through Pandoc's Markdown (29) or the HWPX writer (32). The DOC reader checks each file (a Word 6.0 /
+        // 95 file goes another way).
+        .. LineFormats.Select(f => new ConversionEdge(f, "txt", LineCost, DirectOnly: true, Checked: DocumentReaders.Checked(f))),
     ];
 
     /// <summary>
@@ -52,6 +50,9 @@ public sealed class HwpTextConverter : IConverter, ICapabilityCheck
     /// word processor itself saves plain text.
     /// </summary>
     internal static readonly string[] LineFormats = ["rtf", "docx", "docm", "dotx", "dotm", "doc", "dot", "wps", "odt"];
+
+    /// <summary>The cost of RTF, Word and ODT → TXT: below LibreOffice's fallback (25) with any engine order's penalty (0 to 9).</summary>
+    internal const int LineCost = 15;
 
     public EngineStatus GetStatus() => EngineStatus.Available("HWP, HWPX → TXT, Markdown, HTML; Word, ODT, RTF → TXT", EngineVersions.BuiltIn);
 

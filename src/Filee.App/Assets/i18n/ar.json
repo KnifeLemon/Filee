@@ -277,7 +277,7 @@
   "engine.pdfsharp.description": "إنشاء ملفات PDF من الصور ودمج ملفات PDF أو تقسيمها أو استخراج نطاقات صفحات منها.\nويقلّل حجم PDF بتصغير الصور داخله.",
   "engine.rhwp.description": "التحويل بين HWP وHWPX، وتحويل HWP/HWPX إلى PDF عندما يكون مُصيِّر Filee متوقفًا أو لا يستطيع رسم الملف بعد.\nوعندها يعالج أيضًا المستندات التي تمر عبر HWPX للوصول إلى PDF ‏(DOCX وPPTX والكتب الإلكترونية…).",
   "engine.hwp-text.name": "نص HWP (مدمج)",
-  "engine.hwp-text.description": "استخراج النصوص وMarkdown وHTML من HWP وHWPX.",
+  "engine.hwp-text.description": "استخراج النصوص وMarkdown وHTML من HWP وHWPX، والنص العادي من Word وODT وRTF.",
   "engine.markdown.name": "Markdown (built-in)",
   "engine.markdown.description": "تحويل Markdown إلى HTML ونص عادي.\nتحويل ملفات النصوص والشيفرات المصدرية للبرامج النصية إلى TXT بترميز UTF-8، دون تشغيلها.",
   "engine.spreadsheet.name": "Spreadsheets (built-in)",
