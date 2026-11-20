@@ -1,6 +1,6 @@
-// Font preflight for ZIP-based office documents. Renderers otherwise substitute absent families silently, which can
-// change wrapping, pagination and table geometry. The scan is deliberately read-only and bounded; a malformed or
-// unusually large XML part never prevents conversion.
+// Font preflight for ZIP-based office documents and RTF. Renderers otherwise substitute absent families silently, which
+// can change wrapping, pagination and table geometry. The scan is deliberately read-only and bounded; a malformed or
+// unusually large XML part (or RTF file) never prevents conversion.
 
 using System.IO.Compression;
 using System.Xml;
@@ -48,6 +48,8 @@ internal static class DocumentFonts
     {
         try
         {
+            if (Path.GetExtension(path).Equals(".rtf", StringComparison.OrdinalIgnoreCase))
+                return MissingInRtf(path, installed);
             if (!PackageExtensions.Contains(Path.GetExtension(path)))
                 return [];
             using var zip = ZipFile.OpenRead(path);
@@ -63,6 +65,26 @@ internal static class DocumentFonts
         {
             return [];
         }
+    }
+
+    /// <summary>
+    /// The fonts the text of an RTF file is set in that are neither installed nor stood in for by a font of the same
+    /// widths or by their other name in the font table (\falt, which Word uses as it uses w:altName).
+    /// </summary>
+    private static IReadOnlyList<string> MissingInRtf(string path, Func<string, bool> installed)
+    {
+        var limits = Documents.DocumentLimits.Default;
+        if (new FileInfo(path).Length > limits.MaxPackageBytes)
+            return [];
+        var (fonts, alternates) = Hwp.Hwpx.RtfReader.Fonts(File.ReadAllBytes(path), limits);
+        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var font in fonts)
+            Add(font, referenced);
+        bool Usable(string face) => installed(face) || MetricAliases.TryGetValue(face, out var aliases) && aliases.Any(installed);
+        return referenced
+            .Where(face => !Usable(face) && !(alternates.TryGetValue(face, out var alternate) && Usable(alternate)))
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static bool Installed(string face)

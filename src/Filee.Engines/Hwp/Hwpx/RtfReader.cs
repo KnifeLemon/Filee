@@ -1,8 +1,12 @@
 // Reads Rich Text Format (as Word, WordPad and LibreOffice write it) into the HDocument model, so RTF → DOCX, HWPX,
 // PDF, HTML, Markdown, ... need neither Pandoc nor LibreOffice. Split over partial files:
 //  * RtfReader.cs        groups and destinations, character and paragraph properties, paragraphs, sections, notes,
-//                        fields (hyperlinks, page numbers), bookmarks, headers and footers;
-//  * RtfReader.Tables.cs table rows (\trowd ... \cell ... \row), merged cells, lists (\listtable, \ls) and pictures;
+//                        fields (hyperlinks, page numbers), bookmarks, headers and footers (the first page's with
+//                        \titlepg);
+//  * RtfReader.Tables.cs table rows (\trowd ... \cell ... \row), nested tables, merged cells, borders and shading of
+//                        cells and paragraphs, lists (\listtable, \ls) and pictures;
+//  * RtfReader.Shapes.cs pictures in drawing objects (\shp) and pictures' properties;
+//  * RtfReader.Fonts.cs  the fonts the text is set in, for the missing-font notice;
 //  * RtfReader.Lexer.cs  tokens.
 //
 // Text is decoded with the code page of the font in effect (\fcharset, \cpg) or the document's (\ansicpg), so
@@ -48,6 +52,15 @@ internal sealed partial class RtfReader
 
         /// <summary>The result of a PAGE or NUMPAGES field: the number it showed, kept as <see cref="HField.Shown"/>.</summary>
         FieldNumber,
+
+        /// <summary>A drawing object's placement and properties (\*\shpinst, \*\picprop): words, and \sp groups.</summary>
+        Shape,
+
+        /// <summary>The name of a shape property (\sn).</summary>
+        ShapeName,
+
+        /// <summary>The value of a shape property (\sv); a picture's (pib) holds a \pict group instead.</summary>
+        ShapeValue,
     }
 
     /// <summary>Where text and paragraphs go: the body of a section, a note, a header or a footer.</summary>
@@ -55,7 +68,9 @@ internal sealed partial class RtfReader
     {
         public List<HBlock> Blocks { get; set; } = [];
         public List<HInline> Inlines { get; } = [];
-        public TableBuilder? Table { get; set; }
+
+        /// <summary>The open tables: the one in the text first, then the one nested in its cell (\itap2) ...</summary>
+        public List<TableBuilder> Tables { get; } = [];
         public bool PageBreak { get; set; }
 
         /// <summary>The text of a footnote or endnote, where \chftn is the note's own number.</summary>
@@ -87,9 +102,13 @@ internal sealed partial class RtfReader
     /// <param name="RightToLeft">\rtlpar.</param>
     /// <param name="Tabs">Tab stops (\tx, measured from the margin, with their kind and leader), or null.</param>
     /// <param name="TabKind">The kind and leader the next \tx takes (\tqr, \tldot ...).</param>
+    /// <param name="Itap">\itapN: the paragraph is in a cell of a table N levels deep (2 = a table in a table's cell); 0 says nothing.</param>
+    /// <param name="Box">The paragraph's borders (\brdrt, \box ...), or null.</param>
+    /// <param name="Shading">The paragraph's background: \cbpat, \cfpat and \shading.</param>
     private record struct ParaProps(HAlign? Align, int Left, int Right, int FirstLine, int Before, int After, int Line, bool Multiple,
         bool KeepNext, bool Keep, bool PageBreakBefore, bool InTable, int Style, int ListOverride, int ListLevel, int Outline,
-        int? Start = null, int? End = null, bool RightToLeft = false, TabList? Tabs = null, (HTabKind Kind, string? Leader) TabKind = default)
+        int? Start = null, int? End = null, bool RightToLeft = false, TabList? Tabs = null, (HTabKind Kind, string? Leader) TabKind = default,
+        int Itap = 0, ParaBox? Box = null, Shading Shading = default)
     {
         public static ParaProps Default => new() { Style = -1, ListOverride = -1, Outline = -1 };
     }
@@ -120,6 +139,12 @@ internal sealed partial class RtfReader
         /// <summary>The nesting level of the hyperlink this group opened, left when the group closes.</summary>
         public DocumentBudget.Level? Link { get; set; }
 
+        /// <summary>In \*\nesttableprops: the table words define a row of a nested table, not of the table in the text.</summary>
+        public bool NestedRow { get; set; }
+
+        /// <summary>The drawing object (\shp) or picture properties (\*\picprop) this group is in, or null.</summary>
+        public ShapeContext? Shape { get; set; }
+
         public Group Clone() => new()
         {
             Dest = Dest,
@@ -130,6 +155,8 @@ internal sealed partial class RtfReader
             Sink = Sink,
             Field = Field,
             Number = Number,
+            NestedRow = NestedRow,
+            Shape = Shape,
         };
     }
 
@@ -174,6 +201,13 @@ internal sealed partial class RtfReader
     // Page setup: the document's, and the current section's.
     private PageProps _documentPage = PageProps.Default;
     private PageProps _sectionPage = PageProps.Default;
+
+    /// <summary>The first-page headers and footers (\headerf, \footerf) of each section.</summary>
+    private readonly Dictionary<HSection, List<HBlock>> _firstHeaders = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HSection, List<HBlock>> _firstFooters = new(ReferenceEqualityComparer.Instance);
+
+    private static bool IsBlank(List<HBlock>? blocks) =>
+        blocks is null || blocks.All(b => b is HParagraph p && p.Inlines.All(i => i is HText t && string.IsNullOrWhiteSpace(t.Text) || i is HBookmark));
 
     private RtfReader(byte[] rtf, string mediaFolder, DocumentLimits limits)
     {
@@ -305,6 +339,11 @@ internal sealed partial class RtfReader
 
         if (_g.Dest is Dest.ListTable or Dest.ListOverrideTable && Lists(word, parameter))
             return;
+        if (_g.Dest == Dest.Shape)
+        {
+            ShapeWord(word, parameter);
+            return;
+        }
         var value = parameter ?? 1;
         var on = parameter != 0;
         var c = _g.Char;
@@ -383,6 +422,10 @@ internal sealed partial class RtfReader
             case "keep": _g.Para = p with { Keep = on }; return;
             case "pagebb": _g.Para = p with { PageBreakBefore = on }; return;
             case "intbl": _g.Para = p with { InTable = true }; return;
+            case "itap": _g.Para = p with { Itap = Math.Max(0, value) }; return;
+            case "cbpat": _g.Para = p with { Shading = p.Shading with { Back = value } }; return;
+            case "cfpat": _g.Para = p with { Shading = p.Shading with { Fore = value } }; return;
+            case "shading": _g.Para = p with { Shading = p.Shading with { Percent = Math.Clamp(value, 0, 10000) } }; return;
             case "ls": _g.Para = p with { ListOverride = value }; return;
             case "ilvl": _g.Para = p with { ListLevel = Math.Clamp(value, 0, 8) }; return;
             case "outlinelevel": _g.Para = p with { Outline = value }; return;
@@ -426,7 +469,7 @@ internal sealed partial class RtfReader
             case "ftnalt": _g.Endnote = true; return;
         }
 
-        if (Table(word, parameter) || Lists(word, parameter) || Picture(word, parameter) || Page(word, parameter))
+        if (Borders(word, parameter) || Table(word, parameter) || Lists(word, parameter) || Picture(word, parameter) || Page(word, parameter))
             return;
     }
 
@@ -467,8 +510,35 @@ internal sealed partial class RtfReader
             case "pict":
                 StartPicture();
                 return true;
+            case "shp" when _g.Dest == Dest.Text:
+                StartShape();
+                return true;
+            case "shpinst" when _g.Shape is { } && _g.Dest == Dest.Text:
+                _g.Dest = Dest.Shape;
+                return true;
+            case "picprop" when _g.Dest == Dest.Picture && _picture is { } described:
+                _g.Dest = Dest.Shape;
+                _g.Shape = described.Properties;
+                return true;
+            case "sp" when _g.Dest == Dest.Shape:
+                return true;
+            case "sn" when _g.Dest == Dest.Shape && _g.Shape is { } named:
+                _g.Dest = Dest.ShapeName;
+                named.Name.Clear();
+                return true;
+            case "sv" when _g.Dest == Dest.Shape && _g.Shape is { } valued:
+                StartShapeValue(valued);
+                return true;
+            case "shprslt" when _g.Shape is { Picture: not null }:
+                // A picture shape read from its properties: the result is another copy of it, for programs without shapes.
+                _g.Dest = Dest.Skip;
+                return true;
             case "shppict" or "shp" or "shprslt" or "object" or "result" or "upr" or "ud":
                 return true; // a wrapper: its content is read as text
+            case "nesttableprops":
+                // The definition of a nested table's row, before its \nestrow.
+                _g.NestedRow = true;
+                return true;
             case "footnote":
                 StartNote();
                 return true;
@@ -501,7 +571,7 @@ internal sealed partial class RtfReader
             case "nonshppict" or "listtext" or "pntext" or "xe" or "tc" or "txe" or "rxe" or "bkmkend" or "annotation" or "atnid"
                 or "atnauthor" or "template" or "comment" or "author" or "operator" or "company" or "manager" or "category"
                 or "keywords" or "subject" or "doccomm" or "hlinkbase" or "creatim" or "revtim" or "printim" or "buptim"
-                or "objdata" or "datafield" or "formfield" or "fname" or "falt" or "panose":
+                or "objdata" or "datafield" or "formfield" or "fname" or "falt" or "panose" or "nonesttables" or "shptxt":
                 _g.Dest = Dest.Skip;
                 return true;
         }
@@ -628,6 +698,12 @@ internal sealed partial class RtfReader
                 break;
             case Dest.FieldInstruction:
                 _g.Field?.Instruction.Append(text);
+                break;
+            case Dest.ShapeName when _g.Shape is { } shape && shape.Name.Length < 64:
+                shape.Name.Append(text);
+                break;
+            case Dest.ShapeValue when _g.Shape is { } shape && shape.Value.Length < 256:
+                shape.Value.Append(text);
                 break;
         }
     }
@@ -779,7 +855,7 @@ internal sealed partial class RtfReader
     /// side, so RTF's left and right ones (\ql, \qr, \li, \ri) change places there; \lin and \rin already are the start
     /// and end.
     /// </summary>
-    private static HParaFormat Format(ParaProps p) => new(
+    private HParaFormat Format(ParaProps p) => new(
         Align: p.RightToLeft ? p.Align switch { HAlign.Left => HAlign.Right, HAlign.Right => HAlign.Left, var other => other } : p.Align,
         Left: HwpxUnits.FromTwips(p.Start ?? (p.RightToLeft ? p.Right : p.Left)),
         Right: HwpxUnits.FromTwips(p.End ?? (p.RightToLeft ? p.Left : p.Right)),
@@ -796,7 +872,10 @@ internal sealed partial class RtfReader
         },
         KeepWithNext: p.KeepNext ? true : null,
         KeepLines: p.Keep ? true : null,
-        Tabs: TabStops(p));
+        Tabs: TabStops(p),
+        Fill: Fill(p.Shading),
+        Borders: p.Box is { Visible: true } box ? box.Borders : null,
+        Layout: ParagraphBox(p));
 
     /// <summary>
     /// The paragraph's tab stops as the model has them: measured from its start indent (RTF measures from the margin),
@@ -859,18 +938,13 @@ internal sealed partial class RtfReader
         story.PageBreak = false;
         paragraph.Inlines.AddRange(story.Inlines);
         story.Inlines.Clear();
-        if (para.InTable && story.Table is { } table)
-        {
-            table.Cell.Add(paragraph);
-            return;
-        }
-        if (para.InTable)
-        {
-            (story.Table = new TableBuilder()).Cell.Add(paragraph);
-            return;
-        }
-        CloseTable(story);
-        story.Blocks.Add(paragraph);
+        // A paragraph in a cell goes to the table of its level; tables nested deeper end before it.
+        var depth = TableDepth(para);
+        CloseTables(story, depth);
+        if (depth > 0)
+            TableAt(story, depth).Cell.Add(paragraph);
+        else
+            story.Blocks.Add(paragraph);
     }
 
     private int Heading(ParaProps p)
@@ -938,9 +1012,15 @@ internal sealed partial class RtfReader
             EndParagraph(story, force: false);
             CloseTable(story);
             _g = inner;
-            // First-page headers and footers have no place in the model: the others apply.
+            // First-page ones count when the section has a different first page (\titlepg); see ApplyPage.
             if (word.EndsWith('f'))
+            {
+                if (word.StartsWith("header", StringComparison.Ordinal))
+                    _firstHeaders[section] = story.Blocks;
+                else
+                    _firstFooters[section] = story.Blocks;
                 return;
+            }
             var pages = word is "headerl" or "footerl" ? HPageType.Even : word is "headerr" or "footerr" ? HPageType.Odd : HPageType.Both;
             var part = new HHeaderFooter(pages);
             part.Blocks.AddRange(story.Blocks);
@@ -987,8 +1067,9 @@ internal sealed partial class RtfReader
     // ───────────────────────── Page setup ─────────────────────────
 
     /// <param name="RightToLeft">\rtlsect: the columns run from the right.</param>
+    /// <param name="TitlePage">\titlepg: the first page has its own header and footer (\headerf, \footerf).</param>
     private record struct PageProps(int Width, int Height, int Left, int Right, int Top, int Bottom, int HeaderFromEdge, int FooterFromEdge,
-        int Gutter, bool Landscape, int Columns, int ColumnGap, bool Set, bool RightToLeft = false)
+        int Gutter, bool Landscape, int Columns, int ColumnGap, bool Set, bool RightToLeft = false, bool TitlePage = false)
     {
         public static PageProps Default => new(12240, 15840, 1800, 1800, 1440, 1440, 720, 720, 0, false, 1, 720, false);
     }
@@ -1023,6 +1104,7 @@ internal sealed partial class RtfReader
             case "colsx": _sectionPage = section with { ColumnGap = value }; break;
             case "rtlsect": _sectionPage = section with { RightToLeft = true }; break;
             case "ltrsect": _sectionPage = section with { RightToLeft = false }; break;
+            case "titlepg": _sectionPage = section with { TitlePage = parameter != 0 }; break;
             case "pgnstarts": _section.StartPageNumber = value; break;
             case "pgnrestart": _section.StartPageNumber ??= 1; break;
             default: return false;
@@ -1034,6 +1116,17 @@ internal sealed partial class RtfReader
     private void ApplyPage()
     {
         var p = _sectionPage;
+        if (p.TitlePage)
+        {
+            // As the DOCX reader: an empty (or missing) first-page header hides the header there; one with content is
+            // the first page's.
+            var header = _firstHeaders.GetValueOrDefault(_section);
+            var footer = _firstFooters.GetValueOrDefault(_section);
+            _section.HideFirstHeader = IsBlank(header);
+            _section.HideFirstFooter = IsBlank(footer);
+            _section.FirstPageHeader = _section.HideFirstHeader ? null : header;
+            _section.FirstPageFooter = _section.HideFirstFooter ? null : footer;
+        }
         if (p.Columns > 1)
             _section.Columns = new HColumns(p.Columns, HwpxUnits.FromTwips(p.ColumnGap), false, p.RightToLeft);
         if (!p.Set && !p.Landscape)
