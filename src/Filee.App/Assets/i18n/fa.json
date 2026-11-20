@@ -347,7 +347,7 @@
   "engine.gcode.name": "G-code (داخلی)",
   "engine.gcode.description": "مسیرهای چاپگرهای سه‌بعدی و دستگاه‌های CNC (G-code) به PDF، SVG و تصویر، یا پیش‌نمایش خود اسلایسر.",
   "engine.drawing.name": "نمودارها و نقشه‌ها (داخلی)",
-  "engine.drawing.description": "نمودارهای Visio (VSDX) و نقشه‌های OpenDocument (ODG، FODG) به PDF، SVG و PNG، بدون Visio یا LibreOffice.\nهمچنین سندهای XPS و OpenXPS (.xps، .oxps).\nهمچنین الگوهای نمودار Excel (.crtx).\nفایل‌های باینری قدیمی Visio (.vsd) همچنان به LibreOffice نیاز دارند.",
+  "engine.drawing.description": "نمودارهای Visio (VSDX) و نقشه‌های OpenDocument (ODG، FODG) به PDF، SVG و PNG، بدون Visio یا LibreOffice.\nهمچنین سندهای XPS و OpenXPS (.xps، .oxps).\nهمچنین الگوهای نمودار Excel (.crtx).\nهمچنین فایل‌های تخته هوشمند (.iwb) و SMART Notebook (.notebook)، به ODP و PPTX هم.\nفایل‌های باینری قدیمی Visio (.vsd) همچنان به LibreOffice نیاز دارند.",
   "engine.djvu.name": "DjVu (داخلی)",
   "engine.djvu.description": "کتاب‌ها و اسناد اسکن‌شدهٔ DjVu (.djvu، .djv) به PDF با متن پنهانِ قابل جست‌وجو، و به تصاویر PNG، JPG و TIFF صفحه‌ها.",
   "engine.model3d.name": "مدل‌های سه‌بعدی (داخلی)",

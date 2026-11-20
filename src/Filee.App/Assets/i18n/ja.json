@@ -333,7 +333,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "3D プリンターと CNC マシンのツールパス (G-code) を PDF、SVG、画像に。スライサーのプレビューも使えます。",
   "engine.drawing.name": "Drawings (built-in)",
-  "engine.drawing.description": "Visio図面（VSDX）とOpenDocument図面（ODG、FODG）を、VisioやLibreOfficeなしでPDF、SVG、PNGに変換します。\nXPS・OpenXPS文書（.xps、.oxps）にも対応しています。\nExcel のグラフ テンプレート（.crtx）にも対応しています。\n古いバイナリ形式のVisioファイル（.vsd）には引き続きLibreOfficeが必要です。",
+  "engine.drawing.description": "Visio図面（VSDX）とOpenDocument図面（ODG、FODG）を、VisioやLibreOfficeなしでPDF、SVG、PNGに変換します。\nXPS・OpenXPS文書（.xps、.oxps）にも対応しています。\nExcel のグラフ テンプレート（.crtx）にも対応しています。\n電子黒板ファイル（.iwb）と SMART Notebook ファイル（.notebook）にも対応しています（ODP・PPTX にも変換）。\n古いバイナリ形式のVisioファイル（.vsd）には引き続きLibreOfficeが必要です。",
   "engine.djvu.name": "DjVu (built-in)",
   "engine.djvu.description": "DjVuのスキャン本や文書（.djvu、.djv）を、隠しテキストを検索できるPDFに、またページのPNG・JPG・TIFF画像に変換します。",
   "engine.model3d.name": "3D models (built-in)",

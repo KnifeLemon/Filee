@@ -333,7 +333,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "مسارات الطابعات ثلاثية الأبعاد وآلات CNC (G-code) إلى PDF وSVG وصور، أو معاينة برنامج التقطيع.",
   "engine.drawing.name": "Drawings (built-in)",
-  "engine.drawing.description": "تحويل رسومات Visio (VSDX) ورسومات OpenDocument (ODG وFODG) إلى PDF وSVG وPNG دون Visio أو LibreOffice.\nوكذلك مستندات XPS وOpenXPS (.xps و.oxps).\nوكذلك قوالب مخططات Excel (.crtx).\nلا تزال ملفات Visio الثنائية القديمة (.vsd) تحتاج إلى LibreOffice.",
+  "engine.drawing.description": "تحويل رسومات Visio (VSDX) ورسومات OpenDocument (ODG وFODG) إلى PDF وSVG وPNG دون Visio أو LibreOffice.\nوكذلك مستندات XPS وOpenXPS (.xps و.oxps).\nوكذلك قوالب مخططات Excel (.crtx).\nوكذلك ملفات السبورات التفاعلية (.iwb) وملفات SMART Notebook (.notebook)، وإلى ODP وPPTX أيضًا.\nلا تزال ملفات Visio الثنائية القديمة (.vsd) تحتاج إلى LibreOffice.",
   "engine.djvu.name": "DjVu (built-in)",
   "engine.djvu.description": "كتب ومستندات DjVu الممسوحة ضوئيًا (.djvu، .djv) إلى PDF مع إمكانية البحث في نصها المخفي، وإلى صور PNG وJPG وTIFF للصفحات.",
   "engine.model3d.name": "3D models (built-in)",

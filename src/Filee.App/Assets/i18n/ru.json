@@ -340,7 +340,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "Траектории 3D-принтеров и станков с ЧПУ (G-code) в PDF, SVG и изображения или превью слайсера.",
   "engine.drawing.name": "Drawings (built-in)",
-  "engine.drawing.description": "Схемы Visio (VSDX) и рисунки OpenDocument (ODG, FODG) — в PDF, SVG и PNG без Visio и LibreOffice.\nА также документы XPS и OpenXPS (.xps, .oxps).\nА также шаблоны диаграмм Excel (.crtx).\nДля старых двоичных файлов Visio (.vsd) по-прежнему нужен LibreOffice.",
+  "engine.drawing.description": "Схемы Visio (VSDX) и рисунки OpenDocument (ODG, FODG) — в PDF, SVG и PNG без Visio и LibreOffice.\nА также документы XPS и OpenXPS (.xps, .oxps).\nА также шаблоны диаграмм Excel (.crtx).\nА также файлы интерактивных досок (.iwb) и SMART Notebook (.notebook), в том числе в ODP и PPTX.\nДля старых двоичных файлов Visio (.vsd) по-прежнему нужен LibreOffice.",
   "engine.djvu.name": "DjVu (built-in)",
   "engine.djvu.description": "Отсканированные книги и документы DjVu (.djvu, .djv) в PDF с поиском по скрытому тексту, а также в изображения страниц PNG, JPG и TIFF.",
   "engine.model3d.name": "3D models (built-in)",

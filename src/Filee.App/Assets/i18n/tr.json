@@ -333,7 +333,7 @@
   "engine.gcode.name": "G-code (yerleşik)",
   "engine.gcode.description": "3B yazıcıların ve CNC makinelerinin takım yolları (G-code) PDF, SVG ve resme, ya da dilimleyicinin kendi önizlemesi.",
   "engine.drawing.name": "Çizimler (yerleşik)",
-  "engine.drawing.description": "Visio çizimleri (VSDX) ve OpenDocument çizimleri (ODG, FODG) → PDF, SVG ve PNG; Visio veya LibreOffice gerekmez.\nXPS ve OpenXPS belgeleri (.xps, .oxps) de.\nExcel grafik şablonları (.crtx) da.\nEski ikili Visio dosyaları (.vsd) için hâlâ LibreOffice gerekir.",
+  "engine.drawing.description": "Visio çizimleri (VSDX) ve OpenDocument çizimleri (ODG, FODG) → PDF, SVG ve PNG; Visio veya LibreOffice gerekmez.\nXPS ve OpenXPS belgeleri (.xps, .oxps) de.\nExcel grafik şablonları (.crtx) da.\nEtkileşimli tahta dosyaları (.iwb) ve SMART Notebook dosyaları (.notebook) da; ODP ve PPTX'e de.\nEski ikili Visio dosyaları (.vsd) için hâlâ LibreOffice gerekir.",
   "engine.djvu.name": "DjVu (yerleşik)",
   "engine.djvu.description": "Taranmış DjVu kitap ve belgelerini (.djvu, .djv) gizli metni aranabilir PDF'ye ve sayfaların PNG, JPG ve TIFF resimlerine dönüştürür.",
   "engine.model3d.name": "3B modeller (yerleşik)",

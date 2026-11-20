@@ -340,7 +340,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "3D 프린터와 CNC 기계의 툴패스(G-code)를 PDF, SVG, 그림으로 바꿔요. 슬라이서가 저장한 미리보기도 쓸 수 있어요.",
   "engine.drawing.name": "Drawings (built-in)",
-  "engine.drawing.description": "Visio 도면(VSDX)과 오픈도큐먼트 도면(ODG, FODG)을 Visio나 LibreOffice 없이 PDF, SVG, PNG로 바꿔요.\nXPS·OpenXPS 문서(.xps, .oxps)도 바꿔요.\nExcel 차트 서식 파일(.crtx)도 바꿔요.\n오래된 바이너리 Visio 파일(.vsd)은 여전히 LibreOffice가 필요해요.",
+  "engine.drawing.description": "Visio 도면(VSDX)과 오픈도큐먼트 도면(ODG, FODG)을 Visio나 LibreOffice 없이 PDF, SVG, PNG로 바꿔요.\nXPS·OpenXPS 문서(.xps, .oxps)도 바꿔요.\nExcel 차트 서식 파일(.crtx)도 바꿔요.\n전자칠판 파일(.iwb)과 SMART Notebook 파일(.notebook)도 바꾸고, ODP와 PPTX로도 바꿔요.\n오래된 바이너리 Visio 파일(.vsd)은 여전히 LibreOffice가 필요해요.",
   "engine.djvu.name": "DjVu (built-in)",
   "engine.djvu.description": "DjVu 스캔 책·문서(.djvu, .djv)를 숨은 텍스트까지 검색되는 PDF로, 페이지를 PNG·JPG·TIFF 그림으로 바꿔요.",
   "engine.model3d.name": "3D models (built-in)",

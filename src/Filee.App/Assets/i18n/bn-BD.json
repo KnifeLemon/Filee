@@ -347,7 +347,7 @@
   "engine.gcode.name": "G-code (বিল্ট-ইন)",
   "engine.gcode.description": "3D প্রিন্টার ও CNC মেশিনের টুলপাথ (G-code) PDF, SVG ও ছবিতে, অথবা স্লাইসারের নিজের প্রিভিউ।",
   "engine.drawing.name": "ড্রয়িং (বিল্ট-ইন)",
-  "engine.drawing.description": "Visio ড্রয়িং (VSDX) ও OpenDocument ড্রয়িং (ODG, FODG) থেকে পিডিএফ, SVG ও PNG, Visio বা LibreOffice ছাড়াই।\nXPS ও OpenXPS ডকুমেন্টও (.xps, .oxps)।\nExcel চার্ট টেমপ্লেটও (.crtx)।\nপুরোনো বাইনারি Visio ফাইলের (.vsd) জন্য এখনও LibreOffice লাগে।",
+  "engine.drawing.description": "Visio ড্রয়িং (VSDX) ও OpenDocument ড্রয়িং (ODG, FODG) থেকে পিডিএফ, SVG ও PNG, Visio বা LibreOffice ছাড়াই।\nXPS ও OpenXPS ডকুমেন্টও (.xps, .oxps)।\nExcel চার্ট টেমপ্লেটও (.crtx)।\nইন্টারঅ্যাক্টিভ হোয়াইটবোর্ড ফাইল (.iwb) ও SMART Notebook ফাইলও (.notebook), ODP ও PPTX-এও।\nপুরোনো বাইনারি Visio ফাইলের (.vsd) জন্য এখনও LibreOffice লাগে।",
   "engine.djvu.name": "DjVu (বিল্ট-ইন)",
   "engine.djvu.description": "DjVu স্ক্যান করা বই ও নথি (.djvu, .djv) লুকানো লেখা খোঁজা যায় এমন PDF-এ, এবং পাতার PNG, JPG ও TIFF ছবিতে।",
   "engine.model3d.name": "3D মডেল (বিল্ট-ইন)",

@@ -332,7 +332,7 @@
   "engine.gcode.name": "G-code (суурилагдсан)",
   "engine.gcode.description": "3D принтер болон CNC машины замыг (G-code) PDF, SVG, зураг руу, эсвэл слайсерын өөрийн урьдчилан харах зураг руу.",
   "engine.drawing.name": "Зураг төсөл (суурилагдсан)",
-  "engine.drawing.description": "Visio зураг (VSDX) болон OpenDocument зургийг (ODG, FODG) Visio эсвэл LibreOffice-гүйгээр PDF, SVG болон PNG болгоно.\nМөн XPS болон OpenXPS баримт бичиг (.xps, .oxps).\nМөн Excel диаграмын загвар (.crtx).\nХуучин хоёртын Visio файлд (.vsd) LibreOffice хэрэгтэй хэвээр.",
+  "engine.drawing.description": "Visio зураг (VSDX) болон OpenDocument зургийг (ODG, FODG) Visio эсвэл LibreOffice-гүйгээр PDF, SVG болон PNG болгоно.\nМөн XPS болон OpenXPS баримт бичиг (.xps, .oxps).\nМөн Excel диаграмын загвар (.crtx).\nМөн интерактив самбарын файл (.iwb) болон SMART Notebook файл (.notebook), ODP болон PPTX руу ч.\nХуучин хоёртын Visio файлд (.vsd) LibreOffice хэрэгтэй хэвээр.",
   "engine.djvu.name": "DjVu (суурилагдсан)",
   "engine.djvu.description": "DjVu скан хийсэн ном, баримтыг (.djvu, .djv) далд текстээр нь хайж болох PDF болон хуудсуудын PNG, JPG, TIFF зураг болгоно.",
   "engine.model3d.name": "3D загвар (суурилагдсан)",

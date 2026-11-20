@@ -333,7 +333,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "เส้นทางของเครื่องพิมพ์ 3 มิติและเครื่อง CNC (G-code) เป็น PDF, SVG และรูปภาพ หรือภาพตัวอย่างของสไลเซอร์",
   "engine.drawing.name": "Drawings (built-in)",
-  "engine.drawing.description": "แปลงไดอะแกรม Visio (VSDX) และภาพวาด OpenDocument (ODG, FODG) เป็น PDF, SVG และ PNG โดยไม่ต้องใช้ Visio หรือ LibreOffice\nรวมถึงเอกสาร XPS และ OpenXPS (.xps, .oxps)\nรวมถึงเทมเพลตแผนภูมิ Excel (.crtx)\nไฟล์ Visio แบบไบนารีรุ่นเก่า (.vsd) ยังต้องใช้ LibreOffice",
+  "engine.drawing.description": "แปลงไดอะแกรม Visio (VSDX) และภาพวาด OpenDocument (ODG, FODG) เป็น PDF, SVG และ PNG โดยไม่ต้องใช้ Visio หรือ LibreOffice\nรวมถึงเอกสาร XPS และ OpenXPS (.xps, .oxps)\nรวมถึงเทมเพลตแผนภูมิ Excel (.crtx)\nรวมถึงไฟล์กระดานอัจฉริยะ (.iwb) และไฟล์ SMART Notebook (.notebook) เป็น ODP และ PPTX ได้ด้วย\nไฟล์ Visio แบบไบนารีรุ่นเก่า (.vsd) ยังต้องใช้ LibreOffice",
   "engine.djvu.name": "DjVu (built-in)",
   "engine.djvu.description": "แปลงหนังสือและเอกสารสแกน DjVu (.djvu, .djv) เป็น PDF ที่ค้นหาข้อความแฝงได้ และเป็นภาพ PNG, JPG, TIFF ของแต่ละหน้า",
   "engine.model3d.name": "3D models (built-in)",
