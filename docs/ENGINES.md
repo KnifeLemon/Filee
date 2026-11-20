@@ -34,7 +34,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | **DjVu** | built in | **DjVu (.djvu, .djv; one page or bundled) → PDF** (the layers kept: background JPEG, 1-bit masks; the hidden text searchable) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
@@ -3026,6 +3026,7 @@ its reader, one line in `Drawings/DrawingFormats.cs`:
   its pages straight into the page model (`DrawingFormat.ReadPages`, `IFixedPages`).
 - **Excel chart templates** (`.crtx`, format id `crtx`, #1354): `ChartTemplate`, one page of Excel's default chart size
   (5 × 3 in) with the template's chart ([Charts](#charts)).
+- **Interactive whiteboards and SMART Notebook** (`.iwb`, `.notebook`): [their own section](#interactive-whiteboards-iwb-smart-notebook).
 
 Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
 takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a
@@ -3048,6 +3049,51 @@ Not yet (VSDX): theme colours and effects stored as "Themed" (the inherited or d
 sections, shadows, rounding, the full arrowhead table, text backgrounds, formulas beyond stored values, and `.vsdm` /
 `.vssx` / `.vstx`. The slide model has one size per deck, so pages of other sizes sit at the top left of the largest
 page's size. Checked against drawings built from the specification, not against files Visio saved.
+
+## Interactive whiteboards (IWB, SMART Notebook)
+
+Built in (#1665), in `Whiteboard/`, read by the drawing engine (`DrawingFormats`, a slide per page) into the slide
+model, so they become **PDF, SVG and PNG** (JPG and the other pictures from PNG) like the other drawings, and, as
+`DrawingFormat.Slides`, **ODP** (OdpWriter, shapes and text stay editable) and **PPTX** (the deck's PDF rebuilt as
+editable slides by the [PDF slides engine](#pdf--pptx), one deck at a time). The ODP and PPTX edges are DirectOnly at
+the ODP writer's cost (8). Presentations donut; settings v115 teaches existing libraries `.iwb` and `.notebook`.
+
+- **IWB** (`.iwb`, format id `iwb`; the Interactive Whiteboard Common File Format, IEC 62874, first published by
+  Becta; SMART Notebook, ActivInspire and OpenBoard export it), `IwbReader`: a ZIP whose `content.xml` holds an `iwb`
+  root with one `svg` (SVG Tiny 1.2 with SVG 1.2's `pageSet` / `page`, also written `pageset`) and `iwb:element`
+  entries by id; elements marked `invisible="true"` aren't drawn. Each page of the pageSet is a slide (without one,
+  the svg is one page); what the svg holds outside the pageSet is drawn on every page first. Slide size: the svg's
+  width and height, else its viewBox (pixels at 96 dpi; 1024 × 768 when it names none), its viewBox fitted onto it; a
+  page's own viewBox is fitted onto that size; `viewport-fill` is the background.
+- **SMART Notebook** (`.notebook`, format id `notebook`), `SmartNotebookReader`: the same kind of ZIP with a page per
+  SVG file (`page0.svg`, ...), in `imsmanifest.xml`'s order (by number without one); the deck takes the first page's
+  size. Written from the packages SMART Notebook 10 and later save (SMART publishes no specification); not checked
+  against a file SMART saved.
+- **SVG** (`SvgSlideReader`, `SvgStyle`; Svg.Skia reads neither pageSet nor textArea, and the slide model keeps the
+  shapes editable in ODP): svg (nested, viewBox, preserveAspectRatio), g / a (several drawn things become a group),
+  switch, use (loops cut), rect (rounded), circle, ellipse, line, polyline, polygon, path, with their transforms
+  baked into the outlines (turned, skewed, mirrored shapes keep their form); fill and stroke (colours, currentColor,
+  opacities, fill-rule, width, dashes, caps, joins), linear and radial gradients (stops through xlink:href; a linear
+  gradient turned with its shape; a radial one as an ellipse over the box from its centre); text / tspan (a text box
+  per positioned run at its baseline, text-anchor, unwrapped, turned with its transform), textArea / tbreak (wrapped
+  at its width, text-align, display-align), foreignObject XHTML text (paragraphs, line breaks, inline CSS); font
+  family, size, weight, style, underline and line-through per run. Pictures: PNG, JPEG, GIF, BMP, WebP, EMF, WMF (what
+  the slide renderer decodes), from the package or `data:` URIs, fitted by preserveAspectRatio (meet, slice, none); an SVG picture
+  is read as more of the drawing (gzip too, a DOCTYPE without an internal subset dropped, nested 8 deep at most).
+- **Left out**, named in the file's result (`SlideDeck.LeftOut` → `notice.renderer_left_out`): video ("videos"),
+  audio, animation and foreignObject without text ("embedded objects"), pictures that can't be decoded or aren't in the
+  package ("pictures"). Not drawn: filters, masks, clip paths, markers, patterns, CSS style sheets (`style=""` and
+  presentation attributes are read), per-glyph positions (x / y lists beyond the first), text on a path's curve.
+  Text widths for `text-anchor` and turning are estimated (0.55 em a character), baselines placed with Arial's ascent.
+- **Hostile input:** the package through `DocumentPackage` (entries, part and package sizes, inflate ratio); hrefs are
+  only names inside the package, resolved against their SVG's folder and never above the top (no URLs, `file:` or
+  local paths); XML through SafeXml (no DTD, depth and element limits for all parts together); elements followed at
+  most 256 deep, 50,000 uses followed, 2 million visited (each use expansion again), 10 million outline points, the document budget's
+  objects and paragraphs, pages up to `MaxPages`; numbers clamped and finite, boxes beyond 1,000,000 pt dropped;
+  pictures within `MaxPartBytes` and `MaxPicturePixels`; cancellation checked per element. Refusals are
+  `error.document_too_complex`. `IwbFuzzTests` fuzzes the reader with the renderer, the PDF and the ODP writer.
+- Tests: `IwbTests` (files built in code by `IwbBuilder`, checked as model values and as pixels at 96 dpi),
+  `IwbSettingsTests`. **No real IWB or SMART Notebook file was tried** (#1665 has none attached).
 
 ## XPS and OpenXPS reader
 

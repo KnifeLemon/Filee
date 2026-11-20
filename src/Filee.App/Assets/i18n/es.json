@@ -331,7 +331,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "Trayectorias de impresoras 3D y máquinas CNC (G-code) a PDF, SVG e imágenes, o la vista previa del laminador.",
   "engine.drawing.name": "Drawings (built-in)",
-  "engine.drawing.description": "Dibujos de Visio (VSDX) y de OpenDocument (ODG, FODG) a PDF, SVG y PNG, sin Visio ni LibreOffice.\nTambién documentos XPS y OpenXPS (.xps, .oxps).\nTambién plantillas de gráficos de Excel (.crtx).\nLos archivos binarios antiguos de Visio (.vsd) siguen necesitando LibreOffice.",
+  "engine.drawing.description": "Dibujos de Visio (VSDX) y de OpenDocument (ODG, FODG) a PDF, SVG y PNG, sin Visio ni LibreOffice.\nTambién documentos XPS y OpenXPS (.xps, .oxps).\nTambién plantillas de gráficos de Excel (.crtx).\nTambién archivos de pizarra interactiva (.iwb) y de SMART Notebook (.notebook), también a ODP y PPTX.\nLos archivos binarios antiguos de Visio (.vsd) siguen necesitando LibreOffice.",
   "engine.djvu.name": "DjVu (built-in)",
   "engine.djvu.description": "Libros y documentos escaneados DjVu (.djvu, .djv) a PDF con su texto oculto buscable, y a imágenes PNG, JPG y TIFF de las páginas.",
   "engine.model3d.name": "3D models (built-in)",

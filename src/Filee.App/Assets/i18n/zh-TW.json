@@ -338,7 +338,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "將 3D 印表機和 CNC 機台的刀具路徑 (G-code) 轉為 PDF、SVG 和圖片，或使用切片軟體儲存的預覽圖。",
   "engine.drawing.name": "Drawings (built-in)",
-  "engine.drawing.description": "將 Visio 圖表（VSDX）和 OpenDocument 繪圖（ODG、FODG）轉為 PDF、SVG 和 PNG，不需 Visio 或 LibreOffice。\n也支援 XPS 和 OpenXPS 文件（.xps、.oxps）。\n也支援 Excel 圖表範本（.crtx）。\n舊的二進位 Visio 檔案（.vsd）仍需 LibreOffice。",
+  "engine.drawing.description": "將 Visio 圖表（VSDX）和 OpenDocument 繪圖（ODG、FODG）轉為 PDF、SVG 和 PNG，不需 Visio 或 LibreOffice。\n也支援 XPS 和 OpenXPS 文件（.xps、.oxps）。\n也支援 Excel 圖表範本（.crtx）。\n也支援互動式白板檔案（.iwb）和 SMART Notebook 檔案（.notebook），還可轉為 ODP 和 PPTX。\n舊的二進位 Visio 檔案（.vsd）仍需 LibreOffice。",
   "engine.djvu.name": "DjVu (built-in)",
   "engine.djvu.description": "將 DjVu 掃描書籍與文件（.djvu、.djv）轉換為可搜尋隱藏文字的 PDF，以及頁面的 PNG、JPG、TIFF 圖片。",
   "engine.model3d.name": "3D models (built-in)",

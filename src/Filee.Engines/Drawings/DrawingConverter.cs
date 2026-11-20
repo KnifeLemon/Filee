@@ -8,11 +8,18 @@
 // keeps the route it would take without this converter.
 //
 // Fixed-layout documents (XPS, DrawingFormat.ReadPages) draw their own pages into the page model; the same outputs
-// are written from those pages, and what the reader left out is named in the file's result (ConversionStep.LeftOut).
+// are written from those pages. What a reader left out is named in the file's result (ConversionStep.LeftOut).
+//
+// Slides no other engine reads (DrawingFormat.Slides: interactive whiteboards) also become ODP (OdpWriter) and PPTX
+// (their PDF, rebuilt as editable slides by PdfSlidesConverter), routes of their own (DirectOnly) at the ODP writer's
+// cost.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
+using Filee.Engines.Odf.Draw;
+using Filee.Engines.Office;
+using Filee.Engines.Pdf;
 using Filee.Engines.Rendering;
 using Filee.Engines.Slides;
 using ImageMagick;
@@ -28,6 +35,9 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
 
     private readonly IReadOnlyList<DrawingFormat> _formats;
 
+    /// <summary>One deck at a time through the PDF slides engine, which renders with PDFium (as its own engine gate does).</summary>
+    private static readonly SemaphoreSlim PdfSlides = new(1, 1);
+
     public DrawingConverter() : this(DrawingFormats.BuiltIn)
     {
     }
@@ -41,6 +51,10 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
             .. from format in formats
                from target in DrawingFormats.Targets
                select new ConversionEdge(format.Id, target, Checked: format.FirstUnsupported is not null),
+            .. from format in formats
+               where format.Slides
+               from target in DrawingFormats.SlideTargets
+               select new ConversionEdge(format.Id, target, OdpWriterConverter.Cost, DirectOnly: true, Checked: format.FirstUnsupported is not null),
         ];
     }
 
@@ -51,7 +65,7 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
     public IReadOnlyList<ConversionEdge> Edges { get; }
 
     /// <summary>Pictures of pages are drawn here, with the image options (turn, mirror, size) applied.</summary>
-    public bool Transforms(string from, string to) => to is not ("pdf" or "svg");
+    public bool Transforms(string from, string to) => to is not ("pdf" or "svg" or "odp" or "pptx");
 
     public EngineStatus GetStatus() => EngineStatus.Available(version: EngineVersions.BuiltIn);
 
@@ -74,7 +88,11 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
             var deck = format.Read!(step.InputPath, cancellationToken);
             if (deck.Slides.Count == 0)
                 throw new InvalidDataException("The drawing has no pages.");
+            if (deck.LeftOut.Count > 0)
+                step.LeftOut?.Invoke(new LeftOutNotice("notice.renderer_left_out", deck.LeftOut));
             progress?.Report(0.2);
+            if (step.To is "odp" or "pptx")
+                return WriteSlides(step, deck, progress, cancellationToken);
             if (step.To == "pdf")
             {
                 var pdf = SlideOutput.ToPdf(deck, progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p)), cancellationToken,
@@ -90,6 +108,38 @@ public sealed class DrawingConverter : IConverter, IImageTransformer, ICapabilit
         }, cancellationToken);
 
     private DrawingFormat? Find(string format) => _formats.FirstOrDefault(f => f.Id == format);
+
+    /// <summary>A deck as ODP, or as PPTX through its PDF.</summary>
+    private static List<string> WriteSlides(ConversionStep step, SlideDeck deck, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        if (step.To == "odp")
+        {
+            if (step.Output.Allocate("odp") is not { } odp)
+                return [];
+            OdpWriter.Write(deck, odp, cancellationToken: cancellationToken);
+            progress?.Report(1);
+            return [odp];
+        }
+        var pdf = Path.Combine(step.WorkDirectory, $"slides-{Guid.NewGuid():N}.pdf");
+        try
+        {
+            File.WriteAllBytes(pdf, SlideOutput.ToPdf(deck, progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.3 * p)), cancellationToken));
+            PdfSlides.Wait(cancellationToken);
+            try
+            {
+                return [.. new PdfSlidesConverter().ConvertAsync(step with { InputPath = pdf, From = "pdf" },
+                    progress is null ? null : new Progress<double>(p => progress.Report(0.5 + 0.5 * p)), cancellationToken).GetAwaiter().GetResult()];
+            }
+            finally
+            {
+                PdfSlides.Release();
+            }
+        }
+        finally
+        {
+            File.Delete(pdf);
+        }
+    }
 
     /// <summary>A fixed-layout document's pages as a PDF, SVG files or pictures.</summary>
     private static List<string> WriteFixed(ConversionStep step, IFixedPages document, IProgress<double>? progress, CancellationToken cancellationToken)

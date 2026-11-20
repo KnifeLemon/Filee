@@ -331,7 +331,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "3D प्रिन्टर र CNC मेसिनका टूलपाथ (G-code) लाई PDF, SVG र चित्रमा, वा स्लाइसरकै पूर्वावलोकन।",
   "engine.drawing.name": "Drawings (built-in)",
-  "engine.drawing.description": "Visio रेखाचित्र (VSDX) र OpenDocument रेखाचित्र (ODG, FODG) बाट PDF, SVG र PNG, Visio वा LibreOffice बिना।\nXPS र OpenXPS कागजातहरू (.xps, .oxps) पनि।\nExcel चार्ट टेम्प्लेटहरू (.crtx) पनि।\nपुराना बाइनरी Visio फाइलहरू (.vsd) का लागि अझै LibreOffice चाहिन्छ।",
+  "engine.drawing.description": "Visio रेखाचित्र (VSDX) र OpenDocument रेखाचित्र (ODG, FODG) बाट PDF, SVG र PNG, Visio वा LibreOffice बिना।\nXPS र OpenXPS कागजातहरू (.xps, .oxps) पनि।\nExcel चार्ट टेम्प्लेटहरू (.crtx) पनि।\nअन्तरक्रियात्मक ह्वाइटबोर्ड फाइलहरू (.iwb) र SMART Notebook फाइलहरू (.notebook) पनि, ODP र PPTX मा पनि।\nपुराना बाइनरी Visio फाइलहरू (.vsd) का लागि अझै LibreOffice चाहिन्छ।",
   "engine.djvu.name": "DjVu (built-in)",
   "engine.djvu.description": "DjVu स्क्यान गरिएका किताब र कागजात (.djvu, .djv) लाई लुकेको पाठ खोज्न मिल्ने PDF मा, र पानाहरूको PNG, JPG र TIFF तस्बिरमा।",
   "engine.model3d.name": "3D models (built-in)",

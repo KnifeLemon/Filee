@@ -2,7 +2,8 @@
 // into the slide model (one slide per page, the page's size as the slide's) and, when the reader draws only part of
 // what the format can hold, a check that names the first thing it can't draw (once the converter's edges are Checked,
 // see DrawingConverter, such a file keeps the route it would take without the converter, LibreOffice Draw). The
-// readers add their line here: VSDX (Visio/), ODG / OTG / FODG (Odf/Draw), XPS / OpenXPS (Xps/), chart templates (Charts/).
+// readers add their line here: VSDX (Visio/), ODG / OTG / FODG (Odf/Draw), XPS / OpenXPS (Xps/), chart templates (Charts/),
+// interactive whiteboards (Whiteboard/).
 //
 // Fixed-layout documents (XPS) and chart templates are not slides: their reader draws pages straight into the page model (IFixedPages).
 
@@ -12,6 +13,7 @@ using Filee.Engines.Odf.Draw;
 using Filee.Engines.Rendering;
 using Filee.Engines.Slides;
 using Filee.Engines.Visio;
+using Filee.Engines.Whiteboard;
 using Filee.Engines.Xps;
 
 namespace Filee.Engines.Drawings;
@@ -30,6 +32,12 @@ internal sealed record DrawingFormat(
 {
     /// <summary>Opens a fixed-layout document whose pages its reader draws itself (instead of <see cref="Read"/>).</summary>
     public Func<string, CancellationToken, IFixedPages>? ReadPages { get; init; }
+
+    /// <summary>
+    /// Slides (a presentation format no other engine reads): also written as ODP by the ODP writer and as PPTX through
+    /// its PDF (the PDF slides engine's editable slides), as routes of their own (<see cref="DrawingFormats.SlideTargets"/>).
+    /// </summary>
+    public bool Slides { get; init; }
 }
 
 /// <summary>
@@ -65,8 +73,14 @@ internal static class DrawingFormats
         new("xps", null) { ReadPages = (path, token) => XpsDocument.Open(path, token) },
         // Excel chart templates (.crtx): the chart on one page, with sample values where the template has none.
         new("crtx", null) { ReadPages = (path, token) => ChartTemplate.Open(path, token) },
+        // Interactive whiteboard files (.iwb, IEC 62874, #1665) and SMART Notebook files: a slide per page of their SVG.
+        new(IwbReader.Format, (path, token) => IwbReader.Read(path, cancellationToken: token)) { Slides = true },
+        new(SmartNotebookReader.Format, (path, token) => SmartNotebookReader.Read(path, cancellationToken: token)) { Slides = true },
     ];
 
     /// <summary>What every drawing format is converted to.</summary>
     public static IReadOnlyList<string> Targets { get; } = ["pdf", "svg", "png"];
+
+    /// <summary>What formats of <see cref="DrawingFormat.Slides"/> are also converted to.</summary>
+    public static IReadOnlyList<string> SlideTargets { get; } = ["odp", "pptx"];
 }

@@ -331,7 +331,7 @@
   "engine.gcode.name": "G-code (integriert)",
   "engine.gcode.description": "Werkzeugwege von 3D-Druckern und CNC-Maschinen (G-Code) als PDF, SVG und Bild, oder die Vorschau des Slicers.",
   "engine.drawing.name": "Zeichnungen (integriert)",
-  "engine.drawing.description": "Visio-Zeichnungen (VSDX) und OpenDocument-Zeichnungen (ODG, FODG) in PDF, SVG und PNG, ohne Visio oder LibreOffice.\nAuch XPS- und OpenXPS-Dokumente (.xps, .oxps).\nAuch Excel-Diagrammvorlagen (.crtx).\nFür alte binäre Visio-Dateien (.vsd) ist weiterhin LibreOffice nötig.",
+  "engine.drawing.description": "Visio-Zeichnungen (VSDX) und OpenDocument-Zeichnungen (ODG, FODG) in PDF, SVG und PNG, ohne Visio oder LibreOffice.\nAuch XPS- und OpenXPS-Dokumente (.xps, .oxps).\nAuch Excel-Diagrammvorlagen (.crtx).\nAuch Dateien interaktiver Whiteboards (.iwb) und SMART-Notebook-Dateien (.notebook), auch in ODP und PPTX.\nFür alte binäre Visio-Dateien (.vsd) ist weiterhin LibreOffice nötig.",
   "engine.djvu.name": "DjVu (integriert)",
   "engine.djvu.description": "Gescannte DjVu-Bücher und -Dokumente (.djvu, .djv) in PDF mit durchsuchbarem verborgenem Text sowie in PNG-, JPG- und TIFF-Bilder der Seiten.",
   "engine.model3d.name": "3D-Modelle (integriert)",

@@ -338,7 +338,7 @@
   "engine.gcode.name": "G-code (tích hợp)",
   "engine.gcode.description": "Đường chạy của máy in 3D và máy CNC (G-code) sang PDF, SVG và ảnh, hoặc ảnh xem trước của slicer.",
   "engine.drawing.name": "Bản vẽ (tích hợp)",
-  "engine.drawing.description": "Bản vẽ Visio (VSDX) và bản vẽ OpenDocument (ODG, FODG) sang PDF, SVG và PNG, không cần Visio hay LibreOffice.\nCả tài liệu XPS và OpenXPS (.xps, .oxps).\nCả mẫu biểu đồ Excel (.crtx).\nTệp Visio nhị phân cũ (.vsd) vẫn cần LibreOffice.",
+  "engine.drawing.description": "Bản vẽ Visio (VSDX) và bản vẽ OpenDocument (ODG, FODG) sang PDF, SVG và PNG, không cần Visio hay LibreOffice.\nCả tài liệu XPS và OpenXPS (.xps, .oxps).\nCả mẫu biểu đồ Excel (.crtx).\nCả tệp bảng tương tác (.iwb) và tệp SMART Notebook (.notebook), sang cả ODP và PPTX.\nTệp Visio nhị phân cũ (.vsd) vẫn cần LibreOffice.",
   "engine.djvu.name": "DjVu (tích hợp)",
   "engine.djvu.description": "Sách và tài liệu quét DjVu (.djvu, .djv) sang PDF tìm kiếm được văn bản ẩn, và sang ảnh PNG, JPG, TIFF của từng trang.",
   "engine.model3d.name": "Mô hình 3D (tích hợp)",

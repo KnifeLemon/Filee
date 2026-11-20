@@ -182,6 +182,11 @@ public static class FormatRegistry
         new("key", "Keynote", FormatCategory.Presentation, ["key"], Writable: false),
         new("dps", "DPS", FormatCategory.Presentation, ["dps"], Writable: false),
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
+        // Interactive whiteboard files (IEC 62874 Common File Format, #1665) from SMART Notebook, ActivInspire, OpenBoard
+        // and other whiteboard programs, read by Filee itself: a slide per page of their SVG (drawing engine).
+        new("iwb", "IWB (whiteboard)", FormatCategory.Presentation, ["iwb"], Writable: false),
+        // SMART Notebook files: the same kind of package, a page per SVG file, read by the same reader.
+        new("notebook", "SMART Notebook", FormatCategory.Presentation, ["notebook"], Writable: false),
 
         // Plain text / markup
         // Text logs (CrossOver's .cxlog too), source code (Arduino and Processing sketches too), database schemas (DBML), proxy
