@@ -557,7 +557,7 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         far.Column = 2_000_000_000;
         table.Rows[0].Cells.Add(far);
         table.Rows[0].Cells.Add(Box("beyond").Rows[0].Cells[0]);
-        var sheet = DocumentTablesConverter.Build(Document(table)).Sheets.Single();
+        var sheet = DocumentTablesConverter.Build(Document(table), TestContext.Current.CancellationToken).Sheets.Single();
 
         Assert.Equal("first", sheet.Get(0, 0)!.Text);
         Assert.Equal("far", sheet.Get(0, SheetPagination.MaxColumn)!.Text);
