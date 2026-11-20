@@ -112,23 +112,19 @@ internal static class Jbig2Encoder
     private static void Generic(MqEncoder coder, byte[] contexts, Jb2Shape shape)
     {
         int w = shape.Width, h = shape.Height;
-        // The shape's rows top first, with two blank rows above and margins of four columns.
-        var stride = w + 8;
-        var pixels = new byte[(h + 2) * stride];
-        for (var y = 0; y < h; y++)
-            Array.Copy(shape.Bits, (long)(h - 1 - y) * w, pixels, (y + 2) * stride + 4, w);
+        // The row being coded and the two above it (blank above the first), with margins of four columns.
+        byte[] row = new byte[w + 8], up = new byte[w + 8], up2 = new byte[w + 8];
         for (var y = 0; y < h; y++)
         {
-            var row = (y + 2) * stride + 4;
-            var up = row - stride;
-            var up2 = up - stride;
-            for (var x = 0; x < w; x++)
+            (up2, up, row) = (up, row, up2);
+            Array.Copy(shape.Bits, (long)(h - 1 - y) * w, row, 4, w);
+            for (var x = 4; x < w + 4; x++)
             {
-                var c = (pixels[row + x - 1] << 0) | (pixels[row + x - 2] << 1) | (pixels[row + x - 3] << 2) | (pixels[row + x - 4] << 3)
-                    | (pixels[up + x + 2] << 4) | (pixels[up + x + 1] << 5) | (pixels[up + x] << 6) | (pixels[up + x - 1] << 7) | (pixels[up + x - 2] << 8)
-                    | (pixels[up2 + x + 1] << 9) | (pixels[up2 + x] << 10) | (pixels[up2 + x - 1] << 11)
-                    | (pixels[up + x + 3] << 12) | (pixels[up + x - 3] << 13) | (pixels[up2 + x + 2] << 14) | (pixels[up2 + x - 2] << 15);
-                coder.Encode(contexts, c, pixels[row + x]);
+                var c = row[x - 1] | (row[x - 2] << 1) | (row[x - 3] << 2) | (row[x - 4] << 3)
+                    | (up[x + 2] << 4) | (up[x + 1] << 5) | (up[x] << 6) | (up[x - 1] << 7) | (up[x - 2] << 8)
+                    | (up2[x + 1] << 9) | (up2[x] << 10) | (up2[x - 1] << 11)
+                    | (up[x + 3] << 12) | (up[x - 3] << 13) | (up2[x + 2] << 14) | (up2[x - 2] << 15);
+                coder.Encode(contexts, c, row[x]);
             }
         }
     }
