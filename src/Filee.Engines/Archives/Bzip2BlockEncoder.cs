@@ -50,6 +50,7 @@ internal sealed class Bzip2BlockEncoder
     /// <param name="block">The block after the first run-length step (1 … 900,000 bytes).</param>
     /// <param name="crc">The block CRC of the bytes before that step.</param>
     /// <param name="passes">How often the Huffman tables are refined (1 or more).</param>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void Encode(ReadOnlySpan<byte> block, uint crc, int passes, CancellationToken cancellationToken)
     {
         var n = block.Length;
@@ -170,6 +171,7 @@ internal sealed class Bzip2BlockEncoder
     /// bijective base 2 with RUNA (1) and RUNB (2), lowest digit first; position j is symbol j + 1. Ends with the
     /// end-of-block symbol. Returns the number of symbols.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private int MoveToFront(ReadOnlySpan<byte> bwt, ReadOnlySpan<byte> number, int inUse, int endOfBlock, Span<int> frequencies)
     {
         Span<byte> list = stackalloc byte[256];
@@ -220,6 +222,7 @@ internal sealed class Bzip2BlockEncoder
     }
 
     /// <summary>Picks the selectors and the tables' code lengths.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void ChooseTables(int count, int alphabet, int tables, int selectorCount, ReadOnlySpan<int> frequencies, int passes)
     {
         // Start: table t is cheap for one slice of the symbols (by number), dear for the rest.
@@ -308,6 +311,7 @@ internal static class Bzip2Huffman
     /// Code lengths (1 … <paramref name="maxLength"/>) for <paramref name="frequencies"/>; every symbol gets one, unused
     /// ones as if seen once. A tree deeper than the limit is built again from flattened frequencies.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static void Lengths(ReadOnlySpan<int> frequencies, Span<byte> lengths, int maxLength)
     {
         var n = frequencies.Length;

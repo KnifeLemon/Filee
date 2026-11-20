@@ -338,7 +338,7 @@ internal sealed class MatchFinder
     /// the same tables, candidates and lists. A candidate is only measured when its two bytes ending at the best length
     /// so far agree with the cursor's (a match longer than the best has them), which takes one load per candidate.
     /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
     private int ChainSearch(int pos, int maxLength, int[] lengths, uint[] distances)
     {
         System.Diagnostics.Debug.Assert(pos >= _nextInsert, "a position is searched twice");
@@ -548,6 +548,7 @@ internal sealed class MatchFinder
             Insert(pos);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void Insert(int pos)
     {
         var buffer = Buffer;

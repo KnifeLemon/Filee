@@ -5,6 +5,7 @@
 // stays bounded by the number of blocks in flight (about 20 MB each while sorting). It is a write-only stream, so a TAR
 // can be compressed while it is written (.tar.bz2) without a temporary file.
 
+using System.Runtime.CompilerServices;
 using Filee.Core.Presets;
 
 namespace Filee.Engines.Archives;
@@ -71,6 +72,7 @@ internal sealed class Bzip2Writer : Stream
 
     public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public override void Write(ReadOnlySpan<byte> buffer)
     {
         ObjectDisposedException.ThrowIf(_finished, this);
@@ -253,6 +255,7 @@ internal sealed class Bzip2Bits
     }
 
     /// <summary>Writes the low <paramref name="count"/> (0 … 32) bits of <paramref name="value"/>, which has no others set.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Write(int count, uint value)
     {
         _pending = (_pending << count) | value;

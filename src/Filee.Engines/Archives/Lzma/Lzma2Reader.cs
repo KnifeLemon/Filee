@@ -7,6 +7,8 @@
 // An LZMA chunk unpacks to at most 2 MiB from at most 64 KiB, with its own range coder, so each is read whole
 // before it is decoded and nothing in it can claim more than those limits.
 
+using System.Buffers.Binary;
+
 namespace Filee.Engines.Archives.Lzma;
 
 /// <summary>Buffered reading from a stream that counts the bytes it hands out.</summary>
@@ -33,6 +35,21 @@ internal sealed class ByteInput(Stream stream)
     {
         if (ReadAtMost(target) < target.Length)
             throw new InvalidDataException("the data ends too early");
+    }
+
+    /// <summary>The next four bytes as a big-endian number; the stream ending first is damage.</summary>
+    public uint ReadUInt32BigEndian()
+    {
+        if (_end - _position >= 4)
+        {
+            var value = BinaryPrimitives.ReadUInt32BigEndian(_buffer.AsSpan(_position));
+            _position += 4;
+            Consumed += 4;
+            return value;
+        }
+        Span<byte> bytes = stackalloc byte[4];
+        ReadExactly(bytes);
+        return BinaryPrimitives.ReadUInt32BigEndian(bytes);
     }
 
     /// <summary>Reads as much of <paramref name="target"/> as the stream still has.</summary>
