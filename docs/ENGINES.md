@@ -33,7 +33,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
-| **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
+| **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, PDB, PML, TCR, RB, SNB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/PDB/PML/TCR/RB/SNB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | **DjVu** | built in | **DjVu (.djvu, .djv; one page or bundled) → PDF** (the layers kept: background JPEG, 1-bit masks; the hidden text searchable) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
@@ -51,7 +51,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG / WebP, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
-| Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF, PDB, PML, RB, SNB, TCR (MOBI, AZW3 too, below the built-in writer); e-books → PDF (ranked above the HWPX writer with the Filee renderer off, see below) |
+| Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF (MOBI, AZW3, PDB, PML, RB, SNB, TCR too, below the built-in writers); e-books → PDF (ranked above the HWPX writer with the Filee renderer off, see below) |
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
@@ -3665,7 +3665,7 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
   naturally ("page2" before "page10"). → PDF has one page per picture sized like the picture (JPEGs are embedded
   as they are), → EPUB is fixed-layout, → CBZ repacks. PDF → CBZ renders the pages with PDFium at the preset DPI.
 - **Older formats** (`Ebooks/Legacy`, `Ebooks/Chm`, written from the formats' public descriptions), so calibre is
-  needed only for LIT and LRF:
+  needed only for LIT and LRF (reading and writing):
   - **CHM** (Compiled HTML Help): the ITSF header, the ITSP directory and its PMGL listing chunks, files stored or in
     the LZX section. The LZX decoder is Filee's own (`Chm/LzxDecoder.cs`): verbatim, aligned offset and uncompressed
     blocks, pretree deltas, repeat offsets, 16-bit realignment after each 32 KB frame, the reset interval and window
@@ -3692,19 +3692,35 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
     outside the file, trees with too many codes, matches before the start of the data, records out of order) is
     `InvalidDataException`. `DocumentFuzzTests` fuzzes the CHM, PDB, TCR, RB and SNB readers and the LZX decoder on
     its own. Test inputs are written in code, CHM's LZX section too (`LzxEncoder`, a test-only compressor).
+  - **Writers** (cost 19 like AZW3 and MOBI: they win in the default engine order, calibre's EPUB → them wins once
+    calibre is ranked first). Text is Windows-1252 when every character fits, else UTF-8 (PDB, TCR, the RB info page).
+    **PDB** is PalmDOC: the plain text in 4 KB PalmDOC-compressed records, the 16-byte header, the title as the
+    database name and a bookmark record (name and byte offset) per heading of the top three levels. **TCR**: a
+    dictionary of every byte the text uses plus pairs merged by frequency on a sample of up to 512 KB, the text coded
+    by longest match. **PML**: ASCII with `\aNNN` / `\UXXXX` characters, chapters `\x` and `\X1`-`\X4`, bold / italic /
+    underline / strike-through / super- and subscript, centred and right-aligned paragraphs, list markers, links and
+    anchors, footnotes in `<footnote>` blocks, page breaks, rules; pictures as PNG in the `<name>_img` folder, reserved
+    through the output allocator like Markdown's picture folder. **RB**: the XhtmlWriter page (no style sheet,
+    non-ASCII as character references) in 4 KB zlib chunks, the info page (TITLE, AUTHOR, BODY) and the pictures as
+    PNG. **SNB**: book.snbf, toc.snbf and a chapter file per top-level heading (paragraphs and pictures: SNB has no
+    styles), the text stream in 32 KB bzip2 blocks (Filee's own encoder), the binary stream, the file table and the
+    block tail. Each writer stays within the limits its reader applies (64 MB of text, 65,535 Palm records, 10,000 RB
+    files, 100,000 SNB files, 1 GB), checks for cancellation and writes through a temporary file, so a failed or
+    cancelled conversion leaves nothing behind. `LegacyEbookWriterTests` reads every format back with Filee's readers
+    and checks the headers, records, dictionaries and blocks.
 - Books with DRM (Adobe, Apple, Kindle) are refused with a clear message; Filee does not remove DRM. KFX and
   Topaz books are recognised and refused too.
 
 ## Calibre
 
 calibre's `ebook-convert` (GPL-3.0) is an optional download for the formats Filee does not read or write itself:
-LIT and LRF → EPUB, and EPUB → LIT, LRF, PDB, PML, RB, SNB and TCR. CHM, PDB, PML, RB, SNB, TCR and OEB are read,
-and MOBI and AZW3 written, by the built-in engine (see [E-books](#e-books)); calibre keeps its edges for them, below
+LIT and LRF → EPUB, and EPUB → LIT and LRF. CHM, PDB, PML, RB, SNB, TCR and OEB are read, and MOBI, AZW3, PDB, PML,
+RB, SNB and TCR written, by the built-in engine (see [E-books](#e-books)); calibre keeps its edges for them, below
 the built-in ones. EPUB is the hub, so for example FB2 → LIT is FB2 → EPUB (built in) → LIT (calibre). Its edges
 cost 20, so built-in routes always win where they exist.
 
-calibre's other outputs (LIT, LRF, PDB, PML, RB, SNB, TCR) are kept: they cost nothing while calibre isn't installed,
-and nothing built in writes them.
+calibre's other outputs (LIT, LRF) are kept: they cost nothing while calibre isn't installed, and nothing built in
+writes them.
 
 calibre also makes PDFs of EPUB, MOBI, AZW3, AZW, PRC, FB2, HTMLZ, TXTZ and the formats only it reads (one
 `ebook-convert` run: A4 with `--paper-size a4`, page numbers with `--pdf-page-numbers`, calibre's margins and font

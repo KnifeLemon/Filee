@@ -2,7 +2,8 @@
 // the little-endian offset of its table of contents is at 0x18. The table lists the files: a 32-byte name, length,
 // offset and flags (1 compressed, 2 encrypted, 8 the info page). A compressed file is its chunk count, its size,
 // the size of each chunk and the chunks, each a zlib stream of up to 4 KB of the file. The info page is text lines
-// of KEY=value (TITLE, AUTHOR, BODY = the HTML page to read); the pages are read through HtmlReader.
+// of KEY=value (TITLE, AUTHOR, BODY = the HTML page to read), UTF-8 when valid, else Windows-1252; the pages are read
+// through HtmlReader.
 // Encrypted books are refused as DRM.
 
 using System.Buffers.Binary;
@@ -61,7 +62,7 @@ internal static class RocketBookReader
                 throw DocumentLimits.Exceeded($"The RB file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
             if ((flags & 8) != 0)
             {
-                foreach (var line in Encoding.Latin1.GetString(bytes).Split('\n', '\r'))
+                foreach (var line in MobiReader.DecodeText(bytes).Split('\n', '\r'))
                     if (line.IndexOf('=') is var equals and > 0)
                         info.TryAdd(line[..equals].Trim(), line[(equals + 1)..].Trim());
                 continue;

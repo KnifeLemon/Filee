@@ -1,10 +1,11 @@
 // Built-in e-book conversions, no external program: EPUB, MOBI / AZW / AZW3 / PRC, FB2, HTMLZ and TXTZ, and the
 // older formats CHM, PDB (PalmDOC, zTXT), PML, TCR, RB, SNB and OEB (Ebooks/Legacy, Ebooks/Chm) are read into
 // the HWPX document model and written as EPUB, HWPX (→ PDF / images through rhwp and PDFium), TXT, HTML, Markdown,
-// FB2, HTMLZ, TXTZ, AZW3 (KF8) or MOBI (MOBI 6 + KF8); HTML, Markdown, TXT and DOCX become e-books too. Comics
-// (CBZ / CBR / CB7 / CBT / CBC) become PDF, fixed-layout EPUB or CBZ, PDF becomes CBZ, and AZW4 (Print Replica) gives
-// back its PDF. EPUB ↔ KEPUB (Kobo) adds or removes Kobo's sentence markup and keeps the rest of the book as it is.
-// Formats only calibre reads or writes (LIT, LRF, PDB / LIT / LRF output, ...) are in CalibreConverter.
+// FB2, HTMLZ, TXTZ, AZW3 (KF8), MOBI (MOBI 6 + KF8) or the older PDB (PalmDOC), PML, TCR, RB and SNB (Ebooks/Legacy);
+// HTML, Markdown, TXT and DOCX become e-books too. Comics (CBZ / CBR / CB7 / CBT / CBC) become PDF, fixed-layout EPUB
+// or CBZ, PDF becomes CBZ, and AZW4 (Print Replica) gives back its PDF. EPUB ↔ KEPUB (Kobo) adds or removes Kobo's
+// sentence markup and keeps the rest of the book as it is. Formats only calibre reads or writes (LIT, LRF) are in
+// CalibreConverter.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -21,19 +22,26 @@ public sealed class EbookConverter : IConverter
     /// <summary>E-book formats read into the document model.</summary>
     internal static readonly string[] BookReaders = ["epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "chm", "pdb", "pml", "tcr", "rb", "snb", "oeb"];
 
+    /// <summary>
+    /// The older formats written from the document model (Ebooks/Legacy). They cost <see cref="KindleCost"/> like
+    /// AZW3 and MOBI: calibre writes them too, and a user who ranks calibre first gets calibre's books.
+    /// </summary>
+    internal static readonly string[] LegacyWriters = ["pdb", "pml", "tcr", "rb", "snb"];
+
     /// <summary>Formats written from the document model.</summary>
-    private static readonly string[] BookWriters = ["epub", "hwpx", "txt", "html", "md", "fb2", "htmlz", "txtz", "azw3", "mobi"];
+    private static readonly string[] BookWriters = ["epub", "hwpx", "txt", "html", "md", "fb2", "htmlz", "txtz", "azw3", "mobi", .. LegacyWriters];
 
     /// <summary>
-    /// Cost of → AZW3 / MOBI. In the default engine order it costs 19 + 9 against calibre's EPUB → AZW3 / MOBI at
-    /// 20 + 9, so the built-in writer wins; a user who ranks calibre first (20 + 0) gets calibre's books instead.
+    /// Cost of → AZW3 / MOBI and the <see cref="LegacyWriters"/>. In the default engine order it costs 19 + 9 against
+    /// calibre's EPUB → AZW3 / MOBI / PDB / ... at 20 + 9, so the built-in writer wins; a user who ranks calibre first
+    /// (20 + 0) gets calibre's books instead.
     /// </summary>
     internal const int KindleCost = 19;
 
     /// <summary>Documents that become e-books (their other conversions belong to the document engines).</summary>
     private static readonly string[] DocumentReaders = ["html", "md", "txt", "docx"];
 
-    private static readonly string[] EbookWriters = ["epub", "fb2", "htmlz", "txtz", "azw3", "mobi"];
+    private static readonly string[] EbookWriters = ["epub", "fb2", "htmlz", "txtz", "azw3", "mobi", .. LegacyWriters];
 
     private static readonly string[] Comics = ["cbz", "cbr", "cb7", "cbt", "cbc"];
 
@@ -45,11 +53,11 @@ public sealed class EbookConverter : IConverter
     [
         // KEPUB → EPUB is below: the book is copied without Kobo's markup instead of being written anew.
         .. BookReaders.SelectMany(from => BookWriters.Where(to => to != from && !(from == "kepub" && to == "epub"))
-            .Select(to => new ConversionEdge(from, to, to == "md" ? 12 : to is "azw3" or "mobi" ? KindleCost : 10))),
+            .Select(to => new ConversionEdge(from, to, to == "md" ? 12 : to is "azw3" or "mobi" || LegacyWriters.Contains(to) ? KindleCost : 10))),
         // Every other format reaches KEPUB through EPUB.
         new("epub", "kepub"),
         new("kepub", "epub"),
-        .. DocumentReaders.SelectMany(from => EbookWriters.Select(to => new ConversionEdge(from, to, to is "azw3" or "mobi" ? KindleCost : 10))),
+        .. DocumentReaders.SelectMany(from => EbookWriters.Select(to => new ConversionEdge(from, to, to is "azw3" or "mobi" || LegacyWriters.Contains(to) ? KindleCost : 10))),
         // HTML → TXT has no other built-in route; HTML → Markdown is a fallback for when Pandoc is not installed.
         new("html", "txt"),
         new("html", "md", 14),
@@ -200,6 +208,21 @@ public sealed class EbookConverter : IConverter
                 break;
             case "mobi":
                 MobiWriter.Write(book, output, step.InputPath, work, mobi6: true);
+                break;
+            case "pdb":
+                PdbWriter.Write(book, output, step.InputPath, cancellationToken);
+                break;
+            case "pml":
+                PmlWriter.Write(book, output, step.Preset.Document.LeaveOutPictures ? null : new PmlPictures(output, step.Output, work), cancellationToken);
+                break;
+            case "tcr":
+                TcrWriter.Write(book, output, cancellationToken);
+                break;
+            case "rb":
+                RocketBookWriter.Write(book, output, step.InputPath, work, cancellationToken);
+                break;
+            case "snb":
+                SnbWriter.Write(book, output, step.InputPath, work, cancellationToken);
                 break;
             default:
                 throw new NotSupportedException($"{step.From} → {step.To}");

@@ -1,6 +1,6 @@
 // The Palm database (PDB) container of MOBI, AZW, AZW3, AZW4 and PRC books: a 78-byte header with the type and
-// creator ("BOOKMOBI", "TEXtREAd"), then a table of record offsets. Written from the PalmOS database format
-// description; all numbers are big-endian.
+// creator ("BOOKMOBI", "TEXtREAd"), then a table of record offsets; read here, and written by Build for PalmDOC books
+// (PdbWriter). Written from the PalmOS database format description; all numbers are big-endian.
 
 using System.Buffers.Binary;
 using System.Text;
@@ -60,6 +60,42 @@ internal sealed class PalmDatabase
     }
 
     public byte[] RecordArray(int index) => Record(index).ToArray();
+
+    /// <summary>Most records a database holds: the record count is a 16-bit number.</summary>
+    public const int MaxRecords = ushort.MaxValue;
+
+    /// <summary>
+    /// A database file of <paramref name="records"/>: the header with the name (at most 31 bytes, Latin-1, others as
+    /// '_'), the creation and modification dates (seconds since 1904, as PalmOS counts), the type and creator, then
+    /// the record list (offset, no attributes, unique id) and the records after two bytes of padding.
+    /// </summary>
+    public static byte[] Build(string name, string typeCreator, IReadOnlyList<byte[]> records)
+    {
+        if (records.Count is 0 or > MaxRecords)
+            throw Documents.DocumentLimits.Exceeded($"A Palm database holds at most {Documents.DocumentLimits.Count(MaxRecords)} records.");
+        var headerLength = 78 + records.Count * 8 + 2;
+        var length = headerLength + records.Sum(r => (long)r.Length);
+        if (length > int.MaxValue)
+            throw Documents.DocumentLimits.Exceeded("The Palm database would be larger than 2 GB.");
+        var file = new byte[length];
+        var bytes = name.Select(c => c is >= ' ' and <= '~' or >= ' ' and <= 'ÿ' ? (byte)c : (byte)'_').Take(31).ToArray();
+        (bytes.Length > 0 ? bytes : "Book"u8.ToArray()).CopyTo(file, 0);
+        var now = (uint)(DateTimeOffset.UtcNow - new DateTimeOffset(1904, 1, 1, 0, 0, 0, TimeSpan.Zero)).TotalSeconds;
+        BinaryPrimitives.WriteUInt32BigEndian(file.AsSpan(36), now);
+        BinaryPrimitives.WriteUInt32BigEndian(file.AsSpan(40), now);
+        Encoding.ASCII.GetBytes(typeCreator).AsSpan(0, 8).CopyTo(file.AsSpan(60));
+        BinaryPrimitives.WriteUInt32BigEndian(file.AsSpan(68), (uint)records.Count); // the next unique id
+        BinaryPrimitives.WriteUInt16BigEndian(file.AsSpan(76), (ushort)records.Count);
+        var offset = headerLength;
+        for (var i = 0; i < records.Count; i++)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(file.AsSpan(78 + i * 8), (uint)offset);
+            BinaryPrimitives.WriteUInt32BigEndian(file.AsSpan(78 + i * 8 + 4), (uint)i & 0x00FFFFFF);
+            records[i].CopyTo(file, offset);
+            offset += records[i].Length;
+        }
+        return file;
+    }
 
     // Big-endian helpers with bounds checks: damaged books must fail with a clear error, not an exception deep inside.
 
