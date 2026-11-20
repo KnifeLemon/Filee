@@ -1,7 +1,7 @@
 // What one DjVu document may make Filee read and build: pages, chunk sizes, decompressed (BZZ) bytes, page pixels,
-// JB2 shapes, blits and their pixels, IW44 slices and coefficient blocks, text zones. Every limit is far beyond what
-// scanners and DjVu encoders write (a 600 dpi A3 scan is 70 million pixels); a document past one is refused with
-// error.document_too_complex, naming the limit.
+// JB2 shapes, blits and their pixels, IW44 slices and coefficient blocks, text zones, annotation parts. Every limit is
+// far beyond what scanners and DjVu encoders write (a 600 dpi A3 scan is 70 million pixels); a document past one is
+// refused with error.document_too_complex, naming the limit.
 
 using Filee.Engines.Documents;
 
@@ -53,4 +53,7 @@ internal sealed record DjvuLimits
 
     /// <summary>Colours of a foreground palette.</summary>
     public int MaxPaletteColors { get; init; } = 65_535;
+
+    /// <summary>Parts (brackets, words, strings) of one page's annotations (its hyperlinks and display settings).</summary>
+    public int MaxAnnotationNodes { get; init; } = 1_000_000;
 }

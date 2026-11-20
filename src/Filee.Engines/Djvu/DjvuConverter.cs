@@ -1,7 +1,8 @@
-// Filee's own DjVu reader (engine id "djvu", #346): DjVu documents (.djvu, .djv; one page or bundled) to PDF — every
-// page at its size, the layers kept (DjvuPdfWriter), the hidden text searchable — and pictures of the pages (PNG, JPEG,
-// TIFF; the PDF options' page range, the pages' own resolution, then the image options; TIFF holds all pages in one
-// file). Layers Filee doesn't decode are named in the file's result (ConversionStep.LeftOut).
+// Filee's own DjVu reader (engine id "djvu", #346): DjVu documents (.djvu, .djv; one page, bundled or indirect) to PDF —
+// every page at its size, the layers kept (DjvuPdfWriter), the hidden text searchable, the hyperlinks and bookmarks
+// kept as PDF links and outline — and pictures of the pages (PNG, JPEG, TIFF; the PDF options' page range, the pages'
+// own resolution, then the image options; TIFF holds all pages in one file). Layers Filee doesn't decode are named in
+// the file's result (ConversionStep.LeftOut).
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
@@ -47,12 +48,21 @@ public sealed class DjvuConverter : IConverter, IImageTransformer
     private static List<string> WritePdf(ConversionStep step, DjvuDocument document, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         using var writer = new OcrPdfWriter();
+        var pages = new List<PdfSharp.Pdf.PdfPage>();
+        var links = new List<(int Page, IReadOnlyList<DjvuLink> Links, double Scale)>();
         for (var i = 0; i < document.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            DjvuPdfWriter.AddPage(writer, document.ReadPage(i, cancellationToken), cancellationToken);
+            var page = document.ReadPage(i, cancellationToken);
+            pages.Add(DjvuPdfWriter.AddPage(writer, page, cancellationToken));
+            if (page.Links.Count > 0)
+                links.Add((i, page.Links, DjvuPdfWriter.Scale(page)));
             progress?.Report(0.95 * (i + 1) / document.Count);
         }
+        // Links and bookmarks once every page they may point to is there.
+        foreach (var (page, pageLinks, scale) in links)
+            DjvuPdfWriter.AddLinks(writer.Document, pages[page], pageLinks, scale, pages);
+        DjvuPdfWriter.AddOutline(writer.Document, pages, document.Bookmarks, url => document.PageOf(url), cancellationToken);
         if (step.Output.Allocate("pdf") is not { } target)
             return [];
         writer.Save(target);
