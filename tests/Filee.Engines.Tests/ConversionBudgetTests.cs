@@ -22,10 +22,8 @@ namespace Filee.Engines.Tests;
 
 public class ConversionBudgetTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
-    private const string TooLarge = "error.document_too_large";
-
-    /// <summary>What the built-in readers and writers refuse past their limits with (DocumentLimits).</summary>
-    private const string TooComplex = DocumentLimits.ErrorKey;
+    /// <summary>What the built-in readers and writers refuse a document past a limit of its size with.</summary>
+    private const string TooLarge = DocumentLimits.TooLargeKey;
 
     // ───────────────────────── ODS ─────────────────────────
 
@@ -60,7 +58,7 @@ public class ConversionBudgetTests(EngineFixture fx) : IClassFixture<EngineFixtu
         var path = Ods("<table:table-row table:number-rows-repeated=\"1048576\"><table:table-cell table:number-columns-repeated=\"16384\" " +
                        "office:value-type=\"string\"><text:p>x</text:p></table:table-cell></table:table-row>");
 
-        Assert.Equal(TooComplex, Assert.Throws<ConversionRefusedException>(() => OdsReader.Read(path)).ErrorKey);
+        Assert.Equal(TooLarge, Assert.Throws<ConversionRefusedException>(() => OdsReader.Read(path)).ErrorKey);
     }
 
     // ───────────────────────── Tables ─────────────────────────
@@ -127,8 +125,8 @@ public class ConversionBudgetTests(EngineFixture fx) : IClassFixture<EngineFixtu
         var document = WithTable(table);
         var folder = fx.NewFolder();
 
-        Assert.Equal(TooComplex, Assert.Throws<ConversionRefusedException>(() => HwpxWriter.Write(document, Path.Combine(folder, "a.hwpx"), cancellationToken: TestContext.Current.CancellationToken)).ErrorKey);
-        Assert.Equal(TooComplex, Assert.Throws<ConversionRefusedException>(() => MarkdownWriter.Write(document, _ => null)).ErrorKey);
+        Assert.Equal(TooLarge, Assert.Throws<ConversionRefusedException>(() => HwpxWriter.Write(document, Path.Combine(folder, "a.hwpx"), cancellationToken: TestContext.Current.CancellationToken)).ErrorKey);
+        Assert.Equal(TooLarge, Assert.Throws<ConversionRefusedException>(() => MarkdownWriter.Write(document, _ => null)).ErrorKey);
     }
 
     [Fact]

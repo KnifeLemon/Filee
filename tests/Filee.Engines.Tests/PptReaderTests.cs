@@ -401,6 +401,6 @@ public sealed class PptReaderTests(EngineFixture fx) : IClassFixture<EngineFixtu
         slide.Shapes.Add(Shape(3001, 75, (0, 0, 1000, 1000), [(0x0104, 1)]));
         ppt.Slides.Add(slide);
         var ex = Assert.Throws<ConversionRefusedException>(() => PptReader.ToPptx(Save(ppt), DocumentLimits.Default, out _, Token).Dispose());
-        Assert.Equal(DocumentLimits.ErrorKey, ex.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, ex.ErrorKey);
     }
 }

@@ -404,7 +404,7 @@ public class UyapWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var refused = Assert.Throws<ConversionRefusedException>(() =>
             UyapWriter.Write(document, Path.Combine(folder, "big.udf"), new DocumentLimits { MaxPartBytes = 20_000 }, TestContext.Current.CancellationToken));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
         Assert.Throws<ConversionRefusedException>(() =>
             UyapWriter.Write(document, Path.Combine(folder, "many.udf"), new DocumentLimits { MaxXmlElements = 1000 }, TestContext.Current.CancellationToken));
         Assert.Throws<ConversionRefusedException>(() =>

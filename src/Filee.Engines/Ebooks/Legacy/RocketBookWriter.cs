@@ -67,7 +67,7 @@ internal static class RocketBookWriter
             cancellationToken.ThrowIfCancellationRequested();
             var data = File.ReadAllBytes(file);
             if ((total += data.Length) > limits.MaxPackageBytes)
-                throw DocumentLimits.Exceeded($"The RB book would be larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+                throw DocumentLimits.TooLarge($"The RB book would be larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
             files.Add((name, data, 0));
         }
         var rb = Container(files);
@@ -80,7 +80,7 @@ internal static class RocketBookWriter
         var dataOffset = TocOffset + 4 + files.Count * 44;
         var length = dataOffset + files.Sum(f => (long)f.Data.Length);
         if (length > int.MaxValue)
-            throw DocumentLimits.Exceeded("The RB book would be larger than 2 GB.");
+            throw DocumentLimits.TooLarge("The RB book would be larger than 2 GB.");
         var rb = new byte[length];
         ((ReadOnlySpan<byte>)[0xB0, 0x0C, 0xB0, 0x0C, 0x02, 0x00]).CopyTo(rb);
         "NUVO"u8.CopyTo(rb.AsSpan(6));

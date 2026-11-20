@@ -69,7 +69,7 @@ internal sealed class DocBookReader
     {
         var limits = DocumentLimits.Default;
         if (new FileInfo(path).Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The DocBook file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The DocBook file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         return Read(File.ReadAllBytes(path), Path.GetDirectoryName(Path.GetFullPath(path))!, limits);
     }
 
@@ -78,7 +78,7 @@ internal sealed class DocBookReader
         XDocument xml;
         try
         {
-            xml = SafeXml.Load(new MemoryStream(WithoutDoctype(bytes)), limits.Xml(0, preserveWhitespace: true), DocumentLimits.Exceeded);
+            xml = SafeXml.Load(new MemoryStream(WithoutDoctype(bytes)), limits.Xml(0, preserveWhitespace: true), DocumentLimits.Exceeded, DocumentLimits.TooLarge);
         }
         catch (XmlException ex)
         {

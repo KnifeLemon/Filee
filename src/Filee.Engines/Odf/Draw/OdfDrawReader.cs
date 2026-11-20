@@ -225,7 +225,7 @@ internal sealed partial class OdfDrawReader
                 continue;
             deck ??= NewDeck(master);
             if (deck.Slides.Count >= _package.Limits.MaxPages)
-                throw DocumentLimits.Exceeded($"The file has more than {DocumentLimits.Count(_package.Limits.MaxPages)} pages.");
+                throw DocumentLimits.TooLarge($"The file has more than {DocumentLimits.Count(_package.Limits.MaxPages)} pages.");
             var context = new PageContext
             {
                 Number = index + 1,

@@ -113,7 +113,7 @@ internal sealed class PdfToPostScript
     {
         Open();
         if (pages.Count > DocumentLimits.Default.MaxPages)
-            throw DocumentLimits.Exceeded($"The PDF has more than {DocumentLimits.Count(DocumentLimits.Default.MaxPages)} pages.");
+            throw DocumentLimits.TooLarge($"The PDF has more than {DocumentLimits.Count(DocumentLimits.Default.MaxPages)} pages.");
         var tag = Tag(pages);
         var bodyPath = Path.Combine(workDirectory, $"ps-{Guid.NewGuid():N}.body");
         PsContext? context = null;

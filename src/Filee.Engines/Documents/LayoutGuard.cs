@@ -49,7 +49,7 @@ internal sealed class LayoutGuard
     public void PageFinished(bool empty)
     {
         if (++_pages > _limits.MaxPages)
-            throw DocumentLimits.Exceeded($"The document has more than {DocumentLimits.Count(_limits.MaxPages)} pages.");
+            throw DocumentLimits.TooLarge($"The document has more than {DocumentLimits.Count(_limits.MaxPages)} pages.");
         _emptyInARow = empty ? _emptyInARow + 1 : 0;
         if (_emptyInARow > _limits.MaxConsecutiveEmptyPages)
             throw DocumentLimits.Exceeded($"The layout made more than {_limits.MaxConsecutiveEmptyPages} empty pages in a row.");

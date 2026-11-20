@@ -23,7 +23,7 @@ internal static class MarkupBlocks
     public static string ReadText(string path, DocumentLimits limits, string kind)
     {
         if (new FileInfo(path).Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The {kind} file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The {kind} file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         return Lines(DocumentReaders.DecodeText(File.ReadAllBytes(path)));
     }
 
@@ -162,7 +162,7 @@ internal static class MarkupBlocks
     public static void TableArea(long rows, long columns, DocumentLimits limits)
     {
         if (rows * Math.Max(1, columns) > limits.MaxParagraphs)
-            throw DocumentLimits.Exceeded($"A table has more than {DocumentLimits.Count(limits.MaxParagraphs)} cells.");
+            throw DocumentLimits.TooLarge($"A table has more than {DocumentLimits.Count(limits.MaxParagraphs)} cells.");
     }
 
     /// <summary>

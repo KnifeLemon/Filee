@@ -454,7 +454,7 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         var job = await fx.ConvertAsync([path], new Preset { TargetFormat = "xlsx" });
 
         Assert.Equal(JobState.Failed, job.State);
-        Assert.Equal("error.document_too_complex", job.Files[0].ErrorKey);
+        Assert.Equal("error.document_too_large", job.Files[0].ErrorKey);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), $"took {watch.Elapsed}");
     }
 
@@ -525,7 +525,7 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
     public void More_tables_or_cells_than_a_workbook_takes_are_refused()
     {
         var tables = Enumerable.Range(0, DocumentTablesConverter.MaxSheets + 1).Select(i => (HBlock)Pair($"t{i}", "x")).ToArray();
-        Assert.Equal("error.document_too_complex",
+        Assert.Equal("error.document_too_large",
             Assert.Throws<ConversionRefusedException>(() => DocumentTablesConverter.Build(Document(tables), TestContext.Current.CancellationToken)).ErrorKey);
 
         // The tables share one budget of cells: eleven tables of a million positions each, none too large alone.
@@ -542,8 +542,37 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
             return (HBlock)table;
         }).ToArray();
         var watch = Stopwatch.StartNew();
-        Assert.Equal("error.document_too_complex",
+        Assert.Equal("error.document_too_large",
             Assert.Throws<ConversionRefusedException>(() => DocumentTablesConverter.Build(Document(wide), TestContext.Current.CancellationToken)).ErrorKey);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
+    }
+
+    [Fact]
+    public void Cells_past_the_sheet_edge_are_cut_not_refused()
+    {
+        // A cell naming a column two billion along goes to the sheet's last column; one with no free column before the
+        // edge is left out, as the spreadsheet readers leave out cells past it.
+        var table = Box("first");
+        var far = Box("far").Rows[0].Cells[0];
+        far.Column = 2_000_000_000;
+        table.Rows[0].Cells.Add(far);
+        table.Rows[0].Cells.Add(Box("beyond").Rows[0].Cells[0]);
+        var sheet = DocumentTablesConverter.Build(Document(table)).Sheets.Single();
+
+        Assert.Equal("first", sheet.Get(0, 0)!.Text);
+        Assert.Equal("far", sheet.Get(0, SheetPagination.MaxColumn)!.Text);
+        Assert.DoesNotContain(sheet.Rows.Values.SelectMany(r => r.Values), c => c.Text == "beyond");
+
+        // Rows past the sheet's last row are left out and a merge ends there (placed near the end of the sheet).
+        var tall = Box("a");
+        tall.Rows[0].Cells[0].RowSpan = 3;
+        for (var r = 1; r < 5; r++)
+            tall.Rows.Add(Box($"row {r}").Rows[0]);
+        var end = new Worksheet("end");
+        var next = TableSheets.Place(end, tall, SheetPagination.MaxRow - 1, 0, drawn: false);
+
+        Assert.Equal(SheetPagination.MaxRow + 1, next);
+        Assert.Equal(new CellRange(SheetPagination.MaxRow - 1, 0, SheetPagination.MaxRow, 0), Assert.Single(end.Merges));
+        Assert.True(end.Rows.Keys.All(r => r <= SheetPagination.MaxRow));
     }
 }

@@ -213,7 +213,7 @@ public sealed class DjvuTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
         var packed = BzzEncoder.Encode([.. Enumerable.Range(0, 50_000).Select(_ => (byte)random.Next(2))]);
         Assert.True(packed.Length < 12_000);
         var refused = Assert.Throws<ConversionRefusedException>(() => BzzDecoder.Decode(packed, 10_000, Token));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
     }
 
     [Fact]
@@ -1004,13 +1004,13 @@ public sealed class DjvuTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
     {
         var watch = Stopwatch.StartNew();
         // A page claiming 65,535 × 65,535 pixels.
-        AssertRefused(DjvuFile(Form("DJVU", Info(65535, 65535))), limits: null);
+        AssertTooLarge(DjvuFile(Form("DJVU", Info(65535, 65535))), limits: null);
         // A shape claiming 65,535 × 65,535 pixels.
         var huge = new Jb2Writer().Start(100, 100).Record(1).Size(65535, 65535).End();
-        AssertRefused(DjvuFile(Form("DJVU", Info(100, 100), Chunk("Sjbz", huge))), limits: null);
+        AssertTooLarge(DjvuFile(Form("DJVU", Info(100, 100), Chunk("Sjbz", huge))), limits: null);
         // An IW44 picture claiming 65,535 × 65,535 pixels.
         byte[] bigPicture = [0, 1, 1, 2, 0xFF, 0xFF, 0xFF, 0xFF, 0x80, 0, 0, 0];
-        AssertRefused(DjvuFile(Form("DJVU", Info(100, 100), Chunk("BG44", bigPicture))), limits: null);
+        AssertTooLarge(DjvuFile(Form("DJVU", Info(100, 100), Chunk("BG44", bigPicture))), limits: null);
         // More shapes, number cells and text zones than the (lowered) limits allow.
         var shapes = new Jb2Writer().Start(200, 200).New(Letter, 0, 0);
         for (var i = 0; i < 50; i++)
@@ -1025,17 +1025,19 @@ public sealed class DjvuTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
         // Annotations with more parts than the (lowered) limit, and an Smmr mask claiming 65,535 × 65,535 pixels.
         var annotations = string.Concat(Enumerable.Repeat("(maparea \"#1\" \"\" (rect 1 1 5 5)) ", 20));
         AssertRefused(DjvuFile(Form("DJVU", Info(100, 100), AnnotationChunk(annotations))), DjvuLimits.Default with { MaxAnnotationNodes = 50 });
-        AssertRefused(DjvuFile(Form("DJVU", Info(100, 100), Chunk("Smmr", [(byte)'M', (byte)'M', (byte)'R', 0, 0xFF, 0xFF, 0xFF, 0xFF]))), limits: null);
+        AssertTooLarge(DjvuFile(Form("DJVU", Info(100, 100), Chunk("Smmr", [(byte)'M', (byte)'M', (byte)'R', 0, 0xFF, 0xFF, 0xFF, 0xFF]))), limits: null);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}");
     }
 
-    private void AssertRefused(byte[] file, DjvuLimits? limits)
+    private void AssertRefused(byte[] file, DjvuLimits? limits, string key = DocumentLimits.ErrorKey)
     {
         var source = Save(file, "hostile.djvu");
         using var document = DjvuDocument.Open(source, limits, Token);
         var refused = Assert.Throws<ConversionRefusedException>(() => document.ReadPage(0, Token));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(key, refused.ErrorKey);
     }
+
+    private void AssertTooLarge(byte[] file, DjvuLimits? limits) => AssertRefused(file, limits, DocumentLimits.TooLargeKey);
 
     [Fact]
     public void Damaged_and_looping_documents_fail_as_damage()

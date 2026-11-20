@@ -4,7 +4,8 @@
 // XDocument takes time that grows faster than the square of the depth (60,000 levels, 800 KB of XML, kept it busy for
 // 14 seconds), and the tree's own operations (XElement.Value, copying) recurse once per level. Both are checked in one
 // pass, straight from the decompressing stream. DTDs are refused (DtdProcessing.Ignore where files are known to carry
-// one) and nothing outside the package is ever fetched.
+// one) and nothing outside the package is ever fetched. Sizes are refused with error.document_too_large, nesting with
+// error.document_too_complex.
 
 using System.IO.Compression;
 using System.Xml;
@@ -111,7 +112,7 @@ internal sealed class BoundedXml
     internal static string Size(long bytes) => bytes >= 1024 * 1024 ? $"{bytes / (1024 * 1024)} MB" : $"{bytes} bytes";
 
     private static ConversionRefusedException TooLarge(string part, string reason) =>
-        new("error.document_too_large", $"{part}: {reason}");
+        new(Documents.DocumentLimits.TooLargeKey, $"{part}: {reason}");
 
     /// <summary>A read-only stream that shows the number of bytes read so far to <c>check</c> before handing them on.</summary>
     private sealed class CountingStream(Stream inner, Action<long> check) : Stream
@@ -155,7 +156,7 @@ internal sealed class BoundedXml
             if (!inner.Read())
                 return false;
             if (inner.NodeType == XmlNodeType.Element && inner.Depth >= MaxElementDepth)
-                throw TooLarge(name, $"elements nested over {MaxElementDepth} levels");
+                throw new ConversionRefusedException(Documents.DocumentLimits.ErrorKey, $"{name}: elements nested over {MaxElementDepth} levels");
             return true;
         }
 

@@ -69,7 +69,7 @@ internal sealed class Iw44Decoder(DjvuLimits limits)
             if (width == 0 || height == 0)
                 throw new InvalidDataException("An IW44 picture has no size.");
             if ((long)width * height > limits.MaxIw44Pixels)
-                throw DocumentLimits.Exceeded($"A DjVu picture has more than {DocumentLimits.Count(limits.MaxIw44Pixels)} pixels.");
+                throw DocumentLimits.TooLarge($"A DjVu picture has more than {DocumentLimits.Count(limits.MaxIw44Pixels)} pixels.");
             _y = new Iw44Map(width, height);
             _yCodec = new Iw44Codec(_y);
             if (_chromaDelay >= 0)

@@ -113,7 +113,7 @@ internal sealed partial class PdfDocumentReader
         {
             var pages = pagesOf(pdf.NumberOfPages);
             if (pages.Count > budget.Limits.MaxPages)
-                throw DocumentLimits.Exceeded($"The PDF has more than {DocumentLimits.Count(budget.Limits.MaxPages)} pages to put on slides.");
+                throw DocumentLimits.TooLarge($"The PDF has more than {DocumentLimits.Count(budget.Limits.MaxPages)} pages to put on slides.");
             foreach (var index in pages)
             {
                 cancellationToken.ThrowIfCancellationRequested();

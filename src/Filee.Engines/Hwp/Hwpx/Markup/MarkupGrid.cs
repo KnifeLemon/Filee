@@ -3,7 +3,7 @@
 // spans that overlap or reach far cost nothing), a cap on a table's grid and on all grids of a document together, and
 // a cap on the text written. A model can come from any reader; these keep a hostile one from turning a few bytes of
 // spans or one footnote referenced thousands of times into gigabytes. Passing a cap refuses the conversion with
-// error.document_too_complex.
+// error.document_too_large (cells, characters) or error.document_too_complex (nesting, paragraphs, objects).
 
 using Filee.Engines.Documents;
 
@@ -96,13 +96,13 @@ internal sealed class MarkupWriteBudget(DocumentLimits limits)
         MarkupBlocks.TableArea(rows, columns, Limits);
         _gridCells += (long)rows * Math.Max(1, columns);
         if (_gridCells > MaxGridCells)
-            throw DocumentLimits.Exceeded($"The tables have more than {DocumentLimits.Count(MaxGridCells)} cells together.");
+            throw DocumentLimits.TooLarge($"The tables have more than {DocumentLimits.Count(MaxGridCells)} cells together.");
     }
 
     /// <summary>Refuses a written text that has grown (or would grow) past <see cref="MaxCharacters"/>.</summary>
     public void Characters(long characters)
     {
         if (characters > MaxCharacters)
-            throw DocumentLimits.Exceeded($"The converted text would have more than {DocumentLimits.Count(MaxCharacters)} characters.");
+            throw DocumentLimits.TooLarge($"The converted text would have more than {DocumentLimits.Count(MaxCharacters)} characters.");
     }
 }

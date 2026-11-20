@@ -168,7 +168,8 @@ internal sealed class UyapReader
             {
                 // Java writes whatever the text holds into the CDATA block, control characters too.
                 xml = SafeXml.Load(stream, package.Limits.Xml(0, preserveWhitespace: true) with { CheckCharacters = false },
-                    message => DocumentLimits.Exceeded($"{ContentPart}: {message}"));
+                    message => DocumentLimits.Exceeded($"{ContentPart}: {message}"),
+                    message => DocumentLimits.TooLarge($"{ContentPart}: {message}"));
             }
             catch (XmlException ex)
             {

@@ -336,15 +336,17 @@ public sealed class IwbTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         // content.xml larger than a part may be, many entries, many pages.
         var small = DocumentLimits.Default with { MaxPartBytes = 64 * 1024, MaxPackageEntries = 10, MaxPages = 3 };
-        Refused(Single("<svg:desc>" + new string(' ', 200_000) + "</svg:desc>"), small);
-        Refused(Single("", Enumerable.Range(0, 20).ToDictionary(i => $"images/{i}.png", _ => new byte[] { 1 })), small);
-        Refused(Package(Content("<svg:svg><svg:pageSet>" + string.Concat(Enumerable.Repeat("<svg:page/>", 4)) + "</svg:pageSet></svg:svg>")), small);
+        RefusedTooLarge(Single("<svg:desc>" + new string(' ', 200_000) + "</svg:desc>"), small);
+        RefusedTooLarge(Single("", Enumerable.Range(0, 20).ToDictionary(i => $"images/{i}.png", _ => new byte[] { 1 })), small);
+        RefusedTooLarge(Package(Content("<svg:svg><svg:pageSet>" + string.Concat(Enumerable.Repeat("<svg:page/>", 4)) + "</svg:pageSet></svg:svg>")), small);
         Assert.Equal(3, Read(Write(Package(Content("<svg:svg><svg:pageSet>" + string.Concat(Enumerable.Repeat("<svg:page/>", 3)) + "</svg:pageSet></svg:svg>"))), small).Slides.Count);
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(20), $"Took {clock.Elapsed}.");
     }
 
-    private void Refused(byte[] package, DocumentLimits? limits = null) =>
-        Assert.Equal(DocumentLimits.ErrorKey, Assert.Throws<ConversionRefusedException>(() => Read(Write(package), limits)).ErrorKey);
+    private void Refused(byte[] package, DocumentLimits? limits = null, string key = DocumentLimits.ErrorKey) =>
+        Assert.Equal(key, Assert.Throws<ConversionRefusedException>(() => Read(Write(package), limits)).ErrorKey);
+
+    private void RefusedTooLarge(byte[] package, DocumentLimits? limits = null) => Refused(package, limits, DocumentLimits.TooLargeKey);
 
     [Fact]
     public void Wild_numbers_and_broken_values_draw_what_they_can()

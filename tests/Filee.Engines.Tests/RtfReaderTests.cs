@@ -201,14 +201,20 @@ public class RtfReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
             wide.Append("\\cellx").Append(i);
         wide.Insert(wide.Length, "\\cell\\row ", 100_000).Append('}');
         var refused = Assert.Throws<ConversionRefusedException>(() => Read(wide.ToString()));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
 
         // Empty cells count too, though they hold no paragraph of the file's.
         var limits = DocumentLimits.Default with { MaxParagraphs = 1_000 };
         var cells = "{\\rtf1 \\trowd\\cellx100" + string.Concat(Enumerable.Repeat("\\cell", 2_000)) + "\\row}";
         Assert.Throws<ConversionRefusedException>(() => RtfReader.Read(Encoding.Latin1.GetBytes(cells), fx.NewFolder(), limits));
 
-        // Rows of other divisions whose edges together pass the column limit.
+    }
+
+    [Fact]
+    public void Columns_past_the_widest_table_are_cut_not_refused()
+    {
+        var limits = DocumentLimits.Default with { MaxTableColumns = 10_000 };
+        // Rows of other divisions whose edges together pass the column limit: the grid ends at the limit.
         var columns = new StringBuilder("{\\rtf1 ");
         for (var row = 0; row < 40; row++)
         {
@@ -217,8 +223,20 @@ public class RtfReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 columns.Append("\\cellx").Append(row + i * 41);
             columns.Append("\\pard\\intbl x\\cell\\row");
         }
-        Assert.Throws<ConversionRefusedException>(() => RtfReader.Read(Encoding.Latin1.GetBytes(columns.Append('}').ToString()), fx.NewFolder(),
-            DocumentLimits.Default with { MaxTableColumns = 10_000 }));
+        var grid = RtfReader.Read(Encoding.Latin1.GetBytes(columns.Append('}').ToString()), fx.NewFolder(), limits)
+            .Sections[0].Blocks.OfType<HTable>().Single();
+        Assert.Equal(10_000, grid.ColumnCount);
+        Assert.Equal(40, grid.Rows.Count);
+
+        // One row that defines more cells than the limit: those past it are left out, the text of the row kept.
+        var single = new StringBuilder("{\\rtf1 \\trowd");
+        for (var i = 1; i <= 10_005; i++)
+            single.Append("\\cellx").Append(i * 10);
+        single.Append("\\pard\\intbl a\\cell b\\cell\\row}");
+        var wide = RtfReader.Read(Encoding.Latin1.GetBytes(single.ToString()), fx.NewFolder(), limits)
+            .Sections[0].Blocks.OfType<HTable>().Single();
+        Assert.Equal(10_000, wide.ColumnCount);
+        Assert.Equal(["a", "b"], wide.Rows[0].Cells.Select(c => Text(c.Blocks.OfType<HParagraph>().Single().Inlines)));
     }
 
     [Fact]

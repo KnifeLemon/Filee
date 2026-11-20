@@ -142,11 +142,13 @@ public class PdfStreamLimitsTests(EngineFixture fx) : IClassFixture<EngineFixtur
         return path;
     }
 
-    private static ConversionRefusedException Refused(Action action, int seconds = 10)
+    private static ConversionRefusedException RefusedTooLarge(Action action, int seconds = 10) => Refused(action, seconds, DocumentLimits.TooLargeKey);
+
+    private static ConversionRefusedException Refused(Action action, int seconds = 10, string key = DocumentLimits.ErrorKey)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var refusal = Assert.Throws<ConversionRefusedException>(action);
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(key, refusal.ErrorKey);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(seconds), $"Took {watch.Elapsed}");
         return refusal;
     }
@@ -233,11 +235,11 @@ public class PdfStreamLimitsTests(EngineFixture fx) : IClassFixture<EngineFixtur
         Assert.True(pdf.Length < 400_000, $"{pdf.Length} bytes");
         var path = Save(pdf);
         var ct = TestContext.Current.CancellationToken;
-        var refusal = Refused(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, ct).Dispose());
+        var refusal = RefusedTooLarge(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, ct).Dispose());
         Assert.Contains("256 MB", refusal.Message, StringComparison.Ordinal);
         // PDFsharp's own open, without the check before it.
-        Refused(() => PdfStreamLimits.Open(() => PdfReader.Open(path, PdfDocumentOpenMode.Import), ct).Dispose());
-        Refused(() => PdfObjectNesting.Open(pdf, PdfDocumentOpenMode.Modify, ct).Dispose());
+        RefusedTooLarge(() => PdfStreamLimits.Open(() => PdfReader.Open(path, PdfDocumentOpenMode.Import), ct).Dispose());
+        RefusedTooLarge(() => PdfObjectNesting.Open(pdf, PdfDocumentOpenMode.Modify, ct).Dispose());
     }
 
     [Fact]
@@ -247,8 +249,8 @@ public class PdfStreamLimitsTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var pdf = Pdf(xrefData: TwiceDeflatedZeros(1024 * Megabyte), xrefEntries: "/Filter[/FlateDecode/FlateDecode]");
         var path = Save(pdf);
         var ct = TestContext.Current.CancellationToken;
-        Refused(() => PdfStreamLimits.Open(() => PdfReader.Open(path, PdfDocumentOpenMode.Import), ct).Dispose());
-        Refused(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, ct).Dispose());
+        RefusedTooLarge(() => PdfStreamLimits.Open(() => PdfReader.Open(path, PdfDocumentOpenMode.Import), ct).Dispose());
+        RefusedTooLarge(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, ct).Dispose());
     }
 
     [Fact]
@@ -257,7 +259,7 @@ public class PdfStreamLimitsTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var bomb = TwiceDeflatedZeros(1024 * Megabyte);
         var path = Save(Pdf(contents: [(bomb, "/Filter[/FlateDecode/FlateDecode]")]));
         var ct = TestContext.Current.CancellationToken;
-        Refused(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Modify, ct).Dispose());
+        RefusedTooLarge(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Modify, ct).Dispose());
 
         // Outside an open's budget each stream still has its limit (a page read later, UnfilteredValue).
         PdfStreamLimits.Install();
@@ -265,7 +267,7 @@ public class PdfStreamLimitsTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var stream = new PdfDictionary(document);
         stream.CreateStream(bomb);
         stream.Elements["/Filter"] = new PdfArray(document, new PdfName("/FlateDecode"), new PdfName("/FlateDecode"));
-        Refused(() => _ = stream.Stream.UnfilteredValue);
+        RefusedTooLarge(() => _ = stream.Stream.UnfilteredValue);
     }
 
     [Fact]
@@ -275,7 +277,7 @@ public class PdfStreamLimitsTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var contents = Enumerable.Range(0, 6).Select(_ => (part, "/Filter/FlateDecode")).ToList();
         var pdf = Pdf(contents: contents);
         var ct = TestContext.Current.CancellationToken;
-        var refusal = Refused(() => PdfStreamLimits.Open(() => PdfReader.Open(new MemoryStream(pdf), PdfDocumentOpenMode.Import), ct,
+        var refusal = RefusedTooLarge(() => PdfStreamLimits.Open(() => PdfReader.Open(new MemoryStream(pdf), PdfDocumentOpenMode.Import), ct,
             perStream: Megabyte, total: 4 * Megabyte).Dispose());
         Assert.Contains("together", refusal.Message, StringComparison.Ordinal);
         // Each alone, and all of them under Filee's limits, open.
@@ -300,7 +302,7 @@ public class PdfStreamLimitsTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var bomb = LzwCodes(GrowingLzw(16)); // some 360 MB from 190 kB
         Assert.Null(PdfStreamLimits.LzwSize(bomb, 256 * Megabyte));
         var path = Save(Pdf(contents: [(bomb, "/Filter/LZWDecode")]));
-        Refused(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, TestContext.Current.CancellationToken).Dispose());
+        RefusedTooLarge(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, TestContext.Current.CancellationToken).Dispose());
     }
 
     [Fact]

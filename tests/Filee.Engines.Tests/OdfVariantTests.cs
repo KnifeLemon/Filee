@@ -356,21 +356,23 @@ public class OdfVariantTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static string Picture(byte[] bytes) =>
         $"<text:p><draw:frame text:anchor-type=\"as-char\" svg:width=\"1cm\" svg:height=\"1cm\"><draw:image><office:binary-data>{System.Convert.ToBase64String(bytes)}</office:binary-data></draw:image></draw:frame></text:p>";
 
-    private static ConversionRefusedException RefusedQuickly(Action action)
+    private static ConversionRefusedException RefusedQuickly(Action action, string key = DocumentLimits.ErrorKey)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var refusal = Assert.Throws<ConversionRefusedException>(action);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}");
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(key, refusal.ErrorKey);
         return refusal;
     }
+
+    private static ConversionRefusedException TooLargeQuickly(Action action) => RefusedQuickly(action, DocumentLimits.TooLargeKey);
 
     [Fact]
     public void A_flat_file_past_its_size_is_refused_before_it_is_read()
     {
         var limits = DocumentLimits.Default with { MaxPartBytes = 1024 };
         var flat = Flat(string.Concat(Enumerable.Repeat("<text:p>words words words</text:p>", 500)));
-        Assert.Contains("larger than", RefusedQuickly(() => Convert(flat, "fodt", "odt", limits)).Detail);
+        Assert.Contains("larger than", TooLargeQuickly(() => Convert(flat, "fodt", "odt", limits)).Detail);
     }
 
     [Fact]
@@ -379,15 +381,15 @@ public class OdfVariantTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // One picture larger than a part may be.
         var limits = DocumentLimits.Default with { MaxPartBytes = 64 * 1024 };
         var big = Flat(Picture([.. DocumentFuzzTests.TinyPng(2, 2), .. new byte[100 * 1024]]));
-        Assert.Contains("A picture stored in the file", RefusedQuickly(() => Convert(big, "fodt", "odt", limits)).Detail);
+        Assert.Contains("A picture stored in the file", TooLargeQuickly(() => Convert(big, "fodt", "odt", limits)).Detail);
 
         // More pictures than a package may have parts.
         var many = Flat(string.Concat(Enumerable.Range(0, 40).Select(i => Picture([.. DocumentFuzzTests.TinyPng(2, 2), (byte)i]))));
-        Assert.Contains("pictures and objects", RefusedQuickly(() => Convert(many, "fodt", "odt", DocumentLimits.Default with { MaxPackageEntries = 10 })).Detail);
+        Assert.Contains("pictures and objects", TooLargeQuickly(() => Convert(many, "fodt", "odt", DocumentLimits.Default with { MaxPackageEntries = 10 })).Detail);
 
         // Together more than a package may unpack to.
         var sum = Flat(string.Concat(Enumerable.Repeat(Picture([.. DocumentFuzzTests.TinyPng(2, 2), .. new byte[20 * 1024]]), 10)));
-        Assert.Contains("together", RefusedQuickly(() => Convert(sum, "fodt", "odt", DocumentLimits.Default with { MaxPackageBytes = 100 * 1024 })).Detail);
+        Assert.Contains("together", TooLargeQuickly(() => Convert(sum, "fodt", "odt", DocumentLimits.Default with { MaxPackageBytes = 100 * 1024 })).Detail);
 
         // Not base64: the picture is left out, the text converts.
         var broken = Flat("<text:p>kept</text:p><text:p><draw:frame><draw:image><office:binary-data>@@not base64@@</office:binary-data></draw:image></draw:frame></text:p>");
@@ -421,7 +423,7 @@ public class OdfVariantTests(EngineFixture fx) : IClassFixture<EngineFixture>
         builder.Parts["Pictures/p.png"] = [.. DocumentFuzzTests.TinyPng(2, 2), .. new byte[40 * 1024]];
         var odt = Odt(builder);
         var limits = DocumentLimits.Default with { MaxPartBytes = 1024 * 1024 };
-        Assert.Contains("flat file would be larger", RefusedQuickly(() => Convert(odt, "odt", "fodt", limits)).Detail);
+        Assert.Contains("flat file would be larger", TooLargeQuickly(() => Convert(odt, "odt", "fodt", limits)).Detail);
     }
 
     [Fact]

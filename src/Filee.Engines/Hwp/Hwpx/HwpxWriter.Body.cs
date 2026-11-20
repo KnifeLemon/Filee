@@ -489,7 +489,7 @@ internal sealed partial class HwpxWriter
     }
 
     internal static ConversionRefusedException TableTooLarge() =>
-        Documents.DocumentLimits.Exceeded($"A table has more than {Documents.DocumentLimits.Count(MaxTableCells)} cells (rows × columns).");
+        Documents.DocumentLimits.TooLarge($"A table has more than {Documents.DocumentLimits.Count(MaxTableCells)} cells (rows × columns).");
 
     /// <summary>Column widths that fit <paramref name="available"/>: absolute (scaled down if too wide), relative or equal.</summary>
     internal static int[] ColumnWidths(HTable table, int columns, int available)

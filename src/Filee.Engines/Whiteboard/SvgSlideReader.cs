@@ -24,7 +24,7 @@
 // Hostile input: XML through SafeXml within DocumentLimits (no DTD; a DOCTYPE without an internal subset is dropped
 // first, as SVG editors write one), nesting (MaxDepth), uses followed, elements visited (use expansions included),
 // path points and the budget's objects and paragraphs; numbers are clamped and must be finite. Refusals are
-// error.document_too_complex.
+// error.document_too_complex, or error.document_too_large for a picture's bytes.
 
 using System.Globalization;
 using System.IO.Compression;
@@ -142,7 +142,7 @@ internal sealed partial class SvgSlideReader
         using var stream = new MemoryStream(bytes, writable: false);
         try
         {
-            var document = SafeXml.Load(stream, _limits.Xml(XmlElements, preserveWhitespace: true), DocumentLimits.Exceeded, out var elements);
+            var document = SafeXml.Load(stream, _limits.Xml(XmlElements, preserveWhitespace: true), DocumentLimits.Exceeded, out var elements, DocumentLimits.TooLarge);
             XmlElements += elements;
             return document.Root ?? throw new XmlException("The XML has no root element.");
         }
@@ -1029,7 +1029,7 @@ internal sealed partial class SvgSlideReader
     {
         using var gzip = new GZipStream(new MemoryStream(data, writable: false), CompressionMode.Decompress);
         using var limited = new LimitedStream(gzip, _limits.MaxPartBytes,
-            () => DocumentLimits.Exceeded($"An SVG picture unpacks to more than {DocumentLimits.Megabytes(_limits.MaxPartBytes)}."));
+            () => DocumentLimits.TooLarge($"An SVG picture unpacks to more than {DocumentLimits.Megabytes(_limits.MaxPartBytes)}."));
         using var copy = new MemoryStream();
         try
         {

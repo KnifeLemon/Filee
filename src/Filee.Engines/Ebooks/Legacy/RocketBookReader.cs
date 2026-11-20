@@ -25,7 +25,7 @@ internal static class RocketBookReader
     {
         var limits = DocumentLimits.Default;
         if (new FileInfo(path).Length > limits.MaxPackageBytes)
-            throw DocumentLimits.Exceeded($"The RB file is larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+            throw DocumentLimits.TooLarge($"The RB file is larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
         var data = File.ReadAllBytes(path);
         if (data.Length < 0x20 || !data.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xB0, 0x0C, 0xB0, 0x0C]) || !data.AsSpan(6, 4).SequenceEqual("NUVO"u8))
             throw new InvalidDataException("This is not a Rocket eBook (RB) file.");
@@ -34,7 +34,7 @@ internal static class RocketBookReader
             throw new InvalidDataException("The RB file's table of contents is damaged.");
         var count = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan((int)tocOffset));
         if (count > MaxFiles)
-            throw DocumentLimits.Exceeded($"The RB file lists more than {DocumentLimits.Count(MaxFiles)} files.");
+            throw DocumentLimits.TooLarge($"The RB file lists more than {DocumentLimits.Count(MaxFiles)} files.");
         if (tocOffset + 4L + count * 44L > data.Length)
             throw new InvalidDataException("The RB file's table of contents is damaged.");
 
@@ -59,7 +59,7 @@ internal static class RocketBookReader
             var raw = data.AsSpan((int)offset, (int)length);
             var bytes = (flags & 1) != 0 ? Inflate(raw, name, limits, ref declared, cancellationToken) : raw.ToArray();
             if ((total += bytes.Length) > limits.MaxPackageBytes)
-                throw DocumentLimits.Exceeded($"The RB file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+                throw DocumentLimits.TooLarge($"The RB file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
             if ((flags & 8) != 0)
             {
                 foreach (var line in MobiReader.DecodeText(bytes).Split('\n', '\r'))
@@ -101,9 +101,9 @@ internal static class RocketBookReader
         var chunks = BinaryPrimitives.ReadUInt32LittleEndian(raw);
         var size = BinaryPrimitives.ReadUInt32LittleEndian(raw[4..]);
         if (size > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The file {name} of the RB file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The file {name} of the RB file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         if ((declared += size) > limits.MaxPackageBytes)
-            throw DocumentLimits.Exceeded($"The RB file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+            throw DocumentLimits.TooLarge($"The RB file unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
         if (8 + chunks * 4L > raw.Length || chunks > (size + 4095L) / 4096 + 1)
             throw new InvalidDataException($"The file {name} of the RB file is damaged.");
         var output = new MemoryStream();
@@ -122,7 +122,7 @@ internal static class RocketBookReader
             using Stream inflater = chunk is [0x78, _, ..] ? new ZLibStream(input, CompressionMode.Decompress) : new DeflateStream(input, CompressionMode.Decompress);
             var read = inflater.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
             if (read > MaxChunk)
-                throw DocumentLimits.Exceeded($"A chunk of the file {name} of the RB file unpacks to more than {MaxChunk / 1024} KB.");
+                throw DocumentLimits.TooLarge($"A chunk of the file {name} of the RB file unpacks to more than {MaxChunk / 1024} KB.");
             output.Write(buffer, 0, read);
             if (output.Length > size)
                 break;

@@ -156,7 +156,8 @@ internal sealed partial class XpsPackage : IDisposable
             var bytes = Join(entries, Limits.MaxPartBytes) ?? throw PartTooLarge(name);
             var limits = Limits.Xml(_package.ElementsRead + _pieceElements, preserveWhitespace: false);
             var document = SafeXml.Load(new MemoryStream(bytes, writable: false), limits,
-                message => DocumentLimits.Exceeded($"{name}: {message}"), out var elements);
+                message => DocumentLimits.Exceeded($"{name}: {message}"), out var elements,
+                message => DocumentLimits.TooLarge($"{name}: {message}"));
             _pieceElements += elements;
             return document.Root;
         }
@@ -188,7 +189,7 @@ internal sealed partial class XpsPackage : IDisposable
     }
 
     private Exception PartTooLarge(string name) =>
-        DocumentLimits.Exceeded($"The part {name} is larger than {DocumentLimits.Megabytes(Limits.MaxPartBytes)}.");
+        DocumentLimits.TooLarge($"The part {name} is larger than {DocumentLimits.Megabytes(Limits.MaxPartBytes)}.");
 
     /// <summary>The targets of the package's own relationships of a type ending in <paramref name="typeSuffix"/>.</summary>
     public IEnumerable<string> RootRelationships(string typeSuffix)

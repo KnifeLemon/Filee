@@ -454,7 +454,7 @@ internal sealed partial class OdpWriter
                 return known;
             _bytes += data.Length;
             if (_bytes > limits.MaxPackageBytes)
-                throw DocumentLimits.Exceeded($"The presentation's pictures are larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)} together.");
+                throw DocumentLimits.TooLarge($"The presentation's pictures are larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)} together.");
             var path = $"Pictures/image{(_parts.Count + 1).ToString(CultureInfo.InvariantCulture)}.{extension}";
             _parts.Add(new OdfPart(path, mediaType, Bytes: data));
             return _paths[hash] = path;

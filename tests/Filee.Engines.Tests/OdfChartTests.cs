@@ -389,7 +389,7 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var clock = Stopwatch.StartNew();
         var cells = OdfChartBuilder.Columns().Replace("<table:table-row>", "<table:table-row table:number-rows-repeated=\"999999999\">", StringComparison.Ordinal)
             .Replace("<table:table-cell><text:p/>", "<table:table-cell table:number-columns-repeated=\"64\"><text:p/>", StringComparison.Ordinal);
-        Assert.Equal(DocumentLimits.ErrorKey, Assert.Throws<ConversionRefusedException>(() => Read(cells)).ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, Assert.Throws<ConversionRefusedException>(() => Read(cells)).ErrorKey);
 
         var series = OdfChartBuilder.Columns(series: ChartReader.MaxSeries + 1);
         Assert.Equal(DocumentLimits.ErrorKey, Assert.Throws<ConversionRefusedException>(() => Read(series)).ErrorKey);

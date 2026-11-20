@@ -428,7 +428,7 @@ public sealed partial class MacroMarkupWriterTests(EngineFixture fx) : IClassFix
         foreach (var (name, write) in Writers(small, TestContext.Current.CancellationToken))
         {
             var refusal = Assert.Throws<ConversionRefusedException>(() => write(Document(paragraph)));
-            Assert.True(refusal.ErrorKey == DocumentLimits.ErrorKey, name);
+            Assert.True(refusal.ErrorKey == DocumentLimits.TooLargeKey, name);
         }
     }
 

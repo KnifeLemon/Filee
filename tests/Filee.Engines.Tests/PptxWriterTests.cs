@@ -561,7 +561,7 @@ public class PptxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         many.Sections.Add(blocks);
         var refused = Path.Combine(folder, "many.pptx");
         var error = Assert.Throws<ConversionRefusedException>(() => PptxWriter.Write(many, refused, TestContext.Current.CancellationToken));
-        Assert.Equal(DocumentLimits.ErrorKey, error.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, error.ErrorKey);
         Assert.False(File.Exists(refused));
     }
 

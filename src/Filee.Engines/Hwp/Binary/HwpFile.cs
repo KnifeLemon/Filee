@@ -187,9 +187,9 @@ internal sealed class HwpFile : IDisposable
                 output.Write(buffer, 0, read);
                 _cfb.Count(read);
                 if (output.Length > Limits.MaxPartBytes)
-                    throw DocumentLimits.Exceeded($"The part {name} unpacks to more than {DocumentLimits.Megabytes(Limits.MaxPartBytes)}.");
+                    throw DocumentLimits.TooLarge($"The part {name} unpacks to more than {DocumentLimits.Megabytes(Limits.MaxPartBytes)}.");
                 if (output.Length > Limits.InflateRatioFloor && output.Length / Math.Max(1, bytes.Length) > Limits.MaxInflateRatio)
-                    throw DocumentLimits.Exceeded($"The part {name} unpacks to more than {Limits.MaxInflateRatio} times its packed size.");
+                    throw DocumentLimits.TooLarge($"The part {name} unpacks to more than {Limits.MaxInflateRatio} times its packed size.");
             }
         }
         catch (InvalidDataException ex)

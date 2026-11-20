@@ -11,7 +11,7 @@ using System.Xml.Linq;
 
 namespace Filee.Engines.Infrastructure;
 
-/// <summary>What <see cref="SafeXml.Load(Stream, XmlLimits, Func{string, Exception}?)"/> accepts.</summary>
+/// <summary>What <see cref="SafeXml.Load(Stream, XmlLimits, Func{string, Exception}?, Func{string, Exception}?)"/> accepts.</summary>
 /// <param name="MaxDepth">Levels of elements (the root is level 1).</param>
 /// <param name="MaxElements">Elements in the file.</param>
 /// <param name="MaxCharacters">Characters in the file.</param>
@@ -37,15 +37,19 @@ internal static class SafeXml
     /// The document in <paramref name="stream"/>. Comments and processing instructions are left out. Throws
     /// <see cref="XmlException"/> for XML that is not well formed or has a DTD.
     /// </summary>
-    /// <param name="limitExceeded">Makes the exception for a limit that was passed from a message saying which
-    /// (<see cref="InvalidDataException"/> when null).</param>
-    public static XDocument Load(Stream stream, XmlLimits limits, Func<string, Exception>? limitExceeded = null) =>
-        Load(stream, limits, limitExceeded, out _);
+    /// <param name="limitExceeded">Makes the exception for a limit of the structure that was passed (depth, elements)
+    /// from a message saying which (<see cref="InvalidDataException"/> when null).</param>
+    /// <param name="sizeExceeded">The same for the size (characters); <paramref name="limitExceeded"/> when null.</param>
+    public static XDocument Load(Stream stream, XmlLimits limits, Func<string, Exception>? limitExceeded = null,
+        Func<string, Exception>? sizeExceeded = null) =>
+        Load(stream, limits, limitExceeded, out _, sizeExceeded);
 
     /// <param name="elements">The number of elements read.</param>
-    public static XDocument Load(Stream stream, XmlLimits limits, Func<string, Exception>? limitExceeded, out int elements)
+    public static XDocument Load(Stream stream, XmlLimits limits, Func<string, Exception>? limitExceeded, out int elements,
+        Func<string, Exception>? sizeExceeded = null)
     {
         limitExceeded ??= message => new InvalidDataException(message);
+        sizeExceeded ??= limitExceeded;
         var settings = new XmlReaderSettings
         {
             DtdProcessing = DtdProcessing.Prohibit,
@@ -127,7 +131,7 @@ internal static class SafeXml
         }
         catch (XmlException ex) when (ex.Message.Contains("MaxCharactersInDocument", StringComparison.Ordinal))
         {
-            throw limitExceeded("The file has more than " + limits.MaxCharacters.ToString("N0", CultureInfo.InvariantCulture) + " characters.");
+            throw sizeExceeded("The file has more than " + limits.MaxCharacters.ToString("N0", CultureInfo.InvariantCulture) + " characters.");
         }
         return document;
 

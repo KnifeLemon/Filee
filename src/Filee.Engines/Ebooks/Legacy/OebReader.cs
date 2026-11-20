@@ -53,7 +53,7 @@ internal static class OebReader
     private static string CopyLoosePackage(string opfPath, string folder, DocumentLimits limits, CancellationToken cancellationToken)
     {
         if (new FileInfo(opfPath).Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The OEB package is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The OEB package is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         var source = Path.GetDirectoryName(Path.GetFullPath(opfPath))!;
         var copy = Path.Combine(folder, Path.GetFileName(opfPath));
         File.Copy(opfPath, copy);
@@ -67,7 +67,7 @@ internal static class OebReader
             throw new InvalidDataException("The OEB package (.opf) is not well-formed XML.", ex);
         }
         if (package.Manifest.Count > limits.MaxPackageEntries)
-            throw DocumentLimits.Exceeded($"The OEB package lists more than {DocumentLimits.Count(limits.MaxPackageEntries)} files.");
+            throw DocumentLimits.TooLarge($"The OEB package lists more than {DocumentLimits.Count(limits.MaxPackageEntries)} files.");
         long total = 0;
         foreach (var item in package.Manifest.Values)
         {
@@ -78,9 +78,9 @@ internal static class OebReader
                 continue;
             var length = new FileInfo(original).Length;
             if (length > limits.MaxPartBytes)
-                throw DocumentLimits.Exceeded($"The file {relative} of the OEB book is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+                throw DocumentLimits.TooLarge($"The file {relative} of the OEB book is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
             if ((total += length) > limits.MaxPackageBytes)
-                throw DocumentLimits.Exceeded($"The OEB book is larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+                throw DocumentLimits.TooLarge($"The OEB book is larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
             Directory.CreateDirectory(Path.GetDirectoryName(item.Path)!);
             if (!File.Exists(item.Path))
                 File.Copy(original, item.Path);

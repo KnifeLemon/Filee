@@ -128,6 +128,25 @@ step 3 is how it is found. Microsoft Office
 and Hancom Office are never used, even when installed. Running from source, the repository's `engines/` folder
 (filled by `build/fetch-engines.ps1`) is used.
 
+## Limits: too large or too complex
+
+The built-in readers and writers refuse a hostile or absurd file with one of two keys, so the message says why:
+
+- `error.document_too_large` for its **size**: bytes a part, a stream or the package unpacks to, the inflate ratio,
+  files in a package, pages and slides, pixels, sheets, cells and rows by count, characters of text
+  (`DocumentLimits.TooLarge`, `BoundedXml`, `UnpackLimit`, the e-book unpackers).
+- `error.document_too_complex` for its **structure**: nesting of any kind (XML elements, tables, groups, storages,
+  inheritance), paragraphs, objects, shapes, points, records, XML elements by count, drawing operations, the
+  layout's time and stuck pages (`DocumentLimits.Exceeded`).
+
+Column numbers and spans past the grid (16,384 columns, `DocumentLimits.MaxTableColumns`; a sheet's 1,048,576 rows)
+are **cut at its edge, not refused**: a span ends there, a cell naming a column past it goes to the last column of a
+document table, and what still lies past the edge is left out, as in the spreadsheet readers. One such number costs a
+damaged file nothing to write, and Excel and Calc open a file that is too wide or too long for them the same way
+(loading what fits). What a big grid costs is bounded by the cell counts instead (`HwpxWriter.MaxTableCells`, the
+ODS repeat limit, the RTF reader's cells), which refuse with `error.document_too_large`. Damaged files that break the
+format's rules fail with `InvalidDataException` either way.
+
 ## Optional engines
 
 The installer contains only the small engines. On first start Filee asks which of the large ones to download;
@@ -630,7 +649,8 @@ smoothed when scaled, as GDI+ draws them. Vector output (PDF, the layout engine'
 
 Hostile files (`Metafiles/MetafileLimits.cs`): at most 512 MB per file, 5,000,000 records, 65,535 object table entries,
 1,024 saved device contexts, 4,000,000 path points, 100,000 rectangles per region, 8,192 × 8,192 pixels per bitmap and
-256 M pixels of bitmaps per file; past a limit the file is refused with `error.document_too_complex`. Damaged files (a
+256 M pixels of bitmaps per file; past a limit the file is refused (`error.document_too_large` for bytes and pixels,
+`error.document_too_complex` for the rest). Damaged files (a
 record longer than the file or shorter than a record, a count its record can't hold, an object outside the table, a
 bitmap whose pixels are cut off) stop with an InvalidDataException naming the record, its type and where it starts.
 Every record moves on by at least 8 bytes (EMF) or 6 (WMF), so there are no loops; bitmap sizes are checked before
@@ -803,7 +823,8 @@ those shapes, which `Read` leaves out as before; it also takes an OLE object as 
   (`\\host\share`, `file://host/`, `//host/`) is refused by its text alone, so no network connection is made.
 - **Limits** (`Hwp/Hwpx/Nesting.cs`, `Infrastructure/BoundedXml.cs`): the XML parts of DOCX, PPTX, XLSX, HWPX and
   ODS packages (and FB2 and OPF files) are read without DTDs, each up to 256 MB unpacked, 1 GB per package, with
-  elements nested at most 1,000 levels; larger or deeper files are refused (`error.document_too_large`). Tables in
+  elements nested at most 1,000 levels; larger files are refused with `error.document_too_large`, deeper ones with
+  `error.document_too_complex`. Tables in
   table cells, text boxes, notes and links nested more than 32 deep become plain paragraphs of their text, in the
   DOCX and HWPX readers and again in every writer (whatever reader made the model); an equation deeper than 200
   levels becomes its text, notes inside notes are not followed, and PPTX groups are opened without recursion. The
@@ -968,7 +989,7 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   number), header and footer regions, table:print-ranges, header rows and columns, page breaks before rows and
   columns, rotation, stacked text, indent, shrink to fit and font names.
 - **Hostile input.** Packages are read within `DocumentLimits` (a malformed part is `InvalidDataException`, a bomb
-  `error.document_too_complex`); column ranges expand at most 4,000,000 times per workbook, merged areas fill at
+  `error.document_too_large`); column ranges expand at most 4,000,000 times per workbook, merged areas fill at
   most 10,000,000 index entries, pictures up to 64 MB and `MaxPicturePixels`, header codes up to 4,096 characters.
   Each sheet's page count is checked against `MaxPages` before anything is drawn (a cell in A1 and one in
   XFD1048576 would be about 35 million pages), and the layout runs under `LayoutGuard`. `DocumentFuzzTests` mutates
@@ -1841,8 +1862,9 @@ Pandoc (Markdown and the markup languages → RTF) and LibreOffice (Word, ODT, H
   (`\header`, or `\headerr` / `\headerl` with facing pages; `\titlepg` with `\headerf` for a first page that
   hides or has its own); columns that change in a section start a section without a page break (`\sbknone`).
 - **Limits:** the model is opened up past 32 levels of nesting (`Nesting.Limit`); a file that would pass
-  `DocumentLimits.MaxPackageBytes` (what the RTF reader takes), tables past the cell limit and font, colour or list
-  tables past `MaxObjects` are refused (`error.document_too_complex`) and leave no file; pictures past
+  `DocumentLimits.MaxPackageBytes` (what the RTF reader takes) and tables past the cell limit are refused
+  (`error.document_too_large`), font, colour or list tables past `MaxObjects` too (`error.document_too_complex`), and
+  leave no file; pictures past
   `MaxPartBytes` or claiming more than `MaxPicturePixels` are left out before anything decodes them; cancelling stops
   the write and removes its temporary files.
 - Tests: `RtfWriterTests` builds models in code, writes them and reads them back with the RTF reader into the same
@@ -2039,8 +2061,8 @@ ODP through the [ODP writer](#odp-writer).
 - **Hostile input:** pages up to `MaxPages`; `DocumentBudget` for paragraphs, objects and nesting (groups, links,
   lists and tables, 32 levels); a limit for the whole deck on path commands, points and equation evaluations (2
   million; a master's shapes count again for every page on it); per shape at most 100,000 path tokens and 4,096
-  equations; elements visited, transforms and repeated table rows capped. Refusals are `error.document_too_complex` or
-  `InvalidDataException`. `OdfDrawFuzzTests` fuzzes packages and flat files through the reader, the check, the text
+  equations; elements visited, transforms and repeated table rows capped. Refusals are `error.document_too_complex`,
+  `error.document_too_large` (sizes, pages) or `InvalidDataException`. `OdfDrawFuzzTests` fuzzes packages and flat files through the reader, the check, the text
   and the renderer.
 - Tests: `OdfDrawTests` (decks and drawings built in code by `OdpBuilder`, checked as model values and as pixels at
   72 dpi) and `OdfDrawRouteTests`.
@@ -2097,7 +2119,7 @@ without a second bullet), between lines of code and between table rows (rows joi
 the header rows repeat unless they fill half a slide). A picture shrinks into the room left when that is at least
 a third of the content area, else moves on. Only a title of more than two lines is made smaller
 (`normAutofit fontScale`, as PowerPoint stores a shrunk text). A document may become as many slides as the layout
-engine makes pages (`DocumentLimits.MaxPages`, 20,000); more is refused with `error.document_too_complex`.
+engine makes pages (`DocumentLimits.MaxPages`, 20,000); more is refused with `error.document_too_large`.
 
 **Routes.** The writer has two edges per source format: PPTX itself at cost 8 (as the DOCX and ODT writers), below
 Pandoc's slides (20) even with Pandoc first in the engine order, and `DirectOnly`, so no document → PDF takes the
@@ -2164,7 +2186,7 @@ same model, which the tests check shape by shape and as pictures.
   the [forms engine](#opendocument-templates-and-flat-files), and ODP → PPTX stays with LibreOffice.
 - **Hostile input:** the model comes from the bounded readers; the writer caps the XML it makes (512 million
   characters), group nesting (`MaxNestingDepth`) and the pictures' bytes (`MaxPackageBytes`), refused with
-  `error.document_too_complex`; non-finite boxes and turns are left out, coordinates cut at ±10 km, characters XML
+  `error.document_too_large` (characters, bytes) or `error.document_too_complex` (nesting); non-finite boxes and turns are left out, coordinates cut at ±10 km, characters XML
   can't hold (control characters, unpaired surrogates) dropped; cancelling stops it between slides and shapes.
 - Tests: `OdpWriterTests` (decks built in code by `SlideDeckBuilder`: the package rules, the round trip through the
   reader with boxes, text and pictures at 48 dpi compared, lists, masters, notes, fills and lines, routes, PPTX and
@@ -2424,7 +2446,8 @@ the margins move by less than 0.05 pt through DOCX).
 - **Safety and limits**: text XML can't hold is left out (and "\r", which a parser would turn into "\n" and shift the
   offsets), lone surrogates become U+FFFD and "]]>" splits the CDATA block, so the offsets stay right; attribute values
   are escaped. `content.xml` stays within what the reader takes: `DocumentLimits.MaxPartBytes`, `MaxXmlElements`,
-  `MaxParagraphs` and `MaxObjects` (refused with `error.document_too_complex`), the inflate ratio (a part so repetitive
+  `MaxParagraphs` and `MaxObjects` (refused with `error.document_too_large` for the bytes, `error.document_too_complex`
+  for the rest), the inflate ratio (a part so repetitive
   that it would pass it is stored uncompressed), and the reader's picture limits (pictures past them, or claiming more
   pixels than `MaxPicturePixels`, are left out). Tables go through `HwpxWriter.PlaceCells`' cell limit and the model
   through `Nesting.Limit`. The elements are written to a temporary file first and the package through one of its own,
@@ -2488,9 +2511,10 @@ out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, s
   a picture or an e-book that became a DOCX on the way doesn't reach spreadsheets this way, and a document's tables
   don't go on to JSON or XML. DOC edges are checked: a Word 6.0 / 95 or Works file the DOC reader doesn't read gets
   the reader's own message (LibreOffice has no Writer → spreadsheet route to fall back on).
-- Limits: the tables of one file get at most 10,000 sheets, 1,048,576 rows each (Excel's) and 10,000,000 cell
+- Limits: the tables of one file get at most 10,000 sheets and 10,000,000 cell
   positions together (`HwpxWriter.MaxTableCells`), counted before anything is written; more is refused with
-  `error.document_too_complex`. Nested tables are walked with a stack, not recursion.
+  `error.document_too_large`. Rows and columns past the sheet's edge (1,048,576 rows and 16,384 columns, Excel's) are
+  left out (see *Limits: too large or too complex*). Nested tables are walked with a stack, not recursion.
 
 ## PDF → PPTX
 
@@ -2521,7 +2545,7 @@ each paragraph keeps its place on the page instead of joining a document's flow.
   it), tables, then text.
 - **Limits**: at most 20,000 pages (`DocumentLimits.MaxPages`), the document limits on paragraphs and objects
   (`DocumentBudget`), and at most 500,000 path segments drawn per page (the rest of a pathological drawing is left
-  out); more is refused with `error.document_too_complex`. The preset's page range picks the pages; cancelling stops
+  out); more is refused (`error.document_too_large` for pages, `error.document_too_complex` for the rest). The preset's page range picks the pages; cancelling stops
   between pages and between paths.
 - **Not rebuilt yet**: text that runs sideways or turned on a page that also has upright text, pattern and shading
   fills (gradients), transparency, clipping of drawings (a clipped drawing is drawn whole, within the page), pictures
@@ -2810,8 +2834,9 @@ next.
   `/Resources` dictionary; a form's `/DR` doesn't count), device CMYK without a CMYK intent or CMYK and RGB together,
   an annotation or field without its own appearance (but links, popups, zero-size ones), XFA-only forms, PostScript
   XObjects, external stream data, LZW mixed with filters PDFsharp can't unpack, inline pictures with LZW or
-  interpolation, content streams it can't read, a password-protected PDF, and (`error.document_too_complex`) more
-  than `MaxObjects` objects or more content than `PdfFontUses` reads.
+  interpolation, content streams it can't read, a password-protected PDF, more than `MaxObjects` objects or more
+  content tokens than `PdfFontUses` reads (`error.document_too_complex`), and more content bytes than it reads
+  (`error.document_too_large`).
 
   **Not checked**: that embedded fonts hold every glyph drawn and their widths match the dictionary, TrueType
   symbolic/non-symbolic encodings and cmaps, the document's own ICC-based colour spaces, JPEG 2000 specifics, halftone
@@ -2873,7 +2898,8 @@ FODT and template edges stay for the formats only it reads.
   most a part (64 MB), all pictures to at most the package size, in at most as many parts as a package may have,
   objects at most `MaxObjects` and eight deep. A package is read through `DocumentPackage` (part, package and inflate
   limits); the flat file made from it may hold at most what a flat file may be read with, so a picture used again and
-  again can't make it grow without end. Each refusal is `error.document_too_complex`; another type's media type,
+  again can't make it grow without end. Sizes are refused with `error.document_too_large`, depth and counts of
+  elements and objects with `error.document_too_complex`; another type's media type,
   damaged XML and encrypted packages are refused with their reason.
 - Tests: `OdfVariantTests` (packages built in code by `OdtBuilder` / `OdpBuilder` / the ODS writer: round trips with
   text, pictures, styles and a chart object, the readers, routes, DOCX and PPTX conversions, hostile flat files and
@@ -3156,7 +3182,7 @@ the drawing engine wins the tie with LibreOffice's Draw edges as it is registere
   a background page's shapes once per page on it), paragraphs and group nesting; pages up to `MaxPages`; master, style
   and background page chains up to 32 levels with loops cut; sections, rows and NURBS / polyline points capped for the
   whole drawing; numbers clamped and finite; pictures within `MaxPartBytes` and `MaxPicturePixels`. Refusals are
-  `error.document_too_complex`. `VisioFuzzTests` and `OdfDrawFuzzTests` fuzz the readers, their checks and the
+  `error.document_too_complex`, or `error.document_too_large` for pages and sizes. `VisioFuzzTests` and `OdfDrawFuzzTests` fuzz the readers, their checks and the
   renderer together.
 - Tests: `VisioTests` (drawings built in code by `VsdxBuilder`, checked as model values and as pixels at 72 dpi),
   `OdfDrawTests`, `DrawingConverterTests`.
@@ -3207,7 +3233,7 @@ the ODP writer's cost (8). Presentations donut; settings v115 teaches existing l
   most 256 deep, 50,000 uses followed, 2 million visited (each use expansion again), 10 million outline points, the document budget's
   objects and paragraphs, pages up to `MaxPages`; numbers clamped and finite, boxes beyond 1,000,000 pt dropped;
   pictures within `MaxPartBytes` and `MaxPicturePixels`; cancellation checked per element. Refusals are
-  `error.document_too_complex`. `IwbFuzzTests` fuzzes the reader with the renderer, the PDF and the ODP writer.
+  `error.document_too_complex`, or `error.document_too_large` for pages and sizes. `IwbFuzzTests` fuzzes the reader with the renderer, the PDF and the ODP writer.
 - Tests: `IwbTests` (files built in code by `IwbBuilder`, checked as model values and as pixels at 96 dpi),
   `IwbSettingsTests`. **No real IWB or SMART Notebook file was tried** (#1665 has none attached).
 
@@ -4689,8 +4715,9 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   document has the components at offsets in the file. An **indirect** one names them as separate files next to its
   index file: each is read only from below the index file's folder (a name with `..`, a drive, a root, a `:`, a
   Windows device name, or a path through a symbolic link or junction counts as missing), with the same limits as a
-  bundled document. A missing page or included file refuses the document with `error.djvu_indirect` (which says to
-  bundle it in a DjVu viewer first); missing thumbnails don't matter. A file cut short keeps the chunks it still holds.
+  bundled document. A missing page or included file (or one outside that folder) refuses the document with
+  `error.djvu_indirect`, which says a page file is missing or can't be opened and to keep the files together in one
+  folder; missing thumbnails don't matter. A file cut short keeps the chunks it still holds.
 - **Page:** `INFO` (size, resolution 25–6000 dpi, else 300; rotation → the PDF page's `/Rotate`, the picture turned),
   `INCL` (followed depth first, each file once, so include loops end), the mask `Sjbz` with its shared dictionary
   `Djbz` (in the page or an included file; a dictionary may build on another; decoded once per file and kept for the
@@ -4721,7 +4748,8 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   book (732 KB) from 13.9 MB to 1.5 MB. The masks draw exactly as before (checked pixel for pixel with PDFtoImage). A page with more than 64 palette colours is one JPEG. The hidden
   text's lines and words become an invisible text layer (the OCR layer's glyphless font, `Ocr/OcrTextLayer.cs`), so
   the PDF can be searched and its text copied in any script.
-- **Limits** (`DjvuLimits`, refusals with `error.document_too_complex`): 20,000 pages and 40,000 components; 64 MB per
+- **Limits** (`DjvuLimits`; pages, components, bytes and pixels refused with `error.document_too_large`, the rest
+  with `error.document_too_complex`): 20,000 pages and 40,000 components; 64 MB per
   chunk and per BZZ stream; 150 million pixels per page; 64 million pixels per IW44 picture and 10,000 slices;
   2 million shapes, 4 million placed shapes and 400 million shape pixels per mask (counted before a shape is
   allocated); 20 million number-coder cells; 2 million text zones; 65,535 palette colours; 1 million parts (brackets,

@@ -19,6 +19,9 @@ public class EbookLimitsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static void TooComplex(Action read) =>
         Assert.Equal(DocumentLimits.ErrorKey, Assert.Throws<ConversionRefusedException>(read).ErrorKey);
 
+    private static void TooLarge(Action read) =>
+        Assert.Equal(DocumentLimits.TooLargeKey, Assert.Throws<ConversionRefusedException>(read).ErrorKey);
+
     private string Write(string name, byte[] bytes)
     {
         var path = Path.Combine(fx.NewFolder(), name);
@@ -36,12 +39,12 @@ public class EbookLimitsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var limits = DocumentLimits.Default with { MaxPartBytes = 1 << 20 };
         // 200 KB of "a\n" with eight codes open: some 15 MB of HTML.
-        TooComplex(() => PmlReader.ToHtml(AllOpen + string.Concat(Enumerable.Repeat("a\n", 100_000)), _ => null, Ct, limits));
+        TooLarge(() => PmlReader.ToHtml(AllOpen + string.Concat(Enumerable.Repeat("a\n", 100_000)), _ => null, Ct, limits));
         // One line that closes the code opened first (and opens the seven after it again), then opens it last: some 30
         // times its size.
-        TooComplex(() => PmlReader.ToHtml(AllOpen + string.Concat(Enumerable.Repeat(@"\i\i\u\u\o\o\B\B\l\l\k\k\Sp\Sp\Sb\Sb", 10_000)), _ => null, Ct, limits));
+        TooLarge(() => PmlReader.ToHtml(AllOpen + string.Concat(Enumerable.Repeat(@"\i\i\u\u\o\o\B\B\l\l\k\k\Sp\Sp\Sb\Sb", 10_000)), _ => null, Ct, limits));
         // Notes are pages of their own and count as well.
-        TooComplex(() => PmlReader.ToHtml(string.Concat(Enumerable.Repeat("<footnote id=\"n\">" + AllOpen + "a\na\na\n</footnote>", 5_000)), _ => null, Ct, limits));
+        TooLarge(() => PmlReader.ToHtml(string.Concat(Enumerable.Repeat("<footnote id=\"n\">" + AllOpen + "a\na\na\n</footnote>", 5_000)), _ => null, Ct, limits));
 
         var html = PmlReader.ToHtml(AllOpen + "a\nb\n", _ => null, Ct, limits);
         Assert.Contains("<i><u><s><b>", html, StringComparison.Ordinal);
@@ -101,7 +104,7 @@ public class EbookLimitsTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // Twenty entries of one compressed file that claims 60 MB: 1.2 GB stated, past the package limit before any
         // of the (empty) chunks is inflated.
         var rb = Write("listed.rb", Rocket(20, RocketChunks(2, 60 * 1024 * 1024 - 4096), flags: 1));
-        TooComplex(() => RocketBookReader.ReadBook(rb, fx.NewFolder(), Ct));
+        TooLarge(() => RocketBookReader.ReadBook(rb, fx.NewFolder(), Ct));
     }
 
     // ───────── SNB ─────────
@@ -157,7 +160,7 @@ public class EbookLimitsTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var snb = SnbOfZeros(100);
         // With the ratio checked only at the end, the damaged last block would fail first.
         var limits = DocumentLimits.Default with { InflateRatioFloor = 256 * 1024, MaxInflateRatio = 10 };
-        TooComplex(() => SnbReader.Unpack(snb, limits, Ct));
+        TooLarge(() => SnbReader.Unpack(snb, limits, Ct));
         Assert.Throws<InvalidDataException>(() => SnbReader.Unpack(snb, DocumentLimits.Default, Ct));
     }
 
@@ -213,8 +216,8 @@ public class EbookLimitsTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         Assert.Equal(1000, huff.Decompress([255], 1 << 20).Length);
         Assert.Equal(1_000_000, huff.Decompress([254], 1 << 20).Length);
-        TooComplex(() => huff.Decompress([252], 1 << 20));
-        TooComplex(() => huff.Decompress([254, 254], 1 << 20)); // two phrases of 1 MB in a record with room for one
+        TooLarge(() => huff.Decompress([252], 1 << 20));
+        TooLarge(() => huff.Decompress([254, 254], 1 << 20)); // two phrases of 1 MB in a record with room for one
     }
 
     [Fact]
@@ -222,6 +225,6 @@ public class EbookLimitsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         MobiReader.CheckTextRatio(DocumentLimits.Default.InflateRatioFloor, 1); // at the floor, any ratio is fine
         MobiReader.CheckTextRatio(50L << 20, 1 << 20);
-        TooComplex(() => MobiReader.CheckTextRatio(50L << 20, 100_000));
+        TooLarge(() => MobiReader.CheckTextRatio(50L << 20, 100_000));
     }
 }

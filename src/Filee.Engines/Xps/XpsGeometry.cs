@@ -30,7 +30,7 @@ internal sealed class XpsGeometry(SKPath fill, SKPath stroke) : IDisposable
     public static XpsGeometry Parse(string data, XpsBudget budget, SKMatrix? transform = null)
     {
         if (data.Length > budget.Limits.MaxPathData)
-            throw Documents.DocumentLimits.Exceeded($"A path's data is longer than {Documents.DocumentLimits.Count(budget.Limits.MaxPathData)} characters.");
+            throw Documents.DocumentLimits.TooLarge($"A path's data is longer than {Documents.DocumentLimits.Count(budget.Limits.MaxPathData)} characters.");
         var path = new SKPath { FillType = SKPathFillType.EvenOdd };
         new Abbreviated(data, path, budget).Read();
         if (transform is { IsIdentity: false } matrix)
@@ -49,7 +49,7 @@ internal sealed class XpsGeometry(SKPath fill, SKPath stroke) : IDisposable
         if ((string?)element.Attribute("Figures") is { Length: > 0 } figures)
         {
             if (figures.Length > budget.Limits.MaxPathData)
-                throw Documents.DocumentLimits.Exceeded($"A path's data is longer than {Documents.DocumentLimits.Count(budget.Limits.MaxPathData)} characters.");
+                throw Documents.DocumentLimits.TooLarge($"A path's data is longer than {Documents.DocumentLimits.Count(budget.Limits.MaxPathData)} characters.");
             new Abbreviated(figures, fill, budget, fillRule: false).Read();
             stroke.AddPath(fill);
         }

@@ -392,6 +392,9 @@ public class LegacyEbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static void TooComplex(Action read) =>
         Assert.Equal(DocumentLimits.ErrorKey, Assert.Throws<ConversionRefusedException>(read).ErrorKey);
 
+    private static void TooLarge(Action read) =>
+        Assert.Equal(DocumentLimits.TooLargeKey, Assert.Throws<ConversionRefusedException>(read).ErrorKey);
+
     [Fact]
     public void Chm_whose_compressed_section_claims_too_much_is_refused()
     {
@@ -406,12 +409,12 @@ public class LegacyEbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
             ("/big.htm", 1, 0, 900L * 1024 * 1024),
         };
         var bomb = Write(folder, "bomb.chm", ChmContainer(entries, [.. lzx, .. stored], 0x409));
-        TooComplex(() => ChmReader.ReadBook(bomb, fx.NewFolder()));
+        TooLarge(() => ChmReader.ReadBook(bomb, fx.NewFolder()));
 
         // A file larger than a part may be, and a ratio far beyond LZX on real pages.
         entries[2] = ("/big.htm", 1, 0, 60L * 1024 * 1024);
         var ratio = Write(folder, "ratio.chm", ChmContainer(entries, [.. lzx, .. stored], 0x409));
-        TooComplex(() => ChmReader.ReadBook(ratio, fx.NewFolder()));
+        TooLarge(() => ChmReader.ReadBook(ratio, fx.NewFolder()));
     }
 
     private static byte[] Control(int windowBits, int resetFrames)
@@ -459,23 +462,23 @@ public class LegacyEbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
             tcr.Write(new byte[255].Select(_ => (byte)'a').ToArray());
         }
         tcr.Write(new byte[300_000]);
-        TooComplex(() => TcrReader.ReadBook(Write(folder, "bomb.tcr", tcr.ToArray()), fx.NewFolder()));
+        TooLarge(() => TcrReader.ReadBook(Write(folder, "bomb.tcr", tcr.ToArray()), fx.NewFolder()));
 
         // zTXT: 20 MB of spaces in a zlib stream of some 20 KB.
         var spaces = new string(' ', 20 * 1024 * 1024);
-        TooComplex(() => PdbReader.ReadBook(Write(folder, "bomb.pdb", Ztxt(spaces)), fx.NewFolder()));
+        TooLarge(() => PdbReader.ReadBook(Write(folder, "bomb.pdb", Ztxt(spaces)), fx.NewFolder()));
 
         // RB: a file that claims more than a part may hold.
         var rocket = RocketBook();
         var html = rocket.AsSpan().IndexOf("keeper.html"u8);
         var data = BitConverter.ToInt32(rocket, html + 36); // the file's offset
         BitConverter.GetBytes(200 * 1024 * 1024).CopyTo(rocket, data + 4);
-        TooComplex(() => RocketBookReader.ReadBook(Write(folder, "bomb.rb", rocket), fx.NewFolder()));
+        TooLarge(() => RocketBookReader.ReadBook(Write(folder, "bomb.rb", rocket), fx.NewFolder()));
 
         // SNB: a header that claims 2 GB of text.
         var snb = Snb();
         System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(snb.AsSpan(36), int.MaxValue);
-        TooComplex(() => SnbReader.ReadBook(Write(folder, "bomb.snb", snb), fx.NewFolder()));
+        TooLarge(() => SnbReader.ReadBook(Write(folder, "bomb.snb", snb), fx.NewFolder()));
     }
 
     [Fact]

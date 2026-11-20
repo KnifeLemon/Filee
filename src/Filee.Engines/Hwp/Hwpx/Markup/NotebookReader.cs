@@ -56,7 +56,7 @@ internal sealed partial class NotebookReader
     public static HDocument Read(string path, string media)
     {
         if (new FileInfo(path).Length > MaxFileBytes)
-            throw DocumentLimits.Exceeded($"The notebook is larger than {DocumentLimits.Megabytes(MaxFileBytes)}.");
+            throw DocumentLimits.TooLarge($"The notebook is larger than {DocumentLimits.Megabytes(MaxFileBytes)}.");
         return Read(File.ReadAllBytes(path), Path.GetDirectoryName(Path.GetFullPath(path))!, media, DocumentLimits.Default);
     }
 

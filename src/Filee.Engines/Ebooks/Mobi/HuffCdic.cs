@@ -157,5 +157,5 @@ internal sealed class HuffCdic
     }
 
     private static Exception TooLarge(long bytes) =>
-        DocumentLimits.Exceeded($"The book's compressed text unpacks to more than {DocumentLimits.Megabytes(bytes)}.");
+        DocumentLimits.TooLarge($"The book's compressed text unpacks to more than {DocumentLimits.Megabytes(bytes)}.");
 }

@@ -228,7 +228,7 @@ internal sealed class Jb2Decoder
             if (columns == 0 || rows == 0)
                 throw new InvalidDataException("A JB2 page mask has no size.");
             if ((long)columns * rows > _limits.MaxPagePixels)
-                throw DocumentLimits.Exceeded($"A DjVu page mask has more than {DocumentLimits.Count(_limits.MaxPagePixels)} pixels.");
+                throw DocumentLimits.TooLarge($"A DjVu page mask has more than {DocumentLimits.Count(_limits.MaxPagePixels)} pixels.");
             _columns = columns;
             _rows = rows;
             _lastLeft = 1 + columns;
@@ -300,7 +300,7 @@ internal sealed class Jb2Decoder
             throw new InvalidDataException("A JB2 shape has an impossible size.");
         _shapePixels += (long)width * height;
         if (_shapePixels > _limits.MaxShapePixels)
-            throw DocumentLimits.Exceeded($"The shapes of a DjVu mask have more than {DocumentLimits.Count(_limits.MaxShapePixels)} pixels.");
+            throw DocumentLimits.TooLarge($"The shapes of a DjVu mask have more than {DocumentLimits.Count(_limits.MaxShapePixels)} pixels.");
         if (_shapes.Count >= _limits.MaxShapes)
             throw DocumentLimits.Exceeded($"A DjVu mask has more than {DocumentLimits.Count(_limits.MaxShapes)} shapes.");
         return (width, height);

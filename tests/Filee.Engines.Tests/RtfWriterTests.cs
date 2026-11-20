@@ -397,7 +397,7 @@ public class RtfWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var refused = Assert.Throws<ConversionRefusedException>(() =>
             RtfWriter.Write(document, path, new DocumentLimits { MaxPackageBytes = 20_000 }, TestContext.Current.CancellationToken));
 
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
         Assert.Empty(Directory.GetFiles(folder));
     }
 

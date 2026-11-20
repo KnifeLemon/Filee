@@ -1,7 +1,10 @@
 // How much of an untrusted document Filee reads and lays out, shared by the document readers (HWPX, DOCX, OFD and
 // HWP 5.0) and the layout engine, so a hostile file can't hang, exhaust the memory or crash Filee. Every limit is far
-// above what real documents need: a document that passes one is refused with error.document_too_complex rather than
-// read in part.
+// above what real documents need: a document that passes one is refused rather than read in part, with
+// error.document_too_large for its size (bytes it unpacks to or its inflate ratio, files in a package, pages, pixels,
+// cells and rows by count, characters of text) and error.document_too_complex for its structure (nesting, paragraphs,
+// objects, shapes, points, records, the layout's time). Column numbers and spans past the grid are cut at its edge,
+// not refused (docs/ENGINES.md, "Limits").
 //
 // Where they apply:
 //  * DocumentPackage   ZIP packages: entries, bytes per part and in total (counted while unpacking, so a header that
@@ -28,8 +31,11 @@ internal sealed record DocumentLimits
     /// <summary>The limits Filee uses.</summary>
     public static DocumentLimits Default { get; } = new();
 
-    /// <summary>The error key of a document refused for passing a limit.</summary>
+    /// <summary>The error key of a document refused for its structure: nesting, objects, shapes, points, records.</summary>
     public const string ErrorKey = "error.document_too_complex";
+
+    /// <summary>The error key of a document refused for its size: bytes, files, pages, pixels, cells, characters.</summary>
+    public const string TooLargeKey = "error.document_too_large";
 
     /// <summary>Bytes one part of a package (an XML part, a picture) may unpack to.</summary>
     public long MaxPartBytes { get; init; } = 64L * 1024 * 1024;
@@ -92,8 +98,11 @@ internal sealed record DocumentLimits
     internal XmlLimits Xml(int elementsBefore, bool preserveWhitespace) =>
         new(MaxXmlDepth, MaxXmlElements, MaxPartBytes, preserveWhitespace, ElementsBefore: elementsBefore);
 
-    /// <summary>The refusal for a document that passes a limit; <paramref name="detail"/> says which (in English).</summary>
+    /// <summary>The refusal for a document that passes a limit of its structure; <paramref name="detail"/> says which (in English).</summary>
     public static ConversionRefusedException Exceeded(string detail) => new(ErrorKey, detail);
+
+    /// <summary>The refusal for a document that passes a limit of its size; <paramref name="detail"/> says which (in English).</summary>
+    public static ConversionRefusedException TooLarge(string detail) => new(TooLargeKey, detail);
 
     /// <summary>"64 MB" for messages.</summary>
     internal static string Megabytes(long bytes) => (bytes / (1024 * 1024)).ToString("N0", CultureInfo.InvariantCulture) + " MB";
