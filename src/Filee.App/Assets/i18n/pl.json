@@ -300,6 +300,8 @@
   "engine.pptx-writer.description": "Tworzy slajdy PowerPoint (PPTX) z plików Markdown i języków znaczników, dokumentów Word, ODT, HWP/HWPX, HTML, arkuszy i e-booków: slajd na każdy nagłówek, z listami, tabelami, obrazami i kodem.",
   "engine.odp-writer.name": "Generator ODP (wbudowany)",
   "engine.odp-writer.description": "Tworzy prezentacje OpenDocument (ODP) bez LibreOffice: slajdy PowerPoint (PPTX, PPT) z kształtami, obrazami, tabelami i notatkami oraz pliki Markdown i języków znaczników, dokumenty Word, ODT, HWP/HWPX, HTML, arkusze i e-booki, slajd na każdy nagłówek.",
+  "engine.odf-variants.name": "Szablony i płaskie pliki XML OpenDocument (wbudowane)",
+  "engine.odf-variants.description": "Zamienia pliki OpenDocument na ich szablony (OTT, OTS, OTP, OTG) i płaskie pliki XML (FODT, FODS, FODP, FODG) oraz z powrotem bez LibreOffice, zachowując cały dokument.",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "Wyodrębnia tekst z PDF w kolejności czytania, także ze stron dwukolumnowych (bez OCR skanów).",
   "engine.pdf-slides.name": "PDF slides (built-in)",

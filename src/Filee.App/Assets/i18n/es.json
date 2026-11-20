@@ -293,6 +293,8 @@
   "engine.pptx-writer.description": "Crea diapositivas de PowerPoint (PPTX) a partir de archivos Markdown y de marcado, documentos de Word, ODT, HWP/HWPX, HTML, hojas de cálculo y libros electrónicos: una diapositiva por encabezado, con listas, tablas, imágenes y código.",
   "engine.odp-writer.name": "Generador ODP (integrado)",
   "engine.odp-writer.description": "Crea presentaciones OpenDocument (ODP) sin LibreOffice: diapositivas de PowerPoint (PPTX, PPT) con sus formas, imágenes, tablas y notas, y archivos Markdown y de marcado, documentos de Word, ODT, HWP/HWPX, HTML, hojas de cálculo y libros electrónicos, una diapositiva por encabezado.",
+  "engine.odf-variants.name": "Plantillas y archivos XML planos de OpenDocument (integrado)",
+  "engine.odf-variants.description": "Convierte archivos OpenDocument en sus plantillas (OTT, OTS, OTP, OTG) y archivos XML planos (FODT, FODS, FODP, FODG), y viceversa, sin LibreOffice y conservando todo el documento.",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "Extrae el texto de los PDF en orden de lectura, también de páginas en dos columnas (sin OCR para escaneos).",
   "engine.pdf-slides.name": "PDF slides (built-in)",

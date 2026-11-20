@@ -13,6 +13,7 @@ using Filee.Engines.Hwp.Hwpx.Markup;
 using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Odf;
 using Filee.Engines.Odf.Draw;
 using Filee.Engines.Ofd;
 using Filee.Engines.Office;
@@ -42,6 +43,10 @@ internal static class DocumentReaders
         ["dot"] = DocReader.Read,
         ["wps"] = DocReader.Read,
         ["odt"] = OdtReader.Read,
+        // OpenDocument text templates are the package with another media type; a flat file is read as the package it
+        // splits into (Odf/OdfVariants), beside the pictures.
+        ["ott"] = OdtReader.Read,
+        ["fodt"] = (path, media) => OdfVariants.Read(path, "fodt", MediaParent(media), package => OdtReader.Read(package, media)),
         ["txt"] = (path, _) => TextDocument(File.ReadAllBytes(path)),
         ["rtf"] = RtfReader.Read,
         ["md"] = (path, _) => MarkdownReader.Read(DecodeText(File.ReadAllBytes(path)), Path.GetDirectoryName(Path.GetFullPath(path))!),
@@ -54,6 +59,8 @@ internal static class DocumentReaders
         ["xls"] = (path, _) => SheetDocument.Build(SpreadsheetConverter.Read(path, "xls")),
         ["xlt"] = (path, _) => SheetDocument.Build(SpreadsheetConverter.Read(path, "xlt")),
         ["ods"] = (path, _) => SheetDocument.Build(SpreadsheetConverter.Read(path, "ods")),
+        ["ots"] = (path, _) => SheetDocument.Build(SpreadsheetConverter.Read(path, "ots")),
+        ["fods"] = (path, _) => SheetDocument.Build(SpreadsheetConverter.Read(path, "fods")),
         ["pptx"] = PptxReader.Read,
         ["pptm"] = PptxReader.Read,
         ["potx"] = PptxReader.Read,
@@ -170,6 +177,9 @@ internal static class DocumentReaders
             return await ReadWithPandocAsync(path, pandocReader, workDirectory, media, cancellationToken);
         throw new NotSupportedException($"There is no document reader for {format.ToUpperInvariant()} files.");
     }
+
+    /// <summary>The job's scratch folder the media folder is in, for files a reader makes on the way.</summary>
+    private static string MediaParent(string mediaFolder) => Path.GetDirectoryName(Path.GetFullPath(mediaFolder)) ?? Path.GetTempPath();
 
     private static HDocument ReadSlides(string path, string mediaFolder) => SlideDeckText.Build(OdfDrawReader.Read(path), mediaFolder);
 

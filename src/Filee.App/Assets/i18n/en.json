@@ -300,6 +300,8 @@
   "engine.pptx-writer.description": "Makes PowerPoint slides (PPTX) from Markdown and markup files, Word documents, ODT, HWP/HWPX, HTML, spreadsheets and e-books: a slide per heading, with lists, tables, pictures and code.",
   "engine.odp-writer.name": "ODP writer (built-in)",
   "engine.odp-writer.description": "Makes OpenDocument presentations (ODP) without LibreOffice: PowerPoint decks (PPTX, PPT) with their shapes, pictures, tables and speaker notes, and Markdown and markup files, Word documents, ODT, HWP/HWPX, HTML, spreadsheets and e-books with a slide per heading.",
+  "engine.odf-variants.name": "OpenDocument templates and flat files (built-in)",
+  "engine.odf-variants.description": "Turns OpenDocument files into their templates (OTT, OTS, OTP, OTG) and flat XML files (FODT, FODS, FODP, FODG) and back without LibreOffice, keeping the whole document.",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "Extracts the text of PDFs in reading order, also from two-column pages (no OCR for scans).",
   "engine.pdf-slides.name": "PDF slides (built-in)",

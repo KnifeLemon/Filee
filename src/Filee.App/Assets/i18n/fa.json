@@ -307,6 +307,8 @@
   "engine.pptx-writer.description": "ساخت اسلایدهای PowerPoint (PPTX) از فایل‌های مارک‌داون و نشانه‌گذاری، اسناد Word، ODT، HWP/HWPX، HTML، صفحه‌گسترده‌ها و کتاب‌های الکترونیکی: یک اسلاید برای هر عنوان، با فهرست‌ها، جدول‌ها، تصاویر و کد.",
   "engine.odp-writer.name": "نویسنده ODP (داخلی)",
   "engine.odp-writer.description": "ساخت ارائه‌های OpenDocument ‏(ODP) بدون LibreOffice: اسلایدهای PowerPoint ‏(PPTX، PPT) با شکل‌ها، تصاویر، جدول‌ها و یادداشت‌های سخنران، و فایل‌های مارک‌داون و نشانه‌گذاری، اسناد Word، ODT، HWP/HWPX، HTML، صفحه‌گسترده‌ها و کتاب‌های الکترونیکی با یک اسلاید برای هر عنوان.",
+  "engine.odf-variants.name": "قالب‌ها و فایل‌های XML تخت OpenDocument (داخلی)",
+  "engine.odf-variants.description": "فایل‌های OpenDocument را بدون LibreOffice به قالب‌ها ‏(OTT، OTS، OTP، OTG) و فایل‌های XML تخت ‏(FODT، FODS، FODP، FODG) و برعکس تبدیل می‌کند و کل سند را حفظ می‌کند.",
   "engine.pdf-text.name": "متن PDF (داخلی)",
   "engine.pdf-text.description": "استخراج متن PDF به ترتیب خواندن، همچنین از صفحات دو ستونه (بدون OCR برای اسکن‌ها).",
   "engine.pdf-slides.name": "اسلایدهای PDF (داخلی)",

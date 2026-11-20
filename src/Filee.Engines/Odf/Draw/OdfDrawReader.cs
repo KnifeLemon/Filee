@@ -1,4 +1,4 @@
-// OpenDocument presentations (.odp, .otp, .fodp) and drawings (.odg, .fodg) → the slide model (Slides/SlideModel.cs),
+// OpenDocument presentations (.odp, .otp, .fodp) and drawings (.odg, .otg, .fodg) → the slide model (Slides/SlideModel.cs),
 // read straight from the package or flat file per OpenDocument 1.3 Part 3, for pictures of each page drawn by the slide
 // renderer (presentations through FileeRendererConverter, drawings through DrawingConverter) without LibreOffice.
 //
@@ -47,7 +47,7 @@ internal sealed partial class OdfDrawReader
     public static readonly string[] Presentations = ["odp", "otp", "fodp"];
 
     /// <summary>Drawing formats (pages through the drawing converter).</summary>
-    public static readonly string[] Drawings = ["odg", "fodg"];
+    public static readonly string[] Drawings = ["odg", "otg", "fodg"];
 
     /// <summary>Path commands and points of all shapes of a deck at most, every use counting again.</summary>
     private const int MaxDeckCommands = 2_000_000;

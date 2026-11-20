@@ -66,6 +66,7 @@ public static class EngineRegistry
         new MarkupConverter(),
         new PptxWriterConverter(),
         new OdpWriterConverter(),
+        new OdfVariantConverter(),
         new PdfTextConverter(),
         new PdfSlidesConverter(),
         new PdfTablesConverter(),

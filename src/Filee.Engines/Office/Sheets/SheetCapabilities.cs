@@ -42,7 +42,7 @@ internal static partial class SheetCapabilities
     private const long MaxVmlBytes = 16L * 1024 * 1024;
 
     /// <summary>The first thing in the workbook the sheet printer doesn't draw; null when it draws everything (or can't read the file).</summary>
-    /// <param name="format">Format id: xlsx, xlsm, xltx, xlsb, xls, xlt or ods.</param>
+    /// <param name="format">Format id: xlsx, xlsm, xltx, xlsb, xls, xlt, ods, ots or fods.</param>
     public static string? FirstUnsupported(string path, string format)
     {
         try
@@ -54,7 +54,9 @@ internal static partial class SheetCapabilities
                 XlsbReader.Format => IsZip(path) ? Xlsb(path) : XlsLayout.FirstObject(path),
                 // Web apps often save XLSX with an .xls name; the XLSX reader reads those (XlsReader).
                 "xls" or "xlt" => IsZip(path) ? Xlsx(path) : XlsLayout.FirstObject(path),
-                "ods" => Ods(path),
+                "ods" or "ots" => Ods(path),
+                // A flat file is looked through as the package it splits into.
+                "fods" => Odf.OdfVariants.Read(path, "fods", Path.GetTempPath(), Ods),
                 _ => null,
             };
         }

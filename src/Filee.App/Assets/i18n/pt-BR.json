@@ -300,6 +300,8 @@
   "engine.pptx-writer.description": "Cria slides do PowerPoint (PPTX) a partir de arquivos Markdown e de marcação, documentos do Word, ODT, HWP/HWPX, HTML, planilhas e e-books: um slide por título, com listas, tabelas, imagens e código.",
   "engine.odp-writer.name": "Gerador ODP (mecanismo integrado)",
   "engine.odp-writer.description": "Cria apresentações OpenDocument (ODP) sem o LibreOffice: slides do PowerPoint (PPTX, PPT) com formas, imagens, tabelas e anotações, e arquivos Markdown e de marcação, documentos do Word, ODT, HWP/HWPX, HTML, planilhas e e-books, um slide por título.",
+  "engine.odf-variants.name": "Modelos e arquivos XML planos do OpenDocument (integrado)",
+  "engine.odf-variants.description": "Converte arquivos OpenDocument em seus modelos (OTT, OTS, OTP, OTG) e arquivos XML planos (FODT, FODS, FODP, FODG), e vice-versa, sem LibreOffice, mantendo o documento inteiro.",
   "engine.pdf-text.name": "Texto de PDF (mecanismo integrado)",
   "engine.pdf-text.description": "Extrai o texto de PDFs na ordem de leitura, também de páginas em duas colunas (sem OCR para digitalizações).",
   "engine.pdf-slides.name": "Slides de PDF (mecanismo integrado)",
