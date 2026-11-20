@@ -25,11 +25,11 @@ namespace Filee.Engines.Office;
 public sealed class DocumentTablesConverter : IConverter, ICapabilityCheck
 {
     /// <summary>
-    /// Word documents (and their macro and template variants, Word 97–2003 and WPS), OpenDocument text, RTF, 한글 files,
-    /// web pages and saved web pages.
+    /// Word documents (and their macro and template variants, Word 97–2003 and WPS), OpenDocument text (and its template
+    /// and flat file), RTF, 한글 files, web pages and saved web pages.
     /// </summary>
     private static readonly string[] Sources =
-        ["docx", "docm", "dotx", "dotm", .. Hwp.Hwpx.Doc.DocReader.Formats, "odt", "rtf", "hwp", "hwpx", "html", "mhtml"];
+        ["docx", "docm", "dotx", "dotm", .. Hwp.Hwpx.Doc.DocReader.Formats, "odt", "ott", "fodt", "rtf", "hwp", "hwpx", "html", "mhtml"];
 
     public string Id => "document-tables";
     public string DisplayName => "Document tables (built-in)";

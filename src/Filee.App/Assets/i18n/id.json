@@ -301,6 +301,8 @@
   "engine.pptx-writer.description": "Membuat slide PowerPoint (PPTX) dari file Markdown dan markup, dokumen Word, ODT, HWP/HWPX, HTML, spreadsheet, dan e-book: satu slide per judul, dengan daftar, tabel, gambar, dan kode.",
   "engine.odp-writer.name": "Penulis ODP (bawaan)",
   "engine.odp-writer.description": "Membuat presentasi OpenDocument (ODP) tanpa LibreOffice: slide PowerPoint (PPTX, PPT) beserta bentuk, gambar, tabel, dan catatan pembicara, serta file Markdown dan markup, dokumen Word, ODT, HWP/HWPX, HTML, spreadsheet, dan e-book dengan satu slide per judul.",
+  "engine.odf-variants.name": "Templat dan file XML datar OpenDocument (bawaan)",
+  "engine.odf-variants.description": "Mengubah file OpenDocument menjadi templatnya (OTT, OTS, OTP, OTG) dan file XML datar (FODT, FODS, FODP, FODG) serta sebaliknya tanpa LibreOffice, dengan seluruh dokumen tetap utuh.",
   "engine.pdf-text.name": "Teks PDF (bawaan)",
   "engine.pdf-text.description": "Mengekstrak teks PDF sesuai urutan baca, termasuk halaman dua kolom (tanpa OCR untuk dokumen pindai).",
   "engine.pdf-slides.name": "Slide PDF (bawaan)",

@@ -10,13 +10,16 @@
 //   then written as the same deck in ODP, so both writers give the same slides.
 //
 // The edges cost 8, as the PPTX writer's, below LibreOffice's fallback (25); they are DirectOnly, so a deck written
-// here is never a step towards another format (a document → PDF stays off slides). OpenDocument presentations
-// themselves (ODP, OTP, FODP) are not sources: they keep LibreOffice's route to each other, as ODP → PPTX does.
+// here is never a step towards another format (a document → PDF stays off slides). That keeps them from leading on
+// to the template and the flat file too, so the writer makes those itself: the ODP it writes, turned into OTP or FODP
+// (Odf/OdfVariants). OpenDocument presentations themselves (ODP, OTP, FODP) are not sources: they become each other
+// through OdfVariantConverter, which keeps the whole deck, and keep LibreOffice's route to PPTX.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Odf;
 using Filee.Engines.Odf.Draw;
 using Filee.Engines.Office.Ppt;
 using Filee.Engines.Slides;
@@ -28,6 +31,9 @@ public sealed class OdpWriterConverter : IConverter, ICapabilityCheck
 {
     /// <summary>As the PPTX writer's: below LibreOffice's fallback (25) whatever the engine order adds (at most 9).</summary>
     internal const int Cost = 8;
+
+    /// <summary>What the writer writes: the presentation, its template and its flat file.</summary>
+    private static readonly string[] Targets = ["odp", "otp", "fodp"];
 
     /// <summary>The PowerPoint decks the slide reader reads.</summary>
     internal static readonly string[] Decks = [.. SlideFormats.Decks.Where(f => !OdfDrawReader.Presentations.Contains(f))];
@@ -48,8 +54,10 @@ public sealed class OdpWriterConverter : IConverter, ICapabilityCheck
             var documents = Documents(_pandoc ??= PandocConverter.Locate() is not null);
             return
             [
-                .. Decks.Select(from => new ConversionEdge(from, "odp", Cost, DirectOnly: true, Checked: true)),
-                .. documents.Select(from => new ConversionEdge(from, "odp", Cost, DirectOnly: true, Checked: DocumentReaders.Checked(from))),
+                .. from source in Decks from to in Targets select new ConversionEdge(source, to, Cost, DirectOnly: true, Checked: true),
+                .. from source in documents
+                   from to in Targets
+                   select new ConversionEdge(source, to, Cost, DirectOnly: true, Checked: DocumentReaders.Checked(source)),
             ];
         }
     }
@@ -68,7 +76,8 @@ public sealed class OdpWriterConverter : IConverter, ICapabilityCheck
     public EngineStatus GetStatus()
     {
         _pandoc = PandocConverter.Locate() is not null;
-        return EngineStatus.Available(string.Join(", ", Decks.Concat(Documents(_pandoc.Value)).Select(f => f.ToUpperInvariant())) + " → ODP", EngineVersions.BuiltIn);
+        return EngineStatus.Available(string.Join(", ", Decks.Concat(Documents(_pandoc.Value)).Select(f => f.ToUpperInvariant())) + " → ODP, OTP, FODP",
+            EngineVersions.BuiltIn);
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -94,14 +103,29 @@ public sealed class OdpWriterConverter : IConverter, ICapabilityCheck
         }
         progress?.Report(0.6);
 
-        var output = step.Output.Allocate("odp");
+        var output = step.Output.Allocate(step.To);
         if (output is null)
             return [];
         await Task.Run(() =>
         {
             var deck = PptxSlideReader.Read(deckPath, cancellationToken: cancellationToken);
             var notes = PptxNotes.Read(deckPath, cancellationToken: cancellationToken);
-            OdpWriter.Write(deck, output, notes, cancellationToken: cancellationToken);
+            if (step.To == "odp")
+            {
+                OdpWriter.Write(deck, output, notes, cancellationToken: cancellationToken);
+                return;
+            }
+            // The template or the flat file: the presentation written first, then turned into it.
+            var odp = Path.Combine(step.WorkDirectory, $"deck-{Guid.NewGuid():N}.odp");
+            try
+            {
+                OdpWriter.Write(deck, odp, notes, cancellationToken: cancellationToken);
+                OdfVariants.Convert(odp, "odp", output, step.To, cancellationToken: cancellationToken);
+            }
+            finally
+            {
+                File.Delete(odp);
+            }
         }, cancellationToken);
         progress?.Report(1);
         return [output];

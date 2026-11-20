@@ -300,6 +300,8 @@
   "engine.pptx-writer.description": "Markdown болон тэмдэглэгээний файл, Word баримт, ODT, HWP/HWPX, HTML, хүснэгт болон цахим номноос PowerPoint слайд (PPTX) үүсгэнэ: гарчиг бүрт нэг слайд, жагсаалт, хүснэгт, зураг болон кодтой.",
   "engine.odp-writer.name": "ODP бичигч (суурилагдсан)",
   "engine.odp-writer.description": "LibreOffice-гүйгээр OpenDocument үзүүлэн (ODP) үүсгэнэ: PowerPoint үзүүлэнг (PPTX, PPT) дүрс, зураг, хүснэгт болон илтгэгчийн тэмдэглэлтэй нь, мөн Markdown болон тэмдэглэгээний файл, Word баримт, ODT, HWP/HWPX, HTML, хүснэгт болон цахим номыг гарчиг бүрт нэг слайдтайгаар.",
+  "engine.odf-variants.name": "OpenDocument загвар ба хавтгай XML файл (суурилагдсан)",
+  "engine.odf-variants.description": "LibreOffice-гүйгээр OpenDocument файлыг загвар (OTT, OTS, OTP, OTG) болон хавтгай XML файл (FODT, FODS, FODP, FODG) болгож, мөн буцааж хөрвүүлнэ; баримт бичиг бүтнээрээ хадгалагдана.",
   "engine.pdf-text.name": "PDF текст (суурилагдсан)",
   "engine.pdf-text.description": "PDF-ийн текстийг унших дарааллаар нь, мөн хоёр баганатай хуудаснаас гаргаж авна (сканнердсан файлд OCR хийхгүй).",
   "engine.pdf-slides.name": "PDF слайд (суурилагдсан)",

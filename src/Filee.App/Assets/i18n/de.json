@@ -301,6 +301,8 @@
   "engine.pptx-writer.description": "Erstellt PowerPoint-Folien (PPTX) aus Markdown- und Markup-Dateien, Word-Dokumenten, ODT, HWP/HWPX, HTML, Tabellen und E-Books: eine Folie pro Überschrift, mit Listen, Tabellen, Bildern und Code.",
   "engine.odp-writer.name": "ODP-Writer (integriert)",
   "engine.odp-writer.description": "Erstellt OpenDocument-Präsentationen (ODP) ohne LibreOffice: PowerPoint-Folien (PPTX, PPT) mit Formen, Bildern, Tabellen und Notizen sowie Markdown- und Markup-Dateien, Word-Dokumente, ODT, HWP/HWPX, HTML, Tabellen und E-Books mit einer Folie pro Überschrift.",
+  "engine.odf-variants.name": "OpenDocument-Vorlagen und Flat-XML-Dateien (integriert)",
+  "engine.odf-variants.description": "Wandelt OpenDocument-Dateien ohne LibreOffice in ihre Vorlagen (OTT, OTS, OTP, OTG) und Flat-XML-Dateien (FODT, FODS, FODP, FODG) um und zurück; das ganze Dokument bleibt erhalten.",
   "engine.pdf-text.name": "PDF-Text (integriert)",
   "engine.pdf-text.description": "Extrahiert PDF-Text in Lesereihenfolge, auch aus zweispaltigen Seiten (keine Texterkennung für Scans).",
   "engine.pdf-slides.name": "PDF-Folien (integriert)",

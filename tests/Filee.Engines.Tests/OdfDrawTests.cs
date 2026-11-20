@@ -484,7 +484,7 @@ public sealed class OdfDrawTests : IDisposable
     public void Presentations_go_to_the_slide_renderer_and_drawings_to_the_drawing_converter()
     {
         Assert.All(new[] { "odp", "otp", "fodp" }, format => Assert.Contains(format, SlideFormats.Decks));
-        Assert.Equal(["odg", "fodg"], DrawingFormats.BuiltIn.Select(f => f.Id).Where(OdfDrawReader.Drawings.Contains));
+        Assert.Equal(["odg", "otg", "fodg"], DrawingFormats.BuiltIn.Select(f => f.Id).Where(OdfDrawReader.Drawings.Contains));
         // ODP → PPTX stays with LibreOffice: the PPTX writer doesn't take OpenDocument presentations.
         Assert.DoesNotContain(new PptxWriterConverter().Edges, e => OdfDrawReader.Presentations.Contains(e.From));
     }

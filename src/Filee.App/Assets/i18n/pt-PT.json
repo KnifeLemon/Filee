@@ -308,6 +308,8 @@
   "engine.pptx-writer.description": "Cria diapositivos do PowerPoint (PPTX) a partir de ficheiros Markdown e de marcação, documentos Word, ODT, HWP/HWPX, HTML, folhas de cálculo e livros digitais: um diapositivo por título, com listas, tabelas, imagens e código.",
   "engine.odp-writer.name": "Gerador ODP (motor integrado)",
   "engine.odp-writer.description": "Cria apresentações OpenDocument (ODP) sem o LibreOffice: diapositivos do PowerPoint (PPTX, PPT) com formas, imagens, tabelas e notas, e ficheiros Markdown e de marcação, documentos Word, ODT, HWP/HWPX, HTML, folhas de cálculo e livros digitais, um diapositivo por título.",
+  "engine.odf-variants.name": "Modelos e ficheiros XML planos OpenDocument (integrado)",
+  "engine.odf-variants.description": "Converte ficheiros OpenDocument nos seus modelos (OTT, OTS, OTP, OTG) e em ficheiros XML planos (FODT, FODS, FODP, FODG), e vice-versa, sem LibreOffice, mantendo o documento inteiro.",
   "engine.pdf-text.name": "Texto de PDF (motor integrado)",
   "engine.pdf-text.description": "Extrai o texto de PDF pela ordem de leitura, incluindo páginas com duas colunas (sem OCR para digitalizações).",
   "engine.pdf-slides.name": "Diapositivos de PDF (motor integrado)",

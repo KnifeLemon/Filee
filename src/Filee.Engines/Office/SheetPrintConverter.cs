@@ -1,4 +1,4 @@
-// XLSX (and XLSM / XLTX), XLSB, XLS (and XLT) and ODS → PDF printed the way Excel prints them, without Excel or LibreOffice:
+// XLSX (and XLSM / XLTX), XLSB, XLS (and XLT) and ODS (and OTS / FODS) → PDF printed the way Excel prints them, without Excel or LibreOffice:
 // the built-in readers (Office/Sheets) keep each sheet's page setup, and SheetPrinter lays the pages out with Excel's
 // page logic and writes them with the PDF writer of the Filee renderer. CSV and TSV have no page setup and keep their
 // route through the HWPX writer (each sheet fitted to the page width).
@@ -28,7 +28,7 @@ public sealed class SheetPrintConverter : IConverter
     /// <summary>Shown with a workbook printed without what <see cref="SheetCapabilities"/> named.</summary>
     internal const string LeftOutNotice = "notice.sheet_objects_left_out";
 
-    private static readonly string[] Sources = ["xlsx", "xlsm", "xltx", "xlsb", "xls", "xlt", "ods"];
+    private static readonly string[] Sources = ["xlsx", "xlsm", "xltx", "xlsb", "xls", "xlt", "ods", "ots", "fods"];
 
     public string Id => "sheet-print";
     public string DisplayName => "Spreadsheet printing (built-in)";
@@ -42,7 +42,7 @@ public sealed class SheetPrintConverter : IConverter
     /// </summary>
     internal Func<ConversionStep, IProgress<double>?, CancellationToken, Task<IReadOnlyList<string>>?>? Fallback { get; set; }
 
-    public EngineStatus GetStatus() => EngineStatus.Available("XLSX, XLSB, XLS, ODS → PDF", EngineVersions.BuiltIn);
+    public EngineStatus GetStatus() => EngineStatus.Available("XLSX, XLSB, XLS, ODS, OTS, FODS → PDF", EngineVersions.BuiltIn);
 
     /// <summary>Gives the sheet printer among <paramref name="converters"/> LibreOffice, when it is there, for what it doesn't draw.</summary>
     internal static IReadOnlyList<IConverter> WithFallback(IReadOnlyList<IConverter> converters)

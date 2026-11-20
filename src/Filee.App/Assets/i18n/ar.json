@@ -301,6 +301,8 @@
   "engine.pptx-writer.description": "ينشئ شرائح PowerPoint ‏(PPTX) من ملفات Markdown ولغات الترميز ومستندات Word وODT وHWP/HWPX وHTML وجداول البيانات والكتب الإلكترونية: شريحة لكل عنوان، مع القوائم والجداول والصور والتعليمات البرمجية.",
   "engine.odp-writer.name": "كاتب ODP (مدمج)",
   "engine.odp-writer.description": "ينشئ عروض OpenDocument التقديمية ‏(ODP) دون LibreOffice: شرائح PowerPoint ‏(PPTX وPPT) مع أشكالها وصورها وجداولها وملاحظات المتحدث، وملفات Markdown ولغات الترميز ومستندات Word وODT وHWP/HWPX وHTML وجداول البيانات والكتب الإلكترونية بشريحة لكل عنوان.",
+  "engine.odf-variants.name": "قوالب OpenDocument وملفات XML المسطحة (مدمج)",
+  "engine.odf-variants.description": "يحوّل ملفات OpenDocument إلى قوالبها ‏(OTT وOTS وOTP وOTG) وملفات XML المسطحة ‏(FODT وFODS وFODP وFODG) والعكس دون LibreOffice، مع الحفاظ على المستند كاملًا.",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "استخراج نصوص PDF بترتيب القراءة، بما في ذلك الصفحات ذات العمودين (دون تعرّف ضوئي OCR للمستندات الممسوحة).",
   "engine.pdf-slides.name": "PDF slides (built-in)",

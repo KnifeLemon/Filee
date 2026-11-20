@@ -301,6 +301,8 @@
   "engine.pptx-writer.description": "สร้างสไลด์ PowerPoint (PPTX) จากไฟล์ Markdown และภาษามาร์กอัป เอกสาร Word, ODT, HWP/HWPX, HTML, สเปรดชีต และอีบุ๊ก: หนึ่งสไลด์ต่อหนึ่งหัวข้อ พร้อมรายการ ตาราง รูปภาพ และโค้ด",
   "engine.odp-writer.name": "ตัวเขียน ODP (ในตัว)",
   "engine.odp-writer.description": "สร้างงานนำเสนอ OpenDocument (ODP) โดยไม่ต้องใช้ LibreOffice: สไลด์ PowerPoint (PPTX, PPT) พร้อมรูปร่าง รูปภาพ ตาราง และบันทึกผู้บรรยาย รวมถึงไฟล์ Markdown และภาษามาร์กอัป เอกสาร Word, ODT, HWP/HWPX, HTML, สเปรดชีต และอีบุ๊ก โดยหนึ่งสไลด์ต่อหนึ่งหัวข้อ",
+  "engine.odf-variants.name": "เทมเพลตและไฟล์ XML แบบแบน OpenDocument (ในตัว)",
+  "engine.odf-variants.description": "แปลงไฟล์ OpenDocument เป็นเทมเพลต (OTT, OTS, OTP, OTG) และไฟล์ XML แบบแบน (FODT, FODS, FODP, FODG) และแปลงกลับได้โดยไม่ต้องใช้ LibreOffice โดยเก็บเอกสารไว้ครบถ้วน",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "แยกข้อความของ PDF ตามลำดับการอ่าน รวมถึงหน้าที่มีสองคอลัมน์ (ไม่มี OCR สำหรับเอกสารสแกน)",
   "engine.pdf-slides.name": "PDF slides (built-in)",
