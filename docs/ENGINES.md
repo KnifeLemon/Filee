@@ -848,7 +848,9 @@ for dollars: no space inside the delimiters, no digit after the closing `$`, cod
 equations, → HTML and EPUB MathML (with the TeX as its annotation). Display math alone in its paragraph is centred.
 An unknown command stays as its text (`\foo`); a formula longer than 32,768 characters or nested deeper than 100
 levels stays its source, and the equations count against `MaxObjects`. Writers without equations keep the TeX
-source as written (`$\frac{a}{b}$`).
+source as written (`$\frac{a}{b}$`). The other way, Word math, 한글 equations and MathML become TeX in Markdown,
+LaTeX and AsciiDoc (`Hwp/Hwpx/TexMathWriter.cs`) and Typst math in Typst (`TypstMathWriter.cs`), so DOCX or HWP →
+Markdown keeps them as equations.
 
 ## Spreadsheets
 
@@ -4168,8 +4170,9 @@ Filee renderer take it: → HWPX, DOCX, ODT, PDF), and a writer from the model. 
 `markup`) offers every built-in reader's format → each of these languages, and each of them → Markdown
 (`MarkdownWriter`, pictures in a `<name>_files` folder), HTML (one page, pictures embedded) and TXT. Its edges cost 8
 like the DOCX writer's, below Pandoc's (10 out of a markup language, 11 into one), so the built-in route wins
-wherever both exist. Pandoc keeps what only it does: LaTeX, Typst, AsciiDoc and man pages (macro and scripting
-languages), slides (PPTX), and RTF and EPUB written straight from a markup language.
+wherever both exist. LaTeX, AsciiDoc, Typst and man pages (macro and scripting languages) are written here too, from
+every built-in reader's format ([below](#latex-asciidoc-typst-and-man-pages)); Pandoc keeps reading them, slides
+(PPTX), and RTF and EPUB written straight from a markup language.
 
 What the readers share (`MarkupBlocks`): code blocks are shaded paragraphs as the Markdown and HTML readers make them
 (a blank line inside one is an empty shaded run, so a block stays one block), quotes are indented 2000 HWPUNIT per
@@ -4313,6 +4316,44 @@ inlinemediaobject pictures (linked into `<name>_files`), footnotes, links, ancho
 HWPX / PDF / HTML / Markdown with Pandoc absent and the hostile inputs (DTDs and entity expansion, nesting, a
 million openers, wide and long tables); `DocumentFuzzTests` mutates each.
 
+### LaTeX, AsciiDoc, Typst and man pages
+
+Written, not read (`MarkupConverter.WriteOnly`, cost 8 like the other writers, below Pandoc's 11): `LatexWriter`,
+`AsciiDocWriter`, `TypstWriter` and `ManWriter` in `Hwp/Hwpx/Markup/`, on the walk the other text markup writers
+share (`MarkupTextWriter`: `Nesting.Limit` first, the table grid and text caps of `MarkupWriteBudget`, cancellation
+between blocks). The result is written through a temporary file beside it.
+
+- **LaTeX**: a whole article for pdfLaTeX, XeLaTeX or LuaLaTeX (`iftex`: fontenc / inputenc or fontspec; xeCJK or
+  luatexja when there is CJK text, which needs XeLaTeX or LuaLaTeX). The preamble loads only what the body uses:
+  amsmath / amssymb, graphicx (pictures no wider than the text), longtable / array / multirow, ulem, hyperref.
+  Unnumbered `\section` … `\subparagraph`, `quote`, itemize / enumerate to LaTeX's four levels (numbers as item
+  labels), `verbatim` (typewriter lines in table cells or when the code holds `\end{verbatim}`), longtable (tabular
+  in a cell) with p columns, `\multicolumn`, `\multirow` and `\cline` rules that leave merged cells open, header
+  rows repeated, `\href`, `\includegraphics`, `\footnote`. Every special character is escaped (`\ { } $ & # _ % ~
+  ^`, brackets braced so `\` and `\item` don't take them as options, `< > | "` and backticks, the `--` `''`
+  ligatures).
+- **AsciiDoc** (Asciidoctor): `= Title`, `:stem: latexmath` when there are equations, `==` sections, `+` line
+  breaks, `____` quotes, `*` / `.` lists (`[start=N]`), `----` listings (callouts and preprocessor directives
+  defused), `|===` tables with `2.3+|` spans and `a|` cells holding blocks (one nested `!===` level), roles for
+  underline and strike, `link:++…++[…]`, `image:`, `footnote:[…]`. Text that would format, substitute, link or start a
+  block goes into `++passthroughs++`, `{plus}` / `{vbar}`, or gets `{empty}` at the line start.
+- **Typst** (0.11 or later): `#set document`, `=` headings, `\` line breaks, `#quote`, `-` / `N.` lists, raw blocks,
+  `#table` with `table.header` and `table.cell(colspan:, rowspan:)`, `#strong` `#emph` `#underline` `#strike`
+  `#super` `#sub` `#highlight`, `#link`, `#image`, `#footnote`; every markup character escaped.
+- **man**: `.TH`, `.SH` / `.SS`, `.PP`, `.RS` / `.RE`, `.IP` items, `.EX` / `.EE`, tbl tables (`s` and `^` for
+  merged cells, `T{ … T}` cells), fonts `\fB \fI \f(CR`, links as text and `<URL>`, footnotes under NOTES. ASCII
+  only (`\e`, `\-`, `\(dq`, `\(aq`, `\[uXXXX]`); a line that would be a request gets `\&`. No pictures.
+- Equations: TeX (`$…$`, `\[…\]`; a source that is a display environment of its own as it is) in LaTeX, Markdown and
+  AsciiDoc, from the equation's TeX source or written from its tree by `Hwp/Hwpx/TexMathWriter.cs` (Word math, 한글
+  equations, MathML: symbols by the commands `LatexMath` reads, amsmath environments, `\text` for words);
+  `Hwp/Hwpx/TypstMathWriter.cs` writes Typst's own math (`frac(a, b)`, `x_(i)^(2)`, `mat(…)`, `cases(…)`, Unicode
+  symbols, escaped syntax). man pages get the linear text. A tree deeper than 256 levels keeps its text.
+
+`MacroMarkupWriterTests` builds one model in code with all of the above and checks each language's text and
+structure (balanced braces and environments, requests, brackets), the routes and cancellation; `TexMathWriterTests`
+reads TeX, writes it back and reads it again to the same tree, and reads Markdown written from Word and 한글 equations
+back as the same equations; `MarkupWriterLimitTests` puts the four writers through its hostile models.
+
 ### Mind maps
 
 `MindMapReader` (#1543, #1004) reads FreeMind / Freeplane (`.mm`) and XMind (`.xmind`) maps as an **outline**: the
@@ -4354,7 +4395,8 @@ many topics, an oversized part, a ZIP bomb); `MindMapFuzzTests` mutates the map,
 ## Pandoc
 
 `Office/PandocConverter.cs` runs Pandoc for the markup languages Filee doesn't read itself: LaTeX, AsciiDoc
-(`.adoc`, `.asciidoc`), Typst (`.typ`) and man pages (`.man`) — macro and scripting languages. Pandoc 3.12 also
+(`.adoc`, `.asciidoc`), Typst (`.typ`) and man pages (`.man`) — macro and scripting languages (Filee writes them
+itself, [above](#latex-asciidoc-typst-and-man-pages): Pandoc reads them and converts between them). Pandoc 3.12 also
 reads and writes reStructuredText, Org (`.org`), MediaWiki (`.mediawiki`, `.wiki`), DocBook (`.dbk`, `.docbook`;
 written as DocBook 5), Jupyter notebooks (`.ipynb`), Textile (`.textile`) and OPML (`.opml`), but Filee reads and
 writes those itself ([above](#lightweight-markup-languages)) and its routes win; Pandoc's stay for RTF and EPUB
