@@ -1,6 +1,7 @@
 // Equations for 한글 (hp:equation): a small math tree that readers build (DOCX math, see Docx/OmmlReader), written as
 // 한글's equation script (Equation Version 60, e.g. "{a} over {b}", "sqrt {x}", "SUM _{i=1} ^{n}"), as linear text
-// ("(a)/(b)", "√(x)") for formats without equations, and measured for the equation's box.
+// ("(a)/(b)", "√(x)") for formats without equations, as plain text ("x²", "20 이상") for spreadsheet cells, and measured
+// for the equation's box.
 //
 // The box: 한글 stores the size an equation was laid out at (hp:sz), and rhwp stretches the drawing to that width when
 // it renders the document (to PDF), so a box that is too wide or too narrow distorts the equation. Measure follows
@@ -423,20 +424,30 @@ internal static class EquationScript
     // ───────────────────────── Linear text ─────────────────────────
 
     /// <summary>The equation as one line of text, for formats without equations: "(a+b)/(2c)", "x_i^2", "√(x)".</summary>
-    public static string Linear(MathNode node)
+    public static string Linear(MathNode node) => Text(node, plain: false);
+
+    /// <summary>
+    /// The equation as plain text, for a spreadsheet cell: as <see cref="Linear(MathNode)"/>, but a script that
+    /// Unicode has characters for is written with them ("x²", "cm³", "a₁", "f⁻¹"), and one of words in a script other
+    /// than Latin follows its base after a space (한글's "20 ^{이상}" is "20 이상"); other scripts keep the linear form
+    /// ("x^(a+b)").
+    /// </summary>
+    public static string Plain(MathNode node) => Text(node, plain: true).Trim();
+
+    private static string Text(MathNode node, bool plain)
     {
         var sb = new StringBuilder();
-        Linear(node, sb);
+        Linear(node, sb, plain);
         return sb.ToString();
     }
 
-    private static void Linear(MathNode node, StringBuilder sb)
+    private static void Linear(MathNode node, StringBuilder sb, bool plain)
     {
         switch (node)
         {
             case MathRow row:
                 foreach (var item in row.Items)
-                    Linear(item, sb);
+                    Linear(item, sb, plain);
                 break;
             case MathText text:
                 sb.Append(text.Text);
@@ -457,35 +468,35 @@ internal static class EquationScript
                 sb.Append(function.Name).Append(' ');
                 break;
             case MathFraction fraction:
-                LinearOperand(fraction.Numerator, sb);
+                LinearOperand(fraction.Numerator, sb, plain);
                 sb.Append(fraction.Bar ? "/" : " ");
-                LinearOperand(fraction.Denominator, sb);
+                LinearOperand(fraction.Denominator, sb, plain);
                 break;
             case MathRoot root:
                 if (root.Index is not null)
                 {
                     sb.Append('[');
-                    Linear(root.Index, sb);
+                    Linear(root.Index, sb, plain);
                     sb.Append(']');
                 }
                 sb.Append('√');
-                LinearOperand(root.Body, sb);
+                LinearOperand(root.Body, sb, plain);
                 break;
             case MathStack stack:
-                Linear(stack.AsScripts(), sb);
+                Linear(stack.AsScripts(), sb, plain);
                 break;
             case MathScripts scripts:
-                Linear(scripts.Base, sb);
-                LinearScripts(scripts.Sub, scripts.Sup, sb);
+                Linear(scripts.Base, sb, plain);
+                LinearScripts(scripts.Sub, scripts.Sup, sb, plain);
                 break;
             case MathBigOperator big:
                 sb.Append(big.Glyph);
-                LinearScripts(big.Lower, big.Upper, sb);
+                LinearScripts(big.Lower, big.Upper, sb, plain);
                 sb.Append(' ');
                 break;
             case MathLimit limit:
                 sb.Append("lim");
-                LinearScripts(limit.Lower, null, sb);
+                LinearScripts(limit.Lower, null, sb, plain);
                 sb.Append(' ');
                 break;
             case MathMatrix matrix:
@@ -498,25 +509,25 @@ internal static class EquationScript
                         _ => ("[", "]"),
                     };
                     sb.Append(open);
-                    LinearCells(matrix.Rows, ", ", sb);
+                    LinearCells(matrix.Rows, ", ", sb, plain);
                     sb.Append(close);
                     break;
                 }
             case MathCases cases:
                 sb.Append('{');
-                LinearCells(cases.Rows, " ", sb);
+                LinearCells(cases.Rows, " ", sb, plain);
                 break;
             case MathPile pile:
                 for (var i = 0; i < pile.Rows.Count; i++)
                 {
                     if (i > 0)
                         sb.Append("; ");
-                    Linear(pile.Rows[i], sb);
+                    Linear(pile.Rows[i], sb, plain);
                 }
                 break;
             case MathBrackets brackets:
                 sb.Append(brackets.Left);
-                Linear(brackets.Body, sb);
+                Linear(brackets.Body, sb, plain);
                 sb.Append(brackets.Right);
                 break;
             case MathAccent accent:
@@ -535,7 +546,7 @@ internal static class EquationScript
                         "dyad" => "\u20E1",
                         _ => "\u0332", // UNDERLINE, under
                     };
-                    var body = Linear(accent.Body);
+                    var body = Text(accent.Body, plain);
                     if (body.Length == 1)
                     {
                         sb.Append(body).Append(mark);
@@ -547,7 +558,7 @@ internal static class EquationScript
                     break;
                 }
             case MathStyled styled:
-                Linear(styled.Body, sb);
+                Linear(styled.Body, sb, plain);
                 break;
             case MathSpace:
                 sb.Append(' ');
@@ -555,24 +566,68 @@ internal static class EquationScript
         }
     }
 
-    private static void LinearScripts(MathNode? sub, MathNode? sup, StringBuilder sb)
+    private static void LinearScripts(MathNode? sub, MathNode? sup, StringBuilder sb, bool plain)
     {
+        if (plain)
+        {
+            if (sub is not null)
+                PlainScript(sub, '_', Subscripts, sb);
+            if (sup is not null)
+                PlainScript(sup, '^', Superscripts, sb);
+            return;
+        }
         if (sub is not null)
         {
             sb.Append('_');
-            LinearOperand(sub, sb);
+            LinearOperand(sub, sb, plain);
         }
         if (sup is not null)
         {
             sb.Append('^');
-            LinearOperand(sup, sb);
+            LinearOperand(sup, sb, plain);
+        }
+    }
+
+    /// <summary>Characters Unicode has as superscripts (and every font Excel falls back to draws).</summary>
+    private static readonly Dictionary<char, char> Superscripts = Scripts("0123456789+-−=()ni", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁻⁼⁽⁾ⁿⁱ");
+
+    /// <summary>Characters Unicode has as subscripts.</summary>
+    private static readonly Dictionary<char, char> Subscripts = Scripts("0123456789+-−=()aeoxijn", "₀₁₂₃₄₅₆₇₈₉₊₋₋₌₍₎ₐₑₒₓᵢⱼₙ");
+
+    private static Dictionary<char, char> Scripts(string from, string to) =>
+        from.Zip(to).ToDictionary(p => p.First, p => p.Second);
+
+    /// <summary>
+    /// A sub- or superscript as plain text: in script characters when it has them all, a word of letters outside
+    /// Latin after a space (한글 writes 이상, 미만 raised after a number), else <paramref name="mark"/> and the operand.
+    /// </summary>
+    private static void PlainScript(MathNode script, char mark, Dictionary<char, char> characters, StringBuilder sb)
+    {
+        var text = Text(script, plain: true).Trim();
+        if (text.Length == 0)
+            return;
+        if (text.All(characters.ContainsKey))
+        {
+            foreach (var ch in text)
+                sb.Append(characters[ch]);
+        }
+        else if (text.All(ch => char.IsLetter(ch) || ch == ' ') && text.Any(ch => char.IsLetter(ch) && ch >= 0x250))
+        {
+            if (sb.Length > 0 && sb[^1] != ' ')
+                sb.Append(' ');
+            sb.Append(text).Append(' ');
+        }
+        else
+        {
+            sb.Append(mark);
+            LinearOperand(script, sb, plain: true);
         }
     }
 
     /// <summary>An operand of /, _ or ^: in brackets unless it is one letter, symbol, number or bracketed group.</summary>
-    private static void LinearOperand(MathNode node, StringBuilder sb)
+    private static void LinearOperand(MathNode node, StringBuilder sb, bool plain)
     {
-        var text = Linear(node);
+        var text = Text(node, plain);
         var single = node is MathRow { Items.Count: 1 } row ? row.Items[0] : node;
         var simple = single is MathNumber or MathCommand or MathBrackets or MathText { Text.Length: 1 };
         if (simple || text.Length <= 1)
@@ -581,7 +636,7 @@ internal static class EquationScript
             sb.Append('(').Append(text).Append(')');
     }
 
-    private static void LinearCells(IReadOnlyList<IReadOnlyList<MathNode>> rows, string cellSeparator, StringBuilder sb)
+    private static void LinearCells(IReadOnlyList<IReadOnlyList<MathNode>> rows, string cellSeparator, StringBuilder sb, bool plain)
     {
         for (var r = 0; r < rows.Count; r++)
         {
@@ -591,7 +646,7 @@ internal static class EquationScript
             {
                 if (c > 0)
                     sb.Append(cellSeparator);
-                Linear(rows[r][c], sb);
+                Linear(rows[r][c], sb, plain);
             }
         }
     }

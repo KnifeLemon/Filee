@@ -2204,7 +2204,8 @@ Filee's own reader; not yet opened in LibreOffice by the tests.
   units are one merged cell (column and row spans). A table without side or bottom rules still reaches as far as
   most of its rules do. Words go into the cell under their centre and are read like the rest of the page
   (paragraphs, line breaks, alignment within the cell, fonts, sizes, bold / italic, colours); each cell gets the
-  borders that are drawn around it (weight, colour, dashed or solid), shading from a filled rectangle under it, and
+  borders that are drawn around it (weight as the page draws it, the line width scaled by the transformation it was
+  stroked under; colour; dashed or solid), shading from a filled rectangle under it, and
   a vertical alignment from where its text sits. Only clear tables are rebuilt: at least 2 rows and 2 columns,
   every merged cell a rectangle, no rule through the middle of a word, and text in at least two cells. A box around
   a note, underlines, separators and empty grids (a chart's frame) stay as they were. Not rebuilt: tables without
@@ -2449,16 +2450,24 @@ writers, with their merged cells (`gridSpan` / `vMerge`, DOC's merge flags, `num
 out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, shared by both).
 
 - **One sheet per table** ("Table 1", "Table 2" …) in reading order, a table inside a cell too (its text isn't repeated
-  in the outer cell). Nothing is joined: a Word table running over a page break is one table already. A table without
+  in the outer cell), and a table in a text box or a shape with text (Word text boxes, 한글 글상자 and drawing objects)
+  where the box stands. Nothing is joined: a Word table running over a page break is one table already. A table without
   any text, such as a web page's layout table around the real one, gets no sheet.
+- **Boxes**: a table of one cell is a box around text (a 보기 box, a title, a source tag, a picture with its caption),
+  not data. When the document has a table of more cells, the boxes get no sheet; when it has only boxes, they share one
+  sheet, a row each in reading order.
 - **Numbers and dates** become real values by the same rules as PDF → XLSX (above). 한글 files are read as the renderer
   reads them, so a number typed as an equation (common in 한글 tables) is its text ("40"), not its script ("40~~~").
+  Equations are plain text (`EquationScript.Plain`): scripts Unicode has characters for are written with them ("x²",
+  "cm³", "f⁻¹"), a raised word follows its base ("20 ^{이상}" is "20 이상"), other scripts keep the linear form.
 - Cells keep their own borders (a Word table style's lines, the HTML grid unless `border="0"`), shading, vertical
   alignment, bold and italic (when all the cell's text is), and centred or right alignment (when all its paragraphs
   are; left and justified text keeps Excel's own, numbers to the right). Column widths come from the document's grid
   (Word, DOC, RTF, ODT, 한글) or the HTML `<col>` / first-row widths (shares of an A4 text width); without either, a
   column is as wide as its longest line, up to 60 characters. Rows fit their text: a document's row height is only a
-  minimum. Excel doesn't fit a row to a merged cell, so the rows under a merged cell get the height its lines need.
+  minimum. Excel doesn't fit a row to a merged cell, so the rows under a merged cell get the height its text needs,
+  measured as the sheet printer measures a cell (its font, wrapped at the merged width); each row keeps what its own
+  cells need.
   Leading header rows (Word's and RTF's "repeat as header row", ODT header rows, 한글's title cells, HTML `<thead>` or
   rows of `<th>`) are frozen.
 - A file without tables fails with `error.document_no_tables`. The edges are direct only, like PDF → XLSX: a PDF,

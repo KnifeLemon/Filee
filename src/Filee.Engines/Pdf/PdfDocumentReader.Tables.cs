@@ -15,6 +15,7 @@
 // detected; a table running over several pages becomes one table per page.
 
 using Filee.Engines.Hwp.Hwpx;
+using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.Core;
 using UglyToad.PdfPig.Graphics;
 
@@ -86,9 +87,12 @@ internal sealed partial class PdfDocumentReader
 
     /// <summary>
     /// The rules of a page (stroked lines and edges, thin filled rectangles) and the larger filled rectangles that
-    /// may be cell shading, placed like the words. Invisible (white, clipping) paths are left out.
+    /// may be cell shading, placed like the words. Invisible (white, clipping) paths are left out. A stroked line is as
+    /// thick as the page draws it: its width scaled by the transformation it was painted under
+    /// (<paramref name="scales"/>, from <see cref="StrokeScales"/>), as the slides' shapes are.
     /// </summary>
-    private static (List<Rule> Rules, List<(PdfRectangle Bounds, string Color)> Shades) PageRules(IEnumerable<PdfPath> paths)
+    private static (List<Rule> Rules, List<(PdfRectangle Bounds, string Color)> Shades) PageRules(IEnumerable<PdfPath> paths,
+        Dictionary<PdfPath, double>? scales)
     {
         var rules = new List<Rule>();
         var shades = new List<(PdfRectangle, string)>();
@@ -133,7 +137,7 @@ internal sealed partial class PdfDocumentReader
 
                 if (stroke is not null && !IsWhite(stroke))
                 {
-                    var thickness = Math.Max(0.25, path.LineWidth);
+                    var thickness = Math.Max(0.25, path.LineWidth * (scales?.GetValueOrDefault(path, 1) ?? 1));
                     foreach (var (from, to) in lines)
                     {
                         if (Math.Abs(from.Y - to.Y) <= 0.5 && Math.Abs(from.X - to.X) >= MinRuleLength)
@@ -213,9 +217,9 @@ internal sealed partial class PdfDocumentReader
     /// Ruled tables of a page; the words in them are taken out of <paramref name="words"/>. Grids are tried largest
     /// first, and a grid inside a table already found (a table in a cell) stays part of that cell.
     /// </summary>
-    private static List<RuledTable> RuledTables(IEnumerable<PdfPath> paths, List<TextWord> words)
+    private static List<RuledTable> RuledTables(Page page, List<TextWord> words)
     {
-        var (rules, shades) = PageRules(paths);
+        var (rules, shades) = PageRules(page.Paths, StrokeScales(page.Operations, page.Paths));
         var tables = new List<RuledTable>();
         foreach (var group in Grids(rules).OrderByDescending(g => Area(Extent(g))))
         {
