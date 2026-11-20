@@ -50,12 +50,14 @@ internal sealed partial class HwpxReader
     /// Paragraphs and tables of a paragraph list (cell, header, footer, note, text box, caption). Lists nested deeper
     /// than <see cref="Nesting.MaxDepth"/> give their text only, as plain paragraphs.
     /// </summary>
-    private List<HBlock> ReadSubList(XElement? subList)
+    /// <param name="turned">The list's holder draws it vertically (a cell, a text box: <see cref="TextFlow"/>), so it isn't counted as left out.</param>
+    private List<HBlock> ReadSubList(XElement? subList, bool turned = false)
     {
         var blocks = new List<HBlock>();
         if (subList is null)
             return blocks;
-        CountVerticalText(subList);
+        if (!turned)
+            CountVerticalText(subList);
         using var level = _budget.Enter();
         if (_depth >= Nesting.MaxDepth)
             return Nesting.PlainParagraphs(subList, "p", "t");
@@ -424,8 +426,19 @@ internal sealed partial class HwpxReader
     }
 
     /// <summary>
-    /// Counts text a section or paragraph list (cell, text box) writes top to bottom (textDirection VERTICAL /
-    /// VERTICALALL), which is set horizontally.
+    /// How a cell's or text box's paragraph list runs: 세로쓰기 (VERTICAL: Hangul and Hanja upright, Latin on its side),
+    /// or with Latin upright too (VERTICALALL).
+    /// </summary>
+    private static HTextFlow TextFlow(XElement? subList) => Attr(subList, "textDirection") switch
+    {
+        "VERTICAL" => HTextFlow.Vertical,
+        "VERTICALALL" => HTextFlow.Stacked,
+        _ => HTextFlow.Horizontal,
+    };
+
+    /// <summary>
+    /// Counts text a section or a paragraph list other than a cell's or text box's (a header, a note) writes top to
+    /// bottom (textDirection VERTICAL / VERTICALALL), which is set horizontally.
     /// </summary>
     private void CountVerticalText(XElement element)
     {
@@ -772,11 +785,12 @@ internal sealed partial class HwpxReader
                     Column = address is null ? -1 : Math.Clamp(Int(address, "colAddr"), 0, maxColumns - 1),
                     RowSpan = Math.Max(1, Int(span, "rowSpan", 1)),
                     VerticalAlign = VerticalAlign(Attr(subList, "vertAlign")),
+                    TextFlow = TextFlow(subList),
                 };
                 cell.ColSpan = Math.Clamp(Int(span, "colSpan", 1), 1, maxColumns - Math.Max(0, cell.Column));
                 if (BorderFill(Attr(tc, "borderFillIDRef")) is { } borderFill)
                     (cell.Borders, cell.Fill, cell.FillPicture) = borderFill;
-                cell.Blocks.AddRange(ReadSubList(subList));
+                cell.Blocks.AddRange(ReadSubList(subList, turned: true));
                 row.Cells.Add(cell);
 
                 if (cell.RowSpan == 1 && Int(size, "height") is > 0 and var h)

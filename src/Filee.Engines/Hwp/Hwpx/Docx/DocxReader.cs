@@ -1428,7 +1428,25 @@ internal sealed partial class DocxReader
         return note;
     }
 
-    /// <summary>Counts text a section or cell writes top to bottom (w:textDirection), which is set horizontally.</summary>
+    /// <summary>How a cell's text runs (w:textDirection; the strict names too): top to bottom East Asian style, or bottom to top.</summary>
+    private static HTextFlow TextFlow(XElement? properties) => Val(properties?.Element(W + "textDirection")) switch
+    {
+        "tbRl" or "tbRlV" or "tbLrV" or "tb" or "tbV" => HTextFlow.Vertical,
+        "btLr" => HTextFlow.Up,
+        _ => HTextFlow.Horizontal,
+    };
+
+    /// <summary>How a text box's text runs (wps:bodyPr vert), as DrawingML names it.</summary>
+    internal static HTextFlow DrawingTextFlow(string? vert) => vert switch
+    {
+        "vert" => HTextFlow.Down,
+        "vert270" => HTextFlow.Up,
+        "eaVert" or "mongolianVert" => HTextFlow.Vertical,
+        "wordArtVert" or "wordArtVertRtl" => HTextFlow.Stacked,
+        _ => HTextFlow.Horizontal,
+    };
+
+    /// <summary>Counts text a section writes top to bottom (w:textDirection), which is set horizontally.</summary>
     private void CountVerticalText(XElement? properties)
     {
         if (Val(properties?.Element(W + "textDirection")) is "tbRl" or "btLr" or "tbRlV" or "tbLrV")

@@ -1776,6 +1776,8 @@
   "sheet_studio.apply_fix": "Vorgeschlagenes Layout übernehmen",
   "sheet_studio.add_region": "+ Weiteren Bereich hinzufügen",
   "sheet_studio.region_name": "{0} · Bereich {1}",
+  "sheet_studio.drawn_by_builtin": "Vorschau vom integrierten Tabellendruck von Filee gezeichnet",
+  "sheet_studio.drawn_by_libreoffice": "Vorschau von LibreOffice gezeichnet",
   "whats_new.title": "Neu in Filee {0}",
   "whats_new.previous": "Zurück",
   "whats_new.next": "Weiter",

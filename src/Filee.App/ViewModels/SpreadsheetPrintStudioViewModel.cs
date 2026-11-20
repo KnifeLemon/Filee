@@ -1,6 +1,7 @@
 // State for the Excel → PDF print studio: a non-destructive plan per sheet and previews rendered by the same engine
 // as the final PDF (Filee's sheet printer, or LibreOffice when chosen: SpreadsheetPrintService). The thumbnail strip
-// only renders the pages its list shows (RequestThumbnail).
+// only renders the pages its list shows (RequestThumbnail) and lets go of those it scrolls away from
+// (ReleaseThumbnail); a caption under the preview names the engine that drew it.
 
 using System.Collections.ObjectModel;
 using Avalonia.Media.Imaging;
@@ -23,7 +24,12 @@ public sealed partial class SpreadsheetPreviewPage(int number) : ObservableObjec
 {
     public int Number { get; } = number;
     [ObservableProperty] private Bitmap? _thumbnail;
-    public void Dispose() => Thumbnail?.Dispose();
+    public void Dispose()
+    {
+        var thumbnail = Thumbnail;
+        Thumbnail = null;
+        thumbnail?.Dispose();
+    }
 }
 
 public sealed partial class SpreadsheetSheetPlan : ObservableObject
@@ -160,6 +166,8 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
     private SpreadsheetRenderedRegion? _rendered;
     private CancellationTokenSource? _thumbnailCancellation;
     private readonly List<SpreadsheetPreviewPage> _wantedThumbnails = [];
+    /// <summary>The pages the strip has items for: only these keep (or get) a thumbnail.</summary>
+    private readonly HashSet<SpreadsheetPreviewPage> _shownPages = [];
     /// <summary>The region whose thumbnails are being rendered; null when none are.</summary>
     private SpreadsheetRenderedRegion? _thumbnailsFor;
     private bool _closed;
@@ -220,6 +228,13 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
     [ObservableProperty] private string _status = "";
     [ObservableProperty] private double _exportProgress;
     [ObservableProperty] private bool _onePdfPerSheet;
+
+    /// <summary>Which engine drew the preview (the built-in sheet printer or LibreOffice); empty before the first one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreviewEngine))]
+    private string _previewEngine = "";
+
+    public bool HasPreviewEngine => PreviewEngine.Length > 0;
 
     /// <summary>What the printer left out of the previewed or exported pages (charts, …); empty when nothing.</summary>
     [ObservableProperty]
@@ -424,6 +439,7 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
             }
             IsBusy = true;
             Status = _loc["sheet_studio.rendering"];
+            var engine = _service.Engine;
             var rendered = await _service.RenderAsync(_workbook!, sheet.ToRegion(), cancellationToken);
             if (_closed || cancellationToken.IsCancellationRequested)
             {
@@ -439,6 +455,7 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
             SelectedPage = Pages.FirstOrDefault();
             Status = _loc.Format("sheet_studio.page_count", Pages.Count);
             Notice = NoticeText(rendered.Notices);
+            PreviewEngine = EngineCaption(engine);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -453,6 +470,14 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
                 IsBusy = false;
         }
     }
+
+    /// <summary>The caption naming the engine that drew the preview.</summary>
+    private string EngineCaption(SpreadsheetPrintEngine? engine) => engine switch
+    {
+        SpreadsheetPrintEngine.BuiltIn => _loc["sheet_studio.drawn_by_builtin"],
+        SpreadsheetPrintEngine.LibreOffice => _loc["sheet_studio.drawn_by_libreoffice"],
+        _ => "",
+    };
 
     private async Task InitializeAsync()
     {
@@ -486,6 +511,7 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
     /// </summary>
     public void RequestThumbnail(SpreadsheetPreviewPage page)
     {
+        _shownPages.Add(page);
         if (_closed || page.Thumbnail is not null || _rendered is not { } rendered
             || _thumbnailCancellation is not { IsCancellationRequested: false } cancellation
             || !Pages.Contains(page) || _wantedThumbnails.Contains(page))
@@ -493,6 +519,19 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
         _wantedThumbnails.Add(page);
         if (_thumbnailsFor != rendered)
             _ = LoadThumbnailsAsync(rendered, cancellation.Token);
+    }
+
+    /// <summary>
+    /// Lets go of the thumbnail of a page the strip no longer shows (its list cleared the page's item), so scrolling
+    /// through a long sheet keeps only the pages in view in memory; it is rendered again when it comes back.
+    /// </summary>
+    public void ReleaseThumbnail(SpreadsheetPreviewPage page)
+    {
+        _shownPages.Remove(page);
+        _wantedThumbnails.Remove(page);
+        var old = page.Thumbnail;
+        page.Thumbnail = null;
+        old?.Dispose();
     }
 
     private async Task LoadThumbnailsAsync(SpreadsheetRenderedRegion rendered, CancellationToken cancellationToken)
@@ -515,7 +554,8 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
                 foreach (var (pageNumber, bitmap) in bitmaps)
                 {
                     if (_closed || cancellationToken.IsCancellationRequested || _rendered != rendered
-                        || batch.FirstOrDefault(page => page.Number == pageNumber) is not { } page || !Pages.Contains(page))
+                        || batch.FirstOrDefault(page => page.Number == pageNumber) is not { } page || !Pages.Contains(page)
+                        || !_shownPages.Contains(page))
                     {
                         bitmap.Dispose();
                         continue;
@@ -586,6 +626,7 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
         _thumbnailCancellation?.Dispose();
         _thumbnailCancellation = null;
         _wantedThumbnails.Clear();
+        _shownPages.Clear();
         foreach (var page in Pages) page.Dispose();
         Pages.Clear();
         var preview = PreviewImage;

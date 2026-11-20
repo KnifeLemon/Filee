@@ -79,6 +79,14 @@ internal sealed class PageContent(float width, float height)
         _items.Add(new GlyphItem(run));
     }
 
+    /// <summary>Adds an item taken from another page's drawing as it is.</summary>
+    public void Add(PageItem item)
+    {
+        if (item is GlyphItem glyphs)
+            glyphs.Run.Validate();
+        _items.Add(item);
+    }
+
     /// <summary>Draws something other than text (paths, fills, pictures) with Skia.</summary>
     public void Draw(Action<SKCanvas> drawing) => _items.Add(new DrawingItem(drawing));
 

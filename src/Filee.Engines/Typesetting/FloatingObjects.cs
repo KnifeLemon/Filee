@@ -15,7 +15,8 @@
 // Drawing: pictures with their crop inside their inner margin, under their outline (EMF / WMF as vector drawing); rectangles (rounded by their corner ratio), ellipses, lines, polygons, curves and
 // arcs with their fill (a colour or a linear gradient) and outline (solid, dashed, dotted, dash-dot or double, at its
 // width), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
-// their padding, at the top, middle or bottom, turned with the box (not mirrored). Curves go smoothly through their
+// their padding, at the top, middle or bottom, turned with the box (not mirrored); vertical text in a box is turned
+// into it (VerticalText). SmartArt (HImage.Drawing) is drawn by the slide renderer, scaled into its box. Curves go smoothly through their
 // points; arcs run counterclockwise from their first axis point to the second. WordArt (Word's watermarks) is a text
 // box whose text is stretched over the box and see-through (HTextArt). Pictures take their colour changes (washout,
 // grey scale, black and white, transparency); their other effects (shadow, glow, soft edge, reflection) are left out.
@@ -313,6 +314,20 @@ internal static class FloatingObjects
                         area.Right - margin.Right / 100f, area.Bottom - margin.Bottom / 100f), fonts);
                     break;
                 }
+            case HImage { Drawing: { Slides: [var slide] } deck } picture:
+                {
+                    // Vectors and text from the slide renderer, scaled into the object's box (turned with it). The
+                    // renderer is not disposed: the pictures it decoded are drawn when the page is written.
+                    using var shaper = new Shaper();
+                    var renderer = new Slides.SlideRenderer(new FontResolver(), shaper);
+                    var drawn = renderer.Render(deck, slide, withBackground: false);
+                    var matrix = SKMatrix.CreateTranslation(area.Left, area.Top)
+                        .PreConcat(SKMatrix.CreateScale(area.Width / Math.Max(1, deck.Width), area.Height / Math.Max(1, deck.Height)));
+                    if (picture.Transform is { Rotation: not 0 } turned)
+                        matrix = SKMatrix.CreateRotationDegrees((float)turned.Rotation, area.MidX, area.MidY).PreConcat(matrix);
+                    page.Add(drawn, matrix);
+                    break;
+                }
             case HImage picture:
                 page.Draw(canvas => Transformed(canvas, picture.Transform, area, () =>
                 {
@@ -350,6 +365,20 @@ internal static class FloatingObjects
             area.Right - padding.Right / 100f, area.Bottom - padding.Bottom / 100f);
         var art = box.TextArt;
         var fit = art is { Fit: true };
+        if (box.TextFlow != HTextFlow.Horizontal && !fit)
+        {
+            // Vertical text: lines as long as the box is high, turned into it (turned with the box too).
+            var length = Math.Max(1, inner.Height);
+            var vertical = VerticalText.Turned(stack(box.Blocks, length), box.TextFlow, Math.Max(0, inner.Width), length, box.VerticalAlign);
+            var layer = new PageContent(page.Width, page.Height);
+            vertical.Draw(layer, inner.Left, inner.Top);
+            if (art is { Opacity: < 1 } faded)
+                layer = Faded(layer, faded.Opacity);
+            page.Add(layer, box.Transform is { Rotation: not 0 } rotation
+                ? SKMatrix.CreateRotationDegrees((float)rotation.Rotation, area.MidX, area.MidY)
+                : SKMatrix.Identity);
+            return;
+        }
         var pieces = stack(box.Blocks, fit ? Math.Max(inner.Width, ArtWidth) : Math.Max(1, inner.Width));
         var height = pieces.Count == 0 ? 0 : pieces.Max(p => p.Top + p.Height - p.Below);
         var top = inner.Top + box.VerticalAlign switch

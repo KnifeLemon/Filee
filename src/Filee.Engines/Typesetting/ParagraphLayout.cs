@@ -119,6 +119,23 @@ internal sealed partial class ParagraphLayouter
     private IReadOnlyDictionary<string, string>? _alternates;
 
     /// <summary>
+    /// The fonts the style template fills in where a document of another format names none (StyleResolver.Faces): a
+    /// font resolved for one of these names counts as a substitute (ResolvedFont.Substitute), so a Korean or Japanese
+    /// template font doesn't turn the text's backslashes into ₩ or ¥.
+    /// </summary>
+    public IReadOnlySet<string>? TemplateFaces
+    {
+        get => _templateFaces;
+        set
+        {
+            _templateFaces = value;
+            _resolved.Clear();
+        }
+    }
+
+    private IReadOnlySet<string>? _templateFaces;
+
+    /// <summary>
     /// Word's distance between default tab stops (HDocument.DefaultTabStop), in HWPUNIT, measured from the margin;
     /// null: 한글's 40 pt from the left indent.
     /// </summary>
@@ -578,6 +595,8 @@ internal sealed partial class ParagraphLayouter
             _resolved[key] = font = _fonts.Resolve(Alternate(family, style), style, language)
                                     ?? _fonts.Resolve(null, style, language)
                                     ?? throw new InvalidOperationException("No installed font can draw the document's text.");
+            if (family is not null && _templateFaces is { } template && template.Contains(family.Trim()))
+                _resolved[key] = font = font with { Substitute = true };
         }
         return font;
     }

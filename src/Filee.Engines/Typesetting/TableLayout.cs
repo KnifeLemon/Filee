@@ -26,7 +26,9 @@
 //   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it. A
 //   한글 cell holds its content down to its last line's text; a Word cell (WordCells) holds the whole last line and
 //   the space after its last paragraph too, as Word sizes rows.
-//   Content sits at the top, middle or bottom of the cell. Paragraph borders and backgrounds in a stack (a cell, a
+//   Content sits at the top, middle or bottom of the cell. A cell of vertical text (HCell.TextFlow) is laid out with
+//   lines as long as its rows are high (a Word row of an auto height grows to the text unwrapped) and turned into the
+//   cell by VerticalText, its alignment placing the lines across; its lines don't widen its column. Paragraph borders and backgrounds in a stack (a cell, a
 //   header) are drawn as in the body (BoxBorder), each line with its part of the box. Cells spaced apart (Word's
 //   w:tblCellSpacing) sit that far in from their grid columns and their row on every side (twice that between two
 //   cells), measured with it, and the table's outer border (HTable.Frame) is drawn around them.
@@ -92,7 +94,16 @@ internal sealed class CellBox
 
     /// <summary>The height the cell needs: the content it holds, its padding and the space above and below it.</summary>
     public float Needed => Held + (Padding.Top + Padding.Bottom) / 100f + 2 * Spacing;
+
+    /// <summary>
+    /// A cell of vertical text: its lines as laid out across, turned again into the whole height its row gets when it
+    /// is drawn (so bottom-to-top text starts at the cell's bottom); null for other cells.
+    /// </summary>
+    public VerticalCell? Vertical { get; init; }
 }
+
+/// <summary>The lines of a vertical cell (<see cref="CellBox.Vertical"/>), how they run and their alignment across.</summary>
+internal sealed record VerticalCell(IReadOnlyList<Piece> Lines, HTextFlow Flow, HVerticalAlign Align);
 
 /// <summary>A table's outer border around cells spaced apart, <paramref name="Width"/> wide (Word's tblBorders with tblCellSpacing).</summary>
 internal sealed record TableFrame(HBorders Borders, float Width);
@@ -365,10 +376,25 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
             var contentWidth = Math.Max(1, cellWidth - (padding.Left + padding.Right) / 100f);
             List<Piece> content;
             float extent;
+            var verticalAlign = cell.VerticalAlign;
+            VerticalCell? vertical = null;
             _inCell++;
             try
             {
-                content = Stack(cell.Blocks, contentWidth, out extent);
+                if (cell.TextFlow == HTextFlow.Horizontal)
+                {
+                    content = Stack(cell.Blocks, contentWidth, out extent);
+                }
+                else
+                {
+                    // Vertical text: lines as long as the cell is high, turned into the cell; its alignment places them across.
+                    var length = VerticalLength(table, row, cell, padding, spacing);
+                    var lines = Stack(cell.Blocks, length, out _);
+                    content = [VerticalText.Turned(lines, cell.TextFlow, contentWidth, length, cell.VerticalAlign)];
+                    vertical = new VerticalCell(lines, cell.TextFlow, cell.VerticalAlign);
+                    extent = length;
+                    verticalAlign = HVerticalAlign.Top;
+                }
             }
             finally
             {
@@ -382,12 +408,13 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 Width = cellWidth,
                 Spacing = spacing,
                 Padding = padding,
-                VerticalAlign = cell.VerticalAlign,
+                VerticalAlign = verticalAlign,
                 Borders = borders,
                 Fill = ParagraphText.Color(cell.Fill),
                 FillPicture = cell.FillPicture,
                 Content = content,
                 Extent = WordCells ? extent : null,
+                Vertical = vertical,
             });
         }
 
@@ -439,6 +466,25 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         // both margins when it is centred and wider than the column, as may an RTF table with a negative \trleft (Word
         // writes \trleft-108 for its 108 twips of padding); other formats' tables start at the column's edge.
         return new TableBox(table.Sizing is null && table.Indent >= 0 ? Math.Max(0, offset) : offset, tableWidth, rows, table.PageBreak, caption) { Column = width };
+    }
+
+    /// <summary>The longest line vertical text in a cell gets, in points (a row of an auto height grows to its text up to this).</summary>
+    private const float MaxVerticalLength = 720;
+
+    /// <summary>Room after vertical text a Word row grows to, in points.</summary>
+    private const float VerticalSlack = 3;
+
+    /// <summary>
+    /// How long the lines of a vertical cell are: the height its rows give (less padding), as 한글 sets them; in a Word
+    /// table at least its text unwrapped, as Word grows a row of vertical text, up to <see cref="MaxVerticalLength"/>.
+    /// </summary>
+    private float VerticalLength(HTable table, int row, HCell cell, HInsets padding, float spacing)
+    {
+        var rows = table.Rows.Skip(row).Take(Math.Max(1, cell.RowSpan));
+        var given = rows.Sum(r => (r.Height ?? 0) / 100f) - (padding.Top + padding.Bottom) / 100f - 2 * spacing;
+        // The unwrapped text gets a little room at its end, so its last glyph stays clear of the cell's edge.
+        var length = given > 1 && !WordCells ? given : Math.Max(given, measure is null ? 0 : Measure(cell.Blocks).Max + VerticalSlack);
+        return Math.Clamp(length, 1, MaxVerticalLength);
     }
 
     /// <summary>Where a table's edge is from the column's start side, in points: its indent, less what lies before it (HTable.EdgeBeforeIndent).</summary>
@@ -754,7 +800,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 continue;
             var padding = cell.CellMargin ?? table.CellMargin ?? DefaultPadding;
             var sides = Math.Max(0, (padding.Left + padding.Right) / 100f) + 2 * Math.Max(0, table.CellSpacing / 100f);
-            var (least, natural) = Measure(cell.Blocks);
+            // Vertical text runs down the cell: its lines don't widen the column.
+            var (least, natural) = cell.TextFlow == HTextFlow.Horizontal ? Measure(cell.Blocks) : (0f, 0f);
             var span = Math.Clamp(cell.ColSpan, 1, columns - column);
             if (span > 1)
             {
@@ -992,6 +1039,13 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 _ => 0f,
             };
             var left = area.Left + cell.Padding.Left / 100f;
+            if (cell.Vertical is { } turned && cell.Content.Count > 0)
+            {
+                var across = Math.Max(1, cell.Width - (cell.Padding.Left + cell.Padding.Right) / 100f);
+                VerticalText.Turned(turned.Lines, turned.Flow, across, Math.Max(cell.Content[0].Height, inner), turned.Align)
+                    .Draw(page, left, area.Top + cell.Padding.Top / 100f);
+                continue;
+            }
             var contentTop = area.Top + cell.Padding.Top / 100f + shift;
             foreach (var piece in cell.Content)
                 piece.Draw(page, left, contentTop + piece.Top);

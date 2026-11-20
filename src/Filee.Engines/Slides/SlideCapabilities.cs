@@ -4,7 +4,7 @@
 //
 // Named: charts ChartReader doesn't draw (3D, radar, stock, ..., and chartex) without a stored picture, SmartArt without its stored drawing, OLE objects and other embedded content
 // without a picture, ink, shadows and other effects (glow, reflection, soft edges, blur; on shapes, pictures and text,
-// or through the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, preset shapes not
+// or through the theme's effect styles), 3D, WordArt warps, outlined text, preset shapes not
 // in PresetShapes, and pictures Skia can't decode (TIFF, JPEG XR).
 //
 // A PowerPoint 97–2003 deck is looked through as the PPTX package it translates to, after what the translation leaves
@@ -170,8 +170,6 @@ internal static class SlideCapabilities
                 "prstTxWarp" when (string?)element.Attribute("prst") is { } warp && warp != "textNoShape" => new Finding("WordArt text warp", "wordart"),
                 "ln" when element.Parent?.Name.LocalName is "rPr" or "defRPr" or "endParaRPr" && element.Elements().Any(e => e.Name.LocalName != "noFill") =>
                     new Finding("outlined text", "effects"),
-                "bodyPr" when (string?)element.Attribute("vert") is "eaVert" or "wordArtVert" or "mongolianVert" or "wordArtVertRtl" =>
-                    new Finding("vertical East Asian text", "vertical_text_turned"),
                 "prstGeom" when (string?)element.Attribute("prst") is { } preset && !PresetShapes.Known(preset) =>
                     new Finding($"the preset shape {preset}", "shapes"),
                 "blip" => Picture(package, part, element),

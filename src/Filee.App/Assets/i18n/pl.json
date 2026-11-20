@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "Zastosuj sugerowany układ",
   "sheet_studio.add_region": "+ Dodaj kolejny obszar",
   "sheet_studio.region_name": "{0} · obszar {1}",
+  "sheet_studio.drawn_by_builtin": "Podgląd narysowany przez wbudowane drukowanie arkuszy Filee",
+  "sheet_studio.drawn_by_libreoffice": "Podgląd narysowany przez LibreOffice",
 
   "whats_new.title": "Nowości w Filee {0}",
   "whats_new.previous": "Wstecz",

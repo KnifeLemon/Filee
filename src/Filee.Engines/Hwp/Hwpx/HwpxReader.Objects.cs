@@ -123,7 +123,8 @@ internal sealed partial class HwpxReader
     /// <summary>
     /// A form control (read for layout) as 한글 prints it: a box of the control's size and background with its text in
     /// the control's character format and colour, a button's caption centred in a framed box, a check box's or radio
-    /// button's caption after a small square or circle, an edit box's text (masked by its password character) or a
+    /// button's caption after a small square or circle (with a check or a dot in it when it is on: value CHECKED), an
+    /// edit box's text (masked by its password character) or a
     /// combo box's text in a frame.
     /// </summary>
     private HTextBox FormControl(XElement control)
@@ -154,14 +155,21 @@ internal sealed partial class HwpxReader
         {
             // The mark is drawn, not written: a square or a circle as high as the text.
             var mark = Math.Max(500, (format.Size ?? 1000) * 9 / 10);
-            paragraph.Inlines.Add(new HShape(name == "checkBtn" ? HShapeKind.Rectangle : HShapeKind.Ellipse)
+            var kind = name == "checkBtn" ? HShapeKind.Rectangle : HShapeKind.Ellipse;
+            var frame = new HBorder(HBorderStyle.Solid, 0.12, "#808080");
+            if (Attr(control, "value") == "CHECKED")
             {
-                Width = mark,
-                Height = mark,
-                Fill = "#FFFFFF",
-                Line = new HBorder(HBorderStyle.Solid, 0.12, "#808080"),
-                BaseLine = 85,
-            });
+                // On: the same square or circle with a check or a dot in it, as the control shows its value.
+                var on = new HTextBox { Width = mark, Height = mark, Shape = kind, Fill = "#FFFFFF", Line = frame, BaseLine = 85, Padding = default, VerticalAlign = HVerticalAlign.Center };
+                var inside = new HParagraph { Format = new HParaFormat(Align: HAlign.Center, Left: 0, Right: 0, FirstLine: 0) };
+                inside.Inlines.Add(new HText(kind == HShapeKind.Rectangle ? "✓" : "●", format with { Size = mark * 3 / 4 }));
+                on.Blocks.Add(inside);
+                paragraph.Inlines.Add(on);
+            }
+            else
+            {
+                paragraph.Inlines.Add(new HShape(kind) { Width = mark, Height = mark, Fill = "#FFFFFF", Line = frame, BaseLine = 85 });
+            }
             paragraph.Inlines.Add(new HText(" ", format));
         }
         var text = name is "edit" or "comboBox" ? Child(control, "text")?.Value ?? "" : Attr(control, "caption") ?? "";
@@ -435,10 +443,11 @@ internal sealed partial class HwpxReader
             Transform = Transform(element),
             ZOrder = ZOrder(element),
             Geometry = geometry,
+            TextFlow = TextFlow(subList),
         };
         if (margin is not null)
             box.Padding = new HInsets(Int(margin, "left"), Int(margin, "right"), Int(margin, "top"), Int(margin, "bottom"));
-        box.Blocks.AddRange(ReadSubList(subList));
+        box.Blocks.AddRange(ReadSubList(subList, turned: true));
         return box;
     }
 

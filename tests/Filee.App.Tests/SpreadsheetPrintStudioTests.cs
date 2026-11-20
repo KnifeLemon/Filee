@@ -376,8 +376,27 @@ public class SpreadsheetPrintStudioTests
             Assert.InRange(shown, 1, 20);
             Assert.Null(vm.Pages[^1].Thumbnail);
             Assert.True(vm.Pages.Count(page => page.Thumbnail is not null) < vm.Pages.Count / 2);
+            // The caption under the preview names the engine that drew it.
+            Assert.Equal(AppHost.Get<ILocalizer>()["sheet_studio.drawn_by_builtin"], vm.PreviewEngine);
+            Assert.True(vm.HasPreviewEngine);
             if (Environment.GetEnvironmentVariable("FILEE_LOCALIZATION_SCREENSHOTS") == "1")
                 RenderTests.Save(window, "spreadsheet-studio-built-in.png");
+
+            // Scrolled to the end, the strip lets go of the first pages' thumbnails and renders the last ones (the
+            // selected first page keeps its item, and so its thumbnail).
+            var strip = window.GetVisualDescendants().OfType<ListBox>().Last();
+            var first = vm.Pages[1];
+            strip.ScrollIntoView(vm.Pages.Count - 1);
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+            while (!(vm.Pages[^1].Thumbnail is not null && first.Thumbnail is null) && DateTime.UtcNow < deadline)
+            {
+                RenderTests.Pump();
+                await Task.Delay(25, TestContext.Current.CancellationToken);
+            }
+            var realized = strip.GetRealizedContainers().Select(strip.IndexFromContainer).ToList();
+            Assert.True(vm.Pages[^1].Thumbnail is not null && first.Thumbnail is null,
+                $"last {vm.Pages[^1].Thumbnail is not null}, first {first.Thumbnail is not null}, shown [{string.Join(",", realized)}], with thumbnails [{string.Join(",", vm.Pages.Where(p => p.Thumbnail is not null).Select(p => p.Number))}]");
+            Assert.True(vm.Pages.Count(page => page.Thumbnail is not null) <= 2 * shown + 4);
         }
         finally
         {

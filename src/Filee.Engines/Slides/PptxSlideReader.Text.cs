@@ -62,6 +62,14 @@ internal sealed partial class PptxSlideReader
 
     // ───────────────────────── Text frames ─────────────────────────
 
+    /// <summary>Which glyphs of a DrawingML vertical text body (bodyPr vert) stand upright.</summary>
+    private static Typesetting.UprightGlyphs Upright(string? vert) => vert switch
+    {
+        "eaVert" or "mongolianVert" => Typesetting.UprightGlyphs.EastAsian,
+        "wordArtVert" or "wordArtVertRtl" => Typesetting.UprightGlyphs.All,
+        _ => Typesetting.UprightGlyphs.None,
+    };
+
     private SlideTextFrame? TextFrame(SlideContext context, string part, XElement body, XElement? ph, XElement? layoutPh, XElement? masterPh,
         XElement? fontRef)
     {
@@ -89,10 +97,11 @@ internal sealed partial class PptxSlideReader
             Wrap = Attribute("wrap") != "none",
             Direction = Attribute("vert") switch
             {
-                "vert" or "eaVert" or "wordArtVert" or "mongolianVert" => TextDirection.Down,
+                "vert" or "eaVert" or "wordArtVert" or "wordArtVertRtl" or "mongolianVert" => TextDirection.Down,
                 "vert270" => TextDirection.Up,
                 _ => TextDirection.Horizontal,
             },
+            Upright = Upright(Attribute("vert")),
             Columns = Math.Clamp(int.TryParse(Attribute("numCol"), out var columns) ? columns : 1, 1, 16),
             ColumnGap = Inset("spcCol", 0),
             Rotation = (float)((double.TryParse(Attribute("rot"), NumberStyles.Float, CultureInfo.InvariantCulture, out var rot) && double.IsFinite(rot) ? rot : 0) / 60000 % 360),

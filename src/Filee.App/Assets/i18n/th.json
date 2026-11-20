@@ -1777,6 +1777,8 @@
   "sheet_studio.apply_fix": "ใช้เลย์เอาต์ที่แนะนำ",
   "sheet_studio.add_region": "+ เพิ่มพื้นที่อื่น",
   "sheet_studio.region_name": "{0} · พื้นที่ {1}",
+  "sheet_studio.drawn_by_builtin": "ภาพตัวอย่างวาดโดยการพิมพ์สเปรดชีตในตัวของ Filee",
+  "sheet_studio.drawn_by_libreoffice": "ภาพตัวอย่างวาดโดย LibreOffice",
 
   "whats_new.title": "มีอะไรใหม่ใน Filee {0}",
   "whats_new.previous": "ก่อนหน้า",
