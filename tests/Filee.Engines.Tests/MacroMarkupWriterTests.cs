@@ -472,7 +472,10 @@ public sealed partial class MacroMarkupWriterTests(EngineFixture fx) : IClassFix
         }
         var withPandoc = fx.Catalog.CreatePlanner(["pandoc"]);
         Assert.Equal("pandoc", Assert.Single(withPandoc.Plan(target, "md")!.Steps).Converter.Id);
-        Assert.Null(MarkupTestKit.WithoutPandoc(fx).CreatePlanner().Plan(target, "md"));
+        // The built-in markup engine only writes these. Where Pandoc is installed, other engines still read them through
+        // Pandoc's AST, so a route may exist without the Pandoc converter, but it never starts with the markup engine.
+        var withoutPandoc = MarkupTestKit.WithoutPandoc(fx).CreatePlanner().Plan(target, "md");
+        Assert.True(withoutPandoc is null || withoutPandoc.Steps[0].Converter.Id != "markup", $"{target} → md starts with the markup engine");
     }
 
     [Theory]
