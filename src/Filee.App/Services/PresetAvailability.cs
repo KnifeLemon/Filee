@@ -314,9 +314,10 @@ public sealed class PresetAvailability
                 : new(PresetUse.Unusable, _loc["error.no_route"]);
         }
 
-        // PDF/A of PDFs is Ghostscript's (the job queue's IPdfArchiver): without it they would only be copied. Other files
-        // may get it from LibreOffice, or are converted with a notice that the PDF isn't PDF/A.
-        static bool Archives(RoutePlanner planner) => planner.Includes("ghostscript");
+        // PDF/A of PDFs is the job queue's IPdfArchiver: the PDF engine's own, with Ghostscript for what that one can't
+        // make conform. With neither they would only be copied. Other files may get it from their engine (the Filee
+        // renderer, LibreOffice), or are converted with a notice that the PDF isn't PDF/A.
+        static bool Archives(RoutePlanner planner) => planner.Includes("pdfsharp") || planner.Includes("ghostscript");
         if (preset.TargetFormat == "pdf" && preset.Document.PdfA && formats.All(f => f.Id == "pdf") && !Archives(installedPlanner()))
         {
             return packageEnabling(Archives) is { } archiver

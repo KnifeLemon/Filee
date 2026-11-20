@@ -70,7 +70,8 @@ public sealed class SheetPrintConverter : IConverter
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(0.2);
             var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
-            var pdf = SheetPrinter.ToPdf(book, SheetPrintSource.Of(step.OriginalSourcePath ?? step.InputPath), cancellationToken, pages);
+            var pdf = SheetPrinter.ToPdf(book, SheetPrintSource.Of(step.OriginalSourcePath ?? step.InputPath), cancellationToken, pages,
+                pdfA: step.Preset.Document.PdfA);
             var target = step.Output.Allocate("pdf");
             if (target is null)
                 return [];

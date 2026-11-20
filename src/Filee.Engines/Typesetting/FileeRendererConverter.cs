@@ -342,7 +342,8 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
 
         // Reading takes the first fifth; pages written the rest.
         var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
-        var pdf = await Task.Run(() => FileeRenderer.ToPdf(document, cancellationToken, styles: styles, progress: pages), cancellationToken);
+        var pdf = await Task.Run(() => FileeRenderer.ToPdf(document, cancellationToken, styles: styles, progress: pages,
+            pdfA: step.Preset.Document.PdfA), cancellationToken);
         var target = step.Output.Allocate("pdf");
         if (target is null)
             return [];
@@ -395,7 +396,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
         if (step.To == "pdf")
         {
-            var pdf = await Task.Run(() => SlideOutput.ToPdf(deck, pages, cancellationToken), cancellationToken);
+            var pdf = await Task.Run(() => SlideOutput.ToPdf(deck, pages, cancellationToken, step.Preset.Document.PdfA), cancellationToken);
             if (step.Output.Allocate("pdf") is not { } target)
                 return [];
             await File.WriteAllBytesAsync(target, pdf, cancellationToken);

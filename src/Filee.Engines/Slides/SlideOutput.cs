@@ -15,13 +15,14 @@ namespace Filee.Engines.Slides;
 internal static class SlideOutput
 {
     /// <param name="progress">Slides written, as a fraction of all slides.</param>
-    public static byte[] ToPdf(SlideDeck deck, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    /// <param name="pdfA">Write it as PDF/A-2b.</param>
+    public static byte[] ToPdf(SlideDeck deck, IProgress<double>? progress = null, CancellationToken cancellationToken = default, bool pdfA = false)
     {
         using var shaper = new Shaper();
         using var renderer = new SlideRenderer(new FontResolver(), shaper, cancellationToken);
         var pages = renderer.Render(deck);
         using var output = new MemoryStream();
-        PdfPageWriter.Write(output, pages, new PdfDocumentInfo { Title = deck.Title }, progress, cancellationToken);
+        PdfPageWriter.Write(output, pages, new PdfDocumentInfo { Title = deck.Title, PdfA = pdfA }, progress, cancellationToken);
         return output.ToArray();
     }
 

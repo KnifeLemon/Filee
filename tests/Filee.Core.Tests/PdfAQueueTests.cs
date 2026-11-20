@@ -1,6 +1,8 @@
 // PDF/A (#1367): JobQueue has every PDF a PDF/A preset writes made PDF/A after the finishing, whichever engine wrote it,
 // and a merged PDF once. Without the archiver (no Ghostscript) the PDF stays as it is and the file says so. A PDF whose
 // form fields became page content (#1496) says that instead, unless another PDF of the file didn't become PDF/A.
+// Archivers are tried in engine order: one that refuses a PDF (the built-in one, when the PDF can't conform) hands it
+// to the next, and when none makes it PDF/A the file says why the first refused.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -229,5 +231,80 @@ public class PdfAQueueTests
 
         Assert.Equal(JobState.Completed, job.State);
         Assert.Equal(["notice.pdfa_form_fields", null], job.Files.Select(f => f.NoticeKey));
+    }
+
+    /// <summary>Stands in for the built-in archiver: refuses every PDF with <paramref name="reason"/>.</summary>
+    private sealed class RefusingArchiver(List<string> log, string reason) : IConverter, IPdfArchiver
+    {
+        public string Id => "pdfsharp";
+        public string DisplayName => "PDFsharp";
+        public IReadOnlyList<ConversionEdge> Edges => [];
+        public int MaxParallelism => 0;
+        public EngineStatus GetStatus() => EngineStatus.Available();
+
+        public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<PdfArchiveOutcome> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken)
+        {
+            lock (log)
+                log.Add("refuse " + Path.GetFileName(path));
+            throw new ConversionRefusedException(reason);
+        }
+    }
+
+    [Fact]
+    public async Task A_pdf_the_first_archiver_refuses_goes_to_the_next()
+    {
+        using var dir = new TempDir();
+        var log = new List<string>();
+        var office = new FakeConverter("ooxml", new ConversionEdge("docx", "pdf"));
+        await using var queue = new JobQueue(new ConverterCatalog([office, new RefusingArchiver(log, "pdfa.reason.cmyk"), new FakeArchiver(log)]));
+
+        var job = new ConversionJob([dir.File("report.docx")], PdfA(), "Test");
+        await queue.RunAsync(job);
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal(["refuse report_pdfa.pdf", "archive report_pdfa.pdf"], log);
+        Assert.Null(job.Files.Single().NoticeKey);
+        Assert.Null(job.Files.Single().NoticeReasonKey);
+    }
+
+    [Fact]
+    public async Task Archivers_go_in_engine_order()
+    {
+        using var dir = new TempDir();
+        var log = new List<string>();
+        var office = new FakeConverter("ooxml", new ConversionEdge("docx", "pdf"));
+        var catalog = new ConverterCatalog([office, new RefusingArchiver(log, "pdfa.reason.cmyk"), new FakeArchiver(log)])
+        {
+            Priority = ["ooxml", "ghostscript", "pdfsharp"],
+        };
+        await using var queue = new JobQueue(catalog);
+
+        await queue.RunAsync(new ConversionJob([dir.File("report.docx")], PdfA(), "Test"));
+
+        Assert.Equal(["archive report_pdfa.pdf"], log); // Ghostscript first, and it made it PDF/A
+    }
+
+    [Fact]
+    public async Task When_no_archiver_makes_it_pdf_a_the_file_says_why_the_built_in_one_refused()
+    {
+        using var dir = new TempDir();
+        var log = new List<string>();
+        var office = new FakeConverter("ooxml", new ConversionEdge("docx", "pdf"));
+        await using var queue = new JobQueue(new ConverterCatalog(
+            [office, new RefusingArchiver(log, "pdfa.reason.font_not_embedded"), new FakeArchiver(log, installed: false)]));
+        var job = new ConversionJob([dir.File("report.docx")], PdfA(), "Test");
+        job.Files[0].NoticeDetail = "earlier";
+
+        await queue.RunAsync(job);
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.True(File.Exists(job.Outputs.Single()));
+        var file = job.Files.Single();
+        Assert.Equal("notice.pdfa_needs_ghostscript", file.NoticeKey);
+        Assert.Equal("pdfa.reason.font_not_embedded", file.NoticeReasonKey);
+        Assert.Null(file.NoticeDetail);
     }
 }
