@@ -2,7 +2,8 @@
 // built-in reader reads (DocumentReaders) → each of them, and each of them → Markdown, HTML and plain text. Their
 // readers are in DocumentReaders, so the HWPX, DOCX and ODT writers and the Filee renderer take them too (→ HWPX, DOCX,
 // ODT, PDF). The edges cost 8 like the DOCX writer's, below Pandoc's (10, and 11 into a markup language), so the
-// built-in route wins; Pandoc keeps what only it does (LaTeX, Typst, AsciiDoc, man pages, slides, RTF and EPUB out).
+// built-in route wins. LaTeX, AsciiDoc, Typst and man pages are written here too (WriteOnly), from every built-in
+// reader's format; reading them stays Pandoc's, as do slides, and RTF and EPUB straight from a markup language.
 // Pictures of a text result go into a "<name>_files" folder next to it (MarkdownPictures), a notebook embeds its own.
 // Mind maps (MindMapReader), read only, are written as Markdown, HTML and text here too; into OPML every topic is a
 // heading, so the outline keeps its whole tree.
@@ -21,7 +22,8 @@ namespace Filee.Engines.Text;
 /// <param name="Pictures">Maps a picture file to the link written into the result, or null to leave it out.</param>
 /// <param name="WorkFolder">Scratch folder of the job (pictures converted to a common format).</param>
 /// <param name="LeaveOutPictures">The preset leaves pictures out.</param>
-internal sealed record MarkupWriteContext(Func<string, string?> Pictures, string WorkFolder, bool LeaveOutPictures);
+/// <param name="Cancellation">Stops the writer between blocks.</param>
+internal sealed record MarkupWriteContext(Func<string, string?> Pictures, string WorkFolder, bool LeaveOutPictures, CancellationToken Cancellation = default);
 
 /// <summary>Reads and writes the markup languages Filee owns.</summary>
 public sealed class MarkupConverter : IConverter
@@ -42,6 +44,19 @@ public sealed class MarkupConverter : IConverter
             ["dbk"] = (document, context) => DocBookWriter.Write(document, context.Pictures),
         };
 
+    /// <summary>
+    /// Languages written but not read here (macro and scripting languages, which Pandoc reads): format id → the text of
+    /// the file. Their edges come from every built-in reader's format, like the writers'.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, Func<HDocument, MarkupWriteContext, string>> WriteOnly =
+        new Dictionary<string, Func<HDocument, MarkupWriteContext, string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["tex"] = (document, context) => new LatexWriter(context.Pictures) { Cancellation = context.Cancellation }.Write(document),
+            ["adoc"] = (document, context) => new AsciiDocWriter(context.Pictures) { Cancellation = context.Cancellation }.Write(document),
+            ["typ"] = (document, context) => new TypstWriter(context.Pictures) { Cancellation = context.Cancellation }.Write(document),
+            ["man"] = (document, context) => new ManWriter { Cancellation = context.Cancellation }.Write(document),
+        };
+
     /// <summary>Formats each markup language is also written as (the readers' other outputs are the writers' edges).</summary>
     private static readonly string[] TextTargets = ["md", "html", "txt"];
 
@@ -55,7 +70,7 @@ public sealed class MarkupConverter : IConverter
     /// </summary>
     public IReadOnlyList<ConversionEdge> Edges { get; } =
     [
-        .. from to in Writers.Keys
+        .. from to in Writers.Keys.Concat(WriteOnly.Keys)
            from source in DocumentReaders.BuiltInFormats
            where source != to
            select new ConversionEdge(source, to, source == "pdf" ? Cost + DocumentReaders.PdfPenalty : Cost, DirectOnly: true),
@@ -65,7 +80,7 @@ public sealed class MarkupConverter : IConverter
     ];
 
     public EngineStatus GetStatus() =>
-        EngineStatus.Available(string.Join(", ", Writers.Keys.Select(f => FormatRegistry.Get(f).DisplayName)), EngineVersions.BuiltIn);
+        EngineStatus.Available(string.Join(", ", Writers.Keys.Concat(WriteOnly.Keys).Select(f => FormatRegistry.Get(f).DisplayName)), EngineVersions.BuiltIn);
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
@@ -80,16 +95,16 @@ public sealed class MarkupConverter : IConverter
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)
             return [];
-        await Task.Run(() => Write(document, step, output), cancellationToken);
+        await Task.Run(() => Write(document, step, output, cancellationToken), cancellationToken);
         progress?.Report(1);
         return [output];
     }
 
-    private static void Write(HDocument document, ConversionStep step, string output)
+    private static void Write(HDocument document, ConversionStep step, string output, CancellationToken cancellationToken)
     {
         var leaveOut = step.Preset.Document.LeaveOutPictures;
         Func<string, string?> pictures = leaveOut ? _ => null : new MarkdownPictures(output, step.Output, step.WorkDirectory).Add;
-        if (step.To is "md" || Writers.ContainsKey(step.To))
+        if (step.To is "md" || Writers.ContainsKey(step.To) || WriteOnly.ContainsKey(step.To))
             MarkupBlocks.OpenCodeBoxes(document); // Markdown's code boxes are code blocks in markup
         switch (step.To)
         {
@@ -110,9 +125,14 @@ public sealed class MarkupConverter : IConverter
                 File.WriteAllText(output, PlainTextWriter.Write(document), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
                 break;
             default:
-                File.WriteAllText(output, Writers[step.To](document, new MarkupWriteContext(pictures, step.WorkDirectory, leaveOut)),
-                    new UTF8Encoding(false));
-                break;
+                {
+                    var context = new MarkupWriteContext(pictures, step.WorkDirectory, leaveOut, cancellationToken);
+                    var text = WriteOnly.TryGetValue(step.To, out var writeOnly) ? writeOnly(document, context) : Writers[step.To](document, context);
+                    // Through a temporary file: a failed write leaves nothing under the output's name.
+                    var bytes = new UTF8Encoding(false).GetBytes(text);
+                    WriterTempFile.Write(output, stream => stream.Write(bytes));
+                    break;
+                }
         }
     }
 

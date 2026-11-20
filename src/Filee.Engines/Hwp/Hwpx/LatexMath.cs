@@ -118,6 +118,21 @@ internal static class LatexMath
 
     private static readonly Dictionary<string, string> BigGlyphs = BigOperators.Values.DistinctBy(v => v.Glyph).ToDictionary(v => v.Glyph, v => v.Command);
 
+    /// <summary>
+    /// Symbol characters → the first command this reader takes for them, for TexMathWriter. Commands that need more
+    /// than amsmath and amssymb (or don't exist in LaTeX) are left out: the writer has its own way for those.
+    /// </summary>
+    private static readonly Dictionary<string, string> SymbolNames = Symbols
+        .Where(s => s.Key is not ("omicron" or "degree" or "iddots" or "copyright" or "euro" or "coloneqq" or "eqqcolon" or "neqsim" or "nequiv"))
+        .DistinctBy(s => s.Value.Glyph).ToDictionary(s => s.Value.Glyph, s => s.Key, StringComparer.Ordinal);
+
+    /// <summary>The TeX command (without its backslash) of a symbol character: ≤ → leq, α → alpha; null for none.</summary>
+    internal static string? SymbolCommand(string glyph) => SymbolNames.GetValueOrDefault(glyph);
+
+    /// <summary>The alphabet command and letter of a math alphabet letter (ℝ → mathbb, R; 𝓛 → mathcal, L), or null.</summary>
+    internal static (string Command, char Letter)? AlphabetLetter(string glyph) =>
+        Reader.AlphabetLetters.TryGetValue(glyph, out var letter) ? letter : null;
+
     /// <summary>Function names 한글 and rhwp know (written upright by themselves).</summary>
     private static readonly HashSet<string> Functions = new(StringComparer.Ordinal)
     {
@@ -996,6 +1011,23 @@ internal static class LatexMath
             DoubleStruck,
             Script,
             Fraktur,
+        }
+
+        /// <summary>Each letter of the math alphabets → the command and the letter it is read from (ℝ → mathbb, R).</summary>
+        public static readonly Dictionary<string, (string Command, char Letter)> AlphabetLetters = BuildAlphabetLetters();
+
+        private static Dictionary<string, (string Command, char Letter)> BuildAlphabetLetters()
+        {
+            var letters = new Dictionary<string, (string Command, char Letter)>(StringComparer.Ordinal);
+            foreach (var (alphabet, command) in new[] { (Alphabets.DoubleStruck, "mathbb"), (Alphabets.Script, "mathcal"), (Alphabets.Fraktur, "mathfrak") })
+            {
+                for (var c = 'A'; c <= 'Z'; c++)
+                {
+                    letters.TryAdd(Letter(c, alphabet), (command, c));
+                    letters.TryAdd(Letter(char.ToLowerInvariant(c), alphabet), (command, char.ToLowerInvariant(c)));
+                }
+            }
+            return letters;
         }
 
         /// <summary>\mathbb{R}, \mathcal{L}, \mathfrak{g}: the letters of the Unicode math alphabet.</summary>

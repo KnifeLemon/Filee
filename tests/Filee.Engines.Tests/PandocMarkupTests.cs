@@ -56,8 +56,11 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void Markup_routes()
     {
         var planner = fx.Catalog.CreatePlanner(["pandoc"]);
-        foreach (var (from, to) in new[] { ("tex", "html"), ("tex", "epub"), ("docx", "tex"), ("md", "adoc") })
+        foreach (var (from, to) in new[] { ("tex", "html"), ("tex", "epub"), ("tex", "adoc") })
             Assert.Equal("pandoc", Assert.Single(planner.Plan(from, to)!.Steps).Converter.Id);
+        // LaTeX, AsciiDoc, Typst and man pages are written by Filee itself (read by Pandoc).
+        foreach (var (from, to) in new[] { ("docx", "tex"), ("md", "adoc"), ("html", "typ"), ("md", "man") })
+            Assert.Equal("markup", Assert.Single(planner.Plan(from, to)!.Steps).Converter.Id);
         // reStructuredText is read and written by Filee itself.
         Assert.Equal("docx-writer", Assert.Single(planner.Plan("rst", "docx")!.Steps).Converter.Id);
         Assert.Equal("markup", Assert.Single(planner.Plan("rst", "md")!.Steps).Converter.Id);
@@ -80,13 +83,14 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
             foreach (var other in new[] { "md", "html", "docx", "odt" })
             {
                 // The languages Filee writes itself take the built-in writer.
-                Assert.Equal(Filee.Engines.Text.MarkupConverter.Writers.ContainsKey(markup) ? "markup" : "pandoc",
+                Assert.Equal(Filee.Engines.Text.MarkupConverter.Writers.ContainsKey(markup) || Filee.Engines.Text.MarkupConverter.WriteOnly.ContainsKey(markup) ? "markup" : "pandoc",
                     Assert.Single(planner.Plan(other, markup)!.Steps).Converter.Id);
                 Assert.NotNull(planner.Plan(markup, other));
             }
             Assert.NotNull(planner.Plan(markup, "epub"));
         }
-        Assert.Equal("pandoc", Assert.Single(planner.Plan("org", "adoc")!.Steps).Converter.Id);
+        Assert.Equal("markup", Assert.Single(planner.Plan("org", "adoc")!.Steps).Converter.Id);
+        Assert.Equal("pandoc", Assert.Single(planner.Plan("typ", "adoc")!.Steps).Converter.Id);
         // Markdown and the markup languages Filee reads itself (Org) get slides from the built-in PPTX writer. Those it
         // reads only through Pandoc go through Pandoc's AST into the built-in writer when Pandoc is really there, else
         // (only assumed) through Pandoc's own PowerPoint writer.
