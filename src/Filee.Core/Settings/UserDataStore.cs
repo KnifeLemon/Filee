@@ -1242,6 +1242,10 @@ internal static class SettingsMigrations
         // v112: DjVu documents (.djvu, .djv, #346) learn the documents donut; custom claims stay put.
         if (from < 112)
             changed |= LearnExtensions(profiles, out _, ["djvu", "djv"]);
+        // v115: interactive whiteboard and SMART Notebook files (.iwb, .notebook, #1665) learn the presentations donut;
+        // custom claims stay put.
+        if (from < 115)
+            changed |= LearnExtensions(profiles, out _, ["iwb", "notebook"]);
         return changed;
     }
 
