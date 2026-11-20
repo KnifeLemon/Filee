@@ -1,8 +1,9 @@
 // Filee's own DjVu reader (Djvu/) and its converter: every piece checked against an encoder written in code
 // (DjvuBuilder) — the ZP-coder and BZZ round trips, JB2 masks (direct shapes, copies, refinements, non-mark data, a
 // shared dictionary, comments and a reset) against the shapes drawn by the test, IW44 pictures against their source
-// pixels, hidden text as PDF words — then whole documents (one page and bundled) to PDF, PNG and TIFF, and hostile
-// files refused quickly through the limits.
+// pixels, hidden text as PDF words, the CCITT G4 codec (its code tables, round trips, Smmr masks), bookmarks and
+// hyperlinks — then whole documents (one page, bundled and indirect) to PDF, PNG and TIFF, the PDF's JBIG2, G4 and
+// Flate masks drawn back by PDFtoImage, its links and outline, and hostile files refused quickly through the limits.
 
 using System.Diagnostics;
 using Filee.Core.Conversion;
@@ -10,6 +11,7 @@ using Filee.Core.Formats;
 using Filee.Core.Presets;
 using Filee.Engines.Djvu;
 using Filee.Engines.Documents;
+using Filee.Engines.Ocr;
 using ImageMagick;
 using SkiaSharp;
 using UglyToad.PdfPig;
@@ -551,11 +553,436 @@ public sealed class DjvuTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
     }
 
     [Fact]
-    public async Task An_indirect_document_is_refused_with_its_own_message()
+    public async Task An_indirect_document_without_its_page_file_is_refused_with_its_own_message()
     {
         var dirm = Chunk("DIRM", [0x01, 0x00, 0x01, .. BzzEncoder.Encode([0, 0, 10, 1, .. "p1.djvu"u8.ToArray(), 0])]);
         var source = Save(DjvuFile(Form("DJVM", dirm)));
         var refused = await Assert.ThrowsAsync<ConversionRefusedException>(() => Convert(source, "pdf"));
+        Assert.Equal(DjvuDocument.IndirectKey, refused.ErrorKey);
+    }
+
+    // ---- CCITT G4 ----
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void G4_run_codes_are_a_prefix_code_for_every_run(bool black)
+    {
+        var codes = CcittG4.Codes(black).ToList();
+        Assert.Equal(64 + 27 + 13, codes.Count);
+        Assert.Equal(Enumerable.Range(0, 64).Concat(Enumerable.Range(1, 40).Select(i => i * 64)), codes.Select(c => c.Run));
+        var words = codes.Select(c => System.Convert.ToString(c.Code, 2).PadLeft(c.Length, '0')).ToList();
+        Assert.All(codes, c => Assert.True(c.Code < 1 << c.Length));
+        for (var i = 0; i < words.Count; i++)
+        {
+            for (var j = 0; j < words.Count; j++)
+                Assert.False(i != j && words[j].StartsWith(words[i], StringComparison.Ordinal), $"{words[i]} starts {words[j]}");
+        }
+        // With EOL's prefix (eight zeros) the codes fill the code space exactly.
+        var kraft = codes.Sum(c => Math.Pow(2, -c.Length)) + Math.Pow(2, -8);
+        Assert.Equal(1.0, kraft, 9);
+    }
+
+    /// <summary>A 1-bit picture (rows of (width + 7) / 8 bytes, a set bit black) from a pixel rule.</summary>
+    private static byte[] Bits(int width, int height, Func<int, int, bool> black)
+    {
+        var stride = (width + 7) / 8;
+        var bits = new byte[stride * height];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                if (black(x, y))
+                    bits[y * stride + (x >> 3)] |= (byte)(0x80 >> (x & 7));
+            }
+        }
+        return bits;
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(13, 9)]
+    [InlineData(64, 40)]
+    [InlineData(6001, 7)] // runs past 2560 and every make-up code
+    public void G4_round_trips_runs_text_noise_and_long_lines(int width, int height)
+    {
+        var random = new Random(width * 31 + height);
+        var noise = Bits(width, height, (_, _) => random.Next(3) == 0);
+        var stripes = Bits(width, height, (x, y) => (x / (1 + y)) % 2 == 0 || x == width - 1);
+        var lines = Bits(width, height, (x, y) => y % 3 == 0 ? x >= 2 : x % 1700 < 64 * y + 3);
+        foreach (var picture in new[] { noise, stripes, lines, new byte[noise.Length], Bits(width, height, (_, _) => true) })
+        {
+            var g4 = CcittG4.Encode(picture, width, height, Token);
+            var back = new byte[picture.Length];
+            CcittG4.Decode(g4, width, height, back, 0, Token);
+            Assert.Equal(picture, back);
+        }
+    }
+
+    [Fact]
+    public void G4_damage_fails_as_damage_and_cut_short_data_leaves_white_rows()
+    {
+        var width = 100;
+        var picture = Bits(width, 50, (x, y) => (x + y) % 7 < 3);
+        var g4 = CcittG4.Encode(picture, width, 50, Token);
+        var half = new byte[picture.Length];
+        CcittG4.Decode(g4.AsSpan(0, g4.Length / 2), width, 50, half, 0, Token);
+        Assert.Equal(picture.AsSpan(0, 13 * 5), half.AsSpan(0, 13 * 5));
+        Assert.All(half[^13..], b => Assert.Equal(0, b));
+        var random = new Random(4);
+        var watch = Stopwatch.StartNew();
+        for (var i = 0; i < 200; i++)
+        {
+            var junk = new byte[random.Next(1, 400)];
+            random.NextBytes(junk);
+            try
+            {
+                CcittG4.Decode(junk, 3000, 2000, new byte[375 * 2000], 0, Token);
+            }
+            catch (InvalidDataException)
+            {
+            }
+        }
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}");
+    }
+
+    /// <summary>
+    /// A wide page in two palette colours: letters and bars copied along it (some across the page's edges), a rule
+    /// across the page and a long block (runs past 2560 pixels).
+    /// </summary>
+    private static byte[] WidePage()
+    {
+        var writer = new Jb2Writer().Start(3000, 60).New(Letter, 5, 40).New(Bar, 20, 44).Copy(0, 2995, 40).Copy(0, -3, 55).Copy(1, 1000, -2)
+            .New(Jb2Writer.Shape(new string('#', 2900)), 50, 20)
+            .New(Jb2Writer.Shape([.. Enumerable.Repeat(new string('#', 2700), 6)]), 100, 5);
+        for (var i = 0; i < 40; i++)
+            writer.Copy(i % 2, 200 + i * 60, 30 + i % 3);
+        var colors = Enumerable.Range(0, 47).Select(b => b % 3 == 0 ? 1 : 0).ToArray();
+        return DjvuFile(Form("DJVU", Info(3000, 60, 100), Chunk("Sjbz", writer.End()), Palette([(0, 0, 0), (200, 0, 0)], colors)));
+    }
+
+    [Theory]
+    [InlineData(1, "JBIG2Decode")]
+    [InlineData(2, "CCITTFaxDecode")]
+    [InlineData(4, "FlateDecode")]
+    public void Each_mask_coding_draws_back_as_the_page(int coding, string filter)
+    {
+        using var document = DjvuDocument.Open(Save(WidePage()), cancellationToken: Token);
+        var page = document.ReadPage(0, Token);
+        using var writer = new OcrPdfWriter();
+        DjvuPdfWriter.AddPage(writer, page, (MaskCodings)coding, Token);
+        var output = new MemoryStream();
+        writer.Document.Save(output);
+        var bytes = output.ToArray();
+        using (var pdf = PdfDocument.Open(bytes))
+        {
+            var images = pdf.GetPages().Single().GetImages().ToList();
+            Assert.Equal(2, images.Count); // a mask per colour
+            Assert.All(images, image => Assert.Contains(filter, image.ImageDictionary.ToString()));
+        }
+        // PDFtoImage (pdfium's own decoders) draws it as the page looks.
+        var rgb = DjvuRenderer.Compose(page, Token);
+        using var bitmap = PDFtoImage.Conversion.ToImage(bytes, 0, null, new PDFtoImage.RenderOptions(Dpi: 100));
+        Assert.Equal((3000, 60), (bitmap.Width, bitmap.Height));
+        var differ = 0;
+        for (var y = 0; y < 60; y++)
+        {
+            for (var x = 0; x < 3000; x++)
+            {
+                var pixel = bitmap.GetPixel(x, y);
+                var at = (y * 3000 + x) * 3;
+                if (Math.Abs(pixel.Red - rgb[at]) > 64 || Math.Abs(pixel.Green - rgb[at + 1]) > 64 || Math.Abs(pixel.Blue - rgb[at + 2]) > 64)
+                    differ++;
+            }
+        }
+        Assert.True(differ < 3000 * 60 / 200, $"{differ} pixels differ");
+    }
+
+    [Fact]
+    public async Task Text_masks_become_jbig2_symbols_much_smaller_than_g4()
+    {
+        // A page of 600 copies of two shapes: the symbols are coded once.
+        var writer = new Jb2Writer().Start(1200, 600).New(Letter, 5, 5).New(Bar, 20, 5);
+        for (var i = 0; i < 600; i++)
+            writer.Copy(i % 2, 40 + i % 30 * 38, 10 + i / 30 * 29);
+        var source = Save(DjvuFile(Form("DJVU", Info(1200, 600, 300), Chunk("Sjbz", writer.End()))));
+        var pdfPath = Assert.Single(await Convert(source, "pdf"));
+        using var pdf = PdfDocument.Open(pdfPath);
+        var image = Assert.Single(pdf.GetPages().Single().GetImages());
+        Assert.Contains("JBIG2Decode", image.ImageDictionary.ToString());
+        using var document = DjvuDocument.Open(source, cancellationToken: Token);
+        var page = document.ReadPage(0, Token);
+        var g4 = CcittG4.Encode(DjvuRenderer.MaskBits(page, cancellationToken: Token), 1200, 600, Token);
+        Assert.True(image.RawBytes.Length * 3 < g4.Length, $"JBIG2 {image.RawBytes.Length} bytes, G4 {g4.Length}");
+    }
+
+    [Fact]
+    public async Task A_dithered_mask_stays_flate_when_g4_and_jbig2_would_be_larger()
+    {
+        // Noise, each row the one above moved by a byte: G4 codes every change and JBIG2's few neighbours don't see
+        // the move, while Flate finds each row in the one before.
+        var random = new Random(8);
+        var noise = Enumerable.Range(0, 512).Select(_ => random.Next(2) == 0).ToArray();
+        var rows = Enumerable.Range(0, 64).Select(y => string.Concat(Enumerable.Range(0, 512).Select(x => noise[(x + 8 * y) % 512] ? '#' : '.'))).ToArray();
+        var mask = new Jb2Writer().Start(512, 64).New(Jb2Writer.Shape(rows), 0, 0).End();
+        var source = Save(DjvuFile(Form("DJVU", Info(512, 64, 100), Chunk("Sjbz", mask))));
+        using var pdf = PdfDocument.Open(Assert.Single(await Convert(source, "pdf")));
+        var image = Assert.Single(pdf.GetPages().Single().GetImages());
+        Assert.True(image.IsImageMask);
+        Assert.Contains("FlateDecode", image.ImageDictionary.ToString());
+    }
+
+    // ---- Smmr masks ----
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(7, false)]
+    [InlineData(0, true)]
+    [InlineData(16, true)]
+    public void An_smmr_mask_reads_as_the_page_mask(int rowsPerStripe, bool inverted)
+    {
+        var (_, expected) = TextMask();
+        var bits = Bits(120, 60, (x, y) => expected[y, x]);
+        var source = Save(DjvuFile(Form("DJVU", Info(120, 60, 100), Smmr(bits, 120, 60, rowsPerStripe, inverted))));
+        using var document = DjvuDocument.Open(source, cancellationToken: Token);
+        var page = document.ReadPage(0, Token);
+        Assert.Equal(expected, Mask(page));
+        Assert.Equal(0, page.LeftOut);
+    }
+
+    [Fact]
+    public void Damaged_smmr_masks_fail_as_damage()
+    {
+        byte[] Page(byte[] smmr) => DjvuFile(Form("DJVU", Info(120, 60, 100), Chunk("Smmr", smmr)));
+        foreach (var smmr in new byte[][]
+        {
+            [(byte)'M', (byte)'M', (byte)'X', 0, 0, 120, 0, 60],
+            [(byte)'M', (byte)'M', (byte)'R', 0, 0, 120, 0, 60, 0x00, 0x00, 0x00, 0x01, 0xFF], // an extension code
+            [(byte)'M', (byte)'M', (byte)'R', 2, 0, 120, 0, 60, 0, 10, 0x7F, 0xFF, 0xFF, 0xFF], // a stripe past the end
+        })
+        {
+            using var document = DjvuDocument.Open(Save(Page(smmr), "damaged.djvu"), cancellationToken: Token);
+            Assert.Throws<InvalidDataException>(() => document.ReadPage(0, Token));
+        }
+    }
+
+    // ---- bookmarks and links ----
+
+    /// <summary>
+    /// Three pages: the first with links to page 3 (by number), the next page ("#+1"), page 2 by id, a web address, a
+    /// polygon to the first page, a script, a local file and a line (none of the last three links); a shared
+    /// file with a link every page that includes it gets; bookmarks nested two deep, one to a web address and one to a
+    /// file next to the document (a title only).
+    /// </summary>
+    private static byte[] LinkedBook(bool compressed = true)
+    {
+        const string links = """
+            (maparea "#3" "to page three" (rect 10 10 20 10) (xor))
+            (maparea "#+1" "" (rect 40 10 20 10))
+            (maparea (url "#p2" "_self") "" (oval 70 10 20 10))
+            (maparea "https://example.com/a b?c=1" "web" (rect 10 30 30 10) (border #ff0000))
+            (maparea "#1" "" (poly 50 30 60 45 70 30))
+            (maparea "javascript:alert(1)" "" (rect 80 30 10 10))
+            (maparea "file:///etc/passwd" "" (rect 95 30 10 10))
+            (maparea "#2" "" (line 0 0 50 50))
+            (zoom page) (background #FFFFFF)
+            """;
+        var shared = Form("DJVI", AnnotationChunk("(maparea \"http://shared.example/\" \"\" (text 0 50 120 10))", compressed));
+        byte[] PageForm(params byte[][] extra) => Form("DJVU", [Info(120, 60, 100), .. extra]);
+        var outline = Outline(
+            new Bookmark("Chapter one", "#1", new Bookmark("Section", "#p2", new Bookmark("Deeper", "#3"))),
+            new Bookmark("Web", "https://example.org/"),
+            new Bookmark("Next volume", "volume2.djvu"),
+            new Bookmark("Script", "javascript:alert(1)"));
+        return Bundle([outline],
+            ("shared.djvi", shared, false),
+            ("p1", PageForm(Include("shared.djvi"), AnnotationChunk(links, compressed)), true),
+            ("p2", PageForm(), true),
+            ("p3", PageForm(Include("shared.djvi")), true));
+    }
+
+    [Fact]
+    public void Links_and_bookmarks_are_read_with_their_targets()
+    {
+        using var document = DjvuDocument.Open(Save(LinkedBook()), cancellationToken: Token);
+        var links = document.ReadPage(0, Token).Links;
+        Assert.Equal([2, 1, 1, -1, 0, -1], links.Select(l => l.Page));
+        Assert.Equal("https://example.com/a b?c=1", links[3].Url);
+        Assert.Equal("http://shared.example/", links[5].Url);
+        Assert.Equal(new DjvuLink(50, 30, 20, 15, "#1", 0), links[4]);
+        Assert.Single(document.ReadPage(2, Token).Links);
+        Assert.Empty(document.ReadPage(1, Token).Links);
+
+        Assert.Equal(["Chapter one", "Web", "Next volume", "Script"], document.Bookmarks.Select(b => b.Title));
+        Assert.Equal("Deeper", document.Bookmarks[0].Children[0].Children[0].Title);
+        Assert.Equal(1, document.PageOf("#p2"));
+        Assert.Equal(-1, document.PageOf("#4"));
+        Assert.Equal(-1, document.PageOf("#-1", 0));
+        Assert.Equal(-1, document.PageOf("#nowhere"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Links_become_pdf_link_annotations_and_bookmarks_its_outline(bool compressed)
+    {
+        var pdfPath = Assert.Single(await Convert(Save(LinkedBook(compressed)), "pdf"));
+        using (var pdf = PdfDocument.Open(pdfPath))
+        {
+            var pages = pdf.GetPages().ToList();
+            var links = pages[0].GetAnnotations().ToList();
+            Assert.Equal(6, links.Count);
+            Assert.All(links, a => Assert.Equal(UglyToad.PdfPig.Annotations.AnnotationType.Link, a.Type));
+            var text = string.Join("\n", links.Select(a => a.AnnotationDictionary.ToString()));
+            Assert.Contains("https://example.com/a%20b?c=1", text);
+            Assert.Contains("http://shared.example/", text);
+            Assert.DoesNotContain("javascript", text);
+            Assert.DoesNotContain("passwd", text);
+            // The first link (page pixels 10, 10, 20 × 10 at 100 dpi) at 72 / 100 points per pixel.
+            var first = links[0].Rectangle;
+            Assert.Equal(7.2, first.Left, 2);
+            Assert.Equal(7.2, first.Bottom, 2);
+            Assert.Equal(21.6, first.Right, 2);
+            Assert.Equal(14.4, first.Top, 2);
+            Assert.Single(pages[2].GetAnnotations());
+
+            Assert.True(pdf.TryGetBookmarks(out var outline));
+            var chapter = Assert.IsType<UglyToad.PdfPig.Outline.DocumentBookmarkNode>(outline.Roots[0]);
+            Assert.Equal(("Chapter one", 1), (chapter.Title, chapter.PageNumber));
+            var section = Assert.IsType<UglyToad.PdfPig.Outline.DocumentBookmarkNode>(Assert.Single(chapter.Children));
+            Assert.Equal(2, section.PageNumber);
+            Assert.Equal(3, Assert.IsType<UglyToad.PdfPig.Outline.DocumentBookmarkNode>(Assert.Single(section.Children)).PageNumber);
+            Assert.Equal("https://example.org/", Assert.IsType<UglyToad.PdfPig.Outline.UriBookmarkNode>(outline.Roots[1]).Uri);
+        }
+        // The bookmarks that lead nowhere Filee links to keep only their titles.
+        var raw = System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(pdfPath));
+        Assert.Contains(Utf16Hex("Next volume"), raw);
+        Assert.Contains(Utf16Hex("Script"), raw);
+        Assert.DoesNotContain("javascript", raw);
+        Assert.DoesNotContain("volume2", raw);
+    }
+
+    private static string Utf16Hex(string text) => string.Concat(System.Text.Encoding.BigEndianUnicode.GetBytes(text).Select(b => b.ToString("X2", System.Globalization.CultureInfo.InvariantCulture)));
+
+    [Theory]
+    [InlineData("javascript:alert(1)", false)]
+    [InlineData("JavaScript:alert(1)", false)]
+    [InlineData("file:///C:/Windows/win.ini", false)]
+    [InlineData("vbscript:x", false)]
+    [InlineData("data:text/html,x", false)]
+    [InlineData("other.djvu", false)]
+    [InlineData("\\\\server\\share", false)]
+    [InlineData("https://example.com/", true)]
+    [InlineData("http://example.com/x?y=1#z", true)]
+    [InlineData("mailto:someone@example.com", true)]
+    [InlineData("ftp://example.com/file", true)]
+    public void Only_web_addresses_are_links_out_of_the_document(string url, bool allowed) =>
+        Assert.Equal(allowed, DjvuAnnotations.IsWebAddress(url));
+
+    [Fact]
+    public void Damaged_annotations_leave_the_page_without_links()
+    {
+        var limits = DjvuLimits.Default;
+        Assert.Empty(DjvuAnnotations.ReadLinks("(maparea \"#1\" \"\" (rect 1 1 5 5)", limits));
+        Assert.Empty(DjvuAnnotations.ReadLinks(new string('(', 100_000) + new string(')', 100_000), limits));
+        Assert.Empty(DjvuAnnotations.ReadLinks("(maparea \"#1\" \"\" (rect 1 1 x 5))) (maparea \"#1", limits));
+        Assert.Equal("a\"b\nc\u0001", Assert.Single(Assert.Single(DjvuAnnotations.Parse("(\"a\\\"b\\nc\\001\")", limits))));
+        // One good link after damage still counts when the brackets balance.
+        Assert.Single(DjvuAnnotations.ReadLinks("(junk (more)) (maparea \"#1\" \"\" (rect 1 1 5 5))", limits));
+    }
+
+    // ---- indirect documents ----
+
+    /// <summary>Writes an indirect document's index and files into a new folder; the index path.</summary>
+    private string SaveIndirect((byte[] Index, (string Id, byte[] File)[] Files) document, params string[] skip)
+    {
+        var folder = Path.Combine(_folder, "indirect-" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(folder);
+        foreach (var (id, file) in document.Files)
+        {
+            if (!skip.Contains(id))
+                File.WriteAllBytes(Path.Combine(folder, id), file);
+        }
+        var index = Path.Combine(folder, "index.djvu");
+        File.WriteAllBytes(index, document.Index);
+        return index;
+    }
+
+    private static (byte[] Index, (string Id, byte[] File)[] Files) IndirectBook(string secondId = "p0002.djvu")
+    {
+        var dictionaryWriter = new Jb2Writer().Start(0, 0).New(Letter, type: 2).New(Bar, type: 2);
+        var shared = Form("DJVI", Chunk("Djbz", dictionaryWriter.End()));
+        var mask = new Jb2Writer().RequireDictionary(2, dictionaryWriter.Library).Start(120, 60).Copy(0, 5, 40).Copy(1, 20, 44).End();
+        var page1 = Form("DJVU", Info(120, 60, 100), Include("dict.djbz"), Chunk("Sjbz", mask), AnnotationChunk("(maparea \"#2\" \"\" (rect 5 40 8 8))"));
+        var page2 = Form("DJVU", Info(120, 60, 100), Chunk("Sjbz", new Jb2Writer().Start(120, 60).New(Bar, 50, 30).End()));
+        var thumbnails = Form("THUM", Chunk("TH44", [0, 1]));
+        return Indirect([Outline(new Bookmark("Second", "#" + secondId))],
+            ("dict.djbz", shared, 0), ("p0001.djvu", page1, 1), (secondId, page2, 1), ("thumbs.djvu", thumbnails, 2));
+    }
+
+    [Fact]
+    public async Task An_indirect_document_reads_its_page_files_next_to_the_index()
+    {
+        // Thumbnails may be missing; pages and included files may not.
+        var index = SaveIndirect(IndirectBook(), "thumbs.djvu");
+        using (var document = DjvuDocument.Open(index, cancellationToken: Token))
+        {
+            Assert.Equal(2, document.Count);
+            Assert.Equal(Expected(120, 60, (Letter, 5, 40), (Bar, 20, 44)), Mask(document.ReadPage(0, Token)));
+            Assert.Equal(Expected(120, 60, (Bar, 50, 30)), Mask(document.ReadPage(1, Token)));
+            Assert.Equal(1, Assert.Single(document.ReadPage(0, Token).Links).Page);
+            Assert.Equal(1, document.PageOf(document.Bookmarks[0].Url));
+        }
+        using var pdf = PdfDocument.Open(Assert.Single(await Convert(index, "pdf")));
+        Assert.Equal(2, pdf.NumberOfPages);
+        Assert.Single(pdf.GetPage(1).GetAnnotations());
+
+        foreach (var missing in new[] { "p0001.djvu", "dict.djbz" })
+        {
+            var refused = await Assert.ThrowsAsync<ConversionRefusedException>(() => Convert(SaveIndirect(IndirectBook(), missing), "pdf"));
+            Assert.Equal(DjvuDocument.IndirectKey, refused.ErrorKey);
+        }
+    }
+
+    [Theory]
+    [InlineData("../outside.djvu")]
+    [InlineData("sub/../../outside.djvu")]
+    [InlineData("..\\outside.djvu")]
+    [InlineData("C:/outside.djvu")]
+    [InlineData("/outside.djvu")]
+    [InlineData("//server/share/outside.djvu")]
+    [InlineData("NUL")]
+    [InlineData("p.djvu:stream")]
+    public void An_indirect_document_reads_no_file_outside_its_folder(string id)
+    {
+        // The page exists where the name leads (outside the index file's folder) and is still refused.
+        var book = IndirectBook(id);
+        var index = SaveIndirect(book, id);
+        var page = book.Files.First(f => f.Id == id).File;
+        var outside = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(index))!, "outside.djvu");
+        File.WriteAllBytes(outside, page);
+        var refused = Assert.Throws<ConversionRefusedException>(() => DjvuDocument.Open(index, cancellationToken: Token).Dispose());
+        Assert.Equal(DjvuDocument.IndirectKey, refused.ErrorKey);
+    }
+
+    [Fact]
+    public void An_indirect_document_follows_no_link_out_of_its_folder()
+    {
+        var book = IndirectBook("linked.djvu");
+        var index = SaveIndirect(book, "linked.djvu");
+        var elsewhere = Path.Combine(_folder, "elsewhere-" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(elsewhere);
+        var target = Path.Combine(elsewhere, "linked.djvu");
+        File.WriteAllBytes(target, book.Files.First(f => f.Id == "linked.djvu").File);
+        try
+        {
+            File.CreateSymbolicLink(Path.Combine(Path.GetDirectoryName(index)!, "linked.djvu"), target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip("This machine doesn't let the test make a symbolic link.");
+        }
+        var refused = Assert.Throws<ConversionRefusedException>(() => DjvuDocument.Open(index, cancellationToken: Token).Dispose());
         Assert.Equal(DjvuDocument.IndirectKey, refused.ErrorKey);
     }
 
@@ -595,6 +1022,10 @@ public sealed class DjvuTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
         var text = DjvuBuilder.Text("x", new TextZone(1, 0, 0, 120, 60, 0, 1, new TextZone(5, 0, 0, 120, 10, 0, 1, zones)));
         var zoneData = BzzDecoder.Decode(text[8..(8 + ReadSize(text))], 1 << 20, Token);
         Assert.Throws<ConversionRefusedException>(() => DjvuText.Read(zoneData, DjvuLimits.Default with { MaxTextZones = 10 }));
+        // Annotations with more parts than the (lowered) limit, and an Smmr mask claiming 65,535 × 65,535 pixels.
+        var annotations = string.Concat(Enumerable.Repeat("(maparea \"#1\" \"\" (rect 1 1 5 5)) ", 20));
+        AssertRefused(DjvuFile(Form("DJVU", Info(100, 100), AnnotationChunk(annotations))), DjvuLimits.Default with { MaxAnnotationNodes = 50 });
+        AssertRefused(DjvuFile(Form("DJVU", Info(100, 100), Chunk("Smmr", [(byte)'M', (byte)'M', (byte)'R', 0, 0xFF, 0xFF, 0xFF, 0xFF]))), limits: null);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}");
     }
 
