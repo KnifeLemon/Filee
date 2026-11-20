@@ -8,6 +8,12 @@
 //
 // Every character here is in the Basic Multilingual Plane and in Segoe UI Symbol, which every Windows has: rhwp
 // draws a character its font lacks with the first installed font that has it, so these always come out.
+//
+// The run keeps the symbol font and the codes as well (HCharLayout.Symbol, see Drawn): where the font is installed,
+// Filee's layout draws and measures the codes in it, Word's own glyph at Word's width and line height; elsewhere it
+// draws the Unicode character. A name written without its spaces ("Wingdings2", as PDF converters write it) is the
+// installed font's ("Wingdings 2"), so the symbol is drawn, not a Cambria "£" as Word would for that name (its font
+// table's altName).
 
 using System.Text;
 
@@ -67,6 +73,13 @@ internal static class SymbolFonts
             (0xF1, "⟩∫")),
     };
 
+    /// <summary>The installed fonts' names, by table name.</summary>
+    private static readonly Dictionary<string, string> Installed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Wingdings2"] = "Wingdings 2",
+        ["Wingdings3"] = "Wingdings 3",
+    };
+
     private static Dictionary<int, string> Table(params (int First, string Characters)[] rows)
     {
         var table = new Dictionary<int, string>();
@@ -115,6 +128,25 @@ internal static class SymbolFonts
         return result.ToString();
     }
 
+    /// <summary>
+    /// The name a symbol font is installed under ("Wingdings2" is "Wingdings 2"); another font's name as it is.
+    /// </summary>
+    public static string InstalledName(string font) =>
+        Installed.TryGetValue(font.Replace(" ", "", StringComparison.Ordinal), out var name) ? name : font.Trim();
+
+    /// <summary>
+    /// The format the Unicode characters read from <paramref name="codes"/> of <paramref name="font"/> are drawn with:
+    /// the text font, with the codes kept for the layout to draw in the symbol font where it is installed. Codes of a
+    /// symbol font are made F020–F0FF, as Word's w:sym writes them.
+    /// </summary>
+    public static HCharFormat Drawn(HCharFormat format, string font, string codes)
+    {
+        var plain = WithoutSymbolFont(format);
+        if (IsSymbolFont(font))
+            codes = string.Concat(codes.Select(c => c is >= ' ' and <= (char)0xFF ? (char)(0xF000 + c) : c));
+        return plain with { Layout = (plain.Layout ?? new HCharLayout()) with { Symbol = new HSymbol(InstalledName(font), codes) } };
+    }
+
     /// <summary>The format without symbol fonts: the Unicode characters are drawn with the text font.</summary>
     public static HCharFormat WithoutSymbolFont(HCharFormat format)
     {
@@ -138,21 +170,25 @@ internal static class SymbolFonts
             yield return new HText(text, format);
             yield break;
         }
-        var plain = WithoutSymbolFont(format);
         var run = new StringBuilder();
+        var codes = new StringBuilder();
         var mappedRun = false;
         foreach (var c in text)
         {
             var mapped = Map(format.Font, c);
             if (run.Length > 0 && mappedRun != mapped is not null)
             {
-                yield return new HText(run.ToString(), mappedRun ? plain : format);
+                yield return Text();
                 run.Clear();
+                codes.Clear();
             }
             mappedRun = mapped is not null;
             run.Append(mapped ?? c.ToString());
+            codes.Append(c);
         }
         if (run.Length > 0)
-            yield return new HText(run.ToString(), mappedRun ? plain : format);
+            yield return Text();
+
+        HText Text() => new(run.ToString(), mappedRun ? Drawn(format, format.Font!, codes.ToString()) : format);
     }
 }
