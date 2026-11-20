@@ -78,8 +78,9 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
             .. sources.Select(source => new ConversionEdge(source, "iso", DirectOnly: true)),
             .. folderTargets.Select(target => new ConversionEdge(FormatRegistry.Folder, target, DirectOnly: true)),
             // ".udf" is a UYAP document (read by the document readers) or a Universal Disk Format disc: Extract unpacks
-            // either, the disc as a disc (ArchiveExtractor).
-            new ConversionEdge(UyapReader.Format, FormatRegistry.Folder),
+            // either, the disc as a disc (ArchiveExtractor). Only from the file itself: a document written as UDF on
+            // the way would otherwise unpack.
+            new ConversionEdge(UyapReader.Format, FormatRegistry.Folder, DirectOnly: true),
         ];
     }
 

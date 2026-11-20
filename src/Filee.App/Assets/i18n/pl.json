@@ -303,6 +303,8 @@
   "engine.odt-writer.description": "Zapisuje dokumenty tekstowe OpenDocument (ODT) z dokumentów Word, PDF, OFD, HWP/HWPX, Markdown, HTML, arkuszy, slajdów i e-booków.",
   "engine.rtf-writer.name": "Zapis RTF (wbudowany)",
   "engine.rtf-writer.description": "Zapisuje pliki Rich Text Format (RTF, dla Worda i WordPada) z dokumentów Word, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, arkuszy kalkulacyjnych, slajdów i e-booków.",
+  "engine.udf-writer.name": "Zapis UYAP (wbudowany)",
+  "engine.udf-writer.description": "Zapisuje dokumenty UYAP (UDF, dla edytora dokumentów UYAP) z dokumentów Word, ODT, RTF, PDF, OFD, HWP/HWPX, Markdown, HTML, arkuszy kalkulacyjnych, slajdów i e-booków.",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "Notatniki Jupyter, OPML, Textile, MediaWiki, reStructuredText, Org i DocBook bez Pandoc.\nDokumenty do tych formatów, a te do Markdown, HTML, tekstu, DOCX, HWPX i PDF.\nTakże mapy myśli FreeMind / Freeplane i XMind, czytane jako konspekt.",
   "engine.pptx-writer.name": "Generator PPTX (wbudowany)",

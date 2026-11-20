@@ -303,6 +303,8 @@
   "engine.odt-writer.description": "Écrit des documents texte OpenDocument (ODT) à partir de documents Word, PDF, OFD, HWP/HWPX, Markdown, HTML, feuilles de calcul, diapositives et livres numériques.",
   "engine.rtf-writer.name": "Écrivain RTF (intégré)",
   "engine.rtf-writer.description": "Écrit du texte enrichi (RTF, pour Word et WordPad) à partir de documents Word, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, feuilles de calcul, diapositives et livres numériques.",
+  "engine.udf-writer.name": "Écrivain UYAP (intégré)",
+  "engine.udf-writer.description": "Écrit des documents UYAP (UDF, pour l'éditeur de documents UYAP) à partir de documents Word, ODT, RTF, PDF, OFD, HWP/HWPX, Markdown, HTML, feuilles de calcul, diapositives et livres numériques.",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "Notebooks Jupyter, OPML, Textile, MediaWiki, reStructuredText, Org et DocBook sans Pandoc.\nDes documents vers ces formats, et ceux-ci en Markdown, HTML, texte, DOCX, HWPX et PDF.\nAussi les cartes mentales FreeMind / Freeplane et XMind, lues comme des plans.",
   "engine.pptx-writer.name": "Générateur PPTX (intégré)",

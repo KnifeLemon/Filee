@@ -22,6 +22,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT (+ OTT, FODT), XLSX (+ XLSM/XLTX), XLS, ODS (+ OTS, FODS), CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PPT, ODP (+ OTP, FODP), PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF, mind maps (MM, XMind) → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
 | **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT (+ OTT, FODT), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS (+ OTS, FODS), CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → DOCX** |
 | **RTF writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → RTF** (Rich Text Format, see [RTF writer](#rtf-writer)) |
+| **UYAP writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), ODT (+ OTT, FODT), RTF, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, XLSX, XLS, ODS, CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → UDF** (the UYAP Document Editor's file, see [UYAP writer](#uyap-writer)) |
 | **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, UYAP (UDF), HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS (+ OTS, FODS), CSV, PPTX (+ variants), PPT, ODP (+ OTP, FODP), mind maps (MM, XMind) → ODT** (OpenDocument text, LibreOffice Writer) |
 | **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT (+ OTT, FODT), HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS (+ OTS, FODS), CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed); **PPT → PPTX** as the [PPT reader](#ppt-reader) translates it |
 | **ODP writer** | built in | **PPTX (+ PPTM/POTX/POTM/PPSX), PPT → ODP, OTP, FODP** with masters, shapes, pictures, tables, lists and speaker notes; **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT (+ OTT, FODT), HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → ODP slides** laid out as the PPTX writer lays them out (see [ODP writer](#odp-writer)); a deck with what the slide model leaves out (charts without a picture, effects, 3D) keeps LibreOffice's route |
@@ -29,7 +30,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF slides | built in (PdfPig, PDFium) | **PDF → PPTX**: each page rebuilt as an editable slide (text boxes with the PDF's fonts, pictures, shapes, ruled tables); or, as a preset option, a picture of each page with its text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
-| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT (+ OTT, FODT), RTF, HWP, HWPX, HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
+| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT/WPS), ODT (+ OTT, FODT), RTF, HWP, HWPX, HTML, MHTML, UYAP (UDF) → XLSX, ODS, CSV** (#1016, #1588): each table on its own sheet, numbers and dates as real values, merged cells, borders, fill, alignment and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
@@ -2317,9 +2318,10 @@ full 140 mm invoice opened there puts its last line on a second page (rhwp's PDF
 UYAP's `.udf` (#1338) is the file of the UYAP Document Editor (UYAP Doküman Editörü), which Turkish courts, lawyers and
 citizens write petitions and decisions in. `Uyap/UyapReader.cs` reads it into the document model with no external
 engine, so UDF → PDF is one step through the Filee renderer (two, HWPX writer and rhwp, with it off), UDF → DOCX, ODT
-and HWPX one through their writers, and TXT, Markdown, HTML and EPUB follow from there. UDF is read only
-(`Writable: false`) and sits on the office donut (new libraries; an existing library learns `.udf` through a settings
-migration).
+and HWPX one through their writers, and TXT, Markdown, HTML and EPUB follow from there. Pictures of the pages (PNG,
+JPEG, #1633) are drawn from that PDF as a Word document's are, and the tables go to XLSX, ODS and CSV through Document
+tables. UDF is written too ([UYAP writer](#uyap-writer)) and sits on the office donut (new libraries; an existing
+library learns `.udf` through a settings migration).
 
 - **Package**: a ZIP with one part, `content.xml`, read within `DocumentLimits` (`Documents/DocumentPackage`: part
   sizes counted while unpacking, the inflate ratio, no DTD, depth and element limits). Its `<template>` holds the whole
@@ -2331,8 +2333,12 @@ migration).
   print. Family, size (points), bold, italic, underline, strikethrough, super- and subscript, foreground and background
   (Java ARGB integers); Java's logical fonts (Dialog, Serif, Monospaced) become Arial, Times New Roman and Courier New.
   Paragraphs: Swing alignment (0 left, 1 centre, 2 right, 3 justified), left, right and first-line indents, space
-  above and below, line spacing, and the TabSet (`position:alignment:leader`, from the left indent). Text is drawn
-  without kerning, as Java draws it, and Swing's default tab stops are every 72 pt.
+  above and below, line spacing, and the TabSet (`position:alignment:leader`, from the left indent; Swing's alignments
+  1 right, 2 centre, 4 decimal). Text is drawn without kerning, as Java draws it, and Swing's default tab stops are
+  every 72 pt.
+- **Lists**: `Numbered` / `Bulleted` paragraphs with the same `ListId` are one list, at `ListLevel`; each level is
+  numbered as its first item says (`NumberType`: digits, small or capital letters, small or capital Roman numerals,
+  each followed by "." or ")"; `BulletType`: ellipse, rectangle, arrow, diamonds, triangle, open rectangle).
 - **Line height**: Java's (`FontMetrics.getHeight`: the ascent rounded up, descent and leading rounded up together),
   for the fonts UYAP documents use (Times New Roman, Calibri, Arial, Courier New, Tahoma, Verdana, Cambria, Georgia,
   Segoe UI), as an "at least" height: a 12 pt Calibri or Times New Roman line is 15 pt as in the PDF the editor
@@ -2341,18 +2347,70 @@ migration).
   orientations 0 and 2; margins in points, the header and footer distances (`headerFOffset`, `footerFOffset`) as the
   top of the header and footer areas.
 - **Tables** (`<table columnCount columnSpans border><row><cell>`): the column spans as shares of the text width,
-  `borderNone` without lines, cell spans and fill where a cell gives them; tables nested past `Nesting.MaxDepth`
-  become plain paragraphs. **Pictures** (`<image imageData>`, Base64 in the XML): PNG, JPEG, GIF and BMP up to 32 MB
+  `borderNone` without lines, cell spans (`colspan`), fill (`fillColor`, white is none) and vertical alignment
+  (`align` top, vcenter, bottom) where a cell gives them, the sides `borderSpec` names (1 top, 2 right, 4 bottom,
+  8 left) in `borderStyle`, `borderWidth` and `borderColor`; a `headerRow` repeats as a header row, a row `height` is
+  its least height; tables nested past `Nesting.MaxDepth` become plain paragraphs. **Pictures** (`<image imageData>`, Base64 in the XML): PNG, JPEG, GIF and BMP up to 32 MB
   each and 2,000 a document, left out when their header claims more pixels than `DocumentLimits` allows.
   **Page breaks**, **headers and footers** (paragraphs in `<header>` / `<footer>`) and page-number fields are read.
 - **The other `.udf`**: a Universal Disk Format disc image has the same extension. The content tells them apart
   (`UyapReader.IsUyap`): a ZIP whose `content.xml` has a `<template>` root is UYAP. Given to a document route, a disc
   is refused with `error.udf_not_uyap`, which points to Extract; the archive engine has a UDF → folder edge (Extract
-  only, no repacking) and unpacks a disc as an ISO (`ArchiveExtractor`), a UYAP file as the ZIP it is.
+  only, no repacking, and only from a `.udf` itself, never from a document written as UDF on the way) and unpacks a
+  disc as an ISO (`ArchiveExtractor`), a UYAP file as the ZIP it is.
 
 Compared with the PDF the editor prints, a petition in Calibri comes out on the same pages with the same page breaks,
 fonts, alignment and indents. Lines inside a paragraph may break a word earlier or later: Java lays text out with
 whole-point glyph advances, the Filee renderer with the font's own.
+
+## UYAP writer
+
+`Uyap/UyapWriter.cs` writes UYAP documents (#1546, #1633) from the document model, the counterpart of the
+[UYAP reader](#uyap-reader): `udf-writer` (`Uyap/UyapWriterConverter.cs`) takes every format the built-in readers read
+(not UDF itself) to UDF in one step, cost 8 (PDF + 6), like the RTF and ODT writers. It writes the file as the editor
+writes it, checked against a petition the editor saved (#1338): read and written back through DOCX, the text and every
+paragraph's and run's attributes come out the same (one empty run names Times New Roman, which DOCX made explicit;
+the margins move by less than 0.05 pt through DOCX).
+
+- **Package**: a ZIP with `content.xml` (`<template format_id="1.8">`). The text of the header, the body and the footer
+  in that order is one CDATA block, every paragraph ended by "\n" in its last run (in a run of its own when the
+  paragraph mark is formatted otherwise), and one "\n" more at the end that no element covers, as in the editor's
+  files. Every run, picture and page break covers the next stretch of the text, so the offsets tile it. The styles
+  are the editor's `default` and `hvl-default`.
+- **Runs** say only what differs from `hvl-default` (Times New Roman 12 pt, black): family (the East Asian font for
+  Hangul, kana or Han text), size, bold, italic, underline, strikethrough, super- and subscript, foreground and
+  background as Java ARGB integers; runs alike are joined. Tabs stay in the text, line breaks are "\n" inside the
+  paragraph's runs (Filee reads a line break; the editor breaks the line).
+- **Paragraphs**: alignment (distributed is justified; right to left swaps left and right), indents and space above
+  and below in points (0 left out, as the editor does), `LineSpacing` from the source's own multiple, a percentage
+  (130 % in 한글's terms is one line) or a height against Java's line for the runs, and the TabSet; a hanging paragraph
+  without stops gets the editor's `0.0:0:0`. Headings are bold and larger where their runs don't say. Lists are
+  `Numbered` / `Bulleted` with the closest `NumberType` / `BulletType`, a `ListId` per list and the `ListLevel`; items
+  without their own indent get 18 pt a level with the number hanging. A list's start number is not kept.
+- **Page**: A4 (`mediaSizeName` 1, the only size known), landscape as orientation 0, margins in points with the header
+  and footer distances. One header and one footer: the first section's (both pages, else odd, else the first one).
+  Later sections start on a new page (`<page-break>` with its own paragraph).
+- **Tables**: `columnSpans` in points (`HwpxWriter.ColumnWidths` over the text width), `colspan`, `align`, `fillColor`,
+  and each cell's borders as `borderSpec` with style, width and colour (`borderNone` without any). UYAP merges columns
+  only, so a cell over several rows keeps its text and loses its bottom border, and the rows under it get cells of
+  their own without the borders between; nested tables stay nested; header rows are `headerRow`.
+- **Pictures**: PNG and JPEG as they are, anything else (GIF, BMP, WebP, metafiles …) as PNG, Base64 in `imageData` on
+  a U+FFFC in the text, with their size in points, never wider than the text (or the cell).
+- **Left out or flattened**: page-number fields (the editor keeps its page number on the footer, in a form not known
+  yet; a field's stored number is written as text), notes (a raised number in the text and the note's text after its
+  section's body), text boxes (their paragraphs after the paragraph they were in), shapes, bookmarks and link targets
+  (the link text stays).
+- **Safety and limits**: text XML can't hold is left out (and "\r", which a parser would turn into "\n" and shift the
+  offsets), lone surrogates become U+FFFD and "]]>" splits the CDATA block, so the offsets stay right; attribute values
+  are escaped. `content.xml` stays within what the reader takes: `DocumentLimits.MaxPartBytes`, `MaxXmlElements`,
+  `MaxParagraphs` and `MaxObjects` (refused with `error.document_too_complex`), the inflate ratio (a part so repetitive
+  that it would pass it is stored uncompressed), and the reader's picture limits (pictures past them, or claiming more
+  pixels than `MaxPicturePixels`, are left out). Tables go through `HwpxWriter.PlaceCells`' cell limit and the model
+  through `Nesting.Limit`. The elements are written to a temporary file first and the package through one of its own,
+  so a refusal, a failure or a cancellation leaves no file.
+
+Not checked yet in the UYAP Document Editor itself: tables, pictures, lists, headers and footers, nested tables and
+page breaks follow what is known of the format, not a file the editor saved with them.
 
 ## PDF → XLSX
 

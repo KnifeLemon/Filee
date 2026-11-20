@@ -182,6 +182,39 @@ public sealed class UyapTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
     }
 
     [Fact]
+    public void Lists_header_rows_and_cell_borders_fills_and_alignment_are_read()
+    {
+        var folder = fx.NewFolder();
+        var path = MakeUdf(folder, "lists.udf",
+        [
+            new("Numbered=\"true\" NumberType=\"NUMBER_TYPE_ROMAN_BIG_PARENTHESIS\" ListId=\"1\" ListLevel=\"0\"", ("One", "")),
+            new("Bulleted=\"true\" BulletType=\"BULLET_TYPE_DIAMOND\" ListId=\"1\" ListLevel=\"1\"", ("Under", "")),
+            new("Numbered=\"true\" NumberType=\"NUMBER_TYPE_ROMAN_BIG_PARENTHESIS\" ListId=\"1\" ListLevel=\"0\"", ("Two", "")),
+        ], extraWithText: text =>
+        {
+            string Cell(string attributes, string value) => $"<cell {attributes}>" + Paragraph(text, new Para("", (value, ""))) + "</cell>";
+            return $"""<table columnCount="3" columnSpans="1,1,1" border="borderCell"><row rowType="headerRow" height="30.0">{Cell("align=\"vcenter\" fillColor=\"-256\"", "A")}{Cell("border=\"borderNone\"", "B")}{Cell("borderSpec=\"5\" borderStyle=\"borderStyle-dashed\" borderWidth=\"1.0\" borderColor=\"-65536\" fillColor=\"-1\"", "C")}</row></table>""";
+        });
+
+        var blocks = Assert.Single(UyapReader.Read(path, folder).Sections).Blocks;
+
+        var items = blocks.Take(3).Cast<HParagraph>().Select(p => p.List!).ToList();
+        Assert.Equal([0, 1, 0], items.Select(i => i.Level));
+        Assert.All(items, i => Assert.Same(items[0].Numbering, i.Numbering));
+        Assert.Equal(new HNumberingLevel("ROMAN_CAPITAL", "^1)", 1, false), items[0].Numbering.Levels[0]);
+        Assert.Equal(new HNumberingLevel("DIGIT", "◆", 1, true), items[0].Numbering.Levels[1]);
+        var row = Assert.Single(Assert.IsType<HTable>(blocks[3]).Rows);
+        Assert.True(row.Header);
+        Assert.Equal(3000, row.Height);
+        Assert.Equal((HVerticalAlign.Center, "#FFFF00"), (row.Cells[0].VerticalAlign, row.Cells[0].Fill));
+        Assert.Equal(HBorders.Empty, row.Cells[1].Borders);
+        var dashed = row.Cells[2].Borders!.Value;
+        Assert.Equal((HBorderStyle.Dash, HBorderStyle.Dash, HBorderStyle.None, HBorderStyle.None), (dashed.Top.Style, dashed.Bottom.Style, dashed.Left.Style, dashed.Right.Style));
+        Assert.Equal(("#FF0000", 0.35), (dashed.Top.Color, dashed.Top.WidthMm));
+        Assert.Null(row.Cells[2].Fill); // white is the editor's no fill
+    }
+
+    [Fact]
     public void Runs_pointing_outside_the_text_and_a_file_without_elements_still_read()
     {
         var folder = fx.NewFolder();
@@ -252,12 +285,12 @@ public sealed class UyapTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
     }
 
     [Fact]
-    public void Udf_is_a_read_only_document_and_extract_takes_it_too()
+    public void Udf_is_a_document_and_extract_takes_it_too()
     {
         var format = FormatRegistry.Detect("petition.udf");
         Assert.Equal(UyapReader.Format, format?.Id);
         Assert.Equal(FormatCategory.Document, format!.Category);
-        Assert.False(format.Writable);
+        Assert.True(format.Writable); // the UYAP writer (#1546) writes it
         Assert.Contains(UyapReader.Format, DocumentReaders.BuiltInFormats);
 
         var planner = fx.Catalog.CreatePlanner();
@@ -300,6 +333,9 @@ public sealed class UyapTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
         fx.Catalog.Refresh();
         var folder = fx.NewFolder();
         Assert.Equal(["layout"], fx.Catalog.CreatePlanner().Plan("udf", "pdf")!.Steps.Select(s => s.Converter.Id));
+        // Pictures of the pages (#1633) are drawn from that PDF, as a Word document's are.
+        foreach (var target in new[] { "png", "jpg" })
+            Assert.Equal(["layout", "pdfium"], fx.Catalog.CreatePlanner().Plan("udf", target)!.Steps.Select(s => s.Converter.Id));
 
         var job = await fx.ConvertAsync([MakePetition(folder)], new Preset { TargetFormat = "pdf" });
 
@@ -317,6 +353,11 @@ public sealed class UyapTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
         Assert.InRange(middle, 595.28 / 2 - 6, 595.28 / 2 + 6);
         // The signature is right-aligned at the right margin.
         Assert.InRange(words.Single(w => w.Text == "Applicant").BoundingBox.Right, 595.28 - 42.5 - 4, 595.28 - 42.5 + 1);
+
+        var png = await fx.ConvertAsync([MakePetition(fx.NewFolder())], new Preset { TargetFormat = "png" });
+        Assert.True(png.State == JobState.Completed, string.Join("; ", png.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        using var picture = new MagickImage(Assert.Single(png.Outputs));
+        Assert.True(picture.Height > picture.Width); // an A4 page
     }
 
     [Fact]

@@ -303,6 +303,8 @@
   "engine.odt-writer.description": "Writes OpenDocument text (ODT, LibreOffice Writer) from Word documents, PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheets, slides and e-books.",
   "engine.rtf-writer.name": "RTF writer (built-in)",
   "engine.rtf-writer.description": "Writes Rich Text Format (RTF, for Word and WordPad) from Word documents, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheets, slides and e-books.",
+  "engine.udf-writer.name": "UYAP writer (built-in)",
+  "engine.udf-writer.description": "Writes UYAP documents (UDF, for the UYAP Document Editor) from Word documents, ODT, RTF, PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheets, slides and e-books.",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "Jupyter notebooks, OPML, Textile, MediaWiki, reStructuredText, Org and DocBook without Pandoc.\nDocuments to these formats, and these to Markdown, HTML, text, DOCX, HWPX and PDF.\nAlso FreeMind / Freeplane and XMind mind maps, read as outlines.",
   "engine.pptx-writer.name": "PPTX writer (built-in)",

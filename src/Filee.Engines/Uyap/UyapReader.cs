@@ -1,6 +1,6 @@
 // UYAP documents (.udf, #1338): the files of the UYAP Document Editor (UYAP Doküman Editörü), which Turkish courts,
 // lawyers and citizens write petitions and decisions in. Read into the document model with no external engine, so the
-// Filee renderer turns them into PDF and the writers into DOCX, ODT, HWPX, TXT and the rest.
+// Filee renderer turns them into PDF and the writers into DOCX, ODT, HWPX, TXT and the rest. UyapWriter writes them.
 //
 // A UYAP document is a ZIP package with one part, content.xml (format_id 1.x), written by the editor's Java text
 // component:
@@ -9,12 +9,14 @@
 //     <properties><pageFormat mediaSizeName leftMargin rightMargin topMargin bottomMargin paperOrientation
 //                             headerFOffset footerFOffset/></properties>
 //     <elements resolver="hvl-default">
-//       <paragraph Alignment LeftIndent RightIndent FirstLineIndent SpaceAbove SpaceBelow LineSpacing TabSet>
+//       <paragraph Alignment LeftIndent RightIndent FirstLineIndent SpaceAbove SpaceBelow LineSpacing TabSet
+//                  Numbered|Bulleted NumberType|BulletType ListId ListLevel>
 //         <content startOffset length family size bold italic underline strikethrough foreground .../>
 //         <image imageData="(Base64)" width height startOffset length/>
 //       </paragraph>
-//       <table columnCount columnSpans border><row><cell><paragraph .../></cell></row></table>
-//       <header>/<footer> with paragraphs, <page-break/>
+//       <table columnCount columnSpans border><row rowType height><cell colspan align fillColor border borderSpec
+//              borderStyle borderWidth borderColor><paragraph .../></cell></row></table>
+//       <header>/<footer> with paragraphs, <page-break> (with a paragraph of its own)
 //     </elements>
 //     <styles><style name family size bold .../></styles>
 //   </template>
@@ -27,6 +29,11 @@
 // Lines are as high as Java makes them (FontMetrics: the ascent rounded up, then descent and leading rounded up
 // together), for the fonts UYAP documents use, as an "at least" height: a 12 pt Calibri line is 15 pt, as in the PDF the
 // editor prints, so pages break where they break there. Swing's default tab stops are every 72 pt.
+//
+// Lists: paragraphs with the same ListId are items of one list, each level numbered as its first item says
+// (NumberType: digits, letters or Roman numerals followed by "." or ")"; BulletType: the bullet's shape). Cells: a
+// headerRow repeats as a header, borderSpec names the sides drawn (1 top, 2 right, 4 bottom, 8 left), white fills
+// are none.
 //
 // ".udf" also names Universal Disk Format disc images. Which one a file is, is told by its content (IsUyap): a ZIP
 // whose content.xml has a <template> root. A disc image given to a document route is refused with
@@ -261,6 +268,79 @@ internal sealed class UyapReader
         }
     }
 
+    // ───────────────────────── Lists ─────────────────────────
+
+    /// <summary>The editor's lists, by ListId, with the levels their items have defined so far.</summary>
+    private readonly Dictionary<string, (HNumbering Numbering, HashSet<int> Defined)> _lists = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// UYAP's number types (NumberType="NUMBER_TYPE_NUMBER_DOT" ...): the OWPML number format and what follows the
+    /// number. The writer maps back through the same table.
+    /// </summary>
+    internal static readonly (string Type, string Format, string After)[] NumberTypes =
+    [
+        ("NUMBER_TYPE_NUMBER_DOT", "DIGIT", "."),
+        ("NUMBER_TYPE_NUMBER_PARENTHESIS", "DIGIT", ")"),
+        ("NUMBER_TYPE_CHAR_SMALL_DOT", "LATIN_SMALL", "."),
+        ("NUMBER_TYPE_CHAR_SMALL_PARENTHESIS", "LATIN_SMALL", ")"),
+        ("NUMBER_TYPE_CHAR_BIG_DOT", "LATIN_CAPITAL", "."),
+        ("NUMBER_TYPE_CHAR_BIG_PARENTHESIS", "LATIN_CAPITAL", ")"),
+        ("NUMBER_TYPE_ROMAN_SMALL_DOT", "ROMAN_SMALL", "."),
+        ("NUMBER_TYPE_ROMAN_SMALL_PARENTHESIS", "ROMAN_SMALL", ")"),
+        ("NUMBER_TYPE_ROMAN_BIG_DOT", "ROMAN_CAPITAL", "."),
+        ("NUMBER_TYPE_ROMAN_BIG_PARENTHESIS", "ROMAN_CAPITAL", ")"),
+    ];
+
+    /// <summary>UYAP's bullet types (BulletType="BULLET_TYPE_ELLIPSE" ...) and the characters drawn for them.</summary>
+    internal static readonly (string Type, string Bullet)[] BulletTypes =
+    [
+        ("BULLET_TYPE_ELLIPSE", "•"),
+        ("BULLET_TYPE_RECTANGLE", "▪"),
+        ("BULLET_TYPE_ARROW", "➢"),
+        ("BULLET_TYPE_DIAMOND", "◆"),
+        ("BULLET_TYPE_DIAMOND_2", "❖"),
+        ("BULLET_TYPE_TRIANGLE", "►"),
+        ("BULLET_TYPE_RECTANGLE_D", "□"),
+    ];
+
+    /// <summary>
+    /// A paragraph of a numbered or bulleted list (Numbered / Bulleted, NumberType / BulletType, ListId, ListLevel), as
+    /// an item of the list its ListId names; null for others. A level takes the type of its first item.
+    /// </summary>
+    private HListRef? ListOf(XElement element)
+    {
+        var numbered = string.Equals(Attr(element, "Numbered"), "true", StringComparison.OrdinalIgnoreCase);
+        var bulleted = !numbered && string.Equals(Attr(element, "Bulleted"), "true", StringComparison.OrdinalIgnoreCase);
+        if (!numbered && !bulleted)
+            return null;
+        var level = (int)Math.Clamp(Number(element, "ListLevel") ?? 0, 0, 8);
+        var id = Attr(element, "ListId") ?? "";
+        if (!_lists.TryGetValue(id, out var list))
+        {
+            _budget.Object();
+            _lists[id] = list = (new HNumbering(), []);
+        }
+        while (list.Numbering.Levels.Count <= level)
+        {
+            var l = list.Numbering.Levels.Count + 1;
+            list.Numbering.Levels.Add(new HNumberingLevel("DIGIT", $"^{l}.", 1, Bullet: false));
+        }
+        if (list.Defined.Add(level))
+        {
+            if (bulleted)
+            {
+                var bullet = BulletTypes.FirstOrDefault(b => b.Type == Attr(element, "BulletType")).Bullet ?? "•";
+                list.Numbering.Levels[level] = new HNumberingLevel("DIGIT", bullet, 1, Bullet: true);
+            }
+            else
+            {
+                var type = NumberTypes.FirstOrDefault(t => t.Type == Attr(element, "NumberType"));
+                list.Numbering.Levels[level] = new HNumberingLevel(type.Format ?? "DIGIT", $"^{level + 1}{type.After ?? "."}", 1, Bullet: false);
+            }
+        }
+        return new HListRef(list.Numbering, level, Numbered: true);
+    }
+
     private HParagraph Paragraph(XElement element)
     {
         _budget.Paragraph();
@@ -306,6 +386,7 @@ internal sealed class UyapReader
             formats.Add(mark.Value);
         paragraph.MarkFormat = mark.Value;
         paragraph.Format = ParaFormat(element, formats);
+        paragraph.List = ListOf(element);
         return paragraph;
     }
 
@@ -366,23 +447,30 @@ internal sealed class UyapReader
         table.Borders = bordered ? HBorders.Grid : HBorders.Empty;
         foreach (var row in rows)
         {
-            var model = new HRow();
+            var model = new HRow { Header = Attr(row, "rowType") == "headerRow" };
+            if (Number(row, "height") is > 0 and < 2000 and var height)
+                model.Height = HwpxUnits.FromPoints(height);
             foreach (var cell in Children(row, "cell"))
             {
                 var modelCell = new HCell
                 {
                     ColSpan = (int)Math.Clamp(Number(cell, "colspan") ?? Number(cell, "colSpan") ?? Number(cell, "columnSpan") ?? 1, 1, limits.MaxTableColumns),
                     RowSpan = (int)Math.Clamp(Number(cell, "rowspan") ?? Number(cell, "rowSpan") ?? 1, 1, 100_000),
-                    Fill = Color(cell, "bgColor") ?? Color(cell, "background"),
-                    VerticalAlign = (Attr(cell, "verticalAlignment") ?? Attr(cell, "vAlign"))?.ToLowerInvariant() switch
+                    Fill = Color(cell, "fillColor") ?? Color(cell, "bgColor") ?? Color(cell, "background"),
+                    VerticalAlign = (Attr(cell, "align") ?? Attr(cell, "verticalAlignment") ?? Attr(cell, "vAlign"))?.ToLowerInvariant() switch
                     {
-                        "1" or "center" or "middle" => HVerticalAlign.Center,
+                        "1" or "center" or "vcenter" or "middle" => HVerticalAlign.Center,
                         "2" or "bottom" => HVerticalAlign.Bottom,
                         _ => HVerticalAlign.Top,
                     },
                 };
+                // White, the editor's own fill, is no fill.
+                if (modelCell.Fill is "#FFFFFF")
+                    modelCell.Fill = null;
                 if (!bordered)
                     modelCell.Borders = HBorders.Empty;
+                else if (CellBorders(cell) is { } borders)
+                    modelCell.Borders = borders;
                 Blocks(cell, modelCell.Blocks, null, depth + 1);
                 if (modelCell.Blocks.Count == 0)
                     modelCell.Blocks.Add(new HParagraph { MarkFormat = CharFormat(null, null) });
@@ -404,6 +492,30 @@ internal sealed class UyapReader
         if (spans.Length == columns && spans.Sum() is > 0 and var total)
             table.RelativeWidths = [.. spans.Select(s => s / total)];
         output.Add(table);
+    }
+
+    /// <summary>
+    /// A cell's own borders: border="borderNone", or the sides borderSpec names (1 top, 2 right, 4 bottom, 8 left) in
+    /// borderStyle, borderWidth (pt) and borderColor; null when the cell says nothing, so the table's grid holds.
+    /// </summary>
+    private static HBorders? CellBorders(XElement cell)
+    {
+        if (Attr(cell, "border") is { } border && border.Contains("none", StringComparison.OrdinalIgnoreCase))
+            return HBorders.Empty;
+        if (Number(cell, "borderSpec") is not { } spec || spec is < 0 or > 15)
+            return null;
+        var sides = (int)spec;
+        var style = Attr(cell, "borderStyle") switch
+        {
+            "borderStyle-dotted" => HBorderStyle.Dot,
+            "borderStyle-dashed" => HBorderStyle.Dash,
+            "borderStyle-double" => HBorderStyle.Double,
+            _ => HBorderStyle.Solid,
+        };
+        var width = Math.Clamp(Number(cell, "borderWidth") ?? 0.5, 0.1, 10) * 25.4 / 72;
+        var line = new HBorder(style, Math.Round(width, 2), Color(cell, "borderColor") ?? "#000000");
+        HBorder Side(int bit) => (sides & bit) != 0 ? line : HBorder.None;
+        return new HBorders(Left: Side(8), Right: Side(2), Top: Side(1), Bottom: Side(4));
     }
 
     // ───────────────────────── Pictures ─────────────────────────
@@ -533,7 +645,7 @@ internal sealed class UyapReader
     /// The height Java gives a line of these runs (HWPUNIT): the tallest of ascent rounded up plus descent and leading
     /// rounded up, as FontMetrics.getHeight does; null when a run's font has no metrics here.
     /// </summary>
-    private static int? JavaLineHeight(IReadOnlyList<HCharFormat> formats)
+    internal static int? JavaLineHeight(IReadOnlyList<HCharFormat> formats)
     {
         var tallest = 0;
         foreach (var format in formats)

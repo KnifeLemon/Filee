@@ -296,6 +296,8 @@
   "engine.odt-writer.description": "إنشاء مستندات نصية OpenDocument ‏(ODT) من مستندات Word وPDF وOFD وHWP/HWPX وMarkdown وHTML وجداول البيانات والعروض والكتب الإلكترونية.",
   "engine.rtf-writer.name": "كاتب RTF (مدمج)",
   "engine.rtf-writer.description": "إنشاء ملفات نص منسق (RTF، لبرنامجَي Word وWordPad) من مستندات Word وODT وPDF وOFD وHWP/HWPX وMarkdown وHTML وجداول البيانات والعروض والكتب الإلكترونية.",
+  "engine.udf-writer.name": "كاتب UYAP (مدمج)",
+  "engine.udf-writer.description": "إنشاء مستندات UYAP (UDF، لمحرر مستندات UYAP) من مستندات Word وODT وRTF وPDF وOFD وHWP/HWPX وMarkdown وHTML وجداول البيانات والشرائح والكتب الإلكترونية.",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "دفاتر Jupyter وOPML وTextile وMediaWiki وreStructuredText وOrg وDocBook دون Pandoc.\nتحويل المستندات إلى هذه الصيغ، وتحويلها إلى Markdown وHTML ونص وDOCX وHWPX وPDF.\nوأيضًا خرائط FreeMind / Freeplane وXMind الذهنية، تُقرأ كمخططات تفصيلية.",
   "engine.pptx-writer.name": "كاتب PPTX (مدمج)",

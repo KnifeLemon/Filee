@@ -296,6 +296,8 @@
   "engine.odt-writer.description": "Menulis dokumen teks OpenDocument (ODT) dari dokumen Word, PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheet, slide, dan e-book.",
   "engine.rtf-writer.name": "Penulis RTF (bawaan)",
   "engine.rtf-writer.description": "Menulis dokumen Rich Text Format (RTF, untuk Word dan WordPad) dari dokumen Word, ODT, PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheet, slide, dan e-book.",
+  "engine.udf-writer.name": "Penulis UYAP (bawaan)",
+  "engine.udf-writer.description": "Menulis dokumen UYAP (UDF, untuk Editor Dokumen UYAP) dari dokumen Word, ODT, RTF, PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheet, slide, dan e-book.",
   "engine.markup.name": "Bahasa markup (bawaan)",
   "engine.markup.description": "Notebook Jupyter, OPML, Textile, MediaWiki, reStructuredText, Org, dan DocBook tanpa Pandoc.\nDokumen ke format ini, dan format ini ke Markdown, HTML, teks, DOCX, HWPX, dan PDF.\nJuga peta pikiran FreeMind / Freeplane dan XMind, dibaca sebagai kerangka.",
   "engine.pptx-writer.name": "Penulis PPTX (bawaan)",
