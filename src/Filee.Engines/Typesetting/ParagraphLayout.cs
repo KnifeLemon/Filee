@@ -291,6 +291,8 @@ internal sealed partial class ParagraphLayouter
             format = format with { Left = (format.Left ?? 0) + startInset, Right = (format.Right ?? 0) + endInset };
         }
         var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft, source.RightToLeftRuns()));
+        // The room a display equation breaks into lines to fit (ParagraphLayout.Equations.cs).
+        _equationRoom = width - ((format.Left ?? 0) + (format.Right ?? 0)) / 100f;
         var (advances, starts) = Measure(source, items);
 
         var breaking = format.Layout?.Breaking;

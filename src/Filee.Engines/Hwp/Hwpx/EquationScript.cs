@@ -53,12 +53,21 @@ internal sealed record MathScripts(MathNode Base, MathNode? Sub, MathNode? Sup) 
 
 /// <summary>
 /// Content centred over and / or under a base at script size: TeX's \overset, \underset and \xrightarrow, Word's
-/// m:limUpp and m:limLow. 한글's script and the linear text write it as scripts.
+/// m:limUpp and m:limLow, 한글's REL and BUILDREL. 한글's script stacks it over a relation or arrow (REL, BUILDREL) and
+/// writes it as scripts on any other base; the linear text writes it as scripts.
 /// </summary>
 internal sealed record MathStack(MathNode Base, MathNode? Over, MathNode? Under) : MathNode
 {
     /// <summary>The same as scripts (base, under as the subscript, over as the superscript), for writers without stacking.</summary>
     public MathScripts AsScripts() => new(Base, Under, Over);
+
+    /// <summary>A relation or arrow as the base (=, →, ⇒ …): 한글's REL and BUILDREL stack over it.</summary>
+    public bool OverRelation => Base switch
+    {
+        MathSymbol symbol => Typesetting.MathLayout.IsRelation(symbol.Text) && symbol.Text != ":",
+        MathCommand command => Typesetting.MathLayout.IsRelation(command.Glyph),
+        _ => false,
+    };
 }
 
 /// <summary>A large operator with limits: SUM, PROD ... above and below, INT, OINT ... at the side.</summary>
@@ -163,8 +172,9 @@ internal static class EquationScript
     // ───────────────────────── Lines ─────────────────────────
 
     /// <summary>
-    /// An equation wider than <paramref name="width"/> cut into lines before its + - = signs, as Word breaks a long one
-    /// (rhwp draws an equation on one line, past the margin). What doesn't fit or has no such sign stays as it is.
+    /// An equation wider than <paramref name="width"/> cut into lines before its binary and relation operators (not
+    /// before a sign), as Word breaks a long one (rhwp draws an equation on one line, past the margin). What doesn't
+    /// fit or has no such operator stays as it is.
     /// </summary>
     /// <param name="width">Width of a line, 0 when it isn't known.</param>
     /// <param name="drawn">
@@ -196,12 +206,14 @@ internal static class EquationScript
             lineWidth += pendingWidth;
             (pending, pendingWidth) = ([], 0);
         }
+        MathNode? previous = null;
         foreach (var item in row.Items)
         {
-            if (item is MathSymbol { Text: "+" or "-" or "=" } && pending.Count > 0)
+            if (pending.Count > 0 && Typesetting.MathLayout.BreaksBefore(item, previous))
                 Flush();
             pending.Add(item);
             pendingWidth += Width(item);
+            previous = item;
         }
         Flush();
         lines.Add(new MathRow(line));
@@ -287,6 +299,19 @@ internal static class EquationScript
                     sb.Append(" of ");
                 }
                 Group(root.Body, sb);
+                break;
+            case MathStack { OverRelation: true } stack:
+                // REL arrow {over} {under}, or BUILDREL arrow {over} with nothing under it (the arrow grows with them).
+                sb.Append(stack.Under is null ? " BUILDREL " : " REL ");
+                Write(stack.Base, sb);
+                sb.Append(' ');
+                Group(stack.Over ?? MathRow.Empty, sb);
+                if (stack.Under is not null)
+                {
+                    sb.Append(' ');
+                    Group(stack.Under, sb);
+                }
+                sb.Append(' ');
                 break;
             case MathStack stack:
                 Write(stack.AsScripts(), sb);
@@ -667,6 +692,7 @@ internal static class EquationScript
         MathFraction fraction => MeasureFraction(fraction, size),
         MathRoot root => MeasureRoot(root, size),
         MathScripts scripts => MeasureScripts(Measure(scripts.Base, size), scripts.Sub, scripts.Sup, size),
+        MathStack { OverRelation: true } stack => MeasureRelation(stack, size),
         MathStack stack => Measure(stack.AsScripts(), size),
         MathBigOperator big => big.Integral ? MeasureIntegral(big, size) : MeasureBigOperator(big, size),
         MathLimit limit => MeasureLimit(limit, size),
@@ -700,6 +726,19 @@ internal static class EquationScript
         var ascent = boxes.Max(b => b.Baseline);
         var descent = boxes.Max(b => b.Height - b.Baseline);
         return new MathBox(boxes.Sum(b => b.Width), ascent + descent, ascent);
+    }
+
+    /// <summary>REL and BUILDREL as rhwp lays them out: over, the arrow as wide as the widest, under; the baseline at the arrow's middle.</summary>
+    private static MathBox MeasureRelation(MathStack stack, double size)
+    {
+        var gap = size * 0.1;
+        var arrow = Measure(stack.Base, size);
+        var over = stack.Over is null ? default : Measure(stack.Over, size * ScriptScale);
+        var under = stack.Under is null ? (MathBox?)null : Measure(stack.Under, size * ScriptScale);
+        var width = Math.Max(arrow.Width, Math.Max(over.Width, under?.Width ?? 0));
+        var middle = over.Height + gap + arrow.Height / 2;
+        var height = over.Height + gap + arrow.Height + (under is { } below ? gap + below.Height : 0);
+        return new MathBox(width, height, middle);
     }
 
     private static MathBox MeasureFraction(MathFraction fraction, double size)

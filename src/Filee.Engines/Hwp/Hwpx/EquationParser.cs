@@ -11,8 +11,9 @@
 // RIGHT a stretched pair of brackets (a missing or "." side is empty), matrix, pmatrix, bmatrix, dmatrix, cases, pile,
 // lpile and rpile their braced rows; sums, products, integrals and unions take limits with _ and ^ or from and to; lim
 // a lower limit; accents (hat, bar, vec, tilde, dot, ddot, acute, grave, check, breve, under, arch, dyad) the item after
-// them; rm, it and bold switch the rest of their group. Anything left over (unknown commands, a dangling script) is
-// kept as text, so nothing written is lost.
+// them; REL a relation or arrow and what goes over and under it, BUILDREL one and what goes over it (a stack); rm, it
+// and bold switch the rest of their group. Anything left over (unknown commands, a dangling script) is kept as text,
+// so nothing written is lost.
 //
 // Depth: the reader, EquationScript and MathLayout recurse once or more per level of the tree, and a stack overflow
 // can't be caught: it ends the whole app. A script nested deeper than MaxDepth (thousands of braces or "rm rm rm" in a
@@ -233,7 +234,7 @@ internal static class EquationParser
     private static readonly HashSet<string> Structure = new(StringComparer.OrdinalIgnoreCase)
     {
         "over", "atop", "sqrt", "root", "of", "left", "right", "sup", "sub", "from", "to", "lim", "cases", "pile", "lpile",
-        "rpile", "rm", "it", "bold", "not", "color", "binom", "choose", "big", "bigg",
+        "rpile", "rm", "it", "bold", "not", "color", "binom", "choose", "big", "bigg", "rel", "buildrel",
     };
 
     /// <summary>All words a run of letters is split into, longest first.</summary>
@@ -615,6 +616,15 @@ internal static class EquationParser
                     }
                 case "big" or "bigg":
                     return MathRow.Empty;
+                case "rel" or "buildrel":
+                    {
+                        // REL arrow {over} {under}, BUILDREL arrow {over}: stacked over and under the relation.
+                        var relation = Operand();
+                        var over = Operand();
+                        var under = lower == "rel" ? Operand() : null;
+                        static MathNode? Part(MathNode? part) => part is MathRow { Items.Count: 0 } ? null : part;
+                        return new MathStack(relation, Part(over), Part(under));
+                    }
                 default:
                     // of, from, to, right, sup, sub out of place: their words as text.
                     return new MathQuoted(word);
