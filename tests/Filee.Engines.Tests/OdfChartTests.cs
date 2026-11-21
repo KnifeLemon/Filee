@@ -137,9 +137,8 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Theory]
-    [InlineData("chart:stock")]
-    [InlineData("chart:bubble")]
-    [InlineData("chart:gantt")]
+    [InlineData("chart:unknown")]
+    [InlineData("loext:pyramid")]
     public void Other_chart_classes_and_3D_charts_of_them_are_named_instead(string kind)
     {
         Assert.Equal(new ChartRead(null, "charts"), Read(OdfChartBuilder.Columns(kind)));
@@ -165,6 +164,113 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
         Assert.Equal(30, pie.View3D!.RotX);
         using var bitmap = Picture(Read(OdfChartBuilder.Columns(plotProps: "chart:three-dimensional=\"true\"")).Chart!);
         Assert.True(Count(bitmap, Red) > 300);
+    }
+
+    // ───────────────────────── Bubble, stock, surface and Gantt charts; the 3D view ─────────────────────────
+
+    [Fact]
+    public void A_bubble_chart_takes_its_sizes_from_the_values_and_y_then_x_from_its_domains()
+    {
+        // Series 1: sizes in column D, Y in C, X in B; series 2: sizes in C, Y in D and the first one's X.
+        var bubbles = OdfChartBuilder.Columns("chart:bubble", series: 2, seriesExtra:
+        [
+            ("", "<chart:domain table:cell-range-address=\"local-table.$C$2:.$C$5\"/><chart:domain table:cell-range-address=\"local-table.$B$2:.$B$5\"/>"),
+            ("", "<chart:domain table:cell-range-address=\"local-table.$D$2:.$D$5\"/>"),
+        ]).Replace("$B$2:.$B$5\" chart:label", "$D$2:.$D$5\" chart:label", StringComparison.Ordinal);
+        var chart = Drawn(bubbles);
+        var plot = Assert.Single(chart.Plots);
+        Assert.Equal(ChartKind.Bubble, plot.Kind);
+        var first = plot.Series[0];
+        Assert.Equal([30.0, 45, 35, 50], first.Values.Select(v => v!.Value));
+        Assert.Equal([40.0, 55, 70, 62], first.XValues!.Select(v => v!.Value));
+        Assert.Equal([20.0, 25, 40, 30], first.BubbleSizes!.Select(v => v!.Value));
+        Assert.Equal([40.0, 55, 70, 62], plot.Series[1].XValues!.Select(v => v!.Value));
+        Assert.Equal([20.0, 25, 40, 30], plot.Series[1].Values.Select(v => v!.Value));
+        Assert.All(chart.Axes, a => Assert.True(a.IsValue));
+        using var bitmap = Picture(chart);
+        Assert.True(Count(bitmap, Red) > 300);
+    }
+
+    [Fact]
+    public void A_stock_chart_joins_low_and_high_and_draws_close_ticks_or_candlesticks()
+    {
+        // Low, high, close: the range line, a tick at the close, no series lines.
+        var hlc = Drawn(OdfChartBuilder.Columns("chart:stock").Replace("<chart:wall/>",
+            "<chart:wall/><chart:stock-range-line chart:style-name=\"s2\"/>", StringComparison.Ordinal));
+        var plot = Assert.Single(hlc.Plots);
+        Assert.Equal(ChartKind.Line, plot.Kind);
+        Assert.Equal(Blue, plot.HighLowLines!.Color);
+        Assert.Null(plot.UpDownBars);
+        Assert.All(plot.Series, s => Assert.True(s.Style.Line!.None));
+        Assert.Equal(["none", "none", "dash"], plot.Series.Select(s => s.Marker!.Symbol));
+
+        // Open, low, high, close as candlesticks, gains filled in the gain marker's colour.
+        var candles = OdfChartBuilder.Columns("chart:stock", series: 4, plotProps: "chart:japanese-candle-stick=\"true\"")
+            .Replace("<chart:wall/>", "<chart:wall/><chart:stock-gain-marker chart:style-name=\"pGreen\"/><chart:stock-loss-marker chart:style-name=\"pRed\"/>", StringComparison.Ordinal);
+        var stock = Assert.Single(Drawn(candles).Plots);
+        Assert.Equal((Green, Red), (stock.UpDownBars!.Up.Fill!.Value, stock.UpDownBars.Down.Fill!.Value));
+        Assert.All(stock.Series, s => Assert.Equal("none", s.Marker!.Symbol));
+        using var bitmap = Picture(Drawn(candles));
+        Assert.True(Count(bitmap, Green) + Count(bitmap, Red) > 200);
+    }
+
+    [Fact]
+    public void A_gantt_chart_floats_each_bar_from_its_start_to_its_end()
+    {
+        // Start in column B (40, 55, 70, 62), end in column C (30, 45, 35, 50): every end comes before its start here,
+        // so the bars take the second series' colour.
+        var chart = Drawn(OdfChartBuilder.Columns("chart:gantt", series: 2, plotProps: "chart:vertical=\"true\""));
+        var plot = Assert.Single(chart.Plots);
+        Assert.True(plot is { Kind: ChartKind.Bar, Grouping: ChartGrouping.Stacked, Horizontal: true });
+        Assert.Equal([30.0, 45, 35, 50], plot.Series[0].Values.Select(v => v!.Value));
+        Assert.Equal([10.0, 10, 35, 12], plot.Series[1].Values.Select(v => v!.Value));
+        Assert.Equal(SKColors.Transparent, plot.Series[0].Style.Fill);
+        Assert.Equal(Green, plot.Series[1].Points[0].Fill);
+        Assert.Equal([0], chart.Legend!.Deleted);
+        using var bitmap = Picture(chart);
+        Assert.True(Count(bitmap, Green) > 300);
+    }
+
+    [Fact]
+    public void A_surface_chart_reads_a_block_as_rows_and_fills_its_bands_from_the_data_points()
+    {
+        var block = OdfChartBuilder.Columns("chart:surface", series: 1)
+            .Replace("local-table.$B$2:.$B$5", "local-table.$B$2:.$D$5", StringComparison.Ordinal)
+            .Replace("<chart:data-point chart:repeated=\"4\"/>", "<chart:data-point chart:style-name=\"pRed\"/><chart:data-point chart:style-name=\"pGreen\"/>", StringComparison.Ordinal);
+        var chart = Drawn(block);
+        var plot = Assert.Single(chart.Plots);
+        Assert.Equal(ChartKind.Surface, plot.Kind);
+        Assert.Equal(4, plot.Series.Count);
+        Assert.Equal([40.0, 30, 20], plot.Series[0].Values.Select(v => v!.Value));
+        Assert.Equal((Red, Green), (plot.Bands[0].Fill!.Value, plot.Bands[1].Fill!.Value));
+        using (var bitmap = Picture(chart))
+            Assert.True(Count(bitmap, Red) + Count(bitmap, Green) > 1000);
+
+        // In 3D the rows stand along a series axis.
+        var threeD = Drawn(OdfChartBuilder.Columns("chart:surface", series: 3, plotProps: "chart:three-dimensional=\"true\""));
+        Assert.True(threeD.Plots[0].ThreeD);
+        Assert.Contains(threeD.Axes, a => a.IsSeries);
+    }
+
+    [Fact]
+    public void A_3D_chart_is_seen_from_where_its_scene_transform_turns_it()
+    {
+        // Turned 30° about the vertical axis, then tilted 20° towards the viewer.
+        static string Matrix(double turn, double tilt)
+        {
+            var (st, ct) = Math.SinCos(turn * Math.PI / 180);
+            var (se, ce) = Math.SinCos(tilt * Math.PI / 180);
+            double[] m = [ct, se * st, -ce * st, 0, ce, se, st, -se * ct, ce * ct];
+            return "matrix (" + string.Join(' ', m.Select(v => v.ToString("R", System.Globalization.CultureInfo.InvariantCulture))) + " 0cm 0cm 0cm)";
+        }
+        var bars = OdfChartBuilder.Columns(plotProps: "chart:three-dimensional=\"true\" chart:right-angled-axes=\"true\"")
+            .Replace("<chart:plot-area ", $"<chart:plot-area xmlns:dr3d=\"urn:oasis:names:tc:opendocument:xmlns:dr3d:1.0\" dr3d:transform=\"{Matrix(30, 20)}\" ", StringComparison.Ordinal);
+        var view = Drawn(bars).View3D!;
+        Assert.Equal((20.0, 30.0, true), (view.RotX, view.RotY, view.RightAngleAxes));
+
+        Assert.Equal([1.0, 0, 0, 0, 0, 1, 0, -1, 0], OdfChartReader.Rotation("rotatex(90deg)")!.Select(v => Math.Round(v, 6) + 0.0));
+        Assert.Null(OdfChartReader.Rotation("matrix(1 2)"));
+        Assert.Null(OdfChartReader.Rotation("matrix(NaN 0 0 0 1 0 0 0 1 0 0 0)"));
     }
 
     [Fact]
@@ -318,7 +424,7 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
     [Fact]
     public async Task An_odt_chart_Filee_doesnt_draw_is_counted_as_a_chart()
     {
-        var radar = OdfChartBuilder.Columns("chart:stock");
+        var radar = OdfChartBuilder.Columns("chart:unknown");
         Assert.Equal("OLE objects and charts", new FileeRendererConverter().FirstUnsupported(Document(radar, picture: true), "odt"));
         Assert.Contains(OdtReader.Read(Document(radar, picture: true), fx.NewFolder()).LeftOut.Kinds, k => k.Kind == HLeftOutKind.ChartPictured);
         Assert.Contains(OdtReader.Read(Document(radar), fx.NewFolder()).LeftOut.Kinds, k => k.Kind == HLeftOutKind.Chart);
@@ -394,8 +500,8 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
         Assert.True(Count(bitmap, Red) > 300 && Count(bitmap, Blue) > 300);
 
         // A chart Filee doesn't draw, or an object that isn't one, is still named.
-        Assert.Equal("charts", Office.Sheets.SheetCapabilities.FirstUnsupported(Spreadsheet(OdfChartBuilder.Columns("chart:stock")), "ods"));
-        Assert.Empty(Office.Sheets.OdsReader.Read(Spreadsheet(OdfChartBuilder.Columns("chart:stock"))).Sheets[0].Drawings);
+        Assert.Equal("charts", Office.Sheets.SheetCapabilities.FirstUnsupported(Spreadsheet(OdfChartBuilder.Columns("chart:unknown")), "ods"));
+        Assert.Empty(Office.Sheets.OdsReader.Read(Spreadsheet(OdfChartBuilder.Columns("chart:unknown"))).Sheets[0].Drawings);
         Assert.Equal("embedded objects", Office.Sheets.SheetCapabilities.FirstUnsupported(Spreadsheet(null), "ods"));
         Assert.Empty(Office.Sheets.OdsReader.Read(Spreadsheet("<broken")).Sheets[0].Drawings);
     }

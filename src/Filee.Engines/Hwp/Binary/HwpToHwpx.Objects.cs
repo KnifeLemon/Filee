@@ -289,6 +289,20 @@ internal sealed partial class HwpToHwpx
             case "pic":
                 Attr("reverse", false);
                 break;
+            case "ole":
+                {
+                    // The OLE object's kind, aspect and its BinData item (HWP 5.0 tables 118, 119), so the reader finds it.
+                    var ole = new RecordReader(kind is null ? [] : kind.Data);
+                    var attributes = ole.U32();
+                    ole.Skip(8);
+                    var bin = ole.U16();
+                    Attr("objectType", ((attributes >> 16) & 0x3F) switch { 1 => "EMBEDDED", 2 => "LINK", 3 => "STATIC", 4 => "EQUATION", _ => "UNKNOWN" });
+                    Attr("binaryItemIDRef", _bins.TryGetValue(bin, out var item) ? item.ItemId : "");
+                    Attr("hasMoniker", (attributes & 0x100) != 0);
+                    Attr("drawAspect", (attributes & 0xFF) switch { 2 => "THUMB_NAIL", 4 => "ICON", 8 => "DOCPRINT", _ => "CONTENT" });
+                    Attr("eqBaseLine", (attributes >> 9) & 0x7F);
+                    break;
+                }
             case "line":
                 Attr("isReverseHV", false);
                 break;

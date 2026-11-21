@@ -39,6 +39,16 @@ internal sealed class XlsBuilder
     private readonly List<string> _strings = [];
     private readonly List<XlsSheet> _sheets = [];
 
+    /// <summary>Chart sheets: their name, the substream's records (BOF through EOF) and how many worksheets come before them.</summary>
+    private readonly List<(string Name, List<(int Id, byte[] Data)> Records, int Before, bool Hidden)> _chartSheets = [];
+
+    /// <summary>Adds a chart sheet after the sheets added so far; <paramref name="records"/> run from its BOF through its EOF.</summary>
+    public XlsBuilder ChartSheet(string name, List<(int Id, byte[] Data)> records, bool hidden = false)
+    {
+        _chartSheets.Add((name, records, _sheets.Count, hidden));
+        return this;
+    }
+
     /// <summary>Adds a sheet; fill it through the returned builder.</summary>
     public XlsSheet Sheet(string name, bool hidden = false)
     {
@@ -84,10 +94,19 @@ internal sealed class XlsBuilder
             Record(stream, 0x00E0, xf);
         }
 
-        var sheetOffsets = new List<long>();
-        foreach (var sheet in _sheets)
+        // Worksheets and chart sheets in workbook order: (position of the BOUNDSHEET's offset field, writer of the substream).
+        var entries = new List<(long Field, Action<Stream> Write)>();
+        for (var i = 0; i <= _sheets.Count; i++)
         {
-            sheetOffsets.Add(stream.Position + 4);
+            foreach (var chart in _chartSheets.Where(c => c.Before == i))
+            {
+                entries.Add((stream.Position + 4, s => { foreach (var (id, data) in chart.Records) Record(s, id, data); }));
+                Record(stream, 0x0085, [0, 0, 0, 0, (byte)(chart.Hidden ? 1 : 0), 2, .. UnicodeString(chart.Name, byteLength: true)]);
+            }
+            if (i == _sheets.Count)
+                break;
+            var sheet = _sheets[i];
+            entries.Add((stream.Position + 4, sheet.Write));
             Record(stream, 0x0085, [0, 0, 0, 0, (byte)(sheet.Hidden ? 1 : 0), 0, .. UnicodeString(sheet.Name, byteLength: true)]);
         }
         var sst = new List<byte>();
@@ -100,14 +119,13 @@ internal sealed class XlsBuilder
             Record(stream, 0x0018, [0x20, 0, 0, 1, .. U16(formula.Length), 0, 0, .. U16(sheet), 0, 0, 0, 0, 0, kind, .. formula]);
         Record(stream, 0x000A, []);
 
-        for (var i = 0; i < _sheets.Count; i++)
+        foreach (var (field, write) in entries)
         {
             var offset = stream.Position;
-            var position = stream.Position;
-            stream.Position = sheetOffsets[i];
+            stream.Position = field;
             stream.Write(U32((int)offset));
-            stream.Position = position;
-            _sheets[i].Write(stream);
+            stream.Position = offset;
+            write(stream);
         }
 
         CompoundFile.Write(path, "Workbook", stream.ToArray());
@@ -153,11 +171,19 @@ internal sealed class XlsSheet(XlsBuilder book, string name, bool hidden)
     private readonly List<(int Column, double Width, bool Hidden)> _columns = [];
     private readonly SortedDictionary<int, (double Points, bool Hidden)> _rows = [];
     private readonly List<(int Id, byte[] Data)> _records = [];
+    private readonly List<(int Id, byte[] Data)> _after = [];
 
     /// <summary>Page setup records (SETUP, margins, HEADER, page breaks, ...) written before the cells.</summary>
     public XlsSheet Record(int id, byte[] data)
     {
         _records.Add((id, data));
+        return this;
+    }
+
+    /// <summary>Records written after the cells (drawings, OBJ records and embedded charts' substreams).</summary>
+    public XlsSheet After(IEnumerable<(int Id, byte[] Data)> records)
+    {
+        _after.AddRange(records);
         return this;
     }
 
@@ -232,6 +258,8 @@ internal sealed class XlsSheet(XlsBuilder book, string name, bool hidden)
                 data.AddRange([.. XlsBuilder.U16(top), .. XlsBuilder.U16(bottom), .. XlsBuilder.U16(left), .. XlsBuilder.U16(right)]);
             XlsBuilder.Record(stream, 0x00E5, [.. data]);
         }
+        foreach (var (id, data) in _after)
+            XlsBuilder.Record(stream, id, data);
         XlsBuilder.Record(stream, 0x000A, []);
     }
 }
