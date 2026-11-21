@@ -325,7 +325,7 @@ public sealed class XlsbTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // A cell record of 2 MB: more than a record the reader takes apart may hold.
         var refused = Assert.Throws<ConversionRefusedException>(() => XlsbReader.Read(Hostile(sheet =>
             sheet.ExtraRecords.Add(RecordWriter.Encode(6, [.. U32(0), .. U32(0), .. U32(1_000_000), .. new byte[2_000_000]])))));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
 
         // A string whose length is more than its record holds.
         Assert.Throws<InvalidDataException>(() => XlsbReader.Read(Hostile(sheet =>

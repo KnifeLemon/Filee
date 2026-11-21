@@ -91,8 +91,11 @@ public class LibreOfficeFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.Equal("vector", Assert.Single(planner.Plan("svg", "pdf")!.Steps).Converter.Id);
         Assert.Equal("vector", Assert.Single(planner.Plan("svg", "png")!.Steps).Converter.Id);
         Assert.Equal("pdfium", Assert.Single(planner.Plan("pdf", "png")!.Steps).Converter.Id);
-        foreach (var to in new[] { "emf", "wmf", "odg" })
+        foreach (var to in new[] { "emf", "wmf" })
             Assert.Equal("libreoffice", Assert.Single(planner.Plan("svg", to)!.Steps).Converter.Id);
+        // SVG → ODG: the drawing engine's own SVG reader, LibreOffice for a file it checks off (OdgWriterTests).
+        Assert.Equal("drawing", Assert.Single(planner.Plan("svg", "odg")!.Steps).Converter.Id);
+        Assert.Equal("libreoffice", Assert.Single(planner.Plan("svg", "odg", withoutChecked: true)!.Steps).Converter.Id);
         Assert.Equal("libreoffice", Assert.Single(planner.Plan("pdf", "svg")!.Steps).Converter.Id);
         // EPS goes through Ghostscript's PDF: Draw would only show the EPS preview picture.
         Assert.Equal(["ghostscript", "libreoffice"], planner.Plan("eps", "svg")!.Steps.Select(s => s.Converter.Id));

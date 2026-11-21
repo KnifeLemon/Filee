@@ -238,9 +238,9 @@ internal static class SnbWriter
         var limits = DocumentLimits.Default;
         files = [.. files.OrderBy(f => f.Name, StringComparer.Ordinal)];
         if (files.Count > limits.MaxPackageEntries)
-            throw DocumentLimits.Exceeded($"The SNB book would have more than {DocumentLimits.Count(limits.MaxPackageEntries)} files.");
+            throw DocumentLimits.TooLarge($"The SNB book would have more than {DocumentLimits.Count(limits.MaxPackageEntries)} files.");
         if (files.Sum(f => (long)f.Data.Length) > limits.MaxPackageBytes)
-            throw DocumentLimits.Exceeded($"The SNB book would be larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+            throw DocumentLimits.TooLarge($"The SNB book would be larger than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
 
         // Where each file lies in its stream, and the file table.
         using var binary = new MemoryStream();
@@ -261,7 +261,7 @@ internal static class SnbWriter
         }
         names.WriteTo(table);
         if (table.Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The SNB book's file table would be larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The SNB book's file table would be larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         var packedTable = Zlib(table.ToArray());
 
         var blocks = TextBlocks(text, cancellationToken);
@@ -291,7 +291,7 @@ internal static class SnbWriter
             Be32(tail, (int)output.Length);
             output.Write(block);
             if (output.Length > int.MaxValue - 1024)
-                throw DocumentLimits.Exceeded("The SNB book would be larger than 2 GB.");
+                throw DocumentLimits.TooLarge("The SNB book would be larger than 2 GB.");
         }
         foreach (var (isText, offset) in placed)
         {

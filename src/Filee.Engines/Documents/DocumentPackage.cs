@@ -1,7 +1,8 @@
 // The ZIP package of a document (HWPX, DOCX, OFD), read within DocumentLimits: parts are looked up by name inside the
 // package only, every part is counted while it is unpacked (its own size, the package's total and the inflate ratio),
 // XML is read by SafeXml without DTDs or a resolver, and parts are only ever written out under names Filee makes.
-// A damaged package fails with InvalidDataException, one that passes a limit with error.document_too_complex.
+// A damaged package fails with InvalidDataException, one that passes a limit with error.document_too_large (sizes,
+// entries, the inflate ratio, characters) or error.document_too_complex (XML depth and elements).
 
 using System.IO.Compression;
 using System.Text;
@@ -58,7 +59,7 @@ internal sealed class DocumentPackage : IDisposable
         {
             // The central directory is read when the entries are first listed.
             if (zip.Entries.Count > limits.MaxPackageEntries)
-                throw DocumentLimits.Exceeded($"The package has more than {DocumentLimits.Count(limits.MaxPackageEntries)} parts.");
+                throw DocumentLimits.TooLarge($"The package has more than {DocumentLimits.Count(limits.MaxPackageEntries)} parts.");
         }
         catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException or ArgumentException or IOException)
         {
@@ -117,7 +118,7 @@ internal sealed class DocumentPackage : IDisposable
             if (_total > Limits.MaxPackageBytes)
                 throw PackageTooLarge();
             if (read > Limits.InflateRatioFloor && read / compressed > Limits.MaxInflateRatio)
-                throw DocumentLimits.Exceeded($"The part {name} unpacks to more than {Limits.MaxInflateRatio} times its packed size.");
+                throw DocumentLimits.TooLarge($"The part {name} unpacks to more than {Limits.MaxInflateRatio} times its packed size.");
         });
     }
 
@@ -131,7 +132,8 @@ internal sealed class DocumentPackage : IDisposable
         try
         {
             var document = SafeXml.Load(stream, Limits.Xml(_elements, preserveWhitespace),
-                message => DocumentLimits.Exceeded($"{entry.FullName}: {message}"), out var elements);
+                message => DocumentLimits.Exceeded($"{entry.FullName}: {message}"), out var elements,
+                message => DocumentLimits.TooLarge($"{entry.FullName}: {message}"));
             _elements += elements;
             return document;
         }
@@ -241,8 +243,8 @@ internal sealed class DocumentPackage : IDisposable
     }
 
     private Exception PartTooLarge(string name) =>
-        DocumentLimits.Exceeded($"The part {name} unpacks to more than {DocumentLimits.Megabytes(Limits.MaxPartBytes)}.");
+        DocumentLimits.TooLarge($"The part {name} unpacks to more than {DocumentLimits.Megabytes(Limits.MaxPartBytes)}.");
 
     private Exception PackageTooLarge() =>
-        DocumentLimits.Exceeded($"The package unpacks to more than {DocumentLimits.Megabytes(Limits.MaxPackageBytes)}.");
+        DocumentLimits.TooLarge($"The package unpacks to more than {DocumentLimits.Megabytes(Limits.MaxPackageBytes)}.");
 }

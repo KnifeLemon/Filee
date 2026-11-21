@@ -965,6 +965,6 @@ internal sealed partial class PptxWriter
     private void CheckSlides(int pages)
     {
         if (_slides + pages > DocumentLimits.Default.MaxPages)
-            throw DocumentLimits.Exceeded($"The presentation would have more than {DocumentLimits.Default.MaxPages} slides.");
+            throw DocumentLimits.TooLarge($"The presentation would have more than {DocumentLimits.Default.MaxPages} slides.");
     }
 }

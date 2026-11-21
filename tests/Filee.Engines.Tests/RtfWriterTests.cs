@@ -354,9 +354,11 @@ public class RtfWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains("\\shptxt", rtf, StringComparison.Ordinal);
         Assert.DoesNotContain("\\dibitmap", rtf, StringComparison.Ordinal);
         var table = Assert.IsType<HTable>(read.Sections[0].Blocks[1]);
-        // The reader opens up nested tables into their outer cell's paragraphs.
-        var cellText = string.Join("|", table.Rows[0].Cells[0].Blocks.OfType<HParagraph>().Select(p => string.Concat(p.Inlines.OfType<HText>().Select(t => t.Text))));
-        Assert.Equal("outer|inner one|inner two", cellText);
+        // The nested table comes back as a table in the outer cell, after its paragraph.
+        var cellBlocks = table.Rows[0].Cells[0].Blocks;
+        Assert.Equal("outer", string.Concat(Assert.IsType<HParagraph>(cellBlocks[0]).Inlines.OfType<HText>().Select(t => t.Text)));
+        var nested = Assert.IsType<HTable>(cellBlocks[1]);
+        Assert.Equal(["inner one", "inner two"], nested.Rows.Single().Cells.Select(c => string.Concat(c.Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HText>().Select(t => t.Text))));
         var last = Assert.IsType<HParagraph>(read.Sections[0].Blocks[2]);
         Assert.Contains("Boxed text", string.Concat(last.Inlines.OfType<HText>().Select(t => t.Text)), StringComparison.Ordinal);
         // GIF and BMP become PNG.
@@ -395,7 +397,7 @@ public class RtfWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var refused = Assert.Throws<ConversionRefusedException>(() =>
             RtfWriter.Write(document, path, new DocumentLimits { MaxPackageBytes = 20_000 }, TestContext.Current.CancellationToken));
 
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
         Assert.Empty(Directory.GetFiles(folder));
     }
 
@@ -450,6 +452,102 @@ public class RtfWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         pictureSection.Blocks.Add(Para(new HText("x", default), new HImage(picture)));
         pictured.Sections.Add(pictureSection);
         Assert.DoesNotContain("\\pict", RoundTrip(pictured).Rtf, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Floating_cropped_and_turned_pictures_come_back()
+    {
+        var path = Picture(MagickColors.Teal, 40, 20);
+        var anchor = new HAnchor("PAPER", "LEFT", 5000, "PARA", "TOP", 1500, "SQUARE", true);
+        var floating = new HImage(path) { Width = 6000, Height = 3000, Anchor = anchor, Transform = new HTransform(90), Crop = new HCrop(0.25, 0, 0.25, 0), ZOrder = 4, OuterMargin = new HInsets(500, 600, 100, 200) };
+        var centred = new HImage(path) { Width = 4000, Height = 2000, Anchor = new HAnchor("PAGE", "CENTER", 0, "PAGE", "BOTTOM", 0, "BEHIND_TEXT", false) };
+        var inline = new HImage(path) { Width = 3000, Height = 1500, Crop = new HCrop(0, 0.2, 0, 0.3), Transform = new HTransform(0, true, false) };
+        var document = new HDocument();
+        var section = new HSection();
+        section.Blocks.Add(Para(new HText("Pictures ", default), floating, centred, inline));
+        document.Sections.Add(section);
+
+        var (read, rtf) = RoundTrip(document);
+
+        HDocumentAssert.Similar(document, read);
+        Assert.Contains("\\shpinst", rtf, StringComparison.Ordinal);
+        Assert.Contains("{\\sn pib}", rtf, StringComparison.Ordinal);
+        var images = read.Sections[0].Blocks.OfType<HParagraph>().Single().Inlines.OfType<HImage>().ToList();
+        Assert.Equal(3, images.Count);
+        Assert.Equal(new HTransform(90), images[0].Transform);
+        Assert.Equal(0.25, images[0].Crop!.Value.Left, 2);
+        Assert.Equal(0.25, images[0].Crop!.Value.Right, 2);
+        Assert.Equal(4, images[0].ZOrder);
+        Assert.Equal(new HInsets(500, 600, 100, 200), images[0].OuterMargin);
+        Assert.Equal(new HTransform(0, true, false), images[2].Transform);
+        Assert.Equal(0.2, images[2].Crop!.Value.Top, 2);
+        Assert.Equal(0.3, images[2].Crop!.Value.Bottom, 2);
+    }
+
+    [Fact]
+    public void Paragraph_boxes_keep_their_distances_lines_between_and_background()
+    {
+        var line = new HBorder(HBorderStyle.Dot, 0.5, "#336699");
+        var borders = new HBorders(line, line, line, line);
+        var box = new HParaBorder(borders, "#EEF4E0", new HInsets(400, 400, 100, 100), Connect: true, Between: line);
+        HParagraph Boxed(string text) => new()
+        {
+            Format = new HParaFormat(Borders: borders, Layout: new HParaLayout(Border: box)),
+            Inlines = { new HText(text, default) },
+        };
+        var document = new HDocument();
+        var section = new HSection();
+        section.Blocks.Add(Boxed("one"));
+        section.Blocks.Add(Boxed("two"));
+        document.Sections.Add(section);
+
+        var (read, rtf) = RoundTrip(document);
+
+        Assert.Contains("\\brdrbtw", rtf, StringComparison.Ordinal);
+        var paragraph = read.Sections[0].Blocks.OfType<HParagraph>().First();
+        Assert.Equal("#EEF4E0", paragraph.Format.Fill);
+        var border = paragraph.Format.Layout!.Border!;
+        Assert.Equal(new HInsets(400, 400, 100, 100), border.Offsets);
+        Assert.Equal(HBorderStyle.Dot, border.Between!.Value.Style);
+        Assert.Equal((HBorderStyle.Dot, "#336699"), (border.Borders.Left.Style, border.Borders.Left.Color));
+    }
+
+    [Fact]
+    public void Autofit_tables_stay_autofit_with_their_preferred_widths()
+    {
+        var table = new HTable
+        {
+            ColumnCount = 2,
+            ColumnWidths = [15000, 20000],
+            Sizing = new HTableSizing(false, HPreferredWidth.Auto, [15000, 20000]),
+        };
+        var row = new HRow();
+        row.Cells.Add(Cell("short", c => c.Width = new HPreferredWidth(HWidthType.Absolute, 8000)));
+        row.Cells.Add(Cell("auto"));
+        table.Rows.Add(row);
+        var fixedTable = new HTable { ColumnCount = 1, ColumnWidths = [30000], Sizing = new HTableSizing(true, new HPreferredWidth(HWidthType.Percent, 0.5), [30000]) };
+        var fixedRow = new HRow();
+        fixedRow.Cells.Add(Cell("fixed"));
+        fixedTable.Rows.Add(fixedRow);
+        var document = new HDocument();
+        var section = new HSection();
+        section.Blocks.Add(table);
+        section.Blocks.Add(Para("between"));
+        section.Blocks.Add(fixedTable);
+        document.Sections.Add(section);
+
+        var (read, rtf) = RoundTrip(document);
+
+        Assert.Contains("\\trautofit1\\trftsWidth1", rtf, StringComparison.Ordinal);
+        var tables = read.Sections[0].Blocks.OfType<HTable>().ToList();
+        Assert.Equal(new HTableSizing(false, HPreferredWidth.Auto, tables[0].ColumnWidths!), tables[0].Sizing);
+        Assert.Equal([15000, 20000], tables[0].ColumnWidths!);
+        Assert.Equal(new HPreferredWidth(HWidthType.Absolute, 8000), tables[0].Rows[0].Cells[0].Width);
+        Assert.Equal(HPreferredWidth.Auto, tables[0].Rows[0].Cells[1].Width);
+        // A fixed table keeps its columns (the reader has no sizing for it) and its cells their widths.
+        Assert.Null(tables[1].Sizing);
+        Assert.Equal([30000], tables[1].ColumnWidths!);
+        Assert.Equal(new HPreferredWidth(HWidthType.Absolute, 30000), tables[1].Rows[0].Cells[0].Width);
     }
 
     [Fact]

@@ -66,7 +66,7 @@ internal static class SheetPagination
         {
             // A chart sheet: one page, its chart filling the margins (Excel's "Use full page"), no cells.
             if (pagesBefore + 1L > limits.MaxPages)
-                throw DocumentLimits.Exceeded($"The workbook prints on more than {DocumentLimits.Count(limits.MaxPages)} pages.");
+                throw DocumentLimits.TooLarge($"The workbook prints on more than {DocumentLimits.Count(limits.MaxPages)} pages.");
             return new SheetPrintPlan(sheet, new SheetGrid([], []), 1, [new SheetPage(new CellRange(0, 0, 0, 0), 0, -1, 0, -1, false, false)], 0, 0, defaultFont);
         }
         var areas = Areas(sheet);
@@ -117,7 +117,7 @@ internal static class SheetPagination
             var columns = Columns(area, scaleFactor);
             var rows = Rows(area, scaleFactor);
             if ((long)columns.Count * rows.Count + pages.Count + pagesBefore > limits.MaxPages)
-                throw DocumentLimits.Exceeded($"The sheet {sheet.Name} prints on more than {DocumentLimits.Count(limits.MaxPages)} pages.");
+                throw DocumentLimits.TooLarge($"The sheet {sheet.Name} prints on more than {DocumentLimits.Count(limits.MaxPages)} pages.");
             IEnumerable<((int, int) Rows, (int, int) Columns)> order = setup.OverThenDown
                 ? rows.SelectMany(rr => columns.Select(cc => (rr, cc)))
                 : columns.SelectMany(cc => rows.Select(rr => (rr, cc)));

@@ -148,7 +148,7 @@ public sealed partial class HwpHostileInputTests(EngineFixture fx) : IClassFixtu
         var output = Path.Combine(folder, "output.hwpx");
 
         var refusal = Assert.IsType<ConversionRefusedException>(Within(() => HwpReader.ToHwpx(input, output, DocumentLimits.Default with { MaxPackageEntries = 50 })));
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refusal.ErrorKey);
         Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
     }
 

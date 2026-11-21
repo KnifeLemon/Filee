@@ -1,7 +1,7 @@
 // What one XPS document may make Filee build, on top of DocumentLimits (package sizes, XML depth and elements):
 // pages, nesting of canvases and visual brushes, drawn elements, points of paths and glyphs, and the length of one
-// path's data. Every limit is far beyond what printers and Office write; a document past one is refused with
-// error.document_too_complex, naming the limit.
+// path's data. Every limit is far beyond what printers and Office write; a document past one is refused, naming the
+// limit: with error.document_too_large for pages and sizes, with error.document_too_complex for nesting, elements and points.
 
 using Filee.Engines.Documents;
 

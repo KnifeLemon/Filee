@@ -320,7 +320,7 @@ internal sealed class PmlWriter
     private void CheckSize()
     {
         if (_pml.Length > _maxChars)
-            throw DocumentLimits.Exceeded($"The PML book would be larger than {DocumentLimits.Megabytes(_maxChars)}.");
+            throw DocumentLimits.TooLarge($"The PML book would be larger than {DocumentLimits.Megabytes(_maxChars)}.");
     }
 
     private static Dictionary<char, int> BuildUpperWindows1252()

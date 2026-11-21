@@ -8,6 +8,8 @@
 //   ("2026-10-23", "2026. 10. 23.") become real numbers and dates, in a number format that shows them as the document
 //   did, so they can be calculated with. Anything else stays text: numbers with a leading zero (codes, phone numbers),
 //   more than 15 digits, a decimal comma, or day-first dates, which can't be told from month-first ones.
+// - An equation in a cell is its plain text (EquationScript.Plain): "x²", "20 이상", "9/2 cm³".
+// - Documents' rows under a merged cell get the height its text needs, measured in its font (FitMergedRows).
 
 using System.Globalization;
 using System.Text;
@@ -87,7 +89,9 @@ internal static partial class TableSheets
 
     /// <summary>
     /// Every cell of the table with its grid row (0-based within the table), column and the rows and columns it covers,
-    /// row spans skipped. Spans end at the table's last row and at <see cref="HwpxWriter.MaxTableColumns"/>.
+    /// row spans skipped. Spans end at the table's last row and at <see cref="HwpxWriter.MaxTableColumns"/> (the sheet's
+    /// width); a cell naming a column past it goes to the last column, and one that finds no free column before the
+    /// edge is left out, as the spreadsheet readers leave out cells past the sheet.
     /// </summary>
     /// <exception cref="Filee.Core.Conversion.ConversionRefusedException">The cells cover more than <see cref="HwpxWriter.MaxTableCells"/> positions.</exception>
     private static IEnumerable<(HCell Cell, int Row, int Column, int Rows, int Columns)> Grid(HTable table, int skip = 0)
@@ -103,11 +107,11 @@ internal static partial class TableSheets
             foreach (var cell in source.Cells)
             {
                 if (cell.Column >= 0)
-                    column = Math.Min(cell.Column, HwpxWriter.MaxTableColumns);
+                    column = Math.Min(cell.Column, HwpxWriter.MaxTableColumns - 1);
                 while (column < freeFrom.Count && freeFrom[column] > row)
                     column++;
                 if (column >= HwpxWriter.MaxTableColumns)
-                    throw HwpxWriter.TableTooLarge();
+                    continue;
                 // An HTML rowspan may claim more rows than the table has; the merge ends at its last row.
                 var rows = Math.Clamp(cell.RowSpan, 1, Math.Max(1, rowCount - row));
                 var columns = Math.Clamp(cell.ColSpan, 1, HwpxWriter.MaxTableColumns - column);
@@ -140,7 +144,8 @@ internal static partial class TableSheets
 
     /// <summary>
     /// Writes the table's rows from <paramref name="top"/> on, leaving out its first <paramref name="skip"/>; returns
-    /// the next free row.
+    /// the next free row. Rows past the sheet's last (<see cref="SheetPagination.MaxRow"/>) are left out and merges end
+    /// there, as Excel and Calc load a sheet too long for them.
     /// </summary>
     /// <param name="drawn">
     /// The table was found by the lines drawn around its cells (PDF): every cell gets a thin border and the rows keep
@@ -154,22 +159,24 @@ internal static partial class TableSheets
             var r = top;
             foreach (var source in table.Rows.Skip(skip))
             {
+                if (r > SheetPagination.MaxRow)
+                    break;
                 if (source.Height is { } height && height > 0)
                     sheet.RowHeights[r] = Math.Round(height / 100.0, 2);
                 r++;
             }
         }
-        var next = top + Math.Max(0, table.Rows.Count - skip);
+        var next = (int)Math.Min((long)top + Math.Max(0, table.Rows.Count - skip), SheetPagination.MaxRow + 1L);
         var defaults = table.Borders ?? HBorders.Grid;
-        var merged = new List<(string Text, int Row, int Column, int Rows, int Columns)>();
-        foreach (var (cell, row, column, rows, columns) in Grid(table, skip))
+        foreach (var (cell, row, column, spanned, columns) in Grid(table, skip))
         {
-            var style = StyleOf(cell, drawn ? null : cell.Borders ?? defaults);
+            if ((long)top + row > SheetPagination.MaxRow)
+                break;
             var at = top + row;
+            var rows = Math.Min(spanned, SheetPagination.MaxRow - at + 1);
+            var style = StyleOf(cell, drawn ? null : cell.Borders ?? defaults);
             var text = Text(cell);
             sheet.Set(at, column, Shown(text, style));
-            if (!drawn && (rows > 1 || columns > 1) && text.Length > 0)
-                merged.Add((text, at, column, rows, columns));
             for (var r = at; r < at + rows; r++)
                 for (var c = column; c < column + columns; c++)
                     if (r != at || c != column)
@@ -177,32 +184,128 @@ internal static partial class TableSheets
             if (rows > 1 || columns > 1)
                 sheet.Merges.Add(new CellRange(at, column, at + rows - 1, column + columns - 1));
         }
-        foreach (var (text, row, column, rows, columns) in merged)
-            FitMergedRows(sheet, text, row, column, rows, columns);
         return next;
     }
 
-    /// <summary>Points of one line of Excel's default font (Calibri 11), its standard row height.</summary>
-    private const double LineHeight = 15;
+    /// <summary>
+    /// Cells of one workbook measured with their fonts (<see cref="FitMergedRows(Workbook, CancellationToken)"/>);
+    /// the rest are estimated by their characters, so a hostile table of a million merged cells is written quickly.
+    /// </summary>
+    internal const int MaxMeasuredCells = 4000;
 
     /// <summary>
     /// Excel and Calc fit a row to the wrapped text of its cells, but not to a merged cell's: the rows under a merged
-    /// cell whose text takes more lines than they show get the height of those lines (shared out evenly), so the text
-    /// isn't cut off. Lines are counted with the merged columns' width in characters, as <see cref="DisplayWidth"/> counts.
+    /// cell whose text needs more height than they have get the rest of it, shared out evenly over them, so the text
+    /// isn't cut off. The text is measured as the sheet printer measures a cell (SheetRowHeights): in the cell's font
+    /// (the workbook's Calibri 11 unless the style names another), broken into lines at the merged columns' width,
+    /// each line as tall as its font. A row keeps the height its own cells need (as Excel would fit it), since a row
+    /// given a height no longer fits itself. Past <see cref="MaxMeasuredCells"/> cells, lines are counted by
+    /// characters (CJK as two) at 15 pt each.
     /// </summary>
-    private static void FitMergedRows(Worksheet sheet, string text, int row, int column, int rows, int columns)
+    public static void FitMergedRows(Workbook book, CancellationToken cancellationToken = default)
     {
-        var width = 0.0;
-        for (var c = column; c < column + columns; c++)
-            width += sheet.ColumnWidth(c);
-        var perLine = Math.Max(1, (int)Math.Floor(width - 1));
-        var lines = text.Split('\n').Sum(line => Math.Max(1, (DisplayWidth(line.Replace("\t", "    ")) + perLine - 1) / perLine));
-        var height = Math.Round(lines * LineHeight / rows, 2);
-        if (height <= LineHeight)
-            return;
-        for (var r = row; r < row + rows; r++)
-            if (!sheet.RowHeights.TryGetValue(r, out var known) || known < height)
+        Measurer? measurer = null;
+        try
+        {
+            foreach (var sheet in book.Sheets)
+            {
+                var merges = sheet.Merges.Where(m => sheet.Get(m.Top, m.Left) is { Text.Length: > 0 }).ToList();
+                if (merges.Count == 0)
+                    continue;
+                measurer ??= new Measurer(book);
+                FitMergedRows(sheet, merges, measurer, cancellationToken);
+            }
+        }
+        finally
+        {
+            measurer?.Dispose();
+        }
+    }
+
+    private static void FitMergedRows(Worksheet sheet, List<CellRange> merges, Measurer measurer, CancellationToken cancellationToken)
+    {
+        var columns = Math.Max(merges.Max(m => m.Right), sheet.Rows.Values.Max(r => r.Count > 0 ? r.Keys.Max() : 0)) + 1;
+        var widths = SheetPagination.Widths(sheet, columns, measurer.DefaultFont);
+        var index = new SheetIndex(sheet);
+        // A row's height: the one set already, else what its own (unmerged) cells need, measured once.
+        var heights = new Dictionary<int, double>();
+        double Height(int row)
+        {
+            if (heights.TryGetValue(row, out var known))
+                return known;
+            var height = sheet.RowHeights.GetValueOrDefault(row);
+            if (height <= 0)
+            {
+                height = measurer.Standard;
+                if (sheet.Rows.TryGetValue(row, out var cells))
+                {
+                    foreach (var (column, cell) in cells)
+                    {
+                        if (cell.Text.Length > 0 && index.Merge(row, column) is null)
+                            height = Math.Max(height, measurer.Height(cell, column < widths.Length ? widths[column] : 0));
+                    }
+                }
+            }
+            return heights[row] = height;
+        }
+
+        foreach (var merge in merges)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var width = 0.0;
+            for (var c = merge.Left; c <= merge.Right; c++)
+                width += widths[c];
+            var needed = measurer.Height(sheet.Get(merge.Top, merge.Left)!, width);
+            var have = 0.0;
+            for (var r = merge.Top; r <= merge.Bottom; r++)
+                have += Height(r);
+            if (needed <= have + 0.5)
+                continue;
+            var extra = (needed - have) / (merge.Bottom - merge.Top + 1);
+            for (var r = merge.Top; r <= merge.Bottom; r++)
+            {
+                // A quarter point up, as Excel stores heights; at most Excel's tallest row.
+                var height = Math.Min(409.5, Math.Ceiling((Height(r) + extra) * 4) / 4);
+                heights[r] = height;
                 sheet.RowHeights[r] = height;
+            }
+        }
+    }
+
+    /// <summary>The height a cell's text needs: measured in its font, or counted (see <see cref="MaxMeasuredCells"/>).</summary>
+    private sealed class Measurer : IDisposable
+    {
+        private readonly Workbook _book;
+        private readonly SheetFonts _fonts = new();
+        private int _measured;
+
+        public Measurer(Workbook book)
+        {
+            _book = book;
+            DefaultFont = _fonts.Pixels(book.DefaultFontName, book.DefaultFontSize);
+        }
+
+        public PixelMetrics DefaultFont { get; }
+
+        /// <summary>One line of the workbook's font: the standard row height.</summary>
+        public double Standard => DefaultFont.LineHeight * 0.75;
+
+        public double Height(SheetCell cell, double width)
+        {
+            // One line of ASCII text well inside its width (no letter is two digits wide), in the workbook font:
+            // nothing to shape.
+            var characters = width / Math.Max(1, DefaultFont.DigitWidth * 0.75);
+            if (cell.Style.FontName is null && cell.Style.FontSize is null && !cell.Text.Contains('\n')
+                && cell.Text.All(char.IsAscii) && cell.Text.Length * 2 + 1 < characters)
+                return Standard;
+            if (_measured++ < MaxMeasuredCells)
+                return SheetRowHeights.CellHeight(_book, cell, width, _fonts);
+            var perLine = Math.Max(1, (int)Math.Floor(characters - 1));
+            var lines = cell.Text.Split('\n').Sum(line => Math.Max(1, (DisplayWidth(line.Replace("\t", "    ")) + perLine - 1) / perLine));
+            return lines * Standard;
+        }
+
+        public void Dispose() => _fonts.Dispose();
     }
 
     /// <param name="borders">The cell's own borders; null draws a thin line on every side.</param>
@@ -270,7 +373,10 @@ internal static partial class TableSheets
     /// <summary>The texts of a row's cells, to compare a repeated header row with the first one.</summary>
     public static string[] RowTexts(HRow row) => [.. row.Cells.Select(Text)];
 
-    /// <summary>A cell's text: its paragraphs as lines (a table inside it is left out; it gets a sheet of its own).</summary>
+    /// <summary>
+    /// A cell's text: its paragraphs as lines, equations as plain text (a table inside it is left out; it gets a sheet of
+    /// its own).
+    /// </summary>
     public static string Text(HCell cell)
     {
         var lines = new List<string>();
@@ -278,7 +384,15 @@ internal static partial class TableSheets
         {
             var line = new StringBuilder();
             foreach (var inline in HDocumentWalker.InlinesOf(paragraph.Inlines))
-                line.Append(inline switch { HText text => text.Text, HTab => "\t", HLineBreak => "\n", _ => "" });
+                line.Append(inline switch
+                {
+                    // An equation as plain text: "20 이상", not its script's "20^(이상)".
+                    HEquation equation => EquationScript.Plain(equation.Math),
+                    HText text => text.Text,
+                    HTab => "\t",
+                    HLineBreak => "\n",
+                    _ => "",
+                });
             lines.Add(line.ToString());
         }
         return string.Join('\n', lines).Trim();

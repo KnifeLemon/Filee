@@ -105,7 +105,8 @@ internal static class PdfAConformance
     /// <see cref="PdfAMetadata.Save"/>, which writes the XMP and document information to match.
     /// </summary>
     /// <exception cref="ConversionRefusedException">It can't keep them (a <c>pdfa.reason.*</c> key, or
-    /// <c>error.document_too_complex</c>). The document may be changed in part then.</exception>
+    /// <c>error.document_too_complex</c>, or <c>error.document_too_large</c> for its content streams' bytes). The
+    /// document may be changed in part then.</exception>
     public static void Prepare(PdfDocument document, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -696,7 +697,7 @@ internal static class PdfAConformance
                 }
                 _bytes += data.Length;
                 if (_bytes > PdfFontUses.MaxContentBytes)
-                    throw new ConversionRefusedException("error.document_too_complex");
+                    throw new ConversionRefusedException(Documents.DocumentLimits.TooLargeKey);
                 try
                 {
                     Read(new PdfContentLexer(data));

@@ -361,7 +361,7 @@ internal sealed partial class PdfDocumentReader
         }
 
         // Plain text (TXT, page texts for slides) keeps table cells as paragraphs in reading order.
-        var tables = _textOnly ? [] : RuledTables(page.Paths, words);
+        var tables = _textOnly ? [] : RuledTables(page, words);
         content.Items = words.Count > 0 ? TextItems(words) : [];
         content.Items.AddRange(tables.Select(t => new Item { Table = t }));
         // A picture in a table cell goes into that cell, the others stay pictures of the page.

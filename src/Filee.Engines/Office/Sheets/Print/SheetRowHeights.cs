@@ -55,7 +55,8 @@ internal static class SheetRowHeights
         return heights;
     }
 
-    private static double CellHeight(Workbook book, SheetCell cell, double columnWidth, SheetFonts fonts)
+    /// <summary>The height a cell's text needs in <paramref name="columnWidth"/> points, as Excel fits a row to it.</summary>
+    internal static double CellHeight(Workbook book, SheetCell cell, double columnWidth, SheetFonts fonts)
     {
         var style = cell.Style;
         if (style.Rotation == 0 && !CellText.Wraps(style))

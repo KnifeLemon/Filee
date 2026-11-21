@@ -164,7 +164,7 @@ internal sealed class MarkupNotes
         if (sum.Objects > _limits.MaxObjects)
             throw DocumentLimits.Exceeded($"The document has more than {DocumentLimits.Count(_limits.MaxObjects)} tables, pictures and drawing objects with its notes written out at every reference.");
         if (sum.Characters > _maxCharacters)
-            throw DocumentLimits.Exceeded($"The document's text is larger than {DocumentLimits.Megabytes(_maxCharacters)} with its notes written out at every reference.");
+            throw DocumentLimits.TooLarge($"The document's text is larger than {DocumentLimits.Megabytes(_maxCharacters)} with its notes written out at every reference.");
         return sum;
     }
 }

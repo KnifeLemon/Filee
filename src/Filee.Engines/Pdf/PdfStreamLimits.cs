@@ -7,7 +7,7 @@
 // PDFsharp takes its decoders from static fields of Filtering. Install puts Filee's in their place: they unpack the
 // same bytes the same way (the deflate data after the two-byte zlib header, PDFsharp's LZW, its PNG predictors, its
 // ASCII85) but refuse a stream that unpacks to more than DocumentLimits.MaxPdfStreamBytes with
-// error.document_too_complex. Open runs PDFsharp's open inside a budget, MaxPackageBytes for every stream the file
+// error.document_too_large. Open runs PDFsharp's open inside a budget, MaxPackageBytes for every stream the file
 // unpacks, and unpacks the pages' content streams there once, so a file whose pages would only pass the limits
 // together when they are drawn later is refused when it is opened. PDFsharp swallows some errors while it opens a
 // file; a refusal is remembered and thrown after the open all the same.
@@ -188,8 +188,8 @@ internal static class PdfStreamLimits
         var budget = t_budget;
         var perStream = budget?.PerStream ?? DocumentLimits.Default.MaxPdfStreamBytes;
         var refusal = budget is not null && budget.Total - budget.Spent < perStream
-            ? DocumentLimits.Exceeded($"The PDF's streams unpack to more than {DocumentLimits.Megabytes(budget.Total)} together.")
-            : DocumentLimits.Exceeded($"A stream of the PDF unpacks to more than {DocumentLimits.Megabytes(perStream)}.");
+            ? DocumentLimits.TooLarge($"The PDF's streams unpack to more than {DocumentLimits.Megabytes(budget.Total)} together.")
+            : DocumentLimits.TooLarge($"A stream of the PDF unpacks to more than {DocumentLimits.Megabytes(perStream)}.");
         if (budget is not null)
             budget.Refusal ??= refusal;
         return refusal;

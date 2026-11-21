@@ -247,7 +247,7 @@ public class OfficeArtTests
         var record = MetafileBlip(OfficeArtRecords.BlipEmf, new byte[2_000_000], compress: true);
         var strict = DocumentLimits.Default with { InflateRatioFloor = 64 * 1024, MaxInflateRatio = 50 };
         var refused = Assert.Throws<ConversionRefusedException>(() => OfficeArtBlips.Read(record, At(record), strict, _ => { }));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
 
         // The part limit stops inflating at its size.
         var small = DocumentLimits.Default with { MaxPartBytes = 1000 };

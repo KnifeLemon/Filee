@@ -41,11 +41,13 @@ public class MarkupWriterLimitTests(EngineFixture fx) : IClassFixture<EngineFixt
         return result;
     }
 
-    private static void RefusedInTime(Action write)
+    private static void TooLargeInTime(Action write) => RefusedInTime(write, DocumentLimits.TooLargeKey);
+
+    private static void RefusedInTime(Action write, string key = DocumentLimits.ErrorKey)
     {
         var watch = Stopwatch.StartNew();
         var refusal = Assert.Throws<ConversionRefusedException>(write);
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(key, refusal.ErrorKey);
         Assert.True(watch.Elapsed < Quick, $"{watch.Elapsed}");
     }
 
@@ -171,7 +173,7 @@ public class MarkupWriterLimitTests(EngineFixture fx) : IClassFixture<EngineFixt
         foreach (var (_, write) in Writers())
         {
             var rows = Enumerable.Range(0, 100).Select(i => new[] { Cell("r" + i, colSpan: 16_384) }).ToArray();
-            RefusedInTime(() => write(Document(Table(rows))));
+            TooLargeInTime(() => write(Document(Table(rows))));
         }
     }
 
@@ -182,7 +184,7 @@ public class MarkupWriterLimitTests(EngineFixture fx) : IClassFixture<EngineFixt
         foreach (var (_, write) in Writers())
         {
             var tables = Enumerable.Range(0, 300).Select(i => (HBlock)Table([Cell("t" + i, colSpan: 16_384)])).ToArray();
-            RefusedInTime(() => write(Document(tables)));
+            TooLargeInTime(() => write(Document(tables)));
         }
     }
 
@@ -193,7 +195,7 @@ public class MarkupWriterLimitTests(EngineFixture fx) : IClassFixture<EngineFixt
         // would be two billion characters.
         var rows = new List<HCell[]> { new[] { Cell(new string('x', 10_000)) } };
         rows.AddRange(Enumerable.Range(0, 100_000).Select(_ => new[] { Cell("y") }));
-        RefusedInTime(() => RstWriter.Write(Document(Table([.. rows])), _ => null));
+        TooLargeInTime(() => RstWriter.Write(Document(Table([.. rows])), _ => null));
         // The other languages write a row per line and take it in their stride.
         Assert.Contains("| y |", InTime(() => OrgWriter.Write(Document(Table([.. rows])), _ => null)), StringComparison.Ordinal);
     }
@@ -230,7 +232,7 @@ public class MarkupWriterLimitTests(EngineFixture fx) : IClassFixture<EngineFixt
     {
         // 1 MB of footnote referenced 1,000 times: a gigabyte of notes, refused once 256 million characters are reached
         // (the note's text is made once and counted at each reference).
-        RefusedInTime(() => RstWriter.Write(SharedNote(1_000_000, 1_000), _ => null));
+        TooLargeInTime(() => RstWriter.Write(SharedNote(1_000_000, 1_000), _ => null));
 
         // The same with small limits (4 million characters) for each language; MediaWiki writes its notes inline.
         var small = DocumentLimits.Default with { MaxPartBytes = 1024 * 1024 };
@@ -243,7 +245,7 @@ public class MarkupWriterLimitTests(EngineFixture fx) : IClassFixture<EngineFixt
                      d => DocBookWriter.Write(d, _ => null, small),
                  })
         {
-            RefusedInTime(() => write(SharedNote(100_000, 100)));
+            TooLargeInTime(() => write(SharedNote(100_000, 100)));
             Assert.Contains("ref9 ", write(SharedNote(100_000, 10)), StringComparison.Ordinal);
         }
     }

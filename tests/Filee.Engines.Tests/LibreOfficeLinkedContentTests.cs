@@ -257,7 +257,7 @@ public class LibreOfficeLinkedContentTests(EngineFixture fx) : IClassFixture<Eng
         foreach (var (input, from) in new[] { (docx, "docx"), (odt, "odt"), (flat, "fodt") })
         {
             var refused = Assert.Throws<ConversionRefusedException>(() => LinkedContent.Strip(input, from, folder));
-            Assert.Equal("error.document_too_large", refused.ErrorKey);
+            Assert.Equal("error.document_too_complex", refused.ErrorKey);
         }
     }
 

@@ -662,7 +662,7 @@ internal sealed partial class OdtReader
     {
         _characters += count;
         if (_characters > _budget.Limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The document's text is longer than {DocumentLimits.Count(_budget.Limits.MaxPartBytes)} characters.");
+            throw DocumentLimits.TooLarge($"The document's text is longer than {DocumentLimits.Count(_budget.Limits.MaxPartBytes)} characters.");
     }
 
     /// <summary>

@@ -83,7 +83,7 @@ internal sealed class MindMapPages : IFixedPages
         {
             var limits = DocumentLimits.Default;
             if (new FileInfo(path).Length > limits.MaxPartBytes)
-                throw DocumentLimits.Exceeded($"The file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+                throw DocumentLimits.TooLarge($"The file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
             var document = DocumentReaders.TextDocument(File.ReadAllBytes(path));
             return new MindMapPages(FileeRenderer.Pages(document, StyleResolver.FromTemplate(), cancellationToken), document.Title);
         }

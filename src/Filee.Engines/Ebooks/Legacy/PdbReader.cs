@@ -24,7 +24,7 @@ internal static class PdbReader
     {
         var limits = DocumentLimits.Default;
         if (new FileInfo(path).Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The PDB file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The PDB file is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         var database = PalmDatabase.Open(File.ReadAllBytes(path));
         return database.TypeCreator switch
         {
@@ -70,7 +70,7 @@ internal static class PdbReader
                 text.Write(buffer, 0, read);
                 MobiReader.CheckTextSize(text.Length);
                 if (text.Length > limits.InflateRatioFloor && text.Length / Math.Max(1, compressed.Length) > limits.MaxInflateRatio)
-                    throw DocumentLimits.Exceeded($"The zTXT text unpacks to more than {limits.MaxInflateRatio} times its size.");
+                    throw DocumentLimits.TooLarge($"The zTXT text unpacks to more than {limits.MaxInflateRatio} times its size.");
             }
         }
         catch (InvalidDataException) when (text.Length > 0)

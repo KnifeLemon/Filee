@@ -214,7 +214,7 @@ internal sealed class DjvuDocument : IDisposable
     private byte[] ReadChunk(Chunk chunk)
     {
         if (chunk.Size > _limits.MaxChunkBytes)
-            throw DocumentLimits.Exceeded($"A DjVu chunk is larger than {DocumentLimits.Megabytes(_limits.MaxChunkBytes)}.");
+            throw DocumentLimits.TooLarge($"A DjVu chunk is larger than {DocumentLimits.Megabytes(_limits.MaxChunkBytes)}.");
         return ReadBytes(chunk.Path, chunk.Offset, chunk.Size);
     }
 
@@ -288,7 +288,7 @@ internal sealed class DjvuDocument : IDisposable
             throw new InvalidDataException("The DjVu directory has a version Filee doesn't know.");
         var count = reader.U16();
         if (count > _limits.MaxComponents)
-            throw DocumentLimits.Exceeded($"The DjVu document has more than {DocumentLimits.Count(_limits.MaxComponents)} parts.");
+            throw DocumentLimits.TooLarge($"The DjVu document has more than {DocumentLimits.Count(_limits.MaxComponents)} parts.");
         var offsets = new long[count];
         var sizes = new int[count];
         for (var i = 0; bundled && i < count; i++)
@@ -349,7 +349,7 @@ internal sealed class DjvuDocument : IDisposable
                 if (form.Kind != "DJVU")
                     throw new InvalidDataException("A page of the DjVu document isn't a page.");
                 if (_pages.Count >= _limits.MaxPages)
-                    throw DocumentLimits.Exceeded($"The DjVu document has more than {DocumentLimits.Count(_limits.MaxPages)} pages.");
+                    throw DocumentLimits.TooLarge($"The DjVu document has more than {DocumentLimits.Count(_limits.MaxPages)} pages.");
                 byName[0].Add((id, _pages.Count));
                 if (name is not null)
                     byName[1].Add((name, _pages.Count));
@@ -473,7 +473,7 @@ internal sealed class DjvuDocument : IDisposable
         if (width == 0 || height == 0)
             throw new InvalidDataException("A DjVu page has no size.");
         if ((long)width * height > _limits.MaxPagePixels)
-            throw DocumentLimits.Exceeded($"A DjVu page has more than {DocumentLimits.Count(_limits.MaxPagePixels)} pixels.");
+            throw DocumentLimits.TooLarge($"A DjVu page has more than {DocumentLimits.Count(_limits.MaxPagePixels)} pixels.");
         return (width, height, dpi, rotation);
     }
 
@@ -537,7 +537,7 @@ internal sealed class DjvuDocument : IDisposable
         if (width == 0 || height == 0)
             throw new InvalidDataException("A DjVu Smmr mask has no size.");
         if ((long)width * height > Math.Min(_limits.MaxPagePixels, _limits.MaxShapePixels))
-            throw DocumentLimits.Exceeded($"A DjVu mask has more than {DocumentLimits.Count(Math.Min(_limits.MaxPagePixels, _limits.MaxShapePixels))} pixels.");
+            throw DocumentLimits.TooLarge($"A DjVu mask has more than {DocumentLimits.Count(Math.Min(_limits.MaxPagePixels, _limits.MaxShapePixels))} pixels.");
         var stride = (width + 7) / 8;
         var bits = new byte[(long)stride * height];
         if ((flags & 2) == 0)

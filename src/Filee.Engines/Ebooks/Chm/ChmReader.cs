@@ -7,7 +7,7 @@
 //  * the pages are read through HtmlReader in the order of the contents file (a sitemap of <param name="Local">
 //    entries); a book without one has its default topic first, then its other pages in directory order.
 // Limits: entries, bytes per file and in total, the decompression ratio of the LZX section, chunk sizes inside the
-// file; a CHM past one is refused with error.document_too_complex, a damaged one with InvalidDataException.
+// file; a CHM past one is refused with error.document_too_large, a damaged one with InvalidDataException.
 
 using System.Buffers.Binary;
 using System.Globalization;
@@ -49,9 +49,9 @@ internal static partial class ChmReader
             if (EbookFiles.SafePath(folder, entry.Name) is not { } target)
                 continue;
             if (entry.Length > limits.MaxPartBytes)
-                throw DocumentLimits.Exceeded($"The file {entry.Name} of the CHM is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+                throw DocumentLimits.TooLarge($"The file {entry.Name} of the CHM is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
             if ((total += entry.Length) > limits.MaxPackageBytes)
-                throw DocumentLimits.Exceeded($"The CHM unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
+                throw DocumentLimits.TooLarge($"The CHM unpacks to more than {DocumentLimits.Megabytes(limits.MaxPackageBytes)}.");
             if (!EbookFiles.TryWrite(target, chm.Read(entry, folder, cancellationToken)))
                 continue;
             files.TryAdd(entry.Name, target);
@@ -343,7 +343,7 @@ internal static partial class ChmReader
                 if (section < 0 || fileOffset is < 0 or > MaxOffset || fileLength is < 0 or > MaxOffset)
                     break;
                 if (Entries.Count >= _limits.MaxPackageEntries)
-                    throw DocumentLimits.Exceeded($"The CHM file has more than {DocumentLimits.Count(_limits.MaxPackageEntries)} files.");
+                    throw DocumentLimits.TooLarge($"The CHM file has more than {DocumentLimits.Count(_limits.MaxPackageEntries)} files.");
                 var entry = new ChmEntry(name, section, fileOffset, fileLength);
                 if (_byName.TryAdd(name, entry))
                     Entries.Add(entry);
@@ -370,7 +370,7 @@ internal static partial class ChmReader
         public byte[] Read(ChmEntry entry, string workFolder, CancellationToken cancellationToken)
         {
             if (entry.Length > _limits.MaxPartBytes)
-                throw DocumentLimits.Exceeded($"The file {entry.Name} of the CHM is larger than {DocumentLimits.Megabytes(_limits.MaxPartBytes)}.");
+                throw DocumentLimits.TooLarge($"The file {entry.Name} of the CHM is larger than {DocumentLimits.Megabytes(_limits.MaxPartBytes)}.");
             switch (entry.Section)
             {
                 case 0:
@@ -419,9 +419,9 @@ internal static partial class ChmReader
 
             var needed = Entries.Where(e => e.Section == 1).Select(e => e.Offset + e.Length).DefaultIfEmpty(0).Max();
             if (needed > _limits.MaxPackageBytes)
-                throw DocumentLimits.Exceeded($"The CHM unpacks to more than {DocumentLimits.Megabytes(_limits.MaxPackageBytes)}.");
+                throw DocumentLimits.TooLarge($"The CHM unpacks to more than {DocumentLimits.Megabytes(_limits.MaxPackageBytes)}.");
             if (needed > _limits.InflateRatioFloor && needed / Math.Max(1, content.Length) > _limits.MaxInflateRatio)
-                throw DocumentLimits.Exceeded($"The CHM's compressed data unpacks to more than {_limits.MaxInflateRatio} times its size.");
+                throw DocumentLimits.TooLarge($"The CHM's compressed data unpacks to more than {_limits.MaxInflateRatio} times its size.");
             if (_contentOffset + content.Offset + content.Length > _stream.Length)
                 throw new InvalidDataException("The CHM file's compressed data lies outside the file.");
 

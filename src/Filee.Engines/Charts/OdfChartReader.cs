@@ -18,7 +18,7 @@
 //
 // Hostile input: the object comes through its package's XML limits; series per chart and points per chart are bounded
 // as in ChartReader (refused with error.document_too_complex), the local table's cells (repeats counted before they
-// are expanded), style chains and texts too, and values are clamped to ±ChartReader.MaxValue.
+// are expanded; refused with error.document_too_large), style chains and texts too, and values are clamped to ±ChartReader.MaxValue.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -533,7 +533,7 @@ internal sealed class OdfChartReader
                     continue;
                 var repeated = (int)Math.Clamp(Number((string?)cell.Attribute(Table + "number-columns-repeated")) ?? 1, 1, ChartReader.MaxPoints);
                 if ((cells += (long)repeated * rows) > MaxCells)
-                    throw DocumentLimits.Exceeded($"A chart's table has more than {DocumentLimits.Count(MaxCells)} cells.");
+                    throw DocumentLimits.TooLarge($"A chart's table has more than {DocumentLimits.Count(MaxCells)} cells.");
                 var text = Cut(string.Join("\n", cell.Elements(Text + "p").Select(p => p.Value)));
                 double? value = (string?)cell.Attribute(Office + "value-type") is "float" or "percentage" or "currency"
                     ? Clamp(Number((string?)cell.Attribute(Office + "value")))

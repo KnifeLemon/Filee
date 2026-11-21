@@ -407,11 +407,11 @@ public class LegacyEbookWriterTests(EngineFixture fx) : IClassFixture<EngineFixt
     public void Books_beyond_the_readers_limits_are_refused()
     {
         var text = Assert.Throws<ConversionRefusedException>(() => LegacyWriting.CheckText(DocumentLimits.Default.MaxPartBytes + 1, "PDB"));
-        Assert.Equal(DocumentLimits.ErrorKey, text.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, text.ErrorKey);
         var records = Assert.Throws<ConversionRefusedException>(() => PalmDatabase.Build("x", "TEXtREAd", Enumerable.Repeat(Array.Empty<byte>(), 70_000).ToList()));
-        Assert.Equal(DocumentLimits.ErrorKey, records.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, records.ErrorKey);
         var many = Enumerable.Range(0, DocumentLimits.Default.MaxPackageEntries + 1).Select(i => new SnbWriter.SnbFile($"f{i}", [], Text: true)).ToList();
-        Assert.Equal(DocumentLimits.ErrorKey, Assert.Throws<ConversionRefusedException>(() => SnbWriter.Container(many, Token)).ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, Assert.Throws<ConversionRefusedException>(() => SnbWriter.Container(many, Token)).ErrorKey);
     }
 
     [Theory]

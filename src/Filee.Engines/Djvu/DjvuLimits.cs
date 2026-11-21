@@ -1,7 +1,8 @@
 // What one DjVu document may make Filee read and build: pages, chunk sizes, decompressed (BZZ) bytes, page pixels,
 // JB2 shapes, blits and their pixels, IW44 slices and coefficient blocks, text zones, annotation parts. Every limit is
 // far beyond what scanners and DjVu encoders write (a 600 dpi A3 scan is 70 million pixels); a document past one is
-// refused with error.document_too_complex, naming the limit.
+// refused, naming the limit: with error.document_too_large for pages, parts, bytes and pixels, with
+// error.document_too_complex for shapes, blits, slices, zones and the like.
 
 using Filee.Engines.Documents;
 

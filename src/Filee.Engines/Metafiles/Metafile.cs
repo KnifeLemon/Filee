@@ -126,7 +126,7 @@ internal static class Metafile
         limits ??= MetafileLimits.Default;
         var length = new FileInfo(path).Length;
         if (length > limits.MaxFileBytes)
-            throw MetafileLimits.Exceeded($"The metafile is {Documents.DocumentLimits.Megabytes(length)}, more than {Documents.DocumentLimits.Megabytes(limits.MaxFileBytes)}.");
+            throw MetafileLimits.TooLarge($"The metafile is {Documents.DocumentLimits.Megabytes(length)}, more than {Documents.DocumentLimits.Megabytes(limits.MaxFileBytes)}.");
         return Draw(File.ReadAllBytes(path), pixelsPerPoint, limits, cancellationToken);
     }
 
@@ -159,7 +159,7 @@ internal static class Metafile
     {
         limits ??= MetafileLimits.Default;
         if (data.LongLength > limits.MaxFileBytes)
-            throw MetafileLimits.Exceeded($"The metafile is {Documents.DocumentLimits.Megabytes(data.LongLength)}, more than {Documents.DocumentLimits.Megabytes(limits.MaxFileBytes)}.");
+            throw MetafileLimits.TooLarge($"The metafile is {Documents.DocumentLimits.Megabytes(data.LongLength)}, more than {Documents.DocumentLimits.Megabytes(limits.MaxFileBytes)}.");
         var format = Detect(data) ?? throw new InvalidDataException("The file is neither an EMF nor a WMF metafile.");
         var (frame, pointsPerUnit) = Frame(data);
         if (!(frame.Width > 0 && frame.Height > 0 && float.IsFinite(frame.Width) && float.IsFinite(frame.Height)
@@ -199,7 +199,7 @@ internal static class Metafile
         limits ??= MetafileLimits.Default;
         var length = new FileInfo(path).Length;
         if (length > limits.MaxFileBytes)
-            throw MetafileLimits.Exceeded($"The metafile is {Documents.DocumentLimits.Megabytes(length)}, more than {Documents.DocumentLimits.Megabytes(limits.MaxFileBytes)}.");
+            throw MetafileLimits.TooLarge($"The metafile is {Documents.DocumentLimits.Megabytes(length)}, more than {Documents.DocumentLimits.Megabytes(limits.MaxFileBytes)}.");
         return Render(File.ReadAllBytes(path), dpi, limits, cancellationToken);
     }
 

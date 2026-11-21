@@ -35,7 +35,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, PDB, PML, TCR, RB, SNB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/PDB/PML/TCR/RB/SNB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); **mind maps (FreeMind / Freeplane MM, XMind) → PDF, SVG, PNG** drawn as maps, a page per sheet ([Mind maps](#mind-maps)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); **mind maps (FreeMind / Freeplane MM, XMind) → PDF, SVG, PNG** drawn as maps, a page per sheet ([Mind maps](#mind-maps)); **SVG, EMF, WMF, VSDX, PDF, slide decks, whiteboards and mind maps → ODG, OTG, FODG** ([ODG output](#odg-output)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | **DjVu** | built in | **DjVu (.djvu, .djv; one page, bundled or indirect) → PDF** (the layers kept: background JPEG, 1-bit JBIG2 / G4 masks; the hidden text searchable; links and bookmarks) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
@@ -46,7 +46,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT (+ OTT, FODT), RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP, and Windows app packages MSIX / APPX), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ/ZST), GZ, BZ2, XZ, LZMA, Z, ZST, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs, GMA** (in-process); "Compress into one archive" for any files |
-| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
+| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; XLS, PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; XLT out; SVG → EMF/WMF (and → ODG for what the [drawing engine](#odg-output) checks off), a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for what the built-in PDF/A writer refuses; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
@@ -127,6 +127,25 @@ Tesseract on Linux),
 step 3 is how it is found. Microsoft Office
 and Hancom Office are never used, even when installed. Running from source, the repository's `engines/` folder
 (filled by `build/fetch-engines.ps1`) is used.
+
+## Limits: too large or too complex
+
+The built-in readers and writers refuse a hostile or absurd file with one of two keys, so the message says why:
+
+- `error.document_too_large` for its **size**: bytes a part, a stream or the package unpacks to, the inflate ratio,
+  files in a package, pages and slides, pixels, sheets, cells and rows by count, characters of text
+  (`DocumentLimits.TooLarge`, `BoundedXml`, `UnpackLimit`, the e-book unpackers).
+- `error.document_too_complex` for its **structure**: nesting of any kind (XML elements, tables, groups, storages,
+  inheritance), paragraphs, objects, shapes, points, records, XML elements by count, drawing operations, the
+  layout's time and stuck pages (`DocumentLimits.Exceeded`).
+
+Column numbers and spans past the grid (16,384 columns, `DocumentLimits.MaxTableColumns`; a sheet's 1,048,576 rows)
+are **cut at its edge, not refused**: a span ends there, a cell naming a column past it goes to the last column of a
+document table, and what still lies past the edge is left out, as in the spreadsheet readers. One such number costs a
+damaged file nothing to write, and Excel and Calc open a file that is too wide or too long for them the same way
+(loading what fits). What a big grid costs is bounded by the cell counts instead (`HwpxWriter.MaxTableCells`, the
+ODS repeat limit, the RTF reader's cells), which refuse with `error.document_too_large`. Damaged files that break the
+format's rules fail with `InvalidDataException` either way.
 
 ## Optional engines
 
@@ -630,7 +649,8 @@ smoothed when scaled, as GDI+ draws them. Vector output (PDF, the layout engine'
 
 Hostile files (`Metafiles/MetafileLimits.cs`): at most 512 MB per file, 5,000,000 records, 65,535 object table entries,
 1,024 saved device contexts, 4,000,000 path points, 100,000 rectangles per region, 8,192 × 8,192 pixels per bitmap and
-256 M pixels of bitmaps per file; past a limit the file is refused with `error.document_too_complex`. Damaged files (a
+256 M pixels of bitmaps per file; past a limit the file is refused (`error.document_too_large` for bytes and pixels,
+`error.document_too_complex` for the rest). Damaged files (a
 record longer than the file or shorter than a record, a count its record can't hold, an object outside the table, a
 bitmap whose pixels are cut off) stop with an InvalidDataException naming the record, its type and where it starts.
 Every record moves on by at least 8 bytes (EMF) or 6 (WMF), so there are no loops; bitmap sizes are checked before
@@ -783,12 +803,19 @@ those shapes, which `Read` leaves out as before; it also takes an OLE object as 
   `w:altName` where a font is not installed) and the default tab interval (`\deftab`, Word's 720 twips when the file
   gives none, from the margin); the style sheet (headings by `heading N` or
   `\outlinelevel`); lists from `\listtable` / `\listoverridetable`; tables (`\trowd` … `\row`, merged and shaded
-  cells, borders as a grid or none, nested tables flattened into their cell); PNG, JPEG, EMF and WMF pictures sized
-  by `\picwgoal`; footnotes and endnotes (the space after a note's own number is dropped, as in the DOCX reader);
+  cells, cell borders with their style, width and colour, the row's `\trbrdr*` where a cell gives none, per-cell
+  padding read as Word reads it: `\clpadl` is the top and `\clpadt` the left; tables in cells as nested tables,
+  `\itapN` / `\nestcell` / `\nesttableprops`, kept 32 deep); paragraph borders (`\brdrt` … `\box`, `\brdrbtw`,
+  `\brsp`) and backgrounds (`\cbpat`, `\shading` of `\cfpat`); PNG, JPEG, EMF and WMF pictures sized by
+  `\picwgoal` and cropped by `\piccrop*`, mirrored or turned by their `\*\picprop`; floating pictures (a `\shp`
+  with a pib property: its place, wrap, distance from the text, crop and rotation; its `\shprslt` copy is
+  skipped); footnotes and endnotes (the space after a note's own number is dropped, as in the DOCX reader);
   hyperlink, page and page count fields; bookmarks; headers and footers (`\header` / `\footer` for every page,
-  `\headerr` / `\headerl` for odd and even ones; first-page ones are left out); sections with their paper, margins, orientation and columns. Unknown `\*`
-  destinations, index entries, comments and object data are skipped; group depth, paragraphs and pictures count
-  against the reader limits.
+  `\headerr` / `\headerl` for odd and even ones, `\headerf` / `\footerf` with `\titlepg`: the first page's own, or
+  none there); sections with their paper, margins, orientation and columns. Unknown `\*` destinations, index entries,
+  comments and object data are skipped; group depth, paragraphs and pictures count against the reader limits. The
+  missing-font notice (`DocumentFonts`) looks at the fonts the RTF's text is set in (`RtfReader.Fonts`, one pass
+  over the tokens), with their `\falt` names.
 - Markdown, HTML and Pandoc keep structure only, so page setup comes from the built-in template (A4).
 - Pictures (and HTML style sheets) a Markdown, HTML or Pandoc document links to are read only from the document's
   own folder and its subfolders (`DocumentFiles.cs`, also for e-books, MHTML and translation): `../`, absolute paths
@@ -796,7 +823,8 @@ those shapes, which `Read` leaves out as before; it also takes an OLE object as 
   (`\\host\share`, `file://host/`, `//host/`) is refused by its text alone, so no network connection is made.
 - **Limits** (`Hwp/Hwpx/Nesting.cs`, `Infrastructure/BoundedXml.cs`): the XML parts of DOCX, PPTX, XLSX, HWPX and
   ODS packages (and FB2 and OPF files) are read without DTDs, each up to 256 MB unpacked, 1 GB per package, with
-  elements nested at most 1,000 levels; larger or deeper files are refused (`error.document_too_large`). Tables in
+  elements nested at most 1,000 levels; larger files are refused with `error.document_too_large`, deeper ones with
+  `error.document_too_complex`. Tables in
   table cells, text boxes, notes and links nested more than 32 deep become plain paragraphs of their text, in the
   DOCX and HWPX readers and again in every writer (whatever reader made the model); an equation deeper than 200
   levels becomes its text, notes inside notes are not followed, and PPTX groups are opened without recursion. The
@@ -961,7 +989,7 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   number), header and footer regions, table:print-ranges, header rows and columns, page breaks before rows and
   columns, rotation, stacked text, indent, shrink to fit and font names.
 - **Hostile input.** Packages are read within `DocumentLimits` (a malformed part is `InvalidDataException`, a bomb
-  `error.document_too_complex`); column ranges expand at most 4,000,000 times per workbook, merged areas fill at
+  `error.document_too_large`); column ranges expand at most 4,000,000 times per workbook, merged areas fill at
   most 10,000,000 index entries, pictures up to 64 MB and `MaxPicturePixels`, header codes up to 4,096 characters.
   Each sheet's page count is checked against `MaxPages` before anything is drawn (a cell in A1 and one in
   XFD1048576 would be about 35 million pages), and the layout runs under `LayoutGuard`. `DocumentFuzzTests` mutates
@@ -1818,10 +1846,15 @@ Pandoc (Markdown and the markup languages → RTF) and LibreOffice (Word, ODT, H
   shading, padding, width, `\cellx` at its right edge), the cells' paragraphs (`\intbl`, each cell ending with
   `\cell`) and `\row`. Tables in cells are nested tables (`\itapN`, `\nestcell`, `\nesttableprops` with
   `\nestrow`). Column widths come from the model as in the DOCX writer, and the cell grid goes through
-  `HwpxWriter.PlaceCells` with its limits.
+  `HwpxWriter.PlaceCells` with its limits. A Word autofit table (`HTableSizing` not fixed) is `\trautofit1` with
+  its preferred width (`\trftsWidth`) and each cell's own (`\clftsWidth`, auto where it has none), so readers size it
+  by its content again.
 - **Pictures:** `\pict` groups, PNG and JPEG as they are (`\pngblip`, `\jpegblip`), EMF as `\emfblip`, WMF as
   `\wmetafile8` (without the placeable header), any other picture converted to PNG; sized by `\picwgoal` /
-  `\pichgoal`, in the text like a character. **Text boxes and shapes** are Word drawing objects (`\shp` with their
+  `\pichgoal` (a cropped picture's whole size, with `\piccrop*` cutting it to what shows), turned or mirrored by a
+  `\*\picprop`. A floating picture is a drawing object (`\shp`, shape type 75) placed by its anchor (`posrelh` /
+  `posrelv`, `posh` / `posv`, wrap, distance from the text, rotation) with the picture in its pib property, as
+  Word writes it; it has no `\shprslt` copy. **Text boxes and shapes** are Word drawing objects (`\shp` with their
   placement, wrap, fill and outline); a text box's paragraphs are in `\shptxt`, and its text in `\shprslt` too,
   for programs (Filee's reader among them) that don't draw shapes.
 - **Sections:** `\sectd` with the paper, margins (the model's Top / Header become `\margtsxn` and `\headery`),
@@ -1829,17 +1862,19 @@ Pandoc (Markdown and the markup languages → RTF) and LibreOffice (Word, ODT, H
   (`\header`, or `\headerr` / `\headerl` with facing pages; `\titlepg` with `\headerf` for a first page that
   hides or has its own); columns that change in a section start a section without a page break (`\sbknone`).
 - **Limits:** the model is opened up past 32 levels of nesting (`Nesting.Limit`); a file that would pass
-  `DocumentLimits.MaxPackageBytes` (what the RTF reader takes), tables past the cell limit and font, colour or list
-  tables past `MaxObjects` are refused (`error.document_too_complex`) and leave no file; pictures past
+  `DocumentLimits.MaxPackageBytes` (what the RTF reader takes) and tables past the cell limit are refused
+  (`error.document_too_large`), font, colour or list tables past `MaxObjects` too (`error.document_too_complex`), and
+  leave no file; pictures past
   `MaxPartBytes` or claiming more than `MaxPicturePixels` are left out before anything decodes them; cancelling stops
   the write and removes its temporary files.
 - Tests: `RtfWriterTests` builds models in code, writes them and reads them back with the RTF reader into the same
   model (`HDocumentAssert.Similar`), checks the file is valid RTF (one balanced `{\rtf1` group, ASCII only), the
   Unicode fallbacks, the fonts and their other names, the routes, and the refusals.
 
-Not yet: floating pictures stay in the text (no `\shp` with a picture), picture crops and rotation, first-page
-headers' own content when the model has none (`\headerf` repeats the others), paragraph styles other than Normal
-and the headings, table and paragraph borders other than solid lines on all sides, comments and tracked changes.
+Not yet: first-page headers' own content when the model has none (`\headerf` repeats the others), paragraph and
+character styles other than Normal and the headings, floating tables (`\tpos*`), comments and tracked changes (the
+document model has no character style names, comments or revisions: the DOCX reader applies styles to the runs,
+drops comments and shows the document with its changes accepted).
 Checked by reading the files back with Filee's RTF reader, not with Word or LibreOffice.
 
 ## DOC reader
@@ -2026,8 +2061,8 @@ ODP through the [ODP writer](#odp-writer).
 - **Hostile input:** pages up to `MaxPages`; `DocumentBudget` for paragraphs, objects and nesting (groups, links,
   lists and tables, 32 levels); a limit for the whole deck on path commands, points and equation evaluations (2
   million; a master's shapes count again for every page on it); per shape at most 100,000 path tokens and 4,096
-  equations; elements visited, transforms and repeated table rows capped. Refusals are `error.document_too_complex` or
-  `InvalidDataException`. `OdfDrawFuzzTests` fuzzes packages and flat files through the reader, the check, the text
+  equations; elements visited, transforms and repeated table rows capped. Refusals are `error.document_too_complex`,
+  `error.document_too_large` (sizes, pages) or `InvalidDataException`. `OdfDrawFuzzTests` fuzzes packages and flat files through the reader, the check, the text
   and the renderer.
 - Tests: `OdfDrawTests` (decks and drawings built in code by `OdpBuilder`, checked as model values and as pixels at
   72 dpi) and `OdfDrawRouteTests`.
@@ -2084,7 +2119,7 @@ without a second bullet), between lines of code and between table rows (rows joi
 the header rows repeat unless they fill half a slide). A picture shrinks into the room left when that is at least
 a third of the content area, else moves on. Only a title of more than two lines is made smaller
 (`normAutofit fontScale`, as PowerPoint stores a shrunk text). A document may become as many slides as the layout
-engine makes pages (`DocumentLimits.MaxPages`, 20,000); more is refused with `error.document_too_complex`.
+engine makes pages (`DocumentLimits.MaxPages`, 20,000); more is refused with `error.document_too_large`.
 
 **Routes.** The writer has two edges per source format: PPTX itself at cost 8 (as the DOCX and ODT writers), below
 Pandoc's slides (20) even with Pandoc first in the engine order, and `DirectOnly`, so no document → PDF takes the
@@ -2151,7 +2186,7 @@ same model, which the tests check shape by shape and as pictures.
   the [forms engine](#opendocument-templates-and-flat-files), and ODP → PPTX stays with LibreOffice.
 - **Hostile input:** the model comes from the bounded readers; the writer caps the XML it makes (512 million
   characters), group nesting (`MaxNestingDepth`) and the pictures' bytes (`MaxPackageBytes`), refused with
-  `error.document_too_complex`; non-finite boxes and turns are left out, coordinates cut at ±10 km, characters XML
+  `error.document_too_large` (characters, bytes) or `error.document_too_complex` (nesting); non-finite boxes and turns are left out, coordinates cut at ±10 km, characters XML
   can't hold (control characters, unpaired surrogates) dropped; cancelling stops it between slides and shapes.
 - Tests: `OdpWriterTests` (decks built in code by `SlideDeckBuilder`: the package rules, the round trip through the
   reader with boxes, text and pictures at 48 dpi compared, lists, masters, notes, fills and lines, routes, PPTX and
@@ -2159,7 +2194,8 @@ same model, which the tests check shape by shape and as pictures.
 
 Not yet: shapes as placeholders (`presentation:class`; the model doesn't say which shapes were), the preset name and
 adjust handles of a shape (its outline is written, not the formula), shadows and other effects, charts, SmartArt as
-anything but its drawing, animations and transitions, compound lines, ODG output. Checked against
+anything but its drawing, animations and transitions, compound lines. ODG output is the same writer's drawing mode
+([ODG output](#odg-output)). Checked against
 Filee's own reader; not yet opened in LibreOffice by the tests.
 
 ## PDF reader
@@ -2204,7 +2240,8 @@ Filee's own reader; not yet opened in LibreOffice by the tests.
   units are one merged cell (column and row spans). A table without side or bottom rules still reaches as far as
   most of its rules do. Words go into the cell under their centre and are read like the rest of the page
   (paragraphs, line breaks, alignment within the cell, fonts, sizes, bold / italic, colours); each cell gets the
-  borders that are drawn around it (weight, colour, dashed or solid), shading from a filled rectangle under it, and
+  borders that are drawn around it (weight as the page draws it, the line width scaled by the transformation it was
+  stroked under; colour; dashed or solid), shading from a filled rectangle under it, and
   a vertical alignment from where its text sits. Only clear tables are rebuilt: at least 2 rows and 2 columns,
   every merged cell a rectangle, no rule through the middle of a word, and text in at least two cells. A box around
   a note, underlines, separators and empty grids (a chart's frame) stay as they were. Not rebuilt: tables without
@@ -2409,7 +2446,8 @@ the margins move by less than 0.05 pt through DOCX).
 - **Safety and limits**: text XML can't hold is left out (and "\r", which a parser would turn into "\n" and shift the
   offsets), lone surrogates become U+FFFD and "]]>" splits the CDATA block, so the offsets stay right; attribute values
   are escaped. `content.xml` stays within what the reader takes: `DocumentLimits.MaxPartBytes`, `MaxXmlElements`,
-  `MaxParagraphs` and `MaxObjects` (refused with `error.document_too_complex`), the inflate ratio (a part so repetitive
+  `MaxParagraphs` and `MaxObjects` (refused with `error.document_too_large` for the bytes, `error.document_too_complex`
+  for the rest), the inflate ratio (a part so repetitive
   that it would pass it is stored uncompressed), and the reader's picture limits (pictures past them, or claiming more
   pixels than `MaxPicturePixels`, are left out). Tables go through `HwpxWriter.PlaceCells`' cell limit and the model
   through `Nesting.Limit`. The elements are written to a temporary file first and the package through one of its own,
@@ -2449,25 +2487,34 @@ writers, with their merged cells (`gridSpan` / `vMerge`, DOC's merge flags, `num
 out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, shared by both).
 
 - **One sheet per table** ("Table 1", "Table 2" …) in reading order, a table inside a cell too (its text isn't repeated
-  in the outer cell). Nothing is joined: a Word table running over a page break is one table already. A table without
+  in the outer cell), and a table in a text box or a shape with text (Word text boxes, 한글 글상자 and drawing objects)
+  where the box stands. Nothing is joined: a Word table running over a page break is one table already. A table without
   any text, such as a web page's layout table around the real one, gets no sheet.
+- **Boxes**: a table of one cell is a box around text (a 보기 box, a title, a source tag, a picture with its caption),
+  not data. When the document has a table of more cells, the boxes get no sheet; when it has only boxes, they share one
+  sheet, a row each in reading order.
 - **Numbers and dates** become real values by the same rules as PDF → XLSX (above). 한글 files are read as the renderer
   reads them, so a number typed as an equation (common in 한글 tables) is its text ("40"), not its script ("40~~~").
+  Equations are plain text (`EquationScript.Plain`): scripts Unicode has characters for are written with them ("x²",
+  "cm³", "f⁻¹"), a raised word follows its base ("20 ^{이상}" is "20 이상"), other scripts keep the linear form.
 - Cells keep their own borders (a Word table style's lines, the HTML grid unless `border="0"`), shading, vertical
   alignment, bold and italic (when all the cell's text is), and centred or right alignment (when all its paragraphs
   are; left and justified text keeps Excel's own, numbers to the right). Column widths come from the document's grid
   (Word, DOC, RTF, ODT, 한글) or the HTML `<col>` / first-row widths (shares of an A4 text width); without either, a
   column is as wide as its longest line, up to 60 characters. Rows fit their text: a document's row height is only a
-  minimum. Excel doesn't fit a row to a merged cell, so the rows under a merged cell get the height its lines need.
+  minimum. Excel doesn't fit a row to a merged cell, so the rows under a merged cell get the height its text needs,
+  measured as the sheet printer measures a cell (its font, wrapped at the merged width); each row keeps what its own
+  cells need.
   Leading header rows (Word's and RTF's "repeat as header row", ODT header rows, 한글's title cells, HTML `<thead>` or
   rows of `<th>`) are frozen.
 - A file without tables fails with `error.document_no_tables`. The edges are direct only, like PDF → XLSX: a PDF,
   a picture or an e-book that became a DOCX on the way doesn't reach spreadsheets this way, and a document's tables
   don't go on to JSON or XML. DOC edges are checked: a Word 6.0 / 95 or Works file the DOC reader doesn't read gets
   the reader's own message (LibreOffice has no Writer → spreadsheet route to fall back on).
-- Limits: the tables of one file get at most 10,000 sheets, 1,048,576 rows each (Excel's) and 10,000,000 cell
+- Limits: the tables of one file get at most 10,000 sheets and 10,000,000 cell
   positions together (`HwpxWriter.MaxTableCells`), counted before anything is written; more is refused with
-  `error.document_too_complex`. Nested tables are walked with a stack, not recursion.
+  `error.document_too_large`. Rows and columns past the sheet's edge (1,048,576 rows and 16,384 columns, Excel's) are
+  left out (see *Limits: too large or too complex*). Nested tables are walked with a stack, not recursion.
 
 ## PDF → PPTX
 
@@ -2498,7 +2545,7 @@ each paragraph keeps its place on the page instead of joining a document's flow.
   it), tables, then text.
 - **Limits**: at most 20,000 pages (`DocumentLimits.MaxPages`), the document limits on paragraphs and objects
   (`DocumentBudget`), and at most 500,000 path segments drawn per page (the rest of a pathological drawing is left
-  out); more is refused with `error.document_too_complex`. The preset's page range picks the pages; cancelling stops
+  out); more is refused (`error.document_too_large` for pages, `error.document_too_complex` for the rest). The preset's page range picks the pages; cancelling stops
   between pages and between paths.
 - **Not rebuilt yet**: text that runs sideways or turned on a page that also has upright text, pattern and shading
   fills (gradients), transparency, clipping of drawings (a clipped drawing is drawn whole, within the page), pictures
@@ -2787,8 +2834,9 @@ next.
   `/Resources` dictionary; a form's `/DR` doesn't count), device CMYK without a CMYK intent or CMYK and RGB together,
   an annotation or field without its own appearance (but links, popups, zero-size ones), XFA-only forms, PostScript
   XObjects, external stream data, LZW mixed with filters PDFsharp can't unpack, inline pictures with LZW or
-  interpolation, content streams it can't read, a password-protected PDF, and (`error.document_too_complex`) more
-  than `MaxObjects` objects or more content than `PdfFontUses` reads.
+  interpolation, content streams it can't read, a password-protected PDF, more than `MaxObjects` objects or more
+  content tokens than `PdfFontUses` reads (`error.document_too_complex`), and more content bytes than it reads
+  (`error.document_too_large`).
 
   **Not checked**: that embedded fonts hold every glyph drawn and their widths match the dictionary, TrueType
   symbolic/non-symbolic encodings and cmaps, the document's own ICC-based colour spaces, JPEG 2000 specifics, halftone
@@ -2825,18 +2873,21 @@ the others of its type without LibreOffice and without reading the document into
 
 - **Package ↔ template:** every part copied as it is through `DocumentPackage`, with the new media type in `mimetype`
   (first, stored) and on the manifest's root entry.
-- **Package → flat file:** the parts put together; the automatic styles of `styles.xml` that have the name of one in
-  `content.xml` are renamed (with the references in its automatic and master styles) so both fit in one element; each
-  picture and OLE object an `xlink:href` names inside the package becomes `office:binary-data`, each object folder
-  (`Object 1/`, a chart) an `office:document` with the media type from the manifest.
+- **Package → flat file:** the parts put together; the automatic styles of `styles.xml` that have the family and name
+  of one in `content.xml` are renamed (with the references in its automatic and master styles that can name a style of
+  that family; an automatic style's parent is a common style and keeps its name) so both fit in one element; each
+  picture, OLE object and embedded font an `xlink:href` names inside the package becomes `office:binary-data`, each
+  object folder (`Object 1/`, a chart) an `office:document` with the media type from the manifest.
 - **Flat file → package:** the reverse: `content.xml`, `styles.xml` (both with the automatic styles and font faces),
   `meta.xml`, `settings.xml`, a part under `Pictures/` per picture (one for a picture stored more than once, named by
-  its signature: PNG, JPEG, GIF, BMP, TIFF, WebP, EMF, WMF, SVG), an `Object N/` folder per embedded document, and the
-  manifest. Pictures that aren't base64 are left out, as the readers leave them out.
+  its signature: PNG, JPEG, GIF, BMP, TIFF, WebP, EMF, WMF, SVG), a part under `Fonts/` per embedded font
+  (`svg:font-face-uri`), an `Object N/` folder per embedded document, and the manifest. Pictures that aren't base64
+  are left out, as the readers leave them out; `office:binary-data` in an element that has no part in a package (an
+  extension's) stays where it is.
 
 The readers read every form: the ODT reader takes `.ott`, the spreadsheet reader `.ots`, the ODP / ODG reader the
 templates and flat files itself; a `.fodt` or `.fods` is read as the package it splits into, in a temporary file
-(`OdfVariants.AsPackage`), so FODT / OTT go to PDF through the Filee renderer, to DOCX, HWPX, PPTX, ODP and tables
+(`OdfVariants.AsPackage`; a template package when the flat file says it is a template), so FODT / OTT go to PDF through the Filee renderer, to DOCX, HWPX, PPTX, ODP and tables
 through the writers, and FODS / OTS to PDF through sheet printing and to XLSX / CSV / TSV. The renderer and sheet
 printing check a flat file as that package. Out: DOCX → ODT (ODT writer) → OTT / FODT, XLSX → ODS (spreadsheet engine)
 → OTS / FODS; the ODP writer writes OTP and FODP itself. All of it costs far less than LibreOffice's fallback, whose
@@ -2847,15 +2898,15 @@ FODT and template edges stay for the formats only it reads.
   most a part (64 MB), all pictures to at most the package size, in at most as many parts as a package may have,
   objects at most `MaxObjects` and eight deep. A package is read through `DocumentPackage` (part, package and inflate
   limits); the flat file made from it may hold at most what a flat file may be read with, so a picture used again and
-  again can't make it grow without end. Each refusal is `error.document_too_complex`; another type's media type,
+  again can't make it grow without end. Sizes are refused with `error.document_too_large`, depth and counts of
+  elements and objects with `error.document_too_complex`; another type's media type,
   damaged XML and encrypted packages are refused with their reason.
 - Tests: `OdfVariantTests` (packages built in code by `OdtBuilder` / `OdpBuilder` / the ODS writer: round trips with
   text, pictures, styles and a chart object, the readers, routes, DOCX and PPTX conversions, hostile flat files and
   packages) and `OdfVariantFuzzTests` (mutated flat texts and spreadsheets, mutated packages turned flat).
 
-Not yet: a flat file's `office:binary-data` in elements other than pictures, fill images, background images, list
-images and OLE objects is dropped; a flat file is read as its document even when it says it is a template. Checked
-against Filee's own readers; not yet opened in LibreOffice by the tests.
+Converting a flat file that says it is a template writes the form asked for (`.odt` a document, `.ott` a template).
+Checked against Filee's own readers; not yet opened in LibreOffice by the tests.
 
 ## Office Open XML variants
 
@@ -3094,6 +3145,31 @@ its reader, one line in `Drawings/DrawingFormats.cs`:
   (5 × 3 in) with the template's chart ([Charts](#charts)).
 - **Interactive whiteboards and SMART Notebook** (`.iwb`, `.notebook`): [their own section](#interactive-whiteboards-iwb-smart-notebook).
 
+### ODG output
+
+`Drawings/DrawingConverter.Odg.cs` writes ODG without LibreOffice: `OdpWriter.WriteDrawing` is the
+[ODP writer](#odp-writer) in drawing mode (`office:drawing`, the drawing media type, no notes pages, presentation
+placeholders or styles), a page per slide of the model; OTG and FODG are that drawing turned into them
+([forms engine](#opendocument-templates-and-flat-files)). Sources, each into the slide model:
+
+- the drawing formats above that are read as slides (VSDX, whiteboards; ODG / OTG / FODG themselves go through the
+  forms engine), with their checks;
+- **SVG and SVGZ** (`Drawings/SvgDrawingReader.cs`, the whiteboards' `SvgSlideReader`): shapes, text and `data:`
+  pictures stay editable, a page of the drawing's size; a file with what it doesn't draw (filters, masks, clip paths,
+  markers, patterns, CSS style sheets, text on a path, linked pictures) is checked off: LibreOffice Draw where it is
+  installed, else the vector engine's PDF rebuilt like a PDF page;
+- **EMF and WMF**: the metafile as it is, one picture filling a page of its size (as Draw opens one);
+- **mind maps**: each sheet as drawn ([Mind maps](#mind-maps)), on pages of the largest sheet's size;
+- **slide decks** (PowerPoint, OpenDocument presentations) with the slide renderer's check, speaker notes left out;
+- **PDF**: each page rebuilt by the [PDF slides engine](#pdf-reader) (editable text boxes, shapes, tables, pictures;
+  pictures of the pages with *slides as pictures*), read back from its PPTX; slides of the first page's size. This
+  edge alone isn't direct-only, so XPS, chart templates and documents reach ODG through their PDF.
+
+Costs are the ODP writer's (8), below LibreOffice's fallback. Hostile input: the readers' limits (an SVG and an
+unpacked SVGZ at most `MaxPartBytes`, `SafeXml`, `SvgSlideReader`'s limits; a metafile at most
+`MetafileLimits.MaxFileBytes`) and the writer's. Tests: `OdgWriterTests` (each source built in code, read back by the
+ODP / ODG reader and drawn, routes, the SVG check, hostile SVG and metafiles).
+
 Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
 takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a
 compound file: "binary Visio (VSD)") and an ODG with what the ODF reader names (charts, OLE objects, 3D, …). Without
@@ -3106,7 +3182,7 @@ the drawing engine wins the tie with LibreOffice's Draw edges as it is registere
   a background page's shapes once per page on it), paragraphs and group nesting; pages up to `MaxPages`; master, style
   and background page chains up to 32 levels with loops cut; sections, rows and NURBS / polyline points capped for the
   whole drawing; numbers clamped and finite; pictures within `MaxPartBytes` and `MaxPicturePixels`. Refusals are
-  `error.document_too_complex`. `VisioFuzzTests` and `OdfDrawFuzzTests` fuzz the readers, their checks and the
+  `error.document_too_complex`, or `error.document_too_large` for pages and sizes. `VisioFuzzTests` and `OdfDrawFuzzTests` fuzz the readers, their checks and the
   renderer together.
 - Tests: `VisioTests` (drawings built in code by `VsdxBuilder`, checked as model values and as pixels at 72 dpi),
   `OdfDrawTests`, `DrawingConverterTests`.
@@ -3157,7 +3233,7 @@ the ODP writer's cost (8). Presentations donut; settings v115 teaches existing l
   most 256 deep, 50,000 uses followed, 2 million visited (each use expansion again), 10 million outline points, the document budget's
   objects and paragraphs, pages up to `MaxPages`; numbers clamped and finite, boxes beyond 1,000,000 pt dropped;
   pictures within `MaxPartBytes` and `MaxPicturePixels`; cancellation checked per element. Refusals are
-  `error.document_too_complex`. `IwbFuzzTests` fuzzes the reader with the renderer, the PDF and the ODP writer.
+  `error.document_too_complex`, or `error.document_too_large` for pages and sizes. `IwbFuzzTests` fuzzes the reader with the renderer, the PDF and the ODP writer.
 - Tests: `IwbTests` (files built in code by `IwbBuilder`, checked as model values and as pixels at 96 dpi),
   `IwbSettingsTests`. **No real IWB or SMART Notebook file was tried** (#1665 has none attached).
 
@@ -4282,7 +4358,8 @@ all expected bytes have been written; failures and cancellation preserve any pre
 - Written only by LibreOffice: XLT (`MS Excel 97 Vorlage/Template`), read by the built-in spreadsheet engine like
   XLS. Its FODT and template filters (`OpenDocument Text Flat XML`, `writer8_template`, `calc8_template`,
   `impress8_template`) stay as edges, but the [forms engine](#opendocument-templates-and-flat-files) costs less.
-- SVG opens in Draw only for EMF, WMF and ODG; the vector engine keeps SVG → PDF and images. PDF opens in Draw
+- SVG opens in Draw only for EMF and WMF, and for ODG when the [drawing engine](#odg-output) checks it off; the vector
+  engine keeps SVG → PDF and images. PDF opens in Draw
   (`draw_pdf_import`) only for SVG and ODG: Draw's SVG export draws every page of a PDF on top of each other, so Filee
   first copies the first page of the preset's page range into a PDF of its own (PDFsharp). EPS and PS reach SVG
   through Ghostscript's PDF; Draw would only show their preview picture.
@@ -4638,8 +4715,9 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   document has the components at offsets in the file. An **indirect** one names them as separate files next to its
   index file: each is read only from below the index file's folder (a name with `..`, a drive, a root, a `:`, a
   Windows device name, or a path through a symbolic link or junction counts as missing), with the same limits as a
-  bundled document. A missing page or included file refuses the document with `error.djvu_indirect` (which says to
-  bundle it in a DjVu viewer first); missing thumbnails don't matter. A file cut short keeps the chunks it still holds.
+  bundled document. A missing page or included file (or one outside that folder) refuses the document with
+  `error.djvu_indirect`, which says a page file is missing or can't be opened and to keep the files together in one
+  folder; missing thumbnails don't matter. A file cut short keeps the chunks it still holds.
 - **Page:** `INFO` (size, resolution 25–6000 dpi, else 300; rotation → the PDF page's `/Rotate`, the picture turned),
   `INCL` (followed depth first, each file once, so include loops end), the mask `Sjbz` with its shared dictionary
   `Djbz` (in the page or an included file; a dictionary may build on another; decoded once per file and kept for the
@@ -4670,7 +4748,8 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   book (732 KB) from 13.9 MB to 1.5 MB. The masks draw exactly as before (checked pixel for pixel with PDFtoImage). A page with more than 64 palette colours is one JPEG. The hidden
   text's lines and words become an invisible text layer (the OCR layer's glyphless font, `Ocr/OcrTextLayer.cs`), so
   the PDF can be searched and its text copied in any script.
-- **Limits** (`DjvuLimits`, refusals with `error.document_too_complex`): 20,000 pages and 40,000 components; 64 MB per
+- **Limits** (`DjvuLimits`; pages, components, bytes and pixels refused with `error.document_too_large`, the rest
+  with `error.document_too_complex`): 20,000 pages and 40,000 components; 64 MB per
   chunk and per BZZ stream; 150 million pixels per page; 64 million pixels per IW44 picture and 10,000 slices;
   2 million shapes, 4 million placed shapes and 400 million shape pixels per mask (counted before a shape is
   allocated); 20 million number-coder cells; 2 million text zones; 65,535 palette colours; 1 million parts (brackets,

@@ -379,7 +379,8 @@ public sealed class VisioTests(EngineFixture fx) : IDisposable, IClassFixture<En
     public void The_drawing_converter_reads_vsdx_and_leaves_binary_vsd_to_libreoffice()
     {
         var converter = new DrawingConverter();
-        Assert.Equal([("vsd", "pdf"), ("vsd", "svg"), ("vsd", "png")], converter.Edges.Where(e => e.From == "vsd").Select(e => (e.From, e.To)));
+        Assert.Equal([("vsd", "pdf"), ("vsd", "svg"), ("vsd", "png"), ("vsd", "odg"), ("vsd", "otg"), ("vsd", "fodg")],
+            converter.Edges.Where(e => e.From == "vsd").Select(e => (e.From, e.To)));
         Assert.All(converter.Edges.Where(e => e.From == "vsd"), e => Assert.True(e.Checked));
 
         var binary = Path.Combine(_folder, "old.vsd");
@@ -396,7 +397,7 @@ public sealed class VisioTests(EngineFixture fx) : IDisposable, IClassFixture<En
     public void Vsdx_routes_go_through_the_drawing_converter_and_binary_vsd_ones_keep_libreoffice()
     {
         var planner = fx.Catalog.CreatePlanner(["libreoffice"]);
-        foreach (var target in new[] { "pdf", "svg", "png" })
+        foreach (var target in new[] { "pdf", "svg", "png", "odg" })
         {
             Assert.Equal("drawing", planner.Plan("vsd", target)!.Steps[0].Converter.Id);
             Assert.Equal("libreoffice", planner.Plan("vsd", target, withoutChecked: true)!.Steps[0].Converter.Id);

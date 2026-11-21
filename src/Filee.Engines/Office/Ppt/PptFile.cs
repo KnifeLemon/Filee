@@ -259,7 +259,7 @@ internal sealed class PptFile : IDisposable
             if (child.Type == PptRecords.SlidePersistAtom && child.Length >= 16)
             {
                 if (list.Count >= Limits.MaxObjects)
-                    throw DocumentLimits.Exceeded($"The presentation has more than {DocumentLimits.Count(Limits.MaxObjects)} slides.");
+                    throw DocumentLimits.TooLarge($"The presentation has more than {DocumentLimits.Count(Limits.MaxObjects)} slides.");
                 current = new PptListEntry(PptRecords.U32(Stream, child.Start), PptRecords.U32(Stream, child.Start + 12), []);
                 list.Add(current);
             }

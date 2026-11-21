@@ -278,6 +278,55 @@ public class PdfTableTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task Rule_widths_follow_the_scale_the_page_draws_them_at()
+    {
+        // As drivers that work in pixels write pages: the rules are drawn under "4 0 0 4 0 0 cm", so a "0.5 w" frame is
+        // 2 pt wide on the page and a "0.125 w" inner rule 0.5 pt. A 3 × 3 table, columns 150 pt, rows 20 pt.
+        var content = new System.Text.StringBuilder("q 4 0 0 4 0 0 cm 0.5 w\n");
+        string N(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        void Line(double x1, double y1, double x2, double y2) => content.Append($"{N(x1 / 4)} {N((842 - y1) / 4)} m {N(x2 / 4)} {N((842 - y2) / 4)} l S\n");
+        double[] xs = [50, 200, 350, 500];
+        double[] ys = [110, 130, 150, 170];
+        Line(xs[0], ys[0], xs[^1], ys[0]);
+        Line(xs[0], ys[^1], xs[^1], ys[^1]);
+        Line(xs[0], ys[0], xs[0], ys[^1]);
+        Line(xs[^1], ys[0], xs[^1], ys[^1]);
+        content.Append("0.125 w\n");
+        foreach (var y in ys[1..^1])
+            Line(xs[0], y, xs[^1], y);
+        foreach (var x in xs[1..^1])
+            Line(x, ys[0], x, ys[^1]);
+        content.Append("Q\n");
+        string[][] cells = [["Name", "Format", "Size"], ["Report", "PDF", "120 KB"], ["Photo", "JPEG", "2.4 MB"]];
+        for (var r = 0; r < 3; r++)
+            for (var c = 0; c < 3; c++)
+                content.Append($"BT /F1 10 Tf {N(xs[c] + 4)} {N(842 - ys[r] - 14)} Td ({cells[r][c]}) Tj ET\n");
+        var pdf = RawPdf.Write(Path.Combine(fx.NewFolder(), "scaled.pdf"),
+        [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+            RawPdf.Stream("", content.ToString()),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        ]);
+
+        var table = Assert.Single(ReadBack(await ConvertAsync(pdf, "docx")).Sections.SelectMany(s => s.Blocks).OfType<HTable>());
+        Assert.Equal(cells, Texts(table));
+        // 2 pt = 0.71 mm, 0.5 pt = 0.18 mm (before, the widths as written: 0.18 and the 0.1 mm floor).
+        Assert.InRange(table.Rows[0].Cells[0].Borders!.Value.Top.WidthMm, 0.6, 0.8);
+        Assert.InRange(table.Rows[1].Cells[1].Borders!.Value.Top.WidthMm, 0.15, 0.25);
+
+        // The slide's table has the same borders, in the slide's scale.
+        using var zip = System.IO.Compression.ZipFile.OpenRead(await ConvertAsync(pdf, "pptx"));
+        using var slide = zip.GetEntry("ppt/slides/slide1.xml")!.Open();
+        var a = (System.Xml.Linq.XNamespace)"http://schemas.openxmlformats.org/drawingml/2006/main";
+        var rows = System.Xml.Linq.XDocument.Load(slide).Descendants(a + "tbl").Single().Elements(a + "tr").ToList();
+        long Top(int row, int column) => (long)rows[row].Elements(a + "tc").ElementAt(column).Descendants(a + "lnT").Single().Attribute("w")!;
+        var ratio = Top(0, 0) / (double)Top(1, 1);
+        Assert.InRange(ratio, 3, 5);
+    }
+
+    [Fact]
     public async Task Boxes_underlines_and_empty_grids_stay_text()
     {
         var dir = fx.NewFolder();

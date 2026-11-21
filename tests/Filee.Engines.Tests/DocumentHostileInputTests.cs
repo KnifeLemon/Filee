@@ -49,12 +49,14 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
         return error;
     }
 
-    private static ConversionRefusedException Refused(Action action)
+    private static ConversionRefusedException Refused(Action action, string key = DocumentLimits.ErrorKey)
     {
         var refusal = Assert.IsType<ConversionRefusedException>(OnSmallStack(action));
-        Assert.Equal(DocumentLimits.ErrorKey, refusal.ErrorKey);
+        Assert.Equal(key, refusal.ErrorKey);
         return refusal;
     }
+
+    private static ConversionRefusedException RefusedTooLarge(Action action) => Refused(action, DocumentLimits.TooLargeKey);
 
     private static void Reads(Action action) => Assert.Null(OnSmallStack(action));
 
@@ -179,7 +181,7 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
     {
         // 6 MB of spaces packs into a few kilobytes: far beyond what any word processor's XML compresses to.
         var body = "<w:p><w:r><w:t>" + new string(' ', 6 << 20) + "</w:t></w:r></w:p>";
-        var refusal = Refused(() => DocxReader.Read(Docx(body), Media()));
+        var refusal = RefusedTooLarge(() => DocxReader.Read(Docx(body), Media()));
         Assert.Contains("times its packed size", refusal.Detail);
     }
 
@@ -220,7 +222,7 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
                 $"<w:headerReference w:type=\"{(i % 2 == 0 ? "default" : "even")}\" r:id=\"{builder.Header(P(R(new string('x', 1 << 20))))}\"/>"));
             builder.SectionProperties = references + DefaultPage;
         });
-        var refusal = Refused(() => DocxReader.Read(docx, Media(), limits));
+        var refusal = RefusedTooLarge(() => DocxReader.Read(docx, Media(), limits));
         Assert.Contains("The package unpacks to more than 3 MB", refusal.Detail);
         Reads(() => DocxReader.Read(docx, Media()));
     }
@@ -229,7 +231,7 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
     public void A_package_of_too_many_parts_is_refused()
     {
         var docx = Docx(P(R("x")));
-        var refusal = Refused(() => DocxReader.Read(docx, Media(), DocumentLimits.Default with { MaxPackageEntries = 3 }));
+        var refusal = RefusedTooLarge(() => DocxReader.Read(docx, Media(), DocumentLimits.Default with { MaxPackageEntries = 3 }));
         Assert.Contains("more than 3 parts", refusal.Detail);
     }
 
@@ -577,12 +579,12 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
     {
         var huge = LongHwp();
         huge.DeclaredSizes["BodyText/Section0"] = 0xF0000000;
-        Refused(() => HwpReader.Read(Hwp(huge), Media()));
+        RefusedTooLarge(() => HwpReader.Read(Hwp(huge), Media()));
 
         // Deflated zeros: a few KB that unpack to megabytes.
         var bomb = new HwpBuilder { Flags = 1 }.PlainDocInfo();
         bomb.SectionBytes = HwpBuilder.Pack(new byte[8 << 20], compress: true);
-        var refusal = Refused(() => HwpReader.Read(Hwp(bomb), Media(), null, DocumentLimits.Default with { InflateRatioFloor = 1 << 20 }));
+        var refusal = RefusedTooLarge(() => HwpReader.Read(Hwp(bomb), Media(), null, DocumentLimits.Default with { InflateRatioFloor = 1 << 20 }));
         Assert.Contains("times its packed size", refusal.Detail);
 
         var limits = DocumentLimits.Default with { MaxParagraphs = 100 };
@@ -685,7 +687,7 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
     {
         var huge = PlainDoc();
         huge.DeclaredSizes["WordDocument"] = 0xF0000000;
-        Refused(() => DocReader.Read(Doc(huge), Media()));
+        RefusedTooLarge(() => DocReader.Read(Doc(huge), Media()));
 
         var limits = DocumentLimits.Default with { MaxParagraphs = 100 };
         var paragraphs = new DocBuilder();

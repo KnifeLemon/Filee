@@ -62,7 +62,7 @@ internal static class PptxNotes
                         lines.Add(line.ToString());
                         characters += line.Length;
                         if (characters > package.Limits.MaxPartBytes)
-                            throw DocumentLimits.Exceeded($"The presentation's notes are longer than {DocumentLimits.Count(package.Limits.MaxPartBytes)} characters.");
+                            throw DocumentLimits.TooLarge($"The presentation's notes are longer than {DocumentLimits.Count(package.Limits.MaxPartBytes)} characters.");
                     }
                 }
             }

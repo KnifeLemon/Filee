@@ -212,19 +212,29 @@ internal sealed partial class RtfWriter
             sb.Append($"\\tx{Number(Math.Max(0, Twips(tab.Position + (left ?? 0))))}");
         }
 
+        // A Word paragraph's box (read for layout) gives each line's distance from the text, the line between
+        // paragraphs of one box and the background; else 1 pt.
+        var box = f.Layout?.Border;
         if (f.Borders is { } borders)
         {
-            foreach (var (side, border) in new[] { ("t", borders.Top), ("l", borders.Left), ("b", borders.Bottom), ("r", borders.Right) })
+            var space = box?.Offsets;
+            foreach (var (side, border, distance) in new[]
+                     {
+                         ("t", borders.Top, space?.Top), ("l", borders.Left, space?.Left), ("b", borders.Bottom, space?.Bottom),
+                         ("r", borders.Right, space?.Right),
+                     })
             {
                 if (border.Style != HBorderStyle.None)
-                    sb.Append($"\\brdr{side}").Append(Border(border)).Append("\\brsp20");
+                    sb.Append($"\\brdr{side}").Append(Border(border)).Append($"\\brsp{Number(distance is { } twips ? Math.Clamp(Twips(twips), 0, 31680) : 20)}");
             }
+            if (box?.Between is { Style: not HBorderStyle.None } between)
+                sb.Append("\\brdrbtw").Append(Border(between));
         }
         else if (f.LeftBar is { } bar && bar.Style != HBorderStyle.None)
         {
             sb.Append("\\brdrl").Append(Border(bar)).Append("\\brsp120");
         }
-        if (ColorIndex(f.Fill) is > 0 and var fill)
+        if (ColorIndex(f.Fill ?? box?.Fill) is > 0 and var fill)
             sb.Append($"\\cbpat{Number(fill)}");
         return sb.ToString();
     }
@@ -694,8 +704,23 @@ internal sealed partial class RtfWriter
             sb.Append("\\trkeep");
         sb.Append($"\\trpaddl{Number(Twips(margin.Left))}\\trpaddr{Number(Twips(margin.Right))}\\trpaddt{Number(Twips(margin.Top))}\\trpaddb{Number(Twips(margin.Bottom))}")
           .Append("\\trpaddfl3\\trpaddfr3\\trpaddft3\\trpaddfb3");
+        // A Word table sized by its content (autofit) stays so (\trautofit1), with its preferred width; others keep their columns.
+        if (table.Sizing is { } sizing)
+        {
+            if (!sizing.Fixed)
+                sb.Append("\\trautofit1");
+            sb.Append(PreferredWidth("tr", sizing.Width));
+        }
         return sb.ToString();
     }
+
+    /// <summary>\trftsWidth / \clftsWidth and the width: 1 auto, 2 fiftieths of a percent, 3 twips.</summary>
+    private static string PreferredWidth(string prefix, HPreferredWidth width) => width.Type switch
+    {
+        HWidthType.Percent => $"\\{prefix}ftsWidth2\\{prefix}wWidth{Number((int)Math.Clamp(Math.Round(width.Value * 5000), 0, 50000))}",
+        HWidthType.Absolute => $"\\{prefix}ftsWidth3\\{prefix}wWidth{Number(Math.Max(1, Twips((int)Math.Clamp(width.Value, 0, int.MaxValue))))}",
+        _ => $"\\{prefix}ftsWidth1\\{prefix}wWidth0",
+    };
 
     /// <summary>A cell's definition up to its \cellx: merges, vertical alignment, borders, shading, padding and width.</summary>
     private string CellDefinition(HCell cell, HTable table, string merge, int right, int width)
@@ -721,7 +746,9 @@ internal sealed partial class RtfWriter
             sb.Append($"\\clpadt{Number(Twips(m.Left))}\\clpadft3\\clpadr{Number(Twips(m.Right))}\\clpadfr3")
               .Append($"\\clpadl{Number(Twips(m.Top))}\\clpadfl3\\clpadb{Number(Twips(m.Bottom))}\\clpadfb3");
         }
-        sb.Append($"\\clftsWidth3\\clwWidth{Number(Math.Max(1, width))}\\cellx{Number(right)}");
+        // An autofit table's cells keep their own preferred widths (none: auto); other cells their column's.
+        var preferred = table.Sizing is { Fixed: false } ? cell.Width ?? HPreferredWidth.Auto : new HPreferredWidth(HWidthType.Absolute, Math.Max(1, width) * 5.0);
+        sb.Append(PreferredWidth("cl", preferred)).Append($"\\cellx{Number(right)}");
         return sb.ToString();
     }
 }

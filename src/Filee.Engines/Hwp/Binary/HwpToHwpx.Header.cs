@@ -37,7 +37,7 @@ internal sealed partial class HwpToHwpx
             if (!_binStreams.TryGetValue(key, out var item))
             {
                 if (_binStreams.Count >= _file.Limits.MaxPackageEntries)
-                    throw DocumentLimits.Exceeded($"The document has more than {DocumentLimits.Count(_file.Limits.MaxPackageEntries)} embedded files.");
+                    throw DocumentLimits.TooLarge($"The document has more than {DocumentLimits.Count(_file.Limits.MaxPackageEntries)} embedded files.");
                 item = new BinItem(id, (type == 1 ? "image" : "ole") + index.ToString(CultureInfo.InvariantCulture), extension, compressed, type == 1);
                 _binStreams[key] = item;
             }

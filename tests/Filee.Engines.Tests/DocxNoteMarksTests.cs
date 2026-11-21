@@ -175,7 +175,7 @@ public class DocxNoteMarksTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var refused = Assert.Throws<ConversionRefusedException>(() => DocxNoteMarks.Prepare(path, fx.NewFolder()));
 
-        Assert.Equal("error.document_too_large", refused.ErrorKey);
+        Assert.Equal("error.document_too_complex", refused.ErrorKey);
     }
 
     [Fact]

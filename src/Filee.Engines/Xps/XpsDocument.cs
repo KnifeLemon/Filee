@@ -106,7 +106,7 @@ internal sealed class XpsDocument : IFixedPages
                 if (XpsPackage.Resolve(part, (string?)content.Attribute("Source")) is not { } page)
                     continue;
                 if (_pages.Count >= Budget.Limits.MaxPages)
-                    throw DocumentLimits.Exceeded($"The document has more than {DocumentLimits.Count(Budget.Limits.MaxPages)} pages.");
+                    throw DocumentLimits.TooLarge($"The document has more than {DocumentLimits.Count(Budget.Limits.MaxPages)} pages.");
                 var width = XpsValues.Number((string?)content.Attribute("Width"));
                 var height = XpsValues.Number((string?)content.Attribute("Height"));
                 _pages.Add(new PageReference(page, width > 0 && height > 0 ? new SKSize(width.Value, height.Value) : null));

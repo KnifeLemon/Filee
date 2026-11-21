@@ -51,7 +51,7 @@ internal static class IwbReader
         try
         {
             root = reader.LoadXml(package.ReadBytes(content, limits.MaxPartBytes)
-                                  ?? throw DocumentLimits.Exceeded($"content.xml unpacks to more than {DocumentLimits.Megabytes(limits.MaxPartBytes)}."));
+                                  ?? throw DocumentLimits.TooLarge($"content.xml unpacks to more than {DocumentLimits.Megabytes(limits.MaxPartBytes)}."));
         }
         catch (XmlException ex)
         {
@@ -81,7 +81,7 @@ internal static class IwbReader
         var pageSet = svg.Elements().FirstOrDefault(e => e.Name.LocalName.Equals("pageSet", StringComparison.OrdinalIgnoreCase));
         var pages = pageSet?.Elements().Where(e => e.Name.LocalName == "page").ToList() ?? [];
         if (pages.Count > limits.MaxPages)
-            throw DocumentLimits.Exceeded($"The whiteboard has more than {DocumentLimits.Count(limits.MaxPages)} pages.");
+            throw DocumentLimits.TooLarge($"The whiteboard has more than {DocumentLimits.Count(limits.MaxPages)} pages.");
         var common = svg.Elements().Where(e => !ReferenceEquals(e, pageSet)).ToList();
         var background = SvgSlideReader.ViewportFill(svg);
         // The svg's own properties (fill, font, ...) reach every page.
@@ -181,7 +181,7 @@ internal static class IwbReader
         }
 
         /// <summary>The bytes of a data: URI (base64 or percent-encoded); null when they can't be read.</summary>
-        private static byte[]? DataUri(string uri)
+        internal static byte[]? DataUri(string uri)
         {
             var comma = uri.IndexOf(',');
             if (comma < 0)

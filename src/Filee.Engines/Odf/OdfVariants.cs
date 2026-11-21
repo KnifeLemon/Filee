@@ -6,7 +6,9 @@
 // file (macros, settings, thumbnails, objects) stays as it is.
 //
 // The readers of the package form read the other forms through AsPackage: a template as it is (they take the template
-// media type), a flat file as the package it splits into, in a temporary file beside the job's pictures.
+// media type), a flat file as the package it splits into, in a temporary file beside the job's pictures (a template
+// package when the flat file says it is a template). Converting a flat file to another form writes the form asked for,
+// whatever media type the flat file declares of its type.
 
 using System.IO.Compression;
 using System.Xml;
@@ -94,7 +96,10 @@ internal static class OdfVariants
         var package = Path.Combine(folder, $"flat-{Guid.NewGuid():N}.{variant.Family}");
         try
         {
-            OdfFlat.ToPackage(path, package, variant.MimeType, [.. MimeTypes(variant)], variant.Kind, limits ?? DocumentLimits.Default, CancellationToken.None);
+            // A flat file that says it is a template is read as one (the readers take both media types).
+            var template = All.First(v => v.Family == variant.Family && v.Form == OdfForm.Template).MimeType;
+            OdfFlat.ToPackage(path, package, variant.MimeType, [.. MimeTypes(variant)], variant.Kind, limits ?? DocumentLimits.Default, CancellationToken.None,
+                template);
         }
         catch
         {

@@ -35,7 +35,7 @@ internal static class BzzDecoder
             if (size > MaxBlock)
                 throw new InvalidDataException("A BZZ block is larger than the format allows.");
             if (output.Length + size - 1 > maxBytes)
-                throw Documents.DocumentLimits.Exceeded($"A compressed part of the DjVu file unpacks to more than {Documents.DocumentLimits.Megabytes(maxBytes)}.");
+                throw Documents.DocumentLimits.TooLarge($"A compressed part of the DjVu file unpacks to more than {Documents.DocumentLimits.Megabytes(maxBytes)}.");
             var block = DecodeBlock(zp, contexts, size, cancellationToken);
             output.Write(block);
         }

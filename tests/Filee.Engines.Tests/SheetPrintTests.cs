@@ -751,7 +751,7 @@ public sealed class SheetPrintTests(EngineFixture fx) : IClassFixture<EngineFixt
         var workbook = XlsxReader.Read(Save(book));
 
         var refused = Assert.Throws<ConversionRefusedException>(() => SheetPrinter.ToPdf(workbook, new SheetPrintSource("big.xlsx", ""), TestContext.Current.CancellationToken));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
     }
 
     [Fact]
@@ -959,7 +959,7 @@ public sealed class SheetPrintTests(EngineFixture fx) : IClassFixture<EngineFixt
             "<table:table-cell table:number-columns-repeated=\"200\"><text:p><text:s text:c=\"1024\"/>x</text:p></table:table-cell>" +
             "</table:table-row></table:table>");
         var refused = Assert.Throws<ConversionRefusedException>(() => OdsReader.Read(repeated));
-        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        Assert.Equal(DocumentLimits.TooLargeKey, refused.ErrorKey);
 
         // A merged cell repeated over a million rows.
         var merges = OdsBuilder.Save(Path.Combine(folder, "merges.ods"), "",

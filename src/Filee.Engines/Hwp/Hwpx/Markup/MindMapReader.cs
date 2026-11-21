@@ -199,7 +199,7 @@ internal sealed class MindMapReader
     {
         var limits = DocumentLimits.Default;
         if (new FileInfo(path).Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The mind map is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The mind map is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         return ReadFreeMind(File.ReadAllBytes(path), Folder(path), media, limits, headingsOnly);
     }
 
@@ -224,7 +224,7 @@ internal sealed class MindMapReader
             return DrawXMind(stream, Folder(path), media, limits);
         }
         if (new FileInfo(path).Length > limits.MaxPartBytes)
-            throw DocumentLimits.Exceeded($"The mind map is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+            throw DocumentLimits.TooLarge($"The mind map is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         return DrawFreeMind(File.ReadAllBytes(path), Folder(path), media, limits);
     }
 
@@ -268,7 +268,7 @@ internal sealed class MindMapReader
         XDocument xml;
         try
         {
-            xml = SafeXml.Load(new MemoryStream(bytes, writable: false), limits.Xml(0, preserveWhitespace: false), DocumentLimits.Exceeded);
+            xml = SafeXml.Load(new MemoryStream(bytes, writable: false), limits.Xml(0, preserveWhitespace: false), DocumentLimits.Exceeded, DocumentLimits.TooLarge);
         }
         catch (XmlException ex)
         {
@@ -498,7 +498,7 @@ internal sealed class MindMapReader
     {
         var limits = _budget.Limits;
         var bytes = package.ReadBytes(entry, limits.MaxPartBytes)
-                    ?? throw DocumentLimits.Exceeded($"content.json is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+                    ?? throw DocumentLimits.TooLarge($"content.json is larger than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
         // Strings that aren't UTF-8 would fail only when read, as no damage the caller knows.
         if (!System.Text.Unicode.Utf8.IsValid(bytes))
             throw new InvalidDataException("The file is not an XMind mind map (its content.json isn't UTF-8 text).");

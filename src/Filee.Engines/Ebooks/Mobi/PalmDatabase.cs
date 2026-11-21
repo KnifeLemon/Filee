@@ -72,11 +72,11 @@ internal sealed class PalmDatabase
     public static byte[] Build(string name, string typeCreator, IReadOnlyList<byte[]> records)
     {
         if (records.Count is 0 or > MaxRecords)
-            throw Documents.DocumentLimits.Exceeded($"A Palm database holds at most {Documents.DocumentLimits.Count(MaxRecords)} records.");
+            throw Documents.DocumentLimits.TooLarge($"A Palm database holds at most {Documents.DocumentLimits.Count(MaxRecords)} records.");
         var headerLength = 78 + records.Count * 8 + 2;
         var length = headerLength + records.Sum(r => (long)r.Length);
         if (length > int.MaxValue)
-            throw Documents.DocumentLimits.Exceeded("The Palm database would be larger than 2 GB.");
+            throw Documents.DocumentLimits.TooLarge("The Palm database would be larger than 2 GB.");
         var file = new byte[length];
         var bytes = name.Select(c => c is >= ' ' and <= '~' or >= ' ' and <= 'ÿ' ? (byte)c : (byte)'_').Take(31).ToArray();
         (bytes.Length > 0 ? bytes : "Book"u8.ToArray()).CopyTo(file, 0);

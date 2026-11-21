@@ -33,7 +33,7 @@ internal static partial class SmartNotebookReader
         if (pages.Count == 0)
             throw new InvalidDataException("The file is not a SMART Notebook file: it has no pages (page0.svg, ...).");
         if (pages.Count > limits.MaxPages)
-            throw DocumentLimits.Exceeded($"The notebook has more than {DocumentLimits.Count(limits.MaxPages)} pages.");
+            throw DocumentLimits.TooLarge($"The notebook has more than {DocumentLimits.Count(limits.MaxPages)} pages.");
 
         SlideDeck? deck = null;
         foreach (var name in pages)
@@ -41,7 +41,7 @@ internal static partial class SmartNotebookReader
             cancellationToken.ThrowIfCancellationRequested();
             var entry = files.Find(name)!;
             var bytes = package.ReadBytes(entry, limits.MaxPartBytes)
-                        ?? throw DocumentLimits.Exceeded($"The page {name} unpacks to more than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
+                        ?? throw DocumentLimits.TooLarge($"The page {name} unpacks to more than {DocumentLimits.Megabytes(limits.MaxPartBytes)}.");
             System.Xml.Linq.XElement svg;
             try
             {
