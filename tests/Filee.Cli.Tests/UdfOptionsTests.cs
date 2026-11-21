@@ -6,6 +6,15 @@ namespace Filee.Cli.Tests;
 
 public sealed class UdfOptionsTests
 {
+    [Fact]
+    public void Iso_label_parser_preserves_the_exact_text_and_requires_a_value()
+    {
+        var options = CliOptions.Parse(["convert", "source", "--to", "iso", "--iso-label", "My disc"]);
+        Assert.Null(options.Error);
+        Assert.Equal("My disc", options.IsoLabel);
+        Assert.Null(CliOptions.Parse(["convert", "source", "--to", "iso"]).IsoLabel);
+        Assert.NotNull(CliOptions.Parse(["convert", "source", "--to", "iso", "--iso-label"]).Error);
+    }
     [Theory]
     [InlineData("joliet", IsoFileSystem.Joliet)]
     [InlineData("udf201", IsoFileSystem.Udf201)]

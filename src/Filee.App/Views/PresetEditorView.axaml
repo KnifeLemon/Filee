@@ -475,6 +475,11 @@
         <TextBlock Classes="h2" Text="{DynamicResource presets.iso_filesystem}" />
         <ComboBox ItemsSource="{Binding IsoFileSystems}" SelectedItem="{Binding IsoFileSystem}"
                   HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.iso_filesystem}" />
+        <TextBlock Classes="label" Text="{DynamicResource presets.iso_label}" />
+        <TextBox x:Name="IsoVolumeLabelBox" Text="{Binding IsoVolumeLabel}" AutomationProperties.Name="{DynamicResource presets.iso_label}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.iso_label_hint}" />
+        <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding IsoLabelError}"
+                   IsVisible="{Binding IsoLabelError, Converter={x:Static ObjectConverters.IsNotNull}}" />
       </StackPanel>
     </Border>
 
