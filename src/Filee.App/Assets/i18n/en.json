@@ -211,7 +211,6 @@
   "notice.pdfa_needs_ghostscript": "This PDF isn't PDF/A: install Ghostscript in Settings → Engines to make it PDF/A",
   "notice.pdfa_form_fields": "Made PDF/A: its form fields can no longer be filled in",
   "pdfa.reason.font_not_embedded": "a font it uses isn't embedded",
-  "pdfa.reason.cmyk": "its CMYK colours have to be converted",
   "pdfa.reason.no_appearance": "an annotation or form field has no appearance of its own",
   "pdfa.reason.unsupported": "it has content PDF/A doesn't allow that Filee can't take out",
   "pdfa.reason.unreadable": "Filee couldn't read it",
@@ -282,7 +281,6 @@
   "notice.renderer_left_out.ink_one": "1 ink drawing left out",
   "notice.renderer_left_out.wordart": "WordArt drawn as plain text",
   "notice.renderer_left_out.effects": "shadows, 3D and other effects left out",
-  "notice.renderer_left_out.vertical_text_turned": "vertical East Asian text turned on its side",
   "notice.renderer_left_out.more": "and more",
 
   "engine.reason.not_installed": "Not installed",

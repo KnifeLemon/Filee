@@ -320,14 +320,15 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
 
     [Theory]
     [InlineData("chart.hwpx", "Contents/section0.xml", "<hs:sec><hp:p><hp:run><hp:chart id=\"1\"/></hp:run></hp:p></hs:sec>", "OLE objects and charts")]
-    [InlineData("vertical.hwpx", "Contents/section0.xml", "<hs:sec><hp:secPr textDirection=\"VERTICAL\"/></hs:sec>", "vertical text")]
-    [InlineData("form.hwpx", "Contents/section0.xml", "<hs:sec><hp:p><hp:run><hp:checkBtn/></hp:run></hp:p></hs:sec>", "form controls")]
+    [InlineData("vertical.hwpx", "Contents/section0.xml", "<hs:sec><hp:secPr textDirection=\"VERTICAL\"/></hs:sec>", null)] // drawn vertically
+    [InlineData("form.hwpx", "Contents/section0.xml", "<hs:sec><hp:p><hp:run><hp:checkBtn/></hp:run></hp:p></hs:sec>", null)] // drawn as 한글 prints it
+    [InlineData("list.hwpx", "Contents/section0.xml", "<hs:sec><hp:p><hp:run><hp:listBox/></hp:run></hp:p></hs:sec>", "form controls")]
     [InlineData("picture.hwpx", "BinData/image1.emf", "EMF", null)] // drawn by the metafile renderer
-    [InlineData("vertical.docx", "word/document.xml", "<w:sectPr><w:textDirection w:val=\"tbRl\"/></w:sectPr>", "vertical text")]
+    [InlineData("vertical.docx", "word/document.xml", "<w:sectPr><w:textDirection w:val=\"tbRl\"/></w:sectPr>", null)]
     [InlineData("chart.docx", "word/document.xml", "<w:drawing><c:chart r:id=\"rId5\"/></w:drawing>", "OLE objects and charts")]
     [InlineData("smartart.docx", "word/document.xml", "<w:drawing><dgm:relIds r:dm=\"rId1\"/></w:drawing>", "SmartArt")]
     [InlineData("chart.odt", "content.xml", "<office:text><draw:frame><draw:object xlink:href=\"./Object 1\"/></draw:frame></office:text>", "OLE objects and charts")]
-    [InlineData("vertical.odt", "content.xml", "<style:paragraph-properties style:writing-mode=\"tb-rl\"/>", "vertical text")]
+    [InlineData("vertical.odt", "content.xml", "<style:paragraph-properties style:writing-mode=\"tb-rl\"/>", null)]
     [InlineData("plain.docx", "word/document.xml", "<w:body><w:p><w:r><w:t>text</w:t></w:r></w:p></w:body>", null)]
     public void The_check_names_what_it_cant_draw_yet(string name, string part, string content, string? expected)
     {
@@ -368,7 +369,7 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
         {
             using var writer = new StreamWriter(zip.CreateEntry("word/document.xml").Open());
             writer.Write(new string(' ', 5 * 1024 * 1024));
-            writer.Write("<w:sectPr><w:textDirection w:val=\"tbRl\"/></w:sectPr>");
+            writer.Write("<w:object><o:OLEObject Type=\"Embed\"/></w:object>");
         }
 
         Assert.Null(new FileeRendererConverter().FirstUnsupported(path, "docx"));

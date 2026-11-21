@@ -211,7 +211,6 @@
   "notice.pdfa_needs_ghostscript": "이 PDF는 PDF/A가 아니에요. PDF/A로 받으려면 설정 → 변환 엔진에서 Ghostscript를 설치하세요",
   "notice.pdfa_form_fields": "PDF/A로 만들면서 양식 입력 칸은 더 이상 채울 수 없게 됐어요",
   "pdfa.reason.font_not_embedded": "사용한 글꼴이 파일에 들어 있지 않아요",
-  "pdfa.reason.cmyk": "CMYK 색을 변환해야 해요",
   "pdfa.reason.no_appearance": "주석이나 양식 필드에 자체 모양이 없어요",
   "pdfa.reason.unsupported": "PDF/A에서 허용하지 않는 내용을 Filee가 뺄 수 없어요",
   "pdfa.reason.unreadable": "Filee가 파일을 읽지 못했어요",
@@ -282,7 +281,6 @@
   "notice.renderer_left_out.ink_one": "잉크 1개 빠짐",
   "notice.renderer_left_out.wordart": "WordArt는 일반 글자로 그림",
   "notice.renderer_left_out.effects": "그림자, 3차원 등 효과 빠짐",
-  "notice.renderer_left_out.vertical_text_turned": "동아시아 세로쓰기는 옆으로 눕혀 씀",
   "notice.renderer_left_out.more": "그 밖에 더 있음",
 
   "engine.reason.not_installed": "설치되지 않음",

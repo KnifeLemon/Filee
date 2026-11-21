@@ -29,8 +29,12 @@ internal sealed class SlideRenderer : IDisposable
     private readonly SlideImages _images = new();
     private readonly CancellationToken _cancellationToken;
 
+    /// <summary>Shapes the vertical forms of upright characters in vertical text (VerticalText.Stand).</summary>
+    private readonly Shaper _shaper;
+
     public SlideRenderer(FontResolver fonts, Shaper shaper, CancellationToken cancellationToken = default)
     {
+        _shaper = shaper;
         _layouter = new ParagraphLayouter(fonts, shaper, storedLines: false);
         _charts = new ChartFonts(fonts, shaper);
         _cancellationToken = cancellationToken;

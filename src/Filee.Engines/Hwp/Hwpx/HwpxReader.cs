@@ -381,7 +381,6 @@ internal sealed partial class HwpxReader
         var secPr = Elements(p).Where(e => e.Name.LocalName == "run").SelectMany(Elements).FirstOrDefault(e => e.Name.LocalName == "secPr");
         if (secPr is not null)
         {
-            CountVerticalText(secPr);
             var section = state.Begin(Section(secPr));
             _outlineNumberingId = Attr(secPr, "outlineShapeIDRef");
             if (_forLayout)
@@ -480,6 +479,8 @@ internal sealed partial class HwpxReader
         var (lineGrid, charGrid) = (Math.Max(0, Int(grid, "lineGrid")), Math.Max(0, Int(grid, "charGrid")));
         return new HSection
         {
+            // 세로쓰기 of the whole section (VERTICAL; VERTICALALL with Latin upright too), drawn turned.
+            TextFlow = TextFlow(secPr),
             Grid = lineGrid > 0 || charGrid > 0
                 ? new HDocumentGrid(charGrid == 0 ? HGridKind.Lines : lineGrid == 0 ? HGridKind.SnapToChars : HGridKind.LinesAndChars, lineGrid, charGrid)
                 : null,

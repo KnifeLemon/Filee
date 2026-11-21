@@ -211,7 +211,6 @@
   "notice.pdfa_needs_ghostscript": "Ten PDF nie jest w formacie PDF/A: zainstaluj Ghostscript w Ustawienia → Silniki, aby tworzyć PDF/A",
   "notice.pdfa_form_fields": "Utworzono PDF/A: pól formularza nie można już wypełniać",
   "pdfa.reason.font_not_embedded": "użyta czcionka nie jest osadzona",
-  "pdfa.reason.cmyk": "jego kolory CMYK trzeba by przekonwertować",
   "pdfa.reason.no_appearance": "adnotacja lub pole formularza nie ma własnego wyglądu",
   "pdfa.reason.unsupported": "zawiera treść niedozwoloną w PDF/A, której Filee nie może usunąć",
   "pdfa.reason.unreadable": "Filee nie mógł go odczytać",
@@ -282,7 +281,6 @@
   "notice.renderer_left_out.ink_one": "pominięty 1 rysunek odręczny",
   "notice.renderer_left_out.wordart": "WordArt narysowany jako zwykły tekst",
   "notice.renderer_left_out.effects": "pominięte cienie, efekty 3D i inne efekty",
-  "notice.renderer_left_out.vertical_text_turned": "pionowy tekst wschodnioazjatycki obrócony na bok",
   "notice.renderer_left_out.more": "i inne",
 
   "engine.reason.not_installed": "Nie zainstalowano",

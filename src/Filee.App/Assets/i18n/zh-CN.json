@@ -211,7 +211,6 @@
   "notice.pdfa_needs_ghostscript": "这个 PDF 不是 PDF/A：要生成 PDF/A，请在 设置 → 转换引擎 中安装 Ghostscript",
   "notice.pdfa_form_fields": "已生成 PDF/A：表单字段不能再填写",
   "pdfa.reason.font_not_embedded": "使用的字体没有嵌入",
-  "pdfa.reason.cmyk": "需要转换其中的 CMYK 颜色",
   "pdfa.reason.no_appearance": "某个注释或表单域没有自己的外观",
   "pdfa.reason.unsupported": "其中有 PDF/A 不允许、Filee 又无法去掉的内容",
   "pdfa.reason.unreadable": "Filee 无法读取该文件",
@@ -282,7 +281,6 @@
   "notice.renderer_left_out.ink_one": "省略了 1 处墨迹",
   "notice.renderer_left_out.wordart": "艺术字按普通文字绘制",
   "notice.renderer_left_out.effects": "省略了阴影、三维等效果",
-  "notice.renderer_left_out.vertical_text_turned": "竖排的东亚文字被侧转显示",
   "notice.renderer_left_out.more": "等",
 
   "engine.reason.not_installed": "未安装",
