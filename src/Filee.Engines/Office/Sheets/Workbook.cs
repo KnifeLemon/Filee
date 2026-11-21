@@ -408,6 +408,12 @@ internal sealed record SheetShape(string Preset, int Row, int Column, double Off
 
     /// <summary>The shape's text, or null.</summary>
     public ShapeText? Text { get; init; }
+
+    /// <summary>
+    /// The cell the shape's text shows (DrawingML textlink: "$A$1", "Sheet2!$B$3"), or null. The readers put that
+    /// cell's text into <see cref="Text"/> once every sheet is read (SheetShapeLinks).
+    /// </summary>
+    public string? TextLink { get; init; }
 }
 
 /// <summary>
@@ -425,10 +431,48 @@ internal sealed record ShapeText(IReadOnlyList<ShapeParagraph> Paragraphs)
 
     /// <summary>Lines break at the shape's width (else the text runs on past it).</summary>
     public bool Wrap { get; init; } = true;
+
+    /// <summary>Which way the lines run (DrawingML bodyPr vert) and which characters stand upright in vertical text.</summary>
+    public ShapeTextFlow Flow { get; init; }
 }
 
-/// <summary>A paragraph of a shape's text and its alignment.</summary>
-internal sealed record ShapeParagraph(IReadOnlyList<CellRun> Runs, CellAlign Align);
+/// <summary>The direction of a shape's text (DrawingML ST_TextVerticalType).</summary>
+internal enum ShapeTextFlow
+{
+    /// <summary>Lines across, the next one below (horz).</summary>
+    Across,
+
+    /// <summary>Turned 90° clockwise: lines run down, the next one to the left (vert).</summary>
+    Down,
+
+    /// <summary>Turned 270°: lines run up, the next one to the right (vert270).</summary>
+    Up,
+
+    /// <summary>East Asian vertical writing: lines run down with CJK characters upright (eaVert, mongolianVert).</summary>
+    EastAsian,
+
+    /// <summary>Stacked: lines run down with every character upright (wordArtVert, wordArtVertRtl).</summary>
+    Stacked,
+}
+
+/// <summary>A paragraph of a shape's text: its runs, alignment, bullet or number, indents and line spacing.</summary>
+internal sealed record ShapeParagraph(IReadOnlyList<CellRun> Runs, CellAlign Align)
+{
+    /// <summary>The bullet or number before the paragraph's first line, in its own font, or null.</summary>
+    public CellRun? Bullet { get; init; }
+
+    /// <summary>Space between the text's left edge and the lines (marL), in points.</summary>
+    public double Left { get; init; }
+
+    /// <summary>Where the first line (its bullet) starts against <see cref="Left"/> (indent; negative hangs), in points.</summary>
+    public double Indent { get; init; }
+
+    /// <summary>Line spacing as a multiple of single spacing (lnSpc spcPct, less a shrunk text's reduction).</summary>
+    public double LineSpacing { get; init; } = 1;
+
+    /// <summary>An exact line height in points (lnSpc spcPts) instead of <see cref="LineSpacing"/>, or null.</summary>
+    public double? LineHeight { get; init; }
+}
 
 /// <summary>A note on a cell, as the printer prints it.</summary>
 /// <param name="Text">The note's text; Excel's starts with its author's name and a colon, as Excel wrote it.</param>

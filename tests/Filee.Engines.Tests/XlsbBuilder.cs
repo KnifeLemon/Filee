@@ -91,6 +91,15 @@ internal sealed class XlsbBuilder
     /// <summary>The workbook's own table styles: name, then parts (ECMA-376 type name, its <see cref="Dxfs"/> index).</summary>
     public List<(string Name, (string Type, int Dxf)[] Parts)> TableStyles { get; } = [];
 
+    /// <summary>
+    /// Named cell styles besides Normal: name and the shared style sheet's font, fill and border indexes (a cell style
+    /// XF each, with a BrtStyle / cellStyle naming it).
+    /// </summary>
+    public List<(string Name, int Font, int Fill, int Border)> CellStyles { get; } = [];
+
+    /// <summary>The workbook's own PivotTable styles: name, then parts (ECMA-376 type name, its <see cref="Dxfs"/> index).</summary>
+    public List<(string Name, (string Type, int Dxf)[] Parts)> PivotStyles { get; } = [];
+
     /// <summary>Bottom borders of <see cref="Dxfs"/> by index: line style (1 thin, 2 medium, ...) and colour.</summary>
     public Dictionary<int, (int Style, XlsbColor Color)> DxfBorders { get; } = [];
 
@@ -149,6 +158,8 @@ internal sealed class XlsbBuilder
             }
             for (var k = 0; k < Sheets[i].Tables.Count; k++)
                 parts[$"xl/tables/table{i + 1}_{k + 1}.bin"] = Sheets[i].TableBin(k);
+            for (var k = 0; k < Sheets[i].Pivots.Count; k++)
+                parts[$"xl/pivotTables/pivotTable{i + 1}_{k + 1}.bin"] = Sheets[i].Pivots[k].Bin();
             if (Sheets[i].Threads.Count > 0)
                 parts[$"xl/threadedComments/threadedComment{i + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].ThreadsXml());
         }
@@ -217,13 +228,20 @@ internal sealed class XlsbBuilder
         foreach (var (flags, sides) in Borders)
             w.Record(46, [(byte)flags, .. sides.SelectMany(s => (byte[])[(byte)s.Style, 0, .. s.Color.Bytes()])]);
         w.Record(614, []);
-        w.Record(626, U32(1)); // BrtBeginCellStyleXFs
+        w.Record(626, U32((uint)(1 + CellStyles.Count))); // BrtBeginCellStyleXFs
         w.Record(47, Xf(0xFFFF, (0, 0, 0, 0, 0, 0, 0, 2, false, false)));
+        foreach (var (_, font, fill, border) in CellStyles)
+            w.Record(47, Xf(0xFFFF, (0, font, fill, border, 0, 0, 0, 2, false, false)));
         w.Record(627, []);
         w.Record(617, U32((uint)Xfs.Length)); // BrtBeginCellXFs
         foreach (var xf in Xfs)
             w.Record(47, Xf(0, xf));
         w.Record(618, []);
+        w.Record(619, U32((uint)(1 + CellStyles.Count))); // BrtBeginStyles
+        w.Record(48, [.. U32(0), .. U16(1), 0, 0xFF, .. WideString("Normal")]); // BrtStyle: fBuiltIn, Normal
+        for (var i = 0; i < CellStyles.Count; i++)
+            w.Record(48, [.. U32((uint)i + 1), .. U16(0), 0, 0, .. WideString(CellStyles[i].Name)]);
+        w.Record(620, []);
         if (Dxfs.Count > 0)
         {
             w.Record(505, U32((uint)Dxfs.Count)); // BrtBeginDXFs
@@ -246,12 +264,12 @@ internal sealed class XlsbBuilder
             }
             w.Record(506, []);
         }
-        if (TableStyles.Count > 0)
+        if (TableStyles.Count + PivotStyles.Count > 0)
         {
-            w.Record(508, [.. U32((uint)TableStyles.Count), .. NullString(), .. NullString()]); // BrtBeginTableStyles
-            foreach (var (name, styleParts) in TableStyles)
+            w.Record(508, [.. U32((uint)(TableStyles.Count + PivotStyles.Count)), .. NullString(), .. NullString()]); // BrtBeginTableStyles
+            foreach (var (name, styleParts, use) in TableStyles.Select(s => (s.Name, s.Parts, 0x04)).Concat(PivotStyles.Select(s => (s.Name, s.Parts, 0x02))))
             {
-                w.Record(510, [.. U16(0x04), .. U32((uint)styleParts.Length), .. WideString(name)]); // BrtBeginTableStyle: fIsTable
+                w.Record(510, [.. U16((ushort)use), .. U32((uint)styleParts.Length), .. WideString(name)]); // BrtBeginTableStyle: fIsTable or fIsPivot
                 foreach (var (type, dxf) in styleParts)
                     w.Record(512, [.. U32((uint)TseType(type)), .. U32(1), .. U32((uint)dxf)]); // BrtTableStyleElement
                 w.Record(511, []);
@@ -264,7 +282,9 @@ internal sealed class XlsbBuilder
 
     private static int TseType(string type) => Array.IndexOf(
         ["wholeTable", "headerRow", "totalRow", "firstColumn", "lastColumn", "firstRowStripe", "secondRowStripe", "firstColumnStripe", "secondColumnStripe",
-            "firstHeaderCell", "lastHeaderCell", "firstTotalCell", "lastTotalCell"], type);
+            "firstHeaderCell", "lastHeaderCell", "firstTotalCell", "lastTotalCell", "firstSubtotalColumn", "secondSubtotalColumn", "thirdSubtotalColumn",
+            "firstSubtotalRow", "secondSubtotalRow", "thirdSubtotalRow", "blankRow", "firstColumnSubheading", "secondColumnSubheading",
+            "thirdColumnSubheading", "firstRowSubheading", "secondRowSubheading", "thirdRowSubheading", "pageFieldLabels", "pageFieldValues"], type);
 
     private static byte[] Xf(int parent, (int Format, int Font, int Fill, int Border, int Rotation, int Indent, int Horizontal, int Vertical, bool Wrap, bool Shrink) xf)
     {
@@ -322,6 +342,8 @@ internal sealed class XlsbBuilder
             }
             for (var k = 0; k < Sheets[i].Tables.Count; k++)
                 parts[$"xl/tables/table{i + 1}_{k + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].TableXml(i + 1, k));
+            for (var k = 0; k < Sheets[i].Pivots.Count; k++)
+                parts[$"xl/pivotTables/pivotTable{i + 1}_{k + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].Pivots[k].Xml());
             if (Sheets[i].Threads.Count > 0)
                 parts[$"xl/threadedComments/threadedComment{i + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].ThreadsXml());
         }
@@ -369,14 +391,17 @@ internal sealed class XlsbBuilder
                 .Append(Side("left", sides[2])).Append(Side("right", sides[3])).Append(Side("top", sides[0])).Append(Side("bottom", sides[1]))
                 .Append(Side("diagonal", sides[4])).Append("</border>");
         }
-        sb.Append("</borders><cellStyleXfs><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs><cellXfs>");
+        sb.Append("</borders><cellStyleXfs><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>")
+            .Append(string.Concat(CellStyles.Select(c => $"<xf numFmtId=\"0\" fontId=\"{c.Font}\" fillId=\"{c.Fill}\" borderId=\"{c.Border}\" applyNumberFormat=\"0\" applyAlignment=\"0\" applyProtection=\"0\"/>")))
+            .Append("</cellStyleXfs><cellXfs>");
         foreach (var xf in Xfs)
         {
             sb.Append(CultureInfo.InvariantCulture, $"<xf numFmtId=\"{xf.Format}\" fontId=\"{xf.Font}\" fillId=\"{xf.Fill}\" borderId=\"{xf.Border}\" xfId=\"0\">")
                 .Append(CultureInfo.InvariantCulture, $"<alignment horizontal=\"{Horizontal[xf.Horizontal]}\" vertical=\"{Vertical[xf.Vertical]}\" textRotation=\"{xf.Rotation}\" indent=\"{xf.Indent}\"")
                 .Append(xf.Wrap ? " wrapText=\"1\"" : "").Append(xf.Shrink ? " shrinkToFit=\"1\"" : "").Append("/></xf>");
         }
-        sb.Append("</cellXfs>");
+        sb.Append("</cellXfs><cellStyles><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/>")
+            .Append(string.Concat(CellStyles.Select((c, i) => $"<cellStyle name=\"{OpcWriter.Escape(c.Name)}\" xfId=\"{i + 1}\"/>"))).Append("</cellStyles>");
         if (Dxfs.Count > 0)
         {
             sb.Append(CultureInfo.InvariantCulture, $"<dxfs count=\"{Dxfs.Count}\">");
@@ -394,12 +419,12 @@ internal sealed class XlsbBuilder
             }
             sb.Append("</dxfs>");
         }
-        if (TableStyles.Count > 0)
+        if (TableStyles.Count + PivotStyles.Count > 0)
         {
-            sb.Append(CultureInfo.InvariantCulture, $"<tableStyles count=\"{TableStyles.Count}\">");
-            foreach (var (name, styleParts) in TableStyles)
+            sb.Append(CultureInfo.InvariantCulture, $"<tableStyles count=\"{TableStyles.Count + PivotStyles.Count}\">");
+            foreach (var (name, styleParts, use) in TableStyles.Select(s => (s.Name, s.Parts, "pivot=\"0\"")).Concat(PivotStyles.Select(s => (s.Name, s.Parts, "table=\"0\""))))
             {
-                sb.Append(CultureInfo.InvariantCulture, $"<tableStyle name=\"{OpcWriter.Escape(name)}\" pivot=\"0\" count=\"{styleParts.Length}\">");
+                sb.Append(CultureInfo.InvariantCulture, $"<tableStyle name=\"{OpcWriter.Escape(name)}\" {use} count=\"{styleParts.Length}\">");
                 foreach (var (type, dxf) in styleParts)
                     sb.Append(CultureInfo.InvariantCulture, $"<tableStyleElement type=\"{type}\" dxfId=\"{dxf}\"/>");
                 sb.Append("</tableStyle>");
@@ -629,6 +654,15 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
     /// <summary>How the notes print: 0 not, 1 as displayed, 2 at the end (needs <see cref="PageSetup"/>).</summary>
     public int NotesPrint { get; set; }
 
+    /// <summary>
+    /// The cell styles a table names by table index (<see cref="Tables"/>): for its header, data and total rows, and
+    /// per column (its offset in the table, header, data, total row); null for none.
+    /// </summary>
+    public Dictionary<int, (string? Header, string? Data, string? Totals, (int Column, string? Header, string? Data, string? Totals)[] Columns)> TableCellStyles { get; } = [];
+
+    /// <summary>PivotTables (their parts: XML in XLSX, records in XLSB), the values already in the sheet's cells.</summary>
+    public List<XlsbPivot> Pivots { get; } = [];
+
     /// <summary>Tables: range, style name, first column, row stripes, a total row.</summary>
     public List<((int Top, int Left, int Bottom, int Right) Range, string Style, bool FirstColumn, bool RowStripes, bool Totals)> Tables { get; } = [];
 
@@ -642,6 +676,8 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
         }
         for (var k = 0; k < Tables.Count; k++)
             yield return ($"rIdTable{k + 1}", "table", $"../tables/table{sheet}_{k + 1}.{extension}");
+        for (var k = 0; k < Pivots.Count; k++)
+            yield return ($"rIdPivot{k + 1}", "pivotTable", $"../pivotTables/pivotTable{sheet}_{k + 1}.{extension}");
         if (Threads.Count > 0)
             yield return ("rIdThreads", "threadedComment", $"../threadedComments/threadedComment{sheet}.xml");
     }
@@ -712,23 +748,27 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
     {
         var ((top, left, bottom, right), style, firstColumn, rowStripes, totals) = Tables[k];
         var formats = TableFormats.TryGetValue(k, out var own) ? own : (-1, -1, -1, -1, []);
+        var named = TableCellStyles.TryGetValue(k, out var names) ? names : (null, null, null, []);
         static byte[] Dxf(int dxf) => XlsbBuilder.U32(dxf < 0 ? 0xFFFFFFFF : (uint)dxf);
+        static byte[] Name(string? name) => name is null ? XlsbBuilder.NullString() : XlsbBuilder.WideString(name);
         var w = new RecordWriter();
         w.Record(343, [.. XlsbBuilder.U32((uint)top), .. XlsbBuilder.U32((uint)bottom), .. XlsbBuilder.U32((uint)left), .. XlsbBuilder.U32((uint)right),
             .. XlsbBuilder.U32(0), .. XlsbBuilder.U32((uint)k + 1), .. XlsbBuilder.U32(1), .. XlsbBuilder.U32(totals ? 1u : 0u), .. XlsbBuilder.U32(0),
             .. Dxf(formats.Header), .. Dxf(formats.Data), .. Dxf(formats.Totals), .. Dxf(formats.Border), .. Dxf(-1), .. Dxf(-1), .. XlsbBuilder.U32(0),
-            .. XlsbBuilder.WideString($"Table{k + 1}"), .. XlsbBuilder.WideString($"Table{k + 1}"), .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString(),
-            .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString()]); // BrtBeginList
-        if (formats.Columns.Length > 0)
+            .. XlsbBuilder.WideString($"Table{k + 1}"), .. XlsbBuilder.WideString($"Table{k + 1}"), .. XlsbBuilder.NullString(), .. Name(named.Header),
+            .. Name(named.Data), .. Name(named.Totals)]); // BrtBeginList
+        if (formats.Columns.Length > 0 || named.Columns.Length > 0)
         {
             w.Record(345, XlsbBuilder.U32((uint)(right - left + 1))); // BrtBeginListCols
             var byColumn = formats.Columns.ToDictionary(f => f.Column);
+            var namesByColumn = named.Columns.ToDictionary(f => f.Column);
             for (var c = 0; c <= right - left; c++)
             {
                 var (_, header, data, total) = byColumn.GetValueOrDefault(c, (c, -1, -1, -1));
+                var (_, headerStyle, dataStyle, totalStyle) = namesByColumn.GetValueOrDefault(c, (c, null, null, null));
                 w.Record(347, [.. XlsbBuilder.U32((uint)c + 1), .. XlsbBuilder.U32(0), .. Dxf(header), .. Dxf(data), .. Dxf(total), .. XlsbBuilder.U32(0),
-                    .. XlsbBuilder.WideString($"Column{c + 1}"), .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString(),
-                    .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString()]); // BrtBeginListCol
+                    .. XlsbBuilder.WideString($"Column{c + 1}"), .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString(), .. Name(headerStyle),
+                    .. Name(dataStyle), .. Name(totalStyle)]); // BrtBeginListCol
                 w.Record(348, []);
             }
             w.Record(346, []);
@@ -742,17 +782,23 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
     {
         var ((top, left, bottom, right), style, firstColumn, rowStripes, totals) = Tables[k];
         var formats = TableFormats.TryGetValue(k, out var own) ? own : (-1, -1, -1, -1, []);
+        var named = TableCellStyles.TryGetValue(k, out var names) ? names : (null, null, null, []);
         static string Dxf(string name, int dxf) => dxf < 0 ? "" : $" {name}=\"{dxf}\"";
+        static string Name(string attribute, string? name) => name is null ? "" : $" {attribute}=\"{OpcWriter.Escape(name)}\"";
         var byColumn = formats.Columns.ToDictionary(f => f.Column);
+        var namesByColumn = named.Columns.ToDictionary(f => f.Column);
         string Column(int c)
         {
             var (_, header, data, total) = byColumn.GetValueOrDefault(c - 1, (c - 1, -1, -1, -1));
-            return $"<tableColumn id=\"{c}\" name=\"Column{c}\"{Dxf("headerRowDxfId", header)}{Dxf("dataDxfId", data)}{Dxf("totalsRowDxfId", total)}/>";
+            var (_, headerStyle, dataStyle, totalStyle) = namesByColumn.GetValueOrDefault(c - 1, (c - 1, null, null, null));
+            return $"<tableColumn id=\"{c}\" name=\"Column{c}\"{Dxf("headerRowDxfId", header)}{Dxf("dataDxfId", data)}{Dxf("totalsRowDxfId", total)}" +
+                   $"{Name("headerRowCellStyle", headerStyle)}{Name("dataCellStyle", dataStyle)}{Name("totalsRowCellStyle", totalStyle)}/>";
         }
         var id = sheet * 100 + k + 1;
         return $"<table xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" id=\"{id}\" name=\"Table{id}\" displayName=\"Table{id}\" " +
                $"ref=\"{XlsbBuilder.Column(left)}{top + 1}:{XlsbBuilder.Column(right)}{bottom + 1}\"{(totals ? " totalsRowCount=\"1\"" : "")}" +
-               $"{Dxf("headerRowDxfId", formats.Header)}{Dxf("dataDxfId", formats.Data)}{Dxf("totalsRowDxfId", formats.Totals)}{Dxf("tableBorderDxfId", formats.Border)}>" +
+               $"{Dxf("headerRowDxfId", formats.Header)}{Dxf("dataDxfId", formats.Data)}{Dxf("totalsRowDxfId", formats.Totals)}{Dxf("tableBorderDxfId", formats.Border)}" +
+               $"{Name("headerRowCellStyle", named.Header)}{Name("dataCellStyle", named.Data)}{Name("totalsRowCellStyle", named.Totals)}>" +
                $"<tableColumns count=\"{right - left + 1}\">" + string.Concat(Enumerable.Range(1, right - left + 1).Select(Column)) +
                $"</tableColumns><tableStyleInfo name=\"{OpcWriter.Escape(style)}\" showFirstColumn=\"{(firstColumn ? 1 : 0)}\" showLastColumn=\"0\" " +
                $"showRowStripes=\"{(rowStripes ? 1 : 0)}\" showColumnStripes=\"0\"/></table>";
@@ -1153,5 +1199,88 @@ internal sealed record XlsbRule((int Top, int Left, int Bottom, int Right) Range
         if (Scale is { } scale)
             sb.Append("<colorScale><cfvo type=\"min\"/><cfvo type=\"max\"/>").Append(scale.Low.Xml("color")).Append(scale.High.Xml("color")).Append("</colorScale>");
         return sb.Append("</cfRule></conditionalFormatting>").ToString();
+    }
+}
+
+/// <summary>
+/// A PivotTable part: the location (0-based, inclusive), where its header rows, data rows and data columns start
+/// (offsets), its style and options, the number of row, column and page fields, and its row and column items
+/// (t: null for data, "default", "grand", "blank"; r: entries repeated from the item before; the entries it adds).
+/// </summary>
+internal sealed record XlsbPivot((int Top, int Left, int Bottom, int Right) Range, int FirstHeaderRow, int FirstDataRow, int FirstDataColumn, string Style)
+{
+    public int RowFields { get; init; } = 1;
+    public int ColumnFields { get; init; }
+    public int PageFields { get; init; }
+    public (string? Type, int Repeated, int Entries)[] Rows { get; init; } = [];
+    public (string? Type, int Repeated, int Entries)[] Columns { get; init; } = [(null, 0, 1)];
+    public bool RowHeaders { get; init; } = true;
+    public bool ColumnHeaders { get; init; } = true;
+    public bool RowStripes { get; init; }
+    public bool ColumnStripes { get; init; }
+    public bool LastColumn { get; init; } = true;
+
+    private static readonly string?[] Types = [null, "default", "sum", "countA", "avg", "max", "min", "product", "count", "stdDev", "stdDevP", "var", "varP", "grand", "blank"];
+
+    /// <summary>The pivotTableDefinition part (no cache: the readers take what the sheet's cells and this part say).</summary>
+    public string Xml()
+    {
+        var (top, left, bottom, right) = Range;
+        static string Items(string name, (string? Type, int Repeated, int Entries)[] items) =>
+            $"<{name} count=\"{items.Length}\">" + string.Concat(items.Select(i =>
+                "<i" + (i.Type is null ? "" : $" t=\"{i.Type}\"") + (i.Repeated > 0 ? $" r=\"{i.Repeated}\"" : "") + ">" +
+                string.Concat(Enumerable.Repeat("<x/>", i.Entries)) + "</i>")) + $"</{name}>";
+        static string Fields(string name, int count) =>
+            count == 0 ? "" : $"<{name} count=\"{count}\">" + string.Concat(Enumerable.Range(0, count).Select(f => $"<field x=\"{f}\"/>")) + $"</{name}>";
+        static int Flag(bool on) => on ? 1 : 0;
+        return "<pivotTableDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" name=\"PivotTable1\" cacheId=\"1\" dataCaption=\"Values\">" +
+               $"<location ref=\"{XlsbBuilder.Column(left)}{top + 1}:{XlsbBuilder.Column(right)}{bottom + 1}\" firstHeaderRow=\"{FirstHeaderRow}\" " +
+               $"firstDataRow=\"{FirstDataRow}\" firstDataCol=\"{FirstDataColumn}\"" + (PageFields > 0 ? $" rowPageCount=\"{PageFields}\" colPageCount=\"1\"" : "") + "/>" +
+               Fields("rowFields", RowFields) + Items("rowItems", Rows) + Fields("colFields", ColumnFields) + Items("colItems", Columns) +
+               (PageFields == 0 ? "" : $"<pageFields count=\"{PageFields}\">" + string.Concat(Enumerable.Range(0, PageFields).Select(f => $"<pageField fld=\"{RowFields + ColumnFields + f}\" hier=\"-1\"/>")) + "</pageFields>") +
+               $"<pivotTableStyleInfo name=\"{OpcWriter.Escape(Style)}\" showRowHeaders=\"{Flag(RowHeaders)}\" showColHeaders=\"{Flag(ColumnHeaders)}\" " +
+               $"showRowStripes=\"{Flag(RowStripes)}\" showColStripes=\"{Flag(ColumnStripes)}\" showLastColumn=\"{Flag(LastColumn)}\"/></pivotTableDefinition>";
+    }
+
+    /// <summary>
+    /// The PivotTable part's records ([MS-XLSB] 2.1.7.40) the reader takes: BrtBeginSXView, the location, the row and
+    /// column fields and pivot lines, the page fields, BrtTableStyleClient.
+    /// </summary>
+    public byte[] Bin()
+    {
+        var (top, left, bottom, right) = Range;
+        var w = new RecordWriter();
+        w.Record(280, []); // BrtBeginSXView (its fields aren't read)
+        w.Record(314, [.. XlsbBuilder.U32((uint)top), .. XlsbBuilder.U32((uint)bottom), .. XlsbBuilder.U32((uint)left), .. XlsbBuilder.U32((uint)right),
+            .. XlsbBuilder.U32((uint)(top + FirstHeaderRow)), .. XlsbBuilder.U32((uint)(top + FirstDataRow)), .. XlsbBuilder.U32((uint)(left + FirstDataColumn)),
+            .. XlsbBuilder.U32((uint)PageFields), .. XlsbBuilder.U32(PageFields > 0 ? 2u : 0u)]); // BrtBeginSXLocation
+        w.Record(313, []);
+        void Lines(int fieldsBegin, int count, int linesBegin, (string? Type, int Repeated, int Entries)[] items)
+        {
+            w.Record(fieldsBegin, [.. XlsbBuilder.U32((uint)count), .. Enumerable.Range(0, count).SelectMany(f => XlsbBuilder.U32((uint)f))]);
+            w.Record(fieldsBegin + 1, []);
+            if (items.Length == 0)
+                return;
+            w.Record(linesBegin, XlsbBuilder.U32((uint)items.Length));
+            foreach (var (type, repeated, entries) in items)
+            {
+                w.Record(297, [.. XlsbBuilder.U16((ushort)repeated), (byte)Array.IndexOf(Types, type), 0, .. XlsbBuilder.U32((uint)entries), .. XlsbBuilder.U32(0)]); // BrtBeginSXLI
+                if (entries > 0)
+                    w.Record(388, [.. XlsbBuilder.U32((uint)entries), .. Enumerable.Range(0, entries).SelectMany(_ => XlsbBuilder.U32(0))]); // BrtBeginISXVIs
+                w.Record(298, []);
+            }
+            w.Record(linesBegin + 1, []);
+        }
+        Lines(309, RowFields, 299, Rows);
+        Lines(311, ColumnFields, 301, Columns);
+        if (PageFields > 0)
+        {
+            w.Record(291, XlsbBuilder.U32((uint)PageFields)); // BrtBeginSXPIs
+            w.Record(292, []);
+        }
+        var flags = (ushort)((LastColumn ? 0x02 : 0) | (RowStripes ? 0x04 : 0) | (ColumnStripes ? 0x08 : 0) | (RowHeaders ? 0x10 : 0) | (ColumnHeaders ? 0x20 : 0));
+        w.Record(513, [.. XlsbBuilder.U16(flags), .. XlsbBuilder.WideString(Style)]); // BrtTableStyleClient
+        w.Record(315, []);
+        return w.ToArray();
     }
 }

@@ -1026,11 +1026,18 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   `SheetCommentList`). Threaded comments (threadedComments and persons parts) are read with their authors and
   replies in place of Excel's legacy copy, and print at the end only. Tables (XLSX table parts, XLSB BrtBeginList /
   BrtTableStyleClient) take the look of their table style: the 60 built-in styles of ECMA-376's
-  presetTableStyles.xml or the workbook's own (`SheetTables`), then the table's and its columns' own formats
-  (headerRowDxfId / dataDxfId / totalsRowDxfId and the border ones, XLSB nDxf*), under the cells' own formatting.
-  Theme colours with a tint come out as Excel shows them (whole-number HLS out of 240, `OoxmlColors.SpreadsheetTint`).
-  Text in XLSX shapes and text boxes prints with its paragraphs, fonts and the body's anchor and insets.
-- **Not printed yet.** XLSX shape text linked to a cell, sparklines; data bars, icon sets and conditional formats
+  presetTableStyles.xml or the workbook's own (`SheetTables`), then the cell styles the table and its columns name
+  (headerRowCellStyle / dataCellStyle / totalsRowCellStyle, XLSB stStyle*) and their own formats (headerRowDxfId /
+  dataDxfId / totalsRowDxfId and the border ones, XLSB nDxf*), under the cells' own formatting. PivotTables (XLSX
+  pivotTableDefinition, XLSB PivotTable parts) take the look of their PivotTable style the same way: the 84 built-in
+  PivotStyle* of presetTableStyles.xml or the workbook's own, on the page fields, header rows, row labels, stripes,
+  subtotal and blank rows and columns, subheadings and grand totals their location and items place
+  (`SheetPivots`). Theme colours with a tint come out as Excel shows them (whole-number HLS out of 240,
+  `OoxmlColors.SpreadsheetTint`). Text in XLSX shapes and text boxes prints with its paragraphs, fonts, bullets and
+  numbers, indents and line spacing, inside the preset's text rectangle, with the body's anchor, insets, vertical
+  text (vert, vert270, eaVert with CJK upright, stacked) and the shrink "shrink text on overflow" saved; text linked
+  to a cell (textlink) shows that cell's text.
+- **Not printed yet.** Sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).
