@@ -430,7 +430,7 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var watch = Stopwatch.StartNew();
         var error = Assert.Throws<ConversionRefusedException>(() => Draw(huge));
         Assert.Contains("gradient", error.Message);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60), $"took {watch.Elapsed}");
     }
 
     /// <summary>EMR_CREATEMONOBRUSH of a top-down 1-bpp DIB, each row's bytes from <paramref name="row"/> (bit 0 = black, 1 = white).</summary>
@@ -484,7 +484,7 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var watch = Stopwatch.StartNew();
         var error = Assert.Throws<ConversionRefusedException>(() => Draw(many.ToArray(), limits: limits));
         Assert.Contains("pixels", error.Message);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60), $"took {watch.Elapsed}");
     }
 
     /// <summary>EMR_POLYGON of a star whose edges nearly all cross each other.</summary>

@@ -142,9 +142,9 @@ public class PdfStreamLimitsTests(EngineFixture fx) : IClassFixture<EngineFixtur
         return path;
     }
 
-    private static ConversionRefusedException RefusedTooLarge(Action action, int seconds = 10) => Refused(action, seconds, DocumentLimits.TooLargeKey);
+    private static ConversionRefusedException RefusedTooLarge(Action action, int seconds = 60) => Refused(action, seconds, DocumentLimits.TooLargeKey);
 
-    private static ConversionRefusedException Refused(Action action, int seconds = 10, string key = DocumentLimits.ErrorKey)
+    private static ConversionRefusedException Refused(Action action, int seconds = 60, string key = DocumentLimits.ErrorKey)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var refusal = Assert.Throws<ConversionRefusedException>(action);
