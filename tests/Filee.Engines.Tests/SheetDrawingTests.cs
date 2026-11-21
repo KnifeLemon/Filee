@@ -216,10 +216,11 @@ public sealed class SheetDrawingTests(EngineFixture fx) : IClassFixture<EngineFi
         "<c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" r:id=\"rIdC\"/></a:graphicData></a:graphic></xdr:graphicFrame>";
 
     [Fact]
-    public void Charts_and_text_in_shapes_are_named()
+    public void Charts_and_arrowheads_are_named()
     {
         Assert.Equal("charts", SheetCapabilities.FirstUnsupported(Save(Book(Anchor(Chart))), "xlsx"));
-        Assert.Equal("text in shapes", SheetCapabilities.FirstUnsupported(Save(Book(Anchor(Shape("rect", Solid("FFFFFF"), text: "Note")))), "xlsx"));
+        // Text in shapes is drawn (SheetNotesAndTablesTests).
+        Assert.Null(SheetCapabilities.FirstUnsupported(Save(Book(Anchor(Shape("rect", Solid("FFFFFF"), text: "Note")))), "xlsx"));
         Assert.Equal("arrowheads", SheetCapabilities.FirstUnsupported(Save(Book(Anchor(Shape("rect", "",
             line: "<a:ln><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:tailEnd type=\"triangle\"/></a:ln>")))), "xlsx"));
         // An .xls name on an XLSX package, as web apps save them.

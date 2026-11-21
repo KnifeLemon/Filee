@@ -869,6 +869,15 @@ which is also the equation's alternative text in HWPX. The DOCX writer writes ev
 (`Hwp/Hwpx/Docx/OmmlWriter.cs`), the HTML and EPUB writers as MathML (`Hwp/Hwpx/MathMLWriter.cs`; EPUB pages with it
 carry `properties="mathml"`; MOBI keeps the text).
 
+More routes keep equations as equations. The ODT writer writes LibreOffice formula objects: MathML with a
+`StarMath 5.0` annotation (`Hwp/Hwpx/StarMath.cs`, written from the tree) and the TeX one; the ODT reader reads them
+back (`Hwp/Hwpx/MathMLReader.cs`), keeps a LibreOffice file's own StarMath source, and reads the StarMath when the
+MathML shows nothing. The PPTX writer writes Office Math (`a14:m` in `mc:AlternateContent`) in text boxes, slide
+titles and table cells; the fallback for other readers is a picture drawn by the slide renderer: of the text box or
+title, filling the same shape, and of each cell with equations, filling that cell. The PPTX readers and the slide
+renderer take the `a14:m` choice. HTML and EPUB `<math>` is read back as equations (`HtmlReader`, through
+MathMLReader), its TeX annotation kept.
+
 **TeX math in Markdown** (#1652): `$…$`, `$$…$$`, `\(…\)` and `\[…\]` (`Hwp/Hwpx/MarkdownMath.cs`, Pandoc's rules
 for dollars: no space inside the delimiters, no digit after the closing `$`, code spans win) are read by
 `Hwp/Hwpx/LatexMath.cs` into the same tree: fractions, roots, scripts, Greek letters and symbols, sums, integrals and
@@ -1012,11 +1021,16 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   installed.
 - **Notes and tables.** Notes on cells print when the page setup asks for them (XLSX pageSetup cellComments, XLSB
   BrtPageSetup fNotes / fEndNotes, ODS style:print "annotations"): at the end, as a list after the sheet ("Cell: B2",
-  "Comment: …", Excel's words), or as displayed, the shown notes in their boxes (the legacy VML drawing's anchor and
-  colours, or Calc's annotation box) with a line to their cell (`SheetComments`, `SheetCommentList`). Tables (XLSX
-  table parts, XLSB BrtBeginList / BrtTableStyleClient) take the look of their table style: the 60 built-in styles
-  of ECMA-376's presetTableStyles.xml or the workbook's own (`SheetTables`), under the cells' own formatting.
-- **Not printed yet.** XLSX shapes with text, sparklines; data bars, icon sets and conditional formats
+  "Comment: …", "Reply: …" in the app's language, `SheetWords`), or as displayed, the shown notes in their boxes (the
+  legacy VML drawing's anchor and colours, or Calc's annotation box) with a line to their cell (`SheetComments`,
+  `SheetCommentList`). Threaded comments (threadedComments and persons parts) are read with their authors and
+  replies in place of Excel's legacy copy, and print at the end only. Tables (XLSX table parts, XLSB BrtBeginList /
+  BrtTableStyleClient) take the look of their table style: the 60 built-in styles of ECMA-376's
+  presetTableStyles.xml or the workbook's own (`SheetTables`), then the table's and its columns' own formats
+  (headerRowDxfId / dataDxfId / totalsRowDxfId and the border ones, XLSB nDxf*), under the cells' own formatting.
+  Theme colours with a tint come out as Excel shows them (whole-number HLS out of 240, `OoxmlColors.SpreadsheetTint`).
+  Text in XLSX shapes and text boxes prints with its paragraphs, fonts and the body's anchor and insets.
+- **Not printed yet.** XLSX shape text linked to a cell, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).
@@ -1521,6 +1535,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - On the line, an equation takes the box 한글 laid it out in (hp:sz) with its baseline (baseLine), at its own size
     (baseUnit) and colour, drawn narrowed to the box where Filee's comes out wider (한글 sets equations tighter than the
     fonts' advances); Word's equations take their own box.
+  - Word's and TeX's inline equations break across lines of text at their top-level binary and relation operators,
+    following the document's `m:brkBin` (before, after, repeat) and `m:brkBinSub`; a line ending inside one leaves out
+    the room before the next operator, as at a space.
   - Measured against 한글's PDFs: two two-column exam papers from Filee's issue files (488 and 249 equations): the
     problems' text and equations on 한글's lines and in 한글's columns, the second paper on 한글's 9 pages, its first
     page as 한글's (the first paper takes 11 pages to 한글's 10); hwplib's 수식 and hwpxlib's SimpleEquation samples
@@ -2577,11 +2594,12 @@ each paragraph keeps its place on the page instead of joining a document's flow.
   function-based and mesh shadings are drawn into pictures and become gradient fills where they look like a linear or
   radial gradient over the whole shape; tiling patterns repeating upright become tiled picture fills (`a:tile`, the
   cell's PNG at 96 dpi). Soft masks of one colour or one shading are alphas and alpha gradients; other mask groups are
-  drawn into a picture of their alpha or luminosity, which pictures take into their own alpha. Multiply / Darken over
-  text put the shape under that text; other blend modes are drawn (over the page's colour where nothing else is under
-  them).
-- **Not rebuilt yet**: form fields and annotations, blend modes against pictures and text (other than Multiply /
-  Darken over text), text inside pattern cells, vertical CJK writing. PDF → DOCX stays the route for a document that
+  drawn into a picture of their alpha or luminosity (through the transfer function TR, a light backdrop BC outside the
+  group's box too), which pictures take into their own alpha. Multiply / Darken over text put the shape under that
+  text; other blend modes, blended pictures and Multiply / Darken over pictures are drawn over their backdrop: the
+  page's colour, and the pictures, text and graphics painted before them there, drawn into the same picture (up to 64
+  blends a page; the text stays a text box under it).
+- **Not rebuilt yet**: form fields and annotations, text inside pattern cells, vertical CJK writing. PDF → DOCX stays the route for a document that
   should flow.
 
 **Pictures of the pages** (preset option *Pictures of the pages*, `PdfOptions.SlidePictures`) makes the earlier
@@ -2883,10 +2901,13 @@ next.
     ToUnicode map, Identity-encoded Type 0 fonts CIDFontType2 with a CIDToGIDMap (CIDs through their ToUnicode map, or
     as glyph IDs for a TrueType CIDFont found by its own name). A CID font with a predefined Unicode CMap
     (`Uni*-UCS2-*`, `Uni*-UTF16-*`) becomes Identity-H / -V with its codes as CIDs, from an installed CJK font of its
-    script (its widths then the installed font's). A font listed but never drawn is left as it is;
+    script (the PDF's widths where a code's CID is known without the CMap file: DW everywhere, printable ASCII; else
+    the installed font's). A font listed but never drawn is left as it is;
   - **TrueType fonts the PDF embedded itself are repaired** (`PdfAFontRepair`): widths that differ from the program
     go into the program's advances (the text keeps its places), encodings PDF/A forbids become a symbolic font with a
-    (3,0) cmap of the glyphs the codes drew, and fonts without ToUnicode get one (encoding names or the font's cmap);
+    (3,0) cmap of the glyphs the codes drew, codes and CIDs drawn that the program has no glyph for get an empty glyph
+    of their width (not .notdef, 6.2.11.4.1 / 6.2.11.8), and fonts without ToUnicode get one (encoding names or the
+    font's cmap);
   - JavaScript, launch and the other forbidden actions (also in `/Next` chains, open actions, outlines), every `AA`,
     the actions of fields and widgets, XFA, `NeedAppearances`, embedded files, alternate presentations, `PresSteps`,
     `Requirements`, `Collection`, other `Perms` than UR3/DocMDP, XMP of pages and pictures; optional-content
@@ -3350,8 +3371,8 @@ output's SVG writer.
   name) and read by Filee's SFNT parser before Skia sees them; `Indices` (glyph, advance, offsets, cluster maps),
   `UnicodeString` (with the `{}` escape), BidiLevel (odd: right to left), IsSideways (each glyph turned about its top
   centre, vertical advances from vmtx or the OS/2 ascender and descender; still text in the PDF), StyleSimulations
-  (bold and italic drawn synthetically; emboldened glyphs' own advances 2 % of the em wider, sideways italics skewed by
-  20° about their top centre, M5.13 / M5.14), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
+  (bold and italic drawn synthetically; emboldened glyphs' own advances 2 % of the em wider, italics skewed by 20°,
+  sideways ones about their top centre, M5.13 / M5.14), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
   glyph item of the page model (the PDF writer subsets its font and maps its text); others are drawn by
   `XpsPainter` as text blobs of the whole font. A run whose font is missing or damaged (also: its glyphs can't be
   subset for the PDF) draws its text with an installed font.

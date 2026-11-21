@@ -72,10 +72,25 @@ public sealed class ChartTemplateTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.True(Count(bitmap, Red) > 500);
     }
 
+    /// <summary><paramref name="read"/> with the app's language set to <paramref name="culture"/>.</summary>
+    private static T InLanguage<T>(string culture, Func<T> read)
+    {
+        var language = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo(culture);
+            return read();
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = language;
+        }
+    }
+
     [Fact]
     public void Series_without_values_get_Office_sample_values_and_categories()
     {
-        var chart = Read(Save(Empty(Bars("{series}"), 2, Axes())));
+        var chart = InLanguage("en-US", () => Read(Save(Empty(Bars("{series}"), 2, Axes()))));
 
         var plot = Assert.Single(chart.Plots);
         Assert.Equal(2, plot.Series.Count);
@@ -87,6 +102,25 @@ public sealed class ChartTemplateTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Equal(Red, plot.Series[0].Style.Fill);
         using var bitmap = Picture(Save(Empty(Bars("{series}"), 2, Axes())));
         Assert.True(Count(bitmap, Red) > 300);
+    }
+
+    [Theory]
+    [InlineData("ko-KR", "항목 1", "계열 2")]
+    [InlineData("de-DE", "Kategorie 1", "Datenreihe 2")]
+    [InlineData("zh-HK", "類別 1", "數列 2")]
+    [InlineData("sv-SE", "Category 1", "Series 2")]
+    public void Sample_names_are_in_the_app_language(string culture, string category, string series)
+    {
+        var plot = Assert.Single(InLanguage(culture, () => Read(Save(Chart(Bars(""), Axes())))).Plots);
+        Assert.Equal((category, series), (plot.Series[0].Categories![0], plot.Series[1].Name));
+        // Every language the app ships has the names.
+        var folder = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Filee.App", "Assets", "i18n");
+        foreach (var language in Directory.Exists(folder) ? Directory.GetFiles(folder, "*.json").Select(Path.GetFileNameWithoutExtension) : [])
+        {
+            var shipped = System.Globalization.CultureInfo.GetCultureInfo(language!);
+            Assert.Contains("3", ChartWords.SampleCategory(shipped, 3), StringComparison.Ordinal);
+            Assert.Contains("3", ChartWords.SampleSeries(shipped, 3), StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -197,7 +231,9 @@ public sealed class ChartTemplateTests(EngineFixture fx) : IClassFixture<EngineF
             using var pdf = PdfDocument.Open(file);
             Assert.Equal(1, pdf.NumberOfPages);
             Assert.Equal(ChartTemplate.Width, pdf.GetPage(1).Width, 1);
-            Assert.Contains("Category", pdf.GetPage(1).Text, StringComparison.Ordinal);
+            // The sample names are in the app's language (this machine's, here).
+            Assert.Contains(ChartWords.SampleCategory(System.Globalization.CultureInfo.CurrentUICulture, 1).Split(' ')[0],
+                pdf.GetPage(1).Text, StringComparison.Ordinal);
         }
     }
 

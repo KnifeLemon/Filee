@@ -91,6 +91,12 @@ internal sealed class XlsbBuilder
     /// <summary>The workbook's own table styles: name, then parts (ECMA-376 type name, its <see cref="Dxfs"/> index).</summary>
     public List<(string Name, (string Type, int Dxf)[] Parts)> TableStyles { get; } = [];
 
+    /// <summary>Bottom borders of <see cref="Dxfs"/> by index: line style (1 thin, 2 medium, ...) and colour.</summary>
+    public Dictionary<int, (int Style, XlsbColor Color)> DxfBorders { get; } = [];
+
+    /// <summary>The authors of threaded comments: person id, display name (a persons part, XML in both packages).</summary>
+    public List<(string Id, string Name)> Persons { get; } = [];
+
     /// <summary>More parts (drawings, VML) shared by both packages, by zip path.</summary>
     public Dictionary<string, string> Parts { get; } = [];
 
@@ -143,7 +149,11 @@ internal sealed class XlsbBuilder
             }
             for (var k = 0; k < Sheets[i].Tables.Count; k++)
                 parts[$"xl/tables/table{i + 1}_{k + 1}.bin"] = Sheets[i].TableBin(k);
+            if (Sheets[i].Threads.Count > 0)
+                parts[$"xl/threadedComments/threadedComment{i + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].ThreadsXml());
         }
+        if (Persons.Count > 0)
+            parts["xl/persons/person.xml"] = Utf8(OpcWriter.Declaration + PersonsXml());
         return Save(path, parts);
     }
 
@@ -217,6 +227,7 @@ internal sealed class XlsbBuilder
         if (Dxfs.Count > 0)
         {
             w.Record(505, U32((uint)Dxfs.Count)); // BrtBeginDXFs
+            var dxf = 0;
             foreach (var (fill, font, bold) in Dxfs)
             {
                 var props = new List<byte[]>();
@@ -229,6 +240,8 @@ internal sealed class XlsbBuilder
                     props.Add([.. U16(0x05), .. U16(12), .. color.Bytes()]);
                 if (bold)
                     props.Add([.. U16(0x19), .. U16(6), .. U16(0x02BC)]);
+                if (DxfBorders.TryGetValue(dxf++, out var border))
+                    props.Add([.. U16(0x07), .. U16(14), .. border.Color.Bytes(), .. U16((ushort)border.Style)]); // bottom
                 w.Record(507, [.. U16(0), .. U16(0), .. U16((ushort)props.Count), .. props.SelectMany(p => p)]); // BrtDXF
             }
             w.Record(506, []);
@@ -309,7 +322,11 @@ internal sealed class XlsbBuilder
             }
             for (var k = 0; k < Sheets[i].Tables.Count; k++)
                 parts[$"xl/tables/table{i + 1}_{k + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].TableXml(i + 1, k));
+            if (Sheets[i].Threads.Count > 0)
+                parts[$"xl/threadedComments/threadedComment{i + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].ThreadsXml());
         }
+        if (Persons.Count > 0)
+            parts["xl/persons/person.xml"] = Utf8(OpcWriter.Declaration + PersonsXml());
         return Save(path, parts);
     }
 
@@ -363,6 +380,7 @@ internal sealed class XlsbBuilder
         if (Dxfs.Count > 0)
         {
             sb.Append(CultureInfo.InvariantCulture, $"<dxfs count=\"{Dxfs.Count}\">");
+            var dxf = 0;
             foreach (var (fill, font, bold) in Dxfs)
             {
                 sb.Append("<dxf>");
@@ -370,6 +388,8 @@ internal sealed class XlsbBuilder
                     sb.Append("<font>").Append(bold ? "<b/>" : "").Append(font is { } color ? color.Xml("color") : "").Append("</font>");
                 if (fill is { } back)
                     sb.Append("<fill><patternFill>").Append(back.Xml("bgColor")).Append("</patternFill></fill>");
+                if (DxfBorders.TryGetValue(dxf++, out var border))
+                    sb.Append(CultureInfo.InvariantCulture, $"<border><bottom style=\"{(border.Style == 2 ? "medium" : "thin")}\">{border.Color.Xml("color")}</bottom></border>");
                 sb.Append("</dxf>");
             }
             sb.Append("</dxfs>");
@@ -416,7 +436,13 @@ internal sealed class XlsbBuilder
     private string WorkbookRelationships(string extension) => OpcWriter.Relationships(
         Sheets.Select((s, i) => ($"rId{i + 1}", s.IsChart ? "chartsheet" : "worksheet", $"{s.Folder}/sheet{i + 1}.{extension}"))
             .Append(("rIdS", "sharedStrings", $"sharedStrings.{extension}"))
-            .Append(("rIdT", "styles", $"styles.{extension}")));
+            .Append(("rIdT", "styles", $"styles.{extension}"))
+            .Concat(Persons.Count > 0 ? [("rIdP", "person", "persons/person.xml")] : Array.Empty<(string, string, string)>()));
+
+    private string PersonsXml() =>
+        "<personList xmlns=\"http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments\">" +
+        string.Concat(Persons.Select(p => $"<person displayName=\"{OpcWriter.Escape(p.Name)}\" id=\"{p.Id}\" userId=\"{OpcWriter.Escape(p.Name)}\" providerId=\"None\"/>")) +
+        "</personList>";
 
     private string ContentTypes(bool binary) => OpcWriter.Declaration +
         "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
@@ -588,6 +614,15 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
 
     public List<(string Id, string Type, string Target)> Relationships { get; } = [];
 
+    /// <summary>Threaded comments: cell, the first comment's person id and text, then the replies (person id, text).</summary>
+    public List<(int Row, int Column, string Person, string Text, (string Person, string Text)[] Replies)> Threads { get; } = [];
+
+    /// <summary>
+    /// A table's own formats by table index (<see cref="Tables"/>): header, data, total row and data border dxf
+    /// (-1 none), and per column (its offset in the table, header, data, total row dxf).
+    /// </summary>
+    public Dictionary<int, (int Header, int Data, int Totals, int Border, (int Column, int Header, int Data, int Totals)[] Columns)> TableFormats { get; } = [];
+
     /// <summary>Notes on cells: row, column, author, text, shown on the sheet (their box in the VML: Excel's default place).</summary>
     public List<(int Row, int Column, string Author, string Text, bool Shown)> Notes { get; } = [];
 
@@ -607,6 +642,24 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
         }
         for (var k = 0; k < Tables.Count; k++)
             yield return ($"rIdTable{k + 1}", "table", $"../tables/table{sheet}_{k + 1}.{extension}");
+        if (Threads.Count > 0)
+            yield return ("rIdThreads", "threadedComment", $"../threadedComments/threadedComment{sheet}.xml");
+    }
+
+    /// <summary>The threaded comments part: each thread's first comment, then its replies (parentId).</summary>
+    public string ThreadsXml()
+    {
+        var sb = new StringBuilder("<ThreadedComments xmlns=\"http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments\">");
+        var id = 0;
+        foreach (var (row, column, person, text, replies) in Threads)
+        {
+            var cell = $"{XlsbBuilder.Column(column)}{row + 1}";
+            var first = $"{{00000000-0000-0000-0000-{++id:D12}}}";
+            sb.Append(CultureInfo.InvariantCulture, $"<threadedComment ref=\"{cell}\" dT=\"2026-11-21T09:00:00.00\" personId=\"{person}\" id=\"{first}\"><text>{OpcWriter.Escape(text)}</text></threadedComment>");
+            foreach (var (replyPerson, reply) in replies)
+                sb.Append(CultureInfo.InvariantCulture, $"<threadedComment ref=\"{cell}\" dT=\"2026-11-21T09:05:00.00\" personId=\"{replyPerson}\" id=\"{{00000000-0000-0000-0000-{++id:D12}}}\" parentId=\"{first}\"><text>{OpcWriter.Escape(reply)}</text></threadedComment>");
+        }
+        return sb.Append("</ThreadedComments>").ToString();
     }
 
     private static string NoteText((int Row, int Column, string Author, string Text, bool Shown) note) => $"{note.Author}:\n{note.Text}";
@@ -658,12 +711,28 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
     public byte[] TableBin(int k)
     {
         var ((top, left, bottom, right), style, firstColumn, rowStripes, totals) = Tables[k];
+        var formats = TableFormats.TryGetValue(k, out var own) ? own : (-1, -1, -1, -1, []);
+        static byte[] Dxf(int dxf) => XlsbBuilder.U32(dxf < 0 ? 0xFFFFFFFF : (uint)dxf);
         var w = new RecordWriter();
         w.Record(343, [.. XlsbBuilder.U32((uint)top), .. XlsbBuilder.U32((uint)bottom), .. XlsbBuilder.U32((uint)left), .. XlsbBuilder.U32((uint)right),
             .. XlsbBuilder.U32(0), .. XlsbBuilder.U32((uint)k + 1), .. XlsbBuilder.U32(1), .. XlsbBuilder.U32(totals ? 1u : 0u), .. XlsbBuilder.U32(0),
-            .. Enumerable.Repeat(XlsbBuilder.U32(0xFFFFFFFF), 6).SelectMany(b => b), .. XlsbBuilder.U32(0),
+            .. Dxf(formats.Header), .. Dxf(formats.Data), .. Dxf(formats.Totals), .. Dxf(formats.Border), .. Dxf(-1), .. Dxf(-1), .. XlsbBuilder.U32(0),
             .. XlsbBuilder.WideString($"Table{k + 1}"), .. XlsbBuilder.WideString($"Table{k + 1}"), .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString(),
             .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString()]); // BrtBeginList
+        if (formats.Columns.Length > 0)
+        {
+            w.Record(345, XlsbBuilder.U32((uint)(right - left + 1))); // BrtBeginListCols
+            var byColumn = formats.Columns.ToDictionary(f => f.Column);
+            for (var c = 0; c <= right - left; c++)
+            {
+                var (_, header, data, total) = byColumn.GetValueOrDefault(c, (c, -1, -1, -1));
+                w.Record(347, [.. XlsbBuilder.U32((uint)c + 1), .. XlsbBuilder.U32(0), .. Dxf(header), .. Dxf(data), .. Dxf(total), .. XlsbBuilder.U32(0),
+                    .. XlsbBuilder.WideString($"Column{c + 1}"), .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString(),
+                    .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString()]); // BrtBeginListCol
+                w.Record(348, []);
+            }
+            w.Record(346, []);
+        }
         w.Record(513, [.. XlsbBuilder.U16((ushort)((firstColumn ? 0x01 : 0) | (rowStripes ? 0x04 : 0))), .. XlsbBuilder.WideString(style)]); // BrtTableStyleClient
         w.Record(344, []);
         return w.ToArray();
@@ -672,10 +741,19 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
     public string TableXml(int sheet, int k)
     {
         var ((top, left, bottom, right), style, firstColumn, rowStripes, totals) = Tables[k];
+        var formats = TableFormats.TryGetValue(k, out var own) ? own : (-1, -1, -1, -1, []);
+        static string Dxf(string name, int dxf) => dxf < 0 ? "" : $" {name}=\"{dxf}\"";
+        var byColumn = formats.Columns.ToDictionary(f => f.Column);
+        string Column(int c)
+        {
+            var (_, header, data, total) = byColumn.GetValueOrDefault(c - 1, (c - 1, -1, -1, -1));
+            return $"<tableColumn id=\"{c}\" name=\"Column{c}\"{Dxf("headerRowDxfId", header)}{Dxf("dataDxfId", data)}{Dxf("totalsRowDxfId", total)}/>";
+        }
         var id = sheet * 100 + k + 1;
         return $"<table xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" id=\"{id}\" name=\"Table{id}\" displayName=\"Table{id}\" " +
-               $"ref=\"{XlsbBuilder.Column(left)}{top + 1}:{XlsbBuilder.Column(right)}{bottom + 1}\"{(totals ? " totalsRowCount=\"1\"" : "")}>" +
-               $"<tableColumns count=\"{right - left + 1}\">" + string.Concat(Enumerable.Range(1, right - left + 1).Select(c => $"<tableColumn id=\"{c}\" name=\"Column{c}\"/>")) +
+               $"ref=\"{XlsbBuilder.Column(left)}{top + 1}:{XlsbBuilder.Column(right)}{bottom + 1}\"{(totals ? " totalsRowCount=\"1\"" : "")}" +
+               $"{Dxf("headerRowDxfId", formats.Header)}{Dxf("dataDxfId", formats.Data)}{Dxf("totalsRowDxfId", formats.Totals)}{Dxf("tableBorderDxfId", formats.Border)}>" +
+               $"<tableColumns count=\"{right - left + 1}\">" + string.Concat(Enumerable.Range(1, right - left + 1).Select(Column)) +
                $"</tableColumns><tableStyleInfo name=\"{OpcWriter.Escape(style)}\" showFirstColumn=\"{(firstColumn ? 1 : 0)}\" showLastColumn=\"0\" " +
                $"showRowStripes=\"{(rowStripes ? 1 : 0)}\" showColumnStripes=\"0\"/></table>";
     }

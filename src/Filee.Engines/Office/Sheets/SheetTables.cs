@@ -10,6 +10,11 @@
 // own: a fill, a border side, a font colour or a bold / italic / underline / strike that a cell sets itself (differs
 // from the Normal style) stays, as Excel shows a table whose cells were formatted by hand.
 //
+// A table can also set formats of its own, over its style and under the cells' own (ECMA-376 Part 1 18.5.1.2 table
+// headerRowDxfId / dataDxfId / totalsRowDxfId on each cell of the header row, data rows and total row, and
+// headerRowBorderDxfId / tableBorderDxfId / totalsRowBorderDxfId as their outlines; 18.5.1.3 tableColumn's per
+// column; [MS-XLSB] BrtBeginList nDxfHeader … nDxfAggBorder and BrtBeginListCol nDxfHdr / nDxfInsertRow / nDxfAgg).
+//
 // The built-in styles are those of ECMA-376 Part 1's presetTableStyles.xml (OfficeOpenXML-SpreadsheetMLStyles.zip),
 // kept here in a short form: per part "type[/band size]:" and then b (bold), i (italic), c<theme>[~tint] (font colour),
 // f<theme>[~tint] (fill) and L|R|T|B|V|H<line style>@<theme>[~tint] (left, right, top, bottom, vertical, horizontal
@@ -32,7 +37,24 @@ internal sealed record SheetTable(CellRange Range, string? StyleName)
     public bool LastColumn { get; init; }
     public bool RowStripes { get; init; } = true;
     public bool ColumnStripes { get; init; }
+
+    /// <summary>The table's own formats, applied in order after its style's parts.</summary>
+    public IReadOnlyList<TableFormat> Formats { get; init; } = [];
 }
+
+/// <summary>The rows of a table a format of its own covers.</summary>
+internal enum TableArea
+{
+    Header,
+    Data,
+    Totals,
+}
+
+/// <summary>
+/// A format a table sets itself: on each cell of its area (the cell's own sides), or as the area's outline with its
+/// inner lines between the cells (the border formats); for one column of the table (0-based within it) or all.
+/// </summary>
+internal sealed record TableFormat(TableArea Area, TableStylePart Part, bool Outline = false, int? Column = null);
 
 /// <summary>
 /// What the tables of one workbook may still cost: cells looked at one by one (blank ones get the style), and past
@@ -41,7 +63,7 @@ internal sealed record SheetTable(CellRange Range, string? StyleName)
 internal sealed class TableBudget
 {
     public long Cells { get; set; } = 250_000;
-    public long Visits { get; set; } = 5_000_000;
+    public long Visits { get; set; } = 1_000_000;
 }
 
 /// <summary>One part of a table style: what it changes, the borders between its cells, its band size (stripes).</summary>
@@ -166,8 +188,12 @@ internal static class SheetTables
                 return;
             if (style(table.StyleName) is { } found)
                 Apply(sheet, table, found, normal, budget);
+            else if (table.Formats.Count > 0)
+                Apply(sheet, table, NoStyle, normal, budget);
         }
     }
+
+    private static readonly TableStyle NoStyle = new(new Dictionary<string, TableStylePart>());
 
     /// <summary>
     /// Puts the look of <paramref name="style"/> on the cells of <paramref name="table"/>: every cell of its rows while
@@ -193,8 +219,11 @@ internal static class SheetTables
             "totalRow" or "firstTotalCell" or "lastTotalCell" => totals > 0,
             _ => true,
         }).Select(type => (Type: type, Part: style.Parts[type])).ToList();
-        if (parts.Count == 0)
+        if (parts.Count == 0 && table.Formats.Count == 0)
             return;
+        // The table's own formats: those of all its columns, then each column's (looked up by the cell's column).
+        var wide = table.Formats.Where(f => f.Column is null).ToList();
+        var byColumn = table.Formats.Where(f => f.Column is not null).ToLookup(f => range.Left + f.Column!.Value);
         var rowBand = Band(style, "firstRowStripe", "secondRowStripe");
         var columnBand = Band(style, "firstColumnStripe", "secondColumnStripe");
 
@@ -225,6 +254,18 @@ internal static class SheetTables
                 };
                 if (region is { } r)
                     look.Add(part, row, column, r);
+            }
+            foreach (var format in table.Formats.Count == 0 ? Enumerable.Empty<TableFormat>() : wide.Concat(byColumn[column]))
+            {
+                var (top, bottom) = format.Area switch
+                {
+                    TableArea.Header => (range.Top, dataTop - 1),
+                    TableArea.Data => (dataTop, dataBottom),
+                    _ => (dataBottom + 1, range.Bottom),
+                };
+                var (left, right) = format.Column is { } at ? (range.Left + at, range.Left + at) : (range.Left, range.Right);
+                if (row >= top && row <= bottom && column >= left && column <= right)
+                    look.Add(format.Part, row, column, format.Outline ? (top, bottom, left, right) : (row, row, column, column));
             }
             if (!look.Any)
                 return;

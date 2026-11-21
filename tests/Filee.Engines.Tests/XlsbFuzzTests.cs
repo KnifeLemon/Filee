@@ -1,5 +1,6 @@
 // Mutation fuzzing of the XLSB reader (Office/Sheets/XlsbReader): the seeds are XlsbTests' workbook with every kind of
-// cell, format and page setting, and a small one, written in code. Most inputs change the BIFF12 records of a binary
+// cell, format and page setting, a small one, and one with notes, threaded comments and a table with its own formats
+// and style (NotesAndTables, also a seed of DocumentFuzzTests' XLSX printing), written in code. Most inputs change the BIFF12 records of a binary
 // part (a field set to an edge value, a record's size or type changed, records cut, dropped or repeated), some the
 // part's bytes, some the package (relationships, ZIP). Every input must be read or refused with InvalidDataException /
 // ConversionRefusedException, in time and on a 1 MB stack; what is read is checked for what the printer leaves out and
@@ -21,7 +22,7 @@ public class XlsbFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Fact]
     public void XlsbReader_reads_or_refuses_every_mutated_workbook() =>
-        new FuzzHarness(fx, QuickIterations, 20261119).Files("xlsb", "xlsb", [Seed(XlsbTests.Twin()), Seed(Small())], Mutator, Read);
+        new FuzzHarness(fx, QuickIterations, 20261119).Files("xlsb", "xlsb", [Seed(XlsbTests.Twin()), Seed(Small()), Seed(NotesAndTables())], Mutator, Read);
 
     private static void Read(string path, string media)
     {
@@ -36,6 +37,26 @@ public class XlsbFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var book = new XlsbBuilder();
         book.Sheet("A").Text(0, 0, "a").Rk(0, 1, XlsbBuilder.RkInteger(7)).Merge(1, 0, 2, 1).Width(0, 2, 10);
+        return book;
+    }
+
+    /// <summary>Notes (one shown), a thread with a reply over its legacy copy, a table with its own formats in a custom style.</summary>
+    internal static XlsbBuilder NotesAndTables()
+    {
+        var book = new XlsbBuilder();
+        var sheet = book.Sheet("Notes").Text(0, 0, "Item").Text(0, 1, "Total").Text(1, 0, "Rent").Number(1, 1, 1200).Text(2, 0, "Sum").Number(2, 1, 1200);
+        sheet.PageSetup = (9, false, 100, false, 1, 1, false, null);
+        sheet.NotesPrint = 2;
+        sheet.Notes.Add((1, 1, "Ann", "Check", true));
+        sheet.Notes.Add((2, 0, "tc={00000000-0000-0000-0000-000000000001}", "[Threaded comment]", false));
+        book.Persons.Add(("{P1}", "Ann"));
+        sheet.Threads.Add((2, 0, "{P1}", "Thread", [("{P1}", "Reply")]));
+        book.Dxfs.Add((XlsbColor.Rgb(0xC00000), XlsbColor.Rgb(0xFFFFFF), true));
+        book.Dxfs.Add((null, null, false));
+        book.DxfBorders[1] = (1, XlsbColor.Rgb(0x000000));
+        book.TableStyles.Add(("Own", [("headerRow", 0), ("firstRowStripe", 1)]));
+        sheet.Tables.Add(((0, 0, 2, 1), "Own", true, true, true));
+        sheet.TableFormats[0] = (0, 1, 0, 1, [(1, 0, 1, 0)]);
         return book;
     }
 

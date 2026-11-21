@@ -49,6 +49,9 @@ internal sealed partial class OdtWriter
     private readonly AutomaticStyles _stylesStyles = new("M");
     private readonly StringBuilder _masterPages = new();
     private readonly StringBuilder _listStyles = new();
+
+    /// <summary>The draw:marker elements of the lines' arrowheads (office:styles), by name.</summary>
+    private readonly Dictionary<string, string> _markers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (string Path, string Extension)> _media = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<HNumbering, string> _lists = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<string> _bookmarks = new(StringComparer.Ordinal);
@@ -129,10 +132,10 @@ internal sealed partial class OdtWriter
         var content = Declaration +
                       $"<office:document-content {Odf.Namespaces} office:version=\"{Odf.Version}\">" +
                       $"<office:automatic-styles>{_contentStyles.Xml}</office:automatic-styles>" +
-                      $"<office:body><office:text>{body}</office:text></office:body></office:document-content>";
+                      $"<office:body><office:text>{TrackedChanges()}{body}</office:text></office:body></office:document-content>";
         var styles = Declaration +
                      $"<office:document-styles {Odf.Namespaces} office:version=\"{Odf.Version}\">" +
-                     $"<office:styles>{CommonStyles(document)}{_listStyles}</office:styles>" +
+                     $"<office:styles>{CommonStyles(document)}{string.Concat(_markers.Values)}{_listStyles}</office:styles>" +
                      $"<office:automatic-styles>{_stylesStyles.Xml}</office:automatic-styles>" +
                      $"<office:master-styles>{_masterPages}</office:master-styles></office:document-styles>";
         var meta = Declaration +

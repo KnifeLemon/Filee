@@ -4,7 +4,10 @@
 // paragraph, for readers without Office Math. The picture is the shape's paragraphs drawn by the slide renderer
 // (equations by MathLayout) on a transparent ground, encoded straight into its part; a shape that can't be drawn falls
 // back to its text with the equations' linear text. Titles and tables with equations have them in a14:m too, in an
-// mc:AlternateContent whose fallback is the same title or table with the equations' linear text.
+// mc:AlternateContent: a title's fallback is the title placeholder filled with a picture of its text, as for a text
+// shape; a table's is the same table whose cells with equations are filled with a picture of the cell (its fill and its
+// text, drawn by the slide renderer) and hold an empty paragraph, the other cells as they are. Where a picture can't be
+// drawn, the title or cell has the equations' linear text.
 
 using System.Text;
 using Filee.Engines.Hwp.Hwpx.Docx;
@@ -75,17 +78,9 @@ internal sealed partial class PptxWriter
             ? "<p:cNvSpPr><a:spLocks noGrp=\"1\" noRot=\"1\" noChangeAspect=\"1\" noMove=\"1\" noResize=\"1\" noEditPoints=\"1\" noAdjustHandles=\"1\" noChangeArrowheads=\"1\" noChangeShapeType=\"1\" noTextEdit=\"1\"/></p:cNvSpPr><p:nvPr><p:ph idx=\"1\"/></p:nvPr>"
             : "<p:cNvSpPr txBox=\"1\"><a:spLocks noRot=\"1\" noChangeAspect=\"1\" noMove=\"1\" noResize=\"1\" noEditPoints=\"1\" noAdjustHandles=\"1\" noChangeArrowheads=\"1\" noChangeShapeType=\"1\" noTextEdit=\"1\"/></p:cNvSpPr><p:nvPr/>";
         string fallback;
-        using var picture = FallbackPicture(paragraphs, width, height);
-        if (picture is not null)
+        if (PicturePart(FallbackPicture([.. paragraphs.Select((p, i) => Drawn(p, first: i == 0))], width, height)) is { } relationship)
         {
-            var file = $"math{++_mathPictures}.png";
-            using (var target = _package!.Create("ppt/media/" + file, "png", "image/png", compress: false))
-                picture.Encode(target, SKEncodedImageFormat.Png, 100);
-            var relationship = Relate("image", "../media/" + file);
-            fallback = $"<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"{name} {id - 1}\"/>{nonVisual}</p:nvSpPr>" +
-                       $"<p:spPr>{Xfrm(x, y, width, height)}<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>" +
-                       $"<a:blipFill><a:blip r:embed=\"{relationship}\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill></p:spPr>" +
-                       $"<p:txBody>{bodyPr}<a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"><a:noFill/></a:rPr><a:t> </a:t></a:r></a:p></p:txBody></p:sp>";
+            fallback = PictureShape(id, name, nonVisual, x, y, width, height, relationship, bodyPr);
         }
         else
         {
@@ -101,24 +96,102 @@ internal sealed partial class PptxWriter
         return Alternate(shape, fallback);
     }
 
-    /// <summary>
-    /// The shape's text drawn as the slide renderer draws a text box (its insets, the paragraphs' sizes, indents,
-    /// bullets and equations), on a transparent ground, for its PNG; null when nothing could be drawn.
-    /// </summary>
-    private SKBitmap? FallbackPicture(List<Para> paragraphs, long width, long height)
+    /// <summary>A shape filled with a picture of its text (its relationship), locked, with an empty paragraph.</summary>
+    private static string PictureShape(int id, string name, string nonVisual, long x, long y, long width, long height, string relationship, string bodyPr) =>
+        $"<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"{name} {id - 1}\"/>{nonVisual}</p:nvSpPr>" +
+        $"<p:spPr>{Xfrm(x, y, width, height)}<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>" +
+        $"<a:blipFill><a:blip r:embed=\"{relationship}\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill></p:spPr>" +
+        $"<p:txBody>{bodyPr}<a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"><a:noFill/></a:rPr><a:t> </a:t></a:r></a:p></p:txBody></p:sp>";
+
+    /// <summary>A fallback picture written into its own part (encoded straight into it), its relationship id; null for none.</summary>
+    private string? PicturePart(SKBitmap? picture)
     {
-        var (w, h) = ((float)(width / Emu), (float)(height / Emu));
-        if (!(w > 1 && h > 1))
+        if (picture is null)
             return null;
+        using (picture)
+        {
+            var file = $"math{++_mathPictures}.png";
+            using (var target = _package!.Create("ppt/media/" + file, "png", "image/png", compress: false))
+                picture.Encode(target, SKEncodedImageFormat.Png, 100);
+            return Relate("image", "../media/" + file);
+        }
+    }
+
+    /// <summary>
+    /// A title with equations: the title as written (<paramref name="write"/> <c>true</c>, its equations in a14:m) as
+    /// the choice, and the title placeholder filled with a picture of its text as the fallback (else its text with the
+    /// equations' linear text), both with the same shape id.
+    /// </summary>
+    private string MathTitle(Func<bool, string> write, List<Run> runs, long x, long y, long width, long height, int size, string anchor)
+    {
+        var before = _shapeId;
+        var choice = write(true);
+        var id = _shapeId;
+        var para = new Para { Runs = runs, Size = size * TitleScale(runs, width, height, size) / 100, Before = 0 };
+        var place = anchor switch { "b" => TextAnchor.Bottom, "ctr" => TextAnchor.Middle, _ => TextAnchor.Top };
+        if (PicturePart(FallbackPicture([Drawn(para, first: true, font: "Calibri Light")], width, height, place)) is not { } relationship)
+        {
+            _shapeId = before; // the same shape again
+            return Alternate(choice, write(false));
+        }
+        const string NonVisual = "<p:cNvSpPr><a:spLocks noGrp=\"1\" noRot=\"1\" noChangeAspect=\"1\" noMove=\"1\" noResize=\"1\" noEditPoints=\"1\" noAdjustHandles=\"1\" noChangeArrowheads=\"1\" noChangeShapeType=\"1\" noTextEdit=\"1\"/></p:cNvSpPr><p:nvPr><p:ph type=\"title\"/></p:nvPr>";
+        return Alternate(choice, PictureShape(id, "Title", NonVisual, x, y, width, height, relationship, $"<a:bodyPr anchor=\"{anchor}\"><a:normAutofit/></a:bodyPr>"));
+    }
+
+    /// <summary>
+    /// A table cell's text as the slide renderer draws it in the fallback's picture of the cell: its size, bold header
+    /// and colour, no space before its first paragraph.
+    /// </summary>
+    private List<HParagraph> CellText(List<Para> paragraphs, int size, bool bold, string? color) =>
+        [.. paragraphs.Select((p, i) => Drawn(p with { Size = size, Bold = bold || p.Bold, Before = 0, Bullet = BulletKind.None, InList = false, Margin = 0 },
+            first: i == 0, color: color))];
+
+    /// <summary>How high a cell's text drawn <paramref name="width"/> wide is with its insets (EMU), as PowerPoint grows the row to it.</summary>
+    private long CellHeight(List<HParagraph> text, long width)
+    {
+        var frame = Frame(text);
+        _drawing ??= (new FontResolver(), new Shaper());
+        using var renderer = new SlideRenderer(_drawing.Value.Fonts, _drawing.Value.Shaper, _token);
+        return (long)Math.Ceiling(renderer.TextHeight(frame, (float)(width / Emu)) * Emu);
+    }
+
+    /// <summary>
+    /// A table cell with equations drawn as the slide renderer draws the cell's text (<see cref="CellText"/>, its insets
+    /// and anchor) on its fill, for the fallback table; its relationship id, null when it couldn't be drawn.
+    /// </summary>
+    private string? CellPicture(List<HParagraph> text, long width, long height, HVerticalAlign align, string fill)
+    {
+        var anchor = align switch { HVerticalAlign.Center => TextAnchor.Middle, HVerticalAlign.Bottom => TextAnchor.Bottom, _ => TextAnchor.Top };
+        var ground = SKColor.TryParse("#" + fill, out var parsed) ? parsed : SKColors.White;
+        return PicturePart(FallbackPicture(text, width, height, anchor, ground));
+    }
+
+    /// <summary>A text frame with a text box's insets holding <paramref name="paragraphs"/> at <paramref name="anchor"/>.</summary>
+    private static SlideTextFrame Frame(List<HParagraph> paragraphs, TextAnchor anchor = TextAnchor.Top)
+    {
         var frame = new SlideTextFrame
         {
             InsetLeft = (float)(InsetX / Emu),
             InsetRight = (float)(InsetX / Emu),
             InsetTop = (float)(InsetY / Emu),
             InsetBottom = (float)(InsetY / Emu),
+            Anchor = anchor,
         };
-        for (var i = 0; i < paragraphs.Count; i++)
-            frame.Paragraphs.Add(Drawn(paragraphs[i], first: i == 0));
+        frame.Paragraphs.AddRange(paragraphs);
+        return frame;
+    }
+
+    /// <summary>
+    /// Text drawn as the slide renderer draws a text box (its insets, the paragraphs' sizes, indents, bullets and
+    /// equations) at <paramref name="anchor"/>, on a transparent ground or <paramref name="ground"/>, for its PNG; null
+    /// when nothing could be drawn.
+    /// </summary>
+    private SKBitmap? FallbackPicture(List<HParagraph> paragraphs, long width, long height, TextAnchor anchor = TextAnchor.Top, SKColor? ground = null)
+    {
+        var (w, h) = ((float)(width / Emu), (float)(height / Emu));
+        if (!(w > 1 && h > 1))
+            return null;
+        var frame = Frame(paragraphs, anchor);
         var deck = new SlideDeck { Width = w, Height = h };
         var slide = new Slide();
         slide.Elements.Add(new SlideShape { Bounds = new SKRect(0, 0, w, h), Text = frame });
@@ -132,22 +205,25 @@ internal sealed partial class PptxWriter
         var bitmap = new SKBitmap(Math.Max(1, (int)Math.Ceiling(w * scale)), Math.Max(1, (int)Math.Ceiling(h * scale)), SKColorType.Rgba8888, SKAlphaType.Premul);
         using (var canvas = new SKCanvas(bitmap))
         {
-            canvas.Clear(SKColors.Transparent);
+            canvas.Clear(ground ?? SKColors.Transparent);
             canvas.Scale(scale);
             page.Draw(canvas);
         }
         return bitmap;
     }
 
-    /// <summary>A slide paragraph as the document model has it, for the renderer: its runs at its size, its bullet as text.</summary>
-    private HParagraph Drawn(Para paragraph, bool first)
+    /// <summary>
+    /// A slide paragraph as the document model has it, for the renderer: its runs at its size, its bullet as text, in
+    /// <paramref name="font"/> where a run names none, in <paramref name="color"/> when given (a table's header row).
+    /// </summary>
+    private HParagraph Drawn(Para paragraph, bool first, string font = "Calibri", string? color = null)
     {
         HCharFormat Look(HCharFormat format) => format with
         {
             Size = paragraph.Size,
             Bold = paragraph.Bold || format.Bold == true ? true : format.Bold,
-            Font = paragraph.Code ? CodeFont : format.Font ?? "Calibri",
-            Color = Color(format.Color) is { } color && color != "FFFFFF" ? "#" + color : null,
+            Font = paragraph.Code ? CodeFont : format.Font ?? font,
+            Color = color is not null ? "#" + color : Color(format.Color) is { } own && own != "FFFFFF" ? "#" + own : null,
         };
         var marked = paragraph.Bullet != BulletKind.None;
         var result = new HParagraph

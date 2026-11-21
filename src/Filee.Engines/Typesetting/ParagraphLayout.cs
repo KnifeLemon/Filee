@@ -194,7 +194,7 @@ internal sealed partial class ParagraphLayouter
         var (stored, ignored) = _storedLines && from == 0 ? StoredStarts(paragraph, source, marker, items, advances) : (null, null);
         var ranges = new LineIndex(source, items);
         // Auto-spacing on the lines laid out anew; 한글's stored lines already hold what 한글 put there.
-        if (stored is null && AutoSpace(source, items, starts, breaking) is { } autoSpace)
+        if (stored is null && AutoSpace(source, items, starts, breaking, TextFlow != HTextFlow.Horizontal) is { } autoSpace)
         {
             for (var i = 0; i < advances.Length; i++)
                 advances[i] += autoSpace[i];
@@ -241,7 +241,7 @@ internal sealed partial class ParagraphLayouter
             var available = width - settings.Left - settings.Right - (first ? settings.FirstLine : 0);
             var (end, forced) = settings.Wrap == HLineWrap.Break
                 ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense, settings.AutoSpace,
-                    rules, settings.HangPunctuation)
+                    rules, settings.HangPunctuation, settings.LineEnds)
                 : (text.Length, true);
             lines.Add(Place(source, ranges, start, end, forced, first, width, settings, mark));
             y += lines[^1].Height;
@@ -272,7 +272,7 @@ internal sealed partial class ParagraphLayouter
                     continue;
                 var (end, forced) = settings.Wrap == HLineWrap.Break
                     ? Fit(text, breaks, advances, starts, from, available, x => NextStop(settings, opening, x), settings.Condense,
-                        settings.AutoSpace, rules, settings.HangPunctuation)
+                        settings.AutoSpace, rules, settings.HangPunctuation, settings.LineEnds)
                     : (text.Length, true);
                 // Broken inside a word because the word is wider than the stretch: it goes on in the next stretch.
                 if (!lastSpan && !forced && end < text.Length && breaks[end] != LineBreak.Allowed)
@@ -307,7 +307,7 @@ internal sealed partial class ParagraphLayouter
             var (startInset, endInset) = rightToLeft ? (insetRight, insetLeft) : (insetLeft, insetRight);
             format = format with { Left = (format.Left ?? 0) + startInset, Right = (format.Right ?? 0) + endInset };
         }
-        var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft, source.RightToLeftRuns()));
+        var items = AcrossNumbers(text, Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft, source.RightToLeftRuns())));
         // The room a display equation breaks into lines to fit (ParagraphLayout.Equations.cs).
         _equationRoom = width - ((format.Left ?? 0) + (format.Right ?? 0)) / 100f;
         var (advances, starts) = Measure(source, items);
@@ -339,7 +339,8 @@ internal sealed partial class ParagraphLayouter
             Language: language,
             HangPunctuation: breaking?.OverflowPunctuation == true,
             WordTabInterval: DefaultTabStop is > 0 and var interval ? interval / 100f : 0,
-            TabIntervalFromIndent: DefaultTabFromIndent);
+            TabIntervalFromIndent: DefaultTabFromIndent,
+            LineEnds: LineEnds(source));
         var listLevel = marker is { Length: > 0 } && paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count
             ? levels[level] : null;
         // A number that indents its paragraph (한글 autoIndent): the lines after the first hang under the text after it.
@@ -368,7 +369,7 @@ internal sealed partial class ParagraphLayouter
     {
         var (_, source, _, _, items, advances, starts, breaking, _, breaks, settings) = Prepare(paragraph, MeasureWidth, marker, fields, notes, null);
         var text = source.Text;
-        if (AutoSpace(source, items, starts, breaking) is { } autoSpace)
+        if (AutoSpace(source, items, starts, breaking, TextFlow != HTextFlow.Horizontal) is { } autoSpace)
         {
             for (var i = 0; i < advances.Length; i++)
                 advances[i] += autoSpace[i];
@@ -406,7 +407,7 @@ internal sealed partial class ParagraphLayouter
                 }
                 pen.Add(advances[i], c);
                 if (!IsSpace(c))
-                    end = pen.X;
+                    end = pen.X + (mandatoryOnly ? 0 : settings.LineEnds?[i] ?? 0);
             }
         }
     }
@@ -509,9 +510,13 @@ internal sealed partial class ParagraphLayouter
     /// <param name="SpreadEastAsian">Justified lines spread their room between Chinese and Japanese characters too (Word).</param>
     /// <param name="Language">The paragraph's East Asian language (FontSubstitution.Language): "ko" justifies Han at the spaces.</param>
     /// <param name="AutoSpace">Per UTF-16 index, the auto-spacing after the cluster starting there; null = none.</param>
+    /// <param name="LineEnds">
+    /// Per UTF-16 index, how much wider a line ending after the cluster there is than its advance (an inline equation's
+    /// piece, ParagraphLayout.Equations.cs); null = none.
+    /// </param>
     private sealed record Settings(HAlign Align, bool RightToLeft, float Left, float Right, float FirstLine, IReadOnlyList<HTabStop> Tabs,
         HLineWrap Wrap, float Condense, HLineHeight LineHeight, bool FontLineHeight, bool SpreadEastAsian = false, string Language = "",
-        float[]? AutoSpace = null, bool HangPunctuation = false, float WordTabInterval = 0, bool TabIntervalFromIndent = false);
+        float[]? AutoSpace = null, bool HangPunctuation = false, float WordTabInterval = 0, bool TabIntervalFromIndent = false, float[]? LineEnds = null);
 
     // ───────────────────────── Items ─────────────────────────
 
@@ -688,6 +693,8 @@ internal sealed partial class ParagraphLayouter
                 if (starts[i])
                     advances[i] += Spacing(item.Style, advances[i]);
             }
+            if (SetAcross(item.Style))
+                OneEm(advances, null, starts, item.Start, item.End, item.Style.Size);
         }
         return (advances, starts);
     }
@@ -721,15 +728,28 @@ internal sealed partial class ParagraphLayouter
             // 한글's: a character as high as the object with its margins, the baseline that far down.
             var margin = character.OuterMargin;
             var full = h + (margin.Top + margin.Bottom) / 100f;
+            var wide = w + (margin.Left + margin.Right) / 100f;
+            // Upright in vertical text: as long along the line as it is high, standing on the baseline.
+            if (UprightObjects)
+                return (full, wide, 0);
             var above = full * baseLine / 100f;
-            return (w + (margin.Left + margin.Right) / 100f, above, full - above);
+            return (wide, above, full - above);
         }
-        return (w, h, 0);
+        // Upright in vertical text (ParagraphLayout.Vertical.cs): its height along the line, its width across it.
+        return UprightObjects ? (h, w, 0) : (w, h, 0);
     }
 
-    /// <summary>Draws an object laid out like a character into its area.</summary>
-    private Action<PageContent, SKRect> ObjectDrawing(HInline item)
+    /// <summary>Draws an object laid out like a character into its area (an equation as <paramref name="edge"/> when given).</summary>
+    private Action<PageContent, SKRect> ObjectDrawing(HInline item, EquationBox? edge = null)
     {
+        if (item is not HEquation && UprightObjects)
+        {
+            var flow = TextFlow;
+            TextFlow = HTextFlow.Horizontal;
+            var across = ObjectDrawing(item);
+            TextFlow = flow;
+            return Upright(across);
+        }
         if (item is HObject { BaseLine: not null, OuterMargin: var margin })
         {
             return (page, area) => FloatingObjects.Draw(page, item, new SKRect(area.Left + margin.Left / 100f, area.Top + margin.Top / 100f,
@@ -737,7 +757,7 @@ internal sealed partial class ParagraphLayouter
         }
         if (item is not HEquation equation)
             return (page, area) => FloatingObjects.Draw(page, item, area, Stack);
-        var box = Equation(equation);
+        var box = edge ?? Equation(equation);
         // In 한글's box on its baseline (its own box: on the line's), centred across, and narrowed to the box when 한글
         // laid it out narrower (its glyphs take less room than the fonts' advances).
         return (page, area) =>
@@ -754,11 +774,16 @@ internal sealed partial class ParagraphLayouter
     /// <param name="autoSpace">Auto-spacing included in <paramref name="advances"/>, which a line ending there leaves out.</param>
     /// <param name="rules">The paragraph's breaking rules: with kinsoku, a word broken inside keeps the East Asian rules.</param>
     /// <param name="hang">An East Asian comma or full stop that doesn't fit hangs past the line end (Word w:overflowPunct).</param>
+    /// <param name="ends">
+    /// How much wider a line ending after a cluster is than its advance (Settings.LineEnds): less fits it when the line
+    /// may end after it, more takes a break there away when the line would not fit.
+    /// </param>
     private static (int End, bool Forced) Fit(string text, LineBreak[] breaks, float[] advances, bool[] starts, int start, float available,
-        Func<float, TabStop> nextStop, float condense, float[]? autoSpace = null, LineBreakRules? rules = null, bool hang = false)
+        Func<float, TabStop> nextStop, float condense, float[]? autoSpace = null, LineBreakRules? rules = null, bool hang = false, float[]? ends = null)
     {
         var pen = new Pen();
         var lastBreak = -1;
+        var previous = -1;
         float spaces = 0;
         for (var i = start; i < text.Length; i++)
         {
@@ -766,8 +791,10 @@ internal sealed partial class ParagraphLayouter
                 return (i, true);
             if (!starts[i])
                 continue;
-            if (i > start && breaks[i] == LineBreak.Allowed)
+            // An operator Word repeats at a line end that doesn't fit: the line can't end here.
+            if (i > start && breaks[i] == LineBreak.Allowed && !(previous >= 0 && ends?[previous] > 0 && pen.X + ends[previous] > available + Epsilon))
                 lastBreak = i;
+            previous = i;
             var c = text[i];
             if (c == '\t')
             {
@@ -782,7 +809,7 @@ internal sealed partial class ParagraphLayouter
                     spaces += width;
                 continue;
             }
-            var after = pen.After(width - (autoSpace?[i] ?? 0));
+            var after = pen.After(width - (autoSpace?[i] ?? 0) + Math.Min(0, ends?[i] ?? 0));
             if (i > start && after > available + Epsilon && !(condense > 0 && after - spaces * condense <= available + Epsilon))
             {
                 if (hang && LineBreaker.Hangs(c) && HangingEnd(text, breaks, i) is { } end)
@@ -927,6 +954,9 @@ internal sealed partial class ParagraphLayouter
 
         /// <summary>An object's size: width, height above the baseline, depth below it.</summary>
         public (float Width, float Height, float Depth) Size { get; set; }
+
+        /// <summary>An equation's piece as it is drawn at the line's start or end, or null.</summary>
+        public EquationBox? Edge { get; set; }
     }
 
     /// <summary>
@@ -1040,7 +1070,16 @@ internal sealed partial class ParagraphLayouter
                 starts[from - start] = true;
                 if (item.Kind == ItemKind.Object)
                 {
-                    part.Size = ObjectSize(source, from);
+                    // An equation's piece ending or starting the line is drawn as it is there (ParagraphLayout.Equations.cs).
+                    if (PieceAt(source, from, from == start, from == contentEnd - 1 && end < text.Length) is { } edge)
+                    {
+                        part.Edge = edge;
+                        part.Size = (edge.Width, edge.Ascent, edge.Descent);
+                    }
+                    else
+                    {
+                        part.Size = ObjectSize(source, from);
+                    }
                     advances[from - start] = part.Size.Width;
                 }
                 continue;
@@ -1059,6 +1098,8 @@ internal sealed partial class ParagraphLayouter
                 spacing[i] = Spacing(item.Style, advances[i]);
                 advances[i] += spacing[i];
             }
+            if (SetAcross(item.Style))
+                OneEm(advances, spacing, starts, from - start, to - start, item.Style.Size);
         }
         if (settings.AutoSpace is { } autoSpace)
         {
@@ -1179,7 +1220,7 @@ internal sealed partial class ParagraphLayouter
             {
                 var (pictureWidth, pictureHeight) = (part.Size.Width * squeeze, part.Size.Height);
                 if (source.Objects.TryGetValue(part.Start, out var item) && pictureWidth > 0)
-                    pictures.Add(new LineObject(new SKRect(x, -pictureHeight, x + pictureWidth, part.Size.Depth), ObjectDrawing(item)));
+                    pictures.Add(new LineObject(new SKRect(x, -pictureHeight, x + pictureWidth, part.Size.Depth), ObjectDrawing(item, part.Edge)));
                 // Word's equation numbers at the right end of the line (see ParagraphLayout.Equations.cs).
                 if (item is HEquation equation)
                     runs.AddRange(Numbers(equation, width - (settings.RightToLeft ? settings.Left : settings.Right)).Select(r => (part.Start, r)));
@@ -1199,6 +1240,19 @@ internal sealed partial class ParagraphLayouter
                 var scale = style.Size / run.UnitsPerEm;
                 var scaleX = style.Scale * squeeze;
                 var positions = new SKPoint[run.Glyphs.Length];
+                // A number set across: its digits centred in the em it takes (VerticalText stands them up there).
+                float? acrossEnd = null;
+                if (SetAcross(style) && run.Glyphs.Length > 0)
+                {
+                    var em = advances.AsSpan(part.Start - start, part.Length).ToArray().Sum() * squeeze;
+                    var digits = 0f;
+                    for (var g = 0; g < run.Glyphs.Length; g++)
+                        digits += Advance(run, g, text, part.Start, style) * scaleX;
+                    // (Room a distributed line puts between its digits stays the line's.)
+                    var inside = gaps.AsSpan(part.Start - start, part.Length).ToArray().Sum() - gaps[part.Start - start + run.Clusters[^1]];
+                    acrossEnd = x + em + inside * squeeze;
+                    x += (em - digits) / 2;
+                }
                 for (var g = 0; g < run.Glyphs.Length; g++)
                 {
                     if (g > 0 && run.Clusters[g] != run.Clusters[g - 1])
@@ -1206,7 +1260,9 @@ internal sealed partial class ParagraphLayouter
                     positions[g] = new SKPoint(x + run.XOffsets[g] * scale * scaleX, -style.Rise - run.YOffsets[g] * scale);
                     x += Advance(run, g, text, part.Start, style) * scaleX;
                 }
-                if (run.Glyphs.Length > 0)
+                if (acrossEnd is { } acrossX)
+                    x = acrossX + gaps[part.Start - start + run.Clusters[^1]] * squeeze;
+                else if (run.Glyphs.Length > 0)
                     x += (spacing[part.Start - start + run.Clusters[^1]] + gaps[part.Start - start + run.Clusters[^1]]) * squeeze;
                 runs.Add((part.Start, new PlacedRun(part.Item.Font.Font, style.Size, run.Glyphs, positions, text.Substring(part.Start, part.Length), run.Clusters)
                 {

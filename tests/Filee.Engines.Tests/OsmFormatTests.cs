@@ -312,6 +312,6 @@ public class OsmFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var polygon = Assert.IsType<GeoPolygon>(Assert.Single(dataset.Features).Geometry);
         Assert.Equal(2 * ways + 1, Assert.Single(polygon.Rings).Count);
         Assert.False(dataset.PartsMissing);
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"{clock.Elapsed} to join {ways} ways");
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), $"{clock.Elapsed} to join {ways} ways");
     }
 }

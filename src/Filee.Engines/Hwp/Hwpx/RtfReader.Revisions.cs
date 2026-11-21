@@ -10,7 +10,7 @@
 //
 // Tracked changes: \revised text was inserted (by \revauthN of the revision table {\*\revtbl {Unknown;}{name;}}, at
 // \revdttmN), \deleted text deleted (\revauthdelN, \revdttmdelN). Inserted runs keep their text, marked as inserted;
-// deleted text goes into an HDeletion, which only the DOCX and RTF writers write (before, it showed as plain text).
+// deleted text goes into an HDeletion, which the DOCX, RTF, ODT and HWPX writers write (before, it showed as plain text).
 
 using System.Globalization;
 using System.Text;

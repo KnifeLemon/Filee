@@ -1,5 +1,5 @@
-// Colours in Office Open XML: theme colours (theme1.xml), Excel's tint and indexed palette, and DrawingML colour
-// elements with their modifiers (lumMod, lumOff, tint, shade).
+// Colours in Office Open XML: theme colours (theme1.xml), Excel's tint (in whole-number HLS) and indexed palette, and
+// DrawingML colour elements with their modifiers (lumMod, lumOff, tint, shade).
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -105,7 +105,7 @@ internal sealed class OoxmlColors
         if (hex is null)
             return null;
         return double.TryParse((string?)color.Attribute("tint"), NumberStyles.Float, CultureInfo.InvariantCulture, out var tint) && tint != 0
-            ? Tint(hex, tint)
+            ? SpreadsheetTint(hex, tint)
             : hex;
     }
 
@@ -151,12 +151,79 @@ internal sealed class OoxmlColors
         return Hex(r, g, b);
     }
 
-    /// <summary>Excel's tint: lightens (tint &gt; 0) or darkens (tint &lt; 0) the luminance.</summary>
+    /// <summary>A tint in HSL with real numbers: lightens (tint &gt; 0) or darkens (tint &lt; 0) the luminance.</summary>
     internal static string Tint(string hex, double tint)
     {
         var (h, s, l) = ToHsl(hex);
         l = tint < 0 ? l * (1 + tint) : l * (1 - tint) + tint;
         return FromHsl(h, s, Math.Clamp(l, 0, 1));
+    }
+
+    /// <summary>HLS's range in Excel's whole-number colour model (hue, luminance and saturation run 0-240).</summary>
+    private const int HlsMax = 240;
+
+    /// <summary>
+    /// Excel's tint of a SpreadsheetML colour (ECMA-376 Part 1, 18.8.19 / 18.3.1.15): the colour in whole-number HLS
+    /// out of 240, its luminance moved towards white (tint &gt; 0: L·(1 − tint) + 240·tint) or black (L·(1 + tint)) and
+    /// cut to a whole number, then back to RGB. Excel writes a tint as n/32767 for a whole percent (0.79998… for 80 %),
+    /// so the luminance gets that rounding back before it's cut. Office's own palette values come out exactly
+    /// (accent 1 #4472C4 at 80 % → #D9E1F2, −25 % → #305496; white at −15 % → #D9D9D9), where HSL with real numbers
+    /// (<see cref="Tint"/>) gives Word's and PowerPoint's #DAE3F3.
+    /// </summary>
+    internal static string SpreadsheetTint(string hex, double tint)
+    {
+        int Byte(int at) => Convert.ToInt32(hex[at..(at + 2)], 16);
+        var (h, l, s) = ToWholeHls(Byte(1), Byte(3), Byte(5));
+        tint = Math.Clamp(tint, -1, 1);
+        var lum = tint < 0 ? l * (1 + tint) : l * (1 - tint) + HlsMax * tint;
+        l = Math.Clamp((int)Math.Floor(lum + HlsMax / 32767.0), 0, HlsMax);
+        var (r, g, b) = FromWholeHls(h, l, s);
+        return $"#{r:X2}{g:X2}{b:X2}";
+    }
+
+    /// <summary>RGB (0-255) to whole-number HLS out of <see cref="HlsMax"/>, each step rounded to the nearest.</summary>
+    private static (int H, int L, int S) ToWholeHls(int r, int g, int b)
+    {
+        var max = Math.Max(r, Math.Max(g, b));
+        var min = Math.Min(r, Math.Min(g, b));
+        var l = ((max + min) * HlsMax + 255) / (2 * 255);
+        if (max == min)
+            return (HlsMax * 2 / 3, l, 0);
+        var d = max - min;
+        var s = l <= HlsMax / 2
+            ? (d * HlsMax + (max + min) / 2) / (max + min)
+            : (d * HlsMax + (2 * 255 - max - min) / 2) / (2 * 255 - max - min);
+        int Delta(int c) => ((max - c) * (HlsMax / 6) + d / 2) / d;
+        var h = r == max ? Delta(b) - Delta(g)
+            : g == max ? HlsMax / 3 + Delta(r) - Delta(b)
+            : 2 * HlsMax / 3 + Delta(g) - Delta(r);
+        if (h < 0)
+            h += HlsMax;
+        if (h > HlsMax)
+            h -= HlsMax;
+        return (h, l, s);
+    }
+
+    /// <summary>Whole-number HLS back to RGB (0-255), rounded to the nearest.</summary>
+    private static (int R, int G, int B) FromWholeHls(int h, int l, int s)
+    {
+        if (s == 0)
+        {
+            var grey = (l * 255 + HlsMax / 2) / HlsMax;
+            return (grey, grey, grey);
+        }
+        var high = l <= HlsMax / 2 ? (l * (HlsMax + s) + HlsMax / 2) / HlsMax : l + s - (l * s + HlsMax / 2) / HlsMax;
+        var low = 2 * l - high;
+        int Channel(int hue)
+        {
+            hue = hue < 0 ? hue + HlsMax : hue > HlsMax ? hue - HlsMax : hue;
+            var value = hue < HlsMax / 6 ? low + ((high - low) * hue + HlsMax / 12) / (HlsMax / 6)
+                : hue < HlsMax / 2 ? high
+                : hue < HlsMax * 2 / 3 ? low + ((high - low) * (HlsMax * 2 / 3 - hue) + HlsMax / 12) / (HlsMax / 6)
+                : low;
+            return Math.Clamp((value * 255 + HlsMax / 2) / HlsMax, 0, 255);
+        }
+        return (Channel(h + HlsMax / 3), Channel(h), Channel(h - HlsMax / 3));
     }
 
     private static string? PresetColor(string? name) => name switch

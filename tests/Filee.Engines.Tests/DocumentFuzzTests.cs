@@ -109,7 +109,8 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Fact]
     public void SheetPrinter_prints_or_refuses_every_mutated_xlsx() =>
-        Fuzz("xlsx-print", "xlsx", [File.ReadAllBytes(SheetPrintTests.RichXlsx(fx.NewFolder()))],
+        Fuzz("xlsx-print", "xlsx", [File.ReadAllBytes(SheetPrintTests.RichXlsx(fx.NewFolder())),
+                File.ReadAllBytes(XlsbFuzzTests.NotesAndTables().SaveXlsx(Path.Combine(fx.NewFolder(), "notes.xlsx")))],
             (path, _) => SheetPrinter.ToPdf(XlsxReader.Read(path), SheetPrintSource.Of(path)));
 
     [Fact]

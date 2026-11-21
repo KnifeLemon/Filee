@@ -12,8 +12,15 @@
 // - ToUnicode: a font without one gets it from its encoding's glyph names, else from the program's Unicode cmap (the
 //   characters of each glyph), so the text can be found and copied.
 //
-// A program that can't be read is left as it is (the PDF/A then shows the problem as before). Glyphs a program lacks
-// (6.2.11.8) aren't added.
+// - 6.2.11.4.1 / 6.2.11.8 missing glyphs: a code (or CID) drawn that maps to no glyph of the program draws .notdef,
+//   which PDF/A-2 and -3 forbid and PDF/A-1 counts as a glyph the program lacks. The program gets an empty glyph for it
+//   (one per width, named "space" in a version 2 post table) with the advance the dictionary gives the code, and the
+//   code maps to it: a simple font through its (3,0) cmap (it becomes symbolic as above), a CIDFont through its
+//   CIDToGIDMap. Viewers drew nothing or a box there; now nothing. Only when every use of the font was followed (the
+//   codes are known), and not for variable programs (gvar).
+//
+// A program that can't be read is left as it is (the PDF/A then shows the problem as before). Type 1 and CFF programs
+// that lack glyphs are left as they are too.
 
 using System.Buffers.Binary;
 using Filee.Engines.Fonts;
@@ -125,10 +132,13 @@ internal static partial class PdfAFonts
         var firstListed = Math.Clamp((int)PdfObjects.Number(font, "/FirstChar", 0), 0, 255);
         var lastListed = Math.Clamp((int)PdfObjects.Number(font, "/LastChar", 255), firstListed, 255);
         var glyphs = new SortedDictionary<int, int>();
+        var lacking = new List<int>();
         foreach (var code in used?.Where(c => c is >= 0 and < 256) ?? Enumerable.Range(firstListed, lastListed - firstListed + 1))
         {
             if (Drawn(code) is { } glyph && glyph < sfnt.GlyphCount)
                 glyphs[code] = glyph;
+            else if (used is not null)
+                lacking.Add(code);
         }
         var programChanged = false;
         var addText = !font.Elements.ContainsKey("/ToUnicode");
@@ -144,13 +154,32 @@ internal static partial class PdfAFonts
                     text[code] = c;
             }
         }
+
+        // Widths: the dictionary's, else its MissingWidth.
+        var first = (int)PdfObjects.Number(font, "/FirstChar", 0);
+        var array = PdfObjects.Array(font, "/Widths");
+        var missing = PdfObjects.Number(PdfObjects.Get(descriptor, "/MissingWidth")) ?? 0;
+        double Width(int code) => array is not null && code - first >= 0 && code - first < array.Elements.Count
+            && PdfObjects.Number(array.Elements[code - first]) is { } w ? w : missing;
+
+        // Codes drawn that have no glyph get empty ones, through a (3,0) cmap like a forbidden encoding.
+        var added = lacking.Count > 0 ? AddEmptyGlyphs(sfnt, lacking.ToDictionary(c => c, Width)) : [];
+        if (added.Count > 0)
+        {
+            foreach (var (code, glyph) in added)
+                glyphs[code] = glyph;
+            encodingKept = false;
+            programChanged = true;
+        }
         if (!encodingKept)
         {
             // Every code that draws something keeps its glyph through a (3,0) cmap of its own.
             var symbolMap = new Dictionary<int, int>();
             for (var code = 0; code < 256; code++)
             {
-                if (Drawn(code) is { } glyph && glyph < sfnt.GlyphCount)
+                if (added.TryGetValue(code, out var empty))
+                    symbolMap[0xF000 + code] = empty;
+                else if (Drawn(code) is { } glyph && glyph < sfnt.GlyphCount)
                     symbolMap[0xF000 + code] = glyph;
             }
             sfnt.Tables["cmap"] = CmapTable.Build(symbolMap, symbol: true);
@@ -160,11 +189,6 @@ internal static partial class PdfAFonts
         }
 
         // Widths: the program follows the dictionary; a glyph drawn with two widths keeps the first.
-        var first = (int)PdfObjects.Number(font, "/FirstChar", 0);
-        var array = PdfObjects.Array(font, "/Widths");
-        var missing = PdfObjects.Number(PdfObjects.Get(descriptor, "/MissingWidth")) ?? 0;
-        double Width(int code) => array is not null && code - first >= 0 && code - first < array.Elements.Count
-            && PdfObjects.Number(array.Elements[code - first]) is { } w ? w : missing;
         var wanted = glyphs.ToDictionary(p => p.Key, p => Width(p.Key));
         var (advancesChanged, keep) = FitAdvances(sfnt, glyphs, wanted);
         programChanged |= advancesChanged;
@@ -213,13 +237,33 @@ internal static partial class PdfAFonts
         var widths = CidWidths(cidFont);
         var standard = PdfObjects.Number(cidFont, "/DW", 1000);
         var glyphs = new SortedDictionary<int, int>();
+        var lacking = new List<int>();
         foreach (var cid in used?.Where(c => c is >= 0 and < MaxCids) ?? widths.Keys)
         {
             if (Glyph(cid) is var glyph and > 0 && glyph < sfnt.GlyphCount)
                 glyphs[cid] = glyph;
+            else if (used is not null)
+                lacking.Add(cid);
+        }
+        // CIDs drawn that have no glyph get empty ones, through a CIDToGIDMap of their own.
+        var added = lacking.Count > 0 ? AddEmptyGlyphs(sfnt, lacking.ToDictionary(c => c, c => widths.TryGetValue(c, out var w) ? w : standard)) : [];
+        if (added.Count > 0)
+        {
+            var size = Math.Max(map is null ? 0 : map.Length / 2, Math.Max(used!.Max(), added.Keys.Max()) + 1);
+            var rebuilt = new byte[2 * size];
+            for (var cid = 0; cid < size; cid++)
+                BinaryPrimitives.WriteUInt16BigEndian(rebuilt.AsSpan(2 * cid), (ushort)(added.TryGetValue(cid, out var empty) ? empty : Math.Min(Glyph(cid), 0xFFFF)));
+            var mapStream = new PdfDictionary(document);
+            mapStream.CreateStream(rebuilt);
+            mapStream.Stream.Zip();
+            document.Internals.AddObject(mapStream);
+            cidFont.Elements["/CIDToGIDMap"] = mapStream.Reference;
+            foreach (var (cid, glyph) in added)
+                glyphs[cid] = glyph;
         }
         var wanted = glyphs.ToDictionary(p => p.Key, p => widths.TryGetValue(p.Key, out var w) ? w : standard);
         var (advancesChanged, keep) = FitAdvances(sfnt, glyphs, wanted);
+        advancesChanged |= added.Count > 0;
         if (keep.Count > 0)
         {
             foreach (var (cid, advance) in keep)
@@ -336,6 +380,110 @@ internal static partial class PdfAFonts
         sfnt.Tables["hhea"] = header;
         sfnt.Tables["hmtx"] = table;
         return (true, keep);
+    }
+
+    /// <summary>
+    /// Adds an empty glyph for each width among <paramref name="widths"/> (code → width, 1/1000 em) at the end of a
+    /// TrueType program: loca, maxp, hmtx (one metric a glyph), hhea, post (named "space") and vmtx follow; hdmx and
+    /// LTSH, which list every glyph, are dropped. Returns code → its new glyph; empty when the program can't take them
+    /// (CFF or variable outlines, 65,535 glyphs).
+    /// </summary>
+    internal static Dictionary<int, int> AddEmptyGlyphs(SfntFont sfnt, Dictionary<int, double> widths)
+    {
+        var result = new Dictionary<int, int>();
+        if (widths.Count == 0 || sfnt["glyf"] is null || sfnt["loca"] is not { } loca || sfnt["gvar"] is not null || sfnt.HasCffOutlines)
+            return result;
+        var head = sfnt.Require("head");
+        var hhea = sfnt.Require("hhea");
+        var hmtx = sfnt.Require("hmtx");
+        var count = sfnt.GlyphCount;
+        var unitsPerEm = FontTables.UnitsPerEm(head);
+        var metrics = FontTables.NumberOfMetrics(hhea);
+        var longOffsets = head.Length >= 52 && BinaryPrimitives.ReadInt16BigEndian(head.AsSpan(50)) == 1;
+        var entry = longOffsets ? 4 : 2;
+        if (unitsPerEm == 0 || metrics == 0 || hmtx.Length < metrics * 4 || hhea.Length < 36 || loca.Length < (count + 1) * entry)
+            throw new InvalidDataException("The font's tables are damaged.");
+        // One glyph a width, in font units.
+        var byUnits = new Dictionary<int, int>();
+        var advances = new List<int>();
+        foreach (var (code, width) in widths.OrderBy(p => p.Key))
+        {
+            var units = (int)Math.Clamp(Math.Round(width * unitsPerEm / 1000), 0, ushort.MaxValue);
+            if (!byUnits.TryGetValue(units, out var glyph))
+            {
+                if (count + advances.Count >= ushort.MaxValue)
+                    return [];
+                byUnits[units] = glyph = count + advances.Count;
+                advances.Add(units);
+            }
+            result[code] = glyph;
+        }
+        var total = count + advances.Count;
+
+        // loca: the new glyphs have no data (each starts where the font's data ends).
+        var newLoca = new byte[(total + 1) * entry];
+        loca.AsSpan(0, (count + 1) * entry).CopyTo(newLoca);
+        for (var glyph = count + 1; glyph <= total; glyph++)
+            loca.AsSpan(count * entry, entry).CopyTo(newLoca.AsSpan(glyph * entry));
+        sfnt.Tables["loca"] = newLoca;
+        var maxp = (byte[])sfnt.Require("maxp").Clone();
+        BinaryPrimitives.WriteUInt16BigEndian(maxp.AsSpan(4), (ushort)total);
+        sfnt.Tables["maxp"] = maxp;
+
+        // hmtx: one advance and bearing a glyph.
+        var table = new byte[total * 4];
+        var widest = 0;
+        for (var glyph = 0; glyph < total; glyph++)
+        {
+            int advance;
+            short bearing = 0;
+            if (glyph < count)
+            {
+                advance = BinaryPrimitives.ReadUInt16BigEndian(hmtx.AsSpan(Math.Min(glyph, metrics - 1) * 4));
+                var at = glyph < metrics ? glyph * 4 + 2 : metrics * 4 + (glyph - metrics) * 2;
+                bearing = at + 2 <= hmtx.Length ? BinaryPrimitives.ReadInt16BigEndian(hmtx.AsSpan(at)) : (short)0;
+            }
+            else
+            {
+                advance = advances[glyph - count];
+            }
+            BinaryPrimitives.WriteUInt16BigEndian(table.AsSpan(glyph * 4), (ushort)advance);
+            BinaryPrimitives.WriteInt16BigEndian(table.AsSpan(glyph * 4 + 2), bearing);
+            widest = Math.Max(widest, advance);
+        }
+        sfnt.Tables["hmtx"] = table;
+        var header = (byte[])hhea.Clone();
+        BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(10), (ushort)widest);
+        BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(34), (ushort)total);
+        sfnt.Tables["hhea"] = header;
+
+        // post: version 2 names the new glyphs "space" (standard name 3); version 1 (the 258 Macintosh glyphs) and
+        // 2.5 no longer fit and become version 3 (no names).
+        if (sfnt["post"] is { Length: >= 32 } post)
+        {
+            var version = BinaryPrimitives.ReadUInt32BigEndian(post);
+            if (version == 0x00020000 && post.Length >= 34 && BinaryPrimitives.ReadUInt16BigEndian(post.AsSpan(32)) == count && post.Length >= 34 + 2 * count)
+            {
+                var names = new byte[post.Length + 2 * advances.Count];
+                post.AsSpan(0, 34 + 2 * count).CopyTo(names);
+                BinaryPrimitives.WriteUInt16BigEndian(names.AsSpan(32), (ushort)total);
+                for (var i = 0; i < advances.Count; i++)
+                    BinaryPrimitives.WriteUInt16BigEndian(names.AsSpan(34 + 2 * (count + i)), 3);
+                post.AsSpan(34 + 2 * count).CopyTo(names.AsSpan(34 + 2 * total));
+                sfnt.Tables["post"] = names;
+            }
+            else if (version != 0x00030000)
+            {
+                var plain = post.AsSpan(0, 32).ToArray();
+                BinaryPrimitives.WriteUInt32BigEndian(plain, 0x00030000);
+                sfnt.Tables["post"] = plain;
+            }
+        }
+        sfnt.Tables.Remove("hdmx");
+        sfnt.Tables.Remove("LTSH");
+        if (sfnt["vmtx"] is { } vmtx)
+            sfnt.Tables["vmtx"] = [.. vmtx, .. new byte[2 * advances.Count]]; // top side bearings 0
+        return result;
     }
 
     /// <summary>The changed program as a new FontFile2 in a copy of the descriptor (the old one may be shared).</summary>

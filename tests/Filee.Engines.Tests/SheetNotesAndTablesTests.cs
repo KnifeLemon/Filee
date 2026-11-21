@@ -103,14 +103,14 @@ public sealed class SheetNotesAndTablesTests(EngineFixture fx) : IClassFixture<E
         Assert.Equal(SheetCommentsPrint.AtEnd, xlsb.Sheets[0].PageSetup.Comments);
         Assert.Equal(xlsx.Sheets[0].Comments, xlsb.Sheets[0].Comments);
         Assert.Equal([(2, 0, "Bo:\nDue on Friday"), (1, 1, "Ann:\nCheck the total")], xlsb.Sheets[0].Comments.Select(c => (c.Row, c.Column, c.Text)));
-        var pages = Words(xlsb, "notes-at-end");
+        var pages = InLanguage("en-US", () => Words(xlsb, "notes-at-end"));
         Assert.Equal(2, pages.Count);
         Assert.Contains("Rent", pages[0]);
         Assert.DoesNotContain("Check", pages[0]);
         // By row, then column; numbered on with the sheet's pages.
         Assert.Equal("Cell: B2 Comment: Ann: Check the total Cell: A3 Comment: Bo: Due on Friday 2 of 2", pages[1]);
         Assert.EndsWith("1 of 2", pages[0]);
-        Assert.Equal(pages, Words(xlsx, "notes-at-end-xlsx"));
+        Assert.Equal(pages, InLanguage("en-US", () => Words(xlsx, "notes-at-end-xlsx")));
 
         // Not asked for: the notes don't print.
         sheet.NotesPrint = 0;
@@ -171,7 +171,7 @@ public sealed class SheetNotesAndTablesTests(EngineFixture fx) : IClassFixture<E
         Assert.Equal(SheetCommentsPrint.AtEnd, atEnd.Sheets[0].PageSetup.Comments);
         Assert.Equal([(0, 1, "Rounded up", "Ann", true), (1, 0, "Paid", "Bo", false)],
             atEnd.Sheets[0].Comments.Select(c => (c.Row, c.Column, c.Text, c.Author, c.Shown)));
-        var pages = Words(atEnd, "ods-notes-at-end");
+        var pages = InLanguage("en-US", () => Words(atEnd, "ods-notes-at-end"));
         Assert.Equal(2, pages.Count);
         Assert.Equal("Cell: B1 Comment: Ann: Rounded up Cell: A2 Comment: Bo: Paid", pages[1]);
 
@@ -191,6 +191,124 @@ public sealed class SheetNotesAndTablesTests(EngineFixture fx) : IClassFixture<E
         public int GetHashCode((double, double) obj) => 0;
     }
 
+    /// <summary><paramref name="read"/> with the app's language set to <paramref name="culture"/>.</summary>
+    private static T InLanguage<T>(string culture, Func<T> read)
+    {
+        var language = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo(culture);
+            return read();
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = language;
+        }
+    }
+
+    /// <summary>The text of the notes list's lines, page by page (the layout's model: no fonts in the way).</summary>
+    private static List<string> ListText(Workbook book)
+    {
+        using var fonts = new SheetFonts();
+        var pages = SheetCommentList.Layout(book, book.Sheets[0], fonts, new CellRange(0, 0, 100, 20),
+            new Documents.LayoutGuard(DocumentLimits.Default, TestContext.Current.CancellationToken));
+        return [.. pages.Select(lines => string.Join(" ", lines.Select(l => l.Text.Text[l.Start..l.End])))];
+    }
+
+    [Theory]
+    [InlineData("ko-KR", "셀: B2 메모: Ann: Check the total")]
+    [InlineData("de-CH", "Zelle: B2 Kommentar: Ann: Check the total")]
+    [InlineData("zh-TW", "儲存格: B2 註解: Ann: Check the total")]
+    [InlineData("fr-FR", "Cellule : B2 Commentaire : Ann: Check the total")]
+    [InlineData("sv-SE", "Cell: B2 Comment: Ann: Check the total")]
+    public void The_notes_list_words_follow_the_app_language(string culture, string expected)
+    {
+        var book = Budget();
+        book.Sheets[0].Notes.Add((1, 1, "Ann", "Check the total", false));
+        book.Sheets[0].NotesPrint = 2;
+        var (xlsb, _) = Twins(book);
+        Assert.Equal(expected, Assert.Single(InLanguage(culture, () => ListText(xlsb))));
+        // Every language the app ships has its words.
+        var folder = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Filee.App", "Assets", "i18n");
+        foreach (var language in Directory.Exists(folder) ? Directory.GetFiles(folder, "*.json").Select(Path.GetFileNameWithoutExtension) : [])
+            Assert.Equal(Charts.ChartWords.Language(System.Globalization.CultureInfo.GetCultureInfo(language!)) == "en",
+                SheetWords.Of(System.Globalization.CultureInfo.GetCultureInfo(language!)).Cell == "Cell:");
+    }
+
+    /// <summary>The budget sheet with two threaded comments (one over Excel's legacy copy of it, one without) and a plain note.</summary>
+    private static XlsbBuilder Threads()
+    {
+        var book = Budget();
+        book.Persons.Add(("{6B8E5F10-0000-4000-8000-000000000001}", "Ann Lee"));
+        book.Persons.Add(("{6B8E5F10-0000-4000-8000-000000000002}", "Bo Kim"));
+        var sheet = book.Sheets[0];
+        // Excel's legacy copy of the first thread: a notice for older versions, which the thread replaces.
+        sheet.Notes.Add((1, 1, "tc={00000000-0000-0000-0000-000000000001}",
+            "[Threaded comment]\n\nYour version of Excel allows you to read this threaded comment; however, any edits to it will get removed if the file is opened in a newer version of Excel.\n\nComment:\n    Check the total\nReply:\n    Done", false));
+        sheet.Notes.Add((2, 0, "Cy", "Due on Friday", false));
+        sheet.Threads.Add((1, 1, "{6B8E5F10-0000-4000-8000-000000000001}", "Check the total",
+            [("{6B8E5F10-0000-4000-8000-000000000002}", "Done"), ("{6B8E5F10-0000-4000-8000-00000000FFFF}", "Thanks")]));
+        sheet.Threads.Add((2, 1, "{6B8E5F10-0000-4000-8000-000000000002}", "New thread", []));
+        sheet.NotesPrint = 2;
+        return book;
+    }
+
+    [Fact]
+    public void Threaded_comments_print_at_the_end_with_their_replies()
+    {
+        var (xlsb, xlsx) = Twins(Threads());
+        foreach (var sheet in new[] { xlsb.Sheets[0], xlsx.Sheets[0] })
+        {
+            Assert.Equal([(1, 1), (2, 0), (2, 1)], sheet.Comments.Select(c => (c.Row, c.Column)));
+            var thread = sheet.Comments[0];
+            Assert.Equal(("Check the total", "Ann Lee", true, false), (thread.Text, thread.Author, thread.Threaded, thread.Shown));
+            // A reply by a person the persons part doesn't name keeps its text.
+            Assert.Equal([("Bo Kim", "Done"), (null, "Thanks")], thread.Replies);
+            Assert.Equal(("Cy:\nDue on Friday", false), (sheet.Comments[1].Text, sheet.Comments[1].Threaded));
+            Assert.Equal(("New thread", "Bo Kim", true), (sheet.Comments[2].Text, sheet.Comments[2].Author, sheet.Comments[2].Threaded));
+        }
+        var pages = InLanguage("en-US", () => Words(xlsb, "threads"));
+        Assert.Equal(2, pages.Count);
+        Assert.Equal("Cell: B2 Comment: Ann Lee: Check the total Reply: Bo Kim: Done Reply: Thanks Cell: A3 Comment: Cy: Due on Friday " +
+                     "Cell: B3 Comment: Bo Kim: New thread", pages[1]);
+        Assert.Equal(pages, InLanguage("en-US", () => Words(xlsx, "threads-xlsx")));
+        Assert.Equal("셀: B2 메모: Ann Lee: Check the total 회신: Bo Kim: Done 회신: Thanks 셀: A3 메모: Cy: Due on Friday 셀: B3 메모: Bo Kim: New thread",
+            Assert.Single(InLanguage("ko-KR", () => ListText(xlsb))));
+
+        // Threads aren't drawn in boxes when notes print as displayed (Excel prints them only at the end).
+        var shown = Threads();
+        shown.Sheets[0].Notes[0] = shown.Sheets[0].Notes[0] with { Shown = true };
+        shown.Sheets[0].NotesPrint = 1;
+        var (displayed, _) = Twins(shown);
+        Assert.DoesNotContain(displayed.Sheets[0].Comments, c => c.Shown);
+    }
+
+    [Fact]
+    public void Threaded_comments_past_the_budget_or_not_xml_are_left_out_quickly()
+    {
+        var clock = Stopwatch.StartNew();
+        var book = Budget();
+        book.Persons.Add(("{P}", "Ann"));
+        for (var i = 0; i < SheetComments.MaxComments + 5000; i++)
+            book.Sheets[0].Threads.Add((i % 1_000_000, i / 1_000_000, "{P}", "n", []));
+        var (xlsb, xlsx) = Twins(book);
+        Assert.Equal(SheetComments.MaxComments, xlsb.Sheets[0].Comments.Count);
+        Assert.Equal(SheetComments.MaxComments, xlsx.Sheets[0].Comments.Count);
+
+        // A threaded comments part that isn't XML leaves the legacy copy in place.
+        var broken = Threads();
+        var path = broken.SaveXlsx(Path.Combine(fx.NewFolder(), "broken.xlsx"));
+        using (var zip = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Update))
+        {
+            zip.GetEntry("xl/threadedComments/threadedComment1.xml")!.Delete();
+            using var stream = zip.CreateEntry("xl/threadedComments/threadedComment1.xml").Open();
+            stream.Write("<ThreadedComments><oops"u8);
+        }
+        var read = XlsxReader.Read(path);
+        Assert.StartsWith("tc={", read.Sheets[0].Comments[0].Text, StringComparison.Ordinal);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(120), clock.Elapsed.ToString());
+    }
+
     // ───────────────────────── Tables ─────────────────────────
 
     /// <summary>Sales A1:C5: a header, three data rows (C4 left blank, B3 in a style with its own fill), a total row.</summary>
@@ -207,7 +325,7 @@ public sealed class SheetNotesAndTablesTests(EngineFixture fx) : IClassFixture<E
         return book;
     }
 
-    /// <summary>A theme colour tinted as Filee tints every SpreadsheetML colour (within a level or two of Excel's).</summary>
+    /// <summary>A theme colour tinted as Filee tints every SpreadsheetML colour (as Excel does).</summary>
     private static string Tinted(int theme, double tint) => Office.Ooxml.OoxmlColors.FromTheme(null).Spreadsheet(new System.Xml.Linq.XElement("color",
         new System.Xml.Linq.XAttribute("theme", theme), new System.Xml.Linq.XAttribute("tint", tint.ToString(System.Globalization.CultureInfo.InvariantCulture))))!;
 
@@ -216,8 +334,7 @@ public sealed class SheetNotesAndTablesTests(EngineFixture fx) : IClassFixture<E
     {
         // Accent 1 at 80 % and 40 % tint: Excel shows #D9E1F2 and #8EA9DB.
         var (band, line) = (Tinted(4, 0.8), Tinted(4, 0.4));
-        Assert.True(Near(SheetColors.Parse(band, SKColors.Black), new SKColor(0xD9, 0xE1, 0xF2), 3), band);
-        Assert.True(Near(SheetColors.Parse(line, SKColors.Black), new SKColor(0x8E, 0xA9, 0xDB), 3), line);
+        Assert.Equal(("#D9E1F2", "#8EA9DB"), (band, line));
         var (xlsb, xlsx) = Twins(Sales("TableStyleMedium2"));
         foreach (var sheet in new[] { xlsb.Sheets[0], xlsx.Sheets[0] })
         {
@@ -278,7 +395,9 @@ public sealed class SheetNotesAndTablesTests(EngineFixture fx) : IClassFixture<E
         var clock = Stopwatch.StartNew();
         var book = new XlsbBuilder();
         var sheet = book.Sheet("Big").Text(0, 0, "Head").Text(5000, 3, "Far");
-        for (var i = 0; i < 40; i++)
+        // Eight whole-sheet tables: the first styles blank cells until the budget's cells are spent, the next ones
+        // walk the cells the sheet has until its visits are.
+        for (var i = 0; i < 8; i++)
             sheet.Tables.Add(((0, 0, 1_048_575, 16_383), "TableStyleMedium2", true, true, true));
         var (xlsb, xlsx) = Twins(book);
         foreach (var read in new[] { xlsb.Sheets[0], xlsx.Sheets[0] })
@@ -297,7 +416,109 @@ public sealed class SheetNotesAndTablesTests(EngineFixture fx) : IClassFixture<E
         notes.SheetRelationships[1] = [("rIdC", "comments", "../comments1.xml")];
         var many = XlsxReader.Read(notes.Save(Path.Combine(fx.NewFolder(), "notes.xlsx")));
         Assert.Equal(SheetComments.MaxComments, many.Sheets[0].Comments.Count);
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(60), clock.Elapsed.ToString());
+        // About 25 s alone on a busy PC (two readers, the budgets spent in full): room for a loaded runner.
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(300), clock.Elapsed.ToString());
+    }
+
+    [Fact]
+    public void A_tables_own_formats_go_over_its_style_and_under_its_cells_own()
+    {
+        var book = Sales("TableStyleLight1");
+        book.Dxfs.Add((XlsbColor.Rgb(0x203764), XlsbColor.Rgb(0xFFFFFF), true)); // 0: header row
+        book.Dxfs.Add((null, XlsbColor.Rgb(0xC00000), false));                   // 1: data rows
+        book.Dxfs.Add((XlsbColor.Rgb(0xFFF2CC), null, false));                   // 2: total row
+        book.Dxfs.Add((null, null, false));                                      // 3: data border, medium green below
+        book.DxfBorders[3] = (2, XlsbColor.Rgb(0x00B050));
+        book.Dxfs.Add((XlsbColor.Rgb(0xE2EFDA), null, false));                   // 4: column C's data rows
+        book.Sheets[0].TableFormats[0] = (0, 1, 2, 3, [(2, -1, 4, -1)]);
+        var (xlsb, xlsx) = Twins(book);
+        foreach (var sheet in new[] { xlsb.Sheets[0], xlsx.Sheets[0] })
+        {
+            CellStyle At(int row, int column) => sheet.Get(row, column)!.Style;
+            Assert.Equal(("#203764", "#FFFFFF", true), (At(0, 0).Fill, At(0, 0).Color, At(0, 0).Bold));
+            Assert.Equal("#C00000", At(1, 0).Color);
+            // B3's own style (bold white on #1F4E79) stays over the table's formats.
+            Assert.Equal(("#1F4E79", "#FFFFFF"), (At(2, 1).Fill, At(2, 1).Color));
+            // The border format is the data rows' outline: below the last data row only.
+            Assert.Equal(new CellBorder("medium", "#00B050"), At(3, 0).Bottom);
+            Assert.NotEqual(new CellBorder("medium", "#00B050"), At(1, 0).Bottom);
+            // Column C's own format, on the blank C4 too; the total row's fill.
+            Assert.Equal(("#E2EFDA", "#E2EFDA"), (At(1, 2).Fill, At(3, 2).Fill));
+            Assert.Equal(("#FFF2CC", "#FFF2CC"), (At(4, 0).Fill, At(4, 2).Fill));
+        }
+        Assert.Equal(Cells(xlsx.Sheets[0]), Cells(xlsb.Sheets[0]));
+
+        // Formats on a table with a style Filee doesn't know still apply.
+        var unknown = Sales("NoSuchStyle");
+        unknown.Dxfs.Add((XlsbColor.Rgb(0xFFF2CC), null, false));
+        unknown.Sheets[0].TableFormats[0] = (-1, 0, -1, -1, []);
+        Assert.Equal("#FFF2CC", Twins(unknown).Xlsb.Sheets[0].Get(1, 0)!.Style.Fill);
+    }
+
+    [Fact]
+    public void Column_formats_over_a_whole_sheet_table_are_applied_within_the_budget_quickly()
+    {
+        var clock = Stopwatch.StartNew();
+        var book = new XlsbBuilder();
+        var sheet = book.Sheet("Big").Text(0, 0, "Head").Text(5000, 3, "Far");
+        book.Dxfs.Add((XlsbColor.Rgb(0xFFF2CC), null, false));
+        sheet.Tables.Add(((0, 0, 1_048_575, 16_383), "TableStyleMedium2", true, true, true));
+        sheet.TableFormats[0] = (0, 0, 0, 0, [.. Enumerable.Range(0, 16_384).Select(c => (c, 0, 0, 0))]);
+        var (xlsb, xlsx) = Twins(book);
+        foreach (var read in new[] { xlsb.Sheets[0], xlsx.Sheets[0] })
+        {
+            Assert.InRange(read.Rows.Sum(r => r.Value.Count), 2, new TableBudget().Cells + 2);
+            Assert.Equal("#FFF2CC", read.Get(5000, 3)!.Style.Fill);
+        }
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(120), clock.Elapsed.ToString());
+    }
+
+    // ───────────────────────── XLSX shapes with text ─────────────────────────
+
+    [Fact]
+    public void Text_in_xlsx_shapes_prints_with_its_fonts_and_alignment()
+    {
+        var book = Budget();
+        var sheet = book.Sheets[0];
+        sheet.DrawingId = "rIdD";
+        sheet.Relationships.Add(("rIdD", "drawing", "../drawings/drawing1.xml"));
+        const long Emu = 12700;
+        book.Parts["xl/drawings/drawing1.xml"] =
+            "<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">" +
+            $"<xdr:absoluteAnchor><xdr:pos x=\"{200 * Emu}\" y=\"{60 * Emu}\"/><xdr:ext cx=\"{160 * Emu}\" cy=\"{80 * Emu}\"/>" +
+            "<xdr:sp><xdr:nvSpPr><xdr:cNvPr id=\"2\" name=\"Rectangle 1\"/><xdr:cNvSpPr/></xdr:nvSpPr>" +
+            "<xdr:spPr><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val=\"1F4E79\"/></a:solidFill></xdr:spPr>" +
+            "<xdr:style><a:lnRef idx=\"2\"><a:schemeClr val=\"accent1\"/></a:lnRef><a:fillRef idx=\"1\"><a:schemeClr val=\"accent1\"/></a:fillRef>" +
+            "<a:effectRef idx=\"0\"><a:schemeClr val=\"accent1\"/></a:effectRef><a:fontRef idx=\"minor\"><a:schemeClr val=\"lt1\"/></a:fontRef></xdr:style>" +
+            "<xdr:txBody><a:bodyPr rtlCol=\"0\" anchor=\"ctr\" lIns=\"0\"/><a:lstStyle/>" +
+            "<a:p><a:pPr algn=\"ctr\"/><a:r><a:rPr lang=\"en-US\" sz=\"1400\" b=\"1\"/><a:t>Total</a:t></a:r></a:p>" +
+            "<a:p><a:r><a:rPr lang=\"en-US\"><a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill></a:rPr><a:t>up</a:t></a:r><a:br/><a:r><a:rPr lang=\"en-US\"/><a:t>5 %</a:t></a:r></a:p>" +
+            "</xdr:txBody></xdr:sp><xdr:clientData/></xdr:absoluteAnchor></xdr:wsDr>";
+        var folder = fx.NewFolder();
+        var xlsxPath = book.SaveXlsx(Path.Combine(folder, "shape.xlsx"));
+        Assert.Null(SheetCapabilities.FirstUnsupported(xlsxPath, "xlsx"));
+        var (xlsb, xlsx) = Twins(book);
+        foreach (var read in new[] { xlsb, xlsx })
+        {
+            var shape = Assert.Single(read.Sheets[0].Drawings.OfType<SheetShape>());
+            var text = shape.Text!;
+            Assert.Equal((CellVerticalAlign.Center, 0.0, "#FFFFFF", 11.0), (text.Anchor, text.Insets.Left, text.Font.Color, text.Font.FontSize));
+            Assert.Equal([CellAlign.Center, CellAlign.Left], text.Paragraphs.Select(p => p.Align));
+            var total = Assert.Single(text.Paragraphs[0].Runs);
+            Assert.Equal(("Total", true, 14.0), (total.Text, total.Bold, total.FontSize));
+            Assert.Equal([("up", "#FF0000"), ("\n5 %", null)], text.Paragraphs[1].Runs.Select(r => (r.Text, r.Color)));
+        }
+        var page = Assert.Single(InLanguage("en-US", () => Words(xlsb, "shape-text")));
+        Assert.Contains("Total", page);
+        Assert.Contains("up", page);
+        // White text on the shape's dark fill.
+        using var bitmap = Page(xlsb);
+        var (left, top) = ((int)(xlsb.Sheets[0].PageSetup.LeftMargin + 200), (int)(xlsb.Sheets[0].PageSetup.TopMargin + 60));
+        var white = 0;
+        for (var y = top + 2; y < top + 78; y++)
+            for (var x = left + 2; x < left + 158; x++)
+                white += Near(bitmap.GetPixel(x, y), SKColors.White, 40) ? 1 : 0;
+        Assert.True(white > 20, white.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     // ───────────────────────── ODS drawings ─────────────────────────

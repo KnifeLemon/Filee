@@ -24,9 +24,11 @@
 //   UTF-16 code units, so the font becomes an Identity-H (-V) CIDFontType2 whose CIDs are those codes, mapped by a
 //   CIDToGIDMap to an installed CJK font's glyphs: the PDF's name first, then common fonts of its script (from the
 //   CMap's name, serif or sans as the name and descriptor say: Batang / Malgun Gothic, MS Mincho / Yu Gothic, SimSun /
-//   Microsoft YaHei, MingLiU / Microsoft JhengHei, Noto CJK …). Widths can't be compared (the PDF gives them by the
-//   CMap's CIDs, which need the CMap file): they become the installed font's. Codes of surrogate pairs, other
-//   predefined CMaps and codes Filee can't follow are refused as before.
+//   Microsoft YaHei, MingLiU / Microsoft JhengHei, Noto CJK …). The PDF gives widths by the CMap's CIDs, which need
+//   the CMap file; they are kept where the CID of a code is known without it (UnicodeWidth): every code when W gives
+//   all CIDs the default width DW, and printable ASCII under the CMaps that aren't half-width (CIDs 1–95 in all four
+//   Adobe collections). The program's advances are set to them. Other codes take the installed font's widths. Codes
+//   of surrogate pairs, other predefined CMaps and codes Filee can't follow are refused as before.
 //
 // Type 3 fonts are drawings and need no program. Fonts the PDF embedded itself are repaired by PdfAFontRepair.
 
@@ -590,6 +592,9 @@ internal static partial class PdfAFonts
         if (used is null || used.Any(c => c is >= 0xD800 and <= 0xDFFF or < 0 or >= MaxCids))
             return false;
         var descriptor = Resolve(cidFont.Elements["/FontDescriptor"]) as PdfDictionary;
+        var original = CidWidths(cidFont);
+        var standard = PdfObjects.Number(cidFont, "/DW", 1000);
+        var halfWidth = Name(font, "/Encoding").Contains("-HW-", StringComparison.Ordinal);
         var baseFont = BaseName(cidFont);
         var serif = (Integer(descriptor, "/Flags") & Serif) != 0
                     || new[] { "Myeong", "Myung", "Mincho", "Ming", "Song", "Batang", "Serif" }.Any(w => baseFont.Contains(w, StringComparison.OrdinalIgnoreCase));
@@ -622,9 +627,20 @@ internal static partial class PdfAFonts
             }
             if (!fits || match.Glyphs.Count == 0)
                 continue;
+            // The PDF's widths where a code's CID is known (the program's advance follows, at its units).
+            var kept = new Dictionary<int, double>();
+            foreach (var (code, glyph) in match.Glyphs)
+            {
+                if (UnicodeWidth(code, original, standard, halfWidth) is not { } width)
+                    continue;
+                var shown = Math.Round(width * program.UnitsPerEm / 1000) * 1000 / program.UnitsPerEm;
+                if (!kept.TryAdd(glyph, shown))
+                    continue; // a glyph two codes draw keeps the first width
+                match.Widths[glyph] = shown;
+            }
             var vertical = Name(font, "/Encoding").EndsWith("-V", StringComparison.Ordinal);
             font.Elements.SetName("/Encoding", vertical ? "/Identity-V" : "/Identity-H");
-            // Widths by the new CIDs (the codes): the installed font's.
+            // Widths by the new CIDs (the codes): the PDF's where known, else the installed font's.
             var widths = new PdfArray(document);
             foreach (var (code, glyph) in match.Glyphs)
             {
@@ -640,6 +656,22 @@ internal static partial class PdfAFonts
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// The width the PDF gives a code of a predefined Unicode CMap, where its CID is known without the CMap file: DW
+    /// for every code when W gives every CID it lists DW too (or there is no W); for printable ASCII under a CMap that
+    /// isn't half-width, the width of CID code − 31 (Adobe-Japan1, -Korea1, -GB1 and -CNS1 all start with the 95
+    /// proportional ASCII characters at CIDs 1–95). Backslash and tilde are left out: Japanese and Korean CMaps may give
+    /// them other CIDs (yen, won, overline). Null when unknown.
+    /// </summary>
+    internal static double? UnicodeWidth(int code, Dictionary<int, double> widths, double standard, bool halfWidth)
+    {
+        if (widths.Values.All(w => Math.Abs(w - standard) <= 1))
+            return standard;
+        if (!halfWidth && code is >= 0x20 and <= 0x7E and not '\\' and not '~')
+            return widths.TryGetValue(code - 0x1F, out var width) ? width : standard;
+        return null;
     }
 
     /// <summary>A CIDFont's widths (W), CID → width, bounded.</summary>

@@ -1423,7 +1423,7 @@ internal sealed partial class DocxReader
 
             // Whole: the layout breaks a display equation too wide for its column the way Word does (with the
             // document's m:mathPr), and the HWPX writer breaks it into paragraphs for 한글, which doesn't.
-            builder.Add(new HEquation(body, format) { Display = display, Wrap = display ? _mathWrap : null });
+            builder.Add(new HEquation(body, format) { Display = display, Wrap = _mathWrap });
         }
     }
 

@@ -412,16 +412,35 @@ internal sealed partial class OdtWriter
                     sb.Append(Formula(equation, _paragraph is { } paragraph && paragraph.Inlines.Contains(equation) && HEquation.IsDisplay(equation, paragraph)));
                     state.Space = false;
                     break;
+                // Tracked changes are kept in content.xml's text: not in headers and footers (styles.xml).
+                case HText { Format.Layout.Inserted: { } inserted } text when context != Context.Header:
+                    Inserted(sb, inserted, () => Span(sb, text.Format, state, () => Text(sb, text.Text, state)));
+                    break;
                 case HText text:
                     Span(sb, text.Format, state, () => Text(sb, text.Text, state));
                     break;
                 case HLineBreak lineBreak:
-                    Span(sb, lineBreak.Format, state, () => sb.Append("<text:line-break/>"));
+                    if (lineBreak.Format.Layout?.Inserted is { } insertedBreak && context != Context.Header)
+                        Inserted(sb, insertedBreak, () => Span(sb, lineBreak.Format, state, () => sb.Append("<text:line-break/>")));
+                    else
+                        Span(sb, lineBreak.Format, state, () => sb.Append("<text:line-break/>"));
                     state.Space = false;
                     break;
                 case HTab tab:
-                    Span(sb, tab.Format, state, () => sb.Append("<text:tab/>"));
+                    if (tab.Format.Layout?.Inserted is { } insertedTab && context != Context.Header)
+                        Inserted(sb, insertedTab, () => Span(sb, tab.Format, state, () => sb.Append("<text:tab/>")));
+                    else
+                        Span(sb, tab.Format, state, () => sb.Append("<text:tab/>"));
                     state.Space = false;
+                    break;
+                case HDeletion deletion when context != Context.Header:
+                    Deletion(sb, deletion, state);
+                    break;
+                case HCommentStart start:
+                    CommentStart(sb, start, context);
+                    break;
+                case HComment comment:
+                    CommentEnd(sb, comment, context);
                     break;
                 case HLink link:
                     sb.Append($"<text:a xlink:type=\"simple\" xlink:href=\"{Escape(link.Target)}\">");

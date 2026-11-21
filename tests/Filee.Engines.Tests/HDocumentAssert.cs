@@ -113,7 +113,7 @@ internal static class HDocumentAssert
                         Blocks(depth + 1, box.Blocks);
                         break;
                     case HShape shape:
-                        Line(depth, $"SHAPE {shape.Kind} {shape.Width}x{shape.Height} anchor={shape.Anchor} fill={shape.Fill} gradient={Gradient(shape.Gradient)} line={Border(shape.Line)} ratio={shape.CornerRatio} flip={shape.FlipHorizontal}/{shape.FlipVertical}");
+                        Line(depth, $"SHAPE {shape.Kind} {shape.Width}x{shape.Height} anchor={shape.Anchor} fill={shape.Fill} gradient={Gradient(shape.Gradient)} line={Border(shape.Line)} ratio={shape.CornerRatio} flip={shape.FlipHorizontal}/{shape.FlipVertical} arrows={shape.Head}/{shape.Tail}");
                         break;
                 }
             }
@@ -405,6 +405,7 @@ internal static class HDocumentAssert
                     Line(x.Line, y.Line);
                     Equal(x.CornerRatio, y.CornerRatio, "corner");
                     Equal((x.FlipHorizontal, x.FlipVertical), (y.FlipHorizontal, y.FlipVertical), "flip");
+                    Equal((x.Head, x.Tail), (y.Head, y.Tail), "arrowheads");
                     break;
             }
         }

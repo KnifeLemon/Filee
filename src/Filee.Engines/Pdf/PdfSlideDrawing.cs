@@ -9,11 +9,14 @@
 // - pictures with the matrix that maps their unit square onto the page, stencil masks (image masks) with the colour
 //   they paint in;
 // - shadings painted with "sh" over the clipping area;
-// - where each glyph starts and when it is drawn, so text boxes take their place among the rest;
+// - where each glyph starts and when it is drawn, so text boxes take their place among the rest, and the glyphs as
+//   painted (font, code, matrix, colour: Letters, at most MaxLetters), drawn only as the backdrop of a blend;
 // - the clipping path everything is painted through (an intersection of the page's W / W* paths and the boxes of
 //   form XObjects), and the soft mask: a group that paints one colour is a constant alpha, one that paints one shading
-//   an alpha gradient (from its luminosity); any other group is drawn (its paths, shadings and pictures) into a picture
-//   of its alpha or luminosity over its box, at most MaskSide pixels a side and MaxMaskPixels a page.
+//   an alpha gradient (from its luminosity); any other group, or one with a transfer function (TR) or a backdrop (BC)
+//   other than black, is drawn (its paths, shadings and pictures) into a picture of its alpha or luminosity over its
+//   box (over the drawing's area when the mask isn't 0 outside the box), at most MaskSide pixels a side and
+//   MaxMaskPixels a page.
 //
 // Function-based and mesh shadings are drawn into pictures when they are met (PdfShadingPictures), with the gradient
 // they look like when they are close to one.
@@ -103,6 +106,12 @@ internal abstract record PdfPaint(int Order, PdfClip? Clip, PdfMask? Mask)
     /// has the backdrop the page gives it. Null: only what the same picture draws is under it.
     /// </summary>
     public SKColor? Backdrop { get; init; }
+
+    /// <summary>
+    /// What the page painted before a blended paint where it paints (pictures, text, graphics on other slide items):
+    /// drawn over <see cref="Backdrop"/> under it, so the blend sees them as the PDF's does. Null: the page colour only.
+    /// </summary>
+    public IReadOnlyList<PdfPaint>? Below { get; init; }
 }
 
 /// <summary>A filled and / or stroked path; the line width and dashes are in slide points.</summary>
@@ -118,6 +127,20 @@ internal sealed record PdfPaintedImage(int Order, PdfClip? Clip, PdfMask? Mask, 
 
 /// <summary>A shading painted with "sh" over the clipping area (or its own box).</summary>
 internal sealed record PdfPaintedShading(int Order, PdfClip? Clip, PdfMask? Mask, PdfShadingFill Fill, double Alpha) : PdfPaint(Order, Clip, Mask);
+
+/// <summary>
+/// A glyph as it is painted: <paramref name="Matrix"/> maps the font's text space (an em of 1, y up) onto the slide.
+/// Slides keep text as text boxes; these are drawn only as the backdrop of something blended over them.
+/// </summary>
+/// <param name="Code">The character code in <paramref name="Font"/>, whose outline is drawn when the font has one.</param>
+/// <param name="Unicode">The character, drawn with an installed font when <paramref name="Font"/> has no outline.</param>
+/// <param name="Stroked">Painted as an outline (text rendering modes 1 and 5) rather than filled.</param>
+internal sealed record PdfPaintedGlyph(int Order, PdfClip? Clip, PdfMask? Mask, IFont Font, int Code, string Unicode, SKMatrix Matrix,
+    PdfPaintColor Color, bool Stroked, float LineWidth) : PdfPaint(Order, Clip, Mask)
+{
+    /// <summary>What it covers on the slide, about: the em box under the matrix.</summary>
+    public SKRect Area => Matrix.MapRect(new SKRect(-0.25f, -0.4f, 1.5f, 1.2f));
+}
 
 /// <summary>
 /// Where a glyph starts (PdfPig's coordinates: y up, as its letters' StartBaseLine) and when it is drawn;
@@ -150,6 +173,9 @@ internal sealed class PdfSlideDrawing : IDisposable
     public List<PdfPaint> Paints { get; } = [];
 
     public List<PdfGlyphOrder> Glyphs { get; } = [];
+
+    /// <summary>The glyphs as painted (at most <see cref="PdfSlideDrawingProcessor.MaxLetters"/>), for the backdrop of blends.</summary>
+    public List<PdfPaintedGlyph> Letters { get; } = [];
 
     /// <summary>Paths and pictures to dispose with the drawing.</summary>
     internal List<IDisposable> Owned { get; } = [];
@@ -186,6 +212,9 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
 {
     internal const int MaxPaints = 200_000;
     internal const int MaxGlyphs = 500_000;
+
+    /// <summary>Glyphs kept as painted (<see cref="PdfSlideDrawing.Letters"/>) on one page at most.</summary>
+    internal const int MaxLetters = 100_000;
     internal const int MaxClipCommands = 20_000;
 
     /// <summary>Tiling pattern cells and soft mask groups inside each other at most.</summary>
@@ -714,15 +743,20 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
             using (drawing)
             {
                 var luminosity = mask.Subtype == SoftMaskType.Luminosity;
+                var transfer = Transfer(mask);
+                // A transfer function or a backdrop other than black: the mask is drawn, outside the group's box too.
+                var plain = transfer is null && (!luminosity || Backdrop(mask.BC) == SKColors.Black);
                 result = drawing.Paints switch
                 {
-                    [PdfPaintedShading { Fill: { Picture: null } fill, Clip: null, Mask: null } shading] when luminosity => new PdfMask(shading.Alpha, fill),
+                    [PdfPaintedShading { Fill: { Picture: null } fill, Clip: null, Mask: null } shading] when luminosity && plain => new PdfMask(shading.Alpha, fill),
                     [PdfPaintedPath { Fill: { Shading: { Picture: null } fill } paint, Stroke: null, Clip: null, Mask: null, Blend: SKBlendMode.SrcOver }]
-                        when luminosity => new PdfMask(paint.Alpha, fill),
-                    [PdfPaintedPath { Fill: { IsSolid: true } paint, Stroke: null, Mask: null, Blend: SKBlendMode.SrcOver }] =>
+                        when luminosity && plain => new PdfMask(paint.Alpha, fill),
+                    [PdfPaintedPath { Fill: { IsSolid: true } paint, Stroke: null, Mask: null, Blend: SKBlendMode.SrcOver }] when plain =>
                         new PdfMask(paint.Alpha * (luminosity ? PdfShadings.Luminosity(paint.Color) : 1)),
-                    [] => null,
-                    _ => Drawn(drawing, group, initial, luminosity, mask.BC),
+                    [] when plain => null,
+                    // Nothing painted: what the backdrop (or no alpha) gives, through the transfer function.
+                    [] => new PdfMask(Transferred(transfer, luminosity ? PdfShadings.Luminosity(Backdrop(mask.BC)) : 0) / 255.0),
+                    _ => Drawn(drawing, group, initial, luminosity, mask.BC, transfer),
                 };
             }
         }
@@ -731,21 +765,32 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
 
     /// <summary>
     /// A soft mask group's paints drawn over its box (on the drawing's area): a picture of their alpha, or of their
-    /// luminosity over the backdrop colour BC (black by default). Null past the mask budget.
+    /// luminosity over the backdrop colour BC (black by default), through the transfer function TR. Where the mask is
+    /// not 0 outside the group's box (a light BC, a TR that lifts 0), the picture covers the drawing's area. Null past
+    /// the mask budget.
     /// </summary>
-    private PdfMask? Drawn(PdfSlideDrawing drawing, StreamToken group, TransformationMatrix initial, bool luminosity, double[]? backdrop)
+    private PdfMask? Drawn(PdfSlideDrawing drawing, StreamToken group, TransformationMatrix initial, bool luminosity, double[]? backdrop, byte[]? transfer)
     {
         var box = _area;
+        using var groupArea = new SKPath();
         if (group.StreamDictionary.TryGet(NameToken.Bbox, PdfScanner, out ArrayToken? bbox) && bbox.Length == 4
             && bbox.Data.All(t => t is NumericToken { Double: var v } && double.IsFinite(v)))
         {
             var values = bbox.Data.Select(t => (float)((NumericToken)t).Double).ToArray();
-            box = ToSlide(initial).MapRect(new SKRect(Math.Min(values[0], values[2]), Math.Min(values[1], values[3]), Math.Max(values[0], values[2]),
-                Math.Max(values[1], values[3])));
+            var corners = new SKRect(Math.Min(values[0], values[2]), Math.Min(values[1], values[3]), Math.Max(values[0], values[2]), Math.Max(values[1], values[3]));
+            var groupSpace = ToSlide(initial);
+            groupArea.AddPoly([groupSpace.MapPoint(corners.Left, corners.Top), groupSpace.MapPoint(corners.Right, corners.Top),
+                groupSpace.MapPoint(corners.Right, corners.Bottom), groupSpace.MapPoint(corners.Left, corners.Bottom)]);
+            box = groupSpace.MapRect(corners);
             box.Intersect(_area);
         }
+        var outside = Transferred(transfer, luminosity ? PdfShadings.Luminosity(Backdrop(backdrop)) : 0);
+        if (outside > 0 && !groupArea.IsEmpty)
+            box = _area;
+        else
+            groupArea.Reset();
         if (box.Width < 0.5f || box.Height < 0.5f)
-            return new PdfMask(0); // a group of no area hides everything
+            return new PdfMask(outside / 255.0); // a group of no area: what is outside it everywhere
         var scale = Math.Min(MaskScale, MaskSide / Math.Max(box.Width, box.Height));
         var (width, height) = ((int)Math.Ceiling(box.Width * scale), (int)Math.Ceiling(box.Height * scale));
         if (_budget.MaskPixels + (long)width * height > MaxMaskPixels)
@@ -757,6 +802,8 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
         {
             canvas.Clear(luminosity ? Backdrop(backdrop) : SKColors.Transparent);
             canvas.SetMatrix(toPixels);
+            if (!groupArea.IsEmpty)
+                canvas.ClipPath(groupArea, SKClipOperation.Intersect, true);
             PdfSlideRaster.Draw(canvas, drawing.Paints, pictures: true);
         }
         // The mask's alpha in the alpha channel, nothing else.
@@ -769,6 +816,8 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
             var value = luminosity
                 ? (byte)Math.Clamp(Math.Round(0.3 * source[at] + 0.59 * source[at + 1] + 0.11 * source[at + 2]), 0, 255)
                 : source[at + 3];
+            if (transfer is not null)
+                value = transfer[value];
             (target[at], target[at + 1], target[at + 2], target[at + 3]) = (0, 0, 0, value);
         }
         if (!toPixels.TryInvert(out var toSlide))
@@ -776,6 +825,39 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
         var image = SKImage.FromBitmap(alpha);
         _drawing.Owned.Add(image);
         return new PdfMask(1, Picture: new PdfShadingPicture(image, toSlide));
+    }
+
+    /// <summary>
+    /// A soft mask's transfer function TR as a table of 256 mask values; null for none, Identity, or one that can't be
+    /// evaluated (taken as the identity).
+    /// </summary>
+    private static byte[]? Transfer(SoftMask mask)
+    {
+        if (mask.TransferFunction is not { } function)
+            return null;
+        var table = new byte[256];
+        var identity = true;
+        try
+        {
+            for (var i = 0; i < 256; i++)
+            {
+                var output = function.Eval([i / 255.0]);
+                table[i] = output is [var value, ..] ? PdfShadings.Byte(value) : (byte)i;
+                identity &= table[i] == i;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        {
+            return null;
+        }
+        return identity ? null : table;
+    }
+
+    /// <summary>A mask value 0–1 through the transfer table, as 0–255.</summary>
+    private static byte Transferred(byte[]? transfer, double value)
+    {
+        var level = PdfShadings.Byte(value);
+        return transfer is null ? level : transfer[level];
     }
 
     /// <summary>A luminosity mask's backdrop colour (BC, grey, RGB or CMYK numbers), opaque; black without one.</summary>
@@ -852,8 +934,28 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
             var along = transformationMatrix.Transform(textMatrix.Transform(renderingMatrix.Transform(new PdfPoint(1, 0))));
             var (dx, dy) = (along.X - origin.X, along.Y - origin.Y);
             _drawing.Glyphs.Add(new PdfGlyphOrder(origin.X, origin.Y, _order, dx <= 0 || Math.Abs(dy) > 0.02 * dx));
+            if (_drawing.Letters.Count < MaxLetters && Letter(font, currentState, code, unicode, renderingMatrix, textMatrix, transformationMatrix) is { } letter)
+                _drawing.Letters.Add(letter);
         }
         _order++;
+    }
+
+    /// <summary>A glyph as painted, or null when it paints nothing (invisible text, as OCR layers have).</summary>
+    private PdfPaintedGlyph? Letter(IFont font, CurrentGraphicsState state, int code, string unicode, in TransformationMatrix rendering,
+        in TransformationMatrix text, in TransformationMatrix transformation)
+    {
+        var mode = state.FontState.TextRenderingMode;
+        if (mode is TextRenderingMode.Neither or TextRenderingMode.NeitherClip)
+            return null;
+        var stroked = mode is TextRenderingMode.Stroke or TextRenderingMode.StrokeClip;
+        var color = stroked ? PaintOf(state.CurrentStrokingColor, state.AlphaConstantStroking) : PaintOf(state.CurrentNonStrokingColor, state.AlphaConstantNonStroking);
+        if (color is null)
+            return null;
+        var matrix = ToSlide(rendering.Multiply(text).Multiply(transformation));
+        var m = transformation;
+        var scale = Math.Sqrt(Math.Abs(m.A * m.D - m.B * m.C));
+        var width = (float)(state.LineWidth * (double.IsFinite(scale) ? Math.Clamp(scale, 1e-3, 1e3) : 1));
+        return new PdfPaintedGlyph(_order, _clip, Mask(state), font, code, unicode, matrix, color, stroked, width) { Blend = Blend(state) };
     }
 
     public override void BeginMarkedContent(NameToken name, NameToken? propertyDictionaryName, DictionaryToken? properties)
@@ -967,10 +1069,14 @@ internal static class PdfSlideRaster
     /// Draws <paramref name="paints"/> through their clipping paths, alpha, soft masks and blend modes; pictures only
     /// when <paramref name="pictures"/> (a soft mask group: on slides they are pictures of their own).
     /// <paramref name="uncolored"/>: a pattern cell that gets its colour from the fill (black here).
+    /// <paramref name="cache"/> keeps decoded pictures and glyph outlines for the page; <paramref name="backdrops"/>
+    /// false leaves out the backdrops of blended paints (they are being drawn as one).
     /// </summary>
     public static void Draw(SKCanvas canvas, IEnumerable<PdfPaint> paints, bool uncolored = false, CancellationToken cancellationToken = default,
-        bool pictures = false)
+        bool pictures = false, PdfRasterCache? cache = null, bool backdrops = true)
     {
+        // What this canvas has drawn so far: a backdrop leaves it out, since it is on the canvas already.
+        HashSet<PdfPaint>? drawn = null;
         foreach (var paint in paints)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -980,17 +1086,44 @@ internal static class PdfSlideRaster
             if (paint.Clip is { } clip)
                 canvas.ClipPath(clip.Path, SKClipOperation.Intersect, true);
             using var blend = paint.Blend == SKBlendMode.SrcOver ? null : new SKPaint { BlendMode = paint.Blend };
-            if (blend is not null && paint.Backdrop is { } backdrop)
-                Underlay(canvas, paint, backdrop);
-            if (blend is not null)
-                canvas.SaveLayer(blend);
+            if (blend is not null && backdrops && paint.Backdrop is { } backdrop)
+            {
+                if (paint.Below is { } below)
+                    Behind(canvas, paint, backdrop, below, drawn, cache, cancellationToken);
+                else
+                    Underlay(canvas, paint, backdrop);
+            }
             var masked = paint.Mask is { } mask && (!mask.IsConstant || mask.Alpha < 1);
+            // Layers only as large as what the paint covers: a page of small blended or masked paints would otherwise
+            // clear and blend a layer of the whole canvas for each.
+            SKRect? layer = null;
+            if (blend is not null || masked)
+            {
+                using var coverage = Coverage(canvas, paint);
+                if (coverage is not null)
+                    layer = SKRect.Inflate(coverage.Bounds, 2 / Math.Max(1e-3f, canvas.TotalMatrix.ScaleX), 2 / Math.Max(1e-3f, canvas.TotalMatrix.ScaleX));
+            }
+            if (blend is not null)
+            {
+                if (layer is { } bounds)
+                    canvas.SaveLayer(bounds, blend);
+                else
+                    canvas.SaveLayer(blend);
+            }
             if (masked)
-                canvas.SaveLayer();
+            {
+                if (layer is { } bounds)
+                    canvas.SaveLayer(bounds, null);
+                else
+                    canvas.SaveLayer();
+            }
             switch (paint)
             {
                 case PdfPaintedImage image:
-                    Picture(canvas, image);
+                    Picture(canvas, image, cache);
+                    break;
+                case PdfPaintedGlyph glyph:
+                    Glyph(canvas, glyph, uncolored, cache);
                     break;
                 case PdfPaintedPath path:
                     if (path.Fill is { } fill)
@@ -1041,6 +1174,127 @@ internal static class PdfSlideRaster
             if (blend is not null)
                 canvas.Restore();
             canvas.Restore();
+            if (backdrops)
+                (drawn ??= new HashSet<PdfPaint>(ReferenceEqualityComparer.Instance)).Add(paint);
+        }
+    }
+
+    /// <summary>
+    /// The page colour and what the page painted before <paramref name="paint"/> (<paramref name="below"/>, less what
+    /// this canvas has <paramref name="drawn"/>), under what is drawn there already (DstOver), where the paint paints.
+    /// </summary>
+    private static void Behind(SKCanvas canvas, PdfPaint paint, SKColor page, IReadOnlyList<PdfPaint> below, HashSet<PdfPaint>? drawn,
+        PdfRasterCache? cache, CancellationToken cancellationToken)
+    {
+        using var painted = Coverage(canvas, paint);
+        // A pixel more all round, clipped sharply: the paint's soft edge then lies over its backdrop too, not over
+        // nothing (which left a faint outline over the items under it).
+        using var coverage = painted is null ? null : Grown(painted, 1.5f / Math.Max(1e-3f, canvas.TotalMatrix.ScaleX));
+        canvas.Save();
+        if (coverage is not null)
+            canvas.ClipPath(coverage, SKClipOperation.Intersect, false);
+        using var under = new SKPaint { BlendMode = SKBlendMode.DstOver };
+        if (coverage is not null)
+            canvas.SaveLayer(coverage.Bounds, under);
+        else
+            canvas.SaveLayer(under);
+        canvas.DrawColor(page, SKBlendMode.Src);
+        Draw(canvas, drawn is null ? below : below.Where(p => !drawn.Contains(p)), cancellationToken: cancellationToken, pictures: true, cache: cache,
+            backdrops: false);
+        canvas.Restore();
+        canvas.Restore();
+    }
+
+    /// <summary><paramref name="path"/> grown by <paramref name="by"/> all round.</summary>
+    private static SKPath Grown(SKPath path, float by)
+    {
+        using var stroke = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = 2 * by, StrokeJoin = SKStrokeJoin.Round };
+        using var edge = stroke.GetFillPath(path);
+        return edge is not null && path.Op(edge, SKPathOp.Union) is { } grown ? grown : new SKPath(path);
+    }
+
+    /// <summary>Where <paramref name="paint"/> paints (before its clipping path), or null for all of the canvas.</summary>
+    private static SKPath? Coverage(SKCanvas canvas, PdfPaint paint)
+    {
+        switch (paint)
+        {
+            case PdfPaintedPath path:
+                {
+                    var area = new SKPath();
+                    if (path.Fill is not null)
+                        area.AddPath(path.Outline);
+                    if (path.Stroke is not null)
+                    {
+                        using var stroke = new SKPaint
+                        {
+                            Style = SKPaintStyle.Stroke,
+                            StrokeWidth = Math.Max(path.LineWidth, 1 / Math.Max(1, canvas.TotalMatrix.ScaleX)),
+                            StrokeCap = path.Cap,
+                            StrokeJoin = path.Join,
+                            StrokeMiter = path.Miter,
+                        };
+                        using var outline = stroke.GetFillPath(path.Outline);
+                        if (outline is not null)
+                            area.AddPath(outline);
+                    }
+                    return area;
+                }
+            case PdfPaintedImage image:
+                {
+                    var area = new SKPath();
+                    area.AddPoly([image.Matrix.MapPoint(0, 0), image.Matrix.MapPoint(1, 0), image.Matrix.MapPoint(1, 1), image.Matrix.MapPoint(0, 1)]);
+                    return area;
+                }
+            case PdfPaintedShading shading when shading.Fill.Shading.BBox is { } box && paint.Clip is null:
+                {
+                    var area = new SKPath();
+                    area.AddPoly([.. new[] { box.BottomLeft, box.BottomRight, box.TopRight, box.TopLeft }.Select(p => new SKPoint((float)p.X, (float)p.Y))]);
+                    area.Transform(shading.Fill.Space);
+                    return area;
+                }
+            case PdfPaintedShading { Fill.Picture: { } picture } when paint.Clip is null:
+                {
+                    var area = new SKPath();
+                    area.AddRect(picture.Space.MapRect(SKRect.Create(picture.Image.Width, picture.Image.Height)));
+                    return area;
+                }
+            case PdfPaintedGlyph glyph:
+                {
+                    var area = new SKPath();
+                    area.AddRect(glyph.Area);
+                    return area;
+                }
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>A glyph's outline filled (or stroked) in its colour; one with no outline in the font is drawn with an installed font.</summary>
+    private static void Glyph(SKCanvas canvas, PdfPaintedGlyph glyph, bool uncolored, PdfRasterCache? cache)
+    {
+        var outline = cache is null ? PdfRasterCache.Shape(glyph) : cache.Outline(glyph);
+        if (outline is null)
+            return;
+        try
+        {
+            using var paint = Paint(glyph.Color, uncolored);
+            canvas.Save();
+            canvas.Concat(glyph.Matrix);
+            if (glyph.Stroked)
+            {
+                paint.Style = SKPaintStyle.Stroke;
+                // The line width is in slide points; the canvas is in ems here.
+                var m = glyph.Matrix;
+                var scale = Math.Sqrt(Math.Abs(m.ScaleX * m.ScaleY - m.SkewX * m.SkewY));
+                paint.StrokeWidth = (float)(Math.Max(glyph.LineWidth, 0.25) / Math.Max(scale, 1e-3));
+            }
+            canvas.DrawPath(outline, paint);
+            canvas.Restore();
+        }
+        finally
+        {
+            if (cache is null)
+                outline.Dispose();
         }
     }
 
@@ -1088,33 +1342,63 @@ internal static class PdfSlideRaster
         }
     }
 
-    /// <summary>A picture of a soft mask group at its place; one PdfPig can't decode is left out.</summary>
-    private static void Picture(SKCanvas canvas, PdfPaintedImage image)
+    /// <summary>
+    /// A picture at its place (in a soft mask group, a backdrop, or with a blend mode); a stencil mask in its colour.
+    /// One PdfPig can't decode is left out.
+    /// </summary>
+    private static void Picture(SKCanvas canvas, PdfPaintedImage image, PdfRasterCache? cache)
     {
-        if (image.Image is not { } source || source.WidthInSamples <= 0 || source.HeightInSamples <= 0
-            || (long)source.WidthInSamples * source.HeightInSamples > PdfDocumentReader.MaxGraphicsPixels)
+        if (image.Image is not { } source)
             return;
-        SKBitmap? bitmap = null;
-        try
-        {
-            bitmap = source.TryGetPng(out var png) ? SKBitmap.Decode(png) : SKBitmap.Decode(source.RawMemory.ToArray());
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
-        {
-            // Not decoded: left out of the mask.
-        }
+        var bitmap = cache is null ? PdfRasterCache.Read(image) : cache.Decode(image);
         if (bitmap is null)
             return;
-        using (bitmap)
+        try
         {
             // Pixels (y down) → the unit square (y up, top edge at 1) → the slide.
             var toUnit = new SKMatrix(1f / bitmap.Width, 0, 0, 0, -1f / bitmap.Height, 1, 0, 0, 1);
             canvas.Save();
             canvas.Concat(toUnit.PostConcat(image.Matrix));
-            using var paint = new SKPaint { Color = SKColors.White.WithAlpha((byte)Math.Round(Math.Clamp(image.Alpha, 0, 1) * 255)) };
+            // A stencil's colour carries the alpha already.
+            var alpha = source.IsImageMask ? 1 : Math.Clamp(image.Alpha, 0, 1);
+            using var paint = new SKPaint { Color = SKColors.White.WithAlpha((byte)Math.Round(alpha * 255)) };
             canvas.DrawBitmap(bitmap, 0, 0, paint);
             canvas.Restore();
         }
+        finally
+        {
+            if (cache is null)
+                bitmap.Dispose();
+        }
+    }
+
+    /// <summary>A stencil mask (image mask) as pixels of <paramref name="color"/>, transparent where it paints nothing; null when it can't be read.</summary>
+    internal static SKBitmap? Stencil(IPdfImage mask, SKColor color)
+    {
+        if (!mask.TryGetBytesAsMemory(out var memory))
+            return null;
+        var (width, height) = (mask.WidthInSamples, mask.HeightInSamples);
+        var row = (width + 7) / 8;
+        if (width <= 0 || height <= 0 || (long)width * height > PdfDocumentReader.MaxGraphicsPixels || memory.Length < (long)row * height)
+            return null;
+        // Samples of 0 paint, or of 1 with the decode array [1 0].
+        var paintsOne = mask.Decode is [> 0.5, ..];
+        var bytes = memory.Span;
+        var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+        var pixels = bitmap.GetPixelSpan();
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var bit = (bytes[y * row + x / 8] >> (7 - x % 8)) & 1;
+                var offset = (y * width + x) * 4;
+                pixels[offset] = color.Red;
+                pixels[offset + 1] = color.Green;
+                pixels[offset + 2] = color.Blue;
+                pixels[offset + 3] = bit == 1 == paintsOne ? color.Alpha : (byte)0;
+            }
+        }
+        return bitmap;
     }
 
     /// <summary>The luminosity of a shading's picture as alpha (a luminosity mask's shading).</summary>

@@ -1034,7 +1034,151 @@ public class PdfEditableSlidesTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.True(bitmap.GetPixel(650, (int)(Height - 497)) is { Red: > 240, Green: > 240, Blue: > 240 }, bitmap.GetPixel(650, (int)(Height - 497)).ToString());
     }
 
+    /// <summary>The colour of the photo-like picture of <see cref="MakeBlendPdf"/> at a point of the page (PDF coordinates).</summary>
+    private static (int R, int G, int B) Photo(double x, double y) =>
+        ((int)((x - 100) / 400 * 64) * 4, (int)((460 - y) / 200 * 32) * 8, 128);
+
+    /// <summary>
+    /// A page of blends over what is under them: a photo-like picture (red across, green down) and black text, a blue
+    /// Screen bar over the right of the picture and over the text, an orange Overlay bar over the left of the picture,
+    /// and a dark blue picture drawn with Screen over a red rectangle.
+    /// </summary>
+    internal static string MakeBlendPdf(string folder)
+    {
+        var content =
+            "q 400 0 0 200 100 260 cm /Ph Do Q\n" +
+            "BT /F1 36 Tf 120 120 Td (Backdrop text) Tj ET\n" +
+            "q /GS1 gs 0 0 1 rg 300 100 120 380 re f Q\n" +
+            "q /GS2 gs 1 0.5 0 rg 150 280 100 160 re f Q\n" +
+            "1 0 0 rg 600 300 200 100 re f\n" +
+            "q /GS1 gs 200 0 0 100 600 300 cm /Im1 Do Q\n";
+        return RawPdf(Path.Combine(folder, "blend.pdf"), content, (document, page) =>
+        {
+            Resource(document, page, "/XObject", "/Ph", RgbPicture(document, 64, 32, i => (i % 64 * 4, i / 64 * 8, 128)));
+            Resource(document, page, "/XObject", "/Im1", RgbPicture(document, 2, 2, _ => (0, 0, 128)));
+            foreach (var (name, mode) in new[] { ("/GS1", "/Screen"), ("/GS2", "/Overlay") })
+                Resource(document, page, "/ExtGState", name, BlendState(document, mode));
+        });
+    }
+
+    private static Sharp.PdfDictionary RgbPicture(Sharp.PdfDocument document, int width, int height, Func<int, (int R, int G, int B)> pixel)
+    {
+        var picture = new Sharp.PdfDictionary(document);
+        picture.Elements.SetName("/Type", "/XObject");
+        picture.Elements.SetName("/Subtype", "/Image");
+        picture.Elements.SetInteger("/Width", width);
+        picture.Elements.SetInteger("/Height", height);
+        picture.Elements.SetInteger("/BitsPerComponent", 8);
+        picture.Elements.SetName("/ColorSpace", "/DeviceRGB");
+        picture.CreateStream([.. Enumerable.Range(0, width * height).Select(pixel).SelectMany(c => new[] { (byte)c.R, (byte)c.G, (byte)c.B })]);
+        return picture;
+    }
+
+    private static Sharp.PdfDictionary BlendState(Sharp.PdfDocument document, string mode)
+    {
+        var blend = new Sharp.PdfDictionary(document);
+        blend.Elements.SetName("/Type", "/ExtGState");
+        blend.Elements.SetName("/BM", mode);
+        return blend;
+    }
+
+    [Fact]
+    public async Task Screen_and_overlay_blend_with_the_pictures_and_text_under_them()
+    {
+        var pptx = await ConvertAsync(MakeBlendPdf(fx.NewFolder()));
+        var (tree, _) = Assert.Single(Slides(pptx));
+        // The text stays a text box, under the picture of the blend.
+        Assert.Contains("Backdrop", TextBox(tree, "Backdrop").Value, StringComparison.Ordinal);
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        SKColor At(double x, double y) => bitmap.GetPixel((int)x, (int)(Height - y));
+        static void Near((int R, int G, int B) expected, SKColor actual) =>
+            Assert.True(Math.Abs(actual.Red - expected.R) <= 30 && Math.Abs(actual.Green - expected.G) <= 30 && Math.Abs(actual.Blue - expected.B) <= 30,
+                $"{expected} vs {actual}");
+
+        // Screen with blue over the picture: its red and green, full blue (blue alone before).
+        var (red, green, _) = Photo(382, 362);
+        Near((red, green, 255), At(382, 362));
+        // Overlay with orange over the picture's darker half: twice the picture times orange (orange alone before).
+        var dark = Photo(202, 362);
+        Near((2 * dark.R, 2 * dark.G * 128 / 255, 0), At(202, 362));
+        // Screen over the text: white between the letters, blue on them; white over the bare page.
+        var (white, blue) = (0, 0);
+        for (var x = 302; x < 350; x++)
+        {
+            for (var y = 114; y < 146; y++)
+            {
+                var pixel = At(x, y);
+                white += pixel is { Red: > 230, Green: > 230, Blue: > 230 } ? 1 : 0;
+                blue += pixel is { Red: < 60, Green: < 60, Blue: > 200 } ? 1 : 0;
+            }
+        }
+        Assert.True(white > 100 && blue > 100, $"white {white}, blue {blue}");
+        Near((255, 255, 255), At(360, 220));
+        // The dark blue picture screened over red: red and half blue (the picture alone before).
+        Near((255, 0, 128), At(700, 350));
+    }
+
+    /// <summary>
+    /// A luminosity mask with an inverting transfer function (white left half: hidden; black elsewhere: shown), and one
+    /// with a white backdrop BC whose group covers only the left half (black there: hidden; outside: shown).
+    /// </summary>
+    [Fact]
+    public async Task Soft_mask_transfer_functions_and_backdrops_outside_the_group_are_applied()
+    {
+        var content = "q /GS1 gs 1 0 0 rg 0 50 960 50 re f Q\nq /GS2 gs 0 0 1 rg 0 150 960 50 re f Q\n";
+        var pdf = RawPdf(Path.Combine(fx.NewFolder(), "transfer.pdf"), content, (document, page) =>
+        {
+            var inverted = MaskState(document, "1 g 0 0 480 540 re f");
+            var function = new Sharp.PdfDictionary(document);
+            function.Elements.SetInteger("/FunctionType", 2);
+            function.Elements["/Domain"] = Numbers(document, 0, 1);
+            function.Elements["/C0"] = Numbers(document, 1);
+            function.Elements["/C1"] = Numbers(document, 0);
+            function.Elements.SetInteger("/N", 1);
+            document.Internals.AddObject(function);
+            inverted.Elements.GetDictionary("/SMask")!.Elements.SetReference("/TR", function);
+            Resource(document, page, "/ExtGState", "/GS1", inverted);
+
+            var backdrop = MaskState(document, "0 g 0 0 480 540 re f");
+            var mask = backdrop.Elements.GetDictionary("/SMask")!;
+            mask.Elements["/BC"] = Numbers(document, 1, 1, 1);
+            mask.Elements.GetDictionary("/G")!.Elements["/BBox"] = Numbers(document, 0, 0, 480, 540);
+            Resource(document, page, "/ExtGState", "/GS2", backdrop);
+        });
+
+        var pptx = await ConvertAsync(pdf);
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        SKColor At(double x, double y) => bitmap.GetPixel((int)x, (int)(Height - y));
+        Assert.True(At(200, 75) is { Red: > 230, Green: > 230, Blue: > 230 }, At(200, 75).ToString());
+        Assert.True(At(700, 75) is { Red: > 230, Green: < 40, Blue: < 40 }, At(700, 75).ToString());
+        Assert.True(At(200, 175) is { Red: > 230, Green: > 230, Blue: > 230 }, At(200, 175).ToString());
+        Assert.True(At(700, 175) is { Red: < 40, Green: < 40, Blue: > 230 }, At(700, 175).ToString());
+    }
+
     // ───────────────────────── Hostile pages ─────────────────────────
+
+    [Fact]
+    public async Task Thousands_of_blends_over_a_picture_and_text_finish_quickly()
+    {
+        var content = new StringBuilder("q 960 0 0 540 0 0 cm /Ph Do Q\nBT /F1 10 Tf\n");
+        for (var i = 0; i < 400; i++)
+            content.Append(Inv($"1 0 0 1 {i % 20 * 48} {i / 20 * 27} Tm (backdrop {i}) Tj\n"));
+        content.Append("ET\n");
+        for (var i = 0; i < 3000; i++)
+            content.Append(Inv($"q /GS1 gs 0 0 1 rg {i % 60 * 16} {i / 60 * 10} 14 9 re f Q\n"));
+        var pdf = RawPdf(Path.Combine(fx.NewFolder(), "blends.pdf"), content.ToString(), (document, page) =>
+        {
+            Resource(document, page, "/XObject", "/Ph", RgbPicture(document, 256, 144, i => (i % 256, i / 256, 128)));
+            Resource(document, page, "/ExtGState", "/GS1", BlendState(document, "/Screen"));
+        });
+
+        var stopwatch = Stopwatch.StartNew();
+        var pptx = await ConvertAsync(pdf);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(60), stopwatch.Elapsed.ToString());
+        Assert.Single(Slides(pptx));
+    }
 
     [Fact]
     public async Task Huge_meshes_functions_and_drawn_masks_finish_quickly()

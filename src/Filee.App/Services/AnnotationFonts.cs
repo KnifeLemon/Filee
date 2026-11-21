@@ -66,7 +66,7 @@ internal static class AnnotationFonts
             var face = name.StartsWith(EmbeddedPrefix, StringComparison.Ordinal)
                 ? Embedded.Value.FirstOrDefault(f => f.FamilyName == name[EmbeddedPrefix.Length..])
                 : name == "sans-serif" ? null
-                : SKFontManager.Default.MatchFamily(name, SKFontStyle.Bold) is { } system
+                : Filee.Engines.Typesetting.SystemFonts.MatchFamily(name, SKFontStyle.Bold) is { } system
                   && string.Equals(system.FamilyName, name, StringComparison.OrdinalIgnoreCase) ? system : null;
             if (face is not null && !chain.Contains(face))
                 chain.Add(face);

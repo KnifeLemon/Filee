@@ -3,8 +3,8 @@
 // in a theme override part next to it. It stores how a chart looks; the values are whatever the chart held when it was
 // saved, often none. Series without cached values get sample values (and categories), and a plot without series gets
 // sample series, the way Excel's template preview shows a template: four categories, three series (one for a pie or
-// doughnut). The chart is drawn by ChartDrawer on a page of Excel's default chart size (5 × 3 inches), 3D plots in 3D;
-// Office 2016 templates (chartex: waterfall, treemap, ...) are drawn when they hold values, and refused with
+// doughnut), named in the app's language (ChartWords). The chart is drawn by ChartDrawer on a page of Excel's default
+// chart size (5 × 3 inches), 3D plots in 3D; Office 2016 templates (chartex: waterfall, treemap, ...) are drawn when they hold values, and refused with
 // error.chart_template_unsupported when ChartReader doesn't read them (no values, region maps).
 //
 // Hostile input: the package is read within DocumentLimits (part and package sizes, inflate ratio, XML depth and
@@ -171,7 +171,7 @@ internal sealed class ChartTemplate : IFixedPages
         var row = Round.Contains(kind) ? SampleSlices : SampleValues[position % SampleValues.Length];
         if (ser.Element(C + "tx") is null)
         {
-            var name = new XElement(C + "tx", new XElement(C + "v", $"Series {position + 1}"));
+            var name = new XElement(C + "tx", new XElement(C + "v", ChartWords.SampleSeries(CultureInfo.CurrentUICulture, position + 1)));
             if (ser.Element(C + "order") is { } order)
                 order.AddAfterSelf(name);
             else
@@ -184,7 +184,7 @@ internal sealed class ChartTemplate : IFixedPages
             labels?.Remove();
             ser.Add(scatter
                 ? new XElement(C + "xVal", Literal("numLit", [.. row.Select((_, i) => (i + 1).ToString(CultureInfo.InvariantCulture))]))
-                : new XElement(C + "cat", Literal("strLit", [.. row.Select((_, i) => $"Category {i + 1}")])));
+                : new XElement(C + "cat", Literal("strLit", [.. row.Select((_, i) => ChartWords.SampleCategory(CultureInfo.CurrentUICulture, i + 1))])));
         }
         ser.Add(new XElement(C + (scatter ? "yVal" : "val"), Literal("numLit", [.. row.Select(v => v.ToString(CultureInfo.InvariantCulture))])));
         if (kind == "bubbleChart" && ser.Element(C + "bubbleSize")?.Descendants(C + "pt").Any() != true)

@@ -92,7 +92,8 @@ internal sealed class HSection
 
     /// <summary>
     /// How the body's text runs (Word sectPr w:textDirection, 한글 secPr textDirection, ODF page writing-mode): written
-    /// vertically, the body is laid out turned (PageComposer); headers and footers stay across. Read for layout only.
+    /// vertically, the body is laid out turned (PageComposer); headers and footers stay across unless they run
+    /// vertically themselves (HHeaderFooter.TextFlow). Read for layout only.
     /// </summary>
     public HTextFlow TextFlow { get; set; }
 
@@ -309,6 +310,9 @@ internal sealed class HHeaderFooter(HPageType pages)
 {
     public HPageType Pages { get; } = pages;
     public List<HBlock> Blocks { get; } = [];
+
+    /// <summary>How its text runs (한글 textDirection of its paragraph list). Read for layout only.</summary>
+    public HTextFlow TextFlow { get; set; }
 
     /// <summary>Starts on the page of this paragraph of the section (DOCX continuous section break); null = its first page.</summary>
     public HParagraph? StartsAt { get; set; }
@@ -725,8 +729,8 @@ internal sealed class HEquation(MathNode math, HCharFormat format, string? sourc
     public bool Display { get; init; }
 
     /// <summary>
-    /// How a display equation too wide for its column breaks into lines (Word's m:mathPr); null for Word's defaults.
-    /// Read for layout only.
+    /// How an equation breaks into lines (Word's m:mathPr): a display one too wide for its column, an inline one across
+    /// lines of text; null for Word's defaults. Read for layout only.
     /// </summary>
     public HMathWrap? Wrap { get; init; }
 
@@ -835,7 +839,7 @@ internal sealed class HNote(bool endnote) : HInline
 /// <summary>
 /// A comment (Word comment, RTF annotation, ODF office:annotation, 한글 메모) where its mark stands: at the end of
 /// the text it is on, which starts at its <see cref="HCommentStart"/> (a comment without one is on a point). Only the
-/// DOCX and RTF writers write comments, and the Markdown and HTML writers as notes; the others and the layout leave
+/// DOCX, RTF, ODT and HWPX writers write comments, and the Markdown and HTML writers as notes; the others and the layout leave
 /// them out.
 /// </summary>
 internal sealed class HComment : HInline
@@ -863,7 +867,7 @@ internal sealed record HRevision(string? Author, DateTime? Date);
 
 /// <summary>
 /// Text deleted while changes were tracked (Word w:del, RTF \deleted, ODF text:deletion, 한글 hp:deleteBegin): kept for
-/// the DOCX and RTF writers, which write it as a deletion. The other writers and the layout leave it out, so the
+/// the DOCX, RTF, ODT and HWPX writers, which write it as a deletion. The other writers and the layout leave it out, so the
 /// document reads with the deletion made, as before. Inserted text is text with <see cref="HCharLayout.Inserted"/>.
 /// </summary>
 internal sealed class HDeletion(HRevision revision) : HInline
@@ -1050,7 +1054,52 @@ internal sealed class HShape(HShapeKind kind) : HObject
     /// <summary>Lines run from top-left to bottom-right unless flipped.</summary>
     public bool FlipHorizontal { get; set; }
     public bool FlipVertical { get; set; }
+
+    /// <summary>
+    /// The arrowhead at the start of a line (or of an open curve or arc): DrawingML headEnd, 한글 headStyle; null = none.
+    /// </summary>
+    public HArrow? Head { get; set; }
+
+    /// <summary>The arrowhead at the end of a line: DrawingML tailEnd, 한글 tailStyle; null = none.</summary>
+    public HArrow? Tail { get; set; }
 }
+
+/// <summary>The kind of mark at a line's end.</summary>
+internal enum HArrowKind
+{
+    /// <summary>A filled triangle: DrawingML triangle, VML block, RTF 1, 한글 ARROW, ODF "Arrow".</summary>
+    Triangle,
+
+    /// <summary>A triangle with its back cut in: DrawingML stealth, VML classic, RTF 2, 한글 CONCAVE_ARROW.</summary>
+    Stealth,
+
+    /// <summary>한글 SPEAR (창 모양): a narrow kite, its widest point halfway along. Others write it as a triangle.</summary>
+    Spear,
+
+    /// <summary>A diamond centred on the line's end: DrawingML diamond, RTF 3, 한글 FILLED_DIAMOND.</summary>
+    Diamond,
+
+    /// <summary>An ellipse centred on the line's end: DrawingML oval, RTF 4, 한글 FILLED_CIRCLE.</summary>
+    Oval,
+
+    /// <summary>A square centred on the line's end: 한글 FILLED_BOX, ODF "Square". Others write it as a diamond.</summary>
+    Square,
+
+    /// <summary>Two strokes, not filled: DrawingML arrow, VML open, RTF 5, ODF "Line Arrow".</summary>
+    Open,
+}
+
+/// <summary>DrawingML's three sizes (sm, med, lg) of an arrowhead's width and length, relative to the line's width.</summary>
+internal enum HArrowSize
+{
+    Small,
+    Medium,
+    Large,
+}
+
+/// <summary>An arrowhead: its kind, width (across the line) and length (along it).</summary>
+/// <param name="Hollow">Only the outline is drawn (한글 EMPTY_DIAMOND, EMPTY_CIRCLE, EMPTY_BOX); others fill it.</param>
+internal sealed record HArrow(HArrowKind Kind, HArrowSize Width = HArrowSize.Medium, HArrowSize Length = HArrowSize.Medium, bool Hollow = false);
 
 /// <summary>Linear gradient fill: colours from start to end, angle in degrees.</summary>
 internal sealed record HGradient(IReadOnlyList<string> Colors, int Angle);
@@ -1170,7 +1219,7 @@ internal readonly record struct HTabStop(int Position, HTabKind Kind, string Lea
 /// <param name="Spacing">Letter spacing in percent of the font size, as 한글 has it (Word's absolute spacing converted).</param>
 /// <param name="Layout">
 /// Rendering detail the writers do not write (한글's per-language slots, Word's four fonts and exact spacing), and the
-/// run's character style and tracked insertion, which the DOCX and RTF writers write. It takes no part in equality,
+/// run's character style and tracked insertion, which the DOCX and RTF writers write (the insertion the ODT and HWPX writers too). It takes no part in equality,
 /// hashing or <see cref="ToString"/>: formats that differ only here are written alike (in HWPX).
 /// <see cref="SameLayout"/> compares it too.
 /// </param>

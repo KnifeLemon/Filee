@@ -325,22 +325,27 @@ internal sealed partial class HwpxReader
                 yield return Box(element, HShapeKind.Ellipse, placement);
                 break;
             case "line":
+            case "connectLine" when Attr(element, "type")?.StartsWith("STRAIGHT", StringComparison.Ordinal) == true:
                 {
+                    // A straight connector is drawn as a line between its ends; bent and curved ones keep their text only.
                     var start = Child(element, "startPt");
                     var end = Child(element, "endPt");
                     var points = start is not null && end is not null;
+                    var lineShape = Child(element, "lineShape");
                     yield return new HShape(HShapeKind.Line)
                     {
                         // A horizontal or vertical line still has a size of one unit across in the file.
                         Width = points && Int(start, "x") == Int(end, "x") ? 0 : placement.Width,
                         Height = points && Int(start, "y") == Int(end, "y") ? 0 : placement.Height,
                         Anchor = placement.Anchor,
-                        Line = LineShape(Child(element, "lineShape")),
+                        Line = LineShape(lineShape),
                         // A line runs corner to corner of its box; the end points say which corners.
                         FlipHorizontal = Int(start, "x") > Int(end, "x"),
                         FlipVertical = Int(start, "y") > Int(end, "y"),
                         Transform = Transform(element),
                         ZOrder = ZOrder(element),
+                        Head = Arrow(lineShape, "head"),
+                        Tail = Arrow(lineShape, "tail"),
                     };
                     break;
                 }
@@ -451,7 +456,8 @@ internal sealed partial class HwpxReader
     /// </summary>
     private HInline Box(XElement element, HShapeKind kind, Placement placement, HGeometry? geometry = null)
     {
-        var line = LineShape(Child(element, "lineShape"));
+        var lineShape = Child(element, "lineShape");
+        var line = LineShape(lineShape);
         var (fill, gradient) = FillBrush(Child(element, "fillBrush"));
         var ratio = kind == HShapeKind.Rectangle ? Int(element, "ratio") : 0;
         if (Child(element, "drawText") is not { } drawText)
@@ -468,6 +474,9 @@ internal sealed partial class HwpxReader
                 Transform = Transform(element),
                 ZOrder = ZOrder(element),
                 Geometry = geometry,
+                // Open curves and arcs have ends for arrowheads (the renderer leaves them off closed outlines).
+                Head = kind is HShapeKind.Curve or HShapeKind.Arc or HShapeKind.Polygon ? Arrow(lineShape, "head") : null,
+                Tail = kind is HShapeKind.Curve or HShapeKind.Arc or HShapeKind.Polygon ? Arrow(lineShape, "tail") : null,
             };
         }
 
@@ -605,6 +614,40 @@ internal sealed partial class HwpxReader
             return HBorder.None;
         var width = Int(lineShape, "width");
         return new HBorder(style, width > 0 ? width / HwpxUnits.PerMm : 0.1, Color(Attr(lineShape, "color")) ?? "#000000");
+    }
+
+    /// <summary>
+    /// The arrowhead at a drawing's start (<paramref name="end"/> "head") or end ("tail"): hp:lineShape headStyle (ARROW,
+    /// SPEAR, CONCAVE_ARROW, EMPTY_ / FILLED_ DIAMOND, CIRCLE, BOX; NORMAL = none) and headSz (width_length, SMALL /
+    /// MEDIUM / LARGE). Null for none or no outline.
+    /// </summary>
+    private static HArrow? Arrow(XElement? lineShape, string end)
+    {
+        if (lineShape is null || LineStyle(Attr(lineShape, "style")) == HBorderStyle.None)
+            return null;
+        (HArrowKind Kind, bool Hollow)? style = Attr(lineShape, end + "Style") switch
+        {
+            "ARROW" => (HArrowKind.Triangle, false),
+            "SPEAR" => (HArrowKind.Spear, false),
+            "CONCAVE_ARROW" => (HArrowKind.Stealth, false),
+            "EMPTY_DIAMOND" => (HArrowKind.Diamond, true),
+            "EMPTY_CIRCLE" => (HArrowKind.Oval, true),
+            "EMPTY_BOX" => (HArrowKind.Square, true),
+            "FILLED_DIAMOND" or "DIAMOND" => (HArrowKind.Diamond, false),
+            "FILLED_CIRCLE" or "CIRCLE" => (HArrowKind.Oval, false),
+            "FILLED_BOX" or "BOX" => (HArrowKind.Square, false),
+            _ => null,
+        };
+        if (style is not { } s)
+            return null;
+        var size = (Attr(lineShape, end + "Sz") ?? "MEDIUM_MEDIUM").Split('_');
+        static HArrowSize Size(string? value) => value switch
+        {
+            "SMALL" => HArrowSize.Small,
+            "LARGE" => HArrowSize.Large,
+            _ => HArrowSize.Medium,
+        };
+        return new HArrow(s.Kind, Size(size.ElementAtOrDefault(0)), Size(size.ElementAtOrDefault(1)), s.Hollow);
     }
 
     /// <summary>A solid colour (hc:winBrush) or linear gradient (hc:gradation); picture fills are not kept.</summary>
