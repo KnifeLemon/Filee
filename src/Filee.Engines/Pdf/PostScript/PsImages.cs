@@ -1,7 +1,10 @@
 // PDF pictures (image XObjects and inline images) as PostScript images. The data is decoded by Filee (Flate, LZW,
 // RunLength, ASCII filters, predictors), checked against the size the picture needs (short data is padded as
 // viewers pad it) and deflated again; JPEG (DCT) and CCITT fax data go to PostScript as they are, with PostScript's
-// own filters. Device and Indexed colour spaces stay; a one-component Separation picture becomes an Indexed one whose
+// own filters. JBIG2 pictures (PostScript has no JBIG2 filter) are decoded by Filee's Jbig2Decoder, with the stream's
+// /JBIG2Globals; a JBIG2 image mask then becomes an imagemask of its own bits, CCITT G4-coded when that is smaller than
+// Flate, so a scanned page stays sharp and small. A CCITT explicit mask (G4, as DjVu pages bring) is decoded with
+// CcittG4 for ImageType 3. Device and Indexed colour spaces stay; a one-component Separation picture becomes an Indexed one whose
 // table holds the converted tints. Stencil masks become imagemask, colour-key masks ImageType 4, explicit masks and
 // soft masks that are only fully opaque or fully transparent ImageType 3.
 //
@@ -9,10 +12,12 @@
 // its end afterwards, so nothing of a picture's data can ever be read as PostScript code. Data in a procedure run
 // later (a pattern cell, a Type 3 glyph) is a string of at most 64 KB.
 //
-// What PostScript can't draw this way (soft masks with partial transparency, JBIG2, JPEG 2000, 16-bit pictures in
-// converted spaces, Lab and DeviceN pictures) makes the page untranslatable, and the page is drawn as a picture.
+// What PostScript can't draw this way (soft masks with partial transparency, JBIG2 features Filee doesn't decode, JPEG
+// 2000, 16-bit pictures in converted spaces, Lab and DeviceN pictures) makes the page untranslatable, and the page is
+// drawn as a picture.
 
 using System.IO.Compression;
+using Filee.Engines.Djvu;
 using Filee.Engines.Documents;
 using PdfSharp.Pdf;
 
@@ -42,6 +47,9 @@ internal sealed class ImageSource
 
     public bool HasMatte { get; private init; }
 
+    /// <summary>The shared segments of a JBIG2 picture (/JBIG2Globals), or null.</summary>
+    public byte[]? Jbig2Globals { get; private init; }
+
     public static ImageSource FromXObject(PdfDictionary image, PdfDictionary? resources, int depth = 0)
     {
         var isMask = PdfObjects.Boolean(image, "/ImageMask", false);
@@ -60,10 +68,28 @@ internal sealed class ImageSource
             StencilMask = depth == 0 && PdfObjects.Get(image, "/Mask") is PdfDictionary { Stream: not null } mask ? FromXObject(mask, resources, 1) : null,
             SoftMask = depth == 0 && PdfObjects.Get(image, "/SMask") is PdfDictionary { Stream: not null } soft ? FromXObject(soft, resources, 1) : null,
             HasMatte = PdfObjects.Get(image, "/Matte") is not null,
+            Jbig2Globals = Globals(image),
         };
         if (PdfObjects.Number(image, "/SMaskInData", 0) != 0)
             throw new PsUntranslatableException("A JPEG 2000 picture has transparency.");
         return result;
+    }
+
+    /// <summary>The /JBIG2Globals stream's data of an image's decode parameters (a dictionary, or one per filter).</summary>
+    private static byte[]? Globals(PdfDictionary image)
+    {
+        List<PdfDictionary> dictionaries = PdfObjects.Get(image, "/DecodeParms") switch
+        {
+            PdfDictionary single => [single],
+            PdfArray array => [.. array.Elements.Select(e => PdfObjects.Resolve(e) as PdfDictionary).OfType<PdfDictionary>()],
+            _ => [],
+        };
+        foreach (var dictionary in dictionaries)
+        {
+            if (PdfObjects.Get(dictionary, "/JBIG2Globals") is PdfDictionary { Stream: not null } globals)
+                return PdfStreams.Decode(globals, DocumentLimits.Default.MaxPartBytes);
+        }
+        return null;
     }
 
     private static PdfColorSpace ReadSpace(PdfItem? space, PdfDictionary image, PdfDictionary? resources)
@@ -145,7 +171,7 @@ internal static class PsImages
             return;
 
         var (spaceCode, decode, convert) = Space(image);
-        var data = Samples(image, convert, out var pictureFilter, out var bits);
+        var data = Samples(image, convert, out var pictureFilter, out var bits, out var fromJbig2);
         var key = image.ColorKey;
         if (key is not null && image.Bits == 16 && bits == 8)
             key = [.. key.Select(v => Math.Floor(v / 256))];
@@ -162,7 +188,7 @@ internal static class PsImages
         }
         else if (mask is not null)
         {
-            maskData = Samples(mask, null, out var maskFilter, out _);
+            maskData = Samples(mask, null, out var maskFilter, out _, out _, decodeFax: true);
             if (maskFilter is not null)
                 throw new PsUntranslatableException("An explicit mask is compressed with a picture filter.");
             (maskWidth, maskHeight) = (mask.Width, mask.Height);
@@ -173,6 +199,14 @@ internal static class PsImages
         // The data's PostScript filters, outermost first after ASCII85.
         var filters = pictureFilter is null ? "/FlateDecode filter" : PictureFilter(pictureFilter, image);
         var payload = pictureFilter is null ? Deflate(data) : data;
+        if (fromJbig2 && image.IsMask && FaxCoded(data, image) is { } fax && fax.Length < payload.Length)
+        {
+            // A scanned page's mask: G4 is usually several times smaller than Flate.
+            payload = fax;
+            // The painted samples are coded as black, which the filter gives as 0 — or as 1 when the mask paints ones.
+            var blackIs1 = image.Decode is [> 0.5, < 0.5, ..] ? " /BlackIs1 true" : "";
+            filters = $"<< /K -1 /Columns {image.Width} /Rows {image.Height}{blackIs1} >> /CCITTFaxDecode filter";
+        }
         var maskPayload = maskData is null ? null : Deflate(maskData);
         if (deferred && (payload.Length > MaxString || maskPayload?.Length > MaxString))
             throw new PsUntranslatableException("A picture in a pattern or Type 3 glyph is too large for PostScript.");
@@ -324,7 +358,7 @@ internal static class PsImages
     /// The samples, decoded and of the length the picture needs (padded with zeros, cut when longer). A JPEG or CCITT
     /// fax picture is left encoded and its filter returned. 16-bit samples become 8-bit (PostScript has no 16-bit pictures).
     /// </summary>
-    private static byte[] Samples(ImageSource image, Func<byte[], byte[]>? convert, out PdfFilter? pictureFilter, out int bits)
+    private static byte[] Samples(ImageSource image, Func<byte[], byte[]>? convert, out PdfFilter? pictureFilter, out int bits, out bool fromJbig2, bool decodeFax = false)
     {
         bits = image.Bits;
         var rowBytes = image.RowBytes;
@@ -333,6 +367,18 @@ internal static class PsImages
             throw new InvalidDataException("A picture is too large.");
         var (data, rest) = PdfStreams.DecodeGeneral(image.Data, image.Filters, expected + 1024);
         pictureFilter = null;
+        fromJbig2 = false;
+        if (rest is [{ Name: "JBIG2Decode" }] && image.Bits == 1 && image.Components == 1)
+        {
+            data = Jbig2Samples(data, image);
+            fromJbig2 = true;
+            rest = [];
+        }
+        else if (decodeFax && rest is [{ Name: "CCITTFaxDecode" } fax] && image.Bits == 1 && image.Components == 1)
+        {
+            data = FaxSamples(data, fax, image);
+            rest = [];
+        }
         if (rest.Count > 0)
         {
             if (rest.Count > 1 || rest[0].Name is not ("DCTDecode" or "CCITTFaxDecode"))
@@ -357,6 +403,82 @@ internal static class PsImages
             bits = 8;
         }
         return convert?.Invoke(data) ?? data;
+    }
+
+    /// <summary>
+    /// A JBIG2 picture's samples as /JBIG2Decode gives them (0 for black), cut or padded to the picture's size. A
+    /// stream with features Filee doesn't decode, or damaged, leaves the page to be drawn as a picture.
+    /// </summary>
+    private static byte[] Jbig2Samples(byte[] data, ImageSource image)
+    {
+        Jbig2Page page;
+        try
+        {
+            page = Jbig2Decoder.Decode(data, image.Jbig2Globals);
+        }
+        catch (Exception ex) when (ex is NotSupportedException or InvalidDataException)
+        {
+            throw new PsUntranslatableException($"A JBIG2 picture can't be read ({ex.Message}).");
+        }
+        return Fit(page.PackedBits(), page.Width, page.Height, image, invert: true);
+    }
+
+    /// <summary>A CCITT G4 picture's samples (only K &lt; 0 without byte alignment; others stay untranslatable).</summary>
+    private static byte[] FaxSamples(byte[] data, PdfFilter fax, ImageSource image)
+    {
+        if (fax.Parameter("K", 0) >= 0 || fax.Parameter("EncodedByteAlign", 0) != 0)
+            throw new PsUntranslatableException("A CCITT mask isn't G4-coded.");
+        var columns = (int)fax.Parameter("Columns", 1728);
+        var rows = (int)fax.Parameter("Rows", image.Height);
+        if (columns < 1 || rows < 1 || (long)columns * rows > DocumentLimits.Default.MaxPicturePixels)
+            throw new InvalidDataException("A CCITT picture has an unusual size.");
+        var bits = new byte[(long)((columns + 7) / 8) * rows];
+        try
+        {
+            CcittG4.Decode(data, columns, rows, bits, 0);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new PsUntranslatableException($"A CCITT mask can't be read ({ex.Message}).");
+        }
+        // Decoded, a set bit is black; the filter gives black as 0 unless /BlackIs1.
+        return Fit(bits, columns, rows, image, invert: fax.Parameter("BlackIs1", 0) == 0);
+    }
+
+    /// <summary>1-bit rows of <paramref name="width"/> × <paramref name="height"/> as the picture's rows, inverted when asked.</summary>
+    private static byte[] Fit(byte[] bits, int width, int height, ImageSource image, bool invert)
+    {
+        var stride = (width + 7) / 8;
+        var rowBytes = (int)image.RowBytes;
+        var result = new byte[(long)rowBytes * image.Height];
+        var copy = Math.Min(stride, rowBytes);
+        for (var y = 0; y < image.Height; y++)
+        {
+            var target = result.AsSpan(y * rowBytes, rowBytes);
+            if (y < height)
+                bits.AsSpan(y * stride, copy).CopyTo(target);
+            if (invert)
+            {
+                for (var i = 0; i < target.Length; i++)
+                    target[i] = (byte)~target[i];
+            }
+        }
+        return result;
+    }
+
+    /// <summary>A 1-bit image mask's samples CCITT G4-coded, the painted samples as black.</summary>
+    private static byte[] FaxCoded(byte[] samples, ImageSource image)
+    {
+        var paintsOnes = image.Decode is [> 0.5, < 0.5, ..];
+        var black = new byte[samples.Length];
+        var rowBytes = (int)image.RowBytes;
+        var tail = image.Width % 8 == 0 ? (byte)0xFF : (byte)(0xFF << (8 - image.Width % 8));
+        for (var i = 0; i < samples.Length; i++)
+        {
+            var value = paintsOnes ? samples[i] : (byte)~samples[i];
+            black[i] = i % rowBytes == rowBytes - 1 ? (byte)(value & tail) : value;
+        }
+        return CcittG4.Encode(black, image.Width, image.Height);
     }
 
     private static string PictureFilter(PdfFilter filter, ImageSource image)
@@ -384,7 +506,7 @@ internal static class PsImages
     {
         if (soft.Space?.Device != DeviceKind.Gray || soft.Bits > 8)
             throw new PsUntranslatableException("A soft mask isn't a grey picture.");
-        var samples = Samples(soft, null, out var filter, out var bits);
+        var samples = Samples(soft, null, out var filter, out var bits, out _);
         if (filter is not null)
             throw new PsUntranslatableException("A soft mask is compressed with a picture filter.");
         var (d0, d1) = soft.Decode is { Length: >= 2 } d ? (d[0], d[1]) : (0.0, 1.0);

@@ -1,7 +1,9 @@
 // The hidden text of a DjVu page (DjVu v3 specification, "Text Chunk": TXTa, or TXTz which is TXTa packed with BZZ):
 // the page's text in UTF-8, then a tree of zones (page, column, region, paragraph, line, word, character), each with
 // its box in page pixels (row 0 at the bottom) and the range of the text it covers. A zone's box is coded relative to
-// the previous zone at its level or to its parent. The lines and words become the invisible text layer of the PDF.
+// the previous zone at its level or to its parent. The lines and words become the invisible text layer of the PDF. A
+// zone above the line level with no smaller zones (a page whose text has only its page zone, a bare paragraph) is cut
+// into its text's lines, stacked evenly down its box.
 
 using System.Text;
 using Filee.Engines.Documents;
@@ -126,7 +128,12 @@ internal static class DjvuText
         while (pending.Count > 0)
         {
             var zone = pending.Pop();
-            if (zone.Type == Line || zone.Type >= Word || (zone.Children.Count == 0 && zone.Type > 1))
+            if (zone.Type < Line && zone.Children.Count == 0)
+            {
+                lines.AddRange(Block(zone, text));
+                continue;
+            }
+            if (zone.Type == Line || zone.Type >= Word)
             {
                 var line = MakeLine(zone, text);
                 if (line is not null)
@@ -135,6 +142,31 @@ internal static class DjvuText
             }
             for (var i = zone.Children.Count - 1; i >= 0; i--)
                 pending.Push(zone.Children[i]);
+        }
+        return lines;
+    }
+
+    /// <summary>Separators DjVu ends lines, paragraphs, regions and columns with.</summary>
+    private static readonly char[] LineBreaks = ['\n', '\r', '\v', '\u001d', '\u001f'];
+
+    /// <summary>A zone without smaller zones as its text's lines, each an even share of its box from the top.</summary>
+    private static List<DjvuLine> Block(Zone zone, byte[] text)
+    {
+        var lines = new List<DjvuLine>();
+        var box = zone.Box;
+        if (box.Width <= 0 || box.Height <= 0)
+            return lines;
+        var parts = Encoding.UTF8.GetString(text, zone.TextStart, zone.TextLength)
+            .Split(LineBreaks, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(part => part.Trim('\0'))
+            .Where(part => part.Length > 0)
+            .ToList();
+        for (var i = 0; i < parts.Count; i++)
+        {
+            var top = box.Bottom + box.Height - (int)((long)box.Height * i / parts.Count);
+            var bottom = box.Bottom + box.Height - (int)((long)box.Height * (i + 1) / parts.Count);
+            if (top > bottom)
+                lines.Add(new DjvuLine(new DjvuRect(box.Left, bottom, box.Width, top - bottom), [], parts[i]));
         }
         return lines;
     }

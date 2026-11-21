@@ -1246,6 +1246,9 @@ internal static class SettingsMigrations
         // custom claims stay put.
         if (from < 115)
             changed |= LearnExtensions(profiles, out _, ["iwb", "notebook"]);
+        // v116: standalone DjVu IW44 pictures (.iw4, .iw44) learn the documents donut with DjVu; custom claims stay put.
+        if (from < 116)
+            changed |= LearnExtensions(profiles, out _, ["iw4", "iw44"]);
         return changed;
     }
 

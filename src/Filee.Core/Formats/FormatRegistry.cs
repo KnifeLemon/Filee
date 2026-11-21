@@ -127,7 +127,7 @@ public static class FormatRegistry
         // XPS and OpenXPS (ECMA-388) fixed-layout documents (#613), read by the built-in XPS reader (drawing engine).
         new("xps", "XPS", FormatCategory.Document, ["xps", "oxps"], Writable: false),
         // DjVu scanned books and documents (#346), one page or bundled, read by the built-in DjVu reader.
-        new("djvu", "DjVu", FormatCategory.Document, ["djvu", "djv"], Writable: false),
+        new("djvu", "DjVu", FormatCategory.Document, ["djvu", "djv", "iw4", "iw44"], Writable: false),
         // Mind maps (#1543, #1004), read by Filee itself as an outline: topics as headings and lists, notes under them (the
         // map isn't drawn). A .mm that isn't XML is Objective-C++ source, read as plain text.
         new("mm", "FreeMind / Freeplane (MM)", FormatCategory.Document, ["mm"], Writable: false),

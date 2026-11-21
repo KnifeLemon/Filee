@@ -36,7 +36,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, PDB, PML, TCR, RB, SNB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/PDB/PML/TCR/RB/SNB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); **mind maps (FreeMind / Freeplane MM, XMind) → PDF, SVG, PNG** drawn as maps, a page per sheet ([Mind maps](#mind-maps)); **SVG, EMF, WMF, VSDX, PDF, slide decks, whiteboards and mind maps → ODG, OTG, FODG** ([ODG output](#odg-output)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
-| **DjVu** | built in | **DjVu (.djvu, .djv; one page, bundled or indirect) → PDF** (the layers kept: background JPEG, 1-bit JBIG2 / G4 masks; the hidden text searchable; links and bookmarks) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
+| **DjVu** | built in | **DjVu (.djvu, .djv; one page, bundled or indirect; standalone IW44 pictures .iw4, .iw44) → PDF** (the layers kept: background JPEG, 1-bit JBIG2 / G4 masks, one shared JBIG2 dictionary per DjVu dictionary; the hidden text searchable; links, bookmarks, initial zoom and metadata) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
@@ -2648,9 +2648,21 @@ higher, at most 600 and 40 megapixels; Flate, or JPEG when that is less than hal
 file's result says so (`notice.ps_pages_as_pictures`; the app's log names the page and the reason). That is a page
 with transparency (constant alpha below 1, a soft mask in the graphics state, a blend mode other than Normal, a soft
 mask on a picture with partial transparency, a transparent annotation), text used as a clipping path (render modes 4–7),
-pictures PostScript can't decode (JBIG2, JPEG 2000, Lab and DeviceN pictures), fonts the writer can't place
+pictures PostScript can't decode (JBIG2 with features Filee's decoder leaves out, JPEG 2000, Lab and DeviceN pictures), fonts the writer can't place
 (vertical writing, predefined CMaps, CID fonts that aren't embedded), a damaged content stream, and a page past the
 limits below. A PDF PDFsharp can't open at all has every page drawn as a picture, when PDFium can draw it.
+
+**JBIG2 pictures** (scanned pages, DjVu masks) are decoded by Filee's own JBIG2 decoder (`Djvu/Jbig2Decoder.cs`, from
+ITU-T T.88: symbol dictionaries and text regions with refinement and aggregation, generic regions of all four
+templates with adaptive pixels and typical prediction or MMR, generic refinement regions, striped pages, the image's
+`/JBIG2Globals`). A JBIG2 image mask becomes an `imagemask` of its own bits, CCITT G4-coded when that is smaller than
+Flate (a text page is a few tens of KB and stays sharp at any zoom, where it used to be a 300 dpi picture of the
+page). Huffman-coded dictionaries and text regions, pattern and halftone regions, intermediate regions and extended
+templates are left to the picture of the page. A CCITT G4 explicit mask (`/Mask` of a picture) is decoded too, so a
+picture shown through it stays an ImageType 3 image. The decoder's limits (`Jbig2Limits`): 150 million pixels per
+bitmap, 400 million for all of a stream's bitmaps together, 2 million symbols, 4 million symbol instances per text
+region, 1 million segments, drawing bounded to four times the pixel limit; past them the file is refused with
+`error.document_too_large` / `error.document_too_complex`.
 
 **Limits** (hostile input): streams unpack to at most 64 MB (`DocumentLimits.MaxPartBytes`; a picture to the size
 it needs), pictures of at most `MaxPicturePixels`, 4,000,000 operators per page (forms counted every time they are
@@ -4741,7 +4753,8 @@ SRT or SAMI file in CP949 comes out as UTF-8).
 ## DjVu
 
 Built in (#346), in `Djvu/`, written from the DjVu v3 specification (engine id `djvu`, format id `djvu` for `.djvu`
-and `.djv`, documents donut). `DjvuConverter` turns a DjVu document into **PDF** (every page) and into **PNG, JPG and
+and `.djv`, and `.iw4` / `.iw44` for standalone IW44 pictures, documents donut; settings v116 teaches existing
+libraries the two picture extensions). `DjvuConverter` turns a DjVu document into **PDF** (every page) and into **PNG, JPG and
 TIFF** pictures of its pages (the PDF options' page range, each page at its own resolution, then the image options;
 TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from the PDF.
 
@@ -4759,7 +4772,11 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   `Djbz` (in the page or an included file; a dictionary may build on another; decoded once per file and kept for the
   next pages) or the G4 mask `Smmr` (whole or in stripes, black and white possibly swapped), the background `BG44` (or
   `BGjp`), foreground colours `FG44` (or `FGjp`) or the palette `FGbz` (colours and a colour per shape), hidden text
-  `TXTz` / `TXTa`, and the hyperlinks of the annotations `ANTa` / `ANTz` (the page's and its included files').
+  `TXTz` / `TXTa` (a zone above the line level without smaller zones — a page whose text has only its page zone — is
+  cut into its text's lines, stacked evenly down its box), and the annotations `ANTa` / `ANTz` (the page's and its
+  included files', the page's own first): hyperlinks, the initial zoom and display mode, the viewer's background colour
+  and metadata. A standalone IW44 picture (`FORM:PM44` in colour, `FORM:BM44` in grey) reads as a one-page document at
+  100 dpi whose page is the picture.
 - **Decoders:** the ZP-coder (the specification's probability table), BZZ (block sort transform, move-to-front with
   the specification's rank estimator), JB2 (all record types: new shapes coded directly, refinements against library
   shapes, copies, non-mark data, comments, dictionary requests and number-coder resets), IW44 (luminance and
@@ -4772,6 +4789,11 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   when they are `http`, `https`, `ftp` or `mailto` addresses (a URI action), so `javascript:`, `file:`, relative files
   and the like are no links. The bookmarks become the PDF outline (the first level open, at most 32 levels; deeper
   ones go in at the 32nd); a bookmark Filee can't follow keeps its title without an action.
+- **Initial view and metadata** (the first page's annotations): `(zoom dN)` becomes the PDF's open action at N %
+  (`/XYZ`), `width` `/FitH`, `page` and `stretch` `/Fit`, `one2one` the zoom that shows one page pixel per pixel of a
+  96 dpi screen; `(metadata (Title …) (Author …) (Subject …) (Keywords …))` fills the document information. The display
+  mode (`color`, `bw`, `fore`, `back`) and `(background #RRGGBB)` — the colour of the viewer around the page — have
+  no PDF counterpart and are read but not written (the PDF keeps every layer).
 - **Composition:** the background scaled up to the page (bilinear, by the reduction its size gives), then each mask
   pixel in its foreground colour (the FG44 picture, the shape's palette colour, or black); white without a background.
 - **PDF:** the layers stay layers (`DjvuPdfWriter`), so a scanned book stays small: the background as a JPEG at its
@@ -4781,7 +4803,14 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   all MQ-coded — symbol heights and widths, generic template 0 bitmaps, strips of four rows, symbol ids), **CCITT G4**
   (`/CCITTFaxDecode`, `/K -1`), or **Flate** (finely dithered pictures neither packs well). A text page's mask is
   about the DjVu file's own size: the DjVu 3 specification (472 KB) went from 6.0 MB to 1.45 MB, a 115-page scanned
-  book (732 KB) from 13.9 MB to 1.5 MB. The masks draw exactly as before (checked pixel for pixel with PDFtoImage). A page with more than 64 palette colours is one JPEG. The hidden
+  book (732 KB) from 13.9 MB to 1.5 MB. The masks draw exactly as before (checked pixel for pixel with PDFtoImage).
+  Pages whose masks build on the same shared dictionary (`Djbz`) refer to one **`/JBIG2Globals`** stream holding its
+  shapes (`Jbig2Globals`, `Jbig2SharedShapes`): every shape has its symbol id when a page first builds on the
+  dictionary, and the stream, written last, holds the bitmaps of the shapes the pages drew — shapes they only refined
+  stay empty symbols of no width. The JBIG2 masks alone went from 446 KB to 319 KB for the DjVu 3 specification and
+  from 972 KB to 480 KB for the 115-page book. Every JBIG2 mask of 14 sample documents was decoded by pdf.js 2.10 (an
+  independent decoder, offline) and by Filee's own decoder and matched the page's mask bit for bit. A page with more
+  than 64 palette colours is one JPEG. The hidden
   text's lines and words become an invisible text layer (the OCR layer's glyphless font, `Ocr/OcrTextLayer.cs`), so
   the PDF can be searched and its text copied in any script.
 - **Limits** (`DjvuLimits`; pages, components, bytes and pixels refused with `error.document_too_large`, the rest
@@ -4793,12 +4822,18 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   leave the page without links. Decoding is iterative (no recursion over files, zones, annotations or bookmarks) and
   checks cancellation.
 - **Left out:** JPEG 2000 layers (`BG2k`, `FG2k`) and JPEG layers Skia can't decode are counted as pictures left out
-  in the file's result. Not read: the other annotations (highlights, borders, background colour, zoom, metadata),
-  thumbnails, standalone IW44 files (`FORM:PM44`/`BM44`), and hidden text of a page with no zones below the page.
+  in the file's result. The DjVu v3 specification doesn't define `BG2k` / `FG2k`, and no DjVu encoder Filee knows
+  writes them (none of the sample documents has one), so they stay a name only. Not read: highlights and borders of
+  the annotations, and thumbnails (`TH44`; PDF viewers draw their own).
+- **EPS / PostScript:** DjVu → EPS goes through the PDF; the PostScript writer decodes the JBIG2 masks with Filee's
+  JBIG2 decoder and writes them as image masks of their bits (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)), so a DjVu page
+  stays vector-sharp and small instead of becoming a picture of the page.
 - Tests (`DjvuTests.cs`, `DjvuFuzzTests.cs`) build every file in code: `DjvuBuilder.cs` has encoders for each piece
   (ZP-coder, BZZ, JB2, IW44 with the forward transform, text zones, palettes, bookmarks, annotations, Smmr masks, the
   bundled directory and indirect documents). The PDF's JBIG2, G4 and Flate masks are drawn back with PDFtoImage
-  (pdfium's own decoders) and compared with the page.
+  (pdfium's own decoders) and compared with the page. `Jbig2Tests.cs` checks Filee's JBIG2 decoder on Jbig2Encoder's
+  masks (also with shared globals), generic regions of every template, MMR, refinement and striped pages, and hostile
+  streams; the fuzz tests also mutate JBIG2 streams.
 
 ## FFmpeg
 
