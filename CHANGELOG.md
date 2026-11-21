@@ -22,11 +22,19 @@ Rename this heading to the version number when you release it.
 level: recommended
 ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서버(dl.filee.sh)에서 받아요
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
+ko: 모양 정보가 없는 주석(형광펜, 메모 등)이 있는 PDF도 PDF/A 검사를 통과해요
+en: PDFs with highlights or notes that carry no appearance now pass PDF/A checks
 ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
 ko: 자노메 자수 디자인(.jef)을 실 색상 그대로 PNG, JPG, PDF, SVG로 바꿔요
 en: Janome embroidery designs (.jef) turn into PNG, JPG, PDF and SVG in their thread colours
 -->
+
+- **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
+  rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked
+  PDF/A-2b but failed a validator such as veraPDF. Ghostscript now draws such markup into the page: it looks the same
+  but is no longer a separate annotation. Links stay clickable, and markup saved with an appearance stays an
+  annotation unless another one of its kind in the file has none.
 
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
   gave up when GitHub's download link didn't answer within 20 seconds, which some networks hit every time. Filee now
@@ -40,6 +48,8 @@ en: Janome embroidery designs (.jef) turn into PNG, JPG, PDF and SVG in their th
   PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
   The recognized text now comes out line by line, also in Markdown without pictures and in a DOCX or HWPX made with
   "Recognize text". PDFs with visible text read as before.
+- **rustyfiles** counts as a file manager for gestures (#1714): with the default *File managers and desktop* scope, a
+  Ctrl + drag out of rustyfiles opens the donut, as in Explorer (Windows).
 - **Janome embroidery designs (`.jef`) turn into PNG, JPG, PDF and SVG** (#1716), like Tajima `.dst` designs already
   do: the stitches drawn as lines at the design's real size, each thread in its colour from Janome's thread chart.
   Filee reads JEF but doesn't write it, and it doesn't make Wilcom `.emb` files. JEF is in the Design field.
