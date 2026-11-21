@@ -1,5 +1,6 @@
 // The pictures of embedded OLE objects (Hwp/Binary/OlePreview.cs) and the HWPX reader drawing an OLE object as its
-// picture. The objects are compound files built here with OpenMcdf, the way 한글 keeps them in BinData: a 4-byte
+// picture; 한글 charts kept as OLE objects in HWP and HWPX files, drawn from their DrawingML part (OOXMLChartContents)
+// or, for 한글 Neo's older chart without it, from their picture and named as a chart drawn as a picture. The objects are compound files built here with OpenMcdf, the way 한글 keeps them in BinData: a 4-byte
 // length, then the compound file with the presentation stream its program left.
 
 using System.Buffers.Binary;
@@ -144,6 +145,105 @@ public sealed class OlePreviewTests(EngineFixture fx) : IClassFixture<EngineFixt
         // The same object named again gives the same picture without reading the object again.
         File.Delete(ole);
         Assert.Equal(first, budget.Extract(ole, Path.Combine(folder, "again")));
+    }
+
+    /// <summary>A CompObj stream (MS-OLEDS 2.3.8): the header, then the user type and program id as ANSI strings.</summary>
+    private static byte[] CompObj(string userType, string programId)
+    {
+        static byte[] Ansi(string text) => [.. BitConverter.GetBytes(text.Length + 1), .. Encoding.ASCII.GetBytes(text), 0];
+        return [.. new byte[28], .. Ansi(userType), .. BitConverter.GetBytes(0), .. Ansi(programId)];
+    }
+
+    /// <summary>
+    /// An HWP whose one paragraph holds an OLE object (a gso control of kind $ole, 240 × 150 pt, treated as a character)
+    /// stored in BinData/BIN0001.ole, uncompressed, as 한글 stores it.
+    /// </summary>
+    private string HwpWithOle(string ole)
+    {
+        var builder = new HwpBuilder().PlainDocInfo();
+        builder.DocInfo.Add(HwpBuilder.Record(18, 1, HwpBuilder.Bytes((ushort)(2 | 2 << 4), (ushort)1, "ole")));
+        builder.Streams["BinData/BIN0001.ole"] = File.ReadAllBytes(ole);
+        builder.SectionStart();
+        var section = builder.Section;
+        section.Add(HwpBuilder.Record(66, 0, HwpBuilder.Bytes(9, 0, (ushort)0, (byte)0, (byte)0, (ushort)1, (ushort)0, (ushort)0, 0, (ushort)0)));
+        section.Add(HwpBuilder.Record(67, 1, HwpBuilder.Bytes(HwpBuilder.Control(11, "gso "), (ushort)13)));
+        section.Add(HwpBuilder.Record(71, 1, HwpBuilder.Bytes(HwpBuilder.Id("gso "), 1u, 0, 0, 24000, 15000, 0, (short)0, (short)0, (short)0, (short)0, 1, 0, "")));
+        section.Add(HwpBuilder.Record(76, 2, HwpBuilder.Bytes(HwpBuilder.Id("$ole"), HwpBuilder.Id("$ole"), 0, 0, (ushort)0, (ushort)1, 24000, 15000, 24000, 15000, 0, (short)0,
+            0, 0, (ushort)0, new byte[48])));
+        section.Add(HwpBuilder.Record(84, 3, HwpBuilder.Bytes(1 | 1 << 16, 24000, 15000, (ushort)1, 0, 0, 0)));
+        var path = Path.Combine(fx.NewFolder(), "chart.hwp");
+        File.WriteAllBytes(path, builder.Build());
+        return path;
+    }
+
+    private static IEnumerable<HImage> Images(HDocument document) =>
+        document.Sections.SelectMany(s => s.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HImage>();
+
+    [Fact]
+    public void A_hangul_chart_is_drawn_from_its_drawingml_part()
+    {
+        var ole = Ole(("\u0001CompObj", CompObj("Hwp Chart", "HwpChart.1")), ("Contents", [0, 0, 1, 0]),
+            ("OOXMLChartContents", Encoding.UTF8.GetBytes(ChartBuilder.Columns())), ("\u0002OlePres000", Presentation(3, Wmf())));
+        var content = OlePreview.Read(ole, ole + "-preview");
+        Assert.True(content.IsChart);
+        Assert.NotNull(content.ChartPart);
+
+        var document = HwpReader.ReadForLayout(HwpWithOle(ole), fx.NewFolder());
+        var image = Assert.Single(Images(document));
+        Assert.NotNull(image.Chart);
+        Assert.Equal(["North", "South", "West"], image.Chart!.Plots[0].Series.Select(s => s.Name));
+        Assert.Equal((24000, 15000), (image.Width, image.Height));
+        Assert.DoesNotContain(document.LeftOut.Kinds, k => k.Kind is HLeftOutKind.ChartPictured or HLeftOutKind.ObjectPictured or HLeftOutKind.Chart);
+    }
+
+    [Fact]
+    public void A_chart_without_its_drawingml_part_is_drawn_from_its_picture_and_named()
+    {
+        // 한글 Neo's chart: only its own "Contents" (not read) and the picture it left.
+        var neo = Ole(("\u0001CompObj", CompObj("Hwp Chart", "HwpChart.1")), ("Contents", [0, 0, 1, 0]), ("\u0002OlePres000", Presentation(3, Wmf())));
+        var document = HwpReader.ReadForLayout(HwpWithOle(neo), fx.NewFolder());
+        var image = Assert.Single(Images(document));
+        Assert.Null(image.Chart);
+        Assert.True(Metafile.IsMetafile(image.Path));
+        Assert.Contains(document.LeftOut.Kinds, k => k.Kind == HLeftOutKind.ChartPictured);
+
+        // A part that isn't a chart ChartReader draws: the picture again.
+        var broken = Ole(("OOXMLChartContents", Encoding.UTF8.GetBytes("<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"/>")),
+            ("\u0002OlePres000", Presentation(3, Wmf())));
+        var fallback = HwpReader.ReadForLayout(HwpWithOle(broken), fx.NewFolder());
+        Assert.Null(Assert.Single(Images(fallback)).Chart);
+        Assert.Contains(fallback.LeftOut.Kinds, k => k.Kind == HLeftOutKind.ChartPictured);
+
+        // Another program's object (no chart named) stays an object drawn as its picture.
+        var paint = HwpReader.ReadForLayout(HwpWithOle(Ole(("\u0001CompObj", CompObj("Bitmap Image", "Paint.Picture")), ("\u0002OlePres000", Presentation(3, Wmf())))), fx.NewFolder());
+        Assert.Contains(paint.LeftOut.Kinds, k => k.Kind == HLeftOutKind.ObjectPictured);
+
+        // The HWP's OLE object keeps its BinData item in the HWPX it becomes.
+        var hwpx = Path.Combine(fx.NewFolder(), "chart.hwpx");
+        HwpReader.ToHwpx(HwpWithOle(neo), hwpx);
+        using var zip = ZipFile.OpenRead(hwpx);
+        using var reader = new StreamReader(zip.GetEntry("Contents/section0.xml")!.Open());
+        Assert.Contains("binaryItemIDRef=\"ole1\"", reader.ReadToEnd(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_hostile_chart_part_in_an_ole_object_is_refused_or_left_to_its_picture_quickly()
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        // Points beyond the limit: the document is refused with the usual reason.
+        var many = ChartBuilder.Columns().Replace("<c:ptCount val=\"4\"/>", "<c:ptCount val=\"99999999\"/>", StringComparison.Ordinal);
+        var ole = Ole(("OOXMLChartContents", Encoding.UTF8.GetBytes(many)), ("\u0002OlePres000", Presentation(3, Wmf())));
+        var refused = Assert.Throws<Core.Conversion.ConversionRefusedException>(() => HwpReader.ReadForLayout(HwpWithOle(ole), fx.NewFolder()));
+        Assert.Equal(DocumentLimits.ErrorKey, refused.ErrorKey);
+        // XML nested past the limits: refused by the XML limits, as an HWPX chart part is.
+        var deep = string.Concat(Enumerable.Repeat("<a>", 100_000)) + string.Concat(Enumerable.Repeat("</a>", 100_000));
+        var nested = Ole(("OOXMLChartContents", Encoding.UTF8.GetBytes(deep)), ("\u0002OlePres000", Presentation(3, Wmf())));
+        Assert.Equal(DocumentLimits.ErrorKey,
+            Assert.Throws<Core.Conversion.ConversionRefusedException>(() => HwpReader.ReadForLayout(HwpWithOle(nested), fx.NewFolder())).ErrorKey);
+        // Not XML at all: the picture stands in.
+        var junk = Ole(("OOXMLChartContents", [0xFF, 0xFE, 0x00, 0x3C]), ("\u0002OlePres000", Presentation(3, Wmf())));
+        Assert.Null(Assert.Single(Images(HwpReader.ReadForLayout(HwpWithOle(junk), fx.NewFolder()))).Chart);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(20), clock.Elapsed.ToString());
     }
 
     [Fact]

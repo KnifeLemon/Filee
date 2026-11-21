@@ -14,9 +14,17 @@
 // (draw:hatch) fills; pie offsets, the pie's start angle (chart:angle-offset) and direction (anticlockwise unless the
 // angle axis is reversed), trendlines (chart:regression-curve, with the equation and R²), error bars
 // (chart:error-indicator, or the series' own error properties) and text properties. Series without a fill take
-// LibreOffice's default palette. Radar charts (lines or filled) and 3D bar, line, area and pie charts are drawn too
-// (chart:three-dimensional, chart:deep; seen as Office sees a new 3D chart, dr3d:transform isn't read); bubble,
-// stock, surface and Gantt charts are left out ("charts").
+// LibreOffice's default palette. Radar charts (lines or filled) and 3D bar, line, area, pie and surface charts are
+// drawn too (chart:three-dimensional, chart:deep), seen from where the plot area's dr3d:transform turns them (its
+// rotation about the vertical axis and its tilt), with chart:right-angled-axes; bubble charts (the values are the
+// bubbles' sizes, the first chart:domain the Y values, the second the X values, carried over to series that leave
+// them out), stock charts (three series low, high, close or four open, low, high, close: chart:stock-range-line
+// joins low and high, open and close are ticks, or candlesticks with chart:japanese-candle-stick and the
+// chart:stock-gain-marker and chart:stock-loss-marker styles; a volume series of class chart:bar beside them),
+// surface charts (one series of a block of rows and columns, or a series a row; the z axis' range and interval make
+// the bands, the first series' data points fill them, no fill draws the mesh) and Gantt charts (series in pairs of
+// start and end: a stacked bar whose first part is left clear, coloured as the second series when it ends before it
+// starts).
 //
 // Hostile input: the object comes through its package's XML limits; series per chart and points per chart are bounded
 // as in ChartReader (refused with error.document_too_complex), the local table's cells (repeats counted before they
@@ -59,6 +67,10 @@ internal sealed class OdfChartReader
         ["chart:scatter"] = ChartKind.Scatter,
         ["chart:radar"] = ChartKind.Radar,
         ["chart:filled-radar"] = ChartKind.Radar,
+        ["chart:bubble"] = ChartKind.Bubble,
+        ["chart:stock"] = ChartKind.Line,
+        ["chart:surface"] = ChartKind.Surface,
+        ["chart:gantt"] = ChartKind.Bar,
     };
 
     private readonly Dictionary<string, XElement> _styles = new(StringComparer.Ordinal);
@@ -68,6 +80,9 @@ internal sealed class OdfChartReader
     private readonly List<List<Cell>> _table = [];
     private string? _tableName;
     private long _points;
+
+    /// <summary>The last bubble series' chart:domain ranges (Y, X), for the series that leave them out.</summary>
+    private List<string?> _domains = [];
 
     /// <summary>A cell of the chart's table: its text and, for a number, its value.</summary>
     private readonly record struct Cell(string Text, double? Value);
@@ -127,11 +142,12 @@ internal sealed class OdfChartReader
         if (plotArea is null || !Kinds.TryGetValue((string?)chart.Attribute(C + "class") ?? "", out var kind))
             return new(null, "charts");
         var plotProps = Props(plotArea, "chart-properties");
-        // 3D bars, lines, areas and pies are drawn in 3D.
+        // 3D bars, lines, areas, pies and surfaces are drawn in 3D.
         var threeD = On(plotProps, "three-dimensional");
-        if (threeD && kind is not (ChartKind.Bar or ChartKind.Line or ChartKind.Area or ChartKind.Pie))
+        if (threeD && kind is not (ChartKind.Bar or ChartKind.Line or ChartKind.Area or ChartKind.Pie or ChartKind.Surface))
             return new(null, "charts");
-        var filled = (string?)chart.Attribute(C + "class") == "chart:filled-radar";
+        var chartClass = (string?)chart.Attribute(C + "class") ?? "";
+        var filled = chartClass == "chart:filled-radar";
 
         var text = TextStyle(Props(chart, "text-properties"), new ChartTextStyle(null, 10, false, false, SKColors.Black));
         var axes = plotArea.Elements(C + "axis").ToList();
@@ -142,53 +158,186 @@ internal sealed class OdfChartReader
         var horizontal = On(plotProps, "vertical");
         var seriesSource = Attr(plotProps, C + "series-source") ?? "columns";
 
-        // Plots by kind and axis, in the order their first series comes.
-        var plots = new List<(ChartKind Kind, bool Secondary, ChartPlot Plot)>();
+        // Plots by kind (stock and Gantt series apart from lines and bars) and axis, in the order their first series comes.
+        var plots = new List<(ChartKind Kind, string Class, bool Secondary, ChartPlot Plot)>();
+        var seriesElements = plotArea.Elements(C + "series").ToList();
+        string ClassOf(XElement series) => (string?)series.Attribute(C + "class") ?? chartClass;
+        var stockSeries = seriesElements.Where(e => ClassOf(e) == "chart:stock").ToList();
         var position = 0;
-        foreach (var element in plotArea.Elements(C + "series"))
+        foreach (var element in seriesElements)
         {
-            var seriesKind = Kinds.TryGetValue((string?)element.Attribute(C + "class") ?? "", out var own) ? own
-                : element.Attribute(C + "class") is null ? kind : (ChartKind?)null;
+            var seriesClass = ClassOf(element);
+            var seriesKind = Kinds.TryGetValue(seriesClass, out var own) ? own : (ChartKind?)null;
             if (seriesKind is null || threeD && seriesKind != kind)
-                return new(null, "charts"); // a series of a kind not drawn (stock, bubble, ...), or flat in a 3D chart
+                return new(null, "charts"); // a series of a kind not drawn, or flat in a 3D chart
             if (position >= ChartReader.MaxSeries)
                 throw DocumentLimits.Exceeded($"A chart has more than {DocumentLimits.Count(ChartReader.MaxSeries)} series.");
+            var special = seriesClass is "chart:stock" or "chart:gantt" ? seriesClass : "";
             var secondary = (string?)element.Attribute(C + "attached-axis") == "secondary-y" && seriesKind is not (ChartKind.Pie or ChartKind.Doughnut);
-            var entry = plots.FirstOrDefault(p => p.Kind == seriesKind && p.Secondary == secondary);
+            var entry = plots.FirstOrDefault(p => p.Kind == seriesKind && p.Class == special && p.Secondary == secondary);
             if (entry.Plot is null)
             {
-                entry = (seriesKind.Value, secondary, Plot(seriesKind.Value, plotProps, horizontal, secondary, text, xAxis, threeD, filled));
+                entry = (seriesKind.Value, special, secondary, Plot(seriesKind.Value, plotProps, horizontal, secondary, text, xAxis, threeD, filled, special, plotArea));
                 plots.Add(entry);
             }
-            entry.Plot.Series.Add(Series(element, seriesKind.Value, categories, position, seriesSource, text));
+            if (seriesKind == ChartKind.Surface && entry.Plot.Series.Count == 0 && SurfaceBlock(element, text) is { } rows)
+            {
+                // A block of rows and columns: a series a row.
+                if (rows.Count > ChartReader.MaxSeries)
+                    throw DocumentLimits.Exceeded($"A chart has more than {DocumentLimits.Count(ChartReader.MaxSeries)} series.");
+                entry.Plot.Series.AddRange(rows);
+                position += rows.Count;
+                continue;
+            }
+            var stockRole = special == "chart:stock" ? stockSeries.IndexOf(element) - (stockSeries.Count >= 4 ? 0 : -1) : -1;
+            entry.Plot.Series.Add(Series(element, seriesKind.Value, categories, position, seriesSource, text, stockRole, On(plotProps, "japanese-candle-stick")));
             position++;
         }
         if (plots.Count == 0 || plots.All(p => p.Plot.Series.All(s => s.Values.Count == 0)))
             return new(null, "charts");
+        // Gantt series pair up as start and end: a stacked bar from the start (left clear) by the length.
+        var hidden = new HashSet<int>();
+        foreach (var (_, special, _, plot) in plots)
+        {
+            if (special == "chart:gantt")
+                Gantt(plot);
+        }
+        var entryIndex = 0;
+        foreach (var (_, _, _, plot) in plots)
+        {
+            foreach (var series in plot.Series)
+            {
+                if (series.Style.Fill == SKColors.Transparent && series.Style.Line?.None == true && series.Name is null)
+                    hidden.Add(entryIndex);
+                entryIndex++;
+            }
+        }
+        var surface = plots.FirstOrDefault(p => p.Kind == ChartKind.Surface).Plot;
+        if (surface is not null && seriesElements.FirstOrDefault(e => ClassOf(e) == "chart:surface") is { } firstSurface)
+            surface = SurfaceBands(surface, firstSurface);
 
         var wall = plotArea.Element(C + "wall");
         var result = new Chart
         {
             Title = Title(chart.Element(C + "title"), chart.Element(C + "subtitle"), text with { Size = 13 }),
-            Legend = Legend(chart.Element(C + "legend"), text),
+            Legend = Legend(chart.Element(C + "legend"), text, hidden),
             Area = Shape(Props(chart, "graphic-properties")) is { Fill: not null } area ? area : new ChartShapeStyle { Fill = SKColors.White, Line = ChartLine.Hidden },
             PlotArea = wall is null ? new ChartShapeStyle { Fill = SKColors.Transparent, Line = ChartLine.Hidden } : Shape(Props(wall, "graphic-properties")),
             RoundedCorners = false,
             Text = text,
             Palette = Palette,
-            View3D = threeD ? kind == ChartKind.Pie ? new ChartView3D(30, 0, RightAngleAxes: false) : new ChartView3D() : null,
+            View3D = threeD ? View3D(plotArea, plotProps, kind) : null,
         };
-        result.Plots.AddRange(plots.Select(p => p.Plot));
+        result.Plots.AddRange(plots.Select(p => p.Kind == ChartKind.Surface && surface is not null ? surface : p.Plot));
         if (plots.Any(p => p.Kind is not (ChartKind.Pie or ChartKind.Doughnut)))
-            AddAxes(result, axes, horizontal, plots.Any(p => p.Kind == ChartKind.Scatter), plots.Any(p => p.Secondary), text);
+            AddAxes(result, axes, horizontal, plots.Any(p => p.Kind is ChartKind.Scatter or ChartKind.Bubble), plots.Any(p => p.Secondary), text);
+        if (surface is not null)
+        {
+            // The altitude is the z axis' (its range and interval make the bands); a 3D surface's rows stand along y.
+            var z = axes.FirstOrDefault(a => (string?)a.Attribute(C + "dimension") == "z");
+            var y = axes.FirstOrDefault(a => (string?)a.Attribute(C + "dimension") == "y");
+            var value = result.Axes.FindIndex(a => a.Id == 2);
+            if (value >= 0 && z is not null)
+                result.Axes[value] = Axis(z, 2, 1, true, horizontal ? "b" : "l", false, text);
+            if (threeD)
+                result.Axes.Add(Axis(y, 5, 2, false, "b", false, text) with { IsSeries = true, IsValue = false, MajorGridlines = null });
+        }
         return new(result, null);
+    }
+
+    /// <summary>
+    /// How a 3D chart is seen: the plot area's dr3d:transform (the scene's rotation) as Office's rotation about the
+    /// vertical axis and tilt, with chart:right-angled-axes; Office's view of a new 3D chart when there is none.
+    /// </summary>
+    private static ChartView3D View3D(XElement plotArea, XElement? props, ChartKind kind)
+    {
+        var pie = kind == ChartKind.Pie;
+        var rightAngles = Attr(props, C + "right-angled-axes") is { } right ? right == "true" : !pie;
+        if (Rotation((string?)plotArea.Attribute(OdfNames.Dr3d + "transform")) is not { } m)
+            return pie ? new ChartView3D(30, 0, RightAngleAxes: false) : new ChartView3D(RightAngleAxes: rightAngles);
+        // The images of the x axis (a b c), y axis (d e f) and z axis (g h i): the turn about the vertical axis takes
+        // x into the depth, the tilt brings y towards the viewer. A pie lies in the x-y plane facing the viewer, so its
+        // tilt from the top is what is left of 90°.
+        var turn = Math.Atan2(m[6], m[0]) * 180 / Math.PI;
+        var tilt = Math.Atan2(m[5], m[4]) * 180 / Math.PI;
+        if (!double.IsFinite(turn) || !double.IsFinite(tilt))
+            return new ChartView3D(RightAngleAxes: rightAngles);
+        var rotY = (turn % 360 + 360) % 360;
+        var rotX = pie ? 90 - Math.Abs(tilt) : tilt;
+        return new ChartView3D(Math.Clamp(Math.Round(rotX), pie ? 0 : -90, 90), Math.Round(rotY) % 360, RightAngleAxes: rightAngles,
+            Perspective: (string?)plotArea.Attribute(OdfNames.Dr3d + "projection") == "perspective" ? 30 : 0);
+    }
+
+    /// <summary>
+    /// The rotation part (a b c d e f g h i, the images of the three axes) of a dr3d:transform list: matrix(...) and
+    /// rotatex / rotatey / rotatez (radians, or with a unit), applied in order; null when there is none it reads.
+    /// </summary>
+    internal static double[]? Rotation(string? transform)
+    {
+        if (string.IsNullOrWhiteSpace(transform) || transform.Length > 4096)
+            return null;
+        double[]? result = null;
+        var at = 0;
+        for (var steps = 0; steps < 64 && at < transform.Length; steps++)
+        {
+            var open = transform.IndexOf('(', at);
+            var close = open < 0 ? -1 : transform.IndexOf(')', open);
+            if (open < 0 || close < 0)
+                break;
+            var name = transform[at..open].Trim().ToLowerInvariant();
+            var values = transform[(open + 1)..close].Split([' ', ','], StringSplitOptions.RemoveEmptyEntries);
+            at = close + 1;
+            double[]? step = null;
+            if (name == "matrix" && values.Length >= 9 && values.Take(9).Select(Number).ToList() is var numbers && numbers.All(v => v is not null))
+            {
+                step = [.. numbers.Select(v => v!.Value)];
+            }
+            else if (name is "rotatex" or "rotatey" or "rotatez" && values.Length >= 1 && Radians(values[0]) is { } angle)
+            {
+                var (sin, cos) = Math.SinCos(angle);
+                step = name switch
+                {
+                    "rotatex" => [1, 0, 0, 0, cos, sin, 0, -sin, cos],
+                    "rotatey" => [cos, 0, -sin, 0, 1, 0, sin, 0, cos],
+                    _ => [cos, sin, 0, -sin, cos, 0, 0, 0, 1],
+                };
+            }
+            if (step is null)
+                continue;
+            result = result is null ? step : Multiply(step, result);
+        }
+        return result is not null && result.All(double.IsFinite) ? result : null;
+
+        // A turn in radians, or in deg, grad or rad.
+        static double? Radians(string value) =>
+            value.EndsWith("deg", StringComparison.Ordinal) ? Number(value[..^3]) * Math.PI / 180
+            : value.EndsWith("grad", StringComparison.Ordinal) ? Number(value[..^4]) * Math.PI / 200
+            : value.EndsWith("rad", StringComparison.Ordinal) ? Number(value[..^3])
+            : Number(value);
+
+        // Column-major 3 × 3 products: (a · b) applies b first.
+        static double[] Multiply(double[] a, double[] b)
+        {
+            var product = new double[9];
+            for (var column = 0; column < 3; column++)
+            {
+                for (var row = 0; row < 3; row++)
+                    product[column * 3 + row] = a[row] * b[column * 3] + a[3 + row] * b[column * 3 + 1] + a[6 + row] * b[column * 3 + 2];
+            }
+            return product;
+        }
     }
 
     // ───────────────────────── Plots and series ─────────────────────────
 
-    private ChartPlot Plot(ChartKind kind, XElement? props, bool horizontal, bool secondary, ChartTextStyle text, XElement? xAxis, bool threeD = false, bool filled = false) => new()
+    private ChartPlot Plot(ChartKind kind, XElement? props, bool horizontal, bool secondary, ChartTextStyle text, XElement? xAxis, bool threeD = false, bool filled = false, string special = "", XElement? plotArea = null) => new()
     {
         Kind = kind,
+        // A stock chart's range lines (chart:stock-range-line) and candlesticks (chart:stock-gain-marker / -loss-marker).
+        HighLowLines = special == "chart:stock" ? Shape(Props(plotArea?.Element(C + "stock-range-line"), "graphic-properties")).Line ?? new ChartLine(SKColors.Black) : null,
+        UpDownBars = special == "chart:stock" && On(props, "japanese-candle-stick")
+            ? new ChartUpDownBars(100, Candle(plotArea?.Element(C + "stock-gain-marker"), SKColors.White), Candle(plotArea?.Element(C + "stock-loss-marker"), SKColors.Black))
+            : null,
         ThreeD = threeD,
         // chart:deep puts the series one behind the other; 3D lines always stand so.
         SeriesInDepth = threeD && (kind == ChartKind.Line || On(props, "deep")),
@@ -197,25 +346,53 @@ internal sealed class OdfChartReader
         // slices follow anticlockwise unless the angle (X) axis is reversed.
         FirstSliceAngle = ((90 - (Number(Attr(props, C + "angle-offset")) ?? 90)) % 360 + 360) % 360,
         Clockwise = On(Props(xAxis, "chart-properties"), "reverse-direction"),
-        Grouping = kind is ChartKind.Pie or ChartKind.Doughnut or ChartKind.Scatter ? ChartGrouping.Standard
+        Grouping = special == "chart:gantt" ? ChartGrouping.Stacked
+            : kind is ChartKind.Pie or ChartKind.Doughnut or ChartKind.Scatter or ChartKind.Bubble or ChartKind.Surface or ChartKind.Radar ? ChartGrouping.Standard
             : On(props, "percentage") ? ChartGrouping.PercentStacked : On(props, "stacked") ? ChartGrouping.Stacked : ChartGrouping.Standard,
         Horizontal = kind == ChartKind.Bar && horizontal,
         VaryColors = kind is ChartKind.Pie or ChartKind.Doughnut,
         GapWidth = (int)Math.Clamp(Number(Attr(props, C + "gap-width")) ?? 100, 0, 500),
-        Overlap = (int)Math.Clamp(Number(Attr(props, C + "overlap")) ?? (On(props, "stacked") || On(props, "percentage") ? 100 : 0), -100, 100),
+        Overlap = special == "chart:gantt" ? 100 : (int)Math.Clamp(Number(Attr(props, C + "overlap")) ?? (On(props, "stacked") || On(props, "percentage") ? 100 : 0), -100, 100),
         HoleSize = 50,
         Lines = kind == ChartKind.Radar ? !filled : kind != ChartKind.Scatter || Attr(props, C + "lines") is not "false",
-        Markers = Attr(props, C + "symbol-type") is { } symbols && symbols != "none" && kind is ChartKind.Line or ChartKind.Scatter or ChartKind.Radar && !filled
-            || kind == ChartKind.Scatter && Attr(props, C + "lines") == "false",
+        Markers = special != "chart:stock" && (Attr(props, C + "symbol-type") is { } symbols && symbols != "none" && kind is ChartKind.Line or ChartKind.Scatter or ChartKind.Radar && !filled
+            || kind == ChartKind.Scatter && Attr(props, C + "lines") == "false"),
         Labels = Labels(props, text),
-        AxisIds = secondary ? [3u, 4u] : [1u, 2u],
+        AxisIds = kind == ChartKind.Surface && threeD ? [1u, 2u, 5u] : secondary ? [3u, 4u] : [1u, 2u],
     };
 
-    private ChartSeries Series(XElement element, ChartKind kind, IReadOnlyList<string?>? categories, int position, string seriesSource, ChartTextStyle text)
+    /// <summary>A candlestick's fill and outline (stock gain or loss marker), <paramref name="fill"/> when its style says none.</summary>
+    private ChartShapeStyle Candle(XElement? marker, SKColor fill)
+    {
+        var shape = Shape(Props(marker, "graphic-properties"));
+        return shape with { Fill = shape.Fill ?? fill, Line = shape.Line ?? new ChartLine(SKColors.Black, 0.75f) };
+    }
+
+    /// <param name="stockRole">A stock series' part: 0 open, 1 low, 2 high, 3 close; -1 for other series.</param>
+    /// <param name="candles">The stock chart draws candlesticks (open and close are its bars, not ticks).</param>
+    private ChartSeries Series(XElement element, ChartKind kind, IReadOnlyList<string?>? categories, int position, string seriesSource, ChartTextStyle text,
+        int stockRole = -1, bool candles = false)
     {
         var byColumn = seriesSource != "rows";
         var values = Range((string?)element.Attribute(C + "values-cell-range-address"), position + 1, byColumn) ?? [];
         Count(values.Count);
+        // A bubble series' values are its sizes; its domains give Y then X (or the last series' domains, when it has none).
+        List<Cell>? bubbleY = null;
+        if (kind == ChartKind.Bubble)
+        {
+            // A domain the series names replaces the last series' in its place; the others carry over.
+            var domains = element.Elements(C + "domain").Take(2).Select(d => (string?)d.Attribute(Table + "cell-range-address")).ToList();
+            for (var i = 0; i < domains.Count; i++)
+            {
+                if (i < _domains.Count)
+                    _domains[i] = domains[i];
+                else
+                    _domains.Add(domains[i]);
+            }
+            bubbleY = Range(_domains.ElementAtOrDefault(0), -1, byColumn);
+            if (bubbleY is not null)
+                Count(bubbleY.Count);
+        }
         var label = Range((string?)element.Attribute(C + "label-cell-address"), position + 1, byColumn, label: true);
         var props = Props(element, "chart-properties");
         var shape = Shape(Props(element, "graphic-properties"));
@@ -225,6 +402,11 @@ internal sealed class OdfChartReader
         {
             Count(x.Count);
             xValues = [.. x.Select(c => c.Value)];
+        }
+        else if (kind == ChartKind.Bubble && Range(_domains.ElementAtOrDefault(1), -1, byColumn) is { } bubbleX)
+        {
+            Count(bubbleX.Count);
+            xValues = [.. bubbleX.Select(c => c.Value)];
         }
 
         // Points styled on their own: chart:data-point runs (chart:repeated), in order.
@@ -253,24 +435,154 @@ internal sealed class OdfChartReader
             explosion[-1] = (int)Math.Min(whole, 400);
 
         var symbol = Attr(props, C + "symbol-type");
+        ChartMarker? marker = symbol is null ? null : new ChartMarker(symbol == "none" ? "none" : Symbol(Attr(props, C + "symbol-name")),
+            (float)Math.Clamp(Points(Attr(props, C + "symbol-width")) ?? 5, 2, 72), shape);
+        if (stockRole >= 0)
+        {
+            // A stock series draws no line: its range line joins low and high, open and close are ticks (or candlesticks).
+            var tick = !candles && stockRole is 0 or 3;
+            var color = shape.Line?.Color ?? SKColors.Black;
+            marker = new ChartMarker(tick ? "dash" : "none", 7, new ChartShapeStyle { Fill = color, Line = new ChartLine(color) });
+            shape = shape with { Line = ChartLine.Hidden };
+        }
         return new ChartSeries
         {
             Name = label is [var cell, ..] ? Cut(cell.Text) : null,
             Index = position,
-            Categories = kind == ChartKind.Scatter ? null : categories,
+            Categories = kind is ChartKind.Scatter or ChartKind.Bubble ? null : categories,
             XValues = xValues,
-            Values = [.. values.Select(c => c.Value)],
+            Values = bubbleY is not null ? [.. bubbleY.Select(c => c.Value)] : [.. values.Select(c => c.Value)],
+            BubbleSizes = kind == ChartKind.Bubble ? [.. values.Select(c => c.Value)] : null,
             // A pie's or ring's slices vary by point: a slice without a style of its own takes the palette, not the series' fill.
             Style = kind is ChartKind.Pie or ChartKind.Doughnut ? shape with { Fill = null, Gradient = null, Hatch = null } : shape,
             Points = points,
             Explosion = explosion,
-            Marker = symbol is null ? null : new ChartMarker(symbol == "none" ? "none" : Symbol(Attr(props, C + "symbol-name")),
-                (float)Math.Clamp(Points(Attr(props, C + "symbol-width")) ?? 5, 2, 72), shape),
+            Marker = marker,
             Labels = Labels(props, text),
             Smooth = Attr(props, C + "interpolation") is "cubic-spline" or "b-spline",
             Trendlines = Trendlines(element, props, text),
             ErrorBars = ErrorBars(element, props, values, kind == ChartKind.Scatter, byColumn),
         };
+    }
+
+    /// <summary>
+    /// A Gantt plot: its series in pairs of start and end become a clear part from zero to the start and a part from
+    /// the start to the end (the first series' style, the second's where the end comes before the start).
+    /// </summary>
+    private static void Gantt(ChartPlot plot)
+    {
+        var pairs = plot.Series.ToList();
+        plot.Series.Clear();
+        for (var i = 0; i + 1 < pairs.Count; i += 2)
+        {
+            var (start, end) = (pairs[i], pairs[i + 1]);
+            var count = Math.Min(start.Values.Count, end.Values.Count);
+            var from = new double?[count];
+            var length = new double?[count];
+            var points = new Dictionary<int, ChartShapeStyle>();
+            for (var p = 0; p < count; p++)
+            {
+                if (start.Values[p] is not { } a || end.Values[p] is not { } b)
+                    continue;
+                from[p] = Math.Min(a, b);
+                length[p] = Math.Abs(b - a);
+                if (b < a)
+                    points[p] = end.Style;
+            }
+            plot.Series.Add(new ChartSeries
+            {
+                Index = start.Index,
+                Categories = start.Categories,
+                Values = from,
+                Style = new ChartShapeStyle { Fill = SKColors.Transparent, Line = ChartLine.Hidden },
+            });
+            plot.Series.Add(new ChartSeries
+            {
+                Name = start.Name,
+                Index = start.Index,
+                Categories = start.Categories,
+                Values = length,
+                Style = start.Style,
+                Points = points,
+                Labels = start.Labels,
+            });
+        }
+    }
+
+    /// <summary>
+    /// A surface series whose values are a block of several rows and columns: a series a row (named by the first
+    /// chart:domain's Y values, else numbered), the columns its categories (the second domain's X values, else
+    /// numbered); null for a series of one row or column.
+    /// </summary>
+    private List<ChartSeries>? SurfaceBlock(XElement element, ChartTextStyle text)
+    {
+        var address = (string?)element.Attribute(C + "values-cell-range-address");
+        if (string.IsNullOrWhiteSpace(address) || address.Contains(' ', StringComparison.Ordinal))
+            return null;
+        var ends = address.Split(':');
+        if (ends.Length != 2 || Reference(ends[0]) is not { } start || Reference(ends[1]) is not { } end)
+            return null;
+        var (rows, columns) = (Math.Abs(end.Row - start.Row) + 1, Math.Abs(end.Column - start.Column) + 1);
+        if (rows < 2 || columns < 2)
+            return null;
+        var cells = Range(address, -1, byColumn: false);
+        if (cells is null || cells.Count != rows * columns)
+            return null;
+        Count(cells.Count);
+        var domains = element.Elements(C + "domain").Take(2).Select(d => Range((string?)d.Attribute(Table + "cell-range-address"), -1, byColumn: true)).ToList();
+        var names = domains.ElementAtOrDefault(0);
+        var xs = domains.ElementAtOrDefault(1);
+        IReadOnlyList<string?> categories = [.. Enumerable.Range(0, columns).Select(c => (string?)(xs?.ElementAtOrDefault(c) is { } x ? Cut(x.Text) : (c + 1).ToString(CultureInfo.InvariantCulture)))];
+        var props = Props(element, "chart-properties");
+        var series = new List<ChartSeries>();
+        for (var r = 0; r < rows; r++)
+        {
+            series.Add(new ChartSeries
+            {
+                Name = names?.ElementAtOrDefault(r) is { } name ? Cut(name.Text) : (r + 1).ToString(CultureInfo.InvariantCulture),
+                Index = r,
+                Categories = categories,
+                Values = [.. cells.Skip(r * columns).Take(columns).Select(c => c.Value)],
+                Labels = Labels(props, text),
+            });
+        }
+        return series;
+    }
+
+    /// <summary>
+    /// A surface plot with its bands' fills: the first surface series' data points, in order, fill the value bands
+    /// from the lowest; a series without a fill is drawn as a mesh.
+    /// </summary>
+    private ChartPlot SurfaceBands(ChartPlot plot, XElement first)
+    {
+        var bands = new Dictionary<int, ChartShapeStyle>();
+        var index = 0;
+        foreach (var point in first.Elements(C + "data-point"))
+        {
+            var repeated = (int)Math.Clamp(Number((string?)point.Attribute(C + "repeated")) ?? 1, 1, 256);
+            if ((string?)point.Attribute(C + "style-name") is { } name && _styles.ContainsKey(name))
+            {
+                var style = Shape(Props(point, "graphic-properties"));
+                for (var i = index; i < Math.Min(index + repeated, 256); i++)
+                    bands[i] = style;
+            }
+            index += repeated;
+            if (index >= 256)
+                break;
+        }
+        var wire = Attr(Props(first, "graphic-properties"), Draw + "fill") == "none";
+        var result = new ChartPlot
+        {
+            Kind = plot.Kind,
+            ThreeD = plot.ThreeD,
+            SeriesInDepth = plot.ThreeD,
+            AxisIds = plot.AxisIds,
+            Labels = plot.Labels,
+            Wireframe = wire,
+            Bands = bands,
+        };
+        result.Series.AddRange(plot.Series);
+        return result;
     }
 
     /// <summary>
@@ -516,8 +828,9 @@ internal sealed class OdfChartReader
         return new ChartTitle(lines, TextStyle(Props(title, "text-properties"), style));
     }
 
-    private ChartLegend? Legend(XElement? legend, ChartTextStyle text) => legend is null ? null : new ChartLegend
+    private ChartLegend? Legend(XElement? legend, ChartTextStyle text, IReadOnlySet<int> hidden) => legend is null ? null : new ChartLegend
     {
+        Deleted = hidden,
         Position = (string?)legend.Attribute(C + "legend-position") switch
         {
             "start" => "l",

@@ -9,8 +9,9 @@
 //    asks for them, and are left out of the check.
 //  * XLSB: the same relationships as XLSX (a chart sheet's drawing is the one its binary part relates to); the
 //    visible sheets come from the binary workbook part.
-//  * XLS: the reader takes no drawing at all, so every object of a visible sheet is named by its OBJ record's type
-//    (charts, pictures, text boxes, shapes, form controls; comments aside), and a visible chart sheet.
+//  * XLS: the reader takes charts (BiffChartReader) and no other drawing, so every other object of a visible sheet is
+//    named by its OBJ record's type (pictures, text boxes, shapes, form controls; comments aside), as are charts and
+//    chart sheets BiffChartReader doesn't read.
 //  * ODS: the reader takes charts OdfChartReader draws (with their frames' replacement pictures) and the pictures and
 //    shapes OdsDrawing draws; other charts and embedded objects, and what OdsDrawing leaves out (text boxes, text in
 //    shapes, freeform shapes, form controls, SVG pictures, ...) of a visible table are named.

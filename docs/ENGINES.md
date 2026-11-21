@@ -1716,12 +1716,23 @@ chart templates are drawn on their own (`ChartTemplate`).
   doughnut (`ring`) and scatter (`chart:domain`) plots, a series' own class and its secondary Y axis; title and
   subtitle, axis titles, axes (visible, labels, logarithmic, minimum, maximum, interval, reversed, tick marks, label
   angle, gridlines), legend position, data labels, fills and strokes of chart area, wall, series and points (with
-  pie offsets) and text properties; series without a fill take LibreOffice's default palette. 3D, radar, bubble,
-  stock, surface and Gantt charts are named. Used by the ODT reader (a picture that carries the chart; a chart it
+  pie offsets) and text properties; series without a fill take LibreOffice's default palette. Radar, bubble (sizes
+  from the values, Y and X from `chart:domain`), stock (range lines, open / close ticks or candlesticks), surface
+  (bands from the first series' data points) and Gantt charts (start and end pairs as floating bars), and 3D charts
+  seen from the plot area's `dr3d:transform`, are drawn too. Used by the ODT reader (a picture that carries the chart; a chart it
   doesn't draw keeps its replacement picture and is counted as `charts_pictured`, or as `charts` without one), the
   ODP / ODG reader and the ODS reader (sheet printer). Bounded like `ChartReader` (series, points), plus the chart
   table's cells (4 × 1,048,576, repeats counted before they expand) and style chains. Tests: `OdfChartTests`
   (with a fuzz target), seeds in `OdtFuzzTests` and `DocumentFuzzTests` (ODS printing).
+- **Excel 97–2003 charts** (`BiffChartReader`): an XLS chart sheet's substream, or an embedded chart's after its OBJ
+  record (placed by the MSODRAWING client anchor), read from its records ([MS-XLS] 2.1.7.20.1: chart groups, series
+  and their cached values, formats, labels, trendlines, error bars, axes, 3D view, legend, frames) into the DrawingML
+  chart part that says the same, which `ChartReader` reads; automatic colours are the workbook palette's chart fills
+  and lines. At most 256,000 points a chart (Excel 2003's limit), refused beyond. Tests: `XlsChartTests`, fuzz
+  targets in `ChartFuzzTests`.
+- **한글 charts in HWP and HWPX** are OLE objects; the DrawingML part 한글 2018 and later keeps in them
+  (`OOXMLChartContents`) is drawn, an older chart (its own `Contents` only) is drawn from its picture and counted as
+  `charts_pictured`.
 
 ## DOCX writer
 

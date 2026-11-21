@@ -4,7 +4,8 @@
 // with trendlines, error bars, point labels, two category levels, a rich title and gradient and pattern fills,
 // written in code, as a chart part alone (XmlFuzzer), inside a workbook the sheet printer prints and inside a chart
 // template (.crtx) the drawing engine draws (DocumentFuzzer); and the 3D, radar, bubble, stock, surface, pie-of-pie and
-// Office 2016 (chartex) samples of ChartSamples as parts alone.
+// Office 2016 (chartex) samples of ChartSamples as parts alone; Excel 97–2003 chart substreams (XlsChartBuilder's
+// samples) as records alone (BiffChartReader) and inside .xls workbooks the sheet printer prints.
 // Every input must be read or refused with InvalidDataException / ConversionRefusedException, in time and on a 1 MB
 // stack; what is read is drawn small. Run by FuzzHarness: a short fixed run normally, FILEE_FUZZ_SECONDS for a longer
 // random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
@@ -97,6 +98,63 @@ public class ChartFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 using var template = ChartTemplate.Open(path);
                 template.Page(0).Render(12).Dispose();
             });
+
+    [Fact]
+    public void BiffChartReader_reads_or_refuses_every_mutated_chart_substream() =>
+        new FuzzHarness(fx, QuickIterations, 20261121).Data("chart-biff", "bin",
+            [.. XlsChartBuilder.Samples().Select(s => Substream(s.Chart.Build()))], FuzzHarness.Bytes, DrawBiff);
+
+    [Fact]
+    public void An_xls_workbook_with_charts_is_read_or_refused_whatever_its_records_say() =>
+        new FuzzHarness(fx, QuickIterations, 20261121).Files("chart-xls", "xls",
+            [.. XlsChartBuilder.Samples().Take(4).Select(s => XlsWorkbook(s.Chart))], FuzzHarness.Bytes, PrintXls);
+
+    /// <summary>Records as they stand in a workbook stream: type, length, data.</summary>
+    private static byte[] Substream(List<(int Id, byte[] Data)> records)
+    {
+        var bytes = new List<byte>();
+        foreach (var (id, data) in records)
+            bytes.AddRange([.. XlsBuilder.U16(id), .. XlsBuilder.U16(data.Length), .. data]);
+        return [.. bytes];
+    }
+
+    private static void DrawBiff(byte[] bytes)
+    {
+        var records = new List<(int Id, byte[] Data)>();
+        for (var at = 0; at + 4 <= bytes.Length;)
+        {
+            var length = BitConverter.ToUInt16(bytes, at + 2);
+            if (at + 4 + length > bytes.Length)
+                break;
+            records.Add((BitConverter.ToUInt16(bytes, at), bytes[(at + 4)..(at + 4 + length)]));
+            at += 4 + length;
+        }
+        var book = new BiffChartBook { Font = i => new BiffFont("Arial", 10, false, false, 0x7FFF), FontCount = 6, Color = _ => "#808080", Format = _ => "0.0", CellFormat = _ => "m/d/yyyy" };
+        if (BiffChartReader.Read(records, book).Chart is not { } chart)
+            return;
+        var page = new PageContent(240, 160);
+        using (var fonts = new ChartFonts())
+            ChartDrawer.Draw(page, chart, new SKRect(0, 0, 240, 160), fonts);
+        page.Render(24).Dispose();
+    }
+
+    private byte[] XlsWorkbook(XlsChartBuilder chart)
+    {
+        var book = new XlsBuilder();
+        book.Sheet("Data").Text(0, 0, "Sales").After(chart.Embedded(1, 1, 12, 6));
+        book.ChartSheet("Chart1", chart.Build());
+        return File.ReadAllBytes(book.Save(Path.Combine(fx.NewFolder(), "seed.xls")));
+    }
+
+    private static void PrintXls(string path, string media)
+    {
+        _ = media;
+        SheetCapabilities.FirstUnsupported(path, "xls");
+        var book = XlsReader.Read(path);
+        using var printed = SheetPrinter.Print(book, new SheetPrintSource("book.xls", "C:\\"), DocumentLimits.Default, DateTime.Now, null, default);
+        if (printed.Pages.Count > 0)
+            printed.Pages[0].Render(12).Dispose();
+    }
 
     private byte[] Template(string chart) =>
         File.ReadAllBytes(ChartTemplateBuilder.Save(Path.Combine(fx.NewFolder(), "seed.crtx"), chart));
