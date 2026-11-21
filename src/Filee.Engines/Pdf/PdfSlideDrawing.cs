@@ -4,15 +4,19 @@
 // stream once more through PdfPig's stream processor and records, in paint order:
 //
 // - paths with their outline (slide coordinates: points from the page's top-left corner, y down), fill and stroke
-//   (a colour with the constant alpha ca / CA, an axial or radial shading, or the picture of a tiling pattern's cell),
-//   line width, dashes, caps and joins as drawn under the transformation;
+//   (a colour with the constant alpha ca / CA, a shading, or the picture of a tiling pattern's cell), line width,
+//   dashes, caps and joins as drawn under the transformation, and the blend mode (BM) they are painted with;
 // - pictures with the matrix that maps their unit square onto the page, stencil masks (image masks) with the colour
 //   they paint in;
 // - shadings painted with "sh" over the clipping area;
 // - where each glyph starts and when it is drawn, so text boxes take their place among the rest;
 // - the clipping path everything is painted through (an intersection of the page's W / W* paths and the boxes of
-//   form XObjects), and a soft mask when it is simple: a group that paints one colour (a constant alpha) or one axial
-//   or radial shading (an alpha gradient, from its luminosity).
+//   form XObjects), and the soft mask: a group that paints one colour is a constant alpha, one that paints one shading
+//   an alpha gradient (from its luminosity); any other group is drawn (its paths, shadings and pictures) into a picture
+//   of its alpha or luminosity over its box, at most MaskSide pixels a side and MaxMaskPixels a page.
+//
+// Function-based and mesh shadings are drawn into pictures when they are met (PdfShadingPictures), with the gradient
+// they look like when they are close to one.
 //
 // Tiling patterns are drawn here, while the pattern's resources can be looked up: the content of one cell into a
 // picture that the fill repeats. Text in a pattern cell, pictures in it and patterns more than MaxDepth deep are left
@@ -22,6 +26,7 @@
 // place in the order but aren't recorded), MaxGlyphs glyph positions, clipping paths of more than MaxClipCommands
 // segments clip by their box.
 
+using System.Runtime.CompilerServices;
 using SkiaSharp;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
@@ -53,7 +58,17 @@ internal sealed class PdfClip(SKPath path, bool rectangular)
 }
 
 /// <summary>A shading (axial, radial, ...) and the matrix from its space to slide coordinates.</summary>
-internal sealed record PdfShadingFill(Shading Shading, SKMatrix Space);
+internal sealed record PdfShadingFill(Shading Shading, SKMatrix Space)
+{
+    /// <summary>A function-based or mesh shading drawn (PdfShadingPictures); null for axial and radial ones.</summary>
+    public PdfShadingPicture? Picture { get; init; }
+
+    /// <summary>The gradient a function-based or mesh shading looks like, when it is close to one.</summary>
+    public PdfShadingLook? Look { get; init; }
+
+    /// <summary>A colour that stands for the shading where one is needed.</summary>
+    public SKColor Middle => Look?.At(0.5) ?? PdfShadings.ColorAt(Shading, 0.5);
+}
 
 /// <summary>The picture of one tiling pattern cell and the matrix from its pixels to slide coordinates; it repeats.</summary>
 internal sealed record PdfTile(SKImage Image, SKMatrix Space);
@@ -67,11 +82,28 @@ internal sealed record PdfPaintColor(SKColor Color, double Alpha, PdfShadingFill
     public bool IsSolid => Shading is null && Tile is null;
 }
 
-/// <summary>A soft mask simple enough to keep: a constant <paramref name="Alpha"/>, or an alpha gradient from a shading's luminosity.</summary>
-internal sealed record PdfMask(double Alpha, PdfShadingFill? Shading = null);
+/// <summary>
+/// A soft mask: a constant <paramref name="Alpha"/>, an alpha gradient from a shading's luminosity, or the alpha of a
+/// drawn group (<paramref name="Picture"/>: its alpha channel, nothing outside it), each times <paramref name="Alpha"/>.
+/// </summary>
+internal sealed record PdfMask(double Alpha, PdfShadingFill? Shading = null, PdfShadingPicture? Picture = null)
+{
+    /// <summary>The same alpha everywhere.</summary>
+    public bool IsConstant => Shading is null && Picture is null;
+}
 
 /// <summary>Something painted, the <paramref name="Order"/>-th thing the page paints (glyphs counted too).</summary>
-internal abstract record PdfPaint(int Order, PdfClip? Clip, PdfMask? Mask);
+internal abstract record PdfPaint(int Order, PdfClip? Clip, PdfMask? Mask)
+{
+    /// <summary>How it is blended with what is under it (the graphics state's BM); SrcOver for Normal.</summary>
+    public SKBlendMode Blend { get; init; } = SKBlendMode.SrcOver;
+
+    /// <summary>
+    /// The colour under a blended paint where nothing else on the slide is (the page's): drawn under it, so the blend
+    /// has the backdrop the page gives it. Null: only what the same picture draws is under it.
+    /// </summary>
+    public SKColor? Backdrop { get; init; }
+}
 
 /// <summary>A filled and / or stroked path; the line width and dashes are in slide points.</summary>
 internal sealed record PdfPaintedPath(int Order, PdfClip? Clip, PdfMask? Mask, SKPath Outline, bool Curved, PdfPaintColor? Fill, PdfPaintColor? Stroke,
@@ -101,6 +133,15 @@ internal sealed class PdfDrawingBudget
     public int Tiles { get; set; }
     public int Masks { get; set; }
     public int ClipIntersections { get; set; }
+
+    /// <summary>Pixels of soft mask pictures drawn.</summary>
+    public long MaskPixels { get; set; }
+
+    /// <summary>Function-based and mesh shadings drawn, their triangles and function samples (PdfShadingPictures).</summary>
+    public int ShadingPictures { get; set; }
+
+    public int Triangles { get; set; }
+    public long Samples { get; set; }
 }
 
 /// <summary>A page's paints in order; owns their outlines, clipping paths and tile pictures.</summary>
@@ -133,8 +174,9 @@ internal sealed class PdfSlideDrawingFactory(IPdfTokenScanner pdfScanner, IResou
         // PdfPig places the page as it is shown, from the bottom-left corner of its visible part: y flips at its height.
         var height = (float)cropBox.GetVisibleBounds(rotation).Height;
         var toSlide = new SKMatrix(1, 0, 0, 0, -1, height, 0, 0, 1);
+        var width = (float)cropBox.GetVisibleBounds(rotation).Width;
         var processor = new PdfSlideDrawingProcessor(pageNumber, ResourceStore, PdfScanner, PageContentParser, FilterProvider, cropBox, userSpaceUnit,
-            rotation, initialMatrix, ParsingOptions, toSlide, 0, new PdfDrawingBudget());
+            rotation, initialMatrix, ParsingOptions, toSlide, 0, new PdfDrawingBudget(), new SKRect(0, 0, width, height));
         return processor.Process(pageNumber, operations);
     }
 }
@@ -158,6 +200,12 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
     /// <summary>Clipping paths other than rectangles intersected on one page at most; later ones clip by their box.</summary>
     private const int MaxClipIntersections = 10_000;
 
+    /// <summary>Pixels per point of a soft mask's picture, its largest side, and the pixels of all of them on a page.</summary>
+    private const float MaskScale = 2;
+
+    private const int MaskSide = 1024;
+    private const long MaxMaskPixels = 16_000_000;
+
     /// <summary>Pixels per point of a tiling pattern's cell picture, and its largest side.</summary>
     private const float TileScale = 3;
 
@@ -170,6 +218,9 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
     private readonly CropBox _cropBox;
     private readonly UserSpaceUnit _userSpaceUnit;
     private readonly PageRotationDegrees _rotation;
+
+    /// <summary>What the drawing covers in slide coordinates (the page, a pattern cell's picture).</summary>
+    private readonly SKRect _area;
 
     private SKPath? _path;
     private int _pathSegments;
@@ -185,14 +236,27 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
 
     private readonly Stack<TransformationMatrix> _patternSpaces = new();
     private readonly Dictionary<StreamToken, PdfTile?> _tiles = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<SoftMask, PdfMask?> _masks = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(SoftMask Mask, TransformationMatrix Space), PdfMask?> _masks = new(new MaskKeys());
+
+    /// <summary>The transformation each soft mask was set under ("gs"): its group is drawn in that space.</summary>
+    private readonly Dictionary<SoftMask, TransformationMatrix> _maskSpaces = new(ReferenceEqualityComparer.Instance);
+
+    private sealed class MaskKeys : IEqualityComparer<(SoftMask Mask, TransformationMatrix Space)>
+    {
+        public bool Equals((SoftMask Mask, TransformationMatrix Space) x, (SoftMask Mask, TransformationMatrix Space) y) =>
+            ReferenceEquals(x.Mask, y.Mask) && x.Space.Equals(y.Space);
+
+        public int GetHashCode((SoftMask Mask, TransformationMatrix Space) key) => HashCode.Combine(RuntimeHelpers.GetHashCode(key.Mask), key.Space);
+    }
+    private readonly Dictionary<Shading, List<PdfShadingFill>> _fills = new(ReferenceEqualityComparer.Instance);
     private int _order;
 
     public PdfSlideDrawingProcessor(int pageNumber, IResourceStore resourceStore, IPdfTokenScanner pdfScanner, IPageContentParser pageContentParser,
         ILookupFilterProvider filterProvider, CropBox cropBox, UserSpaceUnit userSpaceUnit, PageRotationDegrees rotation,
-        TransformationMatrix initialMatrix, ParsingOptions parsingOptions, SKMatrix toSlide, int depth, PdfDrawingBudget budget)
+        TransformationMatrix initialMatrix, ParsingOptions parsingOptions, SKMatrix toSlide, int depth, PdfDrawingBudget budget, SKRect area)
         : base(pageNumber, resourceStore, pdfScanner, pageContentParser, filterProvider, cropBox, userSpaceUnit, rotation, in initialMatrix, parsingOptions)
     {
+        _area = area;
         _toSlide = toSlide;
         _depth = depth;
         _budget = budget;
@@ -224,6 +288,14 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
         base.PopState();
         if (_clips.Count > 0)
             _clip = _clips.Pop();
+    }
+
+    public override void SetNamedGraphicsState(NameToken stateName)
+    {
+        var before = GetCurrentState().SoftMask;
+        base.SetNamedGraphicsState(stateName);
+        if (GetCurrentState().SoftMask is { } mask && (!ReferenceEquals(mask, before) || !_maskSpaces.ContainsKey(mask)))
+            _maskSpaces[mask] = CurrentTransformationMatrix;
     }
 
     protected override void ProcessFormXObject(StreamToken formStream, NameToken xObjectName)
@@ -384,7 +456,10 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
                 (float)(state.LineWidth * scale), dash, phase,
                 state.CapStyle switch { LineCapStyle.Round => SKStrokeCap.Round, LineCapStyle.ProjectingSquare => SKStrokeCap.Square, _ => SKStrokeCap.Butt },
                 state.JoinStyle switch { LineJoinStyle.Round => SKStrokeJoin.Round, LineJoinStyle.Bevel => SKStrokeJoin.Bevel, _ => SKStrokeJoin.Miter },
-                (float)Math.Clamp(state.MiterLimit, 1, 100)));
+                (float)Math.Clamp(state.MiterLimit, 1, 100))
+            {
+                Blend = Blend(state),
+            });
         }
         _order++;
         EndOfPath();
@@ -475,8 +550,8 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
         switch (color)
         {
             case ShadingPatternColor shading:
-                var fill = new PdfShadingFill(shading.Shading, PatternSpace(shading.Matrix));
-                return new PdfPaintColor(PdfShadings.ColorAt(shading.Shading, 0.5).WithAlpha(a), alpha, fill);
+                var fill = Fill(shading.Shading, PatternSpace(shading.Matrix));
+                return new PdfPaintColor(fill.Middle.WithAlpha(a), alpha, fill);
             case TilingPatternColor tiling:
                 return Tile(tiling) is { } tile ? new PdfPaintColor(SKColors.Gray.WithAlpha(a), alpha, Tile: tile) : null;
             case PatternColor:
@@ -500,6 +575,49 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
         }
     }
 
+    /// <summary>
+    /// A shading under <paramref name="space"/>; a function-based or mesh shading drawn into a picture of what it covers
+    /// of the drawing's area (once for each matrix it is painted with).
+    /// </summary>
+    private PdfShadingFill Fill(Shading shading, SKMatrix space)
+    {
+        if (!_fills.TryGetValue(shading, out var fills))
+            _fills[shading] = fills = [];
+        if (fills.Find(f => f.Space == space) is { } known)
+            return known;
+        var fill = new PdfShadingFill(shading, space);
+        if (fills.Count < 8)
+        {
+            var (picture, look) = PdfShadingPictures.Draw(shading, space, _area, _budget);
+            if (picture is not null)
+                _drawing.Owned.Add(picture.Image);
+            fill = fill with { Picture = picture, Look = look };
+            fills.Add(fill);
+        }
+        return fill;
+    }
+
+    /// <summary>The graphics state's blend mode as Skia's (separable and non-separable modes alike).</summary>
+    private static SKBlendMode Blend(CurrentGraphicsState state) => state.BlendMode switch
+    {
+        BlendMode.Multiply => SKBlendMode.Multiply,
+        BlendMode.Screen => SKBlendMode.Screen,
+        BlendMode.Overlay => SKBlendMode.Overlay,
+        BlendMode.Darken => SKBlendMode.Darken,
+        BlendMode.Lighten => SKBlendMode.Lighten,
+        BlendMode.ColorDodge => SKBlendMode.ColorDodge,
+        BlendMode.ColorBurn => SKBlendMode.ColorBurn,
+        BlendMode.HardLight => SKBlendMode.HardLight,
+        BlendMode.SoftLight => SKBlendMode.SoftLight,
+        BlendMode.Difference => SKBlendMode.Difference,
+        BlendMode.Exclusion => SKBlendMode.Exclusion,
+        BlendMode.Hue => SKBlendMode.Hue,
+        BlendMode.Saturation => SKBlendMode.Saturation,
+        BlendMode.Color => SKBlendMode.Color,
+        BlendMode.Luminosity => SKBlendMode.Luminosity,
+        _ => SKBlendMode.SrcOver,
+    };
+
     /// <summary>A pattern's matrix (to the space patterns are defined in) followed by the step to slide coordinates.</summary>
     private SKMatrix PatternSpace(TransformationMatrix pattern) => ToSlide(pattern.Multiply(_patternSpace));
 
@@ -520,7 +638,7 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
             var (width, height) = ((int)Math.Max(1, Math.Ceiling(stepX * scale)), (int)Math.Max(1, Math.Ceiling(stepY * scale)));
             // Pattern space (y up) → cell pixels (y down), the cell's top-left corner at the box's left, a step above its bottom.
             var toPixels = new SKMatrix(scale, 0, (float)(-box.Left * scale), 0, -scale, (float)((box.Bottom + stepY) * scale), 0, 0, 1);
-            if (Nested(pattern.PatternStream, pattern.Resources, TransformationMatrix.Identity, toPixels) is { } drawing)
+            if (Nested(pattern.PatternStream, pattern.Resources, TransformationMatrix.Identity, toPixels, new SKRect(0, 0, width, height)) is { } drawing)
             {
                 using (drawing)
                 {
@@ -547,7 +665,7 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
     /// The paints of another content stream (a pattern cell, a soft mask group) with its own resources, drawn from
     /// <paramref name="initial"/> and mapped by <paramref name="toSlide"/>; null when it can't be read.
     /// </summary>
-    private PdfSlideDrawing? Nested(StreamToken stream, DictionaryToken? resources, TransformationMatrix initial, SKMatrix toSlide)
+    private PdfSlideDrawing? Nested(StreamToken stream, DictionaryToken? resources, TransformationMatrix initial, SKMatrix toSlide, SKRect area)
     {
         IReadOnlyList<IGraphicsStateOperation> operations;
         try
@@ -559,7 +677,7 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
             return null; // a broken stream: the fill is left out, not the page
         }
         var nested = new PdfSlideDrawingProcessor(PageNumber, ResourceStore, PdfScanner, PageContentParser, FilterProvider, _cropBox, _userSpaceUnit,
-            _rotation, initial, ParsingOptions, toSlide, _depth + 1, _budget);
+            _rotation, initial, ParsingOptions, toSlide, _depth + 1, _budget, area);
         if (resources is not null)
             ResourceStore.LoadResourceDictionary(resources);
         try
@@ -573,37 +691,101 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
         }
     }
 
-    /// <summary>The current soft mask when it is simple (one colour or one shading painted), else null (left out).</summary>
+    /// <summary>
+    /// The current soft mask: one colour or one shading painted, else the group drawn into a picture of its alpha (or
+    /// luminosity); null when there is none or it can't be read or drawn (left out).
+    /// </summary>
     private PdfMask? Mask(CurrentGraphicsState state)
     {
         if (state.SoftMask is not { TransparencyGroup: { } group } mask || _depth >= MaxDepth)
             return null;
-        if (_masks.TryGetValue(mask, out var cached))
+        // The group is drawn in the space current when the mask was set ("gs"), not when something is painted with it.
+        var space = _maskSpaces.TryGetValue(mask, out var set) ? set : CurrentTransformationMatrix;
+        if (_masks.TryGetValue((mask, space), out var cached))
             return cached;
         if (_budget.Masks >= MaxMasks)
             return null;
         _budget.Masks++;
         PdfMask? result = null;
         var resources = group.StreamDictionary.TryGet(NameToken.Resources, PdfScanner, out DictionaryToken? found) ? found : null;
-        // The group is drawn in the space current when the mask was set: taken as the current one.
-        var initial = Matrix(group.StreamDictionary, NameToken.Matrix).Multiply(CurrentTransformationMatrix);
-        if (Nested(group, resources, initial, _toSlide) is { } drawing)
+        var initial = Matrix(group.StreamDictionary, NameToken.Matrix).Multiply(space);
+        if (Nested(group, resources, initial, _toSlide, _area) is { } drawing)
         {
             using (drawing)
             {
                 var luminosity = mask.Subtype == SoftMaskType.Luminosity;
                 result = drawing.Paints switch
                 {
-                    [PdfPaintedShading { Fill: var fill } shading] when luminosity => new PdfMask(shading.Alpha, fill),
-                    [PdfPaintedPath { Fill: { Shading: { } fill } paint, Stroke: null }] when luminosity => new PdfMask(paint.Alpha, fill),
-                    [PdfPaintedPath { Fill: { IsSolid: true } paint, Stroke: null }] =>
+                    [PdfPaintedShading { Fill: { Picture: null } fill, Clip: null, Mask: null } shading] when luminosity => new PdfMask(shading.Alpha, fill),
+                    [PdfPaintedPath { Fill: { Shading: { Picture: null } fill } paint, Stroke: null, Clip: null, Mask: null, Blend: SKBlendMode.SrcOver }]
+                        when luminosity => new PdfMask(paint.Alpha, fill),
+                    [PdfPaintedPath { Fill: { IsSolid: true } paint, Stroke: null, Mask: null, Blend: SKBlendMode.SrcOver }] =>
                         new PdfMask(paint.Alpha * (luminosity ? PdfShadings.Luminosity(paint.Color) : 1)),
-                    _ => null,
+                    [] => null,
+                    _ => Drawn(drawing, group, initial, luminosity, mask.BC),
                 };
             }
         }
-        return _masks[mask] = result;
+        return _masks[(mask, space)] = result;
     }
+
+    /// <summary>
+    /// A soft mask group's paints drawn over its box (on the drawing's area): a picture of their alpha, or of their
+    /// luminosity over the backdrop colour BC (black by default). Null past the mask budget.
+    /// </summary>
+    private PdfMask? Drawn(PdfSlideDrawing drawing, StreamToken group, TransformationMatrix initial, bool luminosity, double[]? backdrop)
+    {
+        var box = _area;
+        if (group.StreamDictionary.TryGet(NameToken.Bbox, PdfScanner, out ArrayToken? bbox) && bbox.Length == 4
+            && bbox.Data.All(t => t is NumericToken { Double: var v } && double.IsFinite(v)))
+        {
+            var values = bbox.Data.Select(t => (float)((NumericToken)t).Double).ToArray();
+            box = ToSlide(initial).MapRect(new SKRect(Math.Min(values[0], values[2]), Math.Min(values[1], values[3]), Math.Max(values[0], values[2]),
+                Math.Max(values[1], values[3])));
+            box.Intersect(_area);
+        }
+        if (box.Width < 0.5f || box.Height < 0.5f)
+            return new PdfMask(0); // a group of no area hides everything
+        var scale = Math.Min(MaskScale, MaskSide / Math.Max(box.Width, box.Height));
+        var (width, height) = ((int)Math.Ceiling(box.Width * scale), (int)Math.Ceiling(box.Height * scale));
+        if (_budget.MaskPixels + (long)width * height > MaxMaskPixels)
+            return null;
+        _budget.MaskPixels += (long)width * height;
+        var toPixels = SKMatrix.CreateTranslation(-box.Left, -box.Top).PostConcat(SKMatrix.CreateScale(scale, scale));
+        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(luminosity ? Backdrop(backdrop) : SKColors.Transparent);
+            canvas.SetMatrix(toPixels);
+            PdfSlideRaster.Draw(canvas, drawing.Paints, pictures: true);
+        }
+        // The mask's alpha in the alpha channel, nothing else.
+        using var alpha = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        var source = bitmap.GetPixelSpan();
+        var target = alpha.GetPixelSpan();
+        for (var i = 0; i < width * height; i++)
+        {
+            var at = i * 4;
+            var value = luminosity
+                ? (byte)Math.Clamp(Math.Round(0.3 * source[at] + 0.59 * source[at + 1] + 0.11 * source[at + 2]), 0, 255)
+                : source[at + 3];
+            (target[at], target[at + 1], target[at + 2], target[at + 3]) = (0, 0, 0, value);
+        }
+        if (!toPixels.TryInvert(out var toSlide))
+            return null;
+        var image = SKImage.FromBitmap(alpha);
+        _drawing.Owned.Add(image);
+        return new PdfMask(1, Picture: new PdfShadingPicture(image, toSlide));
+    }
+
+    /// <summary>A luminosity mask's backdrop colour (BC, grey, RGB or CMYK numbers), opaque; black without one.</summary>
+    private static SKColor Backdrop(double[]? values) => values switch
+    {
+        [var g] => new SKColor(PdfShadings.Byte(g), PdfShadings.Byte(g), PdfShadings.Byte(g)),
+        [var r, var g, var b] => new SKColor(PdfShadings.Byte(r), PdfShadings.Byte(g), PdfShadings.Byte(b)),
+        [var c, var m, var y, var k] => new SKColor(PdfShadings.Byte((1 - c) * (1 - k)), PdfShadings.Byte((1 - m) * (1 - k)), PdfShadings.Byte((1 - y) * (1 - k))),
+        _ => SKColors.Black,
+    };
 
     // ───────────────────────── Pictures, shadings, glyphs ─────────────────────────
 
@@ -631,7 +813,10 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
             var state = GetCurrentState();
             var alpha = Math.Clamp(double.IsFinite(state.AlphaConstantNonStroking) ? state.AlphaConstantNonStroking : 1, 0, 1);
             _drawing.Paints.Add(new PdfPaintedImage(_order, _clip, Mask(state), ToSlide(matrix), image,
-                Rgb(state.CurrentNonStrokingColor).WithAlpha((byte)Math.Round(alpha * 255)), alpha));
+                Rgb(state.CurrentNonStrokingColor).WithAlpha((byte)Math.Round(alpha * 255)), alpha)
+            {
+                Blend = Blend(state),
+            });
         }
         _order++;
     }
@@ -652,7 +837,7 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
             _budget.Paints++;
             var state = GetCurrentState();
             var alpha = Math.Clamp(double.IsFinite(state.AlphaConstantNonStroking) ? state.AlphaConstantNonStroking : 1, 0, 1);
-            _drawing.Paints.Add(new PdfPaintedShading(_order, _clip, Mask(state), new PdfShadingFill(shading, ToSlide(CurrentTransformationMatrix)), alpha));
+            _drawing.Paints.Add(new PdfPaintedShading(_order, _clip, Mask(state), Fill(shading, ToSlide(CurrentTransformationMatrix)), alpha) { Blend = Blend(state) });
         }
         _order++;
     }
@@ -738,6 +923,9 @@ internal static class PdfShadings
     /// </summary>
     internal static SKShader? Shader(PdfShadingFill fill, Func<SKColor, SKColor>? color = null)
     {
+        // A function-based or mesh shading: its picture (a mask's luminosity is taken from it by ApplyMask).
+        if (fill.Picture is { } picture)
+            return color is null ? picture.Shader() : null;
         var shading = fill.Shading;
         var (extendStart, extendEnd) = Extend(shading);
         var mode = extendStart && extendEnd ? SKShaderTileMode.Clamp : extendStart || extendEnd ? SKShaderTileMode.Clamp : SKShaderTileMode.Decal;
@@ -776,24 +964,34 @@ internal static class PdfShadings
 internal static class PdfSlideRaster
 {
     /// <summary>
-    /// Draws <paramref name="paints"/> (pictures are left out: they are pictures of their own) through their clipping
-    /// paths, alpha and soft masks. <paramref name="uncolored"/>: a pattern cell that gets its colour from the fill (black here).
+    /// Draws <paramref name="paints"/> through their clipping paths, alpha, soft masks and blend modes; pictures only
+    /// when <paramref name="pictures"/> (a soft mask group: on slides they are pictures of their own).
+    /// <paramref name="uncolored"/>: a pattern cell that gets its colour from the fill (black here).
     /// </summary>
-    public static void Draw(SKCanvas canvas, IEnumerable<PdfPaint> paints, bool uncolored = false, CancellationToken cancellationToken = default)
+    public static void Draw(SKCanvas canvas, IEnumerable<PdfPaint> paints, bool uncolored = false, CancellationToken cancellationToken = default,
+        bool pictures = false)
     {
         foreach (var paint in paints)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (paint is PdfPaintedImage)
+            if (paint is PdfPaintedImage && !pictures)
                 continue;
             canvas.Save();
             if (paint.Clip is { } clip)
                 canvas.ClipPath(clip.Path, SKClipOperation.Intersect, true);
-            var masked = paint.Mask is { } mask && (mask.Shading is not null || mask.Alpha < 1);
+            using var blend = paint.Blend == SKBlendMode.SrcOver ? null : new SKPaint { BlendMode = paint.Blend };
+            if (blend is not null && paint.Backdrop is { } backdrop)
+                Underlay(canvas, paint, backdrop);
+            if (blend is not null)
+                canvas.SaveLayer(blend);
+            var masked = paint.Mask is { } mask && (!mask.IsConstant || mask.Alpha < 1);
             if (masked)
                 canvas.SaveLayer();
             switch (paint)
             {
+                case PdfPaintedImage image:
+                    Picture(canvas, image);
+                    break;
                 case PdfPaintedPath path:
                     if (path.Fill is { } fill)
                     {
@@ -840,19 +1038,115 @@ internal static class PdfSlideRaster
                 ApplyMask(canvas, paint.Mask!);
                 canvas.Restore();
             }
+            if (blend is not null)
+                canvas.Restore();
             canvas.Restore();
         }
     }
 
-    /// <summary>Keeps of the layer what the mask lets through.</summary>
-    private static void ApplyMask(SKCanvas canvas, PdfMask mask)
+    /// <summary>
+    /// <paramref name="color"/> where <paramref name="paint"/> paints, under what is drawn there already (DstOver): the
+    /// page under a blended paint.
+    /// </summary>
+    private static void Underlay(SKCanvas canvas, PdfPaint paint, SKColor color)
+    {
+        using var under = new SKPaint { Color = color, BlendMode = SKBlendMode.DstOver, IsAntialias = true };
+        switch (paint)
+        {
+            case PdfPaintedPath path:
+                if (path.Fill is not null)
+                    canvas.DrawPath(path.Outline, under);
+                if (path.Stroke is not null)
+                {
+                    under.Style = SKPaintStyle.Stroke;
+                    under.StrokeWidth = Math.Max(path.LineWidth, 1 / Math.Max(1, canvas.TotalMatrix.ScaleX));
+                    under.StrokeCap = path.Cap;
+                    under.StrokeJoin = path.Join;
+                    under.StrokeMiter = path.Miter;
+                    using var dash = path.Dash is { } intervals ? SKPathEffect.CreateDash(intervals, path.DashPhase) : null;
+                    under.PathEffect = dash;
+                    canvas.DrawPath(path.Outline, under);
+                }
+                break;
+            case PdfPaintedShading shading when shading.Fill.Shading.BBox is { } box && paint.Clip is null:
+                using (var area = new SKPath())
+                {
+                    area.AddPoly([.. new[] { box.BottomLeft, box.BottomRight, box.TopRight, box.TopLeft }.Select(p => new SKPoint((float)p.X, (float)p.Y))]);
+                    area.Transform(shading.Fill.Space);
+                    canvas.DrawPath(area, under);
+                }
+                break;
+            case PdfPaintedShading { Fill.Picture: { } picture } when paint.Clip is null:
+                canvas.Save();
+                canvas.Concat(picture.Space);
+                canvas.DrawRect(SKRect.Create(picture.Image.Width, picture.Image.Height), under);
+                canvas.Restore();
+                break;
+            case PdfPaintedShading:
+                canvas.DrawPaint(under);
+                break;
+        }
+    }
+
+    /// <summary>A picture of a soft mask group at its place; one PdfPig can't decode is left out.</summary>
+    private static void Picture(SKCanvas canvas, PdfPaintedImage image)
+    {
+        if (image.Image is not { } source || source.WidthInSamples <= 0 || source.HeightInSamples <= 0
+            || (long)source.WidthInSamples * source.HeightInSamples > PdfDocumentReader.MaxGraphicsPixels)
+            return;
+        SKBitmap? bitmap = null;
+        try
+        {
+            bitmap = source.TryGetPng(out var png) ? SKBitmap.Decode(png) : SKBitmap.Decode(source.RawMemory.ToArray());
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        {
+            // Not decoded: left out of the mask.
+        }
+        if (bitmap is null)
+            return;
+        using (bitmap)
+        {
+            // Pixels (y down) → the unit square (y up, top edge at 1) → the slide.
+            var toUnit = new SKMatrix(1f / bitmap.Width, 0, 0, 0, -1f / bitmap.Height, 1, 0, 0, 1);
+            canvas.Save();
+            canvas.Concat(toUnit.PostConcat(image.Matrix));
+            using var paint = new SKPaint { Color = SKColors.White.WithAlpha((byte)Math.Round(Math.Clamp(image.Alpha, 0, 1) * 255)) };
+            canvas.DrawBitmap(bitmap, 0, 0, paint);
+            canvas.Restore();
+        }
+    }
+
+    /// <summary>The luminosity of a shading's picture as alpha (a luminosity mask's shading).</summary>
+    private static readonly float[] LuminosityToAlpha =
+    [
+        0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0,
+        0.3f, 0.59f, 0.11f, 0, 0,
+    ];
+
+    /// <summary>Keeps of the layer what the mask lets through (the canvas's matrix maps slide coordinates).</summary>
+    internal static void ApplyMask(SKCanvas canvas, PdfMask mask)
     {
         var alpha = (byte)Math.Round(Math.Clamp(mask.Alpha, 0, 1) * 255);
         using var paint = new SKPaint { BlendMode = SKBlendMode.DstIn, Color = SKColors.Black.WithAlpha(alpha) };
-        if (mask.Shading is { } shading)
+        if (mask.Picture is { } picture)
+        {
+            paint.Shader = picture.Shader();
+        }
+        else if (mask.Shading is { Picture: { } drawn })
+        {
+            paint.Shader = drawn.Shader();
+            paint.ColorFilter = SKColorFilter.CreateColorMatrix(LuminosityToAlpha);
+        }
+        else if (mask.Shading is { } shading)
+        {
             paint.Shader = PdfShadings.Shader(shading, c => SKColors.Black.WithAlpha((byte)Math.Round(PdfShadings.Luminosity(c) * 255)));
+        }
         canvas.DrawPaint(paint);
         paint.Shader?.Dispose();
+        paint.ColorFilter?.Dispose();
     }
 
     private static SKPaint Paint(PdfPaintColor color, bool uncolored)

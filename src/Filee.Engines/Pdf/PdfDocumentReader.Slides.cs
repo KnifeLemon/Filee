@@ -20,9 +20,14 @@
 //   can be moved and recoloured, with the PDF's transparency (ca / CA); a rectangle filling the page is the slide's
 //   background colour. Paths and "sh" areas filled with an axial or radial shading become shapes with a gradient fill
 //   (their own outline as custom geometry), as do solid fills under a soft mask that is one shading (an alpha
-//   gradient). Everything else (curves, polygons, tiling patterns, other shadings, more than MaxShapes shapes on one
-//   page) is drawn into transparent pictures of the page's graphics (Skia), line widths and dashes as the
-//   transformation they were drawn under makes them.
+//   gradient), and function-based and mesh shadings that look like a linear or radial gradient over all of the shape
+//   (PdfShadingPictures). A tiling pattern whose cells repeat upright is a picture fill of its cell (a:blipFill with
+//   a:tile, the cell's PNG at 96 dpi). Everything else (curves, polygons, other shadings, fills under a soft mask Filee
+//   drew, more than MaxShapes shapes on one page) is drawn into transparent pictures of the page's graphics (Skia),
+//   line widths and dashes as the transformation they were drawn under makes them.
+// - Blend modes: Multiply and Darken over text painted before them (a highlight) put the shape or picture under that
+//   text, which then shows through as it does in the PDF; the other modes are drawn, blended with the graphics drawn
+//   into the same picture and, where nothing else on the slide is under them, with the page's colour. A picture under a soft mask other than a constant alpha gets the mask in its own alpha.
 //   Rules and shading of a ruled table are the table's own borders and fills, so they are not repeated as shapes.
 // - Clipping: a clipping rectangle crops the pictures and rectangles it cuts (srcRect, a smaller rectangle); another
 //   clipping path is a picture's custom geometry and is intersected with a shape's outline; strokes it cuts are drawn.
@@ -32,8 +37,8 @@
 // - Speaker notes: the contents of the page's comment annotations (sticky notes, free text, highlights and other
 //   text markup), top to bottom, with their author.
 //
-// Not rebuilt (left for later): form fields, the appearance of annotations, function-based and mesh shadings, soft
-// masks other than one colour or one shading, blend modes, text inside pattern cells, vertical CJK writing.
+// Not rebuilt (left for later): form fields, the appearance of annotations, blend modes against pictures and text
+// (other than Multiply / Darken over text), text inside pattern cells, vertical CJK writing.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
@@ -97,6 +102,12 @@ internal enum PdfShapeKind
     Custom,
 }
 
+/// <summary>
+/// A picture fill repeating a tiling pattern's cell: the cell's PNG, where a tile starts in the shape's box (points
+/// from its top-left corner), the tiles' scale (of the picture's size at 96 dpi) and the fill's alpha.
+/// </summary>
+internal sealed record PdfSlideTile(string Path, SKPoint Offset, float ScaleX, float ScaleY, double Alpha);
+
 /// <summary>A rectangle, a line or an outline; colours "#RRGGBB", null = none; the line width in points.</summary>
 internal sealed record PdfSlideShape(SKRect Bounds, PdfShapeKind Kind, string? Fill, string? Line, float LineWidth, bool Dashed,
     bool FlipHorizontal = false, bool FlipVertical = false) : PdfSlideItem(Bounds)
@@ -106,6 +117,9 @@ internal sealed record PdfSlideShape(SKRect Bounds, PdfShapeKind Kind, string? F
 
     /// <summary>A gradient instead of <see cref="PdfSlideShape.Fill"/>.</summary>
     public PdfSlideGradient? Gradient { get; init; }
+
+    /// <summary>A tiled picture instead of <see cref="PdfSlideShape.Fill"/>.</summary>
+    public PdfSlideTile? Tile { get; init; }
 
     public PdfGeometry? Geometry { get; init; }
 }
@@ -238,6 +252,7 @@ internal sealed partial class PdfDocumentReader
     private PdfSlidePage SlidePage(Page page, PdfSlideDrawing drawing, int dpi, DocumentBudget budget, CancellationToken cancellationToken)
     {
         var content = ReadPage(page);
+        _tileFiles.Clear();
         var (width, height) = (content.Width, content.Height);
         var notes = Notes(page);
         var items = new List<PdfSlideItem>();
@@ -277,8 +292,10 @@ internal sealed partial class PdfDocumentReader
             entries.Add(new Entry(glyphs.Order(text) ?? int.MaxValue, TextBox(text, height, lineRatio), null, default));
         }
         entries.AddRange(TurnedTexts(page, drawing, height, lineRatio, budget, cancellationToken));
+        Blended(entries);
 
-        items.AddRange(Stacked(entries.OrderBy(e => e.Order).ToList(), width, height, dpi, budget, cancellationToken));
+        var backdrop = background is null ? SKColors.White : SKColor.Parse(background);
+        items.AddRange(Stacked(entries.OrderBy(e => e.Order).ToList(), width, height, dpi, backdrop, budget, cancellationToken));
         return new PdfSlidePage(width, height, background, items, notes);
     }
 
@@ -287,6 +304,33 @@ internal sealed partial class PdfDocumentReader
     /// to draw into a picture over <paramref name="Area"/>. A shape keeps the paint it came from in <paramref name="Paint"/>.
     /// </summary>
     private sealed record Entry(int Order, PdfSlideItem? Item, PdfPaint? Paint, SKRect Area);
+
+    /// <summary>
+    /// A shape or picture painted with Multiply or Darken over text painted before it goes under the earliest such text
+    /// (dark text over a highlight looks as the blend shows it), unless something else painted in between overlaps it.
+    /// </summary>
+    private static void Blended(List<Entry> entries)
+    {
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (entry.Paint is not { Blend: SKBlendMode.Multiply or SKBlendMode.Darken } || entry.Item is not (PdfSlideShape or PdfSlidePicture) || entry.Order < 0)
+                continue;
+            var area = Shown(entry.Item);
+            Entry? under = null;
+            foreach (var text in entries)
+            {
+                if (text.Item is PdfSlideText && text.Order < entry.Order && Shown(text.Item).IntersectsWith(area) && (under is null || text.Order < under.Order))
+                    under = text;
+            }
+            if (under is null)
+                continue;
+            var between = entries.Any(o => !ReferenceEquals(o, entry) && o.Item is not PdfSlideText && o.Order >= under.Order && o.Order < entry.Order
+                                           && !ReferenceEquals(o.Paint, entry.Paint) && (o.Item is { } item ? Shown(item) : o.Area).IntersectsWith(area));
+            if (!between)
+                entries[i] = entry with { Order = under.Order };
+        }
+    }
 
     /// <summary>A PDF box (y upwards) on a page <paramref name="height"/> points high as a slide box (y downwards).</summary>
     private static SKRect Box(PdfRectangle box, double height) =>
@@ -304,10 +348,19 @@ internal sealed partial class PdfDocumentReader
     /// <summary>
     /// The entries in order as slide items: drawn paints gather into pictures, each one put where its first paint is.
     /// A paint joins the last picture unless something put after that picture overlaps it (it would end up under
-    /// that); after <see cref="MaxGraphicsPictures"/> pictures it joins the last one anyway.
+    /// that); after <see cref="MaxGraphicsPictures"/> pictures it joins the last one anyway. A drawn paint with a blend
+    /// mode that no item painted before it overlaps is blended with <paramref name="page"/> (the slide's background).
     /// </summary>
-    private List<PdfSlideItem> Stacked(List<Entry> entries, double width, double height, int dpi, DocumentBudget budget, CancellationToken cancellationToken)
+    private List<PdfSlideItem> Stacked(List<Entry> entries, double width, double height, int dpi, SKColor page, DocumentBudget budget,
+        CancellationToken cancellationToken)
     {
+        for (var i = 0; i < entries.Count; i++)
+        {
+            if (entries[i] is { Item: null, Paint: { Blend: not SKBlendMode.SrcOver } blended, Area: var area }
+                && !entries.Take(i).Any(o => o.Item is { } item && Shown(item).IntersectsWith(area)))
+                entries[i] = entries[i] with { Paint = blended with { Backdrop = page } };
+        }
+
         // Too many shapes (a chart of bars): their paints are drawn instead.
         if (entries.Count(e => e.Item is PdfSlideShape) > MaxShapes)
         {
@@ -647,10 +700,10 @@ internal sealed partial class PdfDocumentReader
             {
                 if (shown.Width < 1 || shown.Height < 1 || !shown.IntersectsWith(page) || _pictures >= 200)
                     continue;
-                if (Stencil(image) is { } stencil && Placed(stencil, image, true) is { } placed)
+                if (Stencil(image) is { } stencil && Placed(Masked(stencil, image), image, true) is { } placed)
                 {
                     budget.Object();
-                    entries.Add(new Entry(image.Order, placed, null, default));
+                    entries.Add(new Entry(image.Order, placed, image, default));
                 }
                 continue;
             }
@@ -683,11 +736,11 @@ internal sealed partial class PdfDocumentReader
             var path = pictures[match].PicturePath!;
             var natural = image.Image is { } source && PictureSize(path) is { } size && size == (source.WidthInSamples, source.HeightInSamples);
             // A picture cut out of the rendered page is the part of the page it shows, upright.
-            var picture = natural ? Placed(path, image, false) : new PdfSlidePicture(Box(pictures[match].PictureBounds!.Value, height), path);
+            var picture = natural ? Placed(Masked(path, image), image, false) : new PdfSlidePicture(Box(pictures[match].PictureBounds!.Value, height), path);
             if (picture is not null)
             {
                 budget.Object();
-                entries.Add(new Entry(image.Order, picture, null, default));
+                entries.Add(new Entry(image.Order, picture, image, default));
             }
         }
         for (var i = 0; i < pictures.Count; i++)
@@ -698,6 +751,36 @@ internal sealed partial class PdfDocumentReader
             entries.Add(new Entry(-1, new PdfSlidePicture(Box(pictures[i].PictureBounds!.Value, height), pictures[i].PicturePath!), null, default));
         }
         return entries;
+    }
+
+    /// <summary>
+    /// The picture <paramref name="path"/> with the soft mask it is painted under in its alpha (a PNG of its own), when
+    /// that mask is a gradient or a drawn group; the path itself otherwise or when it can't be read.
+    /// </summary>
+    private string Masked(string path, PdfPaintedImage image)
+    {
+        if (image.Mask is not { IsConstant: false } mask)
+            return path;
+        using var source = SKBitmap.Decode(path);
+        if (source is null || (long)source.Width * source.Height > MaxGraphicsPixels)
+            return path;
+        // The picture's pixels (y down) → its unit square (y up) → the slide; and back for the mask.
+        var toSlide = new SKMatrix(1f / source.Width, 0, 0, 0, -1f / source.Height, 1, 0, 0, 1).PostConcat(image.Matrix);
+        if (!toSlide.TryInvert(out var toPixels))
+            return path;
+        using var bitmap = new SKBitmap(new SKImageInfo(source.Width, source.Height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.Transparent);
+            canvas.DrawBitmap(source, 0, 0);
+            canvas.SetMatrix(toPixels);
+            PdfSlideRaster.ApplyMask(canvas, mask);
+        }
+        var file = NewMediaPath("png");
+        using (var encoded = bitmap.Encode(SKEncodedImageFormat.Png, 100))
+        using (var output = File.Create(file))
+            encoded.SaveTo(output);
+        return file;
     }
 
     private static bool Close(SKRect a, SKRect b) =>
@@ -733,8 +816,8 @@ internal sealed partial class PdfDocumentReader
         var centre = m.MapPoint(0.5f, 0.5f);
         var bounds = new SKRect(centre.X - width / 2, centre.Y - height / 2, centre.X + width / 2, centre.Y + height / 2);
         var picture = new PdfSlidePicture(bounds, path) { Rotation = rotation, FlipHorizontal = flipH, FlipVertical = flipV };
-        // A stencil's colour carries its alpha already.
-        var alpha = (stencil ? 1 : image.Alpha) * (image.Mask is { Shading: null } mask ? mask.Alpha : 1);
+        // A stencil's colour carries its alpha already; a mask other than a constant alpha is in the picture (Masked).
+        var alpha = (stencil ? 1 : image.Alpha) * (image.Mask is { IsConstant: true } mask ? mask.Alpha : 1);
         if (alpha < 1)
             picture = picture with { Alpha = alpha };
 
@@ -842,7 +925,7 @@ internal sealed partial class PdfDocumentReader
     /// Straight-edged paths inside a ruled table are its rules and shading, which the table has itself: the first of
     /// them gives the table its place in the order.
     /// </summary>
-    private static (string? Background, List<Entry> Entries, int?[] TableOrders) SlideGraphics(PdfSlideDrawing drawing, double width, double height,
+    private (string? Background, List<Entry> Entries, int?[] TableOrders) SlideGraphics(PdfSlideDrawing drawing, double width, double height,
         List<SKRect> tables, DocumentBudget budget)
     {
         string? background = null;
@@ -875,7 +958,7 @@ internal sealed partial class PdfDocumentReader
                         {
                             first = false;
                             // Outlined in its own colour at most (PdfPig's writer and some drivers fill and stroke a background).
-                            if (!cut && path.Mask is null && path.Fill is { IsSolid: true, Color.Alpha: 255 } fill && path.Outline.IsRect
+                            if (!cut && path.Mask is null && path.Blend == SKBlendMode.SrcOver && path.Fill is { IsSolid: true, Color.Alpha: 255 } fill && path.Outline.IsRect
                                 && (path.Stroke is null || path.Stroke.Color == fill.Color)
                                 && bounds.Width >= 0.98 * width && bounds.Height >= 0.98 * height)
                             {
@@ -883,7 +966,7 @@ internal sealed partial class PdfDocumentReader
                                 continue;
                             }
                         }
-                        var shapes = PathShapes(path, cut ? path.Clip : null);
+                        var shapes = PathShapes(path, cut ? path.Clip : null, TileFile);
                         if (shapes is null)
                         {
                             entries.Add(new Entry(path.Order, null, path, area));
@@ -898,7 +981,7 @@ internal sealed partial class PdfDocumentReader
                     }
                 case PdfPaintedShading shading:
                     {
-                        var area = shading.Clip?.Bounds ?? ShadingBox(shading) ?? page;
+                        var area = shading.Clip?.Bounds ?? ShadingBox(shading) ?? PictureBox(shading.Fill) ?? page;
                         area.Intersect(page);
                         if (area.Width <= 0 || area.Height <= 0)
                             continue;
@@ -921,8 +1004,43 @@ internal sealed partial class PdfDocumentReader
 
     private static string Hex(SKColor color) => $"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}";
 
+    /// <summary>Tile pictures of this page already written (a pattern used by several fills is one file).</summary>
+    private readonly Dictionary<SKImage, string> _tileFiles = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>A tiling pattern cell's picture as a PNG of 96 dpi (its size at tile scale 100 % is its pixels at 96 dpi).</summary>
+    private string TileFile(PdfTile tile)
+    {
+        if (_tileFiles.TryGetValue(tile.Image, out var known))
+            return known;
+        var file = NewMediaPath("png");
+        using (var data = tile.Image.Encode(SKEncodedImageFormat.Png, 100))
+            File.WriteAllBytes(file, WithResolution(data.ToArray(), 96));
+        return _tileFiles[tile.Image] = file;
+    }
+
+    /// <summary>A PNG with a pHYs chunk of <paramref name="dpi"/> after its header, so readers take its size from it.</summary>
+    internal static byte[] WithResolution(byte[] png, double dpi)
+    {
+        const int Header = 8 + 25; // signature, IHDR
+        if (png.Length < Header || png[12] != 'I' || png[13] != 'H' || png[14] != 'D' || png[15] != 'R')
+            return png;
+        var perMetre = (uint)Math.Round(dpi / 0.0254);
+        var chunk = new byte[4 + 4 + 9 + 4];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(chunk, 9);
+        "pHYs"u8.CopyTo(chunk.AsSpan(4));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(chunk.AsSpan(8), perMetre);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(chunk.AsSpan(12), perMetre);
+        chunk[16] = 1; // metres
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(chunk.AsSpan(17), System.IO.Hashing.Crc32.HashToUInt32(chunk.AsSpan(4, 13)));
+        return [.. png.AsSpan(0, Header), .. chunk, .. png.AsSpan(Header)];
+    }
+
     private static bool Within(SKRect box, SKRect area, double tolerance) =>
         box.Left >= area.Left - tolerance && box.Right <= area.Right + tolerance && box.Top >= area.Top - tolerance && box.Bottom <= area.Bottom + tolerance;
+
+    /// <summary>What a function-based or mesh shading's picture covers on the slide.</summary>
+    private static SKRect? PictureBox(PdfShadingFill fill) =>
+        fill.Picture is { } picture ? picture.Space.MapRect(SKRect.Create(picture.Image.Width, picture.Image.Height)) : null;
 
     /// <summary>The box of a shading painted without a clipping path (its own BBox), on the slide.</summary>
     private static SKRect? ShadingBox(PdfPaintedShading shading)
@@ -935,14 +1053,16 @@ internal sealed partial class PdfDocumentReader
     /// <summary>
     /// The shapes a path becomes, or null when it is drawn: rectangles and straight lines in solid colours (cut by a
     /// clipping rectangle when <paramref name="clip"/> is given), or the outline (intersected with the clipping path) of
-    /// a fill with an axial or radial shading, or of a solid fill under a shading soft mask.
+    /// a fill with a shading that is a gradient, of a solid fill under a shading soft mask, or of a fill with a tiling
+    /// pattern repeating upright (its cell's picture from <paramref name="tileFile"/>). Blend modes other than Multiply
+    /// and Darken, and masks Filee drew, are drawn.
     /// </summary>
-    private static List<PdfSlideShape>? PathShapes(PdfPaintedPath path, PdfClip? clip)
+    private static List<PdfSlideShape>? PathShapes(PdfPaintedPath path, PdfClip? clip, Func<PdfTile, string> tileFile)
     {
         var (fill, stroke) = (path.Fill, path.Stroke);
-        if (stroke is { IsSolid: false })
+        if (stroke is { IsSolid: false } || path.Blend is not (SKBlendMode.SrcOver or SKBlendMode.Multiply or SKBlendMode.Darken) || path.Mask?.Picture is not null)
             return null;
-        var maskAlpha = path.Mask is { Shading: null } mask ? mask.Alpha : 1;
+        var maskAlpha = path.Mask is { IsConstant: true } mask ? mask.Alpha : 1;
         if (fill is null or { IsSolid: true } && path.Mask?.Shading is null && !path.Curved)
         {
             if (clip is { Rectangular: false })
@@ -956,7 +1076,8 @@ internal sealed partial class PdfDocumentReader
         if (outline is null || outline.IsEmpty)
             return null;
         var bounds = outline.TightBounds;
-        PdfSlideGradient? gradient;
+        PdfSlideGradient? gradient = null;
+        PdfSlideTile? tiled = null;
         if (fill.Shading is { } shading && path.Mask?.Shading is null)
         {
             var alpha = fill.Alpha * maskAlpha;
@@ -967,32 +1088,53 @@ internal sealed partial class PdfDocumentReader
             var color = fill.Color;
             gradient = Gradient(fade, bounds, c => color.WithAlpha((byte)Math.Round(color.Alpha * PdfShadings.Luminosity(c) * path.Mask.Alpha)));
         }
-        else
+        else if (fill.Tile is { } tile && path.Mask?.Shading is null)
         {
-            return null;
+            tiled = Tiled(tile, bounds, fill.Alpha * maskAlpha, tileFile);
         }
-        if (gradient is null)
+        if (gradient is null && tiled is null)
             return null;
         var line = stroke is null ? null : Hex(stroke.Color);
         var lineAlpha = stroke is null ? 1 : stroke.Alpha * maskAlpha;
         var dashed = path.Dash is not null;
         if (outline.IsRect)
-            return [new PdfSlideShape(bounds, PdfShapeKind.Rectangle, null, line, path.LineWidth, dashed) { Gradient = gradient, LineAlpha = lineAlpha }];
+            return [new PdfSlideShape(bounds, PdfShapeKind.Rectangle, null, line, path.LineWidth, dashed) { Gradient = gradient, Tile = tiled, LineAlpha = lineAlpha }];
         if (PdfGeometry.From(outline, SKMatrix.CreateTranslation(-bounds.Left, -bounds.Top)) is not { } geometry)
             return null;
-        return [new PdfSlideShape(bounds, PdfShapeKind.Custom, null, line, path.LineWidth, dashed) { Gradient = gradient, Geometry = geometry, LineAlpha = lineAlpha }];
+        return [new PdfSlideShape(bounds, PdfShapeKind.Custom, null, line, path.LineWidth, dashed)
+            { Gradient = gradient, Tile = tiled, Geometry = geometry, LineAlpha = lineAlpha }];
+    }
+
+    /// <summary>
+    /// A tiling pattern's fill of <paramref name="box"/> as a picture fill, when its cells repeat upright (scaled, not
+    /// turned, skewed or mirrored); null otherwise (it is drawn).
+    /// </summary>
+    private static PdfSlideTile? Tiled(PdfTile tile, SKRect box, double alpha, Func<PdfTile, string> tileFile)
+    {
+        var m = tile.Space;
+        if (m.ScaleX <= 0 || m.ScaleY <= 0 || Math.Abs(m.SkewX) > 1e-4 * m.ScaleY || Math.Abs(m.SkewY) > 1e-4 * m.ScaleX
+            || !PdfShadings.Finite(m.ScaleX, m.ScaleY, m.TransX, m.TransY))
+            return null;
+        var (width, height) = (tile.Image.Width * m.ScaleX, tile.Image.Height * m.ScaleY);
+        if (width < 0.05f || height < 0.05f)
+            return null;
+        // Where a tile starts, from the box's top-left corner, within one tile.
+        static float Within(float value, float size) => (value % size + size) % size;
+        var offset = new SKPoint(Within(m.TransX - box.Left, width), Within(m.TransY - box.Top, height));
+        // A tile at 100 % is the picture's pixels at 96 dpi: 0.75 points a pixel.
+        return new PdfSlideTile(tileFile(tile), offset, m.ScaleX / 0.75f, m.ScaleY / 0.75f, alpha);
     }
 
     /// <summary>A shading painted over its clipping path (or its box, or the page) as a shape with a gradient; null when it is drawn.</summary>
     private static PdfSlideShape? ShadingShape(PdfPaintedShading shading, SKRect page)
     {
-        if (shading.Mask?.Shading is not null)
+        if (shading.Mask is { IsConstant: false } || shading.Blend is not (SKBlendMode.SrcOver or SKBlendMode.Multiply or SKBlendMode.Darken))
             return null;
         using var area = new SKPath();
         if (shading.Clip is { } clip)
             area.AddPath(clip.Path);
         else
-            area.AddRect(ShadingBox(shading) ?? page);
+            area.AddRect(ShadingBox(shading) ?? PictureBox(shading.Fill) ?? page);
         using var pageArea = new SKPath();
         pageArea.AddRect(page);
         using var visible = area.Op(pageArea, SKPathOp.Intersect);
@@ -1143,6 +1285,11 @@ internal sealed partial class PdfDocumentReader
     {
         if (box.Width < 0.01f || box.Height < 0.01f)
             return null;
+        // A function-based or mesh shading: the gradient it looks like, where it covers the whole box.
+        if (fill.Look is { } look)
+            return look.Covers(box) ? LookGradient(look, box, color) : null;
+        if (fill.Picture is not null)
+            return null;
         var shading = fill.Shading;
         var space = fill.Space;
         var (extendStart, extendEnd) = PdfShadings.Extend(shading);
@@ -1171,7 +1318,7 @@ internal sealed partial class PdfDocumentReader
                     var offset = Dot(centre - start, normal);
                     var degrees = (angle * 180 / Math.PI % 360 + 360) % 360;
                     return new PdfSlideGradient(false, degrees, default,
-                        Stops((offset - half) / distance, 2 * half / distance, shading, extendStart, extendEnd, color));
+                        Stops((offset - half) / distance, 2 * half / distance, t => color(PdfShadings.ColorAt(shading, t)), extendStart, extendEnd));
                 }
             case RadialShading { Coords: [var x0, var y0, var r0, var x1, var y1, var r1, ..] } when PdfShadings.Finite(x0, y0, r0, x1, y1, r1) && r0 >= 0 && r1 >= 0:
                 {
@@ -1191,11 +1338,38 @@ internal sealed partial class PdfDocumentReader
                     var reach = new[] { new SKPoint(box.Left, box.Top), new SKPoint(box.Right, box.Top), new SKPoint(box.Left, box.Bottom), new SKPoint(box.Right, box.Bottom) }
                         .Max(p => (p - focus).Length);
                     return new PdfSlideGradient(true, 0, new SKPoint((focus.X - box.Left) / box.Width, (focus.Y - box.Top) / box.Height),
-                        Stops(-inner / (outer - inner), reach / (outer - inner), shading, extendStart, extendEnd, color));
+                        Stops(-inner / (outer - inner), reach / (outer - inner), t => color(PdfShadings.ColorAt(shading, t)), extendStart, extendEnd));
                 }
             default:
                 return null;
         }
+    }
+
+    /// <summary>The DrawingML gradient over <paramref name="box"/> of a shading's look (PdfShadingLook), each colour through <paramref name="color"/>.</summary>
+    private static PdfSlideGradient? LookGradient(PdfShadingLook look, SKRect box, Func<SKColor, SKColor> color)
+    {
+        var centre = new SKPoint(box.MidX, box.MidY);
+        var way = look.End - look.Start;
+        var distance = way.Length;
+        if (distance < 1e-3f)
+            return null;
+        SKColor At(double t) => color(look.At(t));
+        if (look.Radial)
+        {
+            var focus = look.Start;
+            if (!box.Contains(focus))
+                return null;
+            var reach = new[] { new SKPoint(box.Left, box.Top), new SKPoint(box.Right, box.Top), new SKPoint(box.Left, box.Bottom), new SKPoint(box.Right, box.Bottom) }
+                .Max(p => (p - focus).Length);
+            return new PdfSlideGradient(true, 0, new SKPoint((focus.X - box.Left) / box.Width, (focus.Y - box.Top) / box.Height),
+                Stops(0, reach / distance, At, true, true));
+        }
+        var normal = new SKPoint(way.X / distance, way.Y / distance);
+        var angle = Math.Atan2(normal.Y, normal.X);
+        var half = (Math.Abs(box.Width * Math.Cos(angle)) + Math.Abs(box.Height * Math.Sin(angle))) / 2;
+        var offset = Dot(centre - look.Start, normal);
+        var degrees = (angle * 180 / Math.PI % 360 + 360) % 360;
+        return new PdfSlideGradient(false, degrees, default, Stops((offset - half) / distance, 2 * half / distance, At, true, true));
     }
 
     private static double Dot(SKPoint a, SKPoint b) => a.X * b.X + a.Y * b.Y;
@@ -1204,11 +1378,9 @@ internal sealed partial class PdfDocumentReader
     /// Gradient stops for a shading whose parameter is <paramref name="t0"/> + <paramref name="slope"/> × s along the
     /// DrawingML gradient (s from 0 to 1): its colours sampled, transparent beyond an end that doesn't extend.
     /// </summary>
-    private static List<(double Position, SKColor Color)> Stops(double t0, double slope, Shading shading, bool extendStart, bool extendEnd,
-        Func<SKColor, SKColor> color)
+    private static List<(double Position, SKColor Color)> Stops(double t0, double slope, Func<double, SKColor> At, bool extendStart, bool extendEnd)
     {
         const int Samples = 16;
-        SKColor At(double t) => color(PdfShadings.ColorAt(shading, t));
         var positions = new SortedSet<double> { 0, 1 };
         if (Math.Abs(slope) > 1e-9)
         {

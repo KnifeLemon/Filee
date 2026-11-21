@@ -9,6 +9,11 @@
 // its default advance is its vertical one: vmtx's advance height when the font has vertical metrics, else the OS/2
 // typographic ascender plus descender (hhea's when OS/2 is short). The top is the glyph's yMax plus its vmtx top side
 // bearing, or that ascender. Positions of a sideways run are given in the turned frame (XpsGlyphs.SidewaysTurn).
+//
+// Style simulations (ECMA-388 §12.1.5, M5.13 / M5.14): an emboldened glyph's own advance (hmtx, or vmtx sideways) grows
+// by 2 % of the em; given advances stay. A sideways italic is skewed about its sideways origin (its top centre), not
+// about its baseline: drawn with the skew XpsGlyphs.Slant gives about the baseline, each such glyph moves along the
+// run by the slant times its top, so its top stays on the origin.
 
 using System.Buffers.Binary;
 using System.Globalization;
@@ -30,7 +35,11 @@ internal static class XpsGlyphLayout
         public int Cluster;
     }
 
-    public static Layout Lay(SKTypeface typeface, float size, SKPoint origin, string text, string? indices, bool rightToLeft, bool sideways = false)
+    /// <summary>What an emboldened glyph's own advance grows by, in ems (M5.13).</summary>
+    private const float BoldAdvance = 0.02f;
+
+    public static Layout Lay(SKTypeface typeface, float size, SKPoint origin, string text, string? indices, bool rightToLeft, bool sideways = false,
+        bool bold = false, bool italic = false)
     {
         var glyphCount = typeface.GlyphCount;
         var entries = new List<Entry>();
@@ -85,13 +94,13 @@ internal static class XpsGlyphLayout
         var positions = new SKPoint[entries.Count];
         if (sideways)
         {
-            Sideways(typeface, font, glyphsOut, widths, entries, origin, positions);
+            Sideways(typeface, font, glyphsOut, widths, entries, origin, positions, bold ? BoldAdvance * size : 0, italic ? XpsGlyphs.SidewaysSlant : 0);
             return new Layout(glyphsOut, positions, [.. entries.Select(e => e.Cluster)]);
         }
         var pen = origin.X;
         for (var i = 0; i < entries.Count; i++)
         {
-            var advance = entries[i].Advance ?? (i < widths.Length ? widths[i] : 0);
+            var advance = entries[i].Advance ?? (i < widths.Length ? widths[i] : 0) + (bold ? BoldAdvance * size : 0);
             if (rightToLeft)
             {
                 pen -= advance;
@@ -106,8 +115,12 @@ internal static class XpsGlyphLayout
         return new Layout(glyphsOut, positions, [.. entries.Select(e => e.Cluster)]);
     }
 
-    /// <summary>Sideways glyphs left to right, their baseline origins in the turned frame.</summary>
-    private static void Sideways(SKTypeface typeface, SKFont font, ushort[] glyphs, float[] widths, List<Entry> entries, SKPoint origin, SKPoint[] positions)
+    /// <summary>
+    /// Sideways glyphs left to right, their baseline origins in the turned frame; <paramref name="grow"/> is added to the
+    /// font's own advances (bold), <paramref name="slant"/> is the italic skew they are drawn with (0: upright).
+    /// </summary>
+    private static void Sideways(SKTypeface typeface, SKFont font, ushort[] glyphs, float[] widths, List<Entry> entries, SKPoint origin, SKPoint[] positions,
+        float grow, float slant)
     {
         var metrics = VerticalMetrics.Of(typeface);
         var scale = font.Size / metrics.UnitsPerEm;
@@ -128,12 +141,14 @@ internal static class XpsGlyphLayout
                 top = metrics.Ascender * scale;
                 advance = (metrics.Ascender + metrics.Descender) * scale;
             }
-            advance = entries[i].Advance ?? advance;
+            advance = entries[i].Advance ?? advance + grow;
             var nominal = new SKPoint(pen + entries[i].OffsetX, origin.Y - entries[i].OffsetY);
             // Turned counter-clockwise, the glyph's top centre (half its advance across, its top up) lands on the
             // nominal origin; in the turned frame (x, y) = (−y, x) of that baseline origin.
             var baseline = new SKPoint(nominal.X + top, nominal.Y + (i < widths.Length ? widths[i] : 0) / 2);
-            positions[i] = new SKPoint(-baseline.Y, baseline.X);
+            // The skew about the baseline moves the top by −slant × top across the turned frame: moved back, the top
+            // stays on the origin and the rest of the glyph leans from there (M5.14's skew of the sideways glyph).
+            positions[i] = new SKPoint(-baseline.Y + slant * top, baseline.X);
             pen += advance;
         }
     }

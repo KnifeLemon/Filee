@@ -85,7 +85,7 @@ internal static class XpsPageWriter
         {
             Color = color,
             Embolden = glyphs.Bold,
-            SkewX = glyphs.Italic ? GlyphRun.SyntheticSlant : 0,
+            SkewX = glyphs.Slant,
             Transform = matrix.PreConcat(glyphs.Frame),
             Clip = area,
         };

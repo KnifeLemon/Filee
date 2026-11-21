@@ -20,8 +20,15 @@
 //   so the job queue tries Ghostscript and the file says which font is missing. A font listed but never drawn (when
 //   every use was followed) is left as it is: PDF/A asks only fonts used for rendering to be embedded.
 //
-// Predefined CMaps (UniJIS-UCS2-H …) and Type 3 fonts aren't handled here: the former are refused, the latter are
-// drawings and need no program.
+// - Composite fonts with a predefined Unicode CMap (UniJIS-UCS2-H, UniKS-UCS2-H, UniGB-UTF16-V …): their codes are
+//   UTF-16 code units, so the font becomes an Identity-H (-V) CIDFontType2 whose CIDs are those codes, mapped by a
+//   CIDToGIDMap to an installed CJK font's glyphs: the PDF's name first, then common fonts of its script (from the
+//   CMap's name, serif or sans as the name and descriptor say: Batang / Malgun Gothic, MS Mincho / Yu Gothic, SimSun /
+//   Microsoft YaHei, MingLiU / Microsoft JhengHei, Noto CJK …). Widths can't be compared (the PDF gives them by the
+//   CMap's CIDs, which need the CMap file): they become the installed font's. Codes of surrogate pairs, other
+//   predefined CMaps and codes Filee can't follow are refused as before.
+//
+// Type 3 fonts are drawings and need no program. Fonts the PDF embedded itself are repaired by PdfAFontRepair.
 
 using System.Globalization;
 using System.Security.Cryptography;
@@ -98,7 +105,14 @@ internal static partial class PdfAFonts
     {
         if (fonts.Count == 0)
             return;
-        var uses = PdfFontUses.Find(document, cancellationToken);
+        Embed(document, fonts, installed, PdfFontUses.Find(document, cancellationToken), cancellationToken);
+    }
+
+    /// <inheritdoc cref="Embed(PdfDocument, IReadOnlyCollection{PdfDictionary}, IFontCollection, CancellationToken)"/>
+    /// <param name="uses">The codes the pages draw with each font.</param>
+    public static void Embed(PdfDocument document, IReadOnlyCollection<PdfDictionary> fonts, IFontCollection installed, PdfFontUses uses,
+        CancellationToken cancellationToken)
+    {
         foreach (var font in fonts)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -444,8 +458,12 @@ internal static partial class PdfAFonts
 
     private static bool EmbedComposite(PdfDocument document, PdfDictionary font, HashSet<int>? used, IFontCollection installed, CancellationToken cancellationToken)
     {
-        if (Name(font, "/Encoding") is not ("/Identity-H" or "/Identity-V") || Descendants(font) is not [var cidFont, ..])
-            return false; // a predefined CMap: its CIDs can't be told without the CMap file
+        if (Descendants(font) is not [var cidFont, ..])
+            return false;
+        if (UnicodeScript(Name(font, "/Encoding")) is { } script)
+            return EmbedUnicode(document, font, cidFont, script, used, installed, cancellationToken);
+        if (Name(font, "/Encoding") is not ("/Identity-H" or "/Identity-V"))
+            return false; // another predefined CMap: its CIDs can't be told without the CMap file
         var descriptor = Resolve(cidFont.Elements["/FontDescriptor"]) as PdfDictionary;
         var trueType = Name(cidFont, "/Subtype") == "/CIDFontType2";
         var text = ReadToUnicode(Resolve(font.Elements["/ToUnicode"]) as PdfDictionary);
@@ -531,6 +549,97 @@ internal static partial class PdfAFonts
             if (map.Count > 0)
                 font.Elements["/ToUnicode"] = ToUnicode(document, map, 2).Reference;
         }
+    }
+
+    // ---- composite fonts with a predefined Unicode CMap
+
+    [GeneratedRegex("^/Uni(JIS|JIS2004|JISX0213|JISX02132004|KS|GB|CNS)-(UCS2|UCS2-HW|UTF16)-(H|V)$", RegexOptions.CultureInvariant)]
+    private static partial Regex UnicodeCMap();
+
+    /// <summary>The script ("KS", "JIS", "GB", "CNS") of a predefined CMap whose codes are UTF-16 code units; null for others.</summary>
+    private static string? UnicodeScript(string encoding)
+    {
+        var match = UnicodeCMap().Match(encoding);
+        if (!match.Success)
+            return null;
+        var script = match.Groups[1].Value;
+        return script.StartsWith("JIS", StringComparison.Ordinal) ? "JIS" : script;
+    }
+
+    /// <summary>Common installed fonts of a script, serif or sans first as asked.</summary>
+    private static IEnumerable<string> ScriptFamilies(string script, bool serif)
+    {
+        (string[] Serif, string[] Sans) families = script switch
+        {
+            "KS" => (["Batang", "Noto Serif CJK KR", "Noto Serif KR", "NanumMyeongjo", "AppleMyungjo", "UnBatang"],
+                ["Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR", "Gulim", "Dotum", "NanumGothic", "Apple SD Gothic Neo", "UnDotum"]),
+            "JIS" => (["Yu Mincho", "MS Mincho", "MS PMincho", "Noto Serif CJK JP", "Noto Serif JP", "IPAMincho", "IPAexMincho", "Hiragino Mincho ProN"],
+                ["Yu Gothic", "MS Gothic", "MS PGothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", "IPAGothic", "IPAexGothic", "Hiragino Sans"]),
+            "GB" => (["SimSun", "NSimSun", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "AR PL UMing CN"],
+                ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", "WenQuanYi Zen Hei"]),
+            _ => (["MingLiU", "PMingLiU", "Noto Serif CJK TC", "Noto Serif TC", "AR PL UMing TW"],
+                ["Microsoft JhengHei", "Noto Sans CJK TC", "Noto Sans TC", "PingFang TC", "WenQuanYi Zen Hei"]),
+        };
+        return serif ? [.. families.Serif, .. families.Sans] : [.. families.Sans, .. families.Serif];
+    }
+
+    private static bool EmbedUnicode(PdfDocument document, PdfDictionary font, PdfDictionary cidFont, string script, HashSet<int>? used,
+        IFontCollection installed, CancellationToken cancellationToken)
+    {
+        // Codes Filee can't follow, or a surrogate pair (two CIDs under Identity-H): refused as before.
+        if (used is null || used.Any(c => c is >= 0xD800 and <= 0xDFFF or < 0 or >= MaxCids))
+            return false;
+        var descriptor = Resolve(cidFont.Elements["/FontDescriptor"]) as PdfDictionary;
+        var baseFont = BaseName(cidFont);
+        var serif = (Integer(descriptor, "/Flags") & Serif) != 0
+                    || new[] { "Myeong", "Myung", "Mincho", "Ming", "Song", "Batang", "Serif" }.Any(w => baseFont.Contains(w, StringComparison.OrdinalIgnoreCase));
+        var style = Describe(baseFont, descriptor).Style;
+        var candidates = Faces(installed, baseFont, descriptor).Select(f => f.Face).ToList();
+        var seen = new HashSet<FontFace>(candidates, ReferenceEqualityComparer.Instance);
+        foreach (var family in ScriptFamilies(script, serif))
+        {
+            var faces = installed.Family(family);
+            if (faces.Count == 0)
+                continue;
+            var resolved = FontResolver.Match(faces, style);
+            if (!resolved.SyntheticBold && !resolved.SyntheticItalic && !resolved.Face.Cff2 && seen.Add(resolved.Face))
+                candidates.Add(resolved.Face);
+        }
+        foreach (var face in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Program.Open(face) is not { } program)
+                continue;
+            var match = new Match(program);
+            var fits = true;
+            foreach (var code in used.Order())
+            {
+                if (program.ForUnicode(code) is not { } glyph || !match.Add(code, glyph, null))
+                {
+                    fits = false;
+                    break;
+                }
+            }
+            if (!fits || match.Glyphs.Count == 0)
+                continue;
+            var vertical = Name(font, "/Encoding").EndsWith("-V", StringComparison.Ordinal);
+            font.Elements.SetName("/Encoding", vertical ? "/Identity-V" : "/Identity-H");
+            // Widths by the new CIDs (the codes): the installed font's.
+            var widths = new PdfArray(document);
+            foreach (var (code, glyph) in match.Glyphs)
+            {
+                widths.Elements.Add(new PdfInteger(code));
+                widths.Elements.Add(new PdfArray(document, Number(Math.Round(match.Widths[glyph], 3))));
+            }
+            cidFont.Elements["/W"] = widths;
+            cidFont.Elements.Remove("/W2"); // vertical metrics by the old CIDs: the defaults instead
+            var text = match.Glyphs.Keys.ToDictionary(code => code, code => code);
+            WriteComposite(document, font, cidFont, descriptor, text, match, cancellationToken);
+            if (!font.Elements.ContainsKey("/ToUnicode"))
+                font.Elements["/ToUnicode"] = ToUnicode(document, new SortedDictionary<int, int>(text), 2).Reference;
+            return true;
+        }
+        return false;
     }
 
     /// <summary>A CIDFont's widths (W), CID → width, bounded.</summary>

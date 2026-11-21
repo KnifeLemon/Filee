@@ -1,9 +1,10 @@
 // ICC profiles of XPS colours (ECMA-388 §15): ContextColor names a profile and gives the colour's channels in its
 // colour space. A grey, RGB or CMYK profile is applied by sampling it once: a lattice of its colour space (every grey
 // level, 16 steps per channel for RGB and CMYK, steps that are exact in 8 bits) goes through the profile into sRGB in
-// one ImageMagick (Little CMS) transform, and each colour is interpolated between the lattice points around it. A
-// profile that can't be read, or whose colour space doesn't match the colour's channels, is not usable, and the
-// colour follows ECMA-388's rules for that case (XpsValues.ContextFallback).
+// one ImageMagick (Little CMS) transform, and each colour is interpolated between the lattice points around it.
+// N-channel ('2CLR' … '8CLR') and Named Color profiles are read by Filee itself (XpsIccTransform). A profile that can't
+// be read, or whose colour space doesn't match the colour's channels, is not usable, and the colour follows ECMA-388's
+// rules for that case (XpsValues.ContextFallback).
 
 using ImageMagick;
 using SkiaSharp;
@@ -21,19 +22,28 @@ internal sealed class XpsColorProfile
     /// <summary>sRGB (8 bits per channel, R G B) of every lattice point, the first channel varying slowest.</summary>
     private readonly byte[] _lattice;
 
-    private XpsColorProfile(int channels, int grid, byte[] lattice)
+    /// <summary>An N-channel or Named Color profile, read instead of sampled.</summary>
+    private readonly XpsIccTransform? _transform;
+
+    private XpsColorProfile(int channels, int grid, byte[] lattice, XpsIccTransform? transform = null)
     {
         Channels = channels;
         _grid = grid;
         _lattice = lattice;
+        _transform = transform;
     }
 
-    /// <summary>Colour channels the profile takes: 1 (grey), 3 (RGB) or 4 (CMYK).</summary>
+    /// <summary>Colour channels the profile takes: 1 (grey), 3 (RGB), 4 (CMYK), 2–8 (N-channel) or its named colours' count.</summary>
     public int Channels { get; }
 
-    /// <summary>The profile sampled; null when it can't be read or isn't a grey, RGB or CMYK profile.</summary>
+    /// <summary>
+    /// The profile sampled (or read, for N-channel and Named Color profiles); null when it can't be read or is of
+    /// another colour space.
+    /// </summary>
     public static XpsColorProfile? Create(byte[] icc)
     {
+        if (XpsIccTransform.Handles(icc))
+            return XpsIccTransform.Create(icc) is { } transform ? new XpsColorProfile(transform.Channels, 0, [], transform) : null;
         try
         {
             var profile = new ColorProfile(icc);
@@ -85,6 +95,8 @@ internal sealed class XpsColorProfile
     /// <summary>The sRGB colour of <paramref name="channels"/> (0–1 each, <see cref="Channels"/> of them).</summary>
     public SKColor Convert(float alpha, ReadOnlySpan<float> channels)
     {
+        if (_transform is not null)
+            return _transform.Convert(alpha, channels);
         Span<int> low = stackalloc int[4];
         Span<float> fraction = stackalloc float[4];
         for (var c = 0; c < Channels; c++)
