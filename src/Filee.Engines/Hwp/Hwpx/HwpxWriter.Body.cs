@@ -113,7 +113,7 @@ internal sealed partial class HwpxWriter
             if (blocks[i] is HParagraph { ColumnsChange: { } columns })
                 _width = ColumnWidth(textWidth, columns);
             var controls = (i == 0 ? setup.ToString() : "") + later.GetValueOrDefault(blocks[i]);
-            body.Append(Block(blocks[i], controls.Length > 0 ? $"<hp:run charPrIDRef=\"{_normalCharPrId}\">{controls}</hp:run>" : null));
+            body.Append(Block(blocks[i], controls.Length > 0 ? $"<hp:run charPrIDRef=\"{_normalCharPrId}\">{controls}</hp:run>" : null, i + 1 < blocks.Count ? blocks[i + 1] : null));
         }
         return body.Append("</hs:sec>").ToString();
     }
@@ -153,27 +153,29 @@ internal sealed partial class HwpxWriter
         sb.Append($"<hp:subList id=\"\" textDirection=\"HORIZONTAL\" lineWrap=\"BREAK\" vertAlign=\"{verticalAlign}\" linkListIDRef=\"0\" linkListNextIDRef=\"0\" textWidth=\"{textWidth}\" textHeight=\"{textHeight}\" hasTextRef=\"0\" hasNumRef=\"0\">");
         var list = blocks.Count == 0 || (leadingRun is not null && blocks[0] is not HParagraph) ? blocks.Prepend(new HParagraph()).ToList() : blocks;
         for (var i = 0; i < list.Count; i++)
-            sb.Append(Block(list[i], i == 0 ? leadingRun : null));
+            sb.Append(Block(list[i], i == 0 ? leadingRun : null, i + 1 < list.Count ? list[i + 1] : null));
         return sb.Append("</hp:subList>").ToString();
     }
 
     // ───────────────────────── Blocks ─────────────────────────
 
     /// <param name="leadingRun">Raw run placed first in the paragraph (section setup, note number).</param>
-    private string Block(HBlock block, string? leadingRun = null) => block switch
+    /// <param name="next">The block after it in its list.</param>
+    private string Block(HBlock block, string? leadingRun = null, HBlock? next = null) => block switch
     {
-        HParagraph paragraph => Paragraph(paragraph, leadingRun),
+        HParagraph paragraph => Paragraph(paragraph, leadingRun, next as HParagraph),
         HTable table => Table(table, leadingRun),
         _ => "",
     };
 
-    private string Paragraph(HParagraph paragraph, string? leadingRun)
+    private string Paragraph(HParagraph paragraph, string? leadingRun, HParagraph? next = null)
     {
         _plainText.AppendLine();
         var (styleId, paraPrBase, charPrBase) = paragraph.HeadingLevel > 0 && _headings.TryGetValue(paragraph.HeadingLevel, out var heading)
             ? heading
             : _base;
-        var paraPrId = ParaPr(paraPrBase, paragraph.Format, paragraph.List);
+        var format = _collapseSpacing && next is not null ? paragraph.Format with { After = HDocument.CollapsedAfter(paragraph.Format, next) } : paragraph.Format;
+        var paraPrId = ParaPr(paraPrBase, format, paragraph.List);
 
         var runs = new RunBuilder();
         if (paragraph.ColumnsChange is { } columns)
