@@ -1,11 +1,11 @@
 // Unpacks every archive format Filee reads into a folder, in-process: Filee's own readers (7z, xz, LZMA, ALZ, EGG,
-// lzip, Unix compress, ar / DEB, cpio, RPM, ISO 9660, CAB, LHA, ARJ, FAT disk images, Garry's Mod addons (GMA), Valve
-// paks (VPK)), SharpCompress (ZIP, RAR), DiscUtils (UDF discs, HFS+ volumes, DMG blocks; see DiskImageReader), .NET's
+// lzip, Unix compress, ar / DEB, cpio, RPM, ISO 9660, CAB, LHA, ARJ, FAT disk images and DMG blocks, Garry's Mod addons
+// (GMA), Valve paks (VPK)), SharpCompress (ZIP, RAR), DiscUtils (UDF discs, HFS+ volumes; see DiskImageReader), .NET's
 // TAR reader and gzip / bzip2 / zstd decoders. The files packed into a Source engine map (BSP) are a ZIP that Filee
 // copies out and unpacks like any ZIP. 7-Zip is an optional engine (Settings → Engines) for the long tail: when it is
 // installed it reads 7z archives with a method Filee does not decode (PPMd, RISC-V …, see
 // SevenZipReader.NeedsOtherDecoder) and is asked again when an in-process reader meets a feature it lacks (Quantum
-// CABs, cabinet sets, other LHA methods, multi-volume ARJ; NTFS, APFS, exFAT or LZFSE in disk images) or damage it
+// CABs, cabinet sets, other LHA methods, multi-volume ARJ; NTFS, APFS or exFAT in disk images) or damage it
 // can't read past. Without it such an archive is refused with error.archive_needs_7zip, which suggests installing it; a
 // bridge disc whose UDF part fails is read by its ISO 9660 part first. Deliberate refusals (password, paths leaving the
 // folder, bombs) are final.

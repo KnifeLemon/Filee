@@ -18,7 +18,6 @@
     <PackageReference Include="LTRData.DiscUtils.Iso9660" />
     <PackageReference Include="LTRData.DiscUtils.Udf" />
     <PackageReference Include="LTRData.DiscUtils.HfsPlus" />
-    <PackageReference Include="LTRData.DiscUtils.Dmg" />
     <PackageReference Include="PDFsharp" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="PDFtoImage" />
