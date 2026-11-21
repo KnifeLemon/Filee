@@ -4,9 +4,10 @@
 // Excel codes (OdsNumberStyles), cell styles (font, colour, fill, borders, alignment, wrapping), column widths, row
 // heights, hidden rows / columns / sheets and frozen rows, and for printing each sheet's page style (paper, margins,
 // scale, page order, centring, grid and headings, headers and footers with their fields), print ranges, repeated
-// rows and columns, manual page breaks, rotation, indent and shrink to fit, and charts (embedded chart objects in
+// rows and columns, manual page breaks, rotation, indent and shrink to fit, charts (embedded chart objects in
 // frames anchored to a cell or the sheet, read by OdfChartReader once every sheet is read, so their ranges into the
-// sheets take the cells' values) for the printer. Images, other objects, comments and conditional formats are not read.
+// sheets take the cells' values), and pictures and shapes (OdsDrawing) for the printer. Other objects, comments and
+// conditional formats are not read.
 //
 // A small file can stand for a huge sheet (repeats of rows, cells and spaces): the cells the repeats expand to, the
 // characters of all cells as repeated, and the merged areas are counted, and a file past a limit is refused.
@@ -34,6 +35,9 @@ internal sealed class OdsReader
     private static readonly XNamespace Draw = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
     private static readonly XNamespace Svg = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0";
     private static readonly XNamespace XLink = "http://www.w3.org/1999/xlink";
+
+    /// <summary>Rows or columns past its anchor a drawing's size is taken to reach at most, for the sizes the sheet keeps.</summary>
+    private const int MaxDrawingReach = 100_000;
 
     /// <summary>Chart frames of one sheet read at most; the rest are left out.</summary>
     private const int MaxCharts = 1000;
@@ -88,6 +92,10 @@ internal sealed class OdsReader
     private int _counted;
     private readonly Dictionary<string, XElement> _pageLayouts = [];
     private XElement? _defaultCellStyle;
+    private XElement? _defaultGraphicStyle;
+
+    /// <summary>The document's language for dates without a data style ("en-US"), once asked for.</summary>
+    private string? _language;
 
     /// <summary>Reads every visible sheet of <paramref name="path"/>.</summary>
     public static Workbook Read(string path)
@@ -169,6 +177,8 @@ internal sealed class OdsReader
                 _pageLayouts[name] = element;
             if (element.Name == Style + "default-style" && (string?)element.Attribute(Style + "family") == "table-cell")
                 _defaultCellStyle = element;
+            else if (element.Name == Style + "default-style" && (string?)element.Attribute(Style + "family") == "graphic")
+                _defaultGraphicStyle = element;
             else if (element.Name == Style + "style" && name is not null)
                 _styles[((string?)element.Attribute(Style + "family") ?? "", name)] = element;
             else if (element.Name.Namespace == Number && name is not null)
@@ -576,9 +586,10 @@ internal sealed class OdsReader
     {
         var name = (string?)table.Attribute(Table + "name") ?? "Sheet";
         var sheet = new Worksheet(name) { WidthsInPoints = true };
-        // Frames anchored to the sheet (table:shapes) sit from its top-left corner.
-        foreach (var frame in table.Element(Table + "shapes")?.Elements(Draw + "frame") ?? [])
-            ChartFrame(frame, 0, 0, sheet);
+        var drawings = new OdsDrawing(_zip!, read: true, styleName => Find("graphic", styleName), _defaultGraphicStyle);
+        // Frames and shapes anchored to the sheet (table:shapes) sit from its top-left corner.
+        foreach (var element in table.Element(Table + "shapes")?.Elements() ?? [])
+            Drawing(element, 0, 0, sheet, drawings);
         int? firstHeaderColumn = null, lastHeaderColumn = null;
 
         var columns = new List<Span>();
@@ -629,7 +640,7 @@ internal sealed class OdsReader
             }
 
             var cells = Cells(row, columns);
-            ChartFrames(row, r, sheet);
+            Drawings(row, r, sheet, drawings);
             var hasText = cells.Any(run => run.Cell is { Text.Length: > 0 } || run.ColumnSpan > 1 || run.RowSpan > 1);
             var copies = hasText ? count : cells.Any(run => run.Cell is not null) && count <= MaxStyledRepeat ? count : 0;
             // Repeats multiply: a row of text repeated a million times across every column is billions of cells.
@@ -666,6 +677,20 @@ internal sealed class OdsReader
         var used = sheet.UsedRange();
         var right = Math.Max(used?.Right ?? -1, sheet.Merges.Count > 0 ? sheet.Merges.Max(m => m.Right) : -1);
         var bottom = Math.Max(used?.Bottom ?? -1, sheet.Merges.Count > 0 ? sheet.Merges.Max(m => m.Bottom) : -1);
+        // Pictures and shapes reach into the cells they cover: at most as far as their size goes over the narrowest
+        // column and the lowest row the sheet sets (rows Calc doesn't size are about 12.8 pt).
+        var narrowest = columns.Where(span => span.Size is > 0 && !span.Hidden).Select(span => span.Size!.Value * PointsPerCharacter).DefaultIfEmpty(48).Min();
+        var lowest = rows.Where(span => span.Size is > 0 && !span.Hidden).Select(span => span.Size!.Value)
+            .Concat(autoHeights.Select(span => span.Height)).Where(height => height > 0).DefaultIfEmpty(12.8).Min();
+        foreach (var drawing in drawings.Drawings)
+        {
+            var (farRow, farColumn) = drawing.To is { } to
+                ? (to.Row, to.Column)
+                : (drawing.Row + (int)Math.Min(MaxDrawingReach, Math.Ceiling((drawing.OffsetY + drawing.Height) / Math.Max(lowest, 0.75))),
+                    drawing.Column + (int)Math.Min(MaxDrawingReach, Math.Ceiling((drawing.OffsetX + drawing.Width) / Math.Max(narrowest, 0.75))));
+            right = Math.Max(right, Math.Min(farColumn, MaxColumns - 1));
+            bottom = Math.Max(bottom, Math.Min(farRow, MaxRows - 1));
+        }
         foreach (var span in columns)
         {
             for (var i = span.Start; i < span.Start + span.Count && i <= right; i++)
@@ -693,6 +718,7 @@ internal sealed class OdsReader
             for (var i = start; i < start + count && i <= bottom; i++)
                 sheet.AutoRowHeights[i] = Math.Round(height, 2);
         }
+        sheet.Drawings.AddRange(drawings.Drawings);
         sheet.FrozenRows = _frozenRows.TryGetValue(name, out var frozen) ? frozen : headerRows;
         if (firstHeaderRow is { } firstRow && lastHeaderRow is { } lastRow)
             sheet.TitleRows = (firstRow, lastRow);
@@ -703,27 +729,29 @@ internal sealed class OdsReader
 
     // ───────────────────────── Charts ─────────────────────────
 
-    /// <summary>The chart frames of the cells of row <paramref name="row"/> (a repeated row's first copy).</summary>
-    private void ChartFrames(XElement element, int row, Worksheet sheet)
+    /// <summary>The frames and shapes of the cells of row <paramref name="row"/> (a repeated row's first copy).</summary>
+    private void Drawings(XElement element, int row, Worksheet sheet, OdsDrawing drawings)
     {
         var column = 0;
         foreach (var cell in element.Elements())
         {
             if (cell.Name != Table + "table-cell" && cell.Name != Table + "covered-table-cell")
                 continue;
-            foreach (var frame in cell.Elements(Draw + "frame"))
-                ChartFrame(frame, row, column, sheet);
+            foreach (var drawing in cell.Elements())
+                Drawing(drawing, row, column, sheet, drawings);
             column += Math.Min(Repeat(cell, "number-columns-repeated"), MaxColumns);
             if (column >= MaxColumns)
                 break;
         }
     }
 
-    /// <summary>A frame that may hold a chart, read when all sheets are.</summary>
-    private void ChartFrame(XElement frame, int row, int column, Worksheet sheet)
+    /// <summary>A frame or shape of a cell or the sheet: a frame that may hold a chart is read when all sheets are.</summary>
+    private void Drawing(XElement element, int row, int column, Worksheet sheet, OdsDrawing drawings)
     {
-        if (frame.Element(Draw + "object") is not null)
-            _chartFrames.Add((frame, row, column, sheet));
+        if (OdsDrawing.IsObjectFrame(element))
+            _chartFrames.Add((element, row, column, sheet));
+        else if (element.Name.Namespace == Draw)
+            drawings.Read(element, row, column);
     }
 
     /// <summary>A frame holding a chart object OdfChartReader draws, as a chart on the sheet; other frames are left out.</summary>
@@ -895,7 +923,7 @@ internal sealed class OdsReader
 
         var format = FormatOf(dataStyle) ?? type switch
         {
-            "date" => v == Math.Floor(v) ? "yyyy-mm-dd" : "yyyy-mm-dd hh:mm:ss",
+            "date" => DefaultDate(v != Math.Floor(v)),
             "time" => "hh:mm:ss",
             "percentage" => "0%",
             _ => null,
@@ -903,6 +931,44 @@ internal sealed class OdsReader
         format = NumberFormatter.IsGeneral(format) ? null : format;
         // text:p is what Calc showed when it saved; files written by other programs may leave it out.
         return new SheetCell(text ?? _formatter.Format(v, format), style, IsNumber: true) { Value = v, NumberFormat = format };
+    }
+
+    /// <summary>
+    /// The format Calc gives a date without a data style of its own: the standard short date (or, with a time, the
+    /// standard date and time) of the document's language (its default cell style's fo:language and fo:country), or of
+    /// the user's when the document names none, as Calc takes its own locale setting then. The codes are those of
+    /// LibreOffice's locale data (formatindex 18 and 46) for the languages listed; others keep ISO 8601.
+    /// </summary>
+    private string DefaultDate(bool time)
+    {
+        _language ??= Language();
+        return (_language, time) switch
+        {
+            ("en-US", false) => "m/d/yy",
+            ("en-US", true) => "mm/dd/yy hh:mm AM/PM",
+            ("en-GB", false) => "dd/mm/yy",
+            ("en-GB", true) => "dd/mm/yy hh:mm",
+            ("de-DE", false) => "dd.mm.yy",
+            ("de-DE", true) => "dd.mm.yy hh:mm",
+            ("fr-FR", false) => "dd/mm/yyyy",
+            ("fr-FR", true) => "dd/mm/yy hh:mm",
+            (_, false) => "yyyy-mm-dd",
+            _ => "yyyy-mm-dd hh:mm:ss",
+        };
+    }
+
+    /// <summary>"en-US" from the default cell style's fo:language "en" and fo:country "US"; the user's language otherwise.</summary>
+    private string Language()
+    {
+        var font = _defaultCellStyle?.Element(Style + "text-properties");
+        var language = (string?)font?.Attribute(Fo + "language");
+        var country = (string?)font?.Attribute(Fo + "country");
+        if (language is null or "none" || language.Length is < 2 or > 8)
+            return CultureInfo.CurrentCulture.Name;
+        // A language alone stands for its main country, as LibreOffice's locale data does.
+        return country is { Length: 2 } && country != "none"
+            ? $"{language.ToLowerInvariant()}-{country.ToUpperInvariant()}"
+            : language.ToLowerInvariant() switch { "en" => "en-US", "de" => "de-DE", "fr" => "fr-FR", var other => other };
     }
 
     /// <summary>The text of a cell: its paragraphs joined by line breaks; null when it has none.</summary>

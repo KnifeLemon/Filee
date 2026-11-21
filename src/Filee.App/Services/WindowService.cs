@@ -408,7 +408,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         // ("Crop PDF" is one and opens the crop overlay).
         else if (preset.Id == "tool-sheet-studio")
         {
-            foreach (var workbook in files.Where(file => Path.GetExtension(file).Equals(".xlsx", StringComparison.OrdinalIgnoreCase)))
+            foreach (var workbook in files.Where(file => Path.GetExtension(file).ToLowerInvariant() is ".xlsx" or ".xlsb"))
                 ShowSpreadsheetPrintStudio(workbook);
         }
         else if (preset.Id == "tool-pdf-pages")
@@ -712,7 +712,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         win.Activate();
     }
 
-    /// <summary>Opens the non-destructive XLSX print studio. One workbook owns one window and print plan.</summary>
+    /// <summary>Opens the non-destructive XLSX / XLSB print studio. One workbook owns one window and print plan.</summary>
     public void ShowSpreadsheetPrintStudio(string file)
     {
         SpreadsheetPrintStudioViewModel vm;

@@ -5,9 +5,9 @@
 // group's anchor. What the printer doesn't draw is named instead: charts, SmartArt, embedded objects, ink, text in
 // shapes, freeform shapes, gradient, pattern and picture fills, arrowheads, turned groups, EMF / WMF / TIFF and linked
 // pictures. SheetCapabilities asks for that name, so such a workbook can go to LibreOffice where it is installed.
-// Charts are read from their chart part (ChartReader, with the workbook's theme) and drawn; those ChartReader doesn't
-// draw (3D, radar, stock, ...) and new chart types (chartex) are named "charts". A chart sheet's drawing gives its one
-// chart (ChartSheet), which the printer draws alone on the sheet's page.
+// Charts are read from their chart part (ChartReader, with the workbook's theme) and drawn, Office 2016 charts
+// (chartex) too; those ChartReader doesn't draw (region maps) are named "charts" and Excel's fallback is drawn instead.
+// A chart sheet's drawing gives its one chart (ChartSheet), which the printer draws alone on the sheet's page.
 //
 // Excel anchors a turned picture or shape by the box it covers on the sheet: one turned by 90° has an anchor as wide as
 // the picture is tall. The unturned size (a:xfrm ext) tells which way round the anchor is (SheetDrawing.Size).
@@ -27,6 +27,9 @@ internal sealed class XlsxDrawing
     private static readonly XNamespace Xdr = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
     private static readonly XNamespace A = DrawingColors.A;
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+    /// <summary>DrawingML's chart drawing (c:userShapes parts): shapes and pictures placed over a chart.</summary>
+    private static readonly XNamespace Cdr = "http://schemas.openxmlformats.org/drawingml/2006/chartDrawing";
 
     /// <summary>Points per EMU (DrawingML positions).</summary>
     private const double PointsPerEmu = 1 / 12700.0;
@@ -53,6 +56,10 @@ internal sealed class XlsxDrawing
     private readonly string? _themeFont;
     private readonly ChartBudget? _charts;
     private readonly bool _read;
+    private readonly XElement? _theme;
+
+    /// <summary>The namespace of the objects' own elements: the spreadsheet drawing's, or the chart drawing's.</summary>
+    private readonly XNamespace _ns = Xdr;
 
     /// <summary>What is drawn, in drawing order; empty when only the check was asked for.</summary>
     public List<SheetDrawing> Drawings { get; } = [];
@@ -69,7 +76,12 @@ internal sealed class XlsxDrawing
         _themeFont = ChartReader.ThemeFont(theme);
         _charts = charts;
         _read = read;
+        _theme = theme;
     }
+
+    /// <summary>A chart drawing part (a chart's userShapes) read with what <paramref name="sheet"/> reads with.</summary>
+    private XlsxDrawing(XlsxDrawing sheet, string part)
+        : this(sheet._package, part, sheet._theme, sheet._read, sheet._charts) => _ns = Cdr;
 
     /// <summary>
     /// Reads drawing part <paramref name="part"/>: its pictures and shapes (with <paramref name="read"/>; without it,
@@ -87,16 +99,19 @@ internal sealed class XlsxDrawing
 
     /// <summary>
     /// The chart of a chart sheet's drawing part (Excel puts one chart there, on an absolute anchor), printed alone on
-    /// the sheet's page; null when there is none ChartReader draws. <c>LeftOut</c> names what isn't printed: a chart
-    /// ChartReader doesn't draw, or pictures and shapes placed over the chart.
+    /// the sheet's page, with what is placed over it (pictures and shapes of the drawing, the chart's own userShapes);
+    /// null when there is none ChartReader draws. <c>LeftOut</c> names what isn't printed.
     /// </summary>
     /// <param name="charts">The workbook's count of chart points drawn, or null for the check alone.</param>
-    public static (Chart? Chart, string? LeftOut) ChartSheet(OpcPackage package, string part, XElement? theme, ChartBudget? charts = null)
+    public static (SheetChart? Chart, List<SheetDrawing> Over, string? LeftOut) ChartSheet(OpcPackage package, string part, XElement? theme, ChartBudget? charts = null)
     {
         var drawing = Read(package, part, theme, read: true, charts);
         var chart = drawing.Drawings.OfType<SheetChart>().FirstOrDefault();
-        var other = drawing.Drawings.FirstOrDefault(d => !ReferenceEquals(d, chart));
-        return (chart?.Chart, drawing.FirstLeftOut ?? (chart is null ? "charts" : other is null ? null : other is SheetPicture ? "pictures" : other is SheetChart ? "charts" : "shapes"));
+        var over = drawing.Drawings.Where(d => !ReferenceEquals(d, chart)).ToList();
+        // A second chart over the first isn't placed: Excel keeps one chart on a chart sheet.
+        var second = over.OfType<SheetChart>().Any();
+        over.RemoveAll(d => d is SheetChart);
+        return (chart, over, drawing.FirstLeftOut ?? (chart is null || second ? "charts" : null));
     }
 
     private void LeftOut(string what) => FirstLeftOut ??= what;
@@ -134,7 +149,7 @@ internal sealed class XlsxDrawing
         // Content a consumer may not know (slicers, new chart types) comes with a fallback to draw instead.
         if (anchor.Name.LocalName == "AlternateContent")
         {
-            var chosen = anchor.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback") ?? anchor.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+            var chosen = Alternative(anchor);
             foreach (var inner in chosen?.Elements() ?? [])
                 Anchor(inner);
             return;
@@ -164,6 +179,22 @@ internal sealed class XlsxDrawing
             Object(shape, placed, null, 0);
     }
 
+    /// <summary>
+    /// What of an mc:AlternateContent is drawn: an Office 2016 chart (chartex) ChartReader reads, else the fallback
+    /// (Excel's shape saying the chart can't be shown: the chart is named), else the choice.
+    /// </summary>
+    private XElement? Alternative(XElement alternate)
+    {
+        if (ChartReader.ChartExChoice(alternate) is { } chartEx)
+        {
+            var target = _package.Target(_part, chartEx.RelationshipId);
+            if (ChartReader.Read(target is null ? null : _package.Part(target)?.Root, _colors, _themeFont).Chart is not null)
+                return chartEx.Choice;
+            LeftOut("charts");
+        }
+        return alternate.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback") ?? alternate.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+    }
+
     private static bool IsObject(XElement e) =>
         e.Name.LocalName is "sp" or "grpSp" or "graphicFrame" or "cxnSp" or "pic" or "contentPart" or "AlternateContent";
 
@@ -172,12 +203,12 @@ internal sealed class XlsxDrawing
     {
         if (element.Name.LocalName == "AlternateContent")
         {
-            var chosen = element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback") ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+            var chosen = Alternative(element);
             if (chosen?.Elements().FirstOrDefault(IsObject) is { } inner)
                 Object(inner, box, space, depth);
             return;
         }
-        var properties = element.Elements().FirstOrDefault(e => e.Name.LocalName.StartsWith("nv", StringComparison.Ordinal))?.Element(Xdr + "cNvPr");
+        var properties = element.Elements().FirstOrDefault(e => e.Name.LocalName.StartsWith("nv", StringComparison.Ordinal))?.Element(_ns + "cNvPr");
         if ((string?)properties?.Attribute("hidden") is "1" or "true")
             return;
         switch (element.Name.LocalName)
@@ -205,23 +236,79 @@ internal sealed class XlsxDrawing
     {
         var data = frame.Element(A + "graphic")?.Element(A + "graphicData");
         var uri = (string?)data?.Attribute("uri") ?? "";
-        if (!uri.EndsWith("/chart", StringComparison.Ordinal))
+        if (!uri.EndsWith("/chart", StringComparison.Ordinal) && !uri.EndsWith("/chartex", StringComparison.Ordinal))
         {
             LeftOut(Graphic(uri));
             return;
         }
-        var target = _package.Target(_part, (string?)data?.Element(ChartReader.C + "chart")?.Attribute(R + "id"));
+        var target = _package.Target(_part, (string?)(data?.Element(ChartReader.C + "chart") ?? data?.Element(ChartReader.Cx + "chart"))?.Attribute(R + "id"));
         var read = ChartReader.Read(target is null ? null : _package.Part(target)?.Root, _colors, _themeFont);
         if (read.Chart is not { } chart)
         {
             LeftOut(read.LeftOut ?? "charts");
             return;
         }
-        if (!_read)
-            return;
-        _charts?.Charge(chart);
-        Add(Placed(new SheetChart(chart, box.Row, box.Column, box.X, box.Y, box.Width, box.Height), box, space, frame.Element(Xdr + "xfrm")));
+        if (_read)
+        {
+            _charts?.Charge(chart);
+            var placed = Placed(new SheetChart(chart, box.Row, box.Column, box.X, box.Y, box.Width, box.Height), box, space, frame.Element(_ns + "xfrm"));
+            Add(placed);
+            UserShapes(target!, box, placed.Part, frame.Element(_ns + "xfrm")?.Element(A + "ext"));
+        }
+        else
+        {
+            UserShapes(target!, box, null, null);
+        }
     }
+
+    /// <summary>
+    /// The shapes and pictures of a chart's userShapes part, over the chart: each anchor gives its share of the chart's
+    /// box (cdr:relSizeAnchor as fractions, cdr:absSizeAnchor as a fraction and a size against the chart's size).
+    /// </summary>
+    /// <param name="share">The chart's own share of <paramref name="box"/> (a chart in a group), or null for all of it.</param>
+    /// <param name="extent">The chart frame's size (a:ext, EMU), which an absolute size is a share of.</param>
+    private void UserShapes(string chartPart, Box box, (double Left, double Top, double Right, double Bottom)? share, XElement? extent)
+    {
+        var root = _package.Part(chartPart)?.Root;
+        if (_package.Target(chartPart, (string?)root?.Element(ChartReader.C + "userShapes")?.Attribute(R + "id")) is not { } part
+            || _package.Part(part)?.Root is not { } shapes || _ns == Cdr)
+            return;
+        var inner = new XlsxDrawing(this, part);
+        var (chartWidth, chartHeight) = (Signed(extent?.Attribute("cx")), Signed(extent?.Attribute("cy")));
+        if (chartWidth <= 0 || chartHeight <= 0)
+            (chartWidth, chartHeight) = ((long)(box.Width / PointsPerEmu), (long)(box.Height / PointsPerEmu));
+        var (left, top, right, bottom) = share ?? (0.0, 0.0, 1.0, 1.0);
+        foreach (var anchor in shapes.Elements())
+        {
+            static (double X, double Y)? Point(XElement? marker) => marker is null ? null
+                : (Math.Clamp(Share(marker.Element(Cdr + "x")), 0, 1), Math.Clamp(Share(marker.Element(Cdr + "y")), 0, 1));
+            (double X, double Y)? from = Point(anchor.Element(Cdr + "from")), to = null;
+            if (anchor.Name == Cdr + "relSizeAnchor")
+                to = Point(anchor.Element(Cdr + "to"));
+            else if (anchor.Name == Cdr + "absSizeAnchor" && from is { } start && chartWidth > 0 && chartHeight > 0)
+            {
+                var size = anchor.Element(Cdr + "ext");
+                to = (Math.Min(1, start.X + Unsigned(size?.Attribute("cx")) / (double)chartWidth), Math.Min(1, start.Y + Unsigned(size?.Attribute("cy")) / (double)chartHeight));
+            }
+            if (from is not { } f || to is not { } t || anchor.Elements().FirstOrDefault(IsObject) is not { } shape)
+                continue;
+            // The object's own box (its xfrm) is mapped onto its share of the chart, inside the chart's share of the anchor.
+            var xfrm = (shape.Element(Cdr + "spPr") ?? shape.Element(Cdr + "grpSpPr"))?.Element(A + "xfrm") ?? shape.Element(Cdr + "xfrm");
+            var (x, y) = (Signed(xfrm?.Element(A + "off")?.Attribute("x")), Signed(xfrm?.Element(A + "off")?.Attribute("y")));
+            var (cx, cy) = (Math.Max(1, Signed(xfrm?.Element(A + "ext")?.Attribute("cx"))), Math.Max(1, Signed(xfrm?.Element(A + "ext")?.Attribute("cy"))));
+            double Across(double fraction) => left + fraction * (right - left);
+            double Down(double fraction) => top + fraction * (bottom - top);
+            inner.Object(shape, box, new Space(x, y, cx, cy, Across(f.X), Down(f.Y), Across(t.X), Down(t.Y)), 0);
+        }
+        foreach (var drawing in inner.Drawings)
+            Add(drawing);
+        if (inner.FirstLeftOut is { } what)
+            LeftOut(what);
+    }
+
+    /// <summary>A chart drawing coordinate (cdr:x, cdr:y: a fraction of the chart's width or height).</summary>
+    private static double Share(XElement? value) =>
+        double.TryParse(value?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var fraction) && double.IsFinite(fraction) ? fraction : 0;
 
     /// <summary>What a graphic frame holds, named.</summary>
     private static string Graphic(string uri) =>
@@ -236,7 +323,7 @@ internal sealed class XlsxDrawing
             LeftOut("grouped shapes");
             return;
         }
-        var xfrm = group.Element(Xdr + "grpSpPr")?.Element(A + "xfrm");
+        var xfrm = group.Element(_ns + "grpSpPr")?.Element(A + "xfrm");
         if (Turn(xfrm) is { } turn && (turn.Rotation != 0 || turn.FlipH || turn.FlipV))
             LeftOut("turned groups");
         var (offX, offY) = (Signed(xfrm?.Element(A + "off")?.Attribute("x")), Signed(xfrm?.Element(A + "off")?.Attribute("y")));
@@ -258,7 +345,7 @@ internal sealed class XlsxDrawing
 
     private void Picture(XElement picture, Box box, Space? space)
     {
-        var blip = picture.Element(Xdr + "blipFill")?.Element(A + "blip");
+        var blip = picture.Element(_ns + "blipFill")?.Element(A + "blip");
         var target = _package.Target(_part, (string?)blip?.Attribute(R + "embed"));
         if (target is null)
         {
@@ -277,8 +364,8 @@ internal sealed class XlsxDrawing
         }
         if (!_read || _package.Bytes(target, MaxPictureBytes) is not { } data)
             return;
-        var properties = picture.Element(Xdr + "spPr");
-        var crop = picture.Element(Xdr + "blipFill")?.Element(A + "srcRect");
+        var properties = picture.Element(_ns + "spPr");
+        var crop = picture.Element(_ns + "blipFill")?.Element(A + "srcRect");
         var drawing = new SheetPicture(data, box.Row, box.Column, box.X, box.Y, box.Width, box.Height)
         {
             Crop = (Fraction(crop?.Attribute("l")), Fraction(crop?.Attribute("t")), Fraction(crop?.Attribute("r")), Fraction(crop?.Attribute("b"))),
@@ -294,7 +381,7 @@ internal sealed class XlsxDrawing
 
     private void Shape(XElement shape, Box box, Space? space)
     {
-        var properties = shape.Element(Xdr + "spPr");
+        var properties = shape.Element(_ns + "spPr");
         if (properties?.Element(A + "custGeom") is not null)
         {
             LeftOut("freeform shapes");
@@ -308,11 +395,11 @@ internal sealed class XlsxDrawing
             return;
         }
         // The shape is drawn; its text is not (yet).
-        if (shape.Element(Xdr + "txBody")?.Descendants(A + "t").Any(t => !string.IsNullOrWhiteSpace(t.Value)) == true
+        if (shape.Element(_ns + "txBody")?.Descendants(A + "t").Any(t => !string.IsNullOrWhiteSpace(t.Value)) == true
             || !string.IsNullOrEmpty((string?)shape.Attribute("textlink")))
             LeftOut("text in shapes");
 
-        var style = shape.Element(Xdr + "style");
+        var style = shape.Element(_ns + "style");
         var fill = Fill(properties, style?.Element(A + "fillRef"));
         var (line, width, dash) = Outline(properties?.Element(A + "ln"), style?.Element(A + "lnRef"));
         var adjust = properties?.Element(A + "prstGeom")?.Element(A + "avLst")?.Elements(A + "gd")

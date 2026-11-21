@@ -296,7 +296,9 @@ public sealed class SheetDrawingTests(EngineFixture fx) : IClassFixture<EngineFi
         string Ods(string tables) => OdsBuilder.Save(Path.Combine(fx.NewFolder(), "book.ods"), Hidden, tables);
 
         Assert.Equal("pictures", SheetCapabilities.FirstUnsupported(Ods(Table("A", Image)), "ods"));
-        Assert.Equal("shapes", SheetCapabilities.FirstUnsupported(Ods(Table("A", "<draw:rect svg:width=\"2cm\" svg:height=\"1cm\"/>")), "ods"));
+        // A picture that isn't in the package is named; shapes the printer draws (OdsDrawing) are not, others are.
+        Assert.Null(SheetCapabilities.FirstUnsupported(Ods(Table("A", "<draw:rect svg:width=\"2cm\" svg:height=\"1cm\"/>")), "ods"));
+        Assert.Equal("shapes", SheetCapabilities.FirstUnsupported(Ods(Table("A", "<draw:connector svg:width=\"2cm\" svg:height=\"1cm\"/>")), "ods"));
         Assert.Null(SheetCapabilities.FirstUnsupported(Ods(Table("A", "")), "ods"));
         // On a hidden table, before a shown one.
         Assert.Null(SheetCapabilities.FirstUnsupported(Ods(Table("A", Image, "ta2") + Table("B", "")), "ods"));

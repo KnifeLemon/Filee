@@ -1472,9 +1472,23 @@ internal sealed partial class DocxReader
             _leftOut.Add(HLeftOutKind.VerticalText);
     }
 
-    /// <summary>mc:AlternateContent: the Choice when it is DrawingML we understand, else the (VML) Fallback.</summary>
-    private static IEnumerable<XElement> ChooseAlternative(XElement alternate)
+    /// <summary>
+    /// mc:AlternateContent: the Choice when it is DrawingML we understand (an Office 2016 chart when ChartReader reads its
+    /// part; else its fallback picture is drawn and named), else the (VML) Fallback.
+    /// </summary>
+    private IEnumerable<XElement> ChooseAlternative(XElement alternate)
     {
+        if (Charts.ChartReader.ChartExChoice(alternate) is { } chartEx)
+        {
+            if (chartEx.RelationshipId is { } id && _part.Relationships.TryGetValue(id, out var rel) && !rel.External
+                && Charts.ChartReader.Read(LoadPart(rel.Target)?.Xml.Root, _chartColors ??= Slides.DrawingColors.FromTheme(_theme), Charts.ChartReader.ThemeFont(_theme)).Chart is not null)
+                return chartEx.Choice.Elements();
+            if (alternate.Element(Mc + "Fallback") is { } fallback)
+            {
+                _leftOut.Add(HLeftOutKind.ChartPictured);
+                return fallback.Elements();
+            }
+        }
         var choice = alternate.Elements(Mc + "Choice").FirstOrDefault(c => (string?)c.Attribute("Requires") is "wps" or "wpg" or "wp14" or "w14" or "a14" or "wpc");
         return (choice ?? alternate.Element(Mc + "Fallback") ?? alternate.Elements(Mc + "Choice").FirstOrDefault())?.Elements() ?? [];
     }

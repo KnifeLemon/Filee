@@ -69,7 +69,11 @@ internal static class SheetPagination
                 throw DocumentLimits.TooLarge($"The workbook prints on more than {DocumentLimits.Count(limits.MaxPages)} pages.");
             return new SheetPrintPlan(sheet, new SheetGrid([], []), 1, [new SheetPage(new CellRange(0, 0, 0, 0), 0, -1, 0, -1, false, false)], 0, 0, defaultFont);
         }
-        var areas = Areas(sheet);
+        // Pictures and shapes placed by a size (one-cell and absolute anchors) reach as far as their size does.
+        var reach = sheet.PrintArea.Count == 0 && sheet.Drawings.Any(d => d.To is null)
+            ? new DrawingReach(book, sheet, index, fonts, defaultFont, cancellationToken)
+            : null;
+        var areas = Areas(sheet, reach);
         var right = areas.Select(a => a.Right).Concat(sheet.TitleColumns is { } tc ? [tc.Last] : []).DefaultIfEmpty(-1).Max();
         var bottom = areas.Select(a => a.Bottom).Concat(sheet.TitleRows is { } tr ? [tr.Last] : []).DefaultIfEmpty(-1).Max();
         var widths = Widths(sheet, right + 1, defaultFont);
@@ -203,11 +207,12 @@ internal static class SheetPagination
 
     /// <summary>
     /// The ranges that print: the print area (whole columns or rows cut to the used range), else the used range — the
-    /// cells with text, a fill or borders, merged areas and pictures, from the first of them.
+    /// cells with text, a fill or borders, merged areas and the cells pictures and shapes cover, from the first of them.
     /// </summary>
-    internal static List<CellRange> Areas(Worksheet sheet)
+    /// <param name="reach">The cells a drawing placed by its size covers; without it, its top-left cell.</param>
+    internal static List<CellRange> Areas(Worksheet sheet, DrawingReach? reach = null)
     {
-        var used = Used(sheet);
+        var used = Used(sheet, reach);
         if (sheet.PrintArea.Count == 0)
             return used is { } u ? [u] : [];
         var areas = new List<CellRange>();
@@ -235,13 +240,16 @@ internal static class SheetPagination
         return areas;
     }
 
-    private static CellRange? Used(Worksheet sheet)
+    private static CellRange? Used(Worksheet sheet, DrawingReach? reach)
     {
         var used = sheet.UsedRange();
         foreach (var drawing in sheet.Drawings)
         {
             var (row, column) = (Math.Clamp(drawing.Row, 0, MaxRow), Math.Clamp(drawing.Column, 0, MaxColumn));
             var (lastRow, lastColumn) = drawing.To is { } to ? (Math.Clamp(to.Row, row, MaxRow), Math.Clamp(to.Column, column, MaxColumn)) : (row, column);
+            // The range starts at the anchor's cell, as before (an absolute anchor's is A1), and ends where the drawing does.
+            if (drawing.To is null && reach?.Cells(drawing) is { } cells)
+                (lastRow, lastColumn) = (Math.Max(row, cells.Bottom), Math.Max(column, cells.Right));
             used = used is { } u
                 ? new CellRange(Math.Min(u.Top, row), Math.Min(u.Left, column), Math.Max(u.Bottom, lastRow), Math.Max(u.Right, lastColumn))
                 : new CellRange(row, column, lastRow, lastColumn);
@@ -289,5 +297,86 @@ internal static class SheetPagination
             widths[c] = points > 0 && double.IsFinite(points) ? Math.Max(points, SheetRowHeights.Minimum) : 0;
         }
         return widths;
+    }
+
+    /// <summary>
+    /// The cells a picture or shape placed by its offset and size covers (Excel's one-cell and absolute anchors, Calc's
+    /// frames): Excel prints a drawing whole, so the printed range reaches as far as it does. Column widths and row
+    /// heights are those the page uses; rows past the cells with text are as tall as the file or the default says.
+    /// </summary>
+    internal sealed class DrawingReach
+    {
+        private readonly double[] _left;
+        private readonly double[] _measured;
+        private readonly double _standard;
+        private readonly Worksheet _sheet;
+        private double[] _top = [0];
+
+        public DrawingReach(Workbook book, Worksheet sheet, SheetIndex index, SheetFonts fonts, PixelMetrics defaultFont, CancellationToken cancellationToken)
+        {
+            _sheet = sheet;
+            var widths = Widths(sheet, MaxColumn + 1, defaultFont);
+            _left = Prefix(widths, widths.Length);
+            var bottom = sheet.UsedRange()?.Bottom ?? -1;
+            _measured = SheetRowHeights.Measure(book, sheet, bottom + 1, fonts, defaultFont, widths, index, cancellationToken);
+            _standard = SheetRowHeights.Standard(sheet, defaultFont);
+        }
+
+        /// <summary>The cells from the one the drawing starts in to the one it ends in.</summary>
+        public CellRange? Cells(SheetDrawing drawing)
+        {
+            if (!double.IsFinite(drawing.OffsetX + drawing.OffsetY + drawing.Width + drawing.Height))
+                return null;
+            var column = Math.Clamp(drawing.Column, 0, MaxColumn);
+            var row = Math.Clamp(drawing.Row, 0, MaxRow);
+            var x = _left[column] + Math.Max(0, drawing.OffsetX);
+            var (width, height) = (Math.Max(0, drawing.Width), Math.Max(0, drawing.Height));
+            var y = RowsTo(-1, row)[row] + Math.Max(0, drawing.OffsetY);
+            var rows = RowsTo(y + height, row);
+            var top = Index(rows, y);
+            var bottom = Math.Max(top, Index(rows, y + height - Slack));
+            var left = Index(_left, x);
+            var right = Math.Max(left, Index(_left, x + width - Slack));
+            return new CellRange(top, left, bottom, right);
+        }
+
+        /// <summary>The index whose span holds <paramref name="position"/>: the last one starting at or before it.</summary>
+        private static int Index(double[] prefix, double position)
+        {
+            int low = 0, high = prefix.Length - 2;
+            if (high < 0)
+                return 0;
+            while (low < high)
+            {
+                var mid = (low + high + 1) >>> 1;
+                if (prefix[mid] <= position)
+                    low = mid;
+                else
+                    high = mid - 1;
+            }
+            return low;
+        }
+
+        /// <summary>The row offsets, grown until they pass <paramref name="position"/> and row <paramref name="row"/>, or the sheet ends.</summary>
+        private double[] RowsTo(double position, int row)
+        {
+            while (_top.Length - 1 <= MaxRow && (_top.Length - 1 <= row || _top[^1] <= position))
+            {
+                var count = Math.Min(MaxRow + 1, Math.Max(256, (_top.Length - 1) * 2));
+                var heights = new double[count];
+                for (var r = 0; r < count; r++)
+                    heights[r] = r < _measured.Length ? _measured[r] : SheetRowHeights.Empty(_sheet, r, _standard);
+                _top = Prefix(heights, count);
+            }
+            return _top;
+        }
+
+        private static double[] Prefix(double[] sizes, int count)
+        {
+            var prefix = new double[count + 1];
+            for (var i = 0; i < count; i++)
+                prefix[i + 1] = prefix[i] + sizes[i];
+            return prefix;
+        }
     }
 }

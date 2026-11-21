@@ -3,7 +3,8 @@
 // with markers and data labels, a doughnut's rings, scatter, a log axis, manual layouts, turned labels, dates) and one
 // with trendlines, error bars, point labels, two category levels, a rich title and gradient and pattern fills,
 // written in code, as a chart part alone (XmlFuzzer), inside a workbook the sheet printer prints and inside a chart
-// template (.crtx) the drawing engine draws (DocumentFuzzer).
+// template (.crtx) the drawing engine draws (DocumentFuzzer); and the 3D, radar, bubble, stock, surface, pie-of-pie and
+// Office 2016 (chartex) samples of ChartSamples as parts alone.
 // Every input must be read or refused with InvalidDataException / ConversionRefusedException, in time and on a 1 MB
 // stack; what is read is drawn small. Run by FuzzHarness: a short fixed run normally, FILEE_FUZZ_SECONDS for a longer
 // random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
@@ -46,12 +47,42 @@ public class ChartFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         "<c:separator></c:separator>", "<c:style val=\"48\"/>", "<a:pattFill prst=\"pct90\"/>",
         "<a:gradFill><a:gsLst><a:gs pos=\"-5\"><a:srgbClr val=\"FF0000\"/></a:gs><a:gs pos=\"1e9\"><a:srgbClr val=\"0000FF\"/></a:gs></a:gsLst><a:path path=\"circle\"><a:fillToRect l=\"1e9\"/></a:path></a:gradFill>",
         "<c:lvl><c:pt idx=\"99999\"><c:v>x</c:v></c:pt></c:lvl>",
+        "<c:view3D><c:rotX val=\"-1e9\"/><c:rotY val=\"NaN\"/><c:depthPercent val=\"999999\"/><c:hPercent val=\"0\"/><c:rAngAx val=\"0\"/></c:view3D>",
+        "<c:gapDepth val=\"-9\"/>", "<c:grouping val=\"standard\"/>", "<c:bubbleScale val=\"1e9\"/>", "<c:showNegBubbles val=\"1\"/>",
+        "<c:bubbleSize><c:numLit><c:ptCount val=\"3\"/><c:pt idx=\"0\"><c:v>-1e308</c:v></c:pt><c:pt idx=\"2\"><c:v>0</c:v></c:pt></c:numLit></c:bubbleSize>",
+        "<c:radarStyle val=\"filled\"/>", "<c:hiLowLines/>", "<c:upDownBars><c:gapWidth val=\"-50\"/></c:upDownBars>", "<c:dropLines/>", "<c:wireframe val=\"1\"/>",
+        "<c:bandFmts><c:bandFmt><c:idx val=\"999999\"/></c:bandFmt></c:bandFmts>", "<c:splitType val=\"cust\"/>", "<c:splitPos val=\"-1e308\"/>",
+        "<c:custSplit><c:secondPiePt val=\"1048575\"/></c:custSplit>", "<c:secondPieSize val=\"0\"/>", "<c:ofPieType val=\"bar\"/>",
+        "<c:showLeaderLines val=\"1\"/>", "<c:layout><c:manualLayout><c:x val=\"1e9\"/><c:y val=\"-1e9\"/></c:manualLayout></c:layout>",
+    ];
+
+    /// <summary>Tokens of Office 2016 chart parts (chartex).</summary>
+    private static readonly string[] ExTokens =
+    [
+        "<cx:pt idx=\"1048575\">1e309</cx:pt>", "<cx:pt idx=\"-1\">NaN</cx:pt>", "ptCount=\"99999999\"", "<cx:binCount val=\"0\"/>",
+        "<cx:binSize val=\"1e-308\"/>", "<cx:binning underflow=\"1e308\" overflow=\"-1e308\"/>", "<cx:subtotals><cx:idx val=\"-5\"/></cx:subtotals>",
+        "<cx:statistics quartileMethod=\"inclusive\"/>", "<cx:visibility meanLine=\"1\" nonoutliers=\"1\"/>", "<cx:parentLabelLayout val=\"banner\"/>",
+        "<cx:catScaling gapWidth=\"-1e9\"/>", "<cx:valScaling max=\"-1\" min=\"1e308\"/>", "layoutId=\"regionMap\"", "layoutId=\"sunburst\"",
+        "<cx:lvl ptCount=\"3\"><cx:pt idx=\"2\"></cx:pt></cx:lvl>", "hidden=\"1\"", "<cx:aggregation/>",
     ];
 
     [Fact]
     public void ChartReader_reads_or_refuses_every_mutated_chart_part() =>
         new FuzzHarness(fx, QuickIterations, 20261120).Data("chart", "xml",
             [.. new[] { Columns(), Slices(Labels), Costly(), Rings(), Points(), Polished() }.Select(Encoding.UTF8.GetBytes)], FuzzHarness.Xml(Tokens), DrawPart);
+
+    [Fact]
+    public void ChartReader_reads_or_refuses_every_mutated_3D_radar_bubble_stock_surface_and_pie_of_pie_part() =>
+        new FuzzHarness(fx, QuickIterations, 20261121).Data("chart-kinds", "xml",
+            [.. new[] { ChartSamples.Columns3D("standard"), ChartSamples.Pie3D(), ChartSamples.Areas3D(), ChartSamples.Radar("filled"), ChartSamples.Bubbles(true),
+                ChartSamples.Stock(), ChartSamples.Surface(threeD: true), ChartSamples.Surface(threeD: false, wireframe: true), ChartSamples.OfPie(bar: true) }
+                .Select(Encoding.UTF8.GetBytes)], FuzzHarness.Xml(Tokens), DrawPart);
+
+    [Fact]
+    public void ChartReader_reads_or_refuses_every_mutated_chartex_part() =>
+        new FuzzHarness(fx, QuickIterations, 20261121).Data("chartex", "xml",
+            [.. new[] { ChartSamples.Waterfall(), ChartSamples.Funnel(), ChartSamples.Treemap("banner"), ChartSamples.Sunburst(), ChartSamples.Histogram(),
+                ChartSamples.Pareto(), ChartSamples.BoxWhisker() }.Select(Encoding.UTF8.GetBytes)], FuzzHarness.Xml(ExTokens), DrawPart);
 
     [Fact]
     public void A_workbook_with_charts_is_read_or_refused_whatever_its_parts_say() =>

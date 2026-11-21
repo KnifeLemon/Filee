@@ -1,5 +1,6 @@
-// Spreadsheet print metadata and an immutable export plan for the interactive XLSX → PDF studio. The source
-// workbook is never edited: SpreadsheetPrintPackage applies one plan to a temporary copy for LibreOffice to render.
+// Spreadsheet print metadata and an immutable export plan for the interactive XLSX / XLSB → PDF studio. The source
+// workbook is never edited: SpreadsheetPrintPackage applies one plan to a temporary XLSX copy for the printer to render;
+// an XLSB is printed from what XlsbReader reads with the plan put on the sheet (SpreadsheetPrintBinary).
 
 using System.Globalization;
 using System.IO.Compression;
@@ -133,8 +134,11 @@ public static partial class SpreadsheetPrintInspector
     public static SpreadsheetWorkbookInfo Read(string path)
     {
         using var package = new OpcPackage(path);
-        using var archive = ZipFile.OpenRead(path);
         var workbookPath = package.MainPartPath ?? "xl/workbook.xml";
+        // An Excel binary workbook: its sheets come from its records (SpreadsheetPrintBinary).
+        if (workbookPath.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+            return SpreadsheetPrintBinary.Inspect(path, workbookPath);
+        using var archive = ZipFile.OpenRead(path);
         var workbook = package.Part(workbookPath)?.Root
             ?? throw new InvalidDataException("The file is not an Excel workbook (no xl/workbook.xml).");
         var names = workbook.Element(S + "definedNames")?.Elements(S + "definedName").ToList() ?? [];
@@ -609,5 +613,140 @@ public static partial class SpreadsheetPrintPackage
         if (EqualityComparer<T>.Default.Equals(value, source))
             return;
         element.SetAttributeValue(name, choices.First(choice => EqualityComparer<T>.Default.Equals(choice.Value, value)).Text);
+    }
+}
+
+/// <summary>
+/// The print studio for Excel binary workbooks (.xlsb), whose records the studio can't rewrite the way
+/// <see cref="SpreadsheetPrintPackage"/> rewrites an XLSX copy: the sheets are listed from what XlsbReader reads, and a
+/// region is printed by Filee's own sheet printer from the sheet with the region's settings put on it (print area,
+/// paper, orientation, margins, scale or fit to pages, page order, hidden rows and columns, manual breaks). The
+/// workbook itself is never written.
+/// </summary>
+public static class SpreadsheetPrintBinary
+{
+    private const double PointsPerMillimetre = 72 / 25.4;
+
+    /// <summary>Whether <paramref name="workbook"/> is an Excel binary workbook (printed here rather than from a rewritten copy).</summary>
+    public static bool Handles(SpreadsheetWorkbookInfo workbook) =>
+        workbook.WorkbookPartPath.EndsWith(".bin", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The worksheets of an Excel binary workbook as the studio lists them.</summary>
+    internal static SpreadsheetWorkbookInfo Inspect(string path, string workbookPath)
+    {
+        var (book, entries) = XlsbReader.ReadAll(path);
+        var sheets = new List<SpreadsheetSheetInfo>();
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var sheet = book.Sheets[i];
+            var (index, part, hidden) = entries[i];
+            var used = sheet.UsedRange();
+            var setup = sheet.PageSetup;
+            static double Millimetres(double points) => Math.Round(points / PointsPerMillimetre, 4);
+            var paper = SpreadsheetPaper.All.FirstOrDefault(p => p != SpreadsheetPaper.Source
+                && Math.Abs(p.WidthMm - Millimetres(setup.PaperWidth)) < 1 && Math.Abs(p.HeightMm - Millimetres(setup.PaperHeight)) < 1) ?? SpreadsheetPaper.Source;
+            sheets.Add(new SpreadsheetSheetInfo(
+                index,
+                sheet.Name,
+                part,
+                hidden,
+                used is { } range ? Reference(range) : "A1",
+                sheet.PrintArea.Count > 0 ? string.Join(',', sheet.PrintArea.Select(Reference)) : null,
+                sheet.TitleRows is { } rows ? $"{rows.First + 1}:{rows.Last + 1}" : null,
+                used is { } height ? height.Bottom - height.Top + 1 : 0,
+                used is { } width ? width.Right - width.Left + 1 : 0,
+                sheet.HiddenRows.Count,
+                sheet.HiddenColumns.Count,
+                new SpreadsheetSourcePageSetup(
+                    paper,
+                    setup.Landscape ? SpreadsheetPageOrientation.Landscape : SpreadsheetPageOrientation.Portrait,
+                    setup.Scale,
+                    setup.FitWidth,
+                    setup.FitHeight,
+                    setup.OverThenDown ? SpreadsheetPageOrder.OverThenDown : SpreadsheetPageOrder.DownThenOver,
+                    Millimetres(setup.LeftMargin),
+                    Millimetres(setup.RightMargin),
+                    Millimetres(setup.TopMargin),
+                    Millimetres(setup.BottomMargin))));
+        }
+        return new SpreadsheetWorkbookInfo(path, workbookPath, sheets);
+    }
+
+    /// <summary>A range as A1 text: whole columns as "A:C", whole rows as "1:5".</summary>
+    private static string Reference(CellRange range)
+    {
+        static string Column(int column)
+        {
+            var letters = "";
+            for (var value = column + 1; value > 0; value = (value - 1) / 26)
+                letters = (char)('A' + (value - 1) % 26) + letters;
+            return letters;
+        }
+        static string Row(int row) => (row + 1).ToString(CultureInfo.InvariantCulture);
+        if (range.Top == 0 && range.Bottom == SheetPagination.MaxRow)
+            return $"{Column(range.Left)}:{Column(range.Right)}";
+        if (range.Left == 0 && range.Right == SheetPagination.MaxColumn)
+            return $"{Row(range.Top)}:{Row(range.Bottom)}";
+        return $"{Column(range.Left)}{Row(range.Top)}:{Column(range.Right)}{Row(range.Bottom)}";
+    }
+
+    /// <summary>
+    /// Prints <paramref name="region"/> of <paramref name="workbook"/> to the PDF <paramref name="output"/>. Returns the
+    /// notice keys of what the printer said (something on the workbook it doesn't draw).
+    /// </summary>
+    public static IReadOnlyList<string> Print(SpreadsheetWorkbookInfo workbook, SpreadsheetPrintRegion region, string output,
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        if (!SpreadsheetPrintInspector.IsValidRange(region.Range))
+            throw new ArgumentException("The print area is not a valid A1 cell range.", nameof(region));
+        var (book, entries) = XlsbReader.ReadAll(workbook.Path);
+        var at = entries.FindIndex(entry => entry.Index == region.Sheet.Index);
+        if (at < 0)
+            throw new InvalidDataException("The selected worksheet is no longer in the workbook.");
+        cancellationToken.ThrowIfCancellationRequested();
+        var printed = new Workbook { DefaultFontName = book.DefaultFontName, DefaultFontSize = book.DefaultFontSize };
+        printed.Sheets.Add(Apply(book.Sheets[at], region));
+        var pdf = SheetPrinter.ToPdf(printed, SheetPrintSource.Of(workbook.Path), cancellationToken, progress);
+        File.WriteAllBytes(output, pdf);
+        return SheetCapabilities.FirstUnsupported(workbook.Path, XlsbReader.Format) is null ? [] : [SheetPrintConverter.LeftOutNotice];
+    }
+
+    /// <summary>The sheet with the region's settings, as SpreadsheetPrintPackage writes them into an XLSX copy.</summary>
+    internal static Worksheet Apply(Worksheet sheet, SpreadsheetPrintRegion region)
+    {
+        sheet.PrintArea.Clear();
+        if (region.WritePrintArea)
+            sheet.PrintArea.AddRange(XlsxReader.References(region.Range));
+        if (region.IncludeHidden)
+        {
+            sheet.HiddenRows.Clear();
+            sheet.HiddenColumns.Clear();
+        }
+        if (!region.KeepManualBreaks)
+        {
+            sheet.RowBreaks.Clear();
+            sheet.ColumnBreaks.Clear();
+        }
+        var setup = sheet.PageSetup with
+        {
+            LeftMargin = region.MarginLeftMm * PointsPerMillimetre,
+            RightMargin = region.MarginRightMm * PointsPerMillimetre,
+            TopMargin = region.MarginTopMm * PointsPerMillimetre,
+            BottomMargin = region.MarginBottomMm * PointsPerMillimetre,
+        };
+        if (region.Paper != SpreadsheetPaper.Source)
+            setup = setup with { PaperWidth = region.Paper.WidthMm * PointsPerMillimetre, PaperHeight = region.Paper.HeightMm * PointsPerMillimetre };
+        if (region.Orientation != SpreadsheetPageOrientation.Source)
+            setup = setup with { Landscape = region.Orientation == SpreadsheetPageOrientation.Landscape };
+        if (region.Order != SpreadsheetPageOrder.Source)
+            setup = setup with { OverThenDown = region.Order == SpreadsheetPageOrder.OverThenDown };
+        setup = region.ScaleMode switch
+        {
+            SpreadsheetScaleMode.Percent => setup with { Scale = Math.Clamp(region.ScalePercent, 10, 400), FitToPage = false },
+            SpreadsheetScaleMode.FitToPages => setup with { FitToPage = true, FitWidth = Math.Clamp(region.FitWidth, 1, 100), FitHeight = Math.Clamp(region.FitHeight, 0, 100) },
+            _ => setup,
+        };
+        sheet.PageSetup = setup;
+        return sheet;
     }
 }

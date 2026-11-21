@@ -8,8 +8,11 @@
 // their alignment, cell values (numbers, RK numbers, text, booleans, errors; formulas as the value Excel last
 // calculated, the formula itself is not read), column widths and hidden columns, row heights and hidden rows, merged
 // cells, frozen rows, right-to-left sheets, manual page breaks, the page setup, margins, print options, headers and
-// footers (with their pictures) and each sheet's drawing (pictures and shapes; drawings are DrawingML XML in XLSB too).
-// Left out: conditional formats (binary rules), comments, tables, data validation.
+// footers (with their pictures), each sheet's drawing (pictures, shapes and charts; drawings are DrawingML XML in XLSB
+// too) and chart sheets (their page setup and the chart of their drawing, with what is placed over it).
+// Conditional formats are read as the XLSX reader reads them (BrtBeginConditionalFormatting, BrtBeginCFRule with its
+// differential format from styles.bin's BrtDXF, colour scales' BrtCFVO and BrtColor). Left out, as by the XLSX reader:
+// comments, tables (their style), data validation, rules with formulas of their own, data bars and icon sets.
 //
 // The input is untrusted: the package is read within DocumentLimits (part and total sizes counted while unpacking,
 // inflate ratio), records count against MaxXmlElements like XML elements do, a record the reader takes apart may hold
@@ -67,6 +70,17 @@ internal sealed class XlsbReader
     private const int WbProp = 153;
     private const int BundleSh = 156;
     private const int MergeCell = 176;
+    private const int BeginConditionalFormatting = 461;
+    private const int EndConditionalFormatting = 462;
+    private const int BeginCFRule = 463;
+    private const int EndCFRule = 464;
+    private const int BeginColorScale = 469;
+    private const int EndColorScale = 470;
+    private const int CFVO = 471;
+    private const int BeginDXFs = 505;
+    private const int EndDXFs = 506;
+    private const int DXF = 507;
+    private const int ColorRecord = 564;
     private const int BeginRwBrk = 392;
     private const int EndRwBrk = 393;
     private const int BeginColBrk = 394;
@@ -82,6 +96,9 @@ internal sealed class XlsbReader
     private const int BeginCellXfs = 617;
     private const int EndCellXfs = 618;
     private const int BeginCellStyleXfs = 626;
+    private const int CsPageSetup = 652;
+    private const int BeginUserCsView = 655;
+    private const int EndUserCsView = 656;
     private const int EndCellStyleXfs = 627;
 
     /// <summary>Fill patterns by BrtFill fls (1 = solid, 0x28 = gradient), as SpreadsheetML names them.</summary>
@@ -103,6 +120,7 @@ internal sealed class XlsbReader
     private readonly List<(string Text, IReadOnlyList<CellRun>? Runs)> _sharedStrings = [];
     private readonly List<(CellStyle Style, string Format)> _cellFormats = [];
     private readonly List<FontInfo> _fonts = [];
+    private readonly List<DifferentialStyle> _dxfs = [];
     private OoxmlColors _colors = OoxmlColors.FromTheme(null);
     private XDocument? _theme;
     private readonly Charts.ChartBudget _charts = new();
@@ -258,6 +276,23 @@ internal sealed class XlsbReader
         }
     }
 
+    /// <summary>
+    /// Every worksheet of an Excel binary workbook, hidden ones too, with its position in the workbook part and its
+    /// part (the print studio lists them; <see cref="Workbook.Sheets"/> holds them in the same order). Chart sheets are
+    /// left out.
+    /// </summary>
+    internal static (Workbook Book, List<(int Index, string Part, bool Hidden)> Sheets) ReadAll(string path)
+    {
+        using var package = new OpcPackage(path, DocumentLimits.Default);
+        var workbookPath = package.MainPartPath ?? "xl/workbook.bin";
+        var reader = new XlsbReader(package, DocumentLimits.Default) { _all = [] };
+        var book = reader.ReadWorkbook(workbookPath);
+        return (book, reader._all);
+    }
+
+    /// <summary>The worksheets read, hidden ones too, while <see cref="ReadAll"/> reads; null otherwise.</summary>
+    private List<(int Index, string Part, bool Hidden)>? _all;
+
     private Workbook ReadWorkbook(string workbookPath)
     {
         var part = ReadWorkbookPart(workbookPath);
@@ -277,9 +312,19 @@ internal sealed class XlsbReader
         for (var index = 0; index < part.Sheets.Count; index++)
         {
             var entry = part.Sheets[index];
-            if (entry.State != 0 || entry.RelationshipId is null || !relationships.TryGetValue(entry.RelationshipId, out var relationship)
-                || relationship.External || !relationship.Type.EndsWith("/worksheet", StringComparison.Ordinal))
-                continue; // hidden sheets, chart sheets, dialog and macro sheets
+            if (entry.State != 0 && _all is null || entry.RelationshipId is null || !relationships.TryGetValue(entry.RelationshipId, out var relationship)
+                || relationship.External)
+                continue; // hidden sheets
+            if (relationship.Type.EndsWith("/chartsheet", StringComparison.Ordinal))
+            {
+                if (_all is not null)
+                    continue;
+                if (ReadChartSheet(entry.Name.Length > 0 ? entry.Name : "Chart", relationship.Target) is { } chartSheet)
+                    result.ChartSheets.Add((result.Sheets.Count, chartSheet));
+                continue;
+            }
+            if (!relationship.Type.EndsWith("/worksheet", StringComparison.Ordinal))
+                continue; // dialog and macro sheets
             var sheet = ReadSheet(entry.Name.Length > 0 ? entry.Name : "Sheet", relationship.Target);
             if (part.Titles.TryGetValue(index, out var titles))
             {
@@ -295,6 +340,7 @@ internal sealed class XlsbReader
             if (part.Areas.TryGetValue(index, out var areas))
                 sheet.PrintArea.AddRange(areas);
             result.Sheets.Add(sheet);
+            _all?.Add((index, relationship.Target, entry.State != 0));
         }
         return result;
     }
@@ -381,6 +427,7 @@ internal sealed class XlsbReader
         var cellXfs = new List<(int Format, int Font, int Fill, int Border, int Rotation, int Indent, int Alignment)>();
         var inCellXfs = false;
         var inStyleXfs = false;
+        var inDxfs = false;
         var records = new Records(stream, partPath, this);
         while (records.Next())
         {
@@ -412,6 +459,15 @@ internal sealed class XlsbReader
                     break;
                 case EndCellStyleXfs:
                     inStyleXfs = false;
+                    break;
+                case BeginDXFs:
+                    inDxfs = true;
+                    break;
+                case EndDXFs:
+                    inDxfs = false;
+                    break;
+                case DXF when inDxfs:
+                    _dxfs.Add(ReadDifferential(records.Fields()));
                     break;
                 case Xf when inCellXfs || inStyleXfs:
                     var xf = records.Fields();
@@ -567,6 +623,66 @@ internal sealed class XlsbReader
         return (left, right, top, bottom, (flags & 2) != 0 ? diagonal : CellBorder.None, (flags & 1) != 0 ? diagonal : CellBorder.None);
     }
 
+    /// <summary>
+    /// A BrtDXF: what a conditional format changes, as XFProps (fill, font colour, bold, italic, underline, strike and
+    /// the four borders; the rest is left as it is, as for XLSX).
+    /// </summary>
+    private DifferentialStyle ReadDifferential(Fields dxf)
+    {
+        dxf.U16(); // fNewBorder
+        dxf.U16(); // XFProps.reserved
+        var count = dxf.U16();
+        string? foreground = null, background = null;
+        var style = new DifferentialStyle();
+        for (var i = 0; i < count && dxf.Left >= 4; i++)
+        {
+            var type = dxf.U16();
+            var size = dxf.U16();
+            // cb counts the property's own four bytes.
+            if (size < 4 || size - 4 > dxf.Left)
+                break;
+            var data = new Fields(dxf.Bytes(size - 4), "styles");
+            switch (type)
+            {
+                case 0x01 when data.Left >= 8:
+                    foreground = Color(ref data);
+                    break;
+                case 0x02 when data.Left >= 8:
+                    background = Color(ref data);
+                    break;
+                case 0x05 when data.Left >= 8:
+                    style = style with { Color = Color(ref data) };
+                    break;
+                case >= 0x06 and <= 0x09 when data.Left >= 10:
+                    var color = Color(ref data);
+                    var line = data.U16();
+                    CellBorder? side = line is > 0 and < 14 ? new CellBorder(BorderStyles[line], color) : null;
+                    style = type switch
+                    {
+                        0x06 => style with { Top = side },
+                        0x07 => style with { Bottom = side },
+                        0x08 => style with { Left = side },
+                        _ => style with { Right = side },
+                    };
+                    break;
+                case 0x19 when data.Left >= 2:
+                    style = style with { Bold = data.U16() >= 700 };
+                    break;
+                case 0x1A when data.Left >= 1:
+                    style = style with { Underline = (data.Left >= 2 ? data.U16() : data.U8()) != 0 };
+                    break;
+                case 0x1C when data.Left >= 1:
+                    style = style with { Italic = data.U8() != 0 };
+                    break;
+                case 0x1D when data.Left >= 1:
+                    style = style with { Strike = data.U8() != 0 };
+                    break;
+            }
+        }
+        // A differential fill's colour is its background (the foreground only for patterns), as in XLSX.
+        return style with { Fill = background ?? foreground };
+    }
+
     /// <summary>A Blxf: the line style and colour of one border side.</summary>
     private CellBorder Side(ref Fields fields)
     {
@@ -622,11 +738,52 @@ internal sealed class XlsbReader
         string? headerPictures = null;
         string? drawing = null;
 
+        List<CellRange>? formatRanges = null;
+        ConditionalFormat? rule = null;
+        var inScale = false;
+        var points = new List<(string Type, double Value)>();
+        var colors = new List<string>();
         var records = new Records(stream, partPath, this);
         while (records.Next())
         {
             switch (records.Type)
             {
+                case BeginConditionalFormatting:
+                    formatRanges = FormatRanges(records.Fields());
+                    break;
+                case EndConditionalFormatting:
+                    formatRanges = null;
+                    break;
+                case BeginCFRule when formatRanges is { Count: > 0 }:
+                    rule = ReadRule(records.Fields(), formatRanges);
+                    points.Clear();
+                    colors.Clear();
+                    break;
+                case BeginColorScale:
+                    inScale = true;
+                    break;
+                case EndColorScale:
+                    inScale = false;
+                    break;
+                case CFVO when inScale && rule is not null:
+                    var cfvo = records.Fields();
+                    var kind = cfvo.U32();
+                    var number = cfvo.F64();
+                    points.Add((kind switch { 2 => "min", 3 => "max", 4 => "percent", 5 => "percentile", _ => "num" }, double.IsFinite(number) ? number : 0));
+                    break;
+                case ColorRecord when inScale && rule is not null:
+                    var colorFields = records.Fields();
+                    colors.Add(Color(ref colorFields) ?? "#FFFFFF");
+                    break;
+                case EndCFRule:
+                    if (rule is not null && (rule.Type != "colorScale" || points.Count >= 2 && colors.Count >= 2))
+                    {
+                        sheet.ConditionalFormats.Add(rule.Type == "colorScale"
+                            ? rule with { Scale = [.. points.Zip(colors, (point, color) => new ScalePoint(point.Type, point.Value, color)).Take(3)] }
+                            : rule);
+                    }
+                    rule = null;
+                    break;
                 case RowHdr:
                     row = ReadRow(records.Fields(), sheet);
                     break;
@@ -716,6 +873,209 @@ internal sealed class XlsbReader
         if (_package.Target(partPath, drawing) is { } drawingPart)
             sheet.Drawings.AddRange(XlsxDrawing.Read(_package, drawingPart, _theme?.Root, read: true, _charts).Drawings);
         return sheet;
+    }
+
+    /// <summary>
+    /// A chart sheet part ([MS-XLSB] 2.1.7.7): its margins, BrtCsPageSetup, header and footer, and the drawing that holds
+    /// its chart (DrawingML XML, as in XLSX); custom views' page setups are skipped. Null without a chart ChartReader draws.
+    /// </summary>
+    private Worksheet? ReadChartSheet(string name, string partPath)
+    {
+        using var stream = _package.OpenPart(partPath);
+        if (stream is null)
+            return null;
+        (uint Paper, uint Scale, int FirstPage, uint FitWidth, uint FitHeight, int Flags)? page = null;
+        double[]? margins = null;
+        SheetHeaderFooter? headerFooter = null;
+        string? headerPictures = null;
+        string? drawing = null;
+        var custom = false;
+        var records = new Records(stream, partPath, this);
+        while (records.Next())
+        {
+            switch (records.Type)
+            {
+                case BeginUserCsView:
+                    custom = true;
+                    break;
+                case EndUserCsView:
+                    custom = false;
+                    break;
+                case Margins when !custom:
+                    var fields = records.Fields();
+                    margins = [fields.F64(), fields.F64(), fields.F64(), fields.F64(), fields.F64(), fields.F64()];
+                    break;
+                case CsPageSetup when !custom:
+                    var setup = records.Fields();
+                    var paper = setup.U32();
+                    setup.Skip(12); // iRes, iVRes, iCopies
+                    var firstPage = setup.I16();
+                    var flags = setup.U16();
+                    // fLandscape, fNoOrient and fUsePage where BrtPageSetup keeps them.
+                    page = (paper, 100, firstPage, 1, 1, ((flags & 0x01) != 0 ? 0x02 : 0) | ((flags & 0x08) != 0 ? 0x40 : 0) | ((flags & 0x10) != 0 ? 0x80 : 0));
+                    break;
+                case BeginHeaderFooter when !custom:
+                    headerFooter = ReadHeaderFooter(records.Fields());
+                    break;
+                case Drawing:
+                    drawing = records.Fields().String(nullable: true);
+                    break;
+                case LegacyDrawingHF:
+                    headerPictures = records.Fields().String(nullable: true);
+                    break;
+            }
+        }
+        if (_package.Target(partPath, drawing) is not { } drawingPart)
+            return null;
+        // BrtBeginCsView keeps no "sized with window" flag: a chart clearly smaller than the page keeps its size.
+        return XlsxReader.ChartSheetOf(_package, drawingPart, name, PageSetupOf(page, margins, null, false, headerFooter, partPath, headerPictures),
+            fillsPage: false, _theme?.Root, _charts);
+    }
+
+    /// <summary>The ranges of a BrtBeginConditionalFormatting (ccf, fPivot, then an UncheckedSqRfX).</summary>
+    private static List<CellRange> FormatRanges(Fields fields)
+    {
+        fields.U32(); // ccf
+        fields.U32(); // fPivot
+        var count = fields.U32();
+        var ranges = new List<CellRange>();
+        for (var i = 0u; i < count && fields.Left >= 16; i++)
+        {
+            var (top, bottom, left, right) = (fields.U32(), fields.U32(), fields.U32(), fields.U32());
+            if (top <= bottom && left <= right && bottom <= SheetPagination.MaxRow && right <= SheetPagination.MaxColumn)
+                ranges.Add(new CellRange((int)top, (int)left, (int)bottom, (int)right));
+        }
+        return ranges;
+    }
+
+    /// <summary>
+    /// A BrtBeginCFRule as the rule the XLSX reader makes of a cfRule: comparisons with constants, text, blanks,
+    /// errors, top / bottom N, averages, duplicates and colour scales (their points follow). Rules with formulas of their
+    /// own, time periods, data bars and icon sets are not evaluated (null), as for XLSX.
+    /// </summary>
+    private ConditionalFormat? ReadRule(Fields fields, List<CellRange> ranges)
+    {
+        var type = fields.U32();
+        var template = fields.U32();
+        var dxf = fields.U32();
+        var priority = fields.I32();
+        var parameter = fields.U32();
+        fields.Skip(8); // reserved1, reserved2
+        var flags = fields.U16();
+        var first = fields.U32();
+        var second = fields.U32();
+        fields.U32(); // cbFmla3
+        var text = fields.String(nullable: true);
+        var formulas = new List<string>();
+        foreach (var length in new[] { first, second })
+        {
+            if (length == 0)
+                break;
+            // A CFParsedFormula: cce, rgce, cb, rgcb.
+            var cce = fields.U32();
+            if (cce > fields.Left)
+                return null;
+            var constant = Constant(fields.Bytes((int)cce));
+            var cb = fields.U32();
+            if (cb > fields.Left)
+                return null;
+            fields.Skip((int)cb);
+            if (constant is null)
+                return null; // a reference or a formula: not evaluated
+            formulas.Add(constant);
+        }
+        var name = (type, template) switch
+        {
+            (1, _) => "cellIs",
+            (3, _) => "colorScale",
+            (5, _) => "top10",
+            (2, 7) => "uniqueValues",
+            (2, 8) => parameter switch { 0 => "containsText", 1 => "notContainsText", 2 => "beginsWith", 3 => "endsWith", _ => null },
+            (2, 9) => "containsBlanks",
+            (2, 10) => "notContainsBlanks",
+            (2, 11) => "containsErrors",
+            (2, 12) => "notContainsErrors",
+            (2, 25 or 26 or 29 or 30) => "aboveAverage",
+            (2, 27) => "duplicateValues",
+            _ => null,
+        };
+        if (name is null)
+            return null;
+        return new ConditionalFormat(ranges, name, priority)
+        {
+            Operator = type != 1 ? null : parameter switch
+            {
+                1 => "between",
+                2 => "notBetween",
+                3 => "equal",
+                4 => "notEqual",
+                5 => "greaterThan",
+                6 => "lessThan",
+                7 => "greaterThanOrEqual",
+                8 => "lessThanOrEqual",
+                _ => null,
+            },
+            Formulas = formulas,
+            Text = text,
+            Rank = type == 5 ? (int)Math.Min(parameter, 1000) : 10,
+            Percent = (flags & 0x10) != 0,
+            Bottom = (flags & 0x08) != 0,
+            AboveAverage = template is not (26 or 30),
+            EqualAverage = template is 29 or 30,
+            StdDev = template is 25 or 26 ? (int)Math.Min(parameter, 3) : 0,
+            StopIfTrue = (flags & 0x02) != 0,
+            Style = type == 3 || dxf >= _dxfs.Count ? null : _dxfs[(int)dxf],
+        };
+    }
+
+    /// <summary>
+    /// A rule's formula as the XLSX reader keeps it, when it is a constant: a number (PtgInt, PtgNum, perhaps negated by
+    /// PtgUminus), text in quotes (PtgStr) or a boolean (PtgBool, as 1 or 0); null for anything else.
+    /// </summary>
+    internal static string? Constant(ReadOnlySpan<byte> rgce)
+    {
+        var negate = false;
+        string? value = null;
+        var at = 0;
+        while (at < rgce.Length)
+        {
+            var ptg = rgce[at++];
+            switch (ptg)
+            {
+                case 0x1E when at + 2 <= rgce.Length && value is null: // PtgInt
+                    value = BinaryPrimitives.ReadUInt16LittleEndian(rgce[at..]).ToString(CultureInfo.InvariantCulture);
+                    at += 2;
+                    break;
+                case 0x1F when at + 8 <= rgce.Length && value is null: // PtgNum
+                    var number = BinaryPrimitives.ReadDoubleLittleEndian(rgce[at..]);
+                    if (!double.IsFinite(number))
+                        return null;
+                    value = number.ToString("R", CultureInfo.InvariantCulture);
+                    at += 8;
+                    break;
+                case 0x1D when at + 1 <= rgce.Length && value is null: // PtgBool
+                    value = rgce[at++] != 0 ? "1" : "0";
+                    break;
+                case 0x17 when at + 2 <= rgce.Length && value is null: // PtgStr: cch, then UTF-16
+                    var count = BinaryPrimitives.ReadUInt16LittleEndian(rgce[at..]);
+                    at += 2;
+                    if (at + count * 2 > rgce.Length)
+                        return null;
+                    value = '"' + Encoding.Unicode.GetString(rgce.Slice(at, count * 2)).Replace("\"", "\"\"", StringComparison.Ordinal) + '"';
+                    at += count * 2;
+                    break;
+                case 0x13 when value is not null && value[0] != '"': // PtgUminus, after its operand
+                    negate = !negate;
+                    break;
+                case 0x12 or 0x15: // PtgUplus, PtgParen
+                    break;
+                default:
+                    return null;
+            }
+        }
+        if (value is null || !negate)
+            return value;
+        return value.StartsWith('-') ? value[1..] : "-" + value;
     }
 
     /// <summary>A BrtRowHdr: the row's height and visibility; returns the row (or -1 for one beyond the sheet).</summary>

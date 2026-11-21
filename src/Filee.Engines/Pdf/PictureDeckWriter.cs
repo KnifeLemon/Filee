@@ -1,6 +1,6 @@
 // Writes a PowerPoint presentation (PPTX, PresentationML / ECMA-376) whose slides each show one picture, fitted and
 // centred, with optional speaker notes, or one PDF page rebuilt as text boxes, pictures, shapes and tables
-// (PdfSlideXml): the package PDF → PPTX needs. Written by hand like the DOCX writer, on the
+// (PdfSlideXml) with the PDF's comments as speaker notes: the package PDF → PPTX needs. Written by hand like the DOCX writer, on the
 // package code it shares with the document slide writer (Hwp/Hwpx/Pptx/PresentationPackage), as small as PowerPoint,
 // LibreOffice Impress and Keynote accept: presentation, one slide master with one blank layout, a theme,
 // presentation / view / table style properties, the slides with their pictures, a notes master and notes slides when
@@ -112,12 +112,15 @@ internal sealed class PictureDeckWriter : IDisposable
 
     /// <summary>
     /// Adds a slide with the editable content of <paramref name="page"/> (PdfDocumentReader.ReadSlides), scaled and
-    /// centred on the slide like <see cref="Fit"/>; its pictures are copied into the package.
+    /// centred on the slide like <see cref="Fit"/>; its pictures are copied into the package, its notes (the PDF's
+    /// comments) become the slide's speaker notes. A slide without notes gets no notes page: PresentationML's notes
+    /// slides are optional, and PowerPoint, Impress and Keynote make one when notes are typed.
     /// </summary>
     public void AddSlide(PdfSlidePage page, string name)
     {
         var number = _slideHasNotes.Count + 1;
-        _slideHasNotes.Add(false);
+        var hasNotes = !string.IsNullOrWhiteSpace(page.Notes);
+        _slideHasNotes.Add(hasNotes);
         var (x, y, cx, _) = Fit(page.Width, page.Height);
         var placement = new PdfSlideXml.Placement(x, y, cx / Math.Max(page.Width, 1e-6));
 
@@ -153,7 +156,11 @@ internal sealed class PictureDeckWriter : IDisposable
         _package.Write($"ppt/slides/slide{number}.xml",
             $"<p:sld {Namespaces}><p:cSld name=\"{Escape(name)}\">{background}{TreeStart}{shapes}</p:spTree></p:cSld>" +
             "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>", PresentationTypes + "slide+xml");
+        if (hasNotes)
+            relationships.Add(($"rId{relationships.Count + 1}", "notesSlide", $"../notesSlides/notesSlide{number}.xml", false));
         _package.Write($"ppt/slides/_rels/slide{number}.xml.rels", Rels(relationships));
+        if (hasNotes)
+            _package.WriteNotesSlide(number, page.Notes!.Split('\n'));
     }
 
     /// <summary>Writes the parts that list the slides and moves the finished file into place.</summary>

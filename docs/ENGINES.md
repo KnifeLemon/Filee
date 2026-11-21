@@ -890,7 +890,7 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
 | Format | Read | Written |
 |---|---|---|
 | XLSX | own reader: values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print titles; for printing the page setup, print areas, page breaks, headers and footers, conditional formats and pictures | every sheet, numbers and dates as numbers with their formats, booleans, styles, merges, widths, heights, hidden rows / columns, frozen rows |
-| XLSB (Excel binary workbook) | own reader from [MS-XLSB] (`XlsbReader.cs`): the BIFF12 records of the workbook, shared strings, styles and sheets give what the XLSX reader gives (values, formulas' cached values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print areas and titles, page setup, breaks, headers and footers, pictures); conditional formats and comments are not read | no |
+| XLSB (Excel binary workbook) | own reader from [MS-XLSB] (`XlsbReader.cs`): the BIFF12 records of the workbook, shared strings, styles and sheets give what the XLSX reader gives (values, formulas' cached values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print areas and titles, page setup, breaks, headers and footers, pictures, conditional formats, chart sheets); comments, tables and data validation are not read (nor by the XLSX reader) | no |
 | XLS (Excel 97–2003, also Excel 5/95) | ExcelDataReader (MIT): values, number formats, merges; fonts, fills, borders and alignment (BIFF8), widths, heights, hidden rows / columns and the page setup from the BIFF records (`XlsLayout.cs`) | no (LibreOffice) |
 | ODS | own reader (`content.xml`, `styles.xml`, `settings.xml`): repeated rows / columns (the empty repeats up to the end of the sheet are skipped), spans, every value type, the text Calc shows (`text:p`), data styles as Excel codes, cell styles, widths, heights, hidden rows / columns / sheets, frozen and header rows | every sheet, typed cells (float, percentage, currency, date, time, boolean) with data styles and the shown text, styles, merges, widths, heights, hidden rows / columns, frozen rows |
 | CSV / TSV | delimiter (CSV: comma, semicolon or tab; TSV: tab) and encoding (UTF-8 / UTF-16 with BOM, CP949 when it looks Korean or on Korean Windows, else the PC's code page) | UTF-8 with BOM, CRLF, one file per sheet |
@@ -913,13 +913,14 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
 The XLSX donut also offers **PDF + Edit** (`tool-sheet-studio`). This interactive tool preserves the original
 workbook, makes one disposable copy per selected sheet region, applies that region's print settings, and prints it
 with the same engine as an ordinary XLSX → PDF: Filee's own print engine (below), or LibreOffice when **Use
-LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with XLSB chart
-sheets, 3D charts or other objects the print engine doesn't draw yet; without LibreOffice the studio shows the printer's notice). Every
+LibreOffice for spreadsheets → PDF** is on and it is installed (and, as in a conversion, for a workbook with 3D charts
+or other objects the print engine doesn't draw yet; without LibreOffice the studio shows the printer's notice). Every
 studio setting (paper, orientation, margins, scale or fit to pages, page order, print area, hidden rows and columns,
 manual breaks, sheet choice) is written into the copy and read by the print engine; the sheet's own gridlines,
 headings, centring and headers / footers are kept. PDFsharp combines the resulting PDFs. The live preview follows
 this exact studio export path and uses PDFium/PDFtoImage for the thumbnails of the pages the strip shows and the
-selected large page.
+selected large page. An XLSB opens in the studio too: its records aren't rewritten, so Filee's own print engine prints
+the region from what the XLSB reader reads, with the same settings put on the sheet (`SpreadsheetPrintBinary`).
 
 ## Spreadsheet printing
 
@@ -962,8 +963,9 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   decimals or in E notation), alignment (General: text left, numbers right, booleans and errors centred; indent;
   fill; justify; distributed; centre across selection; top, centre, bottom, vertical justify), wrap, shrink to fit,
   rotation (−90° to 90°) and stacked text, text running over empty neighbours (to the next cell with text, a merged
-  area or the edge of the page; clipped text is left out of the PDF), rich text, right-to-left sheets, pictures
-  anchored to cells, and conditional formats that colour cells: comparisons with constants, text contains / begins /
+  area or the edge of the page; clipped text is left out of the PDF), rich text, right-to-left sheets, pictures and
+  shapes anchored to cells or the sheet (the printed range reaches as far as a drawing placed by its size does), and
+  conditional formats that colour cells: comparisons with constants, text contains / begins /
   ends, blanks, errors, top / bottom N or N %, above / below average, duplicate and unique values, two- and
   three-colour scales, with their fills, font colours, bold, italic, underline, strikethrough and borders
   (`ConditionalFormats.cs`).
@@ -987,7 +989,11 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   and WINDOW2's right-to-left. ODS: the master page of each table's style and its page layout (paper, orientation,
   margins, scale-to percent, pages and X × Y, printed grid and headers, page order, table centring, first page
   number), header and footer regions, table:print-ranges, header rows and columns, page breaks before rows and
-  columns, rotation, stacked text, indent, shrink to fit and font names.
+  columns, rotation, stacked text, indent, shrink to fit, font names, and pictures and shapes (`OdsDrawing`: frames
+  with PNG / JPEG / GIF / BMP / WebP pictures, rectangles, ellipses, lines and custom shapes of a known type, groups,
+  turned by draw:transform, filled and outlined from their graphic style). A date without a data style takes the
+  standard short date (or date and time) of the document's language, as Calc does (`m/d/yy` for en-US, `dd.mm.yy`
+  for de-DE, ...; ISO 8601 for languages Filee has no table for).
 - **Hostile input.** Packages are read within `DocumentLimits` (a malformed part is `InvalidDataException`, a bomb
   `error.document_too_large`); column ranges expand at most 4,000,000 times per workbook, merged areas fill at
   most 10,000,000 index entries, pictures up to 64 MB and `MaxPicturePixels`, header codes up to 4,096 characters.
@@ -995,12 +1001,14 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   XFD1048576 would be about 35 million pages), and the layout runs under `LayoutGuard`. `DocumentFuzzTests` mutates
   an XLSX and an ODS built in code and prints them.
 - **Charts** (bar, column, line, area, pie, doughnut, scatter) on a sheet are printed from their chart part by the
-  [chart drawer](#charts); an XLSX chart sheet prints as one page, its chart filling the margins, with the sheet's
-  header and footer (`Workbook.ChartSheets`, for the printer only); ODS charts (chart objects in frames anchored to a
-  cell or the sheet) are read by `OdfChartReader` and printed the same way. 3D, radar, stock, surface and bubble
-  charts, new chart types (`chartex`), XLSB chart sheets and chart sheets with pictures or shapes over the chart are
-  named, so such a workbook takes LibreOffice where it is installed.
-- **Not printed yet.** XLSB chart sheets, shapes with text, text boxes, comments, sparklines; data bars, icon sets and conditional formats
+  [chart drawer](#charts), with the pictures and shapes of their userShapes over them; an XLSX or XLSB chart sheet
+  prints as one page, its chart filling the margins (or, when the sheet isn't sized to the window and the chart is
+  clearly smaller than the page, at its own size and place), with the pictures and shapes placed over it and the
+  sheet's header and footer (`Workbook.ChartSheets`, for the printer only); ODS charts (chart objects in frames
+  anchored to a cell or the sheet) are read by `OdfChartReader` and printed the same way. 3D, radar, stock, surface
+  and bubble charts and new chart types (`chartex`) are named, so such a workbook takes LibreOffice where it is
+  installed.
+- **Not printed yet.** Shapes with text, text boxes, freeform shapes, comments, table styles, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).

@@ -1,6 +1,7 @@
 // A DrawingML chart as ChartDrawer draws it (ECMA-376 Part 1, 21.2): the plots of the plot area with their series
 // (the values cached in the chart part, their trendlines, error bars and labels), the axes they use, the title, the
-// legend and the chart's and plot area's fills. ChartReader builds it from a c:chartSpace part and OdfChartReader from
+// legend, the chart's and plot area's fills and a 3D chart's view, floor and walls; Office 2016 charts (chartex) in
+// the same model. ChartReader builds it from a c:chartSpace part and OdfChartReader from
 // an OpenDocument chart object; the sheet printer, the document renderer and the slide renderer draw it.
 
 using SkiaSharp;
@@ -16,6 +17,33 @@ internal enum ChartKind
     Pie,
     Doughnut,
     Scatter,
+
+    /// <summary>A radar (spider) chart: categories as spokes, values out from the centre.</summary>
+    Radar,
+
+    /// <summary>A bubble chart: X, Y and a size per point.</summary>
+    Bubble,
+
+    /// <summary>A surface: series across categories as a grid coloured by value bands.</summary>
+    Surface,
+
+    /// <summary>A pie with some slices pulled into a second pie or a bar beside it (c:ofPieChart).</summary>
+    OfPie,
+
+    /// <summary>Office 2016 chart types (cx:chartSpace): running totals as floating columns.</summary>
+    Waterfall,
+
+    /// <summary>Bars centred on one line, narrowing stage by stage.</summary>
+    Funnel,
+
+    /// <summary>A hierarchy as nested rectangles, each the size of its value.</summary>
+    Treemap,
+
+    /// <summary>A hierarchy as rings, the root in the middle.</summary>
+    Sunburst,
+
+    /// <summary>A box and whisker plot: quartiles, whiskers, mean and outliers per category.</summary>
+    BoxWhisker,
 }
 
 /// <summary>How a plot's series stand to one another (c:grouping).</summary>
@@ -99,6 +127,12 @@ internal sealed record ChartLabels(bool Value, bool Category, bool Series, bool 
     /// <summary>What goes between the parts (c:separator), or null for ", ".</summary>
     public string? Separator { get; init; }
 
+    /// <summary>How far a label is moved from where it would stand (c:dLbl c:layout), in fractions of the chart's size; or null.</summary>
+    public (double X, double Y)? Offset { get; init; }
+
+    /// <summary>A moved pie label is joined to its slice by a line (c:showLeaderLines).</summary>
+    public bool LeaderLines { get; init; }
+
     public bool Any => Value || Category || Series || Percent || Text is { Count: > 0 };
 }
 
@@ -140,6 +174,15 @@ internal sealed record ChartTrendline(TrendKind Kind)
     /// <summary>The label's number format (c:trendlineLbl c:numFmt), or null for the automatic one.</summary>
     public string? Format { get; init; }
 
+    /// <summary>How far the label is moved from where it would stand (c:trendlineLbl c:layout), in fractions of the chart's size; or null.</summary>
+    public (double X, double Y)? LabelOffset { get; init; }
+
+    /// <summary>The trendline's own name for the legend (c:name), or null for Office's ("Linear (North)").</summary>
+    public string? Name { get; init; }
+
+    /// <summary>Listed in the legend after the series, as Office lists trendlines.</summary>
+    public bool InLegend { get; init; }
+
     public ChartTextStyle Style { get; init; } = ChartTextStyle.Default;
 }
 
@@ -180,6 +223,21 @@ internal sealed record ChartErrorBars(ErrorAmount Amount, double Value)
     /// </summary>
     public bool Office { get; init; } = true;
 }
+
+/// <summary>
+/// How a 3D chart is seen (c:view3D): turned <see cref="RotX"/> degrees up and <see cref="RotY"/> degrees round,
+/// its depth and height in percent of its width, with right-angled axes (an oblique view) or in perspective.
+/// </summary>
+internal sealed record ChartView3D(double RotX = 15, double RotY = 20, int DepthPercent = 100, int HeightPercent = 100, bool RightAngleAxes = true, int Perspective = 30);
+
+/// <summary>Up and down bars of a line or stock plot (c:upDownBars): between the first and the last series.</summary>
+internal sealed record ChartUpDownBars(int GapWidth, ChartShapeStyle Up, ChartShapeStyle Down);
+
+/// <summary>
+/// How a histogram sorts its values into bins (cx:binning): bins of a width or a count of them (else Scott's rule),
+/// closed on the right (Excel's default) or the left, with values below or above a limit in a bin of their own.
+/// </summary>
+internal sealed record ChartBinning(double? Size, int? Count, bool ClosedRight = true, double? Underflow = null, double? Overflow = null);
 
 /// <summary>A marker of a line or scatter series: symbol (none, circle, square, ...), size in points, style.</summary>
 internal sealed record ChartMarker(string Symbol, float Size, ChartShapeStyle Style);
@@ -231,6 +289,15 @@ internal sealed class ChartSeries
     public IReadOnlyList<ChartTrendline> Trendlines { get; init; } = [];
 
     public IReadOnlyList<ChartErrorBars> ErrorBars { get; init; } = [];
+
+    /// <summary>Bubble sizes (c:bubbleSize), or null.</summary>
+    public IReadOnlyList<double?>? BubbleSizes { get; init; }
+
+    /// <summary>Bubbles drawn with a 3D look (c:bubble3D).</summary>
+    public bool Bubble3D { get; init; }
+
+    /// <summary>A chartex series drawn on the plot's second value axis (a Pareto line).</summary>
+    public bool Secondary { get; init; }
 }
 
 /// <summary>One plot of the plot area (c:barChart, c:lineChart, ...): its series, drawn against two axes.</summary>
@@ -271,6 +338,79 @@ internal sealed class ChartPlot
     public IReadOnlyList<uint> AxisIds { get; init; } = [];
 
     public List<ChartSeries> Series { get; } = [];
+
+    /// <summary>Drawn in 3D (bar3DChart, line3DChart, area3DChart, pie3DChart, surface3DChart).</summary>
+    public bool ThreeD { get; init; }
+
+    /// <summary>A 3D plot whose series stand one behind the other (c:grouping standard; 3D lines always do).</summary>
+    public bool SeriesInDepth { get; init; }
+
+    /// <summary>Space between series rows of a 3D plot, in percent of a bar's depth (c:gapDepth).</summary>
+    public int GapDepth { get; init; } = 150;
+
+    /// <summary>A radar's areas are filled (c:radarStyle filled).</summary>
+    public bool Filled { get; init; }
+
+    /// <summary>The largest bubble in percent of Office's default size (c:bubbleScale).</summary>
+    public int BubbleScale { get; init; } = 100;
+
+    /// <summary>Bubbles of negative size are drawn (hollow), else left out (c:showNegBubbles).</summary>
+    public bool NegativeBubbles { get; init; }
+
+    /// <summary>A bubble's width is its size (c:sizeRepresents w), else its area.</summary>
+    public bool BubbleWidth { get; init; }
+
+    /// <summary>Lines from the highest to the lowest value at each category (c:hiLowLines), or null.</summary>
+    public ChartLine? HighLowLines { get; init; }
+
+    /// <summary>Lines from each point down to the category axis (c:dropLines), or null.</summary>
+    public ChartLine? DropLines { get; init; }
+
+    public ChartUpDownBars? UpDownBars { get; init; }
+
+    /// <summary>A surface drawn as lines only (c:wireframe).</summary>
+    public bool Wireframe { get; init; }
+
+    /// <summary>Fills of a surface's value bands (c:bandFmts), by band.</summary>
+    public IReadOnlyDictionary<int, ChartShapeStyle> Bands { get; init; } = new Dictionary<int, ChartShapeStyle>();
+
+    /// <summary>A bar of pie (c:ofPieType bar), else a pie of pie.</summary>
+    public bool OfPieBar { get; init; }
+
+    /// <summary>Which points go to the second plot of a bar or pie of pie (c:splitType): pos, val, percent or cust.</summary>
+    public string SplitType { get; init; } = "pos";
+
+    /// <summary>The split's position, value or percent (c:splitPos), or null for Office's default.</summary>
+    public double? SplitPosition { get; init; }
+
+    /// <summary>The points a custom split sends to the second plot (c:custSplit).</summary>
+    public IReadOnlySet<int> CustomSplit { get; init; } = new HashSet<int>();
+
+    /// <summary>The second plot's size in percent of the first (c:secondPieSize).</summary>
+    public int SecondPieSize { get; init; } = 75;
+
+    /// <summary>Lines joining the pie to its second plot (c:serLines), or null for none.</summary>
+    public ChartLine? SeriesLines { get; init; }
+
+    /// <summary>A waterfall's points that are totals (cx:subtotals), standing on the axis.</summary>
+    public IReadOnlySet<int> Subtotals { get; init; } = new HashSet<int>();
+
+    /// <summary>A waterfall's lines from each column's end to the next one.</summary>
+    public bool ConnectorLines { get; init; } = true;
+
+    /// <summary>A treemap's parent labels (cx:parentLabelLayout): overlapping, banner or none.</summary>
+    public string ParentLabels { get; init; } = "overlapping";
+
+    /// <summary>Box and whisker: quartiles exclusive of the median (Excel's default) or inclusive, and what is shown.</summary>
+    public bool ExclusiveQuartiles { get; init; } = true;
+
+    public bool MeanLine { get; init; }
+
+    public bool MeanMarker { get; init; } = true;
+
+    public bool InnerPoints { get; init; }
+
+    public bool Outliers { get; init; } = true;
 }
 
 /// <summary>Where an axis crosses the other (c:crosses, c:crossesAt).</summary>
@@ -289,6 +429,9 @@ internal sealed record ChartAxis
 
     /// <summary>A value axis (c:valAx): numbers along it, scaled; else categories.</summary>
     public bool IsValue { get; init; }
+
+    /// <summary>A 3D chart's series axis (c:serAx): the series' names along the depth.</summary>
+    public bool IsSeries { get; init; }
 
     /// <summary>c:axPos: b, l, r or t.</summary>
     public string Position { get; init; } = "b";
@@ -416,6 +559,16 @@ internal sealed class Chart
 
     /// <summary>The theme's body font (+mn-lt), for text without a family.</summary>
     public string? ThemeFont { get; init; }
+
+    /// <summary>How a 3D chart is seen, or null for a flat one.</summary>
+    public ChartView3D? View3D { get; init; }
+
+    /// <summary>The floor and walls of a 3D chart (c:floor, c:sideWall, c:backWall).</summary>
+    public ChartShapeStyle Floor { get; init; } = ChartShapeStyle.Auto;
+
+    public ChartShapeStyle SideWall { get; init; } = ChartShapeStyle.Auto;
+
+    public ChartShapeStyle BackWall { get; init; } = ChartShapeStyle.Auto;
 
     /// <summary>Points of all series together (what drawing the chart costs).</summary>
     public long PointCount => Plots.Sum(p => p.Series.Sum(s => (long)s.Values.Count));
