@@ -1026,9 +1026,18 @@ internal enum HShapeKind
 
     /// <summary>한글 호: <see cref="HGeometry.Arc"/>. Only in models read for layout.</summary>
     Arc,
+
+    /// <summary>
+    /// An open path of straight and curved pieces (<see cref="HGeometry.Path"/>), with arrowheads: bent and curved
+    /// connectors (Word bentConnector / curvedConnector, ODF draw:connector, 한글 꺾인 / 곡선 연결선) and open
+    /// free-form lines. Every writer writes it.
+    /// </summary>
+    Path,
 }
 
-/// <summary>A drawing without text: rectangle, ellipse or straight line (and, read for layout, polygon, curve or arc).</summary>
+/// <summary>
+/// A drawing without text: rectangle, ellipse, straight line or open path (and, read for layout, polygon, curve or arc).
+/// </summary>
 internal sealed class HShape(HShapeKind kind) : HObject
 {
     public HShapeKind Kind { get; } = kind;
@@ -1042,7 +1051,7 @@ internal sealed class HShape(HShapeKind kind) : HObject
     /// <summary>Stacking order among floating objects (higher is in front); null = document order.</summary>
     public int? ZOrder { get; set; }
 
-    /// <summary>Outline of a polygon, curve or arc; null for the other kinds.</summary>
+    /// <summary>Outline of a polygon, curve, arc or open path; null for the other kinds.</summary>
     public HGeometry? Geometry { get; set; }
     public string? Fill { get; set; }
     public HGradient? Gradient { get; set; }
@@ -1056,7 +1065,7 @@ internal sealed class HShape(HShapeKind kind) : HObject
     public bool FlipVertical { get; set; }
 
     /// <summary>
-    /// The arrowhead at the start of a line (or of an open curve or arc): DrawingML headEnd, 한글 headStyle; null = none.
+    /// The arrowhead at the start of a line (or of an open path, curve or arc): DrawingML headEnd, 한글 headStyle; null = none.
     /// </summary>
     public HArrow? Head { get; set; }
 

@@ -113,7 +113,7 @@ internal static class HDocumentAssert
                         Blocks(depth + 1, box.Blocks);
                         break;
                     case HShape shape:
-                        Line(depth, $"SHAPE {shape.Kind} {shape.Width}x{shape.Height} anchor={shape.Anchor} fill={shape.Fill} gradient={Gradient(shape.Gradient)} line={Border(shape.Line)} ratio={shape.CornerRatio} flip={shape.FlipHorizontal}/{shape.FlipVertical} arrows={shape.Head}/{shape.Tail}");
+                        Line(depth, $"SHAPE {shape.Kind} {shape.Width}x{shape.Height} anchor={shape.Anchor} fill={shape.Fill} gradient={Gradient(shape.Gradient)} line={Border(shape.Line)} ratio={shape.CornerRatio} flip={shape.FlipHorizontal}/{shape.FlipVertical} arrows={shape.Head}/{shape.Tail} path={OpenPath(shape)}");
                         break;
                 }
             }
@@ -136,6 +136,13 @@ internal static class HDocumentAssert
         $"[{f.Align} {f.Left}/{f.Right}/{f.FirstLine} {f.Before}/{f.After} {f.LineSpacing} keep={f.KeepWithNext}/{f.KeepLines}/{f.WidowOrphan} tabs={(f.Tabs is null ? "-" : string.Join(";", f.Tabs))}]";
 
     private static string Char(HCharFormat f) => f.ToString().Replace("HCharFormat ", "", StringComparison.Ordinal);
+
+    /// <summary>An open path's points in its geometry space, a curve's controls in brackets; "-" for none.</summary>
+    private static string OpenPath(HShape shape) => shape.Geometry?.Path is { } path
+        ? $"{path.Start.X},{path.Start.Y}" + string.Concat(path.Segments.Select(s => s.Curved
+            ? $" [{s.Control1!.Value.X},{s.Control1.Value.Y} {s.Control2!.Value.X},{s.Control2.Value.Y}] {s.End.X},{s.End.Y}"
+            : $" {s.End.X},{s.End.Y}"))
+        : "-";
 
     private static string Borders(HBorders? b) => b is { } x ? $"{Border(x.Left)} {Border(x.Right)} {Border(x.Top)} {Border(x.Bottom)}" : "-";
 
@@ -406,7 +413,35 @@ internal static class HDocumentAssert
                     Equal(x.CornerRatio, y.CornerRatio, "corner");
                     Equal((x.FlipHorizontal, x.FlipVertical), (y.FlipHorizontal, y.FlipVertical), "flip");
                     Equal((x.Head, x.Tail), (y.Head, y.Tail), "arrowheads");
+                    OpenPath(x, y);
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Open paths: the same kinds of pieces through the same points, measured in the shape's size (formats round
+        /// their units differently), within 1 % of it or 20 units.
+        /// </summary>
+        private void OpenPath(HShape x, HShape y)
+        {
+            static List<(double X, double Y)>? Points(HShape shape) => shape.Geometry is { Path: { } path } geometry
+                ? [.. OpenPaths.Points(path).Select(p => (
+                    geometry.Width > 0 ? p.X * (double)shape.Width / geometry.Width : p.X,
+                    geometry.Height > 0 ? p.Y * (double)shape.Height / geometry.Height : p.Y))]
+                : null;
+            var (expected, actual) = (Points(x), Points(y));
+            Equal(x.Geometry?.Path?.Segments.Select(s => s.Curved ? 'C' : 'L').Aggregate("", (a, c) => a + c),
+                y.Geometry?.Path?.Segments.Select(s => s.Curved ? 'C' : 'L').Aggregate("", (a, c) => a + c), "path pieces");
+            if (expected is null || actual is null || expected.Count != actual.Count)
+                return;
+            var tolerance = Math.Max(20, Math.Max(x.Width, x.Height) / 100.0);
+            for (var i = 0; i < expected.Count; i++)
+            {
+                if (Math.Abs(expected[i].X - actual[i].X) > tolerance || Math.Abs(expected[i].Y - actual[i].Y) > tolerance)
+                {
+                    Differ($"path point {i}: expected {expected[i]}, got {actual[i]}");
+                    return;
+                }
             }
         }
 

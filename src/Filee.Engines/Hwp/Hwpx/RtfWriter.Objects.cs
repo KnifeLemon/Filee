@@ -7,7 +7,8 @@
 // (\shp, shape type 75) placed as its anchor says, the picture in its pib property, as Word writes them.
 //
 // A text box is a shape (\shp) with its paragraphs in \shptxt, and the same text in \shprslt for programs that don't
-// draw shapes (RtfReader reads it from there); shapes without text have no result.
+// draw shapes (RtfReader reads it from there); shapes without text have no result. An open path (a bent or curved
+// connector) is a free-form shape (shape type 0) with its points and segments.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Magick;
@@ -236,19 +237,23 @@ internal sealed partial class RtfWriter
             HShapeKind.Rectangle => shape.CornerRatio > 0 ? 2 : 1,
             HShapeKind.Ellipse => 3,
             HShapeKind.Line => 20,
-            _ => 0, // polygons, curves and arcs come only from models read for layout
+            HShapeKind.Path when shape.Geometry?.Path is not null => 0, // a free-form shape (written below)
+            _ => -1, // polygons, curves and arcs come only from models read for layout
         };
-        if (type == 0)
+        if (type < 0)
             return;
         var o = _out;
+        var open = shape.Kind is HShapeKind.Line or HShapeKind.Path;
         var w = Math.Max(1, shape.Width);
-        var h = Math.Max(shape.Kind == HShapeKind.Line ? 0 : 1, shape.Height);
+        var h = Math.Max(open ? 0 : 1, shape.Height);
         o.Open();
         o.Control("\\shp");
         o.Open();
         o.Control("\\*\\shpinst" + ShapePlacement(shape.Anchor, w, h, shape.ZOrder));
         Property("shapeType", Number(type));
-        if (shape.Kind == HShapeKind.Line)
+        if (shape.Kind == HShapeKind.Path)
+            FreeForm(shape.Geometry!);
+        if (open)
             Property("fFilled", "0");
         else
             Fill(shape.Fill ?? shape.Gradient?.Colors.FirstOrDefault());
@@ -259,7 +264,7 @@ internal sealed partial class RtfWriter
             Property("fFlipH", "1");
         if (shape.FlipVertical)
             Property("fFlipV", "1");
-        if (shape.Kind == HShapeKind.Line)
+        if (open)
         {
             Arrowhead("lineStart", shape.Head);
             Arrowhead("lineEnd", shape.Tail);
@@ -267,6 +272,32 @@ internal sealed partial class RtfWriter
         Transform(shape.Transform);
         o.Close();
         o.Close();
+    }
+
+    /// <summary>
+    /// An open path as Word's free-form shape properties ([MS-ODRAW] 2.3.6): the geometry space (geoRight / geoBottom,
+    /// the path's own box), the points (pVerticies, an array of x, y pairs) and the segments (pSegmentInfo: a move,
+    /// runs of lines or cubic Béziers of three points each, the end), in a complex path (shapePath 4).
+    /// </summary>
+    private void FreeForm(HGeometry geometry)
+    {
+        var path = geometry.Path!;
+        Property("geoRight", Number(Math.Max(1, geometry.Width)));
+        Property("geoBottom", Number(Math.Max(1, geometry.Height)));
+        Property("shapePath", "4");
+        var points = OpenPaths.Points(path).ToList();
+        Property("pVerticies", $"8;{Number(points.Count)};" + string.Join(";", points.Select(p => $"({Number(p.X)},{Number(p.Y)})")));
+        var segments = new List<int> { 0x4000 };
+        foreach (var segment in path.Segments)
+        {
+            var kind = segment.Curved ? 0x2000 : 0;
+            if (segments.Count > 1 && (segments[^1] & 0xE000) == kind && (segments[^1] & 0x1FFF) < 0x1FFF)
+                segments[^1]++;
+            else
+                segments.Add(kind | 1);
+        }
+        segments.Add(0x8000);
+        Property("pSegmentInfo", $"2;{Number(segments.Count)};" + string.Join(";", segments.Select(Number)));
     }
 
     /// <summary>

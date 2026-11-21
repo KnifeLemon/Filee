@@ -3,7 +3,8 @@
 // chart part (ChartReader) and become a picture of the chart for the writers that carries the chart for the renderer;
 // those ChartReader doesn't draw are left out and counted. SmartArt is read from the drawing Word saves with it (the
 // diagram's dsp:drawing part, through the slide reader) and becomes a picture of it for the writers that carries the
-// drawing for the renderer; SmartArt without one is left out and counted.
+// drawing for the renderer; SmartArt without one is left out and counted. Bent and curved connectors (DrawingML
+// presets, VML types 33 to 40) and open free-form lines (a:custGeom of one open path) become open paths (OpenPaths).
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -308,7 +309,7 @@ internal sealed partial class DocxReader
             _ => null, // free-form and other preset shapes have no 한글 equivalent
         };
         if (kind is null)
-            return null;
+            return OpenPath(spPr, style, width, height, anchor);
         var xfrm = spPr?.Element(A + "xfrm");
         var line = kind == HShapeKind.Line;
         var ln = spPr?.Element(A + "ln");
@@ -331,6 +332,106 @@ internal sealed partial class DocxReader
             Head = line ? LineEnd(ln?.Element(A + "headEnd")) : null,
             Tail = line ? LineEnd(ln?.Element(A + "tailEnd")) : null,
         };
+    }
+
+    /// <summary>
+    /// A bent or curved connector (prstGeom bentConnector2..5 / curvedConnector2..5 with its adjust values) or an open
+    /// free-form line (custGeom of one open path) as an open path with its arrowheads, mirrored by the flips; null for
+    /// other geometry.
+    /// </summary>
+    private HShape? OpenPath(XElement? spPr, XElement? style, int width, int height, HAnchor? anchor)
+    {
+        var preset = spPr?.Element(A + "prstGeom");
+        HPath? path;
+        if (preset is not null)
+            path = OpenPaths.Preset(Attr(preset, "prst"), width, height, Adjust(preset.Element(A + "avLst")));
+        else if (spPr?.Element(A + "custGeom") is { } custom)
+            path = CustomOpenPath(custom, width, height);
+        else
+            return null;
+        if (path is null)
+            return null;
+        var xfrm = spPr?.Element(A + "xfrm");
+        var ln = spPr?.Element(A + "ln");
+        var transform = Transform(xfrm);
+        path = OpenPaths.Mirrored(path, width, height, transform?.FlipHorizontal == true, transform?.FlipVertical == true);
+        return new HShape(HShapeKind.Path)
+        {
+            Width = width,
+            Height = height,
+            Anchor = anchor,
+            Geometry = new HGeometry(width, height, Path: path),
+            Line = Line(ln, style),
+            // The flips are in the path.
+            Transform = transform is null || transform.Rotation == 0 ? null : new HTransform(transform.Rotation),
+            Head = LineEnd(ln?.Element(A + "headEnd")),
+            Tail = LineEnd(ln?.Element(A + "tailEnd")),
+        };
+    }
+
+    /// <summary>A shape's adjust values (a:avLst a:gd name / fmla); null for none.</summary>
+    private static Dictionary<string, string>? Adjust(XElement? list)
+    {
+        if (list is null || !list.HasElements)
+            return null;
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var guide in list.Elements(A + "gd").Take(16))
+        {
+            if (Attr(guide, "name") is { } name && Attr(guide, "fmla") is { } formula)
+                result[name] = formula;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Custom geometry with one stroked path that doesn't close (a:moveTo first, then a:lnTo / a:cubicBezTo /
+    /// a:quadBezTo / a:arcTo), in its own a:path w / h space, as an open path in the shape's box; null for anything else.
+    /// </summary>
+    private static HPath? CustomOpenPath(XElement custom, int width, int height)
+    {
+        var paths = custom.Element(A + "pathLst")?.Elements(A + "path").Take(2).ToList() ?? [];
+        if (paths.Count != 1 || Attr(paths[0], "stroke") is "0" or "false")
+            return null;
+        var definition = new Slides.GeometryDefinition();
+        foreach (var (list, target) in new[] { ("avLst", definition.Adjust), ("gdLst", definition.Guides) })
+        {
+            foreach (var guide in custom.Element(A + list)?.Elements(A + "gd").Take(Slides.ShapeGeometry.MaxGuides) ?? [])
+                target.Add((Attr(guide, "name") ?? "", Attr(guide, "fmla") ?? ""));
+        }
+        var commands = new List<Slides.GeometryCommand>();
+        foreach (var command in paths[0].Elements())
+        {
+            if (commands.Count > OpenPaths.MaxSegments)
+                return null;
+            var points = command.Elements(A + "pt").Take(3).SelectMany(p => new[] { Attr(p, "x") ?? "0", Attr(p, "y") ?? "0" }).ToArray();
+            switch (command.Name.LocalName)
+            {
+                case "moveTo":
+                    commands.Add(new Slides.GeometryCommand('M', points));
+                    break;
+                case "lnTo":
+                    commands.Add(new Slides.GeometryCommand('L', points));
+                    break;
+                case "quadBezTo":
+                    commands.Add(new Slides.GeometryCommand('Q', points));
+                    break;
+                case "cubicBezTo":
+                    commands.Add(new Slides.GeometryCommand('C', points));
+                    break;
+                case "arcTo":
+                    commands.Add(new Slides.GeometryCommand('A', [Attr(command, "wR") ?? "0", Attr(command, "hR") ?? "0",
+                        Attr(command, "stAng") ?? "0", Attr(command, "swAng") ?? "0"]));
+                    break;
+                default:
+                    return null; // close: a closed outline the model has no fill for
+            }
+        }
+        var w = (double?)Long(paths[0], "w") ?? 0;
+        var h = (double?)Long(paths[0], "h") ?? 0;
+        definition.Paths.Add(new Slides.GeometryPathDefinition(w, h, Slides.PathFill.None, true, commands));
+        var result = Slides.ShapeGeometry.Evaluate(definition, Math.Max(0, width), Math.Max(0, height), null, 1);
+        using var drawn = result.Paths.FirstOrDefault()?.Path;
+        return drawn is null ? null : OpenPaths.FromSkia(drawn);
     }
 
     /// <summary>
@@ -789,6 +890,24 @@ internal sealed partial class DocxReader
                     yield return box;
                 }
             }
+            else if (VmlConnector(shape, width, height) is { } connector)
+            {
+                var stroke = shape.Element(V + "stroke");
+                yield return new HShape(HShapeKind.Path)
+                {
+                    Width = width,
+                    Height = height,
+                    Anchor = anchor,
+                    Geometry = new HGeometry(width, height, Path: OpenPaths.Mirrored(connector, width, height,
+                        transform?.FlipHorizontal == true, transform?.FlipVertical == true)),
+                    Line = VmlLine(shape),
+                    Transform = transform is { Rotation: not 0 } turned ? new HTransform(turned.Rotation) : null,
+                    ZOrder = zOrder,
+                    OuterMargin = distance,
+                    Head = VmlArrow(stroke, "start"),
+                    Tail = VmlArrow(stroke, "end"),
+                };
+            }
             else if (shape.Name.LocalName is "rect" or "roundrect" or "oval" or "line" || VmlStraightLine(shape))
             {
                 var kind = shape.Name.LocalName switch
@@ -889,14 +1008,37 @@ internal sealed partial class DocxReader
     /// A v:shape (without text or picture) that is a straight line: its type (o:spt of its v:shapetype, or the
     /// "#_x0000_tN" Word names its built-in types by) is 20 (line) or 32 (straight connector, as Word writes arrows).
     /// </summary>
-    private bool VmlStraightLine(XElement shape)
+    private bool VmlStraightLine(XElement shape) => VmlShapeType(shape) is "20" or "32";
+
+    /// <summary>The built-in type number (o:spt) of a v:shape, from it, its v:shapetype or the "#_x0000_tN" name; null for none.</summary>
+    private string? VmlShapeType(XElement shape)
     {
         if (shape.Name.LocalName != "shape")
-            return false;
+            return null;
         var spt = (string?)shape.Attribute(O + "spt") ?? (string?)ShapeType(shape)?.Attribute(O + "spt");
         if (spt is null && (string?)shape.Attribute("type") is { } type && type.StartsWith("#_x0000_t", StringComparison.Ordinal))
             spt = type["#_x0000_t".Length..];
-        return spt is "20" or "32";
+        return spt;
+    }
+
+    /// <summary>
+    /// A VML bent or curved connector (types 33 to 36 bentConnector2..5, 37 to 40 curvedConnector2..5) as an open path:
+    /// the DrawingML preset of the same number with the shape's adj values (or its v:shapetype's), which count in
+    /// 1/21600 of the box where DrawingML counts in 1/100000. Null for other shapes.
+    /// </summary>
+    private HPath? VmlConnector(XElement shape, int width, int height)
+    {
+        if (!int.TryParse(VmlShapeType(shape), NumberStyles.Integer, CultureInfo.InvariantCulture, out var type) || type is < 33 or > 40)
+            return null;
+        var name = type <= 36 ? $"bentConnector{type - 31}" : $"curvedConnector{type - 35}";
+        var adjust = new Dictionary<string, string>(StringComparer.Ordinal);
+        var values = ((string?)shape.Attribute("adj") ?? (string?)ShapeType(shape)?.Attribute("adj") ?? "").Split(',');
+        for (var i = 0; i < Math.Min(values.Length, 3); i++)
+        {
+            if (long.TryParse(values[i].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+                adjust[$"adj{i + 1}"] = $"val {Math.Clamp(value * 100000 / 21600, -10_000_000, 10_000_000).ToString(CultureInfo.InvariantCulture)}";
+        }
+        return OpenPaths.Preset(name, width, height, adjust);
     }
 
     /// <summary>The v:shapetype a VML shape's type ("#id") names, from anywhere in its part; null when there is none.</summary>

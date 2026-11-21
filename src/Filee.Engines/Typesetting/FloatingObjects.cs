@@ -12,9 +12,9 @@
 //   the top, up from the bottom or from the centre; or against the paragraph (PARA): the offset down from the top of
 //   its first line, whatever the alignment, never above it.
 //
-// Drawing: pictures with their crop inside their inner margin, under their outline (EMF / WMF as vector drawing); rectangles (rounded by their corner ratio), ellipses, lines, polygons, curves and
-// arcs with their fill (a colour or a linear gradient) and outline (solid, dashed, dotted, dash-dot or double, at its
-// width; lines, open curves and arcs with their arrowheads, LineArrows), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
+// Drawing: pictures with their crop inside their inner margin, under their outline (EMF / WMF as vector drawing); rectangles (rounded by their corner ratio), ellipses, lines, open paths (bent and curved
+// connectors), polygons, curves and arcs with their fill (a colour or a linear gradient) and outline (solid, dashed, dotted, dash-dot or double, at its
+// width; lines, open paths, curves and arcs with their arrowheads, LineArrows), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
 // their padding, at the top, middle or bottom, turned with the box (not mirrored); vertical text in a box is turned
 // into it (VerticalText). SmartArt (HImage.Drawing) is drawn by the slide renderer, scaled into its box. Curves go smoothly through their
 // points; arcs run counterclockwise from their first axis point to the second. WordArt (Word's watermarks) is a text
@@ -594,7 +594,7 @@ internal static class FloatingObjects
         HBorder line, SKRect area, bool flipHorizontal, bool flipVertical, HArrow? head = null, HArrow? tail = null)
     {
         using var path = Outline(kind, geometry, cornerRatio, area, flipHorizontal, flipVertical);
-        if (kind != HShapeKind.Line && (gradient is not null || ParagraphText.Color(fill) is not null))
+        if (kind is not (HShapeKind.Line or HShapeKind.Path) && (gradient is not null || ParagraphText.Color(fill) is not null))
         {
             using var paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
             using var shader = gradient is null ? null : Gradient(gradient, area);
@@ -606,7 +606,7 @@ internal static class FloatingObjects
         }
         if ((head ?? tail) is not null && line.Style != HBorderStyle.None && LineArrows.Open(path))
         {
-            // A line, open curve or arc with arrowheads (closed outlines have no ends to put them on).
+            // A line, open path, curve or arc with arrowheads (closed outlines have no ends to put them on).
             LineArrows.Draw(canvas, line, path, head, tail, part => Stroke(canvas, line, part));
         }
         else
@@ -632,6 +632,14 @@ internal static class FloatingObjects
                 break;
             case HShapeKind.Polygon when geometry?.Points is { Count: > 1 } points:
                 path.AddPoly([.. points.Select(Point)], close: points[0] == points[^1] || points.Count > 2);
+                break;
+            case HShapeKind.Path when geometry?.Path is { } open:
+                {
+                    using var drawn = OpenPaths.ToSkia(open, Point);
+                    path.AddPath(drawn);
+                    break;
+                }
+            case HShapeKind.Path:
                 break;
             case HShapeKind.Curve when geometry?.Segments is { Count: > 0 } segments:
                 Curve(path, [.. segments.Select(s => (s.Curve, Point(s.Start), Point(s.End)))]);

@@ -7,8 +7,9 @@
 // place, fill (fillColor), outline (lineColor, lineWidth, lineDashing), padding (dxTextLeft ...) and vertical
 // alignment (anchorText). A shape without text that is a rectangle (shapeType 1, 2 rounded, 202 an empty text box), an
 // ellipse (3) or a line (20, 32 a straight connector, with its arrowheads: lineStartArrowhead / lineEndArrowhead and
-// their widths and lengths) becomes an HShape with the shape's size, place, fill and outline. Either way the \shprslt
-// copy is skipped. Other shapes (block arrows, bent connectors, freeforms, which the model can't draw) are still read
+// their widths and lengths) becomes an HShape with the shape's size, place, fill and outline; so does a bent or curved
+// connector (33 to 40) or a free-form shape that is one open line (0), as an open path with its arrowheads. Either way
+// the \shprslt copy is skipped. Other shapes (block arrows, closed freeforms, which the model can't draw) are still read
 // from their \shprslt. A picture's own properties (\*\picprop, as Word writes for pictures in the text) give its
 // rotation and mirroring.
 
@@ -206,8 +207,126 @@ internal sealed partial class RtfReader
             1 or 2 or 202 => HShapeKind.Rectangle,
             3 => HShapeKind.Ellipse,
             20 or 32 => HShapeKind.Line,
+            (0 or (>= 33 and <= 40)) when OpenPath(shape) is not null => HShapeKind.Path,
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// The open path of a bent or curved connector (shapeType 33 to 36 bentConnector2..5, 37 to 40
+    /// curvedConnector2..5, adjustValue / adjust2Value / adjust3Value in 1/21600 of the box) or of a free-form shape
+    /// (shapeType 0: pVerticies through pSegmentInfo, one move then lines and cubic Béziers, in geoLeft ... geoBottom),
+    /// in the shape's box (model units), not yet mirrored; null when the shape is closed, escapes or is too long.
+    /// </summary>
+    private static HPath? OpenPath(ShapeContext shape)
+    {
+        var (width, height) = Size(shape);
+        var (w, h) = (HwpxUnits.FromTwips(width), HwpxUnits.FromTwips(height));
+        var type = shape.Number("shapeType") ?? -1;
+        if (type is >= 33 and <= 40)
+        {
+            var name = type <= 36 ? $"bentConnector{type - 31}" : $"curvedConnector{type - 35}";
+            var adjust = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (property, guide) in new[] { ("adjustValue", "adj1"), ("adjust2Value", "adj2"), ("adjust3Value", "adj3") })
+            {
+                if (shape.Number(property) is { } value)
+                    adjust[guide] = "val " + ((long)value * 100000 / 21600).ToString(CultureInfo.InvariantCulture);
+            }
+            return OpenPaths.Preset(name, w, h, adjust);
+        }
+        if (type != 0 || !shape.Properties.TryGetValue("pVerticies", out var vertices) || vertices.Length > MaxFreeFormChars)
+            return null;
+        var points = FreeFormPoints(vertices);
+        if (points.Count < 2 || points.Count > OpenPaths.MaxSegments * 3 + 1)
+            return null;
+        var (left, top) = (shape.Number("geoLeft") ?? 0, shape.Number("geoTop") ?? 0);
+        var (right, bottom) = (shape.Number("geoRight") ?? 21600, shape.Number("geoBottom") ?? 21600);
+        var (sx, sy) = (right > left ? w / (double)((long)right - left) : 0, bottom > top ? h / (double)((long)bottom - top) : 0);
+        HPoint Map((long X, long Y) p) => new(OpenPaths.Round((p.X - left) * sx), OpenPaths.Round((p.Y - top) * sy));
+
+        // Without segment information the points are lines (shapePath 0) or Béziers (2) in one open path.
+        var segments = shape.Properties.TryGetValue("pSegmentInfo", out var info) && info.Length <= MaxFreeFormChars
+            ? FreeFormSegments(info)
+            : shape.Number("shapePath") switch
+            {
+                null or 0 or 4 => [0x4000, Math.Min(points.Count - 1, 0x1FFF), 0x8000],
+                2 => [0x4000, 0x2000 | Math.Min((points.Count - 1) / 3, 0x1FFF), 0x8000],
+                _ => [],
+            };
+        var next = 0;
+        HPoint? start = null;
+        var pieces = new List<HPathSegment>();
+        foreach (var segment in segments)
+        {
+            var count = Math.Max(1, segment & 0x1FFF);
+            switch (segment >> 13)
+            {
+                case 0: // lines, a point each
+                    for (var i = 0; i < count; i++)
+                    {
+                        if (start is null || next >= points.Count || pieces.Count >= OpenPaths.MaxSegments)
+                            return null;
+                        pieces.Add(new HPathSegment(Map(points[next++])));
+                    }
+                    break;
+                case 1: // cubic Béziers, three points each
+                    for (var i = 0; i < count; i++)
+                    {
+                        if (start is null || next + 3 > points.Count || pieces.Count >= OpenPaths.MaxSegments)
+                            return null;
+                        pieces.Add(new HPathSegment(Map(points[next + 2]), Map(points[next]), Map(points[next + 1])));
+                        next += 3;
+                    }
+                    break;
+                case 2: // the move: only one, at the start
+                    if (start is not null || next >= points.Count)
+                        return null;
+                    start = Map(points[next++]);
+                    break;
+                case 4: // the end
+                    return start is { } first && pieces.Count > 0 ? new HPath(first, pieces) : null;
+                default: // close, escapes: not an open line the model draws
+                    return null;
+            }
+        }
+        return start is { } begun && pieces.Count > 0 ? new HPath(begun, pieces) : null;
+    }
+
+    /// <summary>Characters of pVerticies or pSegmentInfo read at most.</summary>
+    private const int MaxFreeFormChars = 262144;
+
+    /// <summary>The (x, y) pairs of pVerticies ("8;n;(x,y);(x,y)...").</summary>
+    private static List<(long X, long Y)> FreeFormPoints(string value)
+    {
+        var result = new List<(long, long)>();
+        var at = 0;
+        while (result.Count <= OpenPaths.MaxSegments * 3 + 1 && (at = value.IndexOf('(', at)) >= 0)
+        {
+            var close = value.IndexOf(')', at);
+            if (close < 0)
+                break;
+            var parts = value[(at + 1)..close].Split(',');
+            if (parts.Length != 2 || !long.TryParse(parts[0].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var x)
+                || !long.TryParse(parts[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var y))
+                break;
+            result.Add((Math.Clamp(x, int.MinValue, int.MaxValue), Math.Clamp(y, int.MinValue, int.MaxValue)));
+            at = close + 1;
+        }
+        return result;
+    }
+
+    /// <summary>The entries of pSegmentInfo ("2;n;v;v..."), decimal or 0x hexadecimal, after its size and count.</summary>
+    private static List<int> FreeFormSegments(string value)
+    {
+        var result = new List<int>();
+        foreach (var part in value.Split(';').Skip(2).Take(OpenPaths.MaxSegments + 2))
+        {
+            var text = part.Trim();
+            var hex = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+            if (int.TryParse(hex ? text[2..] : text, hex ? NumberStyles.HexNumber : NumberStyles.Integer, CultureInfo.InvariantCulture, out var number))
+                result.Add(number & 0xFFFF);
+        }
+        return result;
     }
 
     /// <summary>
@@ -217,7 +336,7 @@ internal sealed partial class RtfReader
     private static HShape Drawing(ShapeContext shape, HShapeKind kind)
     {
         var (width, height) = Size(shape);
-        var line = kind == HShapeKind.Line;
+        var line = kind is HShapeKind.Line or HShapeKind.Path;
         var drawing = new HShape(kind)
         {
             Width = HwpxUnits.FromTwips(line ? width : Math.Max(1, width)),
@@ -225,10 +344,16 @@ internal sealed partial class RtfReader
             Fill = !line && shape.Number("fFilled") is not 0 ? ShapeColor(shape.Number("fillColor") ?? 0xFFFFFF) : null,
             Line = shape.Number("fLine") is 0 ? HBorder.None : Outline(shape),
         };
+        if (kind == HShapeKind.Path && OpenPath(shape) is { } path)
+        {
+            // The flips are in the path.
+            drawing.Geometry = new HGeometry(drawing.Width, drawing.Height,
+                Path: OpenPaths.Mirrored(path, drawing.Width, drawing.Height, shape.Flag("fFlipH"), shape.Flag("fFlipV")));
+        }
         if (line)
         {
-            drawing.FlipHorizontal = shape.Flag("fFlipH");
-            drawing.FlipVertical = shape.Flag("fFlipV");
+            drawing.FlipHorizontal = kind == HShapeKind.Line && shape.Flag("fFlipH");
+            drawing.FlipVertical = kind == HShapeKind.Line && shape.Flag("fFlipV");
             var rotation = new HTransform((shape.Number("rotation") ?? 0) / 65536.0 % 360, false, false);
             drawing.Transform = rotation.IsIdentity ? null : rotation;
             drawing.Head = Arrowhead(shape, "lineStart");

@@ -1,5 +1,5 @@
 // Objects in the text of an ODT: pictures and text boxes as draw:frame, shapes as draw:rect / draw:ellipse /
-// draw:line, each with an automatic graphic style that holds its position, wrap, fill and outline. Equations are
+// draw:line (open paths, the bent and curved connectors, as draw:path), each with an automatic graphic style that holds its position, wrap, fill and outline. Equations are
 // formula objects as LibreOffice Writer keeps them: a frame on the baseline with draw:object (a folder "Object N" whose
 // content.xml is the MathML, set at the equation's size, with its StarMath source as an annotation for LibreOffice's
 // formula editor) and draw:image (a PNG of it in ObjectReplacements/, drawn by MathLayout, for readers without a formula
@@ -155,12 +155,30 @@ internal sealed partial class OdtWriter
     {
         var w = Math.Max(0, shape.Width);
         var h = Math.Max(0, shape.Height);
-        var props = new StringBuilder(shape.Kind == HShapeKind.Line ? " draw:fill=\"none\"" : Fill(shape.Fill ?? shape.Gradient?.Colors.FirstOrDefault()))
+        var open = shape.Kind is HShapeKind.Line or HShapeKind.Path;
+        var props = new StringBuilder(open ? " draw:fill=\"none\"" : Fill(shape.Fill ?? shape.Gradient?.Colors.FirstOrDefault()))
             .Append(Stroke(shape.Line));
-        if (shape.Kind == HShapeKind.Line && shape.Line.Style != HBorderStyle.None)
+        if (open && shape.Line.Style != HBorderStyle.None)
             props.Append(Marker("start", shape.Head, shape.Line)).Append(Marker("end", shape.Tail, shape.Line));
         switch (shape.Kind)
         {
+            case HShapeKind.Path when shape.Geometry is { Path: { } path } geometry:
+                {
+                    // An open path (bent or curved connector, free-form line): a draw:path whose view box is its box in
+                    // model units (points may lie outside it), with the line's markers.
+                    var (sx, sy) = (geometry.Width > 0 ? w / (double)geometry.Width : 1, geometry.Height > 0 ? h / (double)geometry.Height : 1);
+                    string Point(HPoint p) => $"{Number(OpenPaths.Round(p.X * sx))} {Number(OpenPaths.Round(p.Y * sy))}";
+                    var d = new StringBuilder($"M {Point(path.Start)}");
+                    foreach (var segment in path.Segments)
+                    {
+                        if (segment is { Control1: { } c1, Control2: { } c2 })
+                            d.Append($" C {Point(c1)} {Point(c2)} {Point(segment.End)}");
+                        else
+                            d.Append($" L {Point(segment.End)}");
+                    }
+                    var viewBox = $" svg:viewBox=\"0 0 {Number(Math.Max(1, w))} {Number(Math.Max(1, h))}\" svg:d=\"{d}\"";
+                    return ShapeElement("path", "Shape", shape.Anchor, shape.OuterMargin, shape.ZOrder, props.ToString(), Math.Max(1, w), Math.Max(1, h), viewBox, "");
+                }
             case HShapeKind.Line:
                 {
                     var (style, anchorType, x, y) = Placement(shape.Anchor, shape.OuterMargin, props.ToString(), "gr");
@@ -178,7 +196,7 @@ internal sealed partial class OdtWriter
                     return ShapeElement(element, "Shape", shape.Anchor, shape.OuterMargin, shape.ZOrder, props.ToString(), Math.Max(1, w), Math.Max(1, h), corner, "");
                 }
             default:
-                return ""; // polygons, curves and arcs come only from models read for layout
+                return ""; // polygons, curves and arcs come only from models read for layout, paths without a path draw nothing
         }
     }
 
