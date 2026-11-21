@@ -387,11 +387,10 @@ internal sealed partial class DocxReader
         paragraph.Format = paragraph.Format with { LineSpacing = new HLineSpacing(HLineSpacingKind.AtLeast, (int)Math.Round(lines * cell * multiple)) };
     }
 
-    /// <summary>Style and contextual-spacing flag of the paragraphs read so far, to compare a paragraph with the one before it.</summary>
-    private readonly Dictionary<HParagraph, (string? StyleId, bool Contextual)> _paragraphStyles = [];
+    private sealed record ParagraphBorderGroup(HBorders Borders, HInsets? Offsets, HBorder Between);
 
-    private void RememberParagraphStyle(HParagraph paragraph, ParaProps props) =>
-        _paragraphStyles[paragraph] = (props.StyleId, props.ContextualSpacing == true);
+    /// <summary>Style and original resolved borders, before joining two paragraphs changes their edges.</summary>
+    private readonly Dictionary<HParagraph, (string? StyleId, bool Contextual, ParagraphBorderGroup? BorderGroup)> _paragraphStyles = [];
 
     /// <summary>
     /// Word's "Don't add space between paragraphs of the same style" (w:contextualSpacing, set by the List Bullet and
@@ -663,12 +662,14 @@ internal sealed partial class DocxReader
         {
             FitLineSpacing(Current, _props);
             _reader.SnapToGrid(Current, _props);
+            var group = Current.Format.Borders is { } borders
+                ? new ParagraphBorderGroup(borders, Current.Format.BorderOffsets, ParagraphBorder(_props.BorderBetween)) : null;
             if (_output.LastOrDefault() is HParagraph previous)
             {
-                JoinBorders(previous, Current);
+                _reader.JoinBorders(previous, Current, group);
                 _reader.ApplyContextualSpacing(previous, Current, _props);
             }
-            _reader.RememberParagraphStyle(Current, _props);
+            _reader._paragraphStyles[Current] = (_props.StyleId, _props.ContextualSpacing == true, group);
             _output.Add(Current);
         }
 
