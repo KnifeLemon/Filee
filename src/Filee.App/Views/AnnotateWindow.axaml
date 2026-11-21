@@ -135,6 +135,11 @@
     <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,12" Spacing="7" IsVisible="{Binding IsEditing}">
       <TextBlock Classes="caption danger" Text="{Binding StatusNotice}" HorizontalAlignment="Center"
                  IsVisible="{Binding StatusNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <!-- About the picture shown: a frame of an HDR video whose colours couldn't be converted -->
+      <TextBlock x:Name="PictureNote" Classes="caption" Text="{Binding PictureNote}" HorizontalAlignment="Center"
+                 AutomationProperties.LiveSetting="Polite"
+                 TextWrapping="Wrap" TextAlignment="Center" MaxWidth="640"
+                 IsVisible="{Binding PictureNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <Border Classes="float" Padding="5">
         <StackPanel Orientation="Horizontal" Spacing="2">
           <RadioButton x:Name="SelectTool" Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateTool" IsChecked="{Binding IsSelect, Mode=OneWay}" Command="{Binding SetModeCommand}"
