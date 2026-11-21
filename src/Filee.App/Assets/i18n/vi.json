@@ -436,6 +436,8 @@
   "clip.music_hint": "Đặt nhạc từ một tệp bên dưới đoạn (A2): kéo để di chuyển, kéo đường kẻ để chỉnh âm lượng",
   "clip.music_pick": "Nhạc cho đoạn",
   "clip.music_files": "Tệp âm thanh và video",
+  "clip.loop_music": "Lặp lại nhạc",
+  "clip.loop_music_hint": "Phát lại nhạc từ đầu cho đến khi đoạn clip kết thúc, rồi nhỏ dần. Tắt: nhạc dừng khi phát hết.",
   "clip.no_music": "Tệp này không có âm thanh để dùng làm nhạc",
   "clip.preparing": "Đang chuẩn bị…",
   "clip.finding_silence": "Đang tìm đoạn im lặng…",

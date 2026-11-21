@@ -427,6 +427,8 @@
   "clip.music_hint": "Letakkan musik dari file di bawah klip (A2): seret posisinya, seret garis volumenya",
   "clip.music_pick": "Musik untuk klip",
   "clip.music_files": "File suara dan video",
+  "clip.loop_music": "Ulangi musik",
+  "clip.loop_music_hint": "Memutar musik lagi dari awal sampai klip selesai, lalu memudar. Mati: musik berhenti saat selesai.",
   "clip.no_music": "File ini tidak memiliki suara untuk digunakan sebagai musik",
   "clip.preparing": "Menyiapkan…",
   "clip.finding_silence": "Mencari bagian hening…",

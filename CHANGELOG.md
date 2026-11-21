@@ -22,6 +22,8 @@ Rename this heading to the version number when you release it.
 level: recommended
 ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서버(dl.filee.sh)에서 받아요
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
+ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 있어요
+en: Cut a clip can loop its music until the clip ends
 -->
 
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
@@ -31,6 +33,10 @@ en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't 
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+
+- **Cut a clip can loop its music** (#1432). With music on A2, **Loop music** next to **Music** plays the song again
+  from its start each time it ends, until the clip ends, and fades it out with the clip. Off, the music stops when the
+  song ends, as before. Several songs one after another on A2 are not there yet.
 
 ## 2.5.0
 
