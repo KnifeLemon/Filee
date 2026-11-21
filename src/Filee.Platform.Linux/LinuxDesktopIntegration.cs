@@ -108,6 +108,7 @@ internal sealed class LinuxDesktopIntegration(string configHome, string dataHome
             Path.Combine(dataHome, "nautilus", "scripts", "Filee"),
             Path.Combine(dataHome, "nemo", "actions", "filee.nemo_action"),
             Path.Combine(dataHome, "kio", "servicemenus", "filee.desktop"),
+            Path.Combine(configHome, "flea", "scripts", "Filee"),
         };
         var thunar = LoadThunarActions(thunarPath);
         UpdateThunarAction(thunar, enabled, executablePath, label);
@@ -122,11 +123,13 @@ internal sealed class LinuxDesktopIntegration(string configHome, string dataHome
 
         var command = $"{DesktopArgument(executablePath)} --convert %F";
         var name = DesktopValue(label);
+        var launcherScript = $"#!/bin/sh\n[ \"$#\" -gt 0 ] || exit 0\nfor file do\n  case \"$file\" in\n    /*) set -- \"$@\" \"$file\" ;;\n    *) set -- \"$@\" \"$PWD/$file\" ;;\n  esac\n  shift\ndone\nexec {ShellArgument(executablePath)} --convert \"$@\"\n";
         Write(thunarPath, thunar.ToString());
         Write(menuPaths[0], $"[Desktop Entry]\nType=Application\nName={name}\nExec={command}\nIcon=document-save-as\nTerminal=false\n");
-        Write(menuPaths[1], $"#!/bin/sh\n[ \"$#\" -gt 0 ] || exit 0\nfor file do\n  case \"$file\" in\n    /*) set -- \"$@\" \"$file\" ;;\n    *) set -- \"$@\" \"$PWD/$file\" ;;\n  esac\n  shift\ndone\nexec {ShellArgument(executablePath)} --convert \"$@\"\n", executable: true);
+        Write(menuPaths[1], launcherScript, executable: true);
         Write(menuPaths[2], $"[Nemo Action]\nName={name.Replace("%", "%%", StringComparison.Ordinal)}\nExec={command}\nSelection=notnone\nExtensions=nodirs;\nUriScheme=file\nIcon-Name=document-save-as\n");
         Write(menuPaths[3], $"[Desktop Entry]\nType=Service\nMimeType=application/octet-stream;\nActions=convert;\nX-KDE-Protocols=file\n\n[Desktop Action convert]\nName={name}\nIcon=document-save-as\nExec={command}\n", executable: true);
+        Write(menuPaths[4], launcherScript, executable: true);
     }
 
     internal static void UpdateThunarAction(XDocument document, bool enabled, string executablePath, string label)
