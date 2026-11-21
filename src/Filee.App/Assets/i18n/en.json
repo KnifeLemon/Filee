@@ -278,6 +278,8 @@
   "engine.cad.description": "AutoCAD drawings: DWG ↔ DXF, and both to PDF, SVG and PNG.",
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "Toolpaths of 3D printers and CNC machines (G-code) to PDF, SVG and pictures, or the slicer's own preview.",
+  "engine.palette.name": "Color palettes (built-in)",
+  "engine.palette.description": "Color palettes (PAL, GIMP GPL, Adobe ACT) into each other, as a list of HEX codes (TXT, JSON) or as a picture of the swatches.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "3D models: GLB, glTF, STL, OBJ, 3MF and PLY into each other, FBX into any of them, and a PNG preview.",
   "engine.image3d.name": "Pictures to 3D relief (built-in)",

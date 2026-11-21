@@ -278,6 +278,8 @@
   "engine.cad.description": "Чертежи AutoCAD: DWG ↔ DXF, и оба — в PDF, SVG и PNG.",
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "Траектории 3D-принтеров и станков с ЧПУ (G-code) в PDF, SVG и изображения или превью слайсера.",
+  "engine.palette.name": "Цветовые палитры (built-in)",
+  "engine.palette.description": "Цветовые палитры (PAL, GIMP GPL, Adobe ACT) друг в друга, в список HEX-кодов (TXT, JSON) или в изображение образцов цветов.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "3D-модели: GLB, glTF, STL, OBJ, 3MF и PLY друг в друга, FBX — в любой из них, плюс превью в PNG.",
   "engine.image3d.name": "Изображения в 3D-рельеф (встроенный)",

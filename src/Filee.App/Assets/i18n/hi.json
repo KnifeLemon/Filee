@@ -271,6 +271,8 @@
   "engine.cad.description": "AutoCAD ड्रॉइंग: DWG ↔ DXF, और दोनों से PDF, SVG और PNG।",
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "3D प्रिंटर और CNC मशीनों के टूलपाथ (G-code) को PDF, SVG और चित्र में, या स्लाइसर का अपना प्रीव्यू।",
+  "engine.palette.name": "रंग पैलेट (built-in)",
+  "engine.palette.description": "रंग पैलेट (PAL, GIMP GPL, Adobe ACT) एक-दूसरे में, HEX कोड की सूची (TXT, JSON) या रंग-नमूनों की तस्वीर के रूप में।",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "3D मॉडल: GLB, glTF, STL, OBJ, 3MF और PLY एक-दूसरे में, FBX इनमें से किसी में भी, और PNG प्रीव्यू।",
   "engine.image3d.name": "चित्र से 3D रिलीफ़ (बिल्ट-इन)",

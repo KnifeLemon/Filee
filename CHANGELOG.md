@@ -31,6 +31,11 @@ en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't 
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+- **Color palettes: PAL, GIMP GPL and Adobe ACT** (#1615). A `.pal` (a raw 256-colour palette from DOS and retro
+  games, Paint Shop Pro's JASC-PAL or Microsoft's RIFF PAL), a GIMP `.gpl` or a Photoshop `.act` turns into the
+  others (GPL, ACT), a list of HEX codes (TXT, JSON) or a swatch picture (PNG, SVG, PDF, …). VGA palettes with 6 bits
+  per channel are scaled to full colour. A `.pal` in a layout of its own, which some old programs wrote, isn't read.
+  The formats are in the Design and Games fields.
 
 ## 2.5.0
 

@@ -1266,6 +1266,23 @@ Start (or End when no Start); offsets in other years, including past years, may 
 VTIMEZONE definition is not preserved, and only these columns are supported rather than arbitrary calendar data.
 VALARM, X-properties, VJOURNAL, VFREEBUSY, binary attachments and other unsupported properties are lost.
 
+## Color palettes (PAL, GPL, ACT)
+
+The palette engine (`Palettes/PaletteConverter.cs`, id `palette`, #1615) reads a palette into one list of colours and
+writes it again. It needs no external program.
+
+| Format | Read | Write |
+|---|---|---|
+| PAL | the three documented layouts, told apart by signature and size: **RIFF PAL** (Microsoft, `RIFF`…`PAL `, a LOGPALETTE in its `data` chunk), **JASC-PAL** (Paint Shop Pro's text) and a **raw palette** of exactly 768 bytes (256 RGB triplets, as DOS and retro games keep it; when no value is above 63 it is a VGA palette with 6 bits per channel and is scaled to 0–255) | — (which layout a program wants can't be told) |
+| GPL | GIMP palette: `Name:`, `Columns:`, `#` comments, `R G B name` lines; names are kept | GIMP palette, 16 columns, names kept (a colour without one is named by its HEX code) |
+| ACT | Adobe Color Table: 768 bytes, or 772 with the number of colours used (big-endian) and the transparent index | 772 bytes, the count stated, no transparent index; colours past 256 are left out |
+| TXT | — | one `#RRGGBB` per line |
+| JSON | — | `{"name", "colors": [{"hex", "r", "g", "b", "name"?}]}` |
+| SVG | — | the swatch: one square per colour, rows of 16 (one shorter row for a small palette); PNG, JPG, PDF, … follow from SVG |
+
+A `.pal` in any other layout (some programs wrote their own, with headers of their own) is refused as unsupported
+instead of being guessed at. Files over 1 MB are not palettes and are refused too.
+
 ## CAD drawings (DWG, DXF)
 
 Built in, no AutoCAD or ODA software (`Filee.Engines/Cad`). [ACadSharp](https://github.com/DomCR/ACadSharp) reads

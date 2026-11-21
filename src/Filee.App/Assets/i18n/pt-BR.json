@@ -278,6 +278,8 @@
   "engine.cad.description": "Desenhos do AutoCAD: DWG ↔ DXF, e os dois para PDF, SVG e PNG.",
   "engine.gcode.name": "G-code (mecanismo integrado)",
   "engine.gcode.description": "Percursos de impressoras 3D e máquinas CNC (G-code) para PDF, SVG e imagens, ou a prévia do fatiador.",
+  "engine.palette.name": "Paletas de cores (mecanismo integrado)",
+  "engine.palette.description": "Paletas de cores (PAL, GIMP GPL, Adobe ACT) entre si, como lista de códigos HEX (TXT, JSON) ou como imagem das amostras.",
   "engine.model3d.name": "Modelos 3D (mecanismo integrado)",
   "engine.model3d.description": "Modelos 3D: GLB, glTF, STL, OBJ, 3MF e PLY entre si, FBX para qualquer um deles, e uma prévia em PNG.",
   "engine.image3d.name": "Imagens para relevo 3D (mecanismo integrado)",

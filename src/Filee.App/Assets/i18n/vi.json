@@ -278,6 +278,8 @@
   "engine.cad.description": "Bản vẽ AutoCAD: DWG ↔ DXF, và cả hai sang PDF, SVG và PNG.",
   "engine.gcode.name": "G-code (tích hợp)",
   "engine.gcode.description": "Đường chạy của máy in 3D và máy CNC (G-code) sang PDF, SVG và ảnh, hoặc ảnh xem trước của slicer.",
+  "engine.palette.name": "Bảng màu (tích hợp)",
+  "engine.palette.description": "Bảng màu (PAL, GIMP GPL, Adobe ACT) chuyển qua lại, thành danh sách mã HEX (TXT, JSON) hoặc ảnh mẫu màu.",
   "engine.model3d.name": "Mô hình 3D (tích hợp)",
   "engine.model3d.description": "Mô hình 3D: GLB, glTF, STL, OBJ, 3MF và PLY chuyển đổi qua lại, FBX sang bất kỳ định dạng nào trong số đó, và ảnh xem trước PNG.",
   "engine.image3d.name": "Ảnh sang phù điêu 3D (tích hợp)",

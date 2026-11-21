@@ -278,6 +278,8 @@
   "engine.cad.description": "AutoCAD 圖紙：DWG ↔ DXF，並可轉為 PDF、SVG 和 PNG。",
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "將 3D 印表機和 CNC 機台的刀具路徑 (G-code) 轉為 PDF、SVG 和圖片，或使用切片軟體儲存的預覽圖。",
+  "engine.palette.name": "調色盤 (built-in)",
+  "engine.palette.description": "調色盤（PAL、GIMP GPL、Adobe ACT）互相轉換，或轉為 HEX 色碼清單（TXT、JSON）或色票圖片。",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "GLB、glTF、STL、OBJ、3MF 和 PLY 3D 模型互相轉換，FBX 可轉換為其中任意格式，並可產生 PNG 預覽。",
   "engine.image3d.name": "圖片轉 3D 浮雕（內建）",
