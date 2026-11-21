@@ -22,11 +22,19 @@ Rename this heading to the version number when you release it.
 level: recommended
 ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서버(dl.filee.sh)에서 받아요
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
+ko: 모양 정보가 없는 주석(형광펜, 메모 등)이 있는 PDF도 PDF/A 검사를 통과해요
+en: PDFs with highlights or notes that carry no appearance now pass PDF/A checks
 ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
 ko: 색상 팔레트(PAL, GIMP GPL, Adobe ACT)를 서로 바꾸거나 HEX 코드 목록, 색 견본 그림으로 만들어요
 en: Color palettes (PAL, GIMP GPL, Adobe ACT) convert to each other, a list of HEX codes or a swatch picture
 -->
+
+- **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
+  rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked
+  PDF/A-2b but failed a validator such as veraPDF. Ghostscript now draws such markup into the page: it looks the same
+  but is no longer a separate annotation. Links stay clickable, and markup saved with an appearance stays an
+  annotation unless another one of its kind in the file has none.
 
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
   gave up when GitHub's download link didn't answer within 20 seconds, which some networks hit every time. Filee now
@@ -40,6 +48,8 @@ en: Color palettes (PAL, GIMP GPL, Adobe ACT) convert to each other, a list of H
   PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
   The recognized text now comes out line by line, also in Markdown without pictures and in a DOCX or HWPX made with
   "Recognize text". PDFs with visible text read as before.
+- **rustyfiles** counts as a file manager for gestures (#1714): with the default *File managers and desktop* scope, a
+  Ctrl + drag out of rustyfiles opens the donut, as in Explorer (Windows).
 - **Color palettes: PAL, GIMP GPL and Adobe ACT** (#1615). A `.pal` (a raw 256-colour palette from DOS and retro
   games, Paint Shop Pro's JASC-PAL or Microsoft's RIFF PAL), a GIMP `.gpl` or a Photoshop `.act` turns into the
   others (GPL, ACT), a list of HEX codes (TXT, JSON) or a swatch picture (PNG, SVG, PDF, …). VGA palettes with 6 bits

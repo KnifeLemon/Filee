@@ -42,6 +42,7 @@ public sealed class WindowsPlatformServices : IPlatformServices
         "FreeCommander",
         "FPilot",         // File Pilot (#633)
         "xplorer2_64",    // xplorer² (#1424)
+        "rustyfiles",     // rustyfiles (#1714)
     };
 
     public void RaiseTopmost(nint windowHandle)
