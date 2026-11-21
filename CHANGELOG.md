@@ -46,6 +46,8 @@ en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT 
   PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
   The recognized text now comes out line by line, also in Markdown without pictures and in a DOCX or HWPX made with
   "Recognize text". PDFs with visible text read as before.
+- **rustyfiles** counts as a file manager for gestures (#1714): with the default *File managers and desktop* scope, a
+  Ctrl + drag out of rustyfiles opens the donut, as in Explorer (Windows).
 
 ## 2.5.0
 
