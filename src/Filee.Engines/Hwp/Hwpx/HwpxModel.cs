@@ -832,7 +832,7 @@ internal sealed class HNote(bool endnote) : HInline
     /// <summary>
     /// How the note's text runs (한글 subList textDirection): a note written vertically in a section written across is
     /// set vertically in the note area (PageComposer); in a section written vertically notes run with its body. For
-    /// layout only; HwpxReader doesn't set it yet (it counts such a note as vertical text left out).
+    /// layout only.
     /// </summary>
     public HTextFlow TextFlow { get; set; }
 

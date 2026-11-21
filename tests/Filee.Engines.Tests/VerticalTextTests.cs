@@ -725,6 +725,32 @@ public sealed class VerticalTextTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void A_hangul_note_written_vertically_keeps_its_direction_and_is_not_left_out()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "note.hwpx");
+        File.Copy(HwpxReaderTests.HangulStylePackage(folder), path);
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            const string Note = "<hp:footNote number=\"1\" suffixChar=\"41\" instId=\"77\"><hp:subList id=\"\" textDirection=\"";
+            Assert.Contains(Note + "HORIZONTAL", xml, StringComparison.Ordinal);
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml.Replace(Note + "HORIZONTAL", Note + "VERTICAL", StringComparison.Ordinal));
+        }
+
+        var document = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media"));
+        var notes = document.Sections[0].Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HNote>().ToList();
+        Assert.Equal(HTextFlow.Vertical, notes.Single(n => !n.Endnote).TextFlow);
+        Assert.Equal(HTextFlow.Horizontal, notes.Single(n => n.Endnote).TextFlow);
+        Assert.Equal(0, document.LeftOut[HLeftOutKind.VerticalText]);
+    }
+
+    [Fact]
     public void A_note_written_vertically_in_a_section_written_across_is_set_vertically()
     {
         // Down from the right of the note area under the body, each Hangul upright; the body runs across.
