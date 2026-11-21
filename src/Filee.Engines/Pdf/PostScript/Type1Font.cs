@@ -253,6 +253,88 @@ internal sealed class Type1Program
         return subrs;
     }
 
+    /// <summary>A Type 1 font program with empty glyphs added, and the lengths of its three parts (a PDF's Length1–3).</summary>
+    internal sealed record Rewritten(byte[] Data, int Length1, int Length2, int Length3);
+
+    /// <summary>
+    /// The font program <paramref name="data"/> with an empty glyph (hsbw and endchar: an advance, nothing drawn) for
+    /// each of <paramref name="glyphs"/> (name, advance in glyph space) added to its CharStrings, written with the
+    /// RD / ND procedures its own charstrings use and encrypted as they are. The cleartext part stays as it is; the
+    /// encrypted part keeps its form (binary or hex) and gets the usual 512 zeros and cleartomark after it.
+    /// <paramref name="length1"/> and <paramref name="length2"/> (the PDF's) mark where the parts end when they fit.
+    /// </summary>
+    /// <exception cref="InvalidDataException">The program is damaged or laid out in a way this can't rewrite.</exception>
+    internal static Rewritten AddEmptyGlyphs(byte[] data, IReadOnlyList<(string Name, double Width)> glyphs, int length1 = 0, int length2 = 0)
+    {
+        data = StripPfbHeaders(data);
+        var eexec = IndexOf(data, "eexec"u8);
+        if (eexec < 0)
+            throw new InvalidDataException("The Type 1 font has no encrypted part.");
+        var at = eexec + 5;
+        while (at < data.Length && data[at] is 13 or 10 or 9 or 32)
+            at++;
+        if (at == eexec + 5)
+            throw new InvalidDataException("The Type 1 font's encrypted part doesn't start on a line of its own.");
+        var rest = data.AsSpan(at);
+        var hex = rest.Length >= 4 && IsHex(rest[0]) && IsHex(rest[1]) && IsHex(rest[2]) && IsHex(rest[3]);
+        var cipher = hex ? HexDecode(rest)
+            : length1 == at && length2 > 0 && length2 <= rest.Length ? rest[..length2].ToArray()
+            : rest.ToArray();
+        var plain = Decrypt(cipher, 55665, 0);
+        var text = System.Text.Encoding.Latin1.GetString(plain);
+        // The encrypted part ends with "closefile"; what follows it (the zeros of the trailer) isn't part of it.
+        var close = text.LastIndexOf("closefile", StringComparison.Ordinal);
+        if (close < 0)
+            throw new InvalidDataException("The Type 1 font's encrypted part has no end.");
+        text = text[..(close + "closefile".Length)] + "\n";
+
+        var lenIV = 4;
+        var lenMatch = System.Text.RegularExpressions.Regex.Match(text, @"/lenIV\s+(-?\d+)");
+        if (lenMatch.Success && int.TryParse(lenMatch.Groups[1].Value, out var l))
+            lenIV = l;
+        var dictionary = System.Text.RegularExpressions.Regex.Match(text, @"/CharStrings\s+(\d+)\s+dict\s+(?:dup\s+)?begin");
+        if (!dictionary.Success)
+            throw new InvalidDataException("The Type 1 font's CharStrings can't be found.");
+        // The first charstring shows the procedures that read one: "/name 12 RD <12 bytes> ND".
+        var first = System.Text.RegularExpressions.Regex.Match(text[dictionary.Index..], @"begin\s*/[^\s/\[\]{}()<>%]+\s+(\d+)\s+(\S+) ");
+        if (!first.Success || !int.TryParse(first.Groups[1].Value, out var firstLength))
+            throw new InvalidDataException("The Type 1 font's charstrings can't be read.");
+        var afterFirst = dictionary.Index + first.Index + first.Length + firstLength;
+        var end = System.Text.RegularExpressions.Regex.Match(text[Math.Min(afterFirst, text.Length)..], @"^\s*(\S+)");
+        if (!end.Success)
+            throw new InvalidDataException("The Type 1 font's charstrings can't be read.");
+        var (rd, nd) = (first.Groups[2].Value, end.Groups[1].Value);
+
+        var added = new StringBuilder();
+        foreach (var (name, width) in glyphs)
+        {
+            if (name.Length == 0 || name.Any(c => c <= ' ' || c > '~' || "/[]{}()<>%".Contains(c)))
+                throw new InvalidDataException("A glyph name can't be written into the Type 1 font.");
+            List<byte> charString = [.. Type1Number(0), .. Type1Number((int)Math.Round(width)), 13, 14]; // hsbw endchar
+            var bytes = lenIV < 0 ? [.. charString] : Encrypt([.. charString], 4330, lenIV);
+            added.Append('\n').Append('/').Append(name).Append(' ').Append(bytes.Length.ToString(CultureInfo.InvariantCulture)).Append(' ').Append(rd).Append(' ')
+                .Append(System.Text.Encoding.Latin1.GetString(bytes)).Append(' ').Append(nd);
+        }
+        var count = int.Parse(dictionary.Groups[1].Value, CultureInfo.InvariantCulture) + glyphs.Count;
+        var rewritten = text[..dictionary.Groups[1].Index] + count.ToString(CultureInfo.InvariantCulture)
+            + text[(dictionary.Groups[1].Index + dictionary.Groups[1].Length)..(dictionary.Index + dictionary.Length)]
+            + added + text[(dictionary.Index + dictionary.Length)..];
+        var encrypted = Encrypt(System.Text.Encoding.Latin1.GetBytes(rewritten), 55665, 0);
+        if (hex)
+            encrypted = System.Text.Encoding.ASCII.GetBytes(string.Join("\n", Convert.ToHexString(encrypted).Chunk(64).Select(c => new string(c))) + "\n");
+        var trailer = System.Text.Encoding.ASCII.GetBytes("\n" + string.Concat(Enumerable.Repeat(new string('0', 64) + "\n", 8)) + "cleartomark\n");
+        return new Rewritten([.. data.AsSpan(0, at), .. encrypted, .. trailer], at, encrypted.Length, trailer.Length);
+    }
+
+    /// <summary>A Type 1 charstring integer.</summary>
+    private static byte[] Type1Number(int value) => value switch
+    {
+        >= -107 and <= 107 => [(byte)(value + 139)],
+        >= 108 and <= 1131 => [(byte)(((value - 108) >> 8) + 247), (byte)(value - 108)],
+        >= -1131 and <= -108 => [(byte)(((-value - 108) >> 8) + 251), (byte)(-value - 108)],
+        _ => [255, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value],
+    };
+
     /// <summary>The next white-space separated token, or null at the end.</summary>
     private static string? NextToken(byte[] data, ref int at)
     {
