@@ -31,6 +31,9 @@ en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't 
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+- **Janome embroidery designs (`.jef`) turn into PNG, JPG, PDF and SVG** (#1716), like Tajima `.dst` designs already
+  do: the stitches drawn as lines at the design's real size, each thread in its colour from Janome's thread chart.
+  Filee reads JEF but doesn't write it, and it doesn't make Wilcom `.emb` files. JEF is in the Design field.
 
 ## 2.5.0
 
