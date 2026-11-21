@@ -2604,8 +2604,11 @@ each paragraph keeps its place on the page instead of joining a document's flow.
   drawn into a picture of their alpha or luminosity (through the transfer function TR, a light backdrop BC outside the
   group's box too), which pictures take into their own alpha. Multiply / Darken over text put the shape under that
   text; other blend modes, blended pictures and Multiply / Darken over pictures are drawn over their backdrop: the
-  page's colour, and the pictures, text and graphics painted before them there, drawn into the same picture (up to 64
-  blends a page; the text stays a text box under it).
+  page's colour, and the pictures, text and graphics painted before them there, drawn into the same picture (the text
+  stays a text box under it). Backdrops have JBIG2 pictures (Filee's decoder) and JPEG behind other filters, Type 3
+  glyphs drawn from their procedures and every letter of a ligature; a page's blends share a budget (50,000 earlier
+  paints, 64 pages of area) instead of a count, so a page of 3,000 blends still gets them (about 2 s). JPEG 2000
+  pictures are still missing from a backdrop.
 - **Not rebuilt yet**: form fields and annotations, text inside pattern cells, vertical CJK writing. PDF → DOCX stays the route for a document that
   should flow.
 
@@ -2908,13 +2911,15 @@ next.
     ToUnicode map, Identity-encoded Type 0 fonts CIDFontType2 with a CIDToGIDMap (CIDs through their ToUnicode map, or
     as glyph IDs for a TrueType CIDFont found by its own name). A CID font with a predefined Unicode CMap
     (`Uni*-UCS2-*`, `Uni*-UTF16-*`) becomes Identity-H / -V with its codes as CIDs, from an installed CJK font of its
-    script (the PDF's widths where a code's CID is known without the CMap file: DW everywhere, printable ASCII; else
-    the installed font's). A font listed but never drawn is left as it is;
+    script, every code keeping the PDF's width and vertical metrics (W, W2) by the CID Adobe's CMap file gives it
+    (the files PdfPig carries; without one, only DW everywhere and printable ASCII). A font listed but never drawn is
+    left as it is;
   - **TrueType fonts the PDF embedded itself are repaired** (`PdfAFontRepair`): widths that differ from the program
     go into the program's advances (the text keeps its places), encodings PDF/A forbids become a symbolic font with a
     (3,0) cmap of the glyphs the codes drew, codes and CIDs drawn that the program has no glyph for get an empty glyph
     of their width (not .notdef, 6.2.11.4.1 / 6.2.11.8), and fonts without ToUnicode get one (encoding names or the
-    font's cmap);
+    font's cmap). Type 1 (FontFile), CFF (Type1C) and CID-keyed CFF (CIDFontType0C) programs get empty glyphs for the
+    codes and CIDs they lack too (a code with no glyph name gets one through Differences);
   - JavaScript, launch and the other forbidden actions (also in `/Next` chains, open actions, outlines), every `AA`,
     the actions of fields and widgets, XFA, `NeedAppearances`, embedded files, alternate presentations, `PresSteps`,
     `Requirements`, `Collection`, other `Perms` than UR3/DocMDP, XMP of pages and pictures; optional-content
@@ -2936,8 +2941,8 @@ next.
   content tokens than `PdfFontUses` reads (`error.document_too_complex`), and more content bytes than it reads
   (`error.document_too_large`).
 
-  **Not checked**: that fonts the PDF embedded itself hold every glyph drawn, the widths of their CFF and Type 1
-  programs, the document's own ICC-based colour spaces, JPEG 2000
+  **Not checked**: the widths of embedded CFF and Type 1 programs against the dictionary, glyphs lacking in OpenType
+  (FontFile3 /OpenType) programs, the document's own ICC-based colour spaces, JPEG 2000
   specifics, halftone details beyond dropping `HT`, the implementation limits (string, name and number sizes, `q`
   nesting), and content stream operators outside ISO 32000-1. Conformance is tested by an in-test checker of the
   PDF/A-2b clauses (`tests/Filee.Engines.Tests/PdfA2bChecks.cs`, numbered as veraPDF's published rule list): the file

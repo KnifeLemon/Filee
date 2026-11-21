@@ -315,8 +315,23 @@ internal static class SoftPalette
         }
     }
 
-    /// <summary>The UI font for <paramref name="language"/> (see <see cref="FontFamilies"/>).</summary>
-    public static FontFamily FontFamilyFor(string language, bool systemFont = false) => FontFamily.Parse(FontFamilies(language, systemFont));
+    /// <summary>
+    /// The UI font for <paramref name="language"/> (see <see cref="FontFamilies"/>); with <paramref name="asks"/>, only
+    /// the plain names it allows (see <see cref="Installed"/>).
+    /// </summary>
+    public static FontFamily FontFamilyFor(string language, bool systemFont = false, Func<string, bool>? asks = null) =>
+        FontFamily.Parse(asks is null ? FontFamilies(language, systemFont) : Installed(FontFamilies(language, systemFont), asks));
+
+    /// <summary>
+    /// <paramref name="chain"/> without the plain family names (Segoe UI, Malgun Gothic, sans-serif ...) that
+    /// <paramref name="asks"/> doesn't allow. Avalonia's own system collection looks those up through the platform's
+    /// font manager, and on macOS a family CoreText doesn't list can hold up every font request of the process
+    /// (Filee.Engines' Typesetting/SystemFonts.cs; the app passes its Asks there, see ThemeService.InstalledFonts). Embedded fonts ("fonts:Filee#...") and the installed ones SystemUiFontCollection
+    /// serves ("fonts:System#...", which checks them itself) stay.
+    /// </summary>
+    internal static string Installed(string chain, Func<string, bool> asks) =>
+        string.Join(", ", chain.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(name => name.StartsWith("fonts:", StringComparison.Ordinal) || asks(name)));
 
     /// <summary>Lightens (amount &gt; 0) or darkens (amount &lt; 0) a colour.</summary>
     public static Color Shade(Color c, double amount)
