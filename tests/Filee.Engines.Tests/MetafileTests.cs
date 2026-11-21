@@ -276,7 +276,7 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var path = Path.Combine(fx.NewFolder(), "clip.emf");
         File.WriteAllBytes(path, Shapes());
         var page = new PageContent(200, 100);
-        FloatingObjects.Draw(page, new HImage(path), new SKRect(0, 0, 200, 100), (_, _) => []);
+        FloatingObjects.Draw(page, new HImage(path), new SKRect(0, 0, 200, 100), (_, _, _) => []);
 
         using (var picture = page.Render(72))
         {

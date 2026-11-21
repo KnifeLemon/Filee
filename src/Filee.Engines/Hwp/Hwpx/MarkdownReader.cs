@@ -417,12 +417,12 @@ internal sealed class MarkdownReader
         _ => null,
     };
 
-    /// <summary>Header cells are bold, as Markdown renderers show them.</summary>
+    /// <summary>Header cells are bold, as Markdown renderers show them; their math stays math ($x^2$ as in body cells).</summary>
     private static void BoldHeader(List<HBlock> blocks)
     {
         foreach (var paragraph in blocks.OfType<HParagraph>())
             for (var i = 0; i < paragraph.Inlines.Count; i++)
-                if (paragraph.Inlines[i] is HText text && text.Format.Bold is null)
+                if (paragraph.Inlines[i] is HText text and not HEquation && text.Format.Bold is null)
                     paragraph.Inlines[i] = new HText(text.Text, text.Format with { Bold = true });
     }
 

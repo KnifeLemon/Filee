@@ -21,8 +21,9 @@
 //    text and Latin letters or digits that touch it (auto-spacing); ParagraphLayout.EastAsian.cs has both.
 // 5. Line height: by the rule the paragraph carries. 한글's rules (percent, fixed, at least, between lines) measure
 //    from the font size, the text taking 85% of it above the baseline as 한글 lays out (its stored line segments put
-//    the baseline at 0.85 × the text height); Word's multiple, and 한글 "글꼴에 어울리는 줄 높이", measure from the
-//    font's own ascent and descent (OS/2 win metrics, as Word on Windows).
+//    the baseline at 0.85 × the text height); Word's rules, and 한글 "글꼴에 어울리는 줄 높이", measure from the
+//    font's own ascent and descent (OS/2 win metrics, as Word on Windows). Word's "at least" and "exactly" lines stand
+//    their text on the line's bottom (ParagraphLayout.WordLines.cs).
 //
 // 한글's own line layout: an HWPX that 한글 saved stores where each line of a paragraph starts and how high it is
 // (HLineLayout), and 한글 draws from it when it opens the file instead of breaking the lines again. Where the stored
@@ -91,7 +92,7 @@ internal sealed partial class ParagraphLayouter
     /// Lays out the content of a text box laid out like a character (TableLayout.Stack, which the page composer sets);
     /// without it such a box is drawn empty.
     /// </summary>
-    public Func<IReadOnlyList<HBlock>, float, List<Piece>> Stack { get; set; } = (_, _) => [];
+    public BlockStack Stack { get; set; } = (_, _, _) => [];
 
     /// <summary>The layout job's time budget and cancellation, checked every <see cref="GuardLines"/> lines; null checks nothing.</summary>
     public LayoutGuard? Guard { get; set; }
@@ -1283,8 +1284,8 @@ internal sealed partial class ParagraphLayouter
             }
         }
 
-        var (height, baseline, textHeight) = stored is var (segment, _)
-            ? ((segment.VerticalSize + segment.Spacing) / 100f, segment.Baseline / 100f, segment.TextHeight / 100f)
+        var (height, baseline, textHeight, below) = stored is var (segment, _)
+            ? ((segment.VerticalSize + segment.Spacing) / 100f, segment.Baseline / 100f, segment.TextHeight / 100f, segment.Spacing / 100f)
             : LineHeight(parts, settings, mark, source);
         var bookmarks = ranges.Bookmarks(start, end, text.Length).Select(b => (lineLeft + offset, b.Name)).ToList();
         return new LineBox
@@ -1303,7 +1304,7 @@ internal sealed partial class ParagraphLayouter
             Objects = pictures,
             Notes = ranges.Notes(start, Math.Max(end, start + 1)),
             StoredTop = stored is var (top, _) ? top.VerticalPosition / 100f : null,
-            Below = stored is var (spaced, _) ? spaced.Spacing / 100f : Math.Max(0, height - textHeight),
+            Below = below,
             StoredPageStart = stored is var (flagged, _) && (flagged.Flags & 1) != 0,
             StoredColumnStart = stored is var (column, _) && (column.Flags & 2) != 0,
         };
@@ -1349,12 +1350,16 @@ internal sealed partial class ParagraphLayouter
         }
     }
 
-    /// <summary>The line's pitch, the distance from its top to the baseline and the height of its text.</summary>
-    private (float Height, float Baseline, float TextHeight) LineHeight(List<Part> parts, Settings settings, TextStyle mark, ParagraphText source)
+    /// <summary>
+    /// The line's pitch, the distance from its top to the baseline, the height of its text and the spacing below the text.
+    /// </summary>
+    private (float Height, float Baseline, float TextHeight, float Below) LineHeight(List<Part> parts, Settings settings, TextStyle mark, ParagraphText source)
     {
         var rule = settings.LineHeight;
-        // Word's "at least" is at least the font's line, as its single spacing measures it, not the font size.
-        var fromFont = settings.FontLineHeight || rule.Rule == HLineHeightRule.Multiple || WordLineHeights && rule.Rule == HLineHeightRule.AtLeast;
+        // Word's "at least" and "exactly" measure the fonts as its single spacing does (not the font size), and the text
+        // stands on the line's bottom (see ParagraphLayout.WordLines.cs).
+        var standing = WordLineHeights && rule.Rule is HLineHeightRule.AtLeast or HLineHeightRule.Exact;
+        var fromFont = settings.FontLineHeight || rule.Rule == HLineHeightRule.Multiple || standing;
         float objectAscent = 0, objectDescent = 0, textAscent = 0, textDescent = 0;
         // Other formats' multiple spaces text and equations, not pictures: their extent apart.
         float mathAscent = 0, mathDescent = 0;
@@ -1427,7 +1432,9 @@ internal sealed partial class ParagraphLayouter
             HLineHeightRule.AtLeast => Math.Max(value, textHeight),
             _ => textHeight + value,
         };
-        return (Math.Max(0, height), ascent, textHeight);
+        height = Math.Max(0, height);
+        var baseline = standing ? height - descent : ascent;
+        return (height, baseline, textHeight, Math.Max(0, height - baseline - descent));
 
         // The text's extent spaced by the multiple, with what the pictures reach beyond it.
         float Spaced(float textUp, float textDown) =>

@@ -13,7 +13,8 @@
 //   and a line may break between pieces. Side by side on one line they are the equation laid out whole. They follow
 //   the document's m:mathPr (m:brkBin before, after or repeat, m:brkBinSub), as display equations do. A line ending at
 //   a piece leaves out the room before the next operator, as a line leaves out a space it breaks at, and shows the
-//   operator Word repeats there; a line starting at one shows the second sign of a repeated subtraction (LineEnds).
+//   operator Word repeats there; a line starting at one shows the second sign of a repeated subtraction (LineEnds), also
+//   when the piece is alone on its line and ends it too.
 
 using System.Runtime.CompilerServices;
 using Filee.Engines.Hwp.Hwpx;
@@ -94,8 +95,9 @@ internal sealed partial class ParagraphLayouter
     {
         if (!source.Objects.TryGetValue(position, out var item) || item is not HEquation equation || !_pieceBoxes.TryGetValue(equation, out var piece))
             return null;
-        // (A piece alone on its line ends it: its end matters for the width.)
-        return lineEnd ? piece.End : lineStart ? piece.Start : null;
+        // A piece alone on its line starts it in its second sign and ends it as its end form does (its end matters
+        // for the width).
+        return lineStart && lineEnd ? piece.Both ?? piece.End : lineEnd ? piece.End : lineStart ? piece.Start : null;
     }
 
     /// <summary>
