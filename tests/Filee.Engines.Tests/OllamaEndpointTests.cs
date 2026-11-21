@@ -74,9 +74,12 @@ public class OllamaEndpointTests
     public async Task A_slow_Ollama_still_counts_as_running()
     {
         // An Ollama that is busy loading a model can take a while to list its models. The old 250 ms limit called
-        // that "not available"; the background check now waits long enough.
+        // that "not available"; the background check now waits long enough. The first answer comes at once: it gets
+        // the HTTP client going (its first connection and response), which on a busy test runner can take most of the
+        // limit by itself and isn't what is measured here.
         using var server = new SlowServer(TimeSpan.FromMilliseconds(600));
         var ct = TestContext.Current.CancellationToken;
+        Assert.True(await TranslatorConverter.IsOllamaAnsweringAsync(server.Base, TranslatorConverter.CheckLimit, ct));
 
         Assert.False(await TranslatorConverter.IsOllamaAnsweringAsync(server.Base, TimeSpan.FromMilliseconds(250), ct));
         Assert.True(await TranslatorConverter.IsOllamaAnsweringAsync(server.Base, TranslatorConverter.CheckLimit, ct));
@@ -93,10 +96,14 @@ public class OllamaEndpointTests
         Assert.False(await TranslatorConverter.IsOllamaAnsweringAsync(new Uri($"http://127.0.0.1:{port}"), TranslatorConverter.CheckLimit, TestContext.Current.CancellationToken));
     }
 
-    /// <summary>Answers <c>/api/tags</c> with an empty model list after a delay, like a busy Ollama.</summary>
+    /// <summary>
+    /// Answers <c>/api/tags</c> with an empty model list, the first time at once and after that after a delay, like a
+    /// busy Ollama. It runs on threads of its own, so a test run that keeps the thread pool busy doesn't add to the delay.
+    /// </summary>
     private sealed class SlowServer : IDisposable
     {
         private readonly HttpListener _listener = new();
+        private int _requests;
 
         public SlowServer(TimeSpan delay)
         {
@@ -108,39 +115,46 @@ public class OllamaEndpointTests
             Base = new Uri($"http://127.0.0.1:{port}");
             _listener.Prefixes.Add($"{Base}");
             _listener.Start();
-            _ = Task.Run(async () =>
+            var accept = new Thread(() =>
             {
                 while (_listener.IsListening)
                 {
                     HttpListenerContext context;
                     try
                     {
-                        context = await _listener.GetContextAsync();
+                        context = _listener.GetContext();
                     }
                     catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException or InvalidOperationException)
                     {
                         return;
                     }
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await Task.Delay(delay);
-                            var body = Encoding.UTF8.GetBytes("""{"models":[]}""");
-                            context.Response.ContentType = "application/json";
-                            await context.Response.OutputStream.WriteAsync(body);
-                            context.Response.Close();
-                        }
-                        catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException or IOException or InvalidOperationException)
-                        {
-                            // The client gave up first (the short-limit check).
-                        }
-                    });
+                    var wait = Interlocked.Increment(ref _requests) == 1 ? TimeSpan.Zero : delay;
+                    new Thread(() => Answer(context, wait)) { IsBackground = true }.Start();
                 }
-            });
+            })
+            {
+                IsBackground = true,
+            };
+            accept.Start();
         }
 
         public Uri Base { get; }
+
+        private static void Answer(HttpListenerContext context, TimeSpan wait)
+        {
+            try
+            {
+                Thread.Sleep(wait);
+                var body = Encoding.UTF8.GetBytes("""{"models":[]}""");
+                context.Response.ContentType = "application/json";
+                context.Response.OutputStream.Write(body);
+                context.Response.Close();
+            }
+            catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException or IOException or InvalidOperationException)
+            {
+                // The client gave up first (the short-limit check).
+            }
+        }
 
         public void Dispose() => _listener.Close();
     }
