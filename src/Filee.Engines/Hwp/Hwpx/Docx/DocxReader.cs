@@ -59,7 +59,10 @@ internal sealed partial class DocxReader
     private bool _bordersAroundHeader = true;
     private bool _bordersAroundFooter = true;
 
-    /// <summary>Neighbouring paragraphs keep the larger of their spaces between them, not both (see <see cref="CollapseSpacing"/>).</summary>
+    /// <summary>
+    /// Word's HTML paragraph spacing (settings without w:doNotUseHTMLParagraphAutoSpacing): neighbouring paragraphs keep
+    /// the larger of their spaces between them (HDocument.CollapseParagraphSpacing), and automatic spacing is HTML's.
+    /// </summary>
     private bool _collapseSpacing = true;
 
     /// <summary>
@@ -262,7 +265,7 @@ internal sealed partial class DocxReader
         foreach (var note in _endnotesPart?.Xml.Root?.Elements(W + "endnote") ?? [])
             _endnotes[Attr(note, "id") ?? ""] = note;
 
-        var document = new HDocument { Title = Title(), LeftOut = _leftOut, WordLineHeights = true };
+        var document = new HDocument { Title = Title(), LeftOut = _leftOut, WordLineHeights = true, CollapseParagraphSpacing = _collapseSpacing };
         Kinsoku(settings, document);
         FontAlternates(RelatedPart(main, "/fontTable")?.Xml.Root, document);
         _fontAlternates = document.FontAlternates;
@@ -599,17 +602,10 @@ internal sealed partial class DocxReader
     }
 
     /// <summary>
-    /// Word puts the larger of a paragraph's space below and the next one's space above between them, not both (its HTML
-    /// paragraph spacing, which only w:doNotUseHTMLParagraphAutoSpacing turns off): 6 pt below a heading and 12 pt above
-    /// the next is 12 pt, as Word's own PDFs have it (#1152). The space below the first gives way to the space above.
+    /// Word's automatic space before or after a paragraph (w:beforeAutospacing / w:afterAutospacing), in twips: HTML's
+    /// 14 pt, or with w:doNotUseHTMLParagraphAutoSpacing the fixed 5 pt before and 10 pt after the standard gives.
     /// </summary>
-    private void CollapseSpacing(HParagraph previous, HParagraph current)
-    {
-        if (!_collapseSpacing || current.PageBreakBefore || current.ColumnBreakBefore)
-            return;
-        if (previous.Format.After is > 0 and var after && current.Format.Before is > 0 and var before)
-            previous.Format = previous.Format with { After = Math.Max(0, after - before) };
-    }
+    private int AutoSpace(bool before) => _collapseSpacing ? 280 : before ? 100 : 200;
 
     /// <summary>
     /// Gives a paragraph with "multiple" line spacing the height its fonts have in Word: 한글's percentage is of the font
@@ -1073,7 +1069,6 @@ internal sealed partial class DocxReader
             {
                 JoinBorders(previous, Current);
                 _reader.ApplyContextualSpacing(previous, Current, _props);
-                _reader.CollapseSpacing(previous, Current);
             }
             _reader.RememberParagraphStyle(Current, _props);
             _output.Add(Current);

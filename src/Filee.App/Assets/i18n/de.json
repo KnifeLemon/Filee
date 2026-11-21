@@ -257,6 +257,8 @@
   "notice.renderer_left_out.videos_one": "1 Video weggelassen",
   "notice.renderer_left_out.pictures": "{0} Bilder weggelassen",
   "notice.renderer_left_out.pictures_one": "1 Bild weggelassen",
+  "notice.renderer_left_out.fonts": "{0} eingebettete Schriften ersetzt",
+  "notice.renderer_left_out.fonts_one": "1 eingebettete Schrift ersetzt",
   "notice.renderer_left_out.objects_pictured": "{0} eingebettete Objekte aus ihrem gespeicherten Bild gezeichnet",
   "notice.renderer_left_out.objects_pictured_one": "1 eingebettetes Objekt aus seinem gespeicherten Bild gezeichnet",
   "notice.renderer_left_out.charts_pictured": "{0} Diagramme aus ihrem gespeicherten Bild gezeichnet",

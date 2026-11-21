@@ -760,6 +760,154 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Equal(single + 18, Pitch(summed), 0.1f);
     }
 
+    [Fact]
+    public async Task Issue1152_paragraphs_keep_both_spaces_and_only_the_layout_takes_the_larger()
+    {
+        // The model keeps 6 pt after and 12 pt before (HTML and EPUB collapse them as Word does); the layout and the
+        // HWPX writer (한글 adds them) leave the larger between them, in cells too.
+        const string Spacing = "<w:spacing w:before=\"240\" w:after=\"120\"/>";
+        var body = P(R("First"), Spacing) + P(R("Second"), Spacing);
+        var path = Docx(body).Save(Path.Combine(fx.NewFolder(), "spacing.docx"));
+        var document = await DocumentReaders.ReadAsync(path, "docx", fx.NewFolder(), Token);
+        var paragraphs = document.Sections[0].Blocks.OfType<HParagraph>().ToList();
+        Assert.True(document.CollapseParagraphSpacing);
+        Assert.Equal(HwpxUnits.FromTwips(120), paragraphs[0].Format.After);
+        Assert.Equal(HwpxUnits.FromTwips(240), paragraphs[1].Format.Before);
+
+        var hwpx = Path.Combine(fx.NewFolder(), "spacing.hwpx");
+        HwpxWriter.Write(document, hwpx, cancellationToken: Token);
+        var written = HwpxReader.Read(hwpx, fx.NewFolder()).Sections.SelectMany(s => s.Blocks).OfType<HParagraph>()
+            .First(p => p.Inlines.OfType<HText>().Any(t => t.Text == "First"));
+        Assert.Equal(0, written.Format.After ?? 0);
+
+        // Two such paragraphs in a cell are 12 pt apart too.
+        var cell = $"<w:tbl><w:tblPr><w:tblW w:w=\"4000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc>{body}</w:tc></w:tr></w:tbl>";
+        var page = Single(await DocxAsync(Docx(cell + P(R("After")))));
+        Assert.Equal(Where(page, "First").Y + LineHeight(RepositoryFonts.Latin, 10) + 12, Where(page, "Second").Y, 0.1f);
+    }
+
+    [Fact]
+    public async Task Issue1152_automatic_spacing_is_htmls_unless_the_settings_fix_it()
+    {
+        // w:beforeAutospacing / w:afterAutospacing: 14 pt in Word's HTML spacing, the standard's 5 pt before and 10 pt
+        // after with w:doNotUseHTMLParagraphAutoSpacing.
+        async Task<HParaFormat> Format(bool fixedSpacing)
+        {
+            var docx = Docx(P(R("Auto"), "<w:spacing w:beforeAutospacing=\"1\" w:afterAutospacing=\"1\"/>"));
+            if (fixedSpacing)
+                docx.Settings = "<w:compat><w:doNotUseHTMLParagraphAutoSpacing/></w:compat>";
+            var path = docx.Save(Path.Combine(fx.NewFolder(), "auto.docx"));
+            var document = await DocumentReaders.ReadAsync(path, "docx", fx.NewFolder(), Token);
+            return document.Sections[0].Blocks.OfType<HParagraph>().First().Format;
+        }
+
+        var html = await Format(fixedSpacing: false);
+        Assert.Equal((1400, 1400), (html.Before, html.After));
+        var standard = await Format(fixedSpacing: true);
+        Assert.Equal((500, 1000), (standard.Before, standard.After));
+    }
+
+    /// <summary>A floating table of one 2 inch column at the right margin, a header row "Head" and <paramref name="rows"/> rows "Row n".</summary>
+    private static string LongFloatingTable(int rows) =>
+        "<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblpPr w:leftFromText=\"180\" w:rightFromText=\"180\" w:vertAnchor=\"text\" w:horzAnchor=\"margin\" w:tblpXSpec=\"right\" w:tblpY=\"1\"/>" +
+        "<w:tblW w:w=\"2880\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"2880\"/></w:tblGrid>" +
+        $"<w:tr><w:trPr><w:tblHeader/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"2880\" w:type=\"dxa\"/></w:tcPr>{P(R("Head"))}</w:tc></w:tr>" +
+        string.Concat(Enumerable.Range(0, rows).Select(i => $"<w:tr><w:tc><w:tcPr><w:tcW w:w=\"2880\" w:type=\"dxa\"/></w:tcPr>{P(R($"Row {i}"))}</w:tc></w:tr>")) +
+        "</w:tbl>";
+
+    [Fact]
+    public async Task Issue1194_a_floating_table_longer_than_the_page_splits_across_pages()
+    {
+        // 150 rows of a floating table take three pages: Word keeps the rows that fit beside the text after it and goes on
+        // at the top of the next pages, the header row repeated. (Before, such a table went into the flow.)
+        var lines = string.Concat(Enumerable.Range(0, 80).Select(i => P(R($"Line {i}"))));
+        var pages = await DocxAsync(Docx(P(R("Before")) + LongFloatingTable(150) + P(R("Beside")) + lines));
+
+        Assert.True(pages.Count >= 3);
+        var rows = pages.Select(p => Runs(p).Where(r => r.Text.StartsWith("Row ", StringComparison.Ordinal)).Select(r => r.Text).ToList()).ToList();
+        // Every row once, in order, the first page holding the first ones.
+        Assert.Equal(Enumerable.Range(0, 150).Select(i => $"Row {i}"), rows.SelectMany(r => r));
+        Assert.Contains("Row 0", rows[0]);
+        Assert.NotEmpty(rows[1]);
+        // The header row starts the table and again the part on the next page, at the top of the body.
+        Assert.All(pages.Take(2), p => Assert.Contains(Runs(p), r => r.Text == "Head"));
+        Assert.InRange(Where(pages[1], "Head").Y, 72, 72 + 20);
+        // The text after the table goes beside it at the left margin, not under the whole table.
+        var (beside, head) = (Where(pages[0], "Beside"), Where(pages[0], "Head"));
+        Assert.Equal(LeftMargin, beside.X, 0.5f);
+        Assert.Equal(head.Y, beside.Y, 3f);
+        // On the next page the text goes on beside the table's rest, from the top.
+        var top = Runs(pages[1]).Where(r => r.Text.StartsWith("Line ", StringComparison.Ordinal)).MinBy(r => r.Positions[0].Y)!;
+        Assert.Equal(LeftMargin, top.Positions[0].X, 0.5f);
+        Assert.Equal(Where(pages[1], "Head").Y, top.Positions[0].Y, 3f);
+        Assert.Equal(Enumerable.Range(0, 80).Select(i => $"Line {i}"),
+            pages.SelectMany(p => Runs(p).Where(r => r.Text.StartsWith("Line ", StringComparison.Ordinal)).Select(r => r.Text)));
+    }
+
+    [Fact]
+    public async Task Issue1194_a_floating_table_that_must_not_overlap_goes_below_the_other()
+    {
+        // Two floating tables at one place on the page: with w:tblOverlap never the second goes below the first.
+        static string At(string text, string overlap) =>
+            "<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblpPr w:vertAnchor=\"page\" w:horzAnchor=\"page\" w:tblpX=\"1440\" w:tblpY=\"2880\"/>" + overlap +
+            "<w:tblW w:w=\"2880\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"2880\"/></w:tblGrid>" +
+            $"<w:tr><w:tc><w:tcPr><w:tcW w:w=\"2880\" w:type=\"dxa\"/></w:tcPr>{P(R(text))}</w:tc></w:tr></w:tbl>";
+        async Task<(SKPoint First, SKPoint Second)> Places(string overlap)
+        {
+            var page = Single(await DocxAsync(Docx(P(R("Text")) + At("One", "") + P(R("More")) + At("Two", overlap) + P(R("End")))));
+            return (Where(page, "One"), Where(page, "Two"));
+        }
+
+        var overlapping = await Places("");
+        Assert.Equal(overlapping.First.Y, overlapping.Second.Y, 0.5f);
+        var apart = await Places("<w:tblOverlap w:val=\"never\"/>");
+        Assert.True(apart.Second.Y >= apart.First.Y + LineHeight(RepositoryFonts.Latin, 10), $"{apart.First.Y} → {apart.Second.Y}");
+        Assert.Equal(apart.First.X, apart.Second.X, 0.5f);
+    }
+
+    [Theory]
+    [InlineData("w:horzAnchor=\"margin\" w:tblpX=\"720\" w:vertAnchor=\"margin\" w:tblpY=\"1440\"", 72 + 36, 72 + 72)]
+    [InlineData("w:horzAnchor=\"page\" w:tblpX=\"720\" w:vertAnchor=\"page\" w:tblpY=\"1440\"", 36, 72)]
+    [InlineData("w:horzAnchor=\"text\" w:tblpX=\"720\" w:vertAnchor=\"page\" w:tblpY=\"2880\"", 72 + 36, 144)]
+    [InlineData("w:horzAnchor=\"margin\" w:tblpXSpec=\"center\" w:tblpX=\"720\" w:vertAnchor=\"margin\" w:tblpYSpec=\"bottom\"", (72 + RightMargin - 144) / 2, 16838 / 20f - 72 - 0)]
+    public async Task Issue1194_a_floating_tables_position_is_measured_from_its_anchors(string position, float left, float top)
+    {
+        // tblpX / tblpY from the margins, the paper or the column (text); tblpXSpec / tblpYSpec align it instead (and win
+        // over tblpX). The table's edge is placed there (the spec's top-left corner), its text 5.4 pt further in.
+        var page = Single(await DocxAsync(Docx(P(R("Text")) + OneCellTable("Cell", $"<w:tblpPr {position}/>"))));
+        var cell = Where(page, "Cell");
+        Assert.Equal(left + 5.4f, cell.X, 1f);
+        // A bottom-aligned table ends at the margin: its one line above it.
+        if (position.Contains("bottom", StringComparison.Ordinal))
+            Assert.InRange(cell.Y, top - LineHeight(RepositoryFonts.Latin, 10), top);
+        else
+            Assert.InRange(cell.Y, top, top + LineHeight(RepositoryFonts.Latin, 10));
+    }
+
+    [Fact]
+    public async Task Issue1194_a_floating_table_in_a_header_goes_where_its_anchor_puts_it()
+    {
+        // A letterhead table placed 5 inches down the page from a header: there, not at the top of the header, and the
+        // header doesn't grow into the body. A floating table in a cell moves across by its tblpX in the cell.
+        const string Placed = "<w:tblpPr w:vertAnchor=\"page\" w:horzAnchor=\"page\" w:tblpX=\"4320\" w:tblpY=\"7200\"/>";
+        var docx = Docx(P(R("Body")));
+        var header = docx.Header(OneCellTable("Letterhead", Placed) + P(R("Header")));
+        docx.SectionProperties = $"<w:headerReference w:type=\"default\" r:id=\"{header}\"/>{DefaultPage}";
+        var page = Single(await DocxAsync(docx));
+
+        var letterhead = Where(page, "Letterhead");
+        Assert.InRange(letterhead.Y, 360, 360 + 20);
+        Assert.InRange(letterhead.X, 216, 216 + 10);
+        Assert.InRange(Where(page, "Body").Y, 72, 72 + 20);
+
+        const string Across = "<w:tblpPr w:vertAnchor=\"text\" w:horzAnchor=\"text\" w:tblpX=\"1440\" w:tblpY=\"1\"/>";
+        var outer = $"<w:tbl><w:tblPr><w:tblW w:w=\"8000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"8000\"/></w:tblGrid><w:tr><w:tc>{OneCellTable("Nested", Across)}{P(R("Under"))}</w:tc></w:tr></w:tbl>";
+        var cells = Single(await DocxAsync(Docx(outer)));
+        // Its edge 72 pt in from the cell's text (its own text 5.4 pt further in), the cell's paragraph after it under it.
+        Assert.Equal(Where(cells, "Under").X + 72 + 5.4f, Where(cells, "Nested").X, 1f);
+        Assert.True(Where(cells, "Under").Y > Where(cells, "Nested").Y);
+    }
+
     // ───────────────────────── Word: right-to-left documents (#202, #216, #620) ─────────────────────────
 
     [Fact]
@@ -834,19 +982,22 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Contains(with.Items, i => i is DrawingItem);
     }
 
-    [Fact]
-    public void Issue49_a_table_set_as_a_character_is_centred_with_its_outer_margins()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Issue49_a_table_is_centred_with_its_outer_margins(bool asCharacter)
     {
         NeedFonts(RepositoryFonts.Latin);
         // A title box set as a character in a centred paragraph: 한글 centres it with its outer margins, as a character
-        // that wide. The reader gives it the paragraph's alignment (DocumentModelTests); here, where it is drawn.
+        // that wide. The reader gives it the paragraph's alignment (DocumentModelTests); here, where it is drawn. A
+        // table placed at its paragraph (not as a character) and centred, or set right, takes its outer margins alike.
         float TextLeft(HAlign align)
         {
             var cell = new HCell();
             cell.Blocks.Add(Paragraph("Title"));
             var row = new HRow();
             row.Cells.Add(cell);
-            var table = new HTable { ColumnCount = 1, ColumnWidths = [6000], AsCharacter = true, Align = align, OuterMargin = new HInsets(2000, 0, 0, 0) };
+            var table = new HTable { ColumnCount = 1, ColumnWidths = [6000], AsCharacter = asCharacter, Align = align, OuterMargin = new HInsets(2000, 0, 0, 0) };
             table.Rows.Add(row);
             var section = new HSection { Page = PageComposer.DefaultPage };
             section.Blocks.Add(table);

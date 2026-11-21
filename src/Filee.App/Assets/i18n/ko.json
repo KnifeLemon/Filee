@@ -263,6 +263,8 @@
   "notice.renderer_left_out.videos_one": "동영상 1개 빠짐",
   "notice.renderer_left_out.pictures": "그림 {0}개 빠짐",
   "notice.renderer_left_out.pictures_one": "그림 1개 빠짐",
+  "notice.renderer_left_out.fonts": "포함된 글꼴 {0}개 대체됨",
+  "notice.renderer_left_out.fonts_one": "포함된 글꼴 1개 대체됨",
   "notice.renderer_left_out.objects_pictured": "삽입된 개체 {0}개는 저장된 그림으로 그림",
   "notice.renderer_left_out.objects_pictured_one": "삽입된 개체 1개는 저장된 그림으로 그림",
   "notice.renderer_left_out.charts_pictured": "차트 {0}개는 저장된 그림으로 그림",

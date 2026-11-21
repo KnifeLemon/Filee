@@ -384,20 +384,269 @@ public sealed class XpsTests(EngineFixture fx) : IClassFixture<EngineFixture>, I
     }
 
     [Fact]
-    public async Task A_jpeg_xr_picture_is_left_out_and_named_in_the_result()
+    public async Task Jpeg_xr_pictures_are_drawn_and_a_damaged_one_is_named()
     {
         var builder = new XpsBuilder();
-        var hdPhoto = builder.Image([0x49, 0x49, 0xBC, 0x01, .. new byte[60]], "wdp");
-        builder.Page($"<Path Data='{Box(0, 0, 50, 50)}'><Path.Fill><ImageBrush ImageSource='{hdPhoto}' Viewbox='0,0,4,4' Viewport='0,0,50,50'/></Path.Fill></Path>" +
-                     $"<Path Data='{Box(50, 0, 50, 50)}'><Path.Fill><ImageBrush ImageSource='{hdPhoto}' Viewbox='0,0,4,4' Viewport='50,0,50,50'/></Path.Fill></Path>", 100, 50);
+        var grey = builder.Image(JpegXrTestFile.DcOnlyGrey(), "wdp");
+        var damaged = builder.Image([0x49, 0x49, 0xBC, 0x01, .. new byte[60]], "wdp");
+        var page = $"<Path Data='{Box(0, 0, 50, 50)}'><Path.Fill><ImageBrush ImageSource='{grey}' Viewbox='0,0,16,16' Viewport='0,0,50,50'/></Path.Fill></Path>" +
+                   $"<Path Data='{Box(50, 0, 50, 50)}'><Path.Fill><ImageBrush ImageSource='{damaged}' Viewbox='0,0,4,4' Viewport='50,0,50,50'/></Path.Fill></Path>";
+        if (OperatingSystem.IsWindows())
+        {
+            // A picture of Windows' own encoder, as its XPS writer stores them: red, half-transparent on the right.
+            var path = Path.Combine(_folder, "red.jxr");
+            var pixels = new byte[32 * 32 * 4];
+            for (var i = 0; i < 32 * 32; i++)
+                (pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2], pixels[i * 4 + 3]) = (0, 0, 255, (byte)(i % 32 < 16 ? 255 : 128));
+            JpegXrBuilder.Write(path, 32, 32, JpegXrBuilder.Bgra32, pixels, 32 * 4, new Dictionary<string, object> { ["ImageQuality"] = 0.9f });
+            var red = builder.Image(File.ReadAllBytes(path), "wdp");
+            page += $"<Path Data='{Box(0, 50, 100, 50)}'><Path.Fill><ImageBrush ImageSource='{red}' Viewbox='0,0,32,32' Viewport='0,50,100,50'/></Path.Fill></Path>";
+        }
+        builder.Page(page, 100, 100);
         var source = Save(builder);
+        using (var document = XpsDocument.Open(source, Token))
+        using (var bitmap = document.Page(0, Token).Render(96))
+        {
+            AssertColor(bitmap, 25, 25, "#808080", 2);
+            AssertColor(bitmap, 75, 25, "#FFFFFF");
+            if (OperatingSystem.IsWindows())
+            {
+                AssertColor(bitmap, 20, 75, "#FF0000", 8);
+                AssertColor(bitmap, 80, 75, "#FF8080", 12);
+            }
+        }
         LeftOutNotice? notice = null;
         var written = await new DrawingConverter().ConvertAsync(
             new ConversionStep(source, "xps", "pdf", new Preset(), new FolderOutput(_folder), _folder, LeftOut: n => notice = n), null, Token);
         Assert.Single(written);
         Assert.NotNull(notice);
-        Assert.Equal("notice.renderer_left_out", notice.Key);
         Assert.Equal(new LeftOutPart("notice.renderer_left_out.pictures", 1), Assert.Single(notice.Parts));
+    }
+
+    // ───────────────────────── Strokes, sideways glyphs, colours ─────────────────────────
+
+    [Fact]
+    public void Line_caps_are_flat_round_square_or_triangles_at_each_end()
+    {
+        // Horizontal lines 20 thick from x = 40 to 160: the caps reach 10 past each end.
+        var builder = new XpsBuilder().Page(
+            "<Path Data='M 40,20 L 160,20' Stroke='#000000' StrokeThickness='20' StrokeStartLineCap='Triangle' StrokeEndLineCap='Triangle'/>" +
+            "<Path Data='M 40,60 L 160,60' Stroke='#000000' StrokeThickness='20' StrokeStartLineCap='Round' StrokeEndLineCap='Flat'/>" +
+            "<Path Data='M 40,100 L 160,100' Stroke='#000000' StrokeThickness='20' StrokeStartLineCap='Flat' StrokeEndLineCap='Square'/>" +
+            "<Path Data='M 40,140 L 160,140' Stroke='#80000000' StrokeThickness='20' StrokeStartLineCap='Triangle' StrokeEndLineCap='Round'/>",
+            200, 160);
+        using var bitmap = Render(builder);
+        // Triangles: the tip on the line's axis, nothing at the corners of a square cap.
+        AssertColor(bitmap, 33, 20, "#000000", 40);
+        AssertColor(bitmap, 167, 20, "#000000", 40);
+        AssertColor(bitmap, 33, 13, "#FFFFFF", 40);
+        AssertColor(bitmap, 167, 27, "#FFFFFF", 40);
+        // Round start, flat end.
+        AssertColor(bitmap, 33, 60, "#000000", 40);
+        AssertColor(bitmap, 164, 60, "#FFFFFF");
+        // Flat start, square end: its corners are drawn.
+        AssertColor(bitmap, 36, 100, "#FFFFFF");
+        AssertColor(bitmap, 167, 93, "#000000", 40);
+        // A translucent stroke stays even where the caps join it (no darker seam).
+        Assert.InRange(Math.Abs(bitmap.GetPixel(42, 140).Red - bitmap.GetPixel(100, 140).Red), 0, 6);
+        Assert.InRange(Math.Abs(bitmap.GetPixel(158, 140).Red - bitmap.GetPixel(100, 140).Red), 0, 6);
+    }
+
+    [Fact]
+    public void Sideways_glyphs_are_turned_and_stay_text_in_the_pdf()
+    {
+        var builder = new XpsBuilder();
+        var font = builder.Font(TestFont());
+        // "l" upright is tall and thin; sideways it lies along the run, its top centre on the origin.
+        builder.Page($"<Glyphs FontUri='{font}' FontRenderingEmSize='80' OriginX='20' OriginY='100' UnicodeString='l' Fill='#000000'/>" +
+                     $"<Glyphs FontUri='{font}' FontRenderingEmSize='80' OriginX='150' OriginY='100' UnicodeString='l' IsSideways='true' Fill='#000000'/>",
+            300, 200);
+        using var document = XpsDocument.Open(Save(builder), Token);
+        var page = document.Page(0, Token);
+        var runs = page.Items.OfType<GlyphItem>().Select(g => g.Run).ToList();
+        Assert.Equal(2, runs.Count);
+        Assert.NotNull(runs[1].Transform);
+        using var bitmap = page.Render(96);
+        var upright = Ink(bitmap, 0, 0, 140, 200);
+        var sideways = Ink(bitmap, 140, 0, 300, 200);
+        Assert.True(upright.Height > upright.Width * 2, $"upright {upright}");
+        Assert.True(sideways.Width > sideways.Height * 2, $"sideways {sideways}");
+        // Its ink starts right of the origin and straddles the baseline.
+        Assert.True(sideways.Left >= 150 - 2 && sideways.Top < 100 && sideways.Bottom > 100, $"sideways {sideways}");
+    }
+
+    /// <summary>The box of the dark pixels inside a part of the picture.</summary>
+    private static SKRectI Ink(SKBitmap bitmap, int left, int top, int right, int bottom)
+    {
+        int x0 = int.MaxValue, y0 = int.MaxValue, x1 = int.MinValue, y1 = int.MinValue;
+        for (var y = top; y < bottom; y++)
+        {
+            for (var x = left; x < right; x++)
+            {
+                if (bitmap.GetPixel(x, y).Red >= 128)
+                    continue;
+                (x0, y0, x1, y1) = (Math.Min(x0, x), Math.Min(y0, y), Math.Max(x1, x), Math.Max(y1, y));
+            }
+        }
+        return x0 == int.MaxValue ? SKRectI.Empty : new SKRectI(x0, y0, x1 + 1, y1 + 1);
+    }
+
+    [Fact]
+    public void Context_colors_go_through_their_profile_or_follow_the_fallback_rules()
+    {
+        var builder = new XpsBuilder();
+        var srgb = builder.Part("Resources/srgb.icc", Filee.Engines.Pdf.SrgbProfile.Bytes);
+        var cmyk = builder.Part("Resources/swop.icc", ColorProfiles.USWebCoatedSWOP.ToByteArray());
+        var junk = builder.Part("Resources/junk.icc", [1, 2, 3, 4, 5, 6, 7, 8]);
+        builder.Page(
+            // Through the sRGB profile: red.
+            $"<Path Data='{Box(0, 0, 20, 20)}' Fill='ContextColor {srgb} 1,1,0,0'/>" +
+            // Through a press CMYK profile: cyan as ink prints it, not the pure (0, 255, 255) of the formula.
+            $"<Path Data='{Box(20, 0, 20, 20)}' Fill='ContextColor {cmyk} 1,1,0,0,0'/>" +
+            // No usable profile: three channels are scRGB (linear 0.5 is sRGB 188), one or two the first as grey,
+            // four CMYK by formula, more the first four as CMYK.
+            $"<Path Data='{Box(40, 0, 20, 20)}' Fill='ContextColor {junk} 1,0.5,0.5,0.5'/>" +
+            $"<Path Data='{Box(60, 0, 20, 20)}' Fill='ContextColor /missing.icc 1,0.25,0.9'/>" +
+            $"<Path Data='{Box(80, 0, 20, 20)}' Fill='ContextColor /missing.icc 1,0,1,0,0,0.5,0.5'/>" +
+            "<Path Data='M 0,20 L 100,20 100,40 0,40 Z'><Path.Fill><LinearGradientBrush MappingMode='Absolute' StartPoint='0,0' EndPoint='100,0'><LinearGradientBrush.GradientStops>" +
+            $"<GradientStop Color='ContextColor {srgb} 1,0,0,1' Offset='0'/><GradientStop Color='ContextColor {srgb} 1,0,0,1' Offset='1'/>" +
+            "</LinearGradientBrush.GradientStops></LinearGradientBrush></Path.Fill></Path>",
+            100, 40);
+        using var bitmap = Render(builder);
+        AssertColor(bitmap, 10, 10, "#FF0000", 6);
+        var cyan = bitmap.GetPixel(30, 10);
+        Assert.True(cyan.Red < 60 && cyan.Green is > 120 and < 220 && cyan.Blue > 200, $"cyan {cyan}");
+        AssertColor(bitmap, 50, 10, "#BCBCBC", 3);
+        AssertColor(bitmap, 70, 10, "#404040", 3);
+        AssertColor(bitmap, 90, 10, "#FF00FF", 3);
+        AssertColor(bitmap, 50, 30, "#0000FF", 6);
+    }
+
+    [Fact]
+    public void Color_converted_pictures_are_read_through_their_profile()
+    {
+        var builder = new XpsBuilder();
+        var picture = builder.Image(Png(new SKColor(40, 200, 60)), "png");
+        var adobe = builder.Part("Resources/adobe.icc", ColorProfiles.AdobeRGB1998.ToByteArray());
+        // The same picture with the Adobe RGB profile inside it.
+        using var tagged = new MagickImage(new MagickColor(40, 200, 60), 4, 4);
+        tagged.SetProfile(ColorProfiles.AdobeRGB1998);
+        var embedded = builder.Image(tagged.ToByteArray(MagickFormat.Png), "png");
+        builder.Page(
+            $"<Path Data='{Box(0, 0, 20, 20)}'><Path.Fill><ImageBrush ImageSource='{picture}' Viewbox='0,0,4,4' Viewport='0,0,20,20'/></Path.Fill></Path>" +
+            $"<Path Data='{Box(20, 0, 20, 20)}'><Path.Fill><ImageBrush ImageSource='{{ColorConvertedBitmap {picture} {adobe}}}' Viewbox='0,0,4,4' Viewport='20,0,20,20'/></Path.Fill></Path>" +
+            $"<Path Data='{Box(40, 0, 20, 20)}'><Path.Fill><ImageBrush ImageSource='{embedded}' Viewbox='0,0,4,4' Viewport='40,0,20,20'/></Path.Fill></Path>",
+            60, 20);
+        using var bitmap = Render(builder);
+        AssertColor(bitmap, 10, 10, "#28C83C", 3);
+        // Adobe RGB's green is more saturated than sRGB's: read through it, the green comes out greener.
+        foreach (var x in (int[])[30, 50])
+        {
+            var converted = bitmap.GetPixel(x, 10);
+            Assert.True(converted.Red < 20 && converted.Blue < 50 && converted.Green > 190, $"converted {converted} at {x}");
+        }
+    }
+
+    // ───────────────────────── Fonts ─────────────────────────
+
+    /// <summary>
+    /// The test font with the outline of "F" turned into a composite glyph whose components run past its end: Skia
+    /// reads the font (it looks at outlines only to draw them), but the PDF writer's subsetter can't take that glyph.
+    /// </summary>
+    private static byte[] DamagedFont()
+    {
+        var font = TestFont();
+        ushort glyph;
+        using (var original = PageFont.FromData(font))
+            glyph = original.Typeface.GetGlyph('F');
+        int Table(string tag)
+        {
+            var tables = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(font.AsSpan(4));
+            for (var i = 0; i < tables; i++)
+            {
+                var record = 12 + i * 16;
+                if (System.Text.Encoding.ASCII.GetString(font, record, 4) == tag)
+                    return (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(font.AsSpan(record + 8));
+            }
+            throw new InvalidDataException(tag);
+        }
+        var longLoca = System.Buffers.Binary.BinaryPrimitives.ReadInt16BigEndian(font.AsSpan(Table("head") + 50)) != 0;
+        var loca = Table("loca");
+        int Offset(int g) => longLoca
+            ? (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(font.AsSpan(loca + g * 4))
+            : System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(font.AsSpan(loca + g * 2)) * 2;
+        var (start, end) = (Table("glyf") + Offset(glyph), Table("glyf") + Offset(glyph + 1));
+        Assert.True(end - start >= 16);
+        // numberOfContours −1, then components (MORE_COMPONENTS, glyph 0, byte arguments) to the end and beyond.
+        font[start] = font[start + 1] = 0xFF;
+        for (var at = start + 10; at + 6 <= end; at += 6)
+            (font[at], font[at + 1], font[at + 2], font[at + 3], font[at + 4], font[at + 5]) = (0, 0x20, 0, 0, 0, 0);
+        return font;
+    }
+
+    [Fact]
+    public async Task A_damaged_embedded_font_is_replaced_and_the_pdf_still_written()
+    {
+        var damaged = DamagedFont();
+        var sfnt = Filee.Engines.Fonts.SfntFont.ReadFace(damaged, 0);
+        using (var check = PageFont.FromData(damaged))
+        {
+            var glyph = check.Typeface.GetGlyph('F');
+            Assert.ThrowsAny<Exception>(() => Filee.Engines.Fonts.FontSubsetter.Subset(sfnt, [glyph], Token).Write());
+        }
+        var builder = new XpsBuilder();
+        var broken = builder.Font(damaged);
+        var good = builder.Font(TestFont());
+        builder.Page($"<Glyphs FontUri='{broken}' FontRenderingEmSize='30' OriginX='10' OriginY='40' UnicodeString='Filee' Fill='#000000'/>" +
+                     $"<Glyphs FontUri='{good}' FontRenderingEmSize='30' OriginX='10' OriginY='90' UnicodeString='Hamburg' Fill='#000000'/>" +
+                     "<Glyphs FontUri='/Resources/Fonts/missing.odttf' FontRenderingEmSize='30' OriginX='10' OriginY='140' UnicodeString='Missing' Fill='#000000'/>",
+            300, 160);
+        var source = Save(builder);
+        LeftOutNotice? notice = null;
+        var written = await new DrawingConverter().ConvertAsync(
+            new ConversionStep(source, "xps", "pdf", new Preset(), new FolderOutput(_folder), _folder, LeftOut: n => notice = n), null, Token);
+        using var pdf = PdfDocument.Open(Assert.Single(written));
+        var text = string.Concat(pdf.GetPages().Select(p => p.Text));
+        Assert.Contains("Filee", text, StringComparison.Ordinal);
+        Assert.Contains("Hamburg", text, StringComparison.Ordinal);
+        Assert.NotNull(notice);
+        Assert.Equal(new LeftOutPart("notice.renderer_left_out.fonts", 2), Assert.Single(notice.Parts));
+    }
+
+    // ───────────────────────── Tiled visual brushes ─────────────────────────
+
+    [Fact]
+    public async Task Tiled_visual_brushes_stay_vector_in_the_pdf_and_huge_ones_become_one_tile_picture()
+    {
+        var visual = $"<Path Data='{Box(0, 0, 5, 10)}' Fill='#000000'/>";
+        var source = Save(new XpsBuilder().Page(
+            $"<Path Data='{Box(0, 0, 200, 40)}'><Path.Fill><VisualBrush Viewbox='0,0,10,10' Viewport='0,0,20,20' TileMode='FlipX'><VisualBrush.Visual>{visual}</VisualBrush.Visual></VisualBrush></Path.Fill></Path>",
+            200, 40), "vector.xps");
+        var written = await new DrawingConverter().ConvertAsync(
+            new ConversionStep(source, "xps", "pdf", new Preset(), new FolderOutput(_folder), _folder), null, Token);
+        using (var pdf = PdfDocument.Open(Assert.Single(written)))
+            Assert.Empty(pdf.GetPage(1).GetImages());
+        using (var document = XpsDocument.Open(source, Token))
+        using (var bitmap = document.Page(0, Token).Render(96))
+        {
+            // FlipX: black on the left of even tiles, on the right of odd ones.
+            AssertColor(bitmap, 5, 10, "#000000");
+            AssertColor(bitmap, 15, 10, "#FFFFFF");
+            AssertColor(bitmap, 25, 10, "#FFFFFF");
+            AssertColor(bitmap, 35, 10, "#000000");
+        }
+
+        // A tile of half a unit over a 2,000-unit square: 16 million tiles become one picture, repeated.
+        var clock = Stopwatch.StartNew();
+        var huge = Save(new XpsBuilder().Page(
+            $"<Path Data='{Box(0, 0, 2000, 2000)}'><Path.Fill><VisualBrush Viewbox='0,0,10,10' Viewport='0,0,0.5,0.5' TileMode='Tile'><VisualBrush.Visual>{visual}</VisualBrush.Visual></VisualBrush></Path.Fill></Path>",
+            2000, 2000), "huge.xps");
+        var folder = Path.Combine(_folder, "huge");
+        Directory.CreateDirectory(folder);
+        var hugeWritten = await new DrawingConverter().ConvertAsync(
+            new ConversionStep(huge, "xps", "pdf", new Preset(), new FolderOutput(folder), _folder), null, Token);
+        Assert.True(new FileInfo(Assert.Single(hugeWritten)).Length < 4_000_000);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), $"took {clock.Elapsed}");
     }
 
     // ───────────────────────── Hostile input ─────────────────────────
@@ -441,6 +690,35 @@ public sealed class XpsTests(EngineFixture fx) : IClassFixture<EngineFixture>, I
         var part = builder.Image(bomb, "png");
         builder.Page($"<Path Data='{Box(0, 0, 50, 50)}'><Path.Fill><ImageBrush ImageSource='{part}' Viewbox='0,0,4,4' Viewport='0,0,50,50'/></Path.Fill></Path>", 50, 50);
         using (var document = XpsDocument.Open(Save(builder, "bomb.xps"), Token))
+        {
+            using var bitmap = document.Page(0, Token).Render(24);
+            Assert.Equal(1, Assert.Single(document.LeftOut).Count);
+        }
+
+        // More ICC profiles than are applied, and a profile larger than allowed: their colours follow the fallback rules.
+        var profiles = new XpsBuilder();
+        var colors = new System.Text.StringBuilder();
+        var srgb = Filee.Engines.Pdf.SrgbProfile.Bytes;
+        for (var i = 0; i < 80; i++)
+            colors.Append(System.Globalization.CultureInfo.InvariantCulture, $"<Path Data='{Box(i, 0, 1, 10)}' Fill='ContextColor {profiles.Part($"Resources/p{i}.icc", srgb)} 1,1,0,0'/>");
+        var big = profiles.Part("Resources/big.icc", [.. srgb, .. new byte[5 * 1024 * 1024]]);
+        colors.Append(System.Globalization.CultureInfo.InvariantCulture, $"<Path Data='{Box(0, 10, 80, 10)}' Fill='ContextColor {big} 1,0,0,1'/>");
+        using (var document = XpsDocument.Open(Save(profiles.Page(colors.ToString(), 80, 20), "profiles.xps"), Token))
+        using (var bitmap = document.Page(0, Token).Render(96))
+        {
+            // Applied or not, (1, 0, 0) in an RGB profile or as scRGB is red; (0, 0, 1) blue.
+            AssertColor(bitmap, 79, 5, "#FF0000", 6);
+            AssertColor(bitmap, 40, 15, "#0000FF", 6);
+        }
+
+        // A JPEG XR picture whose codestream claims 65,535 × 65,535 pixels in a few bytes is left out at once.
+        var claim = JpegXrTestFile.DcOnlyGrey();
+        var at = Array.IndexOf(claim, (byte)'W');
+        claim[at + 12] = claim[at + 13] = claim[at + 14] = claim[at + 15] = 0xFF;
+        var claims = new XpsBuilder();
+        var claimed = claims.Image(claim, "wdp");
+        claims.Page($"<Path Data='{Box(0, 0, 50, 50)}'><Path.Fill><ImageBrush ImageSource='{claimed}' Viewbox='0,0,4,4' Viewport='0,0,50,50'/></Path.Fill></Path>", 50, 50);
+        using (var document = XpsDocument.Open(Save(claims, "claim.xps"), Token))
         {
             using var bitmap = document.Page(0, Token).Render(24);
             Assert.Equal(1, Assert.Single(document.LeftOut).Count);

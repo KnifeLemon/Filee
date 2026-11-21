@@ -257,6 +257,8 @@
   "notice.renderer_left_out.videos_one": "حُذف مقطع فيديو واحد",
   "notice.renderer_left_out.pictures": "صور محذوفة: {0}",
   "notice.renderer_left_out.pictures_one": "حُذفت صورة واحدة",
+  "notice.renderer_left_out.fonts": "استُبدلت {0} من الخطوط المضمّنة",
+  "notice.renderer_left_out.fonts_one": "استُبدل خط مضمّن واحد",
   "notice.renderer_left_out.objects_pictured": "كائنات مضمّنة رُسمت من صورها المحفوظة: {0}",
   "notice.renderer_left_out.objects_pictured_one": "رُسم كائن مضمّن واحد من صورته المحفوظة",
   "notice.renderer_left_out.charts_pictured": "مخططات رُسمت من صورها المحفوظة: {0}",

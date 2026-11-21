@@ -257,6 +257,8 @@
   "notice.renderer_left_out.videos_one": "1 भिडियो छोडियो",
   "notice.renderer_left_out.pictures": "{0} चित्र छोडिए",
   "notice.renderer_left_out.pictures_one": "1 चित्र छोडियो",
+  "notice.renderer_left_out.fonts": "{0} इम्बेड गरिएका फन्ट बदलिए",
+  "notice.renderer_left_out.fonts_one": "1 इम्बेड गरिएको फन्ट बदलियो",
   "notice.renderer_left_out.objects_pictured": "{0} सम्मिलित वस्तु तिनको सुरक्षित चित्रबाट कोरिए",
   "notice.renderer_left_out.objects_pictured_one": "1 सम्मिलित वस्तु यसको सुरक्षित चित्रबाट कोरियो",
   "notice.renderer_left_out.charts_pictured": "{0} चार्ट तिनको सुरक्षित चित्रबाट कोरिए",

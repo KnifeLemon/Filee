@@ -257,6 +257,8 @@
   "notice.renderer_left_out.videos_one": "1 vídeo omitido",
   "notice.renderer_left_out.pictures": "{0} imágenes omitidas",
   "notice.renderer_left_out.pictures_one": "1 imagen omitida",
+  "notice.renderer_left_out.fonts": "{0} fuentes incrustadas sustituidas",
+  "notice.renderer_left_out.fonts_one": "1 fuente incrustada sustituida",
   "notice.renderer_left_out.objects_pictured": "{0} objetos incrustados dibujados a partir de su imagen guardada",
   "notice.renderer_left_out.objects_pictured_one": "1 objeto incrustado dibujado a partir de su imagen guardada",
   "notice.renderer_left_out.charts_pictured": "{0} gráficos dibujados a partir de su imagen guardada",

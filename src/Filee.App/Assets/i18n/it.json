@@ -256,6 +256,8 @@
 "notice.renderer_left_out.videos_one": "1 video omesso",
 "notice.renderer_left_out.pictures": "{0} immagini omesse",
 "notice.renderer_left_out.pictures_one": "1 immagine omessa",
+"notice.renderer_left_out.fonts": "{0} caratteri incorporati sostituiti",
+"notice.renderer_left_out.fonts_one": "1 carattere incorporato sostituito",
 "notice.renderer_left_out.objects_pictured": "{0} oggetti incorporati disegnati dalla loro immagine salvata",
 "notice.renderer_left_out.objects_pictured_one": "1 oggetto incorporato disegnato dalla sua immagine salvata",
 "notice.renderer_left_out.charts_pictured": "{0} grafici disegnati dalla loro immagine salvata",

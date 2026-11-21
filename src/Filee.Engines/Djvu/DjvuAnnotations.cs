@@ -4,8 +4,10 @@
 // NAVM (BZZ-compressed): the number of bookmarks, then each bookmark depth first — its number of children, its title
 // and its URL, each a 24-bit length and UTF-8 text. ANTa (ANTz BZZ-compressed) is text of parenthesised expressions;
 // a (maparea url comment area …) gives a link: url a string or (url "href" "target"), area (rect x y w h),
-// (oval …), (text …) or (poly x0 y0 x1 y1 …), in page pixels from the bottom-left corner. Lines and the other
-// expressions (zoom, background colour, metadata, highlighting) aren't links and are skipped.
+// (oval …), (text …) or (poly x0 y0 x1 y1 …), in page pixels from the bottom-left corner. The initial view — (zoom
+// d150 | width | page | stretch | one2one), (mode color | bw | fore | back | black) and (background #RRGGBB), the colour
+// of the viewer around the page — and (metadata (Title "…") (Author "…") …) are kept as DjvuDisplay; lines and
+// highlighting are skipped.
 //
 // A URL starting with '#' points into the document (DjvuDocument resolves it); other URLs are kept only when they are
 // http, https, ftp or mailto addresses, so a link can't run a script or open a local file (javascript:, file:, …).
@@ -23,6 +25,26 @@ internal sealed record DjvuBookmark(string Title, string Url, List<DjvuBookmark>
 /// leads to (from 0) when it points into the document.
 /// </summary>
 internal sealed record DjvuLink(int Left, int Bottom, int Width, int Height, string Url, int Page = -1);
+
+/// <summary>
+/// A page's initial view and document information from its annotations: the zoom and display mode as written, the
+/// viewer's background colour, and metadata (key → text).
+/// </summary>
+internal sealed record DjvuDisplay(string? Zoom, string? Mode, string? Background, IReadOnlyDictionary<string, string> Metadata)
+{
+    public static DjvuDisplay None { get; } = new(null, null, null, new Dictionary<string, string>());
+
+    public bool IsEmpty => Zoom is null && Mode is null && Background is null && Metadata.Count == 0;
+
+    /// <summary>This display with what it leaves unset taken from <paramref name="other"/>.</summary>
+    public DjvuDisplay Or(DjvuDisplay other)
+    {
+        var metadata = new Dictionary<string, string>(other.Metadata, StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in Metadata)
+            metadata[key] = value;
+        return new DjvuDisplay(Zoom ?? other.Zoom, Mode ?? other.Mode, Background ?? other.Background, metadata);
+    }
+}
 
 internal static class DjvuAnnotations
 {
@@ -81,23 +103,58 @@ internal static class DjvuAnnotations
     /// The link areas of an annotation text, with their URLs as written (DjvuDocument keeps the ones it can follow).
     /// Damaged text (unbalanced, nested too deep) gives no links; more than the limit's expressions is refused.
     /// </summary>
-    public static List<DjvuLink> ReadLinks(string text, DjvuLimits limits)
+    public static List<DjvuLink> ReadLinks(string text, DjvuLimits limits) => Read(text, limits).Links;
+
+    /// <summary>The link areas and the display settings of an annotation text (damaged text gives neither).</summary>
+    public static (List<DjvuLink> Links, DjvuDisplay Display) Read(string text, DjvuLimits limits)
     {
         var links = new List<DjvuLink>();
+        string? zoom = null, mode = null, background = null;
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         try
         {
             foreach (var expression in Parse(text, limits))
             {
                 if (Link(expression) is { } link)
+                {
                     links.Add(link);
+                    continue;
+                }
+                switch (expression)
+                {
+                    case ["zoom", string value, ..] when IsZoom(value):
+                        zoom ??= value;
+                        break;
+                    case ["mode", string value, ..] when value is "color" or "bw" or "fore" or "back" or "black":
+                        mode ??= value;
+                        break;
+                    case ["background", string value, ..] when IsColor(value):
+                        background ??= value.ToUpperInvariant();
+                        break;
+                    case ["metadata", ..]:
+                        foreach (var entry in expression.Skip(1))
+                        {
+                            if (entry is List<object> { Count: >= 2 } pair && pair[0] is string key && pair[1] is string value && key.Length <= 64 && value.Trim().Length > 0)
+                                metadata.TryAdd(key, value.Length > 4000 ? value[..4000] : value.Trim());
+                        }
+                        break;
+                }
             }
         }
         catch (InvalidDataException)
         {
             // Damaged annotations leave the page without links; the page itself is still drawn.
+            return ([], DjvuDisplay.None);
         }
-        return links;
+        return (links, new DjvuDisplay(zoom, mode, background, metadata));
     }
+
+    private static bool IsZoom(string value) =>
+        value is "stretch" or "one2one" or "width" or "page" ||
+        (value.Length is >= 2 and <= 4 && value[0] == 'd' && int.TryParse(value.AsSpan(1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var percent) && percent is >= 1 and <= 999);
+
+    private static bool IsColor(string value) =>
+        value.Length == 7 && value[0] == '#' && value.AsSpan(1).IndexOfAnyExcept("0123456789abcdefABCDEF") < 0;
 
     /// <summary>A (maparea …) expression as a link, or null when it isn't one Filee draws as a link.</summary>
     private static DjvuLink? Link(List<object> expression)

@@ -271,6 +271,8 @@
   "notice.renderer_left_out.videos_one": "1টি ভিডিও বাদ দেওয়া হয়েছে",
   "notice.renderer_left_out.pictures": "{0}টি ছবি বাদ দেওয়া হয়েছে",
   "notice.renderer_left_out.pictures_one": "1টি ছবি বাদ দেওয়া হয়েছে",
+  "notice.renderer_left_out.fonts": "{0}টি এমবেড করা ফন্ট বদলানো হয়েছে",
+  "notice.renderer_left_out.fonts_one": "1টি এমবেড করা ফন্ট বদলানো হয়েছে",
   "notice.renderer_left_out.objects_pictured": "{0}টি এমবেড করা অবজেক্ট তাদের সংরক্ষিত ছবি থেকে আঁকা হয়েছে",
   "notice.renderer_left_out.objects_pictured_one": "1টি এমবেড করা অবজেক্ট তার সংরক্ষিত ছবি থেকে আঁকা হয়েছে",
   "notice.renderer_left_out.charts_pictured": "{0}টি চার্ট তাদের সংরক্ষিত ছবি থেকে আঁকা হয়েছে",

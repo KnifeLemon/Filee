@@ -30,11 +30,14 @@
 //
 // - Tables (TableLayout): rows bound by spanning cells move to a page together, header rows repeat, and a table splits
 //   by its page break mode. A Word floating table (HTable.Float) is placed as a floating object instead, against the
-//   paragraph after it or the page, and the text after it goes around it (see Float).
+//   paragraph after it or the page, and the text after it goes around it; one longer than a column splits across
+//   pages, and one that must not overlap (w:tblOverlap never) goes below the floating tables in its way (see Float).
+// - Paragraph spacing: in a Word document the larger of a paragraph's space after and the next one's space before
+//   goes between them (HDocument.CollapseParagraphSpacing); the model keeps both.
 // - Columns: a section's newspaper columns, with their gap and separator line; what doesn't fit in a column goes on in
 //   the next, and after the last on the next page. Columns change without a new page where the model says (Word's
 //   continuous section break, 한글's 다단 설정 나누기); the columns before are balanced then, so they end at about the
-//   same height. At the end of a section they are not (neither 한글 nor Word does). 한글's stored lines that start a
+//   same height (columns of their own widths with their lines laid out anew for each column's width). At the end of a section they are not (neither 한글 nor Word does). 한글's stored lines that start a
 //   column (stored flag) start one.
 // - Notes: a note reference shows its number, raised, in the section's note format (한글 각주/미주 모양); footnotes go
 //   to the foot of the page their reference is on, under the section's separator line and spacing, and a line whose
@@ -76,6 +79,9 @@ internal sealed class PageComposer
     private readonly ParagraphLayouter _layouter;
     private readonly StyleResolver? _styles;
 
+    /// <summary>The document's neighbouring paragraphs keep the larger of their spaces between them (HDocument.CollapseParagraphSpacing).</summary>
+    private bool _collapseSpacing;
+
     /// <param name="styles">Resolves formats a model leaves to the 한글 style; null for models read from HWPX.</param>
     /// <param name="storedLines">Paragraphs follow 한글's stored line layout where it can be used.</param>
     public PageComposer(FontResolver fonts, Shaper shaper, IReadOnlyList<HKinsoku>? kinsoku = null, StyleResolver? styles = null, bool storedLines = true)
@@ -97,6 +103,7 @@ internal sealed class PageComposer
         _layouter.DefaultTabStop = document.DefaultTabStop;
         _layouter.DefaultTabFromIndent = document.DefaultTabStopFromIndent;
         _layouter.WordLineHeights = document.WordLineHeights;
+        _collapseSpacing = document.CollapseParagraphSpacing;
         // The body's total pages fields need the count first: a first pass finds it.
         int? total = null;
         if (document.Sections.Any(s => Fields(s.Blocks).Any(f => f.Kind == HFieldKind.TotalPages)))
@@ -173,8 +180,12 @@ internal sealed class PageComposer
         /// What goes under everything in the region (a paragraph's border and background), told whether the thing is the
         /// first in its column.
         /// </param>
+        /// <param name="Source">
+        /// The paragraph line it is, when that line may be laid out anew for a column of another width (no border, not
+        /// 한글's stored line, not beside an object); see BalanceSized.
+        /// </param>
         private sealed record Placed(int Column, float X, float Y, float Height, Action<PageContent, float, float> Draw,
-            Action<PageContent, float, float, bool>? Under = null);
+            Action<PageContent, float, float, bool>? Under = null, (HParagraph Paragraph, ParagraphBox Box, LineBox Line)? Source = null);
 
         /// <summary>The columns of the region being filled: from <see cref="_regionTop"/> down, side by side.</summary>
         private HColumns _columns = HColumns.Single;
@@ -236,9 +247,10 @@ internal sealed class PageComposer
         private float ColumnHeight => _geometry.BodyBottom - _regionTop;
 
         /// <summary>Puts something into the current column at the current position.</summary>
-        private void Put(float x, float height, Action<PageContent, float, float> draw, Action<PageContent, float, float, bool>? under = null)
+        private void Put(float x, float height, Action<PageContent, float, float> draw, Action<PageContent, float, float, bool>? under = null,
+            (HParagraph, ParagraphBox, LineBox)? source = null)
         {
-            _placed.Add(new Placed(_column, x, _y, height, draw, under));
+            _placed.Add(new Placed(_column, x, _y, height, draw, under, source));
             _empty = false;
             _columnEmpty = false;
         }
@@ -246,14 +258,18 @@ internal sealed class PageComposer
         private void StartRegion(HColumns columns)
         {
             _columns = columns.Count > 1 ? columns : HColumns.Single;
+            _columnBroken = false;
             _column = 0;
             _columnEmpty = true;
             _regionTop = _y;
         }
 
+        /// <summary>A column break in the region put its content into the columns it is in: they stay as filled.</summary>
+        private bool _columnBroken;
+
         /// <summary>
         /// Draws what the region holds, its columns balanced first when <paramref name="balance"/> (columns changing on
-        /// the page), and moves below it.
+        /// the page) and no column break placed its content, and moves below it.
         /// </summary>
         private void EndRegion(bool balance)
         {
@@ -262,7 +278,7 @@ internal sealed class PageComposer
                 _column = 0;
                 return;
             }
-            var placed = balance && _columns.Count > 1 ? Balance(_placed) : _placed;
+            var placed = balance && _columns.Count > 1 && !_columnBroken ? Balance(_placed) : _placed;
             var page = Current.Content;
             // Paragraph borders and backgrounds first, under the text and tables; things come in their columns' order.
             var started = new HashSet<int>();
@@ -299,13 +315,13 @@ internal sealed class PageComposer
 
         /// <summary>
         /// The region's content spread over its columns as evenly as it goes: the lowest column height at which
-        /// everything still fits, keeping the order and the space between things. Columns of their own widths stay as
-        /// filled: their lines are as wide as the column they were laid out for.
+        /// everything still fits, keeping the order and the space between things. Columns of their own widths are
+        /// balanced with their paragraphs' lines laid out anew for each column's width (BalanceSized).
         /// </summary>
         private List<Placed> Balance(List<Placed> placed)
         {
             if (_columns.Sizes is not null)
-                return placed;
+                return BalanceSized(placed);
             // The space above each thing in its column (none at a column's top). A thing that starts above the bottom of
             // the one before it is on that one's row (lines on both sides of an object) and stays beside it.
             var units = new List<(Placed Item, float Gap, bool Along)>();
@@ -360,6 +376,116 @@ internal sealed class PageComposer
             return Try(high) ?? placed;
         }
 
+        /// <summary>
+        /// Columns of their own widths balanced as Word balances a section's columns before a continuous section break:
+        /// the lowest column height at which everything fits, a paragraph's lines laid out anew from the line that
+        /// starts a column for that column's width (its rest too: a line in a wider or narrower column holds more or
+        /// less). Tables, lines with a border and 한글's stored lines keep their width: they only go into columns at
+        /// least as wide as the one they were laid out for. Content beside floating objects stays as filled.
+        /// </summary>
+        private List<Placed> BalanceSized(List<Placed> placed)
+        {
+            if (placed.Count == 0 || Current.Objects.Any(o => o.Wrap is "SQUARE" or "TOP_AND_BOTTOM"))
+                return placed;
+            // The space above each thing in its column (none at a column's top), as in Balance; a thing beside the one
+            // before it (lines on both sides of an object) leaves the columns as filled.
+            var units = new List<(Placed Item, float Gap)>();
+            var bottoms = new Dictionary<int, float>();
+            foreach (var item in placed)
+            {
+                var known = bottoms.TryGetValue(item.Column, out var bottom);
+                if (known && item.Y < bottom - Epsilon)
+                    return placed;
+                units.Add((item, known ? Math.Max(0, item.Y - bottom) : 0));
+                bottoms[item.Column] = item.Y + item.Height;
+            }
+            var count = _columns.Count;
+            var widths = new float[count];
+            for (var c = 0; c < count; c++)
+                widths[c] = ColumnBox(c).Width;
+            // A paragraph's lines laid out from a text position for a width, each once.
+            var laid = new Dictionary<(HParagraph, int, float), IReadOnlyList<LineBox>>();
+            IReadOnlyList<LineBox> Lines(HParagraph paragraph, ParagraphBox box, int from, float width)
+            {
+                if (!laid.TryGetValue((paragraph, from, width), out var lines))
+                {
+                    _guard.Paragraph();
+                    // Lines from the paragraph's start get its number again (without counting it); later ones none.
+                    lines = composer._layouter.Layout(paragraph, width, from == 0 ? box.Marker : null, FieldText, NoteText, from: from).Lines;
+                    laid[(paragraph, from, width)] = lines;
+                }
+                return lines;
+            }
+            List<Placed>? Try(float target)
+            {
+                var result = new List<Placed>(units.Count);
+                var (column, y, first) = (0, _regionTop, true);
+                var limit = _regionTop + target + Epsilon;
+                for (var u = 0; u < units.Count;)
+                {
+                    var (item, gap) = units[u];
+                    if (item.Source is not { } source)
+                    {
+                        // Kept as laid out: into the next column when past the target, never into a narrower one.
+                        var top = first ? y : y + gap;
+                        if (!first && top + item.Height > limit)
+                        {
+                            if (column + 1 == count)
+                                return null;
+                            (column, top, first) = (column + 1, _regionTop, true);
+                        }
+                        if (widths[column] + Epsilon < widths[item.Column])
+                            return null;
+                        result.Add(item with { Column = column, Y = top });
+                        (y, first) = (top + item.Height, false);
+                        u++;
+                        continue;
+                    }
+                    // The paragraph's lines in the region: from this line to its end (a balanced region ends where a
+                    // paragraph starts), the units that are its lines passed over.
+                    var (paragraph, box, line) = source;
+                    var end = u + 1;
+                    while (end < units.Count && units[end].Item.Source is { } next && ReferenceEquals(next.Paragraph, paragraph))
+                        end++;
+                    var lines = Lines(paragraph, box, line.Start, widths[column]);
+                    var pending = gap;
+                    for (var k = 0; k < lines.Count;)
+                    {
+                        var piece = lines[k];
+                        var top = first ? y : y + pending;
+                        if (!first && top + piece.Height > limit)
+                        {
+                            if (column + 1 == count)
+                                return null;
+                            (column, y, first, pending) = (column + 1, _regionTop, true, 0);
+                            lines = Lines(paragraph, box, piece.Start, widths[column]);
+                            k = 0;
+                            continue;
+                        }
+                        result.Add(new Placed(column, 0, top, piece.Height, piece.Draw, null, (paragraph, box, piece)));
+                        (y, first, pending) = (top + piece.Height, false, 0);
+                        k++;
+                    }
+                    u = end;
+                }
+                return result;
+            }
+            // The first columns take the more (as in Balance): the lowest target at which everything fits.
+            var total = units.Sum(u => u.Gap + u.Item.Height);
+            float low = total / count / 2, high = Bottom - _regionTop;
+            if (Try(high) is null)
+                return placed;
+            for (var step = 0; step < 24 && high - low > 0.5f; step++)
+            {
+                var middle = (low + high) / 2;
+                if (Try(middle) is null)
+                    low = middle;
+                else
+                    high = middle;
+            }
+            return Try(high) ?? placed;
+        }
+
         /// <summary>Moves to the next column, or to the next page after the last one.</summary>
         private void NextColumn()
         {
@@ -368,6 +494,7 @@ internal sealed class PageComposer
                 _column++;
                 _y = _regionTop;
                 _columnEmpty = true;
+                FloatParts();
             }
             else
             {
@@ -400,6 +527,9 @@ internal sealed class PageComposer
                     _number = start - 1;
                 HangulPage(firstOfSection: true, section.Columns);
                 Body(section.Blocks);
+                // A floating table split across pages goes on onto pages of its own after the section's text.
+                while (_floatRests.Count > 0)
+                    NewPage();
                 if (s == document.Sections.Count - 1)
                     Endnotes();
             }
@@ -450,6 +580,7 @@ internal sealed class PageComposer
             _empty = true;
             _inStep = true;
             StartRegion(keep);
+            FloatParts();
         }
 
         private Page Current => _pages[^1];
@@ -480,6 +611,7 @@ internal sealed class PageComposer
             })
             {
                 WordCells = composer._styles is not null,
+                CollapseSpacing = composer._collapseSpacing,
             };
             // Text boxes laid out like characters stack their content as cells do.
             composer._layouter.Stack = tables.Stack;
@@ -532,6 +664,7 @@ internal sealed class PageComposer
                     HangulPage();
                 else if (paragraph.ColumnBreakBefore && !_columnEmpty)
                 {
+                    _columnBroken = true;
                     // 한글's own column break: its stored places, measured from the column's top, hold again.
                     NextColumn();
                     _hangulStart = (_pages.Count, _column);
@@ -641,8 +774,9 @@ internal sealed class PageComposer
             // Filee's rows are not 한글's unless the table is as high as 한글's (its line for it, else its stored size);
             // else the stored places hold again on 한글's next page.
             _inStep = _inStep && TableLayout.AsStored(table, box.Height, line);
-            // A table set as a character is centred or set right with its outer margins, like a character that wide.
-            var shift = (table.AsCharacter && !table.RightToLeft
+            // A table is centred or set right with its outer margins (한글 바깥 여백), as one set as a character is, like
+            // a character that wide; one placed at its paragraph (not as a character) too, as tables in cells already are.
+            var shift = (!table.RightToLeft
                 ? table.Align switch
                 {
                     HAlign.Center => (margin.Left - margin.Right) / 2f,
@@ -781,6 +915,39 @@ internal sealed class PageComposer
             return fresh.Lines.Count == 0 ? null : fresh;
         }
 
+        /// <summary>Paragraph boxes laid out with their lines beside objects (Wrapped, Rewrap).</summary>
+        private readonly HashSet<ParagraphBox> _wrapped = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>
+        /// The paragraph's lines from line <paramref name="from"/> on laid out anew in the column it just went on to,
+        /// when they were laid out beside objects in the column before or objects text goes around are in the way here
+        /// (a split floating table going on at the column's top): beside those, else across the column. Null when they
+        /// stay: 한글's stored lines, a paragraph with a border, one starting here with objects of its own to place.
+        /// </summary>
+        private ParagraphBox? Rewrap(HParagraph paragraph, ParagraphBox box, int from)
+        {
+            if (box.StoredLines || box.Border is not null || from >= box.Lines.Count
+                || from == 0 && FloatingObjects.Of(paragraph).Any(o => o.Anchor.Wrap is "SQUARE" or "TOP_AND_BOTTOM"))
+                return null;
+            var top = _y;
+            var objects = InTheWay();
+            var beside = objects.Any(o => o.Wrap == "SQUARE" && o.Bounds.Bottom > top + Epsilon);
+            if (!beside && !_wrapped.Contains(box))
+                return null;
+            var left = ColumnEdges.Left;
+            LineRoom Beside(float y, float height)
+            {
+                var (at, spans) = Room(objects, top + y, height);
+                return new LineRoom(at - top, spans?.ConvertAll(s => (s.Start - left, s.End - left)));
+            }
+            var fresh = Layout(paragraph, ColumnWidth, box.Marker, beside ? Beside : null, from: box.Lines[from].Start);
+            if (fresh.Lines.Count == 0)
+                return null;
+            if (beside)
+                _wrapped.Add(fresh);
+            return fresh;
+        }
+
         /// <summary>Puts a paragraph's lines into columns and pages from the current position on.</summary>
         /// <param name="opens">The paragraph starts its border's box (see BoxBorder).</param>
         /// <param name="closes">The paragraph ends its border's box.</param>
@@ -806,6 +973,8 @@ internal sealed class PageComposer
             }
             // Lines laid out anew from a line on, for a column of another width, go on from the paragraph's middle.
             var resumed = false;
+            // The paragraph went on to the next column: its rest may need laying out anew around the objects there.
+            var moved = false;
             for (var i = 0; i < lines.Count;)
             {
                 _guard.Paragraph();
@@ -814,6 +983,12 @@ internal sealed class PageComposer
                     resumed |= i > 0;
                     (box, lines, i) = (refit, refit.Lines, 0);
                 }
+                else if (moved && Rewrap(paragraph, box, i) is { } rewrapped)
+                {
+                    resumed |= i > 0;
+                    (box, lines, i) = (rewrapped, rewrapped.Lines, 0);
+                }
+                moved = false;
                 var stored = box.StoredLines && _inStep;
                 if (stored && lines[i].StoredPageStart && !_empty)
                     HangulPage();
@@ -875,6 +1050,7 @@ internal sealed class PageComposer
                         }
                         NextColumn();
                         _inStep = false;
+                        moved = true;
                         continue;
                     }
                     fit = 1; // a line higher than the column: placed anyway
@@ -892,6 +1068,7 @@ internal sealed class PageComposer
                     if (!(stored && stays))
                     {
                         NextColumn();
+                        moved = true;
                         // A break Filee made, not 한글: the stored places no longer hold until 한글's next page.
                         if (!stays)
                             _inStep = false;
@@ -950,7 +1127,7 @@ internal sealed class PageComposer
                 var height = line.Height;
                 under = (content, x, top, columnTop) => content.Draw(canvas => slice.Draw(canvas, x, top, height, columnTop));
             }
-            Put(0, line.Height, line.Draw, under);
+            Put(0, line.Height, line.Draw, under, box.Border is null && !box.StoredLines && !line.Beside ? (paragraph, box, line) : null);
             _row = along ? _row with { Bottom = Math.Max(_row.Bottom, _y + line.Height) } : (_pages.Count, _column, _y, _y + line.Height);
             _y = _row.Bottom;
             if (box.Border is not null)
@@ -1058,7 +1235,9 @@ internal sealed class PageComposer
                 var (at, spans) = Room(objects, top + y, height);
                 return new LineRoom(at - top, spans?.ConvertAll(s => (s.Start - left, s.End - left)));
             }
-            return Layout(paragraph, ColumnWidth, box.Marker, Beside);
+            var wrapped = Layout(paragraph, ColumnWidth, box.Marker, Beside);
+            _wrapped.Add(wrapped);
+            return wrapped;
         }
 
         /// <summary>The page's areas for anchors, with the current column; a paragraph at <paramref name="top"/> as wide as the column.</summary>
@@ -1139,25 +1318,55 @@ internal sealed class PageComposer
             return result;
         }
 
-        /// <summary>A Word floating table laid out, placed as a floating object.</summary>
-        private sealed class FloatingTable(TableBox box) : HObject
+        /// <summary>The rows of a Word floating table (all, or its part on one page), placed as a floating object.</summary>
+        private sealed class FloatingTable(IReadOnlyList<RowBox> rows) : HObject
         {
-            public TableBox Box { get; } = box;
+            public IReadOnlyList<RowBox> Rows { get; } = rows;
         }
+
+        /// <summary>A Word floating table split across pages: the rows still to place, from the next column's top (FloatParts).</summary>
+        private sealed class FloatRest(HTable table, HAnchor anchor, TableBox box)
+        {
+            public HTable Table { get; } = table;
+            public HAnchor Anchor { get; } = anchor;
+            public TableBox Box { get; } = box;
+
+            /// <summary>The row groups (rows bound by cells spanning them) and the first row of each.</summary>
+            public List<(int First, IReadOnlyList<RowBox> Rows)> Groups { get; } =
+                [.. box.Groups().Select(g => (g.First, (IReadOnlyList<RowBox>)[.. box.Rows.Skip(g.First).Take(g.Count)]))];
+
+            /// <summary>The next group to place.</summary>
+            public int Next { get; set; }
+
+            /// <summary>The rest of a row split at the bottom of the last part, placed before the next group.</summary>
+            public RowBox? Carry { get; set; }
+
+            /// <summary>Across: from the column's left edge (anchored to the column) or on the page.</summary>
+            public float X { get; init; }
+            public bool FromColumn { get; init; }
+
+            public bool Done => Carry is null && Next >= Groups.Count;
+        }
+
+        /// <summary>The floating tables going on at the top of the next column.</summary>
+        private readonly List<FloatRest> _floatRests = [];
 
         /// <summary>
         /// Places a Word floating table where its anchor puts it: down from the top of the paragraph after it (laid out
         /// ahead into <paramref name="next"/>, so it keeps its list number), never above the text before it, or against
-        /// the page. Text after it goes around it (as around a picture wrapped square). One that moves with the text and
-        /// would run past the column's bottom goes to the next column with its paragraph. False for a table taller than a
+        /// the page. Text after it goes around it (as around a picture wrapped square). With w:tblOverlap never it goes
+        /// down below the floating tables it would overlap. One that moves with the text and would run past the
+        /// column's bottom goes to the next column with its paragraph when it fits in one; a longer one is split as
+        /// Word splits it: the rows that fit stay, the rest goes on at the top of the next columns (FloatParts), its
+        /// header rows repeated, and the text there goes around it too. False for a table against the page taller than a
         /// column, which stays in the flow (split by its rows).
         /// </summary>
         private bool Float(HTable table, HAnchor anchor, TableBox box, List<HBlock> blocks, int index, ref object? next)
         {
             var (width, height) = (box.Width, box.Height);
-            if (height > ColumnHeight + Epsilon || width <= 0)
-                return false;
             var withText = anchor.VerticalRelativeTo == "PARA";
+            if (width <= 0 || !withText && height > ColumnHeight + Epsilon)
+                return false;
             HParagraph? paragraph = null;
             ParagraphBox? following = null;
             if (index + 1 < blocks.Count && blocks[index + 1] is HParagraph after && !TableLayout.HoldsTable(blocks, index + 1))
@@ -1171,22 +1380,141 @@ internal sealed class PageComposer
             {
                 var top = _y + (_columnEmpty || following is null ? 0 : following.SpaceBefore);
                 area = FloatingObjects.Place(anchor, width, height, Frame(top, paragraph));
-                if (!withText)
-                    break;
-                var y = Math.Max(_y, top + anchor.VerticalOffset / 100f);
-                area = new SKRect(area.Left, y, area.Right, y + height);
-                if (_columnEmpty || area.Bottom <= Bottom + Epsilon)
+                if (withText)
+                {
+                    var y = Math.Max(_y, top + anchor.VerticalOffset / 100f);
+                    area = new SKRect(area.Left, y, area.Right, y + height);
+                }
+                if (!anchor.AllowOverlap)
+                    area = Unlapped(area);
+                if (!withText || _columnEmpty || area.Bottom <= Bottom + Epsilon || height > ColumnHeight + Epsilon)
                     break;
                 NextColumn();
                 _inStep = false;
             }
-            Current.Objects.Add(FloatingObjects.Placed(new FloatingTable(box) { OuterMargin = table.FloatDistance }, anchor, area, _objects++));
+            var rest = new FloatRest(table, anchor, box)
+            {
+                X = anchor.HorizontalRelativeTo is "COLUMN" or "PARA" ? area.Left - ColumnLeft(_column) : area.Left,
+                FromColumn = anchor.HorizontalRelativeTo is "COLUMN" or "PARA",
+            };
+            if (!withText || area.Bottom <= Bottom + Epsilon)
+            {
+                Current.Objects.Add(FloatingObjects.Placed(new FloatingTable(box.Rows) { OuterMargin = table.FloatDistance }, anchor, area, _objects++));
+                rest.Next = rest.Groups.Count;
+            }
+            else
+            {
+                FloatPart(rest, area.Left, area.Top, "SQUARE");
+            }
+            if (!rest.Done)
+                _floatRests.Add(rest);
             for (; _numberedChecked < _numbered.Count; _numberedChecked++)
             {
                 if (!_notesPlaced.Contains(_numbered[_numberedChecked]))
                     AddNote(_numbered[_numberedChecked]);
             }
             return true;
+        }
+
+        /// <summary>
+        /// A floating table's area moved down below the floating tables on the page it would overlap (w:tblOverlap
+        /// never), with their distance from the text.
+        /// </summary>
+        private SKRect Unlapped(SKRect area)
+        {
+            for (var round = 0; round < Current.Objects.Count; round++)
+            {
+                var inTheWay = Current.Objects.FirstOrDefault(o => o.Object is FloatingTable && o.Bounds.Left < area.Right - Epsilon && o.Bounds.Right > area.Left + Epsilon
+                    && o.Bounds.Top < area.Bottom - Epsilon && o.Bounds.Bottom > area.Top + Epsilon);
+                if (inTheWay is null)
+                    break;
+                area.Offset(0, inTheWay.Bounds.Bottom - area.Top);
+            }
+            return area;
+        }
+
+        /// <summary>
+        /// Puts the rows of a split floating table that fit from <paramref name="top"/> down to the column's bottom into
+        /// one floating part at <paramref name="left"/>: whole groups, a row that may split cut at the bottom, at least
+        /// one group (one taller than a column is placed as it is). A part after the first repeats the header rows.
+        /// </summary>
+        private void FloatPart(FloatRest rest, float left, float top, string wrap)
+        {
+            var box = rest.Box;
+            var header = rest.Next > 0 || rest.Carry is not null ? box.Rows.Take(box.HeaderRows).ToList() : [];
+            if (rest.Next < rest.Groups.Count && rest.Groups[rest.Next].First < box.HeaderRows)
+                header.Clear();
+            var rows = new List<RowBox>(header);
+            var height = header.Sum(r => r.Height);
+            while (!rest.Done)
+            {
+                _guard.Paragraph();
+                IReadOnlyList<RowBox> group = rest.Carry is { } carried ? [carried] : rest.Groups[rest.Next].Rows;
+                var needed = group.Sum(r => r.Height);
+                var room = Bottom - top - height;
+                var empty = rows.Count == header.Count;
+                if (needed <= room + Epsilon || empty && room <= 0)
+                {
+                    rows.AddRange(group);
+                    height += needed;
+                    Advance();
+                    if (needed > room + Epsilon)
+                        break;
+                    continue;
+                }
+                // A row splits inside its cells where it may (as in PlaceTable), or anyway in an empty part.
+                var splits = group.Count == 1 && (!group[0].CantSplit && box.PageBreak is not (HTablePageBreak.Cell or HTablePageBreak.None) || empty);
+                if (splits && TableLayout.Split(group[0], room) is var (part, remaining))
+                {
+                    rows.Add(part);
+                    height += part.Height;
+                    Advance();
+                    rest.Carry = remaining;
+                    break;
+                }
+                if (empty)
+                {
+                    // Taller than the column and it can't split: placed as it is.
+                    rows.AddRange(group);
+                    height += needed;
+                    Advance();
+                }
+                break;
+            }
+            var anchor = rest.Anchor with { Wrap = wrap };
+            var area = new SKRect(left, top, left + box.Width, top + height);
+            Current.Objects.Add(FloatingObjects.Placed(new FloatingTable(rows) { OuterMargin = rest.Table.FloatDistance }, anchor, area, _objects++));
+
+            void Advance()
+            {
+                if (rest.Carry is not null)
+                    rest.Carry = null;
+                else
+                    rest.Next++;
+            }
+        }
+
+        /// <summary>
+        /// The floating tables split across pages go on at the top of a new column, one under the other, the text there
+        /// going around them (a paragraph going on from the column before is laid out anew for it: Rewrap).
+        /// </summary>
+        private void FloatParts()
+        {
+            if (_floatRests.Count == 0)
+                return;
+            var rests = _floatRests.ToList();
+            _floatRests.Clear();
+            var top = _y;
+            foreach (var rest in rests)
+            {
+                FloatPart(rest, rest.FromColumn ? ColumnLeft(_column) + rest.X : rest.X, top, "SQUARE");
+                top = Current.Objects[^1].Area.Bottom;
+                if (!rest.Done)
+                    _floatRests.Add(rest);
+            }
+            // The column holds the parts: text that finds no room beside them goes on to the next column, where the
+            // tables go on in turn.
+            _empty = _columnEmpty = false;
         }
 
         /// <summary>Draws a page's floating objects, behind or in front of its text, lower z-order first.</summary>
@@ -1198,7 +1526,7 @@ internal sealed class PageComposer
             {
                 var layer = new PageContent(page.Content.Width, page.Content.Height);
                 if (item.Object is FloatingTable table)
-                    TableLayout.Draw(layer, table.Box.Rows, item.Area.Left, item.Area.Top);
+                    TableLayout.Draw(layer, table.Rows, item.Area.Left, item.Area.Top);
                 else
                     FloatingObjects.Draw(layer, item.Object, item.Area, (blocks, width) => Tables.Stack(blocks, width));
                 page.Content.Add(layer, item.Behind);
@@ -1256,7 +1584,7 @@ internal sealed class PageComposer
                 return layout;
             var marker = NoteText(note);
             var pieces = new List<Piece>();
-            float y = 0, height = 0;
+            float y = 0, height = 0, after = 0;
             var first = true;
             foreach (var paragraph in note.Blocks.OfType<HParagraph>())
             {
@@ -1265,7 +1593,8 @@ internal sealed class PageComposer
                 var own = first && paragraph.Inlines.SkipWhile(i => i is HNoteNumber)
                     .Any(i => i is HNoteNumber || i is HLink link && link.Content.Any(c => c is HNoteNumber));
                 var box = Layout(composer.Resolve(paragraph), _geometry.TextWidth, first && !own ? marker : null, noteNumber: own ? marker : null);
-                y += box.SpaceBefore;
+                // Word's paragraph spacing: the larger of the space after the paragraph before and this one's before.
+                y += composer._collapseSpacing && !first ? Math.Max(0, box.SpaceBefore - after) : box.SpaceBefore;
                 first = false;
                 foreach (var line in box.Lines)
                 {
@@ -1273,7 +1602,7 @@ internal sealed class PageComposer
                     height = y + line.TextHeight;
                     y += line.Height;
                 }
-                y += box.SpaceAfter;
+                y += after = box.SpaceAfter;
             }
             return _noteLayouts[note] = (pieces, height);
         }
@@ -1705,6 +2034,9 @@ internal sealed class PageComposer
                 LineSpacing = CodeSpacing,
                 Layout = (format.Layout ?? new HParaLayout()) with { LineHeight = HLineHeight.From(CodeSpacing) },
             };
+        // Word's paragraph spacing: the larger of this one's space after and the next one's space before goes between them.
+        if (_collapseSpacing && next is HParagraph following)
+            format = format with { After = HDocument.CollapsedAfter(format, following, _styles.Paragraph(following)) };
         // The style resolver leaves out a block quote's bar and background and Word's borders as the writers write them;
         // the paragraph keeps them to draw (BoxBorder).
         format = format with { LeftBar = paragraph.Format.LeftBar, Fill = paragraph.Format.Fill, Borders = paragraph.Format.Borders };

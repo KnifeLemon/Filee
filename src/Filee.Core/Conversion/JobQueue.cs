@@ -288,11 +288,13 @@ public sealed partial class JobQueue : IAsyncDisposable
         var archivers = _catalog.Ordered.OfType<IPdfArchiver>().ToList();
         var notArchived = false;
         string? refusal = null;
+        string? refusalDetail = null;
         var withoutFormFields = false;
         foreach (var pdf in outputs.Where(o => FormatRegistry.Detect(o)?.Id == "pdf"))
         {
             var outcome = PdfArchiveOutcome.NotArchived;
             string? why = null;
+            string? whyDetail = null;
             foreach (var archiver in archivers)
             {
                 try
@@ -301,7 +303,8 @@ public sealed partial class JobQueue : IAsyncDisposable
                 }
                 catch (ConversionRefusedException refused)
                 {
-                    why ??= refused.ErrorKey;
+                    if (why is null)
+                        (why, whyDetail) = (refused.ErrorKey, refused.Detail);
                     continue;
                 }
                 if (outcome != PdfArchiveOutcome.NotArchived)
@@ -310,7 +313,8 @@ public sealed partial class JobQueue : IAsyncDisposable
             if (outcome == PdfArchiveOutcome.NotArchived)
             {
                 notArchived = true;
-                refusal ??= why;
+                if (refusal is null)
+                    (refusal, refusalDetail) = (why, whyDetail);
             }
             withoutFormFields |= outcome == PdfArchiveOutcome.ArchivedWithoutFormFields;
         }
@@ -319,7 +323,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         {
             file.NoticeKey = "notice.pdfa_needs_ghostscript";
             file.NoticeReasonKey = refusal;
-            file.NoticeDetail = null;
+            file.NoticeDetail = refusalDetail; // what it is about, such as the font that is missing
         }
         else if (withoutFormFields)
         {

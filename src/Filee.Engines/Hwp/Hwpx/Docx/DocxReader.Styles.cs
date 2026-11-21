@@ -56,6 +56,12 @@ internal sealed partial class DocxReader
         public int? Left, Right, FirstLine, Hanging, Before, After, Line;
 
         /// <summary>
+        /// w:beforeAutospacing / w:afterAutospacing: the space is HTML's automatic one (see AutoSpace), not Before / After;
+        /// false once a layer gives its own space without it.
+        /// </summary>
+        public bool? BeforeAuto, AfterAuto;
+
+        /// <summary>
         /// Indents in hundredths of a character (w:leftChars ...), which Chinese and Japanese documents use. A
         /// non-zero value wins over the twips one; "0" means the twips value counts again.
         /// </summary>
@@ -132,8 +138,10 @@ internal sealed partial class DocxReader
             }
             if (pPr.Element(W + "spacing") is { } spacing)
             {
-                Before = Bool(spacing, "beforeAutospacing") == true ? 280 : Twips(spacing, "before") ?? Before;
-                After = Bool(spacing, "afterAutospacing") == true ? 280 : Twips(spacing, "after") ?? After;
+                Before = Twips(spacing, "before") ?? Before;
+                After = Twips(spacing, "after") ?? After;
+                BeforeAuto = Bool(spacing, "beforeAutospacing") ?? (Attr(spacing, "before") is not null ? false : BeforeAuto);
+                AfterAuto = Bool(spacing, "afterAutospacing") ?? (Attr(spacing, "after") is not null ? false : AfterAuto);
                 if (Twips(spacing, "line") is { } line)
                     (Line, LineRule) = (line, Attr(spacing, "lineRule") ?? "auto");
             }
@@ -593,8 +601,8 @@ internal sealed partial class DocxReader
             Left: HwpxUnits.FromTwips(left ?? 0),
             Right: HwpxUnits.FromTwips(right ?? 0),
             FirstLine: HwpxUnits.FromTwips(firstLine),
-            Before: HwpxUnits.FromTwips(p.Before ?? 0),
-            After: HwpxUnits.FromTwips(p.After ?? 0),
+            Before: HwpxUnits.FromTwips(p.BeforeAuto == true ? AutoSpace(before: true) : p.Before ?? 0),
+            After: HwpxUnits.FromTwips(p.AfterAuto == true ? AutoSpace(before: false) : p.After ?? 0),
             LineSpacing: lineSpacing ?? new HLineSpacing(HLineSpacingKind.Percent, (int)WordLineToHwpPercent),
             KeepWithNext: p.KeepNext ?? false,
             KeepLines: p.KeepLines ?? false,

@@ -1,7 +1,8 @@
 // Mutation fuzzing of the XPS reader (Xps/) and the drawing of what it read: the seed is a document written in code
-// (XpsBuilder) with what costs the reader the most (an obfuscated embedded font with Indices and cluster maps, PNG,
-// JPEG and TIFF pictures, gradients, tiled image and visual brushes, resources inline and in a remote dictionary,
-// clips, opacity masks, path geometry with every segment kind, links and link targets). DocumentFuzzer changes the
+// (XpsBuilder) with what costs the reader the most (an obfuscated embedded font with Indices and cluster maps, sideways
+// glyphs, PNG, JPEG, TIFF and JPEG XR pictures, a picture and colours read through an ICC profile, gradients, tiled
+// image and visual brushes, resources inline and in a remote dictionary, clips, opacity masks, path geometry with every
+// segment kind, triangle and round caps, links and link targets). DocumentFuzzer changes the
 // package, and every input must be read or refused with InvalidDataException / ConversionRefusedException, in time
 // and on a 1 MB stack. Run by FuzzHarness: a short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one,
 // FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
@@ -45,6 +46,8 @@ public class XpsFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             jpeg = builder.Image(image.ToByteArray(MagickFormat.Jpeg), "jpg");
             tiff = builder.Image(image.ToByteArray(MagickFormat.Tiff), "tif");
         }
+        var jpegXr = builder.Image(JpegXrTestFile.DcOnlyGrey(), "wdp");
+        var profile = builder.Part("Resources/srgb.icc", Pdf.SrgbProfile.Bytes);
         var remote = builder.Dictionary("<SolidColorBrush x:Key='Remote' Color='sc#1,0.2,0.4,0.6'/><PathGeometry x:Key='Shape' Figures='M 0,0 L 10,0 10,10 Z'/>");
         var stops = "<GradientStop Color='#FF0000' Offset='-0.5'/><GradientStop Color='#8000FF00' Offset='0.4'/><GradientStop Color='#0000FF' Offset='1.5'/>";
         builder.Page(
@@ -72,6 +75,10 @@ public class XpsFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             "<Glyphs.Fill><LinearGradientBrush MappingMode='Absolute' StartPoint='200,0' EndPoint='300,0'><LinearGradientBrush.GradientStops>" +
             $"{stops}</LinearGradientBrush.GradientStops></LinearGradientBrush></Glyphs.Fill></Glyphs>" +
             "<Glyphs FontUri='/Resources/missing.odttf' FontRenderingEmSize='12' OriginX='10' OriginY='280' UnicodeString='{}{fallback}' Fill='#FF0000'/>" +
+            $"<Glyphs FontUri='{font}' FontRenderingEmSize='14' OriginX='380' OriginY='20' UnicodeString='Filee' IsSideways='true' RenderTransform='0,1,-1,0,380,20' Fill='ContextColor {profile} 1,0.2,0.4,0.6'/>" +
+            $"<Path Data='M 230,100 L 270,100 270,140 230,140 Z' Fill='ContextColor /missing.icc 0.8,0,1,0,0,0.5'><Path.Stroke><ImageBrush ImageSource='{{ColorConvertedBitmap {png} {profile}}}' Viewbox='0,0,4,3' Viewport='0,0,8,6' TileMode='Tile'/></Path.Stroke></Path>" +
+            $"<Path Data='M 280,100 L 330,100 330,150 280,150 Z'><Path.Fill><ImageBrush ImageSource='{jpegXr}' Viewbox='0,0,16,16' Viewport='280,100,50,50'/></Path.Fill></Path>" +
+            "<Path Data='M 300,200 L 380,220' Stroke='#80000000' StrokeThickness='9' StrokeStartLineCap='Triangle' StrokeEndLineCap='Round' StrokeDashArray='2 1' StrokeDashCap='Triangle'/>" +
             "<mc:AlternateContent xmlns:mc='http://schemas.openxmlformats.org/markup-compatibility/2006'><mc:Choice Requires='x'/>" +
             "<mc:Fallback><Path Data='M 0,290 L 50,290' Stroke='#00FF00' RenderOptions.EdgeMode='Aliased'/></mc:Fallback></mc:AlternateContent>",
             400, 300);

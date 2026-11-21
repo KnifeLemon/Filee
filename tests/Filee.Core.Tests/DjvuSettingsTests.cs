@@ -34,4 +34,28 @@ public class DjvuSettingsTests
         Assert.DoesNotContain("djvu", donut); // the user's own donut has it
         Assert.Contains("djv", donut);
     }
+
+    [Fact]
+    public void Version_116_donuts_learn_iw4_and_iw44_without_taking_custom_claims()
+    {
+        var presets = BuiltInData.CreatePresets();
+        var profiles = BuiltInData.CreateProfiles();
+        var id = ProfileSelector.Select(profiles, ["photo.iw44"])!.Id;
+        Assert.Equal(ProfileSelector.Select(profiles, ["book.djvu"])!.Id, id);
+        var donut = profiles.Single(p => p.Id == id).Extensions;
+        donut.Remove("iw4");
+        donut.Remove("iw44");
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(115, presets, profiles));
+        Assert.Contains("iw4", donut);
+        Assert.Contains("iw44", donut);
+        Assert.False(SettingsMigrations.ApplyToLibrary(115, presets, profiles));
+
+        donut.Remove("iw4");
+        donut.Remove("iw44");
+        profiles.Insert(0, new ToolbarProfile { Id = "my-pictures", Name = "Wavelet pictures", Extensions = ["IW44"] });
+        Assert.True(SettingsMigrations.ApplyToLibrary(115, presets, profiles));
+        Assert.DoesNotContain("iw44", donut); // the user's own donut has it
+        Assert.Contains("iw4", donut);
+    }
 }

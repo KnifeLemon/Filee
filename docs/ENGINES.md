@@ -36,7 +36,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, PDB, PML, TCR, RB, SNB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/PDB/PML/TCR/RB/SNB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); **mind maps (FreeMind / Freeplane MM, XMind) → PDF, SVG, PNG** drawn as maps, a page per sheet ([Mind maps](#mind-maps)); **SVG, EMF, WMF, VSDX, PDF, slide decks, whiteboards and mind maps → ODG, OTG, FODG** ([ODG output](#odg-output)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
-| **DjVu** | built in | **DjVu (.djvu, .djv; one page, bundled or indirect) → PDF** (the layers kept: background JPEG, 1-bit JBIG2 / G4 masks; the hidden text searchable; links and bookmarks) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
+| **DjVu** | built in | **DjVu (.djvu, .djv; one page, bundled or indirect; standalone IW44 pictures .iw4, .iw44) → PDF** (the layers kept: background JPEG, 1-bit JBIG2 / G4 masks, one shared JBIG2 dictionary per DjVu dictionary; the hidden text searchable; links, bookmarks, initial zoom and metadata) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
@@ -2648,9 +2648,21 @@ higher, at most 600 and 40 megapixels; Flate, or JPEG when that is less than hal
 file's result says so (`notice.ps_pages_as_pictures`; the app's log names the page and the reason). That is a page
 with transparency (constant alpha below 1, a soft mask in the graphics state, a blend mode other than Normal, a soft
 mask on a picture with partial transparency, a transparent annotation), text used as a clipping path (render modes 4–7),
-pictures PostScript can't decode (JBIG2, JPEG 2000, Lab and DeviceN pictures), fonts the writer can't place
+pictures PostScript can't decode (JBIG2 with features Filee's decoder leaves out, JPEG 2000, Lab and DeviceN pictures), fonts the writer can't place
 (vertical writing, predefined CMaps, CID fonts that aren't embedded), a damaged content stream, and a page past the
 limits below. A PDF PDFsharp can't open at all has every page drawn as a picture, when PDFium can draw it.
+
+**JBIG2 pictures** (scanned pages, DjVu masks) are decoded by Filee's own JBIG2 decoder (`Djvu/Jbig2Decoder.cs`, from
+ITU-T T.88: symbol dictionaries and text regions with refinement and aggregation, generic regions of all four
+templates with adaptive pixels and typical prediction or MMR, generic refinement regions, striped pages, the image's
+`/JBIG2Globals`). A JBIG2 image mask becomes an `imagemask` of its own bits, CCITT G4-coded when that is smaller than
+Flate (a text page is a few tens of KB and stays sharp at any zoom, where it used to be a 300 dpi picture of the
+page). Huffman-coded dictionaries and text regions, pattern and halftone regions, intermediate regions and extended
+templates are left to the picture of the page. A CCITT G4 explicit mask (`/Mask` of a picture) is decoded too, so a
+picture shown through it stays an ImageType 3 image. The decoder's limits (`Jbig2Limits`): 150 million pixels per
+bitmap, 400 million for all of a stream's bitmaps together, 2 million symbols, 4 million symbol instances per text
+region, 1 million segments, drawing bounded to four times the pixel limit; past them the file is refused with
+`error.document_too_large` / `error.document_too_complex`.
 
 **Limits** (hostile input): streams unpack to at most 64 MB (`DocumentLimits.MaxPartBytes`; a picture to the size
 it needs), pictures of at most `MaxPicturePixels`, 4,000,000 operators per page (forms counted every time they are
@@ -2819,12 +2831,33 @@ next.
   - one `GTS_PDFA1` output intent: a CMYK or RGB PDF/A intent the PDF already has for the device colours it draws in
     (a PDF/X file keeps its CMYK profile), else **sRGB made in code** (`SrgbProfile`, below); PDFsharp's page
     transparency groups get the intent's colour space;
+  - the other device space made **device independent** (ISO 19005-2 6.2.4.3): device CMYK under an RGB intent (no CMYK
+    intent of its own, or CMYK and RGB together) and device RGB under a CMYK one. Where an object names it (pictures,
+    shadings, groups, colour space resources, bases and alternates) it names an ICCBased space instead, and every
+    resource dictionary (and a page or form that draws in it without one) gets that space as `DefaultCMYK` or
+    `DefaultRGB` for `k`/`K`/`rg`/`RG` and inline pictures. The CMYK profile is **made in code** (`CmykProfile`): an ICC
+    2.1 input profile whose A2B0 table (7 points a channel, ~15 KB) is the plain conversion viewers use for device CMYK
+    without a profile (R = (1 − C)(1 − K) …, then sRGB → Lab D50), so the PDF/A looks as the PDF did in pdf.js or
+    PDFium; no profile file of unclear licence is shipped. Chosen over converting the colours to RGB because pictures
+    (CMYK JPEGs) keep their data and nothing in the content has to be rewritten;
   - no encryption, no LZW (unpacked and deflated), no external stream data; graphics states lose `TR`, `TR2` (but
     `/Default`), `HT`, `HTO`, unknown `RI` and blend modes; pictures lose `Alternates`, `OPI`, `Interpolate`; forms
     lose `OPI`, `PS`, `Ref`;
   - annotations: 3D, sound, screen, movie, rich media, file attachments and hidden ones go; the rest print and keep
     only their normal appearance (a button's single stream becomes its one state, a state set outside buttons the
-    state shown); popups lose flags PDF/A forbids;
+    state shown); popups lose flags PDF/A forbids. One **without an appearance gets one drawn** (`PdfAAppearances`) from
+    its entries: shapes, lines, ink, text markup (QuadPoints), carets, notes, stamps, free text (in its DA font,
+    wrapped), a link's visible border; check boxes and radio buttons get Off and on states with their MK mark as a
+    path, text and choice fields their value in the field's DA font and quadding, push buttons their caption,
+    signature fields an empty box. Text uses the form's DA font when it can encode it, else Helvetica, and is embedded
+    like any font. Links, popups and annotations of no width and no height need none;
+  - **fonts that aren't embedded are embedded** (`PdfAFonts`) from the installed fonts: by the PDF's name and its
+    metric-compatible replacements (Helvetica → Arial → Liberation Sans, Times → Times New Roman → Liberation Serif,
+    Courier → Courier New → Liberation Mono), in the style asked for, and only when the widths the PDF gives (or the
+    standard font's own metrics) match the installed font's for the codes drawn. The program is a subset whose
+    advances are the PDF's widths; simple fonts become symbolic TrueType fonts with a (3,0) cmap of their codes and a
+    ToUnicode map, Identity-encoded Type 0 fonts CIDFontType2 with a CIDToGIDMap (CIDs through their ToUnicode map, or
+    as glyph IDs for a TrueType CIDFont found by its own name). A font listed but never drawn is left as it is;
   - JavaScript, launch and the other forbidden actions (also in `/Next` chains, open actions, outlines), every `AA`,
     the actions of fields and widgets, XFA, `NeedAppearances`, embedded files, alternate presentations, `PresSteps`,
     `Requirements`, `Collection`, other `Perms` than UR3/DocMDP, XMP of pages and pictures; optional-content
@@ -2838,19 +2871,26 @@ next.
   creator tool, producer and dates the same in both (text cleaned of what XML can't carry, so both always match),
   the trailer's `/ID` kept, `/Prev` to PDFsharp's table. Custom information entries and `Trapped` are dropped.
 
-  It **refuses** (`pdfa.reason.*`, the PDF left as it is) a font drawn with that isn't embedded (any font listed in a
-  `/Resources` dictionary; a form's `/DR` doesn't count), device CMYK without a CMYK intent or CMYK and RGB together,
-  an annotation or field without its own appearance (but links, popups, zero-size ones), XFA-only forms, PostScript
+  It **refuses** (`pdfa.reason.*`, the PDF left as it is) a font drawn with that isn't embedded and has no installed
+  match (a predefined CMap such as UniJIS-UCS2-H included; the font's name goes into the notice), an annotation it
+  can't draw an appearance for (text its font can't encode), XFA-only forms, PostScript
   XObjects, external stream data, LZW mixed with filters PDFsharp can't unpack, inline pictures with LZW or
   interpolation, content streams it can't read, a password-protected PDF, more than `MaxObjects` objects or more
   content tokens than `PdfFontUses` reads (`error.document_too_complex`), and more content bytes than it reads
   (`error.document_too_large`).
 
-  **Not checked**: that embedded fonts hold every glyph drawn and their widths match the dictionary, TrueType
-  symbolic/non-symbolic encodings and cmaps, the document's own ICC-based colour spaces, JPEG 2000 specifics, halftone
-  details beyond dropping `HT`, the implementation limits (string, name and number sizes, `q` nesting), page-level
-  colour spaces through `DefaultCMYK`, and content stream operators outside ISO 32000-1. Conformance is tested by a
-  structural check of the rules above (`tests/Filee.Engines.Tests/PdfA2bChecks.cs`); veraPDF isn't run.
+  **Not checked**: that fonts the PDF embedded itself hold every glyph drawn and their widths match the dictionary,
+  their TrueType symbolic/non-symbolic encodings and cmaps, the document's own ICC-based colour spaces, JPEG 2000
+  specifics, halftone details beyond dropping `HT`, the implementation limits (string, name and number sizes, `q`
+  nesting), and content stream operators outside ISO 32000-1. Conformance is tested by an in-test checker of the
+  PDF/A-2b clauses (`tests/Filee.Engines.Tests/PdfA2bChecks.cs`, numbered as veraPDF's published rule list): the file
+  structure of every incremental update (cross-reference offsets, `/Prev`, object and stream syntax, stream lengths,
+  the same file ID), one XMP stream with `pdfaid` 2 B of predefined schemas matching the document information,
+  output intent and ICCBased profiles (header, class, colour space, required tags), device colours against the intent
+  and the `Default` spaces of the resources content is drawn with, transparency groups, no encryption, JavaScript or
+  LZW (inline pictures too), TrueType widths against the dictionary, symbolic/non-symbolic encodings and cmaps and
+  `.notdef` for the codes drawn, ToUnicode streams, annotations, forms, actions and optional content. It runs on the
+  renderer's PDFs, on PDFs the job queue converts, and on PDF/A made from existing PDFs; veraPDF isn't run.
 - **sRGB profile** (`Pdf/SrgbProfile.cs`): built from the numbers of IEC 61966-2-1 rather than shipped: primaries
   and D65 adapted to D50 with the Bradford transform, the sRGB curve sampled at 1024 points shared by the three
   channels, an ICC version 2.1 display profile of about 2.3 KB with the description "sRGB IEC61966-2.1" and the
@@ -3265,32 +3305,41 @@ output's SVG writer.
   first Choice).
 - **Geometry:** the abbreviated syntax (F, M, L, H, V, C, Q, S, A, Z, relative forms) and PathGeometry with PathFigure
   (IsFilled, IsClosed), PolyLine, PolyBezier, PolyQuadraticBezier and Arc segments (IsStroked), with its Transform.
-  Strokes: thickness, joins, miter limit, start / dash caps, dash arrays and offsets.
-- **Brushes:** SolidColorBrush (`#RRGGBB`, `#AARRGGBB`, scRGB, ContextColor without its ICC profile),
+  Strokes: thickness, joins, miter limit, dash arrays and offsets, and flat, round, square and triangle caps, each end
+  its own (Skia's cap when both ends share a flat, round or square one, else caps joined to a flat-ended outline).
+- **Brushes:** SolidColorBrush (`#RRGGBB`, `#AARRGGBB`, scRGB, ContextColor through its grey, RGB or CMYK ICC profile,
+  sampled once into a lattice by ImageMagick's Little CMS, else by ECMA-388's rules for a colour without one),
   LinearGradientBrush and RadialGradientBrush (spread methods, stops outside 0–1 cut there), ImageBrush (PNG, JPEG,
-  GIF, BMP by Skia, TIFF by ImageMagick; sized by the picture's resolution, 96 dpi when it has none; `TileMode` none
-  draws the picture as it is, so a PDF keeps the JPEG) and VisualBrush (untiled: drawn as vector; tiled: a picture
-  shader, which Skia's PDF writer rasterises).
+  GIF, BMP by Skia, TIFF by ImageMagick, JPEG XR / HD Photo by Filee's own decoder, `JpegXr/`, written from ITU-T
+  T.832; sized by the picture's resolution, 96 dpi when it has none; its own ICC profile, or a ColorConvertedBitmap's,
+  brings it into sRGB; `TileMode` none draws the picture as it is, so a PDF keeps the JPEG) and VisualBrush (untiled:
+  drawn as vector; tiled: tile by tile as vectors, flipped as TileMode says, up to 4,096 tiles and 100,000 elements,
+  else one tile drawn into a picture of at most 1,024 pixels a side and repeated).
 - **Glyphs:** embedded fonts, obfuscated `.odttf` ones restored (the first 32 bytes XORed with the GUID of the part
   name) and read by Filee's SFNT parser before Skia sees them; `Indices` (glyph, advance, offsets, cluster maps),
-  `UnicodeString` (with the `{}` escape), BidiLevel (odd: right to left), StyleSimulations (bold and italic drawn
-  synthetically), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
+  `UnicodeString` (with the `{}` escape), BidiLevel (odd: right to left), IsSideways (each glyph turned about its top
+  centre, vertical advances from vmtx or the OS/2 ascender and descender; still text in the PDF), StyleSimulations
+  (bold and italic drawn synthetically), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
   glyph item of the page model (the PDF writer subsets its font and maps its text); others are drawn by
-  `XpsPainter` as text blobs of the whole font. A run whose font is missing or damaged draws its text with an installed
-  font.
-- **Left out and named in the file's result** (`notice.renderer_left_out` with `.pictures`): JPEG XR (HD Photo)
-  pictures and pictures that are damaged or too large. Not drawn: IsSideways glyphs are upright, the Triangle cap is
-  flat, scRGB gradients interpolate in sRGB, ICC profiles aren't applied; print tickets, signatures, document
-  structure and story fragments aren't read.
+  `XpsPainter` as text blobs of the whole font. A run whose font is missing or damaged (also: its glyphs can't be
+  subset for the PDF) draws its text with an installed font.
+- **Left out and named in the file's result** (`notice.renderer_left_out` with `.pictures` and `.fonts`): pictures
+  that are damaged or too large, and embedded fonts that are missing or damaged (their runs drawn with another font).
+  Not drawn: scRGB gradients interpolate in sRGB; print tickets, signatures, document structure and story fragments
+  aren't read.
 - **Hostile input:** parts through `DocumentPackage` (`DocumentLimits`: part and package sizes counted while
   unpacking, inflate ratio, XML depth and elements, joined pieces included); `XpsLimits`: pages (`MaxPages`), canvas
   and visual brush nesting (64, which also ends a visual brush that draws itself), elements (2 million), points of all
   paths and glyphs (40 million), one path's data (32 M characters), dash patterns (1,024 entries, longer ones are
   drawn solid), page sides cut at 200 inches; pictures within `MaxPartBytes` and `MaxPicturePixels` (read from the
-  header before decoding). Refusals are `error.document_too_complex`. `XpsFuzzTests` fuzzes the reader and the
-  drawing together.
+  header before decoding; a JPEG XR picture also within 2^27 samples and the bits its size needs); ICC profiles
+  within 4 MB, 64 per document (`XpsLimits.MaxProfileBytes`, `MaxProfiles`). Refusals are
+  `error.document_too_complex`. `XpsFuzzTests` fuzzes the reader and the drawing together, `JpegXrFuzzTests` the
+  JPEG XR decoder.
 - Tests: `XpsTests` (packages built in code by `XpsBuilder`, checked as pixels at 96 dpi, one pixel per XPS unit, and
-  as PDF text), `XpsSettingsTests` (settings v105: existing documents donuts learn `.xps` and `.oxps`). Compared by eye
+  as PDF text), `JpegXrDecoderTests` (pictures of Windows' own encoder in every overlap mode, 4:2:0 / 4:2:2 / 4:4:4,
+  spatial and frequency order, tiles, planar and interleaved alpha, compared with Windows' decoding: exact except the
+  chroma upsampling the spec leaves open), `XpsSettingsTests` (settings v105: existing documents donuts learn `.xps` and `.oxps`). Compared by eye
   with WPF's own rendering of documents its XPS writer saved (text in Latin, Korean, Japanese, Arabic and Hebrew,
   gradients, pictures at 96 and 192 dpi, dashes, transparency, clips, tiled image and visual brushes, opacity masks).
 
@@ -4713,7 +4762,8 @@ SRT or SAMI file in CP949 comes out as UTF-8).
 ## DjVu
 
 Built in (#346), in `Djvu/`, written from the DjVu v3 specification (engine id `djvu`, format id `djvu` for `.djvu`
-and `.djv`, documents donut). `DjvuConverter` turns a DjVu document into **PDF** (every page) and into **PNG, JPG and
+and `.djv`, and `.iw4` / `.iw44` for standalone IW44 pictures, documents donut; settings v116 teaches existing
+libraries the two picture extensions). `DjvuConverter` turns a DjVu document into **PDF** (every page) and into **PNG, JPG and
 TIFF** pictures of its pages (the PDF options' page range, each page at its own resolution, then the image options;
 TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from the PDF.
 
@@ -4731,7 +4781,11 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   `Djbz` (in the page or an included file; a dictionary may build on another; decoded once per file and kept for the
   next pages) or the G4 mask `Smmr` (whole or in stripes, black and white possibly swapped), the background `BG44` (or
   `BGjp`), foreground colours `FG44` (or `FGjp`) or the palette `FGbz` (colours and a colour per shape), hidden text
-  `TXTz` / `TXTa`, and the hyperlinks of the annotations `ANTa` / `ANTz` (the page's and its included files').
+  `TXTz` / `TXTa` (a zone above the line level without smaller zones — a page whose text has only its page zone — is
+  cut into its text's lines, stacked evenly down its box), and the annotations `ANTa` / `ANTz` (the page's and its
+  included files', the page's own first): hyperlinks, the initial zoom and display mode, the viewer's background colour
+  and metadata. A standalone IW44 picture (`FORM:PM44` in colour, `FORM:BM44` in grey) reads as a one-page document at
+  100 dpi whose page is the picture.
 - **Decoders:** the ZP-coder (the specification's probability table), BZZ (block sort transform, move-to-front with
   the specification's rank estimator), JB2 (all record types: new shapes coded directly, refinements against library
   shapes, copies, non-mark data, comments, dictionary requests and number-coder resets), IW44 (luminance and
@@ -4744,6 +4798,11 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   when they are `http`, `https`, `ftp` or `mailto` addresses (a URI action), so `javascript:`, `file:`, relative files
   and the like are no links. The bookmarks become the PDF outline (the first level open, at most 32 levels; deeper
   ones go in at the 32nd); a bookmark Filee can't follow keeps its title without an action.
+- **Initial view and metadata** (the first page's annotations): `(zoom dN)` becomes the PDF's open action at N %
+  (`/XYZ`), `width` `/FitH`, `page` and `stretch` `/Fit`, `one2one` the zoom that shows one page pixel per pixel of a
+  96 dpi screen; `(metadata (Title …) (Author …) (Subject …) (Keywords …))` fills the document information. The display
+  mode (`color`, `bw`, `fore`, `back`) and `(background #RRGGBB)` — the colour of the viewer around the page — have
+  no PDF counterpart and are read but not written (the PDF keeps every layer).
 - **Composition:** the background scaled up to the page (bilinear, by the reduction its size gives), then each mask
   pixel in its foreground colour (the FG44 picture, the shape's palette colour, or black); white without a background.
 - **PDF:** the layers stay layers (`DjvuPdfWriter`), so a scanned book stays small: the background as a JPEG at its
@@ -4753,7 +4812,14 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   all MQ-coded — symbol heights and widths, generic template 0 bitmaps, strips of four rows, symbol ids), **CCITT G4**
   (`/CCITTFaxDecode`, `/K -1`), or **Flate** (finely dithered pictures neither packs well). A text page's mask is
   about the DjVu file's own size: the DjVu 3 specification (472 KB) went from 6.0 MB to 1.45 MB, a 115-page scanned
-  book (732 KB) from 13.9 MB to 1.5 MB. The masks draw exactly as before (checked pixel for pixel with PDFtoImage). A page with more than 64 palette colours is one JPEG. The hidden
+  book (732 KB) from 13.9 MB to 1.5 MB. The masks draw exactly as before (checked pixel for pixel with PDFtoImage).
+  Pages whose masks build on the same shared dictionary (`Djbz`) refer to one **`/JBIG2Globals`** stream holding its
+  shapes (`Jbig2Globals`, `Jbig2SharedShapes`): every shape has its symbol id when a page first builds on the
+  dictionary, and the stream, written last, holds the bitmaps of the shapes the pages drew — shapes they only refined
+  stay empty symbols of no width. The JBIG2 masks alone went from 446 KB to 319 KB for the DjVu 3 specification and
+  from 972 KB to 480 KB for the 115-page book. Every JBIG2 mask of 14 sample documents was decoded by pdf.js 2.10 (an
+  independent decoder, offline) and by Filee's own decoder and matched the page's mask bit for bit. A page with more
+  than 64 palette colours is one JPEG. The hidden
   text's lines and words become an invisible text layer (the OCR layer's glyphless font, `Ocr/OcrTextLayer.cs`), so
   the PDF can be searched and its text copied in any script.
 - **Limits** (`DjvuLimits`; pages, components, bytes and pixels refused with `error.document_too_large`, the rest
@@ -4765,12 +4831,18 @@ TIFF holds every page in one file). Other targets (DOCX, TXT, …) go on from th
   leave the page without links. Decoding is iterative (no recursion over files, zones, annotations or bookmarks) and
   checks cancellation.
 - **Left out:** JPEG 2000 layers (`BG2k`, `FG2k`) and JPEG layers Skia can't decode are counted as pictures left out
-  in the file's result. Not read: the other annotations (highlights, borders, background colour, zoom, metadata),
-  thumbnails, standalone IW44 files (`FORM:PM44`/`BM44`), and hidden text of a page with no zones below the page.
+  in the file's result. The DjVu v3 specification doesn't define `BG2k` / `FG2k`, and no DjVu encoder Filee knows
+  writes them (none of the sample documents has one), so they stay a name only. Not read: highlights and borders of
+  the annotations, and thumbnails (`TH44`; PDF viewers draw their own).
+- **EPS / PostScript:** DjVu → EPS goes through the PDF; the PostScript writer decodes the JBIG2 masks with Filee's
+  JBIG2 decoder and writes them as image masks of their bits (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)), so a DjVu page
+  stays vector-sharp and small instead of becoming a picture of the page.
 - Tests (`DjvuTests.cs`, `DjvuFuzzTests.cs`) build every file in code: `DjvuBuilder.cs` has encoders for each piece
   (ZP-coder, BZZ, JB2, IW44 with the forward transform, text zones, palettes, bookmarks, annotations, Smmr masks, the
   bundled directory and indirect documents). The PDF's JBIG2, G4 and Flate masks are drawn back with PDFtoImage
-  (pdfium's own decoders) and compared with the page.
+  (pdfium's own decoders) and compared with the page. `Jbig2Tests.cs` checks Filee's JBIG2 decoder on Jbig2Encoder's
+  masks (also with shared globals), generic regions of every template, MMR, refinement and striped pages, and hostile
+  streams; the fuzz tests also mutate JBIG2 streams.
 
 ## FFmpeg
 

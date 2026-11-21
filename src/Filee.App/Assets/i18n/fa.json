@@ -271,6 +271,8 @@
   "notice.renderer_left_out.videos_one": "یک ویدیو حذف شد",
   "notice.renderer_left_out.pictures": "{0} تصویر حذف شد",
   "notice.renderer_left_out.pictures_one": "یک تصویر حذف شد",
+  "notice.renderer_left_out.fonts": "{0} قلم جاسازی‌شده جایگزین شد",
+  "notice.renderer_left_out.fonts_one": "یک قلم جاسازی‌شده جایگزین شد",
   "notice.renderer_left_out.objects_pictured": "{0} شیء جاسازی‌شده از تصویر ذخیره‌شده‌اش رسم شد",
   "notice.renderer_left_out.objects_pictured_one": "یک شیء جاسازی‌شده از تصویر ذخیره‌شده‌اش رسم شد",
   "notice.renderer_left_out.charts_pictured": "{0} نمودار از تصویر ذخیره‌شده‌اش رسم شد",

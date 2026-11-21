@@ -257,6 +257,8 @@
   "notice.renderer_left_out.videos_one": "1 video tidak disertakan",
   "notice.renderer_left_out.pictures": "{0} gambar tidak disertakan",
   "notice.renderer_left_out.pictures_one": "1 gambar tidak disertakan",
+  "notice.renderer_left_out.fonts": "{0} font tersemat diganti",
+  "notice.renderer_left_out.fonts_one": "1 font tersemat diganti",
   "notice.renderer_left_out.objects_pictured": "{0} objek tersemat digambar dari gambar tersimpannya",
   "notice.renderer_left_out.objects_pictured_one": "1 objek tersemat digambar dari gambar tersimpannya",
   "notice.renderer_left_out.charts_pictured": "{0} bagan digambar dari gambar tersimpannya",
