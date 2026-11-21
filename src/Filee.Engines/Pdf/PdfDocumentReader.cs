@@ -349,8 +349,8 @@ internal sealed partial class PdfDocumentReader
                 lead.StartBaseLine.Y, Math.Max(1, size), format, link, word.DrawnForward));
         }
 
-        // On a slide a page of pictures and drawings keeps them as they are; only sideways text needs the rendering.
-        if (words.Count == 0 && !(_slides && !pageLetters.Any(l => !string.IsNullOrWhiteSpace(l.Value) && l.RenderingMode != TextRenderingMode.Neither)))
+        // On a slide a page of pictures and drawings keeps them as they are, and sideways text is rebuilt (Slides).
+        if (words.Count == 0 && !_slides)
         {
             // A scan, a page of drawings, or a page whose text runs sideways as shown (a portrait page turned by
             // /Rotate): the rendered page keeps everything.

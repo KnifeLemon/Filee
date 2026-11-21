@@ -8,6 +8,10 @@
 //   italic, underline, colour and link; paragraphs their alignment, indents, tab stops and line distance (as a share
 //   of single spacing, 1.2 em), with no space before or after and no bullet (a bullet is a character of the text).
 // - Shapes have no style (p:style), so the theme adds no outline or effect: a rectangle has exactly its fill and line.
+//   Fills and lines carry the PDF's transparency (a:alpha); gradients are a:gradFill (lin at an angle, or a circle
+//   path from its focus); outlines of their own are a:custGeom in the shape's box (EMU).
+// - Turned items have xfrm rot (60000ths of a degree, clockwise), mirrored pictures flipH / flipV; a picture's crop is
+//   its a:srcRect, its transparency a:alphaModFix, a clipping path other than a rectangle its custom geometry.
 // - Tables have no table style either; every cell writes its borders, fill, padding and vertical alignment, and the
 //   cells a merged cell covers are marked hMerge / vMerge.
 // - A page smaller or larger than the slide is scaled and centred like a picture slide (PictureDeckWriter.Fit), its
@@ -73,14 +77,81 @@ internal static class PdfSlideXml
         return sb.ToString();
     }
 
-    private static string Transform(SKRect box, Placement placement, bool flipHorizontal = false, bool flipVertical = false) =>
-        $"<a:xfrm{(flipHorizontal ? " flipH=\"1\"" : "")}{(flipVertical ? " flipV=\"1\"" : "")}>" +
+    private static string Transform(SKRect box, Placement placement, bool flipHorizontal = false, bool flipVertical = false, float rotation = 0) =>
+        $"<a:xfrm{Rotation(rotation)}{(flipHorizontal ? " flipH=\"1\"" : "")}{(flipVertical ? " flipV=\"1\"" : "")}>" +
         $"<a:off x=\"{N(placement.Left(box.Left))}\" y=\"{N(placement.Top(box.Top))}\"/>" +
         $"<a:ext cx=\"{N(Math.Max(0, placement.Length(box.Width)))}\" cy=\"{N(Math.Max(0, placement.Length(box.Height)))}\"/></a:xfrm>";
 
+    private static string Rotation(float degrees)
+    {
+        var value = (long)Math.Round((degrees % 360 + 360) % 360 * 60000) % 21600000;
+        return value == 0 ? "" : $" rot=\"{N(value)}\"";
+    }
+
     private const string Rect = "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>";
 
-    private static string Solid(string color) => $"<a:solidFill><a:srgbClr val=\"{Hex(color)}\"/></a:solidFill>";
+    private static string Solid(string color, double alpha = 1) => $"<a:solidFill>{Color(Hex(color), alpha)}</a:solidFill>";
+
+    /// <summary>An sRGB colour with its alpha (1 = opaque, no a:alpha).</summary>
+    private static string Color(string hex, double alpha)
+    {
+        var value = (long)Math.Round(Math.Clamp(double.IsFinite(alpha) ? alpha : 1, 0, 1) * 100000);
+        return value >= 100000 ? $"<a:srgbClr val=\"{hex}\"/>" : $"<a:srgbClr val=\"{hex}\"><a:alpha val=\"{N(value)}\"/></a:srgbClr>";
+    }
+
+    private static long Share(double value) => (long)Math.Round(Math.Clamp(value, 0, 1) * 100000);
+
+    private static string Gradient(PdfSlideGradient gradient)
+    {
+        var sb = new StringBuilder("<a:gradFill rotWithShape=\"1\"><a:gsLst>");
+        foreach (var (position, color) in gradient.Stops)
+            sb.Append($"<a:gs pos=\"{N(Share(position))}\">").Append(Color($"{color.Red:X2}{color.Green:X2}{color.Blue:X2}", color.Alpha / 255.0)).Append("</a:gs>");
+        sb.Append("</a:gsLst>");
+        if (gradient.Radial)
+        {
+            var (x, y) = (gradient.Focus.X, gradient.Focus.Y);
+            sb.Append($"<a:path path=\"circle\"><a:fillToRect l=\"{N(Share(x))}\" t=\"{N(Share(y))}\" r=\"{N(Share(1 - x))}\" b=\"{N(Share(1 - y))}\"/></a:path>");
+        }
+        else
+        {
+            var angle = (long)Math.Round((gradient.Angle % 360 + 360) % 360 * 60000) % 21600000;
+            sb.Append($"<a:lin ang=\"{N(angle)}\" scaled=\"0\"/>");
+        }
+        return sb.Append("</a:gradFill>").ToString();
+    }
+
+    /// <summary>A custom outline in a box of <paramref name="box"/>'s size, or a rectangle without one.</summary>
+    private static string Geometry(PdfGeometry? geometry, SKRect box, Placement placement)
+    {
+        if (geometry is null)
+            return Rect;
+        var (width, height) = (Math.Max(1, placement.Length(box.Width)), Math.Max(1, placement.Length(box.Height)));
+        var sb = new StringBuilder("<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"0\" t=\"0\" r=\"r\" b=\"b\"/><a:pathLst>")
+            .Append($"<a:path w=\"{N(width)}\" h=\"{N(height)}\">");
+        string Point(SKPoint p) => $"<a:pt x=\"{N(placement.Length(p.X))}\" y=\"{N(placement.Length(p.Y))}\"/>";
+        foreach (var (verb, points) in geometry.Commands)
+        {
+            switch (verb)
+            {
+                case SKPathVerb.Move:
+                    sb.Append("<a:moveTo>").Append(Point(points[0])).Append("</a:moveTo>");
+                    break;
+                case SKPathVerb.Line:
+                    sb.Append("<a:lnTo>").Append(Point(points[0])).Append("</a:lnTo>");
+                    break;
+                case SKPathVerb.Quad:
+                    sb.Append("<a:quadBezTo>").Append(Point(points[0])).Append(Point(points[1])).Append("</a:quadBezTo>");
+                    break;
+                case SKPathVerb.Cubic:
+                    sb.Append("<a:cubicBezTo>").Append(Point(points[0])).Append(Point(points[1])).Append(Point(points[2])).Append("</a:cubicBezTo>");
+                    break;
+                case SKPathVerb.Close:
+                    sb.Append("<a:close/>");
+                    break;
+            }
+        }
+        return sb.Append("</a:path></a:pathLst></a:custGeom>").ToString();
+    }
 
     /// <summary>"#1a2B3c" → "1A2B3C"; anything else black.</summary>
     internal static string Hex(string color)
@@ -94,23 +165,32 @@ internal static class PdfSlideXml
     private static void TextBox(StringBuilder sb, PdfSlideText text, int id, Placement placement, Func<string, string> link)
     {
         sb.Append($"<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"TextBox {id}\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>")
-            .Append("<p:spPr>").Append(Transform(text.Bounds, placement)).Append(Rect).Append("<a:noFill/></p:spPr>")
+            .Append("<p:spPr>").Append(Transform(text.Bounds, placement, rotation: text.Rotation)).Append(Rect).Append("<a:noFill/></p:spPr>")
             .Append($"<p:txBody><a:bodyPr wrap=\"{(text.Wrap ? "square" : "none")}\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\" rtlCol=\"0\" anchor=\"t\">")
             .Append("<a:spAutoFit/></a:bodyPr><a:lstStyle/>");
         Paragraph(sb, text.Paragraph, placement, link);
         sb.Append("</p:txBody></p:sp>");
     }
 
-    private static void Picture(StringBuilder sb, PdfSlidePicture picture, int id, Placement placement, string relationship) =>
+    private static void Picture(StringBuilder sb, PdfSlidePicture picture, int id, Placement placement, string relationship)
+    {
         sb.Append($"<p:pic><p:nvPicPr><p:cNvPr id=\"{id}\" name=\"Picture {id}\"/>")
             .Append("<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>")
-            .Append($"<p:blipFill><a:blip r:embed=\"{relationship}\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>")
-            .Append("<p:spPr>").Append(Transform(picture.Bounds, placement)).Append(Rect).Append("</p:spPr></p:pic>");
+            .Append($"<p:blipFill><a:blip r:embed=\"{relationship}\"");
+        var alpha = Share(picture.Alpha);
+        sb.Append(alpha < 100000 ? $"><a:alphaModFix amt=\"{N(alpha)}\"/></a:blip>" : "/>");
+        if (picture.Crop is { IsEmpty: false } crop)
+            sb.Append($"<a:srcRect l=\"{N(Share(crop.Left))}\" t=\"{N(Share(crop.Top))}\" r=\"{N(Share(crop.Right))}\" b=\"{N(Share(crop.Bottom))}\"/>");
+        sb.Append("<a:stretch><a:fillRect/></a:stretch></p:blipFill>")
+            .Append("<p:spPr>").Append(Transform(picture.Bounds, placement, picture.FlipHorizontal, picture.FlipVertical, picture.Rotation))
+            .Append(Geometry(picture.Geometry, picture.Bounds, placement)).Append("</p:spPr></p:pic>");
+    }
 
     private static void Rectangle(StringBuilder sb, PdfSlideShape shape, int id, Placement placement) =>
-        sb.Append($"<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"Rectangle {id}\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>")
-            .Append("<p:spPr>").Append(Transform(shape.Bounds, placement)).Append(Rect)
-            .Append(shape.Fill is { } fill ? Solid(fill) : "<a:noFill/>")
+        sb.Append($"<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"{(shape.Kind == PdfShapeKind.Custom ? "Freeform" : "Rectangle")} {id}\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>")
+            .Append("<p:spPr>").Append(Transform(shape.Bounds, placement, rotation: shape.Rotation))
+            .Append(Geometry(shape.Kind == PdfShapeKind.Custom ? shape.Geometry : null, shape.Bounds, placement))
+            .Append(shape.Gradient is { } gradient ? Gradient(gradient) : shape.Fill is { } fill ? Solid(fill, shape.FillAlpha) : "<a:noFill/>")
             .Append(Outline(shape, placement)).Append("</p:spPr></p:sp>");
 
     private static void Line(StringBuilder sb, PdfSlideShape line, int id, Placement placement) =>
@@ -124,7 +204,7 @@ internal static class PdfSlideXml
             return "<a:ln><a:noFill/></a:ln>";
         // A width of 0 is the thinnest line a device shows; a quarter point is PowerPoint's thinnest.
         var width = Math.Max(3175, placement.Length(shape.LineWidth));
-        return $"<a:ln w=\"{N(width)}\">{Solid(color)}{(shape.Dashed ? "<a:prstDash val=\"dash\"/>" : "")}</a:ln>";
+        return $"<a:ln w=\"{N(width)}\">{Solid(color, shape.LineAlpha)}{(shape.Dashed ? "<a:prstDash val=\"dash\"/>" : "")}</a:ln>";
     }
 
     // ───────────────────────── Tables ─────────────────────────

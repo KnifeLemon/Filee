@@ -31,6 +31,12 @@ en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't 
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+- **PDF → PowerPoint makes slides you can edit** (#1150). Each page becomes a slide of text boxes with the PDF's fonts,
+  sizes and colours (text that runs sideways or at an angle too), pictures, rectangles and lines, and ruled tables as
+  tables. Gradients and see-through fills become PowerPoint fills, turned, mirrored and cut pictures stay that way,
+  and everything stacks in the order the PDF draws it. Words far apart on a line (columns, a label and its value) get
+  boxes of their own. The PDF's comments become the slide's speaker notes. Other drawings stay pictures on the slide.
+  For slides that look exactly like the PDF, turn on "Pictures of the pages" in the PPTX preset.
 
 ## 2.5.0
 

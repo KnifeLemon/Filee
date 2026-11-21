@@ -4,6 +4,9 @@
 // with the standard 14 fonts, PDFsharp for a curve and for passwords). Positions are compared with a few points of
 // slack and text by content, so other fonts on Linux don't matter. Filee's own slide reader and renderer read the
 // result back; hostile pages (thousands of shapes, a huge drawing) finish quickly and fuzzed PDFs are read or refused.
+// Pages written as raw content streams (PDFsharp's objects) check what the paint order recorder reads: turned text,
+// words far apart, shadings, transparency, soft masks and tiling patterns, turned, mirrored, clipped and stencil
+// pictures, the paint order, and comments as speaker notes.
 
 using System.Diagnostics;
 using System.IO.Compression;
@@ -14,8 +17,10 @@ using Filee.Core.Presets;
 using Filee.Engines.Pdf;
 using Filee.Engines.Slides;
 using ImageMagick;
+using PdfSharp.Drawing;
 using PdfSharp.Pdf.IO;
 using SkiaSharp;
+using Sharp = PdfSharp.Pdf;
 
 namespace Filee.Engines.Tests;
 
@@ -190,10 +195,15 @@ public class PdfEditableSlidesTests(EngineFixture fx) : IClassFixture<EngineFixt
         // The table's rules are its borders: no line shapes for them.
         Assert.DoesNotContain(tree.Descendants(P + "cxnSp"), l => Box(l).Y > 310);
 
-        // Back to front: the bar and pictures, then the table, then the text.
-        var order = tree.Elements(P + "spTree").Single().Elements().Select(e => e.Name.LocalName).Where(n => n is not ("nvGrpSpPr" or "grpSpPr")).ToList();
-        Assert.True(order.IndexOf("graphicFrame") > order.LastIndexOf("pic"));
-        Assert.True(order.FindIndex(n => n == "sp") < order.IndexOf("graphicFrame"));
+        // Back to front as the PDF paints them: the bar, the title on it, ..., the photo, the table, and the curve the
+        // PDF draws last.
+        var shapes = tree.Elements(P + "spTree").Single().Elements().Where(e => e.Name.LocalName is not ("nvGrpSpPr" or "grpSpPr")).ToList();
+        var order = shapes.Select(e => e.Name.LocalName).ToList();
+        Assert.Equal(0, shapes.IndexOf(bar));
+        Assert.True(shapes.IndexOf(TextBox(tree, "Quarterly results")) > shapes.IndexOf(bar));
+        Assert.True(order.IndexOf("graphicFrame") > order.IndexOf("pic"));
+        Assert.Equal("pic", order[^1]);
+        Assert.InRange(Box(shapes[^1]).X, 598, 601);
     }
 
     [Fact]
@@ -347,4 +357,490 @@ public class PdfEditableSlidesTests(EngineFixture fx) : IClassFixture<EngineFixt
     private static bool ThrownByPdfPig(Exception exception) =>
         new StackTrace(exception).GetFrames().Select(f => f.GetMethod()?.DeclaringType?.Namespace ?? "")
             .FirstOrDefault(n => !n.StartsWith("System", StringComparison.Ordinal))?.StartsWith("UglyToad.", StringComparison.Ordinal) == true;
+
+    // ───────────────────────── PDFs written as raw content ─────────────────────────
+
+    /// <summary>
+    /// A one-page PDF of <see cref="Width"/> × <see cref="Height"/> points (PDFsharp's low-level objects) with
+    /// <paramref name="content"/> as its content stream, Helvetica as /F1 and what <paramref name="resources"/> adds.
+    /// </summary>
+    private static string RawPdf(string path, string content, Action<Sharp.PdfDocument, Sharp.PdfPage>? resources = null)
+    {
+        using var document = new Sharp.PdfDocument();
+        var page = document.AddPage();
+        page.Elements.SetRectangle("/MediaBox", new Sharp.PdfRectangle(new XPoint(0, 0), new XPoint(Width, Height)));
+        var font = new Sharp.PdfDictionary(document);
+        font.Elements.SetName("/Type", "/Font");
+        font.Elements.SetName("/Subtype", "/Type1");
+        font.Elements.SetName("/BaseFont", "/Helvetica");
+        font.Elements.SetName("/Encoding", "/WinAnsiEncoding");
+        Resource(document, page, "/Font", "/F1", font);
+        resources?.Invoke(document, page);
+        page.Contents.AppendContent().CreateStream(Encoding.Latin1.GetBytes(content));
+        document.Save(path);
+        return path;
+    }
+
+    /// <summary>Adds <paramref name="value"/> (made an indirect object) to the page's resources of <paramref name="kind"/>.</summary>
+    private static void Resource(Sharp.PdfDocument document, Sharp.PdfPage page, string kind, string name, Sharp.PdfDictionary value)
+    {
+        if (!value.IsIndirect)
+            document.Internals.AddObject(value);
+        if (page.Resources.Elements.GetDictionary(kind) is not { } group)
+            page.Resources.Elements[kind] = group = new Sharp.PdfDictionary(document);
+        group.Elements.SetReference(name, value);
+    }
+
+    private static Sharp.PdfArray Numbers(Sharp.PdfDocument document, params double[] values) =>
+        new(document, [.. values.Select(v => (Sharp.PdfItem)new Sharp.PdfReal(v))]);
+
+    /// <summary>An axial (type 2) or radial (type 3) shading from one colour to another, extended at both ends.</summary>
+    private static Sharp.PdfDictionary Shading(Sharp.PdfDocument document, int type, double[] coords, double[] from, double[] to, string space = "/DeviceRGB")
+    {
+        var function = new Sharp.PdfDictionary(document);
+        function.Elements.SetInteger("/FunctionType", 2);
+        function.Elements["/Domain"] = Numbers(document, 0, 1);
+        function.Elements["/C0"] = Numbers(document, from);
+        function.Elements["/C1"] = Numbers(document, to);
+        function.Elements.SetInteger("/N", 1);
+        var shading = new Sharp.PdfDictionary(document);
+        shading.Elements.SetInteger("/ShadingType", type);
+        shading.Elements.SetName("/ColorSpace", space);
+        shading.Elements["/Coords"] = Numbers(document, coords);
+        shading.Elements["/Function"] = function;
+        shading.Elements["/Extend"] = new Sharp.PdfArray(document, new Sharp.PdfBoolean(true), new Sharp.PdfBoolean(true));
+        document.Internals.AddObject(shading);
+        return shading;
+    }
+
+    private static string Inv(FormattableString text) => FormattableString.Invariant(text);
+
+    private static string Attribute(XElement element, string descendant, string attribute) =>
+        (string?)element.Descendants(A + descendant).FirstOrDefault()?.Attribute(attribute) ?? "";
+
+    private static XElement Shape(XElement tree, Func<(double X, double Y, double Width, double Height), bool> at) =>
+        tree.Elements(P + "spTree").Single().Elements().Single(e => e.Name.LocalName is "sp" or "pic" or "cxnSp" && at(Box(e)));
+
+    private static List<XElement> Stack(XElement tree) =>
+        [.. tree.Elements(P + "spTree").Single().Elements().Where(e => e.Name.LocalName is not ("nvGrpSpPr" or "grpSpPr"))];
+
+    private static bool Near(double value, double expected, double slack = 2) => Math.Abs(value - expected) <= slack;
+
+    // ───────────────────────── Turned text ─────────────────────────
+
+    [Fact]
+    public async Task Sideways_and_turned_text_become_turned_text_boxes()
+    {
+        var content = "BT /F1 20 Tf 300 480 Td (Upright title) Tj ET\n" +
+                      "BT /F1 14 Tf 0 1 -1 0 60 100 Tm (Turned upwards) Tj ET\n" +
+                      "BT /F1 14 Tf 0 -1 1 0 900 450 Tm (Turned downwards) Tj ET\n" +
+                      "BT /F1 14 Tf 0.8660254 0.5 -0.5 0.8660254 500 150 Tm (Slanted by thirty) Tj ET\n" +
+                      "BT /F1 14 Tf -1 0 0 -1 600 300 Tm (Upside down) Tj ET\n";
+        var pptx = await ConvertAsync(RawPdf(Path.Combine(fx.NewFolder(), "turned.pdf"), content));
+        PdfSlidesTests.ValidPackage(pptx);
+        var (tree, _) = Assert.Single(Slides(pptx));
+
+        Assert.Equal("", Attribute(TextBox(tree, "Upright title"), "xfrm", "rot"));
+        // Rotation is clockwise on the slide: text running up the page is turned by 270°.
+        var up = TextBox(tree, "Turned upwards");
+        Assert.Equal("16200000", Attribute(up, "xfrm", "rot"));
+        Assert.Equal("90", Rotation(TextBox(tree, "Turned downwards")));
+        Assert.Equal("330", Rotation(TextBox(tree, "Slanted by thirty")));
+        Assert.Equal("180", Rotation(TextBox(tree, "Upside down")));
+
+        // The unturned box is as wide as the line and as high as the text; turned about its centre, it lies along the
+        // line of text: left of x = 60 (the letters' tops point left), from 100 pt above the page's bottom upwards.
+        var (x, y, width, height) = Box(up);
+        Assert.InRange(width, 80, 125);
+        Assert.InRange(height, 12, 22);
+        Assert.InRange(x + width / 2, 50, 60);
+        Assert.InRange(y + height / 2, Height - 100 - width / 2 - 6, Height - 100 - width / 2 + 6);
+
+        // Filee's reader turns the box too, and the renderer draws the text where the PDF has it.
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        var turned = deck.Slides[0].Elements.OfType<SlideShape>().Single(s => s.Text is not null && Math.Abs(s.Rotation - 270) < 0.01);
+        Assert.Contains("Turned upwards", string.Concat(turned.Text!.Paragraphs.SelectMany(p => p.Inlines).OfType<Hwp.Hwpx.HText>().Select(t => t.Text)));
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        Assert.True(Dark(bitmap, new SKRectI(46, (int)Height - 205, 62, (int)Height - 100)) > 20);
+        Assert.True(Dark(bitmap, new SKRectI(100, (int)Height - 205, 140, (int)Height - 100)) == 0);
+    }
+
+    private static string Rotation(XElement shape) =>
+        (long.Parse(Attribute(shape, "xfrm", "rot") is { Length: > 0 } rot ? rot : "0", System.Globalization.CultureInfo.InvariantCulture) / 60000)
+        .ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static int Dark(SKBitmap bitmap, SKRectI area)
+    {
+        var count = 0;
+        for (var y = Math.Max(0, area.Top); y < Math.Min(bitmap.Height, area.Bottom); y++)
+        {
+            for (var x = Math.Max(0, area.Left); x < Math.Min(bitmap.Width, area.Right); x++)
+            {
+                var pixel = bitmap.GetPixel(x, y);
+                if (pixel.Red < 128 && pixel.Green < 128 && pixel.Blue < 128)
+                    count++;
+            }
+        }
+        return count;
+    }
+
+    // ───────────────────────── Words far apart ─────────────────────────
+
+    [Fact]
+    public async Task Words_far_apart_on_a_baseline_are_boxes_of_their_own_and_justified_lines_stay_together()
+    {
+        var content =
+            "BT /F1 12 Tf 40 500 Td (The page has a sentence of normal words with normal spaces between them all.) Tj ET\n" +
+            // A label and its value far away (the document reading joins them with a tab).
+            "BT /F1 12 Tf 40 460 Td (Revenue) Tj 260 0 Td ($5M) Tj ET\n" +
+            // Two columns a little more than an em apart.
+            "BT /F1 12 Tf 40 430 Td (Q1) Tj 32 0 Td (Q2) Tj ET\n" +
+            // A numbered item keeps its number.
+            "BT /F1 12 Tf 40 400 Td (1.) Tj 30 0 Td (Numbered item) Tj ET\n" +
+            // A justified paragraph: wide spaces (word spacing) on its full lines, normal ones on the last.
+            "BT /F1 12 Tf 15 TL 13 Tw 40 340 Td (alpha bravo charlie) Tj T* (alpha bravo charlie) Tj 0 Tw T* (delta) Tj ET\n";
+        var pptx = await ConvertAsync(RawPdf(Path.Combine(fx.NewFolder(), "gaps.pdf"), content));
+        var (tree, _) = Assert.Single(Slides(pptx));
+
+        var label = TextBox(tree, "Revenue");
+        Assert.DoesNotContain("$5M", Text(label), StringComparison.Ordinal);
+        Assert.InRange(Box(TextBox(tree, "$5M")).X, 298, 302);
+        Assert.DoesNotContain("Q2", Text(TextBox(tree, "Q1")), StringComparison.Ordinal);
+        Assert.InRange(Box(TextBox(tree, "Q2")).X, 70, 74);
+        Assert.Contains("Numbered item", Text(TextBox(tree, "1.")), StringComparison.Ordinal);
+        var justified = TextBox(tree, "alpha");
+        Assert.Equal("alpha bravo charlie alpha bravo charlie delta", System.Text.RegularExpressions.Regex.Replace(Text(justified), "\\s+", " ").Trim());
+        Assert.Contains("normal words with normal spaces", Text(TextBox(tree, "The page has")), StringComparison.Ordinal);
+    }
+
+    // ───────────────────────── Gradients, transparency, patterns ─────────────────────────
+
+    /// <summary>
+    /// A page of fills: an axial gradient (red → blue) in a rectangle, a radial one (white → green) painted with "sh"
+    /// through a round clip, a half-transparent green bar, a blue bar faded by a soft mask (a grey gradient) and a
+    /// rectangle tiled with red squares.
+    /// </summary>
+    private static string MakeFillsPdf(string folder)
+    {
+        const string circle = "500 400 m 500 427.6 477.6 450 450 450 c 422.4 450 400 427.6 400 400 c 400 372.4 422.4 350 450 350 c 477.6 350 500 372.4 500 400 c h";
+        var content =
+            "q /Pattern cs /P1 scn 100 340 200 100 re f Q\n" +
+            $"q {circle} W n /Sh1 sh Q\n" +
+            "q /GS1 gs 0 0.5 0 rg 600 340 200 100 re f Q\n" +
+            "q /GS2 gs 0 0 1 rg 100 100 200 100 re f Q\n" +
+            "q /Pattern cs /T1 scn 600 100 200 100 re f Q\n";
+        return RawPdf(Path.Combine(folder, "fills.pdf"), content, (document, page) =>
+        {
+            var pattern = new Sharp.PdfDictionary(document);
+            pattern.Elements.SetName("/Type", "/Pattern");
+            pattern.Elements.SetInteger("/PatternType", 2);
+            pattern.Elements.SetReference("/Shading", Shading(document, 2, [100, 0, 300, 0], [1, 0, 0], [0, 0, 1]));
+            Resource(document, page, "/Pattern", "/P1", pattern);
+            Resource(document, page, "/Shading", "/Sh1", Shading(document, 3, [450, 400, 0, 450, 400, 50], [1, 1, 1], [0, 0.6, 0]));
+
+            var half = new Sharp.PdfDictionary(document);
+            half.Elements.SetName("/Type", "/ExtGState");
+            half.Elements["/ca"] = new Sharp.PdfReal(0.5);
+            Resource(document, page, "/ExtGState", "/GS1", half);
+
+            // Soft mask: a group painting a grey gradient across the bar, black (hidden) to white (shown).
+            var group = new Sharp.PdfDictionary(document);
+            group.Elements.SetName("/Type", "/XObject");
+            group.Elements.SetName("/Subtype", "/Form");
+            group.Elements["/BBox"] = Numbers(document, 0, 0, Width, Height);
+            var transparency = new Sharp.PdfDictionary(document);
+            transparency.Elements.SetName("/S", "/Transparency");
+            transparency.Elements.SetName("/CS", "/DeviceGray");
+            group.Elements["/Group"] = transparency;
+            var groupResources = new Sharp.PdfDictionary(document);
+            var groupShadings = new Sharp.PdfDictionary(document);
+            groupShadings.Elements.SetReference("/S0", Shading(document, 2, [100, 0, 300, 0], [0], [1], "/DeviceGray"));
+            groupResources.Elements["/Shading"] = groupShadings;
+            group.Elements["/Resources"] = groupResources;
+            group.CreateStream("/S0 sh"u8.ToArray());
+            document.Internals.AddObject(group);
+            var mask = new Sharp.PdfDictionary(document);
+            mask.Elements.SetName("/Type", "/Mask");
+            mask.Elements.SetName("/S", "/Luminosity");
+            mask.Elements.SetReference("/G", group);
+            var faded = new Sharp.PdfDictionary(document);
+            faded.Elements.SetName("/Type", "/ExtGState");
+            faded.Elements["/SMask"] = mask;
+            Resource(document, page, "/ExtGState", "/GS2", faded);
+
+            // Tiles of 10 × 10 points with a red square of 5 × 5 in their bottom-left corner.
+            var tile = new Sharp.PdfDictionary(document);
+            tile.Elements.SetName("/Type", "/Pattern");
+            tile.Elements.SetInteger("/PatternType", 1);
+            tile.Elements.SetInteger("/PaintType", 1);
+            tile.Elements.SetInteger("/TilingType", 1);
+            tile.Elements["/BBox"] = Numbers(document, 0, 0, 10, 10);
+            tile.Elements.SetInteger("/XStep", 10);
+            tile.Elements.SetInteger("/YStep", 10);
+            tile.Elements["/Resources"] = new Sharp.PdfDictionary(document);
+            tile.CreateStream("1 0 0 rg 0 0 5 5 re f"u8.ToArray());
+            Resource(document, page, "/Pattern", "/T1", tile);
+        });
+    }
+
+    [Fact]
+    public async Task Shadings_transparency_and_soft_masks_become_drawingml_fills()
+    {
+        var pptx = await ConvertAsync(MakeFillsPdf(fx.NewFolder()));
+        PdfSlidesTests.ValidPackage(pptx);
+        var (tree, _) = Assert.Single(Slides(pptx));
+
+        // The axial shading: a rectangle with a linear gradient from red to blue, left to right.
+        var axial = Shape(tree, b => Near(b.X, 100) && Near(b.Y, 100));
+        Assert.Equal("rect", Attribute(axial, "prstGeom", "prst"));
+        var stops = axial.Descendants(A + "gs").Select(g => (string)g.Element(A + "srgbClr")!.Attribute("val")!).ToList();
+        Assert.Equal("FF0000", stops[0]);
+        Assert.Equal("0000FF", stops[^1]);
+        Assert.Equal("0", Attribute(axial, "lin", "ang"));
+
+        // The radial shading through a round clip: the circle's own outline, a circular gradient from its centre.
+        var radial = Shape(tree, b => Near(b.X, 400) && Near(b.Y, Height - 450) && Near(b.Width, 100));
+        Assert.NotNull(radial.Descendants(A + "custGeom").SingleOrDefault());
+        Assert.Equal("circle", (string?)radial.Descendants(A + "gradFill").Single().Element(A + "path")!.Attribute("path"));
+        Assert.Equal("50000", Attribute(radial, "fillToRect", "l"));
+        Assert.Equal("FFFFFF", (string?)radial.Descendants(A + "gs").First().Element(A + "srgbClr")!.Attribute("val"));
+
+        // ca 0.5: a half-transparent bar.
+        var half = Shape(tree, b => Near(b.X, 600) && Near(b.Y, 100));
+        Assert.Equal("50000", Attribute(half, "alpha", "val"));
+
+        // The soft mask's grey gradient fades the blue bar in from the left: blue stops, transparent to opaque.
+        var faded = Shape(tree, b => Near(b.X, 100) && Near(b.Y, Height - 200));
+        var alphas = faded.Descendants(A + "gs").Select(g => (int?)g.Descendants(A + "alpha").SingleOrDefault()?.Attribute("val") ?? 100000).ToList();
+        Assert.All(faded.Descendants(A + "gs"), g => Assert.Equal("0000FF", (string?)g.Element(A + "srgbClr")!.Attribute("val")));
+        Assert.True(alphas[0] < 5000 && alphas[^1] > 95000, string.Join(", ", alphas));
+
+        // Filee's renderer shows them: reddish to bluish, white in the circle's centre, light green half-transparent
+        // bar, the faded bar paler on the left, red tiles in their cell corners.
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 144, cancellationToken: Token).Single();
+        SKColor At(double x, double y) => bitmap.GetPixel((int)(x * 2), (int)(y * 2));
+        Assert.True(At(105, Height - 390).Red > 200 && At(105, Height - 390).Blue < 60, At(105, Height - 390).ToString());
+        Assert.True(At(295, Height - 390).Blue > 200 && At(295, Height - 390).Red < 60, At(295, Height - 390).ToString());
+        Assert.True(At(450, Height - 400) is { Red: > 230, Green: > 230, Blue: > 230 }, At(450, Height - 400).ToString());
+        Assert.True(At(700, Height - 390) is { Red: > 100 and < 160, Green: > 160, Blue: > 100 and < 160 }, At(700, Height - 390).ToString());
+        Assert.True(At(110, Height - 150).Blue > 200 && At(110, Height - 150).Red > 200, At(110, Height - 150).ToString());
+        Assert.True(At(290, Height - 150) is { Blue: > 200, Red: < 60 }, At(290, Height - 150).ToString());
+        Assert.True(At(602.5, Height - 102.5) is { Red: > 200, Green: < 60 }, At(602.5, Height - 102.5).ToString());
+        Assert.True(At(607.5, Height - 107.5) is { Red: > 230, Green: > 230 }, At(607.5, Height - 107.5).ToString());
+    }
+
+    [Fact]
+    public async Task Pdf_fills_reach_odg_through_the_rebuilt_slides()
+    {
+        var job = await RunAsync(MakeFillsPdf(fx.NewFolder()), new Preset { TargetFormat = "odg" });
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var drawing = Odf.Draw.OdfDrawReader.Read(job.Outputs.Single(), cancellationToken: Token);
+        var shapes = drawing.Slides[0].Elements.OfType<SlideShape>().ToList();
+        Assert.Contains(shapes, s => s.Fill is GradientFill { Shape: GradientShape.Linear });
+        Assert.Contains(shapes, s => s.Fill is SolidFill { Color.Alpha: > 100 and < 160 });
+    }
+
+    // ───────────────────────── Pictures: turned, mirrored, clipped, stencils ─────────────────────────
+
+    [Fact]
+    public async Task Pictures_are_turned_mirrored_and_clipped_as_drawn_and_stencil_masks_keep_their_colour()
+    {
+        // A 40 × 2 picture: its left half red, its right half blue.
+        const string ellipse = "250 100 m 250 127.6 227.6 150 200 150 c 172.4 150 150 127.6 150 100 c 150 72.4 172.4 50 200 50 c 227.6 50 250 72.4 250 100 c h";
+        var content =
+            "q 200 0 0 100 100 300 cm /Im0 Do Q\n" +                 // upright
+            "q 0 200 -100 0 500 300 cm /Im0 Do Q\n" +                // turned: its left edge at the bottom, running up
+            "q 0.9396926 0.3420201 -0.1710101 0.4698463 560 120 cm 100 0 0 100 0 0 cm /Im0 Do Q\n" +                // turned by 20 degrees, 100 x 50
+            "q -200 0 0 100 900 50 cm /Im0 Do Q\n" +                 // mirrored
+            "q 700 300 60 100 re W n 200 0 0 100 650 300 cm /Im0 Do Q\n" + // cut by a rectangle
+            $"q {ellipse} W n 100 0 0 100 150 50 cm /Im0 Do Q\n" + // cut by an ellipse
+            "q 1 0 0 rg 80 0 0 40 520 400 cm /Mk Do Q\n";           // a stencil mask, painted red
+        var pdf = RawPdf(Path.Combine(fx.NewFolder(), "pictures.pdf"), content, (document, page) =>
+        {
+            var picture = new Sharp.PdfDictionary(document);
+            picture.Elements.SetName("/Type", "/XObject");
+            picture.Elements.SetName("/Subtype", "/Image");
+            picture.Elements.SetInteger("/Width", 40);
+            picture.Elements.SetInteger("/Height", 2);
+            picture.Elements.SetInteger("/BitsPerComponent", 8);
+            picture.Elements.SetName("/ColorSpace", "/DeviceRGB");
+            byte[] row = [.. Enumerable.Range(0, 40).SelectMany(x => x < 20 ? new byte[] { 255, 0, 0 } : [0, 0, 255])];
+            picture.CreateStream([.. row, .. row]);
+            Resource(document, page, "/XObject", "/Im0", picture);
+            var stencil = new Sharp.PdfDictionary(document);
+            stencil.Elements.SetName("/Type", "/XObject");
+            stencil.Elements.SetName("/Subtype", "/Image");
+            stencil.Elements.SetInteger("/Width", 8);
+            stencil.Elements.SetInteger("/Height", 4);
+            stencil.Elements.SetInteger("/BitsPerComponent", 1);
+            stencil.Elements["/ImageMask"] = new Sharp.PdfBoolean(true);
+            // Samples of 0 paint: the left half of every row.
+            stencil.CreateStream([0x0F, 0x0F, 0x0F, 0x0F]);
+            Resource(document, page, "/XObject", "/Mk", stencil);
+        });
+        var pptx = await ConvertAsync(pdf);
+        PdfSlidesTests.ValidPackage(pptx);
+        var (tree, _) = Assert.Single(Slides(pptx));
+        var pictures = tree.Descendants(P + "pic").ToList();
+        Assert.Equal(7, pictures.Count);
+
+        var upright = pictures.Single(p => Near(Box(p).X, 100) && Near(Box(p).Y, Height - 400));
+        Assert.Equal("", Attribute(upright, "xfrm", "rot"));
+        // Turned: a 200 × 100 box turned by 270° about its centre (450, 140 from the top).
+        var turned = pictures.Single(p => Attribute(p, "xfrm", "rot") == "16200000");
+        var box = Box(turned);
+        Assert.Equal((200, 100), (Math.Round(box.Width), Math.Round(box.Height)));
+        Assert.Equal((450, 140), (Math.Round(box.X + box.Width / 2), Math.Round(box.Y + box.Height / 2)));
+        Assert.Contains(pictures, p => Attribute(p, "xfrm", "flipH") == "1" && Near(Box(p).X, 700) && Near(Box(p).Width, 200));
+        // Turned by 20° anticlockwise in the PDF: 340° clockwise on the slide, its size kept.
+        var slanted = pictures.Single(p => Attribute(p, "xfrm", "rot") == "20400000");
+        Assert.Equal((100, 50), (Math.Round(Box(slanted).Width), Math.Round(Box(slanted).Height)));
+        // The clipping rectangle crops the picture: 50 of its 200 points off the left, 90 off the right.
+        var cropped = pictures.Single(p => p.Descendants(A + "srcRect").Any());
+        Assert.Equal(("25000", "45000"), (Attribute(cropped, "srcRect", "l"), Attribute(cropped, "srcRect", "r")));
+        Assert.Equal((700, 60), (Math.Round(Box(cropped).X), Math.Round(Box(cropped).Width)));
+        // The ellipse is the outline of its picture.
+        Assert.Single(pictures, p => p.Descendants(A + "custGeom").Any());
+
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        bool Red(int x, double y) => bitmap.GetPixel(x, (int)y) is { Red: > 200, Green: < 60, Blue: < 60 };
+        bool Blue(int x, double y) => bitmap.GetPixel(x, (int)y) is { Red: < 60, Green: < 60, Blue: > 200 };
+        bool White(int x, double y) => bitmap.GetPixel(x, (int)y) is { Red: > 230, Green: > 230, Blue: > 230 };
+        Assert.True(Red(130, 190) && Blue(270, 190));             // upright
+        Assert.True(Red(450, 220) && Blue(450, 60));              // turned: its left half low on the page
+        Assert.True(Red(870, Height - 100) && Blue(730, Height - 100)); // mirrored
+        Assert.True(Red(705, 190) && Blue(757, 190) && White(690, 190) && White(770, 190)); // cropped
+        Assert.True(White(153, Height - 147) && Red(185, Height - 100) && Blue(215, Height - 100)); // ellipse
+        Assert.True(Red(530, Height - 420) && White(590, Height - 420) && White(570, Height - 420)); // stencil
+    }
+
+    // ───────────────────────── Paint order ─────────────────────────
+
+    [Fact]
+    public async Task Text_shapes_and_pictures_stack_in_the_pdfs_paint_order()
+    {
+        var content =
+            "BT /F1 18 Tf 100 395 Td (Under the bar) Tj ET\n" +
+            "q 0.9 0.2 0.2 rg 90 380 300 40 re f Q\n" +
+            "BT /F1 10 Tf 1 g 260 384 Td (On the bar) Tj ET\n" +
+            // A curve between two rectangles, the second over it: drawn pictures split around what covers them.
+            "q 0 0 1 rg 100 100 m 150 250 250 250 300 100 c f Q\n" +
+            "q 0 1 0 rg 150 120 100 40 re f Q\n" +
+            "q 1 0 1 rg 200 100 m 250 250 350 250 400 100 c f Q\n";
+        var pptx = await ConvertAsync(RawPdf(Path.Combine(fx.NewFolder(), "order.pdf"), content));
+        var (tree, _) = Assert.Single(Slides(pptx));
+        var stack = Stack(tree);
+
+        var under = stack.IndexOf(TextBox(tree, "Under the bar"));
+        var bar = stack.IndexOf(Shape(tree, b => Near(b.X, 90) && Near(b.Y, Height - 420)));
+        var on = stack.IndexOf(TextBox(tree, "On the bar"));
+        Assert.True(under < bar && bar < on, $"{under} {bar} {on}");
+
+        // The blue curve, the green bar on it, then the magenta curve over the bar: two pictures of drawn graphics, the
+        // bar between them (one picture would put the magenta curve under the bar).
+        var green = stack.IndexOf(Shape(tree, b => Near(b.X, 150) && Near(b.Y, Height - 160)));
+        var pictures = stack.Where(e => e.Name.LocalName == "pic").Select(e => stack.IndexOf(e)).ToList();
+        Assert.Equal(2, pictures.Count);
+        Assert.True(pictures[0] < green && green < pictures[1], $"{pictures[0]} {green} {pictures[1]}");
+    }
+
+    // ───────────────────────── Speaker notes ─────────────────────────
+
+    [Fact]
+    public async Task Comments_of_the_page_become_speaker_notes()
+    {
+        var folder = fx.NewFolder();
+        var path = RawPdf(Path.Combine(folder, "notes.pdf"), "BT /F1 20 Tf 100 400 Td (A slide with comments) Tj ET\n", (document, page) =>
+        {
+            Sharp.PdfDictionary Annotation(string subtype, string text, string? author, double top)
+            {
+                var annotation = new Sharp.PdfDictionary(document);
+                annotation.Elements.SetName("/Type", "/Annot");
+                annotation.Elements.SetName("/Subtype", subtype);
+                annotation.Elements["/Rect"] = Numbers(document, 50, top - 20, 70, top);
+                annotation.Elements.SetString("/Contents", text);
+                if (author is not null)
+                    annotation.Elements.SetString("/T", author);
+                if (subtype == "/FreeText")
+                    annotation.Elements.SetString("/DA", "/Helv 12 Tf 0 g");
+                document.Internals.AddObject(annotation);
+                return annotation;
+            }
+            var annotations = new Sharp.PdfArray(document);
+            annotations.Elements.Add(Annotation("/FreeText", "Say the numbers slowly", null, 300).Reference!);
+            annotations.Elements.Add(Annotation("/Text", "Check the Q3 figures", "Ana", 500).Reference!);
+            page.Elements["/Annots"] = annotations;
+        });
+        var pptx = await ConvertAsync(path);
+        PdfSlidesTests.ValidPackage(pptx);
+
+        using var zip = ZipFile.OpenRead(pptx);
+        var rels = XDocument.Load(zip.GetEntry("ppt/slides/_rels/slide1.xml.rels")!.Open()).Root!.Elements().Select(e => (string)e.Attribute("Target")!);
+        Assert.Contains("../notesSlides/notesSlide1.xml", rels);
+        var notes = XDocument.Load(zip.GetEntry("ppt/notesSlides/notesSlide1.xml")!.Open()).Descendants(A + "t").Select(t => t.Value).ToList();
+        // Top to bottom, with the author.
+        Assert.Equal(["Ana: Check the Q3 figures", "Say the numbers slowly"], notes);
+        Assert.NotNull(zip.GetEntry("ppt/notesMasters/notesMaster1.xml"));
+
+        // A page without comments has no notes page.
+        var plain = await ConvertAsync(RawPdf(Path.Combine(folder, "plain.pdf"), "BT /F1 20 Tf 100 400 Td (No comments) Tj ET\n"));
+        using var plainZip = ZipFile.OpenRead(plain);
+        Assert.Null(plainZip.GetEntry("ppt/notesSlides/notesSlide1.xml"));
+    }
+
+    // ───────────────────────── Hostile pages ─────────────────────────
+
+    [Fact]
+    public async Task Deep_clips_huge_tiles_and_nested_patterns_finish_quickly()
+    {
+        var content = new StringBuilder();
+        // 5,000 nested clips (each a little smaller), then a fill through all of them.
+        for (var i = 0; i < 5000; i++)
+            content.Append(Inv($"q {i * 0.05} {i * 0.05} {960 - i * 0.1} {540 - i * 0.1} re W n "));
+        content.Append("0 0 1 rg 0 0 960 540 re f ");
+        for (var i = 0; i < 5000; i++)
+            content.Append("Q ");
+        // A pattern whose cell holds itself, a tile with a huge step, many turned words.
+        content.Append("q /Pattern cs /T1 scn 0 0 100 100 re f /Pattern cs /T2 scn 100 0 100 100 re f Q\n");
+        for (var i = 0; i < 2000; i++)
+            content.Append(Inv($"BT /F1 6 Tf 0 1 -1 0 {10 + i % 90 * 10} {10 + i / 90 * 20} Tm (w{i}) Tj ET\n"));
+        var pdf = RawPdf(Path.Combine(fx.NewFolder(), "hostile.pdf"), content.ToString(), (document, page) =>
+        {
+            var self = new Sharp.PdfDictionary(document);
+            self.Elements.SetName("/Type", "/Pattern");
+            self.Elements.SetInteger("/PatternType", 1);
+            self.Elements.SetInteger("/PaintType", 1);
+            self.Elements.SetInteger("/TilingType", 1);
+            self.Elements["/BBox"] = Numbers(document, 0, 0, 10, 10);
+            self.Elements.SetInteger("/XStep", 10);
+            self.Elements.SetInteger("/YStep", 10);
+            self.CreateStream("/Pattern cs /T1 scn 0 0 10 10 re f"u8.ToArray());
+            document.Internals.AddObject(self);
+            var selfResources = new Sharp.PdfDictionary(document);
+            var selfPatterns = new Sharp.PdfDictionary(document);
+            selfPatterns.Elements.SetReference("/T1", self);
+            selfResources.Elements["/Pattern"] = selfPatterns;
+            self.Elements["/Resources"] = selfResources;
+            Resource(document, page, "/Pattern", "/T1", self);
+            var huge = new Sharp.PdfDictionary(document);
+            huge.Elements.SetName("/Type", "/Pattern");
+            huge.Elements.SetInteger("/PatternType", 1);
+            huge.Elements.SetInteger("/PaintType", 1);
+            huge.Elements.SetInteger("/TilingType", 1);
+            huge.Elements["/BBox"] = Numbers(document, 0, 0, 1e6, 1e6);
+            huge.Elements["/XStep"] = new Sharp.PdfReal(1e6);
+            huge.Elements["/YStep"] = new Sharp.PdfReal(1e-9);
+            huge.Elements["/Resources"] = new Sharp.PdfDictionary(document);
+            huge.CreateStream("1 0 0 rg 0 0 5 5 re f"u8.ToArray());
+            Resource(document, page, "/Pattern", "/T2", huge);
+        });
+
+        var stopwatch = Stopwatch.StartNew();
+        var pptx = await ConvertAsync(pdf);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(60), stopwatch.Elapsed.ToString());
+        var (tree, _) = Assert.Single(Slides(pptx));
+        Assert.Contains(tree.Descendants(P + "sp"), s => Attribute(s, "xfrm", "rot") == "16200000" && Text(s).StartsWith('w'));
+    }
 }
