@@ -65,10 +65,10 @@
       "kind": "conda"
     },
     "ffmpeg": {
-      "version": "9.0.2",
-      "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-full_build-shared.zip",
-      "sha256": "8D31E162F1616E37AAB3FA2DB991B97E1B8DBEB1C8465FD81A81BE16FF91B328",
-      "size": 99899672,
+      "version": "9.1",
+      "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.1/ffmpeg-9.1-full_build-shared.zip",
+      "sha256": "D010A19B78D5EAE62DCA8D4C7F195ACD56DAE8ED6FB85F72821EDD9437DA2898",
+      "size": 104990867,
       "kind": "zip"
     },
     "calibre": {
